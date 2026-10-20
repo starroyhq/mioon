@@ -131,7 +131,7 @@ function positiveOrdinary(t, {mockLedger = false, repair} = {}) {
   if (repair) breakMarkers(db, repair);
   db.close(); let store;
   try {
-    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 48, profile: 'ordinary'});
+    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 50, profile: 'ordinary'});
     preserveOriginalRows(store.db, input); assertText(store.db); assert.equal(getWorkspaceRestoreContext(store), null);
     const beforeColdReopen = snapshot(store.db); store.close(); store = openStore(root);
     assert.deepEqual(snapshot(store.db), beforeColdReopen); assertText(store.db); assert.equal(getWorkspaceRestoreContext(store), null);

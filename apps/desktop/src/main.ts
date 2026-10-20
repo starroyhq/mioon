@@ -11,7 +11,10 @@ import { nativeText as nt, setNativeLanguageReader } from './app-language-text.t
 import { app, BrowserWindow, Menu, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, Session, WebContents} from 'electron';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
-import {WORKSPACE_TOOLS_CHANNEL} from '../../../packages/contracts/src/workspace-info.ts';
+import {WORKSPACE_TOOLS_CHANNEL,workspaceInfoSchema} from '../../../packages/contracts/src/workspace-info.ts';
+import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
+import {WORKSPACE_NATIVE_CHANNEL} from '../../../packages/contracts/src/workspace-native.ts';
+import {createWorkspaceNativeHost,readNativeBackendMetadata} from './workspace-native-host.ts';
 import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagnostics.ts';
 import {run as runMedia} from '@mioon/business/media-runtime';
 import path from 'node:path';
@@ -52,6 +55,7 @@ type NativeAudioHost = ReturnType<typeof createNativeAudioPreviewHost>;
 type LutRecoveryHost = ReturnType<typeof createDesktopLutRecoveryHost<IpcMainInvokeEvent>>;
 type LanguageHost = ReturnType<typeof createAppLanguageHost>;
 type WorkspaceToolsHost = ReturnType<typeof createWorkspaceToolsHost<IpcMainInvokeEvent>>;
+type WorkspaceNativeHost = ReturnType<typeof createWorkspaceNativeHost<IpcMainInvokeEvent>>;
 type NativeCloseAdmission = ReturnType<typeof installNativeCloseAdmission>;
 type BackendIncident = ReturnType<typeof createProjectBackendIncident>;
 type InitialWindowLoad = ReturnType<typeof observeInitialProjectLoad>;
@@ -122,6 +126,7 @@ let agentSettings: DesktopAgentSettings | null = null;
 let startupOperation: DesktopStartup | null = null;
 let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectWindowHost | null | undefined, nativeAudioHost: NativeAudioHost | null | undefined, lutRecoveryHost: LutRecoveryHost | null | undefined;
 let workspaceToolsHost: WorkspaceToolsHost | null = null;
+let workspaceNativeHost:WorkspaceNativeHost|null=null;
 const windowAdmissions = new WeakMap<BrowserWindow, NativeCloseAdmission>();
 const initialWindowLoads = new WeakMap<BrowserWindow, InitialWindowLoad>();
 const cancelledStartupErrors = new WeakSet<Error>();
@@ -276,6 +281,21 @@ async function start(): Promise<DesktopStartReport> {
       } }),
     });
 
+    const nativeBackendCurrent=()=>{if(!ownsWindowContext(context)||backend!==ownedBackend||ownedBackend.state!=='running'||!quitRouter.allowsWindows||context.incident.failed||backendExitObserved)throw new Error('Native workspace action is unavailable.');};
+    const nativeRead=(resource:'/api/rpc'|'/api/workspace-info',input?:object)=>readNativeBackendMetadata({base:started.url,token,resource,input,signal:context.startup.signal,check:nativeBackendCurrent});
+    workspaceNativeHost=createWorkspaceNativeHost<IpcMainInvokeEvent>({
+      ownerForEvent:event=>{
+        const owner=windowHost?.ownerForContents(event.sender),window=windowHost?.windowForContents(event.sender);
+        if(!window||!owner||!owner.isCurrent()||!ownsWindow(window,context)||event.senderFrame!==window.webContents.mainFrame||event.senderFrame!==owner.frame||event.senderFrame?.url!==owner.url)return null;
+        return {projectId:owner.role==='editor'?(owner.projectId??undefined):undefined,isCurrent:()=>{try{nativeBackendCurrent();return !restarting&&owner.isCurrent()&&ownsWindow(window,context)&&event.senderFrame===window.webContents.mainFrame&&event.senderFrame===owner.frame&&event.senderFrame?.url===owner.url;}catch{return false;}}};
+      },
+      chooseDirectory:async()=>{const result=await dialog.showOpenDialog({title:nt('native.chooseBackupLocation'),properties:['openDirectory','createDirectory']});return result.canceled||result.filePaths.length!==1?null:result.filePaths[0];},
+      setBackupDirectory:directory=>{nativeBackendCurrent();return ownedBackend.setBackupDirectory(directory);},
+      readSettings:async()=>workspaceSettingsSchema.parse(await nativeRead('/api/rpc',{operation:'workspace.settings.get',input:{}})),
+      readWorkspaceRoot:async()=>workspaceInfoSchema.parse(await nativeRead('/api/workspace-info')).dataDirectory,
+      readExport:identity=>nativeRead('/api/rpc',{operation:'export.output.get',input:identity}),
+      openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart,
+    });
     activeSession.webRequest.onBeforeSendHeaders((details, callback) => callback(ownedAudioHost.beforeSendHeaders(details)));
     await openWindow(context);
     startup.checkpoint();
@@ -498,6 +518,10 @@ ipcMain.handle(CLIP_LUT_RECOVERY_CHANNEL, (event, request) => lutRecoveryHost?.d
 ipcMain.handle(WORKSPACE_TOOLS_CHANNEL,(event,request)=>{
   if(!workspaceToolsHost)throw new Error('Workspace tools are unavailable.');
   return workspaceToolsHost.dispatch(event,request);
+});
+ipcMain.handle(WORKSPACE_NATIVE_CHANNEL,(event,request)=>{
+  if(!workspaceNativeHost)throw new Error('Native workspace action is unavailable.');
+  return workspaceNativeHost.dispatch(event,request);
 });
 ipcMain.handle(APP_LANGUAGE_CHANNEL, (event, request) => {
   if (!languageHost) throw new Error('App language preferences are not available.');

@@ -1,9 +1,10 @@
 import React from 'react';
-import {createContext,useContext,useState,type ReactNode} from 'react';
+import {createContext,useContext,useLayoutEffect,useState,type ReactNode} from 'react';
 import {ChevronRight} from '@mioon/ui/components/workbench-icons';
 const Context=createContext<{open:ReadonlySet<string>;toggle(key:string):void}|null>(null);
-export function InspectorGroups({defaultOpen,children}:{defaultOpen:readonly string[];children:ReactNode}) {
+export function InspectorGroups({defaultOpen,children,requestedOpen}:{defaultOpen:readonly string[];children:ReactNode;requestedOpen?:{key:string;version:number}}) {
   const [open,setOpen]=useState<ReadonlySet<string>>(()=>new Set(defaultOpen));
+  useLayoutEffect(() => {if(requestedOpen)setOpen(new Set([requestedOpen.key]));},[requestedOpen]);
   const toggle=(key:string)=>setOpen(current=>current.has(key)?new Set([...current].filter(value=>value!==key)):new Set([key]));
   return <Context.Provider value={{open,toggle}}>{children}</Context.Provider>;
 }

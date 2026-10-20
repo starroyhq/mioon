@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: desktop collapsed presentation retains the same explicit toolbar while body, waveform and removal stay inactive
+ok 1 - desktop collapsed presentation retains the same explicit toolbar while body, waveform and removal stay inactive
+  ---
+  duration_ms: 39.064042
+  type: 'test'
+  ...
+# Subtest: retained and current hidden body callbacks cannot seek, select, write tracks, drag or drop after collapse
+ok 2 - retained and current hidden body callbacks cannot seek, select, write tracks, drag or drop after collapse
+  ---
+  duration_ms: 4.77975
+  type: 'test'
+  ...
+# Subtest: project retirement and unmount fence old toolbar portals; expansion retains the body and view position
+ok 3 - project retirement and unmount fence old toolbar portals; expansion retains the body and view position
+  ---
+  duration_ms: 3.330916
+  type: 'test'
+  ...
+# Subtest: the current expanded body still previews and commits an actual drag to the displayed frame
+ok 4 - the current expanded body still previews and commits an actual drag to the displayed frame
+  ---
+  duration_ms: 3.658875
+  type: 'test'
+  ...
+# Subtest: default track names localize while a user supplied track name stays unchanged
+ok 5 - default track names localize while a user supplied track name stays unchanged
+  ---
+  duration_ms: 3.043292
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 341.74575

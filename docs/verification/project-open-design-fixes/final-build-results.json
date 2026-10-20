@@ -1,0 +1,23 @@
+[
+  {
+    "command": [
+      "node",
+      "scripts/tooling.ts",
+      "build",
+      "--channel=development"
+    ],
+    "exit": 0,
+    "includes": "all configured typecheckCommands, web build and development desktop staging",
+    "log": "final-build.log"
+  },
+  {
+    "command": [
+      "node",
+      "scripts/tooling.ts",
+      "typecheck"
+    ],
+    "exit": 0,
+    "note": "Dedicated check before final UI visibility additions; the final build repeats every configured type check",
+    "log": "final-typecheck.log"
+  }
+]

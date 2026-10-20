@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: every composed UI and native catalog has exact four-locale and placeholder parity
+ok 1 - every composed UI and native catalog has exact four-locale and placeholder parity
+  ---
+  duration_ms: 80.3275
+  type: 'test'
+  ...
+# Subtest: UI literal ledger rejects unexplained, newly introduced and stale exceptions
+ok 2 - UI literal ledger rejects unexplained, newly introduced and stale exceptions
+  ---
+  duration_ms: 0.424958
+  type: 'test'
+  ...
+# Subtest: current source has no unreviewed or stale static UI literal exceptions
+ok 3 - current source has no unreviewed or stale static UI literal exceptions
+  ---
+  duration_ms: 578.055458
+  type: 'test'
+  ...
+# Subtest: static semantic keys used by UI translation calls exist in the composed catalog
+ok 4 - static semantic keys used by UI translation calls exist in the composed catalog
+  ---
+  duration_ms: 383.166666
+  type: 'test'
+  ...
+# Subtest: visible template guard distinguishes app copy from dynamic semantic keys
+ok 5 - visible template guard distinguishes app copy from dynamic semantic keys
+  ---
+  duration_ms: 0.21775
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1535.491584

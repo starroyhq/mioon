@@ -53,9 +53,9 @@
     {
       "file": "apps/web/src/SettingsRoot.tsx",
       "category": "visible-jsx",
-      "hash": "e4bb1d84af3d68f8d7999c5aa5b4cbaec430ad95d2cbfb148a9659b1c1b66235",
+      "hash": "7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762",
       "owner": "shell",
-      "reason": "Exact Mioon application brand, including its existing lowercase logo/accessible brand spelling; product identity must not be translated."
+      "reason": "Exact Mioon application brand; product identity must not be translated."
     },
     {
       "file": "apps/web/src/ShotSubjectBindings.tsx",
@@ -427,13 +427,6 @@
       "hash": "3c49cc65d7ebf9b443fcf12bc998784aa7d36d3f2842adf863d58d6146170810",
       "owner": "shell",
       "reason": "Fixed upstream software/project and MIT license identifiers in the About acknowledgements; technical proper names remain verbatim across locales."
-    },
-    {
-      "file": "apps/web/src/SettingsWorkspace.tsx",
-      "category": "visible-jsx",
-      "hash": "9221db0f72a6e7ee7cbf600eade275e5e8728c11958d28b4501e6b5346190c40",
-      "owner": "shell",
-      "reason": "Fixed storage-size unit beside a formatted numeric value; not prose, and changing locale does not change stored byte counts."
     },
     {
       "file": "apps/web/src/StoryboardStrip.tsx",

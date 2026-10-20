@@ -263,6 +263,7 @@ test('real disabled, incomplete, zero-revision, closed and corrupt settings neve
 
 test('discovered revision follows configuration changes while stale preparation, approval and settings CAS stay closed', async t => {
   const f = await realSettingsFixture(t), project = await f.services.call('project.create', {name: 'Profile revision fixture'});
+  await f.services.call('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
   const nodeClasses = ['CheckpointLoaderSimple','EmptyLatentImage','CLIPTextEncode','KSampler','VAEDecode','SaveImage'];
   const check = f.engines[2].clearCheck(comfyConfiguration.baseUrl);
   f.engines[2].recordCheck({ok: true, baseUrl: comfyConfiguration.baseUrl, comfyVersion: comfyConfiguration.comfyVersion,

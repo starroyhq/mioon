@@ -1,0 +1,410 @@
+TAP version 13
+# Subtest: candidate exact small positive attenuation cannot be replaced within an absolute epsilon
+ok 1 - candidate exact small positive attenuation cannot be replaced within an absolute epsilon
+  ---
+  duration_ms: 2.736042
+  type: 'test'
+  ...
+# Subtest: same PCM binds the range peak exactly while legacy reports remain valid without LRA
+ok 2 - same PCM binds the range peak exactly while legacy reports remain valid without LRA
+  ---
+  duration_ms: 9.658625
+  type: 'test'
+  ...
+# Subtest: response target identity includes both fields and rejects an omitted requested candidate
+ok 3 - response target identity includes both fields and rejects an omitted requested candidate
+  ---
+  duration_ms: 0.685041
+  type: 'test'
+  ...
+# Subtest: candidate accepts exact gain 2 and refuses a mathematically larger gain without clamping
+ok 4 - candidate accepts exact gain 2 and refuses a mathematically larger gain without clamping
+  ---
+  duration_ms: 38.7665
+  type: 'test'
+  ...
+# Subtest: candidate measurement includes float32 scaling and fresh EOF true-peak reconstruction
+ok 5 - candidate measurement includes float32 scaling and fresh EOF true-peak reconstruction
+  ---
+  duration_ms: 19.166208
+  type: 'test'
+  ...
+# Subtest: every composed UI and native catalog has exact four-locale and placeholder parity
+ok 6 - every composed UI and native catalog has exact four-locale and placeholder parity
+  ---
+  duration_ms: 38.826791
+  type: 'test'
+  ...
+# Subtest: UI literal ledger rejects unexplained, newly introduced and stale exceptions
+ok 7 - UI literal ledger rejects unexplained, newly introduced and stale exceptions
+  ---
+  duration_ms: 0.3915
+  type: 'test'
+  ...
+# Subtest: current source has no unreviewed or stale static UI literal exceptions
+ok 8 - current source has no unreviewed or stale static UI literal exceptions
+  ---
+  duration_ms: 333.332875
+  type: 'test'
+  ...
+# Subtest: static semantic keys used by UI translation calls exist in the composed catalog
+ok 9 - static semantic keys used by UI translation calls exist in the composed catalog
+  ---
+  duration_ms: 224.010125
+  type: 'test'
+  ...
+# Subtest: visible template guard distinguishes app copy from dynamic semantic keys
+ok 10 - visible template guard distinguishes app copy from dynamic semantic keys
+  ---
+  duration_ms: 0.209041
+  type: 'test'
+  ...
+# Subtest: missing or corrupt owned timeline graph never initializes or reaches media
+ok 11 - missing or corrupt owned timeline graph never initializes or reaches media
+  ---
+  duration_ms: 1011.686375
+  type: 'test'
+  ...
+# Subtest: same-revision metadata, source bytes, ownership and revision drift discard the observation
+    # Subtest: metadata
+    ok 1 - metadata
+      ---
+      duration_ms: 1055.797833
+      type: 'test'
+      ...
+    # Subtest: revision
+    ok 2 - revision
+      ---
+      duration_ms: 1267.6205
+      type: 'test'
+      ...
+    # Subtest: bytes
+    ok 3 - bytes
+      ---
+      duration_ms: 1043.709916
+      type: 'test'
+      ...
+    # Subtest: foreign
+    ok 4 - foreign
+      ---
+      duration_ms: 1036.069417
+      type: 'test'
+      ...
+    # Subtest: lock
+    ok 5 - lock
+      ---
+      duration_ms: 1034.296666
+      type: 'test'
+      ...
+    1..5
+ok 12 - same-revision metadata, source bytes, ownership and revision drift discard the observation
+  ---
+  duration_ms: 5438.261625
+  type: 'test'
+  ...
+# Subtest: native-db audio observation admission is shared and retains noncooperative reads through cancellation
+ok 13 - native-db audio observation admission is shared and retains noncooperative reads through cancellation
+  ---
+  duration_ms: 925.776584
+  type: 'test'
+  ...
+# Subtest: late timeout results cannot decode or publish and a live permit remains held
+ok 14 - late timeout results cannot decode or publish and a live permit remains held
+  ---
+  duration_ms: 931.194125
+  type: 'test'
+  ...
+# Subtest: unconfirmed exact child cleanup keeps shared admission sticky even after late close
+ok 15 - unconfirmed exact child cleanup keeps shared admission sticky even after late close
+  ---
+  duration_ms: 1227.277709
+  type: 'test'
+  ...
+# Subtest: restored direct and composed boundaries refuse before any payload getters or media
+ok 16 - restored direct and composed boundaries refuse before any payload getters or media
+  ---
+  duration_ms: 2195.412333
+  type: 'test'
+  ...
+# Subtest: a second source hash failure discards the measured clip
+ok 17 - a second source hash failure discards the measured clip
+  ---
+  duration_ms: 1093.750792
+  type: 'test'
+  ...
+# Subtest: decoder stderr, private paths and unrecognized code strings never enter safe public failures
+    # Subtest: FFMPEG_ERROR
+    ok 1 - FFMPEG_ERROR
+      ---
+      duration_ms: 953.237417
+      type: 'test'
+      ...
+    # Subtest: TIMELINE_CLIP_LOUDNESS_/private/source.wav
+    ok 2 - TIMELINE_CLIP_LOUDNESS_/private/source.wav
+      ---
+      duration_ms: 968.474417
+      type: 'test'
+      ...
+    1..2
+ok 18 - decoder stderr, private paths and unrecognized code strings never enter safe public failures
+  ---
+  duration_ms: 1922.236
+  type: 'test'
+  ...
+# Subtest: one selected saved signal is double-hashed, bound and measured without any durable effects
+ok 19 - one selected saved signal is double-hashed, bound and measured without any durable effects
+  ---
+  duration_ms: 1106.512625
+  type: 'test'
+  ...
+# Subtest: an explicit target measures a complete owned candidate with one decode and no durable effects
+ok 20 - an explicit target measures a complete owned candidate with one decode and no durable effects
+  ---
+  duration_ms: 1200.487292
+  type: 'test'
+  ...
+# Subtest: unreachable target gain is reported without clamping, target substitution or write
+ok 21 - unreachable target gain is reported without clamping, target substitution or write
+  ---
+  duration_ms: 1221.521875
+  type: 'test'
+  ...
+# Subtest: second source hash still fences a completed target candidate
+ok 22 - second source hash still fences a completed target candidate
+  ---
+  duration_ms: 1131.741792
+  type: 'test'
+  ...
+# Subtest: cancellation and revision change during candidate replay discard it before the final hash
+    # Subtest: cancel
+    ok 1 - cancel
+      ---
+      duration_ms: 1032.214417
+      type: 'test'
+      ...
+    # Subtest: revision
+    ok 2 - revision
+      ---
+      duration_ms: 1069.083042
+      type: 'test'
+      ...
+    1..2
+ok 23 - cancellation and revision change during candidate replay discard it before the final hash
+  ---
+  duration_ms: 2101.684208
+  type: 'test'
+  ...
+# Subtest: wrong selection, source hash, timeline identity and extra authority refuse before media
+ok 24 - wrong selection, source hash, timeline identity and extra authority refuse before media
+  ---
+  duration_ms: 903.931709
+  type: 'test'
+  ...
+# Subtest: muted and zero gain selections are explicit rejections, never source-only substitutes
+ok 25 - muted and zero gain selections are explicit rejections, never source-only substitutes
+  ---
+  duration_ms: 936.769125
+  type: 'test'
+  ...
+# Subtest: unrelated edges and overlapping tracks change snapshot identity but not selected signal or measurement
+ok 26 - unrelated edges and overlapping tracks change snapshot identity but not selected signal or measurement
+  ---
+  duration_ms: 1385.379542
+  type: 'test'
+  ...
+# Subtest: selected exact sample count rejects one missing or extra sample frame
+    # Subtest: -1
+    ok 1 - -1
+      ---
+      duration_ms: 1235.590917
+      type: 'test'
+      ...
+    # Subtest: 1
+    ok 2 - 1
+      ---
+      duration_ms: 1111.799416
+      type: 'test'
+      ...
+    1..2
+ok 27 - selected exact sample count rejects one missing or extra sample frame
+  ---
+  duration_ms: 2348.015541
+  type: 'test'
+  ...
+# Subtest: source resource admission refuses over 512 MiB before file access
+ok 28 - source resource admission refuses over 512 MiB before file access
+  ---
+  duration_ms: 902.5265
+  type: 'test'
+  ...
+# Subtest: complete clip longer than 1800 frames is explicitly refused before hash, file or process work, never auto-trimmed
+ok 29 - complete clip longer than 1800 frames is explicitly refused before hash, file or process work, never auto-trimmed
+  ---
+  duration_ms: 929.266583
+  type: 'test'
+  ...
+# Subtest: strict catalog operation is observation only with no persisted request or scope-changing options
+ok 30 - strict catalog operation is observation only with no persisted request or scope-changing options
+  ---
+  duration_ms: 2.905917
+  type: 'test'
+  ...
+# Subtest: measurement schema preserves fixed algorithm states and exact clip output bounds
+ok 31 - measurement schema preserves fixed algorithm states and exact clip output bounds
+  ---
+  duration_ms: 2.2265
+  type: 'test'
+  ...
+# Subtest: response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings
+ok 32 - response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings
+  ---
+  duration_ms: 1.286958
+  type: 'test'
+  ...
+# Subtest: four locale operation discovery text is present and never silently grants application
+ok 33 - four locale operation discovery text is present and never silently grants application
+  ---
+  duration_ms: 0.600166
+  type: 'test'
+  ...
+# Subtest: explicit targets bind measured candidates without granting mutation authority
+ok 34 - explicit targets bind measured candidates without granting mutation authority
+  ---
+  duration_ms: 2.677584
+  type: 'test'
+  ...
+# Subtest: all retained evidence families refuse old profiles including explicit null, without writes
+ok 35 - all retained evidence families refuse old profiles including explicit null, without writes
+  ---
+  duration_ms: 4.681125
+  type: 'test'
+  ...
+# Subtest: complete current/history/receipt rows and exact partial intents admit in compatible profiles
+ok 36 - complete current/history/receipt rows and exact partial intents admit in compatible profiles
+  ---
+  duration_ms: 4.402458
+  type: 'test'
+  ...
+# Subtest: historical update survives missing current clip, Undo duration changes and missing source
+ok 37 - historical update survives missing current clip, Undo duration changes and missing source
+  ---
+  duration_ms: 0.628167
+  type: 'test'
+  ...
+# Subtest: historical intent lexical bounds remain strict without generic array relaxation
+ok 38 - historical intent lexical bounds remain strict without generic array relaxation
+  ---
+  duration_ms: 2.339584
+  type: 'test'
+  ...
+# Subtest: frozen snapshots use their own metadata and ownership, never current cache
+ok 39 - frozen snapshots use their own metadata and ownership, never current cache
+  ---
+  duration_ms: 2.599834
+  type: 'test'
+  ...
+# Subtest: snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives
+ok 40 - snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives
+  ---
+  duration_ms: 1.244792
+  type: 'test'
+  ...
+# Subtest: explicit null snapshot has no active profile and preserves original shape
+ok 41 - explicit null snapshot has no active profile and preserves original shape
+  ---
+  duration_ms: 0.273583
+  type: 'test'
+  ...
+# Subtest: frozen source cannot be an image, missing, duplicate or out of source bounds
+ok 42 - frozen source cannot be an image, missing, duplicate or out of source bounds
+  ---
+  duration_ms: 1.043
+  type: 'test'
+  ...
+# Subtest: escaped and duplicate keys cannot hide evidence before parsing, including nested arrays
+ok 43 - escaped and duplicate keys cannot hide evidence before parsing, including nested arrays
+  ---
+  duration_ms: 5.286333
+  type: 'test'
+  ...
+# Subtest: unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses
+ok 44 - unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses
+  ---
+  duration_ms: 0.7685
+  type: 'test'
+  ...
+# Subtest: oversized cells and non-text storage are never parsed, schema views reject
+ok 45 - oversized cells and non-text storage are never parsed, schema views reject
+  ---
+  duration_ms: 3.318708
+  type: 'test'
+  ...
+# Subtest: depth/node and complete snapshot byte guards remain bounded
+ok 46 - depth/node and complete snapshot byte guards remain bounded
+  ---
+  duration_ms: 14.640875
+  type: 'test'
+  ...
+# Subtest: processing digest/profile and orphan declarations are positive evidence, never candidate protocol
+ok 47 - processing digest/profile and orphan declarations are positive evidence, never candidate protocol
+  ---
+  duration_ms: 2.24
+  type: 'test'
+  ...
+# Subtest: all retained task errors are inspected and unknown envelope error namespace is not admitted
+ok 48 - all retained task errors are inspected and unknown envelope error namespace is not admitted
+  ---
+  duration_ms: 0.629041
+  type: 'test'
+  ...
+# Subtest: actual production full/isolated processing reports admit their exact profile and digest identities
+ok 49 - actual production full/isolated processing reports admit their exact profile and digest identities
+  ---
+  duration_ms: 2.064459
+  type: 'test'
+  ...
+# Subtest: incomplete frozen wrappers cannot fall back to current source cache
+ok 50 - incomplete frozen wrappers cannot fall back to current source cache
+  ---
+  duration_ms: 0.306583
+  type: 'test'
+  ...
+# Subtest: four concrete mutation errors are admitted, never unknown namespace variants
+ok 51 - four concrete mutation errors are admitted, never unknown namespace variants
+  ---
+  duration_ms: 0.998333
+  type: 'test'
+  ...
+# Subtest: a scalar loudness label cannot bypass frozen wrapper validation
+ok 52 - a scalar loudness label cannot bypass frozen wrapper validation
+  ---
+  duration_ms: 0.598167
+  type: 'test'
+  ...
+# Subtest: scalar loudness wrapper is exact and binds independently retained owner/request/operation
+ok 53 - scalar loudness wrapper is exact and binds independently retained owner/request/operation
+  ---
+  duration_ms: 3.60275
+  type: 'test'
+  ...
+# Subtest: intent Unicode admits valid surrogate pairs and refuses lone surrogates without normalization
+ok 54 - intent Unicode admits valid surrogate pairs and refuses lone surrogates without normalization
+  ---
+  duration_ms: 2.273917
+  type: 'test'
+  ...
+# Subtest: new ephemeral clip range and target reports do not expand historical backup evidence
+ok 55 - new ephemeral clip range and target reports do not expand historical backup evidence
+  ---
+  duration_ms: 2.273125
+  type: 'test'
+  ...
+1..55
+# tests 66
+# suites 0
+# pass 66
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 29348.0455

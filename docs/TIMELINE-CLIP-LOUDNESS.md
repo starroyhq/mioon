@@ -1,7 +1,6 @@
 # 单个已保存片段的独立响度测量
 
-本片是共享后端/API/CLI/MCP 与有界 client 能力；未接入界面，未做 GUI 验收。
-实现基线 `bdc7325`。具体测试结果应以本片独立验收记录为准，不继承旧响度数字。
+共享后端/API/CLI/MCP 与有界 client 已接入片段属性卡。原始实现基线为 `bdc7325`；下方历史资格记录保留当时范围。2026-10-20 扩展 LRA 与显式目标候选，当前结果见[第三轮响度补全](verification/project-open-design-fixes/round3/clip-match/README.md)，不继承旧响度数字。
 
 ## 范围
 
@@ -12,12 +11,13 @@
 
 报告阶段为 `isolated_clip_post_gain_fades_pre_mix`，处理配置为
 `timeline-isolated-clip-float-v1`。测量完全沿用
-`bs1770-5-48k-stereo-fir4x-v1` 与原有计量器，不引入新算法、平台标准或 LUFS 目标。
+`bs1770-5-48k-stereo-fir4x-v1` 与原有计量器，不改变既有测量或历史备份 profile。独立 `loudnessRange` 字段使用 `ebu3342-2023-48k-stereo-3s-100ms-complete-v1`：3秒完整短时窗、100毫秒步进、−70 LUFS绝对门限与−20 LU相对门限，取10/95百分位差。不补首尾静音，不足3秒返回too_short/null；该边界不同于完整EBU模式文件认证，详见[EBU Tech3342](https://tech.ebu.ch/files/live/sites/tech/files/shared/tech/tech3342.pdf)。
 测量单位、门控和估算真峰值的限制见 [已导出文件响度检查](EXPORT-LOUDNESS.md)。
 这里是在有限布局转换后的双声道信号上测量，不是任意原始通道布局计量。
 
-没有目标、候选、增益建议、应用、归一化、limiter、试听或媒体导出；
-`applyAllowed` 固定为 false。它不完成逐段响度匹配，也不接受旧的原子应用 WIP。
+可选 `target` 复用 `integratedLufs`（−60至−5）及 `truePeakCeilingDbtp`（−20至0）；省略时不推断默认目标，也不返回候选。有目标时对真实解码浮点样本施加恒定倍率，再用全新计量器完整复测候选；增益必须为正且不超过2，响度误差不超过0.1 LU，并保留0.5 dB峰值余量。门控变化或真峰值冲突不会被公式预测掩盖，也不静默降低目标或放宽增益上限。
+
+读操作的 `applyAllowed` 与候选 `applyAllowed` 均固定为 false，不写时间线、媒体或任务。界面“匹配响度”仅把通过校验的gain放入既有片段草稿，随后以原 `timeline.clip.update` 保存，沿用版本冲突、未知请求对账、一次撤销/重做；也不接受旧的原子应用 WIP。没有limiter、批量归一化或媒体导出。
 不同内容的相同 LUFS 不保证相同主观听感，独立片段峰值不证明多轨混音安全。
 
 ## 请求与身份
@@ -43,7 +43,7 @@
 - 单源最大 512 MiB；前后 hash 累计最大 1 GiB。
 - 所选片段最长 60 秒/1800 帧；固定 30 fps，每帧恰好 1600 个音频 sample frames。
   原始源与已保存时间线仍可达既有 600 秒/18,000 帧，源入点不是限定为前60秒。
-- 单次 PCM 最大 23,040,000 bytes；流式计量，不缓存整段 PCM，不写新媒体。
+- 单次解码 PCM 最大23,040,000 bytes。无目标时流式计量；有目标时最多保留一份该大小的私有Buffer，EOF后原地缩放并复测，不另存媒体。候选 `measuredPcmBytes` 单列，`checks.passes=1` 仍表示一次解码。每64 KiB候选工作让出事件循环并重复所有权/取消/来源栅栏。
 - 解码工作沿用每输入一帧 lookahead，单片段为 durationFrames + 1，最多1801帧，不因其他片段分段。
 - 操作全程 120 秒，client 默认 125 秒，可显式更短；完整响应信封上限 8 KiB。
 - 与导出文件峰值/响度及整片响度共用单活跃观察槽；不排队、不重试、不缓存。
@@ -58,9 +58,9 @@
 `mioon timeline clip loudness --input '<JSON>'` 或 MCP `timeline_clip_loudness`。
 继续使用已有运行服务，不为测量另开同工作区后端。
 
-界面后续单独接入时，必须绑定当前选择/项目/版本/来源及执行代次；草稿未保存、
+界面绑定当前选择/项目/版本/来源及执行代次；草稿未保存、
 冲突或 mutation pending 时禁用。切换选择/项目、隐藏或数据变化撤销旧报告，
-拒绝迟到响应，重开不自动测量。多片段批量/比较/应用不在本片范围。
+拒绝迟到响应，重开不自动测量。目标改变或输入法组合也使旧候选失效；匹配不绕过保存片段。多片段批量处理不在本片范围。
 
 
 ## 显式范围收缩与未通过证据

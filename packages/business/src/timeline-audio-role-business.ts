@@ -4,5 +4,5 @@ import {TIMELINE_AUDIO_ROLE_PROFILE,type TimelineAudioRoleCapability} from '../.
 /** A current read-only capability, not a persisted permission or an Agent grant. */
 export function readTimelineAudioRoleCapability(db:DatabaseSync):TimelineAudioRoleCapability {
  const role=readCurrentWorkspaceRole(db);
- return {profileId:TIMELINE_AUDIO_ROLE_PROFILE,editable:role==='ordinary-38'||role==='restored-39-evidence'||role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'};
+ return {profileId:TIMELINE_AUDIO_ROLE_PROFILE,editable:role==='ordinary-38'||role==='restored-39-evidence'||role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'||role==='ordinary-50'||role==='restored-51-evidence'};
 }

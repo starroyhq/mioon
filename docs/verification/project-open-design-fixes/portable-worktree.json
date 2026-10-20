@@ -1,0 +1,14 @@
+{
+  "command": [
+    "node",
+    "scripts/tooling.ts",
+    "test",
+    "--suite=portable",
+    "--concurrency=1"
+  ],
+  "cwd": "/Users/kouzen/.codex/worktrees/project-open-design-fixes/mioon",
+  "TMPDIR": "/private/tmp",
+  "exitCode": 0,
+  "durationSeconds": 52.287,
+  "log": "/Users/kouzen/.codex/worktrees/project-open-design-fixes/mioon/docs/verification/project-open-design-fixes/portable-worktree.log"
+}

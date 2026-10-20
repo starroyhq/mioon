@@ -454,6 +454,20 @@ test('compact pinning is transient, survives panel intents, and restores the ori
   assert.deepEqual([geometry.effective.assetsWidth,geometry.effective.inspectorWidth],[44,44]);assert.deepEqual(preferred,before);h.unmount();
 });
 
+test('App layout changes receive the layout section, preserve sibling preferences and reject old project owners', () => {
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+  const start = source.indexOf('  function updateModeLayout('), end = source.indexOf('  function setPanelOpen(', start);
+  let current = layout.defaultWorkspaceLayout(), writes = 0;
+  const original = structuredClone(current);
+  const env = { layoutOwner: 'p', layoutOwnerEpoch: 1, currentProject: {current:'p'}, projectEpoch: {current:1}, updateView(section, patch) {
+    assert.equal(section, 'layout'); current = {...current, ...patch(current)}; writes++;
+  }};
+  const change = Function('env', `with(env){${transformSync(source.slice(start,end),{loader:'tsx'}).code};return updateModeLayout;}`)(env);
+  change('editing', {timelineHeight:160});
+  assert.equal(current.editing.timelineHeight,160); assert.equal(current.editing.inspectorWidth,original.editing.inspectorWidth); assert.deepEqual(current.canvas,original.canvas);
+  env.currentProject.current='next'; change('canvas',{assetsWidth:400}); assert.equal(writes,1); assert.deepEqual(current.canvas,original.canvas);
+});
+
 test('actual App rail overlay and pin callbacks use presentation state without persisting an automatic collapse', () => {
   const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8'),css=readFileSync(new URL('../apps/web/src/styles.css',import.meta.url),'utf8');
   const start=source.indexOf('  function setPanelOpen('),end=source.indexOf('  const setSelectedId =',start);assert.ok(start>=0&&end>start);
@@ -468,7 +482,8 @@ test('actual App rail overlay and pin callbacks use presentation state without p
   actions.togglePanelOverlay('assets');actions=invoke();assert.equal(actions.panelVisible('assets'),true);assert.equal(overlay,'assets');assert.deepEqual(persisted,[]);
   actions.setPanelOpen('assets',true);geometry=h.render({...props,scope:'p:canvas:1'});actions=invoke();assert.equal(overlay,null);assert.equal(actions.panelVisible('assets'),true);assert.equal(actions.panelVisible('inspector'),false);assert.deepEqual(persisted,[]);
   actions.setPanelOpen('assets',false);geometry=h.render(props);assert.equal(geometry.effective.assetsWidth,44);assert.deepEqual(preferred,before);assert.deepEqual(persisted,[]);assert.equal(marks,3);
-  assert.match(source,/\{assetsCollapsed && <PanelRecall name="assets"/);assert.match(source,/\{inspectorCollapsed && <PanelRecall name="inspector"/);
+  assert.match(source,/\{assetsCollapsed && \(geometry\.narrow \? <PanelRecall name="assets"/);assert.match(source,/\{inspectorCollapsed && \(geometry\.narrow \? <PanelRecall name="inspector"/);
+  assert.match(source, /<CompactPanelRail name="assets"/); assert.match(source, /<CompactPanelRail name="inspector"/);
   assert.match(source,/const \{ assetsCollapsed, inspectorCollapsed \} = geometry\.effective/);
   assert.match(css,/\.shell-redesign\.dock-compact \.dock-recall:not\(\.recall-timeline\) > span/);h.unmount();
 });

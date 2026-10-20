@@ -1,0 +1,31 @@
+✔ clip menu lists only wired operations, keeps removal last and preserves actual handlers in four languages (29.535125ms)
+✔ editing gates disable split, replacement and both removals while readonly source inspection remains available (2.892334ms)
+✔ fade draft preserves omission, explicit zero and immutable copies (1.283875ms)
+✔ fade validation checks both integers, per-side bounds, their sum and confirmed audio (0.60525ms)
+✔ actual inspector renders integer fade controls inside its existing ScrollArea and keeps gain semantics (65.2195ms)
+✔ silent and unknown-audio videos show disabled fades with an honest no-effect explanation; images have no audio controls (33.274458ms)
+✔ unrelated save on legacy clip never adds zero fields; explicitly changing one missing fade adds only that zero (12.34525ms)
+✔ unrelated save preserves explicit zero and fade values while discard restores omission (21.95625ms)
+✔ trim never silently clamps either fade and invalid totals cannot submit (10.414666ms)
+✔ invalid local fade drafts stay visible and block even direct form submission (45.644417ms)
+✔ edits made during save survive its acknowledgment without silently rebasing the newer draft (19.246417ms)
+✔ failed or unacknowledged save preserves fade edits and does not retry (34.263ms)
+✔ every newer timeline revision preserves the exact dirty fade input and requires explicit reload (12.868625ms)
+✔ keyed project unmount fences late fade acknowledgments and retained form submit (27.219167ms)
+✔ source playback copy stays explicit about dry audio and the shared render path (0.269667ms)
+✔ real inspector adopts SDR, applies a declared creative LUT and saves through the common draft pipeline (16.776166ms)
+✔ actual inspector role selection uses shared dirty form and one existing Save revision (10.857834ms)
+✔ missing role capability blocks captured selector callbacks but unrelated inspector edits save (12.628959ms)
+✔ role eligibility includes silent video, zero gain and muted timeline without enabling fades (12.32925ms)
+✔ image inspector excludes audio role; restored supported editor can save without sidecar support (21.850416ms)
+✔ captured enabled role selector cannot write after capability loss or owner unmount (9.590583ms)
+✔ dB editing converts only explicit changes and preserves exact saved linear gain on unrelated saves (60.912083ms)
+✔ incomplete or out-of-range dB input remains visible and blocks business Save (12.925292ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1003.435166

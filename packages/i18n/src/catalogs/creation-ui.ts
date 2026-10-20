@@ -1,5 +1,16 @@
 import type { MessageCatalog } from '../types.ts';
 export const creationUiMessages = {
+  "agent.authorization.confirmSend": {"zh-Hans": "确认并发送", "zh-Hant": "確認並傳送", "en": "Confirm and send", "ja": "確認して送信"},
+  "agent.authorization.scopeLabel": {"zh-Hans": "发送范围", "zh-Hant": "傳送範圍", "en": "Sending scope", "ja": "送信範囲"},
+  "agent.authorization.destinationLabel": {"zh-Hans": "目标与模型", "zh-Hant": "目標與模型", "en": "Destination and model", "ja": "送信先とモデル"},
+  "agent.authorization.costLabel": {"zh-Hans": "可能计费", "zh-Hant": "可能計費", "en": "Possible charges", "ja": "料金について"},
+  "agent.authorization.scopeDetails": {"zh-Hans": "查看发送详情", "zh-Hant": "查看傳送詳情", "en": "View sending details", "ja": "送信内容の詳細"},
+  "agent.proposal.shotSuggestion": {"zh-Hans": "修改建议", "zh-Hant": "修改建議", "en": "Suggested changes", "ja": "変更の提案"},
+  "agent.proposal.currentShot": {"zh-Hans": "当前镜头", "zh-Hant": "目前鏡頭", "en": "Current shot", "ja": "現在のショット"},
+  "agent.proposal.reviewHint": {"zh-Hans": "确认后才会应用修改", "zh-Hant": "確認後才會套用修改", "en": "Changes require your approval", "ja": "確認後に変更を適用"},
+  "agent.activity.shotDetailsHeading": {"zh-Hans": "镜头修改范围", "zh-Hant": "鏡頭修改範圍", "en": "Shot change scope", "ja": "ショットの変更範囲"},
+  "agent.activity.proposalActivity": {"zh-Hans": "生成修改建议", "zh-Hant": "產生修改建議", "en": "Prepare suggested changes", "ja": "変更の提案を作成"},
+  "agent.activity.inspectionActivity": {"zh-Hans": "读取项目信息", "zh-Hant": "讀取專案資訊", "en": "Read project information", "ja": "プロジェクト情報を確認"},
   "agent.authorization.title": {"zh-Hans": "确认智能助理发送范围", "zh-Hant": "確認智慧助理傳送範圍", "en": "Authorize Agent sending scope", "ja": "アシスタントの送信範囲を許可"},
   "agent.authorization.explanation": {"zh-Hans": "相同目标地址、模型和发送范围只需确认一次，授权保存在本机工作区，可在设置中撤销", "zh-Hant": "相同目標位址、模型與傳送範圍只需確認一次，授權儲存在本機工作區，可在設定中撤銷", "en": "Authorize each destination, model, and sending scope once. Permission is saved in this local workspace and can be revoked in Settings", "ja": "送信先、モデル、送信範囲ごとに一度許可します。許可はこのローカルワークスペースに保存され、設定で取り消せます"},
   "agent.authorization.cost": {"zh-Hans": "发送内容可能离开本机，模型调用可能计费；撤销不会撤回已发送的请求", "zh-Hant": "傳送內容可能離開本機，模型呼叫可能計費；撤銷不會撤回已傳送的請求", "en": "Content may leave this device and model calls may incur charges. Revoking permission cannot recall a request already sent", "ja": "内容が端末外に送信され、モデルの呼び出しに料金が発生する場合があります。許可を取り消しても送信済みのリクエストは撤回されません"},
@@ -1160,18 +1171,8 @@ export const creationUiMessages = {
     "en": "Immutable saved clip move diff",
     "ja": "変更できない保存済みクリップ移動の差分"
   },
-  "agent.proposal.savedProposals": {
-    "zh-Hans": "已保存的修改提议",
-    "zh-Hant": "已儲存的修改提議",
-    "en": "Saved edit proposals",
-    "ja": "保存済みの変更提案"
-  },
-  "agent.proposal.independentlySaved": {
-    "zh-Hans": "独立保存 · 可在重启后核对",
-    "zh-Hant": "獨立儲存 · 可在重啟後核對",
-    "en": "Saved independently · Checkable after restart",
-    "ja": "独立して保存 · 再起動後も確認可能"
-  },
+  "agent.proposal.savedProposals": {"zh-Hans": "修改建议", "zh-Hant": "修改建議", "en": "Suggested changes", "ja": "変更の提案"},
+  "agent.proposal.independentlySaved": {"zh-Hans": "已保存在本机", "zh-Hant": "已儲存在本機", "en": "Saved locally", "ja": "この端末に保存済み"},
   "agent.proposal.proposalAuthority": {
     "zh-Hans": "模型文字可能说“已修改”，请以这里的保存状态为准。只有明确批准后才会应用这份固定差异；不会自动执行、改写或重新基于新版本生成",
     "zh-Hant": "模型文字可能表示「已修改」，請以此處的儲存狀態為準。只有明確批准後才會套用這份固定差異；不會自動執行、改寫或依新版本重新產生",

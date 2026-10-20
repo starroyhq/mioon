@@ -1,0 +1,19 @@
+{
+  "isolatedUserData": "/private/tmp/mioon-round2-native-export-gnv38p1i",
+  "projectId": "8ee2def1-5482-4a8c-883e-9faf9b1b803c",
+  "exportId": "b7c2489b-eca1-4850-9c15-763a57f6ae2b",
+  "revealed": {
+    "verified": true,
+    "application": "Finder",
+    "selectedFile": "export-b7c2489b-eca1-4850-9c15-763a57f6ae2b-9aa908c5-4764-4b88-8616-e01d33e42065.mp4"
+  },
+  "opened": {
+    "verified": true,
+    "application": "com.xunlei.XLPlayer",
+    "windowTitle": "export-b7c2489b-eca1-4850-9c15-763a57f6ae2b-9aa908c5-4764-4b88-8616-e01d33e42065.mp4"
+  },
+  "realProviderCalls": 0,
+  "finalBuildRetested": true,
+  "finalHistoryCapture": "screens/native-final-export-history.png",
+  "finalWindowCapture": "screens/native-final-editing-window.png"
+}

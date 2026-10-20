@@ -79,12 +79,12 @@ test('ordinary24 unknown journal survives startup migration and cold40 archive w
  assert.equal((await verifyWorkspaceBackup({directory:backup24}) as Loose).restoration,'not_tested');
  const store=openStore(source);
  try{
-  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get()!.n,48);
+  assert.equal(store.db.prepare('SELECT max(version) AS n FROM schema_version').get()!.n,50);
   const read=store.db.prepare('SELECT rowid AS rowid,* FROM unknown_retained_journal');read.setReadBigInts(true);
   const actual=read.get() as {rowid: bigint; data: Uint8Array; n: number};assert.equal(actual.rowid,9007199254740993n);assert.deepEqual(actual.data,new Uint8Array([0,255,13,10]));assert.equal(actual.n,123.25);
  }finally{store.close();}
  const originalCurrent=fs.readFileSync(file),created=await createWorkspaceBackup({source,destination:backupCurrent});
- assert.equal(created.databaseSchemaVersion,48);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');
+ assert.equal(created.databaseSchemaVersion,50);assert.equal(created.integrity,'verified');assert.equal(created.restoration,'not_tested');
  assert.deepEqual(fs.readFileSync(path.join(backupCurrent,'payload/workbench.sqlite')),originalCurrent);
  assert.deepEqual(await verifyWorkspaceBackup({directory:backupCurrent}),created);
  await assert.rejects(restoreWorkspaceBackup({directory:backupCurrent,destination}),{code:'WORKSPACE_RESTORE_SOURCE_SCHEMA_UNSUPPORTED'});

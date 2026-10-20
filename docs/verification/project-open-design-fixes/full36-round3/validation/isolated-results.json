@@ -1,0 +1,1758 @@
+{
+  "scope": "Selected affected tests only; one process per file; TMPDIR=/private/tmp; no full-suite claim",
+  "environment": {
+    "TMPDIR": "/private/tmp",
+    "MIOON_ENABLE_LIVE_PROVIDER": "0",
+    "credentialEnvironmentForwarded": false
+  },
+  "results": [
+    {
+      "file": "tests/subject-library-initial-render.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/subject-library-initial-render.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.789,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/subject-library-initial-render.test.ts.tap",
+      "sha256": "5103876fb33b8ffc6300d029376c8ff5ab9c5e324e7a5aa5f6954ba808647a2f"
+    },
+    {
+      "file": "tests/project-open-state.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/project-open-state.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.321,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 11,
+        "pass": 11,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/project-open-state.test.mjs.tap",
+      "sha256": "73780151ec02326559f5ac45075388fecc2cfad3fa01f4b15f13175c2bd914e2"
+    },
+    {
+      "file": "tests/project-entry-dialog.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/project-entry-dialog.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.474,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/project-entry-dialog.test.mjs.tap",
+      "sha256": "4c4d9bc5f3fd3342f41ed8cfe14a1487b96c686a5184c345576de7baace2205d"
+    },
+    {
+      "file": "tests/project-home-app.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/project-home-app.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 1.109,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 36,
+        "pass": 36,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/project-home-app.test.mjs.tap",
+      "sha256": "08e8a27cbabc15ed0f5c893f600f6f4eb57c95d5762eb01f938613bc8f8abc51"
+    },
+    {
+      "file": "tests/project-home-panel.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/project-home-panel.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.706,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 23,
+        "pass": 23,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/project-home-panel.test.mjs.tap",
+      "sha256": "712d53f75ffa402df3ad8ec32268baa5a3f8be818ecdf60a6cb7f6ffdd5c041d"
+    },
+    {
+      "file": "tests/project-home-presentation.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/project-home-presentation.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.326,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/project-home-presentation.test.mjs.tap",
+      "sha256": "d05b4ee85ea11c5dfdb32f1025a46951b88a421c826f6240278577d8d3d07e26"
+    },
+    {
+      "file": "tests/project-home-summary.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/project-home-summary.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 2.449,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/project-home-summary.test.mjs.tap",
+      "sha256": "7a4b90ff6625ea113d612863ddf31b687d98eabea11cffd05f6bbed10f367bea"
+    },
+    {
+      "file": "tests/project-home-transports.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/project-home-transports.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 2.754,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/project-home-transports.test.mjs.tap",
+      "sha256": "99f77732b40cdbde1aad247f2c11d8f0ef36bf829c8e8987ce2522d0103f4bc6"
+    },
+    {
+      "file": "tests/redesign-entry-task-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/redesign-entry-task-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.374,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 7,
+        "pass": 7,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/redesign-entry-task-ui.test.mjs.tap",
+      "sha256": "388877aa742467284c0dd372b99e3dcd81a3f38944414ad8203ad5ac99aabdb1"
+    },
+    {
+      "file": "tests/redesign-board-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/redesign-board-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.386,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/redesign-board-ui.test.mjs.tap",
+      "sha256": "2dfa12d364a887b2b2551b32127046d79bbe8060a39cd314046db823ed67560b"
+    },
+    {
+      "file": "tests/settings-appearance.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/settings-appearance.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.384,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/settings-appearance.test.mjs.tap",
+      "sha256": "a203961b75b6a7c10c98934e3ec938f058fd834e924486acd0b6ba8c3322880e"
+    },
+    {
+      "file": "tests/settings-center-navigation.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/settings-center-navigation.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.373,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 24,
+        "pass": 24,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/settings-center-navigation.test.ts.tap",
+      "sha256": "eaed9988a36f10e1bf67500f943cca2e9c4704f4164b0b5625c3147ec74aac90"
+    },
+    {
+      "file": "tests/settings-center-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/settings-center-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.629,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 23,
+        "pass": 23,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/settings-center-ui.test.mjs.tap",
+      "sha256": "6e3641efabddd2066c42e6168346c53e3b14debda0459635a94393a755a7b876"
+    },
+    {
+      "file": "tests/settings-design-panels.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/settings-design-panels.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.428,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/settings-design-panels.test.mjs.tap",
+      "sha256": "77c0ba3a56494bd6014359a9ed47c9bc62e6f267e0575ec946311ed528243493"
+    },
+    {
+      "file": "tests/settings-navigation-slot.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/settings-navigation-slot.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.324,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/settings-navigation-slot.test.mjs.tap",
+      "sha256": "925cd8c1033327a93d2986807f7a9a2f24bfd478375a513e92b66b548a95b904"
+    },
+    {
+      "file": "tests/settings-navigation-state.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/settings-navigation-state.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.634,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 47,
+        "pass": 47,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/settings-navigation-state.test.mjs.tap",
+      "sha256": "9aa0be20e85cae0d0d289ad57b9ba1b7c6c6d65c07c9bf5e593f8ffa1072c891"
+    },
+    {
+      "file": "tests/provider-settings-ui.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/provider-settings-ui.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.744,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/provider-settings-ui.test.ts.tap",
+      "sha256": "b6d161e685f8ba8cdedaae316d9f3bedee92b422e6f8ef037fbf75ebaf9745c0"
+    },
+    {
+      "file": "tests/agent-settings-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-settings-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.532,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 32,
+        "pass": 32,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/agent-settings-ui.test.mjs.tap",
+      "sha256": "eef618a25c158056d471f9ac142a4261a3b3f755d02311b1d7942586382167ad"
+    },
+    {
+      "file": "tests/image-settings-ui.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/image-settings-ui.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.543,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 19,
+        "pass": 19,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/image-settings-ui.test.ts.tap",
+      "sha256": "f9f03e2313ef0c9d5b79b5c1cbc13a55683e36168b940eb67fa34a58480061f7"
+    },
+    {
+      "file": "tests/workspace-configuration-runtime.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/workspace-configuration-runtime.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 15.762,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 13,
+        "pass": 13,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/workspace-configuration-runtime.test.ts.tap",
+      "sha256": "64fac385165377aa42ac95873784ff10a7089e3f39ddd0591d841c89ee891d5c"
+    },
+    {
+      "file": "tests/workspace-backup-ui.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/workspace-backup-ui.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.476,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 28,
+        "pass": 28,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/workspace-backup-ui.test.ts.tap",
+      "sha256": "74776a8a81a7265b7b0c9ba3e4b433d73eef35d6c6064df7129da155b0f2c62a"
+    },
+    {
+      "file": "tests/agent-chat-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-chat-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.889,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 78,
+        "pass": 78,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/agent-chat-ui.test.mjs.tap",
+      "sha256": "4af6c649cdce0f60cdb008ef4f2b61b9c09894e688aadb7ec8446413b21e5d7f"
+    },
+    {
+      "file": "tests/agent-edit-renderer.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-edit-renderer.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.636,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 39,
+        "pass": 39,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/agent-edit-renderer.test.mjs.tap",
+      "sha256": "c5d465fefad803040afbaa5a3ecada6a0021b8515904abe35a733696754ce88c"
+    },
+    {
+      "file": "tests/agent-authorizations.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-authorizations.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 4.6,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/agent-authorizations.test.ts.tap",
+      "sha256": "b362f2f3d598eaab9c457fd5eff3861136fc32d6c7fb8e2d50733b3081fdefc6"
+    },
+    {
+      "file": "tests/agent-authorization-transports.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/agent-authorization-transports.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 3.007,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/agent-authorization-transports.test.ts.tap",
+      "sha256": "28672d09ce31291de99a7fd5879d4c7659b96dc093eee68193efc14521da5c49"
+    },
+    {
+      "file": "tests/task-center-app.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/task-center-app.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.431,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 25,
+        "pass": 25,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/task-center-app.test.mjs.tap",
+      "sha256": "59d1dcd6a6400f2a251ea4ddfe9de1fe12c3344c4c32dfcdf0809118d7acacfb"
+    },
+    {
+      "file": "tests/task-center-dock-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/task-center-dock-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 1.099,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 15,
+        "pass": 15,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/task-center-dock-ui.test.mjs.tap",
+      "sha256": "fc6c29431733f1bb31b7ce0665bb500f78c95a06cc6aa5136e11d0f8be1a7125"
+    },
+    {
+      "file": "tests/task-recovery-disclosure.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/task-recovery-disclosure.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.473,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/task-recovery-disclosure.test.mjs.tap",
+      "sha256": "b87950094751939dbcd359ab8c5bd1892401db49c97b6aedcc96a75dd4ccc33f"
+    },
+    {
+      "file": "tests/task-workspace-intent.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/task-workspace-intent.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.325,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 44,
+        "pass": 44,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/task-workspace-intent.test.mjs.tap",
+      "sha256": "27317932106befa2479c204acfa854066f1e1b1f01c49b3b30e450faa8fd1c61"
+    },
+    {
+      "file": "tests/task-disposition-client.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/task-disposition-client.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.376,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/task-disposition-client.test.ts.tap",
+      "sha256": "574a732ce2e0c2e51c69ede56eb86798ed4b83e44dd3dd8ec2a04894e5821647"
+    },
+    {
+      "file": "tests/task-disposition-transports.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/task-disposition-transports.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 3.707,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/task-disposition-transports.test.ts.tap",
+      "sha256": "52493e1c37f856b5717cb6618de186aed9bb1ed4552eeec9c3098fc0b9cceb2b"
+    },
+    {
+      "file": "tests/task-dispositions.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/task-dispositions.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 9.528,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 8,
+        "pass": 8,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/task-dispositions.test.ts.tap",
+      "sha256": "1be641cd0d3821c24fa48f44822ebeaf1eaa7813a177a2757357b51034683680"
+    },
+    {
+      "file": "tests/right-dock-layout.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/right-dock-layout.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.374,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/right-dock-layout.test.mjs.tap",
+      "sha256": "7ab0c44b00aa9db7906e18dfbd3b59d86022b0e5814e81cd22b446766812f420"
+    },
+    {
+      "file": "tests/timeline-collapsed-presentation.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-collapsed-presentation.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.494,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-collapsed-presentation.test.mjs.tap",
+      "sha256": "962d3c96e7f1ae619de0c31ff1f7975bedb911a1c44250ae17b8d16b010bb23c"
+    },
+    {
+      "file": "tests/timeline-compact-layout.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-compact-layout.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.284,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-compact-layout.test.ts.tap",
+      "sha256": "4372653af654d415257759d91e8eb6a0946c465bf885f7e495f162fdb5e18c08"
+    },
+    {
+      "file": "tests/clip-actions-menu-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/clip-actions-menu-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.376,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/clip-actions-menu-ui.test.mjs.tap",
+      "sha256": "fb2895671a36688439db2dea4de362a1d3ddf4369cdf8271c6005cfb95f7036f"
+    },
+    {
+      "file": "tests/clip-volume-envelope-foundation.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/clip-volume-envelope-foundation.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.53,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 28,
+        "pass": 28,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/clip-volume-envelope-foundation.test.mjs.tap",
+      "sha256": "0046f4db062614580589492b6709e11719c48329cf9a993841892aae2ba79741"
+    },
+    {
+      "file": "tests/clip-volume-envelope-integration.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/clip-volume-envelope-integration.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.436,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 22,
+        "pass": 22,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/clip-volume-envelope-integration.test.mjs.tap",
+      "sha256": "b70ee67a3e12bce28f2356bf998843a5436879b5770647fa9095868c60490745"
+    },
+    {
+      "file": "tests/timeline-fades-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-fades-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.787,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 21,
+        "pass": 21,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-fades-ui.test.mjs.tap",
+      "sha256": "558107de4b75e5113b1a02587f152577a2e42007ce73702c42bbbcc371b411eb"
+    },
+    {
+      "file": "tests/waveform-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/waveform-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.482,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 23,
+        "pass": 23,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/waveform-ui.test.mjs.tap",
+      "sha256": "ef554085125288be552ff526da0b0a7413233308d8de7f20b0dd056b38fe18eb"
+    },
+    {
+      "file": "tests/asset-timeline-usage-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/asset-timeline-usage-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.89,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 14,
+        "pass": 14,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/asset-timeline-usage-ui.test.mjs.tap",
+      "sha256": "904f6aea0d8fd28370b89ca24c11470500ebbc51d6e6cb2f8c5459a3c47f7337"
+    },
+    {
+      "file": "tests/subtitles-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/subtitles-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.478,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 21,
+        "pass": 21,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/subtitles-ui.test.mjs.tap",
+      "sha256": "669bc503e598227828e239c925dcec0e501a5c3e821658efa1b93438ce20b8b6"
+    },
+    {
+      "file": "tests/opacity-restored-application-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/opacity-restored-application-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 9.229,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/opacity-restored-application-ui.test.mjs.tap",
+      "sha256": "1b275b89158897c2ae36a7e585d451b94f86c5216554d78ce682f0f4c904a00c"
+    },
+    {
+      "file": "tests/export-controls.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-controls.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 8.749,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 8,
+        "pass": 8,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-controls.test.ts.tap",
+      "sha256": "9840b57daafd4b39789dd05b7ea6be2f70e25af73dfc1e72761b1aecb81862d7"
+    },
+    {
+      "file": "tests/export-preview-app.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-preview-app.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.494,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 7,
+        "pass": 7,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-preview-app.test.ts.tap",
+      "sha256": "919ca70c385a6de3ab49db45ced90ea5fc1e81bff7bb0412af7d224f2d20c025"
+    },
+    {
+      "file": "tests/export-preview-state.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-preview-state.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.431,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-preview-state.test.ts.tap",
+      "sha256": "65e3cfe2b73d9b9d82581c8429ab96155680d49cf14bb5a63be691bc5176db49"
+    },
+    {
+      "file": "tests/export-preview-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-preview-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.379,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 8,
+        "pass": 8,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-preview-ui.test.mjs.tap",
+      "sha256": "a13ce7fe501af5379bf58178744d8ff9c613badb734419dafccc0b7d73d9b64b"
+    },
+    {
+      "file": "tests/export-preview-real-media.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-preview-real-media.test.ts"
+      ],
+      "timeoutSeconds": 240,
+      "durationSeconds": 6.995,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-preview-real-media.test.ts.tap",
+      "sha256": "e6101a8242a9ab37303e63da6b7f2ef112d893e3c218d6c977ec03130ef83067"
+    },
+    {
+      "file": "tests/export-workflow.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-workflow.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.427,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-workflow.test.ts.tap",
+      "sha256": "72140e9e659ee72fcadd40157beb1fe5948746de65b53ee81e9919a6faf5df86"
+    },
+    {
+      "file": "tests/export-range-app.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-range-app.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.489,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-range-app.test.mjs.tap",
+      "sha256": "8874c52ef220ad2196a9d99bd53d684e5f089fa6205c90a395e04f9b8d7ca480"
+    },
+    {
+      "file": "tests/export-range-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-range-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.532,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 16,
+        "pass": 16,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-range-ui.test.mjs.tap",
+      "sha256": "052ea12a552d525363dfeb36fbc2b4ec95671b070d1f3080c1cbf44bc248bc2a"
+    },
+    {
+      "file": "tests/export-range-recovery-ui.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-range-recovery-ui.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.432,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-range-recovery-ui.test.ts.tap",
+      "sha256": "9adb1fe97dea649b737e6a0e3afbdbe74c64c209196fe3a1856313f84efc859a"
+    },
+    {
+      "file": "tests/export-settings-ui.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-settings-ui.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.539,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 37,
+        "pass": 37,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-settings-ui.test.ts.tap",
+      "sha256": "9dafe273d03495abdc453765fae70a0402bfb11a16f930db54058f4ae19681d0"
+    },
+    {
+      "file": "tests/export-preflight-ui.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-preflight-ui.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.584,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 49,
+        "pass": 49,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-preflight-ui.test.ts.tap",
+      "sha256": "3893eeeda504152583557bcac46455ab2e17fc069e2038e0e473e7a8a0e9296b"
+    },
+    {
+      "file": "tests/export-file-actions-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-file-actions-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.431,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-file-actions-ui.test.mjs.tap",
+      "sha256": "c734d89fa1a5c942aa7fb1325c9af7064625df788dc9e00f6502276b061d87e3"
+    },
+    {
+      "file": "tests/export-history-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/export-history-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.919,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/export-history-ui.test.mjs.tap",
+      "sha256": "a30a0da26744b85b8d95845e1d1b7b378a9bfdec11793d007d5ee674e2674cf2"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-contracts.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-contracts.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.429,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-contracts.test.ts.tap",
+      "sha256": "f8f26a1608cc99dbf00c63f34247e079d839279761a92621e6b928edb694107c"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-state.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-state.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.382,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 8,
+        "pass": 8,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-state.test.mjs.tap",
+      "sha256": "3a54faed88803a1673130b9bd75fb3d308d40c34bb04cdecb2eb59d8763bacd1"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-hook.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-hook.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.44,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-hook.test.ts.tap",
+      "sha256": "f0de518c8054c3586e4bbd1ead33fa2b64c706f667e3be28e18ae67d9c8e49aa"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.688,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 7,
+        "pass": 7,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-ui.test.mjs.tap",
+      "sha256": "1809769dc21d53d384bc7a2bf848e4d5ce6bd11e52ba53aa0ec724e874b9c451"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-match-state.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-match-state.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.374,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-match-state.test.mjs.tap",
+      "sha256": "1895799cb01fa1eec7139a4b000f880d1c09ae16799d489d07bd10a33bd2c913"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-match-ui.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-match-ui.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.431,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 4,
+        "pass": 4,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-match-ui.test.mjs.tap",
+      "sha256": "32036771009a6783fec9553f87f2cec955e99d8a4dfa89dc97311f2d5500e656"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-business.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-business.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 29.266,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 30,
+        "pass": 30,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-business.test.mjs.tap",
+      "sha256": "817096aff829b3dd429fadba244a8167b8fbc450a676ebb1a5294ab55dacc9db"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-candidate.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-candidate.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.54,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-candidate.test.mjs.tap",
+      "sha256": "c5eb9df798157b59f62919e25298cd28e51c30255abc5b5377d5156d2cce92d7"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-media.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-media.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 13.977,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-media.test.mjs.tap",
+      "sha256": "e3f399c7f365b4d5ca0a05d566d4bd053156eca6a6ad12ae0fb18b677ad7f4b2"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-transports.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-transports.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 7.34,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 7,
+        "pass": 7,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-transports.test.mjs.tap",
+      "sha256": "a2a91c4109aa04a17ec0583c2935922318ce6a021602bb5bee3d126dcf84f497"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-app.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-app.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.536,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 3,
+        "pass": 3,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-app.test.mjs.tap",
+      "sha256": "0d30a05c3a17d5b36f26bfa98a082799bef8f51cc54fa0da25a47d5587e458c1"
+    },
+    {
+      "file": "tests/timeline-clip-loudness-web-rpc.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/timeline-clip-loudness-web-rpc.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.483,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/timeline-clip-loudness-web-rpc.test.mjs.tap",
+      "sha256": "f1b3794b7ba5d233ac594278fc284d577403fe47547e1c1ef339e613b799ac1e"
+    },
+    {
+      "file": "tests/loudness-range-meter.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/loudness-range-meter.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 1.455,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 8,
+        "pass": 8,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/loudness-range-meter.test.ts.tap",
+      "sha256": "5a2b7e2be752dc9c5c3576969da970de3edf46a0c76ee930de0c398ab397fc8b"
+    },
+    {
+      "file": "tests/loudness-range-media.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/loudness-range-media.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 5.683,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 2,
+        "pass": 2,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/loudness-range-media.test.ts.tap",
+      "sha256": "acd6b6d4c1b50aea6d27d800c131b705e1f872b9777ca883e9c386fe1430fa49"
+    },
+    {
+      "file": "tests/clip-loudness-review-boundaries.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/clip-loudness-review-boundaries.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.387,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/clip-loudness-review-boundaries.test.ts.tap",
+      "sha256": "91a590adb7447cecaddf626174ffc5d7f28a81a35ab4b2548155ededb7327b5c"
+    },
+    {
+      "file": "tests/workspace-volume-envelope-validation.test.mjs",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/workspace-volume-envelope-validation.test.mjs"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.477,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 21,
+        "pass": 21,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/workspace-volume-envelope-validation.test.mjs.tap",
+      "sha256": "50f7d087edd25c88e907d15e97eda145807f96c9e9cc8c545e2bfb5b013a8904"
+    },
+    {
+      "file": "tests/i18n-catalog-integrity.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/i18n-catalog-integrity.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 1.132,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/i18n-catalog-integrity.test.ts.tap",
+      "sha256": "ca1c51fa6e042d48ecafab8e11e27791a38e085ff4b1a3a9335c4eba1b03f739"
+    },
+    {
+      "file": "tests/i18n-shell.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/i18n-shell.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.423,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 6,
+        "pass": 6,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/i18n-shell.test.ts.tap",
+      "sha256": "3e615ead12e4583ae19679ed5287f059c17fc3a3f2c910b67aab73f9af4cf3b0"
+    },
+    {
+      "file": "tests/i18n-timeline.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/i18n-timeline.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.48,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 5,
+        "pass": 5,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/i18n-timeline.test.ts.tap",
+      "sha256": "f32ad24b25cc11ce2940285342cc843d6af8502445af3f66bdc8913d71953eb3"
+    },
+    {
+      "file": "tests/i18n-foundation.test.ts",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/i18n-foundation.test.ts"
+      ],
+      "timeoutSeconds": 180,
+      "durationSeconds": 0.376,
+      "exitCode": 0,
+      "timedOut": false,
+      "counts": {
+        "tests": 26,
+        "pass": 26,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "log": "logs/i18n-foundation.test.ts.tap",
+      "sha256": "8ff46991c354ea98f09eee2b6f2f22159d3d0a0c698ecd00644664b179349d1d"
+    }
+  ]
+}

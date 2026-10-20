@@ -1,0 +1,124 @@
+TAP version 13
+# Subtest: image settings expose only a fixed redacted contract and reject echoed secrets or destination edits
+ok 1 - image settings expose only a fixed redacted contract and reject echoed secrets or destination edits
+  ---
+  duration_ms: 2.467208
+  type: 'test'
+  ...
+# Subtest: image settings client uses dedicated authenticated no-store GET/PUT, never RPC or provider HTTP
+ok 2 - image settings client uses dedicated authenticated no-store GET/PUT, never RPC or provider HTTP
+  ---
+  duration_ms: 0.519167
+  type: 'test'
+  ...
+# Subtest: settings transport strips raw errors and timeout makes exactly one aborted call
+ok 3 - settings transport strips raw errors and timeout makes exactly one aborted call
+  ---
+  duration_ms: 5.259458
+  type: 'test'
+  ...
+# Subtest: first credential requires an explicit storage choice and unavailable vault never falls back
+ok 4 - first credential requires an explicit storage choice and unavailable vault never falls back
+  ---
+  duration_ms: 8.099209
+  type: 'test'
+  ...
+# Subtest: save changes enabled only, keeps independent key by default and supports explicit removal
+ok 5 - save changes enabled only, keeps independent key by default and supports explicit removal
+  ---
+  duration_ms: 0.367667
+  type: 'test'
+  ...
+# Subtest: unknown save and CAS conflict read back once, retain drafts and never retry or infer confirmation
+ok 6 - unknown save and CAS conflict read back once, retain drafts and never retry or infer confirmation
+  ---
+  duration_ms: 0.649708
+  type: 'test'
+  ...
+# Subtest: double save, hidden edits and disposed completions cannot write again or leak a secret
+ok 7 - double save, hidden edits and disposed completions cannot write again or leak a secret
+  ---
+  duration_ms: 0.23625
+  type: 'test'
+  ...
+# Subtest: actual password input clears before save dispatch and remains outside rendered/session state
+ok 8 - actual password input clears before save dispatch and remains outside rendered/session state
+  ---
+  duration_ms: 23.3665
+  type: 'test'
+  ...
+# Subtest: image enable uses shared Input and associated Label, preserving native checkbox keyboard and checked events
+ok 9 - image enable uses shared Input and associated Label, preserving native checkbox keyboard and checked events
+  ---
+  duration_ms: 2.537292
+  type: 'test'
+  ...
+# Subtest: shared enable checkbox is disabled while saving or hidden and stale checked events stay fenced
+ok 10 - shared enable checkbox is disabled while saving or hidden and stale checked events stay fenced
+  ---
+  duration_ms: 2.834625
+  type: 'test'
+  ...
+# Subtest: actual hidden, collapsed, project-switched and closed settings clear key while retaining nonsecret drafts
+ok 11 - actual hidden, collapsed, project-switched and closed settings clear key while retaining nonsecret drafts
+  ---
+  duration_ms: 8.382959
+  type: 'test'
+  ...
+# Subtest: settings remains a natural dock with no modal, secret cache or arbitrary provider fields
+ok 12 - settings remains a natural dock with no modal, secret cache or arbitrary provider fields
+  ---
+  duration_ms: 44.724083
+  type: 'test'
+  ...
+# Subtest: private review client binds exact receipt and posts once only to authenticated approval route
+ok 13 - private review client binds exact receipt and posts once only to authenticated approval route
+  ---
+  duration_ms: 8.673709
+  type: 'test'
+  ...
+# Subtest: fixed custom settings slot uses its own private route and rejects official, unknown and unnormalized receipts
+ok 14 - fixed custom settings slot uses its own private route and rejects official, unknown and unnormalized receipts
+  ---
+  duration_ms: 1.141458
+  type: 'test'
+  ...
+# Subtest: custom settings normalize before PUT and never carry an existing key to another address or model
+ok 15 - custom settings normalize before PUT and never carry an existing key to another address or model
+  ---
+  duration_ms: 0.631458
+  type: 'test'
+  ...
+# Subtest: custom malformed endpoints and partial empty configuration fail before save; official fields remain fixed
+ok 16 - custom malformed endpoints and partial empty configuration fail before save; official fields remain fixed
+  ---
+  duration_ms: 0.759791
+  type: 'test'
+  ...
+# Subtest: custom unknown save preserves complete nonsecret draft and requires explicit recovery with a freshly entered key
+ok 17 - custom unknown save preserves complete nonsecret draft and requires explicit recovery with a freshly entered key
+  ---
+  duration_ms: 0.368584
+  type: 'test'
+  ...
+# Subtest: actual custom settings reuse shared controls, expose resolved destination and clear DOM key on slot or navigation
+ok 18 - actual custom settings reuse shared controls, expose resolved destination and clear DOM key on slot or navigation
+  ---
+  duration_ms: 10.54425
+  type: 'test'
+  ...
+# Subtest: four-language rerenders preserve image connection draft, password DOM and single pending save
+ok 19 - four-language rerenders preserve image connection draft, password DOM and single pending save
+  ---
+  duration_ms: 2.694083
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 404.895375

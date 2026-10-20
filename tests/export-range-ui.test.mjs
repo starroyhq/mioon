@@ -129,7 +129,7 @@ test('preflight shows frozen selected duration separately from full composition 
   const invalid = View({ rangeError: 'Invalid range', canCheck: true }); assert.equal(nodes(invalid).find(node => node.props['data-testid'] === 'preflight-check').props.disabled, true);
 });
 
-test('named and unnamed export history display immutable range while absent and preview rows remain unchanged', () => {
+test('named and unnamed export history display immutable selected or original whole range while previews stay range-free', () => {
   const View = component('ExportHistoryList.tsx').default;
   const timeline = { width: 720, height: 1280, fps: 30, durationFrames: 120 };
   const base = { id: id(10), mode: 'timeline', purpose: 'export', timelineRevision: 4, createdAt: stamp, status: 'succeeded', assetId: id(11), snapshot: { timeline, exportRange: range } };
@@ -138,7 +138,15 @@ test('named and unnamed export history display immutable range while absent and 
     const tree = View({ orderedExports: [item], projectName: 'Current name', timelineRevision: 99 });
     assert.match(textOf(nodes(tree).find(node => node.props['data-testid'] === 'export-history-range')), /第 30 帧.*第 90 帧.*60 帧/);
   }
-  for (const item of [{ ...base, snapshot: { timeline } }, { ...base, purpose: 'preview' }]) {
+  for (const named of [false, true]) {
+    const item={...base,snapshot:{timeline,...(named?{deliveryName:'Original whole title'}:{})}};
+    const tree = View({ orderedExports: [item], projectName: 'Current name', timelineRevision: 99 });
+    const original=nodes(tree).find(node => node.props['data-testid'] === 'export-history-range');
+    assert.equal(textOf(original), '导出范围：全部原时间线');
+    assert.doesNotMatch(textOf(original), /第 30 帧|第 90 帧|60 帧/);
+    assert.equal(Object.hasOwn(item.snapshot,'exportRange'),false,'Presentation must not add a current selection to a legacy frozen snapshot');
+  }
+  for (const item of [{ ...base, purpose: 'preview' },{...base,purpose:'preview',snapshot:{timeline}}]) {
     const tree = View({ orderedExports: [item], projectName: 'Current name', timelineRevision: 99 });
     assert.equal(nodes(tree).some(node => node.props['data-testid'] === 'export-history-range'), false);
   }

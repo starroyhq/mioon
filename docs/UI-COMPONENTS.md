@@ -109,8 +109,10 @@ palette; private design materials are not included in the repository. Canvas/pan
 neutral preset. Color, typography, spacing, radius and control/layout dimensions
 live in `packages/ui/src/styles/globals.css` as `--wb-*` tokens; renderer styles
 reference those tokens instead of maintaining private palettes.
-The renderer uses `class="dark"` on the document element. Both the web renderer
-and Electron renderer use the same stylesheet and component code.
+The renderer applies `class="dark"` or `class="light"` to the document element
+according to the workspace appearance preference; system mode follows the
+operating system color scheme. Both the web renderer and Electron renderer use
+the same stylesheet and component code.
 
 The local CSS contains the subset of shadcn state utilities needed by these
 components, tailored to Base UI's data attributes: open, closed, checked,

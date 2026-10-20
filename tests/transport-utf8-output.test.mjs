@@ -6,6 +6,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { discoverSchema } from '@mioon/client';
+import { transformSync } from 'esbuild';
 
 // The same stdout += chunk collector idiom used by transport tests. Pipe write
 // boundaries do not promise character boundaries; setEncoding retains residual
@@ -68,6 +69,7 @@ test('actual full shared catalog survives the reproduced version-list descriptio
 // the same file are counted separately. SDK-owned stdout has no such listener:
 // the SDK concatenates its protocol Buffers before decoding complete messages.
 const textSites = {
+  'tests/client-version-source.test.ts': 1,
   'tests/comfy-module-http.test.mjs': 2,
   'tests/desktop-exit-recovery.test.mjs': 1,
   'tests/desktop-lut-recovery-restart.test.mjs': 2,
@@ -104,7 +106,7 @@ const textSites = {
   "tests/agent-tool-journal-crash.test.mjs": 2,
   "tests/asset-disposition-transports.test.mjs": 2,
   "tests/asset-dispositions.test.mjs": 1,
-  "tests/cli-mcp-key-recovery-transport.test.mjs": 2,
+  "tests/cli-mcp-key-recovery-transport.test.mjs": 3,
   "tests/cli-v4.test.mjs": 2,
   "tests/comfy-transports.test.mjs": 2,
   "tests/custom-image-transports.test.mjs": 2,
@@ -115,7 +117,7 @@ const textSites = {
   "tests/workspace-schema26.test.mjs": 2,
   "tests/edit-tasks-http.test.mjs": 2,
   "tests/export-preflight-http-observer.test.mjs": 2,
-  "tests/export-settings-transports.test.mjs": 2,
+  "tests/export-settings-transports.test.mjs": 3,
   "tests/frame-recovery.test.mjs": 1,
   "tests/frame-transports.test.mjs": 3,
   "tests/generation-input-transports.test.mjs": 4,
@@ -132,7 +134,7 @@ const textSites = {
   "tests/inspection-wire.test.mjs": 3,
   "tests/integration.test.mjs": 2,
   "tests/keychain-timeout-audit.test.mjs": 1,
-  "tests/mcp.test.mjs": 2,
+  "tests/mcp.test.mjs": 3,
   "tests/media-runtime-bounds.test.mjs": 1,
   "tests/mutation-wire.test.mjs": 3,
   "tests/private-storage-transports.test.mjs": 2,
@@ -156,14 +158,15 @@ const textSites = {
   "tests/workspace-preferences-http.test.mjs": 2,
   "tests/subject-video-transports.test.mjs": 5,
   "tests/video-first-last-transports.test.mjs": 5,
-  'tests/export-loudness-transports.test.mjs': 2,
+  'tests/export-loudness-transports.test.mjs': 3,
   // CLI JSON stdout/stderr + SDK stderr continuously decode; SDK stdout remains protocol-owned.
   'tests/timeline-mix-loudness-transports.test.mjs': 3,
   'tests/timeline-clip-loudness-transports.test.mjs': 3,
   // One shared stdout/stderr loop site plus the official MCP stderr site.
   // Typed rewrite consolidated the two per-stream registrations into one loop after
   // setting UTF-8 encoding on both streams; one listener site covers both.
-  'tests/asset-annotation-transports.test.mjs': 1,
+  // CLI stdout/stderr loop plus official MCP stderr, including typed casts.
+  'tests/asset-annotation-transports.test.mjs': 2,
   // Actual CLI stdout/stderr and official MCP stderr are bounded UTF-8 text.
   'tests/timeline-loudness-apply-transports.test.mjs': 3,
   // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.
@@ -175,6 +178,12 @@ const textSites = {
 // Byte-preserving passthrough forwarders: no text concatenation or decoding.
 const passthroughSites = {
   'tests/fixtures/workspace-restore-electron/main.ts': 2,
+};
+// These two new SDK stderr drains deliberately discard bytes: no conversion,
+// concatenation, parsing or text assertion occurs in their exact empty listener.
+const discardedSites = {
+  'tests/task-disposition-transports.test.ts': "transport.stderr?.on('data',()=>{});",
+  'tests/workspace-configuration-transports.test.mjs': "transport.stderr?.on('data',()=>{});",
 };
 const binarySites = {
   'tests/http-streams-qa-native.mjs': 1,
@@ -227,7 +236,7 @@ async function sourceFiles(directory) {
   }
   return files.sort();
 }
-const registrationPattern = /(?<receiver>\b[A-Za-z_$][\w$]*\.(?:stdout|stderr)|\bstream)(?<access>\?\.|\.)(?<decode>setEncoding\(['"]utf8['"]\)\.)?on\(['"]data['"]/g;
+const registrationPattern = /(?<receiver>\b[A-Za-z_$][\w$]*\.(?:stdout|stderr)|\b(?:stream|stderrStream))(?<assertion>!)?(?<access>\?\.|\.)(?<decode>setEncoding\(['"]utf8['"]\)\.)?on\(['"]data['"]/g;
 
 // The migration renames tested files from `.test.mjs` to `.test.ts` wave by wave.
 // Inventory keys are canonicalized by dropping the final source extension so the
@@ -235,7 +244,8 @@ const registrationPattern = /(?<receiver>\b[A-Za-z_$][\w$]*\.(?:stdout|stderr)|\
 const canonicalInventoryName = name => name.replace(/\.(?:mjs|ts|jsx|tsx)$/u, '');
 const canonicalInventory = map => new Map(Object.entries(map).map(([name, value]) => [canonicalInventoryName(name), value]));
 const canonicalTextSites = canonicalInventory(textSites), canonicalBinarySites = canonicalInventory(binarySites),
-  canonicalPassthroughSites = canonicalInventory(passthroughSites), canonicalBufferedSites = canonicalInventory(bufferedSites);
+  canonicalPassthroughSites = canonicalInventory(passthroughSites), canonicalBufferedSites = canonicalInventory(bufferedSites),
+  canonicalDiscardedSites = canonicalInventory(discardedSites);
 test('every inventoried test/QA text collector configures continuous decoding at its actual listener, before delivery', async () => {
   const found = {};
   for (const file of await sourceFiles(path.join(root, 'tests'))) {
@@ -244,13 +254,23 @@ test('every inventoried test/QA text collector configures continuous decoding at
     // the repaired collector above. Immutable historical fixtures are JSON, not
     // executable source included in this scan, and remain hash-verified elsewhere.
     if (canonicalInventoryName(name) === 'tests/transport-utf8-output.test') continue;
-    const source = await readFile(file, 'utf8');
+    const original = await readFile(file, 'utf8');
+    const inventoryName = canonicalInventoryName(name);
+    // Audit the actual JavaScript registration in typed text collectors. Type
+    // assertions and parentheses must neither hide a listener nor a decoder.
+    const source = file.endsWith('.ts') && canonicalTextSites.has(inventoryName)
+      ? transformSync(original, {loader:'ts', format:'esm', target:'esnext'}).code : original;
     const sites = [...source.matchAll(registrationPattern)];
     if (!sites.length) continue;
-    const inventoryName = canonicalInventoryName(name);
     assert.equal(Object.hasOwn(found, inventoryName), false, `${name}: duplicate canonical inventory name during migration`);
     found[inventoryName] = sites.length;
-    assert.ok(canonicalTextSites.has(inventoryName) || canonicalBinarySites.has(inventoryName) || canonicalPassthroughSites.has(inventoryName) || canonicalBufferedSites.has(inventoryName), `${name}: classify each newly introduced stream consumer`);
+    assert.ok(canonicalTextSites.has(inventoryName) || canonicalBinarySites.has(inventoryName) || canonicalPassthroughSites.has(inventoryName) || canonicalBufferedSites.has(inventoryName) || canonicalDiscardedSites.has(inventoryName), `${name}: classify each newly introduced stream consumer`);
+    if (canonicalDiscardedSites.has(inventoryName)) {
+      assert.equal(sites.length, 1, name);
+      assert.ok(source.startsWith(canonicalDiscardedSites.get(inventoryName), sites[0].index), `${name}: retain the exact empty byte drain`);
+      assert.equal(sites[0].groups.decode, undefined, `${name}: no text collector is exempted`);
+      continue;
+    }
     if (canonicalBufferedSites.has(inventoryName)) {
       const specification = canonicalBufferedSites.get(inventoryName);
       assert.equal(sites.length, specification.count, name);
@@ -279,11 +299,14 @@ test('every inventoried test/QA text collector configures continuous decoding at
       const stream = new PassThrough();
       const receiver = site.groups.receiver;
       const variable = receiver.split('.')[0];
-      const owner = receiver === 'stream' ? stream : {stdout: stream, stderr: stream};
+      const owner = receiver === 'stream' || receiver === 'stderrStream' ? stream : {stdout: stream, stderr: stream};
       let actual = '';
       // Execute only the audited registration expression, not a helper, subprocess
       // or callback body. This proves its exact ordering and optional-chain shape.
-      const register = new Function(variable, 'listener', `return ${site[0]}, listener);`);
+      // A TypeScript non-null assertion has no runtime behavior. Remove only
+      // that captured assertion before executing the actual registration.
+      const registration = site.groups.assertion ? receiver + site[0].slice(receiver.length + 1) : site[0];
+      const register = new Function(variable, 'listener', `return ${registration}, listener);`);
       register(owner, chunk => {assert.equal(typeof chunk, 'string', location); actual += chunk;});
       assert.equal(stream.readableEncoding, 'utf8', location);
       const ended = once(stream, 'end');
@@ -291,9 +314,9 @@ test('every inventoried test/QA text collector configures continuous decoding at
       for (const byte of Buffer.from(expected)) stream.write(Buffer.from([byte]));
       stream.end(); await ended;
       assert.equal(actual, expected, location);
-      if (site.groups.access === '?.') assert.doesNotThrow(() => register({}, () => {}), location);
+      if (site.groups.access === '?.') assert.doesNotThrow(() => register(receiver.includes('.') ? {} : undefined, () => {}), location);
     }
   }
-  const expectedSites = {...Object.fromEntries(canonicalTextSites), ...Object.fromEntries(canonicalBinarySites), ...Object.fromEntries(canonicalPassthroughSites), ...Object.fromEntries([...canonicalBufferedSites].map(([name, value]) => [name, value.count]))};
+  const expectedSites = {...Object.fromEntries(canonicalTextSites), ...Object.fromEntries(canonicalBinarySites), ...Object.fromEntries(canonicalPassthroughSites), ...Object.fromEntries([...canonicalBufferedSites].map(([name, value]) => [name, value.count])), ...Object.fromEntries([...canonicalDiscardedSites.keys()].map(name => [name, 1]))};
   assert.deepEqual(found, Object.fromEntries(Object.entries(expectedSites).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
 });

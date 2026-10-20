@@ -29,6 +29,11 @@ const fixtures = {
   busy: { ...base, candidate: draft, busy: true, intent, intentPhase: 'executing', pending: true },
 };
 let rendered;
+function assertCollapsedProvenance(html,testId){
+ const opening=html.match(new RegExp(`<details\\b[^>]*data-testid="${testId}"[^>]*>`))?.[0];
+ assert.ok(opening,`Missing ${testId} disclosure`);
+ assert.doesNotMatch(opening,/\sopen(?:\s|=|>)/,'Technical provenance must remain collapsed even when its request summary is open');
+}
 before(() => {
   const fixture = `import React from 'react'; import { renderToStaticMarkup } from 'react-dom/server.browser'; import DeliveryDraftRecovery from './src/DeliveryDraftRecovery.tsx';
     const fixtures = ${JSON.stringify(fixtures)}; const controller = new Proxy({}, { get() { return () => { throw new Error('Passive view invoked a controller action'); }; } });
@@ -80,12 +85,13 @@ test('explicit title retry is separate from export and distinguishes local valid
 test('long provenance is collapsed while frozen output settings remain visible in original-request summary', () => {
   assert.match(rendered.candidate, /<details data-testid="delivery-draft-provenance"><summary>查看草稿来源/);
   assert.match(rendered.pending, /<details data-testid="delivery-intent-provenance"><summary>查看原请求与完整参数/); assert.match(rendered.pending, /原有默认编码设置/);
-  assert.match(rendered.profiled, /短边 1080 像素/); assert.match(rendered.profiled, /平均目标 8 Mb\/s/); assert.match(rendered.profiled, /white-space:pre-wrap;overflow-wrap:anywhere/); assert.doesNotMatch(rendered.profiled, /<details[^>]+open/);
+  assert.match(rendered.profiled, /短边 1080 像素/); assert.match(rendered.profiled, /平均目标 8 Mb\/s/); assert.match(rendered.profiled, /white-space:pre-wrap;overflow-wrap:anywhere/); assertCollapsedProvenance(rendered.profiled,'delivery-intent-provenance');
+  assert.match(rendered.profiled,/<details open=""><summary>查看原请求与完整参数/,'Pending original-request summary stays visible without expanding its technical provenance');
 });
 
 
 test('terminal request copy does not imply another execution and keeps provenance collapsed', () => {
   assert.match(rendered.accepted, /原请求回执已确认接受/); assert.match(rendered.accepted, /是否完成渲染，请查看导出记录/); assert.doesNotMatch(rendered.accepted, /可能首次执行|确认恢复同一原请求/);
   assert.match(rendered.notApplied, /不会再次重试同一请求/); assert.doesNotMatch(rendered.notApplied, /可能首次执行|确认恢复同一原请求/);
-  for (const html of [rendered.accepted, rendered.notApplied]) { assert.match(html, /data-testid="delivery-intent-provenance"/); assert.doesNotMatch(html, /<details[^>]+open/); }
+  for (const html of [rendered.accepted, rendered.notApplied]) assertCollapsedProvenance(html,'delivery-intent-provenance');
 });

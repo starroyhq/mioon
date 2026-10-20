@@ -1,5 +1,13 @@
 import type {MessageCatalog} from '../types.ts';
 export const timelineEditingMessages = {
+  'edit.track.picture':{'zh-Hans':'画面','zh-Hant':'畫面',en:'Picture',ja:'映像'},
+  'edit.track.overlay':{'zh-Hans':'叠加','zh-Hant':'疊加',en:'Overlay',ja:'オーバーレイ'},
+  'edit.track.music':{'zh-Hans':'音乐','zh-Hant':'音樂',en:'Music',ja:'音楽'},
+
+  'edit.track.lock':{'zh-Hans':'在本窗口锁定“{name}”','zh-Hant':'在本視窗鎖定「{name}」',en:'Lock “{name}” in this window',ja:'このウィンドウで「{name}」をロック'},
+  'edit.track.unlock':{'zh-Hans':'在本窗口解锁“{name}”','zh-Hant':'在本視窗解鎖「{name}」',en:'Unlock “{name}” in this window',ja:'このウィンドウで「{name}」のロックを解除'},
+  'edit.track.lockedHint':{'zh-Hans':'轨道已在本窗口锁定，解锁后继续编辑；其他窗口仍可编辑项目','zh-Hant':'軌道已在本視窗鎖定，解鎖後繼續編輯；其他視窗仍可編輯專案',en:'This track is locked in this window. Unlock it to edit; other windows can still edit the project',ja:'このウィンドウではトラックがロックされています。編集には解除してください。他のウィンドウでは編集できます'},
+
   'edit.clip.more': {'zh-Hans':'片段更多操作','zh-Hant':'片段更多操作',en:'More clip actions',ja:'クリップの操作'},
   'edit.remove.action': {'zh-Hans':'移除片段','zh-Hant':'移除片段',en:'Remove clip',ja:'クリップを削除'},
   'edit.remove.ripple': {'zh-Hans':'波纹删除','zh-Hant':'波紋刪除',en:'Ripple delete',ja:'リップル削除'},

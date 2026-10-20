@@ -1,0 +1,748 @@
+TAP version 13
+# Subtest: safe DTO excludes arbitrary error bodies, internals and credentials, bounds output/history and enforces ownership
+ok 1 - safe DTO excludes arbitrary error bodies, internals and credentials, bounds output/history and enforces ownership
+  ---
+  duration_ms: 2.2605
+  type: 'test'
+  ...
+# Subtest: UTF-8 prompt bounds and control-character check preserve ordinary multiline text
+ok 2 - UTF-8 prompt bounds and control-character check preserve ordinary multiline text
+  ---
+  duration_ms: 0.12775
+  type: 'test'
+  ...
+# Subtest: HTTP client routes only authenticated same-origin API, uses instance-bound reads and exact consent body
+ok 3 - HTTP client routes only authenticated same-origin API, uses instance-bound reads and exact consent body
+  ---
+  duration_ms: 0.916542
+  type: 'test'
+  ...
+# Subtest: HTTP errors and thrown provider text cannot leak; timeout never repeats a POST
+ok 4 - HTTP errors and thrown provider text cannot leak; timeout never repeats a POST
+  ---
+  duration_ms: 5.672333
+  type: 'test'
+  ...
+# Subtest: SSE parser handles every UTF-8 byte split, CRLF, comments and duplicate frames as data
+ok 5 - SSE parser handles every UTF-8 byte split, CRLF, comments and duplicate frames as data
+  ---
+  duration_ms: 3.39825
+  type: 'test'
+  ...
+# Subtest: first send requires a saved destination/model/scope authorization and forwards only exact typed text
+ok 6 - first send requires a saved destination/model/scope authorization and forwards only exact typed text
+  ---
+  duration_ms: 2.095333
+  type: 'test'
+  ...
+# Subtest: double send is synchronously blocked and saved permission remains valid after completion
+ok 7 - double send is synchronously blocked and saved permission remains valid after completion
+  ---
+  duration_ms: 0.761084
+  type: 'test'
+  ...
+# Subtest: duplicate SSE frames never duplicate output and out-of-order or cross-project callbacks cannot change another run
+ok 8 - duplicate SSE frames never duplicate output and out-of-order or cross-project callbacks cannot change another run
+  ---
+  duration_ms: 0.437708
+  type: 'test'
+  ...
+# Subtest: closing detaches without stopping, and reopen reads/replays existing cursor without another send
+ok 9 - closing detaches without stopping, and reopen reads/replays existing cursor without another send
+  ---
+  duration_ms: 0.524916
+  type: 'test'
+  ...
+# Subtest: lost POST acknowledgement finds the same request via a safe read with no blind retry
+ok 10 - lost POST acknowledgement finds the same request via a safe read with no blind retry
+  ---
+  duration_ms: 0.519709
+  type: 'test'
+  ...
+# Subtest: missing acknowledgement plus failed safe read stays blocked across dismiss/reopen without resubmission
+ok 11 - missing acknowledgement plus failed safe read stays blocked across dismiss/reopen without resubmission
+  ---
+  duration_ms: 0.522666
+  type: 'test'
+  ...
+# Subtest: receipt storage contains identities only and survives new reader without text or configuration
+ok 12 - receipt storage contains identities only and survives new reader without text or configuration
+  ---
+  duration_ms: 0.166292
+  type: 'test'
+  ...
+# Subtest: backend restart preserves durable interrupted history and resolves a pending receipt without resending
+ok 13 - backend restart preserves durable interrupted history and resolves a pending receipt without resending
+  ---
+  duration_ms: 0.179292
+  type: 'test'
+  ...
+# Subtest: changed destination response reloads settings, preserves unsent text and invalidates prior consent
+ok 14 - changed destination response reloads settings, preserves unsent text and invalidates prior consent
+  ---
+  duration_ms: 0.342333
+  type: 'test'
+  ...
+# Subtest: Stop requests once with immutable identity, aborts display stream and retains partial output
+ok 15 - Stop requests once with immutable identity, aborts display stream and retains partial output
+  ---
+  duration_ms: 0.485
+  type: 'test'
+  ...
+# Subtest: stream ending without terminal rereads once and exposes disconnected state without POST or runaway reconnect
+ok 16 - stream ending without terminal rereads once and exposes disconnected state without POST or runaway reconnect
+  ---
+  duration_ms: 0.396667
+  type: 'test'
+  ...
+# Subtest: late load, acknowledgement and stop cannot publish into a disposed project or alter its receipt
+ok 17 - late load, acknowledgement and stop cannot publish into a disposed project or alter its receipt
+  ---
+  duration_ms: 0.584875
+  type: 'test'
+  ...
+# Subtest: actual component requires checkbox consent, shows simulated/local-only scope and renders output as escaped text
+ok 18 - actual component requires checkbox consent, shows simulated/local-only scope and renders output as escaped text
+  ---
+  duration_ms: 11.825583
+  type: 'test'
+  ...
+# Subtest: actual component collapse and settings transition invalidate old callbacks before parent navigation
+ok 19 - actual component collapse and settings transition invalidate old callbacks before parent navigation
+  ---
+  duration_ms: 5.140833
+  type: 'test'
+  ...
+# Subtest: actual project change makes all previous close, submit, edit and terminal callbacks inert
+ok 20 - actual project change makes all previous close, submit, edit and terminal callbacks inert
+  ---
+  duration_ms: 5.107459
+  type: 'test'
+  ...
+# Subtest: integration preserves settings entry, the shared right dock, bounded history and app-local controls
+ok 21 - integration preserves settings entry, the shared right dock, bounded history and app-local controls
+  ---
+  duration_ms: 6.460166
+  type: 'test'
+  ...
+# Subtest: receipt metadata handles prototype-shaped project IDs as own data, without prototype inheritance
+ok 22 - receipt metadata handles prototype-shaped project IDs as own data, without prototype inheritance
+  ---
+  duration_ms: 0.110292
+  type: 'test'
+  ...
+# Subtest: hiding detaches only display and blocks old actions; showing rereads without another model request
+ok 23 - hiding detaches only display and blocks old actions; showing rereads without another model request
+  ---
+  duration_ms: 0.459834
+  type: 'test'
+  ...
+# Subtest: hiding during POST acknowledgement preserves receipt/identity and does not attach a hidden stream
+ok 24 - hiding during POST acknowledgement preserves receipt/identity and does not attach a hidden stream
+  ---
+  duration_ms: 0.241
+  type: 'test'
+  ...
+# Subtest: first authorization uses shared controls and saved permission can only be revoked in Settings
+ok 25 - first authorization uses shared controls and saved permission can only be revoked in Settings
+  ---
+  duration_ms: 5.795125
+  type: 'test'
+  ...
+# Subtest: compact model and scope chooser preserves explicit first-send authorization
+ok 26 - compact model and scope chooser preserves explicit first-send authorization
+  ---
+  duration_ms: 5.110292
+  type: 'test'
+  ...
+# Subtest: destination and scope changes refresh the compact summary without granting or sending
+ok 27 - destination and scope changes refresh the compact summary without granting or sending
+  ---
+  duration_ms: 5.57175
+  type: 'test'
+  ...
+# Subtest: revoked permission retains the compact chooser and restores mandatory authorization review
+ok 28 - revoked permission retains the compact chooser and restores mandatory authorization review
+  ---
+  duration_ms: 4.272458
+  type: 'test'
+  ...
+# Subtest: hidden options and their retired scope callbacks stay inert after reopening
+ok 29 - hidden options and their retired scope callbacks stay inert after reopening
+  ---
+  duration_ms: 4.181041
+  type: 'test'
+  ...
+# Subtest: composer options retire their callbacks on panel hide, owner replacement and unmount
+ok 30 - composer options retire their callbacks on panel hide, owner replacement and unmount
+  ---
+  duration_ms: 4.912
+  type: 'test'
+  ...
+# Subtest: real shared Input preserves accessible native checkbox markup, checked state and disabling
+ok 31 - real shared Input preserves accessible native checkbox markup, checked state and disabling
+  ---
+  duration_ms: 176.994708
+  type: 'test'
+  ...
+# Subtest: missing or malformed protocol fails closed in settings, runs and SSE snapshots without inference retries
+ok 32 - missing or malformed protocol fails closed in settings, runs and SSE snapshots without inference retries
+  ---
+  duration_ms: 0.818416
+  type: 'test'
+  ...
+# Subtest: chat_completions shows the exact protocol and derived endpoint before Send and transmits exact consent once
+ok 33 - chat_completions shows the exact protocol and derived endpoint before Send and transmits exact consent once
+  ---
+  duration_ms: 5.225208
+  type: 'test'
+  ...
+# Subtest: chat_completions lost acknowledgement, hiding and re-showing recover only the original run
+ok 34 - chat_completions lost acknowledgement, hiding and re-showing recover only the original run
+  ---
+  duration_ms: 0.743875
+  type: 'test'
+  ...
+# Subtest: responses shows the exact protocol and derived endpoint before Send and transmits exact consent once
+ok 35 - responses shows the exact protocol and derived endpoint before Send and transmits exact consent once
+  ---
+  duration_ms: 3.98225
+  type: 'test'
+  ...
+# Subtest: responses lost acknowledgement, hiding and re-showing recover only the original run
+ok 36 - responses lost acknowledgement, hiding and re-showing recover only the original run
+  ---
+  duration_ms: 0.499792
+  type: 'test'
+  ...
+# Subtest: consent binds full configuration and protocol-only revision change requires a fresh explicit confirmation
+ok 37 - consent binds full configuration and protocol-only revision change requires a fresh explicit confirmation
+  ---
+  duration_ms: 0.422
+  type: 'test'
+  ...
+# Subtest: wrong accepted protocol is not silently accepted, retried or substituted while reconciliation remains unresolved
+ok 38 - wrong accepted protocol is not silently accepted, retried or substituted while reconciliation remains unresolved
+  ---
+  duration_ms: 0.318833
+  type: 'test'
+  ...
+# Subtest: accepted Responses run stays immutable while settings change to CC; stale stream cannot retarget it
+ok 39 - accepted Responses run stays immutable while settings change to CC; stale stream cannot retarget it
+  ---
+  duration_ms: 0.458709
+  type: 'test'
+  ...
+# Subtest: inline chat keeps unsent draft across tabs, settings, collapse and reveal, with stale hidden callbacks inert
+ok 40 - inline chat keeps unsent draft across tabs, settings, collapse and reveal, with stale hidden callbacks inert
+  ---
+  duration_ms: 4.377583
+  type: 'test'
+  ...
+# Subtest: inline hidden POST acknowledgement preserves original response without attaching a hidden stream
+ok 41 - inline hidden POST acknowledgement preserves original response without attaching a hidden stream
+  ---
+  duration_ms: 0.48425
+  type: 'test'
+  ...
+# Subtest: actual App project guard Cancel retains unsent chat and current project without clearing any panel
+ok 42 - actual App project guard Cancel retains unsent chat and current project without clearing any panel
+  ---
+  duration_ms: 4.721291
+  type: 'test'
+  ...
+# Subtest: actual App project guard Confirm permits project-key isolation; no draft or merely running reply needs no prompt
+ok 43 - actual App project guard Confirm permits project-key isolation; no draft or merely running reply needs no prompt
+  ---
+  duration_ms: 6.004917
+  type: 'test'
+  ...
+# Subtest: actual App image draft guard Cancel preserves project and Confirm changes it without stopping accepted work
+ok 44 - actual App image draft guard Cancel preserves project and Confirm changes it without stopping accepted work
+  ---
+  duration_ms: 7.468625
+  type: 'test'
+  ...
+# Subtest: actual App dirty-panel guard retains source drafts on Cancel and clears dirty state only after Confirm
+ok 45 - actual App dirty-panel guard retains source drafts on Cancel and clears dirty state only after Confirm
+  ---
+  duration_ms: 3.645875
+  type: 'test'
+  ...
+# Subtest: actual App navigation rejects late discard confirmation after a newer project and mode switches ignore chat draft
+ok 46 - actual App navigation rejects late discard confirmation after a newer project and mode switches ignore chat draft
+  ---
+  duration_ms: 4.079709
+  type: 'test'
+  ...
+# Subtest: actual dock workspace keeps chat and globally scoped settings mounted through page and project changes
+ok 47 - actual dock workspace keeps chat and globally scoped settings mounted through page and project changes
+  ---
+  duration_ms: 1.435375
+  type: 'test'
+  ...
+# Subtest: actual nested dock page combines ancestor visibility, keeps children and marks hidden content inert
+ok 48 - actual nested dock page combines ancestor visibility, keeps children and marks hidden content inert
+  ---
+  duration_ms: 0.942584
+  type: 'test'
+  ...
+# Subtest: App right-dock tabs preserve existing layout, resize and Inspector subtree and ordinary selection never changes tabs
+ok 49 - App right-dock tabs preserve existing layout, resize and Inspector subtree and ordinary selection never changes tabs
+  ---
+  duration_ms: 1.692625
+  type: 'test'
+  ...
+# Subtest: durable DTO requires matching stable thread IDs, bounded pages and strict cursors
+ok 50 - durable DTO requires matching stable thread IDs, bounded pages and strict cursors
+  ---
+  duration_ms: 0.888291
+  type: 'test'
+  ...
+# Subtest: durable SSE DTO pins thread identity and never accepts a foreign-thread terminal run
+ok 51 - durable SSE DTO pins thread identity and never accepts a foreign-thread terminal run
+  ---
+  duration_ms: 0.080333
+  type: 'test'
+  ...
+# Subtest: request lookup and older history are authenticated read-only routes without epoch query or settings bodies
+ok 52 - request lookup and older history are authenticated read-only routes without epoch query or settings bodies
+  ---
+  duration_ms: 0.349458
+  type: 'test'
+  ...
+# Subtest: chat_completions lost acknowledgement is resolved after restart outside latest 16 without new inference or context expansion
+ok 53 - chat_completions lost acknowledgement is resolved after restart outside latest 16 without new inference or context expansion
+  ---
+  duration_ms: 0.6385
+  type: 'test'
+  ...
+# Subtest: responses lost acknowledgement is resolved after restart outside latest 16 without new inference or context expansion
+ok 54 - responses lost acknowledgement is resolved after restart outside latest 16 without new inference or context expansion
+  ---
+  duration_ms: 0.525916
+  type: 'test'
+  ...
+# Subtest: restart with a still-missing request retains receipt and draft until explicit risk confirmation
+ok 55 - restart with a still-missing request retains receipt and draft until explicit risk confirmation
+  ---
+  duration_ms: 0.470167
+  type: 'test'
+  ...
+# Subtest: lookup racing another restart remains blocked, keeps draft and uses a later explicit read only
+ok 56 - lookup racing another restart remains blocked, keeps draft and uses a later explicit read only
+  ---
+  duration_ms: 0.577584
+  type: 'test'
+  ...
+# Subtest: successful request lookup with newer revision rereads latest context instead of patching stale consent
+ok 57 - successful request lookup with newer revision rereads latest context instead of patching stale consent
+  ---
+  duration_ms: 0.220125
+  type: 'test'
+  ...
+# Subtest: failed lookup after renderer reopen preserves readable snapshot and pending identity for an honest user choice
+ok 58 - failed lookup after renderer reopen preserves readable snapshot and pending identity for an honest user choice
+  ---
+  duration_ms: 0.159917
+  type: 'test'
+  ...
+# Subtest: malformed or foreign request recovery cannot clear pending, overwrite draft or repeat POST
+ok 59 - malformed or foreign request recovery cannot clear pending, overwrite draft or repeat POST
+  ---
+  duration_ms: 1.393834
+  type: 'test'
+  ...
+# Subtest: late acknowledgement or read recovery never clears a newer typed draft
+ok 60 - late acknowledgement or read recovery never clears a newer typed draft
+  ---
+  duration_ms: 0.534042
+  type: 'test'
+  ...
+# Subtest: durable read, reconnect and backend epoch changes retain drafts and saved destination permission
+ok 61 - durable read, reconnect and backend epoch changes retain drafts and saved destination permission
+  ---
+  duration_ms: 0.307875
+  type: 'test'
+  ...
+# Subtest: storage limit preserves draft and saved permission without automatically retrying
+ok 62 - storage limit preserves draft and saved permission without automatically retrying
+  ---
+  duration_ms: 0.209625
+  type: 'test'
+  ...
+# Subtest: storage-unavailable acknowledgement is uncertain admission and read-reconciles without retry
+ok 63 - storage-unavailable acknowledgement is uncertain admission and read-reconciles without retry
+  ---
+  duration_ms: 0.358458
+  type: 'test'
+  ...
+# Subtest: history paging retains only one 16-run page and at most 32 back cursors without changing latest context or draft
+ok 64 - history paging retains only one 16-run page and at most 32 back cursors without changing latest context or draft
+  ---
+  duration_ms: 12.586875
+  type: 'test'
+  ...
+# Subtest: history paging and double clicks do not detach the live stream or overwrite its draft and output
+ok 65 - history paging and double clicks do not detach the live stream or overwrite its draft and output
+  ---
+  duration_ms: 0.601875
+  type: 'test'
+  ...
+# Subtest: late history after close, hide, reload or project disposal cannot repopulate an obsolete viewer
+ok 66 - late history after close, hide, reload or project disposal cannot repopulate an obsolete viewer
+  ---
+  duration_ms: 2.448
+  type: 'test'
+  ...
+# Subtest: foreign, overlapping, malformed or old-epoch history never changes current project content
+ok 67 - foreign, overlapping, malformed or old-epoch history never changes current project content
+  ---
+  duration_ms: 3.595417
+  type: 'test'
+  ...
+# Subtest: hidden history navigation and pending-reset callbacks cannot dispatch or clear receipts
+ok 68 - hidden history navigation and pending-reset callbacks cannot dispatch or clear receipts
+  ---
+  duration_ms: 0.444833
+  type: 'test'
+  ...
+# Subtest: actual durable panel prominently discloses plaintext local persistence and shows interrupted history without continuing
+ok 69 - actual durable panel prominently discloses plaintext local persistence and shows interrupted history without continuing
+  ---
+  duration_ms: 5.516541
+  type: 'test'
+  ...
+# Subtest: actual archive controls preserve composer and live history, and stale hidden controls are inert
+ok 70 - actual archive controls preserve composer and live history, and stale hidden controls are inert
+  ---
+  duration_ms: 7.9195
+  type: 'test'
+  ...
+# Subtest: actual pending release explains duplicate cost and requires explicit confirmation without sending
+ok 71 - actual pending release explains duplicate cost and requires explicit confirmation without sending
+  ---
+  duration_ms: 6.352917
+  type: 'test'
+  ...
+# Subtest: lookup cannot hide a running request outside latest history and accidentally unlock another send
+ok 72 - lookup cannot hide a running request outside latest history and accidentally unlock another send
+  ---
+  duration_ms: 0.249291
+  type: 'test'
+  ...
+# Subtest: actual project switch during an older-page read discards the old result and makes its handlers inert
+ok 73 - actual project switch during an older-page read discards the old result and makes its handlers inert
+  ---
+  duration_ms: 4.9395
+  type: 'test'
+  ...
+# Subtest: four-language changes relabel the mounted Agent without clearing exact typed text, consent, or issuing requests
+ok 74 - four-language changes relabel the mounted Agent without clearing exact typed text, consent, or issuing requests
+  ---
+  duration_ms: 5.907083
+  type: 'test'
+  ...
+# Subtest: send-triggered authorization summarizes three boundaries and confirms the original message exactly once
+ok 75 - send-triggered authorization summarizes three boundaries and confirms the original message exactly once
+  ---
+  duration_ms: 4.718792
+  type: 'test'
+  ...
+# Subtest: an explicit permission review saves permission without claiming to send a message
+ok 76 - an explicit permission review saves permission without claiming to send a message
+  ---
+  duration_ms: 3.884167
+  type: 'test'
+  ...
+# Subtest: a changed draft before confirmation cannot authorize or substitute a different send
+ok 77 - a changed draft before confirmation cannot authorize or substitute a different send
+  ---
+  duration_ms: 4.094583
+  type: 'test'
+  ...
+# Subtest: approval completion cannot send after draft, visibility, scope, project or destination changes
+ok 78 - approval completion cannot send after draft, visibility, scope, project or destination changes
+  ---
+  duration_ms: 30.759792
+  type: 'test'
+  ...
+# Subtest: unresolved proposal discovery and native recreation are GET-only without browser storage or fresh keys
+ok 79 - unresolved proposal discovery and native recreation are GET-only without browser storage or fresh keys
+  ---
+  duration_ms: 2.075875
+  type: 'test'
+  ...
+# Subtest: client routes are authenticated GET reads and explicit epoch/digest actions only
+ok 80 - client routes are authenticated GET reads and explicit epoch/digest actions only
+  ---
+  duration_ms: 13.100167
+  type: 'test'
+  ...
+# Subtest: persisted diff projection rejects changed targets, invalid fields and optimistic applied claims
+ok 81 - persisted diff projection rejects changed targets, invalid fields and optimistic applied claims
+  ---
+  duration_ms: 0.732417
+  type: 'test'
+  ...
+# Subtest: only explicit approval of completed immutable pending proposal posts once and confirmed outcome refreshes once
+ok 82 - only explicit approval of completed immutable pending proposal posts once and confirmed outcome refreshes once
+  ---
+  duration_ms: 0.503208
+  type: 'test'
+  ...
+# Subtest: running, stopped, failed, interrupted, rejected, stale and hidden proposals never approve
+ok 83 - running, stopped, failed, interrupted, rejected, stale and hidden proposals never approve
+  ---
+  duration_ms: 0.734084
+  type: 'test'
+  ...
+# Subtest: lost approval acknowledgement is unknown, never rejection or optimistic apply, and only reads for recovery
+ok 84 - lost approval acknowledgement is unknown, never rejection or optimistic apply, and only reads for recovery
+  ---
+  duration_ms: 0.340208
+  type: 'test'
+  ...
+# Subtest: a late confirmed application disappearing from unresolved page keeps exact identity and confirms by detail GET
+ok 85 - a late confirmed application disappearing from unresolved page keeps exact identity and confirms by detail GET
+  ---
+  duration_ms: 0.262833
+  type: 'test'
+  ...
+# Subtest: explicit recover uses server-persisted approval identity and fresh epoch after restart; duplicate action cannot make a new request
+ok 86 - explicit recover uses server-persisted approval identity and fresh epoch after restart; duplicate action cannot make a new request
+  ---
+  duration_ms: 0.213291
+  type: 'test'
+  ...
+# Subtest: two-window rejection and revision conflict reconcile read-only; old epoch and tampered diff never show applied
+ok 87 - two-window rejection and revision conflict reconcile read-only; old epoch and tampered diff never show applied
+  ---
+  duration_ms: 0.608583
+  type: 'test'
+  ...
+# Subtest: project disposal fences late approval and reads; hidden accepted action preserves immutable diff without refreshing a new project
+ok 88 - project disposal fences late approval and reads; hidden accepted action preserves immutable diff without refreshing a new project
+  ---
+  duration_ms: 0.318083
+  type: 'test'
+  ...
+# Subtest: bounded independent paging and view changes never authorize or mutate a proposal
+ok 89 - bounded independent paging and view changes never authorize or mutate a proposal
+  ---
+  duration_ms: 0.29975
+  type: 'test'
+  ...
+# Subtest: selected edit permission survives object revisions while each send keeps its exact current target
+ok 90 - selected edit permission survives object revisions while each send keeps its exact current target
+  ---
+  duration_ms: 3.036875
+  type: 'test'
+  ...
+# Subtest: invalid selected title and oversized prompt disable send; empty prompt is a valid saved target
+ok 91 - invalid selected title and oversized prompt disable send; empty prompt is a valid saved target
+  ---
+  duration_ms: 0.374791
+  type: 'test'
+  ...
+# Subtest: edit run provenance is pinned and excludes edit rounds from typed-mode consent
+ok 92 - edit run provenance is pinned and excludes edit rounds from typed-mode consent
+  ---
+  duration_ms: 0.694834
+  type: 'test'
+  ...
+# Subtest: actual right-dock review renders full immutable before/after and honest proposed status despite hostile model text
+ok 93 - actual right-dock review renders full immutable before/after and honest proposed status despite hostile model text
+  ---
+  duration_ms: 25.177125
+  type: 'test'
+  ...
+# Subtest: actual review Stop/running/completion gates, hidden callbacks, all/history and original target remain separate
+ok 94 - actual review Stop/running/completion gates, hidden callbacks, all/history and original target remain separate
+  ---
+  duration_ms: 4.006208
+  type: 'test'
+  ...
+# Subtest: actual review response loss shows no applied success and exposes explicit saved-intent recovery only after GET finds approval
+ok 95 - actual review response loss shows no applied success and exposes explicit saved-intent recovery only after GET finds approval
+  ---
+  duration_ms: 4.053041
+  type: 'test'
+  ...
+# Subtest: actual review project lifetime rejects old callback, unresolved GET and late action after navigation
+ok 96 - actual review project lifetime rejects old callback, unresolved GET and late action after navigation
+  ---
+  duration_ms: 3.153042
+  type: 'test'
+  ...
+# Subtest: actual composer previews saved title/prompt, requires distinct edit mode and invalidates stale selected-shot callbacks
+ok 97 - actual composer previews saved title/prompt, requires distinct edit mode and invalidates stale selected-shot callbacks
+  ---
+  duration_ms: 11.636125
+  type: 'test'
+  ...
+# Subtest: App confirmed-apply refresh is same-project and cannot mark an Inspector draft saved or remount it
+ok 98 - App confirmed-apply refresh is same-project and cannot mark an Inspector draft saved or remount it
+  ---
+  duration_ms: 0.84475
+  type: 'test'
+  ...
+# Subtest: a stale-epoch rejection only rereads and preserves uncertainty until terminal evidence or explicit same-intent retry
+ok 99 - a stale-epoch rejection only rereads and preserves uncertainty until terminal evidence or explicit same-intent retry
+  ---
+  duration_ms: 0.823875
+  type: 'test'
+  ...
+# Subtest: actual missing edit target never displays consent as checked and scope changes revoke prior consent
+ok 100 - actual missing edit target never displays consent as checked and scope changes revoke prior consent
+  ---
+  duration_ms: 9.272917
+  type: 'test'
+  ...
+# Subtest: proposal state combinations cannot fabricate nonapplication or application without the exact durable evidence
+ok 101 - proposal state combinations cannot fabricate nonapplication or application without the exact durable evidence
+  ---
+  duration_ms: 0.493125
+  type: 'test'
+  ...
+# Subtest: explicit same-proposal approval retry needs fresh detail proof, preserves identity and permits only one local dispatch
+ok 102 - explicit same-proposal approval retry needs fresh detail proof, preserves identity and permits only one local dispatch
+  ---
+  duration_ms: 0.292083
+  type: 'test'
+  ...
+# Subtest: same-intent retry proof expires on list reload, hide, epoch change, rejection and project disposal
+ok 103 - same-intent retry proof expires on list reload, hide, epoch change, rejection and project disposal
+  ---
+  duration_ms: 0.439416
+  type: 'test'
+  ...
+# Subtest: actual unknown pending proposal offers clearly labelled explicit same-intent retry only after detail GET
+ok 104 - actual unknown pending proposal offers clearly labelled explicit same-intent retry only after detail GET
+  ---
+  duration_ms: 3.0085
+  type: 'test'
+  ...
+# Subtest: reordered list/detail responses and stale pending snapshots cannot downgrade approved, unknown or applied state
+ok 105 - reordered list/detail responses and stale pending snapshots cannot downgrade approved, unknown or applied state
+  ---
+  duration_ms: 0.369041
+  type: 'test'
+  ...
+# Subtest: approve and reject cannot race locally; a confirmed rejection cannot later become applied or retryable
+ok 106 - approve and reject cannot race locally; a confirmed rejection cannot later become applied or retryable
+  ---
+  duration_ms: 0.158292
+  type: 'test'
+  ...
+# Subtest: all-records read can confirm a previously uncertain application without another mutation POST
+ok 107 - all-records read can confirm a previously uncertain application without another mutation POST
+  ---
+  duration_ms: 0.154792
+  type: 'test'
+  ...
+# Subtest: proposal JSON transport enforces advertised and streamed byte bounds, cancels overflow and never calls unbounded json()
+ok 108 - proposal JSON transport enforces advertised and streamed byte bounds, cancels overflow and never calls unbounded json()
+  ---
+  duration_ms: 1.801667
+  type: 'test'
+  ...
+# Subtest: proposal JSON transport rejects malformed UTF-8 and incomplete JSON, accepts split multibyte text and releases readers
+ok 109 - proposal JSON transport rejects malformed UTF-8 and incomplete JSON, accepts split multibyte text and releases readers
+  ---
+  duration_ms: 0.56425
+  type: 'test'
+  ...
+# Subtest: proposal JSON transport cancels a hanging read on explicit abort and client timeout, cleans up listeners and never retries
+ok 110 - proposal JSON transport cancels a hanging read on explicit abort and client timeout, cleans up listeners and never retries
+  ---
+  duration_ms: 23.001667
+  type: 'test'
+  ...
+# Subtest: complete selected text starts expanded, requires explicit consent to compact, and only accepted Send auto-compacts it
+ok 111 - complete selected text starts expanded, requires explicit consent to compact, and only accepted Send auto-compacts it
+  ---
+  duration_ms: 9.0715
+  type: 'test'
+  ...
+# Subtest: failed or unconfirmed Send never auto-compacts the initial selected-text disclosure
+ok 112 - failed or unconfirmed Send never auto-compacts the initial selected-text disclosure
+  ---
+  duration_ms: 13.88875
+  type: 'test'
+  ...
+# Subtest: compact disclosure survives hide with draft intact and reopens on saved target, revision, scope or settings change
+ok 113 - compact disclosure survives hide with draft intact and reopens on saved target, revision, scope or settings change
+  ---
+  duration_ms: 12.483875
+  type: 'test'
+  ...
+# Subtest: late accepted Send cannot compact a newer selected shot or a new project disclosure
+ok 114 - late accepted Send cannot compact a newer selected shot or a new project disclosure
+  ---
+  duration_ms: 13.704208
+  type: 'test'
+  ...
+# Subtest: proposal review scrolls inside the dock while the full destination and input stay together outside that scroll region
+ok 115 - proposal review scrolls inside the dock while the full destination and input stay together outside that scroll region
+  ---
+  duration_ms: 7.895958
+  type: 'test'
+  ...
+# Subtest: first selected-shot authorization sends the original request and only then compacts the reviewed target
+ok 116 - first selected-shot authorization sends the original request and only then compacts the reviewed target
+  ---
+  duration_ms: 6.660167
+  type: 'test'
+  ...
+# Subtest: an authorization in flight never sends for a changed selected shot or revision
+ok 117 - an authorization in flight never sends for a changed selected shot or revision
+  ---
+  duration_ms: 19.461958
+  type: 'test'
+  ...
+# Subtest: the clip inspector leads with the fields people edit most and keeps source and replacement after them
+ok 118 - the clip inspector leads with the fields people edit most and keeps source and replacement after them
+  ---
+  duration_ms: 2.029417
+  type: 'test'
+  ...
+# Subtest: Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog
+ok 119 - Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog
+  ---
+  duration_ms: 0.57475
+  type: 'test'
+  ...
+# Subtest: selecting a shot, node or clip closes reference overlays after the existing navigation fence
+ok 120 - selecting a shot, node or clip closes reference overlays after the existing navigation fence
+  ---
+  duration_ms: 0.51075
+  type: 'test'
+  ...
+# Subtest: the generate button explains why it is idle while the title or prompt text still has to be saved
+ok 121 - the generate button explains why it is idle while the title or prompt text still has to be saved
+  ---
+  duration_ms: 0.308875
+  type: 'test'
+  ...
+# Subtest: an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard
+ok 122 - an empty timeline is flagged before Check, and the empty preview offers building it from the storyboard
+  ---
+  duration_ms: 2.327334
+  type: 'test'
+  ...
+# Subtest: localized layout labels retain the original semantic copy
+ok 123 - localized layout labels retain the original semantic copy
+  ---
+  duration_ms: 0.342792
+  type: 'test'
+  ...
+1..123
+# tests 123
+# suites 0
+# pass 123
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 718.021666

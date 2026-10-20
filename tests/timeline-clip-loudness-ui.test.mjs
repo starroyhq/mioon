@@ -55,8 +55,8 @@ before(async () => {
     const result=await import('data:text/javascript;base64,'+Buffer.from(outputFiles[0].text).toString('base64'));process.stdout.write(JSON.stringify(result.html));process.exit(0);`;
   rendered = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }));
 });
-test('actual SSR card is collapsed, opt-in, saved-only and has no target/gain suggestion/apply controls', () => {
-  assert.match(rendered.idle, /<details[^>]*data-testid="timeline-clip-loudness"/); assert.doesNotMatch(rendered.idle, /<details[^>]* open|<input|role="dialog"/);
+test('actual SSR card is discoverable, opt-in, saved-only and has no target/gain suggestion/apply controls', () => {
+  assert.match(rendered.idle, /<section[^>]*data-testid="timeline-clip-loudness"/); assert.doesNotMatch(rendered.idle, /<details[^>]* open|<input|role="dialog"/);
   assert.match(rendered.idle, /最长 60 秒/); assert.match(rendered.idle, /不会自动裁短或替换范围/);
   assert.match(rendered.idle, /不是整片混音或已导出文件/); assert.match(rendered.idle, /不修改音量/); assert.match(rendered.idle, /未实现逐段响度统一/);
   assert.match(rendered.idle, /报告仅临时显示/); assert.match(rendered.idle, /估算真峰值不保证混音或 AAC 编码后的峰值/);
@@ -90,7 +90,7 @@ test('actual component Analyze and Cancel callbacks retain captured selection/ve
   oldAnalyze(); assert.equal(f.calls.length, 1); byTest(render(), 'clip-loudness-analyze').props.onClick(); oldCancel(); assert.equal(f.calls[1].options.signal.aborted, false);
   f.reads[0].resolve(report()); await new Promise(resolve => setImmediate(resolve)); assert.equal(f.state().report, null);
   f.reads[1].resolve(report()); await new Promise(resolve => setImmediate(resolve)); assert.equal(f.state().phase, 'ready');
-  render().props.onToggle({ currentTarget: { open: false } }); assert.equal(f.state().report, null);
+  assert.equal(f.state().phase, 'ready'); assert.ok(f.state().report, 'The visible measurement card retains only its current owner report');
 });
 test('four locale component labels/statuses and placeholders are present, zh-Hant is region-neutral', () => {
   for (const locale of ['zh-Hans','zh-Hant','en','ja']) {

@@ -9,7 +9,7 @@ import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
-import {currentMarkerChain,currentOrdinary48Delta} from './helpers/current-schema-delta.ts';
+import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta} from './helpers/current-schema-delta.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
@@ -28,6 +28,8 @@ const compatibility=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-c3
 // legacy key to its current `.ts` source and pins deterministic esbuild
 // type-erased hashes so later edits are still detected.
 const migrationMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-ts-migration-map.json',import.meta.url),'utf8')).mapping;
+const schema50RuntimeMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-schema50-runtime-map.json',import.meta.url),'utf8')).mapping;
+assert.deepEqual(Object.keys(schema50RuntimeMap).sort(),['packages/business/src/workspace-restore-policy.mjs','packages/contracts/src/index.mjs','packages/contracts/src/operation-effects.mjs','packages/contracts/src/workspace-restore.mjs'].sort());
 const currentPath=file=>migrationMap[file]?.currentPath??file;
 // Deterministic drift detection: every mapped legacy key pins the current
 // whole-body hash in all environments, and additionally pins an esbuild
@@ -40,10 +42,13 @@ try{Object.assign(transform,await import('esbuild'));}catch{/* native esbuild bi
 function eraseSource(source){if(!transform.transformSync)return null;try{return transform.transformSync(source,{loader:'ts',format:'esm',target:'es2022'}).code;}catch{return null;}}
 function assertPinnedCurrent(file,read=null){
  const mapping=migrationMap[file];if(!mapping)return;
+ const reviewed=schema50RuntimeMap[file];
+ if(reviewed){assert.equal(reviewed.currentPath,mapping.currentPath);assert.equal(reviewed.previousCurrentSha256,mapping.currentSha256);assert.equal(reviewed.previousTypeErasedSha256,mapping.typeErasedSha256);}
+ const pin=reviewed??mapping;
  const text=(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))).toString();
- assert.equal(sha(text),mapping.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
+ assert.equal(sha(text),pin.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
  const erased=eraseSource(text);
- if(erased!==null)assert.equal(sha(erased),mapping.typeErasedSha256,`${file}: deterministic type-erased current body`);
+ if(erased!==null)assert.equal(sha(erased),pin.typeErasedSha256,`${file}: deterministic type-erased current body`);
 }
 const plain=value=>JSON.parse(JSON.stringify(value));
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -74,6 +79,8 @@ function reviewedCurrentObjects(actual){
  take(object=>/annotation/.test(object.name)||/annotation/.test(object.tbl_name),currentOrdinary48Delta.annotationCatalog,'annotation');
  const lifecycleNames=new Set(currentOrdinary48Delta.lifecycleObjects.map(object=>object.name));
  take(object=>lifecycleNames.has(object.name),currentOrdinary48Delta.lifecycleCatalog,'lifecycle');
+ const taskNames=new Set(currentOrdinary50Delta.objects.map(object=>object.name));take(object=>taskNames.has(object.name),currentOrdinary50Delta.catalog,'task-disposition50');
+ assert.deepEqual(actual.filter(object=>taskNames.has(object.name)),currentOrdinary50Delta.objects);
  const unreviewed=actual.filter(object=>!expected.some(value=>value.name===object.name)&&!additions.some(value=>value.name===object.name));
  assert.deepEqual(unreviewed,[],'only reviewed current-schema additions');
  return [...expected,...additions].sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
@@ -251,6 +258,10 @@ test('frozen c3a0a57 schema dependency cycle preserves exact original source has
   assertPinnedCurrent(file);
  }
 });
+test('reviewed schema50 current-runtime pins reject every additional source byte while preserving old pins',()=>{
+ for(const file of Object.keys(schema50RuntimeMap)){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
+});
+
 test('frozen validator loader rejects changed historical source before import',async()=>{
  const changed=plain(baseline);changed.sources['packages/business/src/db.mjs'].text+='\n// deliberate drift';
  await assert.rejects(loadFrozenValidators(changed),/Baseline dependency changed: packages\/business\/src\/db\.mjs/u);
@@ -303,7 +314,7 @@ test('fixed c3a0a57 shot, move and inspection catalogs stay exact and reject eve
 
 test('fixed real v1/v2 records survive startup, read, pagination and recovery with every raw byte and sequence intact',async t=>{
  const f=legacyFixture(t),beforeRows=allRows(f.store.db),beforeSql=sqlState(f.store.db);
- assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.deepEqual(sequences(f.store.db),baseline.sequence);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,48);
+ assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.deepEqual(sequences(f.store.db),baseline.sequence);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,50);
  for(const p of baseline.proposals){const row=f.store.db.prepare('SELECT definition,approval FROM agent_edit_proposals WHERE id=?').get(p.id);assert.ok(row.definition.startsWith(' \n'));assert.ok(row.approval.startsWith(' \n'));assert.equal(JSON.parse(row.definition).version,p.version);}
  f.reopen();let calls=0;const services=createServices(f.store,new Map()),edits=createAgentEditService({store:f.store,services:{...services,updateShotInProject(){calls++;throw Error('legacy dispatch forbidden');},moveTimelineClipInProject(){calls++;throw Error('legacy dispatch forbidden');},setTimelineClipGainInProject(){calls++;throw Error('gain dispatch forbidden');}}});
  assert.equal(edits.reconcile().reconciled,0);let cursor,ids=[];do{const page=edits.list({projectId:baseline.projectId,view:'all',limit:1,...(cursor?{cursor}:{})});ids.push(...page.proposals.map(p=>p.id));cursor=page.nextCursor;}while(cursor);
@@ -317,7 +328,7 @@ test('v3 uses existing SQL only and the frozen old validator rejects or holds ne
  const services={updateShotInProject(){calls++;throw Error('no dispatch');},moveTimelineClipInProject(){calls++;throw Error('no dispatch');},setTimelineClipGainInProject(){calls++;throw Error('no dispatch');}};
  const current=allRows(f.store.db);assert.throws(()=>old.createAgentEditService({store:f.store,services}),code('RESTORE_STORE_UNVERIFIED'));assert.deepEqual(allRows(f.store.db),current);
  const historical=historicalStore(t,f.store),oldEdits=old.createAgentEditService({store:historical,services}),before=domain(historical.db),legacy=legacyRows(historical.db),schema=sqlState(historical.db);
- assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.equal(classifyCurrentWorkspaceSchema(f.store.db).profile,'ordinary');assert.equal(markers(f.store.db).at(-1).version,48);assert.deepEqual(schema.objects,baseline.objects);
+ assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.equal(classifyCurrentWorkspaceSchema(f.store.db).profile,'ordinary');assert.equal(markers(f.store.db).at(-1).version,50);assert.deepEqual(schema.objects,baseline.objects);
  assert.throws(()=>old.parseChatConsent({context:'selected_timeline_clip_gain',destination:'http://127.0.0.1:11434/v1',protocol:'chat_completions',model:'synthetic',projectId:f.project.id,gain:0.4}),code('AGENT_CHAT_VALIDATION'));
  for(const {proposal:p}of proposals){assert.throws(()=>oldEdits.get({projectId:f.project.id,proposalId:p.id}),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));await assert.rejects(oldEdits.approve(f.request(p)),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));await assert.rejects(oldEdits.recover(f.request(p)),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));}
  assert.equal(calls,0);assert.deepEqual(domain(historical.db),before);assert.deepEqual(sqlState(historical.db),schema);
@@ -340,18 +351,18 @@ test('frozen old definition version gate rejects v3 even when a valid old move m
  assert.equal(calls,0);assert.deepEqual(allRows(db),before);assert.deepEqual(objects(db),baseline.objects);
 });
 
-test('actual offline backup CLI retains mixed legacy and v3 gain bytes; restored-local-v13 schema49 holds inherited authority while fresh manual gain stays local',{timeout:120000},async t=>{
+test('actual offline backup CLI retains mixed legacy and v3 gain bytes; restored-local-v14 schema51 holds inherited authority while fresh manual gain stays local',{timeout:120000},async t=>{
  const {f,proposals}=await capturedGainStates(t),source=f.root,before=allRows(f.store.db),beforeSql=sqlState(f.store.db),legacy=legacyRows(f.store.db);
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-gain-backup-')),backup=path.join(base,'backup'),destination=path.join(base,'branch');t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  f.store.close();const sourceTree=tree(source);
- const created=await backupCli(t,['create','--source',source,'--destination',backup]);assert.equal(created.databaseSchemaVersion,48);const backupTree=tree(backup);
+ const created=await backupCli(t,['create','--source',source,'--destination',backup]);assert.equal(created.databaseSchemaVersion,50);const backupTree=tree(backup);
  const verified=await backupCli(t,['verify','--directory',backup]);assert.deepEqual(verified,created);
- const restored=await backupCli(t,['restore','--directory',backup,'--destination',destination]);assert.equal(restored.databaseSchemaVersion,49);assert.equal(restored.publication,'confirmed');
+ const restored=await backupCli(t,['restore','--directory',backup,'--destination',destination]);assert.equal(restored.databaseSchemaVersion,51);assert.equal(restored.publication,'confirmed');
  assert.deepEqual(tree(source),sourceTree);assert.deepEqual(tree(backup),backupTree);
  let store=openStore(destination);t.after(()=>store.close());let services=createServices(store,new Map());
- assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:49,profile:'restored-local-v13'});
- const after=allRows(store.db);for(const [table,rows]of Object.entries(before)){if(table==='schema_version'){assert.deepEqual(after[table].filter(row=>row.version<=48),rows);continue;}if(table==='edit_tasks'){assert.deepEqual(after[table].map(row=>{const result={...row};delete result.executionEpoch;return result;}),rows);continue;}assert.deepEqual(after[table],rows,table);}
- assert.deepEqual(sequences(store.db),beforeSql.sequence);assert.deepEqual(legacyRows(store.db),legacy);assert.equal(markers(store.db).length,35);
+ assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:51,profile:'restored-local-v14'});
+ const after=allRows(store.db);for(const [table,rows]of Object.entries(before)){if(table==='schema_version'){assert.deepEqual(after[table].filter(row=>row.version<=50),rows);continue;}if(table==='edit_tasks'){assert.deepEqual(after[table].map(row=>{const result={...row};delete result.executionEpoch;return result;}),rows);continue;}assert.deepEqual(after[table],rows,table);}
+ assert.deepEqual(sequences(store.db),beforeSql.sequence);assert.deepEqual(legacyRows(store.db),legacy);assert.equal(markers(store.db).length,36);
  // Existing SQL is unchanged except the two documented restoration edit-task
  // additions and new restore-owned objects; all Agent SQL remains exact.
  for(const object of beforeSql.objects.filter(value=>value.tbl_name.startsWith('agent_')))assert.deepEqual(objects(store.db).find(value=>value.name===object.name),object);

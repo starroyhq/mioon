@@ -1,0 +1,226 @@
+TAP version 13
+# Subtest: causal regression: actual refresh quarantines wrong-project data before reconciling pending operations
+ok 1 - causal regression: actual refresh quarantines wrong-project data before reconciling pending operations
+  ---
+  duration_ms: 22.988708
+  type: 'test'
+  ...
+# Subtest: causal regression: actual refresh cannot publish a response after renderer unmount
+ok 2 - causal regression: actual refresh cannot publish a response after renderer unmount
+  ---
+  duration_ms: 5.089
+  type: 'test'
+  ...
+# Subtest: actual selection keeps home visible after preferences resolve until validated project data settles
+ok 3 - actual selection keeps home visible after preferences resolve until validated project data settles
+  ---
+  duration_ms: 4.8915
+  type: 'test'
+  ...
+# Subtest: actual refresh rejects wrong-project responses before reconciliation or publishing data
+ok 4 - actual refresh rejects wrong-project responses before reconciliation or publishing data
+  ---
+  duration_ms: 2.5745
+  type: 'test'
+  ...
+# Subtest: ordinary refresh cannot read or publish before a successful project-open ticket exists
+ok 5 - ordinary refresh cannot read or publish before a successful project-open ticket exists
+  ---
+  duration_ms: 3.209167
+  type: 'test'
+  ...
+# Subtest: same-project data without an accepted opening ticket must take the real load path
+ok 6 - same-project data without an accepted opening ticket must take the real load path
+  ---
+  duration_ms: 2.624333
+  type: 'test'
+  ...
+# Subtest: actual selection preserves UNAUTHORIZED routing from project load and preference fallback
+ok 7 - actual selection preserves UNAUTHORIZED routing from project load and preference fallback
+  ---
+  duration_ms: 4.541959
+  type: 'test'
+  ...
+# Subtest: actual selection preserves WORKSPACE_ORIGIN_UNVERIFIED routing from project load and preference fallback
+ok 8 - actual selection preserves WORKSPACE_ORIGIN_UNVERIFIED routing from project load and preference fallback
+  ---
+  duration_ms: 4.142875
+  type: 'test'
+  ...
+# Subtest: actual selection preserves RESTORE_WORKSPACE_ORIGIN_MISMATCH routing from project load and preference fallback
+ok 9 - actual selection preserves RESTORE_WORKSPACE_ORIGIN_MISMATCH routing from project load and preference fallback
+  ---
+  duration_ms: 4.809834
+  type: 'test'
+  ...
+# Subtest: actual selection preserves LAST_PROJECT_SCOPE_MISMATCH routing from project load and preference fallback
+ok 10 - actual selection preserves LAST_PROJECT_SCOPE_MISMATCH routing from project load and preference fallback
+  ---
+  duration_ms: 4.076208
+  type: 'test'
+  ...
+# Subtest: actual selection preserves LAST_PROJECT_STALE_INSTANCE routing from project load and preference fallback
+ok 11 - actual selection preserves LAST_PROJECT_STALE_INSTANCE routing from project load and preference fallback
+  ---
+  duration_ms: 4.029167
+  type: 'test'
+  ...
+# Subtest: slow A and late A failure cannot overwrite a faster B selection
+ok 12 - slow A and late A failure cannot overwrite a faster B selection
+  ---
+  duration_ms: 5.401083
+  type: 'test'
+  ...
+# Subtest: same-ID reopen is a new epoch and the first response cannot publish its ticket
+ok 13 - same-ID reopen is a new epoch and the first response cannot publish its ticket
+  ---
+  duration_ms: 2.239291
+  type: 'test'
+  ...
+# Subtest: unmount rejects late successful and failed project loads without publishing or reconciling
+ok 14 - unmount rejects late successful and failed project loads without publishing or reconciling
+  ---
+  duration_ms: 4.75625
+  type: 'test'
+  ...
+# Subtest: workspace replacement prevents a delayed response from reconciling or exposing the workbench
+ok 15 - workspace replacement prevents a delayed response from reconciling or exposing the workbench
+  ---
+  duration_ms: 4.958292
+  type: 'test'
+  ...
+# Subtest: restored project origin mismatch blocks workspace identity while malformed restore data stays a project error
+ok 16 - restored project origin mismatch blocks workspace identity while malformed restore data stays a project error
+  ---
+  duration_ms: 5.085084
+  type: 'test'
+  ...
+# Subtest: settings cancellation and newer input during confirmation leave the same home and project
+ok 17 - settings cancellation and newer input during confirmation leave the same home and project
+  ---
+  duration_ms: 4.5295
+  type: 'test'
+  ...
+# Subtest: busy or unresolved settings block open, create, and leaving settings without confirmation or RPC
+ok 18 - busy or unresolved settings block open, create, and leaving settings without confirmation or RPC
+  ---
+  duration_ms: 4.028084
+  type: 'test'
+  ...
+# Subtest: new settings input during the ordinary project guard invalidates the departure ticket
+ok 19 - new settings input during the ordinary project guard invalidates the departure ticket
+  ---
+  duration_ms: 2.6155
+  type: 'test'
+  ...
+# Subtest: late create completion cannot steal newer navigation and never repeats the create request
+ok 20 - late create completion cannot steal newer navigation and never repeats the create request
+  ---
+  duration_ms: 2.562459
+  type: 'test'
+  ...
+# Subtest: create acknowledgements and list responses cannot publish after unmount or a new renderer lifetime
+ok 21 - create acknowledgements and list responses cannot publish after unmount or a new renderer lifetime
+  ---
+  duration_ms: 8.806292
+  type: 'test'
+  ...
+# Subtest: create with failed list read keeps uncertainty visible and does not retry mutation automatically
+ok 22 - create with failed list read keeps uncertainty visible and does not retry mutation automatically
+  ---
+  duration_ms: 2.685958
+  type: 'test'
+  ...
+# Subtest: create holds its synchronous latch through the post-acknowledgement project-list read
+ok 23 - create holds its synchronous latch through the post-acknowledgement project-list read
+  ---
+  duration_ms: 2.071333
+  type: 'test'
+  ...
+# Subtest: actual empty startup chooses home while explicit startup succeeds without rewriting the locator
+ok 24 - actual empty startup chooses home while explicit startup succeeds without rewriting the locator
+  ---
+  duration_ms: 5.252917
+  type: 'test'
+  ...
+# Subtest: native startup opens only the host-assigned UUID, regardless of URL, remembered target or first project
+ok 25 - native startup opens only the host-assigned UUID, regardless of URL, remembered target or first project
+  ---
+  duration_ms: 2.154375
+  type: 'test'
+  ...
+# Subtest: native assigned-project failure stays on that UUID and never falls through to another project
+ok 26 - native assigned-project failure stays on that UUID and never falls through to another project
+  ---
+  duration_ms: 1.89375
+  type: 'test'
+  ...
+# Subtest: native invalid assignment cannot borrow a valid Web fallback
+ok 27 - native invalid assignment cannot borrow a valid Web fallback
+  ---
+  duration_ms: 2.0785
+  type: 'test'
+  ...
+# Subtest: late boot discovery cannot select over a newer project or publish after unmount
+ok 28 - late boot discovery cannot select over a newer project or publish after unmount
+  ---
+  duration_ms: 4.2905
+  type: 'test'
+  ...
+# Subtest: actual App renders standalone home, routes settings to the retained center, and exposes workbench only after success
+ok 29 - actual App renders standalone home, routes settings to the retained center, and exposes workbench only after success
+  ---
+  duration_ms: 313.595125
+  type: 'test'
+  ...
+# Subtest: actual auth and restored-home branches retain their existing protections
+ok 30 - actual auth and restored-home branches retain their existing protections
+  ---
+  duration_ms: 24.875625
+  type: 'test'
+  ...
+# Subtest: actual App shares authenticated settled project readiness between workbench display and geometry observation
+ok 31 - actual App shares authenticated settled project readiness between workbench display and geometry observation
+  ---
+  duration_ms: 93.921125
+  type: 'test'
+  ...
+# Subtest: native pending/error render never mounts launcher home or settings in the editor owner
+ok 32 - native pending/error render never mounts launcher home or settings in the editor owner
+  ---
+  duration_ms: 5.027084
+  type: 'test'
+  ...
+# Subtest: native ready status has no local locator writer while Web selection still remembers
+ok 33 - native ready status has no local locator writer while Web selection still remembers
+  ---
+  duration_ms: 28.611584
+  type: 'test'
+  ...
+# Subtest: native alternate project delegates before any editor draft, request or URL mutation
+ok 34 - native alternate project delegates before any editor draft, request or URL mutation
+  ---
+  duration_ms: 4.632708
+  type: 'test'
+  ...
+# Subtest: returning to home uses exact navigation guards, invalidates old project reads and leaves recency intact
+ok 35 - returning to home uses exact navigation guards, invalidates old project reads and leaves recency intact
+  ---
+  duration_ms: 6.054959
+  type: 'test'
+  ...
+# Subtest: home navigation cannot discard over a newer scope or a refused draft confirmation
+ok 36 - home navigation cannot discard over a newer scope or a refused draft confirmation
+  ---
+  duration_ms: 1.762583
+  type: 'test'
+  ...
+1..36
+# tests 36
+# suites 0
+# pass 36
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 921.645292

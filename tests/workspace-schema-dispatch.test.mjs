@@ -1,5 +1,5 @@
 import test from 'node:test';
-import {currentOrdinary48Delta} from './helpers/current-schema-delta.ts';
+import {currentOrdinary48Delta,currentOrdinary50Delta,currentMarkerChain} from './helpers/current-schema-delta.ts';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
@@ -69,6 +69,9 @@ function ordinaryDatabase(t,profile='ordinary-24'){
 }
 function preservedCurrent(db,before) {
  const after=snapshot(db),expected=structuredClone(before),lutTables=new Set(['project_lut_resources','lut_import_requests']);
+ const taskNames=new Set(currentOrdinary50Delta.objects.map(object=>object.name)),taskObjects=after.objects.filter(object=>taskNames.has(object.name));
+ assert.deepEqual(taskObjects,currentOrdinary50Delta.objects,'exact separately reviewed schema50 definitions');assert.equal(taskObjects.length,currentOrdinary50Delta.catalog.count);assert.equal(createHash('sha256').update(JSON.stringify(taskObjects)).digest('hex'),currentOrdinary50Delta.catalog.sha256);
+ after.objects=after.objects.filter(object=>!taskNames.has(object.name));for(const[name,value]of Object.entries(currentOrdinary50Delta.tables)){assert.deepEqual(after.tables[name],{fields:value.fields,rows:[]});delete after.tables[name];}
  const additions=after.objects.filter(object=>lutTables.has(object.tbl_name));
  assert.equal(additions.length,currentOrdinary48Delta.lutCatalog.count);
  assert.equal(createHash('sha256').update(JSON.stringify(additions)).digest('hex'),currentOrdinary48Delta.lutCatalog.sha256);
@@ -87,8 +90,8 @@ function preservedCurrent(db,before) {
  after.objects=after.objects.filter(object=>!lifecycleNames.has(object.name));
  for(const [name,value] of Object.entries(currentOrdinary48Delta.lifecycleTables)){assert.deepEqual(after.tables[name],{fields:value.fields,rows:[]});delete after.tables[name];}
  for(const object of expected.objects){const reviewed=currentOrdinary48Delta.objectSql[object.name];if(reviewed!==undefined)object.sql=reviewed;}
- expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238'],['30','integer','3330'],['32','integer','3332'],['34','integer','3334'],['36','integer','3336'],['38','integer','3338'],['40','integer','3430'],...currentOrdinary48Delta.schemaVersionRows);
- assert.deepEqual(after,expected,'exact legacy catalog/raw rows plus the reviewed26/28/36/44/48 additions');
+ expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238'],['30','integer','3330'],['32','integer','3332'],['34','integer','3334'],['36','integer','3336'],['38','integer','3338'],['40','integer','3430'],...currentOrdinary48Delta.schemaVersionRows,...currentOrdinary50Delta.schemaVersionRows);
+ assert.deepEqual(after,expected,'exact legacy catalog/raw rows plus independently reviewed through48 and additive50 definitions');
  assert.equal(db.prepare('PRAGMA quick_check(1)').get().quick_check,'ok');assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
 test('completed24 enters explicit26,28,30,32,34,36,38 and40 migrations without legacy bootstrap writes',t=>{
@@ -116,16 +119,17 @@ test('genuinely missing known markers keep the old ordinary repair path before26
  assert.equal(ordinaryDispatch(target=>{calls++;if(target===db)realCalls++;}).initialize(db),null);assert.equal(realCalls,1);
  const after=snapshot(db);
  for(const [name,table]of Object.entries(before.tables))if(name!=='schema_version')assert.deepEqual(after.tables[name],table,`${name}: legacy gap repair preserves raw records`);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34,36,38,40,44,48]);
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
 });
 for(const profile of [null,'ordinary-1','ordinary-14','ordinary-21','ordinary-23'])test(`real ${profile??'missing marker table'} retains historical bootstrap/upgrade qualification`,t=>{
  const db=ordinaryDatabase(t,profile);let calls=0,realCalls=0;
  assert.equal(ordinaryDispatch(target=>{calls++;if(target===db)realCalls++;}).initialize(db),null);assert.equal(realCalls,1);
- assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...old,26,28,30,32,34,36,38,40,44,48]);
- assert.equal(readCurrentWorkspaceRole(db),'ordinary-48');
+ assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-50');
 });
 
 for(const [name,sql]of [
+ ['marker50 removed','DELETE FROM schema_version WHERE version=50'],
  ['marker26 removed','DELETE FROM schema_version WHERE version=26'],
  ['known marker removed','DELETE FROM schema_version WHERE version=1'],
  ['marker26 and known marker removed','DELETE FROM schema_version WHERE version IN(1,26)'],

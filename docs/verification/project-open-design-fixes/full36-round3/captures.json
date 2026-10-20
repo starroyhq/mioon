@@ -1,0 +1,2212 @@
+[
+  {
+    "key": "entry-01",
+    "note": "填入令牌后主按钮启用；应用语言选择可操作",
+    "screen": "screens/entry-01.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "panels-05",
+    "note": "通用设置八项导航、分段选项和固定保存栏；偏好重建后可读写",
+    "screen": "screens/panels-05.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区通用调整应用的显示偏好，不改变项目内容语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊第二轮真实规格验收 · square_1080Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock ·"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心每次提交都有迹可循全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务导出本地预览与导出已完成没有待确认的本地编辑请求保存范围与容量说明21 类本地编辑请求由现有 SQLite 任务台"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "panels-06",
+    "note": "真实生成总开关、五类服务名称、环境变量、本地模拟与检测入口；不启用真实生成",
+    "screen": "screens/panels-06.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区模型与服务服务状态与服务端配置语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言1"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊第二轮真实规格验收 · square_1080Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock ·"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心每次提交都有迹可循全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务导出本地预览与导出已完成没有待确认的本地编辑请求保存范围与容量说明21 类本地编辑请求由现有 SQLite 任务台"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "panels-07",
+    "note": "路径与复制同行，占用空间独立行，自动备份和恢复入口展开",
+    "screen": "screens/panels-07.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区工作区本机数据与离线备份语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊第二轮真实规格验收 · square_1080Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock ·"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心每次提交都有迹可循全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务导出本地预览与导出已完成没有待确认的本地编辑请求保存范围与容量说明21 类本地编辑请求由现有 SQLite 任务台"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "panels-08",
+    "note": "实际检测工具版本与缺失字幕滤镜警告",
+    "screen": "screens/panels-08.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊第二轮真实规格验收 · square_1080Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock ·"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心每次提交都有迹可循全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务导出本地预览与导出已完成没有待确认的本地编辑请求保存范围与容量说明21 类本地编辑请求由现有 SQLite 任务台"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "entry-03",
+    "note": "有项目首页摘要、画幅与最近打开排序；从项目成功返回首页",
+    "screen": "screens/entry-03.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "entry-04",
+    "note": "三种原生1080画幅已切换，默认竖屏，名称填入后创建启用",
+    "screen": "screens/entry-04.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 473.90625,
+            "width": 560,
+            "x": 440,
+            "y": 213.046875
+          },
+          "text": "新建项目新建项目项目名称创作方向可选0 / 500时间线画幅竖屏9:16 · 1080×1920横屏16:9 · 1920×1080方形1:1 · 1080×1080决定剪辑预览与导出的默认尺寸取消创"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "canvas-01",
+    "note": "新建空项目成功进入画板，空态引导和添加入口",
+    "screen": "screens/canvas-01.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊第三轮36页 · 空项目Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock · 本地测试OpenAI"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心每次提交都有迹可循全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务没有待确认的本地编辑请求保存范围与容量说明21 类本地编辑请求由现有 SQLite 任务台账保留原编号与完整参数。"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "editing-01",
+    "note": "空时间线、播放器和片段属性空态",
+    "screen": "screens/editing-01.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊第三轮36页 · 空项目Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock · 本地测试OpenAI"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心每次提交都有迹可循全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务没有待确认的本地编辑请求保存范围与容量说明21 类本地编辑请求由现有 SQLite 任务台账保留原编号与完整参数。"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "canvas-02",
+    "note": "实际媒体夹具包含镜头、图片和文字节点，画板适应视口",
+    "screen": "screens/canvas-02.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊晨雾漫游 · 合成验收项目Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock · 本地测试OpenA"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心1 个任务正在处理全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务预览本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出失败导出本地预览与导出已"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "canvas-03",
+    "note": "选中镜头的创作参数、只读Mock比例及生成设置；无重复加入剪辑按钮",
+    "screen": "screens/canvas-03.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊晨雾漫游 · 合成验收项目Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock · 本地测试OpenA"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心1 个任务正在处理全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务预览本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出失败导出本地预览与导出已"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "canvas-04",
+    "note": "V1/V2来自已标注的本地MP4版本夹具，完整显示版本卡操作；不冒充生成发布通过",
+    "screen": "screens/canvas-04.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊晨雾漫游 · 合成验收项目Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock · 本地测试OpenA"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心1 个任务正在处理全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务预览本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出失败导出本地预览与导出已"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "canvas-05",
+    "note": "两个真实MP4版本、参数对比、同步播放开关与底部操作",
+    "screen": "screens/canvas-05.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊晨雾漫游 · 合成验收项目Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock · 本地测试OpenA"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心1 个任务正在处理全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务预览本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出失败导出本地预览与导出已"
+        },
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "版本对比明确选择两个已保存的视频版本，独立检查原始素材。不会生成新内容×已固定所选版本。同步播放使用下方共同控制条，默认静音清空对比选择A选择版本版本 2版本 1版本 1 · 当前选用版本9:164 "
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "canvas-06",
+    "note": "本地Mock既有任务真实进行中14%；缺drawtext的完成发布链路另列环境阻塞",
+    "screen": "screens/canvas-06.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区视频工具本地编码工具与能力语言界面语言切换后立即生效，项目内容不受影响界面语言简体中文▼时间码与数字格式跟随界面语言12,"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "图像IMAGE · STUDIO图像工坊晨雾漫游 · 合成验收项目Mock 测试设置新图像组新图像组文字生图编辑源图图像名称图像描述仅使用这里输入的描述0 / 2000Mock · 本地测试OpenA"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧）开始帧–结束帧（不含）生成样片最多 3"
+        },
+        {
+          "rect": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 0
+          },
+          "text": "任务任务中心1 个任务正在处理全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务预览本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出失败导出本地预览与导出已"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "editing-02",
+    "note": "选中视频片段，基础与画面属性、固定保存栏；新页面本地草稿正常，1440×900",
+    "screen": "screens/editing-02.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "editing-03",
+    "note": "修改并保存片段后旧快照明确过期，更新入口可用",
+    "screen": "screens/editing-03.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "editing-04",
+    "note": "实际点击重新合成，内联合成进度状态；关闭面板不取消接受任务",
+    "screen": "screens/editing-04.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "editing-05",
+    "note": "实际测得-26LUFS/-25.06dBTP/LRA0.00LU，-25目标候选+1dB有效，音量/包络/线性淡入淡出分组",
+    "screen": "screens/editing-05.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "editing-06",
+    "note": "更多菜单集成现有分割/素材定位/替换来源，移除及波纹删除置底",
+    "screen": "screens/editing-06.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "editing-07",
+    "note": "移除确认说明仅移除时间线片段、保留原素材、可撤销；本轮取消未删除",
+    "screen": "screens/editing-07.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 183.796875,
+            "width": 420,
+            "x": 510,
+            "y": 358.1015625
+          },
+          "text": "移除“合成配乐”？该片段将从时间线移除，其余片段位置不变。素材库中的原文件会保留。可通过撤销恢复取消移除片段"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "export-01",
+    "note": "检查步骤默认只读未自动探测，空播放器主按钮与范围行均可生成样片",
+    "screen": "screens/export-01.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "export-02",
+    "note": "当前成片名称完成重检并生成9秒真实样片，范围行完整；越界输入999帧会禁用",
+    "screen": "screens/export-02.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览00:0000:09范围（帧）开始帧–结束帧（不含）生成"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "export-03",
+    "note": "确认页保留同一真实样片及命名、规格和检查报告",
+    "screen": "screens/export-03.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览00:0000:09范围（帧）开始帧–结束帧（不含）生成"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "export-04",
+    "note": "真实正式导出已提交，进度使用实际任务；关闭后继续",
+    "screen": "screens/export-04.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录编码预览正在编码，完成后可在此核对成片00:0000:00检查设"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "export-05",
+    "note": "正式导出完成，命名文件、原始1080×1920和30fps及保存位置入口",
+    "screen": "screens/export-05.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录成片预览00:0000:09检查设置确认导出5完成交付检查晨雾漫"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "export-06",
+    "note": "真实导出记录和打开文件入口，包含关闭窗口后仍完成的第二次导出",
+    "screen": "screens/export-06.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "导出导出记录每个文件使用创建时的固定快照。已命名成片保留原名称，后续修改不会覆盖旧文件本次导出导出记录编码预览正在编码，完成后可在此核对成片00:0000:00"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "panels-01",
+    "note": "任务浮层分组与实际进行中/结果待确认任务、详情直达",
+    "screen": "screens/panels-01.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 347,
+            "width": 360,
+            "x": 938,
+            "y": 42
+          },
+          "text": "任务2进行中1结尾与余韵生成中详情需处理1光影缓缓移动提交状态待确认详情查看全部任务"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "panels-02",
+    "note": "本轮新建本地Mock未知结果任务，原requestId、对账、复制ID与标记失败入口；不重复提交",
+    "screen": "screens/panels-02.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "任务任务中心1 个任务正在处理全部进行中待确认已完成或失败清除已完成仅筛选已加载的任务导出本地预览与导出已完成导出本地预览与导出已完成导出本地预览与导出已完成预"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "panels-03",
+    "note": "首次精确目标/模型/范围授权弹窗，目标仅127.0.0.1合成SSE服务，不自动授权",
+    "screen": "screens/panels-03.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 420.484375,
+            "width": 560,
+            "x": 440,
+            "y": 239.7578125
+          },
+          "text": "确认智能助理发送范围相同目标地址、模型和发送范围只需确认一次，授权保存在本机工作区，可在设置中撤销发送范围仅对话文字查看发送详情目标与模型qwen3:8bhtt"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "panels-04",
+    "note": "本地合成助理对话、左右差异和单行模型/范围摘要；首次授权后复用，重新读取不重复发送",
+    "screen": "screens/panels-04.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "compact-04",
+    "note": "时间线收起为40px工具栏，右属性固定展开，播放器扩大",
+    "screen": "screens/compact-04.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "compact-05",
+    "note": "左右44px图标栏及40px时间线收起工具栏",
+    "screen": "screens/compact-05.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "compact-03",
+    "note": "时间线160px，完整V1/A1轨；右属性固定展开，固定保存栏可用",
+    "screen": "screens/compact-03.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "compact-timeline-bottom",
+    "note": "最小时间线滚动至配乐片段，核对整轨和横向滚动条",
+    "screen": "screens/compact-timeline-bottom.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "compact-01",
+    "note": "1050×680左44px图标栏、右属性固定展开，画板适应视口",
+    "screen": "screens/compact-01.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "compact-02",
+    "note": "素材临时浮层可关闭或固定，右属性面板固定展开",
+    "screen": "screens/compact-02.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-dark-1050-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-zh-Hans-dark-1050-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区通用调整应用的显示偏好，不改变项目内容语言界面语言切换后立即生效，项目内容不受影响"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-dark-1050-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-zh-Hans-dark-1050-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-dark-1050-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-zh-Hans-dark-1050-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-dark-1050-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-zh-Hans-dark-1050-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-light-1050-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-zh-Hans-light-1050-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区通用调整应用的显示偏好，不改变项目内容语言界面语言切换后立即生效，项目内容不受影响"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-light-1050-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-zh-Hans-light-1050-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-light-1050-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-zh-Hans-light-1050-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-light-1050-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-zh-Hans-light-1050-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-dark-1440-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-zh-Hans-dark-1440-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区通用调整应用的显示偏好，不改变项目内容语言界面语言切换后立即生效，项目内容不受影响"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-dark-1440-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-zh-Hans-dark-1440-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-dark-1440-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-zh-Hans-dark-1440-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-dark-1440-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-zh-Hans-dark-1440-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-light-1440-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-zh-Hans-light-1440-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "设置设置通用工作区视频工具模型与服务智能助理扩展快捷键关于设置保存在本机工作区通用调整应用的显示偏好，不改变项目内容语言界面语言切换后立即生效，项目内容不受影响"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-light-1440-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-zh-Hans-light-1440-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-light-1440-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-zh-Hans-light-1440-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hans-light-1440-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-zh-Hans-light-1440-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "导出成片交付填写本次名称、检查已保存的时间线，再确认导出。切换到记录不会清除草稿本次导出导出记录样片预览生成样片后可在此试看生成样片00:0000:00范围（帧"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-dark-1050-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-zh-Hant-dark-1050-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "設定設定一般工作區影片工具模型與服務智慧助理擴充功能快速鍵關於設定儲存在本機工作區一般調整應用程式的顯示偏好，不變更專案內容語言介面語言切換後立即生效，專案內容"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-dark-1050-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-zh-Hant-dark-1050-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-dark-1050-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-zh-Hant-dark-1050-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-dark-1050-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-zh-Hant-dark-1050-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "匯出成片交付填寫本次名稱、檢查已儲存的時間軸，再確認匯出。切換至記錄不會清除草稿本次匯出匯出記錄樣片預覽產生樣片後可在此試看產生樣片00:0000:00範圍（幀"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-light-1050-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-zh-Hant-light-1050-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "設定設定一般工作區影片工具模型與服務智慧助理擴充功能快速鍵關於設定儲存在本機工作區一般調整應用程式的顯示偏好，不變更專案內容語言介面語言切換後立即生效，專案內容"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-light-1050-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-zh-Hant-light-1050-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-light-1050-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-zh-Hant-light-1050-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-light-1050-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-zh-Hant-light-1050-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "匯出成片交付填寫本次名稱、檢查已儲存的時間軸，再確認匯出。切換至記錄不會清除草稿本次匯出匯出記錄樣片預覽產生樣片後可在此試看產生樣片00:0000:00範圍（幀"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-dark-1440-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-zh-Hant-dark-1440-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "設定設定一般工作區影片工具模型與服務智慧助理擴充功能快速鍵關於設定儲存在本機工作區一般調整應用程式的顯示偏好，不變更專案內容語言介面語言切換後立即生效，專案內容"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-dark-1440-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-zh-Hant-dark-1440-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-dark-1440-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-zh-Hant-dark-1440-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-dark-1440-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-zh-Hant-dark-1440-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "匯出成片交付填寫本次名稱、檢查已儲存的時間軸，再確認匯出。切換至記錄不會清除草稿本次匯出匯出記錄樣片預覽產生樣片後可在此試看產生樣片00:0000:00範圍（幀"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-light-1440-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-zh-Hant-light-1440-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "設定設定一般工作區影片工具模型與服務智慧助理擴充功能快速鍵關於設定儲存在本機工作區一般調整應用程式的顯示偏好，不變更專案內容語言介面語言切換後立即生效，專案內容"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-light-1440-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-zh-Hant-light-1440-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-light-1440-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-zh-Hant-light-1440-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-zh-Hant-light-1440-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-zh-Hant-light-1440-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "匯出成片交付填寫本次名稱、檢查已儲存的時間軸，再確認匯出。切換至記錄不會清除草稿本次匯出匯出記錄樣片預覽產生樣片後可在此試看產生樣片00:0000:00範圍（幀"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-en-dark-1050-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-en-dark-1050-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "SettingsSettingsGeneralWorkspaceVideo toolsModels and servicesAssistantExtension"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-en-dark-1050-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-en-dark-1050-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-en-dark-1050-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-en-dark-1050-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-en-dark-1050-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-en-dark-1050-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "ExportDeliveryEnter a name, check the saved timeline, then confirm the export. S"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-en-light-1050-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-en-light-1050-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "SettingsSettingsGeneralWorkspaceVideo toolsModels and servicesAssistantExtension"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-en-light-1050-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-en-light-1050-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-en-light-1050-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-en-light-1050-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-en-light-1050-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-en-light-1050-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          },
+          "text": "ExportDeliveryEnter a name, check the saved timeline, then confirm the export. S"
+        }
+      ],
+      "height": 680,
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-en-dark-1440-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-en-dark-1440-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "SettingsSettingsGeneralWorkspaceVideo toolsModels and servicesAssistantExtension"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-en-dark-1440-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-en-dark-1440-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-en-dark-1440-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-en-dark-1440-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-en-dark-1440-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-en-dark-1440-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          },
+          "text": "ExportDeliveryEnter a name, check the saved timeline, then confirm the export. S"
+        }
+      ],
+      "height": 900,
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-en-light-1440-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-en-light-1440-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "en",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-en-light-1440-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-en-light-1440-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "lang": "en",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-en-light-1440-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-en-light-1440-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "lang": "en",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-en-light-1440-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-en-light-1440-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "en",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-ja-dark-1050-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-ja-dark-1050-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          }
+        }
+      ],
+      "height": 680,
+      "lang": "ja",
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "theme": "dark",
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-ja-dark-1050-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-ja-dark-1050-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "lang": "ja",
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "theme": "dark",
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-ja-dark-1050-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-ja-dark-1050-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "lang": "ja",
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "theme": "dark",
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-ja-dark-1050-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-ja-dark-1050-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          }
+        }
+      ],
+      "height": 680,
+      "lang": "ja",
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "theme": "dark",
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-ja-light-1050-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-ja-light-1050-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          }
+        }
+      ],
+      "height": 680,
+      "lang": "ja",
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "theme": "light",
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-ja-light-1050-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-ja-light-1050-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "lang": "ja",
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "theme": "light",
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-ja-light-1050-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-ja-light-1050-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 680,
+      "lang": "ja",
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "theme": "light",
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-ja-light-1050-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-ja-light-1050-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 45,
+            "y": 20
+          }
+        }
+      ],
+      "height": 680,
+      "lang": "ja",
+      "scrollHeight": 680,
+      "scrollWidth": 1050,
+      "theme": "light",
+      "width": 1050
+    }
+  },
+  {
+    "key": "matrix-ja-dark-1440-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-ja-dark-1440-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "ja",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "dark",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-ja-dark-1440-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-ja-dark-1440-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "lang": "ja",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "dark",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-ja-dark-1440-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-ja-dark-1440-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "lang": "ja",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "dark",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-ja-dark-1440-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-ja-dark-1440-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "ja",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "dark",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-ja-light-1440-settings",
+    "note": "四语言/双主题/双尺寸通用设置首屏与底栏",
+    "screen": "screens/matrix-ja-light-1440-settings.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "ja",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-ja-light-1440-editing",
+    "note": "音量/包络/淡入淡出及属性保存栏的语言与布局",
+    "screen": "screens/matrix-ja-light-1440-editing.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "lang": "ja",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-ja-light-1440-agent",
+    "note": "助理差异卡/单行模型范围/输入操作的语言与布局",
+    "screen": "screens/matrix-ja-light-1440-agent.jpg",
+    "metrics": {
+      "dialogs": [],
+      "height": 900,
+      "lang": "ja",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "matrix-ja-light-1440-export",
+    "note": "导出设置与样片范围行的语言与布局",
+    "screen": "screens/matrix-ja-light-1440-export.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "ja",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "appearance-system",
+    "note": "跟随系统实际保存并解析当前系统主题",
+    "screen": "screens/appearance-system.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "zh-Hans",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "light",
+      "width": 1440
+    }
+  },
+  {
+    "key": "settings-agent-extra",
+    "note": "附加检查：智能助理设置与已授权目标管理，实际本地授权记录",
+    "screen": "screens/settings-agent-extra.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "zh-Hans",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "dark",
+      "width": 1440
+    }
+  },
+  {
+    "key": "settings-extensions-extra",
+    "note": "附加设置页入口与本机说明检查",
+    "screen": "screens/settings-extensions-extra.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "zh-Hans",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "dark",
+      "width": 1440
+    }
+  },
+  {
+    "key": "settings-shortcuts-extra",
+    "note": "附加设置页入口与本机说明检查",
+    "screen": "screens/settings-shortcuts-extra.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "zh-Hans",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "dark",
+      "width": 1440
+    }
+  },
+  {
+    "key": "settings-about-extra",
+    "note": "附加设置页入口与本机说明检查",
+    "screen": "screens/settings-about-extra.jpg",
+    "metrics": {
+      "dialogs": [
+        {
+          "rect": {
+            "height": 640,
+            "width": 960,
+            "x": 240,
+            "y": 130
+          }
+        }
+      ],
+      "height": 900,
+      "lang": "zh-Hans",
+      "scrollHeight": 900,
+      "scrollWidth": 1440,
+      "theme": "dark",
+      "width": 1440
+    }
+  }
+]

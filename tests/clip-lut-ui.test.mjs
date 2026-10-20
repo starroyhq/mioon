@@ -230,9 +230,14 @@ test('actual source Preview visibly discloses unprocessed audio and image while 
       const notice = nodes(tree).find(node => node.props?.['data-testid'] === 'preview-source-unprocessed');
       assert.ok(notice, `${locale} ${mimeType} source disclosure`);
       assert.equal(textOf(notice), translate(locale, 'timeline.preview.sourceUnprocessed'));
-      const label = nodes(tree).find(node => node.props?.className === 'preview-stage-label');
-      assert.equal(label.props.style.whiteSpace, 'normal', 'The visible source disclosure wraps instead of hiding its LUT qualification');
-      assert.equal(label.props.hidden, undefined); assert.equal(label.props['aria-hidden'], undefined);
+      assert.equal(notice.type,'p');assert.equal(notice.props.className,'preview-source-disclosure');
+      assert.equal(notice.props.hidden, undefined); assert.equal(notice.props['aria-hidden'], undefined);
+      const stage=nodes(tree).find(node=>String(node.props?.className||'').split(' ').includes('preview-stage'));
+      assert.ok(stage);assert.equal(nodes(stage).includes(notice),false,'Source qualification must stay outside the media stage rather than cover the player');
+      const css=readFileSync(new URL('../apps/web/src/timeline-editing.css',import.meta.url),'utf8');
+      const rule=css.match(/\.central-preview\.edit-preview \.preview-source-disclosure\s*\{([^}]+)\}/)?.[1];assert.ok(rule);
+      assert.match(rule,/white-space:\s*normal/,'The visible source disclosure wraps instead of hiding its LUT qualification');assert.match(rule,/position:\s*static/);
+      assert.doesNotMatch(rule,/display:\s*none|visibility:\s*hidden|overflow:\s*hidden|text-overflow:\s*ellipsis/);
       assert.equal(nodes(tree).find(node => ['video','audio','img'].includes(node.type))?.props.src, asset.url);
     }
     const rendered = module.exports.default({...base, kind:'timeline', job:{id:id(90), status:'succeeded', timelineRevision:1, url:'/media/frozen-render', snapshot:{timeline}}});

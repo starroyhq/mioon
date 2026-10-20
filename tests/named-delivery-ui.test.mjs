@@ -34,6 +34,10 @@ const fixtures = {
   invalidName: { component: 'history', props: { orderedExports: [row(3, { snapshot: { timeline, deliveryName: null } })] } },
   invalidStatus: { component: 'history', props: { orderedExports: [row(3, { status: 'ready' })] } },
   invalidId: { component: 'history', props: { orderedExports: [row(3, { id: `${id(3)}\n` })] } },
+  sized:{component:'history',props:{projectId:id(1),orderedExports:[row(3,{sizeBytes:99*1024*1024})],outputAssets:[{id:id(13),projectId:id(1),sizeBytes:2*1024*1024}]}},
+  foreignSizeView:{component:'history',props:{projectId:id(99),orderedExports:[row(3)],outputAssets:[{id:id(13),projectId:id(1),sizeBytes:2*1024*1024}]}},
+  foreignSizeAsset:{component:'history',props:{projectId:id(1),orderedExports:[row(3)],outputAssets:[{id:id(13),projectId:id(99),sizeBytes:2*1024*1024}]}},
+  invalidSize:{component:'history',props:{projectId:id(1),orderedExports:[row(3)],outputAssets:[{id:id(13),projectId:id(1),sizeBytes:1.5}]}},
 };
 let rendered, actions, fileActions, unchanged;
 before(() => {
@@ -66,7 +70,7 @@ before(() => {
       build.onLoad({filter:/.*/, namespace:'file-action-capture'}, () => ({contents:${JSON.stringify(capture)}, loader:'tsx', resolveDir:${JSON.stringify(path.join(root, 'apps/web'))}}));
     }}]});
     const result = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
-    process.stdout.write(JSON.stringify(result.result)); process.exit(0);`;
+    await new Promise(resolve=>process.stdout.write(JSON.stringify(result.result),resolve)); process.exit(0);`;
   ({html: rendered, actions, fileActions, unchanged} = JSON.parse(execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 })));
 });
 
@@ -89,10 +93,16 @@ test('named history shows frozen title/time/revision/dimensions/quality after pr
   for (const html of [rendered.named, rendered.renamedAgain]) {
     assert.match(html, /冻结名称 &lt;script&gt; &quot; &amp; \/ .mp4/);
     assert.match(html, /修订版 4 · 旧快照/); assert.match(html, /1080 × 1920/); assert.match(html, /平均目标 8 Mb\/s/); assert.match(html, /AAC 128 kb\/s/);
-    assert.ok(html.includes(createdAt)); assert.ok(html.includes(formatDate('zh-Hans', createdAt, { dateStyle: 'medium', timeStyle: 'medium' })));
+    assert.ok(html.includes(createdAt)); assert.ok(html.includes(formatDate('zh-Hans', createdAt, { dateStyle: 'short', timeStyle: 'short' })));
     assert.doesNotMatch(html, /项目已改名|另一个新名称|<script>|filename=forged/);
   }
   assert.equal(rendered.named, rendered.renamedAgain);
+});
+test('named table rows display owned asset size while foreign or invalid metadata stays unavailable',()=>{
+ assert.match(rendered.sized,/data-testid="export-history-size">2 MB<\/td>/);
+ for(const key of ['foreignSizeView','foreignSizeAsset','invalidSize'])assert.match(rendered[key],/data-testid="export-history-size">—<\/td>/);
+ assert.deepEqual(actions.sized,actions.named,'Read-only size presentation cannot change file-action authority');
+ for(const key of ['sized','foreignSizeView','foreignSizeAsset','invalidSize'])assert.equal(unchanged[key],true);
 });
 
 test('named history delegates only immutable managed IDs and URL to the async check without a filename override', () => {

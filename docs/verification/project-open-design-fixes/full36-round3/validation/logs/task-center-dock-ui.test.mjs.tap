@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: actual TaskCenter renders an inline named dock with keyboard-scrollable body and no modal controls
+ok 1 - actual TaskCenter renders an inline named dock with keyboard-scrollable body and no modal controls
+  ---
+  duration_ms: 0.999292
+  type: 'test'
+  ...
+# Subtest: mount, rerender and disclosure expansion execute nothing; selected tasks retain exact operation inputs
+ok 2 - mount, rerender and disclosure expansion execute nothing; selected tasks retain exact operation inputs
+  ---
+  duration_ms: 48.31125
+  type: 'test'
+  ...
+# Subtest: task list selects one full detail, prioritizes unknown outcomes and preserves visible reconciliation identities
+ok 3 - task list selects one full detail, prioritizes unknown outcomes and preserves visible reconciliation identities
+  ---
+  duration_ms: 6.4875
+  type: 'test'
+  ...
+# Subtest: switching task details revokes retained actions and pending confirmations without dispatching on selection
+ok 4 - switching task details revokes retained actions and pending confirmations without dispatching on selection
+  ---
+  duration_ms: 6.275666
+  type: 'test'
+  ...
+# Subtest: local search and status filters use loaded entries only, keep cards mounted and revoke hidden detail actions
+ok 5 - local search and status filters use loaded entries only, keep cards mounted and revoke hidden detail actions
+  ---
+  duration_ms: 10.253125
+  type: 'test'
+  ...
+# Subtest: search, filters and no-match state relabel in four languages without fetching or changing task data
+ok 6 - search, filters and no-match state relabel in four languages without fetching or changing task data
+  ---
+  duration_ms: 7.157417
+  type: 'test'
+  ...
+# Subtest: all retained task actions reject hidden, unmounted, changed-scope and leave-return pane lifetimes
+ok 7 - all retained task actions reject hidden, unmounted, changed-scope and leave-return pane lifetimes
+  ---
+  duration_ms: 38.811
+  type: 'test'
+  ...
+# Subtest: hidden initial render cannot admit clicks and a null or false App capture fails closed
+ok 8 - hidden initial render cannot admit clicks and a null or false App capture fails closed
+  ---
+  duration_ms: 18.48425
+  type: 'test'
+  ...
+# Subtest: cancel confirmation admits only the current context and pane after the awaited decision
+ok 9 - cancel confirmation admits only the current context and pane after the awaited decision
+  ---
+  duration_ms: 37.763916
+  type: 'test'
+  ...
+# Subtest: task list and details scroll independently while narrow docks wrap and retain action controls
+ok 10 - task list and details scroll independently while narrow docks wrap and retain action controls
+  ---
+  duration_ms: 1.05725
+  type: 'test'
+  ...
+# Subtest: pending task confirmation relabels across four languages while retaining its exact original cancellation target
+ok 11 - pending task confirmation relabels across four languages while retaining its exact original cancellation target
+  ---
+  duration_ms: 7.225334
+  type: 'test'
+  ...
+# Subtest: local task list error descriptors relabel without leaking raw diagnostics or reloading
+ok 12 - local task list error descriptors relabel without leaking raw diagnostics or reloading
+  ---
+  duration_ms: 4.966625
+  type: 'test'
+  ...
+# Subtest: local dispositions preserve unknown reconciliation and require confirmation before a current mark-failed action
+ok 13 - local dispositions preserve unknown reconciliation and require confirmation before a current mark-failed action
+  ---
+  duration_ms: 6.600833
+  type: 'test'
+  ...
+# Subtest: task identifier copy uses the real clipboard result and exposes failures without changing task state
+ok 14 - task identifier copy uses the real clipboard result and exposes failures without changing task state
+  ---
+  duration_ms: 5.614542
+  type: 'test'
+  ...
+# Subtest: session pending copies its original request ID and never fabricates a backend task ID
+ok 15 - session pending copies its original request ID and never fabricates a backend task ID
+  ---
+  duration_ms: 5.688791
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 932.947417

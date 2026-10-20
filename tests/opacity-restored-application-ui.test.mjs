@@ -8,6 +8,7 @@ import {transformSync} from 'esbuild';
 import {i18nTestModule} from './helpers/i18n.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
+import * as compactLayout from '../apps/web/src/timeline-compact-layout.ts';
 import {displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
 import {WAVEFORM_LIMITS} from '../apps/web/src/waveform-state.ts';
 import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.ts';
@@ -252,6 +253,7 @@ function timelineActionsHarness(timeline, asset) {
       if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
       if (name === './UiPreferencesProvider.tsx') return {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})};
       if (name === './timeline-view-geometry.ts') return geometry;
+      if (name === './timeline-compact-layout.ts') return compactLayout;
       if (name === './timeline-removal.ts') return {displayTimelineFrame};
       if (name === './timeline-keyboard.ts') return {rulerFrameForKey};
       if (name === './timeline-snapping.ts') return {timelineDropPreview};

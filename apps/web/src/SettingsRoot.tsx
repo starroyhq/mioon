@@ -53,15 +53,18 @@ export default function SettingsRoot({ context, bridge, rpc, contractChecks, ren
       if (win.__mioonFlushWorkspacePreferences === drain) delete win.__mioonFlushWorkspacePreferences; };
   }, [bridge, navigation, native, registry]);
   useEffect(() => navigation.receive(context), [navigation, context]);
-  return <main className="project-home project-home-settings-window"><header className="project-home-header"><span className="project-home-brand">mioon.</span><span className="project-home-header-label">{t('settings.title')}</span></header>
-    <section className="project-home-settings" aria-label={t('settings.title')}>
+  return <main className="project-home project-home-settings-window"><header className="project-home-header"><span className="project-home-brand">Mioon</span><span className="project-home-header-label">{t('settings.title')}</span>
       <details className="settings-workspace-status settings-workspace-status-global" open={workspace === 'failed' || workspace === 'restored'}><summary>{t('settings.workspaceStatus')}</summary><div><NativeLocatorStatus context={context} bridge={bridge} recovery /></div></details>
+    </header>
+    <section className="project-home-settings" aria-label={t('settings.title')}>
       {navigation.notice && <p role="status" className="project-home-notice">{renderMessage(navigation.notice)}</p>}
+      <div className="native-settings-center-body">
       {workspace === 'ready' ? renderSettings({ selected: navigation.selected, page: navigation.page, visible, registry, onSelect: slot => { void navigation.select(slot); }, onPage: page => { void navigation.selectPage(page); },
         general: undefined,
         // Only native P0 decides actual closure. Returning false prevents the
         // form from clearing secrets before the native dialog has decided.
         beforeClose: async () => { window.close(); return false; }, onClose: () => {} })
-        : <><p role="status">{workspace === 'pending' ? t('shell.checkingWorkspace') : workspace === 'restored' ? t('shell.restoredConnectionsUnavailable') : t('shell.workspaceUnconfirmed')}</p><ProjectHomeConnections selected="agent" page="general" connectionsAvailable={false} onSelect={() => {}} onPage={() => {}} panes={{ agent: null, official: null, custom: null, comfy: null }} /></>}
+        : <><p role="status" className="native-settings-unavailable">{workspace === 'pending' ? t('shell.checkingWorkspace') : workspace === 'restored' ? t('shell.restoredConnectionsUnavailable') : t('shell.workspaceUnconfirmed')}</p><ProjectHomeConnections selected="agent" page="general" connectionsAvailable={false} onSelect={() => {}} onPage={() => {}} panes={{ agent: null, official: null, custom: null, comfy: null }} /></>}
+      </div>
     </section></main>;
 }

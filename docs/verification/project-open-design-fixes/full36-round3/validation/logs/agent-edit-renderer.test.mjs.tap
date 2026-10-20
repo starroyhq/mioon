@@ -1,0 +1,244 @@
+TAP version 13
+# Subtest: unresolved proposal discovery and native recreation are GET-only without browser storage or fresh keys
+ok 1 - unresolved proposal discovery and native recreation are GET-only without browser storage or fresh keys
+  ---
+  duration_ms: 2.316083
+  type: 'test'
+  ...
+# Subtest: client routes are authenticated GET reads and explicit epoch/digest actions only
+ok 2 - client routes are authenticated GET reads and explicit epoch/digest actions only
+  ---
+  duration_ms: 12.945833
+  type: 'test'
+  ...
+# Subtest: persisted diff projection rejects changed targets, invalid fields and optimistic applied claims
+ok 3 - persisted diff projection rejects changed targets, invalid fields and optimistic applied claims
+  ---
+  duration_ms: 0.733042
+  type: 'test'
+  ...
+# Subtest: only explicit approval of completed immutable pending proposal posts once and confirmed outcome refreshes once
+ok 4 - only explicit approval of completed immutable pending proposal posts once and confirmed outcome refreshes once
+  ---
+  duration_ms: 0.50575
+  type: 'test'
+  ...
+# Subtest: running, stopped, failed, interrupted, rejected, stale and hidden proposals never approve
+ok 5 - running, stopped, failed, interrupted, rejected, stale and hidden proposals never approve
+  ---
+  duration_ms: 0.851
+  type: 'test'
+  ...
+# Subtest: lost approval acknowledgement is unknown, never rejection or optimistic apply, and only reads for recovery
+ok 6 - lost approval acknowledgement is unknown, never rejection or optimistic apply, and only reads for recovery
+  ---
+  duration_ms: 0.33825
+  type: 'test'
+  ...
+# Subtest: a late confirmed application disappearing from unresolved page keeps exact identity and confirms by detail GET
+ok 7 - a late confirmed application disappearing from unresolved page keeps exact identity and confirms by detail GET
+  ---
+  duration_ms: 0.326666
+  type: 'test'
+  ...
+# Subtest: explicit recover uses server-persisted approval identity and fresh epoch after restart; duplicate action cannot make a new request
+ok 8 - explicit recover uses server-persisted approval identity and fresh epoch after restart; duplicate action cannot make a new request
+  ---
+  duration_ms: 0.225292
+  type: 'test'
+  ...
+# Subtest: two-window rejection and revision conflict reconcile read-only; old epoch and tampered diff never show applied
+ok 9 - two-window rejection and revision conflict reconcile read-only; old epoch and tampered diff never show applied
+  ---
+  duration_ms: 0.598417
+  type: 'test'
+  ...
+# Subtest: project disposal fences late approval and reads; hidden accepted action preserves immutable diff without refreshing a new project
+ok 10 - project disposal fences late approval and reads; hidden accepted action preserves immutable diff without refreshing a new project
+  ---
+  duration_ms: 0.3035
+  type: 'test'
+  ...
+# Subtest: bounded independent paging and view changes never authorize or mutate a proposal
+ok 11 - bounded independent paging and view changes never authorize or mutate a proposal
+  ---
+  duration_ms: 0.24475
+  type: 'test'
+  ...
+# Subtest: selected edit permission survives object revisions while each send keeps its exact current target
+ok 12 - selected edit permission survives object revisions while each send keeps its exact current target
+  ---
+  duration_ms: 3.1085
+  type: 'test'
+  ...
+# Subtest: invalid selected title and oversized prompt disable send; empty prompt is a valid saved target
+ok 13 - invalid selected title and oversized prompt disable send; empty prompt is a valid saved target
+  ---
+  duration_ms: 0.407167
+  type: 'test'
+  ...
+# Subtest: edit run provenance is pinned and excludes edit rounds from typed-mode consent
+ok 14 - edit run provenance is pinned and excludes edit rounds from typed-mode consent
+  ---
+  duration_ms: 0.718416
+  type: 'test'
+  ...
+# Subtest: actual right-dock review renders full immutable before/after and honest proposed status despite hostile model text
+ok 15 - actual right-dock review renders full immutable before/after and honest proposed status despite hostile model text
+  ---
+  duration_ms: 30.312792
+  type: 'test'
+  ...
+# Subtest: actual review Stop/running/completion gates, hidden callbacks, all/history and original target remain separate
+ok 16 - actual review Stop/running/completion gates, hidden callbacks, all/history and original target remain separate
+  ---
+  duration_ms: 5.1515
+  type: 'test'
+  ...
+# Subtest: actual review response loss shows no applied success and exposes explicit saved-intent recovery only after GET finds approval
+ok 17 - actual review response loss shows no applied success and exposes explicit saved-intent recovery only after GET finds approval
+  ---
+  duration_ms: 4.088458
+  type: 'test'
+  ...
+# Subtest: actual review project lifetime rejects old callback, unresolved GET and late action after navigation
+ok 18 - actual review project lifetime rejects old callback, unresolved GET and late action after navigation
+  ---
+  duration_ms: 3.321083
+  type: 'test'
+  ...
+# Subtest: actual composer previews saved title/prompt, requires distinct edit mode and invalidates stale selected-shot callbacks
+ok 19 - actual composer previews saved title/prompt, requires distinct edit mode and invalidates stale selected-shot callbacks
+  ---
+  duration_ms: 15.603791
+  type: 'test'
+  ...
+# Subtest: App confirmed-apply refresh is same-project and cannot mark an Inspector draft saved or remount it
+ok 20 - App confirmed-apply refresh is same-project and cannot mark an Inspector draft saved or remount it
+  ---
+  duration_ms: 0.8225
+  type: 'test'
+  ...
+# Subtest: a stale-epoch rejection only rereads and preserves uncertainty until terminal evidence or explicit same-intent retry
+ok 21 - a stale-epoch rejection only rereads and preserves uncertainty until terminal evidence or explicit same-intent retry
+  ---
+  duration_ms: 0.889791
+  type: 'test'
+  ...
+# Subtest: actual missing edit target never displays consent as checked and scope changes revoke prior consent
+ok 22 - actual missing edit target never displays consent as checked and scope changes revoke prior consent
+  ---
+  duration_ms: 8.515
+  type: 'test'
+  ...
+# Subtest: proposal state combinations cannot fabricate nonapplication or application without the exact durable evidence
+ok 23 - proposal state combinations cannot fabricate nonapplication or application without the exact durable evidence
+  ---
+  duration_ms: 2.492083
+  type: 'test'
+  ...
+# Subtest: explicit same-proposal approval retry needs fresh detail proof, preserves identity and permits only one local dispatch
+ok 24 - explicit same-proposal approval retry needs fresh detail proof, preserves identity and permits only one local dispatch
+  ---
+  duration_ms: 0.352167
+  type: 'test'
+  ...
+# Subtest: same-intent retry proof expires on list reload, hide, epoch change, rejection and project disposal
+ok 25 - same-intent retry proof expires on list reload, hide, epoch change, rejection and project disposal
+  ---
+  duration_ms: 0.470875
+  type: 'test'
+  ...
+# Subtest: actual unknown pending proposal offers clearly labelled explicit same-intent retry only after detail GET
+ok 26 - actual unknown pending proposal offers clearly labelled explicit same-intent retry only after detail GET
+  ---
+  duration_ms: 5.027416
+  type: 'test'
+  ...
+# Subtest: reordered list/detail responses and stale pending snapshots cannot downgrade approved, unknown or applied state
+ok 27 - reordered list/detail responses and stale pending snapshots cannot downgrade approved, unknown or applied state
+  ---
+  duration_ms: 0.418459
+  type: 'test'
+  ...
+# Subtest: approve and reject cannot race locally; a confirmed rejection cannot later become applied or retryable
+ok 28 - approve and reject cannot race locally; a confirmed rejection cannot later become applied or retryable
+  ---
+  duration_ms: 0.173458
+  type: 'test'
+  ...
+# Subtest: all-records read can confirm a previously uncertain application without another mutation POST
+ok 29 - all-records read can confirm a previously uncertain application without another mutation POST
+  ---
+  duration_ms: 0.183208
+  type: 'test'
+  ...
+# Subtest: proposal JSON transport enforces advertised and streamed byte bounds, cancels overflow and never calls unbounded json()
+ok 30 - proposal JSON transport enforces advertised and streamed byte bounds, cancels overflow and never calls unbounded json()
+  ---
+  duration_ms: 2.020958
+  type: 'test'
+  ...
+# Subtest: proposal JSON transport rejects malformed UTF-8 and incomplete JSON, accepts split multibyte text and releases readers
+ok 31 - proposal JSON transport rejects malformed UTF-8 and incomplete JSON, accepts split multibyte text and releases readers
+  ---
+  duration_ms: 0.553459
+  type: 'test'
+  ...
+# Subtest: proposal JSON transport cancels a hanging read on explicit abort and client timeout, cleans up listeners and never retries
+ok 32 - proposal JSON transport cancels a hanging read on explicit abort and client timeout, cleans up listeners and never retries
+  ---
+  duration_ms: 22.239
+  type: 'test'
+  ...
+# Subtest: complete selected text starts expanded, requires explicit consent to compact, and only accepted Send auto-compacts it
+ok 33 - complete selected text starts expanded, requires explicit consent to compact, and only accepted Send auto-compacts it
+  ---
+  duration_ms: 9.958875
+  type: 'test'
+  ...
+# Subtest: failed or unconfirmed Send never auto-compacts the initial selected-text disclosure
+ok 34 - failed or unconfirmed Send never auto-compacts the initial selected-text disclosure
+  ---
+  duration_ms: 15.700959
+  type: 'test'
+  ...
+# Subtest: compact disclosure survives hide with draft intact and reopens on saved target, revision, scope or settings change
+ok 35 - compact disclosure survives hide with draft intact and reopens on saved target, revision, scope or settings change
+  ---
+  duration_ms: 12.234375
+  type: 'test'
+  ...
+# Subtest: late accepted Send cannot compact a newer selected shot or a new project disclosure
+ok 36 - late accepted Send cannot compact a newer selected shot or a new project disclosure
+  ---
+  duration_ms: 15.003166
+  type: 'test'
+  ...
+# Subtest: proposal review scrolls inside the dock while the full destination and input stay together outside that scroll region
+ok 37 - proposal review scrolls inside the dock while the full destination and input stay together outside that scroll region
+  ---
+  duration_ms: 7.815584
+  type: 'test'
+  ...
+# Subtest: first selected-shot authorization sends the original request and only then compacts the reviewed target
+ok 38 - first selected-shot authorization sends the original request and only then compacts the reviewed target
+  ---
+  duration_ms: 7.525459
+  type: 'test'
+  ...
+# Subtest: an authorization in flight never sends for a changed selected shot or revision
+ok 39 - an authorization in flight never sends for a changed selected shot or revision
+  ---
+  duration_ms: 21.056625
+  type: 'test'
+  ...
+1..39
+# tests 39
+# suites 0
+# pass 39
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 503.155208

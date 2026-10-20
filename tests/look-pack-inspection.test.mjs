@@ -118,11 +118,11 @@ test('lease, cancellation and resource identity are rechecked after asynchronous
  const changed=fixture(t),reading=changed.handlers['lut.look.inspect'](changed.input);changed.db.exec('DROP TRIGGER immutable_project_lut_resources');changed.db.prepare("UPDATE project_lut_resources SET name='changed'").run();await assert.rejects(reading,{code:'LUT_RESOURCE_INVALID'});
 });
 
-test('read availability is limited to restored29/31; old restored profiles refuse before resource disclosure',async t=>{
+test('read availability includes exact restored51; unsupported profiles refuse before resource disclosure',async t=>{
  const f=fixture(t);assert.ok(RESTORE_READ_OPERATIONS.includes('lut.look.inspect'));
- for(const version of [25,27,29,31]){
-  f.state.version=version;assert.equal(lutRestorePolicy('lut.look.inspect',version).available,[29,31].includes(version));
-  if([29,31].includes(version))assert.equal((await f.handlers['lut.look.inspect'](f.input)).status,'verified');
+ for(const version of [25,27,29,31,50,51,52]){
+  f.state.version=version;assert.equal(lutRestorePolicy('lut.look.inspect',version).available,[29,31,51].includes(version));
+  if([29,31,51].includes(version))assert.equal((await f.handlers['lut.look.inspect'](f.input)).status,'verified');
   else await assert.rejects(f.handlers['lut.look.inspect'](f.input),{code:'RESTORE_OPERATION_UNAVAILABLE'});
  }
 });

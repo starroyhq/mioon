@@ -1,0 +1,75 @@
+{
+  "scope": "One local synthetic typed_chat_only SSE message through normal Chrome UI; no real model calls",
+  "browserVersion": "155.0.8059.85",
+  "headless": true,
+  "chromiumSandbox": true,
+  "endpoint": "http://127.0.0.1:57738/v1/chat/completions",
+  "authorizationReused": true,
+  "typedChatOnly": true,
+  "emptySendDisabled": true,
+  "message": "Chrome 本地 SSE 连续传输验收：请回复已完成，不修改任何项目",
+  "reply": "【本地合成回环夹具，无真实模型调用】已整理镜头建议，变更须在下方审阅后才会应用",
+  "beforeResponseCount": 6,
+  "afterResponseCount": 7,
+  "finalPhase": "等待你的訊息",
+  "reloadButtonCount": 0,
+  "runPostCount": 1,
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/runs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/runs/0f09a3f5-17c2-4acd-949b-5ba7269d3c0b/events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/edits"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/runs/0f09a3f5-17c2-4acd-949b-5ba7269d3c0b"
+    },
+    {
+      "method": "GET",
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/edits"
+    }
+  ],
+  "responses": [
+    {
+      "status": 200,
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/runs",
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "status": 200,
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/runs/0f09a3f5-17c2-4acd-949b-5ba7269d3c0b/events",
+      "contentType": "text/event-stream; charset=utf-8"
+    },
+    {
+      "status": 200,
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/edits",
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "status": 200,
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/runs/0f09a3f5-17c2-4acd-949b-5ba7269d3c0b",
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "status": 200,
+      "path": "/api/agent/chat/8ee2def1-5482-4a8c-883e-9faf9b1b803c/edits",
+      "contentType": "application/json; charset=utf-8"
+    }
+  ],
+  "pageErrors": [],
+  "blockedExternalOrigins": [],
+  "manualReload": false,
+  "retry": false,
+  "initialAutomationNote": "An initial attempt waited for an authorization button that disappeared after existing authorization loaded; the tool timed out before any message was sent. A new context then reused the existing exact target grant.",
+  "cleanup": {
+    "contextClosed": true,
+    "browserClosed": true
+  }
+}

@@ -1,0 +1,8 @@
+/* Counts use the neutral raised surface in both themes. Media overlay colours
+   are for pictures and must not inherit the light theme's dark body text. */
+.shell-redesign .asset-panel .asset-layout-grid .asset-card>.asset-usage-compact{background:var(--wb-raised);color:var(--wb-text);border:1px solid var(--wb-line);box-shadow:0 1px 3px var(--wb-shadow-color)}
+.shell-redesign .asset-panel .asset-layout-grid .asset-card>.asset-usage-compact>.text-button,
+.shell-redesign .asset-panel .asset-layout-grid .asset-card>.asset-usage-compact>.asset-disposition-label{color:inherit;background:transparent}
+.shell-redesign .asset-panel .asset-layout-grid .asset-card>.asset-usage-compact>.text-button:hover{background:var(--wb-hover)}
+.shell-redesign .asset-panel .asset-layout-grid .asset-audio-thumbnail{width:100%;height:100%;display:grid;place-items:center;background:var(--wb-audio);color:var(--wb-audio-edge)}
+.shell-redesign .asset-panel .asset-layout-grid .asset-audio-thumbnail>svg{transform:translateY(-4px)}

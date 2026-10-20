@@ -13,6 +13,7 @@ export function useTimelineClipLoudness(options: TimelineClipLoudnessControllerO
     read: (input, invocation) => callbacks.current.read(input, invocation),
     getContext: () => timelineClipLoudnessPageContext(callbacks.current.getContext?.() ?? callbacks.current.context),
     getInvocation: () => callbacks.current.getInvocation?.() ?? {}, onUnauthorized: () => callbacks.current.onUnauthorized?.(), onChange: setState,
+    ...(options.onMatchGain ? { onMatchGain: (gain: number) => callbacks.current.onMatchGain?.(gain) === true } : {}),
   });
   const owned = controller.current;
   useLayoutEffect(() => {

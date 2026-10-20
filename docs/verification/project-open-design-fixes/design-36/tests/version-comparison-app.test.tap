@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: exact comparison route inherits native same-origin media permission, not download/navigation/audio grants
+ok 1 - exact comparison route inherits native same-origin media permission, not download/navigation/audio grants
+  ---
+  duration_ms: 0.887875
+  type: 'test'
+  ...
+# Subtest: actual App comparison opening and close synchronously fence context and pause owners
+ok 2 - actual App comparison opening and close synchronously fence context and pause owners
+  ---
+  duration_ms: 24.335917
+  type: 'test'
+  ...
+# Subtest: actual App context binds live project/epoch/workspace and synchronous comparison identity
+ok 3 - actual App context binds live project/epoch/workspace and synchronous comparison identity
+  ---
+  duration_ms: 2.598
+  type: 'test'
+  ...
+# Subtest: actual App before-play callbacks deny background playback while comparison owns the surface
+ok 4 - actual App before-play callbacks deny background playback while comparison owns the surface
+  ---
+  duration_ms: 5.540041
+  type: 'test'
+  ...
+# Subtest: actual explicit Use revalidates binding before existing revision-aware selection, never timeline replacement
+ok 5 - actual explicit Use revalidates binding before existing revision-aware selection, never timeline replacement
+  ---
+  duration_ms: 2.370125
+  type: 'test'
+  ...
+# Subtest: background visibility, exact comparison ownership and four-locale catalog are wired without duplicate UI
+ok 6 - background visibility, exact comparison ownership and four-locale catalog are wired without duplicate UI
+  ---
+  duration_ms: 1.36075
+  type: 'test'
+  ...
+# Subtest: retained invalid Compare opener has no state or media effects; null always closes
+ok 7 - retained invalid Compare opener has no state or media effects; null always closes
+  ---
+  duration_ms: 6.339042
+  type: 'test'
+  ...
+# Subtest: actual App conditional retains comparison after its shot disappears, leaving a close path
+ok 8 - actual App conditional retains comparison after its shot disappears, leaving a close path
+  ---
+  duration_ms: 1.802125
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 276.716375

@@ -1,0 +1,2129 @@
+[
+  {
+    "name": "home-empty-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-general-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-models-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-agent-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-workspace-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-shortcuts-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-about-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-video-tools-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "canvas-empty-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "canvas-populated-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "subjects-empty-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "editing-populated-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "export-check-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "export-settings-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "export-confirm-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "task-popover-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 938,
+        "y": 42,
+        "width": 360,
+        "height": 134.1953125
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "tasks-dialog-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "export-history-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "assistant-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "new-project-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 440,
+        "y": 213.046875,
+        "width": 560,
+        "height": 473.90625
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1050-assets-overlay",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1050-inspector-overlay",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1050-timeline-collapsed",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-extensions-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-custom-provider-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings-system-dark-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "restart-project-restored-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "subjects-no-blank-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1440-settings",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1440-models",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1440-agent",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1440-canvas",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1440-editing",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1440-settings",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1440-models",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1440-agent",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1440-canvas",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1440-editing",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1050-settings",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1050-models",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1050-agent",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1050-canvas",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-dark-1050-editing",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1050-settings",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1050-models",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1050-agent",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1050-canvas",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hans-light-1050-editing",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1440-settings",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1440-models",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1440-agent",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1440-canvas",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1440-editing",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1440-settings",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1440-models",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1440-agent",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1440-canvas",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1440-editing",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1050-settings",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1050-models",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1050-agent",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1050-canvas",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-dark-1050-editing",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "zh-Hant",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1050-settings",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1050-models",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1050-agent",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1050-canvas",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "zh-Hant-light-1050-editing",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "zh-Hant",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1440-settings",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1440-models",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1440-agent",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1440-canvas",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1440-editing",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1440-settings",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1440-models",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1440-agent",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1440-canvas",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1440-editing",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1050-settings",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1050-models",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1050-agent",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1050-canvas",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "en-dark-1050-editing",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1050-settings",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1050-models",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1050-agent",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1050-canvas",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "en-light-1050-editing",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "en",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1440-settings",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1440-models",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1440-agent",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1440-canvas",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1440-editing",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1440-settings",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1440-models",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1440-agent",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 240,
+        "y": 130,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1440-canvas",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1440-editing",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1050-settings",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1050-models",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1050-agent",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1050-canvas",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-dark-1050-editing",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "dark",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1050-settings",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1050-models",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1050-agent",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [
+      {
+        "x": 45,
+        "y": 20,
+        "width": 960,
+        "height": 640
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1050-canvas",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "ja-light-1050-editing",
+    "viewport": {
+      "width": 1050,
+      "height": 680
+    },
+    "document": {
+      "width": 1050,
+      "height": 680
+    },
+    "theme": "light",
+    "language": "ja",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "home-help-final-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [
+      {
+        "x": 440,
+        "y": 362.796875,
+        "width": 560,
+        "height": 174.40625
+      }
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "home-populated-final-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  },
+  {
+    "name": "editing-final-1440",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "document": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "language": "zh-Hans",
+    "dialogs": [],
+    "pageErrors": []
+  }
+]

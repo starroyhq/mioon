@@ -1,0 +1,25 @@
+{
+  "baseline": "01a83cb068e51791563412f721ccc2d4799acd74",
+  "preservedProfilesAndDependencies": [
+    {
+      "file": "packages/contracts/src/export-loudness.ts",
+      "sha256": "017bcd5eb742ef74d944479fb8404221afbdf82a2106fcf28b4ce74dfddc35cc",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/contracts/src/timeline-loudness-apply.ts",
+      "sha256": "9b660431575bb80e9a51dfdc551efdd5cc4d8da7d3c14dc1a4ca31571c405948",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "pnpm-lock.yaml",
+      "sha256": "f05f62d4d1517d149c6384e25c7685c7a1e4f2b86d8d4a28245777e6ec98b9c9",
+      "unchangedFromBaseline": true
+    }
+  ],
+  "databaseSchemaFilesChanged": [],
+  "dependencyFieldChanges": [],
+  "trackedDesignFiles": [],
+  "screensIdenticalToPrivateDesignExport": [],
+  "note": "只读响度协议扩展，历史备份分类器显式排除新字段；无新持久化结构"
+}

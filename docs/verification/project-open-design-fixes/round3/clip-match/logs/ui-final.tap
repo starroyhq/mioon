@@ -1,0 +1,748 @@
+TAP version 13
+# Subtest: whole raw form round-trips incomplete numeric strings and fade omission without business execution
+ok 1 - whole raw form round-trips incomplete numeric strings and fade omission without business execution
+  ---
+  duration_ms: 16.2415
+  type: 'test'
+  ...
+# Subtest: invalid raw numbers and missing name never become valid zero-valued business patches
+ok 2 - invalid raw numbers and missing name never become valid zero-valued business patches
+  ---
+  duration_ms: 1.028625
+  type: 'test'
+  ...
+# Subtest: a delayed GET preserves newer typed input and requires explicit old-draft handling
+ok 3 - a delayed GET preserves newer typed input and requires explicit old-draft handling
+  ---
+  duration_ms: 1.428209
+  type: 'test'
+  ...
+# Subtest: restoration freezes base revision and complete source, including unrelated timeline updates
+ok 4 - restoration freezes base revision and complete source, including unrelated timeline updates
+  ---
+  duration_ms: 2.432417
+  type: 'test'
+  ...
+# Subtest: only a complete matching fresh applied business ACK clears the exact persisted draft
+ok 5 - only a complete matching fresh applied business ACK clears the exact persisted draft
+  ---
+  duration_ms: 12.553417
+  type: 'test'
+  ...
+# Subtest: newer input typed while business save awaits survives and is never rebased or cleared
+ok 6 - newer input typed while business save awaits survives and is never rebased or cleared
+  ---
+  duration_ms: 0.411958
+  type: 'test'
+  ...
+# Subtest: an older applied ACK never regresses an observed newer timeline or clears its draft
+ok 7 - an older applied ACK never regresses an observed newer timeline or clears its draft
+  ---
+  duration_ms: 1.496333
+  type: 'test'
+  ...
+# Subtest: unknown business outcome and unmounted owner preserve draft without automatic replay
+ok 8 - unknown business outcome and unmounted owner preserve draft without automatic replay
+  ---
+  duration_ms: 0.451708
+  type: 'test'
+  ...
+# Subtest: multiwindow write conflict fails closed and reread never silently overwrites foreign raw
+ok 9 - multiwindow write conflict fails closed and reread never silently overwrites foreign raw
+  ---
+  duration_ms: 0.26125
+  type: 'test'
+  ...
+# Subtest: delayed local PUT coalesces newer input only after the first exact CAS is accepted
+ok 10 - delayed local PUT coalesces newer input only after the first exact CAS is accepted
+  ---
+  duration_ms: 0.352292
+  type: 'test'
+  ...
+# Subtest: explicit discard checks captured serial and never removes another window’s newer draft
+ok 11 - explicit discard checks captured serial and never removes another window’s newer draft
+  ---
+  duration_ms: 0.317292
+  type: 'test'
+  ...
+# Subtest: typing during explicit stored-draft deletion preserves input and does not leave a phantom recovery candidate
+ok 12 - typing during explicit stored-draft deletion preserves input and does not leave a phantom recovery candidate
+  ---
+  duration_ms: 0.214875
+  type: 'test'
+  ...
+# Subtest: backend identity changes require explicit page reload, never silently adopting a new authority
+ok 13 - backend identity changes require explicit page reload, never silently adopting a new authority
+  ---
+  duration_ms: 0.206833
+  type: 'test'
+  ...
+# Subtest: restored branch retains ordinary in-memory editing and discard without local draft I/O
+ok 14 - restored branch retains ordinary in-memory editing and discard without local draft I/O
+  ---
+  duration_ms: 0.215875
+  type: 'test'
+  ...
+# Subtest: lost autosave ACK followed by applied business ACK cannot falsely mark the sidecar cleared
+ok 15 - lost autosave ACK followed by applied business ACK cannot falsely mark the sidecar cleared
+  ---
+  duration_ms: 0.225792
+  type: 'test'
+  ...
+# Subtest: busy lane and hidden view never dispatch a business save and recovery never does so
+ok 16 - busy lane and hidden view never dispatch a business save and recovery never does so
+  ---
+  duration_ms: 0.1995
+  type: 'test'
+  ...
+# Subtest: HTTP adapter uses same-origin sidecar only and rejects malformed/unsupported write acknowledgments
+ok 17 - HTTP adapter uses same-origin sidecar only and rejects malformed/unsupported write acknowledgments
+  ---
+  duration_ms: 13.405959
+  type: 'test'
+  ...
+# Subtest: recovery is embedded in the existing right inspector with explicit restore and local plaintext warning
+ok 18 - recovery is embedded in the existing right inspector with explicit restore and local plaintext warning
+  ---
+  duration_ms: 0.466042
+  type: 'test'
+  ...
+# Subtest: a delayed reread cannot resurrect a candidate after its exact DELETE is confirmed
+ok 19 - a delayed reread cannot resurrect a candidate after its exact DELETE is confirmed
+  ---
+  duration_ms: 0.27075
+  type: 'test'
+  ...
+# Subtest: offline input automatically schedules a local write after a safe reconnect
+ok 20 - offline input automatically schedules a local write after a safe reconnect
+  ---
+  duration_ms: 25.392958
+  type: 'test'
+  ...
+# Subtest: repeated Save while the local flush awaits cannot dispatch duplicate business edits
+ok 21 - repeated Save while the local flush awaits cannot dispatch duplicate business edits
+  ---
+  duration_ms: 2.786334
+  type: 'test'
+  ...
+# Subtest: late durable preparation cannot execute after view, owner, source or base changes; its own busy state is allowed
+ok 22 - late durable preparation cannot execute after view, owner, source or base changes; its own busy state is allowed
+  ---
+  duration_ms: 10.890375
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_CAPACITY/507 without interpreting message text
+ok 23 - actual HTTP client preserves structured LOCAL_DRAFT_CAPACITY/507 without interpreting message text
+  ---
+  duration_ms: 0.423
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_LIMIT/413 without interpreting message text
+ok 24 - actual HTTP client preserves structured LOCAL_DRAFT_LIMIT/413 without interpreting message text
+  ---
+  duration_ms: 0.200958
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_CONFLICT/409 without interpreting message text
+ok 25 - actual HTTP client preserves structured LOCAL_DRAFT_CONFLICT/409 without interpreting message text
+  ---
+  duration_ms: 0.166208
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_STALE_INSTANCE/409 without interpreting message text
+ok 26 - actual HTTP client preserves structured LOCAL_DRAFT_STALE_INSTANCE/409 without interpreting message text
+  ---
+  duration_ms: 0.180417
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured LOCAL_DRAFT_SAVE_UNCERTAIN/503 without interpreting message text
+ok 27 - actual HTTP client preserves structured LOCAL_DRAFT_SAVE_UNCERTAIN/503 without interpreting message text
+  ---
+  duration_ms: 0.197458
+  type: 'test'
+  ...
+# Subtest: actual HTTP client preserves structured UNRECOGNIZED_FUTURE_CODE/409 without interpreting message text
+ok 28 - actual HTTP client preserves structured UNRECOGNIZED_FUTURE_CODE/409 without interpreting message text
+  ---
+  duration_ms: 0.131792
+  type: 'test'
+  ...
+# Subtest: actual HTTP client treats code/status mismatches, malformed 2xx and network loss as unknown outcomes
+ok 29 - actual HTTP client treats code/status mismatches, malformed 2xx and network loss as unknown outcomes
+  ---
+  duration_ms: 0.707792
+  type: 'test'
+  ...
+# Subtest: actual HTTP client refuses to treat malformed error envelopes as proof of a known refusal
+ok 30 - actual HTTP client refuses to treat malformed error envelopes as proof of a known refusal
+  ---
+  duration_ms: 0.464708
+  type: 'test'
+  ...
+# Subtest: capacity refusal pauses autosave through debounce, read-only GET null, typing and reconnect, then permits a local-only exit
+ok 31 - capacity refusal pauses autosave through debounce, read-only GET null, typing and reconnect, then permits a local-only exit
+  ---
+  duration_ms: 306.658292
+  type: 'test'
+  ...
+# Subtest: unknown PUT followed by GET null never becomes a known refusal, and late server publication remains recoverable after local exit
+ok 32 - unknown PUT followed by GET null never becomes a known refusal, and late server publication remains recoverable after local exit
+  ---
+  duration_ms: 51.96925
+  type: 'test'
+  ...
+# Subtest: a later verified GET refused cannot erase an earlier unknown write outcome
+ok 33 - a later verified GET refused cannot erase an earlier unknown write outcome
+  ---
+  duration_ms: 24.431333
+  type: 'test'
+  ...
+# Subtest: a later verified GET conflict cannot erase an earlier unknown write outcome
+ok 34 - a later verified GET conflict cannot erase an earlier unknown write outcome
+  ---
+  duration_ms: 21.664042
+  type: 'test'
+  ...
+# Subtest: LOCAL_DRAFT_STALE_INSTANCE pauses new PUTs across reads, changed input and context without replacing either window's record
+ok 35 - LOCAL_DRAFT_STALE_INSTANCE pauses new PUTs across reads, changed input and context without replacing either window's record
+  ---
+  duration_ms: 22.168458
+  type: 'test'
+  ...
+# Subtest: LOCAL_DRAFT_CONFLICT pauses new PUTs across reads, changed input and context without replacing either window's record
+ok 36 - LOCAL_DRAFT_CONFLICT pauses new PUTs across reads, changed input and context without replacing either window's record
+  ---
+  duration_ms: 23.156875
+  type: 'test'
+  ...
+# Subtest: an unresolved autosave may be abandoned locally, and its late PUT cannot resurrect the form or erase newer input
+ok 37 - an unresolved autosave may be abandoned locally, and its late PUT cannot resurrect the form or erase newer input
+  ---
+  duration_ms: 22.276917
+  type: 'test'
+  ...
+# Subtest: abandoning a business Save waiting on an unresolved local PUT prevents every later business handoff
+ok 38 - abandoning a business Save waiting on an unresolved local PUT prevents every later business handoff
+  ---
+  duration_ms: 0.932917
+  type: 'test'
+  ...
+# Subtest: abandonment is fenced after actual business handoff and while the durable lane is pending
+ok 39 - abandonment is fenced after actual business handoff and while the durable lane is pending
+  ---
+  duration_ms: 0.701917
+  type: 'test'
+  ...
+# Subtest: explicit local-only exit preserves an existing stored draft and its original restore base and source
+ok 40 - explicit local-only exit preserves an existing stored draft and its original restore base and source
+  ---
+  duration_ms: 0.720875
+  type: 'test'
+  ...
+# Subtest: a captured local-only exit cannot discard text changed back to the same value or a revisited owner
+ok 41 - a captured local-only exit cannot discard text changed back to the same value or a revisited owner
+  ---
+  duration_ms: 0.158875
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: cancel
+ok 42 - actual recovery confirmation preserves exact local-input ownership: cancel
+  ---
+  duration_ms: 42.389042
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: confirm
+ok 43 - actual recovery confirmation preserves exact local-input ownership: confirm
+  ---
+  duration_ms: 6.392709
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: new input
+ok 44 - actual recovery confirmation preserves exact local-input ownership: new input
+  ---
+  duration_ms: 4.821291
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: changed back
+ok 45 - actual recovery confirmation preserves exact local-input ownership: changed back
+  ---
+  duration_ms: 6.254958
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: pending business
+ok 46 - actual recovery confirmation preserves exact local-input ownership: pending business
+  ---
+  duration_ms: 4.838167
+  type: 'test'
+  ...
+# Subtest: actual recovery confirmation preserves exact local-input ownership: pending prop
+ok 47 - actual recovery confirmation preserves exact local-input ownership: pending prop
+  ---
+  duration_ms: 9.563334
+  type: 'test'
+  ...
+# Subtest: local-only exit fences a late GET without silently offering its old recovery candidate
+ok 48 - local-only exit fences a late GET without silently offering its old recovery candidate
+  ---
+  duration_ms: 1.00925
+  type: 'test'
+  ...
+# Subtest: late abandoned PUT completion cannot invalidate a newer explicit GET or attach an old write acknowledgement
+ok 49 - late abandoned PUT completion cannot invalidate a newer explicit GET or attach an old write acknowledgement
+  ---
+  duration_ms: 0.529375
+  type: 'test'
+  ...
+# Subtest: navigation discard held behind autosave preserves input when target invalidates
+ok 50 - navigation discard held behind autosave preserves input when target invalidates
+  ---
+  duration_ms: 0.240333
+  type: 'test'
+  ...
+# Subtest: navigation discard held behind autosave preserves input when new-input invalidates
+ok 51 - navigation discard held behind autosave preserves input when new-input invalidates
+  ---
+  duration_ms: 0.150708
+  type: 'test'
+  ...
+# Subtest: navigation discard held behind autosave preserves input when owner invalidates
+ok 52 - navigation discard held behind autosave preserves input when owner invalidates
+  ---
+  duration_ms: 0.09625
+  type: 'test'
+  ...
+# Subtest: navigation discard held behind autosave preserves input when unknown-write invalidates
+ok 53 - navigation discard held behind autosave preserves input when unknown-write invalidates
+  ---
+  duration_ms: 0.127708
+  type: 'test'
+  ...
+# Subtest: a valid dispatched draft DELETE is acknowledged but cannot clear input after target invalidates
+ok 54 - a valid dispatched draft DELETE is acknowledged but cannot clear input after target invalidates
+  ---
+  duration_ms: 0.21275
+  type: 'test'
+  ...
+# Subtest: false navigation fence cannot clear a restored-workspace local form
+ok 55 - false navigation fence cannot clear a restored-workspace local form
+  ---
+  duration_ms: 0.095
+  type: 'test'
+  ...
+# Subtest: candidate exact small positive attenuation cannot be replaced within an absolute epsilon
+ok 56 - candidate exact small positive attenuation cannot be replaced within an absolute epsilon
+  ---
+  duration_ms: 2.861542
+  type: 'test'
+  ...
+# Subtest: same PCM binds the range peak exactly while legacy reports remain valid without LRA
+ok 57 - same PCM binds the range peak exactly while legacy reports remain valid without LRA
+  ---
+  duration_ms: 13.527166
+  type: 'test'
+  ...
+# Subtest: response target identity includes both fields and rejects an omitted requested candidate
+ok 58 - response target identity includes both fields and rejects an omitted requested candidate
+  ---
+  duration_ms: 1.189709
+  type: 'test'
+  ...
+# Subtest: candidate accepts exact gain 2 and refuses a mathematically larger gain without clamping
+ok 59 - candidate accepts exact gain 2 and refuses a mathematically larger gain without clamping
+  ---
+  duration_ms: 163.322167
+  type: 'test'
+  ...
+# Subtest: candidate measurement includes float32 scaling and fresh EOF true-peak reconstruction
+ok 60 - candidate measurement includes float32 scaling and fresh EOF true-peak reconstruction
+  ---
+  duration_ms: 31.57275
+  type: 'test'
+  ...
+# Subtest: real in preset edits only the draft until ordinary Save, preserving gain and legacy fades
+ok 61 - real in preset edits only the draft until ordinary Save, preserving gain and legacy fades
+  ---
+  duration_ms: 56.688375
+  type: 'test'
+  ...
+# Subtest: real out preset edits only the draft until ordinary Save, preserving gain and legacy fades
+ok 62 - real out preset edits only the draft until ordinary Save, preserving gain and legacy fades
+  ---
+  duration_ms: 7.745917
+  type: 'test'
+  ...
+# Subtest: preset draft recovery is explicit and Cancel restores the original curve without business Save
+ok 63 - preset draft recovery is explicit and Cancel restores the original curve without business Save
+  ---
+  duration_ms: 5.104625
+  type: 'test'
+  ...
+# Subtest: manual tool parameter edits stay temporary; real Apply persists only its curve through original Save
+ok 64 - manual tool parameter edits stay temporary; real Apply persists only its curve through original Save
+  ---
+  duration_ms: 8.7585
+  type: 'test'
+  ...
+# Subtest: manual Apply recovery requires explicit restore and Cancel retains the original complete raw clip
+ok 65 - manual Apply recovery requires explicit restore and Cancel retains the original complete raw clip
+  ---
+  duration_ms: 5.159167
+  type: 'test'
+  ...
+# Subtest: manual parameter IME reaches the real controller close/Save guard but never persists transient tool text
+ok 66 - manual parameter IME reaches the real controller close/Save guard but never persists transient tool text
+  ---
+  duration_ms: 5.207417
+  type: 'test'
+  ...
+# Subtest: retained manual Apply cannot send a replacement into a changed draft owner
+ok 67 - retained manual Apply cannot send a replacement into a changed draft owner
+  ---
+  duration_ms: 5.956708
+  type: 'test'
+  ...
+# Subtest: raw projection, proposed shrink, explicit replacement and clear preserve envelope presence
+ok 68 - raw projection, proposed shrink, explicit replacement and clear preserve envelope presence
+  ---
+  duration_ms: 0.1925
+  type: 'test'
+  ...
+# Subtest: bounded invalid intermediates persist exactly without becoming business Save
+ok 69 - bounded invalid intermediates persist exactly without becoming business Save
+  ---
+  duration_ms: 0.339875
+  type: 'test'
+  ...
+# Subtest: composition is controller-owned dirty close/navigation protection and cannot persist transient text
+ok 70 - composition is controller-owned dirty close/navigation protection and cannot persist transient text
+  ---
+  duration_ms: 0.32525
+  type: 'test'
+  ...
+# Subtest: composition settlement retains admitted input under capability loss and disconnect
+ok 71 - composition settlement retains admitted input under capability loss and disconnect
+  ---
+  duration_ms: 0.187667
+  type: 'test'
+  ...
+# Subtest: old owner/token cannot update form or release a later composition
+ok 72 - old owner/token cannot update form or release a later composition
+  ---
+  duration_ms: 0.126292
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope absent
+ok 73 - business ACK checks omitted unchanged envelope absent
+  ---
+  duration_ms: 0.320709
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope null
+ok 74 - business ACK checks omitted unchanged envelope null
+  ---
+  duration_ms: 0.164375
+  type: 'test'
+  ...
+# Subtest: business ACK checks omitted unchanged envelope value
+ok 75 - business ACK checks omitted unchanged envelope value
+  ---
+  duration_ms: 0.210541
+  type: 'test'
+  ...
+# Subtest: exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save
+ok 76 - exact business ACK clears exact sidecar and saves numeric envelope through ordinary Save
+  ---
+  duration_ms: 0.327875
+  type: 'test'
+  ...
+# Subtest: changed recovered unsupported curve remains visible and blocked
+ok 77 - changed recovered unsupported curve remains visible and blocked
+  ---
+  duration_ms: 0.1485
+  type: 'test'
+  ...
+# Subtest: late business ACK cannot delete newer curve input
+ok 78 - late business ACK cannot delete newer curve input
+  ---
+  duration_ms: 0.314292
+  type: 'test'
+  ...
+# Subtest: restored explicit capable business edits remain available without local companion IO
+ok 79 - restored explicit capable business edits remain available without local companion IO
+  ---
+  duration_ms: 0.1855
+  type: 'test'
+  ...
+# Subtest: capability loss during flush cancels business submission without stripping saved draft
+ok 80 - capability loss during flush cancels business submission without stripping saved draft
+  ---
+  duration_ms: 0.221417
+  type: 'test'
+  ...
+# Subtest: over-budget accepted form stays in memory with explicit refusal and close protection, no fetch
+ok 81 - over-budget accepted form stays in memory with explicit refusal and close protection, no fetch
+  ---
+  duration_ms: 0.590208
+  type: 'test'
+  ...
+# Subtest: external owner-context replacement retains original pending composition and freezes effects
+ok 82 - external owner-context replacement retains original pending composition and freezes effects
+  ---
+  duration_ms: 0.150042
+  type: 'test'
+  ...
+# Subtest: every composed UI and native catalog has exact four-locale and placeholder parity
+ok 83 - every composed UI and native catalog has exact four-locale and placeholder parity
+  ---
+  duration_ms: 47.792916
+  type: 'test'
+  ...
+# Subtest: UI literal ledger rejects unexplained, newly introduced and stale exceptions
+ok 84 - UI literal ledger rejects unexplained, newly introduced and stale exceptions
+  ---
+  duration_ms: 0.489042
+  type: 'test'
+  ...
+# Subtest: current source has no unreviewed or stale static UI literal exceptions
+ok 85 - current source has no unreviewed or stale static UI literal exceptions
+  ---
+  duration_ms: 473.728875
+  type: 'test'
+  ...
+# Subtest: static semantic keys used by UI translation calls exist in the composed catalog
+ok 86 - static semantic keys used by UI translation calls exist in the composed catalog
+  ---
+  duration_ms: 242.986375
+  type: 'test'
+  ...
+# Subtest: visible template guard distinguishes app copy from dynamic semantic keys
+ok 87 - visible template guard distinguishes app copy from dynamic semantic keys
+  ---
+  duration_ms: 0.188375
+  type: 'test'
+  ...
+# Subtest: candidate RPC opens a real restored43 project and preserves strict scope and held export disclosure
+ok 88 - candidate RPC opens a real restored43 project and preserves strict scope and held export disclosure
+  ---
+  duration_ms: 1530.372375
+  type: 'test'
+  ...
+# Subtest: only the exact candidate client binding accepts43; legacy API, copied binding and forged capability responses reject
+ok 89 - only the exact candidate client binding accepts43; legacy API, copied binding and forged capability responses reject
+  ---
+  duration_ms: 743.752625
+  type: 'test'
+  ...
+# Subtest: real restored application binding and clip controller persist new-origin drafts, save/cancel, undo/redo and refuse captured pending without v3 traffic
+ok 90 - real restored application binding and clip controller persist new-origin drafts, save/cancel, undo/redo and refuse captured pending without v3 traffic
+  ---
+  duration_ms: 3408.057583
+  type: 'test'
+  ...
+# Subtest: actual App view updates remain in memory for43 and continue using the existing preference controller for42
+ok 91 - actual App view updates remain in memory for43 and continue using the existing preference controller for42
+  ---
+  duration_ms: 757.797959
+  type: 'test'
+  ...
+# Subtest: real shared components show43 draft disclosure in four languages and remove unavailable mutation actions while keeping clip/history/preview controls
+ok 92 - real shared components show43 draft disclosure in four languages and remove unavailable mutation actions while keeping clip/history/preview controls
+  ---
+  duration_ms: 1392.744792
+  type: 'test'
+  ...
+# Subtest: actual restored Timeline menu disables structure writes and rejects current and retained mutation callbacks
+ok 93 - actual restored Timeline menu disables structure writes and rejects current and retained mutation callbacks
+  ---
+  duration_ms: 732.815958
+  type: 'test'
+  ...
+# Subtest: actual hook installs visibility/pagehide fences, never auto-reads and removes ownership on disposal
+ok 94 - actual hook installs visibility/pagehide fences, never auto-reads and removes ownership on disposal
+  ---
+  duration_ms: 31.877667
+  type: 'test'
+  ...
+# Subtest: matching sends explicit target, accepts a fully measured candidate and consumes it only once into a draft callback
+ok 95 - matching sends explicit target, accepts a fully measured candidate and consumes it only once into a draft callback
+  ---
+  duration_ms: 3.515959
+  type: 'test'
+  ...
+# Subtest: raw invalid target input, whitespace and IME never start analysis or normalize to zero
+ok 96 - raw invalid target input, whitespace and IME never start analysis or normalize to zero
+  ---
+  duration_ms: 0.798917
+  type: 'test'
+  ...
+# Subtest: changing target aborts late measurement and A→B→A does not revive an old Analyze or Match callback
+ok 97 - changing target aborts late measurement and A→B→A does not revive an old Analyze or Match callback
+  ---
+  duration_ms: 0.477416
+  type: 'test'
+  ...
+# Subtest: hidden, switched, restored, composed and conflicted draft contexts reject retained Match callbacks before effects
+ok 98 - hidden, switched, restored, composed and conflicted draft contexts reject retained Match callbacks before effects
+  ---
+  duration_ms: 1.96275
+  type: 'test'
+  ...
+# Subtest: matching is blocked when real candidate misses peak ceiling, misses target or requires no change
+ok 99 - matching is blocked when real candidate misses peak ceiling, misses target or requires no change
+  ---
+  duration_ms: 0.647291
+  type: 'test'
+  ...
+# Subtest: float32 residue after saving a matched clip cannot create a repeated negligible gain edit
+ok 100 - float32 residue after saving a matched clip cannot create a repeated negligible gain edit
+  ---
+  duration_ms: 0.285791
+  type: 'test'
+  ...
+# Subtest: an appreciable loudness change remains matchable for a legitimate tiny positive gain
+ok 101 - an appreciable loudness change remains matchable for a legitimate tiny positive gain
+  ---
+  duration_ms: 0.235209
+  type: 'test'
+  ...
+# Subtest: response with a different explicit target or unmeasured candidate cannot expose a matchable report
+ok 102 - response with a different explicit target or unmeasured candidate cannot expose a matchable report
+  ---
+  duration_ms: 0.761625
+  type: 'test'
+  ...
+# Subtest: the actual clip draft receives exact gain only; no implicit Save, new mutation or raw reset occurs
+ok 103 - the actual clip draft receives exact gain only; no implicit Save, new mutation or raw reset occurs
+  ---
+  duration_ms: 14.913583
+  type: 'test'
+  ...
+# Subtest: draft admission includes pending envelope composition and validates gain without clamping
+ok 104 - draft admission includes pending envelope composition and validates gain without clamping
+  ---
+  duration_ms: 1.061042
+  type: 'test'
+  ...
+# Subtest: actual matching card controls explicit target and blocks accidental form submit without interfering with native IME
+ok 105 - actual matching card controls explicit target and blocks accidental form submit without interfering with native IME
+  ---
+  duration_ms: 114.510583
+  type: 'test'
+  ...
+# Subtest: actual matching card explains a measured peak conflict and short LRA without inventing zero or enabling Match
+ok 106 - actual matching card explains a measured peak conflict and short LRA without inventing zero or enabling Match
+  ---
+  duration_ms: 36.061208
+  type: 'test'
+  ...
+# Subtest: a saved −26 LUFS match shows positive zero and already matched for float32 residue instead of another gain edit
+ok 107 - a saved −26 LUFS match shows positive zero and already matched for float32 residue instead of another gain edit
+  ---
+  duration_ms: 4.616625
+  type: 'test'
+  ...
+# Subtest: matching labels, units, limitations and invalid-target feedback are localized in all four catalogs
+ok 108 - matching labels, units, limitations and invalid-target feedback are localized in all four catalogs
+  ---
+  duration_ms: 13.013625
+  type: 'test'
+  ...
+# Subtest: attach and context changes never analyze; explicit read sends exact saved selection only
+ok 109 - attach and context changes never analyze; explicit read sends exact saved selection only
+  ---
+  duration_ms: 2.82925
+  type: 'test'
+  ...
+# Subtest: saved-only admission blocks invalid identity, dirty/conflict/pending/recovery, mute/zero/no-audio, and long clip
+ok 110 - saved-only admission blocks invalid identity, dirty/conflict/pending/recovery, mute/zero/no-audio, and long clip
+  ---
+  duration_ms: 0.490959
+  type: 'test'
+  ...
+# Subtest: every identity/execution/visibility change aborts and clears before late fulfillment or failure
+ok 111 - every identity/execution/visibility change aborts and clears before late fulfillment or failure
+  ---
+  duration_ms: 16.634375
+  type: 'test'
+  ...
+# Subtest: A→B→A cannot restore an old report or reuse an old Analyze/Cancel callback
+ok 112 - A→B→A cannot restore an old report or reuse an old Analyze/Cancel callback
+  ---
+  duration_ms: 0.560833
+  type: 'test'
+  ...
+# Subtest: live context catches pre-effect changes; render suppresses ready response before layout effect
+ok 113 - live context catches pre-effect changes; render suppresses ready response before layout effect
+  ---
+  duration_ms: 0.276542
+  type: 'test'
+  ...
+# Subtest: cancel, collapse revoke, dispose and strict-mode reattach abort with no retry or restored report
+ok 114 - cancel, collapse revoke, dispose and strict-mode reattach abort with no retry or restored report
+  ---
+  duration_ms: 0.175083
+  type: 'test'
+  ...
+# Subtest: duplicates do not queue; exact clip ranges, gain/fades, track and asset must match current saved identity
+ok 115 - duplicates do not queue; exact clip ranges, gain/fades, track and asset must match current saved identity
+  ---
+  duration_ms: 21.531291
+  type: 'test'
+  ...
+# Subtest: saved public context preserves saved gain and probes audio/video despite false/unknown cached audio metadata
+ok 116 - saved public context preserves saved gain and probes audio/video despite false/unknown cached audio metadata
+  ---
+  duration_ms: 0.289042
+  type: 'test'
+  ...
+# Subtest: actual SSR card is discoverable, opt-in, saved-only and has no target/gain suggestion/apply controls
+ok 117 - actual SSR card is discoverable, opt-in, saved-only and has no target/gain suggestion/apply controls
+  ---
+  duration_ms: 342.67025
+  type: 'test'
+  ...
+# Subtest: measured report displays existing units/status and exact saved ranges/gain/fades/profile
+ok 118 - measured report displays existing units/status and exact saved ranges/gain/fades/profile
+  ---
+  duration_ms: 0.376583
+  type: 'test'
+  ...
+# Subtest: disabled saved-only cases explain why without reporting a fabricated silence; hidden unmounts UI
+ok 119 - disabled saved-only cases explain why without reporting a fabricated silence; hidden unmounts UI
+  ---
+  duration_ms: 0.175875
+  type: 'test'
+  ...
+# Subtest: actual component Analyze and Cancel callbacks retain captured selection/version and cannot revive A→B→A
+ok 120 - actual component Analyze and Cancel callbacks retain captured selection/version and cannot revive A→B→A
+  ---
+  duration_ms: 27.729792
+  type: 'test'
+  ...
+# Subtest: four locale component labels/statuses and placeholders are present, zh-Hant is region-neutral
+ok 121 - four locale component labels/statuses and placeholders are present, zh-Hant is region-neutral
+  ---
+  duration_ms: 17.148417
+  type: 'test'
+  ...
+# Subtest: actual host binds selected saved clip and shared RPC; comparison/source overlays and draft conflicts fence analysis
+ok 122 - actual host binds selected saved clip and shared RPC; comparison/source overlays and draft conflicts fence analysis
+  ---
+  duration_ms: 1.13225
+  type: 'test'
+  ...
+# Subtest: actual Analyze callback admits false/unknown video metadata and displays only authoritative backend failure
+ok 123 - actual Analyze callback admits false/unknown video metadata and displays only authoritative backend failure
+  ---
+  duration_ms: 2.66975
+  type: 'test'
+  ...
+1..123
+# tests 123
+# suites 0
+# pass 123
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9626.612125

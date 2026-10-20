@@ -1,5 +1,7 @@
 # HTTP API
 
+本轮新增的公共接口见[工作区开关与备份](WORKSPACE-SETTINGS.md)、[任务处置](TASK-DISPOSITIONS.md)和[导出控制](EXPORT-CONTROLS.md)。HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述
+
 Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted. All `/api/*` except login and all `/media/*` require `Authorization: Bearer <local token>` or the HttpOnly SameSite=Strict login cookie. `/health` is public. The token is server-side configuration; do not place it in URLs.
 
 `POST /api/login` body `{"token":"<local token>"}` exchanges the token for a browser cookie.

@@ -95,7 +95,7 @@ export function createRestoredReadServices(store: RestoreReadStore,{signal}: Res
    profile:restored.profile,createdAt:restored.createdAt,
    source:{backupId:restored.sourceBackupId,schemaVersion:restored.sourceSchema,manifestHash:restored.manifestHash,dbHash:restored.sourceDbHash},
    heldCounts:Object.entries(restored.heldCounts as Record<string,unknown>).map(([kind,count])=>({kind,count})),
-   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>operation==='timeline.clip.rippleRemove'&&![45,49].includes(restored.schemaVersion)
+   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>operation==='timeline.clip.rippleRemove'&&![45,49,51].includes(restored.schemaVersion)
     ?{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}:lutRestorePolicy(operation,restored.schemaVersion)),
     ...RESTORE_DENIED_OPERATIONS.map(operation=>({operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}))],
    backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}}),

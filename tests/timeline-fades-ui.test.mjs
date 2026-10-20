@@ -153,8 +153,8 @@ test('actual inspector renders integer fade controls inside its existing ScrollA
       assert.ok(nodes(h.all().find(node => node.type === 'ScrollArea')).includes(field));
       assert.match(field.props['aria-describedby'], /clip-fade-bounds clip-fade-effect/);
     }
-    assert.equal(h.find('clip-gain').props.max, '2'); assert.equal(h.find('clip-gain').props.step, '0.05'); assert.equal(h.find('save-clip').props.disabled, true);
-    assert.match(h.text(), /音频淡入\/淡出（帧）/); assert.match(h.text(), /30 帧 = 1 秒/);
+    assert.equal(h.find('clip-gain').props.inputMode, 'decimal'); assert.equal(h.find('clip-gain').props.value, '0'); assert.equal(h.find('save-clip').props.disabled, true);
+    assert.match(h.text(), /淡入淡出/); assert.match(h.text(), /30 帧 = 1 秒/);
     assert.match(text(h.find('clip-fade-effect')), /重新渲染时间线预览与导出.*源素材快速查看播放原始声音/);
   }
 });
@@ -216,15 +216,15 @@ test('edits made during save survive its acknowledgment without silently rebasin
   const pending = deferred(), calls = [];
   const h = await inspectorHarness({ onSave: (id, patch, revision) => { calls.push({ id, patch: structuredClone(patch), revision }); return calls.length === 1 ? pending.promise : Promise.resolve(timeline(clip(patch), revision + 1)); } });
   h.edit('clip-fade-in', '15'); const saving = h.submit(); await tick();
-  h.render({ busy: true }); h.edit('clip-fade-out', '20'); h.edit('clip-gain', '0');
+  h.render({ busy: true }); h.edit('clip-fade-out', '20'); h.edit('clip-gain', '−∞');
   assert.equal(h.find('save-clip').props.disabled, true);
   await h.submit(); assert.equal(calls.length, 1);
   const saved = clip(calls[0].patch); pending.resolve(timeline(saved, 8)); await saving;
   h.render({ clip: saved, timeline: timeline(saved, 8), busy: false });
-  assert.equal(h.find('clip-fade-out').props.value, '20'); assert.equal(h.find('clip-gain').props.value, '0'); assert.equal(h.dirtyEvents.at(-1), true);
+  assert.equal(h.find('clip-fade-out').props.value, '20'); assert.equal(h.find('clip-gain').props['aria-valuetext'], '−∞'); assert.equal(h.dirtyEvents.at(-1), true);
   assert.equal(Object.hasOwn(calls[0].patch, 'fadeOutFrames'), false);
   assert.equal(h.find('save-clip').props.disabled, true); await h.submit(); assert.equal(calls.length, 1);
-  await h.reset(); h.edit('clip-fade-out', '20'); h.edit('clip-gain', '0');
+  await h.reset(); h.edit('clip-fade-out', '20'); h.edit('clip-gain', '−∞');
   await h.submit(); h.render();
   assert.equal(calls[1].revision, 8); assert.equal(calls[1].patch.fadeInFrames, 15); assert.equal(calls[1].patch.fadeOutFrames, 20); assert.equal(calls[1].patch.gain, 0); assert.equal(h.dirtyEvents.at(-1), false);
 });
@@ -355,4 +355,36 @@ test('captured enabled role selector cannot write after capability loss or owner
  const captured=h.find('clip-audio-role').props.onChange;
  h.render({draftContext:{audioRoleEditable:false}});captured({target:{value:'human'}});h.render();assert.equal(h.find('save-clip').props.disabled,true);
  h.render({draftContext:{audioRoleEditable:true}});const later=h.find('clip-audio-role').props.onChange;h.unmount();later({target:{value:'music'}});assert.equal(h.saves.length,0);
+});
+
+
+test('dB editing converts only explicit changes and preserves exact saved linear gain on unrelated saves', async () => {
+  for (const gain of [0, 1, 2, 0.1234567890123456, Number.MIN_VALUE]) {
+    const current = clip({gain});
+    const h = await inspectorHarness({clip: current, timeline: timeline(current)});
+    assert.equal(h.saves.length, 0);
+    h.edit('clip-name', 'Exact gain'); await h.submit();
+    assert.equal(h.saves[0].patch.gain, gain);
+  }
+  const h = await inspectorHarness();
+  h.edit('clip-gain', '-6'); await h.submit(); h.render();
+  assert.equal(h.saves[0].patch.gain, 10 ** (-6 / 20));
+  assert.equal(h.find('clip-gain').props.value, '-6');
+  h.find('clip-gain-silence').props.onClick(); h.render(); await h.submit(); h.render();
+  assert.equal(h.saves[1].patch.gain, 0);
+  assert.equal(h.find('clip-gain').props['aria-valuetext'], '−∞');
+  h.edit('clip-gain-slider', String(20 * Math.log10(2))); await h.submit(); h.render();
+  assert.equal(h.saves[2].patch.gain, 2);
+});
+
+test('incomplete or out-of-range dB input remains visible and blocks business Save', async () => {
+  const h = await inspectorHarness();
+  for (const value of ['-', '.', '', '7', '1e999']) {
+    h.edit('clip-gain', value);
+    assert.equal(h.find('clip-gain').props.value, value);
+    assert.equal(h.find('save-clip').props.disabled, true);
+    await h.submit(); assert.equal(h.saves.length, 0);
+  }
+  h.edit('clip-gain', '0'); await h.submit();
+  assert.equal(h.saves[0].patch.gain, 1);
 });

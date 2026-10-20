@@ -14,7 +14,7 @@ export interface DeliveryWorkspaceProps {
  * children and owns page visibility, project fences, drafts and requests. */
 export default function DeliveryWorkspace({ page, onPage, children }: DeliveryWorkspaceProps) {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
-  return <section className="delivery-workspace" data-testid="delivery-workspace" data-page={page} aria-labelledby="delivery-workspace-heading">
+  return <section className="delivery-workspace" lang={locale} data-testid="delivery-workspace" data-page={page} aria-labelledby="delivery-workspace-heading">
     <header className="delivery-workspace-heading">
       <h2 id="delivery-workspace-heading">{page === 'history' ? t('export.workspace.history') : t('export.workspace.delivery')}</h2>
       <p>{page === 'history'

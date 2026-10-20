@@ -95,15 +95,15 @@ async function boundedJson(response: Response, signal?: AbortSignal): Promise<un
 export function liveConfiguration(env: NodeJS.ProcessEnv, keyName: string, prefix: string): LiveConfiguration {
   const secret = typeof env[keyName] === 'string' ? env[keyName].trim() : '';
   const configured = Boolean(secret);
-  const enabled = configured && env.MIOON_ENABLE_LIVE_PROVIDER === '1';
+  const enabled = () => configured && env.MIOON_ENABLE_LIVE_PROVIDER === '1';
   return {
-    secret, configured, enabled,
-    status: !configured ? 'not_configured' : enabled ? 'available' : 'disabled',
+    secret, configured, get enabled() { return enabled(); },
+    get status() { return !configured ? 'not_configured' : enabled() ? 'available' : 'disabled'; },
     configuration: {
       missing: [...(!configured ? [keyName] : []), ...(env.MIOON_ENABLE_LIVE_PROVIDER !== '1' ? ['MIOON_ENABLE_LIVE_PROVIDER'] : [])],
       requirements: [keyName, 'MIOON_ENABLE_LIVE_PROVIDER=1', `${prefix}_APPROVED_ASSET_SHA256 (required for image input)`],
     },
-    ensureEnabled() { if (!enabled) throw providerError('PROVIDER_DISABLED', 'Live provider calls are disabled or its server credential is missing.'); },
+    ensureEnabled() { if (!enabled()) throw providerError('PROVIDER_DISABLED', 'Live provider calls are disabled or its server credential is missing.'); },
   };
 }
 
@@ -116,7 +116,7 @@ export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name
     ensureEnabled();
     // Private worker fence: metadata/lifecycle may change while preparing an
     // image. Keep this synchronous and outside the ambiguous fetch catch.
-    if(method==='POST'){context.beforeSubmit?.();if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});}
+    if(method==='POST'){context.beforeSubmit?.();if(context.signal?.aborted)throw operationCancelled({beforeDispatch:true});ensureEnabled();}
     let response: Response;
     try {
       response = await fetchImpl(`${api}${endpoint}`, {

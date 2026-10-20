@@ -42,8 +42,9 @@ function ui() {
     import { Input } from '@mioon/ui/components/input';
     import { Textarea } from '@mioon/ui/components/textarea';
     import { Label } from '@mioon/ui/components/label';
+    import { WorkbenchButton } from '@mioon/ui/components/workbench-controls';
     import { useButton } from ${JSON.stringify(join(baseRoot, 'internals/use-button/useButton.js'))};
-    export { React, ProjectHome, Button, Input, Textarea, Label, renderToStaticMarkup };
+    export { React, ProjectHome, Button, Input, Textarea, Label, WorkbenchButton, renderToStaticMarkup };
     export const render = props => renderToStaticMarkup(<ProjectHome {...props} />);
     export function buttonProps(props) {
       let result;
@@ -72,6 +73,7 @@ function harness(patch = {}) {
   const react = { ...actual.React,
     useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], value => { if (mounted) slots[index] = typeof value === 'function' ? value(slots[index]) : value; }]; },
     useRef(initial) { const index = cursor++; return slots[index] ||= { current: initial }; },
+    useMemo(factory, dependencies) { const index = cursor++, before = slots[index]; if (!before || dependencies.some((value, offset) => !Object.is(value, before.dependencies[offset]))) slots[index] = {dependencies, value:factory()}; return slots[index].value; },
     useId() { const index = cursor++; return `home-test-${index}`; },
     useEffect(effect, dependencies) {
       const index = cursor++, before = slots[index];
@@ -94,7 +96,7 @@ function harness(patch = {}) {
     if (name === 'react') return react;
     if (name === '@mioon/ui/components/workbench-icons') return { WorkbenchIcon: () => null };
     if (name === '@mioon/ui/components/dialog') return { Dialog: ({children}) => actual.React.createElement(actual.React.Fragment, null, children) };
-    if (name === '@mioon/ui/components/workbench-controls') return { WorkbenchDialogContent: ({children}) => actual.React.createElement('section', {role:'dialog'}, children) };
+    if (name === '@mioon/ui/components/workbench-controls') return { WorkbenchButton: actual.WorkbenchButton, WorkbenchDialogContent: ({children}) => actual.React.createElement('section', {role:'dialog'}, children) };
     if (name.endsWith('.css')) return {};
     const key = { '@mioon/ui/components/button': 'Button', '@mioon/ui/components/input': 'Input', '@mioon/ui/components/textarea': 'Textarea', '@mioon/ui/components/label': 'Label' }[name];
     if (key) return { [key]: actual[key] };
@@ -130,16 +132,22 @@ componentTest('empty home is a standalone welcome without project controls or a 
   const html = ui().render(defaults({ projects: [] }));
   assert.match(html, /data-testid="project-home"/);
   assert.match(html, /还没有项目/);
-  assert.match(html, /创建第一个项目/);
+  assert.match(html, /新建项目/);
+  assert.match(html, /全部项目/);
   assert.match(html, /项目/);
   assert.match(html, /data-testid="project-home-create-toggle"/);
+  const header = html.match(/<header class="project-home-header">([\s\S]*?)<\/header>/)[1];
+  assert.doesNotMatch(header, /project-home-create-toggle|project-home-search/);
+  assert.equal((html.match(/data-testid="project-home-create-toggle"/g) || []).length, 1);
+  assert.match(html, /data-testid="project-home-create-toggle"[^>]*data-variant="primary"[^>]*data-size="large"/);
+  assert.doesNotMatch(html, /工作区项目|刷新项目列表|project-home-footnote/);
   assert.doesNotMatch(html, /react-flow|timeline-panel|asset-panel|inspector-region|task-workspace|image-generation|role="dialog"|aria-modal/);
   assert.doesNotMatch(html, /暂无任务|没有任务|关闭项目/);
 });
 
 componentTest('real shared controls render keyboard-native page and project buttons with honest timestamps', () => {
   const html = ui().render(defaults());
-  for (const id of ['project-home-page-projects', 'project-home-page-settings', 'project-home-refresh', 'project-home-open-project-a']) {
+  for (const id of ['project-home-page-projects', 'project-home-page-settings', 'project-home-help', 'project-home-open-project-a']) {
     assert.match(html, new RegExp(`<button[^>]*data-testid="${id}"[^>]*>`));
   }
   assert.match(html, /data-slot="button"/);
@@ -170,25 +178,71 @@ componentTest('opening and error states stay on home, identify the target, and o
   assert.match(failure, /data-testid="project-home-open-project-b"/);
 });
 
-componentTest('notice and supplied status remain visible across project and settings pages', () => {
+componentTest('notices remain visible while workspace details and refresh stay reachable through Help', () => {
   const actual = ui();
   for (const page of ['projects', 'settings']) {
-    const html = actual.render(defaults({ page, notice: '恢复分支限制', status: actual.React.createElement('span', null, '位置状态保留'), settings: actual.React.createElement('section', null, '设置正文') }));
-    assert.match(html, /恢复分支限制/); assert.match(html, /位置状态保留/);
+    const h = harness({ page, notice: '恢复分支限制', status: actual.React.createElement('span', null, '工作区限制保留'), help: actual.React.createElement('span', null, '位置状态保留'), settings: actual.React.createElement('section', null, '设置正文') });
+    const html = h.html(h.render());
+    assert.match(html, /恢复分支限制/); assert.match(html, /工作区限制保留/); assert.doesNotMatch(html, /位置状态保留/);
     assert.equal(html.includes('设置正文'), page === 'settings');
     assert.equal(html.includes('project-home-open-project-a'), page === 'projects');
     assert.doesNotMatch(html, /role="dialog"|aria-modal|drawer/);
+    if (page === 'projects') {
+      find(h.render(), 'project-home-help').props.onClick();
+      const opened = h.render();
+      assert.match(h.html(opened), /位置状态保留/);
+      assert.ok(find(opened, 'project-home-refresh'));
+    } else assert.equal(find(h.render(), 'project-home-help').props.disabled, true);
   }
 });
 
 componentTest('actual callbacks dispatch only explicit list, retry, open, and page intent', () => {
-  const h = harness({ phase: 'error', error: '打开失败' }); const tree = h.render();
+  const h = harness({ phase: 'error', error: '打开失败' }); let tree = h.render();
   assert.deepEqual(h.calls, []);
+  find(tree, 'project-home-help').props.onClick(); tree = h.render();
   find(tree, 'project-home-refresh').props.onClick();
   find(tree, 'project-home-retry').props.onClick();
   find(tree, 'project-home-open-project-b').props.onClick();
   find(tree, 'project-home-page-settings').props.onClick();
   assert.deepEqual(h.calls, [['refresh'], ['retry'], ['open', 'project-b'], ['page', 'settings']]);
+});
+
+componentTest('closing or hiding Help revokes its retained refresh callback and never reopens it implicitly', () => {
+  const h = harness();
+  find(h.render(), 'project-home-help').props.onClick();
+  let tree = h.render(), retained = find(tree, 'project-home-refresh');
+  const dialog = nodes(tree).find(node => node.props?.open === true && typeof node.props.onOpenChange === 'function');
+  dialog.props.onOpenChange(false); retained.props.onClick();
+  assert.deepEqual(h.calls, [], 'Closing revokes before the next render');
+  assert.equal(nodes(h.render()).some(node => node.props?.['data-testid'] === 'project-home-refresh'), false);
+  find(h.render(), 'project-home-help').props.onClick();
+  tree = h.render(); retained.props.onClick();
+  assert.deepEqual(h.calls, [], 'A new Help opening does not revive the old callback');
+  retained = find(tree, 'project-home-refresh');
+  tree = h.render({active:false}); retained.props.onClick();
+  assert.deepEqual(h.calls, []);
+  assert.equal(nodes(tree).some(node => node.props?.open === true), false);
+  tree = h.render({active:true}); retained.props.onClick();
+  assert.equal(nodes(tree).some(node => node.props?.open === true), false);
+  assert.deepEqual(h.calls, []);
+  find(tree, 'project-home-help').props.onClick();
+  retained = find(h.render(), 'project-home-refresh'); h.unmount(); retained.props.onClick();
+  assert.deepEqual(h.calls, []);
+});
+
+componentTest('Help refresh follows current busy and opening state while unknown mutations still permit list inspection', () => {
+  for (const patch of [{busy:true}, {listBusy:true}, {phase:'opening'}, {page:'settings'}]) {
+    const h = harness(); find(h.render(), 'project-home-help').props.onClick();
+    const retained = find(h.render(), 'project-home-refresh');
+    const tree = h.render(patch); retained.props.onClick();
+    assert.deepEqual(h.calls, []);
+    const control = nodes(tree).find(node => node.props?.['data-testid'] === 'project-home-refresh');
+    if (control) assert.equal(control.props.disabled, true);
+  }
+  const h = harness({canMutateEntry: () => false});
+  find(h.render(), 'project-home-help').props.onClick();
+  find(h.render(), 'project-home-refresh').props.onClick();
+  assert.deepEqual(h.calls, [['refresh']], 'Read-only list inspection must remain available for an unknown create result');
 });
 
 componentTest('busy and opening disable repeated project actions including real shared keyboard handlers', () => {
@@ -232,6 +286,12 @@ componentTest('modal creation uses labeled shared inputs, 500-character directio
   assert.ok(nodes(tree).some(node => node.type === ui().Label && node.props.htmlFor === description.props.id));
   assert.match(html, /<form[^>]*data-testid="project-home-create-form"/);
   assert.equal(find(tree, 'project-home-create-submit').props.type, 'submit');
+  assert.equal(text(find(tree, 'project-home-create-submit')), '创建项目');
+  const presets = nodes(tree).filter(node => node.type === 'input' && node.props.type === 'radio');
+  assert.deepEqual(presets.map(node => [node.props.value, node.props.checked]), [['portrait_1080', true], ['landscape_1080', false], ['square_1080', false]]);
+  for (const label of ['竖屏', '横屏', '方形']) assert.match(html, new RegExp(label));
+  assert.equal((html.match(/class="project-home-format-icon"/g) || []).length, 3);
+  assert.doesNotMatch(html, /开始一个新故事|创建并打开/);
   assert.match(html, /role="dialog"/);
 });
 
@@ -274,7 +334,9 @@ componentTest('rejected or unknown create results retain exact inputs and offer 
     const tree = h.render(); assert.equal(find(tree, 'project-home-name').props.value, '  新的故事  ');
     assert.equal(find(tree, 'project-home-description').props.value, '  简短说明  ');
     assert.match(h.html(tree), /刷新.*列表/);
-    find(tree, 'project-home-refresh').props.onClick(); h.render();
+    find(tree, 'project-home-create-cancel').props.onClick();
+    find(h.render(), 'project-home-help').props.onClick();
+    find(h.render(), 'project-home-refresh').props.onClick(); h.render();
     assert.equal(calls, 1); assert.deepEqual(h.calls, [['refresh']]);
   }
 });
@@ -293,7 +355,7 @@ componentTest('cancel, settings navigation, and a late unaccepted result never c
 
 componentTest('classic JSX executes with explicit React import and presentation has no business dependencies', () => {
   assert.equal(typeof globalThis.React, 'undefined');
-  const h = harness(); assert.match(h.html(h.render()), /项目列表/);
+  const h = harness(); assert.match(h.html(h.render()), /全部项目/);
   const source = readFileSync(sourceFile, 'utf8');
   assert.doesNotMatch(source, /\bfetch\s*\(|\brpc\s*\(|localStorage|sessionStorage|setInterval|setTimeout|createPortal|:\s*any\b|as\s+any\b|@ts-ignore|@ts-nocheck/);
 });

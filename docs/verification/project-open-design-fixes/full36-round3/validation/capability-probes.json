@@ -1,0 +1,159 @@
+[
+  {
+    "name": "drawtext",
+    "command": [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=s=16x16:d=0.1",
+      "-vf",
+      "drawtext=text=synthetic",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 8,
+    "stdout": "",
+    "stderr": "[AVFilterGraph @ 0x768b40c200] No such filter: 'drawtext'\nError opening output file -.\nError opening output files: Filter not found\n"
+  },
+  {
+    "name": "subtitles",
+    "command": [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-h",
+      "filter=subtitles"
+    ],
+    "exitCode": 0,
+    "stdout": "Unknown filter 'subtitles'.\n\nExiting with exit code 0\n",
+    "stderr": ""
+  },
+  {
+    "name": "zscale",
+    "command": [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-h",
+      "filter=zscale"
+    ],
+    "exitCode": 0,
+    "stdout": "Unknown filter 'zscale'.\n\nExiting with exit code 0\n",
+    "stderr": ""
+  },
+  {
+    "name": "libwebp",
+    "command": [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=s=16x16:d=0.1",
+      "-c:v",
+      "libwebp",
+      "-frames:v",
+      "1",
+      "-f",
+      "webp",
+      "pipe:1"
+    ],
+    "exitCode": 8,
+    "stdout": "",
+    "stderr": "[vost#0:0 @ 0x799e818000] Unknown encoder 'libwebp'\n[vost#0:0 @ 0x799e818000] Error selecting an encoder\nError opening output file pipe:1.\nError opening output files: Encoder not found\n"
+  },
+  {
+    "name": "gnu-tar-sort",
+    "command": [
+      "tar",
+      "--sort=name",
+      "-cf",
+      "/dev/null",
+      "--files-from",
+      "/dev/null"
+    ],
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "tar: Option --sort=name is not supported\nUsage:\n  List:    tar -tf <archive-filename>\n  Extract: tar -xf <archive-filename>\n  Create:  tar -cf <archive-filename> [filenames...]\n  Help:    tar --help\n"
+  },
+  {
+    "name": "subtitles-execution",
+    "command": [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=s=16x16:d=0.1",
+      "-vf",
+      "subtitles=synthetic-not-present.srt",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 234,
+    "stdout": "",
+    "stderr": "[AVFilterGraph @ 0x752f024200] No option name near 'synthetic-not-present.srt'\n[AVFilterGraph @ 0x752f024200] Error parsing a filter description around: \n[AVFilterGraph @ 0x752f024200] Error parsing filterchain 'subtitles=synthetic-not-present.srt' around: \nError opening output file -.\nError opening output files: Invalid argument\n"
+  },
+  {
+    "name": "zscale-execution",
+    "command": [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=s=16x16:d=0.1",
+      "-vf",
+      "zscale=width=16:height=16",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 8,
+    "stdout": "",
+    "stderr": "[AVFilterGraph @ 0x798880c080] No such filter: 'zscale'\nError opening output file -.\nError opening output files: Filter not found\n"
+  },
+  {
+    "name": "subtitles-execution-noargs",
+    "command": [
+      "ffmpeg",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=s=16x16:d=0.1",
+      "-vf",
+      "subtitles",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-"
+    ],
+    "exitCode": 8,
+    "stdout": "",
+    "stderr": "[AVFilterGraph @ 0x768f024200] No such filter: 'subtitles'\nError opening output file -.\nError opening output files: Filter not found\n"
+  }
+]

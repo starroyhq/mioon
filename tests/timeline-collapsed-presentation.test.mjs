@@ -4,21 +4,23 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import {i18nTestModule} from './helpers/i18n.ts';
 import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
+import * as compactLayout from '../apps/web/src/timeline-compact-layout.ts';
 import {displayTimelineFrame} from '../apps/web/src/timeline-removal.ts';
 import {timelineDropPreview} from '../apps/web/src/timeline-snapping.ts';
 import {rulerFrameForKey} from '../apps/web/src/timeline-keyboard.ts';
 
 const nodes=tree=>Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree,...nodes(tree.props?.children)]:[];
-function harness(){
+function harness(locale='zh-Hans'){
  const slots=[],layouts=[],calls=[];let cursor=0,lastWaveform,removal;
  const layout=(callback,deps)=>{const index=cursor++,prior=slots[index];if(!prior||deps===undefined||deps.some((v,i)=>v!==prior.deps?.[i])){slots[index]={deps};layouts.push(()=>{prior?.cleanup?.();slots[index].cleanup=callback();});}};
  const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useRef:initial=>slots[cursor++]||=( {current:initial}),useState:initial=>{const index=cursor++;if(!(index in slots))slots[index]=typeof initial==='function'?initial():initial;return[slots[index],next=>{slots[index]=typeof next==='function'?next(slots[index]):next;}];},useLayoutEffect:layout,useEffect:()=>{cursor++;}};react.default=react;
  const mark=name=>({__esModule:true,default:name}),module={exports:{}};
  Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/Timeline.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>{
   if(name==='react')return react;
-  if(name==='./i18n/I18nProvider.tsx')return i18nTestModule();
+  if(name==='./i18n/I18nProvider.tsx')return i18nTestModule(locale);
   if(name==='./UiPreferencesProvider.tsx')return{useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})};
   if(name==='./timeline-view-geometry.ts')return geometry;
+  if(name==='./timeline-compact-layout.ts')return compactLayout;
   if(name==='./timeline-removal.ts')return{displayTimelineFrame};
   if(name==='./timeline-keyboard.ts')return{rulerFrameForKey};
   if(name==='./timeline-snapping.ts')return{timelineDropPreview};
@@ -79,4 +81,14 @@ test('the current expanded body still previews and commits an actual drag to the
  clip(view).onDragStart({...event(),clientX:0,currentTarget:{offsetWidth:152,getBoundingClientRect:()=>({left:0,width:152})},dataTransfer:transfer});
  lane(view).onDragOver({...event(),clientX:304,dataTransfer:transfer});const current=h.render();await lane(current).onDrop({...event(),dataTransfer:transfer});
  assert.equal(h.calls.length,1);assert.deepEqual(h.calls[0],['onMoveClip','c1','v1',120,{projectId:'p1',expectedRevision:2,durationFrames:60}]);h.dispose();
+});
+
+test('default track names localize while a user supplied track name stays unchanged',()=>{
+ const h=harness('en'),timeline={...h.defaults.timeline,tracks:[...h.defaults.timeline.tracks,{id:'a2',kind:'audio',name:'配乐',orderIndex:2}]};
+ const view=h.render({timeline}),label=id=>view.all.find(node=>node.props?.['data-testid']===`timeline-track-${id}`).props.children[0].props.children[0].props.children[1].props;
+ assert.equal(label('v1').children[0],'Picture');
+ assert.equal(label('a1').children[0],'Music');
+ assert.equal(label('a2').children[0],'配乐');
+ assert.equal(label('a2').title,'配乐');
+ h.dispose();
 });

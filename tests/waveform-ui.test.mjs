@@ -6,6 +6,7 @@ import { transformSync } from 'esbuild';
 import * as waveform from '../apps/web/src/waveform-state.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import * as geometry from '../apps/web/src/timeline-view-geometry.ts';
+import * as compactLayout from '../apps/web/src/timeline-compact-layout.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import {hasOpenWorkbenchModal} from '../apps/web/src/workbench-modal-state.ts';
 import { WAVEFORM_ALGORITHM } from '../packages/contracts/src/waveforms.ts';
@@ -231,6 +232,7 @@ function componentHarness({ hook = false, waveformState } = {}) {
       if (id === './i18n/I18nProvider.tsx') return i18nTestModule();
       if (id === './UiPreferencesProvider.tsx') return {useUiPreferences: () => ({preferences:DEFAULT_UI_PREFERENCES})};
       if (id === './timeline-view-geometry.ts') return geometry;
+      if (id === './timeline-compact-layout.ts') return compactLayout;
       if (id === './timeline-removal.ts') return removalState;
       if (id === './ClipRemovalControls.tsx') return load('ClipRemovalControls.tsx');
       if (id === './TimelineToolbar.tsx') return load('TimelineToolbar.tsx');

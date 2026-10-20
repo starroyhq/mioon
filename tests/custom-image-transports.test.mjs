@@ -246,6 +246,9 @@ async function fixture(t) {
     for (const id of failedSettlements) t.diagnostic('failed settlement at teardown ' + JSON.stringify({lifecycle: lifecycle(id), networkCounts: f.counts()}));
     db?.close(); await server.close(); await rm(root, {recursive: true, force: true});
   });
+  // Keep transport-loss tests behind the real persistent workspace opt-in;
+  // both production gateways continue to use the rejecting/synthetic network.
+  await f.client.rpc('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
   return f;
 }
 

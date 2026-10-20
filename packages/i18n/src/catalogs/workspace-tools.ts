@@ -22,4 +22,7 @@ export const workspaceToolsMessages={
  'workspace.tools.missing':{'zh-Hans':'不可用','zh-Hant':'無法使用',en:'Unavailable',ja:'使用不可'},
  'workspace.tools.capabilities':{'zh-Hans':'导出能力','zh-Hant':'匯出能力',en:'Export capabilities',ja:'書き出し機能'},
  'workspace.tools.pending':{'zh-Hans':'未保存','zh-Hant':'尚未儲存',en:'Unsaved',ja:'未保存'},
+  "workspace.tools.notChecked": {"zh-Hans": "尚未检测", "zh-Hant": "尚未偵測", "en": "Not checked", "ja": "未確認"},
+  "workspace.tools.capabilityWarning": {"zh-Hans": "缺少部分编码或字幕能力，相关预览、模拟生成或导出可能不可用", "zh-Hant": "缺少部分編碼或字幕能力，相關預覽、模擬生成或匯出可能無法使用", "en": "Some encoding or subtitle capabilities are missing; related previews, simulated generation or exports may be unavailable", "ja": "一部のエンコードまたは字幕機能がないため、関連するプレビュー、シミュレーション生成、書き出しを利用できない場合があります"},
+  "workspace.tools.version": {"zh-Hans": "版本", "zh-Hant": "版本", "en": "Version", "ja": "バージョン"},
 } as const satisfies MessageCatalog;

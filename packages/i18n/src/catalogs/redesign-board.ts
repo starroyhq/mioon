@@ -54,4 +54,10 @@ export const redesignBoardMessages={
   'redesign.comparison.pause':{'zh-Hans':'暂停两个版本','zh-Hant':'暫停兩個版本',en:'Pause both versions',ja:'両バージョンを一時停止'},
   'redesign.comparison.seek':{'zh-Hans':'同步播放位置','zh-Hant':'同步播放位置',en:'Shared playback position',ja:'同期再生位置'},
   'redesign.comparison.synchronizedReady':{'zh-Hans':'已固定所选版本。同步播放使用下方共同控制条，默认静音','zh-Hant':'已固定所選版本。同步播放使用下方共同控制列，預設靜音',en:'Selected versions are fixed. Use the shared controls for synchronized playback, initially muted',ja:'選択したバージョンは固定されています。下の共通コントロールで同期再生します。初期状態はミュートです'},
+  'redesign.board.use':{'zh-Hans':'选用','zh-Hant':'選用',en:'Use',ja:'選択'},
+  'redesign.board.addTimeline':{'zh-Hans':'加入时间线','zh-Hant':'加入時間線',en:'Add to timeline',ja:'タイムラインに追加'},
+  'redesign.board.retry':{'zh-Hans':'重试','zh-Hant':'重試',en:'Retry',ja:'再試行'},
+  'redesign.board.cancelGeneration':{'zh-Hans':'取消生成','zh-Hant':'取消生成',en:'Cancel generation',ja:'生成をキャンセル'},
+  'redesign.board.progressHint':{'zh-Hans':'正在生成镜头，结果会作为新版本保留','zh-Hant':'正在生成鏡頭，結果會保留為新版本',en:'Generating a shot; the result will be kept as a new version',ja:'ショットを生成中です。結果は新しいバージョンとして保存されます'},
+  'redesign.comparison.useVersion':{'zh-Hans':'选用 V{number}','zh-Hant':'選用 V{number}',en:'Use V{number}',ja:'V{number} を選択'},
 } as const satisfies MessageCatalog;

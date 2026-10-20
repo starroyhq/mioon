@@ -1,0 +1,22 @@
+[
+  {
+    "file": "tests/source-range-preview.test.mjs",
+    "exitCode": 0
+  },
+  {
+    "file": "tests/frame-extraction-preview.test.mjs",
+    "exitCode": 0
+  },
+  {
+    "file": "tests/native-audio-preview-renderer.test.mjs",
+    "exitCode": 0
+  },
+  {
+    "file": "tests/timeline-audio-preview-app.test.mjs",
+    "exitCode": 0
+  },
+  {
+    "file": "tests/timeline-audio-preview-ui.test.mjs",
+    "exitCode": 0
+  }
+]

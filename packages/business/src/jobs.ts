@@ -1,3 +1,4 @@
+import {registerExportActivity,isCancelledExport,exportStage} from './export-controls.ts';
 import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
 import {isOpacityCandidateServicesForStore} from './opacity-candidate-services.ts';
 import {matchesOpacityCandidateExport,claimOpacityCandidateExport,recoverOpacityCandidateExport,isOpacityCandidateExportClaim,revokeOpacityCandidateExportClaim,prepareOpacityCandidateRenderInputs} from './opacity-candidate-render-authority.ts';
@@ -309,11 +310,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   let preparedAssets: Map<string, unknown>|undefined,opacityBinding: ReturnType<typeof bindTimelineOpacityRenderAttempt>|undefined,linkedOutput=false,publicationAccepted=false,
    outputIdentity: {dev: number; ino: number; isFile(): boolean; nlink: number}|undefined,outputHandle: Awaited<ReturnType<typeof open>>|undefined,claimLive=true,validateSources: (()=>void)|undefined,
    floatMeasurement: ReturnType<typeof ownedFloatTimelineMeasurement>|undefined,terminationUnconfirmed=false;
-  const beforeEffect=fencedAttempt?(): void=>{if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw effectError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}}:undefined;
+  const beforeEffect=(): void=>{if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw effectError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}};
   const checkCustomSources=(): void=>{if(opacity)opacityBinding?.assert();else if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});};
   try {
    beforeEffect?.();
-   if(fencedAttempt){outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect?.();}
+   // Every cancellable export owns its staging inode, including legacy
+   // delivery without an opt-in profile. A late cancel may land after link.
+   outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect?.();
    if(e.mode==='timeline') {
     if(!opacity&&!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
     const assets=opacity?await prepareOpacityCandidateRenderInputs(store as never,e,{signal,beforeEffect}):await prepareTimelineInputs(e.snapshot as never,{root,projectId:e.projectId,signal,
@@ -322,7 +325,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(customExport(e)||restored)preparedAssets=assets as unknown as Map<string, unknown>;
     if(opacity){opacityBinding=bindTimelineOpacityRenderAttempt(store as never,e as never,assets,{signal});validateSources=()=>opacityBinding?.assert();}
     else if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
-    const rendered=await renderTimeline(e.snapshot as never,assets as never,part,{signal,beforeEffect,readLut:readLut as never,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})});checkpoint(signal);
+    const rendered=await (exportStage(store,e.id,'encoding'), renderTimeline(e.snapshot as never,assets as never,part,{signal,beforeEffect,readLut:readLut as never,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})}));checkpoint(signal);
     if(floatExport)floatMeasurement=ownedFloatTimelineMeasurement(rendered);
    } else {
     const files: string[]=[];
@@ -341,18 +344,20 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     }
     if(currentOwnedExport(e)?.status!=='running')return;
     checkStoryboard();
+    exportStage(store,e.id,'encoding');
     await stitch(files,part,{signal,beforeEffect,outputGeometry:storyboardOutputGeometry(e)});checkpoint(signal);
    }
+   exportStage(store,e.id,'finalizing');
    const info=await fileInfo(part,{signal,beforeEffect});checkpoint(signal);
    // Recheck the preserved relational owner immediately before publication.
    if(currentOwnedExport(e)?.status!=='running')return;
    checkCustomSources();
    if(colourExport)verifyTimelineColourLuts((property(e.snapshot,'colourPlan') as never),readLut as never,true);
-   // Retain only this custom attempt's owned output inode for conservative
+   // Retain only this attempt's owned output inode for conservative
    // cleanup if source ownership changes before the database commit.
-   if(customExport(e)||restored){
+   {
     const actual=await lstat(part);checkpoint(signal);beforeEffect?.();
-    if(fencedAttempt&&outputIdentity&&(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino))throw effectError();
+    if(outputIdentity&&(actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino))throw effectError();
     outputIdentity=actual;
     if(!outputIdentity.isFile()||outputIdentity.nlink!==1)throw Object.assign(Error('The local export output cannot be verified safely.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
     if(currentOwnedExport(e)?.status!=='running')return;
@@ -373,7 +378,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    const failExport=(): void=>{
     const latest=currentOwnedExport(e);
     const latestStatus=stringValue(property(latest,'status'));
-    if(!latest||latestStatus==='cancelled'||(customExport(e)||restored)&&latestStatus==='succeeded')return;
+    if(!latest||isCancelledExport(latest)||latestStatus==='cancelled'||(customExport(e)||restored)&&latestStatus==='succeeded')return;
     const audioCheck=floatExport&&!signal.aborted?(floatMeasurement?bindFloatTimelineMeasurement(e as never,floatMeasurement,now()):bindFloatTimelineFailure(e as never,error,now())):undefined;
     put('exports',{...(floatExport&&signal.aborted?requeueFloatTimelineExport(latest):latest),status:signal.aborted?'queued':'failed',error:property(error,'terminationUnconfirmed')?mediaPauseError('exports',latestStatus??'failed'):signal.aborted?null:{...safeError(error,'EXPORT_FAILED'),...(audioCheck?.code==='EXPORT_AUDIO_OVER_RANGE'?{retryable:false}:{})},...(audioCheck?{audioCheck}:{}),updatedAt:now()});
    };
@@ -382,14 +387,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    claimLive=false;
    opacityBinding?.close();
    const cleanup=async(): Promise<void>=>{
-   if(!fencedAttempt)await unlink(part).catch(()=>{});
-   else if(outputIdentity){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&currentOwnedExport(e,{cleanupOnly:Boolean(opacity)||floatExport}))await unlink(part).catch(()=>{});}catch{/* an uncertain read preserves the part file */}}
+   const unpublished=(): boolean=>{const latest=currentOwnedExport(e,{cleanupOnly:Boolean(opacity)||floatExport});const status=stringValue(property(latest,'status'));return Boolean(latest&&exportIdentity(latest)===exportIdentity(e)&&status!==undefined&&['queued','running','failed'].includes(status)&&latest.assetId===null&&latest.url===null);};
+   if(outputIdentity){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&unpublished())await unlink(part).catch(()=>{});}catch{/* an uncertain read preserves the part file */}}
    // An uncertain commit, hostile replacement, foreign export, changed inode,
    // or failed cleanup never licenses removing an unknown/published output.
    // Keep the original failure; this cleanup makes no byte-race guarantee.
-   if((customExport(e)||restored)&&linkedOutput&&!publicationAccepted&&outputIdentity){
+   if(linkedOutput&&!publicationAccepted&&outputIdentity){
     try{
-     const unpublished=(): boolean=>{const latest=currentOwnedExport(e,{cleanupOnly:Boolean(opacity)||floatExport});const status=stringValue(property(latest,'status'));return Boolean(latest&&status!==undefined&&['queued','running','failed'].includes(status)&&latest.assetId===null&&latest.url===null);};
      if(unpublished()){
       const current=await lstat(file).catch(()=>null);
       if(current?.isFile()&&current.nlink===1&&current.dev===outputIdentity.dev&&current.ino===outputIdentity.ino&&unpublished())await unlink(file).catch(()=>{});
@@ -407,6 +411,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  async function operate(value: JobRecord|ExportRecord,action: WorkerOperation): Promise<void> {
   if(stopped)return;
   const controller=new AbortController();operations.add(controller);
+  const exportActivity=action===processExport as unknown as WorkerOperation?registerExportActivity(inputStore,value.id,()=>controller.abort()):null;
   try {await action(value as never,controller.signal);}
   finally {
    controller.abort();
@@ -414,7 +419,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    // operation's signal until its remaining direct children have been reaped.
    try {assertMediaTerminated(await terminateMediaProcesses({signal:controller.signal}));}
    catch(error) {failShutdown(error);persistMediaPause(action===processJob as never?'jobs':'exports',value.id,value.projectId,property(value,'mode'),floatClaims.read(controller.signal));throw error;}
-   finally {operations.delete(controller);}
+   finally {exportActivity?.close();operations.delete(controller);}
   }
  }
  function tick(): Promise<void> {

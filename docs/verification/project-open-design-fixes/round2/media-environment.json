@@ -1,0 +1,50 @@
+{
+  "node": [
+    "v26.9.0"
+  ],
+  "ffmpegPath": "/opt/homebrew/bin/ffmpeg",
+  "ffmpegVersion": [
+    "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers"
+  ],
+  "tarPath": "/usr/bin/tar",
+  "tarVersion": [
+    "bsdtar 3.5.3 - libarchive 3.7.4 zlib/1.2.12 liblzma/5.4.3 bz2lib/1.0.8 "
+  ],
+  "filters": {
+    "drawtext": false,
+    "subtitles": false,
+    "zscale": false,
+    "lut3d": true,
+    "colorspace": true
+  },
+  "libwebpEncoder": false,
+  "directChecks": [
+    {
+      "operation": "16x16 single-frame drawtext",
+      "exitCode": 8,
+      "stderrEvidence": "No such filter: 'drawtext'"
+    },
+    {
+      "operation": "16x16 single-frame zscale",
+      "exitCode": 8,
+      "stderrEvidence": "No such filter: 'zscale'"
+    },
+    {
+      "operation": "16x16 single-frame libwebp encoding",
+      "exitCode": 8,
+      "stderrEvidence": "Unknown encoder 'libwebp'"
+    }
+  ],
+  "existingAlternatives": {
+    "PATH gtar": null,
+    "PATH ffmpeg-full": null,
+    "/opt/homebrew/opt/gnu-tar/libexec/gnubin/tar": false,
+    "/opt/homebrew/opt/gnu-tar/bin/gtar": false,
+    "/usr/local/bin/gtar": false,
+    "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg": false,
+    "/usr/local/bin/ffmpeg": false,
+    "/usr/bin/ffmpeg": false
+  },
+  "noDependenciesAddedOrUpgraded": true,
+  "baselineFrozenOfflineInstallOnly": true
+}

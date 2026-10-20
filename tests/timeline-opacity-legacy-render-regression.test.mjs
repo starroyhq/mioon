@@ -14,11 +14,12 @@ import {createHash} from 'node:crypto';
 // Media is never spawned: all subprocess entry points fail closed after Git read.
 const baselineCommit = '812d18a9d493f01f94235bd4f424b4e17e742ad8';
 const rendererPath = 'packages/business/src/timeline-media.ts';
+const baselineRendererPath = 'packages/business/src/timeline-media.mjs';
 const baselineHash = 'b89728d7508ea1ca0d2011c3fad710722411993bd8a0989553167733bf343dde';
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const rendererUrl = new URL('../' + rendererPath, import.meta.url).href;
 const baselineUrl = rendererUrl + '?opacity-legacy-baseline=' + baselineCommit;
-const baselineSource = cp.execFileSync('git', ['show', baselineCommit + ':' + rendererPath], {
+const baselineSource = cp.execFileSync('git', ['show', baselineCommit + ':' + baselineRendererPath], {
   cwd: repo, encoding: 'utf8', maxBuffer: 128 * 1024, timeout: 5000,
 });
 assert.equal(createHash('sha256').update(baselineSource).digest('hex'), baselineHash);
@@ -41,7 +42,12 @@ globalThis[runtimeKey] = {
   probe: (...args) => activeRuntime.probe(...args),
   prepareImages: (...args) => activeRuntime.prepareImages(...args),
 };
-const hooks = registerHooks({load(url, context, next) {
+const hooks = registerHooks({resolve(specifier,context,next){
+  // Read and hash the original bytes unchanged; only resolve their legacy
+  // relative module names to the current typed equivalents at execution.
+  if(context.parentURL===baselineUrl&&specifier.startsWith('./')&&specifier.endsWith('.mjs'))return next(specifier.slice(0,-4)+'.ts',context);
+  return next(specifier,context);
+},load(url, context, next) {
   if (url === baselineUrl) return {format: 'module', shortCircuit: true, source: baselineSource};
   if (url === mediaRuntimeUrl) return {format: 'module', shortCircuit: true,
     source: `export * from ${JSON.stringify(actualRuntimeUrl)};export const run=(...args)=>${runtimeExpression}.run(...args);export const runStreaming=(...args)=>${runtimeExpression}.runStreaming(...args);`};

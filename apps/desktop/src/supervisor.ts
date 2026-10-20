@@ -4,6 +4,8 @@ import { trustedOrigin } from './security.ts';
 import { createAgentSettingsBroker } from './secret-broker.ts';
 import { createImageSecretBroker } from './image-secret-broker.ts';
 import { createNativeAudioPreviewBroker } from './native-audio-preview-broker.ts';
+import {createWorkspaceNativeBroker} from './workspace-native-broker.ts';
+import type {WorkspaceSettings} from '../../../packages/contracts/src/workspace-configuration.ts';
 import { nativeAudioConfigSchema } from '@mioon/contracts/native-audio-preview';
 import type {NativeAudioCommand, NativeAudioConfig, NativeAudioReply} from '@mioon/contracts/native-audio-preview';
 import { createExitDiagnostics, classifyBackendExit } from './exit-diagnostics.ts';
@@ -120,6 +122,7 @@ export class BackendSupervisor extends EventEmitter {
   declare cancelStart: (() => void) | null;
   declare heartbeat: ReturnType<typeof setInterval> | null;
   declare nativeAudioBroker: ReturnType<typeof createNativeAudioPreviewBroker> | null;
+  declare workspaceNativeBroker: ReturnType<typeof createWorkspaceNativeBroker> | null;
 
   constructor({ fork, modulePath, environment, startupTimeout = 20000, stopTimeout = BACKEND_STOP_BUDGET.gracefulMs,
     terminateTimeout = BACKEND_STOP_BUDGET.terminateMs, exitTimeout = BACKEND_STOP_BUDGET.confirmMs,
@@ -199,6 +202,8 @@ export class BackendSupervisor extends EventEmitter {
         isCurrent: () => this.child === child && ['running', 'stopping'].includes(this.state),
       }) : null;
       this.nativeAudioBroker = nativeAudioBroker;
+      const workspaceNativeBroker=createWorkspaceNativeBroker({send:message=>child.postMessage(message),isCurrent:()=>this.child===child&&this.state==='running'});
+      this.workspaceNativeBroker=workspaceNativeBroker;
       timer = setTimeout(() => { this.noteExitReason('startup-timeout'); fail(new Error('本地服务启动超时')); kill('startup-timeout'); }, this.startupTimeout);
       child.on('error', () => {
         if (this.child !== child || !['starting', 'running'].includes(this.state)) return;
@@ -210,6 +215,7 @@ export class BackendSupervisor extends EventEmitter {
         if (settingsBroker.handle(message)) return;
         if (imageSecretBroker.handle(message)) return;
         if (nativeAudioBroker?.handle(message)) return;
+        if(workspaceNativeBroker.handle(message))return;
         if (this.child !== child) return;
         const notice = recordOf(message);
         if (notice?.type === 'exit-diagnostic') {
@@ -259,6 +265,7 @@ export class BackendSupervisor extends EventEmitter {
         settingsBroker.close();
         imageSecretBroker.close();
         nativeAudioBroker?.close();
+        workspaceNativeBroker.close();
         clearTimeout(timer);
         clearInterval(heartbeat);
         if (this.child !== child) return;
@@ -302,6 +309,10 @@ export class BackendSupervisor extends EventEmitter {
   requestNativeAudio(command: NativeAudioCommand, onPending?: () => void): Promise<NativeAudioReply> {
     if (!this.nativeAudioBroker) return Promise.reject(Object.assign(new Error('Native audition is unavailable.'), {code: 'NATIVE_AUDIO_UNCONFIRMED'}));
     return this.nativeAudioBroker.request(command, onPending);
+  }
+  setBackupDirectory(directory:string):Promise<WorkspaceSettings> {
+    if(!this.workspaceNativeBroker)return Promise.reject(Object.assign(new Error('Native workspace action is unavailable.'),{code:'WORKSPACE_NATIVE_UNAVAILABLE'}));
+    return this.workspaceNativeBroker.setBackupDirectory(directory);
   }
 
   stop(): Promise<StopOutcome> {

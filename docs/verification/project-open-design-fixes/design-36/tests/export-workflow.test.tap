@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: workflow opens passively and latest check phase fences retained next handlers
+ok 1 - workflow opens passively and latest check phase fences retained next handlers
+  ---
+  duration_ms: 33.196166
+  type: 'test'
+  ...
+# Subtest: retained sections become both hidden and inert outside their step
+ok 2 - retained sections become both hidden and inert outside their step
+  ---
+  duration_ms: 2.938291
+  type: 'test'
+  ...
+# Subtest: a shared sample-export lock blocks admission without becoming a formal export progress receipt
+ok 3 - a shared sample-export lock blocks admission without becoming a formal export progress receipt
+  ---
+  duration_ms: 1.755541
+  type: 'test'
+  ...
+# Subtest: pending and completed exports show their bound result without automatically checking or resubmitting
+ok 4 - pending and completed exports show their bound result without automatically checking or resubmitting
+  ---
+  duration_ms: 2.166875
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 445.2175
