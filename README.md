@@ -89,6 +89,7 @@ AI 功能需要自行连接服务，可能产生费用，目前真实服务仍�
 <summary>开发者与进阶用户</summary>
 
 - [本地运行与检查](docs/PORTABLE-TOOLING.md) · [桌面运行说明](docs/DESKTOP.md)
+- [GitHub 自动检查与发布](docs/GITHUB-ACTIONS.zh-CN.md) · [CI 状态](https://github.com/starroyhq/mioon/actions/workflows/ci.yml)
 - [CLI](docs/CLI.md) · [MCP](docs/MCP.md) · [mioon Skill](skills/mioon/SKILL.md) · [API](docs/API.md)
 - [架构说明](docs/ARCHITECTURE.md) · [组件来源](docs/UI-COMPONENTS.md) · [TypeScript 约定](docs/TYPESCRIPT.md)
 - [详细验证结果](docs/verification/mioon-redesign/full-test-repairs/README.md)

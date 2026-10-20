@@ -104,7 +104,7 @@ test('foundation configuration strictly checks the real contract and automatical
     './timeline-clip-loudness.consumer.mts',
     './opacity-envelope.consumer.mts',
   ]);
-  assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
+  assert.deepEqual(configuration.include, ['../../.github/scripts/**/*.ts', '../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
   assert.equal(configuration.extends, undefined);
   const options = configuration.compilerOptions;
