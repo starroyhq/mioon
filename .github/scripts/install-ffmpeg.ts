@@ -58,21 +58,108 @@ export function safeBuildLog(text: string, environment: NodeJS.ProcessEnv): stri
   for (const name of ['RUNNER_TEMP', 'HOME']) if (environment[name]) result = result.replaceAll(environment[name], `<${name}>`);
   return result;
 }
-async function downloadSource(url: string, file: string): Promise<void> {
-  const response = await fetch(url, {redirect: 'error', signal: AbortSignal.timeout(FFMPEG_TIMEOUTS.download)});
-  if (!response.ok || !response.body) fail('FFMPEG_DOWNLOAD_FAILED');
-  const reader = response.body.getReader(), output = await open(file, 'wx', 0o600);
-  let bytes = 0;
+interface DownloadServices {
+  fetch: typeof fetch;
+  now: () => number;
+  pause: (milliseconds: number) => Promise<void>;
+  timeoutSignal: (milliseconds: number) => AbortSignal;
+  diagnostic: (code: string) => void;
+}
+class DownloadAttemptFailure extends FFmpegInstallFailure {
+  readonly retryable: boolean;
+  constructor(code: string, retryable: boolean) {super(code); this.retryable = retryable;}
+}
+const transientNetworkCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET']);
+function downloadFailure(error: unknown, phase: string): DownloadAttemptFailure {
+  if (error instanceof DownloadAttemptFailure) return error;
+  if (error instanceof FFmpegInstallFailure) return new DownloadAttemptFailure(error.code, false);
+  if (phase === 'FETCH' || phase === 'STREAM') {
+    let value = error;
+    for (let depth = 0; depth < 4 && value && typeof value === 'object'; depth++) {
+      const detail = value as {name?: unknown; code?: unknown; cause?: unknown};
+      if (detail.name === 'TimeoutError') return new DownloadAttemptFailure('FFMPEG_DOWNLOAD_TIMEOUT', true);
+      if (typeof detail.code === 'string' && transientNetworkCodes.has(detail.code)) return new DownloadAttemptFailure(`FFMPEG_DOWNLOAD_NETWORK_${detail.code}`, true);
+      value = detail.cause;
+    }
+    return new DownloadAttemptFailure('FFMPEG_DOWNLOAD_NON_NETWORK_ERROR', false);
+  }
+  return new DownloadAttemptFailure(`FFMPEG_DOWNLOAD_${phase}_FAILED`, false);
+}
+async function downloadAttempt(url: string, file: string, signal: AbortSignal, request: typeof fetch): Promise<void> {
+  let output: Awaited<ReturnType<typeof open>>;
+  try {output = await open(file, 'wx', 0o600);}
+  catch (error: unknown) {
+    const exists = error !== null && typeof error === 'object' && 'code' in error && error.code === 'EEXIST';
+    throw new DownloadAttemptFailure(exists ? 'FFMPEG_DOWNLOAD_FILE_EXISTS' : 'FFMPEG_DOWNLOAD_OPEN_FAILED', false);
+  }
+  let identity: Awaited<ReturnType<typeof output.stat>> | undefined;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined, phase = 'STAT';
+  let failure: DownloadAttemptFailure | undefined;
   try {
+    identity = await output.stat(); phase = 'FETCH';
+    const response = await request(url, {redirect: 'error', signal});
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      throw new DownloadAttemptFailure(`FFMPEG_DOWNLOAD_HTTP_${response.status}`, response.status === 408 || response.status === 429 || response.status >= 500 && response.status <= 599);
+    }
+    if (!response.body) throw new DownloadAttemptFailure('FFMPEG_DOWNLOAD_EMPTY', false);
+    const advertisedBytes = Number(response.headers.get('content-length'));
+    if (Number.isFinite(advertisedBytes) && advertisedBytes > maximumArchiveBytes) {
+      await response.body.cancel().catch(() => {});
+      throw new DownloadAttemptFailure('FFMPEG_SOURCE_TOO_LARGE', false);
+    }
+    reader = response.body.getReader();
+    let bytes = 0;
     for (;;) {
-      const chunk = await reader.read();
+      if (signal.aborted) throw new DownloadAttemptFailure('FFMPEG_DOWNLOAD_TIMEOUT', true);
+      phase = 'STREAM'; const chunk = await reader.read();
       if (chunk.done) break;
       bytes += chunk.value.byteLength;
-      if (bytes > maximumArchiveBytes) fail('FFMPEG_SOURCE_TOO_LARGE');
-      await output.writeFile(chunk.value);
+      if (bytes > maximumArchiveBytes) throw new DownloadAttemptFailure('FFMPEG_SOURCE_TOO_LARGE', false);
+      phase = 'WRITE'; await output.writeFile(chunk.value);
     }
-    if (bytes === 0) fail('FFMPEG_DOWNLOAD_EMPTY');
-  } finally {await reader.cancel().catch(() => {}); await output.close();}
+    if (signal.aborted) throw new DownloadAttemptFailure('FFMPEG_DOWNLOAD_TIMEOUT', true);
+    if (bytes === 0) throw new DownloadAttemptFailure('FFMPEG_DOWNLOAD_EMPTY', false);
+  } catch (error: unknown) {
+    // A coincident timer must not turn size/ownership or local filesystem
+    // failures into retryable network failures.
+    failure = !(error instanceof FFmpegInstallFailure) && signal.aborted && (phase === 'FETCH' || phase === 'STREAM')
+      ? new DownloadAttemptFailure('FFMPEG_DOWNLOAD_TIMEOUT', true) : downloadFailure(error, phase);
+  }
+  finally {
+    await reader?.cancel().catch(() => {});
+    if (failure) {
+      try {
+        // Retain the open handle while comparing identities, so inode reuse
+        // cannot turn a replacement path into this attempt's partial download.
+        const current = await lstat(file);
+        if (!identity || !current.isFile() || current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino) throw new Error('Ownership changed');
+        await rm(file);
+      } catch {failure = new DownloadAttemptFailure('FFMPEG_DOWNLOAD_CLEANUP_FAILED', false);}
+    }
+    await output.close().catch(() => {failure = new DownloadAttemptFailure('FFMPEG_DOWNLOAD_CLOSE_FAILED', false);});
+  }
+  if (failure) throw failure;
+}
+export async function downloadSource(url: string, file: string, injected: Partial<DownloadServices> = {}): Promise<void> {
+  const services: DownloadServices = {
+    fetch, now: Date.now, pause: milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
+    timeoutSignal: milliseconds => AbortSignal.timeout(milliseconds), diagnostic: code => {process.stderr.write(`${code}\n`);}, ...injected
+  };
+  const deadline = services.now() + FFMPEG_TIMEOUTS.download;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const remaining = deadline - services.now();
+    if (remaining <= 0) throw new FFmpegInstallFailure('FFMPEG_DOWNLOAD_DEADLINE_EXCEEDED');
+    try {await downloadAttempt(url, file, services.timeoutSignal(remaining), services.fetch); return;}
+    catch (error: unknown) {
+      const failure = downloadFailure(error, 'FETCH');
+      services.diagnostic(failure.code);
+      if (!failure.retryable || attempt === 3) throw new FFmpegInstallFailure(failure.code);
+      const delay = attempt * 500;
+      if (deadline - services.now() <= delay) throw new FFmpegInstallFailure('FFMPEG_DOWNLOAD_DEADLINE_EXCEEDED');
+      await services.pause(delay);
+    }
+  }
 }
 function defaultTransport(): InstallTransport {
   return {

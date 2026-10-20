@@ -13,7 +13,7 @@
 | `node scripts/tooling.ts build --channel=development` | 通过 |
 | `node scripts/tooling.ts build --channel=production` | 本地暂存构建通过，未等同安装包验收 |
 | `node scripts/tooling.ts test --suite=portable --concurrency=1 --reporter=tap` | 98/98 通过，无跳过 |
-| `node --test tests/actions-{release,desktop-helpers,desktop-media,ffmpeg-install,test-shards}.test.ts` | 49/49 通过，无跳过 |
+| `node --test tests/actions-{release,desktop-helpers,desktop-media,ffmpeg-install,test-shards}.test.ts` | 60/60 通过，无跳过 |
 | actionlint `1.7.12`、`git diff --check` | 通过 |
 | macOS 基础 FFmpeg/ffprobe 探针 | 通过；仅证明本地合成所需基础编码能力 |
 
@@ -50,6 +50,10 @@
 两项既有跳过分别要求 POSIX 更换文件所有者能力和原生 Windows ACL 环境；非 root Linux runner 不伪装这些能力，也不将其报告为通过。后续完整复验结果见 PR 的最新 `CI` 检查
 
 本地修复验证：原历史渲染回归 1/1、opacity 历史比较 7/7、restore 源码保护 77/77、两处 owner 回归 2/2 通过。preflight 整文件 45/46，唯一未通过项为本机缺 `libwebp`，该项在上述 Linux 完整运行已通过；Look 媒体链仍受本机缺 `zscale` 限制，独立真实备份/恢复已确认普通 50 → 备份 50 → 恢复 51，完整链留给固定工具环境复验
+
+[后续运行](https://github.com/starroyhq/mioon/actions/runs/39402252728) 有一片在官方源码下载阶段失败，另三片已开始编译；为整合下载可靠性修复主动取消，未计为通过。下载器对已知临时网络错误及 HTTP 408/429/5xx 最多尝试三次，共用原 120 秒总预算，每次按自身 inode 清理部分文件后完整重下；404、重定向、已有文件、超大/空文件、哈希错误及构建失败不重试。诊断仅输出固定分类或 HTTP 状态，固定来源和 SHA-256 不变
+
+下载器 20/20、包含真实媒体的辅助整合 60/60 通过，foundation/tests 两套严格类型检查通过。独立实测确认替换 inode 不被删除、响应体超时被有界拒绝，以及磁盘写入失败和超时同刻发生时只请求一次并返回 `WRITE_FAILED`；未知字节、超大响应及哈希错误均不触发重试
 
 签名发布尚未验收：仓库级 Apple Secrets 当前为空，组织级授权未知；本地没有最终签名安装包。需要维护者配置文档列出的七项凭据，并在工作流合入 main 后运行 `release_tag` 留空的演练，实际完成三平台打包、macOS 签名和公证、Gatekeeper 与最终包原生冒烟
 

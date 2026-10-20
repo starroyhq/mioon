@@ -2,10 +2,10 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {chmod, lstat, mkdtemp, mkdir, open, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {buildJobs, configureArguments, FFMPEG_LIBRARIES, FFMPEG_SOURCE, FFMPEG_TIMEOUTS, installFFmpeg, safeBuildLog, sourceDigest} from '../.github/scripts/install-ffmpeg.ts';
+import {buildJobs, configureArguments, downloadSource, FFMPEG_LIBRARIES, FFMPEG_SOURCE, FFMPEG_TIMEOUTS, installFFmpeg, safeBuildLog, sourceDigest} from '../.github/scripts/install-ffmpeg.ts';
 import type {InstallTransport} from '../.github/scripts/install-ffmpeg.ts';
 
 const bytes = Buffer.from('owned synthetic FFmpeg source transport fixture');
@@ -98,4 +98,134 @@ test('controlled build diagnostics have bounded tails, scrub paths and remove te
   const log = safeBuildLog(text, {RUNNER_TEMP: '/home/runner/work/_temp', HOME: '/home/runner'});
   assert.equal(log, 'compile <RUNNER_TEMP>/owned/source in <HOME>\n');
   assert.equal(safeBuildLog('x'.repeat(50000), {}).length, 32768);
+});
+
+function networkError(code = 'ECONNRESET'): TypeError {
+  return new TypeError('synthetic-private-message-and-url', {cause: Object.assign(new Error('synthetic-private-cause'), {code})});
+}
+function downloadFixture(request: typeof fetch) {
+  let clock = 0;
+  const pauses: number[] = [], timeouts: number[] = [], diagnostics: string[] = [];
+  return {pauses, timeouts, diagnostics, advance(milliseconds: number) {clock += milliseconds;}, services: {
+    fetch: request, now: () => clock,
+    pause: async (milliseconds: number) => {pauses.push(milliseconds); clock += milliseconds;},
+    timeoutSignal: (milliseconds: number) => {timeouts.push(milliseconds); return new AbortController().signal;},
+    diagnostic: (code: string) => {diagnostics.push(code);},
+  }};
+}
+test('source download retries one known transient failure then returns the complete verified fixture bytes', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'download.tar.xz'); let requests = 0;
+  const d = downloadFixture(async (_input, options) => {
+    assert.equal(options?.redirect, 'error'); assert.ok(options?.signal);
+    if (++requests === 1) throw networkError();
+    return new Response(bytes);
+  });
+  await downloadSource(FFMPEG_SOURCE.url, file, d.services);
+  assert.equal(requests, 2); assert.deepEqual(d.pauses, [500]); assert.deepEqual(d.timeouts, [120000, 119500]);
+  assert.deepEqual(await readFile(file), bytes); assert.equal(await sourceDigest(file), source.sha256);
+  assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_NETWORK_ECONNRESET']);
+});
+test('a partial response stream failure is removed before a full fresh download', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'stream.tar.xz'); let requests = 0;
+  const d = downloadFixture(async () => {
+    if (++requests === 1) {
+      let pulls = 0;
+      return new Response(new ReadableStream<Uint8Array>({pull(controller) {if (++pulls === 1) controller.enqueue(Buffer.from('incomplete prefix')); else controller.error(networkError('UND_ERR_SOCKET'));}}));
+    }
+    assert.equal((await readFile(file)).length, 0, 'the next attempt starts with a new empty exclusive file');
+    return new Response(bytes);
+  });
+  await downloadSource(FFMPEG_SOURCE.url, file, d.services);
+  assert.equal(requests, 2); assert.deepEqual(await readFile(file), bytes);
+  assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_NETWORK_UND_ERR_SOCKET']);
+});
+test('retryable HTTP failures exhaust at three attempts with bounded fixed diagnostics', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'exhaust.tar.xz'); let requests = 0;
+  const d = downloadFixture(async () => {requests += 1; return new Response('synthetic-private-error-body', {status: 503});});
+  await assert.rejects(downloadSource(FFMPEG_SOURCE.url, file, d.services), {message: 'FFMPEG_DOWNLOAD_HTTP_503'});
+  assert.equal(requests, 3); assert.deepEqual(d.pauses, [500, 1000]); assert.deepEqual(d.timeouts, [120000, 119500, 118500]);
+  assert.deepEqual(d.diagnostics, Array(3).fill('FFMPEG_DOWNLOAD_HTTP_503'));
+  await assert.rejects(readFile(file), {code: 'ENOENT'});
+});
+test('only HTTP 408, 429 and 5xx are retried', async t => {
+  const f = await fixture(t);
+  for (const status of [408, 429, 500, 599]) {
+    let requests = 0;
+    const d = downloadFixture(async () => ++requests === 1 ? new Response('temporary', {status}) : new Response(bytes));
+    await downloadSource(FFMPEG_SOURCE.url, path.join(f.options.runnerTemp, `http-${status}`), d.services);
+    assert.equal(requests, 2); assert.deepEqual(d.diagnostics, [`FFMPEG_DOWNLOAD_HTTP_${status}`]);
+  }
+  for (const status of [301, 302, 400, 403, 404]) {
+    let requests = 0;
+    const d = downloadFixture(async () => {requests += 1; return new Response('synthetic-private-response', {status});});
+    await assert.rejects(downloadSource(FFMPEG_SOURCE.url, path.join(f.options.runnerTemp, `http-${status}`), d.services), {message: `FFMPEG_DOWNLOAD_HTTP_${status}`});
+    assert.equal(requests, 1); assert.deepEqual(d.pauses, []);
+  }
+});
+test('unknown errors and rejected redirects are not retried or exposed', async t => {
+  const f = await fixture(t);
+  for (const error of [new Error('synthetic-private-message'), new TypeError('synthetic-private-url', {cause: new Error('unexpected redirect')}), networkError('CERT_HAS_EXPIRED')]) {
+    let requests = 0;
+    const d = downloadFixture(async () => {requests += 1; throw error;});
+    await assert.rejects(downloadSource(FFMPEG_SOURCE.url, path.join(f.options.runnerTemp, `unknown-${requests}`), d.services), {message: 'FFMPEG_DOWNLOAD_NON_NETWORK_ERROR'});
+    assert.equal(requests, 1); assert.deepEqual(d.pauses, []); assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_NON_NETWORK_ERROR']);
+  }
+});
+test('timeout retry consumes the same original 120-second download budget', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'timeout.tar.xz'); let requests = 0;
+  const d = downloadFixture(async () => {
+    if (++requests === 1) {d.advance(10000); throw new DOMException('synthetic-private-timeout', 'TimeoutError');}
+    return new Response(bytes);
+  });
+  await downloadSource(FFMPEG_SOURCE.url, file, d.services);
+  assert.deepEqual(d.timeouts, [120000, 109500]); assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_TIMEOUT']);
+  const exhausted = downloadFixture(async () => {exhausted.advance(119700); throw networkError();});
+  await assert.rejects(downloadSource(FFMPEG_SOURCE.url, path.join(f.options.runnerTemp, 'deadline.tar.xz'), exhausted.services), {message: 'FFMPEG_DOWNLOAD_DEADLINE_EXCEEDED'});
+  assert.deepEqual(exhausted.timeouts, [120000]); assert.deepEqual(exhausted.pauses, []);
+});
+test('oversize header or body stops immediately and removes only its own partial file', async t => {
+  const f = await fixture(t);
+  for (const oversized of [() => new Response(bytes, {headers: {'content-length': String(64 * 1024 * 1024 + 1)}}), () => new Response(new Uint8Array(64 * 1024 * 1024 + 1))]) {
+    let requests = 0; const file = path.join(f.options.runnerTemp, 'too-large.tar.xz');
+    const d = downloadFixture(async () => {requests += 1; return oversized();});
+    await assert.rejects(downloadSource(FFMPEG_SOURCE.url, file, d.services), {message: 'FFMPEG_SOURCE_TOO_LARGE'});
+    assert.equal(requests, 1); assert.deepEqual(d.pauses, []); await assert.rejects(readFile(file), {code: 'ENOENT'});
+  }
+});
+test('hash mismatch after a complete download never retries or extracts', async t => {
+  const f = await fixture(t); let requests = 0;
+  const d = downloadFixture(async () => {requests += 1; return new Response(bytes);});
+  f.transport.download = (url, file) => downloadSource(url, file, d.services);
+  await assert.rejects(installFFmpeg(f.options, f.transport), {message: 'FFMPEG_SOURCE_SHA256_MISMATCH'});
+  assert.equal(requests, 1); assert.equal(f.calls.length, 0); assert.deepEqual(d.pauses, []);
+  assert.deepEqual(await readdir(f.options.runnerTemp), []);
+});
+test('an existing file is refused before networking and cannot be removed or overwritten', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'existing.tar.xz');
+  await writeFile(file, 'synthetic existing work'); const identity = await lstat(file); let requests = 0;
+  const d = downloadFixture(async () => {requests += 1; throw networkError();});
+  await assert.rejects(downloadSource(FFMPEG_SOURCE.url, file, d.services), {message: 'FFMPEG_DOWNLOAD_FILE_EXISTS'});
+  assert.equal(requests, 0); assert.equal(await readFile(file, 'utf8'), 'synthetic existing work');
+  const after = await lstat(file); assert.deepEqual({dev: after.dev, ino: after.ino}, {dev: identity.dev, ino: identity.ino});
+  assert.deepEqual(d.pauses, []); assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_FILE_EXISTS']);
+});
+test('a coincident timeout cannot make a local write error retryable', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'write-error.tar.xz'), controller = new AbortController();
+  const handle = await open(path.join(f.options.runnerTemp, 'prototype-probe'), 'wx');
+  const prototype = Object.getPrototypeOf(handle) as {writeFile: typeof handle.writeFile}; await handle.close();
+  let requests = 0;
+  const d = downloadFixture(async () => {requests += 1; return new Response(bytes);});
+  d.services.timeoutSignal = () => controller.signal;
+  t.mock.method(prototype, 'writeFile', async () => {controller.abort(); throw Object.assign(new Error('synthetic-private-disk-error'), {code: 'ENOSPC'});});
+  await assert.rejects(downloadSource(FFMPEG_SOURCE.url, file, d.services), {message: 'FFMPEG_DOWNLOAD_WRITE_FAILED'});
+  assert.equal(requests, 1); assert.deepEqual(d.pauses, []); assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_WRITE_FAILED']);
+  await assert.rejects(readFile(file), {code: 'ENOENT'});
+});
+test('a coincident timeout preserves an explicit nonretryable size refusal', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'size-and-timeout.tar.xz'), controller = new AbortController(); let requests = 0;
+  const d = downloadFixture(async () => {requests += 1; controller.abort(); return new Response(bytes, {headers: {'content-length': String(64 * 1024 * 1024 + 1)}});});
+  d.services.timeoutSignal = () => controller.signal;
+  await assert.rejects(downloadSource(FFMPEG_SOURCE.url, file, d.services), {message: 'FFMPEG_SOURCE_TOO_LARGE'});
+  assert.equal(requests, 1); assert.deepEqual(d.pauses, []); assert.deepEqual(d.diagnostics, ['FFMPEG_SOURCE_TOO_LARGE']);
+  await assert.rejects(readFile(file), {code: 'ENOENT'});
 });
