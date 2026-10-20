@@ -30,6 +30,21 @@ const compatibility=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-c3
 const migrationMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-ts-migration-map.json',import.meta.url),'utf8')).mapping;
 const schema50RuntimeMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-schema50-runtime-map.json',import.meta.url),'utf8')).mapping;
 assert.deepEqual(Object.keys(schema50RuntimeMap).sort(),['packages/business/src/workspace-restore-policy.mjs','packages/contracts/src/index.mjs','packages/contracts/src/operation-effects.mjs','packages/contracts/src/workspace-restore.mjs'].sort());
+// b3ce8bf added the reviewed clip LRA export and clarified its read-only candidate
+// description. Reverse only those exact unique bytes before checking the intact
+// schema50 pins; frozen old modules below still execute their original texts.
+const loudnessRangeInverses=Object.freeze({
+ 'packages/contracts/src/index.mjs':Object.freeze({before:'',after:"export * from './loudness-range.ts';\n"}),
+ 'packages/contracts/src/operation-effects.mjs':Object.freeze({
+  before:'No target, candidate, apply authority, persistent report,',
+  after:'Reports bounded complete-window loudness range. An explicit optional LUFS/dBTP target prepares an actually measured supported fixed-gain candidate; no implicit target or apply authority. No persistent report,',
+ }),
+});
+function reverseReviewedLoudnessRange(file,source){
+ const inverse=loudnessRangeInverses[file];if(!inverse)return source;
+ assert.equal(source.split(inverse.after).length-1,1,`Baseline dependency changed: ${file}; the reviewed loudness-range inverse must match exactly once.`);
+ return source.replace(inverse.after,inverse.before);
+}
 const currentPath=file=>migrationMap[file]?.currentPath??file;
 // Deterministic drift detection: every mapped legacy key pins the current
 // whole-body hash in all environments, and additionally pins an esbuild
@@ -45,7 +60,7 @@ function assertPinnedCurrent(file,read=null){
  const reviewed=schema50RuntimeMap[file];
  if(reviewed){assert.equal(reviewed.currentPath,mapping.currentPath);assert.equal(reviewed.previousCurrentSha256,mapping.currentSha256);assert.equal(reviewed.previousTypeErasedSha256,mapping.typeErasedSha256);}
  const pin=reviewed??mapping;
- const text=(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))).toString();
+ const text=reverseReviewedLoudnessRange(file,(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))).toString());
  assert.equal(sha(text),pin.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
  const erased=eraseSource(text);
  if(erased!==null)assert.equal(sha(erased),pin.typeErasedSha256,`${file}: deterministic type-erased current body`);
@@ -260,6 +275,18 @@ test('frozen c3a0a57 schema dependency cycle preserves exact original source has
 });
 test('reviewed schema50 current-runtime pins reject every additional source byte while preserving old pins',()=>{
  for(const file of Object.keys(schema50RuntimeMap)){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
+});
+test('finite loudness-range inverses retain schema50 hashes and reject changed, duplicate or unknown source bytes',()=>{
+ for(const [file,inverse]of Object.entries(loudnessRangeInverses)){
+  const source=fs.readFileSync(path.join(repo,currentPath(file)),'utf8');
+  assert.equal(sha(reverseReviewedLoudnessRange(file,source)),schema50RuntimeMap[file].currentSha256,`${file}: unchanged schema50 whole-source pin`);
+  for(const changed of [
+   source.replace(inverse.after,inverse.after+' '),
+   source.replace(inverse.after,inverse.after+inverse.after),
+   source.replace(inverse.after,''),
+   source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n',
+  ])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
+ }
 });
 
 test('frozen validator loader rejects changed historical source before import',async()=>{

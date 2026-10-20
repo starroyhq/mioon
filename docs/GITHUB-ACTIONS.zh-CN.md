@@ -7,11 +7,11 @@ Mioon 的自动检查与桌面发布分开运行。PR 和 main 自动检查代�
 `ci.yml` 调用可复用的 `checks.yml`，提供总检查 `CI`。同一分支的新提交会取消旧 CI；发布运行不会因此被取消
 
 - 固定 Node **24.21.0**、pnpm **11.25.0**，执行 `pnpm install --frozen-lockfile`，缓存 pnpm store
-- Ubuntu 22.04 从固定哈希的官方源码构建 CI 专用 FFmpeg **7.1.5**，安装 GNU tar、字体和桌面运行依赖，实际检查所需滤镜、编码器及命令参数，再运行类型检查、development Web/桌面暂存构建及 Linux full 测试
+- 四个独立 Ubuntu 22.04 job 从固定哈希的官方源码构建 CI 专用 FFmpeg **7.1.5**，安装 GNU tar、字体和桌面运行依赖，实际检查所需滤镜、编码器及命令参数，再运行类型检查、development Web/桌面暂存构建及 Linux full 测试分片
 - macOS 和 Windows 运行类型、portable 和发布辅助脚本检查；不在这两个平台调用明确限于 Linux 的 full 通道
 - 工作流使用 actionlint 校验；辅助代码纳入项目严格 TypeScript 检查。PR 不接触 Apple 签名凭据
 
-完整测试使用现有 tooling 的环境清理和真实生成关闭策略，测试文件串行、独立进程。失败不会被自动忽略；日志和诊断报告分别标明执行范围。本地 macOS 缺失的媒体滤镜是否在 Ubuntu 已解决，以实际能力检查和测试结果为准
+完整测试使用现有 tooling 的环境清理和真实生成关闭策略，每个 job 内测试文件串行、独立进程，job 限时 60 分钟。分片从 full 权威列表按排序索引自动分配，先校验并集完整且互不重叠，再通过已有 `--file` 参数执行；新测试会自动进入，不维护排除名单。四个分片全部成功才允许总检查通过。每片记录源码 SHA、全集哈希和选中文件，便于核查覆盖范围。失败不会被自动忽略；日志和诊断报告分别标明执行范围。本地 macOS 缺失的媒体滤镜是否在 Ubuntu 已解决，以实际能力检查和测试结果为准
 
 Ubuntu 22.04 的系统 FFmpeg 4.4.2 缺少当前代码使用的文件值参数及 `fps_mode`，只检查滤镜列表不足以证明兼容。CI 固定使用[官方 7.1.5 源码](https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz)，SHA-256 为 `de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f`；引入时已按[官方签名方法](https://ffmpeg.org/download.html)在独立临时密钥环核验发布签名。安装后还实际运行 `-/filter:v`、`-/filter_complex` 和 `-fps_mode` 单帧探针，并确认 PNG 编解码能力。这个工具仅用于 runner，不随 Mioon 安装包发布，不改变 pnpm 依赖
 

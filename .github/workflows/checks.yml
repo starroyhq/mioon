@@ -13,9 +13,15 @@ permissions:
 
 jobs:
   quality:
-    name: Linux full tests and build
+    name: Linux full tests and build (shard ${{ matrix.shard }})
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      MIOON_TEST_SHARD_INDEX: ${{ matrix.shard }}
     defaults:
       run:
         shell: bash
@@ -64,8 +70,8 @@ jobs:
       - name: Probe required media capabilities
         id: media
         run: |
-          mkdir -p artifacts/checks-linux
-          node .github/scripts/media-environment.ts --platform=linux --output=artifacts/checks-linux/media.json
+          mkdir -p "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX"
+          node .github/scripts/media-environment.ts --platform=linux --output="artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/media.json"
 
       - name: Typecheck source and CI helpers
         id: typecheck
@@ -75,9 +81,18 @@ jobs:
         id: build
         run: node scripts/tooling.ts build --channel=development
 
-      - name: Run every Linux test in isolated files
+      - name: Run complete Linux full-lane partition in isolated files
         id: tests
-        run: node scripts/tooling.ts test --suite=full --concurrency=1 --reporter=tap
+        run: env -u NODE_OPTIONS -u NODE_PATH node .github/scripts/test-shard.ts --index="$MIOON_TEST_SHARD_INDEX" --count=4
+
+      - name: Upload full test partition proof
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-linux-${{ matrix.shard }}-coverage
+          path: artifacts/checks-linux-${{ matrix.shard }}/shard.json
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Write safe diagnostics
         if: always()
@@ -87,20 +102,20 @@ jobs:
           BUILD_RESULT: ${{ steps.build.outcome }}
           TEST_RESULT: ${{ steps.tests.outcome }}
         run: |
-          mkdir -p artifacts/checks-linux
+          mkdir -p "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX"
           {
             node --version
             pnpm --version
             printf 'media=%s\ntypecheck=%s\nbuild=%s\ntests=%s\n' "$MEDIA_RESULT" "$TYPECHECK_RESULT" "$BUILD_RESULT" "$TEST_RESULT"
-          } > artifacts/checks-linux/status.log
-          cat artifacts/checks-linux/status.log >> "$GITHUB_STEP_SUMMARY"
+          } > "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/status.log"
+          cat "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/status.log" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: checks-linux-diagnostics
-          path: artifacts/checks-linux/
+          name: checks-linux-${{ matrix.shard }}-diagnostics
+          path: artifacts/checks-linux-${{ matrix.shard }}/
           retention-days: 7
           if-no-files-found: warn
 
@@ -154,7 +169,7 @@ jobs:
 
       - name: Test CI and release helpers
         id: helpers
-        run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts
+        run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts tests/actions-test-shards.test.ts
 
       - name: Write safe diagnostics
         if: always()

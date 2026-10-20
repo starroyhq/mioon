@@ -202,7 +202,7 @@ test('Stop uses the accepted identity once and never starts a continuation in th
 
 test('inspection disclosures retain unencrypted storage, no secrets, bounded billing and continued hidden-run behavior', async () => {
   const f = fixture(), h = harness(f.client); h.render(); await flush(); h.render(); h.change('agent-chat-mode-project', true);
-  const page = JSON.stringify(h.render()); for (const pattern of [/本地应用数据库/, /并非密钥保险库加密/, /请勿输入密钥或其他秘密/, /2 次模型请求/, /模型调用可能计费/, /确认一次/, /隐藏窗口、切换页签、收起面板或切换项目/, /重启不会自动续接/]) assert.match(page, pattern);
+  const page = JSON.stringify(h.render()); for (const pattern of [/本地应用数据库/, /并非密钥保险库加密/, /请勿输入密钥或其他秘密/, /2 次模型请求/, /模型调用可能计费/, /确认一次/, /隐藏窗口、切换页签、收起面板或切换项目/, /重启后不会自动续接或重新发送/]) assert.match(page, pattern);
   const trigger = h.find('agent-chat-details-toggle'); assert.equal(trigger.type, 'CollapsibleTrigger'); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
 });
 
