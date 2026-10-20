@@ -223,7 +223,7 @@ function harness(filename) {
   function load(file) {
     if (modules[file]) return modules[file];
     const source = readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), code = transformSync(source, { loader: file.endsWith('.tsx') ? 'tsx' : file.endsWith('.ts') ? 'ts' : 'jsx', format: 'cjs' }).code, module = { exports: {} };
-    Function('require', 'module', 'exports', code)(name => name === 'react' ? { ...react, default: react } : name === './i18n/I18nProvider.tsx' ? { useI18n: () => i18nTestModule(h.locale).useI18n() } : name.endsWith('subject-state.ts') ? subjectState : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.ts') ? load('use-subjects.ts') : name.endsWith('api.ts') ? { assetUrl: asset => `/media/${asset.id}` } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+    Function('require', 'module', 'exports', code)(name => name === 'react' ? { ...react, default: react } : name === './i18n/I18nProvider.tsx' ? { useI18n: () => i18nTestModule(h.locale).useI18n() } : name.endsWith('subject-state.ts') ? subjectState : name.endsWith('workspace-visibility.tsx') ? { useWorkspaceVisibility: () => h.visible } : name.endsWith('use-subjects.ts') ? load('use-subjects.ts') : name==='./AgentEditingBoundary.tsx' ? {__esModule:true,default:'AgentEditingBoundary'} : name.endsWith('api.ts') ? { assetUrl: asset => `/media/${asset.id}` } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
     return modules[file] = module.exports;
   }
   const component = load(filename);
@@ -444,4 +444,16 @@ test('shot binding review and selected historical draft relabel without changing
   retainedKeep(); await flush();
   assert.equal(f.writes.length, 1); assert.equal(f.writes[0].input.subjectVersionId, versionId(1));
   assert.equal(f.writes[0].input.expectedRevision, row.revision);
+});
+
+test('subject library renders its loading state before the project controller is available', async () => {
+  const h = harness('SubjectLibrary.tsx');
+  assert.ok(byId(h.render({ subjects: null }), 'subject-library'));
+  assert.equal(byId(h.render({}), 'subject-create'), undefined);
+  const f = await fixture();
+  assert.ok(byId(h.render({ subjects: { state: f.controller.getState(), controller: f.controller }, assets: [image()] }), 'subject-library'));
+});
+
+test('existing subject version drafts are protected by their own server target and cannot release while dirty or unknown',async()=>{
+  const f=await fixture();await f.controller.selectSubject(subjectId);const h=harness('SubjectLibrary.tsx');const render=()=>h.render({subjects:{controller:f.controller,state:f.controller.getState()},assets:[image(),image(2)]});const tree=render(),boundary=tree.find(node=>node.type==='AgentEditingBoundary');assert.ok(boundary);assert.deepEqual(boundary.props.targets,[{kind:'subject',id:subjectId,revision:1}]);assert.equal(boundary.props.canRelease(),true);f.controller.updateVersion(subjectId,id(4,2));assert.equal(boundary.props.canRelease(),false);boundary.props.onDiscard();assert.equal(f.controller.getState().versionDrafts[subjectId].assetId,'');assert.equal(boundary.props.canRelease(),true);h.unmount();
 });

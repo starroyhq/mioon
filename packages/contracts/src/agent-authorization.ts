@@ -1,7 +1,7 @@
 import {z} from 'zod';
 
 export const AGENT_AUTHORIZATION_SCOPES = Object.freeze([
-  'typed_chat_only', 'project_inspection', 'selected_shot_edit',
+  'project_agent', 'typed_chat_only', 'project_inspection', 'selected_shot_edit',
   'selected_timeline_clip_move', 'selected_timeline_clip_gain',
 ] as const);
 export const AGENT_AUTHORIZATION_LIMITS = Object.freeze({fileBytes:1024*1024,grants:256,requests:2048});
@@ -24,7 +24,7 @@ const destination = z.string().min(1).max(2080).refine(value=>{
 export const agentAuthorizationTargetSchema=z.object({destination,model,scope:agentAuthorizationScopeSchema}).strict();
 export const agentAuthorizationCurrentTargetSchema=z.object({destination,model,settingsRevision:revision}).strict();
 export const agentAuthorizationRecordSchema=agentAuthorizationTargetSchema.extend({id:z.string().uuid(),createdAt:z.string().datetime()}).strict();
-export const agentAuthorizationSnapshotSchema=z.object({revision,scopes:z.array(agentAuthorizationScopeSchema).max(5)}).strict();
+export const agentAuthorizationSnapshotSchema=z.object({revision,scopes:z.array(agentAuthorizationScopeSchema).max(6)}).strict();
 export const agentAuthorizationListSchema=z.object({revision,currentTarget:agentAuthorizationCurrentTargetSchema,
   authorizations:z.array(agentAuthorizationRecordSchema).max(AGENT_AUTHORIZATION_LIMITS.grants)}).strict();
 export const agentAuthorizationSchemas={

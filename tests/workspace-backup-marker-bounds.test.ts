@@ -60,7 +60,7 @@ test('bounded marker projection refuses unsafe integer values without JavaScript
  assert.throws(()=>readWorkspaceBackupSchemaVersion(db),{code:'WORKSPACE_BACKUP_DATABASE_INVALID'});
 });
 
-test('ordinary24 unknown journal survives startup migration and cold40 archive while fixed41 restore refuses it',async t=>{
+test('ordinary24 unknown journal survives startup migration and current cold archive while strict restore refuses it',async t=>{
  const {openStore}=await import('../packages/business/src/db.ts');
  const {restoreWorkspaceBackup}=await import('../packages/business/src/workspace-restore.ts');
  const root=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'backup-custom-journal-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));

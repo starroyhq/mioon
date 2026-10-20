@@ -1,5 +1,6 @@
 import {registerExportActivity,isCancelledExport,exportStage} from './export-controls.ts';
 import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
+import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {isOpacityCandidateServicesForStore} from './opacity-candidate-services.ts';
 import {matchesOpacityCandidateExport,claimOpacityCandidateExport,recoverOpacityCandidateExport,isOpacityCandidateExportClaim,revokeOpacityCandidateExportClaim,prepareOpacityCandidateRenderInputs} from './opacity-candidate-render-authority.ts';
 import {bindTimelineOpacityRenderAttempt} from './timeline-opacity-render-binding.ts';
@@ -161,13 +162,14 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(!j)return;
   let provider:Provider|undefined;
   const context: Record<string, unknown>={requestId:j.requestId,jobId:j.id,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),signal};
-  let acceptedProviderId: string|null=null,guardJob=j;
+  let acceptedProviderId: string|null=null,guardJob=j,postPermitted=false,blockedGate=false;
   const submissionCount=numberValue(j.submissionCount)??0;
   const nextPollAt=numberValue(j.nextPollAt);
   if(nextPollAt&&Date.now()<nextPollAt)return;
   try {
    provider=services.resolveGenerationProvider?services.resolveGenerationProvider(j):providers.get(j.providerId);
    if(j.status==='queued') {
+    assertAgentTaskJobEffect(store.db,'job',j.id);
     if(!provider)throw Object.assign(Error('Provider is unavailable'),{code:'PROVIDER_NOT_FOUND'});
     services.validateGenerationDispatch(j);
     const preparedSnapshot=JSON.stringify(j.snapshot);
@@ -197,16 +199,17 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const claim=j;
     // Shared HTTP adapters invoke this synchronous fence after image preparation
     // and immediately before POST. No callback is used for poll/download/reconcile.
-    context.beforeSubmit=()=>{
+    const assertClaim=()=>{
      try{
       const latest=recordValue(get('jobs',claim.id));
       if(!latest||latest.status!=='submitting'||latest.revision!==claim.revision||JSON.stringify(latest.snapshot)!==preparedSnapshot)throw Object.assign(Error('提交前任务状态已更改'),{code:'GENERATION_STATE_CHANGED'});
       services.validateGenerationDispatch(claim);
-     }catch(error){throw markGenerationPreflightFailure(error as object);}
+     }catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw markGenerationPreflightFailure(error as object);}
     };
     // During both image reads the same non-mutating claim/ownership fence
     // rejects drift. The final beforeSubmit fence still runs directly at POST.
-    (context as unknown as {validateReferenceState: ()=>void}).validateReferenceState=context.beforeSubmit as ()=>void;
+    context.beforeSubmit=()=>{assertClaim();if(j!.providerId!=='mock')recordAgentTaskJobDispatch(store.db,'job',claim.id);postPermitted=true;};
+    (context as unknown as {validateReferenceState: ()=>void}).validateReferenceState=assertClaim;
     const accepted: unknown=await awaitProvider(()=>provider!.submit({...j!.snapshot,referenceAssets},context as never),signal,{submit:true});
     acceptedProviderId=stringValue(property(recordValue(accepted),'providerJobId'))??null;
     // Receipt persistence is the sole intentional write permitted after abort.
@@ -260,7 +263,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     tx(()=>{const previous=list('versions',j!.projectId).map(value=>recordValue(value)).find(v=>v?.jobId===j!.id);if(previous){services.saveJob(j!,{status:'succeeded',phase:'complete',versionId:previous.id,progress:100,error:null});return;}
      const asset={id:randomUUID(),projectId:j!.projectId,name:`${String(property(j!.snapshot,'title'))} ${j!.providerId==='mock'?'模拟':'生成'}视频.mp4`,mimeType:'video/mp4',...info,relativePath,url:null as string|null,provenance:j!.providerId==='mock'?'synthetic-mock':'generated',createdAt:now()};asset.url=`/media/${asset.id}`;put('assets',asset);
      const version={id:randomUUID(),projectId:j!.projectId,shotId:j!.shotId,jobId:j!.id,number:list('versions',j!.projectId).filter(value=>property(value,'shotId')===j!.shotId).length+1,providerId:j!.providerId,model:j!.model,isMock:j!.providerId==='mock',snapshot:j!.snapshot,assetId:asset.id,url:asset.url,sha256:info.sha256,createdAt:now()};put('versions',version);
-     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number')put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
+     const shot=recordValue(get('shots',j!.shotId));if(shot&&!shot.selectedVersionId&&typeof shot.revision==='number'&&allowAgentTaskJobTargetMutation(store.db,'job',j!.id,{kind:'shot',id:j!.shotId}))put('shots',{...shot,selectedVersionId:version.id,revision:shot.revision+1,updatedAt:now()});services.saveJob(j!,{status:'succeeded',phase:'complete',progress:100,versionId:version.id,error:null});
     });
    }
   } catch(error) {
@@ -268,9 +271,15 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    const latest=recordValue(get('jobs',guardJob.id)) as JobRecord|null;
    if(latest?.status==='cancelled')return;
    const errorCode=stringValue(property(error,'code'));
+   // A trusted host gate can prove that this attempt never reached POST. Keep
+   // the original queue identity so explicit resume continues it exactly once.
+   if((blockedGate||isAgentTaskEffectBlocked(error))&&!postPermitted&&!acceptedProviderId){
+    const cancelled=isAgentTaskJobStopped(store.db,'job',j.id);if(j.status==='submitting'||j.status==='queued'&&cancelled)services.saveGenerationGuarded(guardJob,{status:cancelled?'cancelled':'queued',phase:cancelled?'cancelled_before_dispatch':'waiting',submissionCount,error:null,nextPollAt:0});
+    return;
+   }
    if(errorCode?.startsWith('VIDEO_SETTINGS_')||errorCode==='VIDEO_CREDENTIAL_UNAVAILABLE'){
-    // Missing connection credentials do not turn an accepted task into a new
-    // generation. Restoring its exact binding resumes the same state and ID.
+    // Retain the exact configured connection and task when credentials need
+    // restoring; this path never authorizes a replacement submission.
     const definitelyUnsubmitted=j.status==='submitting'&&(property(error,'beforeDispatch')===true||isGenerationPreflightFailure(error));
     if(latest)services.saveGenerationGuarded(latest,{...(definitelyUnsubmitted?{status:'queued',submissionCount}:{}),phase:'connection_required',error:safeError(error),nextPollAt:Date.now()+5000});
     return;
@@ -304,6 +313,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
 
  async function processExport(original: ExportRecord,signal: AbortSignal): Promise<void> {
   checkpoint(signal);
+  try{assertAgentTaskJobEffect(store.db,'export',original.id);}catch(error){
+   if(isAgentTaskEffectBlocked(error)&&isAgentTaskJobStopped(store.db,'export',original.id)){tx(()=>{const latest=currentOwnedExport(original);if(latest?.status==='queued')put('exports',{...latest,status:'failed',error:{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false},updatedAt:now()});});return;}throw error;
+  }
   let e: ExportRecord=original;
   if(!exportUuid(e.id)||!exportUuid(e.projectId)){invalidExport();return;}
   const claimed=tx(()=>{const current=currentOwnedExport(original);if(current?.status!=='queued')return null;if(opacity)return claimOpacityCandidateExport(store,current as never,now());const claimedRecord=isFloatTimelineExport(current)?claimFloatTimelineExport(current,now()):{...current,status:'running',updatedAt:now()};put('exports',claimedRecord);return isFloatTimelineExport(current)?claimedRecord:current;});
@@ -315,11 +327,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const relativePath=`media/export-${e.id}-${randomUUID()}.mp4`,file=path.join(root,relativePath),part=file+'.part.mp4';
   const colourExport=Boolean(e.snapshot&&isRecord(e.snapshot)&&Object.hasOwn(e.snapshot,'colourPlan'));
   const readLut=colourExport?createTimelineColourLutReader(store.db,e.projectId):undefined;
+  const agentBound=!!agentTaskJobBinding(store.db,'export',e.id);
   const fencedAttempt=opacity||restored||floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=restored?workspaceRestoreError:timelineExportRangeEffectError;
   let preparedAssets: Map<string, unknown>|undefined,opacityBinding: ReturnType<typeof bindTimelineOpacityRenderAttempt>|undefined,linkedOutput=false,publicationAccepted=false,
    outputIdentity: {dev: number; ino: number; isFile(): boolean; nlink: number}|undefined,outputHandle: Awaited<ReturnType<typeof open>>|undefined,claimLive=true,validateSources: (()=>void)|undefined,
-   floatMeasurement: ReturnType<typeof ownedFloatTimelineMeasurement>|undefined,terminationUnconfirmed=false;
-  const beforeEffect=(): void=>{if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw effectError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}};
+   floatMeasurement: ReturnType<typeof ownedFloatTimelineMeasurement>|undefined,terminationUnconfirmed=false,renderStarted=false,blockedGate=false;
+  const beforeStart=():void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}renderStarted=true;}};
+  const beforeEffect=(): void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}}if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw effectError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}};
   const checkCustomSources=(): void=>{if(opacity)opacityBinding?.assert();else if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});};
   try {
    beforeEffect?.();
@@ -334,7 +348,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(customExport(e)||restored)preparedAssets=assets as unknown as Map<string, unknown>;
     if(opacity){opacityBinding=bindTimelineOpacityRenderAttempt(store as never,e as never,assets,{signal});validateSources=()=>opacityBinding?.assert();}
     else if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
-    const rendered=await (exportStage(store,e.id,'encoding'), renderTimeline(e.snapshot as never,assets as never,part,{signal,beforeEffect,readLut:readLut as never,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})}));checkpoint(signal);
+    const rendered=await (exportStage(store,e.id,'encoding'),renderTimeline(e.snapshot as never,assets as never,part,{signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})}));checkpoint(signal);
     if(floatExport)floatMeasurement=ownedFloatTimelineMeasurement(rendered);
    } else {
     const files: string[]=[];
@@ -354,7 +368,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     if(currentOwnedExport(e)?.status!=='running')return;
     checkStoryboard();
     exportStage(store,e.id,'encoding');
-    await stitch(files,part,{signal,beforeEffect,outputGeometry:storyboardOutputGeometry(e)});checkpoint(signal);
+    await stitch(files,part,{signal,beforeEffect,...(agentBound?{beforeStart}:{}),outputGeometry:storyboardOutputGeometry(e)});checkpoint(signal);
    }
    exportStage(store,e.id,'finalizing');
    const info=await fileInfo(part,{signal,beforeEffect});checkpoint(signal);
@@ -388,6 +402,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     const latest=currentOwnedExport(e);
     const latestStatus=stringValue(property(latest,'status'));
     if(!latest||isCancelledExport(latest)||latestStatus==='cancelled'||(customExport(e)||restored)&&latestStatus==='succeeded')return;
+    if(agentBound&&!renderStarted&&(blockedGate||isAgentTaskEffectBlocked(error))){const cancelled=isAgentTaskJobStopped(store.db,'export',e.id);put('exports',{...(floatExport?requeueFloatTimelineExport(latest):latest),status:cancelled?'failed':'queued',error:cancelled?{code:'EXPORT_CANCELLED',message:'导出已取消',retryable:false}:null,updatedAt:now()});return;}
     const audioCheck=floatExport&&!signal.aborted?(floatMeasurement?bindFloatTimelineMeasurement(e as never,floatMeasurement,now()):bindFloatTimelineFailure(e as never,error,now())):undefined;
     put('exports',{...(floatExport&&signal.aborted?requeueFloatTimelineExport(latest):latest),status:signal.aborted?'queued':'failed',error:property(error,'terminationUnconfirmed')?mediaPauseError('exports',latestStatus??'failed'):signal.aborted?null:{...safeError(error,'EXPORT_FAILED'),...(audioCheck?.code==='EXPORT_AUDIO_OVER_RANGE'?{retryable:false}:{})},...(audioCheck?{audioCheck}:{}),updatedAt:now()});
    };
@@ -421,7 +436,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(stopped)return;
   const controller=new AbortController();operations.add(controller);
   const exportActivity=action===processExport as unknown as WorkerOperation?registerExportActivity(inputStore,value.id,()=>controller.abort()):null;
-  try {await action(value as never,controller.signal);}
+  try {await withAgentTaskJobOrigin(store.db,action===processJob as WorkerOperation?'job':'export',value.id,()=>action(value as never,controller.signal));}
   finally {
    controller.abort();
    // An adapter await can be abandoned, but owned children cannot. Retain this

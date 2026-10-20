@@ -12,8 +12,10 @@ interface CurrentOrdinary50Delta {readonly schemaVersionRows:readonly (readonly 
 /** Independent additive50 pin. The historical48 evidence is never rewritten. */
 export const currentOrdinary50Delta:CurrentOrdinary50Delta=JSON.parse(readFileSync(
   new URL('../fixtures/workspace-schema-profiles/current-ordinary-50-delta.json',import.meta.url),'utf8'));
+export const currentOrdinary52Delta:CurrentOrdinary50Delta & {readonly objectNames:readonly string[];readonly v2Catalog:{count:number;sha256:string}}=JSON.parse(readFileSync(
+  new URL('../fixtures/workspace-schema-profiles/current-ordinary-52-delta.json',import.meta.url),'utf8'));
 export const currentMarkerChain = Object.freeze([
-  ...Array.from({length: 24}, (_, index) => index + 1), 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50,
+  ...Array.from({length: 24}, (_, index) => index + 1), 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52,
 ]);
 /** The current reviewed SQL for an object whose historical SQL was upgraded by
  * the reviewed current-schema delta, or the historical SQL when unchanged. */

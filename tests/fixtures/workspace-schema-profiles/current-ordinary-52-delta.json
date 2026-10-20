@@ -1,0 +1,1085 @@
+{
+  "formatVersion": 1,
+  "synthetic": true,
+  "baseSchema": 50,
+  "targetSchema": 52,
+  "provenance": "Reviewed assistant harness52 additive catalog; remote task-disposition50 and historical profiles remain fixed.",
+  "schemaVersionRows": [
+    [
+      "52",
+      "integer",
+      "3532"
+    ]
+  ],
+  "objects": [
+    {
+      "type": "index",
+      "name": "agent_task_runs_project_v2",
+      "tbl_name": "agent_task_runs_v2",
+      "sql": "CREATE INDEX agent_task_runs_project_v2 ON agent_task_runs_v2(projectId)"
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_changes_v2_1",
+      "tbl_name": "agent_task_changes_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_control_states_v2_1",
+      "tbl_name": "agent_task_control_states_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_controls_v2_1",
+      "tbl_name": "agent_task_controls_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_edit_claims_v2_1",
+      "tbl_name": "agent_task_edit_claims_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_edit_claims_v2_2",
+      "tbl_name": "agent_task_edit_claims_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_edit_owners_v2_1",
+      "tbl_name": "agent_task_edit_owners_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_edit_receipts_v2_1",
+      "tbl_name": "agent_task_edit_receipts_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_events_v2_1",
+      "tbl_name": "agent_task_events_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_imports_v2_1",
+      "tbl_name": "agent_task_imports_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_imports_v2_2",
+      "tbl_name": "agent_task_imports_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_job_origins_v2_1",
+      "tbl_name": "agent_task_job_origins_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_policy_requests_v2_1",
+      "tbl_name": "agent_task_policy_requests_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_runs_v2_1",
+      "tbl_name": "agent_task_runs_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_runs_v2_2",
+      "tbl_name": "agent_task_runs_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_steps_v2_1",
+      "tbl_name": "agent_task_steps_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_steps_v2_2",
+      "tbl_name": "agent_task_steps_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_target_revisions_v2_1",
+      "tbl_name": "agent_task_target_revisions_v2",
+      "sql": null
+    },
+    {
+      "type": "table",
+      "name": "agent_task_changes_v2",
+      "tbl_name": "agent_task_changes_v2",
+      "sql": "CREATE TABLE agent_task_changes_v2(id TEXT PRIMARY KEY NOT NULL,runId TEXT NOT NULL REFERENCES agent_task_runs_v2(id),stepId TEXT NOT NULL REFERENCES agent_task_steps_v2(id),projectId TEXT NOT NULL REFERENCES projects(id),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=2097152))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_control_states_v2",
+      "tbl_name": "agent_task_control_states_v2",
+      "sql": "CREATE TABLE agent_task_control_states_v2(requestId TEXT PRIMARY KEY NOT NULL REFERENCES agent_task_controls_v2(requestId),runId TEXT NOT NULL REFERENCES agent_task_runs_v2(id),projectId TEXT NOT NULL REFERENCES projects(id),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=2097152))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_controls_v2",
+      "tbl_name": "agent_task_controls_v2",
+      "sql": "CREATE TABLE agent_task_controls_v2(requestId TEXT PRIMARY KEY NOT NULL,runId TEXT NOT NULL REFERENCES agent_task_runs_v2(id),projectId TEXT NOT NULL REFERENCES projects(id),digest TEXT NOT NULL CHECK(length(digest)=64),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=2097152))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_edit_claims_v2",
+      "tbl_name": "agent_task_edit_claims_v2",
+      "sql": "CREATE TABLE agent_task_edit_claims_v2(id TEXT PRIMARY KEY NOT NULL,projectId TEXT NOT NULL REFERENCES projects(id),ownerId TEXT NOT NULL,kind TEXT NOT NULL,targetId TEXT NOT NULL,revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 0 AND 9007199254740991),state TEXT NOT NULL CHECK(state IN ('active','uncertain')),createdAt TEXT NOT NULL,updatedAt TEXT NOT NULL,UNIQUE(projectId,ownerId,kind,targetId))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_edit_owners_v2",
+      "tbl_name": "agent_task_edit_owners_v2",
+      "sql": "CREATE TABLE agent_task_edit_owners_v2(ownerId TEXT NOT NULL,projectId TEXT NOT NULL REFERENCES projects(id),generation INTEGER NOT NULL,sequence INTEGER NOT NULL,PRIMARY KEY(projectId,ownerId))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_edit_receipts_v2",
+      "tbl_name": "agent_task_edit_receipts_v2",
+      "sql": "CREATE TABLE agent_task_edit_receipts_v2(requestId TEXT PRIMARY KEY NOT NULL,projectId TEXT NOT NULL REFERENCES projects(id),ownerId TEXT NOT NULL,digest TEXT NOT NULL CHECK(length(digest)=64),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=65536))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_events_v2",
+      "tbl_name": "agent_task_events_v2",
+      "sql": "CREATE TABLE agent_task_events_v2(runId TEXT NOT NULL REFERENCES agent_task_runs_v2(id),projectId TEXT REFERENCES projects(id),sequence INTEGER NOT NULL CHECK(typeof(sequence)='integer' AND sequence>0),type TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=2097152),PRIMARY KEY(runId,sequence))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_imports_v2",
+      "tbl_name": "agent_task_imports_v2",
+      "sql": "CREATE TABLE agent_task_imports_v2(id TEXT PRIMARY KEY NOT NULL,projectId TEXT NOT NULL REFERENCES projects(id),requestId TEXT NOT NULL UNIQUE,name TEXT NOT NULL CHECK(length(CAST(name AS BLOB))<=800),mimeType TEXT NOT NULL,relativePath TEXT NOT NULL CHECK(length(CAST(relativePath AS BLOB))<=512),sha256 TEXT NOT NULL CHECK(length(sha256)=64),status TEXT NOT NULL,assetId TEXT REFERENCES assets(id),resourceId TEXT,createdAt TEXT NOT NULL)"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_job_origins_v2",
+      "tbl_name": "agent_task_job_origins_v2",
+      "sql": "CREATE TABLE agent_task_job_origins_v2(kind TEXT NOT NULL,jobId TEXT NOT NULL,runId TEXT NOT NULL REFERENCES agent_task_runs_v2(id),stepId TEXT NOT NULL REFERENCES agent_task_steps_v2(id),projectId TEXT NOT NULL REFERENCES projects(id),requestId TEXT NOT NULL,operation TEXT NOT NULL,PRIMARY KEY(kind,jobId))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_policy_requests_v2",
+      "tbl_name": "agent_task_policy_requests_v2",
+      "sql": "CREATE TABLE agent_task_policy_requests_v2(requestId TEXT PRIMARY KEY NOT NULL,digest TEXT NOT NULL CHECK(length(digest)=64),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=65536))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_policy_v2",
+      "tbl_name": "agent_task_policy_v2",
+      "sql": "CREATE TABLE agent_task_policy_v2(id INTEGER PRIMARY KEY CHECK(id=1),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=65536))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_runs_v2",
+      "tbl_name": "agent_task_runs_v2",
+      "sql": "CREATE TABLE agent_task_runs_v2(id TEXT PRIMARY KEY NOT NULL,projectId TEXT NOT NULL REFERENCES projects(id),requestId TEXT NOT NULL UNIQUE,digest TEXT NOT NULL CHECK(length(digest)=64),status TEXT NOT NULL,revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 0 AND 9007199254740991),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=2097152))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_steps_v2",
+      "tbl_name": "agent_task_steps_v2",
+      "sql": "CREATE TABLE agent_task_steps_v2(id TEXT PRIMARY KEY NOT NULL,runId TEXT NOT NULL REFERENCES agent_task_runs_v2(id),projectId TEXT NOT NULL REFERENCES projects(id),position INTEGER NOT NULL,status TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=2097152),UNIQUE(runId,position))"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_target_revisions_v2",
+      "tbl_name": "agent_task_target_revisions_v2",
+      "sql": "CREATE TABLE agent_task_target_revisions_v2(projectId TEXT NOT NULL REFERENCES projects(id),kind TEXT NOT NULL,targetId TEXT NOT NULL,revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),PRIMARY KEY(projectId,kind,targetId))"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_changes_v2_insert",
+      "tbl_name": "agent_task_changes_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_changes_v2_insert AFTER INSERT ON agent_task_changes_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_changes_v2_update",
+      "tbl_name": "agent_task_changes_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_changes_v2_update AFTER UPDATE ON agent_task_changes_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_control_states_v2_insert",
+      "tbl_name": "agent_task_control_states_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_control_states_v2_insert AFTER INSERT ON agent_task_control_states_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_control_states_v2_update",
+      "tbl_name": "agent_task_control_states_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_control_states_v2_update AFTER UPDATE ON agent_task_control_states_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_controls_v2_insert",
+      "tbl_name": "agent_task_controls_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_controls_v2_insert AFTER INSERT ON agent_task_controls_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_controls_v2_update",
+      "tbl_name": "agent_task_controls_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_controls_v2_update AFTER UPDATE ON agent_task_controls_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_events_v2_insert",
+      "tbl_name": "agent_task_events_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_events_v2_insert AFTER INSERT ON agent_task_events_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_events_v2_update",
+      "tbl_name": "agent_task_events_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_events_v2_update AFTER UPDATE ON agent_task_events_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_imports_v2_insert",
+      "tbl_name": "agent_task_imports_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_imports_v2_insert AFTER INSERT ON agent_task_imports_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_imports_v2_update",
+      "tbl_name": "agent_task_imports_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_imports_v2_update AFTER UPDATE ON agent_task_imports_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_job_origins_v2_insert",
+      "tbl_name": "agent_task_job_origins_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_job_origins_v2_insert AFTER INSERT ON agent_task_job_origins_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_job_origins_v2_update",
+      "tbl_name": "agent_task_job_origins_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_job_origins_v2_update AFTER UPDATE ON agent_task_job_origins_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_policy_requests_v2_insert",
+      "tbl_name": "agent_task_policy_requests_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_policy_requests_v2_insert AFTER INSERT ON agent_task_policy_requests_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_policy_requests_v2_update",
+      "tbl_name": "agent_task_policy_requests_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_policy_requests_v2_update AFTER UPDATE ON agent_task_policy_requests_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_policy_v2_insert",
+      "tbl_name": "agent_task_policy_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_policy_v2_insert AFTER INSERT ON agent_task_policy_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_policy_v2_update",
+      "tbl_name": "agent_task_policy_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_policy_v2_update AFTER UPDATE ON agent_task_policy_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_runs_v2_insert",
+      "tbl_name": "agent_task_runs_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_runs_v2_insert AFTER INSERT ON agent_task_runs_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_runs_v2_update",
+      "tbl_name": "agent_task_runs_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_runs_v2_update AFTER UPDATE ON agent_task_runs_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_steps_v2_insert",
+      "tbl_name": "agent_task_steps_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_steps_v2_insert AFTER INSERT ON agent_task_steps_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_quota_agent_task_steps_v2_update",
+      "tbl_name": "agent_task_steps_v2",
+      "sql": "CREATE TRIGGER agent_quota_agent_task_steps_v2_update AFTER UPDATE ON agent_task_steps_v2 BEGIN SELECT CASE WHEN (SELECT count(*) FROM agent_task_runs_v2)+(SELECT count(*) FROM agent_task_steps_v2)+(SELECT count(*) FROM agent_task_changes_v2)+(SELECT count(*) FROM agent_task_events_v2)+(SELECT count(*) FROM agent_task_controls_v2)+(SELECT count(*) FROM agent_task_control_states_v2)+(SELECT count(*) FROM agent_task_policy_v2)+(SELECT count(*) FROM agent_task_policy_requests_v2)+(SELECT count(*) FROM agent_task_job_origins_v2)+(SELECT count(*) FROM agent_task_imports_v2)>20000 OR (SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_runs_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_steps_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_changes_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_events_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_controls_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_control_states_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_policy_requests_v2)+(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM agent_task_edit_receipts_v2)>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_annotations_delete_v2",
+      "tbl_name": "asset_annotations",
+      "sql": "CREATE TRIGGER agent_target_asset_annotations_delete_v2 AFTER DELETE ON asset_annotations WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'asset_annotation',OLD.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_annotations_insert_v2",
+      "tbl_name": "asset_annotations",
+      "sql": "CREATE TRIGGER agent_target_asset_annotations_insert_v2 AFTER INSERT ON asset_annotations WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'asset_annotation',NEW.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_annotations_update_v2",
+      "tbl_name": "asset_annotations",
+      "sql": "CREATE TRIGGER agent_target_asset_annotations_update_v2 AFTER UPDATE ON asset_annotations WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"assetId\" IS NOT OLD.\"assetId\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"revision\" IS NOT OLD.\"revision\" OR NEW.\"tags\" IS NOT OLD.\"tags\" OR NEW.\"note\" IS NOT OLD.\"note\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'asset_annotation',NEW.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_dispositions_delete_v2",
+      "tbl_name": "asset_dispositions",
+      "sql": "CREATE TRIGGER agent_target_asset_dispositions_delete_v2 AFTER DELETE ON asset_dispositions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'asset_disposition',OLD.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_dispositions_insert_v2",
+      "tbl_name": "asset_dispositions",
+      "sql": "CREATE TRIGGER agent_target_asset_dispositions_insert_v2 AFTER INSERT ON asset_dispositions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'asset_disposition',NEW.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_dispositions_update_v2",
+      "tbl_name": "asset_dispositions",
+      "sql": "CREATE TRIGGER agent_target_asset_dispositions_update_v2 AFTER UPDATE ON asset_dispositions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"assetId\" IS NOT OLD.\"assetId\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"revision\" IS NOT OLD.\"revision\" OR NEW.\"disposition\" IS NOT OLD.\"disposition\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'asset_disposition',NEW.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_ranges_delete_v2",
+      "tbl_name": "asset_ranges",
+      "sql": "CREATE TRIGGER agent_target_asset_ranges_delete_v2 AFTER DELETE ON asset_ranges WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'asset_range',OLD.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_ranges_insert_v2",
+      "tbl_name": "asset_ranges",
+      "sql": "CREATE TRIGGER agent_target_asset_ranges_insert_v2 AFTER INSERT ON asset_ranges WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'asset_range',NEW.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_asset_ranges_update_v2",
+      "tbl_name": "asset_ranges",
+      "sql": "CREATE TRIGGER agent_target_asset_ranges_update_v2 AFTER UPDATE ON asset_ranges WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"assetId\" IS NOT OLD.\"assetId\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"revision\" IS NOT OLD.\"revision\" OR NEW.\"inFrame\" IS NOT OLD.\"inFrame\" OR NEW.\"outFrame\" IS NOT OLD.\"outFrame\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'asset_range',NEW.assetId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_assets_delete_v2",
+      "tbl_name": "assets",
+      "sql": "CREATE TRIGGER agent_target_assets_delete_v2 AFTER DELETE ON assets WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'asset',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_assets_insert_v2",
+      "tbl_name": "assets",
+      "sql": "CREATE TRIGGER agent_target_assets_insert_v2 AFTER INSERT ON assets WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'asset',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_assets_update_v2",
+      "tbl_name": "assets",
+      "sql": "CREATE TRIGGER agent_target_assets_update_v2 AFTER UPDATE ON assets WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'asset',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_edges_delete_v2",
+      "tbl_name": "edges",
+      "sql": "CREATE TRIGGER agent_target_edges_delete_v2 AFTER DELETE ON edges WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'edge',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_edges_insert_v2",
+      "tbl_name": "edges",
+      "sql": "CREATE TRIGGER agent_target_edges_insert_v2 AFTER INSERT ON edges WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'edge',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_edges_update_v2",
+      "tbl_name": "edges",
+      "sql": "CREATE TRIGGER agent_target_edges_update_v2 AFTER UPDATE ON edges WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'edge',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_exports_delete_v2",
+      "tbl_name": "exports",
+      "sql": "CREATE TRIGGER agent_target_exports_delete_v2 AFTER DELETE ON exports WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'export',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_exports_insert_v2",
+      "tbl_name": "exports",
+      "sql": "CREATE TRIGGER agent_target_exports_insert_v2 AFTER INSERT ON exports WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'export',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_exports_update_v2",
+      "tbl_name": "exports",
+      "sql": "CREATE TRIGGER agent_target_exports_update_v2 AFTER UPDATE ON exports WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'export',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_frame_tasks_delete_v2",
+      "tbl_name": "frame_tasks",
+      "sql": "CREATE TRIGGER agent_target_frame_tasks_delete_v2 AFTER DELETE ON frame_tasks WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'frame_task',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_frame_tasks_insert_v2",
+      "tbl_name": "frame_tasks",
+      "sql": "CREATE TRIGGER agent_target_frame_tasks_insert_v2 AFTER INSERT ON frame_tasks WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'frame_task',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_frame_tasks_update_v2",
+      "tbl_name": "frame_tasks",
+      "sql": "CREATE TRIGGER agent_target_frame_tasks_update_v2 AFTER UPDATE ON frame_tasks WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"requestId\" IS NOT OLD.\"requestId\" OR NEW.\"inputHash\" IS NOT OLD.\"inputHash\" OR NEW.\"input\" IS NOT OLD.\"input\" OR NEW.\"snapshot\" IS NOT OLD.\"snapshot\" OR NEW.\"state\" IS NOT OLD.\"state\" OR NEW.\"revision\" IS NOT OLD.\"revision\" OR NEW.\"started\" IS NOT OLD.\"started\" OR NEW.\"stagedReceipt\" IS NOT OLD.\"stagedReceipt\" OR NEW.\"assetId\" IS NOT OLD.\"assetId\" OR NEW.\"errorCode\" IS NOT OLD.\"errorCode\" OR NEW.\"createdAt\" IS NOT OLD.\"createdAt\" OR NEW.\"updatedAt\" IS NOT OLD.\"updatedAt\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'frame_task',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_groups_delete_v2",
+      "tbl_name": "image_groups",
+      "sql": "CREATE TRIGGER agent_target_image_groups_delete_v2 AFTER DELETE ON image_groups WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'image_group',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_groups_insert_v2",
+      "tbl_name": "image_groups",
+      "sql": "CREATE TRIGGER agent_target_image_groups_insert_v2 AFTER INSERT ON image_groups WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'image_group',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_groups_update_v2",
+      "tbl_name": "image_groups",
+      "sql": "CREATE TRIGGER agent_target_image_groups_update_v2 AFTER UPDATE ON image_groups WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"name\" IS NOT OLD.\"name\" OR NEW.\"revision\" IS NOT OLD.\"revision\" OR NEW.\"headVersionId\" IS NOT OLD.\"headVersionId\" OR NEW.\"activeTaskId\" IS NOT OLD.\"activeTaskId\" OR NEW.\"createdAt\" IS NOT OLD.\"createdAt\" OR NEW.\"updatedAt\" IS NOT OLD.\"updatedAt\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'image_group',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_tasks_delete_v2",
+      "tbl_name": "image_tasks",
+      "sql": "CREATE TRIGGER agent_target_image_tasks_delete_v2 AFTER DELETE ON image_tasks WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'image_task',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_tasks_insert_v2",
+      "tbl_name": "image_tasks",
+      "sql": "CREATE TRIGGER agent_target_image_tasks_insert_v2 AFTER INSERT ON image_tasks WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'image_task',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_tasks_update_v2",
+      "tbl_name": "image_tasks",
+      "sql": "CREATE TRIGGER agent_target_image_tasks_update_v2 AFTER UPDATE ON image_tasks WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"groupId\" IS NOT OLD.\"groupId\" OR NEW.\"requestId\" IS NOT OLD.\"requestId\" OR NEW.\"inputHash\" IS NOT OLD.\"inputHash\" OR NEW.\"input\" IS NOT OLD.\"input\" OR NEW.\"snapshot\" IS NOT OLD.\"snapshot\" OR NEW.\"state\" IS NOT OLD.\"state\" OR NEW.\"revision\" IS NOT OLD.\"revision\" OR NEW.\"dispatched\" IS NOT OLD.\"dispatched\" OR NEW.\"stagedReceipt\" IS NOT OLD.\"stagedReceipt\" OR NEW.\"versionId\" IS NOT OLD.\"versionId\" OR NEW.\"errorCode\" IS NOT OLD.\"errorCode\" OR NEW.\"createdAt\" IS NOT OLD.\"createdAt\" OR NEW.\"updatedAt\" IS NOT OLD.\"updatedAt\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'image_task',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_versions_delete_v2",
+      "tbl_name": "image_versions",
+      "sql": "CREATE TRIGGER agent_target_image_versions_delete_v2 AFTER DELETE ON image_versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'image_version',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_versions_insert_v2",
+      "tbl_name": "image_versions",
+      "sql": "CREATE TRIGGER agent_target_image_versions_insert_v2 AFTER INSERT ON image_versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'image_version',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_image_versions_update_v2",
+      "tbl_name": "image_versions",
+      "sql": "CREATE TRIGGER agent_target_image_versions_update_v2 AFTER UPDATE ON image_versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"groupId\" IS NOT OLD.\"groupId\" OR NEW.\"taskId\" IS NOT OLD.\"taskId\" OR NEW.\"number\" IS NOT OLD.\"number\" OR NEW.\"assetId\" IS NOT OLD.\"assetId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'image_version',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_jobs_delete_v2",
+      "tbl_name": "jobs",
+      "sql": "CREATE TRIGGER agent_target_jobs_delete_v2 AFTER DELETE ON jobs WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'job',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_jobs_insert_v2",
+      "tbl_name": "jobs",
+      "sql": "CREATE TRIGGER agent_target_jobs_insert_v2 AFTER INSERT ON jobs WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'job',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_jobs_update_v2",
+      "tbl_name": "jobs",
+      "sql": "CREATE TRIGGER agent_target_jobs_update_v2 AFTER UPDATE ON jobs WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'job',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_nodes_delete_v2",
+      "tbl_name": "nodes",
+      "sql": "CREATE TRIGGER agent_target_nodes_delete_v2 AFTER DELETE ON nodes WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'node',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_nodes_insert_v2",
+      "tbl_name": "nodes",
+      "sql": "CREATE TRIGGER agent_target_nodes_insert_v2 AFTER INSERT ON nodes WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'node',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_nodes_update_v2",
+      "tbl_name": "nodes",
+      "sql": "CREATE TRIGGER agent_target_nodes_update_v2 AFTER UPDATE ON nodes WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'node',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_project_lut_resources_delete_v2",
+      "tbl_name": "project_lut_resources",
+      "sql": "CREATE TRIGGER agent_target_project_lut_resources_delete_v2 AFTER DELETE ON project_lut_resources WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'lut',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_project_lut_resources_insert_v2",
+      "tbl_name": "project_lut_resources",
+      "sql": "CREATE TRIGGER agent_target_project_lut_resources_insert_v2 AFTER INSERT ON project_lut_resources WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'lut',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_project_lut_resources_update_v2",
+      "tbl_name": "project_lut_resources",
+      "sql": "CREATE TRIGGER agent_target_project_lut_resources_update_v2 AFTER UPDATE ON project_lut_resources WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"name\" IS NOT OLD.\"name\" OR NEW.\"sha256\" IS NOT OLD.\"sha256\" OR NEW.\"sizeBytes\" IS NOT OLD.\"sizeBytes\" OR NEW.\"profile\" IS NOT OLD.\"profile\" OR NEW.\"metadata\" IS NOT OLD.\"metadata\" OR NEW.\"content\" IS NOT OLD.\"content\" OR NEW.\"createdAt\" IS NOT OLD.\"createdAt\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'lut',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_projects_delete_v2",
+      "tbl_name": "projects",
+      "sql": "CREATE TRIGGER agent_target_projects_delete_v2 AFTER DELETE ON projects WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.id) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.id,'project',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_projects_insert_v2",
+      "tbl_name": "projects",
+      "sql": "CREATE TRIGGER agent_target_projects_insert_v2 AFTER INSERT ON projects WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.id,'project',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_projects_update_v2",
+      "tbl_name": "projects",
+      "sql": "CREATE TRIGGER agent_target_projects_update_v2 AFTER UPDATE ON projects WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (json_remove(NEW.data,'$.revision','$.updatedAt') IS NOT json_remove(OLD.data,'$.revision','$.updatedAt')) BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.id,'project',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_shots_delete_v2",
+      "tbl_name": "shots",
+      "sql": "CREATE TRIGGER agent_target_shots_delete_v2 AFTER DELETE ON shots WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'shot',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_shots_insert_v2",
+      "tbl_name": "shots",
+      "sql": "CREATE TRIGGER agent_target_shots_insert_v2 AFTER INSERT ON shots WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'shot',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_shots_update_v2",
+      "tbl_name": "shots",
+      "sql": "CREATE TRIGGER agent_target_shots_update_v2 AFTER UPDATE ON shots WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'shot',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subject_bindings_delete_v2",
+      "tbl_name": "subject_bindings",
+      "sql": "CREATE TRIGGER agent_target_subject_bindings_delete_v2 AFTER DELETE ON subject_bindings WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'subject_binding',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subject_bindings_insert_v2",
+      "tbl_name": "subject_bindings",
+      "sql": "CREATE TRIGGER agent_target_subject_bindings_insert_v2 AFTER INSERT ON subject_bindings WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'subject_binding',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subject_bindings_update_v2",
+      "tbl_name": "subject_bindings",
+      "sql": "CREATE TRIGGER agent_target_subject_bindings_update_v2 AFTER UPDATE ON subject_bindings WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"shotId\" IS NOT OLD.\"shotId\" OR NEW.\"subjectId\" IS NOT OLD.\"subjectId\" OR NEW.\"role\" IS NOT OLD.\"role\" OR NEW.\"revision\" IS NOT OLD.\"revision\" OR NEW.\"subjectVersionId\" IS NOT OLD.\"subjectVersionId\" OR NEW.\"reviewedHeadVersionId\" IS NOT OLD.\"reviewedHeadVersionId\" OR NEW.\"createdAt\" IS NOT OLD.\"createdAt\" OR NEW.\"updatedAt\" IS NOT OLD.\"updatedAt\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'subject_binding',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subject_versions_delete_v2",
+      "tbl_name": "subject_versions",
+      "sql": "CREATE TRIGGER agent_target_subject_versions_delete_v2 AFTER DELETE ON subject_versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'subject_version',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subject_versions_insert_v2",
+      "tbl_name": "subject_versions",
+      "sql": "CREATE TRIGGER agent_target_subject_versions_insert_v2 AFTER INSERT ON subject_versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'subject_version',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subject_versions_update_v2",
+      "tbl_name": "subject_versions",
+      "sql": "CREATE TRIGGER agent_target_subject_versions_update_v2 AFTER UPDATE ON subject_versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"subjectId\" IS NOT OLD.\"subjectId\" OR NEW.\"number\" IS NOT OLD.\"number\" OR NEW.\"assetId\" IS NOT OLD.\"assetId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'subject_version',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subjects_delete_v2",
+      "tbl_name": "subjects",
+      "sql": "CREATE TRIGGER agent_target_subjects_delete_v2 AFTER DELETE ON subjects WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'subject',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subjects_insert_v2",
+      "tbl_name": "subjects",
+      "sql": "CREATE TRIGGER agent_target_subjects_insert_v2 AFTER INSERT ON subjects WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'subject',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_subjects_update_v2",
+      "tbl_name": "subjects",
+      "sql": "CREATE TRIGGER agent_target_subjects_update_v2 AFTER UPDATE ON subjects WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"kind\" IS NOT OLD.\"kind\" OR NEW.\"name\" IS NOT OLD.\"name\" OR NEW.\"revision\" IS NOT OLD.\"revision\" OR NEW.\"headVersionId\" IS NOT OLD.\"headVersionId\" OR NEW.\"createdAt\" IS NOT OLD.\"createdAt\" OR NEW.\"updatedAt\" IS NOT OLD.\"updatedAt\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'subject',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_insert_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_insert_v2 AFTER INSERT ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'timeline',NEW.projectId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_clip_delete_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_clip_delete_v2 AFTER DELETE ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT OLD.projectId,'timeline_clip',json_extract(changed.value,'$.id'),1 FROM (SELECT o.value AS value FROM json_each(OLD.data,'$.clips') o) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_clip_insert_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_clip_insert_v2 AFTER INSERT ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT NEW.projectId,'timeline_clip',json_extract(changed.value,'$.id'),1 FROM (SELECT n.value AS value FROM json_each(NEW.data,'$.clips') n) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_clip_update_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_clip_update_v2 AFTER UPDATE ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT NEW.projectId,'timeline_clip',json_extract(changed.value,'$.id'),1 FROM (SELECT n.value FROM json_each(NEW.data,'$.clips') n LEFT JOIN json_each(OLD.data,'$.clips') o ON json_extract(n.value,'$.id')=json_extract(o.value,'$.id') WHERE o.value IS NULL OR n.value IS NOT o.value UNION ALL SELECT o.value FROM json_each(OLD.data,'$.clips') o WHERE NOT EXISTS(SELECT 1 FROM json_each(NEW.data,'$.clips') n WHERE json_extract(n.value,'$.id')=json_extract(o.value,'$.id'))) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_subtitle_delete_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_subtitle_delete_v2 AFTER DELETE ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT OLD.projectId,'timeline_subtitle',json_extract(changed.value,'$.id'),1 FROM (SELECT o.value AS value FROM json_each(OLD.data,'$.subtitles.cues') o) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_subtitle_insert_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_subtitle_insert_v2 AFTER INSERT ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT NEW.projectId,'timeline_subtitle',json_extract(changed.value,'$.id'),1 FROM (SELECT n.value AS value FROM json_each(NEW.data,'$.subtitles.cues') n) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_subtitle_update_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_subtitle_update_v2 AFTER UPDATE ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT NEW.projectId,'timeline_subtitle',json_extract(changed.value,'$.id'),1 FROM (SELECT n.value FROM json_each(NEW.data,'$.subtitles.cues') n LEFT JOIN json_each(OLD.data,'$.subtitles.cues') o ON json_extract(n.value,'$.id')=json_extract(o.value,'$.id') WHERE o.value IS NULL OR n.value IS NOT o.value UNION ALL SELECT o.value FROM json_each(OLD.data,'$.subtitles.cues') o WHERE NOT EXISTS(SELECT 1 FROM json_each(NEW.data,'$.subtitles.cues') n WHERE json_extract(n.value,'$.id')=json_extract(o.value,'$.id'))) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_track_delete_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_track_delete_v2 AFTER DELETE ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT OLD.projectId,'timeline_track',json_extract(changed.value,'$.id'),1 FROM (SELECT o.value AS value FROM json_each(OLD.data,'$.tracks') o) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_track_insert_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_track_insert_v2 AFTER INSERT ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT NEW.projectId,'timeline_track',json_extract(changed.value,'$.id'),1 FROM (SELECT n.value AS value FROM json_each(NEW.data,'$.tracks') n) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_timeline_track_update_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_timeline_track_update_v2 AFTER UPDATE ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) SELECT NEW.projectId,'timeline_track',json_extract(changed.value,'$.id'),1 FROM (SELECT n.value FROM json_each(NEW.data,'$.tracks') n LEFT JOIN json_each(OLD.data,'$.tracks') o ON json_extract(n.value,'$.id')=json_extract(o.value,'$.id') WHERE o.value IS NULL OR n.value IS NOT o.value UNION ALL SELECT o.value FROM json_each(OLD.data,'$.tracks') o WHERE NOT EXISTS(SELECT 1 FROM json_each(NEW.data,'$.tracks') n WHERE json_extract(n.value,'$.id')=json_extract(o.value,'$.id'))) changed WHERE json_extract(changed.value,'$.id') IS NOT NULL ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_timeline_update_v2",
+      "tbl_name": "timelines",
+      "sql": "CREATE TRIGGER agent_target_timeline_update_v2 AFTER UPDATE ON timelines WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND json_array(json_extract(NEW.data,'$.width'),json_extract(NEW.data,'$.height'),json_extract(NEW.data,'$.fps')) IS NOT json_array(json_extract(OLD.data,'$.width'),json_extract(OLD.data,'$.height'),json_extract(OLD.data,'$.fps')) BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'timeline',NEW.projectId,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_versions_delete_v2",
+      "tbl_name": "versions",
+      "sql": "CREATE TRIGGER agent_target_versions_delete_v2 AFTER DELETE ON versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM projects WHERE id=OLD.projectId) THEN RAISE(IGNORE) END;INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(OLD.projectId,'version',OLD.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_versions_insert_v2",
+      "tbl_name": "versions",
+      "sql": "CREATE TRIGGER agent_target_versions_insert_v2 AFTER INSERT ON versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'version',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_target_versions_update_v2",
+      "tbl_name": "versions",
+      "sql": "CREATE TRIGGER agent_target_versions_update_v2 AFTER UPDATE ON versions WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='projects') AND (NEW.\"id\" IS NOT OLD.\"id\" OR NEW.\"projectId\" IS NOT OLD.\"projectId\" OR NEW.\"jobId\" IS NOT OLD.\"jobId\" OR NEW.\"data\" IS NOT OLD.\"data\") BEGIN INSERT INTO agent_task_target_revisions_v2(projectId,kind,targetId,revision) VALUES(NEW.projectId,'version',NEW.id,1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_agent_task_controls_v2",
+      "tbl_name": "agent_task_controls_v2",
+      "sql": "CREATE TRIGGER immutable_agent_task_controls_v2 BEFORE UPDATE ON agent_task_controls_v2 BEGIN SELECT RAISE(ABORT,'Agent task evidence is immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_agent_task_edit_receipts_v2",
+      "tbl_name": "agent_task_edit_receipts_v2",
+      "sql": "CREATE TRIGGER immutable_agent_task_edit_receipts_v2 BEFORE UPDATE ON agent_task_edit_receipts_v2 BEGIN SELECT RAISE(ABORT,'Agent task evidence is immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_agent_task_events_v2",
+      "tbl_name": "agent_task_events_v2",
+      "sql": "CREATE TRIGGER immutable_agent_task_events_v2 BEFORE UPDATE ON agent_task_events_v2 BEGIN SELECT RAISE(ABORT,'Agent task evidence is immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_agent_task_job_origins_v2",
+      "tbl_name": "agent_task_job_origins_v2",
+      "sql": "CREATE TRIGGER immutable_agent_task_job_origins_v2 BEFORE UPDATE ON agent_task_job_origins_v2 BEGIN SELECT RAISE(ABORT,'Agent task evidence is immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_agent_task_policy_requests_v2",
+      "tbl_name": "agent_task_policy_requests_v2",
+      "sql": "CREATE TRIGGER immutable_agent_task_policy_requests_v2 BEFORE UPDATE ON agent_task_policy_requests_v2 BEGIN SELECT RAISE(ABORT,'Agent task evidence is immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_agent_task_controls_v2",
+      "tbl_name": "agent_task_controls_v2",
+      "sql": "CREATE TRIGGER retain_agent_task_controls_v2 BEFORE DELETE ON agent_task_controls_v2 WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_task_controls_v2' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'Agent task evidence must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_agent_task_edit_receipts_v2",
+      "tbl_name": "agent_task_edit_receipts_v2",
+      "sql": "CREATE TRIGGER retain_agent_task_edit_receipts_v2 BEFORE DELETE ON agent_task_edit_receipts_v2 WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_task_edit_receipts_v2' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'Agent task evidence must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_agent_task_events_v2",
+      "tbl_name": "agent_task_events_v2",
+      "sql": "CREATE TRIGGER retain_agent_task_events_v2 BEFORE DELETE ON agent_task_events_v2 WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_task_events_v2' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'Agent task evidence must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_agent_task_job_origins_v2",
+      "tbl_name": "agent_task_job_origins_v2",
+      "sql": "CREATE TRIGGER retain_agent_task_job_origins_v2 BEFORE DELETE ON agent_task_job_origins_v2 WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_task_job_origins_v2' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'Agent task evidence must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_agent_task_policy_requests_v2",
+      "tbl_name": "agent_task_policy_requests_v2",
+      "sql": "CREATE TRIGGER retain_agent_task_policy_requests_v2 BEFORE DELETE ON agent_task_policy_requests_v2 WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_task_policy_requests_v2' AND rowId=OLD.rowid) BEGIN SELECT RAISE(ABORT,'Agent task evidence must be retained');END"
+    }
+  ],
+  "tables": {
+    "agent_task_runs_v2": {
+      "fields": [
+        "id",
+        "projectId",
+        "requestId",
+        "digest",
+        "status",
+        "revision",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_steps_v2": {
+      "fields": [
+        "id",
+        "runId",
+        "projectId",
+        "position",
+        "status",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_changes_v2": {
+      "fields": [
+        "id",
+        "runId",
+        "stepId",
+        "projectId",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_events_v2": {
+      "fields": [
+        "runId",
+        "projectId",
+        "sequence",
+        "type",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_controls_v2": {
+      "fields": [
+        "requestId",
+        "runId",
+        "projectId",
+        "digest",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_control_states_v2": {
+      "fields": [
+        "requestId",
+        "runId",
+        "projectId",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_policy_v2": {
+      "fields": [
+        "id",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_policy_requests_v2": {
+      "fields": [
+        "requestId",
+        "digest",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_target_revisions_v2": {
+      "fields": [
+        "projectId",
+        "kind",
+        "targetId",
+        "revision"
+      ],
+      "rows": 0
+    },
+    "agent_task_edit_claims_v2": {
+      "fields": [
+        "id",
+        "projectId",
+        "ownerId",
+        "kind",
+        "targetId",
+        "revision",
+        "state",
+        "createdAt",
+        "updatedAt"
+      ],
+      "rows": 0
+    },
+    "agent_task_edit_owners_v2": {
+      "fields": [
+        "ownerId",
+        "projectId",
+        "generation",
+        "sequence"
+      ],
+      "rows": 0
+    },
+    "agent_task_edit_receipts_v2": {
+      "fields": [
+        "requestId",
+        "projectId",
+        "ownerId",
+        "digest",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_job_origins_v2": {
+      "fields": [
+        "kind",
+        "jobId",
+        "runId",
+        "stepId",
+        "projectId",
+        "requestId",
+        "operation"
+      ],
+      "rows": 0
+    },
+    "agent_task_imports_v2": {
+      "fields": [
+        "id",
+        "projectId",
+        "requestId",
+        "name",
+        "mimeType",
+        "relativePath",
+        "sha256",
+        "status",
+        "assetId",
+        "resourceId",
+        "createdAt"
+      ],
+      "rows": 0
+    }
+  },
+  "catalog": {
+    "count": 130,
+    "sha256": "f0e870115e6c6e0d36cc1254e1742f5f74e0a8b2f033b51dc0a74dace6220d0d"
+  },
+  "v2Catalog": {
+    "count": 130,
+    "sha256": "f0e870115e6c6e0d36cc1254e1742f5f74e0a8b2f033b51dc0a74dace6220d0d"
+  },
+  "objectNames": [
+    "agent_task_runs_project_v2",
+    "sqlite_autoindex_agent_task_changes_v2_1",
+    "sqlite_autoindex_agent_task_control_states_v2_1",
+    "sqlite_autoindex_agent_task_controls_v2_1",
+    "sqlite_autoindex_agent_task_edit_claims_v2_1",
+    "sqlite_autoindex_agent_task_edit_claims_v2_2",
+    "sqlite_autoindex_agent_task_edit_owners_v2_1",
+    "sqlite_autoindex_agent_task_edit_receipts_v2_1",
+    "sqlite_autoindex_agent_task_events_v2_1",
+    "sqlite_autoindex_agent_task_imports_v2_1",
+    "sqlite_autoindex_agent_task_imports_v2_2",
+    "sqlite_autoindex_agent_task_job_origins_v2_1",
+    "sqlite_autoindex_agent_task_policy_requests_v2_1",
+    "sqlite_autoindex_agent_task_runs_v2_1",
+    "sqlite_autoindex_agent_task_runs_v2_2",
+    "sqlite_autoindex_agent_task_steps_v2_1",
+    "sqlite_autoindex_agent_task_steps_v2_2",
+    "sqlite_autoindex_agent_task_target_revisions_v2_1",
+    "agent_task_changes_v2",
+    "agent_task_control_states_v2",
+    "agent_task_controls_v2",
+    "agent_task_edit_claims_v2",
+    "agent_task_edit_owners_v2",
+    "agent_task_edit_receipts_v2",
+    "agent_task_events_v2",
+    "agent_task_imports_v2",
+    "agent_task_job_origins_v2",
+    "agent_task_policy_requests_v2",
+    "agent_task_policy_v2",
+    "agent_task_runs_v2",
+    "agent_task_steps_v2",
+    "agent_task_target_revisions_v2",
+    "agent_quota_agent_task_changes_v2_insert",
+    "agent_quota_agent_task_changes_v2_update",
+    "agent_quota_agent_task_control_states_v2_insert",
+    "agent_quota_agent_task_control_states_v2_update",
+    "agent_quota_agent_task_controls_v2_insert",
+    "agent_quota_agent_task_controls_v2_update",
+    "agent_quota_agent_task_events_v2_insert",
+    "agent_quota_agent_task_events_v2_update",
+    "agent_quota_agent_task_imports_v2_insert",
+    "agent_quota_agent_task_imports_v2_update",
+    "agent_quota_agent_task_job_origins_v2_insert",
+    "agent_quota_agent_task_job_origins_v2_update",
+    "agent_quota_agent_task_policy_requests_v2_insert",
+    "agent_quota_agent_task_policy_requests_v2_update",
+    "agent_quota_agent_task_policy_v2_insert",
+    "agent_quota_agent_task_policy_v2_update",
+    "agent_quota_agent_task_runs_v2_insert",
+    "agent_quota_agent_task_runs_v2_update",
+    "agent_quota_agent_task_steps_v2_insert",
+    "agent_quota_agent_task_steps_v2_update",
+    "agent_target_asset_annotations_delete_v2",
+    "agent_target_asset_annotations_insert_v2",
+    "agent_target_asset_annotations_update_v2",
+    "agent_target_asset_dispositions_delete_v2",
+    "agent_target_asset_dispositions_insert_v2",
+    "agent_target_asset_dispositions_update_v2",
+    "agent_target_asset_ranges_delete_v2",
+    "agent_target_asset_ranges_insert_v2",
+    "agent_target_asset_ranges_update_v2",
+    "agent_target_assets_delete_v2",
+    "agent_target_assets_insert_v2",
+    "agent_target_assets_update_v2",
+    "agent_target_edges_delete_v2",
+    "agent_target_edges_insert_v2",
+    "agent_target_edges_update_v2",
+    "agent_target_exports_delete_v2",
+    "agent_target_exports_insert_v2",
+    "agent_target_exports_update_v2",
+    "agent_target_frame_tasks_delete_v2",
+    "agent_target_frame_tasks_insert_v2",
+    "agent_target_frame_tasks_update_v2",
+    "agent_target_image_groups_delete_v2",
+    "agent_target_image_groups_insert_v2",
+    "agent_target_image_groups_update_v2",
+    "agent_target_image_tasks_delete_v2",
+    "agent_target_image_tasks_insert_v2",
+    "agent_target_image_tasks_update_v2",
+    "agent_target_image_versions_delete_v2",
+    "agent_target_image_versions_insert_v2",
+    "agent_target_image_versions_update_v2",
+    "agent_target_jobs_delete_v2",
+    "agent_target_jobs_insert_v2",
+    "agent_target_jobs_update_v2",
+    "agent_target_nodes_delete_v2",
+    "agent_target_nodes_insert_v2",
+    "agent_target_nodes_update_v2",
+    "agent_target_project_lut_resources_delete_v2",
+    "agent_target_project_lut_resources_insert_v2",
+    "agent_target_project_lut_resources_update_v2",
+    "agent_target_projects_delete_v2",
+    "agent_target_projects_insert_v2",
+    "agent_target_projects_update_v2",
+    "agent_target_shots_delete_v2",
+    "agent_target_shots_insert_v2",
+    "agent_target_shots_update_v2",
+    "agent_target_subject_bindings_delete_v2",
+    "agent_target_subject_bindings_insert_v2",
+    "agent_target_subject_bindings_update_v2",
+    "agent_target_subject_versions_delete_v2",
+    "agent_target_subject_versions_insert_v2",
+    "agent_target_subject_versions_update_v2",
+    "agent_target_subjects_delete_v2",
+    "agent_target_subjects_insert_v2",
+    "agent_target_subjects_update_v2",
+    "agent_target_timeline_insert_v2",
+    "agent_target_timeline_timeline_clip_delete_v2",
+    "agent_target_timeline_timeline_clip_insert_v2",
+    "agent_target_timeline_timeline_clip_update_v2",
+    "agent_target_timeline_timeline_subtitle_delete_v2",
+    "agent_target_timeline_timeline_subtitle_insert_v2",
+    "agent_target_timeline_timeline_subtitle_update_v2",
+    "agent_target_timeline_timeline_track_delete_v2",
+    "agent_target_timeline_timeline_track_insert_v2",
+    "agent_target_timeline_timeline_track_update_v2",
+    "agent_target_timeline_update_v2",
+    "agent_target_versions_delete_v2",
+    "agent_target_versions_insert_v2",
+    "agent_target_versions_update_v2",
+    "immutable_agent_task_controls_v2",
+    "immutable_agent_task_edit_receipts_v2",
+    "immutable_agent_task_events_v2",
+    "immutable_agent_task_job_origins_v2",
+    "immutable_agent_task_policy_requests_v2",
+    "retain_agent_task_controls_v2",
+    "retain_agent_task_edit_receipts_v2",
+    "retain_agent_task_events_v2",
+    "retain_agent_task_job_origins_v2",
+    "retain_agent_task_policy_requests_v2"
+  ]
+}

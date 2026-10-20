@@ -1,0 +1,55 @@
+{
+  "formatVersion": 1,
+  "provenance": "Reviewed harness52 current-runtime evolution over frozen origin/main task-disposition50 pins. Historical source texts, legacy hashes and schema50 runtime map are unchanged; the loader continues executing the original frozen source closure.",
+  "mapping": {
+    "packages/business/src/db.mjs": {
+      "currentPath": "packages/business/src/db.ts",
+      "previousCurrentSha256": "451859250034f5815d79bf163c361c9bce19790ef0f711e6531c3a0a2cf746e9",
+      "previousTypeErasedSha256": "a70e35bac0ba41384644f77db653c0633a35fff53190aac9a8a2c1b4fe2699a9",
+      "currentSha256": "828ad0f57179b5090fd0a650780bf31765974f957c27bd41d8532b14be85d2cb",
+      "typeErasedSha256": "a3b1afb67cc684874f59df9581ad8b3b882e834b09a4a4dff699a4e4805e2c09"
+    },
+    "packages/business/src/workspace-restore-policy.mjs": {
+      "currentPath": "packages/business/src/workspace-restore-policy.ts",
+      "previousCurrentSha256": "8683ddb6dc93eca25089e3d4bac5c82af03e5d9c0adf6bf59c04207fbdfdd5d6",
+      "previousTypeErasedSha256": "6aa25fb08363e6bfc1304741fd390e4a0a695beaf4739abcfff4cf9a0bb37556",
+      "currentSha256": "12574f7afd166d7425dafefa6b5dfed948aefe93cba4bce5b4e2295c0428737e",
+      "typeErasedSha256": "ff8ceb220cc7f4a99ddead3ee8f72dfa656ea64c39495a33efd57c0f09eac8c0"
+    },
+    "packages/contracts/src/index.mjs": {
+      "currentPath": "packages/contracts/src/index.ts",
+      "previousCurrentSha256": "485ed7d1f9582b2a5ff44a2a976651837183aca893cc827d9a6e5de6e4fae374",
+      "previousTypeErasedSha256": "19a8eda1c5cb029d9e36e6f2bd441f8db15604adf6fe5c89ab93b7a7874246b0",
+      "currentSha256": "5296d7009a373567cfde38dd390416b1e8e126a713e6b6020a019af6b76797d6",
+      "typeErasedSha256": "60acde11743ee88d40beff4ce038f664a3864a41dfe298e323c088d329c4cc40"
+    },
+    "packages/contracts/src/workspace-backup.mjs": {
+      "currentPath": "packages/contracts/src/workspace-backup.ts",
+      "previousCurrentSha256": "6fede8f8d1e62f65c20112ff0aad0737b2c696b17411fbe641f447bbe1c7b0ad",
+      "previousTypeErasedSha256": "4e003721d53ff1d5acdb488274b05ecc77ce73ec4cdddef59c91383b8093b2c5",
+      "currentSha256": "f8dce7c78242f4a2233c058c1006f0f2b558919f5ba19cc20a24a8cce254f461",
+      "typeErasedSha256": "381f020ab02b4cc6056fafca7d50c179b1f8c1f886b2e52bf3e658e9d7fed38a"
+    },
+    "packages/contracts/src/workspace-restore.mjs": {
+      "currentPath": "packages/contracts/src/workspace-restore.ts",
+      "previousCurrentSha256": "8cc7bcd949da35a8b5b07be556a712cd1e3882577bf53d2c7502243453eb34cf",
+      "previousTypeErasedSha256": "0b6b6e1d8c5a5ee7457225d44e572c072a00870f2c109ffc67228010a11f096f",
+      "currentSha256": "e9d19d73a72f7f701a30d640296e06f98cc096208450cc252f3ec9c96a4458d7",
+      "typeErasedSha256": "2654a214f30e548c571c6c601a30f817b93a613136c398521d453f002e21a5f7"
+    },
+    "packages/contracts/src/operation-effects.mjs": {
+      "currentPath": "packages/contracts/src/operation-effects.ts",
+      "previousCurrentSha256": "676f04ce4c3180f24db10f59acf7a204dc968d3fad5eb9fb9f39704daff293f5",
+      "previousTypeErasedSha256": "762deaa164a2f56c25bd0d876db9ae23ecd29ad534a77d8860477e37a6d4a102",
+      "currentSha256": "7fbe8b205ba1aec9e5c0f1ee01461d2e10b0ece05c665b3455bd50d81d0c81cf",
+      "typeErasedSha256": "dc42dcbd043698419b69fb8d857e66cf44cff4746485721b85e6ef061285f82f"
+    },
+    "packages/contracts/src/subject-generation.mjs": {
+      "currentPath": "packages/contracts/src/subject-generation.ts",
+      "previousCurrentSha256": "9150e86da1739a46ec9a615d069c955a6a2d61006e94ffcc5a37a386d19466f5",
+      "previousTypeErasedSha256": "69c084475c3837f2f5b398a330ee8ef910fa7fab235b3a660dae30029dce3721",
+      "currentSha256": "fc3c3c7b5b81425713b21176e453b0598019951702533ca66e511f4a4294a9bb",
+      "typeErasedSha256": "ffea5be70c27cde9cd51beff352df9024e64f8d0a9d16e683030241bd8f92c1c"
+    }
+  }
+}

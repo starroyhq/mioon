@@ -12,6 +12,7 @@ import type { ClipColour } from '../../../packages/contracts/src/timeline-colour
 import { clipDraftFailure, isOpacityCandidateClipDraftClient, isRestoredOpacityCandidateClipDraftClient, matchesRestoredOpacityClipDraftOrigin } from './clip-draft-client.ts';
 import type { ClipDraftFailure } from './clip-draft-client.ts';
 import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
+import type { AgentEditingProof } from './agent-editing-proof.ts';
 import type { ClipDraftKey, ClipDraftSource, ClipDraftRaw as LegacyClipDraftRaw, ClipDraftValue, ClipDraftWrite, ClipDraftDelete, ClipDraftEnvelope as WireEnvelope } from '../../../packages/contracts/src/local-drafts.ts';
 export type { ClipDraftKey, ClipDraftSource, ClipDraftWrite, ClipDraftDelete } from '../../../packages/contracts/src/local-drafts.ts';
 export type ClipDraftRaw = LegacyClipDraftRaw & RawOpacityEnvelopeFields;
@@ -28,6 +29,7 @@ export interface ClipDraftContext extends ClipDraftKey {
   volumeEnvelopeEditable?: boolean;
   opacityEnvelopeEditable?: boolean;
   timelineRevision: number; source: ClipDraftSource; saved: ClipDraftRaw;
+  collaboration?: AgentEditingProof | null;
 }
 export interface ClipDraftCapture extends Readonly<ClipDraftKey> { readonly scope: string; readonly serial: number; readonly generation: number }
 export interface ClipVolumeCompositionToken { readonly owner: symbol }
@@ -112,6 +114,7 @@ export function createClipDraftController({ context: initial, client, validateTi
   let closeFlight: Promise<boolean> | null = null;
   let state: ClipDraftState = { raw: copy(context.saved), dirty: false, baseRevision: context.timelineRevision, source: copy(context.source), conflict: false,
     compositionPending: false, phase: memoryOnly() ? 'unsupported' : 'loading', error: '', errorDisplay: undefined, candidate: null, savedAt: null, submitting: false, businessPending: false, autosavePaused: false, failure: null, retainedRecord: false };
+  let collaborationBaseline: {proof:AgentEditingProof;saved:ClipDraftRaw}|null=context.collaboration?{proof:copy(context.collaboration),saved:copy(context.saved)}:null;
   const captures = new WeakSet<ClipDraftCapture>();
   const emit = (patch: Partial<ClipDraftState>) => { state = { ...state, ...patch }; if (active) onChange(state); };
   function pausePersistence(error: unknown, prefix = '', readOnly = false, display?: MessageDescriptor) {
@@ -258,9 +261,13 @@ export function createClipDraftController({ context: initial, client, validateTi
         controller.dispose(); return;
       } // A different mounted owner needs a fresh controller.
       if (sameClipDraftValue(context, next)) return;
+      const proof=next.collaboration, baseline=collaborationBaseline;
+      const canRebase=Boolean(proof&&baseline&&proof.ownerId===baseline.proof.ownerId&&proof.kind===baseline.proof.kind&&proof.id===baseline.proof.id&&proof.revision===baseline.proof.revision&&proof.timelineRevision===next.timelineRevision&&sameClipDraftValue(next.saved,baseline.saved)&&sameClipDraftValue(next.source,state.source));
       context = copy(next);
-      if (state.dirty || composition || state.submitting) { if (conflict()) emit({ conflict: true }); }
-      else emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), conflict: false });
+      if (state.dirty || composition || state.submitting) {
+        if(canRebase&&!state.submitting&&!state.businessPending&&!state.candidate){if(state.baseRevision!==context.timelineRevision){serial++;if(composition)composition.serial=serial;}emit({baseRevision:context.timelineRevision,conflict:false});}
+        else if (conflict()) emit({ conflict: true });
+      } else {collaborationBaseline=proof&&!state.candidate?{proof:copy(proof),saved:copy(context.saved)}:null;emit({ raw: copy(context.saved), baseRevision: context.timelineRevision, source: copy(context.source), conflict: false });}
       schedule();
     },
     beginVolumeComposition(token: ClipDraftCapture): ClipVolumeCompositionToken | null {
@@ -316,7 +323,7 @@ export function createClipDraftController({ context: initial, client, validateTi
     },
     restore(token = capture()) {
       if (!isCurrent(token) || composition || !context.visible || state.dirty || !state.candidate || !envelope) return false;
-      const candidate = state.candidate; serial++;
+      const candidate = state.candidate; collaborationBaseline=null; serial++;
       emit({ raw: copy(candidate.raw), baseRevision: candidate.baseRevision, source: copy(candidate.source), dirty: true, candidate: null,
         conflict: envelope.targetStatus !== 'matching' || context.timelineRevision !== candidate.baseRevision || !sameClipDraftValue(context.source, candidate.source), phase: 'saved', savedAt: candidate.updatedAt, error: state.autosavePaused ? state.error : '', errorDisplay: state.autosavePaused ? state.errorDisplay : undefined }); return true;
     },

@@ -69,6 +69,15 @@ export async function migrateData(source: string | undefined, destination: strin
   if ((await lstat(path.join(sourcePath, 'media'))).isSymbolicLink()) throw new Error('Source media must not be a symlink');
   if (await optionalStat(destinationPath)) throw new Error('Destination already exists; choose a new empty destination path');
   await checkTree(path.join(sourcePath, 'media'));
+  // V2 selected-file handles are durable task inputs, separate from credentials.
+  const importsDirectory=path.join(sourcePath,'agent-imports');let copyImports=false;
+  try{
+    const info=await lstat(importsDirectory);
+    if(!info.isDirectory()||info.isSymbolicLink()||(info.mode&0o077)!==0)throw new Error('Selected Agent inputs must be a private managed directory');
+    for(const entry of await readdir(importsDirectory,{withFileTypes:true}))if(!entry.isFile()||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.bin$/iu.test(entry.name))throw new Error('Selected Agent inputs contain an unrecognized managed file');
+    await checkTree(importsDirectory);copyImports=true;
+  }catch(error){if(errorCode(error)!=='ENOENT')throw error;}
+
   const dbFile = await open(path.join(sourcePath, 'workbench.sqlite'), 'r');
   const buffer = Buffer.alloc(16);
   try { await dbFile.read(buffer, 0, buffer.length, 0); } finally { await dbFile.close(); }
@@ -83,6 +92,7 @@ export async function migrateData(source: string | undefined, destination: strin
   checked.check();
   await cp(checked.file, path.join(destinationPath, 'workbench.sqlite'), { errorOnExist: true, force: false });
   await cp(path.join(sourcePath, 'media'), path.join(destinationPath, 'media'), { recursive: true, errorOnExist: true, force: false });
+  if(copyImports)await cp(importsDirectory,path.join(destinationPath,'agent-imports'),{recursive:true,errorOnExist:true,force:false});
   checked.check();
   // Apply the exact same additive migrations to the copy, then close normally.
   const store = openStore(destinationPath);
