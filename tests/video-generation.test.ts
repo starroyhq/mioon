@@ -23,7 +23,7 @@ function codec(){
  const key=randomBytes(32);
  return {encrypt(value:string){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);return Buffer.concat([iv,cipher.update(value),cipher.final(),cipher.getAuthTag()]).toString('base64');},decrypt(value:string){const bytes=Buffer.from(value,'base64'),cipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));cipher.setAuthTag(bytes.subarray(-16));return Buffer.concat([cipher.update(bytes.subarray(12,-16)),cipher.final()]).toString();}};
 }
-async function fixture(t:TestContext,{persistent=false,providerId='minimax' as VideoConnectionConfiguration['providerId']}={}){
+async function fixture(t:TestContext,{persistent=false,providerId='minimax' as VideoConnectionConfiguration['providerId'],liveGeneration=true}={}){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-generation-'))),secretCodec=codec();
  const settingsOptions={directory:path.join(root,'video-settings'),privateRoot:root,...(persistent?{secretCodec,storage:{persistentAvailable:true,sessionScope:'server' as const,reasonCode:null}}:{})};
  let store=openStore(root),settings=await createVideoSettings(settingsOptions),worker:ReturnType<typeof startWorker>|null=null;
@@ -32,6 +32,7 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
  const videoFetch:typeof fetch=async(input,init)=>{const request={url:String(input),init:init??{}};calls.push(request);return response(request.url,request.init);};
  const registry=()=>createProviderRegistry({db:store.db,root,env:{}});
  let providers=registry(),services=createServices(store,providers,{videoSettings:settings,videoFetch,profileNow:frozenDate});
+ if(liveGeneration)await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
  const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId,name:'Original account',region:providerId==='ark'?'cn-beijing':providerId==='wan'?'cn-beijing':'global',workspaceId:'',enabled:true,archived:false,outputHosts:['output.example'],models:defaultVideoModels(providerId)};
  const secret=(value='original-synthetic-key')=>({action:'replace' as const,value,storage:persistent?'persistent' as const:'session' as const});
  await settings.put({action:'save',expectedRevision:0,configuration,secret:secret()});
@@ -43,6 +44,7 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
   reply(fn:typeof response){response=fn;},
   job(id:string){return store.get('jobs',id) as JobRecord;},
   async submit(change:Record<string,unknown>={}){return await services.call('generation.submit',{...input(),...change}) as JobRecord;},
+  async live(enabled:boolean){return services.call('workspace.settings.set',{expectedRevision:services.configuration.get().revision,liveGeneration:enabled});},
   async tick(){worker??=startWorker(store,services,providers);await worker.tick();},
   async stop(){await worker?.stop();worker=null;},
   async restart(){await f.stop();await services.drain();await settings.close();store.close();store=openStore(root);settings=await createVideoSettings(settingsOptions);providers=registry();services=createServices(store,providers,{videoSettings:settings,videoFetch,profileNow:frozenDate});},
@@ -51,6 +53,54 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
  t.after(async()=>{await f.stop();await services.drain();await settings.close();store.close();await rm(root,{recursive:true,force:true});});
  return f;
 }
+
+test('configured video submission and explicit retry require the persisted workspace live opt-in',async t=>{
+ const f=await fixture(t,{liveGeneration:false});
+ assert.equal(f.services.configuration.get().liveGeneration,false);assert.equal(f.services.configuration.get().revision,0);
+ await assert.rejects(f.submit(),{code:'LIVE_GENERATION_DISABLED'});assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);
+ await f.live(true);const job=await f.submit();await f.tick();await f.stop();
+ assert.equal(f.job(job.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+ f.services.saveJob(f.job(job.id),{status:'failed',error:{code:'PROVIDER_GENERATION_FAILED',message:'synthetic definitive failure'}});
+ const before=structuredClone(f.job(job.id)),retryInput={jobId:job.id,requestId:randomUUID()};
+ await f.live(false);await assert.rejects(f.services.call('job.retry',retryInput),{code:'LIVE_GENERATION_DISABLED'});
+ assert.deepEqual(f.job(job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+ await f.live(true);const retry=await f.services.call('job.retry',retryInput) as JobRecord;
+ assert.equal(retry.retryOfJobId,job.id);assert.deepEqual(retry.snapshot,job.snapshot);await f.tick();
+ assert.equal(f.job(retry.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,2);
+});
+
+test('revoking the workspace live switch after queueing prevents every generation POST until an explicit enabled retry',async t=>{
+ const f=await fixture(t),job=await f.submit();await f.live(false);await f.tick();await f.stop();
+ assert.equal(f.job(job.id).status,'failed');assert.equal((f.job(job.id).error as ServiceRow).code,'LIVE_GENERATION_DISABLED');
+ assert.equal(f.job(job.id).submissionCount,0);assert.equal(f.calls.length,0);assert.equal(f.store.list('versions').length,0);
+ await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'LIVE_GENERATION_DISABLED'});
+ await f.live(true);assert.equal(f.calls.length,0);const retry=await f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}) as JobRecord;
+ assert.deepEqual(retry.snapshot,job.snapshot);await f.tick();
+ assert.equal(f.job(retry.id).status,'running');assert.equal(f.job(job.id).status,'failed');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+});
+
+test('revoking live generation after the submitting claim is fenced before the paid POST without uncertain acceptance',async t=>{
+ const f=await fixture(t),job=await f.submit(),snapshot=structuredClone(job.snapshot),saveGenerationGuarded=f.services.saveGenerationGuarded;
+ let revoked=0;
+ f.services.saveGenerationGuarded=(candidate,patch)=>{
+  const saved=saveGenerationGuarded(candidate,patch);
+  if(saved&&patch.status==='submitting'){
+   assert.equal(saved.status,'submitting');assert.equal(saved.submissionCount,1);assert.equal(f.calls.length,0);
+   f.services.configuration.set({expectedRevision:f.services.configuration.get().revision,liveGeneration:false});revoked++;
+  }
+  return saved;
+ };
+ await f.tick();await f.stop();f.services.saveGenerationGuarded=saveGenerationGuarded;
+ const blocked=f.job(job.id);
+ assert.equal(revoked,1);assert.equal(blocked.status,'failed');assert.equal(blocked.phase,'input_preflight_failed');
+ assert.equal((blocked.error as ServiceRow).code,'LIVE_GENERATION_DISABLED');assert.equal(blocked.submissionCount,0);assert.equal(blocked.providerJobId,null);
+ assert.deepEqual(blocked.snapshot,snapshot);assert.deepEqual(blocked.snapshot.executionBinding,snapshot.executionBinding);
+ assert.equal(f.calls.length,0);assert.equal(f.store.list('versions').length,0);
+ await f.live(true);await f.tick();await f.stop();assert.equal(f.job(job.id).status,'failed');assert.equal(f.calls.length,0);
+ const retry=await f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}) as JobRecord;
+ assert.equal(retry.retryOfJobId,job.id);assert.deepEqual(retry.snapshot,snapshot);await f.tick();
+ assert.equal(f.job(retry.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+});
 
 test('configured directory is read-only and paid requests require the complete exact connection selection',async t=>{
  const f=await fixture(t),legacy=await f.services.call('provider.list',{}) as ServiceRow[],directory=await f.services.call('video.connection.list',{}) as ServiceRow[];
@@ -88,7 +138,7 @@ test('uncertain accepted submissions survive restarts and config edits without a
  const f=await fixture(t,{persistent:true});f.reply(()=>{throw Error('synthetic response lost');});const job=await f.submit();await f.tick();
  assert.equal(f.job(job.id).status,'submission_unknown');assert.equal(f.calls.length,1);await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'UNSAFE_RETRY'});
  const next=structuredClone(f.configuration);next.region='cn';await f.settings.put({action:'save',expectedRevision:1,configuration:next,secret:f.secret('new-synthetic-key')});
- await f.restart();f.ready(job.id);await f.tick();assert.equal(f.job(job.id).status,'submission_unknown');assert.equal(f.calls.length,1);
+ await f.restart();assert.equal(f.services.configuration.get().liveGeneration,true);f.ready(job.id);await f.tick();assert.equal(f.job(job.id).status,'submission_unknown');assert.equal(f.calls.length,1);
 });
 
 test('known task recovery downloads and publishes one decoded immutable version using archived settings',async t=>{
@@ -96,7 +146,7 @@ test('known task recovery downloads and publishes one decoded immutable version 
  await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=blue:s=360x640:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
  const bytes=await readFile(video),job=await f.submit();await f.tick();await f.stop();assert.equal(f.job(job.id).providerJobId,'original-task');
  const next=structuredClone(f.configuration);next.region='cn';await f.settings.put({action:'save',expectedRevision:1,configuration:next,secret:f.secret('new-synthetic-key')});
- await f.settings.put({action:'archive',expectedRevision:2,connectionId:f.configuration.id});await f.restart();
+ await f.settings.put({action:'archive',expectedRevision:2,connectionId:f.configuration.id});await f.live(false);await f.restart();assert.equal(f.services.configuration.get().liveGeneration,false);
  f.reply((url,init)=>{assert.notEqual(init.method,'POST');if(url.startsWith('https://output.example/')){assert.equal(new Headers(init.headers).get('Authorization'),null);return new Response(bytes);}assert.ok(url.startsWith('https://api.minimax.io/'));assert.equal(new Headers(init.headers).get('Authorization'),'Bearer original-synthetic-key');return json({task:{id:'original-task',status:'succeeded',content:{url:'https://output.example/result.mp4'}}});});
  f.ready(job.id);await f.tick();assert.equal(f.job(job.id).status,'succeeded');assert.equal(f.store.list('versions').length,1);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
  const version=f.store.list('versions')[0] as ServiceRow;assert.equal(version.jobId,job.id);assert.equal((version.snapshot as ServiceRow).executionConnectionName,'Original account');
@@ -107,6 +157,7 @@ test('known task recovery downloads and publishes one decoded immutable version 
 test('Kling external task reconciliation binds the existing task without a replacement submit',async t=>{
  const f=await fixture(t,{providerId:'kling'});f.reply((_url,init)=>{if(init.method==='POST')throw Error('synthetic response lost');return json({code:0,data:[]});});
  const job=await f.submit();await f.tick();assert.equal(f.job(job.id).status,'submission_unknown');await f.stop();
+ await f.live(false);
  f.reply((url,init)=>{assert.equal(init.method,'GET');assert.ok(url.includes('external_task_ids='));return json({code:0,data:[{id:'recovered-kling-task',external_id:job.requestId,status:'processing',outputs:[]}]});});
  f.ready(job.id);await f.tick();assert.equal(f.job(job.id).providerJobId,'recovered-kling-task');assert.equal(f.job(job.id).status,'running');assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
 });

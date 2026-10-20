@@ -1,3 +1,5 @@
+import * as deliveryHistory from '../apps/web/src/export-delivery-state.ts';
+import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import { i18nTestModule, message, translate } from './helpers/i18n.ts';
 import * as i18n from '../packages/i18n/src/index.ts';
 import * as preflightState from '../apps/web/src/export-preflight-state.ts';
@@ -220,14 +222,26 @@ test('actual export never auto-replays an unknown receipt or replaces an old bin
 const element = (type: unknown, props: Record<string, unknown>, ...children: unknown[]): Record<string, unknown> => ({ type, props: { ...props, children } });
 type RenderNode = {type?: unknown; props: Record<string, unknown> & {children?: unknown}};
 const findNode = (tree: unknown, testId: string): RenderNode => { const node = nodes(tree).find(item => item.props['data-testid'] === testId); assert.ok(node); return node; };
-const nodes = (tree: unknown): RenderNode[] => Array.isArray(tree) ? (tree as unknown[]).flatMap(nodes) : !tree || typeof tree !== 'object' ? [] : [{type: (tree as {type?: unknown}).type, props: ((tree as {props?: Record<string, unknown>}).props ?? {}) as RenderNode['props']}, ...nodes(((tree as {props?: RenderNode['props']}).props ?? {}).children)];
+// This panel fixture retains Workflow's real named presentation slots. Their
+// actual fixed-footer placement is exercised by export-workflow.test.ts.
+const nodes = (tree: unknown): RenderNode[] => Array.isArray(tree) ? (tree as unknown[]).flatMap(nodes) : !tree || typeof tree !== 'object' ? [] : [{type: (tree as {type?: unknown}).type, props: ((tree as {props?: Record<string, unknown>}).props ?? {}) as RenderNode['props']}, ...nodes(((tree as {props?: RenderNode['props']}).props ?? {}).children),...nodes(((tree as {props?:RenderNode['props']}).props??{}).checkAction),...nodes(((tree as {props?:RenderNode['props']}).props??{}).settingsEstimate)];
 const textOf = (tree: unknown): string => Array.isArray(tree) ? (tree as unknown[]).map(textOf).join('') : tree && typeof tree === 'object' ? textOf(((tree as {props?: RenderNode['props']}).props ?? {}).children) : tree === null || tree === undefined ? '' : String(tree);
 const panelSource = readFileSync(new URL('../apps/web/src/TimelineExportPreflight.tsx', import.meta.url), 'utf8');
 function renderPanel(props: Record<string, unknown>): RenderNode {
   const module: {exports: {default?: unknown}} = { exports: {} }; const react: Record<string, unknown> = { createElement: element }; react.default = react;
-  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, (name: string) => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.ts') ? preflightState : name.endsWith('icons.tsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
+  Function('module', 'exports', 'require', transformSync(panelSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, (name: string) => name === './i18n/I18nProvider.tsx' ? i18nTestModule() : name === 'react' ? react : name.endsWith('export-preflight-state.ts') ? preflightState : name.endsWith('export-delivery-state.ts') ? deliveryHistory : name.endsWith('export-settings-state.ts') ? exportSettings : name.endsWith('export-range-state.ts') ? rangeState : name.endsWith('icons.tsx') ? { __esModule: true, default: 'Icon' } : { Button: 'Button' });
   return ((module.exports as {default: (props: Record<string, unknown>) => RenderNode}).default)({ canCheck: true, onCheck() {}, onExport() {}, ...props });
 }
+
+test('primary settings precede optional recovery while recovery needing attention remains open',()=>{
+  const normal=renderPanel({recovery:'local recovery controls',recoveryRequired:false,loudness:'real loudness controls'});
+  assert.equal(findNode(normal,'export-recovery-details').props.open,false);
+  assert.equal(textOf(findNode(normal,'export-loudness-row')),'响度real loudness controls');
+  const all=nodes(normal),primary=all.findIndex(node=>node.props.className==='export-settings-primary'),recovery=all.findIndex(node=>node.props.className==='export-settings-recovery');
+  assert.ok(primary>=0&&recovery>primary);
+  for(const recoveryRequired of [true,undefined])assert.equal(findNode(renderPanel({recoveryRequired,recovery:'original unknown request'}),'export-recovery-details').props.open,true,'Unknown, conflicting or legacy callers must not hide their recovery controls');
+  assert.ok(normal.props.checkAction);assert.ok(normal.props.settingsEstimate);
+});
 
 test('accessible topbar export action opens recovery even when a candidate, baseline conflict or invalid name blocks Check', () => {
   const first = appSource.indexOf('  const canOpenExport ='), last = appSource.indexOf('  const pendingTimelineExport =', first);
@@ -478,4 +492,26 @@ test('compact dock exposes saved-snapshot scope and dirty warning while showing 
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8');
   assert.match(css, /\.export-preflight-actions\{display:flex;flex:none;/);
   assert.match(css, /\.export-preflight-body\{min-height:0;flex:1;overflow:auto;/);
+});
+
+test('passive check instructions are collapsed while current state and explicit check remain visible', () => {
+  let checks = 0;
+  const tree = renderPanel({ state: { phase: 'idle' }, canCheck: true, exportBusy: false, onCheck: () => { checks++; } });
+  const help = findNode(tree, 'preflight-help-details');
+  assert.equal(help.type, 'details');
+  assert.equal(help.props.open, undefined);
+  assert.match(textOf(nodes(help).find(node => node.type === 'summary')), /说明/);
+  assert.match(textOf(help), /打开面板不会开始检查/);
+  assert.match(textOf(help), /短时合成编码与 MP4 封装/);
+  assert.match(textOf(help), /100 个片段/);
+  assert.match(textOf(findNode(tree, 'export-check-result')), /尚未检查/);
+  const check = findNode(tree, 'preflight-check');
+  assert.equal(nodes(help).some(node => node.props['data-testid'] === 'preflight-check'), false);
+  assert.equal(check.props.disabled, false);
+  assert.equal(checks, 0);
+  (check.props.onClick as () => void)();
+  assert.equal(checks, 1);
+  const readyHelp = findNode(renderPanel({ state: { phase: 'ready' } }), 'preflight-help-details');
+  assert.doesNotMatch(textOf(readyHelp), /打开面板不会开始检查/);
+  assert.match(textOf(readyHelp), /短时合成编码与 MP4 封装/);
 });

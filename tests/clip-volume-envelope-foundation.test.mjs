@@ -56,7 +56,7 @@ function harness(locale='en', initial=raw([['0','1']]).volumeEnvelope, duration=
  const hooks=[];let cursor=0, tree, edits=[], events=[];
  const react={createElement:(type,props,...children)=>({type,props:{...props,children}}),useId:()=> 'test-envelope',useRef:initial=>hooks[cursor++]??=( {current:initial}),useState(initial){const at=cursor++;hooks[at]??={value:typeof initial==='function'?initial():initial};return [hooks[at].value,value=>{hooks[at].value=typeof value==='function'?value(hooks[at].value):value;}];}};react.default=react;
  const module={exports:{}};
- Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/ClipVolumeEnvelopeControls.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>name==='react'?react:name.includes('I18nProvider')?i18nTestModule(locale):name.endsWith('clip-volume-envelope-state.ts')?state:name.endsWith('timeline-volume-envelope.ts')?contract:assert.fail(name),module,module.exports);
+ Function('require','module','exports',transformSync(readFileSync(new URL('../apps/web/src/ClipVolumeEnvelopeControls.tsx',import.meta.url),'utf8'),{loader:'tsx',format:'cjs'}).code)(name=>name==='react'?react:name==='@mioon/ui/components/button'?{Button:'button'}:name.includes('I18nProvider')?i18nTestModule(locale):name.endsWith('clip-volume-envelope-state.ts')?state:name.endsWith('timeline-volume-envelope.ts')?contract:assert.fail(name),module,module.exports);
  const props={value:initial,proposedDuration:duration,onEdit(value){edits.push(value);props.value=value;events.push('edit');},onCompositionChange(value){events.push(value);}};
  const h={props,edits,events,render(patch={}){Object.assign(props,patch);cursor=0;tree=module.exports.default(props);return tree;},input(field='frame',row=0){return nodes(tree).find(n=>n.props?.['data-testid']===`envelope-${row}-${field}`);},buttons(){return nodes(tree).filter(n=>n.type==='button');},all(){return nodes(tree);}};h.render();return h;
 }
@@ -294,4 +294,17 @@ test('manual ducking IME uses one synchronous pending owner and rejects old sess
  old.props.onChange(event('99'));old.props.onCompositionEnd(event('99'));h.render();assert.equal(h.events.at(-1).session,session);assert.equal(h.events.at(-1).pending,true);assert.equal(duckingInput(h,'startFrame').props.value,'20');
  current.props.onCompositionEnd(event('２０'));h.render();assert.equal(duckingInput(h,'startFrame').props.value,'20');assert.equal(h.edits.length,0);assert.equal(h.events.at(-1).pending,false);
  h.input().props.onCompositionStart(event('0'));byTestId(h,'ducking-apply').props.onClick();assert.equal(h.edits.length,0);h.render();assert.equal(duckingInput(h,'startFrame').props.disabled,true);h.input().props.onCompositionEnd(event('0'));
+});
+
+
+test('envelope switch changes only the explicit envelope value and keeps advanced tools collapsed', () => {
+ const h=harness('en', null, 120);
+ const toggle=()=>byTestId(h,'clip-envelope-toggle');
+ assert.equal(toggle().props.role,'switch');assert.equal(toggle().props['aria-checked'],false);assert.equal(h.edits.length,0);
+ const advanced=h.all().find(node=>node.props?.className==='clip-envelope-editor');assert.equal(advanced.props.open,undefined);
+ toggle().props.onClick();h.render();assert.deepEqual(h.edits.at(-1),{profileId:contract.VOLUME_ENVELOPE_PROFILE,points:[{frame:'0',multiplier:'1'}]});
+ assert.equal(toggle().props['aria-checked'],true);
+ assert.equal(h.all().find(node=>node.type==='polyline').props.points,'0,8 0,8 240,8');
+ toggle().props.onClick();h.render();assert.equal(h.edits.at(-1),null);assert.equal(toggle().props['aria-checked'],false);
+ h.render({disabled:true});toggle().props.onClick();assert.equal(h.edits.length,2);
 });

@@ -56,6 +56,7 @@ test('shared client rejects bad ACK with exact request recovery, and never retri
 });
 test('restored LUT disclosure is profile-specific; import is unavailable and no media/effect backdoor exists',()=>{
  for(const version of [25,27,29])for(const operation of ['lut.import','lut.list','lut.inspect'])assert.equal(lutRestorePolicy(operation,version).available,version===29&&operation!=='lut.import');
+ for(const version of [50,51,52])for(const operation of ['lut.import','lut.list','lut.inspect','lut.look.inspect'])assert.deepEqual(lutRestorePolicy(operation,version),{operation,available:version===51&&operation!=='lut.import',reason:version===51&&operation!=='lut.import'?'AVAILABLE':'RESTORE_OPERATION_UNAVAILABLE'});
  assert.equal(schemas['asset.import'].safeParse({...input,mimeType:'application/cube'}).success,false);
  const leaf=readFileSync(new URL('../packages/business/src/lut-resources.ts',import.meta.url),'utf8');
  for(const banned of ['node:fs','node:child_process','node:http','node:https','fetch(','ffmpeg','createProviderRegistry'])assert.equal(leaf.includes(banned),false,banned);

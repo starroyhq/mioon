@@ -11,16 +11,16 @@ test('task reveal uses a separate overlay and keeps project, view and compositio
   const calls = [];
   let composition = false;
   const currentProject = { current: 'project-a' }, viewReady = { current: true };
-  const open = Function('clipDraftRef', 'currentProject', 'viewReady', 'markPanelIntent', 'setShowDelivery', 'setShowImage', 'setShowTasks', `${body}; return openTasks;`)(
+  const open = Function('clipDraftRef', 'currentProject', 'viewReady', 'markPanelIntent', 'setShowDelivery', 'setShowImage', 'setShowTasks', 'setSelectedTaskId', `${body}; return openTasks;`)(
     { current: { hasPendingComposition: () => composition } }, currentProject, viewReady,
-    () => calls.push('intent'), value => calls.push(['delivery', value]), value => calls.push(['image', value]), value => calls.push(['tasks', value]),
+    () => calls.push('intent'), value => calls.push(['delivery', value]), value => calls.push(['image', value]), value => calls.push(['tasks', value]), value => calls.push(['selection',value]),
   );
   assert.equal(open(() => false), false); assert.deepEqual(calls, []);
   composition = true; assert.equal(open(), false); assert.deepEqual(calls, []);
   composition = false; viewReady.current = false; assert.equal(open(), false); assert.deepEqual(calls, []);
   viewReady.current = true; currentProject.current = ''; assert.equal(open(), false); assert.deepEqual(calls, []);
   currentProject.current = 'project-b'; assert.equal(open(), true);
-  assert.deepEqual(calls, ['intent', ['delivery', false], ['image', false], ['tasks', true]]);
+  assert.deepEqual(calls, ['intent', ['selection',undefined], ['delivery', false], ['image', false], ['tasks', true]]);
   assert.doesNotMatch(body, /setRightDockTab|setPanelOpen/);
 });
 

@@ -1,5 +1,5 @@
 import {createAgentAuthorizationUiMock} from './helpers/agent-authorization-ui.ts';
-import { message } from './helpers/i18n.ts';
+import { message,renderMessage as renderCoreMessage } from './helpers/i18n.ts';
 import { creationTestDependency } from './helpers/creation-i18n.ts';
 import * as nativeCloseSources from '../apps/web/src/native-close-sources.ts';
 import * as gainContext from '../apps/web/src/agent-timeline-gain-context.ts';
@@ -240,16 +240,22 @@ test('actual gain activity distinguishes saved proposal from application with no
   const tree = JSON.stringify(h.render()); assert.match(tree, /片段音量提议|不代表已应用|保存版本|100%/); assert.doesNotMatch(tree, /sourceInFrame|assetId|dangerouslySetInnerHTML/); h.unmount();
 });
 
-test('actual App saved selection and review fences include connection, dirty forms, candidate and pending timeline actions', () => {
+function appGainReviewContext(patch = {}) {
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const from = source.indexOf('  const agentTimelineGainSelection ='), to = source.indexOf('  const agentTimelineBlockedReason =', from);
   const expression = source.slice(from, to);
   const build = (patch = {}) => {
-    const env = { msg: message, workspaceMode: 'editing', propertiesPage: 'inspector', quickAssetId: null, makeAgentTimelineGainSelection: timing.makeAgentTimelineGainSelection,
+    const env = { msg: message,renderCoreMessage,chosenClip:savedTimeline().clips[0],lockedTrackIds:new Set(), workspaceMode: 'editing', propertiesPage: 'inspector', quickAssetId: null, makeAgentTimelineGainSelection: timing.makeAgentTimelineGainSelection,
       timeline: savedTimeline(), selectedClipId: clipId, data: { project: { id: projectId }, assets: [savedAsset()] }, agentTimelineGainBlockedReason: gainContext.agentTimelineGainBlockedReason, agentTimelineGainBlockedDescriptor: gainContext.agentTimelineGainBlockedDescriptor,
       workbenchReady: true, online: true, auth: true, loading: false, inspectorDirty: false, formatDirty: false, agentClipDraftBlocked: false, clipDraftRef: { current: { hasUnsaved: () => false, getState: () => ({ candidate: null }) } }, timelineBusy: false, ...patch };
     return Function(...Object.keys(env), `${expression}; return { selection: agentTimelineGainSelection, reason: gainBlockedReason };`)(...Object.values(env));
   };
+  return build(patch);
+}
+
+test('actual App saved selection and review fences include connection, dirty forms, candidate and pending timeline actions', () => {
+  const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
+  const build=appGainReviewContext;
   assert.deepEqual(build(), { selection: selected, reason: '' });
   for (const patch of [{ workbenchReady: false }, { online: false }, { auth: false }, { loading: true }, { inspectorDirty: true }, { formatDirty: true }, { timelineBusy: true }, { agentClipDraftBlocked: true }, { clipDraftRef: { current: { hasUnsaved: () => true, getState: () => ({ candidate: null }) } } }, { clipDraftRef: { current: { hasUnsaved: () => false, getState: () => ({ candidate: {} }) } } }]) assert.notEqual(build(patch).reason, '');
   for (const patch of [{ workspaceMode: 'canvas' }, { propertiesPage: 'subtitle' }, { quickAssetId: id(99) }, { data: { project: { id: projectId }, assets: [savedAsset({ hasAudio: false })] } }]) assert.equal(build(patch).selection, null);
@@ -364,4 +370,18 @@ test('actual gain review survives complete recreation without POST and only expl
 test('unavailable or unsupported selected source leaves the gain mode unoffered for sending', async () => {
   const f = chatFixture(), h = harness('AgentPanel', { chatClient: f.client, receipts: f.receipts, props: { selectedTimelineGainClip: null } }); h.render(); await flush(); h.render();
   assert.equal(h.find('agent-chat-mode-gain').props.disabled, true); assert.equal(f.calls.length, 0); h.unmount();
+});
+
+
+test('locking the selected track blocks an already loaded gain proposal and retired approval callbacks',async()=>{
+ const unlocked=appGainReviewContext(),locked=appGainReviewContext({lockedTrackIds:new Set([trackId])});
+ assert.equal(unlocked.reason,'');assert.notEqual(locked.reason,'');assert.deepEqual(locked.selection,selected);
+ assert.equal(appGainReviewContext({lockedTrackIds:new Set([id(88)])}).reason,'','an unrelated track lock must not block this gain target');
+ const applications=[],f=fixture(),h=harness('AgentEditProposal',{client:f.client,onApplied:(...args)=>applications.push(args),props:{selectedTimelineGainClip:unlocked.selection,timelineGainBlockedReason:unlocked.reason}});
+ h.render();await flush();h.render();assert.equal(h.find('agent-edit-approve').props.disabled,false);const originalApprove=h.find('agent-edit-approve').props.onClick;
+ h.render({selectedTimelineGainClip:locked.selection,timelineGainBlockedReason:locked.reason,timelineGainBlockedDescriptor:message('edit.track.lockedHint')});
+ assert.equal(h.find('agent-edit-approve').props.disabled,true);assert.ok(h.find('agent-timeline-approval-blocked'));assert.equal(h.find('agent-edit-reject').props.disabled,false);
+ originalApprove();h.find('agent-edit-approve').props.onClick();await flush();assert.equal(f.calls.some(call=>call[0]==='act'),false);
+ h.render({selectedTimelineGainClip:unlocked.selection,timelineGainBlockedReason:unlocked.reason});originalApprove();await flush();assert.equal(f.calls.some(call=>call[0]==='act'),false,'unlock cannot revive a pre-lock handler');
+ h.find('agent-edit-approve').props.onClick();await flush();h.render();assert.equal(f.calls.filter(call=>call[0]==='act').length,1);assert.equal(applications.length,1);h.unmount();
 });

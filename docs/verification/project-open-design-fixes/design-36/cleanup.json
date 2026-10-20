@@ -1,0 +1,14 @@
+{
+  "verificationPortsClosed": [
+    43192,
+    43193,
+    54577,
+    49391,
+    50272
+  ],
+  "temporaryWorkspacesRemoved": true,
+  "implementationWorktreeAndDependenciesRetained": true,
+  "userMainWorkspaceModified": false,
+  "committed": false,
+  "pushed": false
+}

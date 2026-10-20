@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: Tech3342 two-tone vectors agree with independent FFmpeg ebur128 and loudnorm LRA
+ok 1 - Tech3342 two-tone vectors agree with independent FFmpeg ebur128 and loudnorm LRA
+  ---
+  duration_ms: 5180.873208
+  type: 'test'
+  ...
+# Subtest: four-level dynamic signal agrees with FFmpeg independently of uniform gain
+ok 2 - four-level dynamic signal agrees with FFmpeg independently of uniform gain
+  ---
+  duration_ms: 157.72125
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5512.754083

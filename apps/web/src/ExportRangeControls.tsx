@@ -21,7 +21,7 @@ export default function ExportRangeControls({ draft = { mode: 'whole', startText
   const extent = typeof durationFrames === 'number' && Number.isSafeInteger(durationFrames) && durationFrames > 0 && durationFrames <= 18000 ? durationFrames : null;
   return <section className="timeline-export-settings" data-testid="export-range-controls" aria-labelledby={`${id}-title`}>
     <h3 id={`${id}-title`}>{t('export.range.title')}</h3>
-    <p id={`${id}-help`} className="export-preflight-note">{t('export.range.help')}</p>
+    <details className="export-settings-help"><summary>{t('redesign.export.details')}</summary><p id={`${id}-help`} className="export-preflight-note">{t('export.range.help')}</p></details>
     <div className="clip-form-actions" role="group" aria-label={t('export.range.label')}>
       <Button type="button" size="sm" variant="outline" data-testid="export-range-whole" aria-pressed={draft.mode === 'whole'} disabled={disabled} onClick={() => onChange?.({ ...draft, mode: 'whole' })}>{t('export.range.whole')}</Button>
       <Button type="button" size="sm" variant="outline" data-testid="export-range-selected" aria-pressed={draft.mode === 'selected'} disabled={disabled} onClick={() => onChange?.({ ...draft, mode: 'selected', ...(draft.startText === '' && draft.endText === '' && extent !== null ? { startText: '0', endText: String(extent) } : {}) })}>{t('export.range.choose')}</Button>

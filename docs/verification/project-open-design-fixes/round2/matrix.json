@@ -1,0 +1,1090 @@
+[
+  {
+    "view": "settings",
+    "language": "zh-Hans",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-settings-zh-Hans-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "zh-Hans",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-editing-zh-Hans-dark-1440.png",
+    "layout": {
+      "left": 7,
+      "top": 595,
+      "right": 1433,
+      "bottom": 893,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "zh-Hans",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-exports-zh-Hans-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "zh-Hans",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-tasks-zh-Hans-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "zh-Hans",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-settings-zh-Hans-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "zh-Hans",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-editing-zh-Hans-light-1440.png",
+    "layout": {
+      "left": 7,
+      "top": 595,
+      "right": 1433,
+      "bottom": 893,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "zh-Hans",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-exports-zh-Hans-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "zh-Hans",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-tasks-zh-Hans-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "zh-Hans",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-settings-zh-Hans-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "zh-Hans",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-editing-zh-Hans-dark-1050.png",
+    "layout": {
+      "left": 7,
+      "top": 381,
+      "right": 1043,
+      "bottom": 673,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "zh-Hans",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-exports-zh-Hans-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "zh-Hans",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-tasks-zh-Hans-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "zh-Hans",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-settings-zh-Hans-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "zh-Hans",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-editing-zh-Hans-light-1050.png",
+    "layout": {
+      "left": 7,
+      "top": 381,
+      "right": 1043,
+      "bottom": 673,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "zh-Hans",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-exports-zh-Hans-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "zh-Hans",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-tasks-zh-Hans-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "zh-Hant",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-settings-zh-Hant-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "zh-Hant",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-editing-zh-Hant-dark-1440.png",
+    "layout": {
+      "left": 7,
+      "top": 595,
+      "right": 1433,
+      "bottom": 893,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "zh-Hant",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-exports-zh-Hant-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "zh-Hant",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-tasks-zh-Hant-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "zh-Hant",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-settings-zh-Hant-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "zh-Hant",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-editing-zh-Hant-light-1440.png",
+    "layout": {
+      "left": 7,
+      "top": 595,
+      "right": 1433,
+      "bottom": 893,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "zh-Hant",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-exports-zh-Hant-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "zh-Hant",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-tasks-zh-Hant-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "zh-Hant",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-settings-zh-Hant-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "zh-Hant",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-editing-zh-Hant-dark-1050.png",
+    "layout": {
+      "left": 7,
+      "top": 381,
+      "right": 1043,
+      "bottom": 673,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "zh-Hant",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-exports-zh-Hant-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "zh-Hant",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-tasks-zh-Hant-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "zh-Hant",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-settings-zh-Hant-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "zh-Hant",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-editing-zh-Hant-light-1050.png",
+    "layout": {
+      "left": 7,
+      "top": 381,
+      "right": 1043,
+      "bottom": 673,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "zh-Hant",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-exports-zh-Hant-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "zh-Hant",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-tasks-zh-Hant-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "en",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-settings-en-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "en",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-editing-en-dark-1440.png",
+    "layout": {
+      "left": 7,
+      "top": 595,
+      "right": 1433,
+      "bottom": 893,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "en",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-exports-en-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "en",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-tasks-en-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "en",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-settings-en-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "en",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-editing-en-light-1440.png",
+    "layout": {
+      "left": 7,
+      "top": 595,
+      "right": 1433,
+      "bottom": 893,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "en",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-exports-en-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "en",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-tasks-en-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "en",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-settings-en-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "en",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-editing-en-dark-1050.png",
+    "layout": {
+      "left": 7,
+      "top": 381,
+      "right": 1043,
+      "bottom": 673,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "en",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-exports-en-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "en",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-tasks-en-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "en",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-settings-en-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "en",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-editing-en-light-1050.png",
+    "layout": {
+      "left": 7,
+      "top": 381,
+      "right": 1043,
+      "bottom": 673,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "en",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-exports-en-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "en",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-tasks-en-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-settings-ja-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-editing-ja-dark-1440.png",
+    "layout": {
+      "left": 7,
+      "top": 595,
+      "right": 1433,
+      "bottom": 893,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-exports-ja-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "ja",
+    "theme": "dark",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-tasks-ja-dark-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "ja",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-settings-ja-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "ja",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-editing-ja-light-1440.png",
+    "layout": {
+      "left": 7,
+      "top": 595,
+      "right": 1433,
+      "bottom": 893,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "ja",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-exports-ja-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "ja",
+    "theme": "light",
+    "width": 1440,
+    "height": 900,
+    "file": "screens/matrix-tasks-ja-light-1440.png",
+    "layout": {
+      "left": 240,
+      "top": 130,
+      "right": 1200,
+      "bottom": 770,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "ja",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-settings-ja-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "ja",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-editing-ja-dark-1050.png",
+    "layout": {
+      "left": 7,
+      "top": 381,
+      "right": 1043,
+      "bottom": 673,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "ja",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-exports-ja-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "ja",
+    "theme": "dark",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-tasks-ja-dark-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "settings",
+    "language": "ja",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-settings-ja-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "editing",
+    "language": "ja",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-editing-ja-light-1050.png",
+    "layout": {
+      "left": 7,
+      "top": 381,
+      "right": 1043,
+      "bottom": 673,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "exports",
+    "language": "ja",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-exports-ja-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  },
+  {
+    "view": "tasks",
+    "language": "ja",
+    "theme": "light",
+    "width": 1050,
+    "height": 680,
+    "file": "screens/matrix-tasks-ja-light-1050.png",
+    "layout": {
+      "left": 45,
+      "top": 20,
+      "right": 1005,
+      "bottom": 660,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": []
+  }
+]

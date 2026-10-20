@@ -1,3 +1,7 @@
+import {createWorkspaceConfiguration} from './workspace-configuration.ts';
+import {createWorkspaceBackupRuntime} from './workspace-backup-runtime.ts';
+import {createExportControlServices} from './export-controls.ts';
+import {createTaskDispositionServices} from './task-dispositions.ts';
 import {createManagedAssetImportHandler} from './managed-asset-import.ts';
 import {freezeStoryboardOutputGeometry} from './storyboard-output.ts';
 import {AgentAuthorizationError} from './agent/authorizations.ts';
@@ -33,6 +37,7 @@ import {inspectWorkspaceBackup} from './backup-readiness.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {parse,AppError,publicValue,getGenerationIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
+import {operationEffect} from '@mioon/contracts';
 import type {OperationName} from '@mioon/contracts';
 import {normalizedCapabilities,usesInputProfiles} from './provider-registry.ts';
 import type {Provider} from './provider-registry.ts';
@@ -93,6 +98,9 @@ export interface CreateServicesOptions {
  exportOptions?: Parameters<typeof createTimelineExportAdmissionServices>[1];
  agentAuthorizations?: AgentAuthorizations | null;
  readRecentOpened?: ()=>Readonly<Record<string,string>>;
+ assertMutationAllowed?: ()=>void;
+ workspaceBaseRoot?: string;
+ backupQuiescent?: ()=>boolean;
 }
 type AudioPreviewService=ReturnType<typeof createTimelineAudioPreviewCoordinator>;
 type ProjectLifecycleService=ReturnType<typeof createProjectLifecycleServices>;
@@ -102,6 +110,9 @@ export interface OrdinaryServices {
  handlers: ServiceHandlers;
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
  drain: ()=>Promise<void>;
+ isQuiescent: ()=>boolean;
+ configuration: ReturnType<typeof createWorkspaceConfiguration>;
+ backups: ReturnType<typeof createWorkspaceBackupRuntime>;
  audioPreview: AudioPreviewService;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
  validateGenerationDispatch: (job: JobRecord)=>unknown;
@@ -170,7 +181,7 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions,agentAuthorizations,readRecentOpened,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
+ {env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
  if(getOpacityCandidateAssembly(inputStore))return createOpacityCandidateServices(inputStore,{signal:ownerSignal}) as unknown as OrdinaryServices;
  // Ordinary/candidate stores expose the same workspace surface; candidate
  // table-name narrowing stays inside its own verified assembly.
@@ -179,8 +190,19 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const restoredReads=restored?createRestoredReadServices(store as unknown as Parameters<typeof createRestoredReadServices>[0],{signal:ownerSignal}):null;
  const disabled=(): never=>{throw workspaceRestoreError();};
  const inactive=()=>({handlers:{} as ServiceHandlers,drain:async(): Promise<void>=>{},approveReviewed:disabled as (...args: unknown[])=>never,rejectReview:disabled as (...args: unknown[])=>never});
+ const nonBackupActive=new Set<Promise<unknown>>();
  const active=new Set<Promise<unknown>>(),restoredLifetime=restored?new AbortController():null;let shutdownFailure: unknown;
  const {db,root,get,list,put,tx}=store;
+ const configuration=createWorkspaceConfiguration({root:workspaceBaseRoot??root,env});
+ const backups=createWorkspaceBackupRuntime({store,configuration,isQuiescent:()=>nonBackupActive.size===0&&(backupQuiescent?.()??true)});
+ const backupHandlers={
+  'workspace.settings.get':()=>configuration.get(),
+  'workspace.settings.set':(input:never)=>{if(restored)disabled();backups.assertMutationAllowed();return configuration.set(input);},
+  'workspace.backup.status':()=>backups.getStatus(),
+  'workspace.backup.list':()=>backups.list(),
+  'workspace.backup.create':(input:never)=>backups.create(input),
+  'workspace.backup.restore.stage':(input:never)=>backups.stageRestore(input),
+ };
  const required=(t: string,id: string): ServiceRow=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v as ServiceRow;};
  const projectHome=createProjectHomeServices(store,{readRecentOpened});
  const projectLifecycle=restored?{handlers:{} as ServiceHandlers,setProjectDeletionCompanions:disabled as (...args: unknown[])=>never}:createProjectLifecycleServices(store,{
@@ -206,7 +228,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const result: ServiceRow={...current,...patch,revision:currentRevision+1,updatedAt:now()};put('jobs',result);event(result,{status:result.status,phase:result.phase,error:result.error});return result;
  };
  const profilePolicy=restored?false:usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
- const capabilitiesFor=(provider: Provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,env,0,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
+ const runtimeEnv=configuration.environment();
+ const capabilitiesFor=(provider: Provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,runtimeEnv,0,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
  const configuredVideoProviders=new Map<string,Provider>();
  const boundProvider=(binding:VideoExecutionBinding):Provider=>{
   if(restored)disabled();
@@ -227,6 +250,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const validateProvider=(source: GenerationSource,providerId: string,requestedModel: string|undefined,parameters: ServiceRow|undefined,projectId: string,frozen=false,subjectGraph: GenerationSubjectGraph|null=null)=>{
   const binding=readVideoBinding(source);
   if(binding){
+   configuration.assertLiveEnabled();
    if(binding.providerId!==providerId||requestedModel!==undefined&&requestedModel!==binding.model.modelId)throw new AppError('VIDEO_BINDING_INVALID','请求模型与所选连接不一致。');
    const p=boundProvider(binding),c=videoBindingCapabilities(binding,{asOf:currentProfileDate()});
    if(!c.configured)throw new AppError('VIDEO_SETTINGS_INCOMPLETE','请先配置此连接的输出域名。',409);
@@ -388,7 +412,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const assetDispositions=createAssetDispositionServices(store,{canonical});
  const subjects=createSubjectServices(store,{canonical,now});
  const waveforms=restored?inactive():createWaveformServices(store,{signal:ownerSignal});
- const images=restored?inactive():createImageServices(store,{...imageOptions,signal:ownerSignal} as Parameters<typeof createImageServices>[1]);
+ const images=restored?inactive():createImageServices(store,{...imageOptions,signal:ownerSignal,assertLiveAllowed:()=>configuration.assertLiveEnabled()} as Parameters<typeof createImageServices>[1]);
  const frames=restored?inactive():createFrameServices(store,{...frameOptions,signal:ownerSignal} as Parameters<typeof createFrameServices>[1]);
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
@@ -413,6 +437,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const exportValues=(projectId: string): ServiceRow[]=>db.prepare('SELECT id,projectId,data FROM exports WHERE projectId=?').all(projectId)
   .map(row=>subjectDisclosure('exports',JSON.parse(String(row.data)) as ServiceRow,stringValue(row.projectId),stringValue(row.id)));
  const handlers: ServiceHandlers={
+ ...backupHandlers,
+ ...(!restored ? createExportControlServices(store,{signal:ownerSignal}).handlers : {}),
+ ...(!restored ? createTaskDispositionServices(store,{ownsLock:()=>ownsStoreLock(store),isReadOnly:()=>Boolean(restored),signal:ownerSignal}).handlers : {}),
   ...luts.handlers,
   ...lookPacks.handlers,
   'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
@@ -519,7 +546,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&isRecord(parsed.patch)&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35,37,39,41,45,49].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35,37,39,41,45,49,51].includes(restored.schemaVersion))throw workspaceRestoreError();
      const patch=isRecord(parsed.patch)?parsed.patch:null;
      const colour=op==='timeline.clip.add'?parsed.colour:patch?.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
@@ -536,16 +563,16 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     });
    }
    if(Object.hasOwn(inspection.handlers,op))return inspection.handlers[op](input as never);
-   const parsed=parse(op as OperationName,input),result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
+   const parsed=parse(op as OperationName,input);const effect=operationEffect(op);if(!op.startsWith('workspace.backup.')&&op!=='workspace.settings.set'&&(effect.databaseWrite||effect.fileWrite||effect.localProcess)){backups.assertMutationAllowed();assertMutationAllowed?.();}const result=await domainHandlers[op](parsed as never,{signal});checkpoint(signal);
    return publicValue(result);
   })();
-  active.add(operation);
-  try{return await operation;}catch(error){if(property(error,'terminationUnconfirmed'))shutdownFailure=error;throw error;}finally{active.delete(operation);}
+  active.add(operation);if(!op.startsWith('workspace.backup.'))nonBackupActive.add(operation);
+  try{return await operation;}catch(error){if(property(error,'terminationUnconfirmed'))shutdownFailure=error;throw error;}finally{active.delete(operation);nonBackupActive.delete(operation);}
  }
  // Drain async RPC work before closing SQLite. Rejection is a settled operation;
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
  const drain=async(): Promise<void>=>{
-  restoredLifetime?.abort();
+  restoredLifetime?.abort();backups.stop();await backups.drain();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
   const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
@@ -578,11 +605,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(restored)disabled();
   const binding=readVideoBinding(job.snapshot);
   if(binding){
+   configuration.assertLiveEnabled();
    currentGenerationClaim(db,job);resolveGenerationProvider(job);
    const graph=hasSubjectGeneration(job.snapshot)?validateSubjectGenerationOwnership(db,job):null;
    return prepareConfiguredVideoInputs({source:job.snapshot,binding,projectId:job.projectId,readAsset:id=>graph?graph.asset(id):readGenerationAsset(db,id,job.projectId),frozen:true,asOf:currentProfileDate()});
   }
   const provider=providers.get(job.providerId);
+  if(provider&&!provider.capabilities.mock&&(profilePolicy||usesInputProfiles(provider)))configuration.assertLiveEnabled();
   const subjectMode=hasSubjectGeneration(job.snapshot);
   if(!profilePolicy&&!usesInputProfiles(provider)&&!subjectMode)return null;
   const subjectGraph=subjectMode?validateSubjectGenerationOwnership(db,job):null;
@@ -607,5 +636,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return saveJob(current as JobRecord,patch);
   });
  }
- return {setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
+ return {setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,configuration,backups,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
 }

@@ -1,0 +1,36 @@
+{
+  "unknownJobId": "48599980-6c96-4bb1-8646-64fd19a4fb48",
+  "rawUnknownSha256": "7c2fbc1e00813a865e099a74962a71073884c5e2fe1131b6de7677f2bcd0d18a",
+  "rawUnknownStatus": "submission_unknown",
+  "exports": 6,
+  "assets": 13,
+  "unknownMarkedFailed": true,
+  "unknownArchived": false,
+  "sourceRequestRetained": true,
+  "archivedRows": 6,
+  "exportsPreserved": true,
+  "assetsPreserved": true,
+  "unknownIdentityAndResultPreserved": true,
+  "comparedFields": [
+    "id",
+    "projectId",
+    "shotId",
+    "requestId",
+    "requestHash",
+    "status",
+    "phase",
+    "snapshot",
+    "providerJobId",
+    "submissionCount",
+    "error",
+    "versionId",
+    "cancelScope",
+    "retryOfJobId"
+  ],
+  "livePollingFieldsChanged": [
+    "nextPollAt",
+    "updatedAt",
+    "revision"
+  ],
+  "note": "Live Mock polling legitimately advances revision/updatedAt/nextPollAt; local disposition preserves request, unknown result, snapshot, submission count and reconciliation identity."
+}

@@ -36,6 +36,17 @@ test('render tasks show only current-project timeline records and held results n
  const h=harness('TaskRenderList.tsx',{items:[item,{...item,id:'other',projectId:'project-b'},{...item,id:'story',mode:'storyboard'}],projectId:'project-a'});let tree=h.render();assert.match(text(tree),/My delivery/);assert.equal(nodes(tree).filter(node=>node.type==='article').length,1);assert.equal(nodes(tree).find(node=>node.type==='Progress').props.value,0);
  assert.equal(nodes(h.render({heldIds:['export-a']})).some(node=>node.type==='Progress'),false);assert.equal(nodes(h.render({heldIds:[],restored:true})).some(node=>node.type==='Progress'),false);
 });
+test('task popover preserves warning tone for an unconfirmed result without dispatching actions',()=>{
+ const h=harness('TaskPopover.tsx',{scope:'project-a:1',visible:true,count:1,uncertain:false,items:[{id:'unknown-a',label:'Unconfirmed generation',status:'提交状态待确认',tone:'warning'}],onOpenTasks:()=>assert.fail('Rendering must not dispatch')});
+ const tree=h.render(),row=nodes(tree).find(node=>node.type==='article');assert.equal(row.props['data-tone'],'warning');
+ assert.equal(nodes(row).find(node=>node.type==='Badge').props.tone,'warning');assert.match(text(row),/提交状态待确认/);
+});
+test('unknown task detail link opens its exact original job and stale scopes cannot navigate',()=>{
+ const calls=[],props={scope:'project-a:1',visible:true,count:1,uncertain:false,items:[{id:'unknown-a',label:'Original job',status:'待确认',tone:'warning'}],onOpenTasks:id=>calls.push(id)},h=harness('TaskPopover.tsx',props);
+ let tree=h.render();const stale=find(tree,'task-overview-inspect-unknown-a');h.render({scope:'project-b:2'});stale.props.onClick();assert.deepEqual(calls,[]);
+ tree=h.render();find(tree,'task-overview-inspect-unknown-a').props.onClick();assert.deepEqual(calls,['unknown-a']);
+ assert.equal(nodes(h.render({items:[{...props.items[0],tone:'neutral'}]})).some(node=>node.props?.['data-testid']==='task-overview-inspect-unknown-a'),false);
+});
 test('login preserves one in-flight token request and accepts only the exact successful envelope',async()=>{
  const held=defer(),calls=[],logins=[],h=harness('LoginScreen.tsx',{onLogin:async()=>logins.push('login')},(url,options)=>{calls.push([url,options]);return held.promise;});let tree=h.render();find(tree,'access-token').props.onChange({target:{value:'synthetic-test-access'}});tree=h.render();const form=nodes(tree).find(node=>node.type==='form');form.props.onSubmit({preventDefault(){}});form.props.onSubmit({preventDefault(){}});assert.equal(calls.length,1);assert.deepEqual(JSON.parse(calls[0][1].body),{token:'synthetic-test-access'});assert.equal(calls[0][1].credentials,'same-origin');assert.equal(find(h.render(),'access-token').props.disabled,true);
  held.resolve({status:200,json:async()=>({ok:true})});await tick();assert.deepEqual(logins,['login']);assert.equal(find(h.render(),'access-token').props.value,'');
@@ -43,4 +54,11 @@ test('login preserves one in-flight token request and accepts only the exact suc
 });
 test('late login success after unmount cannot grant entry',async()=>{
  const held=defer(),calls=[],h=harness('LoginScreen.tsx',{onLogin:async()=>calls.push('login')},()=>held.promise);let tree=h.render();find(tree,'access-token').props.onChange({target:{value:'synthetic'}});nodes(h.render()).find(node=>node.type==='form').props.onSubmit({preventDefault(){}});h.unmount();held.resolve({status:200,json:async()=>({ok:true})});await tick();assert.deepEqual(calls,[]);
+});
+
+
+test('task overview counts exactly the shown loaded records and groups all actionable entries without truncation',()=>{
+ const items=[...Array.from({length:6},(_,i)=>({id:`running-${i}`,label:`Running ${i}`,status:'处理中',phase:'active',progress:i===0?0:25,tone:'neutral'})),{id:'unknown',label:'Unknown request',status:'待确认',phase:'attention',tone:'warning'},{id:'done',label:'Old complete',status:'完成',tone:'success'}];
+ const h=harness('TaskPopover.tsx',{scope:'project-a',visible:true,count:999,uncertain:false,items,onOpenTasks(){}}),tree=h.render();
+ assert.equal(nodes(tree).filter(node=>node.type==='article').length,7);assert.equal(nodes(tree).filter(node=>node.type==='Badge'&&text(node)==='7').length,2);assert.equal(nodes(tree).find(node=>node.type==='Progress').props.value,0);assert.match(text(tree),/进行中6/);assert.match(text(tree),/需处理1/);assert.doesNotMatch(text(tree),/Old complete|999/);assert.ok(find(tree,'task-overview-inspect-running-5'));
 });

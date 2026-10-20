@@ -35,6 +35,7 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
     if (type === modules.get('RecoveryStorageDetails.tsx')?.default) disclosureProps.push(properties);
     return typeof type === 'function' ? type(properties) : { type, props: properties };
   },
+    useState(value) { const index = cursor++; if (!(index in slots)) slots[index] = typeof value === 'function' ? value() : value; return [slots[index], next => { slots[index] = typeof next === 'function' ? next(slots[index]) : next; }]; },
     useRef(current) { const index = cursor++; return slots[index] ||= { current }; },
     useMemo(factory, deps) { const index = cursor++; if (!slots[index] || !equalDeps(slots[index].deps, deps)) slots[index] = { value: factory(), deps }; return slots[index].value; },
     useLayoutEffect(callback, deps) { const index = cursor++, old = slots[index]; if (old && equalDeps(old.deps, deps)) return; slots[index] = { callback, deps, cleanup: old?.cleanup }; layouts.push(index); },
@@ -74,7 +75,7 @@ function harness(operations = contracts.DURABLE_EDIT_OPERATIONS) {
     cursor = 0; layouts = []; const tree = Component({ ...defaults, ...patch });
     for (const index of layouts) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].callback(); }
     return tree;
-  }, unmount() { for (const slot of slots) slot.cleanup?.(); } });
+  }, unmount() { for (const slot of slots) slot?.cleanup?.(); } });
 }
 
 test('TaskCenter passes the current contract operation count to the real shared disclosure', () => {
@@ -105,19 +106,20 @@ test('opening or rerendering the disclosure adds no actions, event handlers, sto
   }
 });
 
-test('existing TaskCenter explicit recover, acknowledge, legacy replay, reconcile and retry controls retain exact arguments', async () => {
+test('selected TaskCenter recover, acknowledge, replay, reconcile and retry controls retain exact arguments', async () => {
   const h = harness(), unknown = task(1, 'unknown'), applied = task(2, 'applied');
   const entry = { projectId: id(90), key: 'timeline:mutation', operation: unknown.operation, input: { requestId: unknown.requestId }, createdAt: stamp };
   const failed = job(10, 'failed'), uncertain = job(11, 'submission_unknown');
-  const tree = h.render(freeze({ tasks: { phase: 'ready', items: [unknown, applied], uncertain: [], busy: [] }, pending: [entry], jobs: [failed, uncertain], reconcileIds: { [uncertain.id]: '  provider-original  ' } }));
-  const all = nodes(tree), find = testId => all.find(node => node.props['data-testid'] === testId);
-  assert.equal(all.filter(node => node.type === 'Button').length, 8, 'The existing task, pending and job controls remain; pane collapse belongs to the shared dock');
+  const props = freeze({ tasks: { phase: 'ready', items: [unknown, applied], uncertain: [], busy: [] }, pending: [entry], jobs: [failed, uncertain], reconcileIds: { [uncertain.id]: '  provider-original  ' } });
+  let tree = h.render(props); const all = nodes(tree);
+  assert.equal(all.filter(node => node.props?.className === 'task-center-detail-pane').flatMap(nodes).filter(node=>node.type==='Button').length, 8, 'Existing task operations stay on the original detail cards');
   assert.deepEqual(h.calls, []);
-  find('recover-durable-task').props.onClick(); find('acknowledge-task').props.onClick();
-  find('adopt-legacy-task').props.onClick(); find('resume-pending').props.onClick();
-  find(`reconcile-job-${uncertain.id}`).props.onClick(); find(`retry-job-${failed.id}`).props.onClick();
-  const unknownFence = h.calls[0][3], appliedFence = h.calls[1][3], retryFence = h.calls[5][2];
-  for (const fence of [unknownFence, appliedFence, retryFence]) { assert.equal(typeof fence, 'function'); assert.equal(fence(), true); }
+  const select = key => { tree = h.render({ ...props, selectedTaskId: key }); return testId => nodes(tree).find(node => node.props['data-testid'] === testId); };
+  select(`local:${unknown.id}`)('recover-durable-task').props.onClick(); const unknownFence = h.calls.at(-1)[3]; assert.equal(unknownFence(), true);
+  select(`local:${applied.id}`)('acknowledge-task').props.onClick(); const appliedFence = h.calls.at(-1)[3]; assert.equal(appliedFence(), true); assert.equal(unknownFence(), false);
+  const pendingControls = select(`pending:legacy:${entry.key}`); pendingControls('adopt-legacy-task').props.onClick(); pendingControls('resume-pending').props.onClick();
+  select(uncertain.id)(`reconcile-job-${uncertain.id}`).props.onClick();
+  const retry = select(failed.id)(`retry-job-${failed.id}`); retry.props.onClick(); const retryFence = h.calls.at(-1)[2]; assert.equal(retryFence(), true);
   assert.deepEqual(h.calls, [
     ['onRecover', unknown, false, unknownFence], ['onRecover', applied, true, appliedFence], ['onAdopt', entry],
     ['run', entry.key, entry.operation, entry.input, message('tasks.center.originalRecovered'), { replay: true }],
@@ -125,13 +127,11 @@ test('existing TaskCenter explicit recover, acknowledge, legacy replay, reconcil
     ['retryGeneration', failed, retryFence],
   ]);
   assert.equal(all.some(node => ['Dialog', 'DialogContent', 'DialogTitle'].includes(node.type) || node.props.role === 'dialog' || node.props['aria-modal']), false);
-  assert.equal(all.some(node => node.props['aria-label'] === '关闭任务中心'), false);
   assert.equal(all.filter(node => node.props['data-testid'] === 'task-workspace').length, 1);
   assert.equal(all.filter(node => node.props['data-testid'] === 'task-workspace-body').length, 1);
   h.visible = false; h.render();
   for (const fence of [unknownFence, appliedFence, retryFence]) assert.equal(fence(), false);
-  const count = h.calls.length; find('recover-durable-task').props.onClick(); find(`retry-job-${failed.id}`).props.onClick();
-  assert.equal(h.calls.length, count, 'Retained handlers cannot run after the shared Tasks pane is hidden');
+  const count = h.calls.length; retry.props.onClick(); assert.equal(h.calls.length, count);
 });
 
 test('restored and busy TaskCenter guards remain intact with the shared disclosure present', () => {
@@ -140,7 +140,7 @@ test('restored and busy TaskCenter guards remain intact with the shared disclosu
   const restored = h.render({ workspace: { restored: true, workspaceOrigin: id(99) }, pending, jobs: [failed, uncertain, running], tasks: { phase: 'error', items: [unknown, applied], uncertain: [], busy: [], heldIds: [unknown.id, applied.id] } });
   const all = nodes(restored), find = testId => all.find(node => node.props['data-testid'] === testId);
   for (const testId of ['recover-durable-task', 'acknowledge-task', 'adopt-legacy-task', 'resume-pending', `retry-job-${failed.id}`, `reconcile-job-${uncertain.id}`]) assert.equal(find(testId).props.disabled, true, testId);
-  assert.equal(all.find(node => node.type === 'Input').props.disabled, true);
+  assert.equal(nodes(find(`job-${uncertain.id}`)).find(node => node.type === 'Input').props.disabled, true);
   assert.equal(all.some(node => node.type === 'Button' && text(node) === '停止等待'), false);
   assert.ok(find('task-list-unavailable')); assert.equal(find('no-durable-tasks'), undefined);
   assert.equal(find(`durable-task-${unknown.id}`).props['data-task-state'], 'unknown');

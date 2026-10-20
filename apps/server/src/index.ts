@@ -1,3 +1,6 @@
+import {sendWorkspaceBackup} from './workspace-backup-download.ts';
+import {resolveWorkspaceActivation} from '../../../packages/business/src/workspace-backup-runtime.ts';
+import {createWorkspaceConfiguration} from '../../../packages/business/src/workspace-configuration.ts';
 import {consumeOpacityCandidateLaunch, assertOpacityCandidateBuild, closeUnusedOpacityCandidateLaunch} from './opacity-candidate-launch.ts';
 import {createOpacityCandidateApplicationEditorAssembly} from './opacity-candidate-editor-assembly.ts';
 import {createOpacityCandidateDomain} from '../../../packages/business/src/opacity-candidate-domain.ts';
@@ -151,6 +154,7 @@ interface ServerInstance {
   token: string;
   tokenFile: string;
   dataDir: string;
+  setBackupDirectory(directory:string): unknown;
   close(): Promise<void>;
   handleRequest?: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 }
@@ -228,7 +232,9 @@ async function composeServer({
   // launch; the launcher can release an unused proof on an argument failure.
   const dist = path.resolve(distDir);
   const candidate = opacityCandidateLaunch === undefined ? null : consumeOpacityCandidateLaunch(opacityCandidateLaunch);
-  const root = candidate ? candidate.root : path.resolve(dataDir);
+  const baseRoot=path.resolve(dataDir);
+  const activation=candidate?null:await resolveWorkspaceActivation(baseRoot);
+  const root = candidate ? candidate.root : activation!.root;
   const indexFile = candidate ? 'opacity-candidate.html' : 'index.html';
   const tokenFile = path.join(root, 'access-token');
   // Validate every existing managed entry before SQLite, lock creation or token
@@ -292,7 +298,9 @@ async function composeServer({
       writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false});
     }
     const restored=candidate ? candidate.assembly.getRestoreContext() : getWorkspaceRestoreContext(store);
-    const providers = restored || candidate ? new Map() : createProviderRegistry({db: store.db, root});
+    const configuration=candidate?null:createWorkspaceConfiguration({root:baseRoot,env:process.env});
+    const providerEnv=configuration?.environment()??process.env;
+    const providers = restored || candidate ? new Map() : createProviderRegistry({db: store.db, root,env:providerEnv});
     let imageHttp: HttpHandler=async()=>false,comfyHttp: HttpHandler=async()=>false,videoHttp: HttpHandler=async()=>false;
     if(!restored && !candidate){
     const createdSettings = await createAgentSettings({
@@ -316,7 +324,7 @@ async function composeServer({
     const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = await createComfySettings({directory:path.join(root,'comfy-settings'),privateRoot:root,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    const composed = createServices(ordinaryStore, providers, {signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    const composed = createServices(ordinaryStore, providers, {env:providerEnv,workspaceBaseRoot:baseRoot,backupQuiescent:()=>deletionGate.isQuiescent(['workspace.backup.create','workspace.backup.restore.stage','workspace.backup.import']),signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     services = composed;
     serviceCall = (operation, input, context) => composed.call(operation, input, context);
     serviceDrain = () => composed.drain();
@@ -332,7 +340,7 @@ async function composeServer({
       serviceDrain = () => candidateServices.drain();
       editTasks=candidateEditor.tasks as EditTasks;
     }else {
-      const restoredServices = createServices(ordinaryStore,providers,{signal:shutdown.signal});
+      const restoredServices = createServices(ordinaryStore,providers,{signal:shutdown.signal,workspaceBaseRoot:baseRoot});
       services = restoredServices;
       serviceCall = (operation, input, context) => restoredServices.call(operation, input, context);
       serviceDrain = () => restoredServices.drain();
@@ -448,6 +456,7 @@ async function composeServer({
         }
         if(restored&&(isUnavailableRestoredRoute(url.pathname,req.method ?? '')||/^\/api\/video-providers(?:\/|$)/u.test(url.pathname)))throw workspaceRestoreError();
         if(candidate && /^\/api\/(?:agent|images|comfy|video-providers|timeline-audio-preview)(?:\/|$)/u.test(url.pathname))throw workspaceRestoreError();
+        if(!candidate&&!restored&&req.method!=='GET'&&url.pathname.startsWith('/api/')&&url.pathname!=='/api/rpc'&&!url.pathname.startsWith('/api/workspace-backups/'))(services as OrdinaryServices).backups.assertMutationAllowed();
         if (url.pathname === '/api/version-comparison/media' && await versionComparisonMedia.handle(req, res, url)) return;
         if (url.pathname === '/api/agent/settings') {
           try {
@@ -463,9 +472,23 @@ async function composeServer({
             res.setHeader('Allow', 'GET, PUT');
             return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
           } catch (error) {
+        if(res.headersSent){res.destroy();return;}
             const safe = sanitizeAgentSettingsError(error);
             return json(res, safe.status, {ok: false, error: {code: safe.code, message: safe.message, details: {}, retryable: false}});
           }
+        }
+        if(url.pathname.startsWith('/api/workspace-backups/')){
+          if(candidate||restored)throw workspaceRestoreError();
+          const backups=(services as OrdinaryServices).backups;
+          const download=/^\/api\/workspace-backups\/([a-f0-9-]{36})\/download$/iu.exec(url.pathname);
+          if(download&&req.method==='GET'){
+            await sendWorkspaceBackup(res,download[1],signal=>backups.exportBundle(download[1],signal),shutdown.signal);return;
+          }
+          if(url.pathname==='/api/workspace-backups/import'&&req.method==='POST'&&[...url.searchParams.keys()].join(',')==='requestId'){
+            deletionGate.rpc(res,'workspace.backup.import',{});
+            return json(res,200,{ok:true,data:await backups.importBundle(req,{requestId:url.searchParams.get('requestId')!})});
+          }
+          throw new AppError('VALIDATION_ERROR','无效的备份请求',400);
         }
         if (await comfyHttp(req,res,url)) return;
         if (await imageHttp(req,res,url)) return;
@@ -578,6 +601,7 @@ async function composeServer({
       origins.add(`http://${hostname}:${actualPort}`);
     }
     if(listen)worker = startWorker(store, services, providers, {signal: shutdown.signal});
+    if(listen&&!restored&&!candidate)(services as OrdinaryServices).backups.start();
     let closing: Promise<void> | undefined;
     const close = (): Promise<void> => closing ??= (async () => {
       // Fence all async RPC/worker continuations before taking any child snapshot.
@@ -598,7 +622,7 @@ async function composeServer({
       finally { clearTimeout(forceDrain); }
       store.close();
     })();
-    return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root, close,...(!listen?{handleRequest}:{})};
+    return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root,setBackupDirectory:(directory:string)=>{if(candidate||restored||shutdown.signal.aborted)throw workspaceRestoreError();const ordinary=services as OrdinaryServices;ordinary.backups.assertMutationAllowed();return ordinary.configuration.setBackupDirectory(directory);}, close,...(!listen?{handleRequest}:{})};
   } catch (error) {
     shutdown.abort();
     chatRuntime?.close(); chatHttp?.close();

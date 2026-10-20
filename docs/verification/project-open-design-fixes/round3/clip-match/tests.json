@@ -1,0 +1,136 @@
+{
+  "note": "各组有重叠，不相加为全仓总数；非全仓重跑",
+  "groups": [
+    {
+      "group": "contracts-transports",
+      "path": "logs/contracts-transports.tap",
+      "sha256": "aaac30588b1c43a7ce313088f0234b20716ede32b1ae44cac9fb1e42e5ba3722",
+      "counts": {
+        "tests": 25,
+        "pass": 25,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "group": "backend-integrated",
+      "path": "logs/backend-integrated.tap",
+      "sha256": "727bec0206cd415aeb41d4ba17b2be2b56f6c323992913faea8d712f42f18f11",
+      "counts": {
+        "tests": 56,
+        "pass": 56,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "group": "candidate-real-media",
+      "path": "logs/candidate-real-media.tap",
+      "sha256": "5365f516ec1f8138868a81c40af8ab21f1ab22147462567db141f5421ca4e5a1",
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "group": "compatibility",
+      "path": "logs/compatibility.tap",
+      "sha256": "2d306a226a3a091501f66925a6c10c8b41976654697a8a5adbeee230c2a7992f",
+      "counts": {
+        "tests": 66,
+        "pass": 66,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "group": "ui-final",
+      "path": "logs/ui-final.tap",
+      "sha256": "a414451368ea8c337862a8a7cfab3760a5f6100bf7a566cb90141fdf7ee714b7",
+      "counts": {
+        "tests": 123,
+        "pass": 123,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "group": "independent-review",
+      "path": "logs/independent-review.tap",
+      "sha256": "b130c44efce2598ea5a8831a8673d66ee4fe502be2e42c35048d886d6ec54918",
+      "counts": {
+        "tests": 15,
+        "pass": 15,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "group": "60-second-observation",
+      "path": "logs/60-second-observation.tap",
+      "sha256": "5b8e867f0ad499237c3d35abf85ff5cd4105ef4cf4546f8f21ebcbdd6fa654c5",
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "group": "60-second-candidate",
+      "path": "logs/60-second-candidate.tap",
+      "sha256": "2975dbb38696ddebdff7825da988991314a95838a244cbe3d9ef843a461dceb5",
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "group": "typecheck-final",
+      "path": "logs/typecheck-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "counts": {},
+      "exitCode": 0
+    },
+    {
+      "group": "build-verified",
+      "path": "logs/build-verified.log",
+      "sha256": "300d91619b76e05cbab3384a83581e09b843042ebd8cc4250b819f352fc34a33",
+      "counts": {},
+      "exitCode": 0
+    },
+    {
+      "group": "media-app-rpc-final",
+      "path": "logs/media-app-rpc-final.tap",
+      "sha256": "019c8e131e98776cd1d99eaf2e64c262f45599578f14bb17899c61eadfbcd3a2",
+      "counts": {
+        "tests": 21,
+        "pass": 21,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    }
+  ]
+}

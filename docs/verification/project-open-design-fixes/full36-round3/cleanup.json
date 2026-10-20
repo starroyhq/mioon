@@ -1,0 +1,17 @@
+{
+  "serverPidExited": true,
+  "iabTabClosed": true,
+  "temporaryViewportReset": true,
+  "chromeClosed": {
+    "contextClosed": true,
+    "browserClosed": true
+  },
+  "electron": {
+    "code": 0,
+    "signal": null
+  },
+  "privateFixtureRetainedForReproduction": true,
+  "originalWorkspaceUntouched": true,
+  "committed": false,
+  "pushed": false
+}

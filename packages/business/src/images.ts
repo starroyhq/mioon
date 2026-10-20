@@ -40,6 +40,7 @@ type ImageFault=(stage: string,details?: Record<string, unknown>)=>unknown;
 type GenerateImage=(snapshot: unknown,context: {signal?: AbortSignal; beforeDispatch?: unknown; sourceBytes?: unknown; settingsRevision?: unknown; configuration?: unknown})=>Promise<ImageAdapterResult>;
 export interface ImageServicesOptions {
  signal?: AbortSignal;
+ assertLiveAllowed?: ()=>void;
  generate?: GenerateImage;
  autoRun?: boolean;
  fault?: ImageFault;
@@ -113,7 +114,7 @@ const asReceipt=(value: unknown): ImageReceipt|null=>value?value as ImageReceipt
 /** Image-specific durable lifecycle. No chat/tool authority and no generic
  * operation dispatch. Live images require dedicated settings and immutable
  * user approval; injected dependencies are trusted tests, never RPC options. */
-export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability}: ImageServicesOptions={}): ImageService {
+export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,assertLiveAllowed}: ImageServicesOptions={}): ImageService {
  if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
@@ -130,8 +131,8 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const engine=selectedSettings(providerId);if(!engine)fail('IMAGE_LIVE_DISABLED',403);return (engine as ImageSettingsService)[IMAGE_SETTINGS_ASSERT_CURRENT](expected);
  };
  const reviews=createImageReviewServices(store,{signal,fault,
-  getSettings:(providerId: string)=>{if(providerId==='comfy-local'){comfyAdmission.assertAvailable();const current=readComfyCurrent();if(!current)return {revision:0,enabled:false,destination:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled&&current.readiness?.checked),destination:isCompleteComfyImageConfiguration(current.configuration)?getComfyImageDestination(current.configuration.baseUrl):null,configuration:current.configuration};}const current=readImageCurrent(selectedSettings(providerId) as ImageSettingsService|undefined);if(!current)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled),destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
-  assertSettings:({revision,configuration},providerId)=>assertCurrentSettings(providerId,expectedSettings(revision,configuration))});
+  getSettings:(providerId: string)=>{assertLiveAllowed?.();if(providerId==='comfy-local'){comfyAdmission.assertAvailable();const current=readComfyCurrent();if(!current)return {revision:0,enabled:false,destination:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled&&current.readiness?.checked),destination:isCompleteComfyImageConfiguration(current.configuration)?getComfyImageDestination(current.configuration.baseUrl):null,configuration:current.configuration};}const current=readImageCurrent(selectedSettings(providerId) as ImageSettingsService|undefined);if(!current)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled),destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
+  assertSettings:({revision,configuration},providerId)=>{assertLiveAllowed?.();return assertCurrentSettings(providerId,expectedSettings(revision,configuration));}});
  const live=liveGateway??(settings?createLiveImageGateway({settings}):null);
  const compatible=customGateway??(customSettings?createCompatibleImageGateway({settings:customSettings}):null);
  const selectedGateway=(providerId: string): Gateways|ComfyConnector|null=>providerId==='openai'?live:providerId==='openai-compatible'?compatible:providerId==='comfy-local'?comfyConnector??null:null;
@@ -270,7 +271,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    if(liveReview&&!gateway)fail('IMAGE_LIVE_DISABLED',403);
    const apiGateway=selectedApiGateway(projection.providerId);
    const source=original.input.purpose==='edit'?await editSources.verify(toInput(original.input) as ImageGenerationInput,original.snapshot.sourceImage):null;
-   const dispatch=(): void=>{if(source)editSources.assertCurrent(toInput((original as ImageHistoryTask).input) as ImageGenerationInput,source);original=tx(()=>{const frozen=original as ImageHistoryTask;current(frozen);if(source)editSources.assertOwned(toInput(frozen.input) as ImageGenerationInput,source.descriptor);if(liveReview)reviews.beforeDispatch(toInput(frozen.input) as ImageGenerationInput,frozen.row.id);const changed=change(frozen,{state:'dispatching',dispatched:1,errorCode:null});if(projection.providerId==='comfy-local')remote.beforeSubmit(entry.projectId,entry.id);return changed;});fault('after_dispatch_fence',{taskId:(original as ImageHistoryTask).row.id});};
+   const dispatch=(): void=>{if(liveReview)assertLiveAllowed?.();if(source)editSources.assertCurrent(toInput((original as ImageHistoryTask).input) as ImageGenerationInput,source);original=tx(()=>{const frozen=original as ImageHistoryTask;current(frozen);if(source)editSources.assertOwned(toInput(frozen.input) as ImageGenerationInput,source.descriptor);if(liveReview)reviews.beforeDispatch(toInput(frozen.input) as ImageGenerationInput,frozen.row.id);const changed=change(frozen,{state:'dispatching',dispatched:1,errorCode:null});if(projection.providerId==='comfy-local')remote.beforeSubmit(entry.projectId,entry.id);return changed;});fault('after_dispatch_fence',{taskId:(original as ImageHistoryTask).row.id});};
    if(projection.providerId==='comfy-local'){
     if(!liveReview||!('execution' in liveReview)||!('configuration' in liveReview))fail('IMAGE_REVIEW_REQUIRED',403);
     await awaitProvider(()=>comfyConnector!.submit({execution:liveReview.execution,config:liveReview.configuration,signal,beforeSubmit:dispatch}),signal,{submit:true});

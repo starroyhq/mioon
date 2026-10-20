@@ -1,3 +1,5 @@
+import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
+import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
 import { comfyModuleModeFromEnvironment } from '../apps/server/src/comfy-module.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
@@ -453,7 +455,7 @@ async function mainStartupHarness({ validate, settings } = {}) {
   const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
   const app = new EventEmitter();
   const counts = { forks: 0, settings: 0, quits: 0, cleanup: 0, exits: [], notices: [] };
-  const expectedChannels = [APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL];
+  const expectedChannels = [APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL];
   const registeredChannels = new Set();
   Object.assign(app, { isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {},
     commandLine: { appendSwitch() {} }, getPath: () => '/synthetic', requestSingleInstanceLock: () => true,
@@ -467,7 +469,7 @@ async function mainStartupHarness({ validate, settings } = {}) {
     createDesktopAgentSettings: async () => { counts.settings++; return settings ? settings() : { close() {} }; }, safeStorage: {},
     BackendSupervisor: class { constructor() { counts.forks++; } },
     MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL,
-    CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL,
+    CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle: (channel, handler) => {

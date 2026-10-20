@@ -10,12 +10,13 @@ import { assetUrl } from './api.ts';
 import { createSubjectController, subjectKinds, subjectKindDescriptor, subjectImage, filterSubjects, activeSubjectBindings } from './subject-state.ts';
 import type { SubjectState } from './subject-state.ts';
 import { useSubjectInteraction } from './use-subjects.ts';
+import type { UseSubjectsResult } from './use-subjects.ts';
 import './subjects.css';
 
 export interface SubjectAssetView { id?: string; projectId?: string; name?: string; mimeType?: string; [key: string]: unknown }
 export interface SubjectVersionLike { id?: string; assetId?: string; projectId?: string | null; number?: number; width?: number; height?: number }
 export type SubjectsController = ReturnType<typeof createSubjectController>;
-export interface SubjectsBundle { state: SubjectState; controller: SubjectsController }
+export type SubjectsBundle = UseSubjectsResult;
 export interface SubjectInteraction { visible: boolean; admit: (action: () => unknown) => unknown }
 export interface SubjectPagerEntry { history: (string | null)[]; items: readonly unknown[]; nextCursor: string | null }
 
@@ -49,8 +50,6 @@ export interface SubjectLibraryProps {
   onInspectShot?: (shotId: string) => unknown;
 }
 interface SubjectFilters { scope: string | null | undefined; kind: string; search: string }
-const useInteraction = useSubjectInteraction as unknown as (scope: string | null | undefined, controller: SubjectsController | null | undefined, target: unknown) => SubjectInteraction;
-
 export default function SubjectLibrary({ subjects, assets = [], shots = [], blocked = false, onShowTasks, onInspectShot }: SubjectLibraryProps): ReactElement {
   const { t, renderMessage } = useI18n();
   const state = subjects?.state, controller = subjects?.controller;
@@ -58,8 +57,11 @@ export default function SubjectLibrary({ subjects, assets = [], shots = [], bloc
   const [creation, setCreation] = useState<{ scope: string | null | undefined; open: boolean }>({ scope: null, open: false });
   const local = filters.scope === state?.scope ? filters : { kind: 'all', search: '' };
   const selected = state?.subjects[state.selectedSubjectId], draft = state?.createDraft;
-  const interaction = useInteraction(state?.scope, controller, `${state?.selectedSubjectId}:${draft?.serial}:${state?.versionDrafts[state?.selectedSubjectId]?.assetId || ''}:${state?.versionDrafts[state?.selectedSubjectId]?.expectedRevision || ''}`);
-  const view = state as SubjectState, control = controller as SubjectsController;
+  const interaction = useSubjectInteraction(state?.scope, controller, `${state?.selectedSubjectId}:${draft?.serial}:${state?.versionDrafts[state?.selectedSubjectId]?.assetId || ''}:${state?.versionDrafts[state?.selectedSubjectId]?.expectedRevision || ''}`);
+  // The hook withholds the previous project's state until its new context is
+  // installed. This mounted (possibly hidden) pane must handle that transition.
+  if (!state || !controller) return <section className="subject-library" data-testid="subject-library" aria-label={t('subjects.library.label')}><p role="status">{t('subjects.library.loading')}</p></section>;
+  const view = state, control = controller;
   const admit = interaction.admit, scope = state?.scope;
   const disabled = !interaction.visible || !scope || blocked || Boolean(state?.saving || state?.uncertain);
   const images = assets.filter(asset => subjectImage(asset, state?.projectId ?? null));

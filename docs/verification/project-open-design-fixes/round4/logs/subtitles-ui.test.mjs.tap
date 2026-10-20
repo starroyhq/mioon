@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: new cue chooses exact integer frame and bounded duration, then sends literal text without IDs or style fields
+ok 1 - new cue chooses exact integer frame and bounded duration, then sends literal text without IDs or style fields
+  ---
+  duration_ms: 2.90725
+  type: 'test'
+  ...
+# Subtest: shared validation rejects fractional, blank, out-of-media, overlap, long lines, extra lines and unsupported glyphs without editing text
+ok 2 - shared validation rejects fractional, blank, out-of-media, overlap, long lines, extra lines and unsupported glyphs without editing text
+  ---
+  duration_ms: 0.708875
+  type: 'test'
+  ...
+# Subtest: selection and explicit discard preserve existing saved text and reject a retained selection callback
+ok 3 - selection and explicit discard preserve existing saved text and reject a retained selection callback
+  ---
+  duration_ms: 0.093667
+  type: 'test'
+  ...
+# Subtest: edits during a fresh ACK survive with the acknowledged CAS revision
+ok 4 - edits during a fresh ACK survive with the acknowledged CAS revision
+  ---
+  duration_ms: 0.374083
+  type: 'test'
+  ...
+# Subtest: late ACK cannot downgrade a newer timeline or touch a different project
+ok 5 - late ACK cannot downgrade a newer timeline or touch a different project
+  ---
+  duration_ms: 0.754084
+  type: 'test'
+  ...
+# Subtest: unknown response freezes original identity; exact recovery preserves newer draft and never retries
+ok 6 - unknown response freezes original identity; exact recovery preserves newer draft and never retries
+  ---
+  duration_ms: 7.529167
+  type: 'test'
+  ...
+# Subtest: unknown add recovered after explicit discard stays closed and never recreates the original draft
+ok 7 - unknown add recovered after explicit discard stays closed and never recreates the original draft
+  ---
+  duration_ms: 0.281125
+  type: 'test'
+  ...
+# Subtest: historical recovery and pending remount cannot supply a fresh ACK or create a second identity
+ok 8 - historical recovery and pending remount cannot supply a fresh ACK or create a second identity
+  ---
+  duration_ms: 0.339042
+  type: 'test'
+  ...
+# Subtest: hidden and disposed controllers cannot submit, but a remounted dock keeps the same draft
+ok 9 - hidden and disposed controllers cannot submit, but a remounted dock keeps the same draft
+  ---
+  duration_ms: 0.139334
+  type: 'test'
+  ...
+# Subtest: malformed fresh ACK remains unknown and removal requires clean saved selection
+ok 10 - malformed fresh ACK remains unknown and removal requires clean saved selection
+  ---
+  duration_ms: 0.35825
+  type: 'test'
+  ...
+# Subtest: undo/redo snapshots refresh a clean selection, preserve dirty edits, and expose subtitle labels
+ok 11 - undo/redo snapshots refresh a clean selection, preserve dirty edits, and expose subtitle labels
+  ---
+  duration_ms: 0.396292
+  type: 'test'
+  ...
+# Subtest: actual Inspector input/save/discard handlers preserve literal text, reachable footer and stale render status
+ok 12 - actual Inspector input/save/discard handlers preserve literal text, reachable footer and stale render status
+  ---
+  duration_ms: 27.223
+  type: 'test'
+  ...
+# Subtest: actual Inspector retained handlers reject hidden, changed selection, unmount, and late remove confirmation
+ok 13 - actual Inspector retained handlers reject hidden, changed selection, unmount, and late remove confirmation
+  ---
+  duration_ms: 2.590917
+  type: 'test'
+  ...
+# Subtest: actual lane buttons select and add once, reject hidden/unmounted and superseded timeline handlers
+ok 14 - actual lane buttons select and add once, reject hidden/unmounted and superseded timeline handlers
+  ---
+  duration_ms: 7.516791
+  type: 'test'
+  ...
+# Subtest: English subtitle track uses a short visible name with full count and add action labels
+ok 15 - English subtitle track uses a short visible name with full count and add action labels
+  ---
+  duration_ms: 1.687208
+  type: 'test'
+  ...
+# Subtest: actual App subtitle selection keeps other Properties/Agent drafts and requires explicit subtitle discard
+ok 16 - actual App subtitle selection keeps other Properties/Agent drafts and requires explicit subtitle discard
+  ---
+  duration_ms: 1.7
+  type: 'test'
+  ...
+# Subtest: actual App selection confirmation rejects later edits and panel intent instead of reopening a hidden pane
+ok 17 - actual App selection confirmation rejects later edits and panel intent instead of reopening a hidden pane
+  ---
+  duration_ms: 1.595125
+  type: 'test'
+  ...
+# Subtest: actual App subtitle bridge passes exact durable identity and rechecks visible ownership before dispatch
+ok 18 - actual App subtitle bridge passes exact durable identity and rechecks visible ownership before dispatch
+  ---
+  duration_ms: 1.657875
+  type: 'test'
+  ...
+# Subtest: actual App history handler blocks a dirty subtitle and calls the shared undo/redo route when clean
+ok 19 - actual App history handler blocks a dirty subtitle and calls the shared undo/redo route when clean
+  ---
+  duration_ms: 1.691834
+  type: 'test'
+  ...
+# Subtest: actual App navigation consults same-tick subtitle state before React dirty rerender
+ok 20 - actual App navigation consults same-tick subtitle state before React dirty rerender
+  ---
+  duration_ms: 0.83475
+  type: 'test'
+  ...
+# Subtest: actual App late navigation confirmation cannot discard a newer subtitle draft in the same project
+ok 21 - actual App late navigation confirmation cannot discard a newer subtitle draft in the same project
+  ---
+  duration_ms: 0.636833
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 382.017291

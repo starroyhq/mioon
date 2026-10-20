@@ -1,0 +1,9 @@
+.shell-redesign .dock-recall.compact-panel-rail { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; width: var(--wb-panel-rail); min-width: var(--wb-panel-rail); max-width: var(--wb-panel-rail); height: auto; min-height: 0; gap: 8px; padding: 4px 7px; border: 1px solid var(--wb-line-subtle); border-radius: var(--wb-radius-panel); background: var(--wb-panel); color: var(--wb-soft); box-shadow: none; }
+.shell-redesign .dock-recall.compact-panel-rail:hover { background: var(--wb-panel); }
+.shell-redesign .compact-panel-rail .wb-button { flex: none; width: 28px; min-width: 28px; height: 28px; min-height: 28px; padding: 0; color: var(--wb-soft); }
+.shell-redesign .compact-panel-rail .wb-button[aria-pressed="true"] { color: var(--wb-text); background: var(--wb-selected); }
+.shell-redesign .compact-panel-rail-divider { flex: none; width: 28px; height: 1px; margin-block: -2px; background: var(--wb-line-subtle); }
+.shell-redesign .compact-panel-rail .compact-panel-rail-bottom { margin-top: auto; }
+.shell-redesign .dock-recall.compact-panel-rail[hidden], .shell-redesign.dock-narrow .dock-recall.compact-panel-rail { display: none; }
+/* The text popup and its positioning box must both pass clicks to nearby controls. */
+[role="presentation"]:has(> .workbench-tooltip-popup) { pointer-events: none; }

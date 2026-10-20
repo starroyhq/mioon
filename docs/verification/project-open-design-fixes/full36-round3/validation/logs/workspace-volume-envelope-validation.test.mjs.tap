@@ -1,0 +1,136 @@
+TAP version 13
+# Subtest: all retained evidence families refuse old profiles including explicit null, without writes
+ok 1 - all retained evidence families refuse old profiles including explicit null, without writes
+  ---
+  duration_ms: 4.608875
+  type: 'test'
+  ...
+# Subtest: complete current/history/receipt rows and exact partial intents admit in compatible profiles
+ok 2 - complete current/history/receipt rows and exact partial intents admit in compatible profiles
+  ---
+  duration_ms: 4.701084
+  type: 'test'
+  ...
+# Subtest: historical update survives missing current clip, Undo duration changes and missing source
+ok 3 - historical update survives missing current clip, Undo duration changes and missing source
+  ---
+  duration_ms: 0.752375
+  type: 'test'
+  ...
+# Subtest: historical intent lexical bounds remain strict without generic array relaxation
+ok 4 - historical intent lexical bounds remain strict without generic array relaxation
+  ---
+  duration_ms: 3.803083
+  type: 'test'
+  ...
+# Subtest: frozen snapshots use their own metadata and ownership, never current cache
+ok 5 - frozen snapshots use their own metadata and ownership, never current cache
+  ---
+  duration_ms: 0.704166
+  type: 'test'
+  ...
+# Subtest: snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives
+ok 6 - snapshot declarations are exact production strings, including null/unknown/inactive/missing negatives
+  ---
+  duration_ms: 1.204
+  type: 'test'
+  ...
+# Subtest: explicit null snapshot has no active profile and preserves original shape
+ok 7 - explicit null snapshot has no active profile and preserves original shape
+  ---
+  duration_ms: 0.275792
+  type: 'test'
+  ...
+# Subtest: frozen source cannot be an image, missing, duplicate or out of source bounds
+ok 8 - frozen source cannot be an image, missing, duplicate or out of source bounds
+  ---
+  duration_ms: 1.031083
+  type: 'test'
+  ...
+# Subtest: escaped and duplicate keys cannot hide evidence before parsing, including nested arrays
+ok 9 - escaped and duplicate keys cannot hide evidence before parsing, including nested arrays
+  ---
+  duration_ms: 2.385
+  type: 'test'
+  ...
+# Subtest: unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses
+ok 10 - unrelated malformed legacy JSON stays with historical readers; positive malformed evidence refuses
+  ---
+  duration_ms: 0.5135
+  type: 'test'
+  ...
+# Subtest: oversized cells and non-text storage are never parsed, schema views reject
+ok 11 - oversized cells and non-text storage are never parsed, schema views reject
+  ---
+  duration_ms: 3.365167
+  type: 'test'
+  ...
+# Subtest: depth/node and complete snapshot byte guards remain bounded
+ok 12 - depth/node and complete snapshot byte guards remain bounded
+  ---
+  duration_ms: 15.16125
+  type: 'test'
+  ...
+# Subtest: processing digest/profile and orphan declarations are positive evidence, never candidate protocol
+ok 13 - processing digest/profile and orphan declarations are positive evidence, never candidate protocol
+  ---
+  duration_ms: 2.270625
+  type: 'test'
+  ...
+# Subtest: all retained task errors are inspected and unknown envelope error namespace is not admitted
+ok 14 - all retained task errors are inspected and unknown envelope error namespace is not admitted
+  ---
+  duration_ms: 0.616625
+  type: 'test'
+  ...
+# Subtest: actual production full/isolated processing reports admit their exact profile and digest identities
+ok 15 - actual production full/isolated processing reports admit their exact profile and digest identities
+  ---
+  duration_ms: 2.170708
+  type: 'test'
+  ...
+# Subtest: incomplete frozen wrappers cannot fall back to current source cache
+ok 16 - incomplete frozen wrappers cannot fall back to current source cache
+  ---
+  duration_ms: 0.30525
+  type: 'test'
+  ...
+# Subtest: four concrete mutation errors are admitted, never unknown namespace variants
+ok 17 - four concrete mutation errors are admitted, never unknown namespace variants
+  ---
+  duration_ms: 1.01025
+  type: 'test'
+  ...
+# Subtest: a scalar loudness label cannot bypass frozen wrapper validation
+ok 18 - a scalar loudness label cannot bypass frozen wrapper validation
+  ---
+  duration_ms: 0.621542
+  type: 'test'
+  ...
+# Subtest: scalar loudness wrapper is exact and binds independently retained owner/request/operation
+ok 19 - scalar loudness wrapper is exact and binds independently retained owner/request/operation
+  ---
+  duration_ms: 3.902416
+  type: 'test'
+  ...
+# Subtest: intent Unicode admits valid surrogate pairs and refuses lone surrogates without normalization
+ok 20 - intent Unicode admits valid surrogate pairs and refuses lone surrogates without normalization
+  ---
+  duration_ms: 2.405792
+  type: 'test'
+  ...
+# Subtest: new ephemeral clip range and target reports do not expand historical backup evidence
+ok 21 - new ephemeral clip range and target reports do not expand historical backup evidence
+  ---
+  duration_ms: 2.145
+  type: 'test'
+  ...
+1..21
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 338.724708

@@ -117,6 +117,54 @@ test('real digital silence, short material and low gated signal retain existing 
   });
 });
 
+test('a real gain/fade/envelope candidate survives ordinary save, restart and one-step undo/redo', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-clip-loudness-match-'));
+  let store = openStore(root), services = createServices(store, new Map());
+  t.after(async () => {await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
+  const project = await services.call('project.create', {name: 'Real single clip loudness match'});
+  let timeline = await services.call('timeline.get', {projectId: project.id});
+  const bytes = wav(4), id = randomUUID(), asset = {id, projectId: project.id, name: 'Candidate source.wav', mimeType: 'audio/wav',
+    relativePath: `media/${id}.wav`, sha256: sha(bytes), sizeBytes: bytes.length, duration: 4,
+    hasAudio: true, hasVideo: false, width: 0, height: 0, url: `/media/${id}`, createdAt: new Date().toISOString()};
+  await writeFile(path.join(root, asset.relativePath), bytes, {mode: 0o600}); store.put('assets', asset);
+  const volumeEnvelope = {profileId: 'mioon-clip-linear-attenuation-v1', points: [
+    {frame: 0, multiplier: .6}, {frame: 40, multiplier: 1}, {frame: 90, multiplier: .5},
+  ]};
+  timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
+    trackId: timeline.tracks.find(track => track.kind === 'audio').id, assetId: id, startFrame: 29,
+    sourceInFrame: 7, durationFrames: 90, gain: .6, fadeInFrames: 8, fadeOutFrames: 12, volumeEnvelope});
+  const savedClip = structuredClone(timeline.clips[0]), input = () => ({projectId: project.id, timelineId: timeline.id,
+    expectedRevision: timeline.revision, clipId: savedClip.id, expectedAssetSha256: asset.sha256, measurementProfile: 'bs1770-5-48k-stereo-fir4x-v1'});
+  const target = {integratedLufs: -24, truePeakCeilingDbtp: -1}, changes = store.db.prepare('SELECT total_changes() AS n').get().n;
+  const report = await services.call('timeline.clip.loudness', {...input(), target});
+  assert.equal(report.candidate.status, 'measured'); assert.equal(report.candidate.meetsTarget, true); assert.equal(report.candidate.meetsTruePeak, true);
+  assert.equal(report.applyAllowed, false); assert.equal(report.candidate.applyAllowed, false);
+  assert.equal(report.checks.passes, 1); assert.equal(report.candidate.measuredPcmBytes, 90 * 12800);
+  assert.equal(store.db.prepare('SELECT total_changes() AS n').get().n, changes);
+  assert.deepEqual(store.get('timelines', timeline.id).clips[0], savedClip);
+  const update = {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
+    clipId: savedClip.id, patch: {gain: report.candidate.afterGain}};
+  timeline = await services.call('timeline.clip.update', update);
+  assert.deepEqual(await services.call('timeline.clip.update', update), timeline);
+  assert.deepEqual(timeline.clips[0], {...savedClip, gain: report.candidate.afterGain});
+  const actual = await services.call('timeline.clip.loudness', input());
+  // The candidate scales the original float output; the saved pipeline puts
+  // the new gain before fades/envelope. Only float32 stage rounding differs.
+  assert.ok(Math.abs(actual.measurement.integratedLufs - report.candidate.measurement.integratedLufs) < 1e-5);
+  assert.ok(Math.abs(actual.measurement.truePeakDbtp - report.candidate.measurement.truePeakDbtp) < 1e-5);
+  assert.ok(Math.abs(actual.measurement.integratedLufs - target.integratedLufs) <= .1);
+  assert.ok(actual.measurement.truePeakDbtp <= target.truePeakCeilingDbtp - .5);
+  const matched = structuredClone(timeline);
+  await services.drain(); store.close(); store = openStore(root); services = createServices(store, new Map());
+  assert.deepEqual(await services.call('timeline.get', {projectId: project.id}), matched);
+  timeline = await services.call('timeline.undo', {projectId: project.id, expectedRevision: matched.revision, requestId: randomUUID()});
+  assert.deepEqual(timeline.clips[0], savedClip);
+  timeline = await services.call('timeline.redo', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID()});
+  assert.deepEqual(timeline.clips, matched.clips); assert.deepEqual(timeline.tracks, matched.tracks);
+  assert.equal(store.list('exports', project.id).length, 0);
+  assert.equal(sha(await readFile(path.join(root, asset.relativePath))), asset.sha256);
+});
+
 test('real owned decoder cancellation and native-owner drain retire exact children without changing saved state', async t => {
   for (const mode of ['observer', 'owner']) await t.test(mode, async t => {
     const root = await mkdtemp(path.join(tmpdir(), 'mioon-clip-loudness-cancel-')), owner = new AbortController(), caller = new AbortController();

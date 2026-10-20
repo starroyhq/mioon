@@ -1,0 +1,178 @@
+TAP version 13
+# Subtest: mount, expansion, reconnection and restored visibility never inspect automatically
+ok 1 - mount, expansion, reconnection and restored visibility never inspect automatically
+  ---
+  duration_ms: 0.821208
+  type: 'test'
+  ...
+# Subtest: one explicit click reads only empty input with cancellation and duplicate clicks cannot overlap
+ok 2 - one explicit click reads only empty input with cancellation and duplicate clicks cannot overlap
+  ---
+  duration_ms: 1.326083
+  type: 'test'
+  ...
+# Subtest: bounded incomplete counts remain unknown rather than inventing zeros
+ok 3 - bounded incomplete counts remain unknown rather than inventing zeros
+  ---
+  duration_ms: 11.449542
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: captureReady
+ok 4 - malformed read fails closed without rendering arbitrary data: captureReady
+  ---
+  duration_ms: 0.475208
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: scope
+ok 5 - malformed read fails closed without rendering arbitrary data: scope
+  ---
+  duration_ms: 0.139458
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: reason
+ok 6 - malformed read fails closed without rendering arbitrary data: reason
+  ---
+  duration_ms: 0.120542
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: databaseSchemaVersion
+ok 7 - malformed read fails closed without rendering arbitrary data: databaseSchemaVersion
+  ---
+  duration_ms: 0.241875
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: counts
+ok 8 - malformed read fails closed without rendering arbitrary data: counts
+  ---
+  duration_ms: 0.154584
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: counts
+ok 9 - malformed read fails closed without rendering arbitrary data: counts
+  ---
+  duration_ms: 0.155959
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: limits
+ok 10 - malformed read fails closed without rendering arbitrary data: limits
+  ---
+  duration_ms: 0.262458
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: issues,inspectionComplete
+ok 11 - malformed read fails closed without rendering arbitrary data: issues,inspectionComplete
+  ---
+  duration_ms: 0.168042
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: token
+ok 12 - malformed read fails closed without rendering arbitrary data: token
+  ---
+  duration_ms: 0.1015
+  type: 'test'
+  ...
+# Subtest: malformed read fails closed without rendering arbitrary data: inspectionComplete,unresolved
+ok 13 - malformed read fails closed without rendering arbitrary data: inspectionComplete,unresolved
+  ---
+  duration_ms: 0.119583
+  type: 'test'
+  ...
+# Subtest: context change aborts pending work and late success/auth cannot replace current state: {"visible":false}
+ok 14 - context change aborts pending work and late success/auth cannot replace current state: {"visible":false}
+  ---
+  duration_ms: 0.091875
+  type: 'test'
+  ...
+# Subtest: context change aborts pending work and late success/auth cannot replace current state: {"connected":false}
+ok 15 - context change aborts pending work and late success/auth cannot replace current state: {"connected":false}
+  ---
+  duration_ms: 0.038667
+  type: 'test'
+  ...
+# Subtest: context change aborts pending work and late success/auth cannot replace current state: {"scope":"project-b:2:2"}
+ok 16 - context change aborts pending work and late success/auth cannot replace current state: {"scope":"project-b:2:2"}
+  ---
+  duration_ms: 0.033875
+  type: 'test'
+  ...
+# Subtest: live owner or visibility change before React commit fences late success and authentication errors
+ok 17 - live owner or visibility change before React commit fences late success and authentication errors
+  ---
+  duration_ms: 0.095625
+  type: 'test'
+  ...
+# Subtest: hidden or disconnected reports become stale and old click closures cannot revive after return
+ok 18 - hidden or disconnected reports become stale and old click closures cannot revive after return
+  ---
+  duration_ms: 0.150458
+  type: 'test'
+  ...
+# Subtest: newer navigation request wins even when cancelled reads ignore their abort signal
+ok 19 - newer navigation request wins even when cancelled reads ignore their abort signal
+  ---
+  duration_ms: 0.080875
+  type: 'test'
+  ...
+# Subtest: unmount aborts, suppresses late callbacks and cannot be revived by a retained click; explicit remount is supported
+ok 20 - unmount aborts, suppresses late callbacks and cannot be revived by a retained click; explicit remount is supported
+  ---
+  duration_ms: 0.119958
+  type: 'test'
+  ...
+# Subtest: current errors use fixed safe messages and never expose server exception text, paths or tokens
+ok 21 - current errors use fixed safe messages and never expose server exception text, paths or tokens
+  ---
+  duration_ms: 0.127459
+  type: 'test'
+  ...
+# Subtest: actual compact component uses shared collapsible controls and never reads on mount
+ok 22 - actual compact component uses shared collapsible controls and never reads on mount
+  ---
+  duration_ms: 23.393917
+  type: 'test'
+  ...
+# Subtest: settings embed shows the offline backup group directly without a collapsed trigger or automatic inspection
+ok 23 - settings embed shows the offline backup group directly without a collapsed trigger or automatic inspection
+  ---
+  duration_ms: 2.326208
+  type: 'test'
+  ...
+# Subtest: actual details truthfully describe SQLite scope, exclusions, readonly limits and exact local commands
+ok 24 - actual details truthfully describe SQLite scope, exclusions, readonly limits and exact local commands
+  ---
+  duration_ms: 2.839542
+  type: 'test'
+  ...
+# Subtest: embedded backup keeps inspection visible while technical scope and terminal instructions start collapsed
+ok 25 - embedded backup keeps inspection visible while technical scope and terminal instructions start collapsed
+  ---
+  duration_ms: 1.178458
+  type: 'test'
+  ...
+# Subtest: actual details show bounded missing counts, issues, current error and no fake all-clear
+ok 26 - actual details show bounded missing counts, issues, current error and no fake all-clear
+  ---
+  duration_ms: 2.972875
+  type: 'test'
+  ...
+# Subtest: actual retained details handler cannot read when hidden or after the project epoch changed
+ok 27 - actual retained details handler cannot read when hidden or after the project epoch changed
+  ---
+  duration_ms: 1.278458
+  type: 'test'
+  ...
+# Subtest: workspace settings keep one backup owner with an exact read-only dispatch and inactive admission
+ok 28 - workspace settings keep one backup owner with an exact read-only dispatch and inactive admission
+  ---
+  duration_ms: 14.88775
+  type: 'test'
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 28
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 340.80675

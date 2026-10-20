@@ -1,0 +1,76 @@
+ M apps/web/src/AgentPanel.tsx
+ M apps/web/src/AgentSettings.tsx
+ M apps/web/src/App.tsx
+ M apps/web/src/AssetLibrary.tsx
+ M apps/web/src/DeliveryDraftRecovery.tsx
+ M apps/web/src/ExportHistoryList.tsx
+ M apps/web/src/ExportPreview.tsx
+ M apps/web/src/ExportRangeControls.tsx
+ M apps/web/src/ExportWorkflow.tsx
+ M apps/web/src/Inspector.tsx
+ M apps/web/src/LanguageControl.tsx
+ M apps/web/src/Preview.tsx
+ M apps/web/src/ProjectHome.tsx
+ M apps/web/src/ProjectHomeConnections.tsx
+ M apps/web/src/SettingsAppearance.tsx
+ M apps/web/src/SettingsExtraPages.tsx
+ M apps/web/src/SettingsVideoTools.tsx
+ M apps/web/src/SettingsWorkspace.tsx
+ M apps/web/src/SubjectLibrary.tsx
+ M apps/web/src/TaskCenter.tsx
+ M apps/web/src/TaskPopover.tsx
+ M apps/web/src/TaskWorkspace.css
+ M apps/web/src/TimelineDeliveryHistory.tsx
+ M apps/web/src/TimelineDeliveryName.tsx
+ M apps/web/src/TimelineExportPreflight.tsx
+ M apps/web/src/TimelineExportSettings.tsx
+ M apps/web/src/VersionComparison.tsx
+ M apps/web/src/WorkspaceBackupPanel.tsx
+ M apps/web/src/agent-chat-history.css
+ M apps/web/src/agent-edits.css
+ M apps/web/src/board-redesign.css
+ M apps/web/src/export-workflow.css
+ M apps/web/src/login-redesign.css
+ M apps/web/src/project-home-redesign.css
+ M apps/web/src/settings-center.css
+ M apps/web/src/task-overview.css
+ M apps/web/src/version-comparison.css
+ M packages/i18n/src/catalogs/creation-connections.ts
+ M packages/i18n/src/catalogs/export-workflow.ts
+ M packages/i18n/src/catalogs/project-browser.ts
+ M packages/i18n/src/catalogs/settings-redesign.ts
+ M packages/i18n/src/catalogs/shell.ts
+ M packages/i18n/src/catalogs/workbench-shell.ts
+ M packages/i18n/src/catalogs/workspace-tools.ts
+ M tests/agent-chat-ui.test.mjs
+ M tests/agent-edit-renderer.test.mjs
+ M tests/agent-settings-ui.test.mjs
+ M tests/edit-task-app.test.mjs
+ M tests/export-preflight-ui.test.ts
+ M tests/export-workflow.test.ts
+ M tests/i18n-shell.test.ts
+ M tests/project-home-app.test.mjs
+ M tests/project-home-panel.test.mjs
+ M tests/project-specifications-ui.test.mjs
+ M tests/redesign-entry-task-ui.test.mjs
+ M tests/settings-appearance.test.mjs
+ M tests/settings-center-ui.test.mjs
+ M tests/subject-video-ui.test.mjs
+ M tests/subjects-ui.test.mjs
+ M tests/task-center-app.test.mjs
+ M tests/task-center-dock-ui.test.mjs
+ M tests/task-recovery-disclosure.test.mjs
+ M tests/typecheck/browser.consumer.tsx
+ M tests/workspace-backup-ui.test.ts
+ M tests/workspace-panels.test.mjs
+ M tests/workspace-visibility.test.mjs
+?? apps/web/src/CompactPanelRail.tsx
+?? apps/web/src/compact-panel-rail.css
+?? docs/verification/project-open-design-fixes/
+?? packages/business/src/workspace-configuration.ts
+?? packages/contracts/src/workspace-configuration.ts
+?? tests/asset-library-tabs.test.mjs
+?? tests/compact-panel-rail.test.mjs
+?? tests/language-control-ui.test.mjs
+?? tests/settings-design-panels.test.mjs
+?? tests/subject-library-initial-render.test.ts

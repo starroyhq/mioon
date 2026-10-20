@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: hook reads explicit loaded targets and never dispatches a mutation on mount
+ok 1 - hook reads explicit loaded targets and never dispatches a mutation on mount
+  ---
+  duration_ms: 26.672458
+  type: 'test'
+  ...
+# Subtest: layout commit revokes retained callbacks before new passive effects and on unmount
+ok 2 - layout commit revokes retained callbacks before new passive effects and on unmount
+  ---
+  duration_ms: 4.677625
+  type: 'test'
+  ...
+# Subtest: lost mutation response is explicitly replayed with exact requestId and target; source changes revoke retry
+ok 3 - lost mutation response is explicitly replayed with exact requestId and target; source changes revoke retry
+  ---
+  duration_ms: 2.351417
+  type: 'test'
+  ...
+# Subtest: definitive conflict permits a read refresh while a malformed response retains the original mutation
+ok 4 - definitive conflict permits a read refresh while a malformed response retains the original mutation
+  ---
+  duration_ms: 2.553083
+  type: 'test'
+  ...
+# Subtest: synchronous repeated retry admits one in-flight POST and retains its exact unresolved request
+ok 5 - synchronous repeated retry admits one in-flight POST and retains its exact unresolved request
+  ---
+  duration_ms: 2.190625
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 293.2385

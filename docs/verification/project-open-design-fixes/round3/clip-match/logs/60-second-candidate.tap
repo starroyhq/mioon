@@ -1,0 +1,18 @@
+TAP version 13
+# Subtest: 60-second clip target candidate fills its bounded PCM buffer and remeasures without persistence
+ok 1 - 60-second clip target candidate fills its bounded PCM buffer and remeasures without persistence
+  ---
+  duration_ms: 15929.357667
+  type: 'test'
+  ...
+# Owned child ledger: [{"type":"started","pid":65866,"kind":"ffprobe"},{"type":"exited","pid":65866,"kind":"ffprobe"},{"type":"started","pid":65868,"kind":"ffmpeg"},{"type":"exited","pid":65868,"kind":"ffmpeg"}]
+# Supported60s target-candidate observation: 8398ms; 23040000 streamed PCM bytes; 38400088 hashed source bytes.
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16274.010834

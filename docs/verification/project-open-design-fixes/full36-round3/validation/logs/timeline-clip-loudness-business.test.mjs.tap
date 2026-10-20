@@ -1,0 +1,194 @@
+TAP version 13
+# Subtest: missing or corrupt owned timeline graph never initializes or reaches media
+ok 1 - missing or corrupt owned timeline graph never initializes or reaches media
+  ---
+  duration_ms: 988.906375
+  type: 'test'
+  ...
+# Subtest: same-revision metadata, source bytes, ownership and revision drift discard the observation
+    # Subtest: metadata
+    ok 1 - metadata
+      ---
+      duration_ms: 1159.565167
+      type: 'test'
+      ...
+    # Subtest: revision
+    ok 2 - revision
+      ---
+      duration_ms: 1280.128834
+      type: 'test'
+      ...
+    # Subtest: bytes
+    ok 3 - bytes
+      ---
+      duration_ms: 1063.662084
+      type: 'test'
+      ...
+    # Subtest: foreign
+    ok 4 - foreign
+      ---
+      duration_ms: 1050.269458
+      type: 'test'
+      ...
+    # Subtest: lock
+    ok 5 - lock
+      ---
+      duration_ms: 1039.971041
+      type: 'test'
+      ...
+    1..5
+ok 2 - same-revision metadata, source bytes, ownership and revision drift discard the observation
+  ---
+  duration_ms: 5594.557125
+  type: 'test'
+  ...
+# Subtest: native-db audio observation admission is shared and retains noncooperative reads through cancellation
+ok 3 - native-db audio observation admission is shared and retains noncooperative reads through cancellation
+  ---
+  duration_ms: 938.156208
+  type: 'test'
+  ...
+# Subtest: late timeout results cannot decode or publish and a live permit remains held
+ok 4 - late timeout results cannot decode or publish and a live permit remains held
+  ---
+  duration_ms: 945.514958
+  type: 'test'
+  ...
+# Subtest: unconfirmed exact child cleanup keeps shared admission sticky even after late close
+ok 5 - unconfirmed exact child cleanup keeps shared admission sticky even after late close
+  ---
+  duration_ms: 1123.628959
+  type: 'test'
+  ...
+# Subtest: restored direct and composed boundaries refuse before any payload getters or media
+ok 6 - restored direct and composed boundaries refuse before any payload getters or media
+  ---
+  duration_ms: 2270.728916
+  type: 'test'
+  ...
+# Subtest: a second source hash failure discards the measured clip
+ok 7 - a second source hash failure discards the measured clip
+  ---
+  duration_ms: 1127.997292
+  type: 'test'
+  ...
+# Subtest: decoder stderr, private paths and unrecognized code strings never enter safe public failures
+    # Subtest: FFMPEG_ERROR
+    ok 1 - FFMPEG_ERROR
+      ---
+      duration_ms: 975.95625
+      type: 'test'
+      ...
+    # Subtest: TIMELINE_CLIP_LOUDNESS_/private/source.wav
+    ok 2 - TIMELINE_CLIP_LOUDNESS_/private/source.wav
+      ---
+      duration_ms: 978.188667
+      type: 'test'
+      ...
+    1..2
+ok 8 - decoder stderr, private paths and unrecognized code strings never enter safe public failures
+  ---
+  duration_ms: 1954.539375
+  type: 'test'
+  ...
+# Subtest: one selected saved signal is double-hashed, bound and measured without any durable effects
+ok 9 - one selected saved signal is double-hashed, bound and measured without any durable effects
+  ---
+  duration_ms: 1101.255833
+  type: 'test'
+  ...
+# Subtest: an explicit target measures a complete owned candidate with one decode and no durable effects
+ok 10 - an explicit target measures a complete owned candidate with one decode and no durable effects
+  ---
+  duration_ms: 1164.963417
+  type: 'test'
+  ...
+# Subtest: unreachable target gain is reported without clamping, target substitution or write
+ok 11 - unreachable target gain is reported without clamping, target substitution or write
+  ---
+  duration_ms: 1146.466333
+  type: 'test'
+  ...
+# Subtest: second source hash still fences a completed target candidate
+ok 12 - second source hash still fences a completed target candidate
+  ---
+  duration_ms: 1174.889042
+  type: 'test'
+  ...
+# Subtest: cancellation and revision change during candidate replay discard it before the final hash
+    # Subtest: cancel
+    ok 1 - cancel
+      ---
+      duration_ms: 1056.207708
+      type: 'test'
+      ...
+    # Subtest: revision
+    ok 2 - revision
+      ---
+      duration_ms: 1059.402334
+      type: 'test'
+      ...
+    1..2
+ok 13 - cancellation and revision change during candidate replay discard it before the final hash
+  ---
+  duration_ms: 2116.052417
+  type: 'test'
+  ...
+# Subtest: wrong selection, source hash, timeline identity and extra authority refuse before media
+ok 14 - wrong selection, source hash, timeline identity and extra authority refuse before media
+  ---
+  duration_ms: 950.175083
+  type: 'test'
+  ...
+# Subtest: muted and zero gain selections are explicit rejections, never source-only substitutes
+ok 15 - muted and zero gain selections are explicit rejections, never source-only substitutes
+  ---
+  duration_ms: 979.438625
+  type: 'test'
+  ...
+# Subtest: unrelated edges and overlapping tracks change snapshot identity but not selected signal or measurement
+ok 16 - unrelated edges and overlapping tracks change snapshot identity but not selected signal or measurement
+  ---
+  duration_ms: 1281.782458
+  type: 'test'
+  ...
+# Subtest: selected exact sample count rejects one missing or extra sample frame
+    # Subtest: -1
+    ok 1 - -1
+      ---
+      duration_ms: 1024.030041
+      type: 'test'
+      ...
+    # Subtest: 1
+    ok 2 - 1
+      ---
+      duration_ms: 1022.609291
+      type: 'test'
+      ...
+    1..2
+ok 17 - selected exact sample count rejects one missing or extra sample frame
+  ---
+  duration_ms: 2047.064334
+  type: 'test'
+  ...
+# Subtest: source resource admission refuses over 512 MiB before file access
+ok 18 - source resource admission refuses over 512 MiB before file access
+  ---
+  duration_ms: 938.34125
+  type: 'test'
+  ...
+# Subtest: complete clip longer than 1800 frames is explicitly refused before hash, file or process work, never auto-trimmed
+ok 19 - complete clip longer than 1800 frames is explicitly refused before hash, file or process work, never auto-trimmed
+  ---
+  duration_ms: 907.229458
+  type: 'test'
+  ...
+1..19
+# tests 30
+# suites 0
+# pass 30
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 29151.854333

@@ -1,0 +1,10 @@
+{
+  "exportId": "911e5c31-a318-4a4c-bc49-a9e5f985b6b9",
+  "status": "failed",
+  "errorCode": "EXPORT_CANCELLED",
+  "assetPublished": false,
+  "matchingManagedFiles": 0,
+  "uiConfirmation": true,
+  "existingSuccessfulExportsPreserved": 5,
+  "backgroundExportCompleted": true
+}

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {Readable} from 'node:stream';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
@@ -203,7 +204,7 @@ async function fixture(t: import('node:test').TestContext): Promise<WireFixture>
   const transport = new StdioClientTransport({command: process.execPath, cwd: repo, env: environment(env()) as Record<string, string>, stderr: 'pipe',
     args: ['--import', helper, path.join(repo, 'apps/mcp/src/index.ts')]});
   let stderr = '';
-  assert.ok(transport.stderr); (transport.stderr as unknown as NodeJS.ReadableStream).on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-64 * 1024); });
+  assert.ok(transport.stderr); (transport.stderr as Readable).setEncoding('utf8').on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-64 * 1024); });
   cleanups.push(() => bounded(client.close(), 'Official MCP cleanup', 7_000));
   await bounded(client.connect(transport), 'Official MCP initialization');
   const serverVersion = client.getServerVersion(); assert.ok(serverVersion); assert.equal(serverVersion.name, 'mioon');

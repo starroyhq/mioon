@@ -163,7 +163,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     projectOpening: { phase: projectId && ready ? 'ready' : 'home', projectId, error: '' }, projects: [],
     projectListStatus: { busy: false, error: '' }, busy: {}, homePage: 'projects', homeConnection: 'agent', toast: null, videoDirectoryUnavailable: false,
     markBusy: (...args: unknown[]) => calls.push(['markBusy', ...args]), setHomeConnection() {}, changeHomePage() {}, refreshHomeProjects() {},
-    ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setVideoDirectoryUnavailable', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map((name: string) => [name, (...args: unknown[]) => calls.push([name, ...args])])),
+    ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setVideoDirectoryUnavailable', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setSelectedTaskId', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map((name: string) => [name, (...args: unknown[]) => calls.push([name, ...args])])),
   };
   if (projectId && ready) env.openedProject.current = projectOpenAttempt(projectId as string, 0, workspaceOriginScope(env.workspaceRef.current as never) as string) as unknown as {projectId?: unknown};
   env.setProjectOpening = (value: unknown) => { env.projectOpening = value as EnvAccess['projectOpening']; calls.push(['setProjectOpening', value]); };
@@ -199,7 +199,7 @@ test('actual empty startup shows the independent home and never mounts project m
   assert.equal(f.env.currentProject.current, null); assert.equal(f.env.viewReady.current, false); assert.equal(f.env.loading, false);
   assert.equal(f.env.openedProject.current, null); assert.equal(f.env.projectSessionReady(), false);
   const html = ui.render(modeProps(f)); assertHome(html);
-  assert.match(html, /还没有项目/); assert.match(html, /创建第一个项目/);
+  assert.match(html, /还没有项目/); assert.ok(html.includes(createI18nTestContext().t('projects.emptyBody')));
   for (const id of ['project-home-page-projects', 'project-home-page-settings', 'project-home-create-toggle']) {
     assert.match(openingTag(html, id), /type="button"/);
     assert.match(openingTag(html, id), /tabindex="0"/);

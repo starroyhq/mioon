@@ -59,6 +59,8 @@ async function fixture(t: TestContext,options: {dropAck?: boolean; hold?: boolea
   t.after(async()=>{await server?.close();await comfy.close();await rm(root,{recursive:true,force:true});});
   // Production transport: no fake connector, httpRequest, settings or service.
   server=await startServer({dataDir:root,port:0,token});
+  // Explicit workspace opt-in; all generation still targets the owned loopback fixture.
+  await createClient({env:{MIOON_BASE_URL:server.url,MIOON_TOKEN:token}}).rpc('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
   const f={root,comfy,get server(){return server;},get env(){return{MIOON_BASE_URL:server.url,MIOON_TOKEN:token};},get client(){return createClient({env:f.env});},
     async request(route: string,{method='GET',input,authenticated=true,headers={}}: {method?: string; input?: unknown; authenticated?: boolean; headers?: Record<string, string>}={}){
       const response=await fetch(server.url+route,{method,redirect:'error',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/json',...(authenticated?{Authorization:`Bearer ${token}`}:{ }),...headers},...(input===undefined?{}:{body:JSON.stringify(input)})});

@@ -72,7 +72,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}={}){
   emptyData:{},pendingForProject:()=>[],dragging:{current:false},viewRef:{current:view},
   updateView:()=>{},URL,
   window:{location:{href:'http://127.0.0.1:4318/'},history:{pushState(){},replaceState(){}},__mioonUiPreferences:{markOpened:projectId=>calls.push(['markOpened',projectId])}},
-  ...Object.fromEntries(['setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setPanelOverlay','setShowTasks','setShowDelivery','setShowImage','setShowProjectChooser','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,value=>calls.push([name,value])])),
+  ...Object.fromEntries(['setLastSync','setProviders','setOnline','setPropertiesPage','setTaskState','setPreferenceStatus','setPending','setShowProjects','setData','setNodes','setLoading','setShotDirty','setClipDirty','setSourceDirty','setSubjectDirty','setSubtitleDirty','setInspectorEpoch','setRightDockTab','setPanelOverlay','setSelectedTaskId','setShowTasks','setShowDelivery','setShowImage','setShowProjectChooser','setShowExports','setComparisonId','setPreviewAsset','setRealConfirm','setToast','setMobilePanel','setView','setZoom'].map(name=>[name,value=>calls.push([name,value])])),
  };
  env.context=()=>({projectId:currentProject.current,epoch:navigationEpoch.current,workspace:env.workspaceRef.current});
  env.isCurrent=captured=>captured.projectId===currentProject.current&&captured.epoch===navigationEpoch.current&&workspaceOriginScope(captured.workspace)===workspaceOriginScope(env.workspaceRef.current);
@@ -97,6 +97,7 @@ function selectionHarness({refresh,confirm=true,videoDirectory}={}){
 test('actual App only remembers a successfully loaded explicit project, never initial recovery or reload-view',async()=>{
  const f=selectionHarness();assert.equal(await f.select(id(2)),true);assert.equal(f.env.projectSessionReady(),true);assert.deepEqual(f.calls.filter(x=>x[0]==='remember'),[['remember',id(2),1]]);
  assert.deepEqual(f.calls.filter(x=>x[0]==='markOpened'),[['markOpened',id(2)]]);
+ assert.deepEqual(f.calls.filter(x=>x[0]==='setSelectedTaskId'),[['setSelectedTaskId',undefined]],'Changing projects clears the previous project task-detail selection');
  assert.ok(f.calls.findIndex(x=>x[0]==='markOpened')>f.calls.findIndex(x=>x[0]==='setProjectOpening'&&x[1].phase==='ready'),'recent-open time is recorded only after the actual project-open gate accepts');
  const resetTab=f.calls.find(call=>call[0]==='setRightDockTab')[1];assert.equal(resetTab('tasks'),'properties');
  for(const tab of ['properties','agent','image','delivery'])assert.equal(resetTab(tab),tab);

@@ -65,3 +65,43 @@
 .agent-chat-composer-disclosure .agent-chat-composer-summary > svg { flex: none; margin-left: auto; color: var(--wb-muted); }
 .agent-workspace .agent-chat-composer-disclosure .agent-chat-composer-options { padding-top: 4px; border-top: 0; }
 .agent-chat-composer-disclosure .agent-chat-composer-options[hidden] { display: none; }
+
+/* Keep the sending boundary and input together. Older dock rules flattened the
+   form and pinned only its input, allowing it to cover the target summary. */
+.agent-workspace .agent-chat-page { overflow: hidden; }
+.agent-workspace .agent-chat-page .agent-chat-header { padding: var(--wb-space-2) var(--wb-space-3); }
+.agent-workspace .agent-chat-page .agent-chat-eyebrow { display: none; }
+.agent-workspace .agent-chat-page .agent-chat-scroll { flex: 1 1 0%; min-height: 0; overflow-y: auto; padding: var(--wb-space-3); }
+.agent-workspace .agent-chat-page .agent-chat-project { padding: 0 0 var(--wb-space-2); }
+.agent-workspace .agent-chat-page .agent-chat-session-note { padding: 0 0 var(--wb-space-2); margin-bottom: var(--wb-space-3); }
+.agent-workspace .agent-chat-page .agent-chat-storage-summary { align-items: center; gap: var(--wb-space-2); }
+.agent-workspace .agent-chat-page .agent-chat-storage-summary .agent-chat-details-trigger { display: inline-flex; align-items: center; gap: var(--wb-space-1); }
+.agent-workspace .agent-chat-page .agent-chat-storage-summary .small-badge { margin-left: 0; }
+.agent-workspace .agent-chat-page .agent-chat-composer { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; max-height: 65%; padding: 0; }
+.agent-workspace .agent-chat-page .agent-chat-composer-disclosure { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary { display: flex; flex-wrap: nowrap; flex: none; gap: 6px; padding: var(--wb-space-2) var(--wb-space-3); }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary > span { max-width: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary > .agent-chat-composer-summary-model { flex: 0 1 45%; }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary > .agent-chat-composer-summary-scope { flex: 1; }
+.agent-workspace .agent-chat-page .agent-chat-composer-summary > svg { flex: none; margin-left: auto; }
+.agent-workspace .agent-chat-page .agent-chat-composer-options { flex: 1 1 auto; min-height: 0; max-height: 36dvh; overflow-y: auto; overscroll-behavior: contain; padding: var(--wb-space-2) var(--wb-space-3); }
+.agent-workspace .agent-chat-page .agent-chat-composer-input { position: static; z-index: auto; flex: none; min-width: 0; padding: var(--wb-space-2) var(--wb-space-3); box-shadow: none; }
+.agent-workspace .agent-chat-page .agent-chat-composer-input textarea { min-height: calc(var(--wb-control) * 2); max-height: calc(var(--wb-control-large) * 3); }
+.agent-workspace .agent-chat-page .agent-chat-composer-bottom { align-items: flex-end; gap: var(--wb-space-2); }
+
+/* Endpoint identity stays available in the title and DOM without fragmenting
+   across several lines in a narrow assistant dock. */
+.agent-chat-page .agent-chat-endpoint,.agent-workspace .agent-chat-page .agent-chat-composer-summary>.agent-chat-composer-summary-target{display:block;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;word-break:normal}
+.agent-chat-page .agent-chat-run-model{display:flex;flex-direction:column;gap:2px;min-width:0}
+.agent-authorization-summary{display:flex;flex-direction:column;gap:0;margin:0;min-width:0}
+.agent-authorization-summary>div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:16px;padding:14px 0;border-bottom:1px solid var(--wb-line)}
+.agent-authorization-summary>div:last-child{border-bottom:0}
+.agent-authorization-summary dt{color:var(--wb-soft);font-size:var(--wb-text-label);line-height:1.7}
+.agent-authorization-summary dd{min-width:0;margin:0;color:var(--wb-text);font-size:var(--wb-text-label);line-height:1.7;overflow-wrap:anywhere}
+.agent-authorization-summary dd>span,.agent-authorization-summary dd>strong{display:block}
+.agent-authorization-summary dd>span{color:var(--wb-soft)}
+.agent-authorization-summary .agent-chat-endpoint{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;word-break:normal;font-family:var(--wb-font-mono);font-size:var(--wb-text-caption)}
+.agent-authorization-summary .agent-chat-details-trigger{font-size:var(--wb-text-caption)}
+.agent-authorization-summary .agent-chat-details-trigger+p,.agent-authorization-summary [data-slot=collapsible-content]>p{margin:6px 0 0;color:var(--wb-soft)}
+.agent-authorization-dialog[data-slot=dialog-content]{gap:10px}
+@media(max-width:520px){.agent-authorization-summary>div{grid-template-columns:80px minmax(0,1fr);gap:10px}}

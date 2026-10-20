@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: matching sends explicit target, accepts a fully measured candidate and consumes it only once into a draft callback
+ok 1 - matching sends explicit target, accepts a fully measured candidate and consumes it only once into a draft callback
+  ---
+  duration_ms: 3.495958
+  type: 'test'
+  ...
+# Subtest: raw invalid target input, whitespace and IME never start analysis or normalize to zero
+ok 2 - raw invalid target input, whitespace and IME never start analysis or normalize to zero
+  ---
+  duration_ms: 0.820209
+  type: 'test'
+  ...
+# Subtest: changing target aborts late measurement and A→B→A does not revive an old Analyze or Match callback
+ok 3 - changing target aborts late measurement and A→B→A does not revive an old Analyze or Match callback
+  ---
+  duration_ms: 0.522166
+  type: 'test'
+  ...
+# Subtest: hidden, switched, restored, composed and conflicted draft contexts reject retained Match callbacks before effects
+ok 4 - hidden, switched, restored, composed and conflicted draft contexts reject retained Match callbacks before effects
+  ---
+  duration_ms: 2.705958
+  type: 'test'
+  ...
+# Subtest: matching is blocked when real candidate misses peak ceiling, misses target or requires no change
+ok 5 - matching is blocked when real candidate misses peak ceiling, misses target or requires no change
+  ---
+  duration_ms: 0.813708
+  type: 'test'
+  ...
+# Subtest: float32 residue after saving a matched clip cannot create a repeated negligible gain edit
+ok 6 - float32 residue after saving a matched clip cannot create a repeated negligible gain edit
+  ---
+  duration_ms: 0.32975
+  type: 'test'
+  ...
+# Subtest: an appreciable loudness change remains matchable for a legitimate tiny positive gain
+ok 7 - an appreciable loudness change remains matchable for a legitimate tiny positive gain
+  ---
+  duration_ms: 0.272625
+  type: 'test'
+  ...
+# Subtest: response with a different explicit target or unmeasured candidate cannot expose a matchable report
+ok 8 - response with a different explicit target or unmeasured candidate cannot expose a matchable report
+  ---
+  duration_ms: 0.395125
+  type: 'test'
+  ...
+# Subtest: the actual clip draft receives exact gain only; no implicit Save, new mutation or raw reset occurs
+ok 9 - the actual clip draft receives exact gain only; no implicit Save, new mutation or raw reset occurs
+  ---
+  duration_ms: 8.769959
+  type: 'test'
+  ...
+# Subtest: draft admission includes pending envelope composition and validates gain without clamping
+ok 10 - draft admission includes pending envelope composition and validates gain without clamping
+  ---
+  duration_ms: 0.128875
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 251.46775

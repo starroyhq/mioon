@@ -34,6 +34,7 @@ async function fixture(t:TestContext,inputModes?:VideoInputMode[]){
   await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'synthetic-ark-ui-key'}});
   const calls:Array<{url:string;init:RequestInit}> = [];let count=0,worker:ReturnType<typeof startWorker>|null=null;
   const services=createServices(store,providers,{videoSettings:settings,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async(input,init)=>{calls.push({url:String(input),init:init??{}});if(init?.method==='POST')return json({id:`configured-ark-task-${++count}`});return json({id:new URL(String(input)).pathname.split('/').at(-1),status:'running'});}});
+  await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
   const project=row(await services.call('project.create',{name:'Configured Ark references'})),other=row(await services.call('project.create',{name:'Other project'}));
   let assetIndex=0;
   const asset=async({width=360,height=640,projectId=String(project.id)}:{width?:number;height?:number;projectId?:string}={}):Promise<ManagedAsset>=>{

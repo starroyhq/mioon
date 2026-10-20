@@ -1,0 +1,78 @@
+[
+  {
+    "preset": "portrait_1080",
+    "evidence": "formal-export.mp4",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ],
+      "format": {
+        "duration": "9.000000",
+        "size": "1385578"
+      }
+    }
+  },
+  {
+    "preset": "landscape_1080",
+    "projectId": "d308b76d-408e-4e03-9252-efd68154485d",
+    "exportId": "3dfde662-601a-4b65-9d9c-a020b4da54fe",
+    "evidence": "preset-landscape_1080.mp4",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ],
+      "format": {
+        "duration": "2.000000",
+        "size": "51377"
+      }
+    }
+  },
+  {
+    "preset": "square_1080",
+    "projectId": "a2f424bc-4254-408c-9eda-dd987128f4c4",
+    "exportId": "9f908960-7c48-4ff4-9e4c-c27544852508",
+    "evidence": "preset-square_1080.mp4",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1080,
+          "r_frame_rate": "30/1"
+        },
+        {
+          "codec_name": "aac",
+          "r_frame_rate": "0/0"
+        }
+      ],
+      "format": {
+        "duration": "2.000000",
+        "size": "48973"
+      }
+    }
+  }
+]

@@ -25,7 +25,6 @@ export default function TimelineExportSettings({ timeline, value, disabled, onCh
   const choose = (patch: Partial<ExportSettings>): void => { onChange({ ...value, ...patch } as ExportSettings); };
   return <section className="timeline-export-settings" data-testid="timeline-export-settings" aria-labelledby="timeline-export-settings-title">
     <h3 id="timeline-export-settings-title">{t('export.settings.title')}</h3>
-    <p className="export-preflight-note">{t('export.settings.scope')}</p>
     <div className="export-settings-field"><Label htmlFor="export-resolution">{t('export.settings.resolution')}</Label>
       <WorkbenchSelect id="export-resolution" data-testid="export-resolution" value={value.resolution} disabled={disabled} onChange={event => choose({ resolution: event.target.value as ExportResolution })}>
         <option value="native">{t('export.settings.native')}</option>{Math.min(timeline?.width || 0, timeline?.height || 0) >= 1080 ? <option value="short_720">{t('export.settings.short720')}</option> : <option value="short_1080">{t('export.settings.short1080')}</option>}<option value="short_360">{t('export.settings.short360')}</option>
@@ -41,15 +40,15 @@ export default function TimelineExportSettings({ timeline, value, disabled, onCh
       <WorkbenchSelect id="export-bitrate" data-testid="export-bitrate" value={value.rateControl.targetKbps} disabled={disabled} onChange={event => choose({ rateControl: { mode: 'bitrate', targetKbps: Number(event.target.value) as ExportBitrate } })}>
         <option value="2000">2 Mb/s</option><option value="4000">4 Mb/s</option><option value="8000">8 Mb/s</option>
       </WorkbenchSelect></div>}
-    <TimelineExportProfile value={value} disabled={disabled} onChange={onChange} Select={WorkbenchSelect} />
+    {delivery?.upscale && <p className="notice warning" data-testid="export-upscale-warning">{t('export.settings.upscaleHelp')}</p>}
+    <details className="export-settings-help export-settings-advanced"><summary>{t('redesign.export.advancedSettings')}</summary><TimelineExportProfile value={value} disabled={disabled} onChange={onChange} Select={WorkbenchSelect} />
+    <p className="export-preflight-note">{t('export.settings.scope')}</p><p className="export-preflight-note">{t('export.settings.previewHelp')}</p>
     {delivery && <dl className="export-preflight-summary" data-testid="export-settings-summary">
       <div><dt>{t('export.settings.composition')}</dt><dd>{timeline?.width} × {timeline?.height}</dd></div>
       <div><dt>{t('export.settings.output')}</dt><dd data-testid="export-output-dimensions">{delivery.dimensions}</dd></div>
       <div><dt>{t('export.settings.video')}</dt><dd>{renderMessage(delivery.rateMessage)}</dd></div>
       <div><dt>{t('export.settings.fixed')}</dt><dd>30 fps · AAC 128 kb/s</dd></div>
     </dl>}
-    {delivery?.upscale && <p className="notice warning" data-testid="export-upscale-warning">{t('export.settings.upscaleHelp')}</p>}
-    <p className="export-preflight-note" data-testid="export-rate-explanation">{value.rateControl.mode === 'bitrate' ? t('export.settings.bitrateHelp') : t('export.settings.crfHelp')}</p>
-    <p className="export-preflight-note">{t('export.settings.previewHelp')}</p>
+    <p className="export-preflight-note" data-testid="export-rate-explanation">{value.rateControl.mode === 'bitrate' ? t('export.settings.bitrateHelp') : t('export.settings.crfHelp')}</p></details>
   </section>;
 }

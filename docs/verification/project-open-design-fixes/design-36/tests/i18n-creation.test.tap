@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: creation catalog has complete four-language templates with exact placeholder parity
+ok 1 - creation catalog has complete four-language templates with exact placeholder parity
+  ---
+  duration_ms: 35.584459
+  type: 'test'
+  ...
+# Subtest: creation diagnostics map only stable codes, handle prototype-shaped codes, and preserve original DTOs
+ok 2 - creation diagnostics map only stable codes, handle prototype-shaped codes, and preserve original DTOs
+  ---
+  duration_ms: 0.414
+  type: 'test'
+  ...
+# Subtest: validation display sidecars preserve the old validation decision without translating or mutating drafts
+ok 3 - validation display sidecars preserve the old validation decision without translating or mutating drafts
+  ---
+  duration_ms: 0.266917
+  type: 'test'
+  ...
+# Subtest: generation provider display ignores backend translated labels and instructions
+ok 4 - generation provider display ignores backend translated labels and instructions
+  ---
+  duration_ms: 0.17725
+  type: 'test'
+  ...
+# Subtest: creation renderer text and lifecycle dependencies are locale-safe
+ok 5 - creation renderer text and lifecycle dependencies are locale-safe
+  ---
+  duration_ms: 67.019208
+  type: 'test'
+  ...
+# Subtest: first/last-frame validation retains specific guidance from stable issue code and path
+ok 6 - first/last-frame validation retains specific guidance from stable issue code and path
+  ---
+  duration_ms: 0.650291
+  type: 'test'
+  ...
+# Subtest: actual provider renders creation details in all four locales and escapes untranslated user content
+ok 7 - actual provider renders creation details in all four locales and escapes untranslated user content
+  ---
+  duration_ms: 637.011
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1441.367833

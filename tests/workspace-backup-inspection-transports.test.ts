@@ -10,7 +10,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {createClient,operationDefinition} from '@mioon/client';
+import {createClient,operationDefinition,effectAnnotations} from '@mioon/client';
 import type {TestContext} from 'node:test';
 type Loose = Record<string, unknown>;
 interface CliEnvelope {code: number|null; signal: string|null; envelope: Loose}
@@ -41,7 +41,8 @@ test('actual authenticated HTTP, CLI and official MCP share exact non-path inspe
   transport=new StdioClientTransport({command:process.execPath,args:['apps/mcp/src/index.ts'],cwd:root,env:{...mediaEnvironment(),...env},stderr:'pipe'});let stderr='';
   (transport.stderr as unknown as NodeJS.ReadableStream|undefined)?.setEncoding('utf8').on('data',(text: string)=>{stderr=(stderr+text).slice(-65536);});
   await bounded(client.connect(transport),'MCP connect');const listed=await client.listTools();const tool=listed.tools.find((value: {name: string})=>value.name==='workspace_backup_inspect') as {annotations?: {readOnlyHint?: boolean}; inputSchema: {additionalProperties?: boolean}}|undefined;assert.ok(tool);assert.equal(tool.annotations?.readOnlyHint,true);assert.equal(tool.inputSchema.additionalProperties,false);
-  assert.equal(listed.tools.some((value: {name: string})=>/^workspace_backup_(create|verify|restore)$/.test(value.name)),false);
+  assert.equal(listed.tools.some((value: {name: string})=>/^workspace_backup_(verify|restore)$/.test(value.name)),false,'arbitrary-path cold verification and restore stay private');
+  for(const operation of ['workspace.backup.create','workspace.backup.restore.stage']){const definition=operationDefinition(operation),managed=listed.tools.find(value=>value.name===operation.replaceAll('.','_'));assert.ok(managed);assert.deepEqual(managed.inputSchema,definition.inputSchema);assert.deepEqual(managed.annotations,effectAnnotations(definition.effects));assert.equal(managed.annotations?.readOnlyHint,false);assert.equal(managed.inputSchema.additionalProperties,false);for(const key of ['source','destination','path','directory'])assert.equal(Object.hasOwn(managed.inputSchema.properties??{},key),false);}
   const called=await client.callTool({name:'workspace_backup_inspect',arguments:{}},undefined,{timeout:10000});assert.deepEqual(called.structuredContent,result.envelope);assert.equal(stderr.includes(token),false);
   assert.deepEqual(capture(),before,'no schema, journal, task, counter, receipt or project writes');
  }finally{if(client)await bounded(client.close(),'MCP close');if(transport)await transport.close();db?.close();await server?.close();rmSync(directory,{recursive:true,force:true});}

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import type {Readable} from 'node:stream';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
@@ -65,7 +66,7 @@ async function official(t: import('node:test').TestContext,url?: string): Promis
   const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],
     cwd:repo,env:environment(url) as Record<string,string>,stderr:'pipe',maxBufferSize:1024*1024});
   let stderr='',overflow=false;const closed=new Promise<void>(resolve=>{client.onclose=()=>resolve();});
-  const stderrStream=transport.stderr as unknown as NodeJS.ReadableStream | null;stderrStream?.on('data',(part: string)=>{stderr+=part;if(Buffer.byteLength(stderr)>65536){overflow=true;void close().catch(()=>{});}});
+  const stderrStream=transport.stderr as Readable|null;stderrStream?.setEncoding('utf8').on('data',(part: string)=>{stderr+=part;if(Buffer.byteLength(stderr)>65536){overflow=true;void close().catch(()=>{});}});
   let closing: Promise<void> | undefined;
   const close=()=>closing??=(async()=>{const owned=transport.pid!==null;await bounded(client.close(),'MCP owned child cleanup');
     if(owned)await bounded(closed,'MCP owned child close confirmation');assert.equal(overflow,false);assert.ok(!stderr.includes(token));})();

@@ -227,10 +227,86 @@ function harness(filename) {
     return modules[file] = module.exports;
   }
   const component = load(filename);
-  h.render = (props, name = 'default') => { cursor = 0; effects = []; const tree = component[name](props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return nodes(tree); };
+  const render = action => { cursor = 0; effects = []; const tree = action(); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return nodes(tree); };
+  h.render = (props, name = 'default') => render(() => component[name](props));
+  h.renderWithSubjects = (options, props = {}) => render(() => { h.subjects = load('use-subjects.ts').useSubjects(options); return component.default({ ...props, subjects: h.subjects }); });
   h.unmount = () => slots.forEach(slot => slot?.cleanup?.()); return h;
 }
 const byId = (tree, id) => tree.find(node => node.props?.['data-testid'] === id);
+
+test('subject library renders a passive loading state before its context exists, including while hidden', () => {
+  const h = harness('SubjectLibrary.tsx');
+  const controller = createSubjectController({ read: async () => assert.fail('Loading view read'), save: async () => assert.fail('Loading view saved') });
+  for (const visible of [true, false]) {
+    h.visible = visible;
+    for (const props of [{}, { subjects: null }, { subjects: { state: null, controller } }]) {
+      const tree = h.render(props);
+      assert.ok(byId(tree, 'subject-library'));
+      assert.ok(tree.some(node => node.props?.role === 'status'));
+      assert.equal(tree.some(node => typeof node.props?.onClick === 'function' || typeof node.props?.onChange === 'function'), false);
+    }
+  }
+  h.unmount();
+});
+
+test('first project mount becomes usable after layout context setup without replacing its controller', async () => {
+  const h = harness('SubjectLibrary.tsx'), reads = [], writes = [];
+  const options = { ...context(), read: async (operation, input) => { reads.push({ operation, input }); return envelope([subject()]); }, save: async (...args) => { writes.push(args); return null; } };
+  const first = h.renderWithSubjects(options);
+  const controller = h.subjects.controller;
+  assert.equal(h.subjects.state, null);
+  assert.ok(first.some(node => node.props?.role === 'status'));
+  assert.equal(byId(first, 'subject-new'), undefined);
+  await flush();
+  const ready = h.renderWithSubjects(options);
+  assert.equal(h.subjects.controller, controller);
+  assert.equal(h.subjects.state.projectId, projectId);
+  assert.equal(byId(ready, 'subject-new').props.disabled, false);
+  assert.ok(byId(ready, `subject-card-${subjectId}`));
+  assert.deepEqual(reads.map(row => row.input.projectId), [projectId]);
+  assert.equal(writes.length, 0);
+  h.unmount();
+});
+
+test('project switch withholds old subjects and drafts and rejects retained callbacks before new context is ready', async () => {
+  const h = harness('SubjectLibrary.tsx'), lateA = defer(), reads = [], writes = [];
+  let delayA = false;
+  const read = async (operation, input) => {
+    reads.push({ operation, input });
+    if (input.projectId === projectId) return delayA ? lateA.promise : envelope([subject()]);
+    return { projectId: otherProject, items: [], nextCursor: null };
+  };
+  const save = async (...args) => { writes.push(args); return null; };
+  const a = { ...context(), read, save };
+  h.renderWithSubjects(a); await flush(); h.renderWithSubjects(a);
+  const controller = h.subjects.controller;
+  controller.updateCreate({ name: 'Project A private draft', assetId });
+  const create = byId(h.renderWithSubjects(a), 'subject-create');
+  delayA = true;
+  const oldRead = controller.read();
+  const b = { ...context({ scope: `${otherProject}:2`, projectId: otherProject, assets: [], shotIds: [] }), read, save };
+  const transitioning = h.renderWithSubjects(b);
+  assert.equal(h.subjects.state, null);
+  assert.ok(transitioning.some(node => node.props?.role === 'status'));
+  assert.equal(JSON.stringify(transitioning).includes('Project A private draft'), false);
+  assert.equal(byId(transitioning, 'subject-create'), undefined);
+  create.props.onClick();
+  assert.equal(writes.length, 0);
+  await flush();
+  const ready = h.renderWithSubjects(b);
+  assert.equal(h.subjects.controller, controller);
+  assert.equal(h.subjects.state.projectId, otherProject);
+  assert.equal(h.subjects.state.createDraft.name, '');
+  assert.deepEqual(h.subjects.state.list.items, []);
+  assert.equal(byId(ready, `subject-card-${subjectId}`), undefined);
+  lateA.resolve(envelope([subject()])); await oldRead; await flush();
+  h.renderWithSubjects(b);
+  assert.equal(h.subjects.state.projectId, otherProject);
+  assert.deepEqual(h.subjects.state.list.items, []);
+  assert.equal(reads.filter(row => row.input.projectId === otherProject).length, 1);
+  assert.equal(writes.length, 0);
+  h.unmount();
+});
 
 test('real library callbacks reject hidden, re-shown, stale form, wrong project and unmounted events', async () => {
   const f = await fixture(); f.controller.updateCreate({ name: 'Hero', assetId }); const h = harness('SubjectLibrary.tsx');

@@ -1,0 +1,537 @@
+{
+  "records": [
+    {
+      "id": "5d710db2-19e9-4105-9433-c3d48c275cf8",
+      "projectId": "8ee2def1-5482-4a8c-883e-9faf9b1b803c",
+      "requestId": "dd56b32a-6b55-4071-bcb0-52dafed447a3",
+      "mode": "timeline",
+      "purpose": "export",
+      "timelineRevision": 11,
+      "snapshot": {
+        "timeline": {
+          "id": "247680cc-6e00-4f0f-8e15-ffa5e703fd8a",
+          "projectId": "8ee2def1-5482-4a8c-883e-9faf9b1b803c",
+          "revision": 11,
+          "fps": 30,
+          "width": 1080,
+          "height": 1920,
+          "tracks": [
+            {
+              "id": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "name": "Video 1",
+              "kind": "video",
+              "orderIndex": 0,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "34acd90e-6a94-49d2-9850-15cb85a92d73",
+              "name": "Video 2",
+              "kind": "video",
+              "orderIndex": 1,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "c2053784-2b20-4992-8b03-4907cc6a326b",
+              "name": "Audio 1",
+              "kind": "audio",
+              "orderIndex": 2,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "3bcf4678-f354-4298-acfd-3c0fb2c39a44",
+              "name": "配乐",
+              "kind": "audio",
+              "orderIndex": 3,
+              "hidden": false,
+              "muted": false
+            }
+          ],
+          "clips": [
+            {
+              "id": "a42c19de-ae30-45b8-a291-d22d5bfe093c",
+              "trackId": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "assetId": "9b322321-b213-47ce-85eb-a10b1095f494",
+              "name": "晨光样片 · 36页复核",
+              "startFrame": 0,
+              "durationFrames": 150,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 1
+            },
+            {
+              "id": "1fd75e01-6943-472d-97d3-1b4ce54813ab",
+              "trackId": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "assetId": "4a32c246-75aa-4a98-bb67-5fae86d0a547",
+              "name": "光影片段",
+              "startFrame": 150,
+              "durationFrames": 120,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 1
+            },
+            {
+              "id": "abe55818-fcb9-4bce-abe9-953713fb4fb4",
+              "trackId": "3bcf4678-f354-4298-acfd-3c0fb2c39a44",
+              "assetId": "a298a6fb-b69c-4995-96bd-03e718ef9de6",
+              "name": "合成配乐",
+              "startFrame": 0,
+              "durationFrames": 270,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 0.6308545553349859
+            }
+          ],
+          "durationFrames": 270,
+          "createdAt": "2026-10-20T02:49:58.939Z",
+          "updatedAt": "2026-10-20T06:14:21.339Z"
+        },
+        "deliveryName": "第三轮36页验收成片",
+        "delivery": {
+          "exportSettings": {
+            "profileId": "mp4_h264_v1",
+            "resolution": "native",
+            "rateControl": {
+              "mode": "crf",
+              "quality": "standard"
+            }
+          },
+          "effective": {
+            "profileId": "mp4_h264_v1",
+            "container": "mp4",
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "videoCodec": "libx264",
+            "pixelFormat": "yuv420p",
+            "preset": "veryfast",
+            "rateControl": {
+              "mode": "crf",
+              "crf": 23
+            },
+            "bFrames": 0,
+            "gopFrames": 60,
+            "videoTrackTimescale": 30000,
+            "scaling": "lanczos",
+            "audioCodec": "aac",
+            "audioKbps": 128,
+            "audioSampleRate": 48000,
+            "audioChannels": 2,
+            "movflags": "faststart"
+          }
+        },
+        "assets": [
+          {
+            "id": "9b322321-b213-47ce-85eb-a10b1095f494",
+            "sha256": "c1080807cf86964e86f820415b04a1325c9eeaed636779118abc605386031e5b",
+            "mimeType": "video/mp4",
+            "duration": 10,
+            "width": 1080,
+            "height": 1920,
+            "hasAudio": true
+          },
+          {
+            "id": "4a32c246-75aa-4a98-bb67-5fae86d0a547",
+            "sha256": "efdc03937038016595b9b30d52b8f419f1deb07f662af3f2b426a5c624e9b500",
+            "mimeType": "video/mp4",
+            "duration": 4,
+            "width": 360,
+            "height": 640,
+            "hasAudio": true
+          },
+          {
+            "id": "a298a6fb-b69c-4995-96bd-03e718ef9de6",
+            "sha256": "b1ab0103d9b81cb85837bfcb9a4c335a154a926c39c1a698dcfa90f861872d34",
+            "mimeType": "audio/wav",
+            "duration": 10,
+            "width": 0,
+            "height": 0,
+            "hasAudio": true
+          }
+        ]
+      },
+      "status": "succeeded",
+      "assetId": "b1602f55-464e-4c52-8705-43855d9b83d6",
+      "url": "/media/b1602f55-464e-4c52-8705-43855d9b83d6",
+      "error": null,
+      "createdAt": "2026-10-20T06:18:26.191Z",
+      "updatedAt": "2026-10-20T06:18:30.682Z"
+    },
+    {
+      "id": "904e680b-e834-4b69-9d06-b4d9ced2d000",
+      "projectId": "8ee2def1-5482-4a8c-883e-9faf9b1b803c",
+      "requestId": "c32713d3-0e40-44a1-8fe3-473ab63ebab4",
+      "mode": "timeline",
+      "purpose": "export",
+      "timelineRevision": 11,
+      "snapshot": {
+        "timeline": {
+          "id": "247680cc-6e00-4f0f-8e15-ffa5e703fd8a",
+          "projectId": "8ee2def1-5482-4a8c-883e-9faf9b1b803c",
+          "revision": 11,
+          "fps": 30,
+          "width": 1080,
+          "height": 1920,
+          "tracks": [
+            {
+              "id": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "name": "Video 1",
+              "kind": "video",
+              "orderIndex": 0,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "34acd90e-6a94-49d2-9850-15cb85a92d73",
+              "name": "Video 2",
+              "kind": "video",
+              "orderIndex": 1,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "c2053784-2b20-4992-8b03-4907cc6a326b",
+              "name": "Audio 1",
+              "kind": "audio",
+              "orderIndex": 2,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "3bcf4678-f354-4298-acfd-3c0fb2c39a44",
+              "name": "配乐",
+              "kind": "audio",
+              "orderIndex": 3,
+              "hidden": false,
+              "muted": false
+            }
+          ],
+          "clips": [
+            {
+              "id": "a42c19de-ae30-45b8-a291-d22d5bfe093c",
+              "trackId": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "assetId": "9b322321-b213-47ce-85eb-a10b1095f494",
+              "name": "晨光样片 · 36页复核",
+              "startFrame": 0,
+              "durationFrames": 150,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 1
+            },
+            {
+              "id": "1fd75e01-6943-472d-97d3-1b4ce54813ab",
+              "trackId": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "assetId": "4a32c246-75aa-4a98-bb67-5fae86d0a547",
+              "name": "光影片段",
+              "startFrame": 150,
+              "durationFrames": 120,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 1
+            },
+            {
+              "id": "abe55818-fcb9-4bce-abe9-953713fb4fb4",
+              "trackId": "3bcf4678-f354-4298-acfd-3c0fb2c39a44",
+              "assetId": "a298a6fb-b69c-4995-96bd-03e718ef9de6",
+              "name": "合成配乐",
+              "startFrame": 0,
+              "durationFrames": 270,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 0.6308545553349859
+            }
+          ],
+          "durationFrames": 270,
+          "createdAt": "2026-10-20T02:49:58.939Z",
+          "updatedAt": "2026-10-20T06:14:21.339Z"
+        },
+        "deliveryName": "第三轮36页验收成片",
+        "delivery": {
+          "exportSettings": {
+            "profileId": "mp4_h264_v1",
+            "resolution": "native",
+            "rateControl": {
+              "mode": "crf",
+              "quality": "standard"
+            }
+          },
+          "effective": {
+            "profileId": "mp4_h264_v1",
+            "container": "mp4",
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "videoCodec": "libx264",
+            "pixelFormat": "yuv420p",
+            "preset": "veryfast",
+            "rateControl": {
+              "mode": "crf",
+              "crf": 23
+            },
+            "bFrames": 0,
+            "gopFrames": 60,
+            "videoTrackTimescale": 30000,
+            "scaling": "lanczos",
+            "audioCodec": "aac",
+            "audioKbps": 128,
+            "audioSampleRate": 48000,
+            "audioChannels": 2,
+            "movflags": "faststart"
+          }
+        },
+        "assets": [
+          {
+            "id": "9b322321-b213-47ce-85eb-a10b1095f494",
+            "sha256": "c1080807cf86964e86f820415b04a1325c9eeaed636779118abc605386031e5b",
+            "mimeType": "video/mp4",
+            "duration": 10,
+            "width": 1080,
+            "height": 1920,
+            "hasAudio": true
+          },
+          {
+            "id": "4a32c246-75aa-4a98-bb67-5fae86d0a547",
+            "sha256": "efdc03937038016595b9b30d52b8f419f1deb07f662af3f2b426a5c624e9b500",
+            "mimeType": "video/mp4",
+            "duration": 4,
+            "width": 360,
+            "height": 640,
+            "hasAudio": true
+          },
+          {
+            "id": "a298a6fb-b69c-4995-96bd-03e718ef9de6",
+            "sha256": "b1ab0103d9b81cb85837bfcb9a4c335a154a926c39c1a698dcfa90f861872d34",
+            "mimeType": "audio/wav",
+            "duration": 10,
+            "width": 0,
+            "height": 0,
+            "hasAudio": true
+          }
+        ]
+      },
+      "status": "succeeded",
+      "assetId": "7ac40afc-a041-49fe-89ad-2d07bedbbe61",
+      "url": "/media/7ac40afc-a041-49fe-89ad-2d07bedbbe61",
+      "error": null,
+      "createdAt": "2026-10-20T06:17:36.579Z",
+      "updatedAt": "2026-10-20T06:17:40.867Z"
+    },
+    {
+      "id": "ac7a3037-a69f-486d-9a0b-c6497a2261d9",
+      "projectId": "8ee2def1-5482-4a8c-883e-9faf9b1b803c",
+      "requestId": "7faa152f-b5d2-4867-aec4-ddec43065bb7",
+      "mode": "timeline",
+      "purpose": "export",
+      "timelineRevision": 11,
+      "snapshot": {
+        "timeline": {
+          "id": "247680cc-6e00-4f0f-8e15-ffa5e703fd8a",
+          "projectId": "8ee2def1-5482-4a8c-883e-9faf9b1b803c",
+          "revision": 11,
+          "fps": 30,
+          "width": 1080,
+          "height": 1920,
+          "tracks": [
+            {
+              "id": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "name": "Video 1",
+              "kind": "video",
+              "orderIndex": 0,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "34acd90e-6a94-49d2-9850-15cb85a92d73",
+              "name": "Video 2",
+              "kind": "video",
+              "orderIndex": 1,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "c2053784-2b20-4992-8b03-4907cc6a326b",
+              "name": "Audio 1",
+              "kind": "audio",
+              "orderIndex": 2,
+              "hidden": false,
+              "muted": false
+            },
+            {
+              "id": "3bcf4678-f354-4298-acfd-3c0fb2c39a44",
+              "name": "配乐",
+              "kind": "audio",
+              "orderIndex": 3,
+              "hidden": false,
+              "muted": false
+            }
+          ],
+          "clips": [
+            {
+              "id": "a42c19de-ae30-45b8-a291-d22d5bfe093c",
+              "trackId": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "assetId": "9b322321-b213-47ce-85eb-a10b1095f494",
+              "name": "晨光样片 · 36页复核",
+              "startFrame": 0,
+              "durationFrames": 150,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 1
+            },
+            {
+              "id": "1fd75e01-6943-472d-97d3-1b4ce54813ab",
+              "trackId": "8758f69b-4faa-412a-8baf-bf5488561c5c",
+              "assetId": "4a32c246-75aa-4a98-bb67-5fae86d0a547",
+              "name": "光影片段",
+              "startFrame": 150,
+              "durationFrames": 120,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 1
+            },
+            {
+              "id": "abe55818-fcb9-4bce-abe9-953713fb4fb4",
+              "trackId": "3bcf4678-f354-4298-acfd-3c0fb2c39a44",
+              "assetId": "a298a6fb-b69c-4995-96bd-03e718ef9de6",
+              "name": "合成配乐",
+              "startFrame": 0,
+              "durationFrames": 270,
+              "sourceInFrame": 0,
+              "rect": {
+                "x": 0,
+                "y": 0,
+                "width": 1080,
+                "height": 1920
+              },
+              "gain": 0.6308545553349859
+            }
+          ],
+          "durationFrames": 270,
+          "createdAt": "2026-10-20T02:49:58.939Z",
+          "updatedAt": "2026-10-20T06:14:21.339Z"
+        },
+        "deliveryName": "第三轮36页验收成片",
+        "exportRange": {
+          "startFrame": 0,
+          "endFrame": 270
+        },
+        "delivery": {
+          "exportSettings": {
+            "profileId": "mp4_h264_v1",
+            "resolution": "native",
+            "rateControl": {
+              "mode": "crf",
+              "quality": "standard"
+            }
+          },
+          "effective": {
+            "profileId": "mp4_h264_v1",
+            "container": "mp4",
+            "width": 1080,
+            "height": 1920,
+            "fps": 30,
+            "videoCodec": "libx264",
+            "pixelFormat": "yuv420p",
+            "preset": "veryfast",
+            "rateControl": {
+              "mode": "crf",
+              "crf": 23
+            },
+            "bFrames": 0,
+            "gopFrames": 60,
+            "videoTrackTimescale": 30000,
+            "scaling": "lanczos",
+            "audioCodec": "aac",
+            "audioKbps": 128,
+            "audioSampleRate": 48000,
+            "audioChannels": 2,
+            "movflags": "faststart"
+          }
+        },
+        "assets": [
+          {
+            "id": "9b322321-b213-47ce-85eb-a10b1095f494",
+            "sha256": "c1080807cf86964e86f820415b04a1325c9eeaed636779118abc605386031e5b",
+            "mimeType": "video/mp4",
+            "duration": 10,
+            "width": 1080,
+            "height": 1920,
+            "hasAudio": true
+          },
+          {
+            "id": "4a32c246-75aa-4a98-bb67-5fae86d0a547",
+            "sha256": "efdc03937038016595b9b30d52b8f419f1deb07f662af3f2b426a5c624e9b500",
+            "mimeType": "video/mp4",
+            "duration": 4,
+            "width": 360,
+            "height": 640,
+            "hasAudio": true
+          },
+          {
+            "id": "a298a6fb-b69c-4995-96bd-03e718ef9de6",
+            "sha256": "b1ab0103d9b81cb85837bfcb9a4c335a154a926c39c1a698dcfa90f861872d34",
+            "mimeType": "audio/wav",
+            "duration": 10,
+            "width": 0,
+            "height": 0,
+            "hasAudio": true
+          }
+        ]
+      },
+      "status": "succeeded",
+      "assetId": "fd81dce3-3dcb-4b77-9671-feb7476aa963",
+      "url": "/media/fd81dce3-3dcb-4b77-9671-feb7476aa963",
+      "error": null,
+      "createdAt": "2026-10-20T06:17:12.021Z",
+      "updatedAt": "2026-10-20T06:17:16.423Z"
+    }
+  ],
+  "selectedId": "5d710db2-19e9-4105-9433-c3d48c275cf8",
+  "httpStatus": 200,
+  "bytes": 1385464,
+  "sha256": "0772a98d01ac9bc748d4f96e1c905f10b7d3fd1493b1d02cf808b6abf13b098a",
+  "synthetic": true,
+  "source": "本轮实际浏览器点击产生，最新正式导出在进行中关闭弹窗后完成",
+  "realProviderCalls": 0
+}

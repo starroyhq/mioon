@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: strict catalog operation is observation only with no persisted request or scope-changing options
+ok 1 - strict catalog operation is observation only with no persisted request or scope-changing options
+  ---
+  duration_ms: 2.739042
+  type: 'test'
+  ...
+# Subtest: measurement schema preserves fixed algorithm states and exact clip output bounds
+ok 2 - measurement schema preserves fixed algorithm states and exact clip output bounds
+  ---
+  duration_ms: 2.202708
+  type: 'test'
+  ...
+# Subtest: response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings
+ok 3 - response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings
+  ---
+  duration_ms: 1.856416
+  type: 'test'
+  ...
+# Subtest: four locale operation discovery text is present and never silently grants application
+ok 4 - four locale operation discovery text is present and never silently grants application
+  ---
+  duration_ms: 0.790333
+  type: 'test'
+  ...
+# Subtest: explicit targets bind measured candidates without granting mutation authority
+ok 5 - explicit targets bind measured candidates without granting mutation authority
+  ---
+  duration_ms: 2.227042
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 284.858

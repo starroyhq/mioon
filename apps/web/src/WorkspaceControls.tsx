@@ -79,6 +79,6 @@ export function WorkbenchTooltip({ children, content }: WorkbenchTooltipProps): 
   const popup = useVisiblePopupState();
   return <Tooltip open={popup.open} onOpenChange={popup.onOpenChange} disabled={!popup.visible}>
     <TooltipTrigger render={children} />
-    <TooltipContent hidden={!popup.visible} inert={!popup.visible} aria-hidden={!popup.visible || undefined}>{content}</TooltipContent>
+    <TooltipContent className="workbench-tooltip-popup" hidden={!popup.visible} inert={!popup.visible} aria-hidden={!popup.visible || undefined} style={{ pointerEvents: 'none' }}>{content}</TooltipContent>
   </Tooltip>;
 }

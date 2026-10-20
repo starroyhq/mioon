@@ -1,0 +1,27 @@
+[
+  {
+    "file": "tests/task-center-dock-ui.test.mjs",
+    "exitCode": 0,
+    "log": "docs/verification/project-open-design-fixes/round4/logs/task-center-dock-ui.test.mjs.tap"
+  },
+  {
+    "file": "tests/task-center-app.test.mjs",
+    "exitCode": 0,
+    "log": "docs/verification/project-open-design-fixes/round4/logs/task-center-app.test.mjs.tap"
+  },
+  {
+    "file": "tests/redesign-entry-task-ui.test.mjs",
+    "exitCode": 0,
+    "log": "docs/verification/project-open-design-fixes/round4/logs/redesign-entry-task-ui.test.mjs.tap"
+  },
+  {
+    "file": "tests/task-workspace-intent.test.mjs",
+    "exitCode": 0,
+    "log": "docs/verification/project-open-design-fixes/round4/logs/task-workspace-intent.test.mjs.tap"
+  },
+  {
+    "file": "tests/task-disposition-client.test.ts",
+    "exitCode": 0,
+    "log": "docs/verification/project-open-design-fixes/round4/logs/task-disposition-client.test.ts.tap"
+  }
+]

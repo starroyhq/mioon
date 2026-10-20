@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: real shared Preview plays candidate preview and export through exact managed identity URLs
+ok 1 - real shared Preview plays candidate preview and export through exact managed identity URLs
+  ---
+  duration_ms: 0.493791
+  type: 'test'
+  ...
+# Subtest: real empty Preview only offers canvas navigation when an actionable callback exists
+ok 2 - real empty Preview only offers canvas navigation when an actionable callback exists
+  ---
+  duration_ms: 0.098333
+  type: 'test'
+  ...
+# Subtest: candidate Preview removes player for held, invalid, foreign and counterfeit application bindings
+ok 3 - candidate Preview removes player for held, invalid, foreign and counterfeit application bindings
+  ---
+  duration_ms: 0.220292
+  type: 'test'
+  ...
+# Subtest: candidate named and unnamed downloads keep frozen metadata and use receipt query identities
+ok 4 - candidate named and unnamed downloads keep frozen metadata and use receipt query identities
+  ---
+  duration_ms: 0.080167
+  type: 'test'
+  ...
+# Subtest: candidate history never gives held, malformed, foreign or preview-only rows a download
+ok 5 - candidate history never gives held, malformed, foreign or preview-only rows a download
+  ---
+  duration_ms: 0.108666
+  type: 'test'
+  ...
+# Subtest: real sample player consumes fixed candidate ACK validator and keeps all existing attempt fences
+ok 6 - real sample player consumes fixed candidate ACK validator and keeps all existing attempt fences
+  ---
+  duration_ms: 0.086125
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1089.851375

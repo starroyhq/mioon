@@ -29,6 +29,7 @@ export interface WorkspaceBackupState {
 }
 export interface WorkspaceBackupControllerLike { inspect: (scope: string | null, version: number) => unknown }
 export interface WorkspaceBackupPanelProps {
+  embedded?: boolean;
   scope?: string | null;
   getScope?: () => string | null | undefined;
   connected?: boolean;
@@ -42,16 +43,20 @@ import backupGuideJa from '../../../docs/WORKSPACE-BACKUP-GUIDE.ja.md?raw';
 const backupGuides = { 'zh-Hans': backupGuideHans, 'zh-Hant': backupGuideHant, en: backupGuideEn, ja: backupGuideJa };
 import './workspace-backup.css';
 
-export function WorkspaceBackupDetails({ state, controller }: { state: WorkspaceBackupState | null | undefined; controller: WorkspaceBackupControllerLike }): React.ReactElement {
+export function WorkspaceBackupDetails({ state, controller, compact = false }: { state: WorkspaceBackupState | null | undefined; controller: WorkspaceBackupControllerLike; compact?: boolean }): React.ReactElement {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
   const [guideOpen, setGuideOpen] = useState(false);
   const report = state?.report ?? null;
   const unresolved = report ? WORKSPACE_BACKUP_UNRESOLVED.filter(([key]) => report.unresolved[key] !== 0) : [];
-  return <div className="workspace-backup-details" data-testid="workspace-backup-details">
+  const scopeDetails = <>
     <p>{t('recovery.backup.scope')}</p>
     <p>{t('recovery.backup.media')}</p>
     <p>{t('recovery.backup.privacy')}</p>
     <p className="workspace-backup-warning">{t('recovery.backup.readOnly')}</p>
+  </>;
+  const HelpContainer = compact ? 'details' : 'div';
+  return <div className="workspace-backup-details" data-testid="workspace-backup-details">
+    {compact ? <><p>{t('redesign.settings.backupSummary')}</p><p className="workspace-backup-warning">{t('redesign.settings.backupReadOnly')}</p></> : scopeDetails}
     <Button variant="outline" type="button" size="sm" data-testid="workspace-backup-inspect" disabled={!state?.connected || !state?.visible || state?.phase === 'checking'} onClick={() => controller.inspect(state?.scope ?? null, state?.version ?? -1)}>{state?.phase === 'checking' ? t('recovery.backup.checking') : report ? t('recovery.backup.refresh') : t('recovery.backup.check')}</Button>
     <p role="status" aria-live="polite" data-testid="workspace-backup-status">{!state?.connected ? t('recovery.backup.disconnected') : state?.phase === 'checking' ? t('recovery.backup.reading') : state?.phase === 'stale' ? t('recovery.backup.stale') : state?.phase === 'error' ? t('recovery.backup.failed') : state?.phase === 'incomplete' ? t('recovery.backup.incomplete') : report ? t('recovery.backup.complete') : t('recovery.backup.idle')}</p>
     {state?.error && <p className="workspace-backup-warning" role="alert">{workspaceBackupError({ code: state.errorCode }, locale) as string}</p>}
@@ -65,6 +70,8 @@ export function WorkspaceBackupDetails({ state, controller }: { state: Workspace
       <h3>{t('recovery.backup.limits')}</h3>
       <p>{t('recovery.backup.capacityDetails', { database: workspaceBackupBytes(report.limits.databaseBytes, locale), files: workspaceBackupCount(report.limits.fileCount, locale), file: workspaceBackupBytes(report.limits.fileBytes, locale), total: workspaceBackupBytes(report.limits.totalBytes, locale) })}</p>
     </section>}
+    <HelpContainer className={compact ? 'workspace-backup-technical' : 'workspace-backup-help'} data-testid="workspace-backup-help">
+    {compact && <><summary>{t('redesign.settings.backupInstructions')}</summary>{scopeDetails}</>}
     <section aria-label={t('recovery.backup.steps')} className="workspace-backup-instructions">
       <h3>{t('recovery.backup.terminal')}</h3>
       <ol><li>{t('recovery.backup.close')}</li><li>{t('recovery.backup.run')}</li></ol>
@@ -77,14 +84,15 @@ export function WorkspaceBackupDetails({ state, controller }: { state: Workspace
         <CollapsibleContent inert={!guideOpen || !state?.visible} aria-hidden={!guideOpen || undefined}><pre id="workspace-backup-guide-text" className="workspace-backup-guide-text">{backupGuides[locale]}</pre></CollapsibleContent>
       </Collapsible>
     </section>
+    </HelpContainer>
   </div>;
 }
 
-export default function WorkspaceBackupPanel({ scope, getScope, connected, read, onUnauthorized }: WorkspaceBackupPanelProps): React.ReactElement {
+export default function WorkspaceBackupPanel({ scope, getScope, connected, read, onUnauthorized, embedded = false }: WorkspaceBackupPanelProps): React.ReactElement {
   const { t, locale, formatDate, formatNumber, renderMessage } = useI18n();
-  const visible = useWorkspaceVisibility(), [expanded, setExpanded] = useState(false), [state, setState] = useState<WorkspaceBackupState | null>(null);
+  const visible = useWorkspaceVisibility(), [expanded, setExpanded] = useState(false), [state, setState] = useState<WorkspaceBackupState | null>(null), shown = embedded || expanded;
   const callbacks = useRef<{ scope?: string | null; getScope?: () => string | null | undefined; connected?: boolean; visible: boolean; read: (input: unknown, options: unknown) => Promise<unknown>; onUnauthorized?: () => unknown } | null>(null), controller = useRef<ReturnType<typeof createWorkspaceBackupController> | null>(null);
-  callbacks.current = { scope, getScope, connected, visible: visible && expanded, read, onUnauthorized };
+  callbacks.current = { scope, getScope, connected, visible: visible && shown, read, onUnauthorized };
   const currentCallbacks = callbacks.current;
   if (!controller.current) controller.current = createWorkspaceBackupController({
     read: (input: unknown, options: unknown) => (callbacks.current as NonNullable<typeof callbacks.current>).read(input, options), onChange: ((next?: WorkspaceBackupState) => setState(next ?? null)) as never,
@@ -92,8 +100,9 @@ export default function WorkspaceBackupPanel({ scope, getScope, connected, read,
     onUnauthorized: () => currentCallbacks.onUnauthorized?.(),
   });
   useLayoutEffect(() => { (controller.current as ReturnType<typeof createWorkspaceBackupController>).connect(); return () => (controller.current as ReturnType<typeof createWorkspaceBackupController>).dispose(); }, []);
-  useLayoutEffect(() => { (controller.current as ReturnType<typeof createWorkspaceBackupController>).setContext({ scope, connected, visible: visible && expanded }); }, [scope, connected, visible, expanded]);
+  useLayoutEffect(() => { (controller.current as ReturnType<typeof createWorkspaceBackupController>).setContext({ scope, connected, visible: visible && shown }); }, [scope, connected, visible, shown]);
   const current = state?.scope === scope ? state : null;
+  if (embedded) return <section className="workspace-backup-panel workspace-backup-embedded" data-testid="workspace-backup-panel" aria-label={t('recovery.backup.title')}><header><h2>{t('recovery.backup.title')}</h2><p>{t('recovery.backup.subtitle')}</p></header><div className="workspace-backup-content" inert={!visible} aria-hidden={!visible || undefined}><WorkspaceBackupDetails compact state={current} controller={controller.current as unknown as WorkspaceBackupControllerLike} /></div></section>;
   return <Collapsible open={expanded} onOpenChange={setExpanded} className="workspace-backup-panel" data-testid="workspace-backup-panel" render={<section aria-label={t('recovery.backup.title')} />}>
     <CollapsibleTrigger className="workspace-backup-trigger" render={<Button variant="ghost" type="button" disabled={!visible} data-testid="workspace-backup-toggle" />}><span><strong>{t('recovery.backup.title')}</strong><small>{t('recovery.backup.subtitle')}</small></span><span aria-hidden="true">{expanded ? '−' : '+'}</span></CollapsibleTrigger>
     <CollapsibleContent keepMounted className="workspace-backup-content" inert={!visible || !expanded} aria-hidden={!visible || !expanded || undefined}><WorkspaceBackupDetails state={current} controller={controller.current as unknown as WorkspaceBackupControllerLike} /></CollapsibleContent>

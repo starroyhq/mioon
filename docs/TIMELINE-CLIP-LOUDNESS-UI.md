@@ -1,7 +1,7 @@
 # Selected saved-clip loudness UI
 
-The clip inspector now has a separate, collapsed, read-only loudness panel beside
-its gain/fade controls. Only an explicit Analyze action starts observation.
+The clip inspector has a loudness card beside its gain/fade controls. Technical
+details are collapsed; the current Inspector enables explicit target matching. Only an explicit Analyze action starts observation.
 Selecting a clip, opening the panel, reconnecting, restoring visibility or
 returning to a prior selection never starts a measurement.
 
@@ -18,8 +18,14 @@ and below-gate states. It identifies exact saved timeline and source frame
 ranges, the local measurement range, saved gain/fades, revision and source hash.
 The stage is isolated clip post-gain/fades and pre-mix. It is not the existing
 full-timeline mix/candidate workflow or an exported-file measurement. There is
-no target, gain suggestion, apply action, normalization, batch analysis, media
-output or persisted report. Independent clip peaks cannot guarantee mix or
+an optional LUFS/dBTP target with a real second measurement of the scaled float
+signal. The Inspector starts with editable -14 LUFS / -1 dBTP values; these are
+not sent until Analyze. Match stages only a validated supported gain in the
+existing clip draft; Save clip uses the existing mutation and undo/redo. The
+read operation grants no mutation authority, and there is no limiter, batch
+normalization, media output or persisted report. LRA uses complete three-second windows at 100ms hops, with no synthetic
+padding; shorter clips show an unavailable range, not a fabricated zero.
+Independent clip peaks cannot guarantee mix or
 AAC-encoded peaks.
 
 Admission requires an audio/video asset, an unmuted track,
@@ -31,17 +37,16 @@ analysis. The renderer captures selection generation, draft serial/generation,
 project/workspace, revision, full public saved audio graph, selected source and
 saved signal fields. A→B→A cannot restore a previous result. Changes, hide,
 comparison/source overlays, page visibility, pagehide and unmount revoke active
-observation and clear results; retained callbacks cannot act in a newer context.
+observation and clear results; target edits and composition also retire old
+candidates. Retained callbacks cannot act in a newer context, and matching cannot
+bypass dirty, recovered, pending, restored or composition fences.
 
 The web RPC branch reuses the shared client 8 KiB stream envelope reader with one
 bounded deadline covering headers and body. It does not use response.json() for
 this operation, add a native permission or create another native resource owner.
 The existing server audio resource slot and owner admission remain authoritative.
 
-Verification includes state/controller, actual hook and component callbacks,
-static React rendering, actual App-context bindings, bounded RPC cancellation,
-four-locale catalog integrity, strict TypeScript consumers and web production
-build. GUI interaction was not run because of the existing accessibility tooling
-blocker. This document does not claim GUI acceptance or a longer-duration
-performance qualification. The separate backend 60-second boundary evidence is
-not repeated by the frontend tests.
+Current implementation and actual validation are recorded in
+[the third-round matching report](verification/project-open-design-fixes/round3/clip-match/README.md).
+Historical qualification evidence remains separate; the new UI does not claim
+mix/AAC peak safety or a new 60-second performance qualification.

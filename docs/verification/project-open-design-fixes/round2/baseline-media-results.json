@@ -1,0 +1,178 @@
+[
+  {
+    "file": "tests/providers.test.mjs",
+    "baselineHead": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+    "command": "env TMPDIR=/private/tmp node --test --test-reporter=tap tests/providers.test.mjs",
+    "cwd": "/private/tmp/mioon-round2-baseline-40vsb6n8/source",
+    "log": "/private/tmp/mioon-round2-baseline-40vsb6n8/media-logs/providers.test.mjs.tap",
+    "scope": "full-file",
+    "completed": true,
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 1.02,
+    "tests": 32,
+    "pass": 26,
+    "fail": 6,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchesInitialWorktree": {
+      "counts": true,
+      "failureNames": true,
+      "initialWorktreeLog": "/private/tmp/mioon-round2-full-tests/tests__providers.test.mjs.tap"
+    }
+  },
+  {
+    "file": "tests/media-runtime-paths.test.ts",
+    "baselineHead": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+    "command": "env TMPDIR=/private/tmp node --test --test-reporter=tap tests/media-runtime-paths.test.ts",
+    "cwd": "/private/tmp/mioon-round2-baseline-40vsb6n8/source",
+    "log": "/private/tmp/mioon-round2-baseline-40vsb6n8/media-logs/media-runtime-paths.test.ts.tap",
+    "scope": "full-file",
+    "completed": true,
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 1.42,
+    "tests": 1,
+    "pass": 0,
+    "fail": 1,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchesInitialWorktree": {
+      "counts": true,
+      "failureNames": true,
+      "initialWorktreeLog": "/private/tmp/mioon-round2-full-tests/tests__media-runtime-paths.test.ts.tap"
+    }
+  },
+  {
+    "file": "tests/subtitles-media.test.mjs",
+    "baselineHead": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+    "command": "env TMPDIR=/private/tmp node --test --test-reporter=tap tests/subtitles-media.test.mjs",
+    "cwd": "/private/tmp/mioon-round2-baseline-40vsb6n8/source",
+    "log": "/private/tmp/mioon-round2-baseline-40vsb6n8/media-logs/subtitles-media.test.mjs.tap",
+    "scope": "full-file",
+    "completed": true,
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 2.01,
+    "tests": 6,
+    "pass": 3,
+    "fail": 3,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchesInitialWorktree": {
+      "counts": true,
+      "failureNames": true,
+      "initialWorktreeLog": "/private/tmp/mioon-round2-full-tests/tests__subtitles-media.test.mjs.tap"
+    }
+  },
+  {
+    "file": "tests/look-pack-portability.test.ts",
+    "baselineHead": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+    "command": "env TMPDIR=/private/tmp node --test --test-reporter=tap tests/look-pack-portability.test.ts",
+    "cwd": "/private/tmp/mioon-round2-baseline-40vsb6n8/source",
+    "log": "/private/tmp/mioon-round2-baseline-40vsb6n8/media-logs/look-pack-portability.test.ts.tap",
+    "scope": "full-file",
+    "completed": true,
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 2.16,
+    "tests": 1,
+    "pass": 0,
+    "fail": 1,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchesInitialWorktree": {
+      "counts": true,
+      "failureNames": true,
+      "initialWorktreeLog": "/private/tmp/mioon-round2-full-tests/tests__look-pack-portability.test.ts.tap"
+    }
+  },
+  {
+    "file": "tests/timeline-image-filter.test.mjs",
+    "baselineHead": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+    "command": "env TMPDIR=/private/tmp node --test --test-reporter=tap tests/timeline-image-filter.test.mjs",
+    "cwd": "/private/tmp/mioon-round2-baseline-40vsb6n8/source",
+    "log": "/private/tmp/mioon-round2-baseline-40vsb6n8/media-logs/timeline-image-filter.test.mjs.tap",
+    "scope": "full-file",
+    "completed": true,
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 1.96,
+    "tests": 15,
+    "pass": 6,
+    "fail": 9,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchesInitialWorktree": {
+      "counts": true,
+      "failureNames": true,
+      "initialWorktreeLog": "/private/tmp/mioon-round2-full-tests/tests__timeline-image-filter.test.mjs.tap"
+    }
+  },
+  {
+    "file": "tests/timeline-jpeg-decode.test.ts",
+    "baselineHead": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+    "command": "env TMPDIR=/private/tmp node --test --test-reporter=tap tests/timeline-jpeg-decode.test.ts",
+    "cwd": "/private/tmp/mioon-round2-baseline-40vsb6n8/source",
+    "log": "/private/tmp/mioon-round2-baseline-40vsb6n8/media-logs/timeline-jpeg-decode.test.ts.tap",
+    "scope": "full-file",
+    "completed": true,
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 2.88,
+    "tests": 5,
+    "pass": 2,
+    "fail": 3,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchesInitialWorktree": {
+      "counts": true,
+      "failureNames": true,
+      "initialWorktreeLog": "/private/tmp/mioon-round2-full-tests/tests__timeline-jpeg-decode.test.ts.tap"
+    }
+  },
+  {
+    "file": "tests/timeline-preflight-business.test.mjs",
+    "baselineHead": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+    "command": "env TMPDIR=/private/tmp node --test --test-reporter=tap tests/timeline-preflight-business.test.mjs",
+    "cwd": "/private/tmp/mioon-round2-baseline-40vsb6n8/source",
+    "log": "/private/tmp/mioon-round2-baseline-40vsb6n8/media-logs/timeline-preflight-business.test.mjs.tap",
+    "scope": "full-file",
+    "completed": true,
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 101.51,
+    "tests": 46,
+    "pass": 45,
+    "fail": 1,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchesInitialWorktree": {
+      "counts": true,
+      "failureNames": true,
+      "initialWorktreeLog": "/private/tmp/mioon-round2-full-tests/tests__timeline-preflight-business.test.mjs.tap"
+    }
+  },
+  {
+    "file": "tests/subtitles-package.test.ts",
+    "baselineHead": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+    "command": "env TMPDIR=/private/tmp node --test --test-reporter=tap tests/subtitles-package.test.ts",
+    "cwd": "/private/tmp/mioon-round2-baseline-40vsb6n8/source",
+    "log": "/private/tmp/mioon-round2-baseline-40vsb6n8/media-logs/subtitles-package.test.ts.tap",
+    "scope": "full-file",
+    "completed": true,
+    "exitCode": 1,
+    "timeout": false,
+    "seconds": 2.2,
+    "tests": 6,
+    "pass": 5,
+    "fail": 1,
+    "cancelled": 0,
+    "skipped": 0,
+    "matchesInitialWorktree": {
+      "counts": true,
+      "failureNames": true,
+      "initialWorktreeLog": "/private/tmp/mioon-round2-full-tests/tests__subtitles-package.test.ts.tap"
+    }
+  }
+]

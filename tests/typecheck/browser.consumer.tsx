@@ -1,4 +1,6 @@
 import type { ReactElement } from 'react';
+import type { UseSubjectsResult } from '../../apps/web/src/use-subjects.ts';
+import type { SubjectsBundle } from '../../apps/web/src/SubjectLibrary.tsx';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { deriveAgentEndpoint, type AgentProtocol } from '../../packages/contracts/src/agent-protocol.ts';
 import TopbarSaveStatus, { type TopbarSaveStatusProps } from '../../apps/web/src/TopbarSaveStatus.tsx';
@@ -23,6 +25,13 @@ function rejectInvalidProps(): void {
 void rejectInvalidProps;
 type IsAny<T> = 0 extends (1 & T) ? true : false;
 type Assert<T extends true> = T;
+// The mounted library must accept the hook's first-render/scope-switch null
+// state. Keep this TSX/CSS dependency in the browser compiler's own boundary.
+function subjectLibraryBundle(subjects: UseSubjectsResult): SubjectsBundle { return subjects; }
+void subjectLibraryBundle;
+type SubjectLibraryAllowsLoading = Assert<null extends SubjectsBundle['state'] ? true : false>;
+type SubjectLibraryStateMustNotBeAny = Assert<IsAny<SubjectsBundle['state']> extends false ? true : false>;
+export type { SubjectLibraryAllowsLoading, SubjectLibraryStateMustNotBeAny };
 type ElementMustNotBeAny = Assert<IsAny<ReturnType<typeof ProtocolBadge>> extends false ? true : false>;
 type OutputMustBeString = Assert<ReturnType<typeof renderProtocolProof> extends string ? true : false>;
 export type { ElementMustNotBeAny, OutputMustBeString };

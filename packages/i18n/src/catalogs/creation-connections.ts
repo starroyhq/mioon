@@ -75,10 +75,10 @@ export const connectionMessages = {
     "ja": "AGENT · 接続"
   },
   "agent.settings.intro": {
-    "zh-Hans": "连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围",
-    "zh-Hant": "連線設定不會發起模型請求；每次傳送都須確認聊天文字、專案唯讀檢查，以及所選鏡頭或片段的提案範圍",
-    "en": "Connection settings do not send model requests. Each send requires confirmation of the chat text, read-only project inspection, and proposal scope for selected shots or clips",
-    "ja": "接続設定からモデルへのリクエストは送信されません。送信のたびに、チャット本文、プロジェクトの読み取り専用チェック、選択したショットやクリップへの提案範囲を確認する必要があります"
+      "zh-Hans": "连接设置不会发起模型请求；相同目标地址、模型和发送范围只需授权一次，可在下方撤销",
+      "zh-Hant": "連線設定不會發起模型請求；相同目標位址、模型和傳送範圍只需授權一次，可在下方撤銷",
+      "en": "Connection settings do not send model requests. Authorize each destination, model and sending scope once; revoke access below",
+      "ja": "接続設定からモデルへのリクエストは送信されません。同じ送信先、モデル、送信範囲の許可は一度だけ必要です。下で取り消せます"
   },
   "agent.settings.backAgent": {
     "zh-Hans": "返回 Agent 对话",

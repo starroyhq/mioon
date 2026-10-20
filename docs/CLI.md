@@ -1,5 +1,7 @@
 # Mioon CLI (V4)
 
+工作区开关、应用内备份、任务处置和导出控制也通过同一后端提供。具体范围见[工作区设置](WORKSPACE-SETTINGS.md)、[任务处置](TASK-DISPOSITIONS.md)和[导出控制](EXPORT-CONTROLS.md)，使用 `schema` 查询当前参数，避免拼接服务器文件路径
+
 The CLI is a local HTTP client for the **same running backend and database** used by the browser, Electron, and MCP. It never starts a second service or reads backend database/media paths. Node.js 24+ and the source workspace dependencies are required; this is not a bundled standalone executable.
 
 From the source checkout:

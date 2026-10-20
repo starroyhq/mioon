@@ -1,7 +1,8 @@
 import { translate } from '../../../packages/i18n/src/index.ts';
 import type { Locale } from '../../../packages/i18n/src/index.ts';
-import { EXPORT_LOUDNESS_PROFILE } from '@mioon/contracts/export-loudness';
-import { TIMELINE_CLIP_LOUDNESS_LIMITS, isTimelineClipLoudnessResponse } from '@mioon/contracts/timeline-clip-loudness';
+import { EXPORT_LOUDNESS_PROFILE, exportLoudnessTargetSchema } from '@mioon/contracts/export-loudness';
+import type { ExportLoudnessTarget } from '@mioon/contracts/export-loudness';
+import { TIMELINE_CLIP_LOUDNESS_LIMITS, TIMELINE_CLIP_LOUDNESS_TARGET_TOLERANCE_LU, isTimelineClipLoudnessResponse } from '@mioon/contracts/timeline-clip-loudness';
 import type { TimelineClipLoudnessInput, TimelineClipLoudnessResponse } from '@mioon/contracts/timeline-clip-loudness';
 
 export interface TimelineClipLoudnessContext {
@@ -37,6 +38,9 @@ export interface TimelineClipLoudnessState extends TimelineClipLoudnessContext {
   readonly report: TimelineClipLoudnessResponse | null;
   readonly error: string;
   readonly errorCode?: string;
+  /** Local target text is never persisted or silently normalized. */
+  readonly targetDraft: Readonly<{ integratedLufs: string; truePeakCeilingDbtp: string }> | null;
+  readonly targetComposing: boolean;
 }
 export interface TimelineClipLoudnessReadOptions { readonly signal: AbortSignal; readonly expectedWorkspaceOrigin?: string }
 export interface TimelineClipLoudnessControllerOptions {
@@ -45,13 +49,30 @@ export interface TimelineClipLoudnessControllerOptions {
   readonly getInvocation?: () => Readonly<{ expectedWorkspaceOrigin?: string }>;
   readonly onChange?: (state: TimelineClipLoudnessState) => void;
   readonly onUnauthorized?: () => void;
+  /** Only stages a gain in the existing clip draft; it never saves the timeline. */
+  readonly onMatchGain?: (gain: number) => boolean;
 }
 const initial = (): TimelineClipLoudnessState => ({ scope: null, executionScope: '', projectId: null, timelineId: null,
   revision: null, clipId: null, assetId: null, assetSha256: '', trackId: null, startFrame: 0, sourceInFrame: 0, durationFrames: 0, gain: 0, fadeInFrames: 0, fadeOutFrames: 0, muted: true, audioSupported: false, sourceIdentity: '', connected: false, visible: false, restored: false, hasUnsavedDrafts: false,
-  pending: false, version: 0, phase: 'idle', report: null, error: '' });
+  pending: false, version: 0, phase: 'idle', report: null, error: '', targetDraft: null, targetComposing: false });
 const contextKeys = ['scope', 'executionScope', 'projectId', 'timelineId', 'revision', 'clipId', 'assetId', 'assetSha256', 'trackId', 'startFrame', 'sourceInFrame', 'durationFrames', 'gain', 'fadeInFrames', 'fadeOutFrames', 'muted', 'audioSupported', 'sourceIdentity',
   'connected', 'visible', 'restored', 'hasUnsavedDrafts', 'pending'] as const;
 const sameContext = (a: TimelineClipLoudnessContext, b: TimelineClipLoudnessContext): boolean => contextKeys.every(key => a[key] === b[key]);
+export function timelineClipLoudnessTarget(state: Pick<TimelineClipLoudnessState, 'targetDraft' | 'targetComposing'>): ExportLoudnessTarget | null {
+  if (!state.targetDraft || state.targetComposing) return null;
+  const numeric = (value: string): number => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/u.test(value) ? Number(value) : NaN;
+  const parsed = exportLoudnessTargetSchema.safeParse({ integratedLufs: numeric(state.targetDraft.integratedLufs),
+    truePeakCeilingDbtp: numeric(state.targetDraft.truePeakCeilingDbtp) });
+  return parsed.success ? parsed.data : null;
+}
+export function timelineClipLoudnessMatchable(state: TimelineClipLoudnessState): boolean {
+  const target = timelineClipLoudnessTarget(state), report = state.report, candidate = report?.candidate;
+  return timelineClipLoudnessAvailable(state) && state.phase === 'ready' && Boolean(target && report?.target &&
+    report.target.integratedLufs === target.integratedLufs && report.target.truePeakCeilingDbtp === target.truePeakCeilingDbtp &&
+    candidate?.status === 'measured' && candidate.meetsTarget && candidate.meetsTruePeak &&
+    Math.abs(candidate.requiredGainDb) > TIMELINE_CLIP_LOUDNESS_TARGET_TOLERANCE_LU &&
+    candidate.beforeGain === state.gain && candidate.afterGain !== state.gain && candidate.afterGain > 0 && candidate.afterGain <= 2);
+}
 export function timelineClipLoudnessAvailable(context: TimelineClipLoudnessContext): boolean {
   return Boolean(context.scope && context.projectId && context.timelineId && Number.isSafeInteger(context.revision) && (context.revision ?? 0) > 0 &&
     Number.isSafeInteger(context.durationFrames) && context.durationFrames > 0 && context.durationFrames <= TIMELINE_CLIP_LOUDNESS_LIMITS.clipFrames &&
@@ -64,7 +85,7 @@ export function timelineClipLoudnessAvailable(context: TimelineClipLoudnessConte
 export function timelineClipLoudnessViewState(state: TimelineClipLoudnessState, context: TimelineClipLoudnessContext): TimelineClipLoudnessState {
   if (sameContext(state, context)) return state;
   return Object.freeze({ ...state, ...context, version: state.version + 1,
-    phase: state.phase === 'idle' ? 'idle' : state.phase === 'preparing' ? 'cancelled' : 'stale', report: null, error: '' });
+    phase: state.phase === 'idle' ? 'idle' : state.phase === 'preparing' ? 'cancelled' : 'stale', report: null, error: '', targetComposing: false });
 }
 const codeOf = (error: unknown): string => error !== null && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : '';
 export function timelineClipLoudnessErrorMessage(error: unknown, locale: Locale = 'zh-Hans'): string {
@@ -109,9 +130,10 @@ export function clipReportMatchesContext(report: TimelineClipLoudnessResponse, c
     report.identity.fadeOutFrames === captured.fadeOutFrames && report.identity.trackMuted === captured.muted;
 }
 
-/** Ephemeral read-only observation. No edit, persistence, queue, automatic retry or apply operation. */
+/** Ephemeral measurement; an explicitly checked candidate can only enter the existing local draft. */
 export function createTimelineClipLoudnessController(options: TimelineClipLoudnessControllerOptions) {
   let state = initial(), generation = 0, version = 0, disposed = false;
+  if (options.onMatchGain) state = { ...state, targetDraft: Object.freeze({ integratedLufs: '-14', truePeakCeilingDbtp: '-1' }) };
   let active: AbortController | null = null;
   const emit = (patch: Partial<TimelineClipLoudnessState>): void => { state = Object.freeze({ ...state, ...patch }); options.onChange?.(state); };
   const invalidate = (): void => { generation++; const previous = active; active = null; previous?.abort(); };
@@ -137,9 +159,11 @@ export function createTimelineClipLoudnessController(options: TimelineClipLoudne
     async prepare(expected: TimelineClipLoudnessState): Promise<TimelineClipLoudnessResponse | null> {
       if (!allowed(expected) || active) return null;
       if (!state.projectId || !state.timelineId || !state.revision || !state.clipId) return null;
+      const target = timelineClipLoudnessTarget(state);
+      if (state.targetDraft && !target) return null;
       const input: TimelineClipLoudnessInput = Object.freeze({ projectId: state.projectId, timelineId: state.timelineId,
         expectedRevision: state.revision, clipId: state.clipId, expectedAssetSha256: state.assetSha256,
-        measurementProfile: EXPORT_LOUDNESS_PROFILE });
+        measurementProfile: EXPORT_LOUDNESS_PROFILE, ...(target ? { target } : {}) });
       const attempt = ++generation, abort = new AbortController(); active = abort;
       emit({ version: ++version, phase: 'preparing', report: null, error: '' });
       const captured = state;
@@ -164,11 +188,36 @@ export function createTimelineClipLoudnessController(options: TimelineClipLoudne
       if (!allowed(expected) || !active) return;
       invalidate(); emit({ version: ++version, phase: 'cancelled', report: null, error: '' });
     },
+    editTarget(expected: TimelineClipLoudnessState, field: 'integratedLufs' | 'truePeakCeilingDbtp', value: string): boolean {
+      sync();
+      if (disposed || !options.onMatchGain || !state.targetDraft || !state.visible || !state.connected ||
+          expected.version !== state.version || !sameContext(expected, state)) return false;
+      invalidate(); emit({ version: ++version, targetDraft: Object.freeze({ ...state.targetDraft, [field]: value }),
+        phase: state.phase === 'idle' ? 'idle' : 'stale', report: null, error: '' });
+      return true;
+    },
+    setTargetComposing(expected: TimelineClipLoudnessState, pending: boolean): boolean {
+      sync();
+      if (disposed || !options.onMatchGain || !state.targetDraft || !state.visible || !state.connected ||
+          expected.version !== state.version || !sameContext(expected, state)) return false;
+      if (state.targetComposing === pending) return true;
+      invalidate(); emit({ version: ++version, targetComposing: pending, phase: state.phase === 'idle' ? 'idle' : 'stale', report: null, error: '' });
+      return true;
+    },
+    match(expected: TimelineClipLoudnessState): boolean {
+      if (!allowed(expected) || !options.onMatchGain || !timelineClipLoudnessMatchable(state)) return false;
+      const candidate = state.report?.candidate;
+      if (candidate?.status !== 'measured') return false;
+      // Consume the report before calling the draft owner. A retained callback
+      // cannot stage the gain twice, even before React commits its next render.
+      invalidate(); emit({ version: ++version, phase: 'stale', report: null, error: '' });
+      return options.onMatchGain(candidate.afterGain);
+    },
     revoke(expected?: TimelineClipLoudnessState): void {
       if (disposed || expected && !allowed(expected)) return;
       invalidate(); emit({ version: ++version, phase: state.phase === 'idle' ? 'idle' : 'cancelled', report: null, error: '' });
     },
-    dispose(): void { invalidate(); disposed = true; state = { ...initial(), version: ++version }; },
+    dispose(): void { invalidate(); disposed = true; state = { ...initial(), targetDraft: state.targetDraft, version: ++version }; },
   };
   return controller;
 }

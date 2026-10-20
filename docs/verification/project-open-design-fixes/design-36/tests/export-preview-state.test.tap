@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: range is explicitly bounded to 1–300 integer frames inside saved duration
+ok 1 - range is explicitly bounded to 1–300 integer frames inside saved duration
+  ---
+  duration_ms: 0.8155
+  type: 'test'
+  ...
+# Subtest: exact request/export/asset produces only dedicated preview URL, never a supplied row URL
+ok 2 - exact request/export/asset produces only dedicated preview URL, never a supplied row URL
+  ---
+  duration_ms: 4.243833
+  type: 'test'
+  ...
+# Subtest: duplicate or conflicting exact requests fail closed even with known export ID
+ok 3 - duplicate or conflicting exact requests fail closed even with known export ID
+  ---
+  duration_ms: 0.182083
+  type: 'test'
+  ...
+# Subtest: owner, stale, connection and held boundaries remove playback without changing request
+ok 4 - owner, stale, connection and held boundaries remove playback without changing request
+  ---
+  duration_ms: 1.3045
+  type: 'test'
+  ...
+# Subtest: in-flight, uncertain, running and failure states never manufacture playable files
+ok 5 - in-flight, uncertain, running and failure states never manufacture playable files
+  ---
+  duration_ms: 0.342958
+  type: 'test'
+  ...
+# Subtest: staleness binds settings/range versions, saved timeline and referenced source identity, not unrelated assets
+ok 6 - staleness binds settings/range versions, saved timeline and referenced source identity, not unrelated assets
+  ---
+  duration_ms: 0.2725
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 424.28075

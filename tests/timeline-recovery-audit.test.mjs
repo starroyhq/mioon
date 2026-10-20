@@ -9,6 +9,7 @@ import path from 'node:path';
 import {timelineHistoryState} from '../apps/web/src/timeline-history.ts';
 import {timelineHistoryActionForKey} from '../apps/web/src/timeline-keyboard.ts';
 import {message as msg, renderMessage} from '../packages/i18n/src/index.ts';
+import {touchesLockedTrack} from '../apps/web/src/timeline-track-locks.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -77,7 +78,7 @@ function appHarness(port, {revision = 7, refreshedRevision = 9, subtitleDirty = 
   const currentProject = {current:projectId}, busy = new Set();
   const dataRef = {current:{project:{id:projectId}, timeline:timeline(revision), timelineHistory:history(revision)}};
   const state = {epoch:0, ids:0, notices:[], refreshes:[], jobs:false, recoveredFormats:[], recoveredSubtitles:[]};
-  const scope = { msg, renderCoreMessage: renderMessage, application: null, clipConnectionBlocked: {current:false}, clipDraftRef: {current:null}, shotTextRef: {current:null}, captureTaskWorkspaceIntent,
+  const scope = { msg, renderCoreMessage: renderMessage, application: null, trackLocksRef:{current:{}}, touchesLockedTrack, clipConnectionBlocked: {current:false}, clipDraftRef: {current:null}, shotTextRef: {current:null}, captureTaskWorkspaceIntent,
     readTaskRevealContext: () => ({ active: true, projectId: currentProject.current, projectEpoch: 0, navigationEpoch: state.epoch, panelIntent: 0, workspaceScope: 'test-workspace' }),
     timelineFormatRef:{current:{controller:{recovered:task=>state.recoveredFormats.push(copy(task))}}}, subtitlesRef:{current:{controller:{recovered:task=>state.recoveredSubtitles.push(copy(task))}}},
     currentProject, dataRef, tasksRef:{current:port}, requestCounter:{current:0}, timelineHistoryState,
@@ -180,7 +181,7 @@ for (const direction of ['undo', 'redo']) {
     assert.equal(allowed, false); assert.equal(h.state.notices.length, notices);
     assert.equal(h.busy.size, 0);
     assert.match(app, /canExecute: \(\(\) => !clipConnectionBlocked\.current && !acknowledgeOnly && isCurrent\(captured\) && canExecute\(\)\) as unknown as never/);
-    assert.match(app, /<TaskCenter taskViewScope=\{taskViewScope\}[^>]*captureView=\{captureTaskView\}/);
+    assert.match(app, /<TaskCenter\b[^>]*\btaskViewScope=\{taskViewScope\}[^>]*\bcaptureView=\{captureTaskView\}/);
   });
 }
 

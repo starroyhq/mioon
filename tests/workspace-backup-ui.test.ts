@@ -150,6 +150,17 @@ test('actual compact component uses shared collapsible controls and never reads 
   const css = read('workspace-backup.css'); assert.match(css, /max-height: 52%/); assert.match(css, /overflow: auto/);
 });
 
+test('settings embed shows the offline backup group directly without a collapsed trigger or automatic inspection', () => {
+  const calls: unknown[] = [];
+  const tree = component().default({ embedded: true, scope: 'settings:workspace', connected: true, read: (...args: unknown[]) => calls.push(args) });
+  assert.equal(tree.type, 'section');
+  assert.equal(nodes(tree).some(node => node.type === 'CollapsibleTrigger'), false);
+  assert.equal(nodes(tree).find(node => node.props.className === 'workspace-backup-content')!.props.inert, false);
+  assert.equal(calls.length, 0);
+  const hidden = component(false).default({ embedded: true, scope: 'settings:workspace', connected: false, read: () => assert.fail('Hidden settings must not inspect') });
+  assert.equal(nodes(hidden).find(node => node.props.className === 'workspace-backup-content')!.props.inert, true);
+});
+
 test('actual details truthfully describe SQLite scope, exclusions, readonly limits and exact local commands', async () => {
   const f = fixture(); await f.ready(); const Details = component().WorkspaceBackupDetails;
   const tree = Details({ state: f.state(), controller: f.controller }), text = textOf(tree);
@@ -165,6 +176,22 @@ test('actual details truthfully describe SQLite scope, exclusions, readonly limi
   assert.equal(nodes(tree).filter(node => node.type === 'Button').length, 1);
   assert.equal((nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-count-projects')!.props.children as unknown[])[0], '2');
   assert.doesNotMatch(read('WorkspaceBackupPanel.tsx'), /<input|<select|<button|role="dialog"|setInterval|setTimeout|fetch\(|clipboard|localStorage|sessionStorage/);
+});
+
+test('embedded backup keeps inspection visible while technical scope and terminal instructions start collapsed', () => {
+  const Details = component().WorkspaceBackupDetails;
+  const tree = Details({ compact: true, state: { connected: true, visible: true, phase: 'idle' }, controller: { inspect() {} } });
+  const help = nodes(tree).find(node => node.props['data-testid'] === 'workspace-backup-help')!;
+  assert.equal(help.type, 'details');
+  assert.notEqual(help.props.open, true);
+  assert.ok(nodes(help).find(node => node.type === 'summary'));
+  assert.ok(nodes(help).find(node => node.props['data-testid'] === 'workspace-backup-create-command'));
+  assert.match(textOf(help), /SQLite.*不包含应用凭据与应用设置/);
+  const primary = (tree.props.children as unknown[]).filter(child => !child || typeof child !== 'object' || (child as Element).props?.['data-testid'] !== 'workspace-backup-help');
+  assert.match(textOf(primary), /此处仅核对记录/);
+  assert.ok(nodes(primary).find(node => node.props['data-testid'] === 'workspace-backup-inspect'));
+  assert.ok(nodes(primary).find(node => node.props['data-testid'] === 'workspace-backup-status'));
+  assert.equal(nodes(primary).some(node => node.props['data-testid'] === 'workspace-backup-create-command'), false);
 });
 
 test('actual details show bounded missing counts, issues, current error and no fake all-clear', async () => {

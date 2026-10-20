@@ -151,6 +151,9 @@ async function fixture(t) {
     if (proxy) {proxy.closeAllConnections(); await new Promise(resolve => proxy.close(resolve));}
     db?.close(); await server.close(); await rm(root, {recursive: true, force: true});
   });
+  // The persisted workspace gate is independent from this synthetic official
+  // slot. Opt in without approving a request or changing the fake network.
+  await f.client.rpc('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
   return f;
 }
 

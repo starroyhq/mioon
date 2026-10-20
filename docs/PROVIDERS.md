@@ -24,6 +24,10 @@ Kling initially uses the current API-Key protocol with `kling-3.0`; Wan uses the
 this increment. Existing Ark frame-pair and one-image subject modes are retained.
 
 Enter the API key, choose its storage scope and explicitly enable the connection.
+The workspace **Real generation** switch must also be enabled in Model services.
+It is checked again immediately before dispatch; disabling it prevents new paid
+submissions and explicit retries, while accepted tasks can still be observed and
+downloaded with their original binding.
 Web keys last for the backend lifetime. Desktop can use the existing supported OS
 encrypted storage; unavailable secure storage has no plaintext fallback. Settings
 reads disclose only configuration and storage status. Video keys are isolated from

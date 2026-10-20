@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: candidate RPC opens a real restored43 project and preserves strict scope and held export disclosure
+ok 1 - candidate RPC opens a real restored43 project and preserves strict scope and held export disclosure
+  ---
+  duration_ms: 1383.841833
+  type: 'test'
+  ...
+# Subtest: only the exact candidate client binding accepts43; legacy API, copied binding and forged capability responses reject
+ok 2 - only the exact candidate client binding accepts43; legacy API, copied binding and forged capability responses reject
+  ---
+  duration_ms: 739.421708
+  type: 'test'
+  ...
+# Subtest: real restored application binding and clip controller persist new-origin drafts, save/cancel, undo/redo and refuse captured pending without v3 traffic
+ok 3 - real restored application binding and clip controller persist new-origin drafts, save/cancel, undo/redo and refuse captured pending without v3 traffic
+  ---
+  duration_ms: 3158.979625
+  type: 'test'
+  ...
+# Subtest: actual App view updates remain in memory for43 and continue using the existing preference controller for42
+ok 4 - actual App view updates remain in memory for43 and continue using the existing preference controller for42
+  ---
+  duration_ms: 1064.578083
+  type: 'test'
+  ...
+# Subtest: real shared components show43 draft disclosure in four languages and remove unavailable mutation actions while keeping clip/history/preview controls
+ok 5 - real shared components show43 draft disclosure in four languages and remove unavailable mutation actions while keeping clip/history/preview controls
+  ---
+  duration_ms: 1490.290625
+  type: 'test'
+  ...
+# Subtest: actual restored Timeline menu disables structure writes and rejects current and retained mutation callbacks
+ok 6 - actual restored Timeline menu disables structure writes and rejects current and retained mutation callbacks
+  ---
+  duration_ms: 776.1905
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 9082.676209

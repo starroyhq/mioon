@@ -1,0 +1,70 @@
+{
+  "synthetic": true,
+  "fixture": true,
+  "baseUrl": "http://127.0.0.1:43193",
+  "dataDirectory": "/private/tmp/mioon-design-agent-ckd_snhp/published-versions-workspace",
+  "projectId": "0b446863-5b07-4ab0-b075-b92e9f742729",
+  "versionShotId": "8e8e2417-5438-40da-a95d-b31cff2aebed",
+  "configuration": {
+    "httpStatus": 200,
+    "revision": 1,
+    "protocol": "chat_completions",
+    "presetId": "ollama",
+    "platformId": "local",
+    "baseUrl": "http://127.0.0.1:54577/v1",
+    "model": "qwen3:8b",
+    "secretConfigured": false
+  },
+  "authorizations": {
+    "revision": 0,
+    "items": [],
+    "currentTarget": {
+      "destination": "http://127.0.0.1:54577/v1/chat/completions",
+      "model": "qwen3:8b",
+      "settingsRevision": 1
+    }
+  },
+  "unknown": {
+    "shotId": "f2bceb6c-62c3-44aa-aa9a-224d7a479886",
+    "jobId": "b655ec6b-4b7f-425b-b2a0-c2e61141fd1b",
+    "status": "submission_unknown",
+    "phase": "reconciliation_required",
+    "errorCode": "SUBMISSION_UNKNOWN",
+    "requestId": "design-qa-unknown-job-20261020",
+    "submitInput": {
+      "shotId": "f2bceb6c-62c3-44aa-aa9a-224d7a479886",
+      "expectedRevision": 1,
+      "requestId": "design-qa-unknown-job-20261020",
+      "providerId": "mock",
+      "model": "mock-motion-v1",
+      "parameters": {
+        "scenario": "unknown"
+      }
+    }
+  },
+  "versions": {
+    "count": 2,
+    "media": [
+      {
+        "versionId": "4496c763-f1d6-44d6-8084-0f1ac8c7ca56",
+        "assetId": "7085702e-703c-4ad3-b66a-58177cd12b32",
+        "sha256": "2274735462c0eb91f03184262a0c7ce20f06dde066bac5c8c349ecdbab9fa6da",
+        "httpStatus": 206,
+        "contentType": "video/mp4",
+        "contentRange": "bytes 0-63/119045",
+        "receivedBytes": 64
+      },
+      {
+        "versionId": "6ebd273f-5e44-4a6c-a141-3df1592ec0ba",
+        "assetId": "264b3b21-67e0-4ec4-b68a-585bebbaebae",
+        "sha256": "c42829953f33873940d3ced8118fe2fac6fa4fae88610daac8b1fd6b55243c08",
+        "httpStatus": 206,
+        "contentType": "video/mp4",
+        "contentRange": "bytes 0-63/173037",
+        "receivedBytes": 64
+      }
+    ]
+  },
+  "generationSuccessVerified": false,
+  "blocker": "Current FFmpeg lacks drawtext; versions published through explicit DB/service fixture using actual imported synthetic MP4"
+}

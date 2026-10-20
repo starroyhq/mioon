@@ -1,0 +1,123 @@
+{
+  "note": "独立检查组之间有重叠，不相加作为全仓测试总数；本轮未重跑完整772文件",
+  "groups": [
+    {
+      "name": "audio",
+      "path": "logs/audio.tap",
+      "sha256": "50d68e55577117cb7ebfe0d5fb401c3744b2a7ba1a5266dbb2ddc9a32d6713e4",
+      "counts": {
+        "tests": 185,
+        "pass": 185,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "name": "audio-readability",
+      "path": "logs/audio-readability.tap",
+      "sha256": "9e3a2a816820b54a623c576dda9cad78d41611e81f2e94368e7fc4722859ff02",
+      "counts": {
+        "tests": 23,
+        "pass": 23,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "name": "timeline-assets",
+      "path": "logs/timeline-assets.tap",
+      "sha256": "6119d0c946beaaa783d71340b6609d8a9b82dd32854ad9395c8c3af39067e2b8",
+      "counts": {
+        "tests": 80,
+        "pass": 80,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "name": "export",
+      "path": "logs/export.tap",
+      "sha256": "071065fb1c163ad52586c92aeeea610b83376c7ce09e8a0684f646918dc7d771",
+      "counts": {
+        "tests": 31,
+        "pass": 31,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "name": "export-real-media",
+      "path": "logs/export-real-media.tap",
+      "sha256": "2fb870544fb273c3213b011924a6dc2b7e10865d035eb2d8b6e8bd99c9ba4e53",
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "name": "root-ui",
+      "path": "logs/root-ui.tap",
+      "sha256": "1ae45abd6408862d8d8fad3c441703ab6a9c31b894b1d1ec998bbaab9560d736",
+      "counts": {
+        "tests": 123,
+        "pass": 123,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "name": "independent-review",
+      "path": "logs/independent-review.tap",
+      "sha256": "49db99ada8441fdd13f0922a731b8ad4144554e40cdc73a63812c1f432232106",
+      "counts": {
+        "tests": 156,
+        "pass": 156,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "name": "catalog-layout-audit",
+      "path": "logs/catalog-layout-audit.tap",
+      "sha256": "3eb1b51455be605205bf35d10da893c9fbaa934be96155402a081f170c06737f",
+      "counts": {
+        "tests": 37,
+        "pass": 37,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "exitCode": 0
+    },
+    {
+      "name": "typecheck",
+      "path": "logs/typecheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "counts": {},
+      "exitCode": 0
+    },
+    {
+      "name": "build-final",
+      "path": "logs/build-final.log",
+      "sha256": "717fdff37b19b50ff68b1ca9dca827992cfe448b50c3a4664bf6bf97bc88141d",
+      "counts": {},
+      "exitCode": 0
+    }
+  ]
+}

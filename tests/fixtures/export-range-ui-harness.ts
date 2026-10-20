@@ -17,7 +17,7 @@ export const textOf = (tree: unknown): string => Array.isArray(tree) ? tree.map(
 export function component(file: string): {default: UiComponent; [key: string]: unknown} {
   // Render-phase context only: presentation sections retain their actual
   // hidden/inert props; no provider persistence or passive work runs here.
-  const cache = new Map<string, Record<string, unknown>>(), react: Record<string, unknown> = { createElement: element, createContext:(value: unknown) => ({value, Provider:'ContextProvider'}), useContext:(context: {value?: unknown}) => context.value, useId: () => 'range-id', useRef:(value: unknown) => ({ current: value }), useState:(value: unknown) => [typeof value === 'function' ? (value as ()=>unknown)() : value, () => {}], useEffect() {}, useLayoutEffect() {} }; react.default = react;
+  const cache = new Map<string, Record<string, unknown>>(), react: Record<string, unknown> = { createElement: element, createContext:(value: unknown) => ({value, Provider:'ContextProvider'}), useContext:(context: {value?: unknown}) => context.value, useId: () => 'range-id', useMemo:(factory:()=>unknown) => factory(), useRef:(value: unknown) => ({ current: value }), useState:(value: unknown) => [typeof value === 'function' ? (value as ()=>unknown)() : value, () => {}], useEffect() {}, useLayoutEffect() {} }; react.default = react;
   function load(name: string): unknown {
     if (cache.has(name)) return cache.get(name);
     const module: {exports: Record<string, unknown>} = { exports: {} }; cache.set(name, module.exports);
@@ -31,6 +31,7 @@ export function component(file: string): {default: UiComponent; [key: string]: u
       // Keep the exact composition props without pretending an asynchronous
       // file inspection has completed. Its real lifecycle has a separate suite.
       if (key === './ExportFileActions.tsx') return {__esModule:true, default:(props: Record<string, unknown>) => ({type:'ExportFileActions', props})};
+      if (key === '@mioon/ui/components/workbench-confirm') return {useConfirmation:() => async () => {throw Error('Passive range presentation must not request confirmation');}};
       if (key === '@mioon/contracts/timeline-export-range') return rangeContract;
       if (key === '@mioon/contracts/timeline-export-float') return floatContract;
       if (key === '@mioon/contracts/timeline-delivery') return deliveryContract;
@@ -40,7 +41,7 @@ export function component(file: string): {default: UiComponent; [key: string]: u
       if (key === './api.js') return { statusText: String };
       if (key === './icons.jsx') return { __esModule: true, default: 'Icon' };
       if (key.endsWith('.css')) return {};
-      if (key.startsWith('@mioon/ui/')) return { Button: 'Button', Input: 'Input', Label: 'Label', Badge: 'Badge' };
+      if (key.startsWith('@mioon/ui/')) return { Button: 'Button', Input: 'Input', Label: 'Label', Badge: 'Badge', WorkbenchButton:'Button', WorkbenchProgress:'Progress', WorkbenchIcon:'Icon' };
       if (key === './WorkspaceControls.jsx') return { WorkbenchSelect: 'Select' };
       if (key.startsWith('./')) return load(key.slice(2));
       throw Error(`Unexpected range UI import: ${key}`);

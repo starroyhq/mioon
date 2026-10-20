@@ -2,6 +2,78 @@ import type { MessageCatalog } from '../types.ts';
 
 /** Localized operation prose only; operation names, schemas and effect contracts stay unchanged. */
 export const operationMessages = {
+  "operation.export.cancel": {
+    "zh-Hans": "停止所属项目中排队或运行的本地导出，保留冻结请求和全部源媒体；重复调用不会重新开始渲染",
+    "zh-Hant": "停止所屬專案中排隊或執行的本機匯出，保留凍結請求和全部來源媒體；重複呼叫不會重新開始算繪",
+    "en": "Stop an owned local queued or running export while preserving its frozen request and all source media; repeated calls never restart rendering",
+    "ja": "所有するプロジェクトの待機中または実行中のローカル書き出しを停止し、固定したリクエストとすべてのソースメディアを保持します。繰り返し呼び出してもレンダリングは再開しません"
+  },
+  "operation.export.activity.get": {
+    "zh-Hans": "只读查询本地导出阶段与已用时间，不渲染、不查询供应商、不修改导出记录",
+    "zh-Hant": "唯讀查詢本機匯出階段與已用時間，不算繪、不查詢供應商、不修改匯出記錄",
+    "en": "Read the local export stage and elapsed time without rendering, polling a provider or changing the export record",
+    "ja": "ローカル書き出しの処理段階と経過時間を読み取り専用で確認します。レンダリング、プロバイダーへの問い合わせ、書き出し記録の変更は行いません"
+  },
+  "operation.export.output.get": {
+    "zh-Hans": "读取已验证且归属当前项目的导出文件位置与元数据，不接受调用方指定路径或执行命令",
+    "zh-Hant": "讀取已驗證且歸屬目前專案的匯出檔案位置與中繼資料，不接受呼叫端指定路徑或執行命令",
+    "en": "Read the verified location and metadata of an owned export file; accepts no caller-controlled path or shell action",
+    "ja": "現在のプロジェクトが所有する検証済み書き出しファイルの場所とメタデータを読み取ります。呼び出し元が指定したパスやコマンドの実行は受け付けません"
+  },
+  "operation.workspace.settings.get": {
+    "zh-Hans": "读取当前本地工作区的真实生成与自动备份设置",
+    "zh-Hant": "讀取目前本機工作區的真實生成與自動備份設定",
+    "en": "Read the current local workspace settings for live generation and automatic backups",
+    "ja": "現在のローカルワークスペースの実生成と自動バックアップの設定を読み取ります"
+  },
+  "operation.workspace.settings.set": {
+    "zh-Hans": "按设置修订号保存当前本地工作区的真实生成与自动备份设置",
+    "zh-Hant": "按設定修訂版號儲存目前本機工作區的真實生成與自動備份設定",
+    "en": "Save live-generation and automatic-backup settings for the current local workspace against the settings revision",
+    "ja": "設定のリビジョンを照合し、現在のローカルワークスペースの実生成と自動バックアップの設定を保存します"
+  },
+  "operation.workspace.backup.status": {
+    "zh-Hans": "只读查询本地备份进度、计划与恢复暂存状态",
+    "zh-Hant": "唯讀查詢本機備份進度、排程與復原暫存狀態",
+    "en": "Read the local backup progress, schedule and staged-restore status",
+    "ja": "ローカルバックアップの進行状況、スケジュール、準備済み復元の状態を読み取り専用で確認します"
+  },
+  "operation.workspace.backup.list": {
+    "zh-Hans": "只读列出已验证的本地工作区备份",
+    "zh-Hant": "唯讀列出已驗證的本機工作區備份",
+    "en": "List verified local workspace backups without changing them",
+    "ja": "検証済みのローカルワークスペースのバックアップを読み取り専用で一覧表示します"
+  },
+  "operation.workspace.backup.create": {
+    "zh-Hans": "在空闲工作区创建一致的本地离线备份，使用稳定requestId保留原请求身份",
+    "zh-Hant": "在閒置工作區建立一致的本機離線備份，使用穩定requestId保留原請求身分",
+    "en": "Create a consistent local offline backup of an idle workspace using a stable requestId to preserve the original request identity",
+    "ja": "アイドル状態のワークスペースの整合性を保ったローカルオフラインバックアップを作成します。安定したrequestIdで元のリクエストの識別情報を保持します"
+  },
+  "operation.workspace.backup.restore.stage": {
+    "zh-Hans": "明确确认后将备份恢复到独立目录，下次启动切换到受限恢复工作区",
+    "zh-Hant": "明確確認後將備份復原至獨立目錄，下次啟動切換至受限復原工作區",
+    "en": "After explicit confirmation, restore a backup into a separate directory and switch to the restricted restored workspace on the next launch",
+    "ja": "明示的な確認後、バックアップを別のディレクトリに復元し、次回起動時に制限付きの復元ワークスペースへ切り替えます"
+  },
+  "operation.task.disposition.list": {
+    "zh-Hans": "只读查询明确项目任务的本地处置标记，不调度、对账或重试任务",
+    "zh-Hant": "唯讀查詢明確專案任務的本機處置標記，不排程、核對或重試任務",
+    "en": "Read local disposition flags for explicitly identified project tasks without scheduling, reconciling or retrying them",
+    "ja": "明示したプロジェクトタスクのローカル処置フラグを読み取り専用で確認します。タスクの実行予約、照合、再試行は行いません"
+  },
+  "operation.task.disposition.markFailed": {
+    "zh-Hans": "明确确认后将结果未知的任务标记为本地失败；保留原状态、requestId、审计与后续对账，不授权重新生成",
+    "zh-Hant": "明確確認後將結果未知的任務標記為本機失敗；保留原狀態、requestId、稽核與後續核對，不授權重新生成",
+    "en": "After explicit confirmation, mark an unknown-result task as locally failed while preserving its original status, requestId, audit and later reconciliation; grants no permission to generate again",
+    "ja": "明示的な確認後、結果不明のタスクをローカルで失敗としてマークします。元の状態、requestId、監査記録、後からの照合は保持し、再生成の権限は付与しません"
+  },
+  "operation.task.disposition.archiveCompleted": {
+    "zh-Hans": "原子归档并隐藏已明确终结且无需对账的任务，保留所有原记录、文件、幂等回执与历史",
+    "zh-Hant": "以原子方式封存並隱藏已明確終結且無需核對的任務，保留所有原記錄、檔案、等冪回執與歷史",
+    "en": "Atomically archive and hide conclusively finished tasks that need no reconciliation, preserving all original records, files, idempotent receipts and history",
+    "ja": "終了が確定し照合が不要なタスクを原子的にアーカイブして非表示にします。元の記録、ファイル、冪等な受領結果、履歴はすべて保持します"
+  },
   "operation.project.rename": {
     "zh-Hans": "按项目版本重命名，使用稳定requestId精确重放；不改动时间线、镜头或媒体，恢复与候选工作区不可用",
     "zh-Hant": "按專案版本重新命名，使用穩定requestId精確重播；不變更時間軸、鏡頭或媒體，復原與候選工作區無法使用",
@@ -375,10 +447,10 @@ export const operationMessages = {
     "ja": "書き出し済みファイルのラウドネスとトゥルーピークを推定します。明示されたファイルハッシュと固定の測定設定を使用して、正常に書き出された管理対象MP4を1つ完全デコードし、一時的な結果を返します。明示的なカスタム目標にのみ算術的な提案を行い、現在のタイムラインの検証やゲイン適用の許可は行いません。処理範囲を制限したローカルの読み取り専用計算で、キュー登録、保存、再試行、モデルやプロバイダーの呼び出し、書き出しの変更や阻止は行いません"
   },
   "operation.timeline.clip.loudness": {
-    "zh-Hans": "显式测量一个最多60秒（1800帧）的完整已保存选中片段；超长时拒绝，不自动截短。在源裁切、增益和淡入淡出后的独立声音，不混入其他轨道。精确绑定版本、片段及源哈希；固定配置、有界本地只读解码。无目标、候选、应用、写入、队列、自动重试或供应商调用",
-    "zh-Hant": "明確測量一個最多60秒（1800影格）的完整已儲存選取片段；超長時拒絕，不自動截短。在來源裁切、增益和淡入淡出後的獨立聲音，不混入其他軌道。精確綁定版本、片段及來源雜湊；固定設定、有界本機唯讀解碼。無目標、候選、套用、寫入、佇列、自動重試或供應商呼叫",
-    "en": "Explicitly measure one complete selected saved clip of at most 60 seconds (1800 frames); refuse longer clips without automatic trimming. Measure independently after source trim, gain and fades, without other tracks. Binds the exact revision, clip and source hash; fixed profile and bounded local read-only decode. No target, candidate, apply, writes, queue, automatic retry or providers",
-    "ja": "保存済みの選択クリップ1つ全体を最大60秒（1800フレーム）まで測定します。これを超えるクリップは自動で短縮せず拒否します。ソースのトリミング、ゲイン、フェード適用後に他のトラックを含めず独立して測定します。正確なリビジョン、クリップ、ソースハッシュに紐付け、固定プロファイルで処理量を制限したローカルの読み取り専用デコードを行います。目標値、候補、適用、書き込み、キュー、自動再試行、プロバイダー呼び出しはありません"
+    "zh-Hans": "显式测量一个最多60秒（1800帧）的完整已保存选中片段；超长时拒绝，不自动截短。在源裁切、增益和淡入淡出后的独立声音，不混入其他轨道。精确绑定版本、片段及源哈希；固定配置、有界本地只读解码。返回完整短时窗口的响度范围，可按显式目标复测固定增益候选；不授予应用权限，不写入、不排队、不自动重试、不调用供应商",
+    "zh-Hant": "明確測量一個最多60秒（1800影格）的完整已儲存選取片段；超長時拒絕，不自動截短。在來源裁切、增益和淡入淡出後的獨立聲音，不混入其他軌道。精確綁定版本、片段及來源雜湊；固定設定、有界本機唯讀解碼。回傳完整短時視窗的響度範圍，可按明確目標複測固定增益候選；不授予套用權限，不寫入、不排隊、不自動重試、不呼叫供應商",
+    "en": "Explicitly measure one complete selected saved clip of at most 60 seconds (1800 frames); refuse longer clips without automatic trimming. Measure independently after source trim, gain and fades, without other tracks. Binds the exact revision, clip and source hash; fixed profile and bounded local read-only decode. Reports complete-window loudness range and can remeasure a fixed-gain candidate for an explicit target. No apply authority, writes, queue, automatic retry or providers",
+    "ja": "保存済みの選択クリップ1つ全体を最大60秒（1800フレーム）まで測定します。これを超えるクリップは自動で短縮せず拒否します。ソースのトリミング、ゲイン、フェード適用後に他のトラックを含めず独立して測定します。正確なリビジョン、クリップ、ソースハッシュに紐付け、固定プロファイルで処理量を制限したローカルの読み取り専用デコードを行います。完全な短時間窓のラウドネス範囲を返し、明示した目標の固定ゲイン候補を再測定できます。適用権限、書き込み、キュー、自動再試行、プロバイダー呼び出しはありません"
   },
   "operation.timeline.loudness.prepare": {
     "zh-Hans": "显式按已保存时间线版本、固定混音和测量配置及用户自选 LUFS/dBTP 目标，完整测量编码前浮点混音与实际固定增益候选；结果临时且 applyAllowed 始终为 false。有界高资源本地只读计算，不写文件或数据库、不排队、不默认目标、不编辑、不导出、不重试、不调用模型或供应商",

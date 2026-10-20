@@ -20,7 +20,7 @@ export default function TimelineDeliveryName({ value, disabled = false, error, o
       placeholder={t('export.name.placeholder')} aria-invalid={Boolean(issue)}
       aria-describedby={`${id}-help${issue ? ` ${id}-error` : ''}`} data-testid="delivery-name-input"
       onChange={event => onChange?.(event.currentTarget.value)} />
-    <p id={`${id}-help`} className="export-preflight-note">{t('export.name.help')}</p>
+    <details className="export-settings-help"><summary>{t('redesign.export.details')}</summary><p id={`${id}-help`} className="export-preflight-note">{t('export.name.help')}</p></details>
     {issue && <p id={`${id}-error`} className="notice error" role="alert" data-testid="delivery-name-error">{t('export.name.invalid')}</p>}
   </div>;
 }

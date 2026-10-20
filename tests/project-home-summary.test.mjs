@@ -25,6 +25,7 @@ test('home summaries never initialize timelines and atomically created formats k
   const eligibility=await f.services.call('timeline.format.get',{projectId:landscape.id});assert.equal(eligibility.eligible,true);
 });
 test('cover, duration and content update derive from owned saved records without touching the project',async t=>{
+  t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-10-19T00:00:00.000Z')});
   const f=await fixture(t),project=await f.services.call('project.create',{name:'Legacy'});
   let timeline=await f.services.call('timeline.format.set',{projectId:project.id,expectedProjectRevision:project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'portrait_720'});
   const id=randomUUID(),stamp='2026-10-20T00:00:00.000Z';

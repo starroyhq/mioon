@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: TaskCenter passes the current contract operation count to the real shared disclosure
+ok 1 - TaskCenter passes the current contract operation count to the real shared disclosure
+  ---
+  duration_ms: 66.68225
+  type: 'test'
+  ...
+# Subtest: opening or rerendering the disclosure adds no actions, event handlers, storage writes or task mutations
+ok 2 - opening or rerendering the disclosure adds no actions, event handlers, storage writes or task mutations
+  ---
+  duration_ms: 15.922042
+  type: 'test'
+  ...
+# Subtest: selected TaskCenter recover, acknowledge, replay, reconcile and retry controls retain exact arguments
+ok 3 - selected TaskCenter recover, acknowledge, replay, reconcile and retry controls retain exact arguments
+  ---
+  duration_ms: 15.61725
+  type: 'test'
+  ...
+# Subtest: restored and busy TaskCenter guards remain intact with the shared disclosure present
+ok 4 - restored and busy TaskCenter guards remain intact with the shared disclosure present
+  ---
+  duration_ms: 9.736458
+  type: 'test'
+  ...
+# Subtest: existing cancellation and inspect callbacks still honor confirmation and current-view guards
+ok 5 - existing cancellation and inspect callbacks still honor confirmation and current-view guards
+  ---
+  duration_ms: 9.168667
+  type: 'test'
+  ...
+# Subtest: hiding Tasks while cancel confirmation is pending never cancels from the obsolete pane
+ok 6 - hiding Tasks while cancel confirmation is pending never cancels from the obsolete pane
+  ---
+  duration_ms: 7.206917
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 511.659666

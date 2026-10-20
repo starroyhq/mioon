@@ -172,13 +172,13 @@ for(const sourceVersion of [24,26])test(`offline create→verify→restore→sta
  const reopened=openStore(destination);try{assert.equal(getWorkspaceRestoreContext(reopened).schemaVersion,result.databaseSchemaVersion);}finally{reopened.close();}
 });
 
-test('current ordinary48 live backup inspection is read-only and current contract pairs never accept a cross-product',t=>{
+test('current ordinary50 live backup inspection is read-only and current contract pairs never accept a cross-product',t=>{
  const base=temporary(t),store=openStore(path.join(base,'ordinary'));t.after(()=>store.close());
  const before=snapshot(store.db),inspection=inspectWorkspaceBackup(store);
- assert.equal(inspection.databaseSchemaVersion,48);assert.equal(inspection.inspectionComplete,true);assert.equal(workspaceBackupInspectionSchema.safeParse(inspection).success,true);assert.deepEqual(snapshot(store.db),before);
- for(const version of [1,23,24,26,28,30,32,34,36,38,40,44,48])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
- for(const version of [0,25,27,29,31,33,35,37,39,41,45,49,26.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
- const pairs=[['restored-local-v1',24,25],['restored-local-v2',26,27],['restored-local-v3',28,29],['restored-local-v4',30,31],['restored-local-v5',32,33],['restored-local-v6',34,35],['restored-local-v7',36,37],['restored-local-v8',38,39],['restored-local-v9',40,41],['restored-local-v11',44,45],['restored-local-v13',48,49]];
+ assert.equal(inspection.databaseSchemaVersion,50);assert.equal(inspection.inspectionComplete,true);assert.equal(workspaceBackupInspectionSchema.safeParse(inspection).success,true);assert.deepEqual(snapshot(store.db),before);
+ for(const version of [1,23,24,26,28,30,32,34,36,38,40,44,48,50])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
+ for(const version of [0,25,27,29,31,33,35,37,39,41,45,49,51,26.5])assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
+ const pairs=[['restored-local-v1',24,25],['restored-local-v2',26,27],['restored-local-v3',28,29],['restored-local-v4',30,31],['restored-local-v5',32,33],['restored-local-v6',34,35],['restored-local-v7',36,37],['restored-local-v8',38,39],['restored-local-v9',40,41],['restored-local-v11',44,45],['restored-local-v13',48,49],['restored-local-v14',50,51]];
  for(const [profile,sourceSchema,databaseSchemaVersion]of pairs)assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,true);
  for(const [profile,sourceSchema,databaseSchemaVersion]of pairs)assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema:sourceSchema+1,databaseSchemaVersion}).success,false);
 });

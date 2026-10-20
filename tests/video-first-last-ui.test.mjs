@@ -104,7 +104,8 @@ function harness(patch = {}) {
     find(testId) { return nodes(tree).find(node => node.props?.['data-testid'] === testId || node.props?.id === testId); },
     all: () => nodes(tree), text: () => text(tree), props: () => props,
     setLanguage(next) { locale = next; return h.render(); },
-    edit(testId, value) { h.find(testId).props.onChange({ target: { value } }); h.render(); },
+    segment(testId) { return nodes(h.find(testId)).find(node => node.type === 'WorkbenchTabs'); },
+    edit(testId, value) { const control = h.find(testId); if (control.props.className === 'shot-segments') h.segment(testId).props.onValueChange(value); else control.props.onChange({ target: { value } }); h.render(); },
     click(testId) { return h.find(testId).props.onClick(); },
     reset() { nodes(tree).find(node => node.type === 'Button' && text(node) === '放弃修改').props.onClick(); h.render(); },
     unmount() { for (const slot of slots) slot.cleanup?.(); unmounted = true; },
@@ -258,7 +259,7 @@ test('all four languages update an open frame confirmation while retaining the e
     const title = '用户原始标题 <not a key>', prompt = 'Unchanged prompt 日本語';
     h.edit('shot-title', title); h.edit('shot-prompt', prompt);
     h.confirm = value => { prompts.push(value); return pending.promise; };
-    const work = operation === 'input-mode-select' ? h.find(operation).props.onChange({ target: { value: 'text' } }) : h.click(operation);
+    const work = operation === 'input-mode-select' ? h.segment(operation).props.onValueChange('text') : h.click(operation);
     assert.equal(prompts.length, 1); assert.equal(typeof prompts[0], 'object', 'Confirmation owns a descriptor, not a resolved string');
     const expectedKey = operation === 'input-mode-select' ? 'inspector.confirm.textMode' : operation === 'clear-manual-references' ? 'inspector.confirm.clearManual' : 'inspector.confirm.clearLastFrame';
     assert.equal(prompts[0].key, expectedKey);
@@ -268,7 +269,7 @@ test('all four languages update an open frame confirmation while retaining the e
       assert.equal(h.find('shot-title').props.value, title); assert.equal(h.find('shot-prompt').props.value, prompt);
       assert.equal(h.find(`last-frame-choice-${tailId}`).props['aria-pressed'], true);
       assert.equal(h.props().shot.revision, 1); assert.equal(h.saves.length, 0); assert.equal(h.generated.length, 0);
-      assert.equal(h.find('input-mode-select').props.value, 'image');
+      assert.equal(h.segment('input-mode-select').props.value, 'image');
       assert.equal(text(h.find('clear-last-frame')), i18nCore.translate(locale, 'timeline.references.clear'));
       labels.add(text(h.find('clear-last-frame'))); confirmations.add(i18nCore.renderMessage(locale, prompts[0]));
       assert.deepEqual(prompts[0], originalPrompt); assert.equal(prompts.length, 1);
@@ -287,7 +288,7 @@ test('all four languages update an open frame confirmation while retaining the e
 test('late clear/mode confirmations cannot overwrite edits, hidden/reopened panels, changed tabs or unmounted shots', async () => {
   for (const operation of ['clear-last-frame', 'input-mode-select']) for (const change of ['edit', 'hide', 'tab', 'scope', 'provider', 'unmount']) {
     const wait = deferred(), h = harness({ shot: shot({ lastFrameAssetId: tailId }) }); h.confirm = () => wait.promise;
-    const work = operation === 'input-mode-select' ? h.find(operation).props.onChange({ target: { value: 'text' } }) : h.click(operation);
+    const work = operation === 'input-mode-select' ? h.segment(operation).props.onValueChange('text') : h.click(operation);
     if (change === 'edit') h.edit('shot-prompt', 'A newer edit');
     if (change === 'hide') { h.visible = false; h.render(); h.visible = true; h.render(); }
     if (change === 'tab') { h.render({ tab: 'versions' }); h.render({ tab: 'settings' }); }

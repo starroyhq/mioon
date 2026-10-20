@@ -257,7 +257,7 @@ test('settings integration stays in the shared dock, uses local controls and has
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /<AgentWorkspace/); assert.match(app, /data-testid="agent-settings-open"/);
   assert.match(source, /from '\.\/WorkspaceControls\.tsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
-  assert.match(localizedSource(source), /连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围/);
+  assert.match(localizedSource(source), /连接设置不会发起模型请求；相同目标地址、模型和发送范围只需授权一次，可在下方撤销/);
   assert.doesNotMatch(source, /尚无工具执行/); assert.match(localizedSource(source), /尚未验证连接/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);
   assert.doesNotMatch(app, /showAgentSettings|showAgentChat/);

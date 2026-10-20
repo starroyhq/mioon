@@ -1,0 +1,292 @@
+TAP version 13
+# Subtest: agent: actual settings publishes synchronous dirty and busy state without form data
+ok 1 - agent: actual settings publishes synchronous dirty and busy state without form data
+  ---
+  duration_ms: 33.604917
+  type: 'test'
+  ...
+# Subtest: agent: matching readback after unknown save still blocks until explicit review
+ok 2 - agent: matching readback after unknown save still blocks until explicit review
+  ---
+  duration_ms: 4.209458
+  type: 'test'
+  ...
+# Subtest: agent: unresolved reconciliation publishes busy and blocked before any readback arrives
+ok 3 - agent: unresolved reconciliation publishes busy and blocked before any readback arrives
+  ---
+  duration_ms: 5.072792
+  type: 'test'
+  ...
+# Subtest: agent: an edit before async discard confirmation invalidates the exact captured version
+ok 4 - agent: an edit before async discard confirmation invalidates the exact captured version
+  ---
+  duration_ms: 3.988542
+  type: 'test'
+  ...
+# Subtest: agent: late save acknowledgement after owner replacement cannot clear the new owner
+ok 5 - agent: late save acknowledgement after owner replacement cannot clear the new owner
+  ---
+  duration_ms: 5.152833
+  type: 'test'
+  ...
+# Subtest: official: actual settings publishes synchronous dirty and busy state without form data
+ok 6 - official: actual settings publishes synchronous dirty and busy state without form data
+  ---
+  duration_ms: 12.912917
+  type: 'test'
+  ...
+# Subtest: official: matching readback after unknown save still blocks until explicit review
+ok 7 - official: matching readback after unknown save still blocks until explicit review
+  ---
+  duration_ms: 6.489666
+  type: 'test'
+  ...
+# Subtest: official: unresolved reconciliation publishes busy and blocked before any readback arrives
+ok 8 - official: unresolved reconciliation publishes busy and blocked before any readback arrives
+  ---
+  duration_ms: 9.790417
+  type: 'test'
+  ...
+# Subtest: official: an edit before async discard confirmation invalidates the exact captured version
+ok 9 - official: an edit before async discard confirmation invalidates the exact captured version
+  ---
+  duration_ms: 5.924667
+  type: 'test'
+  ...
+# Subtest: official: late save acknowledgement after owner replacement cannot clear the new owner
+ok 10 - official: late save acknowledgement after owner replacement cannot clear the new owner
+  ---
+  duration_ms: 2.70725
+  type: 'test'
+  ...
+# Subtest: custom: actual settings publishes synchronous dirty and busy state without form data
+ok 11 - custom: actual settings publishes synchronous dirty and busy state without form data
+  ---
+  duration_ms: 8.904125
+  type: 'test'
+  ...
+# Subtest: custom: matching readback after unknown save still blocks until explicit review
+ok 12 - custom: matching readback after unknown save still blocks until explicit review
+  ---
+  duration_ms: 7.923916
+  type: 'test'
+  ...
+# Subtest: custom: unresolved reconciliation publishes busy and blocked before any readback arrives
+ok 13 - custom: unresolved reconciliation publishes busy and blocked before any readback arrives
+  ---
+  duration_ms: 4.391792
+  type: 'test'
+  ...
+# Subtest: custom: an edit before async discard confirmation invalidates the exact captured version
+ok 14 - custom: an edit before async discard confirmation invalidates the exact captured version
+  ---
+  duration_ms: 4.324084
+  type: 'test'
+  ...
+# Subtest: custom: late save acknowledgement after owner replacement cannot clear the new owner
+ok 15 - custom: late save acknowledgement after owner replacement cannot clear the new owner
+  ---
+  duration_ms: 3.026708
+  type: 'test'
+  ...
+# Subtest: comfy: actual settings publishes synchronous dirty and busy state without form data
+ok 16 - comfy: actual settings publishes synchronous dirty and busy state without form data
+  ---
+  duration_ms: 7.327375
+  type: 'test'
+  ...
+# Subtest: comfy: matching readback after unknown save still blocks until explicit review
+ok 17 - comfy: matching readback after unknown save still blocks until explicit review
+  ---
+  duration_ms: 4.059584
+  type: 'test'
+  ...
+# Subtest: comfy: unresolved reconciliation publishes busy and blocked before any readback arrives
+ok 18 - comfy: unresolved reconciliation publishes busy and blocked before any readback arrives
+  ---
+  duration_ms: 3.886417
+  type: 'test'
+  ...
+# Subtest: comfy: an edit before async discard confirmation invalidates the exact captured version
+ok 19 - comfy: an edit before async discard confirmation invalidates the exact captured version
+  ---
+  duration_ms: 2.688458
+  type: 'test'
+  ...
+# Subtest: comfy: late save acknowledgement after owner replacement cannot clear the new owner
+ok 20 - comfy: late save acknowledgement after owner replacement cannot clear the new owner
+  ---
+  duration_ms: 6.828208
+  type: 'test'
+  ...
+# Subtest: agent: a second nonempty key invalidates confirmation and hide clears it without reporting bytes
+ok 21 - agent: a second nonempty key invalidates confirmation and hide clears it without reporting bytes
+  ---
+  duration_ms: 3.723375
+  type: 'test'
+  ...
+# Subtest: official: a second nonempty key invalidates confirmation and hide clears it without reporting bytes
+ok 22 - official: a second nonempty key invalidates confirmation and hide clears it without reporting bytes
+  ---
+  duration_ms: 4.941875
+  type: 'test'
+  ...
+# Subtest: custom: a second nonempty key invalidates confirmation and hide clears it without reporting bytes
+ok 23 - custom: a second nonempty key invalidates confirmation and hide clears it without reporting bytes
+  ---
+  duration_ms: 3.311125
+  type: 'test'
+  ...
+# Subtest: Comfy explicit probe reports busy immediately and remains blocked while the probe is pending
+ok 24 - Comfy explicit probe reports busy immediately and remains blocked while the probe is pending
+  ---
+  duration_ms: 3.450834
+  type: 'test'
+  ...
+# Subtest: actual callback and context changes invalidate earlier captured status without losing nonsecret drafts
+ok 25 - actual callback and context changes invalidate earlier captured status without losing nonsecret drafts
+  ---
+  duration_ms: 4.133459
+  type: 'test'
+  ...
+# Subtest: reporter cleanup and callback replacement preserve owner/version fences and exact metadata allowlist
+ok 26 - reporter cleanup and callback replacement preserve owner/version fences and exact metadata allowlist
+  ---
+  duration_ms: 0.117625
+  type: 'test'
+  ...
+# Subtest: registry binds all four slots, rejects stale reports and invalidates membership changes
+ok 27 - registry binds all four slots, rejects stale reports and invalidates membership changes
+  ---
+  duration_ms: 0.090083
+  type: 'test'
+  ...
+# Subtest: agent: Back cancellation leaves the visible form editable and saveable
+ok 28 - agent: Back cancellation leaves the visible form editable and saveable
+  ---
+  duration_ms: 30.573042
+  type: 'test'
+  ...
+# Subtest: agent: Back denied during saving or unknown recovery keeps the session usable
+ok 29 - agent: Back denied during saving or unknown recovery keeps the session usable
+  ---
+  duration_ms: 21.627083
+  type: 'test'
+  ...
+# Subtest: agent: old Back permission cannot close after visibility, edits, owner replacement or unmount
+ok 30 - agent: old Back permission cannot close after visibility, edits, owner replacement or unmount
+  ---
+  duration_ms: 35.447875
+  type: 'test'
+  ...
+# Subtest: agent: accepted current Back runs existing close exactly once, while omitted guard stays synchronous
+ok 31 - agent: accepted current Back runs existing close exactly once, while omitted guard stays synchronous
+  ---
+  duration_ms: 7.407667
+  type: 'test'
+  ...
+# Subtest: official: Back cancellation leaves the visible form editable and saveable
+ok 32 - official: Back cancellation leaves the visible form editable and saveable
+  ---
+  duration_ms: 17.980125
+  type: 'test'
+  ...
+# Subtest: official: Back denied during saving or unknown recovery keeps the session usable
+ok 33 - official: Back denied during saving or unknown recovery keeps the session usable
+  ---
+  duration_ms: 8.348042
+  type: 'test'
+  ...
+# Subtest: official: old Back permission cannot close after visibility, edits, owner replacement or unmount
+ok 34 - official: old Back permission cannot close after visibility, edits, owner replacement or unmount
+  ---
+  duration_ms: 18.671667
+  type: 'test'
+  ...
+# Subtest: official: accepted current Back runs existing close exactly once, while omitted guard stays synchronous
+ok 35 - official: accepted current Back runs existing close exactly once, while omitted guard stays synchronous
+  ---
+  duration_ms: 12.203583
+  type: 'test'
+  ...
+# Subtest: custom: Back cancellation leaves the visible form editable and saveable
+ok 36 - custom: Back cancellation leaves the visible form editable and saveable
+  ---
+  duration_ms: 40.222958
+  type: 'test'
+  ...
+# Subtest: custom: Back denied during saving or unknown recovery keeps the session usable
+ok 37 - custom: Back denied during saving or unknown recovery keeps the session usable
+  ---
+  duration_ms: 7.110541
+  type: 'test'
+  ...
+# Subtest: custom: old Back permission cannot close after visibility, edits, owner replacement or unmount
+ok 38 - custom: old Back permission cannot close after visibility, edits, owner replacement or unmount
+  ---
+  duration_ms: 20.03325
+  type: 'test'
+  ...
+# Subtest: custom: accepted current Back runs existing close exactly once, while omitted guard stays synchronous
+ok 39 - custom: accepted current Back runs existing close exactly once, while omitted guard stays synchronous
+  ---
+  duration_ms: 7.347375
+  type: 'test'
+  ...
+# Subtest: comfy: Back cancellation leaves the visible form editable and saveable
+ok 40 - comfy: Back cancellation leaves the visible form editable and saveable
+  ---
+  duration_ms: 24.3885
+  type: 'test'
+  ...
+# Subtest: comfy: Back denied during saving or unknown recovery keeps the session usable
+ok 41 - comfy: Back denied during saving or unknown recovery keeps the session usable
+  ---
+  duration_ms: 6.592417
+  type: 'test'
+  ...
+# Subtest: comfy: old Back permission cannot close after visibility, edits, owner replacement or unmount
+ok 42 - comfy: old Back permission cannot close after visibility, edits, owner replacement or unmount
+  ---
+  duration_ms: 14.0445
+  type: 'test'
+  ...
+# Subtest: comfy: accepted current Back runs existing close exactly once, while omitted guard stays synchronous
+ok 43 - comfy: accepted current Back runs existing close exactly once, while omitted guard stays synchronous
+  ---
+  duration_ms: 4.594125
+  type: 'test'
+  ...
+# Subtest: agent: optional closeLabel changes only return text and accessibility labels
+ok 44 - agent: optional closeLabel changes only return text and accessibility labels
+  ---
+  duration_ms: 6.121625
+  type: 'test'
+  ...
+# Subtest: official: optional closeLabel changes only return text and accessibility labels
+ok 45 - official: optional closeLabel changes only return text and accessibility labels
+  ---
+  duration_ms: 4.70625
+  type: 'test'
+  ...
+# Subtest: custom: optional closeLabel changes only return text and accessibility labels
+ok 46 - custom: optional closeLabel changes only return text and accessibility labels
+  ---
+  duration_ms: 6.718708
+  type: 'test'
+  ...
+# Subtest: comfy: optional closeLabel changes only return text and accessibility labels
+ok 47 - comfy: optional closeLabel changes only return text and accessibility labels
+  ---
+  duration_ms: 5.865959
+  type: 'test'
+  ...
+1..47
+# tests 47
+# suites 0
+# pass 47
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 859.575375

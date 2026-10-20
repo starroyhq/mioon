@@ -1,0 +1,91 @@
+{
+  "baseline": "01a83cb068e51791563412f721ccc2d4799acd74",
+  "officialUi": [
+    {
+      "file": "packages/ui/src/components/button.tsx",
+      "sha256": "cea684b405ffb3e7ef6b4aae7811e7a356f9efe38f482aa4f959038b99f8e672",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/input.tsx",
+      "sha256": "b3c4dc745a3fcf4d18894b1e2481d754efcfc570c60154e23ca58a27f2a5417b",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/textarea.tsx",
+      "sha256": "977092c3a0abc38438e317715815328fcfa6e3ea340c7d8583740e9df264e27f",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/select.tsx",
+      "sha256": "15637e14313a2adbe79845c1271b8487e4a4f78718c5bb5fd3688fd081bfc014",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/dialog.tsx",
+      "sha256": "20a6d44880875f2f4fdeb031af867323302913af91eab650f916e2e288fe12de",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/dropdown-menu.tsx",
+      "sha256": "9d43d42b0cb79651350b9abe5c8bcc375fdd8583508ba1f553245d84d9428044",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/tabs.tsx",
+      "sha256": "94edb29d10e68393398adf15fb1c1b2c8219be6842f1248d64cda04679033fa3",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/switch.tsx",
+      "sha256": "168a593b9a6f9a12978f9d450b8ef69025fa7f8daf0272f52baf598b1273909a",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/collapsible.tsx",
+      "sha256": "ead4349ff7b01d696ef89294a81d18ee1d3f732321398896462c834ab9b9e065",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/tooltip.tsx",
+      "sha256": "610705031e815546d59514ff85d499421cc981fa505e6748a0ac4f80b9df99c4",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/scroll-area.tsx",
+      "sha256": "04c87f6e59a72a4cb637743bc6b2e928fe4fc0e5ac43ed857b261983a040a8c2",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/label.tsx",
+      "sha256": "717577f6e00c1448f307c13b09677446c7c9b5eb8a10c58215c9ac107440d2bc",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/badge.tsx",
+      "sha256": "46ea8a69c45b62e6539ae4e89be2bd0c970f7074d2c026ec85292d03845cef77",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/separator.tsx",
+      "sha256": "5e1733d670232f24f6b6c297d6bb79e4d4dce69137d72f7736f1ad72d3b10608",
+      "unchangedFromBaseline": true
+    },
+    {
+      "file": "packages/ui/src/components/slider.tsx",
+      "sha256": "cd704fc76c4e1f54f9cfa0f5cdf2f5dc9ab424c04deab492b5faaf86fd723305",
+      "unchangedFromBaseline": true
+    }
+  ],
+  "dependencyFilesChanged": [],
+  "trackedDesignFiles": [],
+  "screensIdenticalToPrivateDesignExport": [],
+  "manifestFilesChanged": [
+    "packages/contracts/package.json"
+  ],
+  "manifestChangeNotes": {
+    "packages/contracts/package.json": "仅新增 ./loudness-range 子路径导出"
+  },
+  "dependencyFieldChanges": [],
+  "screenshotCount": 30
+}

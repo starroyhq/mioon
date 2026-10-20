@@ -1,0 +1,425 @@
+{
+  "buildAssets": {
+    "script": "index-kmXrVn_a.js",
+    "style": "index-CbBlCarT.css"
+  },
+  "checks": [
+    {
+      "name": "timeline-1440-300",
+      "audioIcon": {
+        "bottom": 335.1796875,
+        "display": "block",
+        "height": 48,
+        "top": 287.1796875,
+        "width": 48
+      },
+      "clips": [
+        {
+          "bottom": 779.421875,
+          "laneBottom": 784.421875,
+          "laneTop": 735.7109375,
+          "top": 739.7109375
+        },
+        {
+          "bottom": 779.421875,
+          "laneBottom": 784.421875,
+          "laneTop": 735.7109375,
+          "top": 739.7109375
+        },
+        {
+          "bottom": 862,
+          "laneBottom": 867,
+          "laneTop": 825.7109375,
+          "top": 830.7109375
+        }
+      ],
+      "format": "剪辑预览\n源素材\n成片\n1080 × 1920 · 30 fps\n\n源素材原声 · 不应用片段音量或淡入/淡出；原始画面未调色，不应用片段 LUT\n\n合成配乐.wav\n片段原始源素材 · 未调色，非合成画面\n00:00:00:00 / 00:00:09:00\n时间线开始 0 帧 · 源入点 0 帧 · 长度 270 帧",
+      "rows": [
+        {
+          "bottom": 687,
+          "class": "timeline-track subtitle-track",
+          "height": 32,
+          "top": 655,
+          "width": 1426
+        },
+        {
+          "bottom": 735.7109375,
+          "class": "timeline-track video  ",
+          "height": 48.7109375,
+          "top": 687,
+          "width": 1426
+        },
+        {
+          "bottom": 784.421875,
+          "class": "timeline-track video  ",
+          "height": 48.7109375,
+          "top": 735.7109375,
+          "width": 1426
+        },
+        {
+          "bottom": 825.7109375,
+          "class": "timeline-track audio  ",
+          "height": 41.2890625,
+          "top": 784.421875,
+          "width": 1426
+        },
+        {
+          "bottom": 867,
+          "class": "timeline-track audio  ",
+          "height": 41.2890625,
+          "top": 825.7109375,
+          "width": 1426
+        }
+      ],
+      "ruler": {
+        "bottom": 655,
+        "height": 24,
+        "top": 631,
+        "width": 1426
+      },
+      "subtitle": {
+        "bottom": 687,
+        "height": 32,
+        "top": 655,
+        "width": 1426
+      },
+      "viewport": {
+        "bottom": 869,
+        "clientHeight": 238,
+        "height": 238,
+        "scrollHeight": 238,
+        "scrollTop": 0,
+        "top": 631,
+        "width": 1426
+      }
+    },
+    {
+      "name": "timeline-1440-290",
+      "audioIcon": {
+        "bottom": 340.1796875,
+        "display": "block",
+        "height": 48,
+        "top": 292.1796875,
+        "width": 48
+      },
+      "clips": [
+        {
+          "bottom": 783.9375,
+          "laneBottom": 788.9375,
+          "laneTop": 742.96875,
+          "top": 746.96875
+        },
+        {
+          "bottom": 783.9375,
+          "laneBottom": 788.9375,
+          "laneTop": 742.96875,
+          "top": 746.96875
+        },
+        {
+          "bottom": 862,
+          "laneBottom": 867,
+          "laneTop": 827.96875,
+          "top": 832.96875
+        }
+      ],
+      "format": "剪辑预览\n源素材\n成片\n1080 × 1920 · 30 fps\n\n源素材原声 · 不应用片段音量或淡入/淡出；原始画面未调色，不应用片段 LUT\n\n合成配乐.wav\n片段原始源素材 · 未调色，非合成画面\n00:00:00:00 / 00:00:09:00\n时间线开始 0 帧 · 源入点 0 帧 · 长度 270 帧",
+      "rows": [
+        {
+          "bottom": 697,
+          "class": "timeline-track subtitle-track",
+          "height": 32,
+          "top": 665,
+          "width": 1426
+        },
+        {
+          "bottom": 742.96875,
+          "class": "timeline-track video  ",
+          "height": 45.96875,
+          "top": 697,
+          "width": 1426
+        },
+        {
+          "bottom": 788.9375,
+          "class": "timeline-track video  ",
+          "height": 45.96875,
+          "top": 742.96875,
+          "width": 1426
+        },
+        {
+          "bottom": 827.96875,
+          "class": "timeline-track audio  ",
+          "height": 39.03125,
+          "top": 788.9375,
+          "width": 1426
+        },
+        {
+          "bottom": 867,
+          "class": "timeline-track audio  ",
+          "height": 39.03125,
+          "top": 827.96875,
+          "width": 1426
+        }
+      ],
+      "ruler": {
+        "bottom": 665,
+        "height": 24,
+        "top": 641,
+        "width": 1426
+      },
+      "subtitle": {
+        "bottom": 697,
+        "height": 32,
+        "top": 665,
+        "width": 1426
+      },
+      "viewport": {
+        "bottom": 869,
+        "clientHeight": 228,
+        "height": 228,
+        "scrollHeight": 228,
+        "scrollTop": 0,
+        "top": 641,
+        "width": 1426
+      }
+    },
+    {
+      "name": "audio-playback",
+      "paused": true,
+      "passed": true
+    },
+    {
+      "name": "timeline-1050-160-top",
+      "tracks": [
+        {
+          "bottom": 715,
+          "height": 28,
+          "text": "T\n字幕\n在播放头处新增，随后",
+          "top": 687
+        },
+        {
+          "bottom": 603,
+          "height": 28,
+          "text": "V1\n画面\n晨光样片 · 36",
+          "top": 575
+        },
+        {
+          "bottom": 631,
+          "height": 28,
+          "text": "A1\n音乐\n拖入音频 · 混音",
+          "top": 603
+        },
+        {
+          "bottom": 659,
+          "height": 28,
+          "text": "V2\n叠加\n拖入图片或视频 ·",
+          "top": 631
+        },
+        {
+          "bottom": 687,
+          "height": 28,
+          "text": "A2\n配乐\n合成配乐",
+          "top": 659
+        }
+      ],
+      "viewport": {
+        "bottom": 642,
+        "clientHeight": 80,
+        "height": 91,
+        "scrollHeight": 164,
+        "scrollTop": 0,
+        "top": 551
+      }
+    },
+    {
+      "name": "timeline-1050-160-bottom",
+      "audioIcon": {
+        "bottom": 295.1796875,
+        "display": "block",
+        "height": 48,
+        "top": 247.1796875,
+        "width": 48
+      },
+      "clips": [
+        {
+          "bottom": 516,
+          "laneBottom": 519,
+          "laneTop": 491,
+          "top": 494
+        },
+        {
+          "bottom": 516,
+          "laneBottom": 519,
+          "laneTop": 491,
+          "top": 494
+        },
+        {
+          "bottom": 601,
+          "laneBottom": 603,
+          "laneTop": 575,
+          "top": 579
+        }
+      ],
+      "format": "剪辑预览\n源素材\n成片\n1080 × 1920 · 30 fps\n\n源素材原声 · 不应用片段音量或淡入/淡出；原始画面未调色，不应用片段 LUT\n\n合成配乐.wav\n片段原始源素材 · 未调色，非合成画面\n00:00:00:00 / 00:00:09:00\n时间线开始 0 帧 · 源入点 0 帧 · 长度 270 帧",
+      "rows": [
+        {
+          "bottom": 631,
+          "class": "timeline-track subtitle-track",
+          "height": 28,
+          "top": 603,
+          "width": 1080
+        },
+        {
+          "bottom": 519,
+          "class": "timeline-track video  ",
+          "height": 28,
+          "top": 491,
+          "width": 1080
+        },
+        {
+          "bottom": 547,
+          "class": "timeline-track audio  ",
+          "height": 28,
+          "top": 519,
+          "width": 1080
+        },
+        {
+          "bottom": 575,
+          "class": "timeline-track video  ",
+          "height": 28,
+          "top": 547,
+          "width": 1080
+        },
+        {
+          "bottom": 603,
+          "class": "timeline-track audio  ",
+          "height": 28,
+          "top": 575,
+          "width": 1080
+        }
+      ],
+      "ruler": {
+        "bottom": 575,
+        "height": 24,
+        "top": 551,
+        "width": 1080
+      },
+      "subtitle": {
+        "bottom": 631,
+        "height": 28,
+        "top": 603,
+        "width": 1080
+      },
+      "viewport": {
+        "bottom": 642,
+        "clientHeight": 80,
+        "height": 91,
+        "scrollHeight": 164,
+        "scrollTop": 84,
+        "top": 551,
+        "width": 1036
+      }
+    },
+    {
+      "name": "task-actions",
+      "actions": "查看镜头\n核对并恢复已有任务\n标记失败",
+      "border": "1px solid rgb(46, 49, 56)",
+      "class": "group/button inline-flex shrink-0 items-center justify-center rounded-lg border bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50 h-8 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 button small task-mark-failed",
+      "focused": true,
+      "tag": "BUTTON",
+      "text": "标记失败"
+    },
+    {
+      "name": "task-disposition-cancel",
+      "requestUnchanged": true,
+      "markFailedStillEnabled": true
+    },
+    {
+      "name": "export-help-closed-zh1440",
+      "phase": "idle",
+      "open": false,
+      "paragraphs": [
+        {
+          "text": "点击“检查本次设置”，先验证本机编码能力，再检查已保存的素材与时间线。打开面板不会开始检查",
+          "hasLayoutBox": true
+        },
+        {
+          "text": "本机编码检查会进行有限额的短时合成编码与 MP4 封装，测试输出仅留在内存中；后续素材预检为只读。均不创建成片任务",
+          "hasLayoutBox": true
+        },
+        {
+          "text": "上限：100 个片段、12 条轨道、18000 帧。实际导出仍会重新验证；检查报告不是导出成功凭据",
+          "hasLayoutBox": true
+        }
+      ],
+      "text": "说明",
+      "note": "折叠 details 子元素仍可能有布局盒；以 open=false、innerText 与截图确认隐藏"
+    },
+    {
+      "name": "export-help-expanded",
+      "phase": "idle",
+      "open": true,
+      "paragraphs": [
+        {
+          "text": "点击“检查本次设置”，先验证本机编码能力，再检查已保存的素材与时间线。打开面板不会开始检查",
+          "visible": true
+        },
+        {
+          "text": "本机编码检查会进行有限额的短时合成编码与 MP4 封装，测试输出仅留在内存中；后续素材预检为只读。均不创建成片任务",
+          "visible": true
+        },
+        {
+          "text": "上限：100 个片段、12 条轨道、18000 帧。实际导出仍会重新验证；检查报告不是导出成功凭据",
+          "visible": true
+        }
+      ]
+    },
+    {
+      "name": "export-ja-1050",
+      "gap": 14.75,
+      "tabRect": {
+        "bottom": 68.5,
+        "left": 156.75,
+        "right": 262.75,
+        "top": 20.5
+      },
+      "tabText": "今回の書き出し",
+      "title": "書き出し",
+      "titleTextRect": {
+        "bottom": 57.203125,
+        "left": 86,
+        "right": 142,
+        "top": 40.703125
+      }
+    },
+    {
+      "name": "export-light-en-1050",
+      "phase": "idle",
+      "helpOpen": null
+    },
+    {
+      "name": "browser-errors",
+      "errors": []
+    },
+    {
+      "name": "audio-playback-observed",
+      "pausedDuringPlayback": false,
+      "currentTimeDuringPlayback": 0.085531,
+      "duration": 10,
+      "error": null
+    }
+  ],
+  "captures": [
+    "editing-audio-1440.jpg",
+    "timeline-1440-290.jpg",
+    "timeline-1050-160-top.jpg",
+    "timeline-1050-160-bottom.jpg",
+    "tasks-detail-top-1440.jpg",
+    "tasks-actions-1440.jpg",
+    "export-check-1440.jpg",
+    "export-help-expanded-1440.jpg",
+    "export-ja-1050.jpg",
+    "export-ja-1440.jpg",
+    "editing-audio-light-en-1440.jpg",
+    "export-light-en-1050.jpg"
+  ]
+}

@@ -31,6 +31,7 @@ test('frozen video jobs survive backup and restore while session keys, encrypted
  t.after(async()=>{await worker?.stop();await restoredServices?.drain();restoredStore?.close();await services?.drain();await settings?.close();sourceStore?.close();await rm(base,{recursive:true,force:true});});
  settings=await createVideoSettings({directory:path.join(source,'video-settings'),privateRoot:source,secretCodec:syntheticCodec(),storage:{persistentAvailable:true,sessionScope:'server',reasonCode:null}});
  services=createServices(sourceStore,createProviderRegistry({db:sourceStore.db,root:source,env:{}}),{videoSettings:settings,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async()=>{remoteCalls++;return assert.fail('Backup validation must never contact a video provider');}});
+ await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
  const project=await services.call('project.create',{name:'Video credential isolation'}) as ServiceRow,jobs:JobRecord[]=[],requests:Array<Record<string,unknown>>=[];
  for(const [index,storage] of ['session','persistent'].entries()){
   const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId:'minimax',name:`Account ${storage}`,region:index?'cn':'global',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('minimax')};
@@ -47,12 +48,12 @@ test('frozen video jobs survive backup and restore while session keys, encrypted
  await services.drain();services=undefined;await settings.close();settings=undefined;sourceStore.close();sourceStore=undefined;
  const sourceDatabase=await readFile(path.join(source,'workbench.sqlite'));
  for(const secret of [SESSION_KEY,PERSISTENT_KEY,encrypted])assert.equal(sourceDatabase.includes(Buffer.from(secret)),false);
- const created=await createWorkspaceBackup({source,destination:backup});assert.equal(created.integrity,'verified');assert.equal(created.databaseSchemaVersion,48);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
+ const created=await createWorkspaceBackup({source,destination:backup});assert.equal(created.integrity,'verified');assert.equal(created.databaseSchemaVersion,50);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
  const manifest=JSON.parse(await readFile(path.join(backup,'manifest.json'),'utf8')) as {entries:Array<{path:string}>};assert.deepEqual(manifest.entries.map(value=>value.path),['payload/workbench.sqlite']);
  for(const file of await files(backup)){assert.equal(path.relative(backup,file).includes('video-settings'),false);const bytes=await readFile(file);for(const secret of [SESSION_KEY,PERSISTENT_KEY,encrypted])assert.equal(bytes.includes(Buffer.from(secret)),false,`${path.relative(backup,file)} excludes credential material`);}
  assert.deepEqual(await readFile(path.join(backup,'payload/workbench.sqlite')),sourceDatabase);assert.deepEqual(await readFile(path.join(source,'video-settings/settings.json')),privateBytes);
  await restoreWorkspaceBackup({directory:backup,destination});await assert.rejects(access(path.join(destination,'video-settings')));
- restoredStore=openStore(destination);assert.equal(getWorkspaceRestoreContext(restoredStore)?.schemaVersion,49);restoredServices=createServices(restoredStore,new Map());
+ restoredStore=openStore(destination);assert.equal(getWorkspaceRestoreContext(restoredStore)?.schemaVersion,51);restoredServices=createServices(restoredStore,new Map());
  const storedJobs=()=>restoredStore!.db.prepare('SELECT id,data FROM jobs ORDER BY id').all();const before=storedJobs(),changes=restoredStore.db.prepare('SELECT total_changes() AS n').get()!.n;
  for(const [index,job] of jobs.entries()){
   const held=await restoredServices.call('job.get',{jobId:job.id}) as JobRecord;assert.deepEqual(held.snapshot,job.snapshot);

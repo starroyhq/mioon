@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: source in, trim, scroll, fractional edges and zoom map to exact 30fps source bounds
+ok 1 - source in, trim, scroll, fractional edges and zoom map to exact 30fps source bounds
+  ---
+  duration_ms: 0.984209
+  type: 'test'
+  ...
+# Subtest: visible candidates require a confirmed audio stream and visible intersecting timeline clips
+ok 2 - visible candidates require a confirmed audio stream and visible intersecting timeline clips
+  ---
+  duration_ms: 0.306958
+  type: 'test'
+  ...
+# Subtest: raw amplitude stays fixed full scale; null decoder coverage is a geometry-preserving gap
+ok 3 - raw amplitude stays fixed full scale; null decoder coverage is a geometry-preserving gap
+  ---
+  duration_ms: 0.516458
+  type: 'test'
+  ...
+# Subtest: decoder-tail cropping preserves fixed source coordinates and never stretches the requested bins
+ok 4 - decoder-tail cropping preserves fixed source coordinates and never stretches the requested bins
+  ---
+  duration_ms: 0.138542
+  type: 'test'
+  ...
+# Subtest: initial view and recreated session stay off without any status read or decode
+ok 5 - initial view and recreated session stay off without any status read or decode
+  ---
+  duration_ms: 0.475333
+  type: 'test'
+  ...
+# Subtest: opt-in performs read-only discovery, one request, bounded polling, then keeps source peaks
+ok 6 - opt-in performs read-only discovery, one request, bounded polling, then keeps source peaks
+  ---
+  duration_ms: 1.749667
+  type: 'test'
+  ...
+# Subtest: client holds one transport request and at most four pending with a 32-entry visible cache
+ok 7 - client holds one transport request and at most four pending with a 32-entry visible cache
+  ---
+  duration_ms: 2.213417
+  type: 'test'
+  ...
+# Subtest: request receipts stay bounded across cache eviction and cannot be reset by toggling off/on
+ok 8 - request receipts stay bounded across cache eviction and cannot be reset by toggling off/on
+  ---
+  duration_ms: 7.203666
+  type: 'test'
+  ...
+# Subtest: two visible trims share one accepted decode and independently fetch their source windows
+ok 9 - two visible trims share one accepted decode and independently fetch their source windows
+  ---
+  duration_ms: 0.767083
+  type: 'test'
+  ...
+# Subtest: long source shows explicit unsupported copy without dispatching an out-of-contract window
+ok 10 - long source shows explicit unsupported copy without dispatching an out-of-contract window
+  ---
+  duration_ms: 0.333708
+  type: 'test'
+  ...
+# Subtest: hide clears queue and polling; a late accepted local request cannot publish or launch more work
+ok 11 - hide clears queue and polling; a late accepted local request cannot publish or launch more work
+  ---
+  duration_ms: 0.209958
+  type: 'test'
+  ...
+# Subtest: synchronous hide before transport dispatch cannot start prepared work
+ok 12 - synchronous hide before transport dispatch cannot start prepared work
+  ---
+  duration_ms: 0.072584
+  type: 'test'
+  ...
+# Subtest: project switch defaults off and fences both late responses and an old in-flight lock
+ok 13 - project switch defaults off and fences both late responses and an old in-flight lock
+  ---
+  duration_ms: 0.154666
+  type: 'test'
+  ...
+# Subtest: offscreen scrolling schedules only the new visible window and fences an old viewport response
+ok 14 - offscreen scrolling schedules only the new visible window and fences an old viewport response
+  ---
+  duration_ms: 0.1305
+  type: 'test'
+  ...
+# Subtest: an unacknowledged request discovers once and requires explicit retry before another POST
+ok 15 - an unacknowledged request discovers once and requires explicit retry before another POST
+  ---
+  duration_ms: 0.234542
+  type: 'test'
+  ...
+# Subtest: explicit retry first discovers accepted running work and does not duplicate its request
+ok 16 - explicit retry first discovers accepted running work and does not duplicate its request
+  ---
+  duration_ms: 0.119625
+  type: 'test'
+  ...
+# Subtest: read failures, interrupted and unsupported states do not silently retry
+ok 17 - read failures, interrupted and unsupported states do not silently retry
+  ---
+  duration_ms: 0.299459
+  type: 'test'
+  ...
+# Subtest: malformed, oversized, mismatched and foreign-project ready responses cannot drive SVG
+ok 18 - malformed, oversized, mismatched and foreign-project ready responses cannot drive SVG
+  ---
+  duration_ms: 0.950916
+  type: 'test'
+  ...
+# Subtest: unmount ignores late results and retained toggle/retry handlers cannot send
+ok 19 - unmount ignores late results and retained toggle/retry handlers cannot send
+  ---
+  duration_ms: 0.083833
+  type: 'test'
+  ...
+# Subtest: actual hook measures sticky labels, excludes vertically hidden tracks, and stops on tab hiding
+ok 20 - actual hook measures sticky labels, excludes vertically hidden tracks, and stops on tab hiding
+  ---
+  duration_ms: 22.20325
+  type: 'test'
+  ...
+# Subtest: actual hook scroll updates source bounds; collapse, mode hide and project switch are fenced
+ok 21 - actual hook scroll updates source bounds; collapse, mode hide and project switch are fenced
+  ---
+  duration_ms: 1.714791
+  type: 'test'
+  ...
+# Subtest: actual Timeline renders decorative bounded SVG inside existing clip button without changing its click/drag behavior
+ok 22 - actual Timeline renders decorative bounded SVG inside existing clip button without changing its click/drag behavior
+  ---
+  duration_ms: 24.771042
+  type: 'test'
+  ...
+# Subtest: actual overlay clips the decoder tail while the inner SVG retains full requested time spacing
+ok 23 - actual overlay clips the decoder tail while the inner SVG retains full requested time spacing
+  ---
+  duration_ms: 5.454
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 349.550167

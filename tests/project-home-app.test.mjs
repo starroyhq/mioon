@@ -100,7 +100,7 @@ function environment(options = {}) {
   for (const name of ['ProjectOpening', 'HomePage', 'ProjectListStatus', 'Auth', 'Online', 'Data', 'Projects', 'Providers', 'LastSync',
     'PropertiesPage', 'TaskState', 'PreferenceStatus', 'Pending', 'ShowProjects', 'Nodes', 'Loading', 'ShotDirty', 'ClipDirty', 'SourceDirty',
     'SubjectDirty', 'SubtitleDirty', 'InspectorEpoch', 'RightDockTab', 'ShowExports', 'ComparisonId', 'PreviewAsset', 'RealConfirm',
-    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable']) {
+    'Toast', 'MobilePanel', 'PanelOverlay', 'ShowTasks', 'SelectedTaskId', 'ShowDelivery', 'ShowImage', 'ShowProjectChooser', 'View', 'Zoom', 'Workspace', 'ShowCreate', 'WebSettingsRequest', 'WebSettingsOpen', 'AudioRoleCapability', 'VideoDirectoryUnavailable']) {
     const key = name[0].toLowerCase() + name.slice(1);
     env[`set${name}`] = value => { env[key] = typeof value === 'function' ? value(env[key]) : value; calls.push([`set${name}`, env[key]]); };
   }

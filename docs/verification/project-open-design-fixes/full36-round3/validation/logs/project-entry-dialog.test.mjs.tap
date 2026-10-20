@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: real ProjectEntry shared Dialog output opts into the existing modal stack above its global backdrop
+ok 1 - real ProjectEntry shared Dialog output opts into the existing modal stack above its global backdrop
+  ---
+  duration_ms: 6.149166
+  type: 'test'
+  ...
+# Subtest: real hidden picker remains a controlled inert keepMounted dialog with the same form callbacks
+ok 2 - real hidden picker remains a controlled inert keepMounted dialog with the same form callbacks
+  ---
+  duration_ms: 0.31225
+  type: 'test'
+  ...
+# Subtest: the retained embedded catalog has one full-width scrolling column and bounded error text
+ok 3 - the retained embedded catalog has one full-width scrolling column and bounded error text
+  ---
+  duration_ms: 0.267833
+  type: 'test'
+  ...
+# Subtest: real picker Escape or outside-dismiss callback cancels primitive dismissal before asking its retained owner
+ok 4 - real picker Escape or outside-dismiss callback cancels primitive dismissal before asking its retained owner
+  ---
+  duration_ms: 0.163209
+  type: 'test'
+  ...
+# Subtest: existing nested confirmation output layers above both picker and raised backdrop and cancellation never approves departure
+ok 5 - existing nested confirmation output layers above both picker and raised backdrop and cancellation never approves departure
+  ---
+  duration_ms: 6.372125
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 345.778584
