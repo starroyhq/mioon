@@ -1,13 +1,14 @@
 import test from 'node:test';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {openStore} from '../packages/business/src/db.ts';
-import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta} from './helpers/current-schema-delta.ts';
+import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
+import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 import {createServices,canonical} from '../packages/business/src/services.ts';
 
 async function fixture(t,{open=openStore}={}){
@@ -22,6 +23,31 @@ async function fixture(t,{open=openStore}={}){
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
 }
 const snapshot=(f,omit=[])=>Object.fromEntries(f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().filter(({name})=>!omit.includes(name)).map(({name})=>[name,f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));
+
+function assertReviewed52Migration(f,before,rawBefore,expectedTargetCount){
+ const actual=rawSnapshot(f.store.db),names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter(object=>names.has(object.name));
+ assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+ assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
+ assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+ assert.deepEqual(actual.objects.filter(object=>/^(?:agent_task_|agent_target_)/.test(object.name)&&!names.has(object.name)),[],'unknown task/target objects are not reviewed52 additions');
+ const revisions=[];
+ for(const[kind,table]of [['project','projects'],['shot','shots'],['asset','assets'],['asset_range','asset_ranges']])
+  for(const row of before[table]??[])revisions.push({retainedRowid:BigInt(revisions.length+1),projectId:kind==='project'?row.id:row.projectId,kind,targetId:kind==='asset_range'?row.assetId:row.id,revision:1n});
+ assert.equal(revisions.length,expectedTargetCount,'the independent legacy seed has the exact target count');
+ for(const[name,table]of Object.entries(currentOrdinary52Delta.tables)){
+  assert.deepEqual(actual.tables[name].fields,table.fields,`${name}: reviewed52 fields`);
+  if(name==='agent_task_target_revisions_v2'){
+   const statement=f.store.db.prepare('SELECT rowid AS retainedRowid,* FROM agent_task_target_revisions_v2 ORDER BY rowid');statement.setReadBigInts(true);
+   const rows=statement.all().map(row=>({...row}));
+   assert.deepEqual(rows.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),revisions.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),'initial target rowids and kind ranges');
+   // An unordered initial SQL scan may use a covering index. Preserve exact
+   // identities without making the first UUID scan order a migration contract.
+   const targets=values=>values.map(row=>{const value={...row};delete value.retainedRowid;return value;}).sort((a,b)=>a.kind.localeCompare(b.kind)||a.targetId.localeCompare(b.targetId));
+   assert.deepEqual(targets(rows),targets(revisions),'original legacy project/target identities and exact initial revision1');
+  }else assert.deepEqual(actual.tables[name].rows,[],`${name}: reviewed empty52 rows`);
+ }
+ for(const[name,table]of Object.entries(rawBefore.tables))if(name!=='schema_version')assert.deepEqual(actual.tables[name],table,`${name}: original SQLite types, raw bytes, rowids and sequence`);
+}
 const changes=f=>f.store.db.prepare('SELECT total_changes() AS n').get().n;
 const read=(f,asset)=>f.call('asset.range.get',{projectId:asset.projectId,assetId:asset.id});
 const count=(f,table)=>f.store.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
@@ -55,6 +81,8 @@ test('range saves are metadata-only with exclusive bounds; long source spans rem
  assert.deepEqual(first.range,{inFrame:1,outFrame:30000});assert.equal(first.revision,1);assert.equal(first.sourceFrameCount,30000);
  assert.deepEqual(await read(f,asset),first);
  const second=await f.call('asset.range.set',f.input(asset,{expectedRevision:1,inFrame:29999,outFrame:30000}));assert.equal(second.revision,2);
+ assert.equal(before.agent_task_target_revisions_v2.some(row=>row.kind==='asset_range'&&row.targetId===asset.id),false);
+ before.agent_task_target_revisions_v2.push(Object.assign(Object.create(null),{projectId:asset.projectId,kind:'asset_range',targetId:asset.id,revision:2}));
  assert.deepEqual(snapshot(f,['asset_ranges','asset_range_requests']),before);assert.deepEqual(await readFile(media),bytes);
  assert.equal(count(f,'mutation_requests'),0);assert.equal(count(f,'asset_ranges'),1);assert.equal(count(f,'asset_range_requests'),2);
  await assert.rejects(f.call('timeline.clip.add',{...clipInput,requestId:randomUUID(),expectedRevision:2,durationFrames:18001}),{code:'VALIDATION_ERROR'});
@@ -197,15 +225,16 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  f.store.db.exec('DROP TABLE timeline_format_requests; DROP INDEX timeline_requests_project; DELETE FROM schema_version WHERE version IN (21,22);');
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_range_request; DROP TABLE asset_range_requests; DROP TABLE asset_ranges; DELETE FROM schema_version WHERE version=11;');
- const before=snapshot(f,['schema_version']);f.restart();
- assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables),...Object.keys(currentOrdinary50Delta.tables)]),before);
+ const before=snapshot(f,['schema_version']),rawBefore=rawSnapshot(f.store.db);f.restart();
+ assertReviewed52Migration(f,before,rawBefore,3);
+ assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables),...Object.keys(currentOrdinary50Delta.tables),...Object.keys(currentOrdinary52Delta.tables)]),before);
  for(const table of Object.keys(currentOrdinary50Delta.tables))assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${table}`).get().n,0);
  assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
  assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);
  assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=11').get());
  assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
  assert.deepEqual(fullSchema(),completeFresh);
- const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(fullSchema(),completeFresh);
+ const migrated=snapshot(f),migratedRaw=rawSnapshot(f.store.db);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(rawSnapshot(f.store.db),migratedRaw);assert.deepEqual(fullSchema(),completeFresh);
 });
 
 // Child processes use two genuinely independent SQLite connections. The winner

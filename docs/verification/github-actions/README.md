@@ -97,3 +97,9 @@
 | 测试代码严格类型检查、diff-check | 退出0 |
 
 以上为本地定向红绿验证，远端全量状态仍以新提交的 CI 为准。没有跳过测试、减少历史比较或为通过CI改变生产行为。
+
+剩余 `currentOrdinary50Delta` 消费者的有界核对又实际重现四条旧迁移快照失败：image edit、subjects、source ranges、asset dispositions。均按同样的独立52完整目录及原seed目标修订先验后剥离；range/disposition额外逐表比较迁移前后的SQLite原始类型/字节/rowid/sequence，冷重开比较完整raw snapshot。修订初始化只固定目标身份、revision=1、完整rowid及kind分段，不把无ORDER扫描的UUID顺序当作契约。
+
+同文件及同模式的metadata快照也精确补齐目标台账：range revision2、三个disposition各revision5、annotation revision2，以及subject2、两个version1、两个binding4/1；不忽略修订整表，其他目标和业务表仍全量比较。损坏project JSON夹具先断言新target guard原子拒绝，随后仅在造坏数据的瞬间移除并finally恢复同一条guard；业务负例执行时所有保护启用，保留原无泄露、零变更断言。
+
+最终完整文件分别通过 image edit+subjects migration **14/14**、source ranges **16/16**、asset dispositions **28/28**、annotation **9/9**、subjects domain **10/10**，无跳过；测试严格类型及独立复核通过。这两轮合计涉及19个相关测试文件的当前格式适配，未改变生产源码或原历史fixtures。[第二次整合运行](https://github.com/starroyhq/mioon/actions/runs/39442747856)因上述已确认红例也主动取消，不计为通过；最终跨平台完整结果以之后提交的当前CI为准。

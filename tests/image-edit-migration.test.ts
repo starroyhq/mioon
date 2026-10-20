@@ -1,6 +1,6 @@
 import test from 'node:test';
 import {errorView} from './helpers/test-error.ts';
-import {currentMarkerChain,currentOrdinary50Delta} from './helpers/current-schema-delta.ts';
+import {currentMarkerChain,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {DatabaseSync} from 'node:sqlite';
@@ -93,6 +93,28 @@ function normalizeStartupTaskObject(row: SchemaObject): SchemaObject {
 function sameOld(db: DatabaseSync,before: Snapshot,{startupMigrations=false}: {startupMigrations?: boolean}={}): void {
  const after=snapshot(db),next=new Map(after.objects.map(value=>[value.name,value]));
  if(startupMigrations){
+  // Validate the independent52 catalog and exact initial target evidence before
+  // projecting its additive objects out of the frozen22 comparison.
+  const v2Names=new Set(currentOrdinary52Delta.objectNames),v2Objects=after.objects.filter(value=>v2Names.has(value.name));
+  assert.deepEqual(v2Objects.map(value=>({...value})),currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+  assert.equal(v2Objects.length,currentOrdinary52Delta.v2Catalog.count);
+  assert.equal(hash(JSON.stringify(v2Objects)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+  assert.deepEqual(after.objects.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!v2Names.has(value.name)),[],'unknown task/target objects are not reviewed52 additions');
+  const revisions:Row[]=[];
+  for(const[kind,table]of [['project','projects'],['job','jobs'],['asset','assets'],['image_task','image_tasks'],['image_group','image_groups'],['image_version','image_versions']]as const)
+   for(const row of before.rows[table])revisions.push({retainedRowid:BigInt(revisions.length+1),projectId:kind==='project'?row.id:row.projectId,kind,targetId:row.id,revision:1n});
+  for(const[name,table]of Object.entries(currentOrdinary52Delta.tables)){
+   assert.deepEqual(db.prepare(`PRAGMA table_info("${name}")`).all().map(value=>value.name),table.fields,`${name}: reviewed52 fields`);
+   const actual=after.rows[name].map(row=>({...row}));
+   if(name==='agent_task_target_revisions_v2'){
+    // New rowids have exact kind ranges; an unordered covering-index scan may
+    // choose a different order within a kind. Cold reopen below pins all rows.
+    assert.deepEqual(actual.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),revisions.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),'initial target rowids and kind ranges');
+    const targets=(values:Row[])=>values.map(row=>{const value={...row};delete value.retainedRowid;return value;}).sort((a,b)=>String(a.kind).localeCompare(String(b.kind))||String(a.targetId).localeCompare(String(b.targetId)));
+    assert.deepEqual(targets(actual),targets(revisions),'original schema22 project/target identities and initial revision1');
+   }else assert.deepEqual(actual,[],`${name}: reviewed empty52 rows`);
+  }
+  after.objects=after.objects.filter(value=>!v2Names.has(value.name));
   const names=new Set(currentOrdinary50Delta.objects.map(value=>value.name));
   assert.deepEqual(after.objects.filter(value=>names.has(value.name)).map(value=>({...value})),currentOrdinary50Delta.objects,'schema50 matches its independent exact delta');
   for(const table of Object.keys(currentOrdinary50Delta.tables))assert.deepEqual(after.rows[table],[],table);

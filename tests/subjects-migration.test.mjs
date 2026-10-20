@@ -1,10 +1,10 @@
 import test from 'node:test';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
-import {currentOrdinary48Delta,currentOrdinary50Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
+import {currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {mkdtempSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -209,8 +209,38 @@ export async function seedSchema14Fixture(store) {
 }
 
 
+// This catalog comes from the independent committed52 delta. Initial target
+// identities and revision1 come only from the original schema14 seed snapshot.
+function assertReviewed52(db,legacyRecords) {
+ const names=new Set(currentOrdinary52Delta.objectNames),objects=schema(db),reviewed=objects.filter(value=>names.has(value.name));
+ assert.deepEqual(reviewed.map(value=>({...value})),currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+ assert.equal(reviewed.length,currentOrdinary52Delta.v2Catalog.count);
+ assert.equal(createHash('sha256').update(JSON.stringify(reviewed)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+ assert.deepEqual(objects.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)),[],'unknown task/target objects are not reviewed52 additions');
+ for(const[name,table]of Object.entries(currentOrdinary52Delta.tables)){
+  assert.deepEqual(db.prepare(`PRAGMA table_info(${quote(name)})`).all().map(value=>value.name),table.fields,`${name}: reviewed52 fields`);
+  if(name!=='agent_task_target_revisions_v2')assert.deepEqual(rows(db,name),[],`${name}: reviewed empty52 rows`);
+ }
+ if(!legacyRecords)return;
+ const expected=[],add=(kind,projectId,targetId)=>expected.push({rowid:expected.length+1,projectId,kind,targetId,revision:1});
+ for(const[kind,table]of [['project','projects'],['shot','shots'],['node','nodes'],['job','jobs'],['asset','assets'],['export','exports'],['version','versions']])
+  for(const row of legacyRecords[table])add(kind,kind==='project'?row.id:row.projectId,row.id);
+ const timelines=legacyRecords.timelines.map(row=>({projectId:row.projectId,data:JSON.parse(row.data)}));
+ for(const[field,kind]of [['clips','timeline_clip'],['tracks','timeline_track'],['subtitles','timeline_subtitle']])
+  for(const timeline of timelines)for(const target of timeline.data[field]??[])add(kind,timeline.projectId,target.id);
+ for(const timeline of timelines)add('timeline',timeline.projectId,timeline.projectId);
+ const actual=db.prepare('SELECT rowid,projectId,kind,targetId,revision FROM agent_task_target_revisions_v2 ORDER BY rowid').all().map(row=>({...row}));
+ // SQLite may use an existing covering index within one kind; all new rowids
+ // and kind ranges remain exact, and later cold snapshots retain their mapping.
+ assert.deepEqual(actual.map(row=>({rowid:row.rowid,kind:row.kind})),expected.map(row=>({rowid:row.rowid,kind:row.kind})),'initial target rowids and kind ranges');
+ const targets=values=>values.map(row=>{const value={...row};delete value.rowid;return value;}).sort((a,b)=>a.kind.localeCompare(b.kind)||a.targetId.localeCompare(b.targetId));
+ assert.deepEqual(targets(actual),targets(expected),'original schema14 project/target identities and initial revision1');
+}
+
 function assertLegacyPreserved(db,before) {
+ assertReviewed52(db,before.records);
  const after=snapshotSchema14(db);
+ for(const name of Object.keys(currentOrdinary52Delta.tables))delete after.records[name];
  assertAgentEditTargetTrigger(after.schema);
  after.records.agent_edit_proposals=legacyAgentEditProposalRows(after.records.agent_edit_proposals);
  assert.deepEqual(after.records,before.records,'all preexisting table records, including sequence rows, remain byte-for-byte equivalent');
@@ -229,6 +259,7 @@ function assertLegacyPreserved(db,before) {
  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
 function assertNewSchema(db) {
+ assertReviewed52(db);
  const names=new Set(currentOrdinary50Delta.objects.map(value=>value.name));
  assert.deepEqual(schema(db).filter(value=>names.has(value.name)).map(value=>({...value})),currentOrdinary50Delta.objects,'schema50 matches its independent exact delta');
  for(const table of current50Tables)assert.deepEqual(rows(db,table),[],'later task disposition migration never manufactures task records');
