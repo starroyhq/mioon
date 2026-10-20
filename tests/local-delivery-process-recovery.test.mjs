@@ -14,6 +14,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {publicValue} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
+import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./fixtures/local-delivery-process-worker.ts',import.meta.url));
 const authority=value=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
@@ -75,7 +76,19 @@ async function fixture(t){
    draft:value.draft?{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw}:null,
    input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})}}),
   read(fn){const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{db.exec('PRAGMA query_only=ON; BEGIN');return fn(db);}finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}},
-  snapshot(){return this.read(db=>({schema:db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{assert.match(name,/^[a-z_]+$/);return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];}))}));},
+  snapshot(){return this.read(db=>{
+   const schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
+   assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+   assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
+   assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+   assert.deepEqual(schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)),[],'unknown task/target objects are not reviewed52 additions');
+   // Keep every new table and row in the crash oracle. Only these exact frozen
+   // names may contain digits; unknown numeric table names still fail closed.
+   return {schema,tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{
+    assert.ok(/^[a-z_]+$/.test(name)||Object.hasOwn(currentOrdinary52Delta.tables,name),'only safe legacy or independently frozen52 table names');
+    return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];
+   }))};
+  });},
   receipt:requestId=>f.read(db=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(requestId)),
   sidecar:()=>readFile(path.join(root,'local-delivery-v1.json'),'utf8'),
   async crash(phase,method,input){await worker.ask('arm',phase);const reached=worker.waitBoundary(phase),reply=worker.ask(method,input);

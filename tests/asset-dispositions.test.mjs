@@ -1,14 +1,15 @@
 import test from 'node:test';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {mkdtemp,rm,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/db.ts';
-import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta} from './helpers/current-schema-delta.ts';
+import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
+import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 import {createServices,canonical} from '../packages/business/src/services.ts';
 
 async function fixture(t,{open=openStore}={}){
@@ -27,6 +28,31 @@ const snapshot=(f,omit=[])=>Object.fromEntries(f.store.db.prepare("SELECT name F
  return [name,statement.all()];
 }));
 const changes=f=>f.store.db.prepare('SELECT total_changes() AS n').get().n;
+
+function assertReviewed52Migration(f,before,rawBefore,expectedTargetCount){
+ const actual=rawSnapshot(f.store.db),names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter(object=>names.has(object.name));
+ assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+ assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
+ assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+ assert.deepEqual(actual.objects.filter(object=>/^(?:agent_task_|agent_target_)/.test(object.name)&&!names.has(object.name)),[],'unknown task/target objects are not reviewed52 additions');
+ const revisions=[];
+ for(const[kind,table]of [['project','projects'],['shot','shots'],['asset','assets'],['asset_range','asset_ranges']])
+  for(const row of before[table]??[])revisions.push({retainedRowid:BigInt(revisions.length+1),projectId:kind==='project'?row.id:row.projectId,kind,targetId:kind==='asset_range'?row.assetId:row.id,revision:1n});
+ assert.equal(revisions.length,expectedTargetCount,'the independent legacy seed has the exact target count');
+ for(const[name,table]of Object.entries(currentOrdinary52Delta.tables)){
+  assert.deepEqual(actual.tables[name].fields,table.fields,`${name}: reviewed52 fields`);
+  if(name==='agent_task_target_revisions_v2'){
+   const statement=f.store.db.prepare('SELECT rowid AS retainedRowid,* FROM agent_task_target_revisions_v2 ORDER BY rowid');statement.setReadBigInts(true);
+   const rows=statement.all().map(row=>({...row}));
+   assert.deepEqual(rows.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),revisions.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),'initial target rowids and kind ranges');
+   // An unordered initial SQL scan may use a covering index. Preserve exact
+   // identities without making the first UUID scan order a migration contract.
+   const targets=values=>values.map(row=>{const value={...row};delete value.retainedRowid;return value;}).sort((a,b)=>a.kind.localeCompare(b.kind)||a.targetId.localeCompare(b.targetId));
+   assert.deepEqual(targets(rows),targets(revisions),'original legacy project/target identities and exact initial revision1');
+  }else assert.deepEqual(actual.tables[name].rows,[],`${name}: reviewed empty52 rows`);
+ }
+ for(const[name,table]of Object.entries(rawBefore.tables))if(name!=='schema_version')assert.deepEqual(actual.tables[name],table,`${name}: original SQLite types, raw bytes, rowids and sequence`);
+}
 const list=(f,assets)=>f.call('asset.disposition.list',{projectId:f.project.id,assetIds:assets.map(asset=>asset.id)});
 const read=async(f,asset)=>(await list(f,[asset])).items[0];
 const count=(f,table)=>f.store.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
@@ -67,6 +93,8 @@ test('favorite/rejected/neutral edits retain independent revisions and leave all
    assert.deepEqual(result,{id:target.id,assetId:target.id,projectId:f.project.id,revision:index+1,disposition});
    assert.deepEqual(await read(f,target),result);
   }
+  assert.equal(before.agent_task_target_revisions_v2.some(row=>row.kind==='asset_disposition'&&row.targetId===target.id),false);
+  before.agent_task_target_revisions_v2.push(Object.assign(Object.create(null),{projectId:target.projectId,kind:'asset_disposition',targetId:target.id,revision:5n}));
  }
  assert.deepEqual(snapshot(f,['asset_dispositions','asset_disposition_requests']),before);assert.deepEqual(await readFile(media),bytes);
  assert.equal(count(f,'asset_dispositions'),3);assert.equal(count(f,'asset_disposition_requests'),15);
@@ -122,16 +150,27 @@ test('missing and foreign batches fail all-or-nothing uniformly, including exact
 
 test('bounded asset/project identity JSON and malformed saved metadata fail closed without current state disclosure',async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset);await f.call('asset.disposition.set',input);
+ const guard=f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE name='agent_target_projects_update_v2'").get().sql;
+ const intact=snapshot(f);
+ assert.throws(()=>f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run('{retained secret',f.project.id),/malformed JSON/);
+ assert.deepEqual(snapshot(f),intact,'the live target guard refuses malformed project JSON atomically');
+ // Construct corrupt retained bytes deliberately; restore the exact target
+ // guard before every business call so its refusal behavior remains tested.
+ const corrupt=(table,raw,id)=>{
+  if(table==='projects')f.store.db.exec('DROP TRIGGER agent_target_projects_update_v2');
+  try{f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(raw,id);}
+  finally{if(table==='projects')f.store.db.exec(guard);}
+ };
  for(const [table,value] of [['assets',asset],['projects',f.project]]){
   for(const damaged of ['{retained secret',JSON.stringify({...value,padding:'x'.repeat(16384)}),JSON.stringify({...value,id:randomUUID()})]){
-   f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(damaged,value.id);
+   corrupt(table,damaged,value.id);
    const before=snapshot(f),writes=changes(f);
    await assert.rejects(read(f,asset),error=>error.code==='INVALID_ASSET_DISPOSITION_RECORD'&&noDisclosure(error));
    for(const request of [input,{...input,requestId:randomUUID(),expectedRevision:999}])
     await assert.rejects(f.call('asset.disposition.set',request),error=>error.code==='INVALID_ASSET_DISPOSITION_RECORD'&&noDisclosure(error)&&!error.details.mutationOutcome);
    assert.deepEqual(snapshot(f),before);assert.equal(changes(f),writes);
   }
-  f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value),value.id);
+  corrupt(table,JSON.stringify(value),value.id);
  }
  f.store.db.exec('DROP TRIGGER immutable_asset_disposition_identity; PRAGMA ignore_check_constraints=ON');
  for(const patch of [{projectId:f.other.id},{revision:0},{revision:1.5},{revision:Number.MAX_SAFE_INTEGER+1},{disposition:'private retained secret'}]){
@@ -283,11 +322,12 @@ test('v12 upgrade preserves all old records and response bytes and has identical
  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_format_requests').get().n,0);
  f.store.db.exec('DROP TABLE timeline_format_requests; DROP INDEX timeline_requests_project; DELETE FROM schema_version WHERE version IN (21,22);');
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_disposition_request; DROP TRIGGER reject_asset_range_cross_disposition_request; DROP TABLE asset_disposition_requests; DROP TABLE asset_dispositions; DELETE FROM schema_version WHERE version IN (12,15);');
- const old=snapshot(f,['schema_version']);f.restart();
- assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables),...Object.keys(currentOrdinary50Delta.tables)]),old);assert.deepEqual(schema(),fresh);
+ const old=snapshot(f,['schema_version']),rawBefore=rawSnapshot(f.store.db);f.restart();
+ assertReviewed52Migration(f,old,rawBefore,5);
+ assert.deepEqual(snapshot(f,['schema_version','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables),...Object.keys(currentOrdinary50Delta.tables),...Object.keys(currentOrdinary52Delta.tables)]),old);assert.deepEqual(schema(),fresh);
  assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
  for(const table of ['project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary50Delta.tables)])assert.equal(count(f,table),0);
- const migrated=snapshot(f);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(schema(),fresh);
+ const migrated=snapshot(f),migratedRaw=rawSnapshot(f.store.db);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(rawSnapshot(f.store.db),migratedRaw);assert.deepEqual(schema(),fresh);
 });
 
 // Competing processes hold and request actual BEGIN IMMEDIATE locks, so every

@@ -1,0 +1,6 @@
+# These delivered resources have fixed byte lengths and SHA-256 pins.
+packages/business/resources/subtitles/OFL-1.1.txt text eol=lf
+packages/business/resources/subtitles/SOURCE-COPYRIGHT.txt text eol=lf
+packages/business/resources/subtitles/README.md text eol=lf
+packages/business/resources/subtitles/extract-font.py text eol=lf
+packages/business/resources/subtitles/mioon-subtitle-cjk-sc-v1.otf -text

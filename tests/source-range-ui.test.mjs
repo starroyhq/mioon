@@ -152,7 +152,24 @@ test('App guards dirty clip before source selection, clears clip selection, and 
   assert.doesNotMatch(source, /setRightDockTab/);
   assert.match(app, /replay && operation === 'asset.range.set'/); assert.match(app, /setSourceRangeRefresh/);
   assert.match(app, /shotDirty \|\| clipDirty \|\| sourceDirty/);
-  assert.match(app, /quickAssetId && sourceAsset \? application \?/); assert.match(app, /: <SourceRangeInspector/);
+  const branchStart=app.indexOf('quickAssetId && sourceAsset ? application ?'),branchEnd=app.indexOf(': displayedClipInspector ?',branchStart);
+  assert.ok(branchStart>=0&&branchEnd>branchStart,'exercise the complete actual source-inspector branch');
+  const renderCode=transformSync(`function render(){return ${app.slice(branchStart,branchEnd)} : null;}`,{loader:'tsx',format:'cjs',jsx:'transform'}).code;
+  let discards=0,ownerScope='source:1';
+  const environment={React:{createElement:(type,props,...children)=>({type,props:{...props,children}})},
+    quickAssetId:'asset-a',sourceAsset:asset(),application:null,AgentEditingBoundary:'AgentEditingBoundary',SourceRangeInspector:'SourceRangeInspector',
+    workspaceOriginScope:()=> 'normal',workspace:{restored:false},restored:false,data:{project:{id:'project-a'}},sourceDirty:true,
+    sourceRanges:{state:{scope:'source:1'},controller:{getState:()=>({scope:ownerScope}),discard:()=>{discards++;}}},
+    timeline:timeline(),sourceRangeBlocked:false,addSavedSourceRange:()=>{},FrameExtractionPanel:'FrameExtractionPanel',frameExtraction:{controller:{}},
+  };
+  const render=Function('env',`with(env){${renderCode};return render;}`)(environment),boundary=render();
+  assert.equal(boundary.type,'AgentEditingBoundary');assert.equal(boundary.props.disabled,false);assert.equal(boundary.props.projectId,'project-a');
+  assert.deepEqual(boundary.props.targets,[{kind:'asset_range',id:'asset-a',revision:0}]);
+  assert.equal(boundary.props.children[0].type,'SourceRangeInspector');assert.equal(boundary.props.children[0].props.asset,environment.sourceAsset);
+  assert.equal(boundary.props.canRelease(),false,'an unsaved range retains its exact target claim');
+  environment.sourceDirty=false;assert.equal(render().props.canRelease(),true);
+  ownerScope='source:2';boundary.props.onDiscard();assert.equal(discards,0,'a retained callback cannot discard another source scope');
+  ownerScope='source:1';boundary.props.onDiscard();assert.equal(discards,1);
   assert.match(app, /sourceInFrame: 0/); // Existing whole-asset route is retained.
 });
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm,readdir} from 'node:fs/promises';
-import {readdirSync,renameSync,writeFileSync} from 'node:fs';
+import {lstatSync,readdirSync,renameSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
@@ -195,11 +195,17 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
   // The production trigger prevents this write. Dropping only this trigger is
   // a hostile-corruption simulation to test the independent asynchronous fence.
   store.db.exec('DROP TRIGGER immutable_timeline_render_snapshot');
-  let ffmpegStarts=0; let replacement: {snapshot: {delivery: unknown; timeline?: unknown}; [key: string]: unknown} | undefined; let observerFailure: unknown; const events: ProcessEvent[]=[];
+  const mediaDirectory=path.join(workspace,'media'),filesBefore=(await readdir(mediaDirectory)).sort();
+  let ffmpegStarts=0; let replacement: {snapshot: {delivery: unknown; timeline?: unknown}; [key: string]: unknown} | undefined; let ownedPart: {name: string; dev: number; ino: number} | undefined; let observerFailure: unknown; const events: ProcessEvent[]=[];
   const off=onMediaProcess((event: ProcessEvent)=>{
    events.push(event);
    if(event.type==='started'&&event.kind==='ffmpeg'&&++ffmpegStarts===2){
-    try{replacement=store.get('exports',accepted.id) as unknown as {snapshot: {delivery: unknown; timeline?: unknown}; [key: string]: unknown};replacement.snapshot.delivery=deliveryFor(replacement.snapshot.timeline as unknown,selected('short_360'));store.put('exports',replacement as unknown as Parameters<typeof store.put>[1]);}
+    try{
+     const parts=readdirSync(mediaDirectory).filter(name=>new RegExp(`^export-${accepted.id}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.mp4\\.part\\.mp4$`).test(name));
+     assert.equal(parts.length,1);const identity=lstatSync(path.join(mediaDirectory,parts[0]));assert.equal(identity.isFile(),true);assert.equal(identity.size,0);
+     ownedPart={name:parts[0],dev:identity.dev,ino:identity.ino};
+     replacement=store.get('exports',accepted.id) as unknown as {snapshot: {delivery: unknown; timeline?: unknown}; [key: string]: unknown};replacement.snapshot.delivery=deliveryFor(replacement.snapshot.timeline as unknown,selected('short_360'));store.put('exports',replacement as unknown as Parameters<typeof store.put>[1]);
+    }
     catch(error){observerFailure=error;}
    }
   });
@@ -208,14 +214,18 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
   assert.equal(ffmpegStarts,2,'worker stopped after listing + synthetic proof, before rendering');
   assert.deepEqual(store.get('exports',accepted.id),replacement,'failed owner fence cannot overwrite the newer persisted record');
   assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);
-  assert.equal((await readdir(path.join(workspace,'media'))).some(name=>name.startsWith('.timeline-render-')||name.startsWith('export-')),false);
+  // 01a83cb acquires the part before capability checking and preserves it when
+  // the accepted record's identity is lost; this never permits deleting a newer record's output.
+  assert.ok(ownedPart);assert.deepEqual((await readdir(mediaDirectory)).sort(),[...filesBefore,ownedPart.name].sort(),'only this attempt\'s known empty part may remain; no final output or render scratch');
+  const preservedPart=lstatSync(path.join(mediaDirectory,ownedPart.name));assert.equal(preservedPart.isFile(),true);assert.equal(preservedPart.size,0);assert.equal(preservedPart.nlink,1);
+  assert.deepEqual({dev:preservedPart.dev,ino:preservedPart.ino},{dev:ownedPart.dev,ino:ownedPart.ino},'conservative cleanup preserves the exact original staging inode');
   assert.equal(events.filter(event=>event.type==='started').length,events.filter(event=>event.type==='exited').length);
  }finally{await worker?.stop();await services.drain();store.close();}
 });
 
 async function sourceOwnershipRace(t: {mock: {method(target: object, name: string, fn: (...args: unknown[]) => unknown): void}; after(fn: () => unknown): void}, {mutation, phase='capability'}: {mutation: string; phase?: string}): Promise<void> {
  const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
- const state=()=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='exports' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+ const state=(): Record<string, Record<string, unknown>[]>=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='exports' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
  try{
   const project=await services.call<ProjectShape>('project.create',{name:'Synthetic frozen-source race'}),other=await services.call<ProjectShape>('project.create',{name:'Private foreign fixture'});
   const imported=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
@@ -237,7 +247,7 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   // The normal version trigger rejects this corruption; remove only that
   // fixture-local protection when testing the independent retained-graph fence.
   if(mutation==='version-sql-owner')store.db.exec('DROP TRIGGER immutable_versions');
-  let moved=false; let afterMutation: unknown; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0; let publicationArmed=false,linkedBeforeTx=false; let replacementFile: string | undefined,preservedFile: string | undefined; let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
+  let moved=false; let afterMutation: ReturnType<typeof state> | undefined; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0; let publicationArmed=false,linkedBeforeTx=false; let replacementFile: string | undefined,preservedFile: string | undefined; let replacementIdentity: {dev: number; ino: number} | undefined; let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
   const replacementBytes=Buffer.from('Different fixture-owned inode must be preserved.');
   const prepare=store.db.prepare;
   if(phase==='publication-read-unknown')t.mock.method(store.db,'prepare',(function(this: unknown, sql: string, ...args: unknown[]){
@@ -270,9 +280,11 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
    linkedBeforeTx=Boolean(linked);
    if(linked&&phase==='publication-replacement'){
     replacementFile=path.join(workspace,'media',linked);
+    const originalIdentity=lstatSync(replacementFile);
     // Create while the original inode is still live, then atomically replace
     // the name; this avoids accidental same-inode reuse in the fixture.
     const fresh=replacementFile+'.replacement';writeFileSync(fresh,replacementBytes,{flag:'wx',mode:0o600});renameSync(fresh,replacementFile);
+    const replaced=lstatSync(replacementFile);replacementIdentity={dev:replaced.dev,ino:replaced.ino};assert.notDeepEqual(replacementIdentity,{dev:originalIdentity.dev,ino:originalIdentity.ino});
    }
    if(linked&&phase==='publication-read-unknown')preservedFile=path.join(workspace,'media',linked);
    move();
@@ -291,14 +303,24 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   try{worker=startWorker(store as unknown as Parameters<typeof startWorker>[0],services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}finally{off();}
   assert.equal(observerFailure,undefined);assert.equal(moved,true,`${mutation} raced at ${phase}`);
   if(publicationPhase)assert.equal(linkedBeforeTx,true,'ownership changed after this task linked its output and immediately before the real publication transaction');
-  assert.deepEqual(state(),afterMutation,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
-  const rejected=store.get('exports',accepted.id);assert.equal(rejected.status,'failed');assert.equal((rejected.error as {code?: string}).code,'TIMELINE_SOURCE_UNAVAILABLE');
+  assert.ok(afterMutation);
+  const isAcceptedExport=(row: Record<string, unknown>)=>row.projectId===project.id&&row.kind==='export'&&row.targetId===accepted.id;
+  assert.equal(afterMutation.agent_task_target_revisions_v2.filter(isAcceptedExport).length,1);
+  // Failing this accepted export persists one terminal status transition. Its
+  // exact target advances once; every source, foreign target and receipt stays fixed.
+  const expectedState={...afterMutation,agent_task_target_revisions_v2:afterMutation.agent_task_target_revisions_v2.map(row=>
+   isAcceptedExport(row)?Object.assign(Object.create(Object.getPrototypeOf(row)),row,{revision:Number(row.revision)+1}):row)};
+  assert.deepEqual(state(),expectedState,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
+  // 01a83cb applies the owned-output inode fence to every export. A replaced
+  // output is refused before the subsequent frozen-source ownership check.
+  const rejected=store.get('exports',accepted.id);assert.equal(rejected.status,'failed');assert.equal((rejected.error as {code?: string}).code,phase==='publication-replacement'?'INVALID_TIMELINE_SNAPSHOT':'TIMELINE_SOURCE_UNAVAILABLE');
   assert.equal(rejected.assetId,null);assert.equal(rejected.url,null);assert.deepEqual(rejected.snapshot,acceptedSnapshot);
   assert.equal(JSON.stringify(rejected.error).includes(other.id),false);assert.equal(JSON.stringify(rejected.error).includes(foreignShot.id),false);assert.equal(JSON.stringify(rejected.error).includes(workspace),false);
   assert.equal(store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId).response,receipt);
   assert.equal(ffmpegStarts,phase==='capability'?2:4,phase==='capability'?'no timeline encode after capability source drift':'render completed before publication source drift');
   if(phase==='publication-replacement'){
-   assert.ok(replacementFile);assert.deepEqual(await readFile(replacementFile),replacementBytes,'cleanup must refuse a replacement inode without hiding the original source-ownership error');
+   assert.ok(replacementFile);assert.deepEqual(await readFile(replacementFile),replacementBytes,'cleanup must refuse a replacement inode after the output identity fence rejects publication');
+   const preserved=lstatSync(replacementFile);assert.deepEqual({dev:preserved.dev,ino:preserved.ino},replacementIdentity,'cleanup must preserve the replacement inode itself');
    assert.deepEqual((await readdir(path.join(workspace,'media'))).sort(),[...files,path.basename(replacementFile)].sort());
   }else if(phase==='publication-read-unknown'){
    assert.equal(readFailureObserved,true);assert.ok(preservedFile);

@@ -45,6 +45,7 @@
     "./opacity-envelope.consumer.mts"
   ],
   "include": [
+    "../../.github/scripts/**/*.ts",
     "../../packages/*/src/**/*.ts",
     "../../apps/*/src/**/*.ts",
     "../../apps/desktop/*.ts",

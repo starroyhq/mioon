@@ -19,6 +19,7 @@ import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { rpc as realRpc } from '../apps/web/src/api.ts';
 import * as feedback from '../apps/web/src/import-feedback.ts';
 import { createEditorWindowInputs } from '../apps/web/src/editor-window-inputs.ts';
+import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -70,7 +71,10 @@ function harness({ fetchImpl, readerImpl, refreshImpl, rpcImpl, actualRefresh = 
     isBusy: key => busy.has(`${currentProject.current}:${key}`), markBusy: (owner, key, value) => { busyWrites.push({ owner, key, value }); if (value) busy.add(`${owner}:${key}`); else busy.delete(`${owner}:${key}`); },
     notify: (message, type = 'success') => notifications.push({ message: feedback.renderImportFeedback('zh-Hans', message), descriptor: message, type }),
     fileInput: { current: input }, FileReader, rpc: (operation, input, options) => { requests.push({ operation, input }); return (rpcImpl || api.rpc)(operation, input, options); },
-    useCallback: fn => fn, reconcilePending() {}, emptyData: {}, setData: value => stateWrites.push(['data', value]), setProviders: value => stateWrites.push(['providers', value]),
+    useCallback: fn => fn, reconcilePending() {}, readGenerationProviderDirectory, emptyData: {}, setData: value => stateWrites.push(['data', value]), setProviders: value => stateWrites.push(['providers', value]),
+    // This fixture owns no editing claims; match the empty-owner refresh wait.
+    refreshAgentEditingTargets: async () => { await Promise.allSettled([]); }, clipDraftRef: { current: null },
+    setVideoDirectoryUnavailable: value => stateWrites.push(['videoDirectoryUnavailable', value]),
     setLastSync: value => stateWrites.push(['sync', value]), setOnline: value => stateWrites.push(['online', value]), setPending() {}, pendingForProject: () => [],
     reconcileWorkspaceState: value => value, viewRef: { current: {} }, viewReady: { current: false }, preferencesRef: { current: { update() {} } }, setView() {}, setAuth: value => stateWrites.push(['auth', value]),
   };

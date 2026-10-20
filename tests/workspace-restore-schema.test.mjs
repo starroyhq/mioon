@@ -119,7 +119,7 @@ test('ordinary current-schema reopen keeps raw schema/rows/receipts and source p
  try{
   const receipt=' \n'+JSON.stringify({name:'界',retained:true},null,'\t')+'\n ';
   seedOrdinary(store.db,receipt);
-  const before=snapshot(store.db),profile=readCurrentWorkspaceRole(store.db);assert.equal(profile,'ordinary-50');
+  const before=snapshot(store.db),profile=readCurrentWorkspaceRole(store.db);assert.equal(profile,'ordinary-52');
   store.close();store=openStore(root);
   assert.deepEqual(snapshot(store.db),before);assert.deepEqual(readCurrentWorkspaceRole(store.db),profile);
   assert.deepEqual({...store.db.prepare('SELECT typeof(response) AS type,response FROM timeline_requests').get()},{type:'text',response:receipt});

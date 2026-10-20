@@ -68,6 +68,8 @@ function environment(options = {}) {
     guardProjectNavigation: async (_message, _dirty, current) => options.guard ? options.guard(current) : current(),
     pendingForProject: () => [], reconcileWorkspaceState: state => state,
     reconcilePending: (...args) => calls.push(['reconcile', ...args]),
+    // This fixture owns no editing claims; match the empty-owner refresh wait.
+    refreshAgentEditingTargets: async () => { await Promise.allSettled([]); },
     updateView: (...args) => calls.push(['updateView', ...args]), migrateBrowserStorage() {}, isBusy: () => false,
     markBusy: (projectId, key, value) => { calls.push(['markBusy', projectId, key, value]); if (projectId === env.currentProject.current) env.busy[key] = value; },
     preferencesRef: { current: {

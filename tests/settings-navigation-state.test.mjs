@@ -66,6 +66,9 @@ function renderer(slot, f, callback, options = {}) {
     // Authorization management is a separate presentation leaf; this fixture
     // executes the settings session and its navigation callbacks.
     if (name === './AgentAuthorizations.tsx') return { default: 'AgentAuthorizations', __esModule: true };
+    // Execution policy owns a separate session; these cases exercise the
+    // credential form's existing dirty, busy and recovery navigation state.
+    if (name === './AgentTaskPolicy.tsx') return { default: 'AgentTaskPolicy', __esModule: true };
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitives;
     if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};

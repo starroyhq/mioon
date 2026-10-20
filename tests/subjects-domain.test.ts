@@ -62,6 +62,18 @@ test('frozen heads, independent binding revisions, review old selection and tomb
  const detached=await f.call('subject.binding.set',f.bind(s2,shot1,{subjectVersionId:null,expectedRevision:2}));assert.equal(detached.revision,3);assert.equal(detached.id,binding1.id);
  const retained=(await f.call('subject.binding.list',{projectId:f.project.id,shotId:shot1.id})).items[0]!;assert.equal(retained.subjectVersionId,null);assert.equal(retained.revision,3);
  const restored=await f.call('subject.binding.set',f.bind(s2,shot1,{subjectVersionId:s1.headVersionId,expectedRevision:3}));assert.equal(restored.revision,4);assert.equal(restored.id,binding1.id);
+ // Subject edits add only their exact target evidence; every existing target
+ // and every other table still participates in the complete snapshot below.
+ for(const target of [
+  {kind:'subject',targetId:s1.id,revision:2n},
+  {kind:'subject_version',targetId:s1.headVersionId,revision:1n},
+  {kind:'subject_binding',targetId:binding1.id,revision:4n},
+  {kind:'subject_binding',targetId:binding2.id,revision:1n},
+  {kind:'subject_version',targetId:s2.headVersionId,revision:1n},
+ ]){
+  assert.equal(before.agent_task_target_revisions_v2.some(row=>row.kind===target.kind&&row.targetId===target.targetId),false);
+  before.agent_task_target_revisions_v2.push(Object.assign(Object.create(null),{projectId:f.project.id,...target}));
+ }
  assert.deepEqual(snapshot(f,subjectTables),before);assert.deepEqual(await readFile(path.join(f.root,'media/fixture')),bytes);
  assert.equal(JSON.stringify(s2).includes('media/'),false);assert.equal(JSON.stringify(s2).includes('url'),false);
  assert.deepEqual(await f.call('subject.binding.set',first),binding1);assert.equal(binding2.revision,1);

@@ -31,6 +31,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
     initializeSubtitleResources: () => {}, onMediaProcess: () => {},
     createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({ close: imageClose, refreshStorage: async () => {} }),
+    createVideoSecretClient: () => ({ close() {}, refreshStorage: async () => {} }),
     createNativeAudioPreviewAuthority: () => ({}),
     Date: class extends Date { static now() { return now; } },
     setInterval: (callback: () => void) => { intervals.push(callback); return intervals.length; },
@@ -152,6 +153,7 @@ for (const [origin, trigger] of [
       vm.runInNewContext(${JSON.stringify(source)}, {
         process: sandboxProcess, DatabaseSync: function () {},
         createAgentSettingsClient: () => ({}), createImageSecretClient: () => ({}),
+        createVideoSecretClient: () => ({}),
         onMediaProcess() {}, setInterval() { return 1; }, clearInterval() {}, setImmediate
       });
       ${trigger}

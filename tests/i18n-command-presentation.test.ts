@@ -76,6 +76,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
   expectedOperations.splice(expectedOperations.indexOf('timeline.audioPreview.plan') + 1, 0, 'timeline.audioPreview.continuousPlan');
   expectedOperations.splice(expectedOperations.indexOf('asset.disposition.set') + 1, 0, 'asset.annotation.list', 'asset.annotation.set');
+  expectedOperations.splice(expectedOperations.indexOf('provider.list') + 1, 0, 'video.connection.list');
   expectedOperations.splice(expectedOperations.indexOf('timeline.clip.remove') + 1, 0, 'timeline.clip.rippleRemove');
   assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, operations:expectedOperations}});
   const schema=cli(['schema','project.create']).stdout;

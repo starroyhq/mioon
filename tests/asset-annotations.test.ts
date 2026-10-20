@@ -32,7 +32,11 @@ test('ordered bounded reads are noncreating and all-or-nothing; missing/foreign 
 
 test('save/clear independent CAS and historical replay survive restart without changing assets or other tables',async t=>{
  const f=await fixture(t),a=f.asset(),before=snapshot(f.store.db,['asset_annotations','asset_annotation_requests']),input=f.input(a),one=await f.call('asset.annotation.set',input);
- const two=await f.call('asset.annotation.set',f.input(a,{expectedRevision:1,tags:[],note:''})) as {revision: number};assert.equal(two.revision,2);assert.deepEqual(snapshot(f.store.db,['asset_annotations','asset_annotation_requests']),before);
+ const two=await f.call('asset.annotation.set',f.input(a,{expectedRevision:1,tags:[],note:''})) as {revision: number};assert.equal(two.revision,2);
+ const revisions=before.agent_task_target_revisions_v2 as Record<string,unknown>[];
+ assert.equal(revisions.some(row=>row.kind==='asset_annotation'&&row.targetId===a.id),false);
+ revisions.push(Object.assign(Object.create(null),{projectId:a.projectId,kind:'asset_annotation',targetId:a.id,revision:2}));
+ assert.deepEqual(snapshot(f.store.db,['asset_annotations','asset_annotation_requests']),before);
  const stable=snapshot(f.store.db);f.restart();assert.deepEqual(await f.call('asset.annotation.set',input),one);assert.deepEqual((await list(f,[a])).items,[two]);assert.deepEqual(snapshot(f.store.db),stable);
  await assert.rejects(f.call('asset.annotation.set',{...input,requestId:randomUUID()}),(e: unknown)=>{const failure=e as {code?: string; details?: {mutationOutcome?: string}};return failure.code==='REVISION_CONFLICT'&&failure.details?.mutationOutcome==='not_applied';});
  for(const patch of [{note:'changed'},{projectId:randomUUID()},{assetId:randomUUID()},{expectedRevision:1}])await assert.rejects(f.call('asset.annotation.set',{...input,...patch}),{code:'IDEMPOTENCY_CONFLICT'});

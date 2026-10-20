@@ -64,6 +64,8 @@ function selectionHarness({refresh,confirm=true,videoDirectory}={}){
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
   application:null,workspaceOriginScope,validateProjectWorkspace,reconcileWorkspaceState,reconcilePending(){},useCallback:fn=>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,hasProjectResponseOriginMismatch,projectOpenFailureKind,videoConnectionProviders,readGenerationProviderDirectory,videoDirectoryUnavailable:false,
+  // This fixture owns no editing claims; match the empty-owner refresh wait.
+  refreshAgentEditingTargets:async()=>{await Promise.allSettled([]);},
   openedProject:{current:projectOpenAttempt(id(1),0,'normal')},settingsNavigation:{current:createSettingsNavigationRegistry()},
   projectOpening:{phase:'ready',projectId:id(1),error:''},homePage:'projects',
   lastProjectRef:{current:{invalidateNavigation:epoch=>calls.push(['invalidate',epoch]),rememberOpened:(projectId,epoch)=>calls.push(['remember',projectId,epoch])}},
