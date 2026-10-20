@@ -1,4 +1,5 @@
 import React, { useId, useRef, useState } from 'react';
+import { Button } from '@mioon/ui/components/button';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { VOLUME_ENVELOPE_PROFILE } from '../../../packages/contracts/src/timeline-volume-envelope.ts';
 import { acceptsVolumeEnvelopeText, createVolumeEnvelopeFadePreset, MANUAL_DUCKING_FIELDS, manualDuckingEnvelopeFromRaw, RAW_VOLUME_ENVELOPE_LIMITS, validateRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
@@ -68,8 +69,13 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
     }
     setDuckingRejected(null); setDucking({ ...ducking, [field]: text });
   };
-  return <fieldset disabled={disabled} aria-describedby={`${id}-effect ${id}-bounds`}>
-    <legend>{t('volume.envelope.title')}</legend>
+  const enabled = value !== undefined && value !== null;
+  const graph = !invalid && enabled && points.length ? [`0,${44 - Number(points[0].multiplier) * 36}`, ...points.map(point => `${Number(point.frame) / Math.max(1, proposedDuration) * 240},${44 - Number(point.multiplier) * 36}`), `240,${44 - Number(points.at(-1)!.multiplier) * 36}`].join(' ') : '';
+  return <fieldset className="clip-envelope-controls" disabled={disabled} aria-describedby={`${id}-effect ${id}-bounds`}>
+    <legend className="sr-only">{t('volume.envelope.title')}</legend>
+    <div className="clip-envelope-heading"><span>{t('round3.audio.envelope')}</span><Button variant="ghost" size="icon-sm" type="button" role="switch" aria-checked={enabled} aria-label={t('round3.audio.envelope')} data-testid="clip-envelope-toggle" disabled={disabled || !!transient} onClick={() => { if (rendered === renderEpoch.current) structure(enabled ? null : { profileId: VOLUME_ENVELOPE_PROFILE, points: [{ frame: '0', multiplier: '1' }] }); }} className="clip-envelope-toggle"><span /></Button></div>
+    <svg className="clip-envelope-graph" data-testid="clip-envelope-graph" viewBox="0 0 240 52" role="img" aria-label={t(enabled ? 'round3.audio.envelopePreview' : 'round3.audio.envelopeOff')}><path className="clip-envelope-grid" d="M0 8H240M0 26H240M0 44H240" />{graph ? <polyline points={graph} /> : !enabled && <path className="clip-envelope-inactive" d="M0 8H240" />}</svg>
+    <details className="clip-envelope-editor"><summary>{t('round3.audio.editEnvelope')}</summary>
     <p id={`${id}-effect`} className="input-hint">{t('volume.envelope.effect')}</p>
     <p id={`${id}-bounds`} className="input-hint" role={invalid ? 'alert' : undefined}>{t('volume.envelope.bounds', { duration: displayedDuration })}</p>
     <fieldset disabled={disabled || !!transient} aria-describedby={`${id}-preset-hint${!presetAvailable ? ` ${id}-preset-unavailable` : ''}`}>
@@ -90,7 +96,7 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
         <button type="button" data-testid="envelope-preset-out" disabled={disabled || !!transient || !presetAvailable} onClick={() => applyPreset('out')}>{t('volume.envelope.preset.out')}</button>
       </div>
     </fieldset>
-    <fieldset disabled={disabled} aria-describedby={`${id}-ducking-hint ${id}-ducking-bounds ${id}-ducking-temporary`}>
+    <details className="clip-audio-help"><summary>{t('volume.ducking.title')}</summary><fieldset disabled={disabled} aria-describedby={`${id}-ducking-hint ${id}-ducking-bounds ${id}-ducking-temporary`}>
       <legend>{t('volume.ducking.title')}</legend>
       <p id={`${id}-ducking-hint`} className="input-hint">{t('volume.ducking.hint')}</p>
       <p id={`${id}-ducking-temporary`} className="input-hint">{t('volume.ducking.temporary')}</p>
@@ -135,6 +141,7 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
         if (rendered === renderEpoch.current && duckingEnvelope) structure(duckingEnvelope);
       }}>{t('volume.ducking.apply')}</button>
     </fieldset>
+    </details>
     {points.map((point, row) => <div key={row} className="volume-envelope-row">
       {(['frame', 'multiplier'] as const).map(field => {
         const composing = transient?.kind === 'point' && transient.row === row && transient.field === field;
@@ -172,5 +179,6 @@ export default function ClipVolumeEnvelopeControls({ value, proposedDuration, di
       if (points.length < RAW_VOLUME_ENVELOPE_LIMITS.points) structure({ profileId: VOLUME_ENVELOPE_PROFILE, points: [...points, { frame: '', multiplier: '' }] });
     }}>{t('volume.envelope.add')}</button>
     <button type="button" disabled={disabled || !!transient} onClick={() => structure(null)}>{t('volume.envelope.clear')}</button>
+    </details>
   </fieldset>;
 }

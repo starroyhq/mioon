@@ -217,7 +217,7 @@ function uiHarness(client, receipts = memoryReceipts(), languageStore) {
     render(owner = currentProject) { currentProject = owner; cursor = 0; effects = []; tree = module.exports.default({ projectId: currentProject, projectName: 'Private Local Project', onClose: () => { closes++; }, onSettings: () => { settingsOpened++; }, onDraftChange: value => { hasDraft = value; } }); for (const node of nodes(tree)) if (node.props.ref) { const id = node.props.id || node.props['data-testid']; if (!dom.has(id)) dom.set(id, { value: '', scrollHeight: 100, scrollTop: 0 }); node.props.ref.current = dom.get(id); } for (const i of effects) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].callback(); } return tree; },
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },
     form() { return nodes(tree).find(node => node.type === 'form'); },
-    change(id, value) { if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
+    change(id, value) { if(id.startsWith('agent-chat-mode-')&&h.find('agent-chat-composer-options')?.props.hidden){h.find('agent-chat-target-disclosure').props.onOpenChange(true);h.render();} if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
     setVisible(value) { visible = value; h.render(); },
     reload() { return componentSession.load(); },
     get hasDraft() { return hasDraft; },
@@ -300,36 +300,38 @@ const composerGrants = { revision: 1, scopes: [logic.AGENT_TYPED_CONTEXT, logic.
 const composerOptions = h => h.find('agent-chat-composer-options').props;
 const toggleComposer = (h, expanded) => { h.find('agent-chat-target-disclosure').props.onOpenChange(expanded); h.render(); };
 
-test('actual composer fully discloses five scopes until approval, then compacts without sending', async () => {
+test('compact model and scope chooser preserves explicit first-send authorization', async () => {
   const f = fixture({ initial: inspectedComposer() }), h = uiHarness(f.client); h.render(); await flush(); h.render();
-  assert.equal(composerOptions(h).hidden, false); assert.equal(composerOptions(h).inert, false); assert.equal(composerOptions(h).keepMounted, true);
-  assert.equal(h.find('agent-chat-options-toggle'), undefined); assert.equal(nodes(h.render()).filter(node => node.props.type === 'radio' && node.props.name === 'agent-chat-context-mode').length, 5);
-  assert.ok(JSON.stringify(h.find('agent-chat-destination')).includes(logic.deriveAgentEndpoint(configuration)));
-  toggleComposer(h, false); assert.equal(composerOptions(h).hidden, false, 'unapproved disclosure cannot be compacted');
-  h.change('agent-chat-consent', true); await flush(); h.render();
-  assert.equal(composerOptions(h).hidden, true); assert.equal(composerOptions(h).inert, true); assert.equal(composerOptions(h)['aria-hidden'], true);
+  assert.equal(composerOptions(h).hidden, true); assert.equal(composerOptions(h).inert, true); assert.equal(composerOptions(h).keepMounted, true);
+  assert.ok(h.find('agent-chat-options-toggle')); assert.ok(h.find('agent-chat-authorization-open'));
+  assert.equal(nodes(h.render()).filter(node => node.props.type === 'radio' && node.props.name === 'agent-chat-context-mode').length, 5);
   const summary = JSON.stringify(h.find('agent-chat-options-toggle')); assert.ok(summary.includes(configuration.model)); assert.ok(summary.includes(logic.deriveAgentEndpoint(configuration))); assert.ok(summary.includes('仅对话文字'));
-  toggleComposer(h, true); assert.equal(composerOptions(h).hidden, false); toggleComposer(h, false); assert.equal(composerOptions(h).hidden, true);
-  assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+  toggleComposer(h, true); assert.equal(composerOptions(h).hidden, false);
+  toggleComposer(h, false); assert.equal(composerOptions(h).hidden, true);
+  h.change('agent-chat-prompt', 'A typed question'); h.form().props.onSubmit({ preventDefault() {} }); h.render();
+  assert.equal(f.calls.some(call => call[0] === 'start'), false);
+  assert.equal(h.find('agent-chat-authorization-confirm').props.children, '确认并发送');
+  h.find('agent-chat-consent').props.onChange({ target: { checked: true } }); h.render(); h.find('agent-chat-authorization-confirm').props.onClick(); await flush(); h.render();
+  assert.equal(composerOptions(h).hidden, true); assert.equal(f.calls.filter(call => call[0] === 'start').length, 1); h.unmount();
 });
 
-test('retained permission initially compacts but mounted granted model, endpoint and scope changes disclose again', async () => {
+test('destination and scope changes refresh the compact summary without granting or sending', async () => {
   let current = inspectedComposer({ authorization: composerGrants }); const f = fixture({ read: async () => current }), h = uiHarness(f.client); h.render(); await flush(); h.render();
   assert.equal(composerOptions(h).hidden, true);
   for (const configured of [{ ...configuration, model: 'changed-model' }, { ...configuration, baseUrl: 'https://changed.example.test/v1' }]) {
     current = inspectedComposer({ authorization: composerGrants, settings: settings({ configuration: configured }) });
-    await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, false); assert.equal(h.find('agent-chat-authorization-open'), undefined, 'retained grant remains domain state');
-    assert.ok(JSON.stringify(h.find('agent-chat-destination')).includes(logic.deriveAgentEndpoint(configured))); toggleComposer(h, false); assert.equal(composerOptions(h).hidden, true);
+    await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, true); assert.equal(h.find('agent-chat-authorization-open'), undefined);
+    assert.ok(JSON.stringify(h.find('agent-chat-options-toggle')).includes(logic.deriveAgentEndpoint(configured)));
   }
-  toggleComposer(h, true); h.change('agent-chat-mode-project', true); assert.equal(h.find('agent-chat-mode-project').props.checked, true); assert.equal(composerOptions(h).hidden, false);
+  toggleComposer(h, true); h.change('agent-chat-mode-project', true); h.render(); assert.equal(h.find('agent-chat-mode-project').props.checked, true); assert.equal(composerOptions(h).hidden, true);
   assert.ok(JSON.stringify(h.find('agent-chat-options-toggle')).includes('项目文字与元数据')); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
 });
 
-test('revoked permission reopens the actual options and restores authorization review', async () => {
+test('revoked permission retains the compact chooser and restores mandatory authorization review', async () => {
   let current = inspectedComposer({ authorization: composerGrants }); const f = fixture({ read: async () => current }), h = uiHarness(f.client); h.render(); await flush(); h.render();
   assert.equal(composerOptions(h).hidden, true); current = inspectedComposer({ authorization: { revision: 2, scopes: [] } });
-  await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, false); assert.equal(composerOptions(h).inert, false); assert.ok(h.find('agent-chat-authorization-open')); assert.equal(h.find('agent-chat-options-toggle'), undefined);
-  assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
+  await h.reload(); h.render(); assert.equal(composerOptions(h).hidden, true); assert.equal(composerOptions(h).inert, true); assert.ok(h.find('agent-chat-authorization-open')); assert.ok(h.find('agent-chat-options-toggle'));
+  h.change('agent-chat-prompt', 'Must review again'); assert.equal(f.calls.some(call => call[0] === 'start'), false); h.unmount();
 });
 
 test('hidden options and their retired scope callbacks stay inert after reopening', async () => {
@@ -463,7 +465,7 @@ function projectNavigation({ draft = true, imageDraft = false, dirty = false, co
     context, isCurrent: guardEnv.isCurrent, confirm: guardEnv.confirm, notify: (...args) => calls.push(['notify', ...args]), readableError: error => error.message,
     openedProject: { current: projectOpenAttempt(navigationProjectId, 0, 'normal') }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     loading: false, importSession: { current: { active: true, selection: 0 } }, lastProjectRef: { current: { invalidateNavigation: () => {}, rememberOpened: () => {} } }, tasksRef: { current: { getState: () => ({ phase: 'idle', items: [] }), load: async id => { calls.push(['loadTasks', id]); } } }, currentProject, agentDraft: { current: draft }, imageDraft: { current: imageDraft }, guardNavigation, guardProjectNavigation, navigationEpoch, projectEpoch, requestCounter: { current: 0 }, preferencesRef: { current: { flush: () => calls.push(['flush']), load: async id => { calls.push(['load', id]); return restored; }, getStatus: () => ({ phase: 'ready' }) } }, viewReady: { current: true }, dataRef: { current: { project: { id: navigationProjectId } } }, emptyData: {}, pendingForProject: () => [], dragging: { current: false }, viewRef: { current: restored }, updateView: () => {}, URL,
-    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setPanelOverlay', 'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
+    window: { location: { href: 'https://workbench.example.com/' }, history: { pushState: () => calls.push(['history']), replaceState: () => calls.push(['history']) } }, localStorage: { setItem: () => {} }, ...Object.fromEntries(['setProjectOpening', 'setHomePage', 'setAuth', 'setPropertiesPage', 'setTaskState', 'setSelectedTaskId', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setData', 'setNodes', 'setLoading', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setPanelOverlay', 'setShowTasks', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setComparisonId', 'setPreviewAsset', 'setRealConfirm', 'setToast', 'setMobilePanel', 'setView', 'setZoom'].map(name => [name, value => calls.push([name, value])])) };
   env.refresh = async (id, _quiet, options) => { assert.equal(options?.opening, true); env.dataRef.current = { project: { id }, shots: [], nodes: [] }; return env.dataRef.current; };
   env.prepareSettingsDeparture = () => Function(...Object.keys(env), `${stripSourceTypes(settingsDepartureSource,{loader:'tsx'})}\nreturn prepareSettingsDeparture();`)(...Object.values(env));
   env.projectSessionReady = () => Function(...Object.keys(env), `${stripSourceTypes(sessionReadySource,{loader:'tsx'})}\nreturn projectSessionReady();`)(...Object.values(env));
@@ -481,6 +483,7 @@ test('actual App project guard Confirm permits project-key isolation; no draft o
   const f = projectNavigation(); assert.equal(await f.selectProject(navigationNextId), true); assert.equal(f.currentProject.current, navigationNextId); assert.equal(f.env.projectSessionReady(), true);
   assert.equal(f.calls.filter(call => call[0] === 'confirm').length, 1); assert.equal(f.calls.filter(call => call[0] === 'setData').length, 1);
   assert.deepEqual(f.calls.filter(call => call[0] === 'setSourceDirty'), [['setSourceDirty', false]]);
+  assert.deepEqual(f.calls.filter(call => call[0] === 'setSelectedTaskId'), [['setSelectedTaskId', undefined]]);
   const g = projectNavigation({ draft: false }); assert.equal(await g.selectProject(navigationNextId), true); assert.equal(g.calls.some(call => call[0] === 'confirm'), false);
   assert.doesNotMatch(projectSource, /activeAgentChatRun|\.stop\(|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
   const resetTab = f.calls.find(call => call[0] === 'setRightDockTab')[1];
@@ -492,6 +495,7 @@ test('actual App image draft guard Cancel preserves project and Confirm changes 
   assert.equal(await cancelled.selectProject(navigationNextId), false); assert.equal(cancelled.currentProject.current, navigationProjectId); assert.equal(cancelled.env.imageDraft.current, true);
   assert.equal(cancelled.calls.length, 1); assert.match(createI18nTestContext().renderMessage(cancelled.calls[0][1]), /图像工坊有未发送的草稿/);
   const confirmed = projectNavigation({ draft: false, imageDraft: true }); assert.equal(await confirmed.selectProject(navigationNextId), true); assert.equal(confirmed.currentProject.current, navigationNextId); assert.equal(confirmed.calls.filter(call => call[0] === 'confirm').length, 1);
+  assert.deepEqual(confirmed.calls.filter(call => call[0] === 'setSelectedTaskId'), [['setSelectedTaskId', undefined]]);
   const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject(navigationNextId); assert.match(createI18nTestContext().renderMessage(both.calls[0][1]), /Agent 和图像工坊都有未发送的草稿/);
   assert.doesNotMatch(projectSource, /image\.task\.|image\.generate|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
   assert.equal(confirmed.calls.find(call => call[0] === 'setRightDockTab')[1]('image'), 'image');
@@ -523,18 +527,19 @@ function workspaceHarness(exportName = 'default') {
   const slots = []; let cursor = 0, effects = [], visible = true;
   const react = { createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children), useRef: value => slots[cursor++] ||= { current: value }, useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { deps, callback }; effects.push(i); } }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentPanel.tsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.tsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
+  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentTaskPanel.tsx' ? { __esModule: true, default: 'AgentTaskPanel' } : id === './AgentSettings.tsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
   return { render(props) { cursor = 0; effects = []; const tree = module.exports[exportName](props); for (const i of effects) slots[i].callback(); return tree; }, setAncestorVisible(value) { visible = value; } };
 }
 
 test('actual dock workspace keeps chat and globally scoped settings mounted through page and project changes', () => {
   const h = workspaceHarness(), props = { projectId, projectName: 'Local label', page: 'chat', onPage() {}, onCollapse() {}, onDraftChange() {} };
-  let tree = h.render(props); assert.equal(nodes(tree).filter(node => node.type === 'AgentPanel').length, 1); assert.equal(nodes(tree).some(node => node.type === 'AgentSettings'), false);
-  tree = h.render({ ...props, page: 'settings' }); const chat = nodes(tree).find(node => node.type === 'AgentPanel'), settingsPage = nodes(tree).find(node => node.type === 'AgentSettings');
-  assert.equal(chat.props.key, projectId); assert.ok(settingsPage); assert.equal(nodes(tree).find(node => node.props.id === 'agent-chat-pane').props.visible, false);
-  tree = h.render(props); assert.equal(nodes(tree).filter(node => node.type === 'AgentPanel').length, 1); assert.equal(nodes(tree).filter(node => node.type === 'AgentSettings').length, 1);
-  tree = h.render({ ...props, projectId: undefined }); assert.equal(nodes(tree).some(node => node.type === 'AgentPanel'), false); assert.equal(nodes(tree).filter(node => node.type === 'AgentSettings').length, 1);
-  tree = h.render({ ...props, projectId: 'project-two' }); assert.equal(nodes(tree).find(node => node.type === 'AgentPanel').props.key, 'project-two'); assert.equal(nodes(tree).find(node => node.type === 'AgentSettings').props.key, undefined);
+  let tree = h.render(props); assert.equal(nodes(tree).filter(node => node.type === 'AgentTaskPanel').length, 1); assert.equal(nodes(tree).some(node => node.type === 'AgentSettings'), false);
+  tree = h.render({ ...props, page: 'settings' }); const chat = nodes(tree).find(node => node.type === 'AgentTaskPanel'), settingsPage = nodes(tree).find(node => node.type === 'AgentSettings');
+  assert.equal(chat.props.key, `normal:${projectId}`); assert.ok(settingsPage); assert.equal(nodes(tree).find(node => node.props.id === 'agent-chat-pane').props.visible, false);
+  tree = h.render(props); assert.equal(nodes(tree).filter(node => node.type === 'AgentTaskPanel').length, 1); assert.equal(nodes(tree).filter(node => node.type === 'AgentSettings').length, 1);
+  tree = h.render({ ...props, projectId: undefined }); assert.equal(nodes(tree).some(node => node.type === 'AgentTaskPanel'), false); assert.equal(nodes(tree).filter(node => node.type === 'AgentSettings').length, 1);
+  tree = h.render({ ...props, projectId: 'project-two' }); assert.equal(nodes(tree).find(node => node.type === 'AgentTaskPanel').props.key, 'normal:project-two'); assert.equal(nodes(tree).find(node => node.type === 'AgentSettings').props.key, undefined);
+  tree = h.render({ ...props, workspaceScope: 'restored:other-origin' }); assert.equal(nodes(tree).find(node => node.type === 'AgentTaskPanel').props.key, `restored:other-origin:${projectId}`);
   assert.doesNotMatch(workspaceSource, /Dialog|localStorage|sessionStorage/);
 });
 
@@ -762,4 +767,48 @@ test('four-language changes relabel the mounted Agent without clearing exact typ
   const sends = f.calls.filter(call => call[0] === 'start'); assert.equal(sends.length, 1);
   assert.equal(sends[0][2].message, prompt);
   h.unmount(); store.dispose();
+});
+
+
+const openSendAuthorization = h => {
+  h.form().props.onSubmit({preventDefault(){}}); h.render();
+  h.find('agent-chat-consent').props.onChange({target:{checked:true}}); h.render();
+};
+test('send-triggered authorization summarizes three boundaries and confirms the original message exactly once', async () => {
+  const f=fixture(),h=uiHarness(f.client);h.render();await flush();h.render();h.change('agent-chat-prompt','The exact original question');
+  openSendAuthorization(h);
+  const dialog=h.find('agent-chat-authorization-dialog'), summary=nodes(dialog).find(node=>node.props.className==='agent-authorization-summary');
+  assert.equal(nodes(summary).filter(node=>node.type==='dt').length,3);
+  assert.equal(h.find('agent-chat-authorization-confirm').props.children,'确认并发送');
+  const endpoint=nodes(summary).find(node=>node.props.className==='agent-chat-endpoint');assert.equal(endpoint.props.title,logic.deriveAgentEndpoint(configuration));
+  assert.equal(f.calls.some(call=>call[0]==='start'),false);
+  const confirm=h.find('agent-chat-authorization-confirm').props.onClick;confirm();confirm();await flush();h.render();
+  const sends=f.calls.filter(call=>call[0]==='start');assert.equal(sends.length,1);assert.equal(sends[0][2].message,'The exact original question');h.unmount();
+});
+test('an explicit permission review saves permission without claiming to send a message', async()=>{
+  const f=fixture(),h=uiHarness(f.client);h.render();await flush();h.render();h.change('agent-chat-prompt','Still a draft');
+  h.find('agent-chat-authorization-open').props.onClick();h.render();assert.equal(h.find('agent-chat-authorization-confirm').props.children,'保存授权');
+  h.find('agent-chat-consent').props.onChange({target:{checked:true}});h.render();h.find('agent-chat-authorization-confirm').props.onClick();await flush();h.render();
+  assert.equal(f.calls.some(call=>call[0]==='start'),false);assert.equal(h.find('agent-chat-prompt').props.value,'Still a draft');h.unmount();
+});
+test('a changed draft before confirmation cannot authorize or substitute a different send', async()=>{
+  const f=fixture(),h=uiHarness(f.client);let grants=0;const authorize=f.client.authorize;f.client.authorize=async(...args)=>{grants++;return authorize(...args);};
+  h.render();await flush();h.render();h.change('agent-chat-prompt','Original');openSendAuthorization(h);
+  const confirm=h.find('agent-chat-authorization-confirm').props.onClick;h.change('agent-chat-prompt','Replacement');confirm();await flush();h.render();
+  assert.equal(grants,0);assert.equal(f.calls.some(call=>call[0]==='start'),false);assert.equal(h.find('agent-chat-prompt').props.value,'Replacement');h.unmount();
+});
+test('approval completion cannot send after draft, visibility, scope, project or destination changes', async()=>{
+  for(const change of ['draft','hide','hide-reopen','scope','project','destination','unmount']){
+    const held=deferred();let current=inspectedComposer();const f=fixture({read:async()=>current}),authorize=f.client.authorize;
+    f.client.authorize=async(...args)=>{await held.promise;return authorize(...args);};
+    const h=uiHarness(f.client);h.render();await flush();h.render();h.change('agent-chat-prompt','Original');openSendAuthorization(h);
+    h.find('agent-chat-authorization-confirm').props.onClick();await flush();h.render();
+    if(change==='draft')h.change('agent-chat-prompt','Replacement');
+    if(change==='hide'||change==='hide-reopen'){h.setVisible(false);if(change==='hide-reopen'){h.setVisible(true);await flush();h.render();}}
+    if(change==='scope')h.change('agent-chat-mode-project',true);
+    if(change==='project'){h.render('project-two');await flush();h.render();}
+    if(change==='destination'){current=inspectedComposer({settings:settings({revision:1,configuration:{...configuration,model:'new-model'}})});await h.reload();h.render();}
+    if(change==='unmount')h.unmount();
+    held.resolve();await flush();h.render();assert.equal(f.calls.some(call=>call[0]==='start'),false,change);h.unmount();
+  }
 });

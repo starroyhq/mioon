@@ -34,7 +34,7 @@ function fixture(patch = {}) {
     dismiss: async () => { calls.push('dismiss'); return false; }, create: async () => { calls.push('create'); return false; },
     canMutate: () => state.shown, reportCreate() {}, open() { calls.push('open'); },
     refresh() { calls.push('refresh'); }, interacted() { calls.push('interacted'); }, reconcileOpen() { calls.push('reconcile'); } };
-  return { state, calls, controller, render: (editor = true) => ProjectEntry({ controller, editor, onSettings() { calls.push('settings'); } }) };
+  return { state, calls, controller, render: (editor = true, presentation = {}) => ProjectEntry({ controller, editor, ...presentation, onSettings() { calls.push('settings'); } }) };
 }
 function dialogParts(tree) {
   assert.equal(tree.type, Dialog);
@@ -81,6 +81,16 @@ test('the retained embedded catalog has one full-width scrolling column and boun
   assert.match(homeCss, /\.project-home-embedded > \.project-home \{ height: 100%; min-height: 0;/);
   assert.match(homeCss, /\.project-home-embedded > \.project-home \.project-home-feedback > strong \{ flex: 1 1 320px; min-width: 0;/);
   assert.doesNotMatch(readFileSync(join(renderer, 'viewport-scale.css'), 'utf8'), /\.workbench, \.project-home,/);
+});
+
+test('entry keeps recovery status visible and passes quiet workspace details to the home help dialog', () => {
+  const f = fixture(), status = React.createElement('span', null, 'Recovery required'), help = React.createElement('span', null, 'Workspace details');
+  for (const editor of [false, true]) {
+    const home = elements(f.render(editor, { status, help })).find(element => element.type === ProjectHome);
+    assert.equal(home.props.status, status); assert.equal(home.props.help, help);
+    const quiet = elements(f.render(editor, { help })).find(element => element.type === ProjectHome);
+    assert.equal(quiet.props.status, undefined); assert.equal(quiet.props.help, help);
+  }
 });
 
 test('real picker Escape or outside-dismiss callback cancels primitive dismissal before asking its retained owner', () => {

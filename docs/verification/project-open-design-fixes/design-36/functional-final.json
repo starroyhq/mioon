@@ -1,0 +1,119 @@
+{
+  "pageErrors": [],
+  "sampleDuring": {
+    "step": "1",
+    "nextDisabled": true
+  },
+  "sampleAfter": {
+    "step": "1",
+    "generateEnabled": false,
+    "media": {
+      "ready": 4,
+      "width": 1080,
+      "height": 1920,
+      "duration": 10
+    }
+  },
+  "comparison": {
+    "syncChecked": "true",
+    "players": [
+      {
+        "ready": 4,
+        "width": 720,
+        "height": 1280,
+        "paused": false,
+        "fit": "contain",
+        "box": {
+          "width": 449,
+          "height": 251.6875
+        }
+      },
+      {
+        "ready": 4,
+        "width": 720,
+        "height": 1280,
+        "paused": false,
+        "fit": "contain",
+        "box": {
+          "width": 449,
+          "height": 251.6875
+        }
+      }
+    ]
+  },
+  "authorization": {
+    "revision": 1,
+    "currentTarget": {
+      "destination": "http://127.0.0.1:54577/v1/chat/completions",
+      "model": "qwen3:8b",
+      "settingsRevision": 1
+    },
+    "authorizations": [
+      {
+        "destination": "http://127.0.0.1:54577/v1/chat/completions",
+        "model": "qwen3:8b",
+        "scope": "selected_shot_edit",
+        "id": "0d73f509-1646-4ecc-8a7c-31d9c12de4db",
+        "createdAt": "2026-10-19T18:00:27.053Z"
+      }
+    ]
+  },
+  "export": {
+    "downloadStatus": 200,
+    "name": "UI 完整验收成片",
+    "spec": "1080x1920,30fps,H.264/AAC,10s",
+    "closedDuringTask": true
+  },
+  "panelResize": {
+    "keyboardHome": 160,
+    "restoredWithoutPageError": true
+  },
+  "taskSearch": {
+    "directSelected": true,
+    "zeroMatchEmpty": true,
+    "requestIdSearchMatches": 1,
+    "uncertainFilterMatches": 1
+  },
+  "native": {
+    "title": "Mioon · 影像工作台",
+    "viewport": {
+      "width": 1500,
+      "height": 960,
+      "dpr": 2
+    },
+    "pageErrors": [],
+    "projectOpen": true
+  },
+  "sampleGeometry": {
+    "stage": {
+      "x": 277,
+      "y": 217.140625,
+      "w": 302,
+      "h": 297
+    },
+    "video": {
+      "x": 278,
+      "y": 218.140625,
+      "w": 300,
+      "h": 295
+    },
+    "fit": "contain",
+    "media": [
+      1080,
+      1920
+    ],
+    "contained": true
+  },
+  "sampleGeometryCompact": {
+    "stage": {
+      "w": 262,
+      "h": 224.3984375
+    },
+    "video": {
+      "w": 260,
+      "h": 222.3984375
+    },
+    "fit": "contain",
+    "contained": true
+  }
+}

@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: settings slot owns monotonic metadata and never clears an unchanged mounted form
+ok 1 - settings slot owns monotonic metadata and never clears an unchanged mounted form
+  ---
+  duration_ms: 22.026667
+  type: 'test'
+  ...
+# Subtest: insertion cleanup retires report before a descendant cleanup or late ACK can register again
+ok 2 - insertion cleanup retires report before a descendant cleanup or late ACK can register again
+  ---
+  duration_ms: 1.289167
+  type: 'test'
+  ...
+# Subtest: registry or slot replacement retires the old callback without erasing the new owner
+ok 3 - registry or slot replacement retires the old callback without erasing the new owner
+  ---
+  duration_ms: 0.72825
+  type: 'test'
+  ...
+# Subtest: retired owner cannot release or overwrite a replacement using the same registry slot
+ok 4 - retired owner cannot release or overwrite a replacement using the same registry slot
+  ---
+  duration_ms: 1.171959
+  type: 'test'
+  ...
+# Subtest: an omitted registry preserves legacy optional-consumer behavior
+ok 5 - an omitted registry preserves legacy optional-consumer behavior
+  ---
+  duration_ms: 0.638542
+  type: 'test'
+  ...
+# Subtest: actual slot without a registry retains the exact child, input value and explicit handler
+ok 6 - actual slot without a registry retains the exact child, input value and explicit handler
+  ---
+  duration_ms: 1.087416
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 200.257875

@@ -4,7 +4,7 @@ import {readTimelineAudioRoleCapability} from './timeline-audio-role-business.ts
 import {createMutationReplay} from './mutation-replay.ts';
 import {createAssetAnnotationServices} from './asset-annotations.ts';
 import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
-import {createLutResourceServices,assertLutReadProfile} from './lut-resources.ts';
+import {createLutResourceServices,assertAgentTaskLutReadProfile} from './lut-resources.ts';
 import {lutRestorePolicy} from '../../contracts/src/lut-resources.ts';
 import {ownsStoreLock} from './db.ts';
 import {assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
@@ -53,8 +53,8 @@ export function createRestoredReadServices(store: RestoreReadStore,{signal}: Res
  const {db,get,list}=store;
  const required=(table: string,id: string): RestoreRecord=>{const value=get(table,id);if(!value)throw new AppError('NOT_FOUND','找不到记录',404,{id});return value;};
  const denied=(): never=>{throw workspaceRestoreError();};
- const luts=createLutResourceServices(store,{signal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertLutReadProfile(restored.schemaVersion),assertImportAllowed:denied}});
- const lookPacks=createLookPackInspectionServices(store,{signal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertLutReadProfile(restored.schemaVersion)}});
+ const luts=createLutResourceServices(store,{signal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertAgentTaskLutReadProfile(restored.schemaVersion),assertImportAllowed:denied}});
+ const lookPacks=createLookPackInspectionServices(store,{signal,runtime:{ownsLock:()=>ownsStoreLock(store),assertReadable:()=>assertAgentTaskLutReadProfile(restored.schemaVersion)}});
  const timeline=createTimelineServices(store as never,{required,check:denied,hash,now} as never);
  const inspection=createInspectionServices(store as never);
  const projectHome=createProjectHomeServices(store as never);
@@ -95,8 +95,8 @@ export function createRestoredReadServices(store: RestoreReadStore,{signal}: Res
    profile:restored.profile,createdAt:restored.createdAt,
    source:{backupId:restored.sourceBackupId,schemaVersion:restored.sourceSchema,manifestHash:restored.manifestHash,dbHash:restored.sourceDbHash},
    heldCounts:Object.entries(restored.heldCounts as Record<string,unknown>).map(([kind,count])=>({kind,count})),
-   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>operation==='timeline.clip.rippleRemove'&&![45,49].includes(restored.schemaVersion)
-    ?{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}:lutRestorePolicy(operation,restored.schemaVersion)),
+   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>operation==='timeline.clip.rippleRemove'&&![45,49,51,53].includes(restored.schemaVersion)
+    ?{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}:lutRestorePolicy(operation,restored.schemaVersion===53?51:restored.schemaVersion)),
     ...RESTORE_DENIED_OPERATIONS.map(operation=>({operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}))],
    backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}}),
   ...inspection.handlers,

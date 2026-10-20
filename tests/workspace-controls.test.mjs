@@ -116,6 +116,7 @@ test('Tooltip retains ordinary visible behavior outside panels and preserves its
   const h = harness('WorkbenchTooltip'), trigger = element('button', {}, 'Action'), props = { children: trigger, content: 'Helpful text' };
   let root = h.render(props); assert.equal(root.props.disabled, false); assert.equal(root.props.open, false);
   assert.equal(h.find('TooltipTrigger').props.render, trigger); assert.equal(h.find('TooltipContent').props.children, 'Helpful text');
+  assert.equal(h.find('TooltipContent').props.style.pointerEvents, 'none', 'read-only tooltip text cannot intercept adjacent controls in compact layouts');
   root.props.onOpenChange(true); root = h.render(props); assert.equal(root.props.open, true);
   root.props.onOpenChange(false); assert.equal(h.render(props).props.open, false);
 });

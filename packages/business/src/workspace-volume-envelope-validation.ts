@@ -15,6 +15,10 @@ const knownCodes=new Set(['INVALID_VOLUME_ENVELOPE','VOLUME_ENVELOPE_SOURCE_UNSU
 const codeEvidence=(value:unknown)=>typeof value==='string'&&/(?:^|_)VOLUME_ENVELOPE(?:_|$)/.test(value);
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const own=(value:object,key:string)=>Object.hasOwn(value,key);
+// Historical workspace profiles admit the original observation shape only.
+// New ephemeral LRA/target candidates do not extend old backup evidence.
+const historicalClipLoudness=(value:Record<string,unknown>):boolean=>
+ !['loudnessRange','target','candidate'].some(key=>own(value,key))&&isTimelineClipLoudnessResponse(value);
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 const quote=(name:string)=>'"'+name.replaceAll('"','""')+'"';
 const families=[['timelines',['data']],['timeline_history',['beforeSnapshot','afterSnapshot']],['timeline_requests',['response']],['edit_tasks',['input']],['exports',['data']],['workspace_restore_timeline_history',['beforeSnapshot','afterSnapshot']],['agent_edit_proposals',['definition']]] as const;
@@ -142,7 +146,7 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
     for(const clip of value.clips){if(!object(clip))invalid(true);if(own(clip,'volumeEnvelope')){envelope(clip,false);source(clip,project,frozen);}}
    }
    if(own(value,'volumeEnvelopeProcessingProfile')){
-    if(!isTimelineClipLoudnessResponse(value)&&!isTimelineMixLoudnessResponse(value))invalid(true);
+    if(!historicalClipLoudness(value)&&!isTimelineMixLoudnessResponse(value))invalid(true);
     mark(value,'volumeEnvelopeProcessingProfile');if(object(value.identity)&&own(value.identity,'volumeEnvelopeSha256'))mark(value.identity,'volumeEnvelopeSha256');
    }
    for(const key of ['code','errorCode'])if(codeEvidence((value as Record<string,unknown>)[key])){if(!knownCodes.has((value as Record<string,unknown>)[key] as string))invalid(true);mark(value,key);}

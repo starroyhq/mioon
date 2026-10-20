@@ -1,4 +1,12 @@
+import {exportControlSchemas,exportControlDescriptions} from './export-controls.ts';
+export * from './export-controls.ts';
+import {workspaceConfigurationSchemas} from './workspace-configuration.ts';
+export * from './workspace-configuration.ts';
+import {taskDispositionSchemas,taskDispositionDescriptions} from './task-dispositions.ts';
+export * from './task-dispositions.ts';
 import {AppError} from './app-error.ts';
+export * from './video-providers.ts';
+import {parseVideoBinding,videoBindingCapabilities} from './video-providers.ts';
 export * from './timeline-volume-envelope-capability.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {clipAudioRoleSchema} from './timeline-audio-role.ts';
@@ -71,6 +79,7 @@ import {timelineClipLoudnessSchemas} from './timeline-clip-loudness.ts';
 import {timelineMixLoudnessSchemas} from './timeline-mix-loudness.ts';
 export * from './timeline-mix-loudness.ts';
 export * from './timeline-clip-loudness.ts';
+export * from './loudness-range.ts';
 import {assertOperationEffectCoverage} from './operation-effects.ts';
 export {inspectionArgumentSchemas, inspectionSchemas} from './inspection.ts';
 export {operationEffects, operationEffect, assertOperationEffectCoverage, effectAnnotations} from './operation-effects.ts';
@@ -111,6 +120,9 @@ const clipFields={volumeEnvelope:volumeEnvelope.optional(),audioRole:clipAudioRo
  fadeInFrames:frame.describe('Optional audio fade-in in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional(),
  fadeOutFrames:frame.describe('Optional audio fade-out in 30fps timeline frames. Omitted means zero without storing a new key. Positive fades require confirmed source audio; fade-in plus fade-out must not exceed clip duration.').optional()};
 export const schemas={
+...exportControlSchemas,
+...workspaceConfigurationSchemas,
+...taskDispositionSchemas,
 ...projectLifecycleSchemas,
 ...projectHomeSchemas,
 ...agentAuthorizationSchemas,
@@ -155,7 +167,12 @@ export const schemas={
 'reference.attach':z.object({projectId:id,sourceNodeId:id,targetShotId:id,expectedSourceRevision:z.number().int().positive(),expectedShotRevision:z.number().int().positive(),requestId:key,role:z.literal('first_frame')}).strict(),
 'reference.detach':z.object({projectId:id,edgeId:id,expectedShotRevision:z.number().int().positive(),requestId:key}).strict(),
 'provider.list':z.object({}).strict(),
-'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu']),model:z.string().max(100).optional(),parameters:params.optional(),subjectVersionId:id.optional().describe('Explicit immutable subject version for one subject-reference image; the server resolves its identity and metadata. Omission preserves existing frame generation. Subject and first/last-frame inputs cannot be combined.')}).strict(),
+'video.connection.list':z.object({}).strict(),
+'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan']),model:z.string().max(100).optional(),connectionId:id.optional(),configurationRevision:z.number().int().positive().optional(),modelEntryId:id.optional(),parameters:params.extend({resolution:z.string().min(1).max(20).optional(),generateAudio:z.boolean().optional()}).optional(),subjectVersionId:id.optional().describe('Explicit immutable subject version for one subject-reference image; the server resolves its identity and metadata. Omission preserves existing frame generation. Subject and first/last-frame inputs cannot be combined.')}).strict().superRefine((value,ctx)=>{
+ const fields=[value.connectionId,value.configurationRevision,value.modelEntryId],has=fields.some(field=>field!==undefined);
+ if(has&&!fields.every(field=>field!==undefined)||!has&&['kling','wan'].includes(value.providerId))ctx.addIssue({code:'custom',path:['connectionId'],message:'Select an exact configured video connection and model revision.'});
+ if(!has&&(value.parameters?.resolution!==undefined||value.parameters?.generateAudio!==undefined))ctx.addIssue({code:'custom',path:['parameters'],message:'Configured video parameters require an explicit connection.'});
+}),
 'job.get':z.object({jobId:id}).strict(),
 'job.list':z.object({projectId:id}).strict(),
 'job.retry':z.object({jobId:id,requestId:key}).strict(),
@@ -186,10 +203,18 @@ assertOperationEffectCoverage(schemas);
 export type OperationName = keyof typeof schemas;
 export type OperationInput<K extends OperationName> = z.infer<(typeof schemas)[K]>;
 export const descriptions: Record<string, string> = {
+ ...exportControlDescriptions,
+ 'workspace.settings.get':'读取工作区设置',
+ 'workspace.settings.set':'按修订号保存真实生成与自动备份设置',
+ 'workspace.backup.status':'读取本地备份状态与恢复暂存状态',
+ 'workspace.backup.list':'列出已验证本地备份',
+ 'workspace.backup.create':'在空闲工作区创建一致的本地离线备份',
+ 'workspace.backup.restore.stage':'明确确认后将备份恢复到独立目录，下次启动切换到受限恢复工作区',
+ ...taskDispositionDescriptions,
 ...projectHomeDescriptions,
 'workspace.backup.inspect':'只读检查整个工作区的有界数据库计数；不复制文件、不恢复任务、不读取密钥。冷备份前必须正常关闭应用和同工作区后端。',
 'workspace.restore.inspect':'只读查看工作区恢复分支身份、隔离计数与可用操作，可显式请求已验证的音频角色与音量包络能力；不接收路径、不恢复或执行旧任务、不授予模型或付费权限。',
-'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
+'project.create':'创建持久化视频项目','project.list':'列出项目','project.get':'读取完整项目、画布和任务','asset.import':'导入授权的本地图片或视频字节（base64，最大30MiB）','asset.list':'读取项目素材','shot.create':'创建稳定ID镜头','shot.update':'按版本更新镜头，旧版本返回冲突','shot.reorder':'按项目版本原子调整镜头顺序','node.create':'创建文本、图片或视频画布节点','node.update':'按版本更新节点','edge.create':'连接同一项目节点','edge.delete':'移除连线','provider.list':'查询供应商能力与配置状态','video.connection.list':'查询界面配置的原厂视频连接和模型能力，不返回凭据','generation.submit':'用稳定requestId提交生成（默认仅模拟）','job.get':'读取任务和可恢复错误','job.list':'读取项目任务','job.retry':'显式重试已明确失败任务，必须用新requestId','job.cancel':'停止本地等待，不声称已取消供应商任务','job.reconcile':'重新查询或对账已有任务，不重新提交','version.list':'列出不可变生成版本','version.select':'按镜头版本选择结果','export.create':'冻结已选版本并按镜头顺序导出真实9:16 MP4','export.get':'查询导出进度和文件'};
 Object.assign(descriptions,{
  ...projectLifecycleDescriptions,
  ...agentAuthorizationDescriptions,
@@ -297,6 +322,13 @@ export function findModelCapabilities(capabilities: unknown, model?: unknown): R
  const models=Array.isArray(capabilityRecord?.models)?capabilityRecord.models as unknown[]:[];
  const firstModel=models[0];
  const id=model||(typeof firstModel==='string'?firstModel:(firstModel as {id?: unknown} | null | undefined)?.id);
+ if(capabilityRecord?.videoConnection&&capabilityRecord.videoModel){
+  try{
+   const binding=parseVideoBinding({...capabilityRecord.videoConnection as object,model:capabilityRecord.videoModel,credentialRef:'00000000-0000-4000-8000-000000000000'});
+   if(binding.model.modelId!==id)return null;
+   return videoBindingCapabilities(binding).modelCapabilities[0] as unknown as Record<string,unknown>;
+  }catch{return null;}
+ }
  if(Object.hasOwn(capabilityRecord||{},'inputProfiles')){
   const record = capabilityRecord as Record<string, unknown>;
   const region=getGenerationProfileRegion(record.id,record),profile=getCapabilityProfile(record.id,id,region);
@@ -381,3 +413,5 @@ export function getGenerationIssue(snapshot: unknown, capabilities: unknown): Ge
 }
 
 export {ASSET_ANNOTATION_LIMITS,assetAnnotationSchemas,isAssetAnnotationResponse,isAssetAnnotationListResponse} from './asset-annotations.ts';
+
+export * from './agent-tasks-v2.ts';

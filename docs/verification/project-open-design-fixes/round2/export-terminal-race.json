@@ -1,0 +1,8 @@
+{
+  "exportId": "e61bb94b-a8ae-4021-b595-a1a6119b7335",
+  "requestId": "c2186d9a-a2d0-4dfc-864f-189875045603",
+  "scenario": "user opened cancel confirmation while running; export completed before confirmation",
+  "result": "succeeded terminal preserved, output retained",
+  "durationSeconds": 9,
+  "realProviderCalls": 0
+}

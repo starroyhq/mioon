@@ -1,0 +1,64 @@
+{
+  "baseline": "01a83cb",
+  "syntheticWorkspace": true,
+  "realProviderCalls": 0,
+  "realModelCalls": 0,
+  "browser": "Google Chrome",
+  "viewports": [
+    {
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "width": 1050,
+      "height": 680
+    }
+  ],
+  "checks": {
+    "singleRatioReadOnly": true,
+    "multipleProviderRatiosShown": true,
+    "duplicateVersionToTimelineRemoved": true,
+    "dbDraftEditableAndDiscarded": true,
+    "dbSaveThenRealPreview": true,
+    "loudness": {
+      "integratedLUFS": -31.12,
+      "estimatedTruePeakDBTP": -30.18
+    },
+    "envelopeToggleAndDiscard": true,
+    "menuOrderAndDangerTail": true,
+    "showAssetFiltersLibrary": true,
+    "workspaceClipboardMatches": true,
+    "compactFirstRows": [
+      "V1",
+      "A1"
+    ],
+    "compactLastRows": [
+      "A2",
+      "Subtitles"
+    ],
+    "compactBottomScroll": {
+      "clientHeight": 80,
+      "scrollHeight": 164,
+      "scrollTop": 84
+    },
+    "sampleGenerateOneClick": true,
+    "samplePlayback": true,
+    "sampleInvalidRangeDisabled": true,
+    "sampleAcrossReviewSteps": true,
+    "assistantOptionsCollapsedByDefault": true,
+    "assistantScopeChange": true,
+    "authorizationReviewNoGrant": true,
+    "renderProgressInlineWithoutDuplicateToast": true
+  },
+  "pageErrors": [],
+  "compactViewportBounds": {
+    "width": 1050,
+    "height": 680,
+    "scrollWidth": 1050,
+    "scrollHeight": 680
+  },
+  "cleanup": {
+    "browserClosed": true,
+    "syntheticServerStopped": true
+  }
+}

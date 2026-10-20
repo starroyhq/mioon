@@ -1,0 +1,18 @@
+✔ capture reads actual paused currentTime, freezes source/hash/frame and ignores controller and timeline playheads (3.137791ms)
+✔ readiness events enable/disable capture and click revalidation denies stale-enabled media (1.632ms)
+✔ a pending explicit seek is never capture fact; acknowledged quantized seek retains the intended editing mark (0.404041ms)
+✔ exclusive EOF and unknown source duration cannot be captured (2.461708ms)
+✔ old source/readiness handlers and hidden previews cannot submit against a new binding (1.257084ms)
+✔ capture is absent for audio/image/clip/timeline and requires an actual source hash (0.499583ms)
+✔ synchronous in-flight guard suppresses double click before parent busy render (0.177458ms)
+✔ narrow Properties can recover a saved local result while retained hidden Preview capture is denied (9.6995ms)
+✔ hash-only source replacement remounts decoded media and requires fresh readiness before capturing the new hash (0.537375ms)
+✔ candidate exact output player revokes retained play handlers on held, disconnect and application replacement (4.867666ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 388.840417

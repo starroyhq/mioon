@@ -23,6 +23,7 @@ async function fixture(t,{autoRun=false,generate,beforeSubmit}={}){
  const gateway={generate:async(input,options)=>{calls.push({input:structuredClone(input),configuration:structuredClone(options.configuration)});beforeSubmit?.();options.beforeDispatch();return generate?generate(input,options):{bytes:await renderMockImagePng()};}};
  const create=()=>createServices(store,new Map(),{env:{},imageOptions:{autoRun,settings,customSettings,customGateway:gateway,liveGateway:gateway}});
  services=create();
+ await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
  const project=await services.call('project.create',{name:'Custom local fixture'}),other=await services.call('project.create',{name:'Other local fixture'});
  const f={root,project,other,calls,get store(){return store;},get services(){return services;},get customSettings(){return customSettings;},get settings(){return settings;},call:(operation,input)=>services.call(operation,input),input:patch=>generation(project.id,patch),
  async configure(configuration=config(),secret={action:'replace',storage:'session',value:'custom-synthetic-secret'}){const old=await customSettings.get();return customSettings.put({expectedRevision:old.revision,configuration,secret});},

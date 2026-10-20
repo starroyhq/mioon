@@ -57,19 +57,26 @@ const deliveryParserUrl = data('export let calls = 0; export function parseTimel
 const deliveryParser = await import(deliveryParserUrl);
 const nativeAudioContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Native audition schemas are outside this secrets fixture"); }; export const nativeAudioConfigSchema = {parse: forbidden}; export const nativeAudioCommandSchema = {safeParse: forbidden}; export const nativeAudioReplySchema = {safeParse: forbidden};');
 const nativeAudioContracts = await import(nativeAudioContractsUrl);
+const workspaceNativeContractsUrl = data('export let calls = 0; const forbidden = () => { calls++; throw Error("Workspace native schemas are outside this secrets fixture"); }; export const workspaceNativeUtilityReplySchema = {safeParse: forbidden}; export const workspaceNativeUtilityRequestSchema = {parse: forbidden};');
+const workspaceNativeContracts = await import(workspaceNativeContractsUrl);
 after(() => assert.equal(nativeAudioContracts.calls, 0, 'Secrets fixtures must never execute native audition schemas'));
+after(() => assert.equal(workspaceNativeContracts.calls, 0, 'Secrets fixtures must never execute workspace native schemas'));
 after(() => assert.equal(deliveryParser.calls, 0, 'Secrets fixtures must never execute download parsing'));
 const overrides = new Map([
   ['node:fs', diagnosticFsUrl],
   ['@mioon/contracts/timeline-delivery', deliveryParserUrl],
   ['@mioon/contracts/native-audio-preview', nativeAudioContractsUrl],
+  ['../../../packages/contracts/src/workspace-native.ts', workspaceNativeContractsUrl],
   ['@mioon/contracts', data('export {AGENT_PROTOCOLS} from ' + JSON.stringify(new URL('packages/contracts/src/agent-protocol.ts', root).href) + '; export const IMAGE_SETTINGS_LIMITS = {ciphertextCharacters: 49152};')],
   ['@mioon/business/images/settings', data('const accepted = ' + JSON.stringify(imagePlaintexts) + '; export function validateImageSecretPlaintext(value) { if (!accepted.includes(value)) throw Object.assign(new Error("Synthetic Images validation"), {code: "IMAGE_SETTINGS_VALIDATION"}); } export const imageSettingsError = code => Object.assign(new Error("Synthetic Images error"), {code});')],
+  // Video crypto is outside this Agent/Images vault fixture; its fixed namespace
+  // has an independent real-code suite. Importing the new broker grants no crypto.
+  ['../../../packages/business/src/video/settings.ts', data('export function validateVideoSecretPlaintext() { throw Object.assign(new Error("Video credentials are outside this fixture"), {code: "VIDEO_SETTINGS_VALIDATION"}); }')],
   ['@mioon/business/agent/settings-file', data('export const createAgentSettingsFile = ' + forbidden.toString())],
   ['@mioon/contracts/private-storage', data('export const validatePrivateDirectory = ' + forbidden.toString() + '; export const ensurePrivateDirectory = validatePrivateDirectory')],
 ]);
 const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.ts', 'apps/desktop/src/secret-store.ts', 'apps/desktop/src/image-secret-store.ts',
-  'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts',
+  'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts', 'apps/desktop/src/workspace-native-broker.ts',
   'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
   'packages/business/src/agent/presets.ts']);

@@ -34,7 +34,7 @@ interface TimelineSnapshotLike {
  colourPlan?: RenderColourPlan;delivery?: RenderDelivery;subtitleProfile?: unknown;
 }
 interface RenderAsset extends ManagedAssetRecord {path?: string;videoStreamIndex?: number|string|null;audioStreamIndex?: number|string|null;colourProbe?: unknown;colourImageEvidence?: unknown}
-interface RenderTimelineOptions {signal?: AbortSignal;beforeEncode?: ()=>void;beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown}
+interface RenderTimelineOptions {signal?: AbortSignal;beforeEncode?: ()=>void;beforeStart?:()=>void;beforeEffect?: ()=>void;readLut?: (value: unknown)=>unknown}
 interface InodeIdentity {dev: number|bigint;ino: number|bigint;size: number;mtimeMs: number;ctimeMs: number}
 interface ReservedEntry {fd: number;identity: Stats}
 interface OwnedTimelineWork {
@@ -103,7 +103,7 @@ function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefine
 // clip edges so even a 100-clip / 10-minute composition only opens <=12 media
 // inputs at once. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
-export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{signal,beforeEncode,beforeEffect,readLut}: RenderTimelineOptions={}): Promise<unknown>{
+export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{signal,beforeEncode,beforeStart,beforeEffect,readLut}: RenderTimelineOptions={}): Promise<unknown>{
  const opacity=getTimelineOpacityRenderBinding(snapshot as never,assets as never);
  if(opacity){snapshot=opacity.validationSnapshot as unknown as TimelineSnapshotLike;beforeEffect=opacity.effectFence(beforeEffect) as (()=>void)|undefined;readLut=opacity.readLut as ((value: unknown)=>unknown)|undefined;signal=opacity.signal&&signal&&opacity.signal!==signal?AbortSignal.any([opacity.signal,signal]):opacity.signal??signal;}
  checkMediaEffect(beforeEffect,signal);
@@ -208,7 +208,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    const videoArgs=delivery?timelineExportVideoArgs(delivery as never):['-c:v','libx264','-preset','veryfast','-crf','23','-threads','2','-bf','0','-g','60','-pix_fmt','yuv420p','-r',String(FPS),'-video_track_timescale','30000'];
    args.push(...filterArgs,'-map','[outv]','-map','[outa]',...videoArgs,...(colour?TIMELINE_COLOUR_OUTPUT_ARGS:[]),'-c:a',floatChecked?'pcm_f32le':'pcm_s16le','-ar','48000','-ac','2','-t',seconds(selected.outputFrames),segmentFile);
    owned?.reserve(segmentFile);
-   await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal,beforeEffect:effect});
+   beforeStart?.();await run('ffmpeg',args,{timeout:Math.max(120000,frames/FPS*5000),signal,beforeEffect:effect});
    checkMediaEffect(effect,signal);
    if(floatChecked)ownedSegments.push({file:segmentFile,outputFrames:selected.outputFrames});
    entries.push(`file '${segmentFile.replaceAll("'","'\\''")}'\nduration ${seconds(selected.outputFrames)}`);

@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: range profile is separate, bounded and counts only complete three-second windows
+ok 1 - range profile is separate, bounded and counts only complete three-second windows
+  ---
+  duration_ms: 84.614125
+  type: 'test'
+  ...
+# Subtest: split float/frame chunks and Uint8Array offsets do not change the report
+ok 2 - split float/frame chunks and Uint8Array offsets do not change the report
+  ---
+  duration_ms: 338.623916
+  type: 'test'
+  ...
+# Subtest: complete-window stereo energy and gated percentiles match independent direct-form reference
+ok 3 - complete-window stereo energy and gated percentiles match independent direct-form reference
+  ---
+  duration_ms: 127.175667
+  type: 'test'
+  ...
+# Subtest: short input, exact silence and below-gate audio never fabricate a zero range
+ok 4 - short input, exact silence and below-gate audio never fabricate a zero range
+  ---
+  duration_ms: 52.806208
+  type: 'test'
+  ...
+# Subtest: uniform gain shifts qualified percentile levels but preserves loudness range
+ok 5 - uniform gain shifts qualified percentile levels but preserves loudness range
+  ---
+  duration_ms: 180.720916
+  type: 'test'
+  ...
+# Subtest: invalid samples, partial frames and invalid durations fail terminally
+ok 6 - invalid samples, partial frames and invalid durations fail terminally
+  ---
+  duration_ms: 133.149875
+  type: 'test'
+  ...
+# Subtest: sixty seconds gives exactly 571 windows and exceeding its byte cap is terminal
+ok 7 - sixty seconds gives exactly 571 windows and exceeding its byte cap is terminal
+  ---
+  duration_ms: 225.962375
+  type: 'test'
+  ...
+# Subtest: strict report rejects forged counts, nullability, percentiles, duration and profile
+ok 8 - strict report rejects forged counts, nullability, percentiles, duration and profile
+  ---
+  duration_ms: 21.23475
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1333.300875

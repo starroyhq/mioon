@@ -10,6 +10,7 @@ import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
 import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -73,12 +74,13 @@ function harness(dispatch, { projectSnapshot } = {}) {
     rpc: async (operation, input) => {
       if (projectSnapshot && operation === 'project.get') { state.refreshes.push(input.projectId); return projectSnapshot(input.projectId); }
       if (projectSnapshot && operation === 'provider.list') return [];
+      if (projectSnapshot && operation === 'video.connection.list') return [];
       state.calls.push({ operation, input: clone(input) }); return dispatch(operation, input);
     },
   };
   if (projectSnapshot) {
     const refreshScope = { ...scope, ...projectOpening, application: null, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch,
-      setProviders() {}, setLastSync() {}, setOnline() {}, reconcileWorkspaceState, viewRef, viewReady: { current: true },
+      setProviders() {}, setVideoDirectoryUnavailable() {}, setLastSync() {}, setOnline() {}, reconcileWorkspaceState, readGenerationProviderDirectory, viewRef, viewReady: { current: true },
       setView: value => { viewRef.current = value; }, preferencesRef: { current: { update: (...args) => state.preferenceWrites.push(args) } } };
     delete refreshScope.refresh;
     scope.refresh = Function(...Object.keys(refreshScope), `${refreshSource}; return refresh;`)(...Object.values(refreshScope));

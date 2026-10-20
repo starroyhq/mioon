@@ -1,4 +1,6 @@
 import {randomUUID} from 'node:crypto';
+import {taskEffectOrigin} from './agent/task-effects-v2.ts';
+import type {AgentTaskJson} from '../../contracts/src/agent-tasks-v2.ts';
 import {isProxy} from 'node:util/types';
 import type {DatabaseSync} from 'node:sqlite';
 import {LUT_RESOURCE_LIMITS,LUT_RESOURCE_PROFILE,lutImportInputSchema,lutListInputSchema,lutInspectInputSchema} from '../../contracts/src/lut-resources.ts';
@@ -18,7 +20,13 @@ export interface LutResourceOptions {
   fault?:(point:LutImportFaultPoint)=>void;
 }
 export function assertLutReadProfile(schemaVersion:number):void {
-  if(schemaVersion!==29&&schemaVersion!==31&&schemaVersion!==33&&schemaVersion!==35&&schemaVersion!==37&&schemaVersion!==39&&schemaVersion!==41&&schemaVersion!==45&&schemaVersion!==49)throw lutResourceError('RESTORE_OPERATION_UNAVAILABLE',409);
+  if(schemaVersion!==29&&schemaVersion!==31&&schemaVersion!==33&&schemaVersion!==35&&schemaVersion!==37&&schemaVersion!==39&&schemaVersion!==41&&schemaVersion!==45&&schemaVersion!==49&&schemaVersion!==51)throw lutResourceError('RESTORE_OPERATION_UNAVAILABLE',409);
+}
+/** The verified restore-53 assembly is a separate generation. Preserve the
+ * historical read gate above for callers bound to frozen restore profiles. */
+export function assertAgentTaskLutReadProfile(schemaVersion:number):void {
+  if(schemaVersion===53)return;
+  assertLutReadProfile(schemaVersion);
 }
 function input<T>(schema:{safeParse(value:unknown):{success:true;data:T}|{success:false}},value:unknown):T {
   if(!value||typeof value!=='object'||Array.isArray(value)||isProxy(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw lutResourceError('VALIDATION_ERROR',400);
@@ -82,6 +90,7 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
     const parsed=parseLutBytes(bytes),metadata=JSON.stringify(parsed.metadata);
     owned();runtime.assertImportAllowed();
     if(db.isTransaction)throw lutResourceError('LUT_TRANSACTION_UNAVAILABLE',503);
+    const origin=taskEffectOrigin();origin?.beforeEffect();
     db.exec('BEGIN IMMEDIATE');let committed=false,commitAttempted=false;
     try{
       owned();runtime.assertImportAllowed();project(i.projectId);
@@ -107,6 +116,14 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
       const response={requestId:i.requestId,resource:readLutResource(db,i.projectId,id,true)};
       if(databaseBytes(db)>LUT_RESOURCE_LIMITS.databaseBytes)throw lutResourceError('LUT_CAPACITY',507);
       fault('beforeCommit');owned();runtime.assertImportAllowed();
+      if(origin){
+        origin.beforeEffect();
+        if(origin.importHandle){const updated=db.prepare("UPDATE agent_task_imports_v2 SET status='imported',resourceId=? WHERE id=? AND projectId=? AND status='importing'").run(id,origin.importHandle,i.projectId);if(updated.changes!==1)throw Object.assign(Error('Agent import identity changed'),{code:'AGENT_TASK_UNKNOWN_RESULT'});}
+        const revision=Number(db.prepare("SELECT revision FROM agent_task_target_revisions_v2 WHERE projectId=? AND kind='lut' AND targetId=?").get(i.projectId,id)?.revision??0);
+        const change={projectId:i.projectId,operation:origin.operation,targets:[{kind:'lut',id,revision,revisionBefore:0,revisionAfter:revision}],before:null,after:response.resource as unknown as AgentTaskJson,reversible:false,summary:'导入用户选择的Cube资源'};
+        if(origin.recorded){if(!origin.appendChangesInside)throw Error('Agent import origin cannot record changes');origin.appendChangesInside([change]);}
+        else{origin.recordInside(response as unknown as AgentTaskJson,[change]);origin.recorded=true;}
+      }
       commitAttempted=true;db.exec('COMMIT');committed=true;fault('afterCommit');owned();return response;
     }catch(error){
       const active=db.isTransaction;if(active)db.exec('ROLLBACK');

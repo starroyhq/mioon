@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
+import { activeJob } from '../apps/web/src/api.ts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
@@ -61,7 +62,7 @@ function createHarness(file, exportName = 'default') {
     Fragment: 'Fragment',
   };
   react.default = react;
-  const ui = new Proxy({ useConfirmation: () => async () => true }, { get: (target, key) => target[key] ?? String(key) });
+  const ui = new Proxy({ useConfirmation: () => h.confirm || (async () => true) }, { get: (target, key) => target[key] ?? String(key) });
   const mocks = {
     react,
     './i18n/I18nProvider.tsx': { useI18n: () => createI18nTestContext(h.locale) },
@@ -70,6 +71,9 @@ function createHarness(file, exportName = 'default') {
     '@mioon/contracts': contracts,
     '@mioon/contracts/local-shot-text': { LOCAL_SHOT_TEXT_LIMITS },
     './local-shot-text-state.ts': { useLocalShotText: ({ context }) => {
+      if (h.shotTextState) return { state: h.shotTextState, controller: {
+        setContext() {}, getState: () => h.shotTextState, blocksLegacy: () => false, canPrepare: () => Boolean(h.canSaveShotText),
+      } };
       assert.equal(context.restored, true, 'This legacy Inspector fixture has no shot-text context');
       return { state: {}, controller: { setContext() {} } };
     }, mergeFreshShotTextAck: () => { assert.fail('No shot-text acknowledgement is expected in this fixture'); } },
@@ -90,7 +94,7 @@ function createHarness(file, exportName = 'default') {
     '@xyflow/react': { Handle: 'Handle', Position: { Left: 'left', Right: 'right' } },
     './TimelineAudioPreview.tsx': { default: 'TimelineAudioPreview', __esModule: true },
     './icons.tsx': { default: 'Icon', __esModule: true },
-    './api.ts': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob: () => false, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },
+    './api.ts': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },
     './Timeline.tsx': { assetKind: asset => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.ts': { referenceForShot: () => null },
     './generation-settings.ts': { generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
@@ -250,6 +254,103 @@ test('replaced Preview sources reject old callbacks and Strict Mode disposal res
   old.props.onTimeUpdate({ currentTarget: original }); old.props.onSeeked({ currentTarget: original }); old.props.onPlay({ currentTarget: original });
   assert.deepEqual(seeks, []); assert.equal(original.paused, true);
   h.replayEffects(); assert.equal(current.src, '/second'); assert.equal(current.paused, true);
+});
+
+test('Inspector version cards expose stable version numbers and keep frozen details collapsed without changing actions', () => {
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    const h = createHarness('Inspector.tsx'), selections = [], additions = [], comparisons = [];
+    h.locale = locale;
+    const props = inspectorProps({ highlightedVersionId: null,
+      versions: [{ id: 'version-one', shotId: 'shot-one', number: 1, assetId: 'asset-one', model: 'model-one',
+        createdAt: '2026-10-09T12:00:00Z', snapshot: { prompt: 'Frozen prompt with full detail', duration: 4, aspectRatio: '9:16' } }],
+      onSelectVersion: (shot, versionId) => selections.push([shot.id, versionId]), onAddVersion: assetId => additions.push(assetId), onCompare: shotId => comparisons.push(shotId),
+    });
+    h.render(props);
+    const card = h.find('version-card-version-one'), nodes = treeNodes(card);
+    const number = nodes.find(node => node.props?.className === 'version-number');
+    assert.equal(number.props.children, translate(locale, 'redesign.projects.versionBadge', { number: 1 }));
+    assert.equal(number.props['aria-label'].includes('1'), true);
+    const details = h.find('version-metadata-version-one');
+    assert.equal(details.type, 'details'); assert.equal(Boolean(details.props.open || details.props.defaultOpen), false);
+    const prompt = treeNodes(details).find(node => node.type === 'p');
+    assert.equal(prompt.props.children, 'Frozen prompt with full detail');
+    assert.equal(nodes.filter(node => node.type === 'p' && node.props.children === 'Frozen prompt with full detail').length, 1);
+    const actions = nodes.filter(node => node.type === 'Button');
+    assert.equal(actions.length, 3);
+    actions[0].props.onClick(); actions[1].props.onClick(); actions[2].props.onClick();
+    assert.deepEqual(comparisons, ['shot-one']);
+    assert.deepEqual(selections, [['shot-one', 'version-one']]); assert.deepEqual(additions, ['asset-one']);
+    h.unmount();
+  }
+});
+
+test('Inspector exposes real generation progress and cancellation only continues the exact visible job after approval', async () => {
+  for (const change of ['none', 'hide', 'tab', 'project', 'snapshot', 'terminal', 'busy', 'unmount']) {
+    const h = createHarness('Inspector.tsx'), cancelled = [];
+    let approve; h.confirm = () => new Promise(resolve => { approve = resolve; });
+    const job = { id: 'running-one', shotId: 'shot-one', status: 'running', progress: 45, snapshot: { prompt: 'Frozen original' } };
+    const props = inspectorProps({ tab: 'settings', highlightedVersionId: null, jobs: [job], onCancelJob: (value, current) => cancelled.push([value.id, current()]) });
+    h.render(props); assert.ok(h.find('inspector-generation-progress'));
+    const work = h.find('cancel-generation').props.onClick(); assert.deepEqual(cancelled, []);
+    if (change === 'hide') { h.ancestorVisible = false; h.render(props); h.ancestorVisible = true; h.render(props); }
+    if (change === 'tab') { h.render({ ...props, tab: 'versions' }); h.render(props); }
+    if (change === 'project') h.render({ ...props, project: { id: 'project-two' } });
+    if (change === 'snapshot') h.render({ ...props, jobs: [{ ...job, snapshot: { prompt: 'Replaced snapshot' } }] });
+    if (change === 'terminal') h.render({ ...props, jobs: [{ ...job, status: 'succeeded' }] });
+    if (change === 'busy') h.render({ ...props, busy: { 'cancel:running-one': true } });
+    if (change === 'unmount') h.unmount();
+    approve(true); await work;
+    assert.deepEqual(cancelled, change === 'none' ? [['running-one', true]] : [], change);
+    if (change !== 'unmount') h.unmount();
+  }
+  for (const patch of [{ jobs: [{ id: 'unknown', shotId: 'shot-one', status: 'submission_unknown' }] }, { restored: true }, { generationUnavailableReason: 'Unavailable' }]) {
+    const h = createHarness('Inspector.tsx'); h.render(inspectorProps({ tab: 'settings', jobs: [{ id: 'running-one', shotId: 'shot-one', status: 'running' }], onCancelJob: () => assert.fail('Must not cancel'), ...patch }));
+    assert.equal(h.find('cancel-generation'), undefined); assert.equal(h.find('inspector-generation-progress'), undefined); h.unmount();
+  }
+});
+
+test('failed version attempts retry the original job and cannot duplicate an uncertain retry', () => {
+  const h = createHarness('Inspector.tsx'), retried = [];
+  const job = { id: 'failed-one', shotId: 'shot-one', status: 'failed', snapshot: { prompt: 'Original immutable retry' } };
+  const props = inspectorProps({ jobs: [job], onRetryJob: (value, current) => retried.push([value.id, current()]) });
+  h.render(props); assert.ok(h.find('failed-version-failed-one'));
+  const retry = h.find('retry-failed-version-failed-one').props.onClick; retry();
+  assert.deepEqual(retried, [['failed-one', true]]);
+  h.render({ ...props, jobs: [job, { id: 'retry-one', shotId: 'shot-one', status: 'submission_unknown', retryOfJobId: job.id }] });
+  assert.equal(h.find('retry-failed-version-failed-one').props.disabled, true); retry(); assert.equal(retried.length, 1); h.unmount();
+});
+
+test('Inspector folds only passive synchronized text while every recovery or save state stays explicit', () => {
+  const settled = { phase: 'ready', dirty: false, candidate: null, baselineConflict: false, autosavePaused: false,
+    draftFailure: null, draftError: '', draftRetry: null, intentFailure: null, intentError: '', intentUncertain: false,
+    pending: false, busy: false, retainedDraftWrite: null, retainedDeletion: null, retainedPreparation: null,
+    projectPendingIntent: null, intentPhase: 'idle', intent: null };
+  const props = inspectorProps({ tab: 'settings', highlightedVersionId: null, shotTextContext: { scope: 'text', connected: true, restored: false } });
+  const attention = [
+    { phase: 'loading' }, { phase: 'saving' }, { phase: 'error' }, { phase: 'unsupported' },
+    { dirty: true }, { candidate: {} }, { baselineConflict: true }, { autosavePaused: true },
+    { draftFailure: {} }, { draftError: 'failed' }, { draftRetry: 'same' }, { intentFailure: {} }, { intentError: 'failed' },
+    { intentUncertain: true }, { pending: true }, { busy: true }, { retainedDraftWrite: {} }, { retainedDeletion: {} },
+    { retainedPreparation: {} }, { projectPendingIntent: {} }, { intentPhase: 'preparing' }, { intentPhase: 'not_applied' },
+    { intent: { outcome: { status: 'not_applied' } } },
+  ];
+  const h = createHarness('Inspector.tsx');
+  for (const patch of [{}, { phase: 'saved', intentPhase: 'applied', intent: { outcome: { status: 'applied' } } }]) {
+    h.shotTextState = { ...settled, ...patch }; h.render(props);
+    const disclosure = h.find('shot-text-recovery-passive');
+    assert.equal(disclosure.type, 'details'); assert.equal(Boolean(disclosure.props.open || disclosure.props.defaultOpen), false);
+    assert.equal(h.find('shot-text-recovery-active'), undefined);
+    assert.equal(treeNodes(disclosure).some(node => node.type === 'ShotTextDraftRecovery'), true);
+  }
+  for (const patch of attention) {
+    h.shotTextState = { ...settled, ...patch }; h.render(props);
+    assert.ok(h.find('shot-text-recovery-active'), JSON.stringify(patch)); assert.equal(h.find('shot-text-recovery-passive'), undefined);
+  }
+  h.shotTextState = settled; h.canSaveShotText = true; h.render(props);
+  assert.ok(h.find('shot-text-recovery-active'), 'An available save action cannot be folded');
+  h.canSaveShotText = false; h.find('shot-prompt').props.onChange({ target: { value: 'New input before text hook catches up' } }); h.render(props);
+  assert.ok(h.find('shot-text-recovery-active'), 'Current unsaved form text stays explicit even if the hook snapshot is still settled');
+  h.unmount();
 });
 
 test('Inspector cancels pending highlight focus when hidden and does not refocus on reopening or refresh', () => {

@@ -16,3 +16,30 @@
 .dock-workbench .timeline-panel.edit-timeline .timeline-clip>video.clip-thumbnail{width:100%;height:100%;object-fit:cover;pointer-events:none;opacity:.85}
 
 .dock-workbench .timeline-panel.edit-timeline .timeline-body[hidden]{display:none}
+
+.dock-workbench .timeline-panel.edit-timeline .timeline-scroll-frame{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
+/* Let ordinary rows share a small height shortfall before adding a scrollbar.
+   Otherwise focusing the last audio clip scrolls the first subtitle row under
+   the sticky ruler, even at the default panel height. Extra tracks still scroll. */
+.dock-workbench .timeline-panel.edit-timeline:not(.compact-tracks) .timeline-content{display:flex;flex-direction:column;height:100%;box-sizing:border-box}
+.dock-workbench .timeline-panel.edit-timeline:not(.compact-tracks) .timeline-ruler-row{flex:none}
+.dock-workbench .timeline-panel.edit-timeline:not(.compact-tracks) .timeline-track.video{flex:0 1 auto;min-height:40px}
+.dock-workbench .timeline-panel.edit-timeline:not(.compact-tracks) .timeline-track.audio{flex:0 1 auto;min-height:36px}
+.dock-workbench .timeline-panel.edit-timeline:not(.compact-tracks) .timeline-track.subtitle-track{flex:none}
+.dock-workbench .timeline-panel.edit-timeline.compact-tracks .timeline-scroll{flex:none;scroll-snap-type:y mandatory;scroll-padding-top:var(--wb-ruler)}
+.dock-workbench .timeline-panel.edit-timeline.compact-tracks .timeline-content{padding-bottom:0}
+.dock-workbench .timeline-panel.edit-timeline.compact-tracks .timeline-track{scroll-snap-align:start;scroll-snap-stop:normal;flex:none}
+.dock-workbench .timeline-panel.edit-timeline.compact-tracks .timeline-track>.track-label{padding-block:0}
+
+.dock-workbench .timeline-panel.edit-timeline.compact-tracks .timeline-content{display:flex;flex-direction:column}.compact-tracks .timeline-ruler-row{order:-3}.compact-tracks .subtitle-track{order:1}.dock-workbench .timeline-panel.edit-timeline.compact-tracks .timeline-track{height:28px;min-height:28px}.dock-workbench .timeline-panel.edit-timeline.compact-tracks .timeline-clip{top:3px;height:22px}.dock-workbench .timeline-panel.edit-timeline.compact-tracks .timeline-footnote{height:18px;min-height:18px}
+.dock-workbench .timeline-panel.edit-timeline .timeline-clip.video{background:var(--wb-video);border-color:var(--wb-video-edge)}.dock-workbench .timeline-panel.edit-timeline .timeline-clip.image{background:var(--wb-image);border-color:var(--wb-image-edge)}.dock-workbench .timeline-panel.edit-timeline .timeline-clip.audio{background:var(--wb-audio);border-color:var(--wb-audio-edge)}.dock-workbench .timeline-panel.edit-timeline .timeline-clip.subtitle-cue{background:var(--wb-subtitle);border-color:var(--wb-subtitle-edge)}
+
+.dock-workbench .timeline-panel.edit-timeline .timeline-clip .clip-copy{color:var(--wb-media-text)}.dock-workbench .timeline-panel.edit-timeline .clip-copy>strong{text-shadow:0 1px 2px var(--wb-shadow-color)}
+.dock-workbench .timeline-panel.edit-timeline .track-label>div:first-child{flex:1}
+.dock-workbench .timeline-panel.edit-timeline .track-label strong{max-width:none}
+.dock-workbench .timeline-panel.edit-timeline .track-controls{flex:none;margin-left:0}
+.dock-workbench .timeline-panel.edit-timeline .subtitle-track .subtitle-add{flex:none;align-self:center;display:grid;place-items:center;width:24px;min-width:24px;height:24px;padding:0}
+
+/* Qualification is ordinary flow content, so it stays visible without covering
+   the source image or media controls at either supported window size. */
+.central-preview.edit-preview .preview-source-disclosure{position:static;flex:none;white-space:normal;overflow-wrap:anywhere;margin:0;padding:6px 12px;color:var(--wb-soft);background:var(--wb-panel);border-bottom:1px solid var(--wb-line-subtle);font-size:var(--wb-text-caption);line-height:1.5}

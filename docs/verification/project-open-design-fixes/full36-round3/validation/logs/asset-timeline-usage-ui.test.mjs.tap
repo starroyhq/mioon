@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: a compact audio card uses an icon thumbnail and keeps preview name and duration separate
+ok 1 - a compact audio card uses an icon thumbnail and keeps preview name and duration separate
+  ---
+  duration_ms: 38.50725
+  type: 'test'
+  ...
+# Subtest: only an own key in this project ready snapshot means zero; absence stays unknown
+ok 2 - only an own key in this project ready snapshot means zero; absence stays unknown
+  ---
+  duration_ms: 3.981666
+  type: 'test'
+  ...
+# Subtest: unused is a pure local view, combines existing results, and keeps unknown assets visible
+ok 3 - unused is a pure local view, combines existing results, and keeps unknown assets visible
+  ---
+  duration_ms: 3.435542
+  type: 'test'
+  ...
+# Subtest: filter resets on each project epoch and obsolete or hidden handlers cannot change it
+ok 4 - filter resets on each project epoch and obsolete or hidden handlers cannot change it
+  ---
+  duration_ms: 2.949208
+  type: 'test'
+  ...
+# Subtest: compact count expands explicit destinations and sends precisely the chosen immutable use
+ok 5 - compact count expands explicit destinations and sends precisely the chosen immutable use
+  ---
+  duration_ms: 4.165958
+  type: 'test'
+  ...
+# Subtest: unchanged saved polling preserves expansion and pending choice; changed source metadata invalidates
+ok 6 - unchanged saved polling preserves expansion and pending choice; changed source metadata invalidates
+  ---
+  duration_ms: 4.619375
+  type: 'test'
+  ...
+# Subtest: unknown, unavailable and foreign assets cannot claim unused or expose destinations
+ok 7 - unknown, unavailable and foreign assets cannot claim unused or expose destinations
+  ---
+  duration_ms: 16.17175
+  type: 'test'
+  ...
+# Subtest: navigation callbacks and in-flight predicates expire on hide, scope, snapshot, asset change and unmount
+ok 8 - navigation callbacks and in-flight predicates expire on hide, scope, snapshot, asset change and unmount
+  ---
+  duration_ms: 17.083125
+  type: 'test'
+  ...
+# Subtest: controls do not nest buttons or drag assets; target labels remain narrow-panel keyboard buttons
+ok 9 - controls do not nest buttons or drag assets; target labels remain narrow-panel keyboard buttons
+  ---
+  duration_ms: 4.29925
+  type: 'test'
+  ...
+# Subtest: actual library composes usage filter, preserves hidden selected source and resets all filters
+ok 10 - actual library composes usage filter, preserves hidden selected source and resets all filters
+  ---
+  duration_ms: 5.124541
+  type: 'test'
+  ...
+# Subtest: usage, type and mark filters compose once in the shared filter popover above the scrolling cards
+ok 11 - usage, type and mark filters compose once in the shared filter popover above the scrolling cards
+  ---
+  duration_ms: 4.095209
+  type: 'test'
+  ...
+# Subtest: actual library passes explicit hidden and subjects visibility to usage controls
+ok 12 - actual library passes explicit hidden and subjects visibility to usage controls
+  ---
+  duration_ms: 4.351958
+  type: 'test'
+  ...
+# Subtest: filter copy identifies saved revision and unavailable data, and stays guarded while hidden
+ok 13 - filter copy identifies saved revision and unavailable data, and stays guarded while hidden
+  ---
+  duration_ms: 3.374666
+  type: 'test'
+  ...
+# Subtest: real React and shared Button render safe compact HTML without network or storage
+ok 14 - real React and shared Button render safe compact HTML without network or storage
+  ---
+  duration_ms: 363.509958
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 758.481875

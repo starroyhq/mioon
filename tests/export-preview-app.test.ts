@@ -64,10 +64,74 @@ test('actual trial-range setter owns only trial state; timeline preview excludes
   let draft: unknown = null;
   const choose = execute('  function chooseSampleExportRange(', '  function selectSampleExportRange(', {
     exportRangeContext: () => ({ enabled: true }), localDelivery: { state: { busy: false } }, pendingTimelineExport: false,
-    exportCheckContext: () => ({ scope: 'owner' }), setSampleRangeDraft: (update: unknown) => { draft = (update as (current: unknown) => unknown)(draft); },
+    sampleRangeDraftRef: { current: null }, exportCheckContext: () => ({ scope: 'owner' }),
+    setSampleRangeDraft: (update: unknown) => { draft = typeof update === 'function' ? (update as (current: unknown) => unknown)(draft) : update; },
   }) as (...args: unknown[]) => void;
   choose({ startText: '10', endText: '20' }); assert.deepEqual(draft, { startText: '10', endText: '20', scope: 'owner', version: 1 });
   assert.match(source, /timelineJobs\.find\(e => !e\.snapshot\?\.exportRange/);
   assert.match(source, /onBeforePlay: beforeTimelineAudioPlay/);
   assert.match(source, /onBeforePlay=\{beforeExportPreviewPlay\}/);
+});
+
+type SampleDraft = {scope: string; startText: string; endText: string; version: number};
+function generationFixture(initialDraft: SampleDraft | null = {scope: 'owner', startText: '30', endText: '60', version: 1}) {
+  const calls: {kind: string; binding?: unknown}[] = [], draft = {current: initialDraft}, dirty = {current: false}, panel = {current: 1};
+  let owner = 'owner', formatted = false, allow = true;
+  const binding = {projectId, expectedRevision: 4, exportRange: {startFrame: 30, endFrame: 60}}, checked: {binding: unknown; attempted: boolean; phase: string} = {binding, attempted: false, phase: 'ready'};
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const sampleContext = () => ({ scope: owner, exportRange: draft.current?.scope === owner && /^\d+$/.test(draft.current.startText) && /^\d+$/.test(draft.current.endText) ? {startFrame: Number(draft.current.startText), endFrame: Number(draft.current.endText)} : null });
+  const controller = {setContext() { calls.push({kind: 'context'}); }, async check() { calls.push({kind: 'check'}); await pending; }, getState: () => checked};
+  const generate = execute('  async function generateSampleExport(', '  function clipLoudnessContext(', {
+    workbenchReady: true, showDelivery: true, showExports: false, exportRangeContext: () => ({enabled: allow}),
+    isBusy: () => false, localDeliveryRef: {current: {state: {busy: false}}}, pendingTimelineExport: false,
+    dirtyRef: dirty, timelineFormatRef: {current: {controller: {hasUnsaved: () => formatted}}},
+    context: () => owner, isCurrent: (captured: string) => captured === owner, panelIntent: panel,
+    sampleExportPreflight: {controller}, sampleRangeDraftRef: draft, exportCheckContext: () => ({scope: owner}),
+    selectSampleExportRange() { calls.push({kind: 'select'}); draft.current = {scope: owner, startText: '0', endText: '300', version: 1}; },
+    isExportPreviewRange, sampleExportContext: sampleContext,
+    sampleExportContextKey: () => JSON.stringify([sampleContext(), draft.current?.version]),
+    dataRef: {current: {timeline: {durationFrames: 600}}},
+    renderTimeline: async (purpose: string, input: unknown, unchecked: unknown, sample: boolean) => {assert.equal(purpose, 'export'); assert.equal(unchecked, undefined); assert.equal(sample, true); calls.push({kind: 'render', binding: input});},
+  }) as () => Promise<void>;
+  return {generate, calls, draft, dirty, panel, checked, binding, finish,
+    changeOwner() {owner = 'replacement';}, setFormatDirty() {formatted = true;}, disable() {allow = false;}};
+}
+
+test('one explicit generate action selects only a missing range, awaits checks and uses the exact current controller binding', async () => {
+  for (const initial of [null, {scope: 'owner', startText: '30', endText: '60', version: 1}]) {
+    const f = generationFixture(initial), pending = f.generate();
+    assert.equal(f.calls.filter(call => call.kind === 'select').length, initial ? 0 : 1);
+    assert.equal(f.calls.filter(call => call.kind === 'check').length, 1);
+    assert.equal(f.calls.filter(call => call.kind === 'render').length, 0);
+    f.finish(); await pending;
+    assert.equal(f.calls.filter(call => call.kind === 'render').length, 1);
+    assert.equal(f.calls.find(call => call.kind === 'render')?.binding, f.binding);
+  }
+});
+
+test('an invalid user-entered sample range is retained and never silently replaced or submitted', async () => {
+  for (const [startText, endText] of [['', '30'], ['0', ''], ['2', '1'], ['0', '301'], ['599', '601'], ['1.5', '30']]) {
+    const original = {scope: 'owner', startText, endText, version: 2}, f = generationFixture(original);
+    await f.generate();
+    assert.deepEqual(f.draft.current, original); assert.deepEqual(f.calls, []);
+  }
+});
+
+test('closing or leaving during checks, range edits and new unsaved drafts prevent sample submission', async () => {
+  for (const change of ['close', 'close-reopen', 'project', 'range', 'dirty', 'format', 'blocked', 'consumed', 'disconnected']) {
+    const f = generationFixture(), pending = f.generate();
+    if (change === 'close' || change === 'close-reopen') f.panel.current++;
+    if (change === 'project') f.changeOwner();
+    if (change === 'range') f.draft.current = {...f.draft.current!, startText: '40', version: 2};
+    if (change === 'dirty') f.dirty.current = true;
+    if (change === 'format') f.setFormatDirty();
+    if (change === 'blocked') {f.checked.phase = 'blocked'; f.checked.binding = null;}
+    if (change === 'consumed') f.checked.attempted = true;
+    // The real controller removes a binding when connection context changes.
+    if (change === 'disconnected') {f.checked.phase = 'stale'; f.checked.binding = null;}
+    f.finish(); await pending;
+    assert.equal(f.calls.some(call => call.kind === 'render'), false, change);
+  }
+  const unavailable = generationFixture(); unavailable.disable(); await unavailable.generate(); assert.deepEqual(unavailable.calls, []);
 });

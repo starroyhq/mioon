@@ -1,6 +1,6 @@
 import React from 'react';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
-import {MoreHorizontal, Trash2, ArrowLeftToLine, Play, CornerUpLeft, AlertTriangle} from '@mioon/ui/components/workbench-icons';
+import {MoreHorizontal, Trash2, ArrowLeftToLine, Play, CornerUpLeft, AlertTriangle, Scissors, FolderOpen, Replace} from '@mioon/ui/components/workbench-icons';
 import {Button} from '@mioon/ui/components/button';
 import {Dialog, DialogContent, DialogDescription, DialogTitle} from '@mioon/ui/components/dialog';
 import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger} from '@mioon/ui/components/dropdown-menu';
@@ -61,15 +61,18 @@ export function TimelineRemovalShortcuts({disabled, request}: {disabled: boolean
   return null;
 }
 
-export function ClipActionsMenu({disabled, disabledHint, rippleDisabled = false, onRemove, onRippleRemove, onPreview, onReturnToSource}: {
+export function ClipActionsMenu({disabled, disabledHint, rippleDisabled = false, onRemove, onRippleRemove, onPreview, onReturnToSource, onSplit, splitDisabled = false, onShowAsset, onReplaceSource}: {
   disabled: boolean; disabledHint?: string; rippleDisabled?: boolean; onRemove?: () => void; onRippleRemove?: () => void;
-  onPreview?: () => void; onReturnToSource?: () => void;
+  onPreview?: () => void; onReturnToSource?: () => void; onSplit?: () => unknown; splitDisabled?: boolean; onShowAsset?: () => unknown; onReplaceSource?: () => unknown;
 }) {
   const {t} = useI18n();
   return <DropdownMenu><DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" type="button" />} aria-label={t('edit.clip.more')} title={disabledHint} data-testid="clip-more"><MoreHorizontal size={16} /></DropdownMenuTrigger><DropdownMenuContent className="clip-actions-menu" align="end">
-    {onPreview && <DropdownMenuItem onClick={onPreview}><Play size={14} />{t('timeline.inspector.previewSource')}</DropdownMenuItem>}
+    {onSplit && <DropdownMenuItem data-testid="clip-menu-split" disabled={disabled || splitDisabled} onClick={() => {void onSplit();}}><Scissors size={14} />{t('timeline.split.action')}<DropdownMenuShortcut>{t('round3.clip.splitShortcut')}</DropdownMenuShortcut></DropdownMenuItem>}
+    {onShowAsset && <DropdownMenuItem data-testid="clip-menu-show-asset" onClick={() => {void onShowAsset();}}><FolderOpen size={14} />{t('round3.clip.showAsset')}</DropdownMenuItem>}
+    {onReplaceSource && <DropdownMenuItem data-testid="clip-menu-replace-source" disabled={disabled} onClick={() => {void onReplaceSource();}}><Replace size={14} />{t('round3.clip.replaceSource')}</DropdownMenuItem>}
     {onReturnToSource && <DropdownMenuItem onClick={onReturnToSource}><CornerUpLeft size={14} />{t('timeline.inspector.returnSource')}</DropdownMenuItem>}
-    {(onPreview || onReturnToSource) && <DropdownMenuSeparator />}
+    {onPreview && <DropdownMenuItem onClick={onPreview}><Play size={14} />{t('timeline.inspector.previewSource')}</DropdownMenuItem>}
+    {(onSplit || onShowAsset || onReplaceSource || onPreview || onReturnToSource) && (onRemove || onRippleRemove) && <DropdownMenuSeparator />}
     {onRemove && <DropdownMenuItem variant="destructive" data-testid="remove-clip" disabled={disabled} onClick={onRemove}><Trash2 size={14} />{t('edit.remove.action')}<DropdownMenuShortcut>⌫</DropdownMenuShortcut></DropdownMenuItem>}
     {onRippleRemove && <DropdownMenuItem variant="destructive" data-testid="ripple-remove-clip" disabled={disabled || rippleDisabled} onClick={onRippleRemove}><ArrowLeftToLine size={14} />{t('edit.remove.ripple')}<DropdownMenuShortcut>⇧⌫</DropdownMenuShortcut></DropdownMenuItem>}
   </DropdownMenuContent></DropdownMenu>;

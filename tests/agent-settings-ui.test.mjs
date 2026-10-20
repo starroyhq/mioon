@@ -206,6 +206,7 @@ function uiHarness(client) {
     if (id === '../../../packages/i18n/src/index.ts') return i18n;
     if (id === 'react') return react;
     if (id === './settings-navigation-state.ts') return navigation;
+    if (id === './AgentTaskPolicy.tsx') return {__esModule:true,default:'AgentTaskPolicy'};
     if (id === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
     if (id === './agent-settings.ts') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
     if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
@@ -257,7 +258,7 @@ test('settings integration stays in the shared dock, uses local controls and has
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /<AgentWorkspace/); assert.match(app, /data-testid="agent-settings-open"/);
   assert.match(source, /from '\.\/WorkspaceControls\.tsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
-  assert.match(localizedSource(source), /连接设置不会发起模型请求；每次发送都需确认聊天文字、项目只读检查、选中镜头或片段提议范围/);
+  assert.match(localizedSource(source), /连接用于项目智能助理任务；发送授权与各档位执行确认分别管理/);
   assert.doesNotMatch(source, /尚无工具执行/); assert.match(localizedSource(source), /尚未验证连接/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);
   assert.doesNotMatch(app, /showAgentSettings|showAgentChat/);
@@ -322,19 +323,16 @@ test('Qwen Responses guidance keeps qwen-plus until the user types the documente
   assert.equal(f.calls.length, 0); h.change('agent-settings-model', 'qwen3.8-flash'); assert.equal(h.find('agent-settings-model').props.value, 'qwen3.8-flash'); h.unmount();
 });
 
-test('actual selected Responses guidance describes consented read tools and separately reviewed shot edits without promising reasoning or generation', async () => {
+test('actual selected Responses guidance describes multi-step tasks constrained by execution tiers and authorization', async () => {
   const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render();
   for (const preset of ['openai', 'custom', 'ollama']) {
     h.change('agent-settings-preset', preset);
     assert.equal(h.find('agent-settings-model-guidance'), undefined);
     h.change('agent-settings-protocol', 'responses');
     const guidance = JSON.stringify(h.find('agent-settings-model-guidance'));
-    assert.match(guidance, /仅支持非思考模式/);
-    assert.match(guidance, /选择并确认项目只读检查后，每轮最多 1 次只读工具调用、2 次模型请求/);
-    assert.match(guidance, /镜头标题与画面描述的修改需另选提议模式并逐份批准/);
-    assert.match(guidance, /不支持媒体生成/);
-    assert.doesNotMatch(guidance, /不支持项目编辑|自动应用|自动批准/);
-    assert.doesNotMatch(guidance, /不支持工具|尚无工具|无工具执行|仅支持非思考文字对话/);
+    assert.match(guidance, /支持连续多步任务与工具往返/);
+    assert.match(guidance, /实际操作受执行档位、授权和步数上限约束/);
+    assert.doesNotMatch(guidance, /每轮最多 1 次只读工具调用|2 次模型请求|不支持媒体生成|自动批准/);
     if (preset === 'custom') assert.match(guidance, /兼容性未经验证/);
     h.change('agent-settings-protocol', 'chat_completions');
     assert.equal(h.find('agent-settings-model-guidance'), undefined);

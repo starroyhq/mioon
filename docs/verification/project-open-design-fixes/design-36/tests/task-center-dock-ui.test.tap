@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: actual TaskCenter renders an inline named dock with keyboard-scrollable body and no modal controls
+ok 1 - actual TaskCenter renders an inline named dock with keyboard-scrollable body and no modal controls
+  ---
+  duration_ms: 0.941292
+  type: 'test'
+  ...
+# Subtest: mount, rerender and disclosure expansion execute nothing; selected tasks retain exact operation inputs
+ok 2 - mount, rerender and disclosure expansion execute nothing; selected tasks retain exact operation inputs
+  ---
+  duration_ms: 70.66825
+  type: 'test'
+  ...
+# Subtest: task list selects one full detail, prioritizes unknown outcomes and preserves visible reconciliation identities
+ok 3 - task list selects one full detail, prioritizes unknown outcomes and preserves visible reconciliation identities
+  ---
+  duration_ms: 15.195084
+  type: 'test'
+  ...
+# Subtest: switching task details revokes retained actions and pending confirmations without dispatching on selection
+ok 4 - switching task details revokes retained actions and pending confirmations without dispatching on selection
+  ---
+  duration_ms: 11.174708
+  type: 'test'
+  ...
+# Subtest: local search and status filters use loaded entries only, keep cards mounted and revoke hidden detail actions
+ok 5 - local search and status filters use loaded entries only, keep cards mounted and revoke hidden detail actions
+  ---
+  duration_ms: 17.116292
+  type: 'test'
+  ...
+# Subtest: search, filters and no-match state relabel in four languages without fetching or changing task data
+ok 6 - search, filters and no-match state relabel in four languages without fetching or changing task data
+  ---
+  duration_ms: 21.669625
+  type: 'test'
+  ...
+# Subtest: all retained task actions reject hidden, unmounted, changed-scope and leave-return pane lifetimes
+ok 7 - all retained task actions reject hidden, unmounted, changed-scope and leave-return pane lifetimes
+  ---
+  duration_ms: 103.747959
+  type: 'test'
+  ...
+# Subtest: hidden initial render cannot admit clicks and a null or false App capture fails closed
+ok 8 - hidden initial render cannot admit clicks and a null or false App capture fails closed
+  ---
+  duration_ms: 26.58125
+  type: 'test'
+  ...
+# Subtest: cancel confirmation admits only the current context and pane after the awaited decision
+ok 9 - cancel confirmation admits only the current context and pane after the awaited decision
+  ---
+  duration_ms: 148.158958
+  type: 'test'
+  ...
+# Subtest: task list and details scroll independently while narrow docks wrap and retain action controls
+ok 10 - task list and details scroll independently while narrow docks wrap and retain action controls
+  ---
+  duration_ms: 2.313542
+  type: 'test'
+  ...
+# Subtest: pending task confirmation relabels across four languages while retaining its exact original cancellation target
+ok 11 - pending task confirmation relabels across four languages while retaining its exact original cancellation target
+  ---
+  duration_ms: 11.955334
+  type: 'test'
+  ...
+# Subtest: local task list error descriptors relabel without leaking raw diagnostics or reloading
+ok 12 - local task list error descriptors relabel without leaking raw diagnostics or reloading
+  ---
+  duration_ms: 14.152334
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1529.586667

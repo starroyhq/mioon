@@ -14,6 +14,7 @@
     "./local-delivery": "./src/local-delivery.ts",
     "./local-shot-text": "./src/local-shot-text.ts",
     "./last-project": "./src/last-project.ts",
+    "./agent-tasks-v2": "./src/agent-tasks-v2.ts",
     "./agent-timeline-gain": "./src/agent-timeline-gain.ts",
     "./timeline-audio-preview": "./src/timeline-audio-preview.ts",
     "./timeline-audio-continuous": "./src/timeline-audio-continuous.ts",
@@ -25,6 +26,7 @@
     "./lut-resources": "./src/lut-resources.ts",
     "./timeline-colour": "./src/timeline-colour.ts",
     "./workspace-scope": "./src/workspace-scope.ts",
+    "./loudness-range": "./src/loudness-range.ts",
     "./timeline-clip-loudness": "./src/timeline-clip-loudness.ts"
   },
   "dependencies": {

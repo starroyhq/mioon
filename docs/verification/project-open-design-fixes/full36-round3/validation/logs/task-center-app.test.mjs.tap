@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: actual Tasks entry reveals its overlay without changing the dock, drafts or business state
+ok 1 - actual Tasks entry reveals its overlay without changing the dock, drafts or business state
+  ---
+  duration_ms: 23.496291
+  type: 'test'
+  ...
+# Subtest: actual Tasks view capture is separate from a generic delayed reveal capture
+ok 2 - actual Tasks view capture is separate from a generic delayed reveal capture
+  ---
+  duration_ms: 1.188416
+  type: 'test'
+  ...
+# Subtest: a retained disconnected clip blocks durable dispatch and recovery before touching task state
+ok 3 - a retained disconnected clip blocks durable dispatch and recovery before touching task state
+  ---
+  duration_ms: 1.7485
+  type: 'test'
+  ...
+# Subtest: actual view-shot bridge reaches Properties and the fixed shot without using the old async inspect path
+ok 4 - actual view-shot bridge reaches Properties and the fixed shot without using the old async inspect path
+  ---
+  duration_ms: 1.19
+  type: 'test'
+  ...
+# Subtest: actual Tasks target guard preserves inputs when cancel occurs during confirmation
+ok 5 - actual Tasks target guard preserves inputs when cancel occurs during confirmation
+  ---
+  duration_ms: 2.395
+  type: 'test'
+  ...
+# Subtest: actual Tasks target guard preserves inputs when hidden occurs during confirmation
+ok 6 - actual Tasks target guard preserves inputs when hidden occurs during confirmation
+  ---
+  duration_ms: 1.804666
+  type: 'test'
+  ...
+# Subtest: actual Tasks target guard preserves inputs when panel occurs during confirmation
+ok 7 - actual Tasks target guard preserves inputs when panel occurs during confirmation
+  ---
+  duration_ms: 2.805292
+  type: 'test'
+  ...
+# Subtest: actual Tasks target guard preserves inputs when project occurs during confirmation
+ok 8 - actual Tasks target guard preserves inputs when project occurs during confirmation
+  ---
+  duration_ms: 2.272875
+  type: 'test'
+  ...
+# Subtest: actual Tasks target guard preserves inputs when workspace occurs during confirmation
+ok 9 - actual Tasks target guard preserves inputs when workspace occurs during confirmation
+  ---
+  duration_ms: 1.98775
+  type: 'test'
+  ...
+# Subtest: actual Tasks target guard preserves inputs when job occurs during confirmation
+ok 10 - actual Tasks target guard preserves inputs when job occurs during confirmation
+  ---
+  duration_ms: 2.361959
+  type: 'test'
+  ...
+# Subtest: actual Tasks target guard preserves inputs when shot occurs during confirmation
+ok 11 - actual Tasks target guard preserves inputs when shot occurs during confirmation
+  ---
+  duration_ms: 1.686208
+  type: 'test'
+  ...
+# Subtest: actual Tasks target guard preserves inputs when reboundJob occurs during confirmation
+ok 12 - actual Tasks target guard preserves inputs when reboundJob occurs during confirmation
+  ---
+  duration_ms: 2.06825
+  type: 'test'
+  ...
+# Subtest: actual newer Tasks shot choice invalidates earlier pending confirmation before discard
+ok 13 - actual newer Tasks shot choice invalidates earlier pending confirmation before discard
+  ---
+  duration_ms: 2.143375
+  type: 'test'
+  ...
+# Subtest: direct timeline.format.set runner cannot steal the dock after a delayed unknown result
+ok 14 - direct timeline.format.set runner cannot steal the dock after a delayed unknown result
+  ---
+  duration_ms: 0.947833
+  type: 'test'
+  ...
+# Subtest: direct timeline.subtitle.add runner cannot steal the dock after a delayed unknown result
+ok 15 - direct timeline.subtitle.add runner cannot steal the dock after a delayed unknown result
+  ---
+  duration_ms: 1.117667
+  type: 'test'
+  ...
+# Subtest: direct subject.create runner cannot steal the dock after a delayed unknown result
+ok 16 - direct subject.create runner cannot steal the dock after a delayed unknown result
+  ---
+  duration_ms: 0.708625
+  type: 'test'
+  ...
+# Subtest: delayed unknown still reveals Tasks when the original view choice is current
+ok 17 - delayed unknown still reveals Tasks when the original view choice is current
+  ---
+  duration_ms: 1.10875
+  type: 'test'
+  ...
+# Subtest: already accepted exact result still acknowledges and refreshes after the user leaves Tasks
+ok 18 - already accepted exact result still acknowledges and refreshes after the user leaves Tasks
+  ---
+  duration_ms: 0.94575
+  type: 'test'
+  ...
+# Subtest: Tasks recovery lookup loses execution and notice authority when the pane hides
+ok 19 - Tasks recovery lookup loses execution and notice authority when the pane hides
+  ---
+  duration_ms: 1.136458
+  type: 'test'
+  ...
+# Subtest: Tasks recovery handles an applied receipt after hiding without rewriting drafts or opening panels
+ok 20 - Tasks recovery handles an applied receipt after hiding without rewriting drafts or opening panels
+  ---
+  duration_ms: 0.899791
+  type: 'test'
+  ...
+# Subtest: Tasks hidden recovery 401 retains authentication handling, changed project=false
+ok 21 - Tasks hidden recovery 401 retains authentication handling, changed project=false
+  ---
+  duration_ms: 0.851458
+  type: 'test'
+  ...
+# Subtest: Tasks hidden recovery 401 retains authentication handling, changed project=true
+ok 22 - Tasks hidden recovery 401 retains authentication handling, changed project=true
+  ---
+  duration_ms: 1.123875
+  type: 'test'
+  ...
+# Subtest: paid retry keeps its Tasks review and rejects a revoked pane before submission
+ok 23 - paid retry keeps its Tasks review and rejects a revoked pane before submission
+  ---
+  duration_ms: 1.209542
+  type: 'test'
+  ...
+# Subtest: actual App keeps retained owners mounted and routes task opening through its overlay
+ok 24 - actual App keeps retained owners mounted and routes task opening through its overlay
+  ---
+  duration_ms: 1.335958
+  type: 'test'
+  ...
+# Subtest: home or a failed opening grants neither task observation nor delayed reveal authority
+ok 25 - home or a failed opening grants neither task observation nor delayed reveal authority
+  ---
+  duration_ms: 1.016458
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 278.57275

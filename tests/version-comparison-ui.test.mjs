@@ -25,7 +25,7 @@ function harness() {
     useLayoutEffect: effect };
   const t = (key, params = {}) => comparisonMessages[key] ? comparisonMessages[key][locale].replace(/\{(\w+)\}/g, (_, k) => String(params[k])) : translate(locale, key, params);
   const module = { exports: {} };
-  Function('module', 'exports', 'require', 'document', 'window', code)(module, module.exports, name => name === 'react' ? react : name.includes('I18nProvider') ? { useI18n: () => ({ t, formatDate: value => value, formatNumber: value => String(value) }) } : name.includes('version-comparison-state') ? state : name.includes('comparison-playback') ? { createComparisonPlayback } : name.includes('comparison-details') ? { comparisonDetailRows } : name.includes('/switch') ? { Switch: 'switch' } : name.includes('workbench-icons') ? { Play: 'svg', Pause: 'svg' } : name.includes('button') ? { Button: 'button' } : name.includes('/dialog') ? Object.fromEntries(['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription', 'DialogClose'].map(key => [key, key])) : {}, document, window);
+  Function('module', 'exports', 'require', 'document', 'window', code)(module, module.exports, name => name === 'react' ? react : name.includes('I18nProvider') ? { useI18n: () => ({ t, formatDate: value => value, formatNumber: value => String(value) }) } : name.includes('version-comparison-state') ? state : name.includes('comparison-playback') ? { createComparisonPlayback } : name.includes('comparison-details') ? { comparisonDetailRows } : name.includes('/switch') ? { Switch: 'switch' } : name.includes('workbench-icons') ? { Play: 'svg', Pause: 'svg', MoreHorizontal: 'svg' } : name.includes('button') ? { Button: 'button' } : name.includes('/dialog') ? Object.fromEntries(['Dialog', 'DialogContent', 'DialogTitle', 'DialogDescription', 'DialogClose'].map(key => [key, key])) : {}, document, window);
   function all(node, predicate, results = []) { if (node && typeof node === 'object') { if (predicate(node)) results.push(node); for (const child of Array.isArray(node) ? node : node.children || []) all(child, predicate, results); } return results; }
   const props = { context: context(), getContext: () => props.context, busy: false, onClose: () => closes++, onUse: b => used.push(b), onBeforePlay: () => ownerCalls++, onRegisterMediaPause: pause => { registered = pause; return () => { registered = null; }; } };
   function render(patch = {}) { Object.assign(props, patch); cursor = 0; tree = module.exports.default(props); while (pending.length) pending.shift()(); return tree; }
@@ -129,5 +129,17 @@ test('enabling synchronized playback is explicit and does not start either decod
   h.find('comparison-sync').props.onCheckedChange(true); h.render();
   assert.ok(h.videos().every(node => node.props.controls === false)); assert.equal(h.ownerCalls(), 0);
   assert.ok(h.find('comparison-shared-play')); assert.ok(media.every(element => element.pauses > 0));
+  h.unmount();
+});
+
+
+test('comparison keeps every parameter row in the body and version mutations in the fixed footer', () => {
+  const h = harness(); h.render({ onAdd() {} }); h.choose('A', 3); h.choose('B', 4);
+  const tree = h.render();
+  function all(node, predicate) { if (!node || typeof node !== 'object') return []; return [...(predicate(node) ? [node] : []), ...(Array.isArray(node) ? node : node.children || []).flatMap(child => all(child, predicate))]; }
+  const footer = all(tree, node => node.type === 'footer')[0], body = all(tree, node => node.props?.className === 'comparison-content')[0];
+  assert.equal(all(footer, node => /^comparison-(use|add)-[AB]$/.test(node.props?.['data-testid'] || '')).length, 4);
+  assert.equal(all(body, node => /^comparison-(use|add)-[AB]$/.test(node.props?.['data-testid'] || '')).length, 0);
+  const rows = h.find('comparison-differences').children[1].children[0]; assert.equal(rows.length, 8);
   h.unmount();
 });

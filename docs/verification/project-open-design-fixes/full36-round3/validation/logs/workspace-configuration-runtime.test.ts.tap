@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: workspace settings persist revisioned live opt-in independently of process.env and reject stale writes
+ok 1 - workspace settings persist revisioned live opt-in independently of process.env and reject stale writes
+  ---
+  duration_ms: 964.326958
+  type: 'test'
+  ...
+# Subtest: public settings and restore inputs never accept arbitrary filesystem paths or implicit confirmation
+ok 2 - public settings and restore inputs never accept arbitrary filesystem paths or implicit confirmation
+  ---
+  duration_ms: 897.654041
+  type: 'test'
+  ...
+# Subtest: live SQLite backup preserves committed WAL data and managed media, keeps source open, and replays exact requests
+ok 3 - live SQLite backup preserves committed WAL data and managed media, keeps source open, and replays exact requests
+  ---
+  duration_ms: 1509.8245
+  type: 'test'
+  ...
+# Subtest: backup queue excludes concurrent mutations and rejects active or unaccounted task state
+ok 4 - backup queue excludes concurrent mutations and rejects active or unaccounted task state
+  ---
+  duration_ms: 1096.1315
+  type: 'test'
+  ...
+# Subtest: a same-connection database mutation during online snapshot is rejected without rolling back the user edit
+ok 5 - a same-connection database mutation during online snapshot is rejected without rolling back the user edit
+  ---
+  duration_ms: 902.548584
+  type: 'test'
+  ...
+# Subtest: read-only activity after maintenance admission does not invalidate a stable snapshot
+ok 6 - read-only activity after maintenance admission does not invalidate a stable snapshot
+  ---
+  duration_ms: 1067.235625
+  type: 'test'
+  ...
+# Subtest: cancelled generation with a paid or remote submission remains a backup and restore blocker
+ok 7 - cancelled generation with a paid or remote submission remains a backup and restore blocker
+  ---
+  duration_ms: 1124.019875
+  type: 'test'
+  ...
+# Subtest: confirmed restore stages a separate guarded workspace and restart activation never overwrites original data
+ok 8 - confirmed restore stages a separate guarded workspace and restart activation never overwrites original data
+  ---
+  duration_ms: 1940.944459
+  type: 'test'
+  ...
+# Subtest: restore refuses unresolved work before creating an activation pointer
+ok 9 - restore refuses unresolved work before creating an activation pointer
+  ---
+  duration_ms: 1087.172209
+  type: 'test'
+  ...
+# Subtest: automatic backup has a real persisted due time, only runs idle, and stop/drain prevents further scheduling
+ok 10 - automatic backup has a real persisted due time, only runs idle, and stop/drain prevents further scheduling
+  ---
+  duration_ms: 1092.186708
+  type: 'test'
+  ...
+# Subtest: bounded browser transfer keeps original format1 bytes and imports under a server-generated ID without accepting a path
+ok 11 - bounded browser transfer keeps original format1 bytes and imports under a server-generated ID without accepting a path
+  ---
+  duration_ms: 1204.614084
+  type: 'test'
+  ...
+# Subtest: request keys replay only the original backup operation and trigger
+ok 12 - request keys replay only the original backup operation and trigger
+  ---
+  duration_ms: 1198.129875
+  type: 'test'
+  ...
+# Subtest: backup uploads reject traversal, links/arbitrary names, oversized headers and trailing bytes
+ok 13 - backup uploads reject traversal, links/arbitrary names, oversized headers and trailing bytes
+  ---
+  duration_ms: 1205.995916
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 15595.296916

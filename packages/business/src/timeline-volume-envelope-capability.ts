@@ -1,3 +1,7 @@
+import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
+import {validateWorkspaceRestoreSchemaV51} from './workspace-restore-schema-v51.ts';
+import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
+import {validateWorkspaceRestoreSchemaV53} from './workspace-restore-schema-v53.ts';
 import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
 import {validateWorkspaceRestoreSchemaV49} from './workspace-restore-schema-v49.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -21,6 +25,10 @@ export function readTimelineVolumeEnvelopeCapability(db:DatabaseSync):TimelineVo
    if(profile.schemaVersion===40&&profile.profile==='ordinary'){validateWorkspaceSchema40(db);editable=true;}
   }
   else if(role==='restored-41-evidence'){runtime.validateRestored41(db);editable=true;}
+  else if(role==='ordinary-52'){validateWorkspaceSchema52(db);editable=true;}
+  else if(role==='restored-53-evidence'){validateWorkspaceRestoreSchemaV53(db);editable=true;}
+  else if(role==='ordinary-50'){validateWorkspaceSchema50(db);editable=true;}
+  else if(role==='restored-51-evidence'){validateWorkspaceRestoreSchemaV51(db);editable=true;}
   else if(role==='ordinary-48'){validateWorkspaceSchema48(db);editable=true;}
   else if(role==='restored-49-evidence'){validateWorkspaceRestoreSchemaV49(db);editable=true;}
   else if(role==='ordinary-44'){validateWorkspaceSchema44(db);editable=true;}

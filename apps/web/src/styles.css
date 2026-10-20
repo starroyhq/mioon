@@ -578,7 +578,7 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 .shell-redesign .recall-timeline { min-height: var(--wb-timeline-collapsed); height: var(--wb-timeline-collapsed); }
 .shell-redesign:not(.dock-narrow).timeline-collapsed .dock-timeline > .timeline-panel > .edit-timeline-toolbar { height: calc(var(--wb-timeline-collapsed) - 2px); min-height: calc(var(--wb-timeline-collapsed) - 2px); border-bottom: 0; }
 /* Independent shell toast: legacy bottom/center rules belong to the old layout. */
-.workbench-toast { position: fixed; top: calc(var(--wb-topbar) + var(--wb-space-2)); right: var(--wb-space-3); z-index: 110; display: flex; align-items: center; gap: var(--wb-space-2); width: max-content; max-width: min(calc(var(--wb-inspector-width) - var(--wb-space-6)), calc(var(--mioon-viewport-width, 100vw) - var(--wb-space-6))); max-height: calc(var(--mioon-viewport-height, 100dvh) - var(--wb-topbar) - var(--wb-space-6)); overflow: auto; padding: var(--wb-space-3); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-panel); background: var(--wb-raised); color: var(--wb-text); box-shadow: var(--wb-shadow); font-size: var(--wb-text-label); line-height: 1.5; animation: workbench-toast-in .2s ease-out; }
+.workbench-toast { position: fixed; top: calc(var(--wb-topbar) + 48px); right: var(--wb-space-3); z-index: 110; display: flex; align-items: center; gap: var(--wb-space-2); width: max-content; max-width: min(calc(var(--wb-inspector-width) - var(--wb-space-6)), calc(var(--mioon-viewport-width, 100vw) - var(--wb-space-6))); max-height: calc(var(--mioon-viewport-height, 100dvh) - var(--wb-topbar) - var(--wb-space-6)); overflow: auto; padding: var(--wb-space-3); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-panel); background: var(--wb-raised); color: var(--wb-text); box-shadow: var(--wb-shadow); font-size: var(--wb-text-label); line-height: 1.5; animation: workbench-toast-in .2s ease-out; }
 .workbench-toast > span { min-width: 0; overflow-wrap: anywhere; }
 .workbench-toast > .icon-button { flex: none; color: inherit; }
 .workbench-toast.error { border-color: var(--wb-danger); }
@@ -706,3 +706,5 @@ body:has(.agent-chat-dialog) [role="presentation"]:has(>[data-slot="tooltip-cont
 }
 .shell-redesign.mode-canvas .canvas-controls { left: calc(var(--dock-assets) + 18px); bottom: 12px; }
 .shell-redesign.dock-narrow.mode-canvas .canvas-controls { left: 12px; bottom: 12px; }
+
+.status-dot.neutral{background:var(--wb-muted)}.dock-resize:focus-visible{outline:none;background:transparent}.dock-resize:focus-visible>span{opacity:1;background:var(--wb-accent)}

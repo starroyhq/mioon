@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureTaskWorkspaceIntent, navigateTaskShot} from '../apps/web/src/task-workspace-intent.ts';
+import {findGenerationProvider, generationProviderForModel, generationProviderIdentity, generationParameters} from '../apps/web/src/generation-settings.ts';
+import {parseVideoBinding, videoBindingCapabilities} from '../packages/contracts/src/video-providers.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -15,9 +17,9 @@ const make=(code,deps,names)=>Function(...Object.keys(deps),`${code}\nreturn {${
 const gate=()=>{let resolve;const promise=new Promise(r=>{resolve=r;});return {promise,resolve};};
 const projectId='11111111-1111-4111-8111-111111111111',shotId='22222222-2222-4222-8222-222222222222',jobId='33333333-3333-4333-8333-333333333333';
 function harness() {
- const state={projectReady:true,overlay:'tasks',dock:'properties',page:'subtitle',mode:'editing',confirm:[],reveal:[],notice:[],auth:[],refresh:[],ack:[],busy:[],draft:{name:'unsaved',startFrame:7}};
+ const state={projectReady:true,selectedTaskId:undefined,overlay:'tasks',dock:'properties',page:'subtitle',mode:'editing',confirm:[],reveal:[],notice:[],auth:[],refresh:[],ack:[],busy:[],draft:{name:'unsaved',startFrame:7}};
  const refs={importSession:{current:{active:true}},viewReady:{current:true},taskWorkspaceState:{current:{visible:true,connected:true}},currentProject:{current:projectId},projectEpoch:{current:2},navigationEpoch:{current:3},panelIntent:{current:4},workspaceRef:{current:{id:'original'}},taskShotAttempt:{current:0},dataRef:{current:{project:{id:projectId},jobs:[{id:jobId,shotId,projectId,status:'succeeded'}],shots:[{id:shotId,projectId}],timelineHistory:{revision:1}}}};
- const deps={message,msg:message,...createI18nTestContext(),...refs,clipConnectionBlocked:{current:false},clipDraftRef:{current:null},markPanelIntent:()=>refs.panelIntent.current++,setShowDelivery:value=>{if(value)state.overlay='delivery';else if(state.overlay==='delivery')state.overlay=null;},setShowImage:value=>{if(value)state.overlay='image';else if(state.overlay==='image')state.overlay=null;},setShowTasks:value=>{if(value){state.overlay='tasks';state.reveal.push(['tasks',true]);}else if(state.overlay==='tasks')state.overlay=null;},projectSessionReady:()=>state.projectReady,captureTaskWorkspaceIntent,navigateTaskShot,workspaceOriginScope:w=>w.id,
+ const deps={message,msg:message,...createI18nTestContext(),...refs,clipConnectionBlocked:{current:false},clipDraftRef:{current:null},markPanelIntent:()=>refs.panelIntent.current++,setSelectedTaskId:value=>{state.selectedTaskId=value;},setShowDelivery:value=>{if(value)state.overlay='delivery';else if(state.overlay==='delivery')state.overlay=null;},setShowImage:value=>{if(value)state.overlay='image';else if(state.overlay==='image')state.overlay=null;},setShowTasks:value=>{if(value){state.overlay='tasks';state.reveal.push(['tasks',true]);}else if(state.overlay==='tasks')state.overlay=null;},projectSessionReady:()=>state.projectReady,captureTaskWorkspaceIntent,navigateTaskShot,workspaceOriginScope:w=>w.id,
   guardNavigation:async(message,extra,canDiscard)=>{state.confirm.push({message,extra,canDiscard});return canDiscard();},
   setRightDockTab:value=>{state.dock=typeof value==='function'?value(state.dock):value;},setPropertiesPage:value=>{state.page=value;},
   setPanelOpen:(...args)=>{state.reveal.push(args);refs.panelIntent.current++;},updateView:(section,value)=>{state.reveal.push([section,value]);if(section==='activeMode')state.mode=value;},
@@ -31,9 +33,9 @@ function harness() {
 }
 
 test('actual Tasks entry reveals its overlay without changing the dock, drafts or business state',()=>{
- const h=harness(),before=structuredClone(h.state.draft);h.state.dock='delivery';assert.equal(h.openTasks(),true);
+ const h=harness(),before=structuredClone(h.state.draft);h.state.dock='delivery';assert.equal(h.openTasks(undefined,jobId),true);assert.equal(h.state.selectedTaskId,jobId);
  assert.equal(h.state.dock,'delivery');assert.equal(h.state.overlay,'tasks');assert.deepEqual(h.state.reveal,[['tasks',true]]);assert.deepEqual(h.state.draft,before);assert.equal(h.state.confirm.length,0);assert.equal(h.state.ack.length,0);
- const n=h.state.reveal.length;assert.equal(h.openTasks(()=>false),false);assert.equal(h.state.reveal.length,n);
+ const n=h.state.reveal.length;assert.equal(h.openTasks(()=>false,'obsolete-job'),false);assert.equal(h.state.reveal.length,n);assert.equal(h.state.selectedTaskId,jobId);
 });
 test('actual Tasks view capture is separate from a generic delayed reveal capture',()=>{
  const h=harness();h.refs.taskWorkspaceState.current.visible=false;
@@ -116,7 +118,7 @@ test('paid retry keeps its Tasks review and rejects a revoked pane before submis
  const code=section('  function retryGeneration(', '  async function createProject('),snapshot={title:'Fixed original',duration:4,aspectRatio:'16:9',referenceAssetIds:[]};
  const job={id:jobId,shotId,projectId,providerId:'synthetic-paid-adapter',model:'fixed-test-model',snapshot};
  const state={reviews:[],submitted:[],notices:[]},realConfirmRef={current:null};let viewCurrent=true;
- const deps={message,msg:message,...createI18nTestContext(),providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
+ const deps={message,msg:message,...createI18nTestContext(),findGenerationProvider,generationProviderForModel,generationProviderIdentity,generationParameters,parseVideoBinding,videoBindingCapabilities,providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
   dataRef:{current:{shots:[{id:shotId,projectId}],jobs:[job],assets:[]}},generationReviewScope:{current:{key:'tasks'}},realConfirmRef,
   setRealConfirm:value=>state.reviews.push(value),context:()=>({projectId,epoch:1}),isCurrent:()=>true,
   generationReferenceIdentity:()=> 'fixed-source',generationReferences:()=>({references:[]}),generationOptionsRef:{current:{}},generationSelection:()=>({}),
@@ -129,7 +131,7 @@ test('paid retry keeps its Tasks review and rejects a revoked pane before submis
 });
 
 test('actual App keeps retained owners mounted and routes task opening through its overlay',()=>{
- assert.doesNotMatch(app,/\bshowJobs\b|\bsetShowJobs\b/);assert.match(app+readFileSync(new URL('../apps/web/src/TaskPopover.tsx',import.meta.url),'utf8'),/right-dock-tab-tasks/);assert.match(app,/id="right-dock-tasks"[\s\S]*?<TaskCenter taskViewScope=/);
+ assert.doesNotMatch(app,/\bshowJobs\b|\bsetShowJobs\b/);assert.match(app+readFileSync(new URL('../apps/web/src/TaskPopover.tsx',import.meta.url),'utf8'),/right-dock-tab-tasks/);assert.match(app,/id="right-dock-tasks"[\s\S]*?<TaskCenter\b[^>]*selectedTaskId=\{selectedTaskId\}[^>]*taskViewScope=/);
  assert.match(app,/onInspectJob=\{inspectTaskJob(?: as never)?\}/);assert.match(app,/setShowTasks\(false\); setShowDelivery\(false\);/);
  for(const page of ['properties','agent','image','delivery','tasks'])assert.match(app,new RegExp(`id="right-dock-${page}"`));
  assert.match(app,/onReload=\{\(\(\) => tasksRef\.current!\.load\(currentProject\.current as string\)\) as never\}/);

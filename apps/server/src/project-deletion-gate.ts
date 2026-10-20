@@ -37,6 +37,7 @@ export function createProjectDeletionGate({subscribeMedia,busy,signal}:Options){
     assertIdle(projectId:string):void{
       if(closed||work.size||media.size||[...requests.values()].some(request=>request.operation!=='project.delete'||request.projectId!==projectId))busy();
     },
+    isQuiescent(ignored:readonly string[]=[]):boolean{return !closed&&!work.size&&!media.size&&[...requests.values()].every(request=>Boolean(request.operation&&ignored.includes(request.operation)));},
     close,
   };
 }

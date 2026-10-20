@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: workflow opens passively and latest check phase fences retained next handlers
+ok 1 - workflow opens passively and latest check phase fences retained next handlers
+  ---
+  duration_ms: 27.613833
+  type: 'test'
+  ...
+# Subtest: retained sections become both hidden and inert outside their step
+ok 2 - retained sections become both hidden and inert outside their step
+  ---
+  duration_ms: 3.214291
+  type: 'test'
+  ...
+# Subtest: settings estimate and the single check action stay in the fixed navigation footer
+ok 3 - settings estimate and the single check action stay in the fixed navigation footer
+  ---
+  duration_ms: 1.792708
+  type: 'test'
+  ...
+# Subtest: a shared sample-export lock blocks admission without becoming a formal export progress receipt
+ok 4 - a shared sample-export lock blocks admission without becoming a formal export progress receipt
+  ---
+  duration_ms: 3.881666
+  type: 'test'
+  ...
+# Subtest: pending and completed exports show their bound result without automatically checking or resubmitting
+ok 5 - pending and completed exports show their bound result without automatically checking or resubmitting
+  ---
+  duration_ms: 2.968792
+  type: 'test'
+  ...
+# Subtest: unmeasurable activity stays indeterminate and observations cannot cross export identities
+ok 6 - unmeasurable activity stays indeterminate and observations cannot cross export identities
+  ---
+  duration_ms: 18.652916
+  type: 'test'
+  ...
+# Subtest: cancellation is explicit, single-dispatch and cannot continue after owner changes
+ok 7 - cancellation is explicit, single-dispatch and cannot continue after owner changes
+  ---
+  duration_ms: 33.976959
+  type: 'test'
+  ...
+# Subtest: confirmation follows the latest cancellation callback when the same export starts running
+ok 8 - confirmation follows the latest cancellation callback when the same export starts running
+  ---
+  duration_ms: 3.815542
+  type: 'test'
+  ...
+# Subtest: an old cancel button cannot target a replacement export and project changes reset the workflow
+ok 9 - an old cancel button cannot target a replacement export and project changes reset the workflow
+  ---
+  duration_ms: 4.427083
+  type: 'test'
+  ...
+# Subtest: restored completion preserves existing download authority without enabling file recovery or native actions
+ok 10 - restored completion preserves existing download authority without enabling file recovery or native actions
+  ---
+  duration_ms: 2.313458
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 346.130333

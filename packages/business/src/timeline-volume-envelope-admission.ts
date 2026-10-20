@@ -1,3 +1,7 @@
+import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
+import {validateWorkspaceRestoreSchemaV51} from './workspace-restore-schema-v51.ts';
+import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
+import {validateWorkspaceRestoreSchemaV53} from './workspace-restore-schema-v53.ts';
 import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
 import {validateWorkspaceRestoreSchemaV49} from './workspace-restore-schema-v49.ts';
 import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
@@ -36,7 +40,11 @@ export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unkn
  try{
   const runtime=requireWorkspaceEnvelopeRuntime();
   const role=readCurrentWorkspaceRole(db);
-  if(role==='ordinary-48')validateWorkspaceSchema48(db);
+  if(role==='ordinary-52')validateWorkspaceSchema52(db);
+  else if(role==='restored-53-evidence')validateWorkspaceRestoreSchemaV53(db);
+  else if(role==='ordinary-50')validateWorkspaceSchema50(db);
+  else if(role==='restored-51-evidence')validateWorkspaceRestoreSchemaV51(db);
+  else if(role==='ordinary-48')validateWorkspaceSchema48(db);
   else if(role==='restored-49-evidence')validateWorkspaceRestoreSchemaV49(db);
   else if(role==='ordinary-44')validateWorkspaceSchema44(db);
   else if(role==='restored-45-evidence')validateWorkspaceRestoreSchemaV45(db);

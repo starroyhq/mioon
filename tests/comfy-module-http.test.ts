@@ -54,6 +54,12 @@ async function fixture(t: TestContext, {mode, comfyNetwork}: {mode?: string; com
   t.after(async () => { await server?.close(); await rm(root, {recursive: true, force: true}); });
   const start = (selected?: string) => startServer({dataDir: root, port: 0, token, ...(selected === undefined ? {} : {comfyModule: selected}), ...(comfyNetwork ? {comfyNetwork} : {})} as never);
   server = await start(mode);
+  // These cases isolate Comfy availability after the workspace-level opt-in.
+  // The settings response intentionally includes its local backup directory,
+  // so keep it outside the legacy image-route no-path disclosure assertion.
+  const optIn = await fetch(server.url + '/api/rpc', {method: 'POST', headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+    body: JSON.stringify({operation: 'workspace.settings.set', input: {expectedRevision: 0, liveGeneration: true}})});
+  assert.equal(optIn.status, 200);assert.equal(((await optIn.json()) as {data: {liveGeneration: boolean}}).data.liveGeneration, true);
   const f = {root, get server() { return server; },
     async request(route: string, {method = 'GET', input, authenticated = true, headers = {}}: {method?: string; input?: unknown; authenticated?: boolean; headers?: Record<string, string>} = {}) {
       const response = await fetch(server.url + route, {method, redirect: 'error', signal: AbortSignal.timeout(10000),

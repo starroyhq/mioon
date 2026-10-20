@@ -1,0 +1,11 @@
+{
+  "count": 64,
+  "missing": [],
+  "pageOverflow": [],
+  "reviewReports": [
+    "visual-matrix-zh.md",
+    "visual-matrix-en.md",
+    "visual-matrix-ja.md"
+  ],
+  "note": "64个代表状态逐张视觉复核，不是36页×16组合的576页穷举"
+}

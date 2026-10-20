@@ -7,6 +7,9 @@ import type {DatabaseSync,SQLInputValue} from 'node:sqlite';
 import {projectRenameInputSchema,projectDeleteInputSchema,projectDeleteManifestSchema} from '../../contracts/src/project-lifecycle.ts';
 import type {ProjectDeleteManifest} from '../../contracts/src/project-lifecycle.ts';
 import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
+import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
+import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
+const validateLifecycleSchema=(db:DatabaseSync):void=>{if(db.prepare('SELECT 1 FROM schema_version WHERE version=52').get()){validateWorkspaceSchema52(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=50').get())validateWorkspaceSchema50(db);else validateWorkspaceSchema48(db);};
 
 interface Store{db:DatabaseSync;root:string;get(table:string,id:string):unknown;put(table:string,value:Record<string,unknown>):unknown;tx<T>(callback:()=>T):T}
 export interface ProjectDeletionCompanions{assertDeletable(projectId:string):void;removeProject(projectId:string):void}
@@ -68,9 +71,12 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
       ['agent_edit_proposals',"status IN ('pending','approved','dispatching','unknown')"],
       ['agent_chat_runs',"status='running' OR json_extract(data,'$.modelRequestState') IN ('dispatch_started','unknown')"],
       ['agent_chat_steps',"status IN ('intent','dispatch_started','unknown')"],
+      ['agent_task_runs_v2',"status IN ('accepted','running','paused','awaiting_approval','interrupted')"],
+      ['agent_task_steps_v2',"status IN ('dispatch_started','unknown')"],
+      ['agent_task_edit_claims_v2','1=1'],
       ['waveform_cache',"status IN ('queued','running')"],
     ] as const;
-    for(const [table,predicate] of gates)if(db.prepare(`SELECT 1 FROM ${quote(table)} WHERE projectId=? AND (${predicate}) LIMIT 1`).get(projectId))fail('PROJECT_DELETE_BUSY');
+    for(const [table,predicate] of gates)if(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table)&&db.prepare(`SELECT 1 FROM ${quote(table)} WHERE projectId=? AND (${predicate}) LIMIT 1`).get(projectId))fail('PROJECT_DELETE_BUSY');
     companions?.assertDeletable(projectId);assertIdle();
   }
   function collect(projectId:string):{selected:Map<string,Row[]>;identities:Set<string>}{
@@ -120,6 +126,7 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
       if(info)sharedIdentities.add(`${info.dev}:${info.ino}`);
     }
     for(const row of selected.get('assets')??[]){const asset=decoded(row.data);if(typeof asset.relativePath!=='string')fail('PROJECT_DELETE_MEDIA_INVALID');if(others.has(asset.relativePath))continue;candidates.add(asset.relativePath);}
+    for(const row of selected.get('agent_task_imports_v2')??[]){if(typeof row.id!=='string'||row.relativePath!==`agent-imports/${row.id}.bin`)fail('PROJECT_DELETE_MEDIA_INVALID');candidates.add(String(row.relativePath));}
     for(const [table,directory] of [['image_tasks','image-staging'],['frame_tasks','frame-staging']] as const)for(const row of selected.get(table)??[]){if(typeof row.id!=='string'||!/^[a-f0-9-]{36}$/iu.test(row.id))fail();for(const extension of ['png','json'])candidates.add(`${directory}/${row.id}.${extension}`);}
     // Legacy video/export workers can leave an unpublished result or partial
     // file. Use the same exact accepted-task naming as cold-backup inventory;
@@ -133,7 +140,7 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
     }}finally{directory.closeSync();}
     const after=validateManagedDirectory(media,{root});if(!before||!after||before.dev!==after.dev||before.ino!==after.ino)fail('PROJECT_DELETE_MEDIA_INVALID');
     for(const relativePath of candidates){
-      if(!/^(?:media|image-staging|frame-staging)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u.test(relativePath))fail('PROJECT_DELETE_MEDIA_INVALID');
+      if(!/^(?:media|image-staging|frame-staging|agent-imports)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/u.test(relativePath))fail('PROJECT_DELETE_MEDIA_INVALID');
       let info;try{info=validateManagedFile(path.join(root,relativePath),{root,allowMissing:true});}catch{fail('PROJECT_DELETE_MEDIA_INVALID');}
       if(!info||sharedIdentities.has(`${info.dev}:${info.ino}`))continue;files.push({relativePath,dev:info.dev,ino:info.ino,size:info.size,mtimeMs:info.mtimeMs,birthtimeMs:info.birthtimeMs});
     }
@@ -169,7 +176,7 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
     owned();db.prepare('DELETE FROM project_deletion_cleanup WHERE requestId=?').run(requestId);return 'complete';
   }
   function rename(value:unknown):unknown{
-    owned();const input=parse(projectRenameInputSchema,value),digest=hash(input);validateWorkspaceSchema48(db);
+    owned();const input=parse(projectRenameInputSchema,value),digest=hash(input);validateLifecycleSchema(db);
     return store.tx(()=>{owned();const previous=db.prepare('SELECT projectId,digest,response FROM project_mutation_requests WHERE requestId=?').get(input.requestId);
       if(previous){if(previous.projectId!==input.projectId||previous.digest!==digest)fail('IDEMPOTENCY_CONFLICT');return decoded(previous.response);}
       const current=project(input.projectId);revision(current,input.expectedRevision);if(input.expectedRevision===Number.MAX_SAFE_INTEGER)fail('REVISION_CONFLICT');
@@ -178,7 +185,7 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
     });
   }
   function remove(value:unknown):unknown{
-    owned();const input=parse(projectDeleteInputSchema,value),digest=hash(input);validateWorkspaceSchema48(db);
+    owned();const input=parse(projectDeleteInputSchema,value),digest=hash(input);validateLifecycleSchema(db);
     const previous=db.prepare('SELECT projectId,digest FROM project_deletion_receipts WHERE requestId=?').get(input.requestId);
     if(previous){if(previous.projectId!==input.projectId||previous.digest!==digest)fail('IDEMPOTENCY_CONFLICT');return {requestId:input.requestId,projectId:input.projectId,deleted:true,cleanup:cleanup(input.requestId)};}
     if(!companions)fail('PROJECT_DELETE_COMPANION_UNAVAILABLE',503);

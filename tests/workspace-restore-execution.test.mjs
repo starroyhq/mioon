@@ -45,6 +45,18 @@ const isCode=code=>error=>error?.code===code;
 const tables=['projects','jobs','exports','edit_tasks','timelines','timeline_requests','timeline_history','timeline_history_cursors','workspace_restore_holds'];
 const snapshot=db=>JSON.stringify(Object.fromEntries(tables.map(table=>[table,db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
 const deniedRedesignInputs=projectId=>({
+ 'export.cancel':{projectId,exportId:randomUUID()},
+ 'export.activity.get':{projectId,exportId:randomUUID()},
+ 'export.output.get':{projectId,exportId:randomUUID()},
+ 'workspace.settings.get':{},
+ 'workspace.settings.set':{expectedRevision:0,liveGeneration:true},
+ 'workspace.backup.status':{},
+ 'workspace.backup.list':{},
+ 'workspace.backup.create':{requestId:randomUUID()},
+ 'workspace.backup.restore.stage':{requestId:randomUUID(),backupId:randomUUID(),confirmation:'RESTORE_BACKUP'},
+ 'task.disposition.list':{projectId,targets:[{kind:'generation',taskId:randomUUID()}]},
+ 'task.disposition.markFailed':{projectId,kind:'generation',taskId:randomUUID(),expectedRevision:1,expectedStatus:'submission_unknown',requestId:randomUUID(),confirm:true},
+ 'task.disposition.archiveCompleted':{projectId,targets:[{kind:'generation',taskId:randomUUID(),expectedRevision:1,expectedStatus:'succeeded'}],requestId:randomUUID()},
  'agent.authorization.list':{},
  'agent.authorization.grant':{requestId:randomUUID(),expectedRevision:0,expectedSettingsRevision:0,destination:'https://synthetic.invalid/v1/chat/completions',model:'synthetic-model',scope:'typed_chat_only'},
  'agent.authorization.revoke':{requestId:randomUUID(),expectedRevision:0,authorizationId:randomUUID()},
@@ -114,19 +126,19 @@ test('restored catalogue reports exact disabled media and redesign operations an
  assert.equal(existsSync(path.join(root,'agent-authorizations-v1.json')),false);
 });
 
-test('restored summary reads saved metadata in current49 and historical25/41 without writes or recent-opened access',async t=>{
- for(const version of [24,40,48])await t.test(`source${version} restored${version+1}`,async t=>{
+test('restored summary reads saved metadata in current51 and historical25/41 without writes or recent-opened access',async t=>{
+ for(const version of [24,40,50])await t.test(`source${version} restored${version+1}`,async t=>{
   const root=mkdtempSync(path.join(tmpdir(),'mioon-restored-summary-')),filename=path.join(root,'workbench.sqlite');
   let store,services;
   t.after(async()=>{await services?.drain();store?.close();rmSync(root,{recursive:true,force:true});});
-  if(version===48){const source=openStore(root);source.close();}
+  if(version===50){const source=openStore(root);source.close();}
   const db=new DatabaseSync(filename),projectId=randomUUID(),emptyId=randomUUID(),assetId=randomUUID(),timelineId=randomUUID(),trackId=randomUUID();
   const stamp='2026-10-19T00:00:00.000Z',bytes=Buffer.from('SYNTHETIC_OPAQUE_MEDIA_MUST_NOT_BE_DECODED'),relativePath=`media/${assetId}.png`;
   const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:stamp};
-  const width=version===48?1080:720,height=version===48?1920:1280;
+  const width=version===50?1080:720,height=version===50?1920:1280;
   try{
    db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;');
-   if(version!==48){
+   if(version!==50){
     initializeWorkspaceSchemaThrough24(db);
     if(version===40)for(const initialize of [initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38,initializeWorkspaceSchema40])initialize(db);
    }

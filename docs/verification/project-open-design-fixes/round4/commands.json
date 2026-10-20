@@ -1,0 +1,14 @@
+{
+  "typecheck": {
+    "command": "TMPDIR=/private/tmp node scripts/tooling.ts typecheck",
+    "exitCode": 0,
+    "log": "logs/typecheck.txt"
+  },
+  "build": {
+    "command": "TMPDIR=/private/tmp node scripts/tooling.ts build --channel=development",
+    "exitCode": 0,
+    "log": "logs/build.txt"
+  },
+  "testRunner": "TMPDIR=/private/tmp node --test <test file>; each file in an independent process with 90s or 120s timeout",
+  "initialI18nFailure": "Exact Mioon brand exception was stale after the prior round SettingsRoot branding correction; updated that single hash/reason, final 5/5 passed; no audit weakening"
+}

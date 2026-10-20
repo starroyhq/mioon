@@ -1,6 +1,9 @@
 import {volumeEnvelopeField, volumeEnvelopeProcessingProfile, volumeEnvelopeReadSnapshot} from '../../contracts/src/timeline-volume-envelope-processing.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
+import {createLoudnessRangeMeter} from './loudness-range-meter.ts';
+import {loudnessRangeMeasurementSchema} from '@mioon/contracts/loudness-range';
+import type {LoudnessRangeMeasurement} from '@mioon/contracts/loudness-range';
 import {createExportLoudnessAccumulator} from './export-loudness-meter.ts';
 import {TIMELINE_CLIP_LOUDNESS_LIMITS as LIMITS, TIMELINE_CLIP_LOUDNESS_PROFILE, timelineClipLoudnessInputSchema, isTimelineClipLoudnessResponse} from '@mioon/contracts/timeline-clip-loudness';
 import type {TimelineClipLoudnessInput, TimelineClipLoudnessResponse} from '@mioon/contracts/timeline-clip-loudness';
@@ -11,6 +14,7 @@ import type {ExportAudioObservationEntry} from './export-audio-observation.ts';
 import {planTimelineClipLoudnessDecode} from './timeline-clip-loudness-decoder.ts';
 import type {TimelineClipLoudnessSignal, TimelineClipLoudnessDecoder} from './timeline-clip-loudness-decoder.ts';
 import type {TimelineMixLoudnessTimeline, TimelineMixLoudnessAsset} from './timeline-mix-loudness-decoder.ts';
+import {prepareTimelineClipLoudnessCandidate} from './timeline-clip-loudness-candidate.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const codeOf = (value: unknown): string | undefined => object(value) && typeof value.code === 'string' ? value.code : undefined;
@@ -243,17 +247,23 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
       if (bytesHashed - previous !== source.sizeBytes || !object(value) || value.sha256 !== source.sha256 || value.sizeBytes !== source.sizeBytes ||
           value.file !== identity.file || !fileIdentity(value.info) || !sameFile(value.info, identity.info)) throw fault('TIMELINE_CLIP_LOUDNESS_STALE');
     }
-    async function measure(asset: TimelineMixLoudnessAsset): Promise<ExportLoudnessMeasurement> {
+    async function measure(asset: TimelineMixLoudnessAsset): Promise<{measurement: ExportLoudnessMeasurement; loudnessRange: LoudnessRangeMeasurement;
+      candidate?: NonNullable<TimelineClipLoudnessResponse['candidate']>}> {
       const durationFrames = initial.signal.clip.durationFrames;
       fence();
-      const meter = createExportLoudnessAccumulator(durationFrames / 30);
+      const meter = createExportLoudnessAccumulator(durationFrames / 30), rangeMeter = createLoudnessRangeMeter();
+      // A target is optional. Only its candidate measurement retains the
+      // complete bounded isolated float signal; ordinary analysis stays fully
+      // streaming. Adapters may reuse chunks, so retain owned bytes immediately.
+      const candidatePcm = input.target ? Buffer.allocUnsafe(initial.plan.pcmBytes) : null;
       let passBytes = 0;
       const decoded = await runtime.decode({...initial.signal, asset}, {signal, beforeEffect: fence, remainingMs, onPcm: chunk => {
         fence();
         if (!Buffer.isBuffer(chunk) || chunk.length > initial.plan.pcmBytes - passBytes || chunk.length > LIMITS.pcmBytes - pcmBytes)
           throw fault('TIMELINE_CLIP_LOUDNESS_INVALID_PCM');
+        meter.write(chunk); rangeMeter.push(chunk);
+        if (candidatePcm) chunk.copy(candidatePcm, passBytes);
         passBytes += chunk.length; pcmBytes += chunk.length;
-        meter.write(chunk);
         fence();
       }});
       fence();
@@ -263,7 +273,11 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
       // AAC's +/-100ms allowance is intentionally not authority for this lane.
       const result = exportLoudnessMeasurementSchema.safeParse(meter.finish());
       if (!result.success || result.data.sampleFrames !== durationFrames * 1600) throw fault('TIMELINE_CLIP_LOUDNESS_INVALID_PCM');
-      fence(); return result.data;
+      const loudnessRange = loudnessRangeMeasurementSchema.parse(rangeMeter.finish(durationFrames / 30));
+      fence();
+      const candidate = input.target && candidatePcm ? await prepareTimelineClipLoudnessCandidate({pcm: candidatePcm,
+        original: result.data, target: input.target, beforeGain: initial.signal.clip.gain, fence}) : undefined;
+      fence(); return {measurement: result.data, loudnessRange, ...(candidate ? {candidate} : {})};
     }
     async function runPreparation() {
       fence();
@@ -277,12 +291,12 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
         assets.set(source.id, Object.freeze({...assets.get(source.id)!, file: actual.file}));
       }
       for (const source of initial.sources) {await hash(source); fence();}
-      const measurement = await measure(assets.get(initial.signal.clip.assetId)!); fence();
+      const result = await measure(assets.get(initial.signal.clip.assetId)!); fence();
       // The measurement concerns exactly these same bytes. No partial result
       // survives a failed second hash, changed metadata, or ownership loss.
       for (const source of initial.sources) {await hash(source); fence();}
       if (bytesHashed !== initial.sources.reduce((sum, source) => sum + source.sizeBytes * 2, 0)) throw fault('TIMELINE_CLIP_LOUDNESS_STALE');
-      return measurement;
+      return result;
     }
     const work = runPreparation();
     const joined = (async () => {
@@ -323,7 +337,7 @@ export function createTimelineClipLoudnessServices(store: TimelineClipLoudnessSt
             durationFrames: clip.durationFrames, sourceInFrame: clip.sourceInFrame, gain: clip.gain,
             fadeInFrames: clip.fadeInFrames ?? 0, fadeOutFrames: clip.fadeOutFrames ?? 0,
             trackMuted: false, measurementStartFrame: 0, measurementEndFrame: clip.durationFrames},
-          measurement: result, checks: {bytesHashed, pcmBytes, decodeWorkFrames: initial.plan.decodeWorkFrames,
+          ...result, checks: {bytesHashed, pcmBytes, decodeWorkFrames: initial.plan.decodeWorkFrames,
             segmentCount: 1, passes: 1, audioFullyDecoded: true}};
         if (!isTimelineClipLoudnessResponse(response, input)) throw fault('TIMELINE_CLIP_LOUDNESS_INVALID_PCM');
         fence();

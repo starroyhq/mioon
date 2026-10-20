@@ -1,0 +1,148 @@
+TAP version 13
+# Subtest: H1 provides a dedicated typed project home boundary
+ok 1 - H1 provides a dedicated typed project home boundary
+  ---
+  duration_ms: 0.515792
+  type: 'test'
+  ...
+# Subtest: empty home is a standalone welcome without project controls or a modal
+ok 2 - empty home is a standalone welcome without project controls or a modal
+  ---
+  duration_ms: 263.4225
+  type: 'test'
+  ...
+# Subtest: real shared controls render keyboard-native page and project buttons with honest timestamps
+ok 3 - real shared controls render keyboard-native page and project buttons with honest timestamps
+  ---
+  duration_ms: 14.130917
+  type: 'test'
+  ...
+# Subtest: list errors do not masquerade as empty workspaces and keep refresh reachable
+ok 4 - list errors do not masquerade as empty workspaces and keep refresh reachable
+  ---
+  duration_ms: 0.79775
+  type: 'test'
+  ...
+# Subtest: opening and error states stay on home, identify the target, and offer an explicit retry
+ok 5 - opening and error states stay on home, identify the target, and offer an explicit retry
+  ---
+  duration_ms: 1.338667
+  type: 'test'
+  ...
+# Subtest: notices remain visible while workspace details and refresh stay reachable through Help
+ok 6 - notices remain visible while workspace details and refresh stay reachable through Help
+  ---
+  duration_ms: 11.12925
+  type: 'test'
+  ...
+# Subtest: actual callbacks dispatch only explicit list, retry, open, and page intent
+ok 7 - actual callbacks dispatch only explicit list, retry, open, and page intent
+  ---
+  duration_ms: 4.019667
+  type: 'test'
+  ...
+# Subtest: closing or hiding Help revokes its retained refresh callback and never reopens it implicitly
+ok 8 - closing or hiding Help revokes its retained refresh callback and never reopens it implicitly
+  ---
+  duration_ms: 4.818209
+  type: 'test'
+  ...
+# Subtest: Help refresh follows current busy and opening state while unknown mutations still permit list inspection
+ok 9 - Help refresh follows current busy and opening state while unknown mutations still permit list inspection
+  ---
+  duration_ms: 16.135958
+  type: 'test'
+  ...
+# Subtest: busy and opening disable repeated project actions including real shared keyboard handlers
+ok 10 - busy and opening disable repeated project actions including real shared keyboard handlers
+  ---
+  duration_ms: 6.53625
+  type: 'test'
+  ...
+# Subtest: opening cannot enter settings, while an error preserves controlled settings navigation
+ok 11 - opening cannot enter settings, while an error preserves controlled settings navigation
+  ---
+  duration_ms: 2.523959
+  type: 'test'
+  ...
+# Subtest: modal creation uses labeled shared inputs, 500-character direction and native form submission
+ok 12 - modal creation uses labeled shared inputs, 500-character direction and native form submission
+  ---
+  duration_ms: 6.4795
+  type: 'test'
+  ...
+# Subtest: required-name and length validation reject programmatic invalid submissions
+ok 13 - required-name and length validation reject programmatic invalid submissions
+  ---
+  duration_ms: 14.352459
+  type: 'test'
+  ...
+# Subtest: a form already open cannot submit after opening begins or the controlled page leaves
+ok 14 - a form already open cannot submit after opening begins or the controlled page leaves
+  ---
+  duration_ms: 7.848
+  type: 'test'
+  ...
+# Subtest: create trims inputs, dispatches once before a parent rerender, and clears only accepted success
+ok 15 - create trims inputs, dispatches once before a parent rerender, and clears only accepted success
+  ---
+  duration_ms: 3.900125
+  type: 'test'
+  ...
+# Subtest: rejected or unknown create results retain exact inputs and offer list checking without replay
+ok 16 - rejected or unknown create results retain exact inputs and offer list checking without replay
+  ---
+  duration_ms: 6.778417
+  type: 'test'
+  ...
+# Subtest: cancel, settings navigation, and a late unaccepted result never clear draft input or navigate
+ok 17 - cancel, settings navigation, and a late unaccepted result never clear draft input or navigate
+  ---
+  duration_ms: 4.670458
+  type: 'test'
+  ...
+# Subtest: classic JSX executes with explicit React import and presentation has no business dependencies
+ok 18 - classic JSX executes with explicit React import and presentation has no business dependencies
+  ---
+  duration_ms: 5.133208
+  type: 'test'
+  ...
+# Subtest: home styles are scoped and include bounded scrolling and narrow-window layout
+ok 19 - home styles are scoped and include bounded scrolling and narrow-window layout
+  ---
+  duration_ms: 0.852541
+  type: 'test'
+  ...
+# Subtest: mac-inset home header preserves native-control space and interactive no-drag boundaries
+ok 20 - mac-inset home header preserves native-control space and interactive no-drag boundaries
+  ---
+  duration_ms: 0.502417
+  type: 'test'
+  ...
+# Subtest: actual App wires the scoped home stylesheet without weakening TypeScript module checks
+ok 21 - actual App wires the scoped home stylesheet without weakening TypeScript module checks
+  ---
+  duration_ms: 0.205166
+  type: 'test'
+  ...
+# Subtest: native create intent effect opens once and retained inputs survive later same-version renders
+ok 22 - native create intent effect opens once and retained inputs survive later same-version renders
+  ---
+  duration_ms: 3.597708
+  type: 'test'
+  ...
+# Subtest: four-language live rendering retains draft fields, form ownership, and unknown pending outcome
+ok 23 - four-language live rendering retains draft fields, form ownership, and unknown pending outcome
+  ---
+  duration_ms: 3.811125
+  type: 'test'
+  ...
+1..23
+# tests 23
+# suites 0
+# pass 23
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 690.479834

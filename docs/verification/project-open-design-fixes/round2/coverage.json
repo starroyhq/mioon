@@ -1,0 +1,975 @@
+[
+  {
+    "key": "entry-01",
+    "name": "登录",
+    "status": "captured",
+    "screenshots": [
+      "screens/entry-01.png"
+    ],
+    "checks": [
+      "已填令牌主按钮可用；应用语言控件可达"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/entry-01.png": "778c79e44505e4e03afd581a519c63a9f851bcc32a80853315ff154ce8e29ab7"
+    }
+  },
+  {
+    "key": "entry-02",
+    "name": "首页空状态",
+    "status": "captured",
+    "screenshots": [
+      "screens/entry-02.png"
+    ],
+    "checks": [
+      "全新空目录；中央主按钮、顶栏无重复创建入口"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/entry-02.png": "ae00b1b32edc57f2124652d1e680b6bff803e6ffb1aed3f71d5f6b40a5e99d1d"
+    }
+  },
+  {
+    "key": "entry-03",
+    "name": "首页有项目",
+    "status": "captured",
+    "screenshots": [
+      "screens/entry-03.png"
+    ],
+    "checks": [
+      "有项目首页；搜索图标与快捷键；⌘F实际聚焦搜索"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/entry-03.png": "b8fc5aeef6c16a57bacc30f2662af5fee2247c3509da94487290fc60949954db"
+    }
+  },
+  {
+    "key": "entry-04",
+    "name": "新建项目",
+    "status": "captured",
+    "screenshots": [
+      "screens/entry-04.png"
+    ],
+    "checks": [
+      "三种1080画幅与图标；默认竖屏；标题与创建按钮"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/entry-04.png": "1b340b4a881a0ad3e28ce3e1f41a8f0e572f8165f63b2760dadbff7ec00c166b"
+    }
+  },
+  {
+    "key": "canvas-01",
+    "name": "空画板",
+    "status": "captured",
+    "screenshots": [
+      "screens/canvas-01.png"
+    ],
+    "checks": [
+      "全新空项目打开/刷新均无白屏",
+      "任务0显示，顶部及属性页签无遮挡"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/canvas-01.png": "f248f810311e4a39ecba88a96d24986759bfd50dd01c1663d3e475c1450cd88f"
+    }
+  },
+  {
+    "key": "canvas-02",
+    "name": "镜头与节点",
+    "status": "captured",
+    "screenshots": [
+      "screens/canvas-02.png"
+    ],
+    "checks": [
+      "真实素材、文字与三个镜头节点；适应画布后完整可达"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/canvas-02.png": "2848eb5e889cdc0e3916ba000e8009b7669dfebdef0829e396e03d550e5828f0"
+    }
+  },
+  {
+    "key": "canvas-03",
+    "name": "选中镜头",
+    "status": "captured",
+    "screenshots": [
+      "screens/canvas-03.png"
+    ],
+    "checks": [
+      "模式/比例分段控件；左侧标签与底部保存区",
+      "只展示当前提供商实际支持的9:16比例",
+      "顶部草稿为警告色，任务文字/计数和设置齿轮可见"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/canvas-03.png": "2848eb5e889cdc0e3916ba000e8009b7669dfebdef0829e396e03d550e5828f0"
+    }
+  },
+  {
+    "key": "canvas-04",
+    "name": "版本页",
+    "status": "captured",
+    "screenshots": [
+      "screens/canvas-04.png"
+    ],
+    "checks": [
+      "适配画布后3镜头与版本卡可见",
+      "缩略视频 loadeddata 后真实解码"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/canvas-04.png": "370083e6ee9e6ab0aa8b2e67be9c1a63675e85f6096e88d03dbf1b8a3b27d040"
+    }
+  },
+  {
+    "key": "canvas-05",
+    "name": "版本对比",
+    "status": "captured",
+    "screenshots": [
+      "screens/canvas-05.png"
+    ],
+    "checks": [
+      "两侧实际本地MP4同步播放后暂停，非静态占位",
+      "所有参数行与完整操作底栏可见",
+      "严格206媒体；无真实生成请求"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/canvas-05.png": "8341e996bac0b3ee3f1a773e5f51eeb6d972b879797efb2d8b907a8f28bdef8f"
+    }
+  },
+  {
+    "key": "canvas-06",
+    "name": "生成中",
+    "status": "captured",
+    "screenshots": [
+      "screens/canvas-06.png"
+    ],
+    "checks": [
+      "真实任务记录的生成中状态；有顶部进度与取消入口",
+      "合成Mock任务延长仅供验收，未调用真实供应商"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/canvas-06.png": "822cd9376827927a8977c864f2f6409db72e607b69068d4b31ac6bdd8d0a9a70"
+    }
+  },
+  {
+    "key": "editing-01",
+    "name": "空时间线",
+    "status": "captured",
+    "screenshots": [
+      "screens/editing-01.png"
+    ],
+    "checks": [
+      "空时间线引导；本地新项目1080竖屏",
+      "本地化轨道与锁控件可见"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/editing-01.png": "41ad922e1a8608a6e5f6f93409f7c2370f78dfa7ff026f183f5bb3c64f4252c7"
+    }
+  },
+  {
+    "key": "editing-02",
+    "name": "选中片段与画面属性",
+    "status": "captured",
+    "screenshots": [
+      "screens/editing-02.png"
+    ],
+    "checks": [
+      "1440×900完整时间线，默认轨道中文名和锁定图标",
+      "基础属性和草稿保存栏可见"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/editing-02.png": "f23eb0861091b70ab034bd4d1e91a31ee98bd0824c9e56b63ba1b5249ab1c3c7"
+    }
+  },
+  {
+    "key": "editing-03",
+    "name": "预览过期",
+    "status": "captured",
+    "screenshots": [
+      "screens/editing-03.png"
+    ],
+    "checks": [
+      "实际渲染成功后修改片段触发预览过期",
+      "旧预览保留，更新需明确点击",
+      "右侧面板与提示不重叠"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/editing-03.png": "b9d449451b861eedc34bca98b345d9fdd69cbec207f9c4b46cac5ea311244428"
+    }
+  },
+  {
+    "key": "editing-04",
+    "name": "预览渲染中",
+    "status": "captured",
+    "screenshots": [
+      "screens/editing-04.png"
+    ],
+    "checks": [
+      "实际本地渲染请求与进行中状态；不模拟进度",
+      "右侧页签不被提示覆盖"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/editing-04.png": "85019a282997ea538d73265cade7eb1ba189c341ff0bdaed741a79a341d604e5"
+    }
+  },
+  {
+    "key": "editing-05",
+    "name": "音频分组",
+    "status": "captured",
+    "screenshots": [
+      "screens/editing-05.png"
+    ],
+    "checks": [
+      "音量滑块、数值与淡入淡出",
+      "音频分组为滚动区，底部说明不截断"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/editing-05.png": "18e685aec4d515f9014285d5d7f39cfea9709085e12dc54abf049cb9db567f2e"
+    }
+  },
+  {
+    "key": "editing-06",
+    "name": "片段更多菜单",
+    "status": "captured",
+    "screenshots": [
+      "screens/editing-06.png"
+    ],
+    "checks": [
+      "菜单含普通移除与同轨波纹移除",
+      "保持明确动作与确认"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/editing-06.png": "32b6e2bb15feffcf8812dbbb5fd57b0b3c960cc685ee5fe8344274b8abd82d5c"
+    }
+  },
+  {
+    "key": "editing-07",
+    "name": "移除片段确认",
+    "status": "captured",
+    "screenshots": [
+      "screens/editing-07.png"
+    ],
+    "checks": [
+      "移除片段明确确认；素材文件仍保留",
+      "本轮只展示并取消，夹具原时间线不变"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/editing-07.png": "20fe94f84cec7102e9aaa9f8cdc92163f450d837521c4c63c867a3e14c4e4bb2"
+    }
+  },
+  {
+    "key": "export-01",
+    "name": "导出检查",
+    "status": "captured",
+    "screenshots": [
+      "screens/export-01.png"
+    ],
+    "checks": [
+      "真实编码检查通过；3/3素材逐项结果与定位框架",
+      "未触发正式导出；检查结果条完整"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/export-01.png": "b49bb401fad3e621e8d789ae4f418d6e3790c80242f590c39da59d14788e0088"
+    }
+  },
+  {
+    "key": "export-02",
+    "name": "导出设置",
+    "status": "captured",
+    "screenshots": [
+      "screens/export-02.png"
+    ],
+    "checks": [
+      "最终构建：设置、范围、响度和估算全部首屏可达"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/export-02.png": "2868400e221b9d1ee6d0a5c820b5ad105d7d7c4e6274a8ac4e1758050f34116f"
+    }
+  },
+  {
+    "key": "export-03",
+    "name": "导出确认",
+    "status": "captured",
+    "screenshots": [
+      "screens/export-03.png"
+    ],
+    "checks": [
+      "最终构建：三项摘要与明细，主操作为右下紧凑36px按钮"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/export-03.png": "64cab9cf32d5bbb2fcde2d102582fef3bfc9d42fd7d48f256d4bf474dce61828"
+    }
+  },
+  {
+    "key": "export-04",
+    "name": "导出进行中",
+    "status": "captured",
+    "screenshots": [
+      "screens/export-04.png"
+    ],
+    "checks": [
+      "最终构建：真实运行阶段和不可测百分比",
+      "取消导出/在后台继续可见，关闭入口无遮挡"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/export-04.png": "18a02525800e4359901ffcbe595e62e5f494a08e125c21c8658be669e526184c"
+    }
+  },
+  {
+    "key": "export-05",
+    "name": "导出完成",
+    "status": "captured",
+    "screenshots": [
+      "screens/export-05.png"
+    ],
+    "checks": [
+      "最终构建：实际本机9秒成片完成、规格大小与路径可见",
+      "取消确认期间任务已完成，继续确认不改写成功终态"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/export-05.png": "9aba31fbbee25982e7216be5ae4bc60c7259e11827c7468569121f9fadb1d93a"
+    }
+  },
+  {
+    "key": "export-06",
+    "name": "导出记录",
+    "status": "captured",
+    "screenshots": [
+      "screens/export-06.png"
+    ],
+    "checks": [
+      "最终构建：真实输出大小，成功终态与旧取消记录并存"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/export-06.png": "c4fab61c01bcd4b8d9158c82c76dbcb2a7b1fe9b807f3a562b3925196b81f9c5"
+    }
+  },
+  {
+    "key": "panels-01",
+    "name": "任务浮层",
+    "status": "captured",
+    "screenshots": [
+      "screens/panels-01.png"
+    ],
+    "checks": [
+      "浮层标题/徽章计数与列出任务一致",
+      "进行中与需要处理分组；进行中进度条",
+      "真实未知结果保留原请求与对账入口"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/panels-01.png": "294106731592a229c5abeca1c07d113b91a301da14eeb083841dcc815b29d202"
+    }
+  },
+  {
+    "key": "panels-02",
+    "name": "任务未知结果详情",
+    "status": "captured",
+    "screenshots": [
+      "screens/panels-02.png"
+    ],
+    "checks": [
+      "一行筛选；真实unknown任务键值详情",
+      "原requestId和任务ID保留；对账解释与手动标记失败入口",
+      "不会自动重提或将本地标记伪装为供应商失败"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/panels-02.png": "f325b95bf8654014b6aa68b5c8bc942a4fb4ff4bb792cca989d654163720f18d"
+    }
+  },
+  {
+    "key": "panels-03",
+    "name": "助理首次授权",
+    "status": "captured",
+    "screenshots": [
+      "screens/panels-03.png"
+    ],
+    "checks": [
+      "真实新目标/范围首次授权对话框",
+      "发送范围、目标地址与模型、可能计费三组结构化信息",
+      "确认并发送入口，仅回环本地合成模型"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/panels-03.png": "46e022bd89261f5be1fe582918d25728308f6881f0a8465ce66ec5ee321e49b6"
+    }
+  },
+  {
+    "key": "panels-04",
+    "name": "助理对话与修改建议",
+    "status": "captured",
+    "screenshots": [
+      "screens/panels-04.png"
+    ],
+    "checks": [
+      "真实回环模型生成持久化待处理建议，未应用",
+      "建议卡含修改前→提议修改后，内部身份默认折叠"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/panels-04.png": "63a11cebf9292dc0b8aa40a253529884c078ce2b993cb3f82b394d077151f874"
+    }
+  },
+  {
+    "key": "panels-05",
+    "name": "设置通用",
+    "status": "captured",
+    "screenshots": [
+      "screens/panels-05.png"
+    ],
+    "checks": [
+      "主题/密度/时间码分段控件",
+      "八项设置导航与固定底部保存栏"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/panels-05.png": "38eb55437c6c12c1496cc946cebb99bc8df65022d4657da0ef29bad131f235f6"
+    }
+  },
+  {
+    "key": "panels-06",
+    "name": "设置模型服务",
+    "status": "captured",
+    "screenshots": [
+      "screens/panels-06.png"
+    ],
+    "checks": [
+      "可写真实生成总开关；默认关闭",
+      "Seedance/Veo及本地模拟行、检测入口",
+      "OpenAI图像并入列表；底部实际保存状态"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/panels-06.png": "a92563a43d53260e40cb520b0ca9a711f586b37614b908c0b0be83ba00810f93"
+    }
+  },
+  {
+    "key": "panels-07",
+    "name": "设置工作区",
+    "status": "captured",
+    "screenshots": [
+      "screens/panels-07.png"
+    ],
+    "checks": [
+      "展开的备份分组；自动备份/间隔/受限位置/立即备份/导入下载恢复",
+      "浏览器位置提供路径与复制，不接受任意路径RPC",
+      "底部实际配置状态"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/panels-07.png": "9b81ed797efbf8de386f13bf5b3a970f5084cf4c1e08fffba10eb89e7bb03142"
+    }
+  },
+  {
+    "key": "panels-08",
+    "name": "设置视频工具",
+    "status": "captured",
+    "screenshots": [
+      "screens/panels-08.png"
+    ],
+    "checks": [
+      "实际检测FFmpeg/ffprobe9.0.2，libx264/AAC可用",
+      "明确drawtext/subtitles缺失警告，未伪造能力",
+      "固定底部检测状态"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1440,
+      "height": 900,
+      "scrollWidth": 1440,
+      "scrollHeight": 900
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/panels-08.png": "b8d67d8a90f6d2f993967ea5f2aa551b311d0ab37654d21ee11f970bf80fc1e1"
+    }
+  },
+  {
+    "key": "compact-01",
+    "name": "紧凑画板",
+    "status": "captured",
+    "screenshots": [
+      "screens/compact-01.png"
+    ],
+    "checks": [
+      "1050×680两侧44px入口，适应画布节点可达",
+      "紧凑布局不覆盖右侧页签；顶部固定控件"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/compact-01.png": "54a0d8447a4e176d0737ae4f3fec53211e83fad4f1ef625f110e55bd0058cbd5"
+    }
+  },
+  {
+    "key": "compact-02",
+    "name": "素材临时浮层",
+    "status": "captured",
+    "screenshots": [
+      "screens/compact-02.png"
+    ],
+    "checks": [
+      "紧凑素材临时浮层；关闭/切换后背景布局不改",
+      "实际素材网格与导入/预览入口"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/compact-02.png": "33f523a82daebb0cc7c88d44eb5063bd8c2ad848e986564468c7cfd0cedc6a5f"
+    }
+  },
+  {
+    "key": "compact-03",
+    "name": "紧凑剪辑",
+    "status": "captured",
+    "screenshots": [
+      "screens/compact-03.png"
+    ],
+    "checks": [
+      "1050×680固定属性面板、160px时间线",
+      "V1/A1优先可见；键盘调整后无白色外框残留"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/compact-03.png": "b7350142d34dd7ad906e18941195d421d302f287f034b6d0f363e49bccb0975f"
+    }
+  },
+  {
+    "key": "compact-04",
+    "name": "时间线收起",
+    "status": "captured",
+    "screenshots": [
+      "screens/compact-04.png"
+    ],
+    "checks": [
+      "紧凑剪辑时间线收起，右侧属性固定可用",
+      "预览区域扩展；展开时间线入口仍在底部"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/compact-04.png": "cce71a29c10c21db9426a47719cc6c18f60b36ed34ab96581b2e7612a1c35996"
+    }
+  },
+  {
+    "key": "compact-05",
+    "name": "属性面板收起",
+    "status": "captured",
+    "screenshots": [
+      "screens/compact-05.png"
+    ],
+    "checks": [
+      "时间线和属性面板收起后扩大预览",
+      "左右图标入口可达，未丢失选中片段"
+    ],
+    "blockers": [],
+    "viewport": {
+      "width": 1050,
+      "height": 680,
+      "scrollWidth": 1050,
+      "scrollHeight": 680
+    },
+    "pageErrors": [],
+    "visualReview": {
+      "result": "no-obvious-layout-blocker",
+      "source": "visual-review.md"
+    },
+    "screenshotSha256": {
+      "screens/compact-05.png": "50cb05528c0836e7032703db236d29022b83869d0992dcb9cebe9d7dbb54f394"
+    }
+  }
+]

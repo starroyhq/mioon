@@ -60,6 +60,9 @@ export async function createModuleFixture(t: unknown, {fault = () => {}, submit,
   }
   (t as {after(callback: ()=>Promise<void>): void}).after(async () => { await services?.drain(); await settings?.close(); store.close(); rmSync(root, {recursive: true, force: true}); });
   await create(moduleState);
+  // The workspace live gate and the optional Comfy module are independent.
+  // Opt in explicitly so this fixture still isolates the module's own guards.
+  await services!.call('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
   const project = await services!.call('project.create', {name: 'Optional Comfy synthetic'}) as unknown as {id: string};
   const other = await services!.call('project.create', {name: 'Other project'}) as unknown as {id: string};
   const f = {root, project, other, calls, png, completed,

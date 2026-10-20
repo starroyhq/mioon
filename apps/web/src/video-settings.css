@@ -1,0 +1,28 @@
+.video-provider-settings { min-width: 0; }
+.video-provider-settings h2 { font-size: 16px; margin: 0 0 8px; }
+.video-provider-settings p { color: var(--muted-foreground); font-size: 12px; line-height: 1.6; }
+.video-connections-layout { display: grid; grid-template-columns: minmax(150px, 0.7fr) minmax(0, 2fr); gap: 20px; margin-top: 20px; }
+.video-provider-settings fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.video-provider-settings fieldset:disabled { opacity: .6; }
+.video-provider-settings label { display: grid; gap: 6px; font-size: 12px; margin: 10px 0; }
+.video-provider-settings .video-check { display: inline-flex; gap: 7px; align-items: center; margin-right: 14px; }
+.video-provider-settings textarea { border: 1px solid var(--border); border-radius: 6px; padding: 8px; width: 100%; min-height: 65px; background: var(--background); color: inherit; font: inherit; box-sizing: border-box; }
+.video-provider-settings output { display: block; overflow-wrap: anywhere; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.video-connections-list > button { display: flex; align-items: flex-start; flex-direction: column; height: auto; width: 100%; margin: 5px 0; padding: 10px; text-align: start; }
+.video-connections-list > button[aria-current] { background: var(--accent); }
+.video-connections-list small { font-size: 10px; color: var(--muted-foreground); }
+.video-model-editor { border: 1px solid var(--border); border-radius: 8px; margin: 14px 0; padding: 14px; }
+.video-model-editor header, .video-catalog-heading, .video-connection-form footer, .video-recovery { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.video-model-editor header strong { margin-right: auto; overflow-wrap: anywhere; }
+.video-provider-settings details { margin: 14px 0; }
+.video-provider-settings summary { font-size: 12px; cursor: pointer; }
+.video-provider-settings legend { font-size: 12px; font-weight: 600; padding-top: 10px; }
+.video-connection-form footer { position: sticky; bottom: 0; background: var(--background); padding: 12px 0; }
+@media (max-width: 660px) { .video-connections-layout { grid-template-columns: minmax(0, 1fr); } }
+.video-provider-settings .video-check { width: auto; white-space: nowrap; }
+.video-provider-settings .video-check input { width: 14px; height: 14px; flex: 0 0 auto; margin: 0; }
+.video-connections-list { align-self: start; position: sticky; top: 12px; }
+.video-connections-list > button[aria-current] { color: inherit; }
+.video-connection-identity { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+.video-connection-caption { display: grid; gap: 3px; min-width: 0; }
+.video-connection-caption > span, .video-connection-caption > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

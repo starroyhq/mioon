@@ -1,0 +1,28 @@
+✔ actual App hook reads the current saved snapshot, supplies exact RPC options, and never prepares on render (42.893459ms)
+✔ an unapplied clip recovery candidate warns even with clean inputs without entering the saved mix or changing its owner (8.916125ms)
+✔ actual App hidden signal retires sound and never prepares/resumes from a rerender (7.736875ms)
+✔ actual App sourceTab signal retires sound and never prepares/resumes from a rerender (2.450041ms)
+✔ actual App canvasMode signal retires sound and never prepares/resumes from a rerender (2.239125ms)
+✔ actual App modal signal retires sound and never prepares/resumes from a rerender (2.608708ms)
+✔ actual App comparison signal retires sound and never prepares/resumes from a rerender (2.396542ms)
+✔ actual App clipSwitch signal retires sound and never prepares/resumes from a rerender (3.336375ms)
+✔ actual App sourceSwitch signal retires sound and never prepares/resumes from a rerender (3.591541ms)
+✔ actual App logout signal retires sound and never prepares/resumes from a rerender (2.733292ms)
+✔ actual App disconnected signal retires sound and never prepares/resumes from a rerender (2.678958ms)
+✔ actual App restored signal retires sound and never prepares/resumes from a rerender (2.567708ms)
+✔ actual App projectReopen signal retires sound and never prepares/resumes from a rerender (1.9935ms)
+✔ actual App revision signal retires sound and never prepares/resumes from a rerender (2.471834ms)
+✔ unaccepted project data cannot start audition through actual App readiness guards (3.587667ms)
+✔ actual App clock display stays ephemeral while each explicit seek writes the saved view exactly once (3.19775ms)
+✔ actual native-player guard revokes current sound, while stale media can only pause itself (1.537167ms)
+✔ actual native pause registration cleanup cannot unregister a newer player owner (0.630459ms)
+✔ actual TSX callbacks pass their rendered owner once; shared Slider seek remains an explicit action (3.579875ms)
+✔ actual component never substitutes a last-frame prepare for an outside or empty saved range (2.646542ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 387.284292

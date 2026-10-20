@@ -8,6 +8,7 @@ import type {FileHandle} from 'node:fs/promises';
 import type {Stats} from 'node:fs';
 import path from 'node:path';
 import {AppError} from '../../contracts/src/app-error.ts';
+import {taskEffectOrigin} from './agent/task-effects-v2.ts';
 
 type Value = Record<string, unknown>;
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -22,6 +23,7 @@ export interface ManagedAssetImportStore {
   root: string;
   db: {prepare(sql: string): {get(...args: string[]): unknown}};
   put(table: 'assets', value: Value): unknown;
+  tx?<T>(callback:()=>T):T;
 }
 export interface ManagedAssetImportOptions {
   signal?: AbortSignal;
@@ -35,7 +37,7 @@ export interface ManagedAssetImportOptions {
 export function createManagedAssetImportHandler(store: ManagedAssetImportStore, options: ManagedAssetImportOptions) {
   const checkpoint = (signal?: AbortSignal): void => {invoke(lifecycle, 'checkpoint', [signal]);};
   return async (input: Value, context: {signal?: AbortSignal} = {}): Promise<unknown> => {
-    const signal = context.signal ?? options.signal, invocationFence = options.effectFence();
+    const signal = context.signal ?? options.signal, invocationFence = options.effectFence(),origin=taskEffectOrigin();
     checkpoint(signal); invocationFence?.();
     if (typeof input.projectId !== 'string' || typeof input.dataBase64 !== 'string' || typeof input.mimeType !== 'string') throw new AppError('INVALID_MEDIA', '无效的素材导入');
     const projectId = input.projectId, mimeType = input.mimeType, importProject = options.required('projects', projectId);
@@ -67,7 +69,7 @@ export function createManagedAssetImportHandler(store: ManagedAssetImportStore, 
             (actual.size !== writtenIdentity.size || actual.mtimeMs !== writtenIdentity.mtimeMs || actual.ctimeMs !== writtenIdentity.ctimeMs)) throw options.unsafe();
       }
     } : undefined;
-    beforeEffect?.();
+    origin?.beforeEffect();beforeEffect?.();
     if (!options.guarded) await writeFile(file, bytes, {flag: 'wx'});
     try {
       if (options.guarded) {ownedHandle = await open(file, 'wx'); ownedIdentity = await ownedHandle.stat(); beforeEffect!(); await ownedHandle.writeFile(bytes); writtenIdentity = await ownedHandle.stat(); beforeEffect!();}
@@ -77,11 +79,14 @@ export function createManagedAssetImportHandler(store: ManagedAssetImportStore, 
       if (options.guarded && info.sha256 !== expectedByteHash) throw options.unsafe();
       const hasVideo = info.hasVideo ?? (typeof info.width === 'number' && info.width > 0 && typeof info.height === 'number' && info.height > 0);
       if (mimeType.startsWith('audio/') ? (!info.hasAudio || hasVideo || !(typeof info.duration === 'number' && info.duration > 0)) : !hasVideo) throw new Error('Declared media kind does not match decoded streams');
-      return store.put('assets', {id, projectId, name: input.name, mimeType, ...info, relativePath, url: `/media/${id}`, createdAt: options.now(), provenance: 'user-import'});
+      const publish=():unknown=>{origin?.beforeEffect();const result=store.put('assets', {id, projectId, name: input.name, mimeType, ...info, relativePath, url: `/media/${id}`, createdAt: options.now(), provenance: 'user-import'});
+        if(origin?.importHandle){const connection=store.db as unknown as {prepare(sql:string):{run(...args:string[]):{changes:number|bigint}}};const changed=connection.prepare("UPDATE agent_task_imports_v2 SET status='imported',assetId=? WHERE id=? AND projectId=? AND status='importing'").run(id,origin.importHandle,projectId);if(changed.changes!==1)throw new AppError('AGENT_TASK_UNKNOWN_RESULT','导入受理记录已改变',409);}
+        return result;};
+      return store.tx?store.tx(publish):publish();
     } catch (error) {
       if (!options.guarded) await unlink(file).catch(() => {});
       else if (ownedIdentity) {const actual = await lstat(file).catch(() => null); if (actual?.isFile() && actual.dev === ownedIdentity.dev && actual.ino === ownedIdentity.ino) await unlink(file).catch(() => {});}
-      if (object(error) && error.terminationUnconfirmed || options.safeError(error)) throw error;
+      if (object(error) && (error.terminationUnconfirmed||typeof error.code==='string'&&error.code.startsWith('AGENT_TASK_')) || options.safeError(error)) throw error;
       checkpoint(signal); throw new AppError('INVALID_MEDIA', '无法解码素材或媒体类型不符，请检查文件');
     } finally {if (ownedHandle) await ownedHandle.close();}
   };

@@ -1,3 +1,4 @@
+import AgentEditingBoundary from './AgentEditingBoundary.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import { Button } from '@mioon/ui/components/button';
@@ -7,9 +8,9 @@ import {Star,CircleSlash,RotateCcw} from '@mioon/ui/components/workbench-icons';
 import { dispositionLabels, dispositionRow } from './asset-disposition-state.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 
-interface DispositionRow {disposition: string}
+interface DispositionRow {disposition: string; revision?: number}
 interface DispositionEntry {phase?: string}
-export interface DispositionState {scope?: string | null; entries?: Record<string, DispositionEntry>; savingAssetId?: string | null; uncertain?: boolean}
+export interface DispositionState {projectId?: string | null; scope?: string | null; entries?: Record<string, DispositionEntry>; savingAssetId?: string | null; uncertain?: boolean}
 export interface DispositionController {getState(): {scope?: string | null}; set(assetId: string, value: string, scope: string | null | undefined): unknown}
 export interface DispositionAsset {id: string; name: string}
 type DispositionLabelMap = Readonly<Record<string, DisplayMessage>>;
@@ -30,10 +31,10 @@ export default function AssetDispositionControls({ asset, state, controller, blo
   const interaction = useDispositionInteraction(state?.scope, controller, asset.id);
   const disabled = !interaction.visible || !row || blocked || Boolean(state?.savingAssetId || state?.uncertain);
   const status = state?.savingAssetId === asset.id ? t('assets.mark.saving') : row ? renderMessage(labels[row.disposition] as DisplayMessage) : entry?.phase === 'loading' ? t('assets.mark.loading') : t('assets.mark.unknown');
-  return <div className={`asset-disposition-controls ${compact ? 'asset-marks-compact' : ''}`} data-no-asset-drag draggable={false} onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
+  return <AgentEditingBoundary projectId={state?.projectId} targets={[{kind:'asset_disposition',id:asset.id,revision:row?.revision ?? 0}]} canRelease={() => !state?.savingAssetId && !state?.uncertain}><div className={`asset-disposition-controls ${compact ? 'asset-marks-compact' : ''}`} data-no-asset-drag draggable={false} onPointerDown={event => event.stopPropagation()} onDragStart={event => { event.preventDefault(); event.stopPropagation(); }}>
     <span className={`asset-disposition-label ${row?.disposition || 'unknown'}`} data-testid={`${prefix}-disposition-status-${asset.id}`} role="status">{status}</span>
     <div className="asset-disposition-buttons" role="group" aria-label={t('assets.mark.named', { name: asset.name })}>
       {([['favorite', t('assets.mark.favorite')], ['rejected', t('assets.mark.rejected')], ['neutral', t('assets.mark.clear')]] as ReadonlyArray<readonly [string, string]>).map(([value, label]) => <WorkbenchTooltip key={value} content={value === 'rejected' ? t('assets.mark.rejectHint') : value === 'neutral' ? t('assets.mark.clearHint') : t('assets.mark.favoriteHint')}><Button variant="ghost" size="sm" type="button" draggable={false} data-testid={`${prefix}-disposition-${value}-${asset.id}`} aria-label={t('assets.mark.actionNamed', { action: label, name: asset.name })} aria-pressed={Boolean(row && row.disposition === value)} disabled={disabled || row?.disposition === value} onClick={event => { event.stopPropagation(); interaction.admit(() => controller.set(asset.id, value, state.scope)); }}>{compact ? <>{value === 'favorite' ? <Star size={13}/> : value === 'rejected' ? <CircleSlash size={13}/> : <RotateCcw size={13}/>}<span className="sr-only">{label}</span></> : label}</Button></WorkbenchTooltip>)}
     </div>
-  </div>;
+  </div></AgentEditingBoundary>;
 }

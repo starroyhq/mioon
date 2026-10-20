@@ -1,3 +1,4 @@
+import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {createComfyAdmission,COMFY_MODULE_UNAVAILABLE_MESSAGE} from './comfy/admission.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {workspaceRestoreError} from './workspace-restore-policy.ts';
@@ -40,6 +41,7 @@ type ImageFault=(stage: string,details?: Record<string, unknown>)=>unknown;
 type GenerateImage=(snapshot: unknown,context: {signal?: AbortSignal; beforeDispatch?: unknown; sourceBytes?: unknown; settingsRevision?: unknown; configuration?: unknown})=>Promise<ImageAdapterResult>;
 export interface ImageServicesOptions {
  signal?: AbortSignal;
+ assertLiveAllowed?: ()=>void;
  generate?: GenerateImage;
  autoRun?: boolean;
  fault?: ImageFault;
@@ -71,7 +73,7 @@ export interface ImageService {
  readonly approveReviewed: ImageReviewService['readForApproval'] extends (...args: never[])=>unknown?(approval: unknown)=>unknown:never;
  readonly rejectReview: (input: unknown)=>unknown;
 }
-interface ImageAttempt {readonly id: string; readonly projectId: string; readonly local: boolean}
+interface ImageAttempt {readonly id: string; readonly projectId: string; readonly local: boolean;resumeRequested?:boolean}
 interface ImageOwnerRecord {
  readonly root: string;
  readonly signal: AbortSignal|undefined;
@@ -113,7 +115,7 @@ const asReceipt=(value: unknown): ImageReceipt|null=>value?value as ImageReceipt
 /** Image-specific durable lifecycle. No chat/tool authority and no generic
  * operation dispatch. Live images require dedicated settings and immutable
  * user approval; injected dependencies are trusted tests, never RPC options. */
-export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability}: ImageServicesOptions={}): ImageService {
+export function createImageServices(store: ImageStore,{signal:ownerSignal,generate=defaultGenerate,autoRun=true,fault=noop,settings,liveGateway,customSettings,customGateway,comfySettings,comfyConnector,comfyModuleAvailability,assertLiveAllowed}: ImageServicesOptions={}): ImageService {
  if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.generate!==generate||old.autoRun!==autoRun||old.fault!==fault||old.settings!==settings||old.liveGateway!==liveGateway||old.customSettings!==customSettings||old.customGateway!==customGateway||old.comfySettings!==comfySettings||old.comfyConnector!==comfyConnector||old.comfyModuleAvailability!==comfyModuleAvailability)fail('IMAGE_SERVICE_ACTIVE');return old.service;}
@@ -130,8 +132,8 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   const engine=selectedSettings(providerId);if(!engine)fail('IMAGE_LIVE_DISABLED',403);return (engine as ImageSettingsService)[IMAGE_SETTINGS_ASSERT_CURRENT](expected);
  };
  const reviews=createImageReviewServices(store,{signal,fault,
-  getSettings:(providerId: string)=>{if(providerId==='comfy-local'){comfyAdmission.assertAvailable();const current=readComfyCurrent();if(!current)return {revision:0,enabled:false,destination:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled&&current.readiness?.checked),destination:isCompleteComfyImageConfiguration(current.configuration)?getComfyImageDestination(current.configuration.baseUrl):null,configuration:current.configuration};}const current=readImageCurrent(selectedSettings(providerId) as ImageSettingsService|undefined);if(!current)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled),destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
-  assertSettings:({revision,configuration},providerId)=>assertCurrentSettings(providerId,expectedSettings(revision,configuration))});
+  getSettings:(providerId: string)=>{assertLiveAllowed?.();if(providerId==='comfy-local'){comfyAdmission.assertAvailable();const current=readComfyCurrent();if(!current)return {revision:0,enabled:false,destination:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled&&current.readiness?.checked),destination:isCompleteComfyImageConfiguration(current.configuration)?getComfyImageDestination(current.configuration.baseUrl):null,configuration:current.configuration};}const current=readImageCurrent(selectedSettings(providerId) as ImageSettingsService|undefined);if(!current)return {revision:0,enabled:false,destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:null};return {revision:current.revision,enabled:Boolean(current.configuration.enabled),destination:providerId==='openai'?IMAGE_REVIEW_DESTINATION:isCompleteCustomImageConfiguration(current.configuration)?getCustomImageDestination(current.configuration.baseUrl):null,...(providerId==='openai-compatible'?{configuration:current.configuration}:{})};},
+  assertSettings:({revision,configuration},providerId)=>{assertLiveAllowed?.();return assertCurrentSettings(providerId,expectedSettings(revision,configuration));}});
  const live=liveGateway??(settings?createLiveImageGateway({settings}):null);
  const compatible=customGateway??(customSettings?createCompatibleImageGateway({settings:customSettings}):null);
  const selectedGateway=(providerId: string): Gateways|ComfyConnector|null=>providerId==='openai'?live:providerId==='openai-compatible'?compatible:providerId==='comfy-local'?comfyConnector??null:null;
@@ -180,6 +182,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    else{groupId=randomUUID();db.prepare('INSERT INTO image_groups(id,projectId,name,revision,headVersionId,activeTaskId,createdAt,updatedAt) VALUES(?,?,?,1,NULL,?,?,?)').run(groupId,generation.projectId,generation.name,id,timestamp,timestamp);}
    const snapshot={schemaVersion:1,projectId:generation.projectId,groupId,taskId:id,name:generation.name,prompt:generation.prompt,providerId:generation.providerId,model:generation.model,options:generation.options,...(input.purpose==='edit'?{purpose:'edit',inputImage:input.inputImage,sourceImage:verified?.descriptor}:{})};
    db.prepare("INSERT INTO image_tasks(id,projectId,groupId,requestId,inputHash,input,snapshot,state,revision,dispatched,stagedReceipt,versionId,errorCode,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,?,?)").run(id,generation.projectId,groupId,generation.requestId,hash(generation),canonical(generation),canonical(snapshot),timestamp,timestamp);
+   bindAgentTaskJobInside(db,'image',id);
    if(generation.providerId!=='mock')reviews.authorizeAcceptance(generation,id,approval,verified??undefined);
    if(generation.providerId==='comfy-local')remote.prepareTask(generation.projectId,id);
    value=task(generation.projectId,id).dto;
@@ -258,19 +261,22 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
     original=tx(()=>{check();return change(original,{state:'persisting',stagedReceipt:canonical(receipt),errorCode:null});});fault('after_result_receipt',{taskId:original.row.id});await finalize(original);
    }catch(cause){try{const checked=current(original,{allowStopped:true});claim();let receipt=asReceipt(checked.receipt);try{receipt??=storage.readReceipt(stageTask(checked));}catch{}tx(()=>{claim();if(receipt)change(checked,{state:'local_result_error',stagedReceipt:checked.row.stagedReceipt??canonical(receipt),errorCode:'IMAGE_RESULT_INVALID'},{allowStopped:true});else if(checked.row.state!=='outcome_unknown')change(checked,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'},{allowStopped:true});});}catch{}throw cause;}
   }});
- async function execute(entry: ImageAttempt): Promise<void> {
-  let original: ImageHistoryTask|undefined;
+ function execute(entry:ImageAttempt):Promise<void>{return withAgentTaskJobOrigin(db,'image',entry.id,()=>executeInside(entry));}
+ async function executeInside(entry: ImageAttempt): Promise<void> {
+  let original: ImageHistoryTask|undefined,blockedGate=false;
+  const effectGate=():void=>{try{assertAgentTaskJobEffect(db,'image',entry.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}};
   try{
    owner();original=task(entry.projectId,entry.id,{shallow:true});reviewBinding(original);
    if(entry.local){if(original.row.state!=='persisting')return;await finalize(original);return;}
    if(original.row.state!=='queued')return;
+   effectGate();
    const projection={providerId:original.snapshot.providerId,model:original.snapshot.model,prompt:original.snapshot.prompt,options:original.snapshot.options,...imageEditFields(original.snapshot)};
    const liveReview=projection.providerId!=='mock'?reviews.getForTask(entry.projectId,entry.id):null;
    const gateway=selectedGateway(projection.providerId);
    if(liveReview&&!gateway)fail('IMAGE_LIVE_DISABLED',403);
    const apiGateway=selectedApiGateway(projection.providerId);
    const source=original.input.purpose==='edit'?await editSources.verify(toInput(original.input) as ImageGenerationInput,original.snapshot.sourceImage):null;
-   const dispatch=(): void=>{if(source)editSources.assertCurrent(toInput((original as ImageHistoryTask).input) as ImageGenerationInput,source);original=tx(()=>{const frozen=original as ImageHistoryTask;current(frozen);if(source)editSources.assertOwned(toInput(frozen.input) as ImageGenerationInput,source.descriptor);if(liveReview)reviews.beforeDispatch(toInput(frozen.input) as ImageGenerationInput,frozen.row.id);const changed=change(frozen,{state:'dispatching',dispatched:1,errorCode:null});if(projection.providerId==='comfy-local')remote.beforeSubmit(entry.projectId,entry.id);return changed;});fault('after_dispatch_fence',{taskId:(original as ImageHistoryTask).row.id});};
+   const dispatch=(): void=>{effectGate();if(liveReview)assertLiveAllowed?.();if(source)editSources.assertCurrent(toInput((original as ImageHistoryTask).input) as ImageGenerationInput,source);original=tx(()=>{effectGate();if(liveReview)assertLiveAllowed?.();const frozen=original as ImageHistoryTask;current(frozen);if(source)editSources.assertOwned(toInput(frozen.input) as ImageGenerationInput,source.descriptor);if(liveReview){reviews.beforeDispatch(toInput(frozen.input) as ImageGenerationInput,frozen.row.id);recordAgentTaskJobDispatch(db,'image',entry.id);}const changed=change(frozen,{state:'dispatching',dispatched:1,errorCode:null});if(projection.providerId==='comfy-local')remote.beforeSubmit(entry.projectId,entry.id);return changed;});fault('after_dispatch_fence',{taskId:(original as ImageHistoryTask).row.id});};
    if(projection.providerId==='comfy-local'){
     if(!liveReview||!('execution' in liveReview)||!('configuration' in liveReview))fail('IMAGE_REVIEW_REQUIRED',403);
     await awaitProvider(()=>comfyConnector!.submit({execution:liveReview.execution,config:liveReview.configuration,signal,beforeSubmit:dispatch}),signal,{submit:true});
@@ -286,6 +292,7 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    try{
     // A failed ownership/revision fence never authorizes another row write.
     const checked=current(original,{allowStopped:true});reviewBinding(checked);
+    if(!checked.dto.dispatched&&(blockedGate||isAgentTaskEffectBlocked(cause))){if(isAgentTaskJobStopped(db,'image',entry.id))tx(()=>change(checked,{state:'cancelled_before_dispatch',errorCode:null},{release:true,allowStopped:true}));return;}
     let receipt=asReceipt(checked.receipt);try{receipt??=storage.readReceipt(stageTask(checked));}catch{}
     tx(()=>{
      if(checked.input.providerId==='comfy-local'&&checked.dto.dispatched)remote.submissionUnknown(checked.row.projectId,checked.row.id);
@@ -306,13 +313,14 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
  }
  function pump(): void {
   if(running||stopped||signal.aborted)return;const entry=queue.shift();if(!entry)return;running=true;
-  const promise=execute(entry).finally(()=>{active.delete(promise);pending.delete(entry.id);running=false;pump();});active.add(promise);
+  const promise=execute(entry).finally(()=>{active.delete(promise);pending.delete(entry.id);running=false;if(entry.resumeRequested)enqueue(entry.id,entry.projectId,false);pump();});active.add(promise);
  }
  function reconcile(): void {
   if(reconciled||!ownsStoreLock(store)||!schemaPresent())return;reconciled=true;
   const rows=db.prepare("SELECT id,projectId FROM image_tasks WHERE state IN ('queued','dispatching','receiving','persisting') ORDER BY id LIMIT ?").all(IMAGE_LIMITS.queuedGlobal+1);
   if(rows.length>IMAGE_LIMITS.queuedGlobal){diagnose();return;}
   for(const row of rows){try{const projectId=String(row.projectId),taskId=String(row.id);const target=task(projectId,taskId);reviewBinding(target);let receipt=asReceipt(target.receipt);try{receipt??=storage.readReceipt(stageTask(target));}catch{}
+   if(target.row.state==='queued'&&!target.dto.dispatched&&agentTaskJobBinding(db,'image',taskId))continue;
    tx(()=>{if(!target.dto.dispatched)change(target,{state:'interrupted_before_dispatch',errorCode:'IMAGE_INTERRUPTED'});
     else if(receipt)change(target,{state:'local_result_error',stagedReceipt:target.row.stagedReceipt??canonical(receipt),errorCode:'IMAGE_LOCAL_RECOVERY_REQUIRED'});
     else change(target,{state:'outcome_unknown',errorCode:'IMAGE_OUTCOME_UNKNOWN'});});
@@ -328,7 +336,17 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
   return value;
  }
  const handlers: Record<string,(input: unknown,context?: {signal?: AbortSignal|null; [key: string]: unknown})=>unknown>={...reviews.handlers,...remote.handlers,'image.profile.list':(input: unknown)=>listProfiles(isRecord(input)?input:{}) ,...history.handlers,...Object.fromEntries(IMAGE_MUTATION_OPERATIONS.map(operation=>[operation,(input: unknown)=>mutateWithSource(operation,input as unknown as ImageMutationInput)]))};
- async function drain(): Promise<void> {if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);}
+ const removeResumer=setAgentTaskJobResumer(db,'image',runId=>{for(const row of db.prepare("SELECT t.id,t.projectId FROM image_tasks t JOIN agent_task_job_origins_v2 o ON o.kind='image' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND t.state='queued' AND t.dispatched=0 ORDER BY t.createdAt,t.id").all(runId)){const entry=pending.get(String(row.id));if(entry)entry.resumeRequested=true;else enqueue(String(row.id),String(row.projectId),false);}});
+ const removeStopper=setAgentTaskJobStopper(db,'image',(runId,stepId)=>{for(const row of db.prepare("SELECT t.id,t.projectId,t.revision FROM image_tasks t JOIN agent_task_job_origins_v2 o ON o.kind='image' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND t.state IN ('queued','interrupted_before_dispatch') AND t.dispatched=0 ORDER BY t.id").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'image',String(row.id),()=>{
+  try{handlers['image.task.cancelQueued']!({projectId:String(row.projectId),taskId:String(row.id),expectedRevision:Number(row.revision),requestId:`agent-stop:${runId}:${String(row.id)}`});}
+  catch(error){if(property(error,'code')!=='IMAGE_CAPACITY')throw error;
+   // The v2 stop control is already durable. A full legacy request quota must
+   // not prevent stopping; keep the domain change and v2 event atomic without
+   // inserting a request beyond that frozen quota.
+   tx(()=>{const target=task(String(row.projectId),String(row.id),{shallow:true});reviewBinding(target);if(!target.dto.dispatched&&['queued','interrupted_before_dispatch'].includes(target.row.state))change(target,{state:'cancelled_before_dispatch',errorCode:null},{release:true});});
+  }
+ });});
+ async function drain(): Promise<void> {removeResumer();removeStopper();if(!stopped){stopped=true;controller.abort();reviews.stop();queue.length=0;}await Promise.all([boundedShutdown(Promise.allSettled([...active]),'IMAGE_STOP_TIMEOUT'),remote.drain()]);}
  for(const operation of Object.keys(handlers)){if(Object.hasOwn(history.handlers,operation))continue;const handler=handlers[operation];if(!handler)continue;handlers[operation]=(input: unknown)=>{if(!schemaPresent())fail('IMAGE_SCHEMA_REQUIRED',503);return handler(input);};}
  const approveReviewed=(approval: unknown): unknown=>{const input=reviews.readForApproval(approval);return mutateWithSource('image.generate',input as unknown as ImageMutationInput,approval);};
  const service: ImageService={handlers,drain,approveReviewed:approveReviewed as ImageService['approveReviewed'],rejectReview:reviews.reject};

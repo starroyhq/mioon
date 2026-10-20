@@ -8,9 +8,9 @@ const Function = lenientFunction;
 const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
 function expression(name: string): string {const value=source.match(new RegExp(`const ${name} = ([\\s\\S]*?);\\n`))?.[1];assert.ok(value,`actual App ${name} expression`);return value;}
 type SelectionFn = (mode: string, page: string, quick: string | null, make: (...args: unknown[]) => unknown, saved: unknown, selectedClipId: string, data: unknown) => unknown;
-type ReasonFn = (online: boolean, auth: boolean, loading: boolean, inspectorDirty: boolean, timelineBusy: boolean, msg: (...args: unknown[]) => unknown, renderCoreMessage: (...args: unknown[]) => unknown) => string;
+type ReasonFn = (online: boolean, auth: boolean, loading: boolean, inspectorDirty: boolean, timelineBusy: boolean, msg: (...args: unknown[]) => unknown, renderCoreMessage: (...args: unknown[]) => unknown, lockedTrackIds: ReadonlySet<string>) => string;
 const selection=Function('workspaceMode','propertiesPage','quickAssetId','makeAgentTimelineClipSelection','timeline','selectedClipId','data',`return (${expression('agentTimelineSelection')});`) as SelectionFn;
-const reason=Function('online','auth','loading','inspectorDirty','timelineBusy','msg','renderCoreMessage',`const agentTimelineBlockedDescriptor = ${expression('agentTimelineBlockedDescriptor')}; return (${expression('agentTimelineBlockedReason')});`) as ReasonFn;
+const reason=Function('online','auth','loading','inspectorDirty','timelineBusy','msg','renderCoreMessage','lockedTrackIds',`const agentTimelineBlockedDescriptor = ${expression('agentTimelineBlockedDescriptor')}; return (${expression('agentTimelineBlockedReason')});`) as ReasonFn;
 
 test('actual App passes only the selected saved clip in the editing inspector to Agent',()=>{
  const calls: unknown[][]=[],saved={revision:7},sentinel=Object.freeze({clipId:'selected'}),make=(...args: unknown[])=>{calls.push(args);return sentinel;};
@@ -23,10 +23,11 @@ test('actual App passes only the selected saved clip in the editing inspector to
 
 test('actual App blocks timeline proposals on every draft, offline/loading or unresolved timeline state',()=>{
  const dirty=Function('shotDirty','clipDirty','sourceDirty','subjectDirty','subtitleDirty',`return (${expression('inspectorDirty')});`) as (...flags: unknown[]) => unknown;
- const blocked=(...flags: unknown[]): string =>reason(flags[0] as boolean, flags[1] as boolean, flags[2] as boolean, flags[3] as boolean, flags[4] as boolean, msg as never, renderCoreMessage as never);
+ const blocked=(...flags: unknown[]): string =>reason(flags[0] as boolean, flags[1] as boolean, flags[2] as boolean, flags[3] as boolean, flags[4] as boolean, msg as never, renderCoreMessage as never,new Set());
  for(let i=0;i<5;i++){const flags=Array(5).fill(false);flags[i]=true;assert.equal(dirty(...flags),true);assert.match(blocked(true,true,false,dirty(...flags),false),/草稿/);}
  for(const inputs of [[false,true,false,false,false],[true,false,false,false,false],[true,null,false,false,false],[true,true,true,false,false]] as Array<Array<boolean | null>>)assert.match(blocked(...inputs),/连接与数据加载/);
  assert.match(blocked(true,true,false,false,true),/待确认/);
+ assert.match(reason(true,true,false,false,false,msg as never,renderCoreMessage as never,new Set(['locked-track'])),/锁定/);
  assert.equal(blocked(true,true,false,false,false),'');
 });
 

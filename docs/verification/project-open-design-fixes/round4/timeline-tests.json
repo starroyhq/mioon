@@ -1,0 +1,32 @@
+[
+  {
+    "file": "tests/timeline-compact-layout.test.ts",
+    "exitCode": 0,
+    "seconds": 0.33,
+    "log": "/private/tmp/mioon-round4-timeline-tests/timeline-compact-layout.test.ts.tap"
+  },
+  {
+    "file": "tests/timeline-collapsed-presentation.test.mjs",
+    "exitCode": 0,
+    "seconds": 0.54,
+    "log": "/private/tmp/mioon-round4-timeline-tests/timeline-collapsed-presentation.test.mjs.tap"
+  },
+  {
+    "file": "tests/subtitles-ui.test.mjs",
+    "exitCode": 0,
+    "seconds": 0.55,
+    "log": "/private/tmp/mioon-round4-timeline-tests/subtitles-ui.test.mjs.tap"
+  },
+  {
+    "file": "tests/waveform-ui.test.mjs",
+    "exitCode": 0,
+    "seconds": 0.54,
+    "log": "/private/tmp/mioon-round4-timeline-tests/waveform-ui.test.mjs.tap"
+  },
+  {
+    "file": "tests/client-timeline-snapping.test.ts",
+    "exitCode": 0,
+    "seconds": 0.43,
+    "log": "/private/tmp/mioon-round4-timeline-tests/client-timeline-snapping.test.ts.tap"
+  }
+]

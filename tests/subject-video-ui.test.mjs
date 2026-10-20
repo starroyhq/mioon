@@ -303,7 +303,7 @@ test('actual App subject retry captures original public snapshot beside unchange
   const p = provider('mock'), calls = [], notices = [];
   const original = { ...subjectVideo.subjectVideoSnapshot(shot(), reference(), assets), providerId: p.id, model: p.models[0], shotId, shotRevision: 1 }; delete original.id;
   const job = { id: id(88), shotId, providerId: p.id, model: p.models[0], snapshot: structuredClone(original) };
-  const scope = { msg: i18n.message, ...createI18nTestContext(), captureTaskWorkspaceIntent, readTaskRevealContext: () => ({ active: true, projectId, projectEpoch: 0, navigationEpoch: 0, panelIntent: 0, workspaceScope: 'test-workspace' }), openTasks() {}, providers: [p], checkGeneration: () => true, subjectVideoIdentity: subjectVideo.subjectVideoIdentity,
+  const scope = { msg: i18n.message, ...createI18nTestContext(), findGenerationProvider: settings.findGenerationProvider, generationProviderForModel: settings.generationProviderForModel, captureTaskWorkspaceIntent, readTaskRevealContext: () => ({ active: true, projectId, projectEpoch: 0, navigationEpoch: 0, panelIntent: 0, workspaceScope: 'test-workspace' }), openTasks() {}, providers: [p], checkGeneration: () => true, subjectVideoIdentity: subjectVideo.subjectVideoIdentity,
     run: (...args) => { calls.push(args); return Promise.resolve({ id: id(89) }); }, requestId: () => 'frozen-subject-retry-request', notify: message => notices.push(message) };
   const methods = Function(...Object.keys(scope), `${code}; return { submitGeneration, retryGeneration };`)(...Object.values(scope));
   methods.retryGeneration(job);
@@ -327,7 +327,7 @@ test('TaskCenter routes marked or observed subject retries to strict recovery an
   ];
   const h = harness('TaskCenter.tsx', { captureView: () => () => true, taskViewScope: 'subject-retry-current-view', activeCount: 0, pending: entries, busy: {}, jobs: [], data: { assets: [], shots: [], jobs: [{ id: id(90), projectId, snapshot: { subjectReference: reference() } }] }, tasks: { phase: 'ready', items: [], uncertain: [], busy: [] }, run: (...args) => calls.push(args), onClose() {} });
   const rows = h.nodes().filter(node => node.type === './PendingSubmission.tsx'); assert.equal(rows.length, 3);
-  rows[0].props.onReplay(); rows[1].props.onReplay(); rows[2].props.onReplay();
+  for (const entry of entries) { h.render({ selectedTaskId: `pending:legacy:${entry.key}` }); h.nodes().find(node => node.type === './PendingSubmission.tsx' && node.props.entry.key === entry.key).props.onReplay(); }
   assert.deepEqual(calls[0][4], { replay: true, subjectRetry: true }); assert.deepEqual(calls[1][4], { replay: true });
   assert.deepEqual(calls[0][2], entries[0].input); assert.deepEqual(calls[2][4], { replay: true, subjectRetry: true });
 });

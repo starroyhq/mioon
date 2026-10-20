@@ -1,4 +1,5 @@
 import {getOpacityCandidateAssembly,isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
+import {bindAgentTaskJobInside} from './agent/task-effects-v2.ts';
 import {createOpacityCandidateDomain} from './opacity-candidate-domain.ts';
 import {opacityEnvelopeFieldsAfterEdit} from '../../contracts/src/timeline-opacity-envelope.ts';
 import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
@@ -12,7 +13,7 @@ import {refuseRestoredOperation as legacyRefuseRestoredOperation} from './worksp
 import {createAgentTimelineMoveBoundary, createAgentTimelineGainBoundary} from './agent/timeline-edit-domain.ts';
 import {createSubtitleMutations} from './timeline-subtitles.ts';
 import {randomUUID} from 'node:crypto';
-import {AppError,sourceFrameCount,isTimelineMutationResponse as legacyMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET} from '@mioon/contracts';
+import {AppError,sourceFrameCount,isTimelineMutationResponse as legacyMutationResponse,timelineOutputPreset,DEFAULT_TIMELINE_OUTPUT_PRESET,TIMELINE_SUBTITLE_PROFILE_ID} from '@mioon/contracts';
 import {getTimelineFormat,readTimelineFormatOwner,readTimelineFormatState,assertTimelineFormatEligible} from './timeline-format.ts';
 import {canonicalFormatValue} from './timeline-format-receipts.ts';
 import {freezeTimelineSnapshot} from './timeline-inputs.ts';
@@ -23,7 +24,7 @@ import {readTimelinePreflightSnapshot} from './timeline-sources.ts';
 import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
 import {createTimelineRecoveryBoundary as legacyRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,admitTimelineImageResponse as legacyAdmitImageResponse,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.ts';
 import type {DatabaseSync} from 'node:sqlite';
-import type {TimelineClipRecord,TimelineRecord,TimelineSubtitlesRecord,TimelineTrackRecord} from './timeline-inputs.ts';
+import type {TimelineClipRecord,TimelineRecord,TimelineSubtitlesRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
 import type {TimelineRecoveryBoundary,TimelineRecoveryInput,TimelineRejectionState} from './timeline-recovery.ts';
 import type {ReplacementInput} from './timeline-replacement.ts';
 
@@ -59,6 +60,7 @@ interface TimelineHistoryResult {
 }
 type DomainError = Error & {code: string;status: number;details?: Record<string,unknown>};
 interface TimelineWriteOptions {sourceSemantics?: boolean}
+export interface AgentTimelineCompensation {kind:string;id:string;before:Record<string,unknown>|null;after:Record<string,unknown>|null}
 
 const defaultRect=(timeline: {width: number;height: number}): TimelineRectInput=>({x:0,y:0,width:timeline.width,height:timeline.height});
 // The shared wire schema admits every preset's envelope. Submitted rectangles
@@ -259,6 +261,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    const createdAt=now();
    const result={id:randomUUID(),projectId:input.projectId,requestId:input.requestId,mode:'timeline',purpose:input.purpose,timelineRevision:(frozen as {timeline:{revision:number}}).timeline.revision,snapshot:frozen,status:'queued',assetId:null,url:null,error:null,createdAt,updatedAt:createdAt};
    write();put('exports',result);
+   bindAgentTaskJobInside(db,'export',result.id);
    const response=saveResponse('timeline.render',input,requestHash,result,boundary);
    if(opacity)opacity.bindExport('timeline.render',input,result,requestHash);
    else bindRestoredExport(store,'timeline.render',input,result,requestHash);
@@ -377,5 +380,30 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   inTransaction:()=>db.isTransaction,requireProject:(id: string)=>required('projects',id),findTimeline:find,
   create:newTimeline,save:(value: unknown)=>put('timelines',value),
  } as never,projectId,presetId);
- return {ensure,history,handlers,moveClipInProject,setClipGainInProject,createLoudnessApplyTransactions,initializeProjectFormat};
+ // A task undo merges only its exact targets into the current aggregate. The
+ // existing timeline boundary still validates all media, tracks and bounds;
+ // unrelated edits survive and the manual history remains coherent.
+ const compensateAgentTargetsInside=(projectId:string,targets:readonly AgentTimelineCompensation[]):unknown=>{
+  if(!db.isTransaction)throw Error('Agent compensation requires its control transaction');
+  const current=find(projectId);if(!current)throw new AppError('REVISION_CONFLICT','时间线已改变',409);
+  const input={projectId,requestId:`agent-compensation-${randomUUID()}`,expectedRevision:current.revision,patch:{}};
+  const boundary=createTimelineRecoveryBoundary(db,input),timeline=boundary.read()!,before=snapshot(timeline);
+  for(const target of targets){
+   if(target.kind==='timeline'){
+    if(target.before)for(const field of ['fps','width','height'] as const){const value=target.before[field];if(typeof value!=='number')throw new AppError('INVALID_TIMELINE_SNAPSHOT','撤销数据无效',409);timeline[field]=value;}
+    continue;
+   }
+   const field=target.kind==='timeline_clip'?'clips':target.kind==='timeline_track'?'tracks':target.kind==='timeline_subtitle'?'subtitles':null;
+   if(!field)throw new AppError('INVALID_TIMELINE_SNAPSHOT','撤销目标无效',409);
+   const children=field==='subtitles'?(timeline.subtitles?.cues??[]):timeline[field],retained=children.filter(child=>child.id!==target.id);
+   if(target.before)retained.push(clone(target.before));
+   if(field==='clips')timeline.clips=retained as TimelineClipRecord[];
+   else if(field==='tracks')timeline.tracks=retained as TimelineTrackRecord[];
+   else timeline.subtitles={profileId:timeline.subtitles?.profileId??TIMELINE_SUBTITLE_PROFILE_ID,cues:retained as TimelineSubtitleCueRecord[]};
+  }
+  boundary.validate(timeline);timeline.revision++;timeline.updatedAt=now();admitTimelineImageResponse(timeline);
+  admitTimelineVolumeEnvelopeWrite(timeline,{before,after:snapshot(timeline),related:input});
+  put('timelines',timeline);recordEdit('agent.task.undo',timeline,before);return timeline;
+ };
+ return {ensure,history,handlers,moveClipInProject,setClipGainInProject,createLoudnessApplyTransactions,initializeProjectFormat,compensateAgentTargetsInside};
 }

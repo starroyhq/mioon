@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync,backup as sqliteBackup} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
-import {mkdtempSync,realpathSync,mkdirSync,rmSync} from 'node:fs';
+import {mkdtempSync,realpathSync,mkdirSync,rmSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
@@ -50,7 +50,7 @@ test('ordinary48 cannot adopt candidate opacity values even with its valid marke
 
 test('source48 cold backup verifies and restores to fixed49 with previous timeline capabilities and no deletion authority',{timeout:60000},async t=>{
   const base=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-project-backup-')));t.after(()=>rmSync(base,{recursive:true,force:true}));const source=path.join(base,'source'),backup=path.join(base,'backup'),destination=path.join(base,'restored');mkdirSync(source,{mode:0o700});
-  let store=openStore(source);const projectId=randomUUID();store.put('projects',{id:projectId,name:'Restored project',description:'',revision:1,createdAt:'2026-10-19T00:00:00.000Z',updatedAt:'2026-10-19T00:00:00.000Z'});store.close();
+  const historical=source44(t);initializeWorkspaceSchema48(historical,initializeWorkspaceSchemaThrough24);const projectId=randomUUID();historical.prepare('INSERT INTO projects VALUES(?,?)').run(projectId,JSON.stringify({id:projectId,name:'Restored project',description:'',revision:1,createdAt:'2026-10-19T00:00:00.000Z',updatedAt:'2026-10-19T00:00:00.000Z'}));historical.prepare('VACUUM INTO ?').run(path.join(source,'workbench.sqlite'));chmodSync(path.join(source,'workbench.sqlite'),0o600);mkdirSync(path.join(source,'media'),{mode:0o700});let store;
   const created=await createWorkspaceBackup({source,destination:backup});assert.equal(created.databaseSchemaVersion,48);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
   const restored=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(restored.sourceSchema,48);assert.equal(restored.databaseSchemaVersion,49);assert.equal(restored.profile,'restored-local-v13');
   store=openStore(destination);try{

@@ -1,3 +1,4 @@
+import type { AgentEditingProof } from './agent-editing-proof.ts';
 import { message, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/types.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
@@ -62,6 +63,7 @@ export interface SubtitleIntent {
   readonly previousIds: readonly string[];
 }
 export interface SubtitleContext {
+  collaboration?: AgentEditingProof | null;
   scope?: string | null;
   projectId?: string | null;
   timeline?: SubtitleTimeline | null;
@@ -143,6 +145,7 @@ export function subtitleAcknowledged(intent: SubtitleIntent | null | undefined, 
 // hiding/remounting its view cannot dispatch, clear, or replay that request.
 export function createSubtitleController({ submit, createRequestId, getContext, onChange = () => {} }: SubtitleControllerOptions) {
   let state = initial(), serial = 0, sequence = 0, active = true, visible = false;
+  let collaborationBaseline:{proof:AgentEditingProof;saved:unknown}|null=null,lastCollaboration:AgentEditingProof|null=null;
   const resolved = new Map<unknown, unknown>();
   const emit = (patch: Partial<SubtitleState>): SubtitleState => { state = { ...state, ...patch }; onChange(state); return state; };
   const sync = (): void => { const context = getContext?.(); if (active && context) controller.setContext(context); };
@@ -189,16 +192,19 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
       if (!active) return;
       const next = { scope: context.scope ?? null, projectId: context.projectId || null, connected: Boolean(context.connected), pending: Boolean(context.pending) };
       const timeline = context.timeline?.projectId === next.projectId ? context.timeline : null;
-      if (next.scope !== state.scope || next.projectId !== state.projectId) { serial++; resolved.clear(); state = initial(); emit({ ...next, timeline, selection: ++sequence }); return; }
+      if (next.scope !== state.scope || next.projectId !== state.projectId) { serial++; collaborationBaseline=null;lastCollaboration=null; resolved.clear(); state = initial(); emit({ ...next, timeline, selection: ++sequence }); return; }
       if (timeline && state.timeline && timeline.id === state.timeline.id && timeline.revision < state.timeline.revision) {
         if (next.connected !== state.connected || next.pending !== state.pending) emit(next);
         return;
       }
       const changed = timeline?.id !== state.timeline?.id || timeline?.revision !== state.timeline?.revision;
-      if (!changed && next.connected === state.connected && next.pending === state.pending) return;
+      const proof=context.collaboration??null,proofChanged=JSON.stringify(proof)!==JSON.stringify(lastCollaboration);lastCollaboration=proof?{...proof}:null;
+      if (!changed && !proofChanged && next.connected === state.connected && next.pending === state.pending) return;
       const retained = state.dirty || state.submitting || state.uncertain;
       const saved = cues(timeline).find(cue => cue.id === state.cueId);
-      emit({ ...next, timeline, ...(changed ? retained ? { conflict: true } : { draft: fields(saved) as SubtitleDraft | null, cueId: saved?.id || null, baseRevision: timeline?.revision ?? null, conflict: false } : {}) });
+      const baseline=collaborationBaseline,canRebase=proof&&baseline&&proof.ownerId===baseline.proof.ownerId&&proof.kind===baseline.proof.kind&&proof.id===baseline.proof.id&&proof.revision===baseline.proof.revision&&proof.timelineRevision===timeline?.revision&&JSON.stringify(fields(saved))===JSON.stringify(baseline.saved);
+      if(retained&&canRebase&&!state.submitting&&!state.uncertain){if(state.baseRevision!==timeline?.revision)serial++;emit({...next,timeline,baseRevision:timeline?.revision??null,conflict:false});}
+      else {if(!retained)collaborationBaseline=proof?{proof:{...proof},saved:fields(saved)}:null;emit({ ...next, timeline, ...(changed ? retained ? { conflict: true } : { draft: fields(saved) as SubtitleDraft | null, cueId: saved?.id || null, baseRevision: timeline?.revision ?? null, conflict: false } : {}) });}
     },
     setVisible(value: boolean): void { visible = Boolean(value); },
     select(cueId: string, expectedScope: string | null = state.scope): boolean {
@@ -206,7 +212,7 @@ export function createSubtitleController({ submit, createRequestId, getContext, 
       if (!active || expectedScope !== state.scope || state.dirty || state.submitting || state.uncertain) return false;
       const timeline = state.timeline, cue = cues(timeline).find(cue => cue.id === cueId);
       if (!timeline || !cue) return false;
-      serial++; emit({ cueId, selection: ++sequence, draft: fields(cue) as SubtitleDraft, baseRevision: timeline.revision, dirty: false, conflict: false, error: '', errorMessage: null }); return true;
+      collaborationBaseline=null;lastCollaboration=null;serial++; emit({ cueId, selection: ++sequence, draft: fields(cue) as SubtitleDraft, baseRevision: timeline.revision, dirty: false, conflict: false, error: '', errorMessage: null }); return true;
     },
     begin(frame: number, expectedScope: string | null = state.scope): boolean {
       sync();

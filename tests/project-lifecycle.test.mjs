@@ -77,7 +77,7 @@ test('completed project permanently deletes real rows, retained replies and excl
   assert.equal(f.store.db.prepare('SELECT count(*) n FROM reference_requests').get().n,0);assert.equal(f.store.db.prepare('SELECT count(*) n FROM project_deletion_scope').get().n,0);assert.equal(f.store.db.prepare('PRAGMA foreign_key_check').get(),undefined);
   assert.deepEqual(f.lifecycle.handlers['project.delete'](input),result);assert.throws(()=>f.lifecycle.handlers['project.delete']({...input,expectedRevision:99}),{code:'IDEMPOTENCY_CONFLICT'});
   assert.equal(f.store.db.prepare('SELECT count(*) n FROM project_deletion_receipts').get().n,1);assert.equal(f.store.db.prepare('SELECT count(*) n FROM project_deletion_cleanup').get().n,0);
-  assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,48);assert.ok(timeline.id);
+  assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,52);assert.ok(timeline.id);
 });
 
 test('running, unknown and locally stopped paid jobs block deletion without removing records or media',async t=>{
@@ -160,4 +160,20 @@ test('completed chat journals are removed with correct shared quota accounting w
   const before=f.store.db.prepare('SELECT * FROM agent_chat_quota').get(),grants=readFileSync(path.join(f.root,'agent-authorizations-v1.json'));
   assert.equal(f.lifecycle.handlers['project.delete'](f.removeInput()).cleanup,'complete');
   const after=f.store.db.prepare('SELECT * FROM agent_chat_quota').get();assert.equal(after.runs,1);assert.equal(after.reservedBytes,0);assert.ok(after.bytes>0&&after.bytes<before.bytes);assert.equal(f.store.db.prepare('SELECT count(*) n FROM agent_chat_runs WHERE projectId=?').get(f.project.id).n,0);assert.equal(f.store.db.prepare('SELECT count(*) n FROM agent_chat_runs WHERE projectId=?').get(f.other.id).n,1);assert.deepEqual(readFileSync(path.join(f.root,'agent-authorizations-v1.json')),grants);
+});
+
+
+test('permanent deletion includes archived task dispositions and receipts but preserves another project audit',async t=>{
+  const f=await fixture(t),owned=randomUUID(),kept=randomUUID();
+  for(const [projectId,taskId]of[[f.project.id,owned],[f.other.id,kept]]){f.store.put('jobs',{id:taskId,projectId,status:'succeeded',requestId:randomUUID(),submissionCount:1});await f.services.call('task.disposition.archiveCompleted',{projectId,targets:[{kind:'generation',taskId,expectedRevision:0,expectedStatus:'succeeded'}],requestId:randomUUID()});}
+  assert.equal(f.store.db.prepare('SELECT count(*) n FROM task_dispositions').get().n,2);
+  assert.equal(f.lifecycle.handlers['project.delete'](f.removeInput()).cleanup,'complete');
+  for(const table of ['task_dispositions','task_disposition_requests']){assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${table} WHERE projectId=?`).get(f.project.id).n,0);assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${table} WHERE projectId=?`).get(f.other.id).n,1);}
+  assert.equal(f.store.db.prepare('PRAGMA foreign_key_check').get(),undefined);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,52);
+});
+
+test('a local markFailed cannot unlock permanent deletion of an unknown original task',async t=>{
+  const f=await fixture(t),taskId=randomUUID(),requestId=randomUUID();f.store.put('jobs',{id:taskId,projectId:f.project.id,status:'submission_unknown',requestId,submissionCount:1});
+  await f.services.call('task.disposition.markFailed',{projectId:f.project.id,kind:'generation',taskId,expectedRevision:0,expectedStatus:'submission_unknown',requestId:randomUUID(),confirm:true});
+  assert.throws(()=>f.lifecycle.handlers['project.delete'](f.removeInput()),{code:'PROJECT_DELETE_BUSY'});assert.equal(f.store.get('jobs',taskId).status,'submission_unknown');assert.equal(f.store.get('jobs',taskId).requestId,requestId);assert.ok(f.store.get('projects',f.project.id));
 });

@@ -1,0 +1,232 @@
+TAP version 13
+# Subtest: every composed UI and native catalog has exact four-locale and placeholder parity
+ok 1 - every composed UI and native catalog has exact four-locale and placeholder parity
+  ---
+  duration_ms: 38.994542
+  type: 'test'
+  ...
+# Subtest: UI literal ledger rejects unexplained, newly introduced and stale exceptions
+ok 2 - UI literal ledger rejects unexplained, newly introduced and stale exceptions
+  ---
+  duration_ms: 0.387625
+  type: 'test'
+  ...
+# Subtest: current source has no unreviewed or stale static UI literal exceptions
+ok 3 - current source has no unreviewed or stale static UI literal exceptions
+  ---
+  duration_ms: 358.6545
+  type: 'test'
+  ...
+# Subtest: static semantic keys used by UI translation calls exist in the composed catalog
+ok 4 - static semantic keys used by UI translation calls exist in the composed catalog
+  ---
+  duration_ms: 241.180875
+  type: 'test'
+  ...
+# Subtest: visible template guard distinguishes app copy from dynamic semantic keys
+ok 5 - visible template guard distinguishes app copy from dynamic semantic keys
+  ---
+  duration_ms: 0.182875
+  type: 'test'
+  ...
+# Subtest: locale input zh-Hant resolves without a region-specific catalog
+ok 6 - locale input zh-Hant resolves without a region-specific catalog
+  ---
+  duration_ms: 0.627708
+  type: 'test'
+  ...
+# Subtest: locale input zh-TW resolves without a region-specific catalog
+ok 7 - locale input zh-TW resolves without a region-specific catalog
+  ---
+  duration_ms: 0.105416
+  type: 'test'
+  ...
+# Subtest: locale input zh-HK resolves without a region-specific catalog
+ok 8 - locale input zh-HK resolves without a region-specific catalog
+  ---
+  duration_ms: 0.306584
+  type: 'test'
+  ...
+# Subtest: locale input zh-MO resolves without a region-specific catalog
+ok 9 - locale input zh-MO resolves without a region-specific catalog
+  ---
+  duration_ms: 0.05325
+  type: 'test'
+  ...
+# Subtest: locale input zh-Hant-CN resolves without a region-specific catalog
+ok 10 - locale input zh-Hant-CN resolves without a region-specific catalog
+  ---
+  duration_ms: 0.059875
+  type: 'test'
+  ...
+# Subtest: locale input zh-Hans-TW resolves without a region-specific catalog
+ok 11 - locale input zh-Hans-TW resolves without a region-specific catalog
+  ---
+  duration_ms: 0.044875
+  type: 'test'
+  ...
+# Subtest: locale input zh resolves without a region-specific catalog
+ok 12 - locale input zh resolves without a region-specific catalog
+  ---
+  duration_ms: 0.04325
+  type: 'test'
+  ...
+# Subtest: locale input zh-CN resolves without a region-specific catalog
+ok 13 - locale input zh-CN resolves without a region-specific catalog
+  ---
+  duration_ms: 0.035625
+  type: 'test'
+  ...
+# Subtest: locale input zh-SG resolves without a region-specific catalog
+ok 14 - locale input zh-SG resolves without a region-specific catalog
+  ---
+  duration_ms: 0.148167
+  type: 'test'
+  ...
+# Subtest: locale input en-GB resolves without a region-specific catalog
+ok 15 - locale input en-GB resolves without a region-specific catalog
+  ---
+  duration_ms: 0.096291
+  type: 'test'
+  ...
+# Subtest: locale input ja-JP resolves without a region-specific catalog
+ok 16 - locale input ja-JP resolves without a region-specific catalog
+  ---
+  duration_ms: 0.050458
+  type: 'test'
+  ...
+# Subtest: locale input ja_JP.UTF-8 resolves without a region-specific catalog
+ok 17 - locale input ja_JP.UTF-8 resolves without a region-specific catalog
+  ---
+  duration_ms: 0.048
+  type: 'test'
+  ...
+# Subtest: invalid/unsupported system locale falls back to English and explicit choice wins
+ok 18 - invalid/unsupported system locale falls back to English and explicit choice wins
+  ---
+  duration_ms: 0.454417
+  type: 'test'
+  ...
+# Subtest: foundation/native catalogs have complete four-language placeholders
+ok 19 - foundation/native catalogs have complete four-language placeholders
+  ---
+  duration_ms: 11.887459
+  type: 'test'
+  ...
+# Subtest: preference envelope and IPC are narrow, exact and data-only
+ok 20 - preference envelope and IPC are narrow, exact and data-only
+  ---
+  duration_ms: 0.275458
+  type: 'test'
+  ...
+# Subtest: native preference authorizes before any read/write, broadcasts and survives a fresh host
+ok 21 - native preference authorizes before any read/write, broadcasts and survives a fresh host
+  ---
+  duration_ms: 0.261834
+  type: 'test'
+  ...
+# Subtest: corrupt/read-only preference never lies about persistence or overwrites on read
+ok 22 - corrupt/read-only preference never lies about persistence or overwrites on read
+  ---
+  duration_ms: 0.093625
+  type: 'test'
+  ...
+# Subtest: preload exposes fixed typed methods and rejects arbitrary channels/fields
+ok 23 - preload exposes fixed typed methods and rejects arbitrary channels/fields
+  ---
+  duration_ms: 0.241875
+  type: 'test'
+  ...
+# Subtest: web manual language persists independently and storage events do not write back
+ok 24 - web manual language persists independently and storage events do not write back
+  ---
+  duration_ms: 0.216167
+  type: 'test'
+  ...
+# Subtest: web storage failure is session-only without changing other app state
+ok 25 - web storage failure is session-only without changing other app state
+  ---
+  duration_ms: 0.049083
+  type: 'test'
+  ...
+# Subtest: native stale reads cannot overwrite a newer broadcast and reconnect does not remount application state
+ok 26 - native stale reads cannot overwrite a newer broadcast and reconnect does not remount application state
+  ---
+  duration_ms: 0.154166
+  type: 'test'
+  ...
+# Subtest: catalog fragments cannot silently overwrite a duplicate semantic key
+ok 27 - catalog fragments cannot silently overwrite a duplicate semantic key
+  ---
+  duration_ms: 0.189542
+  type: 'test'
+  ...
+# Subtest: plural selection keeps numeric counts while formatting only their display value
+ok 28 - plural selection keeps numeric counts while formatting only their display value
+  ---
+  duration_ms: 0.504458
+  type: 'test'
+  ...
+# Subtest: system-language changes affect only system preference without saving or requests
+ok 29 - system-language changes affect only system preference without saving or requests
+  ---
+  duration_ms: 0.121291
+  type: 'test'
+  ...
+# Subtest: unknown language requests reject accessors and unsupported prototypes without invoking them
+ok 30 - unknown language requests reject accessors and unsupported prototypes without invoking them
+  ---
+  duration_ms: 0.057458
+  type: 'test'
+  ...
+# Subtest: a native system-language refresh updates menus and every window without persisting project data
+ok 31 - a native system-language refresh updates menus and every window without persisting project data
+  ---
+  duration_ms: 0.0995
+  type: 'test'
+  ...
+# Subtest: library chips, layout and filter portal retire across hide/reopen and project ownership
+ok 32 - library chips, layout and filter portal retire across hide/reopen and project ownership
+  ---
+  duration_ms: 34.266459
+  type: 'test'
+  ...
+# Subtest: storyboard dragging and selection retain source asset but cannot reorder another project or hidden surface
+ok 33 - storyboard dragging and selection retain source asset but cannot reorder another project or hidden surface
+  ---
+  duration_ms: 2.909416
+  type: 'test'
+  ...
+# Subtest: storyboard separate move controls retain order boundaries and retire stale callbacks
+ok 34 - storyboard separate move controls retain order boundaries and retire stale callbacks
+  ---
+  duration_ms: 1.645292
+  type: 'test'
+  ...
+# Subtest: compact node player preserves explicit seek and pauses late play after its source is replaced
+ok 35 - compact node player preserves explicit seek and pauses late play after its source is replaced
+  ---
+  duration_ms: 2.114125
+  type: 'test'
+  ...
+# Subtest: minimum timeline height exposes only whole lanes without losing the horizontal scrollbar
+ok 36 - minimum timeline height exposes only whole lanes without losing the horizontal scrollbar
+  ---
+  duration_ms: 2.358417
+  type: 'test'
+  ...
+# Subtest: settled compact scroll offsets align rows and the last track remains reachable
+ok 37 - settled compact scroll offsets align rows and the last track remains reachable
+  ---
+  duration_ms: 0.277584
+  type: 'test'
+  ...
+1..37
+# tests 37
+# suites 0
+# pass 37
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 991.229125

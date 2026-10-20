@@ -10,12 +10,14 @@ import { assetUrl } from './api.ts';
 import { createSubjectController, subjectKinds, subjectKindDescriptor, subjectImage, filterSubjects, activeSubjectBindings } from './subject-state.ts';
 import type { SubjectState } from './subject-state.ts';
 import { useSubjectInteraction } from './use-subjects.ts';
+import type { UseSubjectsResult } from './use-subjects.ts';
+import AgentEditingBoundary from './AgentEditingBoundary.tsx';
 import './subjects.css';
 
 export interface SubjectAssetView { id?: string; projectId?: string; name?: string; mimeType?: string; [key: string]: unknown }
 export interface SubjectVersionLike { id?: string; assetId?: string; projectId?: string | null; number?: number; width?: number; height?: number }
 export type SubjectsController = ReturnType<typeof createSubjectController>;
-export interface SubjectsBundle { state: SubjectState; controller: SubjectsController }
+export type SubjectsBundle = UseSubjectsResult;
 export interface SubjectInteraction { visible: boolean; admit: (action: () => unknown) => unknown }
 export interface SubjectPagerEntry { history: (string | null)[]; items: readonly unknown[]; nextCursor: string | null }
 
@@ -45,21 +47,23 @@ export interface SubjectLibraryProps {
   assets?: readonly SubjectAssetView[];
   shots?: readonly { id: string; title?: string; [key: string]: unknown }[];
   blocked?: boolean;
+  restored?: boolean;
   onShowTasks?: () => unknown;
   onInspectShot?: (shotId: string) => unknown;
 }
 interface SubjectFilters { scope: string | null | undefined; kind: string; search: string }
-const useInteraction = useSubjectInteraction as unknown as (scope: string | null | undefined, controller: SubjectsController | null | undefined, target: unknown) => SubjectInteraction;
-
-export default function SubjectLibrary({ subjects, assets = [], shots = [], blocked = false, onShowTasks, onInspectShot }: SubjectLibraryProps): ReactElement {
+export default function SubjectLibrary({ subjects, assets = [], shots = [], blocked = false, restored = false, onShowTasks, onInspectShot }: SubjectLibraryProps): ReactElement {
   const { t, renderMessage } = useI18n();
   const state = subjects?.state, controller = subjects?.controller;
   const [filters, setFilters] = useState<SubjectFilters>({ scope: null, kind: 'all', search: '' });
   const [creation, setCreation] = useState<{ scope: string | null | undefined; open: boolean }>({ scope: null, open: false });
   const local = filters.scope === state?.scope ? filters : { kind: 'all', search: '' };
   const selected = state?.subjects[state.selectedSubjectId], draft = state?.createDraft;
-  const interaction = useInteraction(state?.scope, controller, `${state?.selectedSubjectId}:${draft?.serial}:${state?.versionDrafts[state?.selectedSubjectId]?.assetId || ''}:${state?.versionDrafts[state?.selectedSubjectId]?.expectedRevision || ''}`);
-  const view = state as SubjectState, control = controller as SubjectsController;
+  const interaction = useSubjectInteraction(state?.scope, controller, `${state?.selectedSubjectId}:${draft?.serial}:${state?.versionDrafts[state?.selectedSubjectId]?.assetId || ''}:${state?.versionDrafts[state?.selectedSubjectId]?.expectedRevision || ''}`);
+  // The hook withholds the previous project's state until its new context is
+  // installed. This mounted (possibly hidden) pane must handle that transition.
+  if (!state || !controller) return <section className="subject-library" data-testid="subject-library" aria-label={t('subjects.library.label')}><p role="status">{t('subjects.library.loading')}</p></section>;
+  const view = state, control = controller;
   const admit = interaction.admit, scope = state?.scope;
   const disabled = !interaction.visible || !scope || blocked || Boolean(state?.saving || state?.uncertain);
   const images = assets.filter(asset => subjectImage(asset, state?.projectId ?? null));
@@ -69,6 +73,7 @@ export default function SubjectLibrary({ subjects, assets = [], shots = [], bloc
   const changeFilter = (patch: Partial<Pick<SubjectFilters, 'kind' | 'search'>>): unknown => admit(() => setFilters({ scope, ...local, ...patch }));
   const reset = (): unknown => admit(() => { setFilters({ scope, kind: 'all', search: '' }); void control.subjectPage('first', scope); });
   const staleVersionDraft = Boolean(versionDraft?.assetId && versionDraft.expectedRevision !== selected?.revision);
+  if (!state) return <section className="subject-library" data-testid="subject-library" aria-label={t('subjects.library.label')}><p role="status">{t('subjects.library.loading')}</p></section>;
   return <section className="subject-library" data-testid="subject-library" aria-label={t('subjects.library.label')}>
     <div className="subject-library-toolbar"><Button variant="outline" size="sm" disabled={disabled} data-testid="subject-new" onClick={() => admit(() => setCreation({ scope, open: !createOpen }))}>{t('subjects.library.new')}</Button><Button variant="ghost" size="sm" disabled={!interaction.visible || !scope || Boolean(state?.saving) || state?.list.phase === 'loading'} onClick={() => admit(() => control.read())}>{t('subjects.library.refresh')}</Button><Button variant="ghost" size="sm" disabled={!interaction.visible || !scope} onClick={reset}>{t('subjects.library.reset')}</Button></div>
     <p className="subject-local-note">{t('subjects.library.planningNote')}</p>
@@ -82,7 +87,7 @@ export default function SubjectLibrary({ subjects, assets = [], shots = [], bloc
       {view.list.phase === 'ready' && !visible.length && <p className="subject-empty">{view.list.items.length ? t('subjects.library.noMatches') : t('subjects.library.empty')}</p>}
       <div className="subject-cards">{visible.map(subject => <Button variant="ghost" key={subject.id} className={`subject-card ${selected?.id === subject.id ? 'selected' : ''}`} data-testid={`subject-card-${subject.id}`} aria-pressed={selected?.id === subject.id} disabled={!interaction.visible || view.list.phase !== 'ready'} onClick={() => admit(() => control.selectSubject(subject.id, scope))}><SubjectImage version={subject.headVersion} assets={assets} label={subject.name} /><span><strong>{subject.name}</strong><small>{renderMessage(subjectKindDescriptor(subject.kind))} · V{subject.headVersion.number}</small></span></Button>)}</div>
       {selected && <section className="subject-detail" aria-label={t('subjects.version.detailLabel', { name: selected.name })}><header><div><h3>{selected.name}</h3><p>{t('subjects.version.currentSummary', { kind: renderMessage(subjectKindDescriptor(selected.kind)), number: selected.headVersion.number })}</p></div></header>{!visible.some(item => item.id === selected.id) && <p className="subject-helper">{t('subjects.version.outsideFilter')}</p>}
-        <div className="subject-form"><Label htmlFor="subject-version-image">{t('subjects.version.addImage')}</Label><ImageChoice id="subject-version-image" value={versionDraft?.assetId || ''} assets={images} disabled={disabled || state?.list.phase !== 'ready'} onChange={assetId => admit(() => control.updateVersion(selected.id, assetId, scope))} />{versionDraft?.assetId && <SubjectImage version={{ assetId: versionDraft.assetId, projectId: view.projectId }} assets={assets} label={t('subjects.version.selectedImage')} />}{staleVersionDraft && <p className="subject-warning" role="alert">{t('subjects.version.staleDraft')}</p>}<div className="subject-actions"><Button size="sm" data-testid="subject-add-version" disabled={disabled || view.list.phase !== 'ready' || staleVersionDraft || !images.some(asset => asset.id === versionDraft?.assetId)} onClick={() => admit(() => control.addVersion(selected.id, scope))}>{t('subjects.version.add')}</Button>{versionDraft?.assetId && <Button variant="ghost" size="sm" disabled={disabled} onClick={() => admit(() => control.updateVersion(selected.id, '', scope))}>{t('subjects.version.discard')}</Button>}</div><p className="subject-helper">{t('subjects.version.retained')}</p></div>
+        <AgentEditingBoundary disabled={restored} projectId={view.projectId} targets={[{kind:'subject',id:selected.id,revision:selected.revision}]} canRelease={()=>{const current=control.getState();return !current.versionDrafts[selected.id]?.assetId&&!current.saving&&!current.uncertain;}} onDiscard={()=>{const current=control.getState();if(current.scope===scope&&!current.saving&&!current.uncertain)control.updateVersion(selected.id,'',scope);}}><div className="subject-form"><Label htmlFor="subject-version-image">{t('subjects.version.addImage')}</Label><ImageChoice id="subject-version-image" value={versionDraft?.assetId || ''} assets={images} disabled={disabled || state?.list.phase !== 'ready'} onChange={assetId => admit(() => control.updateVersion(selected.id, assetId, scope))} />{versionDraft?.assetId && <SubjectImage version={{ assetId: versionDraft.assetId, projectId: view.projectId }} assets={assets} label={t('subjects.version.selectedImage')} />}{staleVersionDraft && <p className="subject-warning" role="alert">{t('subjects.version.staleDraft')}</p>}<div className="subject-actions"><Button size="sm" data-testid="subject-add-version" disabled={disabled || view.list.phase !== 'ready' || staleVersionDraft || !images.some(asset => asset.id === versionDraft?.assetId)} onClick={() => admit(() => control.addVersion(selected.id, scope))}>{t('subjects.version.add')}</Button>{versionDraft?.assetId && <Button variant="ghost" size="sm" disabled={disabled} onClick={() => admit(() => control.updateVersion(selected.id, '', scope))}>{t('subjects.version.discard')}</Button>}</div><p className="subject-helper">{t('subjects.version.retained')}</p></div></AgentEditingBoundary>
         <h4>{t('subjects.version.heading')}</h4>{versions?.phase === 'loading' && <p role="status">{t('subjects.version.loading')}</p>}{versions?.phase === 'error' && <p role="alert" className="subject-warning">{renderMessage(versions.error)}</p>}<div className="subject-version-grid">{(versions?.items || []).map(version => <div key={version.id} className="subject-version"><SubjectImage version={version} assets={assets} label={`${selected.name} V${version.number}`} /><strong>V{version.number}{version.id === selected.headVersionId ? t('subjects.version.currentSuffix') : ''}</strong><span>{version.width} × {version.height}</span></div>)}</div><SubjectPager label={t('subjects.pager.versions')} entry={versions} disabled={!interaction.visible || versions?.phase !== 'ready'} onPage={direction => admit(() => control.versionPage(selected.id, direction, scope))} />
         <h4>{t('subjects.binding.heading')}</h4>{uses?.phase === 'loading' && <p role="status">{t('subjects.binding.loading')}</p>}{uses?.phase === 'error' && <p role="alert" className="subject-warning">{renderMessage(uses.error)}</p>}{uses?.phase === 'ready' && !activeSubjectBindings(uses).length && <p className="subject-helper">{t('subjects.binding.noneLoaded')}</p>}{activeSubjectBindings(uses).map(binding => { const shot = shots.find(item => item.id === binding.shotId); return <div className="subject-use" key={binding.id}><span>{shot?.title || t('subjects.binding.shotMissing')}{binding.needsReview ? t('subjects.binding.reviewSuffix') : t('subjects.binding.pinnedSuffix')}</span><Button variant="ghost" size="sm" disabled={!interaction.visible || !shot || !onInspectShot} onClick={() => admit(() => onInspectShot?.(binding.shotId))}>{t('subjects.binding.viewShot')}</Button></div>; })}{uses?.nextCursor && <Button variant="ghost" size="sm" disabled={!interaction.visible || uses.phase !== 'ready'} onClick={() => admit(() => control.readUses(selected.id, scope, true))}>{t('subjects.binding.loadMore')}</Button>}
       </section>}

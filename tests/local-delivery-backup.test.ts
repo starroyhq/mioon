@@ -66,7 +66,7 @@ test('actual cold backup excludes delivery draft, immutable intent and atomic te
  assert.deepEqual(tree(f.source),sourceBefore,'Backup and verify must preserve all source bytes and modes, including excluded files');
  assert.deepEqual(tree(f.backup),originalBackupBefore);
  const backupBefore=tree(backup),restored=await restoreWorkspaceBackup({directory:backup,destination:f.destination});
- assert.equal(restored.publication,'confirmed');assert.equal(restored.sourceSchema,48);assert.equal(restored.databaseSchemaVersion,49);assert.equal(restored.profile,'restored-local-v13');
+ assert.equal(restored.publication,'confirmed');assert.equal(restored.sourceSchema,52);assert.equal(restored.databaseSchemaVersion,53);assert.equal(restored.profile,'restored-local-v15');
  assert.equal(fs.existsSync(path.join(f.destination,LOCAL_DELIVERY_FILENAME)),false);assert.equal(fs.existsSync(path.join(f.destination,temporary)),false);
  assert.deepEqual(tree(f.source),sourceBefore);assert.deepEqual(tree(backup),backupBefore);
  const restoredStore=openStore(f.destination),restoredServices=createServices(restoredStore,new Map());

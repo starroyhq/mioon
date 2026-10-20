@@ -22,14 +22,15 @@ test('the clip inspector leads with the fields people edit most and keeps source
 
 test('Agent authorization status, review entrance and send stay in the sticky composer; explicit consent belongs to its review dialog', () => {
   const source = read('AgentPanel.tsx');
-  const start = source.indexOf('<div className="agent-chat-composer-input">'), end = source.indexOf('<p className="agent-chat-stop-note">');
+  const start = source.indexOf('<div className="agent-chat-composer-input">'), end = source.indexOf('</form>', start);
   assert.ok(start > 0 && end > start);
   const block = source.slice(start, end);
   for (const marker of ['data-testid="agent-chat-authorization-status"', 'data-testid="agent-chat-authorization-open"', 'data-testid="agent-chat-prompt"', 'data-testid="agent-chat-send"']) assert.ok(block.includes(marker), `${marker} must stay inside the sticky block`);
   const approval = source.slice(source.indexOf('<Dialog open={Boolean(visible&&!sendConsented&&authorizationIntent.key===disclosureKey)}'));
   assert.ok(approval.includes('data-testid="agent-chat-consent"'), 'The explicit checkbox remains in the current visible disclosure dialog');
   assert.match(approval, /data-testid="agent-chat-authorization-confirm" disabled=\{!authorizationReady\|\|!authorizationIntent\.checked\}/);
-  assert.match(source, /if\(!sendConsented\)\{if\(canStart\)setAuthorizationIntent\(\{key:disclosureKey,checked:false,sendAfterApproval:true\}\);return;\}/,'Send without consent must enter review before dispatch');
+  assert.match(source, /if\(!sendConsented\)\{if\(canStart\)setAuthorizationIntent\(\{key:disclosureKey,checked:false,sendAfterApproval:true,message:state\.draft\}\);return;\}/,'Send without consent must enter review and capture the exact draft before dispatch');
+  assert.match(source,/if\(sendAfterApproval&&current\?\.getState\(\)\.draft!==message\)return/,'Approval must reject a draft changed since review opened');
   assert.ok(source.indexOf('data-testid="agent-chat-destination"') < start, 'the send destination stays above the consent it describes');
   // The scope, target and destination sit in their own block above it, so the sticky block can pin to the page itself:
   // the form is display: contents, otherwise a short dock would leave the form (its containing block) off screen.

@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: candidate exact small positive attenuation cannot be replaced within an absolute epsilon
+ok 1 - candidate exact small positive attenuation cannot be replaced within an absolute epsilon
+  ---
+  duration_ms: 3.636458
+  type: 'test'
+  ...
+# Subtest: same PCM binds the range peak exactly while legacy reports remain valid without LRA
+ok 2 - same PCM binds the range peak exactly while legacy reports remain valid without LRA
+  ---
+  duration_ms: 5.527792
+  type: 'test'
+  ...
+# Subtest: response target identity includes both fields and rejects an omitted requested candidate
+ok 3 - response target identity includes both fields and rejects an omitted requested candidate
+  ---
+  duration_ms: 0.650208
+  type: 'test'
+  ...
+# Subtest: candidate accepts exact gain 2 and refuses a mathematically larger gain without clamping
+ok 4 - candidate accepts exact gain 2 and refuses a mathematically larger gain without clamping
+  ---
+  duration_ms: 24.576333
+  type: 'test'
+  ...
+# Subtest: candidate measurement includes float32 scaling and fresh EOF true-peak reconstruction
+ok 5 - candidate measurement includes float32 scaling and fresh EOF true-peak reconstruction
+  ---
+  duration_ms: 17.352541
+  type: 'test'
+  ...
+# Subtest: candidate re-gates the actual scaled PCM instead of predicting the target arithmetically
+ok 6 - candidate re-gates the actual scaled PCM instead of predicting the target arithmetically
+  ---
+  duration_ms: 185.76175
+  type: 'test'
+  ...
+# Subtest: valid constant gain hits the explicit target and preserves the exact multiplier
+ok 7 - valid constant gain hits the explicit target and preserves the exact multiplier
+  ---
+  duration_ms: 18.76725
+  type: 'test'
+  ...
+# Subtest: true-peak reserve refuses a target without silently lowering it or clipping transient samples
+ok 8 - true-peak reserve refuses a target without silently lowering it or clipping transient samples
+  ---
+  duration_ms: 23.304917
+  type: 'test'
+  ...
+# Subtest: silence and gain outside the saved 0–2 range stay unavailable with no candidate meter pass
+ok 9 - silence and gain outside the saved 0–2 range stay unavailable with no candidate meter pass
+  ---
+  duration_ms: 9.702709
+  type: 'test'
+  ...
+# Subtest: candidate slices retain cancellation fences and refuse incomplete PCM
+ok 10 - candidate slices retain cancellation fences and refuse incomplete PCM
+  ---
+  duration_ms: 10.06225
+  type: 'test'
+  ...
+# Subtest: strict catalog operation is observation only with no persisted request or scope-changing options
+ok 11 - strict catalog operation is observation only with no persisted request or scope-changing options
+  ---
+  duration_ms: 2.480375
+  type: 'test'
+  ...
+# Subtest: measurement schema preserves fixed algorithm states and exact clip output bounds
+ok 12 - measurement schema preserves fixed algorithm states and exact clip output bounds
+  ---
+  duration_ms: 2.208833
+  type: 'test'
+  ...
+# Subtest: response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings
+ok 13 - response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings
+  ---
+  duration_ms: 2.290625
+  type: 'test'
+  ...
+# Subtest: four locale operation discovery text is present and never silently grants application
+ok 14 - four locale operation discovery text is present and never silently grants application
+  ---
+  duration_ms: 1.163875
+  type: 'test'
+  ...
+# Subtest: explicit targets bind measured candidates without granting mutation authority
+ok 15 - explicit targets bind measured candidates without granting mutation authority
+  ---
+  duration_ms: 2.18225
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 433.867167

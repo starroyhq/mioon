@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: candidate re-gates the actual scaled PCM instead of predicting the target arithmetically
+ok 1 - candidate re-gates the actual scaled PCM instead of predicting the target arithmetically
+  ---
+  duration_ms: 202.844333
+  type: 'test'
+  ...
+# Subtest: valid constant gain hits the explicit target and preserves the exact multiplier
+ok 2 - valid constant gain hits the explicit target and preserves the exact multiplier
+  ---
+  duration_ms: 18.921458
+  type: 'test'
+  ...
+# Subtest: true-peak reserve refuses a target without silently lowering it or clipping transient samples
+ok 3 - true-peak reserve refuses a target without silently lowering it or clipping transient samples
+  ---
+  duration_ms: 23.57025
+  type: 'test'
+  ...
+# Subtest: silence and gain outside the saved 0–2 range stay unavailable with no candidate meter pass
+ok 4 - silence and gain outside the saved 0–2 range stay unavailable with no candidate meter pass
+  ---
+  duration_ms: 9.445083
+  type: 'test'
+  ...
+# Subtest: candidate slices retain cancellation fences and refuse incomplete PCM
+ok 5 - candidate slices retain cancellation fences and refuse incomplete PCM
+  ---
+  duration_ms: 9.474666
+  type: 'test'
+  ...
+# Subtest: selected clip default is125s; explicit timeouts and unrelated30s defaults stay intact
+ok 6 - selected clip default is125s; explicit timeouts and unrelated30s defaults stay intact
+  ---
+  duration_ms: 15.526292
+  type: 'test'
+  ...
+# Subtest: typed helper and shared RPC preserve explicit selection and transport-only workspace/cancellation
+ok 7 - typed helper and shared RPC preserve explicit selection and transport-only workspace/cancellation
+  ---
+  duration_ms: 1.15075
+  type: 'test'
+  ...
+# Subtest: strict selection and fixed profile reject targets, candidates and authority before dispatch
+ok 8 - strict selection and fixed profile reject targets, candidates and authority before dispatch
+  ---
+  duration_ms: 0.706125
+  type: 'test'
+  ...
+# Subtest: reports bind exact selected identity, scope, samples and counters without retry
+ok 9 - reports bind exact selected identity, scope, samples and counters without retry
+  ---
+  duration_ms: 4.264333
+  type: 'test'
+  ...
+# Subtest: 8KiB reader rejects declared, streamed and error-body overflow before unbounded JSON decoding
+ok 10 - 8KiB reader rejects declared, streamed and error-body overflow before unbounded JSON decoding
+  ---
+  duration_ms: 1.145375
+  type: 'test'
+  ...
+# Subtest: bounded reader handles split UTF8, exact envelope limit and rejects invalid bytes/JSON or absent streams
+ok 11 - bounded reader handles split UTF8, exact envelope limit and rejects invalid bytes/JSON or absent streams
+  ---
+  duration_ms: 0.526292
+  type: 'test'
+  ...
+# Subtest: pending streamed response cancels on caller abort or deadline; owned body is retired without retry
+ok 12 - pending streamed response cancels on caller abort or deadline; owned body is retired without retry
+  ---
+  duration_ms: 21.846667
+  type: 'test'
+  ...
+# Subtest: transport loss and safe backend errors carry no mutation receipt/retry authority or credentials
+ok 13 - transport loss and safe backend errors carry no mutation receipt/retry authority or credentials
+  ---
+  duration_ms: 0.804625
+  type: 'test'
+  ...
+# Subtest: strict catalog operation is observation only with no persisted request or scope-changing options
+ok 14 - strict catalog operation is observation only with no persisted request or scope-changing options
+  ---
+  duration_ms: 2.457458
+  type: 'test'
+  ...
+# Subtest: measurement schema preserves fixed algorithm states and exact clip output bounds
+ok 15 - measurement schema preserves fixed algorithm states and exact clip output bounds
+  ---
+  duration_ms: 2.196834
+  type: 'test'
+  ...
+# Subtest: response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings
+ok 16 - response guard rejects exotic objects, accessors, cycles, arrays, extra keys and oversized strings
+  ---
+  duration_ms: 1.211958
+  type: 'test'
+  ...
+# Subtest: four locale operation discovery text is present and never silently grants application
+ok 17 - four locale operation discovery text is present and never silently grants application
+  ---
+  duration_ms: 0.458958
+  type: 'test'
+  ...
+# Subtest: explicit targets bind measured candidates without granting mutation authority
+ok 18 - explicit targets bind measured candidates without granting mutation authority
+  ---
+  duration_ms: 2.322958
+  type: 'test'
+  ...
+# Subtest: actual CLI and official MCP discover the exact strict loudness input and unchanged annotations offline
+ok 19 - actual CLI and official MCP discover the exact strict loudness input and unchanged annotations offline
+  ---
+  duration_ms: 896.625166
+  type: 'test'
+  ...
+# Subtest: actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry
+ok 20 - actual HTTP, CLI and official MCP carry identical ephemeral reports, validate identity and never retry
+  ---
+  duration_ms: 1229.016375
+  type: 'test'
+  ...
+# Subtest: actual HTTP cancellation disconnects only loudness observation and leaves server healthy
+ok 21 - actual HTTP cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 5.553042
+  type: 'test'
+  ...
+# Subtest: actual CLI cancellation disconnects only loudness observation and leaves server healthy
+ok 22 - actual CLI cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 288.261209
+  type: 'test'
+  ...
+# Subtest: actual MCP cancellation disconnects only loudness observation and leaves server healthy
+ok 23 - actual MCP cancellation disconnects only loudness observation and leaves server healthy
+  ---
+  duration_ms: 329.698666
+  type: 'test'
+  ...
+# Subtest: HTTP rejects extra paths and authority while CLI/MCP reject before dispatch, including arbitrary filename flags
+ok 24 - HTTP rejects extra paths and authority while CLI/MCP reject before dispatch, including arbitrary filename flags
+  ---
+  duration_ms: 3201.724209
+  type: 'test'
+  ...
+# Subtest: explicit target and measured candidate travel unchanged through real HTTP, CLI and official MCP
+ok 25 - explicit target and measured candidate travel unchanged through real HTTP, CLI and official MCP
+  ---
+  duration_ms: 619.387583
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6889.978917

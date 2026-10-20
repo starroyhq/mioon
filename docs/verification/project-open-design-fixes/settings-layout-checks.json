@@ -1,0 +1,674 @@
+[
+  {
+    "name": "zh-Hans-dark-1440-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "深色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "浅色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "跟随系统",
+        "client": 72,
+        "scroll": 72
+      },
+      {
+        "text": "标准",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "紧凑",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "时:分:秒:帧",
+        "client": 82,
+        "scroll": 82
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "zh-Hans-light-1440-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "深色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "浅色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "跟随系统",
+        "client": 72,
+        "scroll": 72
+      },
+      {
+        "text": "标准",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "紧凑",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "时:分:秒:帧",
+        "client": 82,
+        "scroll": 82
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "zh-Hans-dark-1050-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "深色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "浅色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "跟随系统",
+        "client": 72,
+        "scroll": 72
+      },
+      {
+        "text": "标准",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "紧凑",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "时:分:秒:帧",
+        "client": 82,
+        "scroll": 82
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "zh-Hans-light-1050-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "深色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "浅色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "跟随系统",
+        "client": 72,
+        "scroll": 72
+      },
+      {
+        "text": "标准",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "紧凑",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "时:分:秒:帧",
+        "client": 82,
+        "scroll": 82
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "zh-Hant-dark-1440-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "深色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "淺色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "跟隨系統",
+        "client": 72,
+        "scroll": 72
+      },
+      {
+        "text": "標準",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "緊湊",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "時:分:秒:影格",
+        "client": 95,
+        "scroll": 95
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "zh-Hant-light-1440-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "深色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "淺色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "跟隨系統",
+        "client": 72,
+        "scroll": 72
+      },
+      {
+        "text": "標準",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "緊湊",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "時:分:秒:影格",
+        "client": 95,
+        "scroll": 95
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "zh-Hant-dark-1050-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "深色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "淺色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "跟隨系統",
+        "client": 72,
+        "scroll": 72
+      },
+      {
+        "text": "標準",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "緊湊",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "時:分:秒:影格",
+        "client": 95,
+        "scroll": 95
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "zh-Hant-light-1050-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "深色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "淺色",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "跟隨系統",
+        "client": 72,
+        "scroll": 72
+      },
+      {
+        "text": "標準",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "緊湊",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "時:分:秒:影格",
+        "client": 95,
+        "scroll": 95
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "en-dark-1440-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "Dark",
+        "client": 50,
+        "scroll": 50
+      },
+      {
+        "text": "Light",
+        "client": 53,
+        "scroll": 53
+      },
+      {
+        "text": "System",
+        "client": 66,
+        "scroll": 66
+      },
+      {
+        "text": "Standard",
+        "client": 75,
+        "scroll": 75
+      },
+      {
+        "text": "Compact",
+        "client": 75,
+        "scroll": 75
+      },
+      {
+        "text": "Hours:minutes:seconds:frames",
+        "client": 200,
+        "scroll": 200
+      },
+      {
+        "text": "Seconds",
+        "client": 73,
+        "scroll": 73
+      }
+    ]
+  },
+  {
+    "name": "en-light-1440-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "Dark",
+        "client": 50,
+        "scroll": 50
+      },
+      {
+        "text": "Light",
+        "client": 53,
+        "scroll": 53
+      },
+      {
+        "text": "System",
+        "client": 66,
+        "scroll": 66
+      },
+      {
+        "text": "Standard",
+        "client": 75,
+        "scroll": 75
+      },
+      {
+        "text": "Compact",
+        "client": 75,
+        "scroll": 75
+      },
+      {
+        "text": "Hours:minutes:seconds:frames",
+        "client": 200,
+        "scroll": 200
+      },
+      {
+        "text": "Seconds",
+        "client": 73,
+        "scroll": 73
+      }
+    ]
+  },
+  {
+    "name": "en-dark-1050-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "Dark",
+        "client": 50,
+        "scroll": 50
+      },
+      {
+        "text": "Light",
+        "client": 53,
+        "scroll": 53
+      },
+      {
+        "text": "System",
+        "client": 66,
+        "scroll": 66
+      },
+      {
+        "text": "Standard",
+        "client": 75,
+        "scroll": 75
+      },
+      {
+        "text": "Compact",
+        "client": 75,
+        "scroll": 75
+      },
+      {
+        "text": "Hours:minutes:seconds:frames",
+        "client": 200,
+        "scroll": 200
+      },
+      {
+        "text": "Seconds",
+        "client": 73,
+        "scroll": 73
+      }
+    ]
+  },
+  {
+    "name": "en-light-1050-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "Dark",
+        "client": 50,
+        "scroll": 50
+      },
+      {
+        "text": "Light",
+        "client": 53,
+        "scroll": 53
+      },
+      {
+        "text": "System",
+        "client": 66,
+        "scroll": 66
+      },
+      {
+        "text": "Standard",
+        "client": 75,
+        "scroll": 75
+      },
+      {
+        "text": "Compact",
+        "client": 75,
+        "scroll": 75
+      },
+      {
+        "text": "Hours:minutes:seconds:frames",
+        "client": 200,
+        "scroll": 200
+      },
+      {
+        "text": "Seconds",
+        "client": 73,
+        "scroll": 73
+      }
+    ]
+  },
+  {
+    "name": "ja-dark-1440-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "ダーク",
+        "client": 59,
+        "scroll": 59
+      },
+      {
+        "text": "ライト",
+        "client": 60,
+        "scroll": 60
+      },
+      {
+        "text": "システムに合わせる",
+        "client": 130,
+        "scroll": 130
+      },
+      {
+        "text": "標準",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "コンパクト",
+        "client": 83,
+        "scroll": 83
+      },
+      {
+        "text": "時:分:秒:フレーム",
+        "client": 118,
+        "scroll": 118
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "ja-light-1440-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "ダーク",
+        "client": 59,
+        "scroll": 59
+      },
+      {
+        "text": "ライト",
+        "client": 60,
+        "scroll": 60
+      },
+      {
+        "text": "システムに合わせる",
+        "client": 130,
+        "scroll": 130
+      },
+      {
+        "text": "標準",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "コンパクト",
+        "client": 83,
+        "scroll": 83
+      },
+      {
+        "text": "時:分:秒:フレーム",
+        "client": 118,
+        "scroll": 118
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "ja-dark-1050-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "ダーク",
+        "client": 59,
+        "scroll": 59
+      },
+      {
+        "text": "ライト",
+        "client": 60,
+        "scroll": 60
+      },
+      {
+        "text": "システムに合わせる",
+        "client": 130,
+        "scroll": 130
+      },
+      {
+        "text": "標準",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "コンパクト",
+        "client": 83,
+        "scroll": 83
+      },
+      {
+        "text": "時:分:秒:フレーム",
+        "client": 118,
+        "scroll": 118
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  },
+  {
+    "name": "ja-light-1050-settings",
+    "client": 685,
+    "scroll": 685,
+    "tabs": [
+      {
+        "text": "ダーク",
+        "client": 59,
+        "scroll": 59
+      },
+      {
+        "text": "ライト",
+        "client": 60,
+        "scroll": 60
+      },
+      {
+        "text": "システムに合わせる",
+        "client": 130,
+        "scroll": 130
+      },
+      {
+        "text": "標準",
+        "client": 48,
+        "scroll": 48
+      },
+      {
+        "text": "コンパクト",
+        "client": 83,
+        "scroll": 83
+      },
+      {
+        "text": "時:分:秒:フレーム",
+        "client": 118,
+        "scroll": 118
+      },
+      {
+        "text": "秒",
+        "client": 36,
+        "scroll": 36
+      }
+    ]
+  }
+]

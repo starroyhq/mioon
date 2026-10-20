@@ -26,6 +26,7 @@ function homeHarness(patch: Record<string, unknown> = {}) {
     useState(value: unknown): [unknown, (next: unknown) => void] {
       const index = cursor++; if (!(index in slots)) slots[index] = value;
       return [slots[index], (next: unknown) => { slots[index] = typeof next === 'function' ? (next as (prev: unknown) => unknown)(slots[index]) : next; }]; },
+    useMemo<T>(factory: () => T, deps: readonly unknown[]): T { const index=cursor++, old=slots[index] as {deps:readonly unknown[];value:T}|undefined; if(!old||deps.some((value,at)=>!Object.is(value,old.deps[at])))slots[index]={deps,value:factory()}; return (slots[index] as {value:T}).value; },
     useRef(value: unknown): {current: unknown} { const index = cursor++; if (!(index in slots)) slots[index] = { current: value }; return slots[index] as {current: unknown}; },
     useEffect(): void { cursor++; },
   };
@@ -35,7 +36,7 @@ function homeHarness(patch: Record<string, unknown> = {}) {
     if (name.endsWith('/i18n/I18nProvider.tsx')) return i18nTestModule();
     if (name.includes('packages/i18n/src/index.ts')) return i18nCore;
     if (name === './LanguageControl.tsx') return { default: () => null };
-    return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label', 'Dialog', 'WorkbenchDialogContent'].map(key => [key, key.toLowerCase()]));
+    return Object.fromEntries(['Button', 'Input', 'Textarea', 'Label', 'Dialog', 'WorkbenchButton', 'WorkbenchIcon', 'WorkbenchDialogContent'].map(key => [key, key.toLowerCase()]));
   }, module, module.exports);
   const props: Record<string, unknown> = { projects: [], phase: 'home', busy: false, listBusy: false, page: 'projects', onPage() {}, onOpen() {}, onRetry() {}, onRefresh() {}, onCreate: async () => true, settings: null,
     onCreateStateChange: (state: CreateReport) => reports.push(state), ...patch };
@@ -81,6 +82,43 @@ test('root mounts all three verified native roles without project-role URL autho
   assert.doesNotMatch(source('LauncherRoot.tsx'), /renderSettings\(/);
   assert.match(source('SettingsRoot.tsx'), /installNativeCloseAdmission/);
   assert.match(source('NativeEditorRoot.tsx'), /renderEditor\(context, bridge, entry\)/);
+});
+
+test('empty native home moves only a settled locator summary into Help and retains every recovery state', () => {
+  function render(entryPatch: Record<string, unknown> = {}, locatorPatch: Record<string, unknown> = {}): FakeNode {
+    const entry = {projects: [], workspace: {restored: false}, listBusy: false, listError: '', phase: 'home', ...entryPatch};
+    const locatorState = {phase: 'idle', targetStatus: 'unset', uncertain: false, identityBlocked: false, ...locatorPatch};
+    const locator = {getState: () => locatorState}, controller = {getState: () => entry};
+    const react = {
+      createElement: (type: unknown, props: FakeProps | null, ...children: unknown[]): FakeNode => ({type, props: {...props, children}}),
+      useState: (value: unknown): [unknown, () => void] => [typeof value === 'function' ? (value as () => unknown)() : value, () => {}],
+      useRef: (value: unknown): {current: unknown} => ({current: value}), useEffect() {},
+    };
+    const module: {exports: {default?: (props: unknown) => FakeNode}} = {exports: {}};
+    const dependencies: Record<string, unknown> = {
+      react,
+      './last-project-state.ts': {createLastProjectController: () => locator},
+      './LastProjectStatus.tsx': {__esModule: true, default: 'locator-status'},
+      './native-close-state.ts': {createNativeCloseRegistry: () => ({}), installNativeCloseAdmission() {}},
+      './settings-navigation-state.ts': {createSettingsNavigationRegistry: () => ({})},
+      './native-project-entry.ts': {useNativeProjectEntry: () => controller},
+      './ProjectEntry.tsx': {__esModule: true, default: 'entry'},
+      './native-locator-state.ts': {createNativeLocatorOwner: () => ({})},
+    };
+    Function('require', 'module', 'exports', transformSync(source('LauncherRoot.tsx'), {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {
+      assert.ok(Object.hasOwn(dependencies, name), `Unexpected launcher dependency: ${name}`); return dependencies[name];
+    }, module, module.exports);
+    return module.exports.default!({context: {}, bridge: {}, rpc() {}, contractChecks: {}});
+  }
+  for (const phase of ['idle', 'saved']) {
+    const tree = render({}, {phase}); assert.equal(tree.props.status, undefined); assert.ok(tree.props.help);
+  }
+  const retained = [
+    render({projects: [{id: 'project'}]}), render({workspace: {restored: true}}), render({listBusy: true}), render({listError: 'Read failed'}), render({phase: 'error'}),
+    ...['loading', 'pending', 'error', 'conflict', 'unavailable'].map(phase => render({}, {phase})),
+    render({}, {uncertain: true}), render({}, {identityBlocked: true}), render({}, {targetStatus: 'missing'}),
+  ];
+  for (const tree of retained) {assert.ok(tree.props.status); assert.equal(tree.props.status, tree.props.help);}
 });
 test('entry form stale handlers cannot mutate while sealed before React rerenders disabled props', () => {
   let allowed = true;

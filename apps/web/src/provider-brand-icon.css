@@ -1,0 +1,5 @@
+.provider-brand-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; vertical-align: middle; color: inherit; }
+.provider-brand-icon img, .provider-brand-icon-mask { display: block; width: 100%; height: 100%; object-fit: contain; }
+.provider-brand-icon-mask { background: currentColor; mask-size: contain; mask-position: center; mask-repeat: no-repeat; -webkit-mask-size: contain; -webkit-mask-position: center; -webkit-mask-repeat: no-repeat; }
+.provider-brand-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.provider-brand-label > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

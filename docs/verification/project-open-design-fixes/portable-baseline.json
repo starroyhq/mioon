@@ -1,0 +1,14 @@
+{
+  "command": [
+    "node",
+    "scripts/tooling.ts",
+    "test",
+    "--suite=portable",
+    "--concurrency=1"
+  ],
+  "cwd": "/private/tmp/mioon-project-open-verify-yfi9724c/verify",
+  "TMPDIR": "/private/tmp",
+  "exitCode": 0,
+  "durationSeconds": 53.893,
+  "log": "/Users/kouzen/.codex/worktrees/project-open-design-fixes/mioon/docs/verification/project-open-design-fixes/portable-baseline.log"
+}

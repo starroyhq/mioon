@@ -26,10 +26,13 @@ export const RESTORE_LOCAL_OPERATIONS = Object.freeze([
  'timeline.format.set','timeline.undo','timeline.redo','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.split','timeline.seed','timeline.render','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','timeline.export.capabilities','timeline.export.preflight','asset.range.set','asset.disposition.set','subject.create','subject.version.add','subject.binding.set',
 ]);
 export const RESTORE_DENIED_OPERATIONS = Object.freeze([
+ 'export.cancel','export.activity.get','export.output.get',
+ 'workspace.settings.get','workspace.settings.set','workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage',
+ 'task.disposition.list','task.disposition.markFailed','task.disposition.archiveCompleted',
  'agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','project.rename','project.delete',
  'asset.annotation.set', 'lut.import',
  'timeline.audioPreview.continuousPlan','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect',
- 'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
+ 'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','video.connection.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
  'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
 ]);
 const messages: Readonly<Record<RestoreErrorCode, string>>=Object.freeze({
@@ -65,7 +68,7 @@ const targets: Readonly<Record<string, readonly [string,...string[]]>>=Object.fr
 export function refuseRestoredOperation(store: RestoreStore,operation: string,input: Record<string, unknown>|undefined): void {
  const context=getWorkspaceRestoreContext(store);
  if(!context)return;
- if(operation==='timeline.clip.rippleRemove'&&![45,49].includes(context.schemaVersion))throw workspaceRestoreError();
+ if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53].includes(context.schemaVersion))throw workspaceRestoreError();
  if(RESTORE_LOCAL_OPERATIONS.includes(operation)||operation==='timeline.get'||operation==='workspace.preferences.put'){
   assertRestoreInvocation(store,operation,input);
   assertRestoreRequestVacant(store,operation,input);

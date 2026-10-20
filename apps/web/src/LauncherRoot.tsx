@@ -35,6 +35,10 @@ export default function LauncherRoot({ context, bridge, rpc, contractChecks }: L
     return () => { mounted.current = false; releaseLocator(); owner.dispose(); cleanup(); if (win.__mioonFlushWorkspacePreferences === drain) delete win.__mioonFlushWorkspacePreferences; };
   }, [controller, locator, native, settings]);
   useEffect(() => locatorOwner.current?.receive(context), [context]);
+  const entryState = controller.getState(), locatorState = locator.getState();
+  const locatorStatus = <LastProjectStatus state={locatorState} controller={locator} restored={entryState.workspace?.restored} />;
+  const quietEmpty = entryState.projects.length === 0 && !entryState.workspace?.restored && !entryState.listBusy && !entryState.listError && entryState.phase === 'home'
+    && (locatorState.phase === 'idle' || locatorState.phase === 'saved') && !locatorState.uncertain && !locatorState.identityBlocked && locatorState.targetStatus !== 'missing';
   return <ProjectEntry controller={controller} onSettings={slot => { void bridge.showSettings(slot); }}
-    status={<LastProjectStatus state={locator.getState()} controller={locator} restored={controller.getState().workspace?.restored} />} />;
+    status={quietEmpty ? undefined : locatorStatus} help={locatorStatus} />;
 }

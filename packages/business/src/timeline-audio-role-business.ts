@@ -1,8 +1,12 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
+import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
+import {validateWorkspaceRestoreSchemaV53} from './workspace-restore-schema-v53.ts';
 import {TIMELINE_AUDIO_ROLE_PROFILE,type TimelineAudioRoleCapability} from '../../contracts/src/timeline-audio-role.ts';
 /** A current read-only capability, not a persisted permission or an Agent grant. */
 export function readTimelineAudioRoleCapability(db:DatabaseSync):TimelineAudioRoleCapability {
  const role=readCurrentWorkspaceRole(db);
- return {profileId:TIMELINE_AUDIO_ROLE_PROFILE,editable:role==='ordinary-38'||role==='restored-39-evidence'||role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'};
+ if(role==='ordinary-52')validateWorkspaceSchema52(db);
+ else if(role==='restored-53-evidence')validateWorkspaceRestoreSchemaV53(db);
+ return {profileId:TIMELINE_AUDIO_ROLE_PROFILE,editable:role==='ordinary-38'||role==='restored-39-evidence'||role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'||role==='ordinary-50'||role==='restored-51-evidence'||role==='ordinary-52'||role==='restored-53-evidence'};
 }

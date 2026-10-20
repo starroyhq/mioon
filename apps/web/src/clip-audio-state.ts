@@ -34,3 +34,23 @@ export function clipAudioMessage(draft: FrameDraft, asset: {hasAudio?: unknown; 
 }
 
 export function clipAudioIssue(draft: FrameDraft, asset: {hasAudio?: unknown; mimeType?: string} | null | undefined): string { return renderMessage('zh-Hans', clipAudioMessage(draft, asset)); }
+
+/** Display conversion only: an untouched persisted linear gain is never rounded. */
+export function clipGainDbText(value: string | number | undefined): string {
+  if (value === undefined) return '';
+  if (typeof value === 'string' && value.startsWith('db:')) return value.slice(3);
+  if (typeof value === 'string' && !value.trim()) return value;
+  const gain = Number(value);
+  if (!Number.isFinite(gain) || gain < 0) return String(value);
+  if (gain === 0) return '−∞';
+  return (20 * Math.log10(gain)).toFixed(2).replace(/\.?0+$/, '');
+}
+export function clipGainFromDbText(value: string): string {
+  if (['−∞', '-∞'].includes(value.trim())) return '0';
+  if (!value.trim()) return '';
+  const db = Number(value);
+  // Keep invalid dB input as local raw text without accidentally treating it as linear gain.
+  if (!Number.isFinite(db) || db > 20 * Math.log10(2) + 1e-9) return `db:${value}`;
+  const gain = 10 ** (db / 20);
+  return Number.isFinite(gain) && gain > 0 ? String(Math.min(2, gain)) : `db:${value}`;
+}

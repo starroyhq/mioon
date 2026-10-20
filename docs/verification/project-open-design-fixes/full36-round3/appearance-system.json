@@ -1,0 +1,11 @@
+{
+  "background": "rgb(246, 246, 246)",
+  "dataset": {
+    "appearance": "system",
+    "density": "standard",
+    "reduceMotion": "false",
+    "theme": "light",
+    "timecodeFormat": "timecode"
+  },
+  "systemDark": false
+}

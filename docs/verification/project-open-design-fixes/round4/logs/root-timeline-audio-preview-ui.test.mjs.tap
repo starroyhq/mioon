@@ -1,0 +1,39 @@
+✔ mount and context refresh perform no preparation, RPC, context allocation or autoplay (0.642834ms)
+✔ explicit prepare is complete before play; clock ticks never persist and pause/repeated seek remain local (0.955458ms)
+✔ interval endpoint is explicitly ended, outside seek releases and never expands or silently re-prepares (0.523166ms)
+✔ unsaved draft warning never changes draft values, saved input, candidate ownership or admission (0.480583ms)
+✔ revision revokes playback and late preparation without a persistence write or automatic resume (0.511916ms)
+✔ source revokes playback and late preparation without a persistence write or automatic resume (0.386958ms)
+✔ project revokes playback and late preparation without a persistence write or automatic resume (0.411416ms)
+✔ workspace revokes playback and late preparation without a persistence write or automatic resume (0.332375ms)
+✔ navigation revokes playback and late preparation without a persistence write or automatic resume (0.333958ms)
+✔ hidden revokes playback and late preparation without a persistence write or automatic resume (0.228ms)
+✔ logout revokes playback and late preparation without a persistence write or automatic resume (0.220458ms)
+✔ restored revokes playback and late preparation without a persistence write or automatic resume (0.230583ms)
+✔ cancel and unmount invalidate an ignored late acknowledgment, including A to B to A ownership (0.383625ms)
+✔ native-player revocation and page disposal reject late play acknowledgments (0.151459ms)
+✔ retained handlers and a render before layout cleanup cannot show or play stale saved data (0.185167ms)
+✔ real shared controls render compact exact half-open window, saved revision, sound-only and separate-video labels (0.168667ms)
+✔ presentation covers explicit prepare/cancel/play/pause/end, warnings and restored failure without whole-timeline completion (0.126917ms)
+✔ new TS/TSX owns no persistence, durable work, decoder shortcut or autoplay and listens to page hiding (0.5835ms)
+✔ saved source identity excludes drafts/private paths/irrelevant library rows but tracks all sound owners (0.379667ms)
+✔ App helpers keep playback ephemeral and route each explicit seek to exactly one owner (0.252041ms)
+✔ retained UI action bindings cannot prepare or seek a later project owner (0.132125ms)
+✔ deferred context close fences new preparation until exact retirement acknowledgment (3.468166ms)
+✔ failed context close remains visibly blocked across retries and reattachment (0.366708ms)
+✔ old prepare flight must settle before new context admission and cannot double-close resources (0.416916ms)
+✔ client resource settlement is distinct from promptly completed cancellation/timeout (0.467625ms)
+✔ retirement progress/failure remain visible and disable reprepare; float parity limitation is explicit (0.088334ms)
+✔ known unknown-audio, unsupported, stale and decoder errors state a safe specific reason (0.120334ms)
+✔ closed context during deferred preparation cannot publish a ready interval or construct a transport (0.530916ms)
+✔ initially suspended context remains eligible for explicit play after complete preparation (0.181167ms)
+✔ explicit editor seek beyond saved duration stops sound and persists once up to the existing 18000-frame bound (0.329333ms)
+✔ out-of-editor bounds and stale owners still cannot change the saved playhead (0.197875ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 509.708417

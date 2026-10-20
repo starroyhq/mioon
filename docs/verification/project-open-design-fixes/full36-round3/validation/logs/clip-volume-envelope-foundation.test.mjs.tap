@@ -1,0 +1,179 @@
+TAP version 13
+# Subtest: lexical limits are atomic admission, not numeric validation or normalization
+ok 1 - lexical limits are atomic admission, not numeric validation or normalization
+  ---
+  duration_ms: 0.861
+  type: 'test'
+  ...
+# Subtest: preserves absent/null/value and requires complete ordered attenuation on proposed duration
+ok 2 - preserves absent/null/value and requires complete ordered attenuation on proposed duration
+  ---
+  duration_ms: 0.79
+  type: 'test'
+  ...
+# Subtest: unchanged comparison is independent of key insertion order but not raw strings or absence
+ok 3 - unchanged comparison is independent of key insertion order but not raw strings or absence
+  ---
+  duration_ms: 0.124125
+  type: 'test'
+  ...
+# Subtest: Number-to-string round trips extremes and deterministic doubles without display rounding
+ok 4 - Number-to-string round trips extremes and deterministic doubles without display rounding
+  ---
+  duration_ms: 51.903
+  type: 'test'
+  ...
+# Subtest: fade preset helper is bounded, exact and returns independent raw replacement curves
+ok 5 - fade preset helper is bounded, exact and returns independent raw replacement curves
+  ---
+  duration_ms: 0.453458
+  type: 'test'
+  ...
+# Subtest: preset curves retain linear endpoint limits and half-open playback samples
+ok 6 - preset curves retain linear endpoint limits and half-open playback samples
+  ---
+  duration_ms: 0.242917
+  type: 'test'
+  ...
+# Subtest: all four locales expose explicit replacement presets, fixed frame choices and Save disclosure
+ok 7 - all four locales expose explicit replacement presets, fixed frame choices and Save disclosure
+  ---
+  duration_ms: 29.982
+  type: 'test'
+  ...
+# Subtest: real preset buttons replace every point only on click and leave point editing available
+ok 8 - real preset buttons replace every point only on click and leave point editing available
+  ---
+  duration_ms: 1.904917
+  type: 'test'
+  ...
+# Subtest: too-long and invalid-duration presets refuse clicks without clamping or clearing the draft
+ok 9 - too-long and invalid-duration presets refuse clicks without clamping or clearing the draft
+  ---
+  duration_ms: 10.711792
+  type: 'test'
+  ...
+# Subtest: preset event guards synchronously reject disabled, IME-pending and retained old-render actions
+ok 10 - preset event guards synchronously reject disabled, IME-pending and retained old-render actions
+  ---
+  duration_ms: 2.417417
+  type: 'test'
+  ...
+# Subtest: four locales render text inputs, accessible labels, bounded rows and non-submit buttons
+ok 11 - four locales render text inputs, accessible labels, bounded rows and non-submit buttons
+  ---
+  duration_ms: 10.802583
+  type: 'test'
+  ...
+# Subtest: whole pasted events reject visibly, preserve prior value, allow malformed intermediate
+ok 12 - whole pasted events reject visibly, preserve prior value, allow malformed intermediate
+  ---
+  duration_ms: 21.215958
+  type: 'test'
+  ...
+# Subtest: IME transient stays observable, guards structure synchronously, commits before releasing pending
+ok 13 - IME transient stays observable, guards structure synchronously, commits before releasing pending
+  ---
+  duration_ms: 1.951625
+  type: 'test'
+  ...
+# Subtest: IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard
+ok 14 - IME rejection rolls back completely; platform cancellation keeps the original value; disabled guard
+  ---
+  duration_ms: 2.027042
+  type: 'test'
+  ...
+# Subtest: trailing input events after composition settlement preserve accepted or rejected values
+ok 15 - trailing input events after composition settlement preserve accepted or rejected values
+  ---
+  duration_ms: 1.852959
+  type: 'test'
+  ...
+# Subtest: exact raw field bound and complete legacy slot counterexamples do not widen any caps
+ok 16 - exact raw field bound and complete legacy slot counterexamples do not widen any caps
+  ---
+  duration_ms: 2.103625
+  type: 'test'
+  ...
+# {"rawFieldBytes":1182,"legacySlotBytes":5430,"boundedCombinedBytes":6611,"unboundedEnvelopeCounterexampleBytes":15187,"fullLegalLegacyBytes":8192,"boundedOverflowBytes":9373}
+# Subtest: retained old control handlers cannot edit or end a newer same-row composition
+ok 17 - retained old control handlers cannot edit or end a newer same-row composition
+  ---
+  duration_ms: 1.982417
+  type: 'test'
+  ...
+# Subtest: composition start and end can settle synchronously before pending rerender
+ok 18 - composition start and end can settle synchronously before pending rerender
+  ---
+  duration_ms: 1.720416
+  type: 'test'
+  ...
+# Subtest: manual ducking constructs exact ramps, plateau anchors and boundary-only zero slopes
+ok 19 - manual ducking constructs exact ramps, plateau anchors and boundary-only zero slopes
+  ---
+  duration_ms: 0.387541
+  type: 'test'
+  ...
+# Subtest: manual ducking rejects invalid numbers and impossible internal edges without inventing frames
+ok 20 - manual ducking rejects invalid numbers and impossible internal edges without inventing frames
+  ---
+  duration_ms: 0.298875
+  type: 'test'
+  ...
+# Subtest: manual ducking evaluator holds unity outside the selected range and preserves half-open playback
+ok 21 - manual ducking evaluator holds unity outside the selected range and preserves half-open playback
+  ---
+  duration_ms: 0.103083
+  type: 'test'
+  ...
+# Subtest: manual ducking parameters are temporary text controls and Apply alone replaces the draft
+ok 22 - manual ducking parameters are temporary text controls and Apply alone replaces the draft
+  ---
+  duration_ms: 1.82725
+  type: 'test'
+  ...
+# Subtest: all four manual ducking copies disclose temporary settings, full replacement and original Save
+ok 23 - all four manual ducking copies disclose temporary settings, full replacement and original Save
+  ---
+  duration_ms: 7.077375
+  type: 'test'
+  ...
+# Subtest: one-frame manual Apply supports exact boundary zero ramps and refuses overlapping ramps
+ok 24 - one-frame manual Apply supports exact boundary zero ramps and refuses overlapping ramps
+  ---
+  duration_ms: 6.051083
+  type: 'test'
+  ...
+# Subtest: manual ducking invalid/oversize inputs and disabled Apply retain the complete existing curve
+ok 25 - manual ducking invalid/oversize inputs and disabled Apply retain the complete existing curve
+  ---
+  duration_ms: 11.007709
+  type: 'test'
+  ...
+# Subtest: manual ducking Enter never bubbles a submit and stale render handlers cannot replace or change parameters
+ok 26 - manual ducking Enter never bubbles a submit and stale render handlers cannot replace or change parameters
+  ---
+  duration_ms: 1.902667
+  type: 'test'
+  ...
+# Subtest: manual ducking IME uses one synchronous pending owner and rejects old sessions and point/preset actions
+ok 27 - manual ducking IME uses one synchronous pending owner and rejects old sessions and point/preset actions
+  ---
+  duration_ms: 2.662583
+  type: 'test'
+  ...
+# Subtest: envelope switch changes only the explicit envelope value and keeps advanced tools collapsed
+ok 28 - envelope switch changes only the explicit envelope value and keeps advanced tools collapsed
+  ---
+  duration_ms: 1.914083
+  type: 'test'
+  ...
+1..28
+# tests 28
+# suites 0
+# pass 28
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 396.319833

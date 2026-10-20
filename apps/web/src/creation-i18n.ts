@@ -50,7 +50,8 @@ export function agentTimelineGainDisplay(gain: number, t: CreationTranslator): s
 }
 
 /** Provider identities are fixed. Human-readable built-in descriptions are localized. */
-export function providerDisplayName(provider: { id?: string } | null | undefined, t: CreationTranslator): string {
+export function providerDisplayName(provider: { id?: string; connectionId?: string; name?: string } | null | undefined, t: CreationTranslator): string {
+  if (provider?.connectionId && provider.name) return provider.name;
   switch (provider?.id) {
     case 'mock': return t('generation.provider.localSimulation');
     case 'runway': return 'Runway';
@@ -58,6 +59,8 @@ export function providerDisplayName(provider: { id?: string } | null | undefined
     case 'veo': return 'Google Veo';
     case 'minimax': return 'MiniMax';
     case 'vidu': return 'Vidu';
+    case 'kling': return 'Kling';
+    case 'wan': return 'Wan';
     default: return provider?.id || t('generation.provider.provider');
   }
 }

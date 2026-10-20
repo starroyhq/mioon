@@ -1,5 +1,7 @@
 import type { MessageCatalog } from '../types.ts';
 export const projectBrowserMessages = {
+ 'redesign.projects.searchShortcut':{'zh-Hans':'⌘F','zh-Hant':'⌘F',en:'⌘F',ja:'⌘F'},
+  'redesign.projects.versionBadge': { 'zh-Hans': 'V{number}', 'zh-Hant': 'V{number}', en: 'V{number}', ja: 'V{number}' },
   'redesign.login.tagline': { 'zh-Hans': '本地优先的 AI 视频创作', 'zh-Hant': '本機優先的 AI 影片創作', en: 'Local-first AI video creation', ja: 'ローカル優先のAI動画制作' },
   'redesign.login.location': { 'zh-Hans': '令牌在本机', 'zh-Hant': '權杖位於本機', en: 'Local token file:', ja: 'ローカルトークン：' },
   'redesign.login.show': { 'zh-Hans': '显示访问令牌', 'zh-Hant': '顯示存取權杖', en: 'Show access token', ja: 'アクセストークンを表示' },
@@ -27,4 +29,9 @@ export const projectBrowserMessages = {
   'redesign.projects.retryOriginal': { 'zh-Hans': '核对原请求', 'zh-Hant': '核對原請求', en: 'Retry original request', ja: '元のリクエストを再試行' },
   'redesign.projects.locationFailed': { 'zh-Hans': '无法打开所在位置，请在设置的工作区页查看目录', 'zh-Hant': '無法開啟所在位置，請在設定的工作區頁查看目錄', en: 'Location is unavailable. View the directory in Workspace settings', ja: '保存場所を開けません。設定のワークスペースで確認してください' },
   'redesign.projects.preferenceFailed': { 'zh-Hans': '排序或视图偏好尚未确认保存', 'zh-Hant': '排序或檢視偏好尚未確認儲存', en: 'Sort or view preferences have not been confirmed saved', ja: '並べ替え・表示設定の保存は未確認です' },
+  "redesign.projects.all": {"zh-Hans": "全部项目", "zh-Hant": "全部專案", "en": "All projects", "ja": "すべてのプロジェクト"},
+  "redesign.projects.portrait": {"zh-Hans": "竖屏", "zh-Hant": "直向", "en": "Portrait", "ja": "縦"},
+  "redesign.projects.landscape": {"zh-Hans": "横屏", "zh-Hant": "橫向", "en": "Landscape", "ja": "横"},
+  "redesign.projects.square": {"zh-Hans": "方形", "zh-Hant": "方形", "en": "Square", "ja": "正方形"},
+  "redesign.projects.formatHelp": {"zh-Hans": "决定剪辑预览与导出的默认尺寸", "zh-Hant": "決定剪輯預覽與匯出的預設尺寸", "en": "Sets the default size for editing previews and exports", "ja": "編集プレビューと書き出しの既定サイズを設定します"},
 } as const satisfies MessageCatalog;

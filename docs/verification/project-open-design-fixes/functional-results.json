@@ -1,0 +1,54 @@
+{
+  "baseline": "b8d6f4e7897d0d32aeb07749a6605637787de4f6",
+  "project": {
+    "freshCreate": true,
+    "refreshRestoresProject": true,
+    "switchBetweenTwoProjects": true,
+    "restartRestoresProject": true,
+    "restoredClipCount": 1,
+    "pageErrors": []
+  },
+  "settings": {
+    "keyboardDensityEdit": true,
+    "discardRestoresStandard": true,
+    "systemLight": "light",
+    "systemDark": "dark",
+    "extensionsAndCustomPageReachable": true,
+    "helpOpenRefreshAndEscape": true,
+    "languageMenuKeyboardOpenAndEscape": true
+  },
+  "smallWindow": {
+    "assetsOverlayOpenAndClose": true,
+    "inspectorOverlayOpenCloseAndPin": true,
+    "timelineCollapseAndRestore": true,
+    "collapsedTimelineMeasuredHeight": 38,
+    "collapsedPreviewMeasuredHeight": 576,
+    "expandedPreviewMeasuredHeight": 322,
+    "railWidths": [
+      44,
+      44
+    ]
+  },
+  "media": {
+    "realLocalExport": true,
+    "closedExportDialogWhileRunning": true,
+    "taskContinuedAndCompleted": true,
+    "downloadedMp4": true,
+    "width": 1080,
+    "height": 1920,
+    "fps": "30/1",
+    "durationSeconds": 3,
+    "hasAudio": true
+  },
+  "providers": {
+    "liveEnabled": false,
+    "modelRequestsSent": 0
+  },
+  "scope": "Actual browser UI operations on a fresh isolated synthetic workspace; not a complete 36-page acceptance or native Electron test",
+  "finalMatrix": {
+    "captures": 80,
+    "settingsInternalLayoutChecks": 16,
+    "internalOverflowCount": 0,
+    "pageErrors": []
+  }
+}

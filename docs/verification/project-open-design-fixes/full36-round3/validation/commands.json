@@ -1,0 +1,23 @@
+[
+  {
+    "name": "typecheck",
+    "command": "node scripts/tooling.ts typecheck",
+    "exitCode": 0,
+    "path": "logs/typecheck.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "build",
+    "command": "node scripts/tooling.ts build --channel=development",
+    "exitCode": 0,
+    "path": "logs/build.log",
+    "sha256": "54e05e4e8a5e3f30a8248ab32b6979c4dac237eb438eb9a1fba5449ff5e93a5b"
+  },
+  {
+    "name": "full-lane-probe",
+    "command": "node scripts/tooling.ts test --suite=full --file=project-open-state.test.mjs --concurrency=1",
+    "exitCode": 2,
+    "path": "logs/full-lane-probe.log",
+    "sha256": "b46af9851aa20a77d78c6c74ce0e2c139dccd7d5ac3d1fe9079f848dfdfb86df"
+  }
+]

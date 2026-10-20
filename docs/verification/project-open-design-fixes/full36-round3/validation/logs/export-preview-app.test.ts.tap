@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: actual sample submission freezes exact short input through durable path without touching final range or opening history
+ok 1 - actual sample submission freezes exact short input through durable path without touching final range or opening history
+  ---
+  duration_ms: 23.392875
+  type: 'test'
+  ...
+# Subtest: failure and pending recovery never alter final range or silently submit a second request
+ok 2 - failure and pending recovery never alter final range or silently submit a second request
+  ---
+  duration_ms: 2.323834
+  type: 'test'
+  ...
+# Subtest: sample settings/range changes while durable prepare waits prevent execution
+ok 3 - sample settings/range changes while durable prepare waits prevent execution
+  ---
+  duration_ms: 1.28025
+  type: 'test'
+  ...
+# Subtest: actual trial-range setter owns only trial state; timeline preview excludes selected-range exports
+ok 4 - actual trial-range setter owns only trial state; timeline preview excludes selected-range exports
+  ---
+  duration_ms: 0.969916
+  type: 'test'
+  ...
+# Subtest: one explicit generate action selects only a missing range, awaits checks and uses the exact current controller binding
+ok 5 - one explicit generate action selects only a missing range, awaits checks and uses the exact current controller binding
+  ---
+  duration_ms: 1.728083
+  type: 'test'
+  ...
+# Subtest: an invalid user-entered sample range is retained and never silently replaced or submitted
+ok 6 - an invalid user-entered sample range is retained and never silently replaced or submitted
+  ---
+  duration_ms: 4.286542
+  type: 'test'
+  ...
+# Subtest: closing or leaving during checks, range edits and new unsaved drafts prevent sample submission
+ok 7 - closing or leaving during checks, range edits and new unsaved drafts prevent sample submission
+  ---
+  duration_ms: 6.038792
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 327.787583
