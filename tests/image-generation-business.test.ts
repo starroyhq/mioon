@@ -98,7 +98,8 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   const asset = f.store.put('assets', {id: randomUUID(), projectId: f.project.id, name: 'Existing import',
     mimeType: 'image/png', provenance: 'user-import', sha256: 'a'.repeat(64), createdAt: new Date().toISOString()});
   const job = f.store.put('jobs', {id: randomUUID(), projectId: f.project.id, status: 'queued', privateMarker: 'legacy video'});
-  const unchangedNames = tables(f.store.db).filter(name => !name.startsWith('image_') && name !== 'assets');
+  const unchangedNames = tables(f.store.db).filter(name => !name.startsWith('image_') && name !== 'assets' && name !== 'agent_task_target_revisions_v2');
+  const ledgerBefore = f.store.db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY projectId,kind,targetId').all();
   const before = rows(f.store.db, unchangedNames), originalAsset = JSON.stringify(f.store.get('assets', asset.id));
   const firstInput = f.input(), firstAck = await f.call('image.generate', firstInput) as TaskView, first = await settled(f, firstAck.id) as TaskView;
   let group = await f.call('image.group.get', {projectId: f.project.id, groupId: first.groupId}) as GroupView;
@@ -116,6 +117,11 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   assert.deepEqual(versions.items.map((value: VersionView) => value.id), [second.versionId, first.versionId]);
   assert.equal(group.headVersionId, second.versionId); assert.equal(group.name, firstInput.name);
   assert.equal(rows(f.store.db, unchangedNames), before); assert.equal(JSON.stringify(f.store.get('assets', asset.id)), originalAsset);
+  const ledgerAfter = f.store.db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY projectId,kind,targetId').all();
+  for (const entry of ledgerBefore) assert.deepEqual(ledgerAfter.find(next => next.projectId===entry.projectId && next.kind===entry.kind && next.targetId===entry.targetId),entry,'image generation leaves all prior target revisions unchanged');
+  const imageEntries = ledgerAfter.filter(entry => !ledgerBefore.some(prior => prior.projectId===entry.projectId && prior.kind===entry.kind && prior.targetId===entry.targetId));
+  assert.equal(imageEntries.length,7,'two image tasks, two image versions, two immutable assets and one group are audited');
+  for (const entry of imageEntries) {assert.equal(entry.projectId,f.project.id);assert.ok(['image_task','image_group','image_version','asset'].includes(String(entry.kind)));assert.ok(Number(entry.revision)>0);}
   assert.deepEqual(f.store.get('jobs', job.id), job); assert.equal(f.calls, 2);
   for (const projection of f.projections) assert.deepEqual(Object.keys(projection).sort(), ['model', 'options', 'prompt', 'providerId']);
   for (const version of versions.items) {

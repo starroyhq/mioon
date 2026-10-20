@@ -1,3 +1,4 @@
+import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,assertTaskEffectOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {workspaceRestoreError} from './workspace-restore-policy.ts';
 import {randomUUID,createHash} from 'node:crypto';
@@ -80,7 +81,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.decode!==decode||old.autoRun!==autoRun||old.fault!==fault)fail('FRAME_SERVICE_ACTIVE');return old.service;}
  const {db,root,tx}=store,queue: FrameAttempt[]=[],pending=new Set<string>(),preparations=new Map<string,{operation: string;projectId: string;canonicalInput: string;promise: Promise<unknown>}>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
- const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal;
+ const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal,resumeRequested=new Set<string>();
  let stopped=false,running=false,reported=false,draining: Promise<void>|undefined;
  const registration: FrameOwnerRecord={root,signal:ownerSignal,decode,autoRun,fault,service:undefined as unknown as FrameService};
  const storage=createFrameStorage(store,{validatePng});
@@ -127,7 +128,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   catch(cause){if(property(cause,'code')==='FRAME_SOURCE_CHANGED')throw cause;fail('FRAME_SOURCE_INVALID');}
  }
  async function sourceHash(asset: FrameRow,expected?: ManagedSource['info']): Promise<VerifiedManagedSource> {
-  try{return await verifiedManagedHash(root,asset,{signal,expected,maxBytes:FRAME_LIMITS.sourceBytes});}
+  try{return await verifiedManagedHash(root,asset,{signal,expected,maxBytes:FRAME_LIMITS.sourceBytes,beforeEffect:assertTaskEffectOrigin});}
   catch(cause){if(signal.aborted)fail('FRAME_SERVICE_STOPPED',503);fail(property(cause,'code')==='MANAGED_SOURCE_CHANGED'?'FRAME_SOURCE_CHANGED':'FRAME_SOURCE_INVALID');}
  }
  function sourceFence(original: FrameTaskView,expected?: ManagedFileIdentity): {file: string; info: ManagedFileIdentity; asset: FrameRow; value: FrameTaskView} {
@@ -157,6 +158,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
    if(!frameTaskResponseSchema.safeParse(value).success)invalid();
    db.prepare("INSERT INTO frame_tasks(id,projectId,requestId,inputHash,input,snapshot,state,revision,started,stagedReceipt,assetId,errorCode,createdAt,updatedAt) VALUES(?,?,?,?,?,?,'queued',1,0,NULL,NULL,NULL,?,?)")
     .run(id,input.projectId,input.requestId,hash(input),canonical(input),canonical(snapshot),timestamp,timestamp);
+   bindAgentTaskJobInside(db,'frame',id);
    record('frame.extract',input,value as unknown as FrameTaskResponse);task(input.projectId,id);return {value:value as unknown as FrameTaskResponse,replayed:false};
   });
   return result.replayed?result.value:accepted('frame.extract',input,result.value);
@@ -199,14 +201,18 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   });
   try{storage.discardStagedPng(stageTask(result),()=>{current(result);});}catch{/* Retaining a private stage cannot undo a committed result. */}
  }
- async function execute(entry: FrameAttempt): Promise<void> {
-  let original: FrameTaskView|undefined,registeredSignal: AbortSignal|undefined;
+ function execute(entry:FrameAttempt):Promise<void>{return withAgentTaskJobOrigin(db,'frame',entry.id,()=>executeInside(entry));}
+ async function executeInside(entry: FrameAttempt): Promise<void> {
+  let original: FrameTaskView|undefined,registeredSignal: AbortSignal|undefined,blockedGate=false;
+  const effectGate=():void=>{try{assertAgentTaskJobEffect(db,'frame',entry.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}};
   try{
    owner();original=task(entry.projectId,entry.id);
    if(entry.local){if(original.row.state!=='persisting')return;await finalize(original);return;}
    if(original.row.state!=='queued')return;
+   effectGate();
    const before=sourceFence(original),verified=await sourceHash(before.asset,before.info);sourceFence(original,verified.info);
    const beforeSpawn=(attemptSignal: AbortSignal): void=>{
+    effectGate();
     if(!attemptSignal||typeof attemptSignal.addEventListener!=='function'||attemptSignal.aborted)fail('FRAME_INTERRUPTED');
     if(registeredSignal&&registeredSignal!==attemptSignal)fail('FRAME_RECORD_INVALID');registeredSignal=attemptSignal;attemptSignals.add(attemptSignal);
     const started=tx(()=>{
@@ -225,6 +231,7 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   }catch(cause){
    if(original)try{
     const checked=current(original,{allowStopped:true});if(!['queued','running','persisting'].includes(checked.row.state))return;
+    if(!checked.row.started&&(blockedGate||isAgentTaskEffectBlocked(cause))){if(isAgentTaskJobStopped(db,'frame',entry.id))tx(()=>change(checked,{state:'cancelled_before_start',errorCode:null},{allowStopped:true}));return;}
     let receipt=checked.receipt;try{receipt??=storage.readReceipt(stageTask(checked));}catch{/* malformed retained receipt is a local result error */}
     tx(()=>{
      const causeCode=property(cause,'code');
@@ -251,13 +258,13 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   // restart reconciliation; it cannot cause unrelated queued tasks to fail.
   try{owner();if(!entry.local&&db.prepare("SELECT 1 FROM frame_tasks WHERE state IN ('running','persisting') LIMIT 1").get())return;}catch{diagnose();return;}
   queue.shift();running=true;
-  const promise=execute(entry).finally(()=>{active.delete(promise);pending.delete(entry.id);running=false;pump();});active.add(promise);void promise.catch(diagnose);
+  const promise=execute(entry).finally(()=>{active.delete(promise);pending.delete(entry.id);running=false;if(resumeRequested.delete(entry.id))enqueue(entry.id,entry.projectId,false);pump();});active.add(promise);void promise.catch(diagnose);
  }
  function reconcile(): void {
   if(!ownsStoreLock(store)||!schemaPresent())return;
   const rows=db.prepare(`SELECT ${bounded('id',36)},${bounded('projectId',36)} FROM frame_tasks WHERE state IN ('queued','running','persisting') ORDER BY id LIMIT ?`).all(FRAME_LIMITS.queuedGlobal+FRAME_LIMITS.activeGlobal+1);
   if(rows.length>FRAME_LIMITS.queuedGlobal+FRAME_LIMITS.activeGlobal){diagnose();return;}
-  for(const row of rows)try{const projectId=String(row.projectId),id=String(row.id);const target=task(projectId,id);tx(()=>change(target,{state:'interrupted',errorCode:'FRAME_INTERRUPTED'}));}catch{diagnose();}
+  for(const row of rows)try{const projectId=String(row.projectId),id=String(row.id);const target=task(projectId,id);if(target.row.state==='queued'&&!target.row.started&&agentTaskJobBinding(db,'frame',id))continue;tx(()=>change(target,{state:'interrupted',errorCode:'FRAME_INTERRUPTED'}));}catch{diagnose();}
  }
  const refusalCodes=new Set(['FRAME_CAPACITY','FRAME_QUEUE_FULL','FRAME_REVISION_CONFLICT','FRAME_STATE_CONFLICT','FRAME_SOURCE_INVALID','FRAME_SOURCE_CHANGED','FRAME_RESULT_INVALID']);
  function proveRefusal(operation: string,input: FrameTaskInput,cause: unknown): void {
@@ -307,8 +314,17 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
    return value&&typeof (value as PromiseLike<unknown>).then==='function'?Promise.resolve(value).catch((cause: unknown)=>{throw publicFailure(cause);}):value;
   }catch(cause){throw publicFailure(cause);}
  };
+ const removeResumer=setAgentTaskJobResumer(db,'frame',runId=>{for(const row of db.prepare("SELECT t.id,t.projectId FROM frame_tasks t JOIN agent_task_job_origins_v2 o ON o.kind='frame' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND t.state='queued' AND t.started=0 ORDER BY t.createdAt,t.id").all(runId)){if(pending.has(String(row.id)))resumeRequested.add(String(row.id));else enqueue(String(row.id),String(row.projectId),false);}});
+ const removeStopper=setAgentTaskJobStopper(db,'frame',(runId,stepId)=>{for(const row of db.prepare("SELECT t.id,t.projectId,t.revision FROM frame_tasks t JOIN agent_task_job_origins_v2 o ON o.kind='frame' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND t.state IN ('queued','interrupted') AND t.started=0 AND t.stagedReceipt IS NULL ORDER BY t.id").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'frame',String(row.id),()=>{
+  try{handlers['frame.task.cancelQueued']!({projectId:String(row.projectId),taskId:String(row.id),expectedRevision:Number(row.revision),requestId:`agent-stop:${runId}:${String(row.id)}`});}
+  catch(error){if(property(error,'code')!=='FRAME_CAPACITY')throw error;
+   // Reuse the durable v2 stop receipt when the historical request quota is
+   // full, retaining the same domain ownership/revision guard and atomic event.
+   tx(()=>{const target=task(String(row.projectId),String(row.id));if(!target.row.started&&!target.receipt&&['queued','interrupted'].includes(target.row.state))change(target,{state:'cancelled_before_start',errorCode:null});});
+  }
+ });});
  function drain(): Promise<void> {
-  if(draining)return draining;stopped=true;controller.abort();queue.length=0;
+  removeResumer();removeStopper();if(draining)return draining;stopped=true;controller.abort();queue.length=0;
   const result=boundedShutdown((async()=>{
    const results=await Promise.all([...attemptSignals].map(attemptSignal=>terminateMediaProcesses({signal:attemptSignal})));assertMediaTerminated(results.flat());
    await Promise.allSettled([...active,...[...preparations.values()].map(entry=>entry.promise)]);if([...attemptSignals].some(attemptSignal=>hasUnconfirmedMediaProcesses({signal:attemptSignal})))assertMediaTerminated([{status:'unconfirmed'}]);

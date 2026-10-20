@@ -58,3 +58,25 @@
 签名发布尚未验收：仓库级 Apple Secrets 当前为空，组织级授权未知；本地没有最终签名安装包。需要维护者配置文档列出的七项凭据，并在工作流合入 main 后运行 `release_tag` 留空的演练，实际完成三平台打包、macOS 签名和公证、Gatekeeper 与最终包原生冒烟
 
 本轮不创建版本标签、不公开 Release、不改变 main 保护规则。Windows 仍限于源码检查，现有桌面启动保护保留
+
+## PR #14 合入后的主线整合
+
+2026-10-20，将 `origin/main@10f1638`（已合并视频供应商及 harness v2）合回 PR #12 的 `927aafd`。工作流、发布脚本和生产业务源码保持各自已提交的实现；没有为解决冲突改生产行为。
+
+- 唯一文本冲突是 `agent-timeline-gain-preservation` 的 LRA 逆变换与新 schema52 pin 链。保留 52/53 整体源码 pin 和原 50 前驱 pin，对 LRA 字节增加修改、删除、重复、未知导入的严格拒绝测试。
+- opacity 历史保护的八个当前源码固定完整 SHA，然后读取固定 `927aafd` 前驱继续验证原始 raw/type-erased pins。原历史 manifest、27 项 map、有限 delta ledger 和所有旧 SHA 均未修改，新增删除、重复、换行及隐藏导出的拒绝测试。
+- Look 用例通过当前 `openStore` 新建库，当前期望同步为普通52/恢复53；独立实际备份恢复也验证了 52 → 53。没有将固定旧格式测试改为新格式。
+
+合并后的本地验证使用 Node 24.21.0、pnpm 11.25.0 和 canonical `/private/tmp`：
+
+| 检查 | 实际结果 |
+| --- | --- |
+| CI 辅助与增益保护 | 71/71 通过 |
+| portable 通道 | 99/99 通过，无跳过 |
+| opacity 与 restore source guard | 85/85 通过 |
+| 严格类型检查、actionlint、diff-check | 通过 |
+| 其他 PR 改动相关回归 | 129 项中 127 通过；Look 渲染及 WebP 探针两项受本机媒体能力限制失败 |
+| full 分片静态选择核对 | 实际 812 文件，四片各 203；并集完整且无重复，12 个新增 v2/编辑保护入口均恰好入选一次 |
+| 独立合并复核 | no finding；另外复跑 gain/shard 21/21、opacity 8/8 |
+
+本机 FFmpeg 确实没有 `zscale` 和 `libwebp`，不将上述两项算作通过，也没有添加跳过、失败排除或放宽断言。更新后的实际 Linux full、macOS/Windows 状态以 [PR #12 的当前 CI](https://github.com/starroyhq/mioon/pull/12/checks) 为准；前述旧 SHA 的成功记录不代表本次新合并已通过。未创建标签、运行签名发布或调用真实付费供应商。

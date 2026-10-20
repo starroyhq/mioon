@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {subjectVersionResponseSchema} from './subjects.ts';
 import {getCapabilityProfile, SUBJECT_REFERENCE_PROFILE_VERSION, type ImplementedGenerationInputRole} from './generation-input-profiles.ts';
+import {parseVideoBinding,validateVideoSnapshot} from './video-providers.ts';
 
 export const SUBJECT_GENERATION_KINDS=Object.freeze(['character','product','location'] as const);
 export type SubjectGenerationKind = (typeof SUBJECT_GENERATION_KINDS)[number];
@@ -104,9 +105,11 @@ export function isSubjectGenerationResponse(operation: unknown,input: unknown,re
 }
 function matchesSubjectGenerationResponse(input: unknown,result: unknown,options: SubjectGenerationMatchOptions,expectedRetryOfJobId: unknown): boolean {
  if(!safeData(input)||!safeData(result)||!fields(options,[],['projectId','subjectReference']))return false;
- if(!fields(input,['shotId','expectedRevision','requestId','providerId','subjectVersionId'],['model','parameters']))return false;
+ if(!fields(input,['shotId','expectedRevision','requestId','providerId','subjectVersionId'],['model','parameters','connectionId','configurationRevision','modelEntryId']))return false;
  const request = input as Record<string, unknown>;
- if(!uuid(request.shotId)||!uuid(request.subjectVersionId)||!integer(request.expectedRevision,1)||!text(request.requestId,8,200)||typeof request.providerId!=='string'||!['mock','ark'].includes(request.providerId)||own(request,'model')&&!text(request.model,0,100)||own(request,'parameters')&&!parameters(request.parameters))return false;
+ const connected=own(request,'connectionId');
+ if(!uuid(request.shotId)||!uuid(request.subjectVersionId)||!integer(request.expectedRevision,1)||!text(request.requestId,8,200)||typeof request.providerId!=='string'||!['mock','ark'].includes(request.providerId)||own(request,'model')&&!text(request.model,0,100)||own(request,'parameters')&&!(connected?record(request.parameters):parameters(request.parameters)))return false;
+ if(connected&&(!uuid(request.connectionId)||!integer(request.configurationRevision,1)||!uuid(request.modelEntryId))||!connected&&(own(request,'configurationRevision')||own(request,'modelEntryId')))return false;
  if(!fields(result,jobFields,['allowedActions','nextPollAt']))return false;
  const job = result as Record<string, unknown>;
  if(!uuid(job.id)||!uuid(job.projectId)||job.requestId!==request.requestId||job.shotId!==request.shotId||job.providerId!==request.providerId||request.model&&job.model!==request.model||!text(job.model,1,100)||!integer(job.revision,1)||typeof job.status!=='string'||!statuses.includes(job.status)||!text(job.phase,1,100)||!integer(job.progress,0,100)||!integer(job.submissionCount,0)||!timestamp(job.createdAt)||!timestamp(job.updatedAt)||job.retryOfJobId!==expectedRetryOfJobId||!(job.providerJobId===null||text(job.providerJobId,1,200))||!(job.versionId===null||uuid(job.versionId))||!([null,'local_only'] as unknown[]).includes(job.cancelScope)||own(job,'nextPollAt')&&!integer(job.nextPollAt,0))return false;
@@ -116,9 +119,11 @@ function matchesSubjectGenerationResponse(input: unknown,result: unknown,options
  if(own(job,'allowedActions')&&!same(job.allowedActions,allowed))return false;
  if(options.projectId!==undefined&&job.projectId!==options.projectId)return false;
  const snapshot=job.snapshot;
- if(!fields(snapshot,snapshotFields,['projectId','lastFrameAssetId']))return false;
+ if(!fields(snapshot,snapshotFields,['projectId','lastFrameAssetId','executionBinding','executionConnectionName']))return false;
  const frozen = snapshot as Record<string, unknown>;
- if(frozen.shotId!==request.shotId||frozen.shotRevision!==request.expectedRevision||frozen.providerId!==job.providerId||frozen.model!==job.model||!text(frozen.title,1,150)||!text(frozen.prompt,0,5000)||!parameters(frozen.parameters)||!record(frozen.capabilities)||getSubjectGenerationSnapshotIssue(frozen,{projectId:job.projectId,requireProfilePin:true}))return false;
+ if(frozen.shotId!==request.shotId||frozen.shotRevision!==request.expectedRevision||frozen.providerId!==job.providerId||frozen.model!==job.model||!text(frozen.title,1,150)||!text(frozen.prompt,0,5000)||!(connected?record(frozen.parameters):parameters(frozen.parameters))||!record(frozen.capabilities)||getSubjectGenerationSnapshotIssue(frozen,{projectId:job.projectId,requireProfilePin:true}))return false;
+ if(connected){try{const binding=parseVideoBinding(frozen.executionBinding);if(binding.connectionId!==request.connectionId||binding.configurationRevision!==request.configurationRevision||binding.model.id!==request.modelEntryId)return false;validateVideoSnapshot(binding,frozen);}catch{return false;}}
+ else if(own(frozen,'executionBinding'))return false;
  const subjectVersionId=(frozen.subjectReference as SubjectReference).subjectVersionId;
  const inputParameters=request.parameters as Record<string, unknown> | undefined;
  const snapshotParameters=frozen.parameters as Record<string, unknown>;
@@ -129,6 +134,7 @@ function matchesSubjectGenerationResponse(input: unknown,result: unknown,options
  const prompt=frozen.prompt as string;
  if(profile.prompt.required&&!prompt.trim()||prompt.length>profile.prompt.maxCodeUnits)return false;
  for(const [key,value] of Object.entries(snapshotParameters)){
+  if(connected)continue;
   if(!own(profile.parameters,key))return false;
   const rule=profile.parameters[key];
   if(rule.type==='integer'&&(typeof value!=='number'||!Number.isSafeInteger(value)||value<rule.min||value>rule.max)||rule.type==='enum'&&!rule.values.includes(value as string))return false;
@@ -149,7 +155,8 @@ export function isSubjectGenerationRetryResponse(input: unknown,result: unknown,
  if(!record(job.snapshot)||!isSubjectReference(job.snapshot.subjectReference)||!fields(options,[],['projectId','subjectReference','snapshot'])||job.id===request.jobId)return false;
  const frozen = job.snapshot as Record<string, unknown>;
  const {snapshot:expectedSnapshot,...context}=options as SubjectRetryMatchOptions;
- const identity={shotId:job.shotId,expectedRevision:frozen.shotRevision,requestId:request.requestId,providerId:job.providerId,model:job.model,subjectVersionId:(frozen.subjectReference as SubjectReference).subjectVersionId};
+ let connection={};if(own(frozen,'executionBinding')){try{const binding=parseVideoBinding(frozen.executionBinding);connection={connectionId:binding.connectionId,configurationRevision:binding.configurationRevision,modelEntryId:binding.model.id};}catch{return false;}}
+ const identity={shotId:job.shotId,expectedRevision:frozen.shotRevision,requestId:request.requestId,providerId:job.providerId,model:job.model,subjectVersionId:(frozen.subjectReference as SubjectReference).subjectVersionId,...connection};
  if(!matchesSubjectGenerationResponse(identity,result,context,request.jobId))return false;
  return !own(options,'snapshot')||safeData(expectedSnapshot)&&same(frozen,expectedSnapshot);
 }

@@ -1,3 +1,4 @@
+import type { AgentEditingProof } from './agent-editing-proof.ts';
 import './timeline-inspector-editing.css';
 import './timeline-removal.css';
 import InspectorGroup,{InspectorGroups} from './InspectorGroup.tsx';
@@ -47,7 +48,7 @@ const pass = <T,>(value: unknown): T => value as T;
 export interface TimelineInspectorClip { id: string; name?: string; trackId: string; startFrame: number; durationFrames: number; assetId: string; rect?: unknown; [key: string]: unknown }
 export interface TimelineInspectorAsset { id: string; name: string; mimeType: string; sizeBytes: number; hasAudio?: boolean; sha256?: string; duration?: unknown; width?: number; height?: number; projectId?: string; provenance?: unknown; [key: string]: unknown }
 export interface TimelineInspectorTimeline { id: string; projectId: string; revision: number; fps: number; width: number; height: number; tracks: { id: string; kind?: string; name?: string; [key: string]: unknown }[]; [key: string]: unknown }
-export interface TimelineInspectorDraftContext { scope?: string; projectId?: string; restored?: boolean; workspaceOrigin?: unknown; volumeEnvelopeEditable?: boolean; audioRoleEditable?: boolean; [key: string]: unknown }
+export interface TimelineInspectorDraftContext { collaboration?: AgentEditingProof | null; scope?: string; projectId?: string; restored?: boolean; workspaceOrigin?: unknown; volumeEnvelopeEditable?: boolean; audioRoleEditable?: boolean; [key: string]: unknown }
 export interface TimelineInspectorStaleSource { code: string; message?: string; [key: string]: unknown }
 export interface TimelineInspectorProps {
   clip: TimelineInspectorClip;
@@ -105,7 +106,7 @@ export default function TimelineInspector({ clip, timeline, asset, onSave, onRem
     volumeEnvelopeEditable: draftContext?.volumeEnvelopeEditable === true && asset?.hasAudio === true && (['audio', 'video'] as string[]).includes(assetKind(asset) as string),
     audioRoleEditable: draftContext?.audioRoleEditable === true && (['audio', 'video'] as string[]).includes(assetKind(asset) as string),
     opacityEnvelopeEditable: opacityEditable,
-    timelineRevision: timeline.revision, source: clipDraftSource(pass(clip), pass(asset)), saved: savedRaw(),
+    collaboration: draftContext?.collaboration, timelineRevision: timeline.revision, source: clipDraftSource(pass(clip), pass(asset)), saved: savedRaw(),
   }, client: opacity?.client, onDirtyChange, onDraftController, onReviewBlockedChange, onCompositionPendingChange, validateTimeline: (value: unknown, projectId: string) => {
     const projected = opacity ? opacityCandidateTimelineProjection(value, projectId) : value;
     return projected !== null && isTimelineRecord(projected, { projectId });

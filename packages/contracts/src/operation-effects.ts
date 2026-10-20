@@ -115,6 +115,7 @@ export const operationEffects = Object.freeze({
   'reference.attach': define({...localAdd,idempotent:true,notes:'Adds a typed first-frame binding only to an empty slot and saves its exact replay response; no provider call.'}),
   'reference.detach': define({...replayEdit,notes:'Removes a typed edge and clears its owned reference slot; preserves source assets and snapshots. Exact request replay is durable.'}),
   'provider.list': define({...read,notes:'Reads in-process provider capabilities and safe configuration gates without generation counts; does not contact providers.'}),
+  'video.connection.list': define({...read,notes:'Reads configured official video connections and their bounded model capabilities. Does not expose credentials, read media, contact providers, or create generation tasks.'}),
   'generation.submit': define({...generation,notes:'Queues one generation per exact stable request; later worker work can upload references, submit a paid provider job, poll/download, run local media processes and publish assets/versions.'}),
   'job.get': define({...read,notes:'Reads the existing job record only; does not poll a provider or resume work.'}),
   'job.list': define({...read,notes:'Reads existing project job records only.'}),

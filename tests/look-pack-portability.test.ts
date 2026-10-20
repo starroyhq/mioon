@@ -11,7 +11,7 @@ import { run } from '../packages/business/src/media-runtime.ts';
 import { createWorkspaceBackup } from '../packages/business/src/workspace-backup.ts';
 import { restoreWorkspaceBackup } from '../packages/business/src/workspace-restore.ts';
 
-for (const sourceSchema of [50]) test(`project-owned Look survives removed source file, cold reopen, render and ordinary${sourceSchema}/restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
+for (const sourceSchema of [52]) test(`project-owned Look survives removed source file, cold reopen, render and ordinary${sourceSchema}/restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-look-portable-')), root = path.join(base, 'workspace');
   (t as {after(callback: ()=>void): void}).after(() => rm(base, { recursive: true, force: true }));
   const localPack = path.join(base, 'selected.mioon-look.cube'), source = path.join(base, 'source.mp4');

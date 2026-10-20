@@ -1,0 +1,63 @@
+{
+  "status": 200,
+  "method": "PUT",
+  "requestKeys": [
+    "expectedRevision",
+    "state"
+  ],
+  "saved": {
+    "ok": true,
+    "data": {
+      "projectId": "bde7224b-77b2-4777-a5e4-bef6b0c7b9c0",
+      "revision": 1,
+      "state": {
+        "version": 1,
+        "activeMode": "canvas",
+        "canvas": {
+          "viewport": {
+            "x": 160,
+            "y": 316,
+            "zoom": 1
+          },
+          "selectedId": "5b046867-84f5-4634-9fba-842ac9099956",
+          "selectedEdgeId": null,
+          "inspectorTab": "settings",
+          "highlightedVersionId": null,
+          "storyboardOpen": false,
+          "miniMap": false
+        },
+        "editing": {
+          "selectedClipId": null,
+          "quickAssetId": null,
+          "previewKind": "timeline",
+          "playhead": 0,
+          "pixelsPerSecond": 76,
+          "scrollLeft": 0,
+          "scrollTop": 0,
+          "timelineCollapsed": false,
+          "snappingEnabled": true
+        },
+        "shared": {
+          "assetFilter": "all",
+          "assetsCollapsed": false,
+          "inspectorCollapsed": false
+        },
+        "layout": {
+          "canvas": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false
+          },
+          "editing": {
+            "assetsWidth": 260,
+            "inspectorWidth": 320,
+            "assetsCollapsed": false,
+            "inspectorCollapsed": false,
+            "timelineHeight": 300
+          }
+        }
+      }
+    }
+  }
+}

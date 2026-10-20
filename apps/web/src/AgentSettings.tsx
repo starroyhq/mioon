@@ -2,6 +2,8 @@ import { useI18n } from './i18n/I18nProvider.tsx';
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import AgentAuthorizations from './AgentAuthorizations.tsx';
+import AgentTaskPolicy from './AgentTaskPolicy.tsx';
+import type { AgentTaskPolicyNavigation } from './AgentTaskPolicy.tsx';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Badge } from '@mioon/ui/components/badge';
@@ -50,8 +52,9 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
   const visible = useWorkspaceVisibility();
   const interaction = useMemo(() => ({ visible }), [visible]), interactionRef = useRef<{visible: boolean} | null>(interaction);
   const keyInput = useRef<HTMLInputElement | null>(null), session = useRef<AgentSettingsSession | null>(null), dismissed = useRef(false), navigation = useRef<NavigationReporter | null>(null);
+  const policyNavigation = useRef<AgentTaskPolicyNavigation>({dirty:false,busy:false,unknown:false});
   if (!navigation.current) navigation.current = createSettingsNavigationReporter();
-  const navigationInput = (next: AgentSettingsState): NavigationInput => ({ dirty: agentSettingsDirty(next) || Boolean(keyInput.current?.value), phase: next.phase, recovery: next.recovery });
+  const navigationInput = (next: AgentSettingsState): NavigationInput => ({ dirty: agentSettingsDirty(next) || Boolean(keyInput.current?.value) || policyNavigation.current.dirty, phase: policyNavigation.current.busy ? 'saving' : next.phase, recovery: policyNavigation.current.unknown ? 'unknown' : next.recovery });
   const reportNavigation = (next: AgentSettingsState): void => { navigation.current!.update(navigationInput(next)); };
   useLayoutEffect(() => {
     const owner = navigation.current!.connect(onNavigationStateChange, navigationInput(session.current?.getState() || state));
@@ -106,7 +109,7 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
       <header className="modal-header agent-settings-header">
         <div className="agent-settings-heading"><span className="agent-settings-symbol"><Icon name="sparkle" size={22} /></span><div>
           <div className="agent-settings-eyebrow">{t('agent.settings.eyebrow')}</div><h2>{t('agent.settings.title')}</h2>
-          <p>{t('agent.settings.intro')}</p>
+          <p>{t('agent.task.connectionIntro')}</p>
         </div></div>
         <Button type="button" variant="ghost" className="icon-button" aria-label={closeLabel ?? t('agent.settings.backAgent')} data-testid="agent-settings-back" disabled={!visible} onClick={dismiss}><Icon name="left" /></Button>
       </header>
@@ -140,7 +143,7 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
                 </div>
                 <div className="agent-settings-field agent-settings-full"><div className="agent-settings-label-row"><Label htmlFor="agent-model">{t('agent.settings.modelName')}{' '}<span>Model ID</span></Label><Button type="button" variant="ghost" className="text-button" data-testid="agent-settings-reset" disabled={!editable || !defaultsChanged} onClick={() => withClearKey(() => session.current?.edit({ baseUrl: platform!.baseUrl, model: platform!.model, protocol: platform!.defaultProtocol }))}><Icon name="refresh" size={12} />{t('agent.settings.restorePreset')}</Button></div>
                   <Input id="agent-model" data-testid="agent-settings-model" value={draft.model} onChange={(event: ChangeEvent<HTMLInputElement>) => { if (usable()) session.current?.edit({ model: event.target.value }); }} disabled={!editable} maxLength={200} placeholder={t('agent.settings.modelPlaceholder')} spellCheck={false} autoCapitalize="none" />
-                  {draft.protocol === 'responses' && <p className={`agent-settings-help ${modelNeedsReview ? 'agent-settings-model-warning' : ''}`} data-testid="agent-settings-model-guidance">{modelHints.length ? t(modelNeedsReview ? 'agent.settings.modelReview' : 'agent.settings.modelHints', { models: modelHints.join(', ') }) : t('agent.settings.responsesCustom')}{' '}{protocolNote || t('agent.settings.responsesScope')}</p>}
+                  {draft.protocol === 'responses' && <p className={`agent-settings-help ${modelNeedsReview ? 'agent-settings-model-warning' : ''}`} data-testid="agent-settings-model-guidance">{modelHints.length ? t(modelNeedsReview ? 'agent.settings.modelReview' : 'agent.settings.modelHints', { models: modelHints.join(', ') }) : t('agent.settings.responsesCustom')}{' '}{protocolNote || t('agent.task.protocolScope')}</p>}
                 </div>
                 <div className="agent-settings-endpoint agent-settings-full" data-testid="agent-settings-endpoint"><span>{t('agent.settings.endpointPreview', { protocol: AGENT_PROTOCOLS[draft.protocol as AgentProtocol]?.label || draft.protocol })}</span><p>{endpoint || t('agent.settings.endpointEmpty')}</p></div>
               </div>
@@ -162,6 +165,7 @@ export default function AgentSettings({ onClose, beforeClose, closeLabel, onNavi
               <p className="agent-settings-storage-note" data-testid="agent-settings-storage-status">{storageReason(snapshot.storage, t)} {!hasKey && snapshot.secret.configured && !removesKey ? t('agent.settings.reenterStorage') : ''}</p>
               <div className="agent-settings-key-intent" data-testid="agent-settings-key-intent">{hasKey ? t(snapshot.secret.configured ? 'connections.intentReplace' : 'connections.intentWrite', { storage: storageLabel(state.storage, t) }) : removesKey && snapshot.secret.configured ? t('connections.intentRemove') : snapshot.secret.configured ? t('connections.intentKeep') : draft.presetId === 'ollama' ? t('agent.settings.intentOllama') : t('agent.settings.intentNoKey')}</div>
             </section>
+            <AgentTaskPolicy visible={visible} onNavigationChange={next => {policyNavigation.current=next;reportNavigation(session.current?.getState() || state);}}/>
             {state.message && <div className={`agent-settings-message ${error ? 'is-warning' : phase === 'saved' ? 'is-success' : ''}`} role={error ? 'alert' : 'status'} data-testid={error ? 'agent-settings-error' : 'agent-settings-status'} data-phase={phase}><Icon name={phase === 'saved' ? 'check' : 'info'} size={15} /><div><p>{statusMessage}</p>{recovery && <>
               <div className="agent-settings-current" data-testid="agent-settings-current"><span>{t('connections.serverSettings')}</span><strong>{snapshot.configuration.model}</strong><span>{AGENT_PROTOCOLS[snapshot.configuration.protocol].label}</span><span>{agentEndpointPreview(snapshot.configuration)}</span><span>{snapshot.secret.configured ? t('connections.savedKey', { storage: storageLabel(snapshot.secret.storage, t) }) : t('connections.storage.none')}</span></div>
               <div className="agent-settings-recovery-actions">{phase === 'blocked' ? <Button type="button" variant="ghost" className="button small" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.reload(); }}>{t('agent.settings.reloadState')}</Button> : <><Button type="button" variant="ghost" className="button small" data-testid="agent-settings-review" disabled={busy} onClick={() => { if (usable()) session.current?.acknowledge(); }}>{t('agent.settings.reviewDone')}</Button><Button type="button" variant="ghost" className="text-button" data-testid="agent-settings-use-latest" disabled={busy} onClick={() => withClearKey(() => session.current?.useLatest())}>{t('agent.settings.useServer')}</Button></>}</div>

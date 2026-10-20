@@ -13,6 +13,8 @@ import {isWorkspaceRestoreInspection,canEditTimelineAudioRole} from '@mioon/cont
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 import {createLastProjectController} from '../apps/web/src/last-project-state.ts';
 import {editorInitialSelection} from '../apps/web/src/editor-native-window.ts';
+import {videoConnectionProviders} from '../apps/web/src/generation-settings.ts';
+import {readGenerationProviderDirectory} from '../apps/web/src/video-provider-directory.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -54,14 +56,14 @@ test('boot tickets reject later boots, project changes and StrictMode disposed l
  const c=guard.begin();guard.deactivate();guard.activate();assert.equal(guard.isCurrent(c),false);
 });
 
-function selectionHarness({refresh,confirm=true}={}){
+function selectionHarness({refresh,confirm=true,videoDirectory}={}){
  const calls=[],currentProject={current:id(1)},projectEpoch={current:0},navigationEpoch={current:0};
  const view=defaultWorkspaceState();
  const env={msg,...createI18nTestContext(),localizedError:value=>Object.assign(new Error(renderCoreMessage('zh-Hans',value)),{displayMessage:value}),nativeWindow:null,editorInitialSelection,notify:(...args)=>calls.push(['notice',...args]),readableError:e=>e.message,workspaceRef:{current:{restored:false}},loading:false,importSession:{current:{active:true,selection:0}},currentProject,projectEpoch,navigationEpoch,
   agentDraft:{current:false},imageDraft:{current:false},confirm:async()=>confirm,
   dirtyRef:{current:!confirm},subtitlesRef:{current:null},clipDraftRef:{current:null},shotTextRef:{current:null},subjectsRef:{current:null},
   timelineFormatRef:{current:null},deliveryNameRef:{current:null},localDeliveryRef:{current:null},
-  application:null,workspaceOriginScope,validateProjectWorkspace,reconcileWorkspaceState,reconcilePending(){},useCallback:fn=>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,hasProjectResponseOriginMismatch,projectOpenFailureKind,
+  application:null,workspaceOriginScope,validateProjectWorkspace,reconcileWorkspaceState,reconcilePending(){},useCallback:fn=>fn,projectOpenAttempt,canPublishProjectOpen,projectResponseMatches,hasProjectResponseOriginMismatch,projectOpenFailureKind,videoConnectionProviders,readGenerationProviderDirectory,videoDirectoryUnavailable:false,
   openedProject:{current:projectOpenAttempt(id(1),0,'normal')},settingsNavigation:{current:createSettingsNavigationRegistry()},
   projectOpening:{phase:'ready',projectId:id(1),error:''},homePage:'projects',
   lastProjectRef:{current:{invalidateNavigation:epoch=>calls.push(['invalidate',epoch]),rememberOpened:(projectId,epoch)=>calls.push(['remember',projectId,epoch])}},
@@ -82,12 +84,13 @@ function selectionHarness({refresh,confirm=true}={}){
  env.setHomePage=value=>{env.homePage=value;calls.push(['setHomePage',value]);};
  env.setLoading=value=>{env.loading=value;calls.push(['setLoading',value]);};
  env.setAuth=value=>{env.auth=value;calls.push(['setAuth',value]);};
+ env.setVideoDirectoryUnavailable=value=>{env.videoDirectoryUnavailable=value;calls.push(['setVideoDirectoryUnavailable',value]);};
  // External reads are the only doubles here; actual refresh validates and
  // publishes data, then actual selection plus the H1 gate admits the workbench.
  env.rpc=async(operation,input)=>operation==='project.get'?(refresh?refresh(input.projectId):{
   project:{id:input.projectId},shots:[],nodes:[],edges:[],assets:[],versions:[],jobs:[],exports:[],
   ...(env.workspaceRef.current.restored?{restore:{workspaceOrigin:env.workspaceRef.current.workspaceOrigin,heldExportIds:[]}}:{}),
- }):[];
+ }):operation==='video.connection.list'&&videoDirectory?videoDirectory():[];
  env.refresh=(...args)=>{const scope={...env};delete scope.refresh;return compile(refreshSource,'refresh',scope)(...args);};
  return {env,calls,select:(...args)=>compile(selectSource,'selectProject',env)(...args)};
 }
@@ -118,8 +121,8 @@ test('actual preference-load setup rejection releases only its current loading o
  assert.equal(await pending,false);assert.equal(g.calls.some(x=>x[0]==='notice'||x[0]==='remember'||x[0]==='markOpened'||x[0]==='setLoading'&&x[1]===false||x[0]==='setProjectOpening'&&x[1].phase==='error'),false);
 });
 
-function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope}),restored=false,explicit=null}={}){
- const selection=selectionHarness(),{env,calls}=selection,epoch=env.projectEpoch;
+function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope}),restored=false,explicit=null,videoDirectory}={}){
+ const selection=selectionHarness({videoDirectory}),{env,calls}=selection,epoch=env.projectEpoch;
  const guard=createProjectBootGuard(()=>epoch.current);guard.activate();const readRpc=env.rpc;
  env.currentProject.current=null;env.openedProject.current=null;env.dataRef.current={};env.viewReady.current=false;
  Object.assign(env,{bootGuard:{current:guard},migrateBrowserStorage:()=>{},workspaceRef:{current:null},preferenceScope:{current:null},locatorIdentity:{current:null},
@@ -127,7 +130,7 @@ function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope})
   rpc:async(op,input)=>op==='workspace.restore.inspect'?{restored,...(restored?{workspaceOrigin:id(10)}:{})}:op==='project.list'?projects:readRpc(op,input),
   retainWorkspaceIdentity:(_current,observed)=>observed,setWorkspace:x=>calls.push(['workspace',x]),
   lastProjectRef:{current:{...env.lastProjectRef.current,getState:()=>({identityBlocked:false,revision:null}),discover:()=>{calls.push(['discover']);return discovery;}}},
-  setProjects:x=>calls.push(['projects',x]),setProviders:()=>{},setAuth:x=>calls.push(['auth',x]),setOnline:()=>{},
+  setProjects:x=>calls.push(['projects',x]),setProviders:x=>{env.providers=x;calls.push(['providers',x]);},setAuth:x=>{env.auth=x;calls.push(['auth',x]);},setOnline:()=>{},
   retainLastProjectScope,chooseInitialProject,assertLastProjectBootIdentity,URLSearchParams,
   window:{...env.window,location:{...env.window.location,search:explicit?'?project='+explicit:''}},
   selectProject:async(projectId,initial)=>{calls.push(['select',projectId,initial]);return selection.select(projectId,initial);},
@@ -137,6 +140,27 @@ function bootHarness({discovery=Promise.resolve({envelope,workspaceScope:scope})
 test('actual App startup chooses the remembered nonfirst project, with explicit URL precedence and no remember write',async()=>{
  const f=bootHarness();await f.boot();assert.deepEqual(f.calls.filter(x=>x[0]==='select'),[['select',id(2),true]]);assert.equal(f.env.preferenceScope.current,scope);assert.equal(f.env.projectSessionReady(),true);assert.equal(f.calls.some(x=>x[0]==='remember'),false);
  const g=bootHarness({explicit:id(1)});await g.boot();assert.deepEqual(g.calls.filter(x=>x[0]==='select'),[['select',id(1),true]]);
+});
+test('video directory failure preserves remembered-project boot and refresh, then clears its error after recovery',async()=>{
+ for(const code of ['VIDEO_SETTINGS_CORRUPT','NETWORK']){
+  let error=code;const f=bootHarness({videoDirectory:async()=>{if(error)throw Object.assign(Error(error),{code:error});return[];}});
+  await f.boot();assert.equal(f.env.auth,true,code);assert.equal(f.env.projectSessionReady(),true);assert.equal(f.env.currentProject.current,id(2));assert.equal(f.env.videoDirectoryUnavailable,true);
+  assert.deepEqual(f.calls.filter(x=>x[0]==='select'),[['select',id(2),true]]);assert.equal(f.env.preferenceScope.current,scope);assert.equal(f.calls.some(x=>x[0]==='remember'),false);
+  f.env.viewRef.current.activeMode='editing';f.env.viewRef.current.editing.playhead=72;
+  assert.equal((await f.env.refresh(id(2))).project.id,id(2));assert.equal(f.env.videoDirectoryUnavailable,true);assert.equal(f.env.viewRef.current.activeMode,'editing');assert.equal(f.env.viewRef.current.editing.playhead,72);
+  error=null;assert.equal((await f.env.refresh(id(2))).project.id,id(2));assert.equal(f.env.videoDirectoryUnavailable,false);assert.equal(f.env.projectSessionReady(),true);
+ }
+});
+test('late optional video failure from an older boot cannot replace a newer boot directory state',async()=>{
+ const held=deferred();let reads=0;const f=bootHarness({videoDirectory:()=>++reads===1?held.promise:[]});
+ const old=f.boot();await new Promise(setImmediate);await f.boot();assert.equal(f.env.auth,true);assert.equal(f.env.videoDirectoryUnavailable,false);assert.equal(f.env.projectSessionReady(),true);
+ const count=f.calls.length;held.reject(Object.assign(Error('late corrupt settings'),{code:'VIDEO_SETTINGS_CORRUPT'}));await old;
+ assert.equal(f.calls.length,count);assert.equal(f.env.videoDirectoryUnavailable,false);assert.equal(f.env.currentProject.current,id(2));
+});
+test('optional video directory 401 remains an authentication failure during remembered-project boot',async()=>{
+ for(const error of [Object.assign(Error('UNAUTHORIZED'),{code:'UNAUTHORIZED'}),Object.assign(Error('HTTP 401'),{status:401})]){
+  const f=bootHarness({videoDirectory:async()=>{throw error;}});await f.boot();assert.equal(f.env.auth,false);assert.equal(f.calls.some(x=>x[0]==='select'),false);assert.equal(f.env.projectSessionReady(),false);
+ }
 });
 test('actual App stale startup cannot replace newer selection, publish data after unmount or inspect restored locator',async()=>{
  const gate=deferred(),f=bootHarness({discovery:gate.promise}),old=f.boot();await new Promise(setImmediate);f.epoch.current++;gate.resolve({envelope,workspaceScope:scope});await old;assert.equal(f.calls.some(x=>x[0]==='select'||x[0]==='projects'),false);

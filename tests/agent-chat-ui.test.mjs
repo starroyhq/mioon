@@ -527,18 +527,19 @@ function workspaceHarness(exportName = 'default') {
   const slots = []; let cursor = 0, effects = [], visible = true;
   const react = { createElement: (type, props, ...children) => type === 'SettingsNavigationSlot' ? children[0](() => {}) : element(type, props, ...children), useRef: value => slots[cursor++] ||= { current: value }, useLayoutEffect(callback, deps) { const i = cursor++, old = slots[i]; if (old && depsEqual(deps, old.deps)) return; slots[i] = { deps, callback }; effects.push(i); } }; react.default = react;
   const module = { exports: {} };
-  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentPanel.tsx' ? { __esModule: true, default: 'AgentPanel' } : id === './AgentSettings.tsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
+  Function('module', 'exports', 'require', transformSync(workspaceSource, { loader: 'tsx', format: 'cjs' }).code)(module, module.exports, id => creationTestDependency(id) || (id === 'react' ? react : id === './AgentTaskPanel.tsx' ? { __esModule: true, default: 'AgentTaskPanel' } : id === './AgentSettings.tsx' ? { __esModule: true, default: 'AgentSettings' } : id === './SettingsNavigationSlot.tsx' ? { __esModule: true, default: 'SettingsNavigationSlot' } : { useWorkspaceVisibility: () => visible, WorkspaceVisibilityProvider: 'VisibilityProvider' }));
   return { render(props) { cursor = 0; effects = []; const tree = module.exports[exportName](props); for (const i of effects) slots[i].callback(); return tree; }, setAncestorVisible(value) { visible = value; } };
 }
 
 test('actual dock workspace keeps chat and globally scoped settings mounted through page and project changes', () => {
   const h = workspaceHarness(), props = { projectId, projectName: 'Local label', page: 'chat', onPage() {}, onCollapse() {}, onDraftChange() {} };
-  let tree = h.render(props); assert.equal(nodes(tree).filter(node => node.type === 'AgentPanel').length, 1); assert.equal(nodes(tree).some(node => node.type === 'AgentSettings'), false);
-  tree = h.render({ ...props, page: 'settings' }); const chat = nodes(tree).find(node => node.type === 'AgentPanel'), settingsPage = nodes(tree).find(node => node.type === 'AgentSettings');
-  assert.equal(chat.props.key, projectId); assert.ok(settingsPage); assert.equal(nodes(tree).find(node => node.props.id === 'agent-chat-pane').props.visible, false);
-  tree = h.render(props); assert.equal(nodes(tree).filter(node => node.type === 'AgentPanel').length, 1); assert.equal(nodes(tree).filter(node => node.type === 'AgentSettings').length, 1);
-  tree = h.render({ ...props, projectId: undefined }); assert.equal(nodes(tree).some(node => node.type === 'AgentPanel'), false); assert.equal(nodes(tree).filter(node => node.type === 'AgentSettings').length, 1);
-  tree = h.render({ ...props, projectId: 'project-two' }); assert.equal(nodes(tree).find(node => node.type === 'AgentPanel').props.key, 'project-two'); assert.equal(nodes(tree).find(node => node.type === 'AgentSettings').props.key, undefined);
+  let tree = h.render(props); assert.equal(nodes(tree).filter(node => node.type === 'AgentTaskPanel').length, 1); assert.equal(nodes(tree).some(node => node.type === 'AgentSettings'), false);
+  tree = h.render({ ...props, page: 'settings' }); const chat = nodes(tree).find(node => node.type === 'AgentTaskPanel'), settingsPage = nodes(tree).find(node => node.type === 'AgentSettings');
+  assert.equal(chat.props.key, `normal:${projectId}`); assert.ok(settingsPage); assert.equal(nodes(tree).find(node => node.props.id === 'agent-chat-pane').props.visible, false);
+  tree = h.render(props); assert.equal(nodes(tree).filter(node => node.type === 'AgentTaskPanel').length, 1); assert.equal(nodes(tree).filter(node => node.type === 'AgentSettings').length, 1);
+  tree = h.render({ ...props, projectId: undefined }); assert.equal(nodes(tree).some(node => node.type === 'AgentTaskPanel'), false); assert.equal(nodes(tree).filter(node => node.type === 'AgentSettings').length, 1);
+  tree = h.render({ ...props, projectId: 'project-two' }); assert.equal(nodes(tree).find(node => node.type === 'AgentTaskPanel').props.key, 'normal:project-two'); assert.equal(nodes(tree).find(node => node.type === 'AgentSettings').props.key, undefined);
+  tree = h.render({ ...props, workspaceScope: 'restored:other-origin' }); assert.equal(nodes(tree).find(node => node.type === 'AgentTaskPanel').props.key, `restored:other-origin:${projectId}`);
   assert.doesNotMatch(workspaceSource, /Dialog|localStorage|sessionStorage/);
 });
 

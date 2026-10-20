@@ -14,6 +14,7 @@
     "./local-delivery": "./src/local-delivery.ts",
     "./local-shot-text": "./src/local-shot-text.ts",
     "./last-project": "./src/last-project.ts",
+    "./agent-tasks-v2": "./src/agent-tasks-v2.ts",
     "./agent-timeline-gain": "./src/agent-timeline-gain.ts",
     "./timeline-audio-preview": "./src/timeline-audio-preview.ts",
     "./timeline-audio-continuous": "./src/timeline-audio-continuous.ts",

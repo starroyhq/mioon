@@ -113,6 +113,73 @@ function harness(patch = {}) {
   h.render(); return h;
 }
 
+function configuredConnectionFixture() {
+  const model = { ...contracts.defaultVideoModels('kling')[0], id: id(81), audio: 'optional', durationResolutionMap: [{ duration: [5], resolution: ['720p', '1080p'] }] };
+  const directories = [id(82), id(83)].map(connectionId => ({ connectionId, providerId: 'kling', name: `Kling ${connectionId}`, configurationRevision: 3, region: 'global', configured: true, enabled: true, archived: false,
+    models: [model, { ...model, id: id(84), name: 'Other model entry' }].map(entry => ({ entry, capabilities: contracts.videoBindingCapabilities({ version: 1, connectionId, configurationRevision: 3, providerId: 'kling', region: 'global', workspaceId: '', endpoint: contracts.resolveVideoEndpoint('kling', 'global'), credentialRef: id(85), model: entry, outputHosts: ['video.example.com'] }, { asOf: '2026-10-20' }) })) }));
+  return { providers: settings.videoConnectionProviders(directories), options: { providerId: 'kling', connectionId: id(82), modelEntryId: model.id, model: model.modelId, inputMode: 'image', parameters: { resolution: '1080p', generateAudio: true } }, selectedShot: shot({ duration: 5 }) };
+}
+
+function appGenerationFlow({ providers, options, currentShot }) {
+  const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
+  const functions = source.slice(source.indexOf('  function checkGeneration('), source.indexOf('  function retryGeneration(')) + source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
+  const state = { calls: [], notices: [], review: null }, scope = { ...settings, ...subjectVideo, ...contracts, msg,
+    providers, generationOptionsRef: { current: { [shotId]: structuredClone(options) } }, currentProject: { current: projectId },
+    generationUnavailableReason: '', workspaceRef: { current: { restored: false } }, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
+    dataRef: { current: { shots: [currentShot], assets: structuredClone(assets), edges: [], jobs: [] } },
+    realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'configured-connection' } }, context: () => ({ epoch: 1 }), isCurrent: value => value.epoch === 1,
+    setRealConfirm: value => { state.review = value; }, notify: (...values) => state.notices.push(values),
+    run: async (...args) => { state.calls.push(args); return { status: 'queued' }; }, requestId: () => 'synthetic-configured-inspector-request', openTasks: () => {},
+    captureTaskWorkspaceIntent: () => () => false, readTaskRevealContext: () => ({}) };
+  const methods = Function(...Object.keys(scope), `${functions}; return { generate, submitGeneration, confirmGeneration };`)(...Object.values(scope));
+  return { ...methods, state, scope };
+}
+
+test('actual Inspector forwards an exact configured connection through App review and submit without an environment provider', async () => {
+  for (const dirty of [false, true]) {
+    const f = configuredConnectionFixture(), h = harness({ shot: f.selectedShot, providers: f.providers, generationOptions: f.options });
+    assert.equal(h.find('generate-shot').props.disabled, false);
+    if (dirty) h.edit('shot-prompt', 'Saved configured generation prompt');
+    await h.click('generate-shot');
+    assert.equal(h.generated.length, 1, `dirty=${dirty}`);
+    const [generatedShot, options] = h.generated[0];
+    assert.equal(options.connectionId, f.options.connectionId, 'The actual Inspector event must retain the explicitly selected account');
+    assert.equal(options.modelEntryId, f.options.modelEntryId);
+    assert.deepEqual(options.parameters, f.options.parameters);
+    assert.equal(h.saves.length, dirty ? 1 : 0);
+    if (dirty) { assert.equal(generatedShot.prompt, 'Saved configured generation prompt'); assert.equal(generatedShot.revision, 2); assert.deepEqual(h.saves[0].draft.parameters, {}); }
+    const app = appGenerationFlow({ providers: f.providers, options: h.props().generationOptions, currentShot: h.props().shot });
+    app.generate(generatedShot, options);
+    const review = app.state.review; assert.ok(review, 'The exact account reaches paid review with no environment-configured provider');
+    assert.equal(review.connectionId, f.options.connectionId); assert.equal(review.modelEntryId, f.options.modelEntryId);
+    assert.deepEqual(review.shot.parameters, f.options.parameters);
+    app.confirmGeneration(review); app.confirmGeneration(review); await Promise.resolve();
+    assert.equal(app.state.calls.length, 1);
+    const wire = app.state.calls[0][2];
+    assert.equal(app.state.calls[0][1], 'generation.submit'); assert.equal(wire.providerId, 'kling');
+    assert.equal(wire.connectionId, f.options.connectionId); assert.equal(wire.configurationRevision, 3); assert.equal(wire.modelEntryId, f.options.modelEntryId);
+    assert.equal(wire.model, f.options.model); assert.deepEqual(wire.parameters, f.options.parameters);
+  }
+});
+
+test('configured Inspector saves and paid reviews cannot submit stale connection, model entry or parameter selections', async () => {
+  for (const change of ['connection', 'model-entry', 'parameters']) {
+    const f = configuredConnectionFixture(), next = { ...f.options, ...(change === 'connection' ? { connectionId: id(83) } : change === 'model-entry' ? { modelEntryId: id(84) } : { parameters: { resolution: '720p', generateAudio: false } }) };
+    const pending = deferred(), h = harness({ shot: f.selectedShot, providers: f.providers, generationOptions: f.options, onSave: () => pending.promise });
+    h.edit('shot-prompt', 'Save before generating'); const work = h.click('generate-shot');
+    h.render({ generationOptions: next }); pending.resolve({ ...f.selectedShot, prompt: 'Save before generating', revision: 2 }); await work;
+    assert.equal(h.generated.length, 0, `Late save cannot forward stale ${change}`);
+    const clean = harness({ shot: f.selectedShot, providers: f.providers, generationOptions: f.options });
+    await clean.click('generate-shot'); assert.equal(clean.generated.length, 1);
+    const app = appGenerationFlow({ providers: f.providers, options: f.options, currentShot: f.selectedShot });
+    app.generate(...clean.generated[0]); const review = app.state.review; assert.ok(review);
+    assert.equal(review.connectionId, f.options.connectionId);
+    app.scope.generationOptionsRef.current[shotId] = next;
+    app.confirmGeneration(review); await Promise.resolve();
+    assert.equal(app.state.calls.length, 0, `A changed ${change} invalidates paid confirmation without switching accounts`);
+  }
+});
+
 test('tail omission stays omitted in legacy drafts/saves; explicit null and saved tail retain exact semantics', async () => {
   const legacy = harness(); legacy.edit('shot-prompt', 'Updated'); await legacy.click('save-shot');
   assert.equal(Object.hasOwn(legacy.saves[0].draft, 'lastFrameAssetId'), false);
@@ -294,19 +361,20 @@ test('App paid review wires complete frames and count, frozen retries, asset-use
 test('actual App confirmation sends once and rejects changed content, navigation, provider or stale view scope', () => {
   const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const functions = source.slice(source.indexOf('  function reviewGeneration('), source.indexOf('  async function createProject('));
-  function reviewHarness({ frozen = false } = {}) {
-    const p = provider('ark'), current = shot({ lastFrameAssetId: tailId });
+  function reviewHarness({ frozen = false, connected = false } = {}) {
+    const p = { ...provider('ark'), ...(connected ? { connectionId: id(45), configurationRevision: 1 } : {}) }, current = shot({ lastFrameAssetId: tailId });
+    if (connected) p.modelCapabilities = p.modelCapabilities.map(model => ({ ...model, modelEntryId: id(47) }));
     const old = { ...shot(), referenceAssets: [assets[0]] }; delete old.id;
     const job = { id: id(44), snapshot: old };
     const state = { epoch: 0, notices: [], submitted: [], review: null };
-    const scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), dataRef: { current: { shots: [current], assets: structuredClone(assets), jobs: [job] } }, providers: [p],
-      generationOptionsRef: { current: { [shotId]: { providerId: p.id, model: p.models[0], inputMode: 'image' } } },
+    const scope = { msg, ...createI18nTestContext(), localizedError: value => Object.assign(new Error(renderCoreMessage('zh-Hans', value)), { displayMessage: value }), dataRef: { current: { shots: [current], assets: structuredClone(assets), jobs: [job] } }, providers: [p, ...(connected ? [{ ...p, connectionId: id(46) }] : [])],
+      generationOptionsRef: { current: { [shotId]: { providerId: p.id, model: p.models[0], inputMode: 'image', ...(connected ? { connectionId: p.connectionId, modelEntryId: id(47) } : {}) } } },
       realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'original' } },
       context: () => ({ epoch: state.epoch }), isCurrent: value => value.epoch === state.epoch,
       setRealConfirm: value => { state.review = value; }, notify: message => state.notices.push(renderCoreMessage('zh-Hans', message)), submitGeneration: args => state.submitted.push(args),
-      generationSelection: settings.generationSelection, generationReferences: settings.generationReferences, generationReferenceIdentity: settings.generationReferenceIdentity };
+      generationSelection: settings.generationSelection, generationParameters: settings.generationParameters, generationProviderIdentity: settings.generationProviderIdentity, generationReferences: settings.generationReferences, generationReferenceIdentity: settings.generationReferenceIdentity };
     const api = Function(...Object.keys(scope), `${functions}; return { reviewGeneration, confirmGeneration };`)(...Object.values(scope));
-    api.reviewGeneration({ shot: frozen ? { ...old, id: shotId } : current, providerId: p.id, model: p.models[0], inputMode: 'image', ...(frozen ? { retryJobId: job.id } : {}) });
+    api.reviewGeneration({ shot: frozen ? { ...old, id: shotId } : current, providerId: p.id, model: p.models[0], inputMode: 'image', ...(connected ? { connectionId: p.connectionId, configurationRevision: p.configurationRevision, modelEntryId: id(47) } : {}), ...(frozen ? { retryJobId: job.id } : {}) });
     return { ...api, state, scope, original: state.review };
   }
   for (const change of ['none', 'epoch', 'tab', 'revision', 'asset', 'provider', 'cancel']) {
@@ -319,6 +387,14 @@ test('actual App confirmation sends once and rejects changed content, navigation
     if (change === 'cancel') scope.realConfirmRef.current = null;
     h.confirmGeneration(original); h.confirmGeneration(original);
     assert.equal(state.submitted.length, change === 'none' ? 1 : 0, change);
+  }
+  for (const change of ['none', 'connection']) {
+    const h = reviewHarness({ connected: true });
+    assert.equal(h.original.connectionId, id(45));
+    if (change === 'connection') h.scope.generationOptionsRef.current[shotId].connectionId = id(46);
+    h.confirmGeneration(h.original); h.confirmGeneration(h.original);
+    assert.equal(h.state.submitted.length, change === 'none' ? 1 : 0, `same-provider ${change}`);
+    if (change === 'none') assert.equal(h.state.submitted[0].connectionId, id(45));
   }
   const retry = reviewHarness({ frozen: true });
   assert.equal(retry.original.referenceAssets.length, 1, 'Original job review does not add the current saved tail');

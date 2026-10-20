@@ -275,7 +275,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    open();owner();let args: {projectId: string;operation: string;input: Record<string,unknown>;origin: string};
    if(domain){try{args=domain.capturePrepare(input) as unknown as typeof args;}catch{invalid();}}else args=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
-   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:![45,49].includes(restored.schemaVersion)))refuseRestoredTask(store);
+   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:![45,49,51,53].includes(restored.schemaVersion)))refuseRestoredTask(store);
    const intent=parseIntent(args.operation,args.input,args.projectId);
    if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}
    const result=store.tx(()=>{

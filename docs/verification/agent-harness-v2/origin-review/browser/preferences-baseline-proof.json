@@ -1,0 +1,90 @@
+{
+  "baseline": "cfa2f83e1a4febeec335ccd5a51d09b35d72a76b",
+  "identity": [
+    {
+      "file": "apps/web/src/workspace-preferences.ts",
+      "byteIdenticalToOriginMain": true,
+      "sha256": "9a2f33b9cb33c52a19251afaf9da51ab9baa15afff3bb2fd3f1d2d6fb188f7ae"
+    },
+    {
+      "file": "apps/web/src/workspace-state.ts",
+      "byteIdenticalToOriginMain": true,
+      "sha256": "178e637f93b145d9b86677c39922d6af3b13401627d7bde539463bd86fbbab28"
+    },
+    {
+      "file": "packages/business/src/workspace-preferences.ts",
+      "byteIdenticalToOriginMain": true,
+      "sha256": "a41133ba4967ad9e45901b61acc9fdbc2c25c1e3eba5f28f4bb24d43ed90e3b4"
+    }
+  ],
+  "fixture": "new in-memory client, no cache and no existing view state",
+  "stateAcceptedByUnchangedServiceParser": true,
+  "requests": [
+    {
+      "method": "PUT",
+      "path": "/api/workspace-preferences/ffffffff-ffff-4fff-8fff-fffffffffff0",
+      "body": {
+        "expectedRevision": 0,
+        "state": {
+          "version": 1,
+          "activeMode": "canvas",
+          "canvas": {
+            "viewport": null,
+            "selectedId": null,
+            "selectedEdgeId": null,
+            "inspectorTab": "settings",
+            "highlightedVersionId": null,
+            "storyboardOpen": false,
+            "miniMap": false
+          },
+          "editing": {
+            "selectedClipId": null,
+            "quickAssetId": null,
+            "previewKind": "timeline",
+            "playhead": 0,
+            "pixelsPerSecond": 76,
+            "scrollLeft": 0,
+            "scrollTop": 0,
+            "timelineCollapsed": false,
+            "snappingEnabled": true
+          },
+          "shared": {
+            "assetFilter": "all",
+            "assetsCollapsed": true,
+            "inspectorCollapsed": false
+          },
+          "layout": {
+            "canvas": {
+              "assetsWidth": 260,
+              "inspectorWidth": 320,
+              "assetsCollapsed": false,
+              "inspectorCollapsed": false
+            },
+            "editing": {
+              "assetsWidth": 260,
+              "inspectorWidth": 320,
+              "assetsCollapsed": false,
+              "inspectorCollapsed": false,
+              "timelineHeight": 300
+            }
+          }
+        },
+        "key": "{\"version\":1,\"activeMode\":\"canvas\",\"canvas\":{\"viewport\":null,\"selectedId\":null,\"selectedEdgeId\":null,\"inspectorTab\":\"settings\",\"highlightedVersionId\":null,\"storyboardOpen\":false,\"miniMap\":false},\"editing\":{\"selectedClipId\":null,\"quickAssetId\":null,\"previewKind\":\"timeline\",\"playhead\":0,\"pixelsPerSecond\":76,\"scrollLeft\":0,\"scrollTop\":0,\"timelineCollapsed\":false,\"snappingEnabled\":true},\"shared\":{\"assetFilter\":\"all\",\"assetsCollapsed\":true,\"inspectorCollapsed\":false},\"layout\":{\"canvas\":{\"assetsWidth\":260,\"inspectorWidth\":320,\"assetsCollapsed\":false,\"inspectorCollapsed\":false},\"editing\":{\"assetsWidth\":260,\"inspectorWidth\":320,\"assetsCollapsed\":false,\"inspectorCollapsed\":false,\"timelineHeight\":300}}}",
+        "invocation": {}
+      }
+    }
+  ],
+  "result": {
+    "code": "VALIDATION_ERROR",
+    "message": "工作区偏好字段无效",
+    "details": {
+      "issues": [
+        {
+          "path": [],
+          "message": "Expected exactly the documented fields"
+        }
+      ]
+    }
+  },
+  "capturedBeforeSerializerFix": true
+}

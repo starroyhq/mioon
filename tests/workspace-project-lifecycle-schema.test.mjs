@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync,backup as sqliteBackup} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,mkdirSync,rmSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';

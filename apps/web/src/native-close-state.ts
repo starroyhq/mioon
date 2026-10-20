@@ -9,7 +9,7 @@ export interface NativeCloseState {
 }
 type Source = NativeCloseState & { readonly slot: string; readonly owner: number };
 type Capture = readonly Source[];
-const slots = new Set(['agent-chat', 'agent-edits', 'image-generation', 'timeline-loudness-apply', 'asset-annotations']);
+const slots = new Set(['agent-chat', 'agent-edits', 'agent-task-v2', 'agent-editing-v2', 'agent-editing-recovery-v2', 'image-generation', 'timeline-loudness-apply', 'asset-annotations']);
 const validState = (value: NativeCloseState): boolean => Boolean(value && typeof value.dirty === 'boolean' &&
   typeof value.busy === 'boolean' && typeof value.blocked === 'boolean' && Number.isSafeInteger(value.version) && value.version > 0);
 

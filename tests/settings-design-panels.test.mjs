@@ -48,7 +48,8 @@ for (const enabled of [false, true]) test(`service panel shows the persisted liv
   assert.equal(h.find('settings-live-generation').props.disabled, false);
   assert.match(text(h.tree), /Seedance 2\.5.*Veo 3\.1.*本地模拟/u);
   assert.doesNotMatch(text(h.tree), /刷新项目列表/u);
-  assert.equal(nodes(h.tree).filter(node => node.props?.['data-testid']?.startsWith('settings-service-check-')).length, 5);
+  assert.deepEqual(nodes(h.tree).map(node => node.props?.['data-testid']).filter(id => id?.startsWith('settings-service-check-')), ['settings-service-check-ark', 'settings-service-check-veo', 'settings-service-check-minimax', 'settings-service-check-vidu']);
+  assert.doesNotMatch(text(h.tree), /Runway/u); assert.match(text(h.tree), /环境变量连接/u);
   h.find('settings-service-check-ark').props.onClick(); h.render(); await flush(); h.render();
   assert.equal(calls.length, 2); assert.ok(calls.every(([operation, input]) => operation === 'provider.list' && Object.keys(input).length === 0));
   h.unmount();

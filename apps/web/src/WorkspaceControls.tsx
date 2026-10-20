@@ -14,6 +14,7 @@ export interface WorkbenchSelectProps extends Omit<SelectTriggerProps, 'children
   required?: boolean;
   name?: string;
   disabled?: boolean;
+  renderOption?: (option: WorkbenchSelectOption) => ReactNode;
 }
 export interface WorkbenchTooltipProps { children: ReactElement; content?: ReactNode }
 interface VisiblePopupState {
@@ -47,7 +48,7 @@ function useVisiblePopupState(): VisiblePopupState {
   } };
 }
 
-export function WorkbenchSelect({ children, value, onChange, className, disabled, required, name, ...props }: WorkbenchSelectProps): ReactElement {
+export function WorkbenchSelect({ children, value, onChange, className, disabled, required, name, renderOption, ...props }: WorkbenchSelectProps): ReactElement {
   const popup = useVisiblePopupState();
   const trigger = useRef<HTMLButtonElement | null>(null), content = useRef<HTMLDivElement | null>(null);
   const finalFocus = (): boolean => {
@@ -61,14 +62,15 @@ export function WorkbenchSelect({ children, value, onChange, className, disabled
     const label = React.Children.toArray(option.props.children).join('');
     return { value: String(option.props.value ?? label), label, disabled: Boolean(option.props.disabled) };
   });
+  const selectedOption = value == null ? undefined : options.find(option => option.value === String(value));
   return <Select value={value == null ? null : String(value)} items={options} disabled={disabled || !popup.visible} required={required} name={name}
     open={popup.open} onOpenChange={popup.onOpenChange} onValueChange={next => {
       if (next !== null && !disabled && popup.canInteract()) onChange?.({ target: { value: String(next) } });
     }}>
-    <SelectTrigger {...props} ref={trigger} className={['workbench-select', className].filter(Boolean).join(' ')}><SelectValue /></SelectTrigger>
+    <SelectTrigger {...props} ref={trigger} className={['workbench-select', className].filter(Boolean).join(' ')}><SelectValue>{renderOption && selectedOption ? renderOption(selectedOption) : undefined}</SelectValue></SelectTrigger>
     <SelectContent ref={content} align="start" alignItemWithTrigger={false} className="workbench-select-popup" finalFocus={popup.visible ? finalFocus : false}
       hidden={!popup.visible} inert={!popup.visible} aria-hidden={!popup.visible || undefined}>
-      {options.map(option => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}
+      {options.map(option => <SelectItem key={option.value} value={option.value} disabled={option.disabled} label={option.label}>{renderOption ? renderOption(option) : option.label}</SelectItem>)}
     </SelectContent>
   </Select>;
 }

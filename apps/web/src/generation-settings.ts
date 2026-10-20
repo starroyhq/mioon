@@ -1,3 +1,4 @@
+import { VIDEO_INPUT_PROFILE_VERSION, getVideoGenerationIssue } from '../../../packages/contracts/src/video-providers.ts';
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage, MessageKey } from '../../../packages/i18n/src/index.ts';
 import { isSubjectReference, findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
@@ -5,9 +6,12 @@ import type { GenerationIssue, SubjectReference } from '@mioon/contracts';
 import { ARK_SUBJECT_MODEL, subjectVideoConflictIssue, subjectVideoReferenceIssue, subjectVideoSnapshot } from './subject-video.ts';
 
 export type ProviderStatus = 'available' | 'disabled' | 'not_configured' | 'unavailable';
-export interface GenerationModelCapability { id?: string; name?: string; [key: string]: unknown }
+export interface GenerationModelCapability { id?: string; modelEntryId?: string; name?: string; [key: string]: unknown }
 export interface GenerationProvider {
   id: string;
+  connectionId?: string;
+  configurationRevision?: number;
+  source?: string;
   name?: string;
   status?: string;
   configured?: boolean;
@@ -49,10 +53,11 @@ export interface GenerationShot {
   projectId?: string;
   [key: string]: unknown;
 }
-export interface GenerationSelectionOptions { providerId?: string; model?: string; inputMode?: string; scenario?: string }
+export interface GenerationSelectionOptions { providerId?: string; connectionId?: string; modelEntryId?: string; model?: string; inputMode?: string; scenario?: string }
 export interface GenerationSelectionResult {
   provider: GenerationProvider | undefined;
   model: string;
+  modelEntryId?: string;
   capabilities: Record<string, unknown> | null | undefined;
   inputMode: string;
   scenario: string;
@@ -106,7 +111,7 @@ export function generationProfileSelection(provider: GenerationProvider | null |
   if (!providerModels(provider).some(item => item.id === model)) return unavailable('unknown_model', '未识别所选精确模型，不能沿用其他模型的输入限制。');
   if (!region) return unavailable('unknown_region', '服务器未提供 API 区域，输入限制尚未确认。');
   if (provider.inputProfileVersion !== INPUT_PROFILE_VERSION) return unavailable('unknown_version', '输入配置版本缺失或无法识别，请刷新工作台后核对。');
-  const profiles = Array.isArray(provider.inputProfiles) ? provider.inputProfiles as GenerationInputProfile[] : [];
+  const profiles = (Array.isArray(provider.inputProfiles) ? provider.inputProfiles as GenerationInputProfile[] : []).filter(profile => !provider.connectionId || !provider.modelEntryId || !String(profile.profileId).startsWith('video:') || String(profile.profileId).endsWith(`:${String(provider.modelEntryId)}`));
   const matches = profiles.filter(profile => profile?.providerId === provider.id && profile.model === model && Array.isArray(profile.regions) && profile.regions.includes(region));
   if (matches.length !== 1) return unavailable('missing_profile', '未取得此模型与 API 区域的唯一输入配置，不能推断支持情况。');
   const profile = matches[0];
@@ -115,7 +120,7 @@ export function generationProfileSelection(provider: GenerationProvider | null |
     const rule = profile.inputs?.roles?.[role];
     return Boolean(rule && typeof rule.implemented === 'boolean' && countKnown(rule.min) && countKnown(rule.max) && rule.min <= rule.max && (!rule.implemented || Array.isArray(rule.mimeTypes) && rule.mimeTypes.length > 0 && typeof rule.maxBytes === 'number' && Number.isSafeInteger(rule.maxBytes) && rule.maxBytes > 0));
   };
-  if (typeof profile.profileVersion !== 'string' || ![INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION].includes(profile.profileVersion) || !profile.profileId || !profile.apiFamily || !countKnown(profile.inputs?.minReferences) || !countKnown(profile.inputs?.maxReferences) || !GENERATION_INPUT_ROLES.every(roleKnown)) return unavailable('incomplete_profile', '此模型的输入配置不完整，请刷新服务商信息后核对。');
+  if (typeof profile.profileVersion !== 'string' || ![INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, VIDEO_INPUT_PROFILE_VERSION].includes(profile.profileVersion) || !profile.profileId || !profile.apiFamily || !countKnown(profile.inputs?.minReferences) || !countKnown(profile.inputs?.maxReferences) || !GENERATION_INPUT_ROLES.every(roleKnown)) return unavailable('incomplete_profile', '此模型的输入配置不完整，请刷新服务商信息后核对。');
   const date = provider.profileEvaluationDate;
   const evaluations = (Array.isArray(provider.inputProfileEvaluations) ? provider.inputProfileEvaluations as GenerationInputEvaluation[] : []).filter(item => item?.profileId === profile.profileId);
   const evaluation = evaluations[0];
@@ -131,16 +136,35 @@ export function subjectVideoProfileIssue(provider: GenerationProvider | null | u
   return providerAvailabilityIssue(provider);
 }
 
+/** A provider can have several independently billed connections. */
+export const generationProviderIdentity = (provider: GenerationProvider | null | undefined): string => provider?.connectionId || provider?.id || '';
+export const findGenerationProvider = (providers: readonly GenerationProvider[], providerId: string, connectionId?: string): GenerationProvider | undefined => connectionId
+  ? providers.find(item => item.connectionId === connectionId && item.id === providerId)
+  : providers.find(item => !item.connectionId && item.id === providerId);
+
+export function generationProviderForModel(provider: GenerationProvider | undefined, model: string, entryId?: string): GenerationProvider | undefined {
+  if (!provider?.connectionId) return provider;
+  const entry = providerModels(provider).find(item => entryId ? item.modelEntryId === entryId : item.id === model);
+  const runtime = entry?.connectionCapabilities as GenerationProvider | undefined;
+  return { ...provider, ...runtime, name: provider.name, models: provider.models, modelCapabilities: provider.modelCapabilities, modelEntryId: entry?.modelEntryId, videoModel: entry?.videoModel };
+}
+const advisoryGenerationIssue = (snapshot: Record<string, unknown>, provider: GenerationProvider) => provider.connectionId
+  ? getVideoGenerationIssue(snapshot, provider) : getGenerationIssue(snapshot, provider);
+
 // Provider capabilities are read-only metadata. Explicit session UI choices belong
 // in this session map; none are merged into a shot's persisted parameters.
 export function generationSelection(providers: readonly GenerationProvider[], options: GenerationSelectionOptions = {}, shot: GenerationShot = {}): GenerationSelectionResult {
-  const provider = providers.find(item => item.id === options.providerId) || (!options.providerId ? providers.find(item => item.mock && providerStatus(item) === 'available') || providers[0] : undefined);
+  const available = providers.filter(item => item.id !== 'runway');
+  const provider = options.connectionId ? available.find(item => item.connectionId === options.connectionId)
+    : options.providerId ? available.find(item => !item.connectionId && item.id === options.providerId)
+    : available.find(item => item.mock && providerStatus(item) === 'available') || available.find(item => !item.connectionId);
   const models = providerModels(provider);
-  const model = options.model || models[0]?.id || '';
-  const capabilities = provider ? findModelCapabilities(provider, model) : undefined;
+  const entry = options.modelEntryId ? models.find(item => item.modelEntryId === options.modelEntryId) : provider?.connectionId ? options.model ? models.find(item => item.id === options.model) : models[0] : undefined;
+  const model = entry?.id || options.model || (!options.modelEntryId ? models[0]?.id : undefined) || '';
+  const capabilities = options.modelEntryId || provider?.connectionId ? entry ?? null : provider ? findModelCapabilities(provider, model) : undefined;
   const capabilityTextMode = Array.isArray(capabilities?.inputModes) && capabilities.inputModes.includes('text');
   const inputMode = options.inputMode === 'subject' ? 'subject' : shot.referenceAssetIds?.length || shot.lastFrameAssetId ? 'image' : options.inputMode || (capabilityTextMode ? 'text' : 'image');
-  return { provider, model, capabilities, inputMode, scenario: options.scenario || 'success' };
+  return { provider: provider?.connectionId ? generationProviderForModel(provider, model, options.modelEntryId || entry?.modelEntryId) : provider, model, ...(entry?.modelEntryId ? { modelEntryId: entry.modelEntryId } : {}), capabilities, inputMode, scenario: options.scenario || 'success' };
 }
 
 export type GenerationIssueLike = { readonly code?: unknown; readonly message?: string; readonly path?: unknown; readonly details?: unknown };
@@ -215,7 +239,7 @@ export function generationInputIssue(shot: GenerationShot, provider: GenerationP
     if (!profile) return '主体输入配置尚未确认，请刷新服务商信息。';
     const snapshot = { ...subjectVideoSnapshot(shot, subjectReference as SubjectReference, assets), providerId: provider.id, model,
       inputProfileId: profile.profileId, inputProfileVersion: profile.profileVersion, providerRegion: selected.region };
-    return generationIssueMessage(getGenerationIssue(snapshot, provider));
+    return generationIssueMessage(advisoryGenerationIssue(snapshot, provider));
   }
   if (frozen && shot.subjectReference) {
     const issue = subjectVideoProfileIssue(provider, model) || subjectVideoReferenceIssue(shot.subjectReference, subjectVideoAssets(assets), shot.projectId);
@@ -242,7 +266,7 @@ export function generationInputIssue(shot: GenerationShot, provider: GenerationP
   if (inputMode === 'text' && references.length) return '切换文生视频前须明确清除首帧与尾帧选择，不会自动丢弃参考图。';
   const snapshot: Record<string, unknown> = { ...shot, model, referenceAssetIds: selection.references.map(item => item.assetId), referenceAssets: references };
   if (!frozen && shot.lastFrameAssetId) snapshot.referenceBindings = selection.references.map(({ role, assetId }, index) => ({ role, assetId, sha256: references[index]?.sha256 }));
-  return generationIssueMessage(getGenerationIssue(snapshot, provider));
+  return generationIssueMessage(advisoryGenerationIssue(snapshot, provider));
 }
 
 // Presentation-only descriptors. Existing validation strings and frozen task data are unchanged.
@@ -254,10 +278,13 @@ export function providerAvailabilityDescriptor(provider: GenerationProvider | nu
  const status = providerStatus(provider);
  return status === 'available' ? null : message(status === 'disabled' ? 'connections.generation.providerDisabled' : status === 'not_configured' ? 'connections.generation.providerIncomplete' : 'connections.generation.providerUnavailable', { provider: provider.id || '—' });
 }
-export const inputModeDescriptor = (mode: string): DisplayMessage | null => mode === 'text' ? message('connections.generation.textMode') : mode === 'image' ? message('connections.generation.imageMode') : mode === 'subject' ? message('connections.generation.subjectMode') : null;
+export const inputModeDescriptor = (mode: string): DisplayMessage | null => mode === 'text' ? message('connections.generation.textMode') : mode === 'image' ? message('connections.generation.imageMode') : mode === 'subject' ? message('connections.generation.subjectMode') : mode === 'frames' ? message('video.providers.frames') : null;
 const generationIssueKeys: Record<string, MessageKey> = Object.freeze({
   INVALID_INPUT: 'connections.generation.issue.inputRecord',
   UNSUPPORTED_MODEL: 'connections.generation.issue.modelUnsupported',
+  VIDEO_BINDING_INVALID: 'video.providers.missingSelection',
+  INVALID_REFERENCE_METADATA: 'connections.generation.issue.metadataIncomplete',
+  INVALID_REFERENCE_MANIFEST: 'connections.generation.issue.referenceInvalid',
   UNSUPPORTED_PARAMETERS: 'connections.generation.issue.parametersUnsupported',
   UNSUPPORTED_ASPECT_RATIO: 'connections.generation.issue.parametersUnsupported',
   UNSUPPORTED_DURATION: 'connections.generation.issue.parametersUnsupported',
@@ -331,7 +358,7 @@ export function generationInputIssueDescriptor(shot: GenerationShot, provider: G
     if (!profile) return message('connections.generation.subjectProfile');
     const snapshot = { ...subjectVideoSnapshot(shot, subjectReference as SubjectReference, assets), providerId: provider.id, model,
       inputProfileId: profile.profileId, inputProfileVersion: profile.profileVersion, providerRegion: selected.region };
-    return generationIssueDescriptor(getGenerationIssue(snapshot, provider)) ?? '';
+    return generationIssueDescriptor(advisoryGenerationIssue(snapshot, provider)) ?? '';
   }
   if (frozen && shot.subjectReference) {
     const issue = subjectVideoProfileDescriptor(provider, model) || subjectVideoReferenceDescriptor(shot.subjectReference, assets, shot.projectId);
@@ -358,7 +385,7 @@ export function generationInputIssueDescriptor(shot: GenerationShot, provider: G
   if (inputMode === 'text' && references.length) return message('connections.generation.issue.clearFrames');
   const snapshot: Record<string, unknown> = { ...shot, model, referenceAssetIds: selection.references.map(item => item.assetId), referenceAssets: references };
   if (!frozen && shot.lastFrameAssetId) snapshot.referenceBindings = selection.references.map(({ role, assetId }, index) => ({ role, assetId, sha256: references[index]?.sha256 }));
-  return generationIssueDescriptor(getGenerationIssue(snapshot, provider)) ?? '';
+  return generationIssueDescriptor(advisoryGenerationIssue(snapshot, provider)) ?? '';
 }
 
 export function subjectVideoConflictDescriptor(shot: GenerationShot = {}, { savedShot = shot, boundReference = false }: { savedShot?: GenerationShot | null; boundReference?: boolean } = {}): DisplayMessage | '' {
@@ -376,4 +403,35 @@ export function subjectVideoReferenceDescriptor(reference: SubjectReference | nu
   if (!asset) return message('connections.generation.issue.subjectAssetMissing');
   if (subjectContentKeys.some(key => asset[key] !== version[key])) return message('connections.generation.issue.subjectAssetChanged');
   return '';
+}
+
+/** Keep connection identity separate from the original provider protocol ID. */
+export function videoConnectionProviders(value: unknown): GenerationProvider[] {
+  if (!Array.isArray(value)) throw new TypeError('Invalid video connections.');
+  return value.map(item => {
+    if (!item || typeof item !== 'object' || typeof item.connectionId !== 'string' || typeof item.providerId !== 'string' || typeof item.configurationRevision !== 'number' || typeof item.name !== 'string' || !Array.isArray(item.models)) throw new TypeError('Invalid video connection.');
+    const entries: Array<{ entry: import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry; capabilities: GenerationProvider }> = item.models.filter((entry: unknown): entry is { entry: import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry; capabilities: GenerationProvider } => Boolean(entry && typeof entry === 'object' && 'entry' in entry && 'capabilities' in entry && entry.entry && typeof entry.entry === 'object' && 'enabled' in entry.entry && entry.entry.enabled && 'archived' in entry.entry && !entry.entry.archived));
+    const first = entries[0]?.capabilities;
+    return { ...first, id: item.providerId, providerId: item.providerId, connectionId: item.connectionId, configurationRevision: item.configurationRevision, source: 'settings', name: item.name, enabled: item.enabled && !item.archived,
+      configured: first?.configured ?? item.configured, status: item.archived || !item.enabled ? 'disabled' : first?.status ?? 'not_configured',
+      models: entries.map(entry => entry.entry.modelId),
+      modelCapabilities: entries.map(({ entry, capabilities }) => ({ ...capabilities.modelCapabilities?.[0], id: entry.modelId, name: entry.name, modelEntryId: entry.id, videoModel: entry, connectionCapabilities: capabilities })),
+      videoModels: entries.map(entry => entry.entry),
+      inputProfiles: entries.flatMap(entry => Array.isArray(entry.capabilities.inputProfiles) ? entry.capabilities.inputProfiles : []),
+      inputProfileEvaluations: entries.flatMap(entry => Array.isArray(entry.capabilities.inputProfileEvaluations) ? entry.capabilities.inputProfileEvaluations : []),
+    };
+  });
+}
+
+/** New connection-only controls stay in the current selection, outside legacy shot data. */
+export function generationParameters(shot: GenerationShot, provider: GenerationProvider | null | undefined, options: Record<string, unknown> = {}): Record<string, unknown> {
+  if (!provider?.connectionId) return { ...(shot.parameters || {}) };
+  const overrides = options.parameters && typeof options.parameters === 'object' && !Array.isArray(options.parameters) ? options.parameters as Record<string, unknown> : {};
+  const parameters = { ...(shot.parameters || {}), ...overrides };
+  const model = provider.videoModel as import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry | undefined;
+  if (parameters.resolution === undefined) {
+    const resolution = model?.durationResolutionMap.find(pair => pair.duration.includes(Number(shot.duration)))?.resolution[0];
+    if (resolution) parameters.resolution = resolution;
+  }
+  return parameters;
 }

@@ -175,7 +175,7 @@ export function createWorkspacePreferences({
       const transport = (async () => {
         const response = await fetchImpl(`/api/workspace-preferences/${encodeURIComponent(entry.projectId)}`, {
           method, credentials: 'same-origin', cache: 'no-store', signal: controller.signal,
-          ...(method === 'PUT' ? { keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...invocation }) } : {}),
+          ...(method === 'PUT' ? { keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: body?.expectedRevision, state: body?.state, ...(Object.hasOwn(invocation, 'expectedWorkspaceOrigin') ? { expectedWorkspaceOrigin: invocation.expectedWorkspaceOrigin } : {}) }) } : {}),
         });
         let envelope: unknown;
         try { envelope = await response.json(); } catch { throw failure('Workspace preferences returned invalid data.'); }

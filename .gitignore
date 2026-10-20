@@ -48,6 +48,9 @@ desktop-config.json.tmp
 **/agent-settings/settings.json
 **/agent-settings/.settings-*.tmp
 **/agent-settings/.settings.json.*.tmp
+**/video-settings/settings.json
+**/video-settings/.settings-*.tmp
+**/video-settings/.settings.json.*.tmp
 credentials.json
 secrets.json
 secrets/

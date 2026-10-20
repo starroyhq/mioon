@@ -328,8 +328,12 @@ test('actual CLI and official MCP stdio prove project-owned LUT import/replay an
 
   const after = f.snapshot();
   assert.deepEqual(Object.keys(after), Object.keys(before));
-  for (const table of Object.keys(before)) if (!changedTables.has(table))
+  for (const table of Object.keys(before)) if (!changedTables.has(table) && table !== 'agent_task_target_revisions_v2')
     assert.deepEqual(after[table], before[table], `${table} is untouched by LUT resource operations`);
+  for (const entry of before.agent_task_target_revisions_v2) assert.deepEqual(after.agent_task_target_revisions_v2.find(next => next.projectId === entry.projectId && next.kind === entry.kind && next.targetId === entry.targetId), entry, 'LUT import leaves prior target revisions unchanged');
+  const lutEntries = after.agent_task_target_revisions_v2.filter(entry => !before.agent_task_target_revisions_v2.some(prior => prior.projectId === entry.projectId && prior.kind === entry.kind && prior.targetId === entry.targetId));
+  assert.equal(lutEntries.length,3);
+  for (const entry of lutEntries) {assert.equal(entry.kind,'lut');assert.equal(entry.projectId,project.id);assert.equal(entry.revision,1);assert.ok(after.project_lut_resources.some(resource=>resource.id===entry.targetId));}
   assert.equal(after.project_lut_resources.length, 3);
   assert.equal(after.lut_import_requests.length, 3);
   await f.noSideEffects();
