@@ -122,7 +122,22 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
         url=new URL(url.pathname+'?alt=media',url.origin);headers={'x-goog-api-key':await credential(context)};
       }
       const allowRedirect=frozen.providerId==='veo'?(location:string|null,current:URL)=>{if(!location)throw providerError('INVALID_OUTPUT_URL','The output redirect has no destination.');let next:URL;try{next=new URL(location,current);}catch{throw providerError('INVALID_OUTPUT_URL','The output redirect is invalid.');}return outputUrl(next.href,hosts);}:undefined;
-      return downloadMp4({root,destination,url,headers,fetchImpl,context,allowRedirect,invalidate:()=>cache.invalidate(id)});
+      let credentialFailure:unknown;
+      const downloadFetch:typeof fetch=async(input,init)=>{
+        let secret:string;
+        try{secret=await credential(context);}catch(error){credentialFailure=error;throw error;}
+        // The shared downloader drops authentication on every redirect. Refresh
+        // only its initial authenticated file request; never add a key to a CDN.
+        const currentHeaders=new Headers(init?.headers);
+        return fetchImpl(input,frozen.providerId==='veo'&&currentHeaders.has('x-goog-api-key')?{...init,headers:{...Object.fromEntries(currentHeaders),'x-goog-api-key':secret}}:init);
+      };
+      try{return await downloadMp4({root,destination,url,headers,fetchImpl:downloadFetch,context,allowRedirect,invalidate:()=>cache.invalidate(id)});}
+      catch(error){
+        // Network failures are sanitized by downloadMp4. Preserve a failure of
+        // our own binding check so the worker pauses this exact accepted task.
+        if(credentialFailure!==undefined)throw credentialFailure;
+        throw error;
+      }
     },
     async cancel(){return {cancelled:false,remoteCancelled:false,scope:'local',reason:'Only local waiting was stopped; provider generation and charges may continue.'};},
   };

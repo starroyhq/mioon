@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
 import {createConfiguredVideoProvider} from '../packages/business/src/video/runtime.ts';
+import {createVideoSettings} from '../packages/business/src/video/settings.ts';
 import {defaultVideoModels,resolveVideoEndpoint,VIDEO_REGIONS} from '../packages/contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoProviderId,VideoTemplateId} from '../packages/contracts/src/video-providers.ts';
 
@@ -140,8 +141,40 @@ test('an unapproved output host is rejected before sending credentials or downlo
 
 test('Veo authenticates only its fixed file route and strips the key on approved redirects',async t=>{
   const f=await fixture(t,'veo'),url='https://generativelanguage.googleapis.com/v1beta/files/file-123:download?untrusted=1';
-  f.queue.push(json(completed(f.binding,url)),new Response(null,{status:302,headers:{location:'https://result.example/final.mp4'}}),new Response(mp4));await f.provider.download(taskId(f.binding),path.join(f.root,'result.mp4'),{});
+  f.queue.push(json(completed(f.binding,url)),new Response(null,{status:302,headers:{location:'https://result.example/final.mp4'}}),new Response(null,{status:302,headers:{location:'https://generativelanguage.googleapis.com/v1beta/files/final-file:download'}}),new Response(mp4));await f.provider.download(taskId(f.binding),path.join(f.root,'result.mp4'),{});
   assert.equal(f.calls[1]!.url,'https://generativelanguage.googleapis.com/v1beta/files/file-123:download?alt=media');assert.equal(view(f.calls[1]!.init.headers)['x-goog-api-key'],'PRIVATE-KEY');assert.equal(f.calls[2]!.init.headers,undefined);
+  assert.equal(f.calls[3]!.url,'https://generativelanguage.googleapis.com/v1beta/files/final-file:download');assert.equal(f.calls[3]!.init.headers,undefined,'Returning to the official origin must not restore authentication');
+});
+
+for(const stage of ['task-response','redirect-response']as const)test(`credential removal during ${stage} stops the next download request on its original binding`,async t=>{
+  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-download-credential-'))),settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root});
+  t.after(async()=>{await settings.close();await rm(root,{recursive:true,force:true});});
+  const original=bindingFor(stage==='task-response'?'minimax':'veo'),configuration={id:original.connectionId,providerId:original.providerId,name:'Original video connection',region:original.region,workspaceId:original.workspaceId,enabled:true,archived:false,outputHosts:original.outputHosts,models:[original.model]};
+  await settings.put({action:'save',expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'ORIGINAL-SYNTHETIC-KEY'}});
+  const binding=settings.select(configuration.id,1,original.model.id),calls:Array<{url:string;init:RequestInit}>=[];
+  const remove=()=>settings.put({action:'save',expectedRevision:1,configuration,secret:{action:'remove'}});
+  const fileUrl='https://generativelanguage.googleapis.com/v1beta/files/file-123:download';
+  const provider=createConfiguredVideoProvider({root,binding,now:()=>Date.UTC(2026,9,20),acquireCredential:()=>settings.acquire(binding),fetchImpl:async(input,init)=>{
+    const url=String(input);calls.push({url,init:init??{}});
+    if(url.startsWith(binding.endpoint)&&(stage==='task-response'||url.includes('/operations/'))){
+      if(stage==='task-response')await remove();
+      return json(completed(binding,stage==='task-response'?'https://result.example/output.mp4':fileUrl));
+    }
+    if(url===fileUrl+'?alt=media'){
+      assert.equal(new Headers(init?.headers).get('x-goog-api-key'),'ORIGINAL-SYNTHETIC-KEY');
+      await remove();return new Response(null,{status:302,headers:{location:'https://result.example/redirected.mp4'}});
+    }
+    return new Response(mp4);
+  }});
+  const destination=path.join(root,'result.mp4');
+  await assert.rejects(provider.download(taskId(binding),destination,{}),{code:'VIDEO_CREDENTIAL_UNAVAILABLE'});
+  assert.equal(calls.length,stage==='task-response'?1:2);
+  assert.equal(calls.some(call=>new URL(call.url).hostname==='result.example'),false);
+  assert.ok(calls.every(call=>call.init.method==='GET'));
+  const saved=(await settings.get()).connections[0]!;
+  assert.equal(saved.credentialRef,binding.credentialRef);assert.equal(saved.credentials.length,1);assert.equal(saved.secret.configured,false);
+  await assert.rejects(settings.acquire(binding),{code:'VIDEO_SETTINGS_NOT_CONFIGURED'});
+  await assert.rejects(readFile(destination),{code:'ENOENT'});
 });
 
 test('Runway WebP dimensions, checksum and 5 MiB encoded size use actual managed bytes',async t=>{
