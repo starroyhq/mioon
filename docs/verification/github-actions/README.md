@@ -80,3 +80,20 @@
 | 独立合并复核 | no finding；另外复跑 gain/shard 21/21、opacity 8/8 |
 
 本机 FFmpeg 确实没有 `zscale` 和 `libwebp`，不将上述两项算作通过，也没有添加跳过、失败排除或放宽断言。更新后的实际 Linux full、macOS/Windows 状态以 [PR #12 的当前 CI](https://github.com/starroyhq/mioon/pull/12/checks) 为准；前述旧 SHA 的成功记录不代表本次新合并已通过。未创建标签、运行签名发布或调用真实付费供应商。
+
+### 全量预检查补齐当前版本断言
+
+`faa5f5b` 的[整合运行](https://github.com/starroyhq/mioon/actions/runs/39439429900)已通过 macOS/Windows，Linux 四片也完成工具能力、类型和构建。等待 full 期间的有界排查实际重现了其他当前库旧预期：先选的 8 文件 49 例中 11 项仍断言50/51，另 5 文件的启动、目录与 marker 比较仍只包含50。发现这些必然失败项后主动取消旧轮，未把它计为完整通过。
+
+共 13 个测试文件按当前52/53/v15窄适配，业务源码、工作流及原历史 fixtures 均未改。原始24/17 SQL、raw bytes、rowid、sequence、未知对象拒绝及固定50/51仍保持严格比较；迁移目录先逐项核验52独立黄金的130个对象及count/hash、14张表字段和初始行，再剥离已验证新增项。schema17的目标修订初始化按原seed精确验证7个目标及revision=1，同时检查新rowid完整1–7和kind分段，冷重开仍全snapshot比较；不把无ORDER的UUID首次扫描顺序当作契约。
+
+| 本轮修复组 | 实际结果 |
+| --- | --- |
+| shot draft、视频设置、工作区配置、导出备份恢复 | 4/4 通过 |
+| opacity application/transactions、BLOB边界、restore schema | 45/45 通过 |
+| server storage、backup marker、receipt protections | 430/430 通过 |
+| independent schema profiles | 56/56 通过 |
+| image migration（最终独立复验） | 4/4 通过 |
+| 测试代码严格类型检查、diff-check | 退出0 |
+
+以上为本地定向红绿验证，远端全量状态仍以新提交的 CI 为准。没有跳过测试、减少历史比较或为通过CI改变生产行为。

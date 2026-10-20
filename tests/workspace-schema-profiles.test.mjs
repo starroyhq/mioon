@@ -31,6 +31,7 @@ const migrationSourceMap = JSON.parse(readFileSync(new URL('ts-migration-map.jso
 // retention guards. Frozen once from reviewed migration output; exact
 // definitions and catalog hashes make later schema edits fail until reviewed.
 const currentOrdinary50Delta=JSON.parse(readFileSync(new URL('current-ordinary-50-delta.json',fixtureRoot),'utf8'));
+const currentOrdinary52Delta=JSON.parse(readFileSync(new URL('current-ordinary-52-delta.json',fixtureRoot),'utf8'));
 const currentOrdinaryDelta = JSON.parse(readFileSync(new URL('current-ordinary-48-delta.json', fixtureRoot), 'utf8'));
 const legacyCurrentPath = legacy => migrationSourceMap.mapping[legacy]?.currentPath ?? migrationSourceMap.dependencyDeclarations[legacy]?.currentPath ?? legacy.replace(/\.mjs$/, '.ts');
 const currentSourceOf = legacy => readFileSync(new URL('../' + legacyCurrentPath(legacy), import.meta.url), 'utf8');
@@ -61,7 +62,7 @@ function currentOrdinaryProfile(name = 'ordinary-24') {
     const reviewed = currentOrdinaryDelta.objectSql[object.name];
     if (typeof reviewed === 'string') object.sql = reviewed;
   }
-  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332'], ['34', 'integer', '3334'], ['36', 'integer', '3336'], ['38', 'integer', '3338'], ['40', 'integer', '3430'], ...currentOrdinaryDelta.schemaVersionRows,...currentOrdinary50Delta.schemaVersionRows);
+  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332'], ['34', 'integer', '3334'], ['36', 'integer', '3336'], ['38', 'integer', '3338'], ['40', 'integer', '3430'], ...currentOrdinaryDelta.schemaVersionRows,...currentOrdinary50Delta.schemaVersionRows,...currentOrdinary52Delta.schemaVersionRows);
   return expected;
 }
 
@@ -94,6 +95,16 @@ function snapshot(db) {
 // the implementation under test. Unknown objects and changed SQL still fail.
 function currentOrdinarySnapshot(db) {
   const actual = snapshot(db), lutTables = new Set(['project_lut_resources', 'lut_import_requests']);
+  // Verify the complete independent52 catalog before removing its task tables
+  // and target triggers from the historical view, including triggers on LUTs.
+  const v2Names=new Set(currentOrdinary52Delta.objectNames),v2Objects=actual.objects.filter(object=>v2Names.has(object.name));
+  assert.deepEqual(v2Objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+  assert.equal(v2Objects.length,currentOrdinary52Delta.v2Catalog.count);
+  assert.equal(sha(JSON.stringify(v2Objects)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+  for(const[name,value]of Object.entries(currentOrdinary52Delta.tables)){
+    assert.deepEqual(actual.tables[name],{fields:value.fields,rows:[]},`${name}: reviewed empty52 table`);delete actual.tables[name];
+  }
+  actual.objects=actual.objects.filter(object=>!v2Names.has(object.name));
   const taskNames=new Set(currentOrdinary50Delta.objects.map(object=>object.name)),taskObjects=actual.objects.filter(object=>taskNames.has(object.name));
   assert.deepEqual(taskObjects,currentOrdinary50Delta.objects,'independent frozen50 task disposition SQL');assert.equal(taskObjects.length,currentOrdinary50Delta.catalog.count);assert.equal(sha(JSON.stringify(taskObjects)),currentOrdinary50Delta.catalog.sha256);
   actual.objects=actual.objects.filter(object=>!taskNames.has(object.name));for(const[name,value]of Object.entries(currentOrdinary50Delta.tables)){assert.deepEqual(actual.tables[name],{fields:value.fields,rows:[]});delete actual.tables[name];}
@@ -381,7 +392,7 @@ for (let version = 1; version <= 24; version++) {
   });
 }
 
-test('fresh runtime construction has only the independent reviewed through48 and additive50 deltas and no restoration authority', t => {
+test('fresh runtime construction has only the independent reviewed through48 and additive50/52 deltas and no restoration authority', t => {
   const store = openStore(onDisk(t));
   try {
     assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile());
@@ -420,7 +431,7 @@ for (const mock of [false, true]) for (const seeded of [false, true]) {
     try {
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
       assertPreserved(store.db, profile(name));
-      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 50, profile: 'ordinary'});
+      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 52, profile: 'ordinary'});
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
     } finally { store.close(); }
   });
