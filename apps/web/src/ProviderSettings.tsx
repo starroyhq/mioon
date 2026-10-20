@@ -71,9 +71,10 @@ export default function ProviderSettings({ providers, provider, model, modelEntr
     </WorkbenchSelect>
     <Label className="field-label" htmlFor="model">{t('generation.provider.model')}</Label>
     <WorkbenchSelect id="model" data-testid="model-select" value={modelEntryId || model} disabled={!models.length} onChange={e => { const next = models.find(item => (item.modelEntryId || item.id) === e.target.value); if (next) onChange({ model: next.id, modelEntryId: next.modelEntryId, inputMode: undefined, parameters: undefined }); }}>
-      {models.map(item => <option key={item.modelEntryId || item.id} value={item.modelEntryId || item.id}>{item.name || item.id}</option>)}
+      {models.map(item => <option key={item.modelEntryId || item.id} value={item.modelEntryId || item.id}>{item.name || item.id}{provider?.connectionId ? ` · ${t('video.providers.unverified')}` : ''}</option>)}
       {model && !models.some(item => item.id === model) && <option value={model}>{model} · {t('generation.provider.unsupported')}</option>}
     </WorkbenchSelect>
+    {provider?.connectionId && model && <p className="helper muted" data-testid="video-model-unverified"><Badge className="small-badge neutral">{t('video.providers.unverified')}</Badge> {t('video.providers.unverifiedHint')}</p>}
     {compact ? <Collapsible key={`${generationProviderIdentity(provider)}:${status}`} defaultOpen={status !== 'available'} className="provider-compact-information"><CollapsibleTrigger render={<Button variant="ghost" size="sm" />}><Icon name="info" size={13} />{t('generation.provider.viewInstructions')}</CollapsibleTrigger><CollapsibleContent keepMounted>{details}</CollapsibleContent></Collapsible> : details}
   </section>;
 }

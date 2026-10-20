@@ -1,5 +1,5 @@
 import { videoConnectionConfigurationSchema, videoSettingsUpdateSchema, defaultVideoModels, VIDEO_REGIONS, VIDEO_PROVIDER_NAMES, resolveVideoEndpoint, isVideoCatalogProvider } from '../../../packages/contracts/src/video-providers.ts';
-import type { VideoConnectionConfiguration, VideoModelEntry, VideoProviderId, VideoSettingsSnapshot, VideoSettingsUpdate } from '../../../packages/contracts/src/video-providers.ts';
+import type { VideoConnectionConfiguration, VideoConnectionView, VideoCredentialView, VideoModelEntry, VideoProviderId, VideoSettingsSnapshot, VideoSettingsUpdate } from '../../../packages/contracts/src/video-providers.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
 
 const clone = <T,>(value: T): T => structuredClone(value);
@@ -47,6 +47,9 @@ export const initialVideoSettingsState = (): VideoSettingsState => ({ phase: 'lo
 export const videoSettingsBusy = (state: VideoSettingsState): boolean => ['loading', 'saving', 'reconciling'].includes(state.phase);
 export const videoSettingsDirty = (state: VideoSettingsState): boolean => Boolean(state.draft && (JSON.stringify(state.draft) !== JSON.stringify(state.baseline) || state.secretAction !== 'keep' || state.restoreRef));
 export const videoSettingsCanSave = (state: VideoSettingsState): boolean => Boolean(state.draft && state.snapshot && !videoSettingsBusy(state) && !state.recovery && state.phase !== 'blocked');
+/** Restoring the current missing reference resumes its tasks without rotating their binding. */
+export const restorableVideoCredentials = (saved: VideoConnectionView | undefined, storage?: VideoSettingsSnapshot['storage']): VideoCredentialView[] => saved?.credentials.filter(credential => credential.ref !== saved.credentialRef || !credential.configured || credential.storage === 'persistent' && storage?.persistentAvailable === false) || [];
+const credentialStorage = (storage: VideoCredentialView['storage'] | undefined): VideoSettingsState['storage'] => storage === 'persistent' || storage === 'session' ? storage : '';
 export function newVideoConnection(providerId: VideoProviderId): VideoConnectionConfiguration {
   if (!isVideoCatalogProvider(providerId)) throw fail('VIDEO_SETTINGS_VALIDATION');
   return { id: crypto.randomUUID(), providerId, name: VIDEO_PROVIDER_NAMES[providerId], region: VIDEO_REGIONS[providerId][0]!, workspaceId: '', enabled: false, archived: false, outputHosts: [], models: defaultVideoModels(providerId) };
@@ -56,7 +59,7 @@ export function createVideoSettingsSession({ client = createVideoSettingsClient(
   const emit = (patch: Partial<VideoSettingsState>) => { if (!live) return; state = { ...state, ...patch }; onChange(clone(state)); };
   const owned = (token: number) => live && token === epoch;
   const editable = () => live && visible && !videoSettingsBusy(state);
-  const choose = (input: VideoConnectionConfiguration | null) => { const configuration = input && isVideoCatalogProvider(input.providerId) ? input : null; const saved = state.snapshot?.connections.find(item => item.configuration.id === configuration?.id); emit({ draft: clone(configuration), baseline: clone(configuration), secretAction: 'keep', storage: saved?.secret.storage === 'persistent' ? 'persistent' : saved?.secret.storage === 'session' ? 'session' : '', restoreRef: null, phase: 'ready', recovery: null, notice: null }); };
+  const choose = (input: VideoConnectionConfiguration | null) => { const configuration = input && isVideoCatalogProvider(input.providerId) ? input : null; const saved = state.snapshot?.connections.find(item => item.configuration.id === configuration?.id); emit({ draft: clone(configuration), baseline: clone(configuration), secretAction: 'keep', storage: credentialStorage(saved?.secret.storage), restoreRef: null, phase: 'ready', recovery: null, notice: null }); };
   async function read(recover = false): Promise<boolean> {
     if (!live || videoSettingsBusy(state) && state.phase !== 'loading') return false;
     pending?.abort(); pending = new AbortController(); const token = ++epoch;
@@ -70,7 +73,9 @@ export function createVideoSettingsSession({ client = createVideoSettingsClient(
   }
   async function save(value = ''): Promise<boolean> {
     if (!editable() || !videoSettingsCanSave(state) || !state.draft || !state.snapshot) return false;
-    const configuration = clone(state.draft), expectedRevision = state.snapshot.revision;
+    const configuration = clone(state.draft), expectedRevision = state.snapshot.revision, restoring = state.restoreRef !== null;
+    const saved = state.snapshot.connections.find(item => item.configuration.id === configuration.id);
+    if (restoring && !restorableVideoCredentials(saved, state.snapshot.storage).some(credential => credential.ref === state.restoreRef)) { emit({ phase: 'error', notice: 'video.providers.invalid' }); return false; }
     const secret = value ? { action: 'replace' as const, value, storage: state.storage } : { action: state.secretAction };
     const input = state.restoreRef ? { action: 'restoreCredential', expectedRevision, connectionId: configuration.id, credentialRef: state.restoreRef, secret } : { action: 'save', expectedRevision, configuration, secret };
     const parsed = videoSettingsUpdateSchema.safeParse(input);
@@ -81,7 +86,11 @@ export function createVideoSettingsSession({ client = createVideoSettingsClient(
     try { const snapshot = safeVideoSettings(await client.write(parsed.data, pending.signal)); if (!owned(token)) return false;
       if (snapshot.revision !== expectedRevision + 1) throw fail('INVALID_RESPONSE');
       const accepted = snapshot.connections.find(item => item.configuration.id === configuration.id); if (!accepted) throw fail('INVALID_RESPONSE');
-      emit({ snapshot, draft: clone(accepted.configuration), baseline: clone(accepted.configuration), phase: 'saved', recovery: null, notice: 'video.providers.saved' }); return true;
+      // Credential restoration does not submit the editable connection or model catalog.
+      // Keep those edits visible and dirty until their own explicit configuration save.
+      const draft = restoring ? configuration : clone(accepted.configuration);
+      const dirty = JSON.stringify(draft) !== JSON.stringify(accepted.configuration);
+      emit({ snapshot, draft, baseline: clone(accepted.configuration), storage: credentialStorage(accepted.secret.storage), phase: restoring && dirty ? 'ready' : 'saved', recovery: null, notice: restoring ? dirty ? 'video.providers.credentialRestoredDraft' : 'video.providers.credentialRestored' : 'video.providers.saved' }); return true;
     } catch (error) { if (!owned(token)) return false; const code = errorCode(error);
       if (['VIDEO_SETTINGS_VALIDATION', 'UNAUTHORIZED', 'VIDEO_SETTINGS_STORAGE_UNAVAILABLE'].includes(code)) { emit({ phase: 'error', notice: 'video.providers.invalid' }); return false; }
       const recovery = code === 'VIDEO_SETTINGS_CONFLICT' ? 'conflict' : 'unknown'; emit({ phase: 'reconciling', recovery, notice: recovery === 'conflict' ? 'video.providers.conflict' : 'video.providers.unknown' });
@@ -96,7 +105,13 @@ export function createVideoSettingsSession({ client = createVideoSettingsClient(
     update(patch: Partial<VideoConnectionConfiguration>) { if (!editable() || state.recovery || !state.draft) return false; emit({ draft: { ...state.draft, ...clone(patch), id: state.draft.id } }); return true; },
     setStorage(storage: '' | 'session' | 'persistent') { if (!editable() || storage === 'persistent' && !state.snapshot?.storage.persistentAvailable) return false; emit({ storage }); return true; },
     removeKey(remove: boolean) { if (!editable()) return false; emit({ secretAction: remove ? 'remove' : 'keep', restoreRef: null }); return true; },
-    restoreCredential(ref: string | null) { if (!editable() || state.recovery) return false; emit({ restoreRef: ref, secretAction: 'keep' }); return true; },
+    restoreCredential(ref: string | null) {
+      if (!editable() || state.recovery || !state.draft) return false;
+      const saved = state.snapshot?.connections.find(item => item.configuration.id === state.draft?.id), credential = restorableVideoCredentials(saved, state.snapshot?.storage).find(item => item.ref === ref);
+      if (ref !== null && !credential) return false;
+      const unavailable = ref !== null && credential?.storage === 'persistent' && state.snapshot?.storage.persistentAvailable === false;
+      emit({ restoreRef: ref, secretAction: 'keep', storage: unavailable ? '' : credentialStorage(ref === null ? saved?.secret.storage : credential?.storage) }); return true;
+    },
     discard() { if (!editable() || state.recovery) return false; choose(state.baseline); return true; },
     useLatest() { if (!editable() || !state.snapshot || state.phase === 'blocked') return false; choose(state.snapshot.connections.find(item => item.configuration.id === state.draft?.id)?.configuration || null); return true; },
     acknowledge() { if (!editable() || state.phase !== 'review') return false; emit({ recovery: null, phase: 'ready', notice: null }); return true; },
