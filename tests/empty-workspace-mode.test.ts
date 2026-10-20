@@ -15,6 +15,7 @@ import { validateProjectWorkspace } from '../apps/web/src/restored-workspace.ts'
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
 import { editorInitialSelection } from '../apps/web/src/editor-native-window.ts';
 import { chooseInitialProject, retainLastProjectScope, createProjectBootGuard, assertLastProjectBootIdentity } from '../apps/web/src/last-project-navigation.ts';
+import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const app = readFileSync(join(root, 'apps/web/src/App.tsx'), 'utf8');
@@ -30,6 +31,7 @@ function section(source: string, start: string, end: string): string {
 }
 const compile = (source: string, name: string, env: Record<string, unknown>): ((...args: unknown[])=>unknown) => evaluateSource(`${source}\nreturn ${name};`, Object.keys(env), Object.values(env), {loader: 'tsx'});
 const modesMarkup = section(app, '<Tabs value={workspaceMode} onValueChange={changeMode}', '</Tabs>') + '</Tabs>';
+const videoDirectoryNoticeSource = section(app, '  const videoDirectoryNotice =', '  if (!workbenchReady && !retainWorkbenchForClip)');
 const homeBoundary = section(app, '  if (!workbenchReady && !retainWorkbenchForClip) return <>{webSettingsCenter}<ProjectHome ', '  return <>{webSettingsCenter}<main className={`workbench');
 const refreshSource = section(app, '  const refresh = useCallback(', '  async function revealImageAsset(');
 const readySource = section(app, '  function projectSessionReady()', '  const workbenchReady =');
@@ -70,8 +72,10 @@ const fixture = `
   const RestoredUnavailable = ({title}) => <span>{title}</span>;
   const OpacityRestoredNotice = () => null;
   export function Surface({ data, loading, workspaceMode, changeMode, workbenchReady, projects, projectOpening, toast, busy,
-    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, application = null, preferenceScope = { current: null }, workspace = { restored: false }, opacityRestored = false,
-    lastProjectStatus, lastProjectRef, restored, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage }) {
+    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, videoDirectoryUnavailable = false, application = null, preferenceScope = { current: null }, workspace = { restored: false }, opacityRestored = false,
+    lastProjectStatus, lastProjectRef, restored = false, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage, locale = 'zh-Hans' }) {
+    const { t } = createI18nTestContext(locale);
+    ${videoDirectoryNoticeSource}
     ${homeBoundary}
     return <main data-testid="workbench"><Modes {...{ data, loading, workspaceMode, changeMode }} /></main>;
   }
@@ -146,7 +150,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     workspaceRef: { current: { restored, ...(restored ? { workspaceOrigin: B } : {}) } }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
     audioRoleProbe: { current: null }, audioRoleProbeEpoch: { current: 0 }, observeClipAudioRoleCapability: () => () => {}, isWorkspaceInspection: () => true, canEditTimelineAudioRole: () => true, setAudioRoleCapability: (...args: unknown[]) => calls.push(['setAudioRoleCapability', ...args]),
     dirtyRef: { current: false }, subtitlesRef: { current: null }, clipDraftRef: { current: null }, shotTextRef: { current: null }, subjectsRef: { current: null }, agentDraft: { current: false }, imageDraft: { current: false },
-    useCallback: <T>(fn: T): T => fn, workspaceOriginScope, validateProjectWorkspace, reconcileWorkspaceState, reconcilePending() {}, pinNewWorkspaceIntent: (value: Record<string, unknown>, workspace: {workspaceOrigin?: unknown}) => ({ ...value, workspaceOrigin: workspace.workspaceOrigin }),
+    useCallback: <T>(fn: T): T => fn, workspaceOriginScope, validateProjectWorkspace, reconcileWorkspaceState, readGenerationProviderDirectory, reconcilePending() {}, pinNewWorkspaceIntent: (value: Record<string, unknown>, workspace: {workspaceOrigin?: unknown}) => ({ ...value, workspaceOrigin: workspace.workspaceOrigin }),
     confirm: async () => true, readableError: (e: Error) => e.message, pendingForProject: () => [], URL, URLSearchParams,
     window: { location: { href: 'http://127.0.0.1:4318/', search: '' }, history: { pushState() {}, replaceState() {} } },
     tasksRef: { current: { getState: () => ({ phase: 'idle' }), load: async () => {} } },
@@ -157,15 +161,16 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
     openedProject: { current: null }, projectCreateFlight: { current: null }, settingsNavigation: { current: createSettingsNavigationRegistry() },
     timelineFormatRef: { current: null }, deliveryNameRef: { current: null }, localDeliveryRef: { current: null },
     projectOpening: { phase: projectId && ready ? 'ready' : 'home', projectId, error: '' }, projects: [],
-    projectListStatus: { busy: false, error: '' }, busy: {}, homePage: 'projects', homeConnection: 'agent', toast: null,
+    projectListStatus: { busy: false, error: '' }, busy: {}, homePage: 'projects', homeConnection: 'agent', toast: null, videoDirectoryUnavailable: false,
     markBusy: (...args: unknown[]) => calls.push(['markBusy', ...args]), setHomeConnection() {}, changeHomePage() {}, refreshHomeProjects() {},
-    ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setSelectedTaskId', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map((name: string) => [name, (...args: unknown[]) => calls.push([name, ...args])])),
+    ...Object.fromEntries(['setLastSync', 'setView', 'setMobilePanel', 'setPreviewAsset', 'setComparisonId', 'setShowCreate', 'setProjects', 'setWorkspace', 'setAuth', 'setOnline', 'setProviders', 'setVideoDirectoryUnavailable', 'setPropertiesPage', 'setTaskState', 'setPreferenceStatus', 'setPending', 'setShowProjects', 'setNodes', 'setShotDirty', 'setClipDirty', 'setSourceDirty', 'setSubjectDirty', 'setSubtitleDirty', 'setInspectorEpoch', 'setRightDockTab', 'setShowExports', 'setRealConfirm', 'setToast', 'setZoom', 'setPanelOverlay', 'setHomePage', 'setHomeConnection', 'setPanelOpen', 'setSettingsOpen', 'setAgentPage', 'setWorkspaceMode', 'setShowTasks', 'setSelectedTaskId', 'setShowDelivery', 'setShowImage', 'setShowProjectChooser', 'setTaskState', 'setShowSettings', 'setWebSettingsOpen', 'setCanvasToolbar', 'notify'].map((name: string) => [name, (...args: unknown[]) => calls.push([name, ...args])])),
   };
   if (projectId && ready) env.openedProject.current = projectOpenAttempt(projectId as string, 0, workspaceOriginScope(env.workspaceRef.current as never) as string) as unknown as {projectId?: unknown};
   env.setProjectOpening = (value: unknown) => { env.projectOpening = value as EnvAccess['projectOpening']; calls.push(['setProjectOpening', value]); };
   env.setProjectListStatus = (value: unknown) => { env.projectListStatus = value as EnvAccess['projectListStatus']; calls.push(['setProjectListStatus', value]); };
   env.setHomePage = (value: unknown) => { env.homePage = value as unknown as string; calls.push(['setHomePage', value]); };
   env.setProjects = (value: unknown) => { env.projects = value as unknown[]; calls.push(['setProjects', value]); };
+  env.setVideoDirectoryUnavailable = (value: unknown) => { env.videoDirectoryUnavailable = Boolean(value); calls.push(['setVideoDirectoryUnavailable', value]); };
   env.setData = (data: unknown) => { env.dataRef.current = data as Record<string, unknown>; calls.push(['data', data]); };
   env.setLoading = (value: unknown) => { env.loading = Boolean(value); calls.push(['loading', value]); };
   env.refresh = async (...args: unknown[]) => { const scope = { ...env } as Record<string, unknown>; delete scope.refresh; return compile(refreshSource, 'refresh', scope)(...args); };
@@ -182,6 +187,7 @@ function harness({ projectId = null, mode = 'canvas', loading = false, ready = B
   env.rpc = async (operation: string, input: {projectId?: unknown}) => { calls.push(['rpc', operation]);
     if (operation === 'workspace.restore.inspect') return { restored: false };
     if (operation === 'project.get') return { ...emptyData, project: { id: input.projectId }, ...(env.workspaceRef.current.restored ? { exports: [], restore: { workspaceOrigin: env.workspaceRef.current.workspaceOrigin, heldExportIds: [] } } : {}) };
+    if (operation === 'video.connection.list') return [];
     return [];
   };
   env.run = async (...args: unknown[]) => { calls.push(['dispatch', ...args]); return { id: A }; };
@@ -199,6 +205,27 @@ test('actual empty startup shows the independent home and never mounts project m
     assert.match(openingTag(html, id), /tabindex="0"/);
   }
   assert.doesNotMatch(html, /role="dialog"/);
+});
+
+test('actual home status shows the localized optional video directory failure and clears it after retry', async () => {
+  const f = harness(), originalRpc = f.env.rpc as (operation: string, input: {projectId?: unknown}) => Promise<unknown>;
+  let unavailable = true;
+  f.env.rpc = async (operation: string, input: {projectId?: unknown}) => {
+    if (operation === 'video.connection.list' && unavailable) throw new Error('Optional video directory unavailable');
+    return originalRpc(operation, input);
+  };
+  await f.boot();
+  assert.equal(f.env.videoDirectoryUnavailable, true);
+  assert.equal(f.env.loading, false); assert.equal(f.env.currentProject.current, null);
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const html = ui.render({ ...modeProps(f), locale }); assertHome(html);
+    assert.match(html, /<p[^>]*role="status"[^>]*data-testid="video-directory-unavailable">/);
+    assert.ok(html.includes(createI18nTestContext(locale).t('video.providers.directoryUnavailableHint')), locale);
+    assert.doesNotMatch(ui.render({ ...modeProps(f), locale, restored: true }), /data-testid="video-directory-unavailable"/);
+  }
+  unavailable = false; await f.boot();
+  assert.equal(f.env.videoDirectoryUnavailable, false);
+  assert.doesNotMatch(ui.render(modeProps(f)), /data-testid="video-directory-unavailable"/);
 });
 
 test('unmounted shared mode controls retain defensive click and Enter/Space guards', async () => {

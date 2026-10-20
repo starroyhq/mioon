@@ -3,6 +3,7 @@ import { EventEmitter } from 'node:events';
 import { trustedOrigin } from './security.ts';
 import { createAgentSettingsBroker } from './secret-broker.ts';
 import { createImageSecretBroker } from './image-secret-broker.ts';
+import { createVideoSecretBroker } from './video-secret-broker.ts';
 import { createNativeAudioPreviewBroker } from './native-audio-preview-broker.ts';
 import {createWorkspaceNativeBroker} from './workspace-native-broker.ts';
 import type {WorkspaceSettings} from '../../../packages/contracts/src/workspace-configuration.ts';
@@ -11,6 +12,7 @@ import type {NativeAudioCommand, NativeAudioConfig, NativeAudioReply} from '@mio
 import { createExitDiagnostics, classifyBackendExit } from './exit-diagnostics.ts';
 import type {DesktopAgentSettings} from './secret-store.ts';
 import type {ImageSecretCodec} from './image-secret-store.ts';
+import type {VideoSecretCodec} from './video-secret-store.ts';
 
 /** Electron utilityProcess surface used by the supervisor (structural for tests). */
 export interface BackendUtilityProcess {
@@ -67,6 +69,7 @@ export interface BackendSupervisorOptions {
   forceKill?: (child: BackendUtilityProcess) => void;
   agentSettings?: DesktopAgentSettings | null;
   imageSecretCodec?: ImageSecretCodec | null;
+  videoSecretCodec?: VideoSecretCodec | null;
 }
 function recordOf(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
@@ -103,6 +106,7 @@ export class BackendSupervisor extends EventEmitter {
   readonly forceKill: (child: BackendUtilityProcess) => void;
   readonly agentSettings: DesktopAgentSettings | null | undefined;
   readonly imageSecretCodec: ImageSecretCodec | null | undefined;
+  readonly videoSecretCodec: VideoSecretCodec | null | undefined;
   state: SupervisorState = 'idle';
   mediaPids = new Set<number>();
   mediaKinds = new Map<number, string | undefined>();
@@ -126,7 +130,7 @@ export class BackendSupervisor extends EventEmitter {
 
   constructor({ fork, modulePath, environment, startupTimeout = 20000, stopTimeout = BACKEND_STOP_BUDGET.gracefulMs,
     terminateTimeout = BACKEND_STOP_BUDGET.terminateMs, exitTimeout = BACKEND_STOP_BUDGET.confirmMs,
-    forceKill = forceOwnedUtility, agentSettings, imageSecretCodec }: BackendSupervisorOptions) {
+    forceKill = forceOwnedUtility, agentSettings, imageSecretCodec, videoSecretCodec }: BackendSupervisorOptions) {
     super();
     for (const value of [startupTimeout, stopTimeout, terminateTimeout, exitTimeout]) {
       if (!Number.isSafeInteger(value) || value < 0 || value > 60000) throw new Error('Invalid backend lifecycle budget');
@@ -141,6 +145,7 @@ export class BackendSupervisor extends EventEmitter {
     this.forceKill = forceKill;
     this.agentSettings = agentSettings;
     this.imageSecretCodec = imageSecretCodec;
+    this.videoSecretCodec = videoSecretCodec;
   }
 
   start(config: BackendStartConfig): Promise<BackendReady> {
@@ -197,6 +202,9 @@ export class BackendSupervisor extends EventEmitter {
       const imageSecretBroker = createImageSecretBroker({ imageSecretCodec: this.imageSecretCodec,
         send: message => child.postMessage(message),
         isActive: () => this.child === child && ['starting', 'running', 'stopping'].includes(this.state) });
+      const videoSecretBroker = createVideoSecretBroker({ videoSecretCodec: this.videoSecretCodec,
+        send: message => child.postMessage(message),
+        isActive: () => this.child === child && ['starting', 'running', 'stopping'].includes(this.state) });
       const nativeAudioBroker = config.nativeAudioPreview ? createNativeAudioPreviewBroker({
         backendId: config.nativeAudioPreview.backendId, send: message => child.postMessage(message),
         isCurrent: () => this.child === child && ['running', 'stopping'].includes(this.state),
@@ -214,6 +222,7 @@ export class BackendSupervisor extends EventEmitter {
       child.on('message', (message: unknown) => {
         if (settingsBroker.handle(message)) return;
         if (imageSecretBroker.handle(message)) return;
+        if (videoSecretBroker.handle(message)) return;
         if (nativeAudioBroker?.handle(message)) return;
         if(workspaceNativeBroker.handle(message))return;
         if (this.child !== child) return;
@@ -264,6 +273,7 @@ export class BackendSupervisor extends EventEmitter {
       child.once('exit', (code: number) => {
         settingsBroker.close();
         imageSecretBroker.close();
+        videoSecretBroker.close();
         nativeAudioBroker?.close();
         workspaceNativeBroker.close();
         clearTimeout(timer);

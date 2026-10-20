@@ -41,6 +41,11 @@ import {operationEffect} from '@mioon/contracts';
 import type {OperationName} from '@mioon/contracts';
 import {normalizedCapabilities,usesInputProfiles} from './provider-registry.ts';
 import type {Provider} from './provider-registry.ts';
+import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
+import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
+import type {VideoSettingsService} from './video/settings.ts';
+import {createConfiguredVideoProvider} from './video/runtime.ts';
+import {listVideoConnections,readVideoBinding,sameVideoExecutionDomain,prepareConfiguredVideoInputs} from './video/generation.ts';
 import {prepareGenerationInputs,generationReferenceSelection,readGenerationAsset,assertGenerationReferenceIds,assertGenerationShotOwnership,assertGenerationJobOwnership,currentGenerationClaim,hasSubjectGeneration,validateSubjectGenerationOwnership,assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant,readGenerationLinkedJob} from './generation-inputs.ts';
 import type {GenerationAsset,GenerationJob,GenerationRecord,GenerationShot,GenerationSource,GenerationSubjectGraph} from './generation-inputs.ts';
 import {createTimelineServices} from './timeline.ts';
@@ -83,6 +88,8 @@ export interface ServiceHandlerContext { readonly signal?: AbortSignal | null; r
 export type ServiceHandler=(input: never,context?: ServiceHandlerContext)=>unknown;
 export type ServiceHandlers=Record<string,(input: never,context?: ServiceHandlerContext)=>unknown>;
 export interface CreateServicesOptions {
+ videoSettings?: VideoSettingsService;
+ videoFetch?: typeof fetch;
  env?: NodeJS.ProcessEnv;
  signal?: AbortSignal;
  profileNow?: ()=>number;
@@ -109,6 +116,7 @@ export interface OrdinaryServices {
  audioPreview: AudioPreviewService;
  saveGenerationGuarded: (job: JobRecord,patch: ServiceRow)=>ServiceRow|null;
  validateGenerationDispatch: (job: JobRecord)=>unknown;
+ resolveGenerationProvider?: (job: JobRecord)=>Provider|undefined;
  updateShotInProject: (projectId: string,input: unknown)=>Promise<unknown>;
  moveTimelineClipInProject: (projectId: string,input: unknown,target: unknown)=>unknown;
  setTimelineClipGainInProject: (projectId: string,input: unknown,target: unknown)=>unknown;
@@ -150,6 +158,9 @@ export interface JobRecord extends ServiceRow {
  submissionCount?: number;
 }
 export interface GenerationSubmitInput {
+ connectionId?: string;
+ configurationRevision?: number;
+ modelEntryId?: string;
  shotId: string;
  expectedRevision: number;
  requestId: string;
@@ -170,7 +181,7 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent}: CreateServicesOptions={}): OrdinaryServices {
+ {env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
  if(getOpacityCandidateAssembly(inputStore))return createOpacityCandidateServices(inputStore,{signal:ownerSignal}) as unknown as OrdinaryServices;
  // Ordinary/candidate stores expose the same workspace surface; candidate
  // table-name narrowing stays inside its own verified assembly.
@@ -219,9 +230,34 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const profilePolicy=restored?false:usesInputProfiles(providers),currentProfileDate=()=>new Date(profileNow()).toISOString().slice(0,10);
  const runtimeEnv=configuration.environment();
  const capabilitiesFor=(provider: Provider,asOf=currentProfileDate())=>normalizedCapabilities(provider,runtimeEnv,0,{asOf,requireInputProfiles:profilePolicy||usesInputProfiles(provider)});
+ const configuredVideoProviders=new Map<string,Provider>();
+ const boundProvider=(binding:VideoExecutionBinding):Provider=>{
+  if(restored)disabled();
+  if(!videoSettings)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','视频连接设置不可用。',409);
+  videoSettings.assertBinding(binding);
+  const key=canonical(binding);let provider=configuredVideoProviders.get(key);
+  if(!provider){provider=createConfiguredVideoProvider({root,binding,acquireCredential:()=>videoSettings.acquire(binding,ownerSignal),...(videoFetch?{fetchImpl:videoFetch}:{})});configuredVideoProviders.set(key,provider);}
+  return provider;
+ };
+ const resolveGenerationProvider=(job:JobRecord):Provider|undefined=>{
+  const binding=readVideoBinding(job.snapshot);
+  if(!binding)return providers.get(job.providerId);
+  if(binding.providerId!==job.providerId||binding.model.modelId!==job.model)throw new AppError('VIDEO_BINDING_INVALID','任务身份与连接绑定不一致。');
+  return boundProvider(binding);
+ };
  const bindingRole=(bindings: unknown,index: number): unknown=>Array.isArray(bindings)?property(bindings[index],'role'):undefined;
  const hasLastFrameRole=(value: unknown): boolean=>Array.isArray(value)&&value.some(reference=>property(reference,'role')==='last_frame');
  const validateProvider=(source: GenerationSource,providerId: string,requestedModel: string|undefined,parameters: ServiceRow|undefined,projectId: string,frozen=false,subjectGraph: GenerationSubjectGraph|null=null)=>{
+  const binding=readVideoBinding(source);
+  if(binding){
+   configuration.assertLiveEnabled();
+   if(binding.providerId!==providerId||requestedModel!==undefined&&requestedModel!==binding.model.modelId)throw new AppError('VIDEO_BINDING_INVALID','请求模型与所选连接不一致。');
+   const p=boundProvider(binding),c=videoBindingCapabilities(binding,{asOf:currentProfileDate()});
+   if(!c.configured)throw new AppError('VIDEO_SETTINGS_INCOMPLETE','请先配置此连接的输出域名。',409);
+   const prepared=prepareConfiguredVideoInputs({source:{...source,parameters},binding,projectId,readAsset:id=>subjectGraph?subjectGraph.asset(id):readGenerationAsset(db,id,projectId),frozen,asOf:currentProfileDate()});
+   const executionConnectionName=frozen?source.executionConnectionName:videoSettings?.list().find(view=>view.configuration.id===binding.connectionId)?.configuration.name;
+   return {p,model:binding.model.modelId,assets:prepared.assets,referenceAssetIds:prepared.assets.map(asset=>asset.id),capabilities:c,inputFields:{...prepared.fields,...(typeof executionConnectionName==='string'?{executionConnectionName}:{})}};
+  }
   const p=providers.get(providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
   const c=capabilitiesFor(p),models=Array.isArray(property(c,'models'))?property(c,'models') as unknown[]:[],first=models[0],
    model=requestedModel||(typeof first==='string'?first:stringValue(property(first,'id')));
@@ -265,7 +301,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const shot=required('shots',input.shotId) as ShotRecord;
   if(!isRecord(shot))throw new AppError('NOT_FOUND','找不到记录',404);
   if(!retrySnapshot)check(shot,input.expectedRevision);
-  if(profilePolicy||usesInputProfiles(providers.get(input.providerId))||input.subjectVersionId!==undefined)assertGenerationShotOwnership(db,shot);
+  if(profilePolicy||usesInputProfiles(providers.get(input.providerId))||input.subjectVersionId!==undefined||input.connectionId)assertGenerationShotOwnership(db,shot);
   let source: GenerationSource=retrySnapshot||shot as unknown as GenerationSource,subjectGraph: GenerationSubjectGraph|null=null;
   const subjectMode=input.subjectVersionId!==undefined||hasSubjectGeneration(source);
   let referenceConnections: unknown;
@@ -284,6 +320,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     source={...shot,subjectReference,referenceAssetIds:[version.assetId],referenceConnections,referenceBindings:[{role:'subject_reference',assetId:version.assetId,sha256:version.sha256}]};
    }
   }else referenceConnections=(retrySnapshot?property(retrySnapshot,'referenceConnections'):undefined)??(!retrySnapshot?references.snapshot(shot as never):[]);
+  const executionBinding=retrySnapshot?readVideoBinding(retrySnapshot):input.connectionId?videoSettings?.select(input.connectionId,input.configurationRevision!,input.modelEntryId!):null;
+  if(input.connectionId&&!executionBinding)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','所选视频连接不可用。',409);
+  if(executionBinding)source={...source,executionBinding};
   const parameters=(retrySnapshot?property(retrySnapshot,'parameters'):undefined)||{...(isRecord(shot.parameters)?shot.parameters:{}),...input.parameters};
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph);
   const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
@@ -439,6 +478,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'edge.create':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);for(const id of [input.source,input.target]){const n=(get('shots',String(id))||get('nodes',String(id))) as ServiceRow|null;if(!n||n.projectId!==input.projectId)throw new AppError('INVALID_EDGE','只能连接同项目的节点');}if(input.source===input.target)throw new AppError('INVALID_EDGE','不能连接到自身');const existing=list('edges',stringValue(input.projectId)).find(edge=>property(edge,'kind')!=='reference'&&property(edge,'source')===input.source&&property(edge,'target')===input.target) as ServiceRow|undefined;return existing||put('edges',{id:randomUUID(),...input,kind:'decorative'});},
   'edge.delete':(input: ServiceRow)=>{const edge=required('edges',stringValue(input.edgeId) as string);if(edge.kind==='reference')throw new AppError('REFERENCE_CONNECTED','首帧参考连线会影响生成输入；请使用 reference.detach 按镜头版本断开',409,{edgeId:edge.id});db.prepare('DELETE FROM edges WHERE id=?').run(stringValue(input.edgeId) as string);return {deleted:true};},
   'provider.list':()=>{const asOf=currentProfileDate();return [...providers.values()].map(provider=>capabilitiesFor(provider,asOf));},
+  'video.connection.list':()=>{if(restored)disabled();return listVideoConnections(videoSettings,currentProfileDate());},
   'generation.submit':(input: GenerationSubmitInput)=>createJob(input),
   'job.get':(input: ServiceRow)=>subjectDisclosure('jobs',required('jobs',stringValue(input.jobId) as string)),
   'job.list':(input: ServiceRow)=>{required('projects',stringValue(input.projectId) as string);return list('jobs',stringValue(input.projectId)).map(value=>subjectDisclosure('jobs',value as ServiceRow,stringValue(input.projectId)));},
@@ -446,7 +486,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    const old=required('jobs',stringValue(input.jobId) as string) as JobRecord,subjectMode=hasSubjectGeneration(old.snapshot);
    if(subjectMode)validateSubjectGenerationOwnership(db,old);
    const subjectReference=property(old.snapshot,'subjectReference');
-   const newInput: GenerationSubmitInput={shotId:old.shotId,expectedRevision:Number(property(old.snapshot,'shotRevision')),requestId:stringValue(input.requestId) as string,providerId:old.providerId,model:old.model,parameters:recordValue(property(old.snapshot,'parameters'))??undefined,retryOfJobId:old.id,...(subjectMode?{subjectVersionId:stringValue(property(subjectReference,'subjectVersionId'))}:{})};
+   const binding=readVideoBinding(old.snapshot);
+   const newInput: GenerationSubmitInput={shotId:old.shotId,expectedRevision:Number(property(old.snapshot,'shotRevision')),requestId:stringValue(input.requestId) as string,providerId:old.providerId,model:old.model,parameters:recordValue(property(old.snapshot,'parameters'))??undefined,retryOfJobId:old.id,...(binding?{connectionId:binding.connectionId,configurationRevision:binding.configurationRevision,modelEntryId:binding.model.id}:{}),...(subjectMode?{subjectVersionId:stringValue(property(subjectReference,'subjectVersionId'))}:{})};
    const prior=dedupe('generation',newInput.requestId,hash(newInput),'jobs');if(prior){const priorJob=prior as JobRecord;return subjectMode||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,newInput,old.id):priorJob;}
    if(old.status!=='failed')throw new AppError('UNSAFE_RETRY','只有明确失败的任务可重新提交；未知提交结果须先对账',409);
    const activeChild=list('jobs',old.projectId).find(child=>property(child,'retryOfJobId')===old.id&&['queued','submitting','running','downloading','submission_unknown'].includes(String(property(child,'status'))));
@@ -469,16 +510,16 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    if(input.providerJobId&&j.providerJobId&&input.providerJobId!==j.providerJobId)throw new AppError('TASK_ID_CONFLICT','已知供应商任务 ID 不可替换',409);
    if(input.providerJobId){
     const requested=String(input.providerJobId);
-    const owner=list('jobs').find(other=>property(other,'id')!==j.id&&property(other,'providerId')===j.providerId&&property(other,'providerJobId')===requested);if(owner)throw new AppError('TASK_ID_CONFLICT','供应商任务已属于另一个本地任务，不能替换其参数快照',409);
+    const owner=list('jobs').find(other=>property(other,'id')!==j.id&&property(other,'providerId')===j.providerId&&property(other,'providerJobId')===requested&&sameVideoExecutionDomain(property(other,'snapshot'),j.snapshot));if(owner)throw new AppError('TASK_ID_CONFLICT','供应商任务已属于另一个本地任务，不能替换其参数快照',409);
     if(j.providerId==='mock'){const own=await awaitProvider(()=>{const mock=providers.get('mock');if(!mock)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');return mock.reconcile(j.requestId,context);},callSignal);checkpoint(callSignal);claim();if(!isRecord(own)||own.providerJobId!==requested)throw new AppError('TASK_ID_CONFLICT','模拟任务 ID 与此提交请求不匹配',409);}
    }
-   const p=providers.get(j.providerId);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
+   const p=resolveGenerationProvider(j);if(!p)throw new AppError('PROVIDER_NOT_FOUND','供应商不存在');
    const snapshotCapabilities=property(j.snapshot,'capabilities');
    if(property(snapshotCapabilities,'region')&&p.capabilities.region!==property(snapshotCapabilities,'region'))throw new AppError('PROVIDER_REGION_CHANGED','供应商账户区域已更改，请恢复此任务原有区域后继续',409);
    const found: {providerJobId: string}|null=input.providerJobId?{providerJobId:String(input.providerJobId)}:j.providerJobId?{providerJobId:j.providerJobId}:await awaitProvider(()=>p.reconcile(j.requestId,context),callSignal).then(value=>isRecord(value)&&typeof value.providerJobId==='string'?{providerJobId:value.providerJobId}:null);checkpoint(callSignal);claim();
    if(!found)return disclose(saveJob(j,{status:'submission_unknown',phase:'reconciliation_required',error:{code:'SUBMISSION_UNKNOWN',message:'无法确认是否已被受理；不会自动重新提交。请在供应商后台核实已有任务 ID',retryable:true}}));
    await awaitProvider(()=>p.poll(found.providerJobId,context),callSignal);checkpoint(callSignal);claim();
-   const competing=list('jobs').find(other=>property(other,'id')!==j.id&&property(other,'providerId')===j.providerId&&property(other,'providerJobId')===found.providerJobId);if(competing)throw new AppError('TASK_ID_CONFLICT','供应商任务已由另一个本地任务占用',409);
+   const competing=list('jobs').find(other=>property(other,'id')!==j.id&&property(other,'providerId')===j.providerId&&property(other,'providerJobId')===found.providerJobId&&sameVideoExecutionDomain(property(other,'snapshot'),j.snapshot));if(competing)throw new AppError('TASK_ID_CONFLICT','供应商任务已由另一个本地任务占用',409);
    return disclose(saveJob(j,{status:'running',phase:'polling',providerJobId:found.providerJobId,error:null,cancelScope:null}));
   },
   'version.list':(input: ServiceRow)=>{const s=required('shots',stringValue(input.shotId) as string);return list('versions',stringValue(s.projectId)).filter(v=>property(v,'shotId')===s.id).map(value=>subjectDisclosure('versions',value as ServiceRow,stringValue(s.projectId))).sort((a,b)=>(Number(a.number)||0)-(Number(b.number)||0));},
@@ -562,6 +603,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // polling, download and reconciliation deliberately never call this boundary.
  function validateGenerationDispatch(job: JobRecord): unknown {
   if(restored)disabled();
+  const binding=readVideoBinding(job.snapshot);
+  if(binding){
+   configuration.assertLiveEnabled();
+   currentGenerationClaim(db,job);resolveGenerationProvider(job);
+   const graph=hasSubjectGeneration(job.snapshot)?validateSubjectGenerationOwnership(db,job):null;
+   return prepareConfiguredVideoInputs({source:job.snapshot,binding,projectId:job.projectId,readAsset:id=>graph?graph.asset(id):readGenerationAsset(db,id,job.projectId),frozen:true,asOf:currentProfileDate()});
+  }
   const provider=providers.get(job.providerId);
   if(provider&&!provider.capabilities.mock&&(profilePolicy||usesInputProfiles(provider)))configuration.assertLiveEnabled();
   const subjectMode=hasSubjectGeneration(job.snapshot);
@@ -578,7 +626,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  let invalidGenerationReported=false;
  function saveGenerationGuarded(job: JobRecord,patch: ServiceRow): ServiceRow|null {
   if(restored)disabled();
-  if(!profilePolicy&&!usesInputProfiles(providers.get(job.providerId))&&!hasSubjectGeneration(job.snapshot))return saveJob(job,patch);
+  const hasVideoBinding=job.snapshot!==null&&typeof job.snapshot==='object'&&Object.hasOwn(job.snapshot,'executionBinding');
+  if(!profilePolicy&&!usesInputProfiles(providers.get(job.providerId))&&!hasSubjectGeneration(job.snapshot)&&!hasVideoBinding)return saveJob(job,patch);
   return tx(()=>{
    let current: ServiceRow;try{current=currentGenerationClaim(db,job);}catch{
     if(!invalidGenerationReported){invalidGenerationReported=true;console.error('Skipped invalid local generation record.');}
@@ -587,5 +636,5 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return saveJob(current as JobRecord,patch);
   });
  }
- return {setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,configuration,backups,audioPreview,saveGenerationGuarded,validateGenerationDispatch,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
+ return {setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,configuration,backups,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
 }

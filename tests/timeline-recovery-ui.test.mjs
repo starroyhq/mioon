@@ -10,6 +10,7 @@ import * as workspaceOrigin from '../apps/web/src/workspace-origin.ts';
 import * as restoredWorkspace from '../apps/web/src/restored-workspace.ts';
 import * as projectOpening from '../apps/web/src/project-open-state.ts';
 import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/workspace-state.ts';
+import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
 import { isReferenceOperation } from '../apps/web/src/reference-connections.ts';
 import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
@@ -116,12 +117,13 @@ function harness(dispatch, { projectSnapshot, workspace = { restored: false } } 
     rpc: async (operation, input) => {
       if (projectSnapshot && operation === 'project.get') { state.reads.push({ operation, input: clone(input) }); return projectSnapshot(input.projectId); }
       if (projectSnapshot && operation === 'provider.list') { state.reads.push({ operation }); return []; }
+      if (projectSnapshot && operation === 'video.connection.list') { state.reads.push({ operation }); return []; }
       state.calls.push({ operation, input: clone(input) }); return dispatch(operation, input);
     },
   };
   if (projectSnapshot) {
     const refreshScope = { ...scope, ...projectOpening, application: null, clipDraftRef: { current: null }, projectSessionReady: () => state.projectReady, importSession: { current: { active: true } }, useCallback: callback => callback, emptyData: {}, projectEpoch: { current: 1 },
-      setProviders: value => { state.providers = value; }, setLastSync() {}, setOnline: value => { state.online = value; }, reconcileWorkspaceState,
+      setProviders: value => { state.providers = value; }, setVideoDirectoryUnavailable() {}, setLastSync() {}, setOnline: value => { state.online = value; }, reconcileWorkspaceState, readGenerationProviderDirectory,
       viewRef: { current: defaultWorkspaceState() }, viewReady: { current: false }, setView() {}, preferencesRef: { current: {} } };
     delete refreshScope.refresh;
     scope.refresh = Function(...Object.keys(refreshScope), `${refreshSource}; return refresh;`)(...Object.values(refreshScope));
@@ -409,6 +411,7 @@ test('actual App catch and project refresh cannot erase a render receipt after s
     }
     assert.equal(refreshes, 4); assert.equal(h.state.calls.length, 4);
     assert.equal(h.state.reads.filter(call => call.operation === 'provider.list').length, 4, 'normal workspace refresh still reads provider capabilities');
+    assert.equal(h.state.reads.filter(call => call.operation === 'video.connection.list').length, 4, 'normal workspace refresh still reads video connections');
     assert.ok(h.state.calls.every(call => JSON.stringify(call.input) === JSON.stringify(input)));
     failure = null; await h.run(key, operation, input, undefined, { replay: true });
     assert.equal(submissions.readPending(projectId, key), null);
@@ -439,7 +442,7 @@ test('actual App refresh validates restored identity and held exports before cha
     assert.equal(await h.refresh(projectId, false), valid ? next : null, name);
     assert.equal(h.dataRef.current === before, !valid, name);
     assert.equal(h.state.online, valid, name); assert.deepEqual(h.state.providers, valid ? [] : null, name);
-    assert.deepEqual(h.state.reads.map(call => call.operation), activeWorkspace.restored ? ['project.get'] : ['project.get', 'provider.list'], name);
+    assert.deepEqual(h.state.reads.map(call => call.operation), activeWorkspace.restored ? ['project.get'] : ['project.get', 'provider.list', 'video.connection.list'], name);
     assert.deepEqual(h.state.calls, [], name);
     assert.equal(h.state.notices.length, valid ? 0 : 1, name);
     if (!valid) assert.equal(h.state.notices[0].type, 'error', name);

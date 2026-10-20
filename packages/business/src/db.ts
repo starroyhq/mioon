@@ -108,11 +108,11 @@ export function validateWorkspaceStorage(root: string): void {
  validateManagedFile(path.join(root,'server.lock'),{root,allowMissing:true,maxBytes:64});
  validateManagedFile(path.join(root,'access-token'),{root,allowMissing:true,private:true,maxBytes:4098});
   validateManagedFile(path.join(root,'local-drafts-v1.json'),{root,allowMissing:true,private:true,maxBytes:2*1024*1024});
- for(const name of ['agent-settings','image-settings','comfy-settings']){
+ for(const name of ['agent-settings','image-settings','comfy-settings','video-settings']){
   const settings=path.join(root,name);
   if(validateManagedDirectory(settings,{root,allowMissing:true,private:true})){
    for(const filename of name==='image-settings'?['settings.json','custom-settings.json']:['settings.json'])
-    validateManagedFile(path.join(settings,filename),{root,allowMissing:true,private:true,maxBytes:name==='comfy-settings'?16*1024:64*1024});
+    validateManagedFile(path.join(settings,filename),{root,allowMissing:true,private:true,maxBytes:name==='video-settings'?4*1024*1024:name==='comfy-settings'?16*1024:64*1024});
   }
  }
 }

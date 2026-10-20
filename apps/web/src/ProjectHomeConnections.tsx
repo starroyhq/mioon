@@ -31,10 +31,10 @@ const connectionCategory = (page: SettingsPage) => ['agent', 'models', 'extensio
 
 /** Retained form owners keep their original identity and admission. Categories
  * are local presentation; native connection-slot messages remain unchanged. */
-export default function ProjectHomeConnections({ selected, page = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools }: {
+export default function ProjectHomeConnections({ selected, page = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools, videoModels }: {
   selected: HomeConnectionSlot; page?: SettingsPage; onSelect: (slot: HomeConnectionSlot) => void; onPage?: (page: SettingsPage) => void;
   panes: Readonly<Record<HomeConnectionSlot, ReactNode>>; general?: ReactNode; connectionsAvailable?: boolean; active?: boolean;
-  workspace?: ReactNode; videoTools?: ReactNode;
+  workspace?: ReactNode; videoTools?: ReactNode; videoModels?: ReactNode;
 }) {
   const { t, formatNumber } = useI18n();
   const heading = useId(), opened = useRef(new Set<HomeConnectionSlot>());
@@ -59,7 +59,7 @@ export default function ProjectHomeConnections({ selected, page = selected, onSe
       </section>
       <section hidden={page !== 'workspace'} inert={page !== 'workspace'}>{workspace}</section>
       <section hidden={page !== 'video-tools'} inert={page !== 'video-tools'}>{videoTools}</section>
-      <section hidden={page !== 'models'} inert={page !== 'models'}><SettingsModelServices active={active && page === 'models' && connectionsAvailable} onOpenOfficial={()=>selectPage('official')} /></section>
+      <section hidden={page !== 'models'} inert={page !== 'models'}>{videoModels}<SettingsModelServices active={active && page === 'models' && connectionsAvailable} onOpenOfficial={()=>selectPage('official')} /></section>
       {page==='official'&&<Button className="settings-service-back" type="button" variant="ghost" onClick={()=>selectPage('models')}>{t('redesign.settings.models')}</Button>}
       <section hidden={page !== 'shortcuts'} inert={page !== 'shortcuts'}><SettingsShortcuts /></section>
       <section hidden={page !== 'about'} inert={page !== 'about'}><SettingsAbout active={active && page === 'about'} /></section>

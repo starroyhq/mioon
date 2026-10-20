@@ -32,18 +32,18 @@ import ShotSubjectBindings from './ShotSubjectBindings.tsx';
 import { imageEditSourceIssueDescriptor } from './image-generation.ts';
 import { ReferenceSourcePanel, BoundReference } from './ReferenceConnections.tsx';
 import { referenceForShot } from './reference-connections.ts';
-import { generationSelection, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor } from './generation-settings.ts';
+import { generationSelection, generationParameters, generationInputIssue, providerAvailabilityIssue, inputModeLabel, inputModeDescriptor, generationInputIssueDescriptor, providerAvailabilityDescriptor } from './generation-settings.ts';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { schemas } from '@mioon/contracts';
 import { useLocalShotText, mergeFreshShotTextAck } from './local-shot-text-state.ts';
 import ShotTextDraftRecovery from './ShotTextDraftRecovery.tsx';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
-import type { AppAsset, AppEdge, AppJob, AppNode, AppProject, AppShot, AppVersion } from './App.tsx';
+import type { AppAsset, AppEdge, AppJob, AppNode, AppProject, AppShot, AppVersion, GenerationOptionState } from './App.tsx';
 import type { SubjectReference } from '@mioon/contracts';
 import type { ProviderSettingsChange } from './ProviderSettings.tsx';
 
 interface GenerationCapabilitiesView {
-  inputModes?: string[]; aspectRatios?: string[]; durations?: number[]; parameters?: string[]; maxPromptLength?: number;
+  resolutions?: string[]; inputModes?: string[]; aspectRatios?: string[]; durations?: number[]; parameters?: string[]; maxPromptLength?: number;
   seed?: {min: number; max: number};
   referenceImages?: {mimeTypes?: string[]; minDimension?: number; maxDimension?: number; matchAspectRatio?: boolean};
 }
@@ -82,7 +82,7 @@ export interface InspectorProps {
   busy: Record<string, unknown>;
   onSave: (shotId: string, expectedRevision: number | null | undefined, draft: ShotDraftView) => Promise<AppShot | null | undefined>;
   onNodeSave: (nodeId: string, expectedRevision: number | null | undefined, draft: ShotDraftView) => Promise<AppNode | null | undefined>;
-  onGenerate: (shot: AppShot, selection: {providerId?: string; model: string; scenario: string; inputMode: string; subjectReference?: unknown}) => unknown;
+  onGenerate: (shot: AppShot, selection: GenerationOptionState & {model: string; scenario: string; inputMode: string}) => unknown;
   onSelectVersion: (shot: AppShot, versionId: string) => unknown;
   onCompare: (shotId: string) => unknown;
   onOpenJobs: () => unknown;
@@ -207,7 +207,7 @@ export default function Inspector({ onEditImage, annotations, annotationAsset = 
     } else if (record.revision !== baseRevision) setConflict(true);
   }, [record?.revision]);
   useEffect(() => { onDirtyChange(dirty); return () => { onDirtyChange(false); }; }, [dirty, onDirtyChange]);
-  const { provider, model, capabilities: rawCapabilities, inputMode, scenario } = generationSelection(providers, generationOptions as Parameters<typeof generationSelection>[1], draft);
+  const { provider, model, modelEntryId, capabilities: rawCapabilities, inputMode, scenario } = generationSelection(providers, generationOptions as Parameters<typeof generationSelection>[1], draft);
   const capabilities = rawCapabilities as GenerationCapabilitiesView | null | undefined;
   function updateGeneration(patch: Record<string, unknown> | ProviderSettingsChange): void { onGenerationOptionsChange?.(shot?.id, { ...generationOptions, ...(patch as Record<string, unknown>) }); }
   async function changeInputMode(mode: string): Promise<void> {
@@ -263,7 +263,12 @@ export default function Inspector({ onEditImage, annotations, annotationAsset = 
     edit('referenceAssetIds', []);
   }
   function reset(): void { if (shot && shotTextContext && (shotText.controller.getState().pending || shotText.controller.getState().busy || currentTextContext().busy)) return; editSerial.current++; textVersion.current++; const latest: ShotDraftView = shot ? editable(shot) : nodeDraft(node); draftRef.current = latest; dirtyRef.current = false; baseRevisionRef.current = record!.revision; setDraft(latest); baseline.current = latest; setBaseRevision(record!.revision); setDirty(false); setConflict(false); shotText.controller.setContext(currentTextContext()); }
-  async function generate(): Promise<void> { if (shotTextContext && (shotText.controller.blocksLegacy(shot!.id) || currentTextContext().busy) || generationUnavailableReason || referenceBlocked || capabilityIssue || availabilityIssue || !mounted.current || actionEpoch.current !== renderedAction.epoch || editSerial.current !== renderSerial) return; const epoch = actionEpoch.current, serial = editSerial.current, optionsKey = generationOptionsKey; const latest = (dirty ? await save() : shot) as AppShot | null | undefined; if (latest && actionCurrent(epoch, serial, { requireVisible: false }) && actionState.current?.generationOptionsKey === optionsKey) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode, ...(inputMode === 'subject' ? { subjectReference: generationOptions.subjectReference } : {}) }); }
+  async function generate(): Promise<void> {
+    if (shotTextContext && (shotText.controller.blocksLegacy(shot!.id) || currentTextContext().busy) || generationUnavailableReason || referenceBlocked || capabilityIssue || availabilityIssue || !mounted.current || actionEpoch.current !== renderedAction.epoch || editSerial.current !== renderSerial) return;
+    const epoch = actionEpoch.current, serial = editSerial.current, optionsKey = generationOptionsKey;
+    const latest = (dirty ? await save() : shot) as AppShot | null | undefined;
+    if (latest && actionCurrent(epoch, serial, { requireVisible: false }) && actionState.current?.generationOptionsKey === optionsKey) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode, ...(provider?.connectionId ? { connectionId: provider.connectionId, modelEntryId, parameters: generationParameters(latest, provider, generationOptions) } : {}), ...(inputMode === 'subject' ? { subjectReference: generationOptions.subjectReference } : {}) });
+  }
   const selectedVersions = versions.filter(v => v.shotId === shot?.id).sort((a, b) => b.number - a.number);
   useEffect(() => {
     if (!visibleRef.current || !highlightedVersionId || tab !== 'versions') return;
@@ -300,14 +305,17 @@ export default function Inspector({ onEditImage, annotations, annotationAsset = 
   }
   const generating = Boolean(running || busy[`generate:${shot?.id}`]);
   const referenceAssets = assets.filter(a => a.mimeType?.startsWith('image/'));
-  const capabilityIssue = shot ? generationInputIssue(draft, provider, model, assets, inputMode, { subjectReference: generationOptions.subjectReference, savedShot: shot, boundReference: Boolean(boundReference) }) : '';
-  const capabilityIssueDisplay = shot ? generationInputIssueDescriptor(draft, provider, model, assets, inputMode, { subjectReference: generationOptions.subjectReference, savedShot: shot, boundReference: Boolean(boundReference) }) : '';
+  const effectiveParameters = generationParameters(draft, provider, generationOptions);
+  const generationDraft = provider?.connectionId ? { ...draft, parameters: effectiveParameters } : draft;
+  const capabilityIssue = shot ? generationInputIssue(generationDraft, provider, model, assets, inputMode, { subjectReference: generationOptions.subjectReference, savedShot: shot, boundReference: Boolean(boundReference) }) : '';
+  const capabilityIssueDisplay = shot ? generationInputIssueDescriptor(generationDraft, provider, model, assets, inputMode, { subjectReference: generationOptions.subjectReference, savedShot: shot, boundReference: Boolean(boundReference) }) : '';
   const availabilityIssue = generationUnavailableReason || providerAvailabilityIssue(provider);
   const availabilityIssueDisplay = generationUnavailableReason || providerAvailabilityDescriptor(provider);
   const inputModes = [...new Set([...(capabilities?.inputModes || []), inputMode])];
   const ratios = capabilities?.aspectRatios || [];
   const ratioOptions = [...new Set([...ratios, draft.aspectRatio])];
   const durations = capabilities?.durations || [];
+  const availableResolutions = provider?.connectionId ? [...new Set((provider.videoModel as import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry | undefined)?.durationResolutionMap.filter(pair => pair.duration.includes(draft.duration)).flatMap(pair => pair.resolution) || [])] : [];
   const imageRules = capabilities?.referenceImages;
   const seedSupported = Boolean(capabilities?.seed || capabilities?.parameters?.includes('seed'));
   const unsupportedParameters = Object.keys(draft.parameters || {}).filter(key => capabilities?.parameters && !capabilities.parameters.includes(key));
@@ -357,10 +365,12 @@ export default function Inspector({ onEditImage, annotations, annotationAsset = 
       </>}
       </BoardInspectorGroup>
       <BoardInspectorGroup key={`generation:${shot!.id}`} title={t('redesign.board.generationSettings')}>
-      <div className="shot-provider-row"><Label className="field-label">{t('generation.provider.provider')}</Label><ProviderSettings providers={providers as unknown as React.ComponentProps<typeof ProviderSettings>['providers']} provider={provider} model={model} capabilities={capabilities as unknown as React.ComponentProps<typeof ProviderSettings>['capabilities']} onChange={updateGeneration} compact /></div>
+      <div className="shot-provider-row"><Label className="field-label">{t('video.providers.provider')}</Label><ProviderSettings providers={providers as unknown as React.ComponentProps<typeof ProviderSettings>['providers']} provider={provider} model={model} modelEntryId={modelEntryId} capabilities={capabilities as unknown as React.ComponentProps<typeof ProviderSettings>['capabilities']} onChange={updateGeneration} compact /></div>
       <div className="shot-property-row"><Label className="field-label" htmlFor="generation-input-mode">{t('inspector.generationMode')}</Label><ShotSegments id="generation-input-mode" data-testid="input-mode-select" label={t('inspector.generationMode')} disabled={!visible || referenceLocked || Boolean(shotTextContext && shotText.state.pending)} value={inputMode} onChange={e => changeInputMode(e.target.value)} options={inputModes.map(mode => ({ value: mode, label: <>{renderMessage(inputModeDescriptor(mode))}{mode === 'subject' || capabilities?.inputModes?.includes(mode) ? '' : t('inspector.unsupported')}</> }))} /></div>
       <div className="shot-property-row"><Label className="field-label" htmlFor="shot-ratio">{t('inspector.aspectRatio')}</Label>{ratioOptions.length > 1 ? <ShotSegments id="shot-ratio" data-testid="shot-ratio" label={t('inspector.aspectRatio')} disabled={!visible} value={draft.aspectRatio} onChange={e => { if (frameActionAllowed()) edit('aspectRatio', e.target.value); }} options={ratioOptions.map(ratio => ({ value: ratio, label: <>{ratio}{ratios.includes(ratio) ? '' : t('inspector.unsupported')}</> }))} /> : <output id="shot-ratio" className="shot-property-value" data-testid="shot-ratio" aria-label={t('inspector.aspectRatio')}>{draft.aspectRatio}</output>}</div>
       <div className="shot-property-row"><Label className="field-label" htmlFor="shot-duration">{t('inspector.shotDuration')}</Label><WorkbenchSelect id="shot-duration" data-testid="shot-duration" value={draft.duration} onChange={e => edit('duration', Number(e.target.value))}>{[...new Set([...durations, draft.duration])].sort((a, b) => a - b).map(d => <option key={d} value={d}>{t('shell.durationSeconds', { seconds: d })}{durations.includes(d) ? '' : t('inspector.unsupported')}</option>)}</WorkbenchSelect></div>
+      {provider?.connectionId && capabilities?.resolutions?.length ? <div className="shot-property-row"><Label className="field-label" htmlFor="generation-resolution">{t('video.providers.resolution')}</Label><WorkbenchSelect id="generation-resolution" data-testid="generation-resolution" disabled={!visible} value={String(effectiveParameters.resolution ?? '')} onChange={event => { if (frameActionAllowed()) updateGeneration({ parameters: { ...(generationOptions.parameters as Record<string, unknown> || {}), resolution: event.target.value } }); }}>{[...new Set([...availableResolutions, String(effectiveParameters.resolution ?? '')])].filter(Boolean).map(resolution => <option key={resolution} value={resolution}>{resolution}</option>)}</WorkbenchSelect></div> : null}
+      {provider?.connectionId && capabilities?.parameters?.includes('generateAudio') && <label className="field-label"><input type="checkbox" data-testid="generation-audio" disabled={!visible} checked={effectiveParameters.generateAudio === true} onChange={event => { if (frameActionAllowed()) updateGeneration({ parameters: { ...(generationOptions.parameters as Record<string, unknown> || {}), generateAudio: event.target.checked } }); }} />{t('video.providers.generateAudio')}</label>}
       </BoardInspectorGroup>
       {subjects && <BoardInspectorGroup key={`subjects:${shot!.id}`} title={t('redesign.board.subjectAndStyle')}>
       {subjects && <ShotSubjectBindings shot={shot!} subjects={subjects} assets={assets as unknown as React.ComponentProps<typeof ShotSubjectBindings>['assets']} blocked={subjectBlocked} onShowTasks={onOpenJobs} />}

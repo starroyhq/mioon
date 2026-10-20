@@ -44,6 +44,8 @@ import {createChatHttp} from './chat-http.ts';
 import type {ChatHttp} from './chat-http.ts';
 import {createEditTasksHttp} from './edit-tasks-http.ts';
 import {createImageHttp} from './image-http.ts';
+import {createVideoHttp} from './video-http.ts';
+import {createVideoSettings} from '../../../packages/business/src/video/settings.ts';
 import {createComfyHttp} from './comfy-http.ts';
 import {createComfySettings} from '@mioon/business/comfy/settings';
 import {composeOfficialComfyModule} from './comfy-module.ts';
@@ -92,6 +94,7 @@ type AgentAuthorizations = ReturnType<typeof createAgentAuthorizations>;
 type UiPreferences = ReturnType<typeof createUiPreferences>;
 type ImageSettings = Awaited<ReturnType<typeof createImageSettings>>;
 type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettings>>;
+type VideoSettings = Awaited<ReturnType<typeof createVideoSettings>>;
 type ComfySettings = Awaited<ReturnType<typeof createComfySettings>>;
 type ComfyConnector = ReturnType<typeof createComfyConnector>;
 type LocalShotText = ReturnType<typeof createLocalShotText>;
@@ -134,6 +137,7 @@ export interface ServerOptions {
   token?: string;
   agentSettings?: AgentSettingsPort;
   imageSecretCodec?: ImageSecretCodecPort;
+  videoSecretCodec?: ImageSecretCodecPort;
   imageNetwork?: ImageNetworkSeam;
   comfyNetwork?: ComfyNetworkSeam;
   comfyModule?: ComfyModuleMode;
@@ -210,6 +214,7 @@ async function composeServer({
   token: suppliedToken,
   agentSettings: suppliedAgentSettings,
   imageSecretCodec, // Trusted desktop main codec only; never supplied by HTTP.
+  videoSecretCodec, // Independent video credential namespace on the owned utility channel.
   imageNetwork, // Trusted synthetic DNS/HTTPS fixture only; never HTTP/environment.
   comfyNetwork, // Trusted synthetic HTTP fixture only; never HTTP/environment.
   comfyModule = 'load', // Trusted launcher/distribution composition, never HTTP/RPC input.
@@ -255,7 +260,7 @@ async function composeServer({
     busy:()=>{throw new AppError('PROJECT_DELETE_BUSY','工作区仍有媒体、请求或文件传输在执行，请结束后再删除项目。',409);}});
   let worker: ReturnType<typeof startWorker> | undefined, server: Server | undefined, agentSettings: AgentSettingsPort | undefined,
     agentAuthorizations: AgentAuthorizations | undefined, uiPreferences: UiPreferences | undefined, imageSettings: ImageSettings | undefined,
-    customImageSettings: CustomImageSettings | undefined, comfySettings: ComfySettings | undefined, chatRuntime: ChatRuntime | undefined,
+    customImageSettings: CustomImageSettings | undefined, videoSettings: VideoSettings | undefined, comfySettings: ComfySettings | undefined, chatRuntime: ChatRuntime | undefined,
     chatHttp: ChatHttp | undefined, editTasks!: EditTasks, candidateEditor: CandidateEditor | undefined;
   let services!: Services;
   let serviceCall!: ServiceCall;
@@ -296,7 +301,7 @@ async function composeServer({
     const configuration=candidate?null:createWorkspaceConfiguration({root:baseRoot,env:process.env});
     const providerEnv=configuration?.environment()??process.env;
     const providers = restored || candidate ? new Map() : createProviderRegistry({db: store.db, root,env:providerEnv});
-    let imageHttp: HttpHandler=async()=>false,comfyHttp: HttpHandler=async()=>false;
+    let imageHttp: HttpHandler=async()=>false,comfyHttp: HttpHandler=async()=>false,videoHttp: HttpHandler=async()=>false;
     if(!restored && !candidate){
     const createdSettings = await createAgentSettings({
       persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
@@ -312,16 +317,19 @@ async function composeServer({
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
     customImageSettings = await createCustomImageSettings({persistence:createCustomImageSettingsFile({directory:path.join(root,'image-settings'),privateRoot:root}),
       ...(imageSecretCodec?{secretCodec:imageSecretCodec,storage:()=>imageSecretCodec.storage()}: {})});
+    videoSettings = await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root,signal:shutdown.signal,
+      ...(videoSecretCodec?{secretCodec:videoSecretCodec,storage:()=>videoSecretCodec.storage()}: {})});
     // Evaluate at every real I/O boundary, including desktop's port:0 binding.
     // This process knows its backend listener, not unrelated frontend processes.
     const comfyReservedPorts = (): Set<number> => new Set([port, serverPort()].filter((value): value is number => value !== undefined && Number.isInteger(value) && value > 0));
     comfySettings = await createComfySettings({directory:path.join(root,'comfy-settings'),privateRoot:root,reservedPorts:comfyReservedPorts});
     const {connector:comfyConnector,availability:comfyModuleAvailability} = composeOfficialComfyModule(comfyModule,()=>createComfyConnector({reservedPorts:comfyReservedPorts,...(comfyNetwork ? {networkDeps:{httpRequest:comfyNetwork.httpRequest}} : {})}));
-    const composed = createServices(ordinaryStore, providers, {env:providerEnv,workspaceBaseRoot:baseRoot,backupQuiescent:()=>deletionGate.isQuiescent(['workspace.backup.create','workspace.backup.restore.stage','workspace.backup.import']),signal: shutdown.signal,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
+    const composed = createServices(ordinaryStore, providers, {env:providerEnv,workspaceBaseRoot:baseRoot,backupQuiescent:()=>deletionGate.isQuiescent(['workspace.backup.create','workspace.backup.restore.stage','workspace.backup.import']),signal: shutdown.signal,videoSettings,agentAuthorizations,readRecentOpened:()=>uiPreferences?.get().recentOpened??{},imageOptions:{settings:imageSettings,liveGateway:createLiveImageGateway({settings:imageSettings,...imageNetwork}),customSettings:customImageSettings,customGateway:createCompatibleImageGateway({settings:customImageSettings,...imageNetwork}),comfySettings,comfyConnector,comfyModuleAvailability}});
     services = composed;
     serviceCall = (operation, input, context) => composed.call(operation, input, context);
     serviceDrain = () => composed.drain();
     imageHttp=createImageHttp({settings:imageSettings,customSettings:customImageSettings,approve:composed.imageApproval,reject:composed.imageRejection,signal:shutdown.signal});
+    videoHttp=createVideoHttp({settings:videoSettings,signal:shutdown.signal});
     comfyHttp=createComfyHttp({settings:comfySettings,connector:comfyConnector,availability:comfyModuleAvailability,signal:shutdown.signal});
     }else if(candidate){
       candidateEditor=createOpacityCandidateApplicationEditorAssembly(store,{signal:shutdown.signal});
@@ -446,8 +454,8 @@ async function composeServer({
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
           deletionGate.track(res);
         }
-        if(restored&&isUnavailableRestoredRoute(url.pathname,req.method ?? ''))throw workspaceRestoreError();
-        if(candidate && /^\/api\/(?:agent|images|comfy|timeline-audio-preview)(?:\/|$)/u.test(url.pathname))throw workspaceRestoreError();
+        if(restored&&(isUnavailableRestoredRoute(url.pathname,req.method ?? '')||/^\/api\/video-providers(?:\/|$)/u.test(url.pathname)))throw workspaceRestoreError();
+        if(candidate && /^\/api\/(?:agent|images|comfy|video-providers|timeline-audio-preview)(?:\/|$)/u.test(url.pathname))throw workspaceRestoreError();
         if(!candidate&&!restored&&req.method!=='GET'&&url.pathname.startsWith('/api/')&&url.pathname!=='/api/rpc'&&!url.pathname.startsWith('/api/workspace-backups/'))(services as OrdinaryServices).backups.assertMutationAllowed();
         if (url.pathname === '/api/version-comparison/media' && await versionComparisonMedia.handle(req, res, url)) return;
         if (url.pathname === '/api/agent/settings') {
@@ -484,6 +492,7 @@ async function composeServer({
         }
         if (await comfyHttp(req,res,url)) return;
         if (await imageHttp(req,res,url)) return;
+        if (await videoHttp(req,res,url)) return;
         if (await chatHttp?.handle(req, res, url)) return;
         if (await editTasksHttp(req, res, url)) return;
         if (await localDraftHttp(req, res, url)) return;
@@ -607,7 +616,7 @@ async function composeServer({
         await boundedShutdown(Promise.all([
           worker?.stop(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks.drain(), files.close(), versionComparisonMedia.close(),
           terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), drain,
-          !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close(),
+          !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), videoSettings?.close(), comfySettings?.close(),
         ]), 'SERVER_STOP_TIMEOUT');
       }
       finally { clearTimeout(forceDrain); }
@@ -619,7 +628,7 @@ async function composeServer({
     chatRuntime?.close(); chatHttp?.close();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
     server?.closeAllConnections();
-    await boundedShutdown(Promise.all([drain, files?.close(), versionComparisonMedia?.close(), worker?.stop(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
+    await boundedShutdown(Promise.all([drain, files?.close(), versionComparisonMedia?.close(), worker?.stop(), candidateEditor ? candidateEditor.drain() : serviceDrain(), candidateEditor ? undefined : editTasks?.drain(), terminateMediaProcesses({signal: shutdown.signal}).then(assertMediaTerminated), !suppliedAgentSettings ? agentSettings?.close() : undefined, imageSettings?.close(), customImageSettings?.close(), videoSettings?.close(), comfySettings?.close()]), 'SERVER_STOP_TIMEOUT');
     store.close();
     throw error;
   }

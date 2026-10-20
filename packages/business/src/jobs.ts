@@ -29,7 +29,7 @@ import type {Provider} from './provider-registry.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './generation-inputs.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 
-type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'>;
+type Services=Pick<OrdinaryServices,'saveJob'|'saveGenerationGuarded'|'validateGenerationDispatch'|'resolveGenerationProvider'>;
 type ExportRecord=Record<string, unknown>&{id: string; projectId: string; status: string};
 type ExportSnapshotRow=Record<string, unknown>;
 interface JobsStore {
@@ -159,12 +159,14 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   checkpoint(signal);
   let j=recordValue(get('jobs',original.id)) as JobRecord|null;
   if(!j)return;
-  const provider=providers.get(j.providerId),context: Record<string, unknown>={requestId:j.requestId,jobId:j.id,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),signal};
+  let provider:Provider|undefined;
+  const context: Record<string, unknown>={requestId:j.requestId,jobId:j.id,providerRegion:property(j.snapshot,'capabilities')&&property(property(j.snapshot,'capabilities'),'region'),signal};
   let acceptedProviderId: string|null=null,guardJob=j;
   const submissionCount=numberValue(j.submissionCount)??0;
   const nextPollAt=numberValue(j.nextPollAt);
   if(nextPollAt&&Date.now()<nextPollAt)return;
   try {
+   provider=services.resolveGenerationProvider?services.resolveGenerationProvider(j):providers.get(j.providerId);
    if(j.status==='queued') {
     if(!provider)throw Object.assign(Error('Provider is unavailable'),{code:'PROVIDER_NOT_FOUND'});
     services.validateGenerationDispatch(j);
@@ -266,6 +268,13 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    const latest=recordValue(get('jobs',guardJob.id)) as JobRecord|null;
    if(latest?.status==='cancelled')return;
    const errorCode=stringValue(property(error,'code'));
+   if(errorCode?.startsWith('VIDEO_SETTINGS_')||errorCode==='VIDEO_CREDENTIAL_UNAVAILABLE'){
+    // Missing connection credentials do not turn an accepted task into a new
+    // generation. Restoring its exact binding resumes the same state and ID.
+    const definitelyUnsubmitted=j.status==='submitting'&&(property(error,'beforeDispatch')===true||isGenerationPreflightFailure(error));
+    if(latest)services.saveGenerationGuarded(latest,{...(definitelyUnsubmitted?{status:'queued',submissionCount}:{}),phase:'connection_required',error:safeError(error),nextPollAt:Date.now()+5000});
+    return;
+   }
    if(j.status==='submitting') {
     if(isGenerationPreflightFailure(error)&&!acceptedProviderId){
      // This fence ran before fetch, so no attempt was dispatched. Do not
