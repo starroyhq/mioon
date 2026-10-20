@@ -168,7 +168,7 @@ async function harness(t, options = {}) {
     },
     validateTools: (_, { signal }) => { const index = records.validations.length; records.validations.push(signal); return options.validate?.(index) ?? Promise.resolve(tools); },
     createDesktopAgentSettings: async () => { const value = settings(); return options.settings ? options.settings(records.settings.length - 1, value) : value; },
-    safeStorage: {}, createDesktopImageSecretCodec: () => ({}), utilityEnvironment: () => ({}), utilityProcess: { fork },
+    safeStorage: {}, createDesktopImageSecretCodec: () => ({}), createDesktopVideoSecretCodec: () => ({}), utilityEnvironment: () => ({}), utilityProcess: { fork },
     BackendSupervisor: class extends BackendSupervisor {
       constructor(config) {
         super({ ...config, startupTimeout: 3000, stopTimeout: 10, terminateTimeout: 10, exitTimeout: 10, forceKill: child => { child.hardKills++; } });

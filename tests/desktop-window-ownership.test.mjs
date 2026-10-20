@@ -190,7 +190,7 @@ async function harness(t, options = {}) {
     },
     validateTools: (_, { signal }) => { const index = r.validations.length; r.validations.push(signal); return options.validate?.(index) ?? tools; },
     createDesktopAgentSettings: async () => ({ async close() { r.settingsCloses++; } }),
-    safeStorage: {}, createDesktopImageSecretCodec: () => ({}), utilityEnvironment: () => ({}), utilityProcess: { fork },
+    safeStorage: {}, createDesktopImageSecretCodec: () => ({}), createDesktopVideoSecretCodec: () => ({}), utilityEnvironment: () => ({}), utilityProcess: { fork },
     BackendSupervisor: class extends BackendSupervisor {
       constructor(config) {
         super({ ...config, startupTimeout: 5000, stopTimeout: 5000, terminateTimeout: 100, exitTimeout: 100,

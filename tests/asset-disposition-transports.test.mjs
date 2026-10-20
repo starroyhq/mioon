@@ -239,10 +239,16 @@ async function lossProxy(t, backend) {
   };
 }
 
-function onlyDispositionWrites(before, after) {
+function onlyDispositionWrites(before, after, expectedTargets) {
   assert.deepEqual(Object.keys(after), Object.keys(before), 'a disposition cannot create tables');
+  const targets=before.agent_task_target_revisions_v2.map(row=>({...row}));
+  for(const{projectId,assetId,previousRevision,revision}of expectedTargets){
+    const index=targets.findIndex(row=>row.projectId===projectId&&row.kind==='asset_disposition'&&row.targetId===assetId);
+    if(index<0){assert.equal(previousRevision,undefined);targets.push({projectId,kind:'asset_disposition',targetId:assetId,revision});}
+    else{assert.equal(targets[index].revision,previousRevision,'the exact saved disposition target starts at its expected revision');targets[index]={...targets[index],revision};}
+  }
   for (const table of Object.keys(before)) if (!dispositionTables.has(table))
-    assert.deepEqual(after[table], before[table], `${table} and all original revisions stay unchanged`);
+    assert.deepEqual(after[table], table==='agent_task_target_revisions_v2'?targets:before[table], `${table}: only the exact saved disposition target revisions may change`);
 }
 
 function noDispositionFields(value) {
@@ -356,7 +362,7 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
     assert.deepEqual(await backend.http('asset.inspect', {projectId: IDS.project, limit: 25}), inspected);
     assert.deepEqual(await backend.http('asset.list', {projectId: IDS.project}), assets, 'legacy list retains rejected assets and its old DTO');
     backend.unchanged(restarted, 'post-restart reads and replays');
-    onlyDispositionWrites(before, backend.storage());
+    onlyDispositionWrites(before, backend.storage(), [{...target,revision:2}]);
     assert.deepEqual(await readFile(path.join(backend.root, 'media/original.mp4')), ORIGINAL_BYTES);
   });
 
@@ -440,7 +446,10 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
     assert.equal((await backend.request('asset.disposition.set', first)).raw, original.raw);
     assert.deepEqual(await all('asset.disposition.set', second), rejected);
     backend.unchanged(after, 'historical favorite/rejected receipts survive neutral reset');
-    onlyDispositionWrites(before, backend.storage());
+    onlyDispositionWrites(before, backend.storage(), [
+      {...target,previousRevision:2,revision:4},
+      ...[DISPOSITION_IDS.image,DISPOSITION_IDS.audio,DISPOSITION_IDS.unknown].map(assetId=>({...target,assetId,revision:1})),
+    ]);
   });
 
   await t.test('all eight local mutations share key collision checks while legacy optional behavior remains', async () => {
@@ -482,12 +491,12 @@ test('asset dispositions share exact HTTP, real CLI and official MCP semantics w
         expectedRevision: current.revision, requestId, disposition: 'rejected'});
       assert.equal(value.data.revision, current.revision + 1, 'an existing independent journal key does not collide');
     }
-    onlyDispositionWrites(before, backend.storage());
+    onlyDispositionWrites(before, backend.storage(), [{...target,assetId:DISPOSITION_IDS.image,previousRevision:1,revision:4}]);
     const current = (await backend.http('asset.disposition.list', batch([IDS.asset]))).data.items[0];
     const baseline = backend.storage();
     await all('asset.disposition.set', {...target, expectedRevision: current.revision,
       requestId: 'asset-disposition-reject-in-use', disposition: 'rejected'});
-    onlyDispositionWrites(baseline, backend.storage());
+    onlyDispositionWrites(baseline, backend.storage(), [{...target,previousRevision:4,revision:5}]);
     const timelineBefore = JSON.parse(baseline.timelines.find(row => row.id === IDS.timeline).data);
     assert.equal(timelineBefore.clips[0].assetId, IDS.asset);
     const timeline = (await backend.http('timeline.clip.add', {projectId: IDS.project, assetId: IDS.asset,

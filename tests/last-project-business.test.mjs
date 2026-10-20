@@ -51,7 +51,16 @@ test('CAS, immediate exact replay, two locator instances, restart and stale auth
 
 test('missing remembered project is discoverable without reset; PUT missing target refuses even on replay',async t=>{
   const f=await fixture(t),input=f.input(),saved=f.locator.put(input),bytes=readFileSync(f.file);
-  f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id);const before=f.snapshot(),found=f.locator.get();
+  const protectedState=f.snapshot();assert.throws(()=>f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id),/FOREIGN KEY/);
+  assert.equal(f.snapshot(),protectedState,'the live target foreign key blocks raw project deletion');
+  // The locator is independent of these shared business services. Use their
+  // real project cleanup, preserving the locator's remembered missing target.
+  const service=createServices(f.store,new Map());let removed=false;
+  const noDrafts=projectId=>{assert.equal(projectId,f.project.id);for(const name of ['local-drafts-v1.json','local-delivery-v1.json','local-shot-text-v1.json'])assert.equal(existsSync(path.join(f.root,name)),false);};
+  service.setProjectDeletionCompanions({assertDeletable:noDrafts,removeProject:projectId=>{noDrafts(projectId);removed=true;}});
+  const deleted=await service.call('project.delete',{projectId:f.project.id,expectedRevision:f.project.revision,requestId:randomUUID(),confirmPermanentDeletion:true});
+  assert.equal(deleted.cleanup,'complete');assert.equal(removed,true);
+  const before=f.snapshot(),found=f.locator.get();
   assert.deepEqual(found,{...saved,targetStatus:'missing'});assert.deepEqual(readFileSync(f.file),bytes);assert.equal(f.snapshot(),before);
   assert.throws(()=>f.locator.put(input),code('LAST_PROJECT_NOT_FOUND'));
   assert.throws(()=>f.locator.put(f.input(found,randomUUID())),code('LAST_PROJECT_NOT_FOUND'));
@@ -61,12 +70,21 @@ test('missing remembered project is discoverable without reset; PUT missing targ
 
 test('bounded SQL rejects relational/JSON identity disagreement, malformed and oversized target rows',async t=>{
   const f=await fixture(t),input=f.input();
+  const guard=f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE name='agent_target_projects_update_v2'").get().sql,before=f.snapshot();
+  assert.throws(()=>f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run('{',f.project.id),/malformed JSON/);
+  assert.equal(f.snapshot(),before,'the live target guard atomically rejects malformed project JSON');
+  const corrupt=data=>{
+    f.store.db.exec('DROP TRIGGER agent_target_projects_update_v2');
+    try{f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(data,f.project.id);}
+    finally{f.store.db.exec(guard);}
+    assert.equal(f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE name='agent_target_projects_update_v2'").get().sql,guard);
+  };
   for(const data of [JSON.stringify({...f.project,id:f.other.id}),'null','{','x'.repeat(16385),JSON.stringify({...f.project,name:'x'.repeat(20000)})]){
-    f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(data,f.project.id);
+    corrupt(data);
     assert.throws(()=>f.locator.put(input),code('LAST_PROJECT_STORAGE_UNAVAILABLE'));assert.equal(existsSync(f.file),false);
   }
-  f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify(f.project),f.project.id);f.locator.put(input);
-  f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project,id:f.other.id}),f.project.id);
+  corrupt(JSON.stringify(f.project));f.locator.put(input);
+  corrupt(JSON.stringify({...f.project,id:f.other.id}));
   assert.throws(()=>f.locator.get(),code('LAST_PROJECT_STORAGE_UNAVAILABLE'));
 });
 

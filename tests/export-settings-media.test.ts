@@ -225,7 +225,7 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
 
 async function sourceOwnershipRace(t: {mock: {method(target: object, name: string, fn: (...args: unknown[]) => unknown): void}; after(fn: () => unknown): void}, {mutation, phase='capability'}: {mutation: string; phase?: string}): Promise<void> {
  const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
- const state=()=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='exports' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+ const state=(): Record<string, Record<string, unknown>[]>=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='exports' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
  try{
   const project=await services.call<ProjectShape>('project.create',{name:'Synthetic frozen-source race'}),other=await services.call<ProjectShape>('project.create',{name:'Private foreign fixture'});
   const imported=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
@@ -247,7 +247,7 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   // The normal version trigger rejects this corruption; remove only that
   // fixture-local protection when testing the independent retained-graph fence.
   if(mutation==='version-sql-owner')store.db.exec('DROP TRIGGER immutable_versions');
-  let moved=false; let afterMutation: unknown; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0; let publicationArmed=false,linkedBeforeTx=false; let replacementFile: string | undefined,preservedFile: string | undefined; let replacementIdentity: {dev: number; ino: number} | undefined; let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
+  let moved=false; let afterMutation: ReturnType<typeof state> | undefined; let observerFailure: unknown; let ffmpegStarts=0,probeExits=0; let publicationArmed=false,linkedBeforeTx=false; let replacementFile: string | undefined,preservedFile: string | undefined; let replacementIdentity: {dev: number; ino: number} | undefined; let readUncertain=false,readFailureObserved=false; const events: MediaEvent[]=[];
   const replacementBytes=Buffer.from('Different fixture-owned inode must be preserved.');
   const prepare=store.db.prepare;
   if(phase==='publication-read-unknown')t.mock.method(store.db,'prepare',(function(this: unknown, sql: string, ...args: unknown[]){
@@ -303,7 +303,14 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   try{worker=startWorker(store as unknown as Parameters<typeof startWorker>[0],services as unknown as Parameters<typeof startWorker>[1],new Map());await worker.tick();}finally{off();}
   assert.equal(observerFailure,undefined);assert.equal(moved,true,`${mutation} raced at ${phase}`);
   if(publicationPhase)assert.equal(linkedBeforeTx,true,'ownership changed after this task linked its output and immediately before the real publication transaction');
-  assert.deepEqual(state(),afterMutation,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
+  assert.ok(afterMutation);
+  const isAcceptedExport=(row: Record<string, unknown>)=>row.projectId===project.id&&row.kind==='export'&&row.targetId===accepted.id;
+  assert.equal(afterMutation.agent_task_target_revisions_v2.filter(isAcceptedExport).length,1);
+  // Failing this accepted export persists one terminal status transition. Its
+  // exact target advances once; every source, foreign target and receipt stays fixed.
+  const expectedState={...afterMutation,agent_task_target_revisions_v2:afterMutation.agent_task_target_revisions_v2.map(row=>
+   isAcceptedExport(row)?Object.assign(Object.create(Object.getPrototypeOf(row)),row,{revision:Number(row.revision)+1}):row)};
+  assert.deepEqual(state(),expectedState,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
   // 01a83cb applies the owned-output inode fence to every export. A replaced
   // output is refused before the subsequent frozen-source ownership check.
   const rejected=store.get('exports',accepted.id);assert.equal(rejected.status,'failed');assert.equal((rejected.error as {code?: string}).code,phase==='publication-replacement'?'INVALID_TIMELINE_SNAPSHOT':'TIMELINE_SOURCE_UNAVAILABLE');

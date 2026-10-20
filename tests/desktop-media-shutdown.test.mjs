@@ -550,7 +550,7 @@ test('native smoke explicitly skips unsafe orphan-crash recovery without countin
   assert.match(source, /record\('graceful-restart-interrupts-and-recovers-active-render'\)/);
 });
 
-async function backendHarness({ close = async () => {}, start, settingsClose = () => {}, imageClose = () => {}, imageRefresh = async () => {} } = {}) {
+async function backendHarness({ close = async () => {}, start, settingsClose = () => {}, imageClose = () => {}, imageRefresh = async () => {}, videoClose = () => {}, videoRefresh = async () => {} } = {}) {
   const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
   const port = new EventEmitter(), processEvents = new EventEmitter(), messages = [], exits = [];
   const nativeConfig = {version:1,backendId:'11111111-1111-4111-8111-111111111111',
@@ -565,6 +565,7 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
     initializeSubtitleResources: directory => { assert.equal(directory,'/synthetic/trusted/subtitles'); },
     onMediaProcess: () => {}, createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({close: imageClose, refreshStorage: imageRefresh}),
+    createVideoSecretClient: () => ({close: videoClose, refreshStorage: videoRefresh}),
     createNativeAudioPreviewAuthority: config => {assert.equal(config,nativeConfig);return nativeAuthority;},
     setInterval: () => 1, clearInterval: () => {}, setImmediate };
   vm.runInNewContext(source, sandbox, { filename: 'backend-lifecycle-fixture.mjs' });
@@ -619,5 +620,14 @@ test('backend waits for image codec availability and closes its own narrow clien
   const runtime=await backendHarness({imageRefresh:()=>gate,imageClose:()=>{closeCount++;}});
   runtime.start(); runtime.stop(); assert.equal(runtime.messages.filter(message => message.type !== 'exit-diagnostic').length,0); assert.equal(closeCount,0);
   refreshed(); const options=await runtime.started; assert.equal(typeof options.imageSecretCodec.refreshStorage,'function');
+  await tick(); assert.deepEqual(runtime.exits,[0]); assert.equal(closeCount,1); assert.equal(runtime.messages.some(v=>v.type==='ready'),false);
+});
+
+test('backend waits for video codec availability and closes its own narrow client on shutdown', async () => {
+  let refreshed, entered, closeCount=0; const gate=new Promise(resolve=>{refreshed=resolve;}), refreshing=new Promise(resolve=>{entered=resolve;});
+  const runtime=await backendHarness({videoRefresh:()=>{entered();return gate;},videoClose:()=>{closeCount++;}});
+  runtime.start(); await refreshing; runtime.stop(); await tick();
+  assert.deepEqual(runtime.exits,[]); assert.equal(runtime.messages.filter(message => message.type !== 'exit-diagnostic').length,0); assert.equal(closeCount,0);
+  refreshed(); const options=await runtime.started; assert.equal(typeof options.videoSecretCodec.refreshStorage,'function');
   await tick(); assert.deepEqual(runtime.exits,[0]); assert.equal(closeCount,1); assert.equal(runtime.messages.some(v=>v.type==='ready'),false);
 });

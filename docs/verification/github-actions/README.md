@@ -103,3 +103,36 @@
 同文件及同模式的metadata快照也精确补齐目标台账：range revision2、三个disposition各revision5、annotation revision2，以及subject2、两个version1、两个binding4/1；不忽略修订整表，其他目标和业务表仍全量比较。损坏project JSON夹具先断言新target guard原子拒绝，随后仅在造坏数据的瞬间移除并finally恢复同一条guard；业务负例执行时所有保护启用，保留原无泄露、零变更断言。
 
 最终完整文件分别通过 image edit+subjects migration **14/14**、source ranges **16/16**、asset dispositions **28/28**、annotation **9/9**、subjects domain **10/10**，无跳过；测试严格类型及独立复核通过。这两轮合计涉及19个相关测试文件的当前格式适配，未改变生产源码或原历史fixtures。[第二次整合运行](https://github.com/starroyhq/mioon/actions/runs/39442747856)因上述已确认红例也主动取消，不计为通过；最终跨平台完整结果以之后提交的当前CI为准。
+
+
+### 当前主线的实际 full 回归
+
+[整合运行 39444741986](https://github.com/starroyhq/mioon/actions/runs/39444741986/attempts/2) 的四片都完成固定 FFmpeg 7.1.5 编译、媒体能力检查、严格类型和构建；macOS/Windows 的 portable 99/99、辅助58/58通过。首轮曾因官方源码下载连接中断而失败，取消后在同一源码上重跑整轮；没有把网络失败计为通过。
+
+该轮四片全部跑完，覆盖812个文件：合计13021项，12817通过、202失败、2项既有条件跳过、0取消。失败标题和位置逐项归集，保留该轮失败证据，未将部分平台成功当作整轮通过。
+
+实际 full 暴露的主线接入遗漏逐项红绿复现。生产源码窄修四个文件：补 `video.connection.list` 四语展示文案（否则显式 locale 的 MCP 在启动时抛未知文案 key）；助理面板使用现有 `--wb-panel`/`--wb-accent` 共享颜色变量；助理上传与视频设置的两个多行输入分别使用现有共享 Input/Textarea，保留原事件、值、文件类型与禁用条件。没有改变操作 schema/effect、授权、调度或持久化语义。
+
+相关测试继续比较全部新旧表及目标台账。正常编辑只接受明确项目、类型、目标与确切修订；异步导出失败只允许该已受理 export 的终态修订加一。历史 golden 先核验固定52目录及原 seed 对应的初始目标，再比较旧字节；SIGKILL 测试保留完整新表/行。坏 JSON 夹具先证明活跃 guard 原子拒绝，仅在构造损坏字节时暂移除四条确切 JSON reader trigger，并在执行业务负例前恢复原 SQL。没有放宽未知目录、删除旧 hash、忽略整张修订表、加大超时或添加失败跳过。
+
+提取实际 App/desktop 源码的测试补齐新增导入边界。视频 codec 生命周期用例等待真正进入刷新，再在未释放 gate 时停止，确认不提前退出、发布 ready 或关闭 codec。source inspector 用例实际渲染新增占用边界，验证精确 target、脏稿保留和同 scope 放弃，不以宽松源码正则替代。
+
+| 修复验证组 | 实际本地结果 |
+| --- | --- |
+| 项目首页、last project、import feedback | 94/94 通过 |
+| 四语展示及 CLI/MCP、只读 effects | 40/40、5/5 通过 |
+| desktop startup / settings navigation | 74/74 通过 |
+| float recovery、local delivery process、LUT backup、project specifications | 58/58 通过 |
+| 当前 durable envelope ingress | 6/6 通过，冻结38/40仍保留 |
+| local shot process、timeline replacement | 90/90 通过 |
+| source range、loudness apply 三协议往返 | 16/16 通过 |
+| annotation/disposition 三协议、reference/source UI | 40/40 通过，UI独立重跑29/29 |
+| desktop shutdown / UTF-8 inventory | 33/33 通过 |
+| 最终 desktop shutdown / tokens / empty workspace | 43/43 通过 |
+| desktop exit / window ownership、MCP 启动诊断 | 55/55、8/8 通过 |
+| local shot HTTP、恢复执行、workspace visibility | 32/32 通过 |
+| last project、reference recovery、audio preview | 151/151 通过，独立定向5/5 |
+| 共享控件、Agent panel/session、video generation UI | 58/58 通过，最终 panel3/3 |
+| 测试严格类型、含全项目类型的 Web 构建、diff-check | 退出0 |
+
+各组最终 diff 均有独立复核；发现的视频刷新 gate 覆盖缺口已修正并复验，无遗留发现。独立漏项审计逐项对照四片202个原失败标题，196项原名命中，6项登记明确的当前格式/固定历史标题迁移，全部找到最终成功日志。历史 reference bootstrap 使用既有固定through24 helper单独保留，另验证当前52缺 guard 时严格拒绝启动、全部SQL/类型/原始字节/rowid/receipt/sequence保持不变。上述为本地证据，分组存在重叠，不据此替代最终新 SHA 的跨平台完整 CI；状态仍以 [PR #12 当前检查](https://github.com/starroyhq/mioon/pull/12/checks) 为准。未触发签名、打包发布、标签或真实付费接口。

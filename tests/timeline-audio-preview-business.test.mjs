@@ -74,6 +74,21 @@ async function fixture(t, {durationFrames = 60, sourceInFrame = 17, startFrame =
   return f;
 }
 const replace = (f, table, value) => f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id);
+function replaceTimelineRawFixture(f,raw){
+  const db=f.store.db,names=['agent_target_timeline_update_v2','agent_target_timeline_timeline_clip_update_v2','agent_target_timeline_timeline_track_update_v2','agent_target_timeline_timeline_subtitle_update_v2'];
+  const guards=db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names);
+  assert.deepEqual(guards.map(value=>value.name),[...names].sort());
+  const state=()=>({timeline:db.prepare('SELECT * FROM timelines WHERE id=?').get(f.timeline.id),targets:db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY rowid').all()}),before=state();
+  assert.throws(()=>db.prepare('UPDATE timelines SET data=? WHERE id=?').run(raw,f.timeline.id),/malformed JSON/);
+  assert.deepEqual(state(),before,'live JSON target guards reject malformed bytes atomically');
+  // Write or repair corrupt fixture bytes only; all preview requests retain the
+  // exact original target guards and the zero-source-access assertions.
+  try{
+    for(const guard of guards)db.exec(`DROP TRIGGER "${guard.name}"`);
+    db.prepare('UPDATE timelines SET data=? WHERE id=?').run(raw,f.timeline.id);
+  }finally{for(const guard of guards)db.exec(guard.sql);}
+  assert.deepEqual(db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names),guards);
+}
 
 // Fake PCM and causal runtimes isolate lifecycle/authorization here. Canonical
 // and resampling signal parity are covered by the dedicated real-media suites.
@@ -121,12 +136,14 @@ test('missing timeline never initializes; corrupt/foreign graph rejects before f
     () => replace(f, 'timelines', {...f.timeline, clips: f.timeline.clips.map(clip => ({...clip, versionId: randomUUID()}))}),
     () => replace(f, 'assets', {...f.asset, projectId: f.foreign.id}),
     () => replace(f, 'assets', {...f.asset, sha256: 'broken'}),
-    () => f.store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run('x'.repeat(4 * 1024 * 1024 + 1), f.timeline.id),
   ];
   for (const change of cases) {
     change(); const before = await f.checkpoint(); await assert.rejects(f.plan()); await f.unchanged(before);
     replace(f, 'timelines', f.timeline); replace(f, 'assets', f.asset);
   }
+  replaceTimelineRawFixture(f,'x'.repeat(4 * 1024 * 1024 + 1));
+  const corrupt = await f.checkpoint(); await assert.rejects(f.plan()); await f.unchanged(corrupt);
+  replaceTimelineRawFixture(f,JSON.stringify(f.timeline));
   f.store.db.prepare('DELETE FROM timelines WHERE id=?').run(f.timeline.id);
   const before = await f.checkpoint(); await assert.rejects(f.plan(), {code: 'AUDIO_PREVIEW_UNAVAILABLE'}); await f.unchanged(before); assert.equal(reads, 0);
 });

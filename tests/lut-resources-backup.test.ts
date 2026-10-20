@@ -19,7 +19,7 @@ async function source(t: import('node:test').TestContext) {
  const response=await s.call('lut.import',input) as LutImportResponse;await s.drain();store.close();
  return {base,root,input,response,backup:path.join(base,'backup'),restored:path.join(base,'restored')};
 }
-for(const sourceSchema of [50])test(`offline cold capture and restore${sourceSchema+1} preserve exact bytes/hash/receipt without .cube media path`,async t=>{
+for(const sourceSchema of [52])test(`offline cold capture and restore${sourceSchema+1} preserve exact bytes/hash/receipt without .cube media path`,async t=>{
  const f=await source(t),created=await createWorkspaceBackup({source:f.root,destination:f.backup}) as BackupCreated;assert.equal(created.databaseSchemaVersion,sourceSchema);assert.equal(created.inventory.complete,true);
  const verified=await verifyWorkspaceBackup({directory:f.backup}) as BackupVerified;assert.equal(verified.integrity,'verified');
  const manifest=JSON.parse(readFileSync(path.join(f.backup,'manifest.json'),'utf8'));assert.deepEqual((manifest as {entries: {path: string}[]}).entries.map((e: {path: string})=>e.path),['payload/workbench.sqlite']);
