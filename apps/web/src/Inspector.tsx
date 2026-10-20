@@ -37,7 +37,7 @@ import { schemas } from '@mioon/contracts';
 import { useLocalShotText, mergeFreshShotTextAck } from './local-shot-text-state.ts';
 import ShotTextDraftRecovery from './ShotTextDraftRecovery.tsx';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
-import type { AppAsset, AppEdge, AppJob, AppNode, AppProject, AppShot, AppVersion } from './App.tsx';
+import type { AppAsset, AppEdge, AppJob, AppNode, AppProject, AppShot, AppVersion, GenerationOptionState } from './App.tsx';
 import type { SubjectReference } from '@mioon/contracts';
 import type { ProviderSettingsChange } from './ProviderSettings.tsx';
 
@@ -81,7 +81,7 @@ export interface InspectorProps {
   busy: Record<string, unknown>;
   onSave: (shotId: string, expectedRevision: number | null | undefined, draft: ShotDraftView) => Promise<AppShot | null | undefined>;
   onNodeSave: (nodeId: string, expectedRevision: number | null | undefined, draft: ShotDraftView) => Promise<AppNode | null | undefined>;
-  onGenerate: (shot: AppShot, selection: {providerId?: string; model: string; scenario: string; inputMode: string; subjectReference?: unknown}) => unknown;
+  onGenerate: (shot: AppShot, selection: GenerationOptionState & {model: string; scenario: string; inputMode: string}) => unknown;
   onSelectVersion: (shot: AppShot, versionId: string) => unknown;
   onCompare: (shotId: string) => unknown;
   onOpenJobs: () => unknown;
@@ -254,7 +254,12 @@ export default function Inspector({ onEditImage, annotations, annotationAsset = 
     edit('referenceAssetIds', []);
   }
   function reset(): void { if (shot && shotTextContext && (shotText.controller.getState().pending || shotText.controller.getState().busy || currentTextContext().busy)) return; editSerial.current++; textVersion.current++; const latest: ShotDraftView = shot ? editable(shot) : nodeDraft(node); draftRef.current = latest; dirtyRef.current = false; baseRevisionRef.current = record!.revision; setDraft(latest); baseline.current = latest; setBaseRevision(record!.revision); setDirty(false); setConflict(false); shotText.controller.setContext(currentTextContext()); }
-  async function generate(): Promise<void> { if (shotTextContext && (shotText.controller.blocksLegacy(shot!.id) || currentTextContext().busy) || generationUnavailableReason || referenceBlocked || capabilityIssue || availabilityIssue || !mounted.current || actionEpoch.current !== renderedAction.epoch || editSerial.current !== renderSerial) return; const epoch = actionEpoch.current, serial = editSerial.current, optionsKey = generationOptionsKey; const latest = (dirty ? await save() : shot) as AppShot | null | undefined; if (latest && actionCurrent(epoch, serial, { requireVisible: false }) && actionState.current?.generationOptionsKey === optionsKey) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode, ...(inputMode === 'subject' ? { subjectReference: generationOptions.subjectReference } : {}) }); }
+  async function generate(): Promise<void> {
+    if (shotTextContext && (shotText.controller.blocksLegacy(shot!.id) || currentTextContext().busy) || generationUnavailableReason || referenceBlocked || capabilityIssue || availabilityIssue || !mounted.current || actionEpoch.current !== renderedAction.epoch || editSerial.current !== renderSerial) return;
+    const epoch = actionEpoch.current, serial = editSerial.current, optionsKey = generationOptionsKey;
+    const latest = (dirty ? await save() : shot) as AppShot | null | undefined;
+    if (latest && actionCurrent(epoch, serial, { requireVisible: false }) && actionState.current?.generationOptionsKey === optionsKey) onGenerate(latest, { providerId: provider?.id, model, scenario, inputMode, ...(provider?.connectionId ? { connectionId: provider.connectionId, modelEntryId, parameters: generationParameters(latest, provider, generationOptions) } : {}), ...(inputMode === 'subject' ? { subjectReference: generationOptions.subjectReference } : {}) });
+  }
   const selectedVersions = versions.filter(v => v.shotId === shot?.id).sort((a, b) => b.number - a.number);
   useEffect(() => {
     if (!visibleRef.current || !highlightedVersionId || tab !== 'versions') return;

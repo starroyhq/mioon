@@ -3,6 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {captureTaskWorkspaceIntent, navigateTaskShot} from '../apps/web/src/task-workspace-intent.ts';
+import {findGenerationProvider, generationProviderForModel, generationProviderIdentity, generationParameters} from '../apps/web/src/generation-settings.ts';
+import {parseVideoBinding, videoBindingCapabilities} from '../packages/contracts/src/video-providers.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -116,7 +118,7 @@ test('paid retry keeps its Tasks review and rejects a revoked pane before submis
  const code=section('  function retryGeneration(', '  async function createProject('),snapshot={title:'Fixed original',duration:4,aspectRatio:'16:9',referenceAssetIds:[]};
  const job={id:jobId,shotId,projectId,providerId:'synthetic-paid-adapter',model:'fixed-test-model',snapshot};
  const state={reviews:[],submitted:[],notices:[]},realConfirmRef={current:null};let viewCurrent=true;
- const deps={message,msg:message,...createI18nTestContext(),providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
+ const deps={message,msg:message,...createI18nTestContext(),findGenerationProvider,generationProviderForModel,generationProviderIdentity,generationParameters,parseVideoBinding,videoBindingCapabilities,providers:[{id:job.providerId,mock:false}],checkGeneration:()=>true,reviewGeneration:null,
   dataRef:{current:{shots:[{id:shotId,projectId}],jobs:[job],assets:[]}},generationReviewScope:{current:{key:'tasks'}},realConfirmRef,
   setRealConfirm:value=>state.reviews.push(value),context:()=>({projectId,epoch:1}),isCurrent:()=>true,
   generationReferenceIdentity:()=> 'fixed-source',generationReferences:()=>({references:[]}),generationOptionsRef:{current:{}},generationSelection:()=>({}),
