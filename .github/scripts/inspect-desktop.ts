@@ -54,7 +54,10 @@ export function validateTarListing(names: string, verbose: string, artifactBase:
       const prefix = `${entries[i]} -> `;
       if (!detail[2].startsWith(prefix)) fail('AMBIGUOUS_TARBALL_LINK');
       const target = detail[2].slice(prefix.length);
-      if (!target || path.posix.isAbsolute(target) || /[\s\\\x00-\x1f\x7f]/.test(target)) fail('UNSAFE_TARBALL_LINK');
+      // Lexical containment alone is insufficient when another archive link
+      // changes how a target's parent segments resolve. Flat Electron library
+      // links remain supported; upward traversal is deliberately fail-closed.
+      if (!target || path.posix.isAbsolute(target) || target.split('/').includes('..') || /[\s\\\x00-\x1f\x7f]/.test(target)) fail('UNSAFE_TARBALL_LINK');
       const resolved = path.posix.resolve('/', path.posix.dirname(name), target);
       if (!resolved.startsWith(`/${artifactBase}/`)) fail('UNSAFE_TARBALL_LINK');
       symlinks.add(name);

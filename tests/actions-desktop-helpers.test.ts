@@ -74,6 +74,8 @@ test('tar admission rejects traversal, hard links, escaping links, duplicate and
   for (const rows of [
     [['-', '/etc/passwd']], [['-', `${base}/../escape`]], [['h', `${base}/mioon`]],
     [['l', `${base}/lib.so`, '../../outside']], [['l', `${base}/lib.so`, '/etc/passwd']],
+    [['d', `${base}/sub/`], ['l', `${base}/sub/lib.so`, '../lib.so.1']],
+    [['d', `${base}/sub/`], ['l', `${base}/a`, 'sub'], ['l', `${base}/sub/k`, '../a'], ['l', `${base}/b`, 'a/k/k/../../../outside']],
     [['-', `${base}/mioon`], ['-', `${base}/mioon`]],
     [['l', `${base}/libs`, 'subdir'], ['-', `${base}/libs/file`]],
   ] as Array<Array<[string, string, string?]>>) assert.throws(() => validateTarListing(...listing(rows), base));
