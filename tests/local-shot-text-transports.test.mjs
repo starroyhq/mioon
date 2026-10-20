@@ -11,6 +11,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {schemas} from '@mioon/contracts';
 import {createLocalShotTextSchemas,isLocalShotTextMutationResponse} from '@mioon/contracts/local-shot-text';
+import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 const token='synthetic-local-shot-text-http-token',route='/api/local-shot-text';
 const sha=value=>createHash('sha256').update(value).digest('hex');
 const contract=createLocalShotTextSchemas(value=>schemas['shot.update'].safeParse(value).success);
@@ -24,7 +25,22 @@ async function fixture(t){const parent=await realpath(await mkdtemp(path.join(tm
  const call=async(suffix,options)=>{const result=await request(server.url,suffix,options);assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.ok,true);return result.body.data;};const get=()=>call(`${route}?projectId=${project.id}&shotId=${shot.id}`);
  const put=(value,raw)=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),baseRevision:shot.revision,baseText:{title:shot.title,prompt:shot.prompt},raw});
  const prepare=value=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:shot.revision,baseText:value.draft.baseText,draft:{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw},input:{shotId:shot.id,expectedRevision:shot.revision,requestId:randomUUID(),patch:value.draft.raw}});
- const rows=()=>{const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{db.exec('PRAGMA query_only=ON; BEGIN');return {shots:db.prepare('SELECT * FROM shots ORDER BY rowid').all(),receipts:db.prepare('SELECT * FROM mutation_requests ORDER BY rowid').all(),tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{assert.match(name,/^[a-z_]+$/);return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];}))};}finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}};
+ const rows=()=>{
+  const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});
+  try{
+   db.exec('PRAGMA query_only=ON; BEGIN');
+   const schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),names=new Set(currentOrdinary52Delta.objectNames);
+   const objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
+   assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+   assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
+   assert.equal(sha(JSON.stringify(objects)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+   assert.deepEqual(schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)),[],'unknown task/target objects are not reviewed52 additions');
+   return {shots:db.prepare('SELECT * FROM shots ORDER BY rowid').all(),receipts:db.prepare('SELECT * FROM mutation_requests ORDER BY rowid').all(),tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{
+    assert.ok(/^[a-z_]+$/.test(name)||Object.hasOwn(currentOrdinary52Delta.tables,name),'only safe legacy or independently frozen52 table names');
+    return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];
+   }))};
+  }finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}
+ };
  return {root,project,shot,get,call,put,prepare,rows,get url(){return server.url;},file:path.join(root,'local-shot-text-v1.json'),async restart(){await server.close();await start();},
  async dropNextExecution(){const observed=Promise.withResolvers();void observed.promise.catch(()=>{});proxy=http.createServer(async(req,res)=>{try{let raw='';req.setEncoding('utf8');for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>256*1024)throw Error('Synthetic request limit');}const result=await request(server.url,req.url,{method:req.method,input:JSON.parse(raw)});observed.resolve(result);res.destroy();}catch(error){observed.reject(error);res.destroy();}});await new Promise((resolve,reject)=>{proxy.once('error',reject);proxy.listen(0,'127.0.0.1',resolve);});return {url:`http://127.0.0.1:${proxy.address().port}`,observed:observed.promise};}};
 }

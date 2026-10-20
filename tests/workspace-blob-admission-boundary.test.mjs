@@ -15,6 +15,7 @@ import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} f
 import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {open, fixture, snapshot, golden, quote} from './workspace-schema26-fixtures.mjs';
+import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 
 let forbiddenEffects = 0;
 const forbidden = () => {forbiddenEffects++; throw Error('No provider, child, listener or network in BLOB admission boundary tests');};
@@ -131,7 +132,9 @@ function positiveOrdinary(t, {mockLedger = false, repair} = {}) {
   if (repair) breakMarkers(db, repair);
   db.close(); let store;
   try {
-    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 50, profile: 'ordinary'});
+    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 52, profile: 'ordinary'});
+    const currentObjects = snapshot(store.db).objects, current52Names = new Set(currentOrdinary52Delta.objectNames);
+    assert.deepEqual(currentObjects.filter(object => current52Names.has(object.name)), currentOrdinary52Delta.objects, 'exact reviewed schema52 catalog additions');
     preserveOriginalRows(store.db, input); assertText(store.db); assert.equal(getWorkspaceRestoreContext(store), null);
     const beforeColdReopen = snapshot(store.db); store.close(); store = openStore(root);
     assert.deepEqual(snapshot(store.db), beforeColdReopen); assertText(store.db); assert.equal(getWorkspaceRestoreContext(store), null);
@@ -167,12 +170,12 @@ function negativeBlob(t, {mockLedger = false, restored = false, repair} = {}) {
 }
 
 for (const mockLedger of [false, true]) {
-  test(`separate initial TEXT ordinary24${mockLedger ? '-mock' : ''} enters40 and cold reopens without changing original typed rows`, t => positiveOrdinary(t, {mockLedger}));
+  test(`separate initial TEXT ordinary24${mockLedger ? '-mock' : ''} enters52 and cold reopens without changing original typed rows`, t => positiveOrdinary(t, {mockLedger}));
   test(`separate initial TEXT source captured by fixed25${mockLedger ? '-mock' : ''} cold reopens with its complete snapshot unchanged`, t => positiveRestored(t, mockLedger));
   test(`original golden BLOB ordinary24${mockLedger ? '-mock' : ''} remains historically valid and current admission refuses without writes`, t => negativeBlob(t, {mockLedger}));
   test(`original golden BLOB restored25${mockLedger ? '-mock' : ''} retains its fixed capture evidence and current admission refuses without writes`, t => negativeBlob(t, {mockLedger, restored: true}));
 }
 for (const repair of ['known-marker-gap', 'initial-markers-absent']) {
-  test(`separate initial TEXT ${repair} admits ordinary40 while preserving original rows and cold reopen`, t => positiveOrdinary(t, {repair}));
+  test(`separate initial TEXT ${repair} admits ordinary52 while preserving original rows and cold reopen`, t => positiveOrdinary(t, {repair}));
   test(`original golden BLOB ${repair} is refused by current admission without snapshot or file-byte changes`, t => negativeBlob(t, {repair}));
 }

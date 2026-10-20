@@ -252,6 +252,10 @@ test('annotations share authenticated HTTP, CLI and official MCP, with replay af
  const cleared=await backend.mcp('asset.annotation.set',{...input,expectedRevision:1,requestId:'annotation-wire-clear',tags:[],note:''});assert.equal(dataOf(cleared).revision,2);
  await backend.restart();const stable=backend.checkpoint();assert.deepEqual(await backend.cli('asset.annotation.set',input),saved);backend.unchanged(stable,'historical annotation replay');
  await backend.http('asset.annotation.set',{...input,note:'changed'},'IDEMPOTENCY_CONFLICT');
- const after=backend.storage();for(const [table,rows] of Object.entries(before))if(!['asset_annotations','asset_annotation_requests'].includes(table))assert.deepEqual(after[table],rows,table);
+ const targets=before.agent_task_target_revisions_v2 as Record<string, unknown>[];
+ assert.equal(targets.some(row=>row.projectId===IDS.project&&row.kind==='asset_annotation'&&row.targetId===IDS.asset),false);
+ const expectedTargets=[...targets,{projectId:IDS.project,kind:'asset_annotation',targetId:IDS.asset,revision:2}];
+ const after=backend.storage();for(const [table,rows] of Object.entries(before))if(!['asset_annotations','asset_annotation_requests'].includes(table))
+  assert.deepEqual(after[table],table==='agent_task_target_revisions_v2'?expectedTargets:rows,table);
  assert.equal(await backend.audit(),'');
 });

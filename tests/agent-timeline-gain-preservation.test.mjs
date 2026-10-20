@@ -33,6 +33,12 @@ assert.deepEqual(Object.keys(schema50RuntimeMap).sort(),['packages/business/src/
 const schema52RuntimeMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-schema52-runtime-map.json',import.meta.url),'utf8')).mapping;
 assert.deepEqual(Object.keys(schema52RuntimeMap).sort(),['packages/business/src/db.mjs','packages/business/src/workspace-restore-policy.mjs','packages/contracts/src/index.mjs','packages/contracts/src/operation-effects.mjs','packages/contracts/src/subject-generation.mjs','packages/contracts/src/workspace-backup.mjs','packages/contracts/src/workspace-restore.mjs'].sort());
 const subjectClosure=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-origin-main-subject-closure.json',import.meta.url),'utf8'));
+// The schema52 pins include both the reviewed LRA and v2 changes. Check their
+// actual whole source; schema50 remains the unchanged predecessor pin below.
+const reviewedLoudnessRangeFragments=Object.freeze({
+ 'packages/contracts/src/index.mjs':"export * from './loudness-range.ts';\n",
+ 'packages/contracts/src/operation-effects.mjs':'Reports bounded complete-window loudness range. An explicit optional LUFS/dBTP target prepares an actually measured supported fixed-gain candidate; no implicit target or apply authority. No persistent report,',
+});
 const currentPath=file=>migrationMap[file]?.currentPath??file;
 // Deterministic drift detection: every mapped legacy key pins the current
 // whole-body hash in all environments, and additionally pins an esbuild
@@ -268,6 +274,20 @@ test('frozen c3a0a57 schema dependency cycle preserves exact original source has
 });
 test('reviewed schema50 current-runtime pins reject every additional source byte while preserving old pins',()=>{
  for(const file of new Set([...Object.keys(schema50RuntimeMap),...Object.keys(schema52RuntimeMap)])){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
+});
+test('reviewed loudness-range bytes are pinned through schema52 and reject changed, duplicate or unknown source bytes',()=>{
+ for(const [file,fragment]of Object.entries(reviewedLoudnessRangeFragments)){
+  const source=fs.readFileSync(path.join(repo,currentPath(file)),'utf8');
+  assert.equal(source.split(fragment).length-1,1,`${file}: unique reviewed loudness-range bytes`);
+  assert.equal(schema52RuntimeMap[file].previousCurrentSha256,schema50RuntimeMap[file].currentSha256,`${file}: unchanged schema50 predecessor`);
+  assertPinnedCurrent(file);
+  for(const changed of [
+   source.replace(fragment,fragment+' '),
+   source.replace(fragment,fragment+fragment),
+   source.replace(fragment,''),
+   source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n',
+  ])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
+ }
 });
 
 test('frozen validator loader rejects changed historical source before import',async()=>{

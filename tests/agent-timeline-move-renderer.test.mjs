@@ -91,7 +91,8 @@ function harness(file, options = {}) {
     render(patch = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return tree; },
     find: id => nodes(tree).find(node => node.props['data-testid'] === id),
     all: id => nodes(tree).filter(node => node.props['data-testid'] === id),
-    change(id, value) { if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
+    showOptions() { if (h.find('agent-chat-composer-options')?.props.hidden) { h.find('agent-chat-target-disclosure').props.onOpenChange(true); h.render(); } },
+    change(id, value) { if (id.startsWith('agent-chat-mode-')) h.showOptions(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
     click(id) { h.find(id).props.onClick(); h.render(); },
     submit() { nodes(tree).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); },
     hide(value = true) { visible = !value; h.render(); },
@@ -188,7 +189,10 @@ test('actual timeline review disables stale selection/draft/context callbacks, p
 
 test('actual timeline composer requires separate consent, bounds intervals, clears consent on dirty and preserves draft', async () => {
   const f = chatFixture(), h = harness('AgentPanel', { chatClient: f.client, receipts: f.receipts }); h.render(); await flush(); h.render();
-  h.change('agent-chat-mode-timeline', true); h.change('agent-chat-prompt', 'Move this saved clip'); assert.ok(h.find('agent-timeline-selected-target')); assert.equal(h.find('agent-chat-consent').props.checked, false);
+  assert.equal(h.find('agent-chat-composer-options').props.hidden, true);
+  h.find('agent-chat-mode-timeline').props.onChange({ target: { checked: true } }); h.render();
+  assert.equal(h.find('agent-timeline-selected-target'), undefined, 'collapsed scope controls cannot change the sending scope');
+  h.change('agent-chat-mode-timeline', true); h.showOptions(); h.change('agent-chat-prompt', 'Move this saved clip'); assert.ok(h.find('agent-timeline-selected-target')); assert.equal(h.find('agent-chat-consent').props.checked, false);
   assert.match(JSON.stringify(h.find('agent-timeline-occupied-intervals')), /0|30/); assert.equal(h.find('agent-timeline-selected-disclosure').props.open, true);
   h.change('agent-chat-consent', true); await flush(); h.render(); const staleConsent = h.find('agent-chat-consent').props.onChange, oldSubmit = nodes(h.render()).find(node => node.type === 'form').props.onSubmit;
   h.render({ timelineEditBlockedReason: '时间线有未保存草稿' }); h.render(); staleConsent({ target: { checked: true } }); oldSubmit({ preventDefault() {} }); await flush(); h.render();

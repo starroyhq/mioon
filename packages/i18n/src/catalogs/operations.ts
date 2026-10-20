@@ -572,6 +572,12 @@ export const operationMessages = {
     "en": "Query provider capabilities and configuration status",
     "ja": "プロバイダーの機能と設定状態を照会します"
   },
+  "operation.video.connection.list": {
+    "zh-Hans": "只读查询界面配置的原厂视频连接和模型能力，不返回凭据、不读取媒体、不联系供应商或创建生成任务",
+    "zh-Hant": "唯讀查詢介面設定的原廠影片連線和模型能力，不回傳憑證、不讀取媒體、不聯絡供應商或建立生成任務",
+    "en": "Read the official video connections and model capabilities configured in the UI without exposing credentials, reading media, contacting providers or creating generation tasks",
+    "ja": "UIで設定した公式動画接続とモデルの機能を読み取り専用で確認します。認証情報の公開、メディアの読み取り、プロバイダーへの接続、生成タスクの作成は行いません"
+  },
   "operation.generation.submit": {
     "zh-Hans": "用稳定requestId提交生成（默认仅模拟）",
     "zh-Hant": "用穩定requestId提交生成（預設僅模擬）",

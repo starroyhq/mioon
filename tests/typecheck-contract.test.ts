@@ -104,7 +104,7 @@ test('foundation configuration strictly checks the real contract and automatical
     './timeline-clip-loudness.consumer.mts',
     './opacity-envelope.consumer.mts',
   ]);
-  assert.deepEqual(configuration.include, ['../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
+  assert.deepEqual(configuration.include, ['../../.github/scripts/**/*.ts', '../../packages/*/src/**/*.ts', '../../apps/*/src/**/*.ts', '../../apps/desktop/*.ts', '../../apps/desktop/scripts/**/*.ts', '../../server/**/*.ts', '../../scripts/**/*.ts']);
   assert.deepEqual(configuration.exclude, ['../../packages/ui/**', '../../apps/web/**']);
   assert.equal(configuration.extends, undefined);
   const options = configuration.compilerOptions;
@@ -170,6 +170,23 @@ async function compileWithoutEmitting(directory: string, compiler: string) {
   return result;
 }
 
+function compilerFixtureName(relative: string): string {
+  // Config entries use repository-relative POSIX names; realpath/path.relative
+  // use native separators on Windows. Keep one key for the same copied source.
+  return relative.replaceAll('\\', '/');
+}
+
+test('compiler fixture keys agree with config names for native Windows and POSIX source paths', () => {
+  const names = new Set([sourceName, consumerName]);
+  for (const name of names) {
+    const windowsRoot = 'D:\\a\\mioon\\mioon';
+    const windowsSource = path.win32.join(windowsRoot, name);
+    assert.equal(compilerFixtureName(path.win32.relative(windowsRoot, windowsSource)), name);
+    assert.ok(names.has(compilerFixtureName(path.win32.relative(windowsRoot, windowsSource))));
+    assert.equal(compilerFixtureName(path.posix.relative('/workspace/mioon', path.posix.join('/workspace/mioon', name))), name);
+  }
+});
+
 async function compilerFixtureSources(compiler: string) {
   // Copy every explicitly checked consumer and its real local import closure.
   // New foundation files must not become missing-file errors in this isolated
@@ -187,7 +204,7 @@ async function compilerFixtureSources(compiler: string) {
   for (const source of program.getSourceFiles()) {
     const relative = path.relative(await realpath(root), await realpath(source.fileName));
     if (relative && !path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`) &&
-        !relative.split(path.sep).includes('node_modules')) names.add(relative);
+        !relative.split(path.sep).includes('node_modules')) names.add(compilerFixtureName(relative));
   }
   for (const name of [sourceName, consumerName]) assert.ok(names.has(name));
   return [...names].sort();

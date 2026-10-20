@@ -1,0 +1,199 @@
+name: Reusable source checks
+
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Frozen source revision to verify
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Linux full tests and build (shard ${{ matrix.shard }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      MIOON_TEST_SHARD_INDEX: ${{ matrix.shard }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          # Frozen renderer/schema regressions read pinned ancestor Git blobs.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install media and desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg tar fonts-dejavu-core fonts-noto-cjk \
+            build-essential pkg-config nasm yasm xz-utils \
+            libx264-dev libass-dev libfontconfig1-dev libfreetype6-dev \
+            libharfbuzz-dev libwebp-dev libzimg-dev libfribidi-dev libvpx-dev libmp3lame-dev zlib1g-dev \
+            libgtk-3-0 libnss3 libgbm1 libasound2 libatk-bridge2.0-0 \
+            libxss1 libdrm2 libx11-xcb1 xvfb dbus-x11 xdotool
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install verified FFmpeg 7.1.5 from source
+        run: node .github/scripts/install-ffmpeg.ts
+
+      - name: Check workflow syntax
+        run: |
+          GOBIN="$RUNNER_TEMP/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/actionlint-bin/actionlint" -color
+
+      - name: Probe required media capabilities
+        id: media
+        run: |
+          mkdir -p "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX"
+          node .github/scripts/media-environment.ts --platform=linux --output="artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/media.json"
+
+      - name: Typecheck source and CI helpers
+        id: typecheck
+        run: node scripts/tooling.ts typecheck
+
+      - name: Build development application
+        id: build
+        run: node scripts/tooling.ts build --channel=development
+
+      - name: Run complete Linux full-lane partition in isolated files
+        id: tests
+        run: env -u NODE_OPTIONS -u NODE_PATH node .github/scripts/test-shard.ts --index="$MIOON_TEST_SHARD_INDEX" --count=4
+
+      - name: Upload full test partition proof
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-linux-${{ matrix.shard }}-coverage
+          path: artifacts/checks-linux-${{ matrix.shard }}/shard.json
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Write safe diagnostics
+        if: always()
+        env:
+          MEDIA_RESULT: ${{ steps.media.outcome }}
+          TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
+          TEST_RESULT: ${{ steps.tests.outcome }}
+        run: |
+          mkdir -p "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX"
+          {
+            node --version
+            pnpm --version
+            printf 'media=%s\ntypecheck=%s\nbuild=%s\ntests=%s\n' "$MEDIA_RESULT" "$TYPECHECK_RESULT" "$BUILD_RESULT" "$TEST_RESULT"
+          } > "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/status.log"
+          cat "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/status.log" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-linux-${{ matrix.shard }}-diagnostics
+          path: artifacts/checks-linux-${{ matrix.shard }}/
+          retention-days: 7
+          if-no-files-found: warn
+
+  portable:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS portable source checks
+            os: macos-15
+            target: macos
+          - name: Windows portable source checks (no desktop support)
+            os: windows-2025
+            target: windows
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck source and CI helpers
+        id: typecheck
+        run: node scripts/tooling.ts typecheck
+
+      - name: Test portable source behavior
+        id: tests
+        run: node scripts/tooling.ts test --suite=portable --concurrency=1 --reporter=tap
+
+      - name: Test CI and release helpers
+        id: helpers
+        run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts tests/actions-test-shards.test.ts
+
+      - name: Write safe diagnostics
+        if: always()
+        env:
+          TARGET: ${{ matrix.target }}
+          TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
+          TEST_RESULT: ${{ steps.tests.outcome }}
+          HELPER_RESULT: ${{ steps.helpers.outcome }}
+        run: |
+          mkdir -p "artifacts/checks-$TARGET"
+          {
+            node --version
+            pnpm --version
+            printf 'typecheck=%s\nportable-tests=%s\nhelper-tests=%s\n' "$TYPECHECK_RESULT" "$TEST_RESULT" "$HELPER_RESULT"
+          } > "artifacts/checks-$TARGET/status.log"
+          cat "artifacts/checks-$TARGET/status.log" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-${{ matrix.target }}-diagnostics
+          path: artifacts/checks-${{ matrix.target }}/
+          retention-days: 7
+          if-no-files-found: warn

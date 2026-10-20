@@ -52,6 +52,21 @@ async function fixture(t){
 }
 const params=(f,timeline,extra={})=>({projectId:f.projectId,expectedRevision:timeline.revision,requestId:randomUUID(),...extra});
 const replace=(f,timeline,asset,extra={})=>params(f,timeline,{clipId:timeline.clips[0].id,assetId:asset.id,...extra});
+function corruptTimelineAggregate(f,timeline){
+ const db=f.store.db,names=['agent_target_timeline_update_v2','agent_target_timeline_timeline_clip_update_v2','agent_target_timeline_timeline_track_update_v2','agent_target_timeline_timeline_subtitle_update_v2'];
+ const guards=db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names);
+ assert.deepEqual(guards.map(value=>value.name),[...names].sort());
+ const tables=[...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests','agent_task_target_revisions_v2'],before=f.capture(tables);
+ assert.throws(()=>db.prepare('UPDATE timelines SET data=? WHERE id=?').run('{',timeline.id),/malformed JSON/);
+ assert.deepEqual(f.capture(tables),before,'live target guards reject malformed aggregate bytes atomically');
+ // Only direct construction of corrupt fixture bytes omits these four JSON
+ // readers. Restore their exact SQL before any business rejection is tested.
+ try{
+  for(const guard of guards)db.exec(`DROP TRIGGER "${guard.name}"`);
+  db.prepare('UPDATE timelines SET data=? WHERE id=?').run('{',timeline.id);
+ }finally{for(const guard of guards)db.exec(guard.sql);}
+ assert.deepEqual(db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names),guards);
+}
 async function rejectAtomic(f,input,code){
  const before=f.capture([...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests']);
  await assert.rejects(f.call(operation,input),error=>{
@@ -177,7 +192,7 @@ test('new replacement rejects SQL/JSON owner and identity corruption before CAS 
   ['candidate asset JSON identity',(f,tl,next)=>f.update('assets',next.id,{id:randomUUID()})],
   ['malformed candidate JSON',(f,tl,next)=>f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{',next.id)],
   ['oversized candidate JSON',(f,tl,next)=>f.update('assets',next.id,{padding:'x'.repeat(17000)})],
-  ['malformed timeline JSON',(f,tl,next)=>f.store.db.prepare('UPDATE timelines SET data=? WHERE id=?').run('{',tl.id)],
+  ['malformed timeline JSON',corruptTimelineAggregate],
  ];
  for(const [name,corrupt] of cases)await t.test(name,async t=>{
   const f=await fixture(t),timeline=await f.timeline(),next=f.asset();corrupt(f,timeline,next);

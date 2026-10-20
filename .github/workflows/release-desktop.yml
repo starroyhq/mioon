@@ -1,0 +1,346 @@
+name: Desktop release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing version tag to publish; leave empty for signed artifact-only verification
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ inputs.release_tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Freeze and validate release source
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      release_sha: ${{ steps.release.outputs.release_sha }}
+      version: ${{ steps.release.outputs.version }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      should_publish: ${{ steps.release.outputs.should_publish }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - name: Checkout selected source with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.release_tag || github.sha }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+
+      - name: Fetch current main
+        run: git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+
+      - name: Validate versions, ancestry and signing prerequisites
+        id: release
+        shell: bash
+        env:
+          MIOON_RELEASE_TAG: ${{ inputs.release_tag || '' }}
+          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+          HAS_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+          HAS_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY != '' }}
+          HAS_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID != '' }}
+          HAS_APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER != '' }}
+          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
+          HAS_APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY != '' }}
+        run: |
+          MIOON_CHECKOUT_SHA=$(git rev-parse HEAD) node .github/scripts/release-preflight.ts --require-apple-secrets
+
+      - name: Write safe preflight diagnostics
+        if: always()
+        env:
+          RELEASE_RESULT: ${{ steps.release.outcome }}
+        run: |
+          mkdir -p artifacts/preflight
+          printf 'release-preflight=%s\n' "$RELEASE_RESULT" > artifacts/preflight/status.log
+          cat artifacts/preflight/status.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload preflight failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-preflight-diagnostics
+          path: |
+            artifacts/preflight/status.log
+            artifacts/release-preflight.json
+          retention-days: 7
+          if-no-files-found: warn
+
+  checks:
+    name: Verify frozen release source
+    needs: preflight
+    uses: ./.github/workflows/checks.yml
+    with:
+      source_sha: ${{ needs.preflight.outputs.release_sha }}
+
+  desktop:
+    name: Package ${{ matrix.target }}
+    needs: [preflight, checks]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            platform: linux
+            arch: x64
+            os: ubuntu-22.04
+          - target: macos-arm64
+            platform: darwin
+            arch: arm64
+            os: macos-15
+          - target: macos-x64
+            platform: darwin
+            arch: x64
+            os: macos-15-intel
+    defaults:
+      run:
+        shell: bash
+    env:
+      MIOON_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+      MIOON_TARGET: ${{ matrix.target }}
+      MIOON_PLATFORM: ${{ matrix.platform }}
+      MIOON_ARCH: ${{ matrix.arch }}
+      MIOON_DESKTOP_INSPECTION_REPORT: artifacts/desktop-${{ matrix.target }}/inspection.json
+      MIOON_DESKTOP_SMOKE_REPORT: artifacts/desktop-${{ matrix.target }}/smoke.json
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          persist-credentials: false
+
+      - name: Verify native runner architecture
+        run: |
+          actual_arch=$(uname -m)
+          expected_arch="$MIOON_ARCH"
+          if [[ "$expected_arch" == x64 ]]; then expected_arch=x86_64; fi
+          test "$actual_arch" = "$expected_arch"
+          test "$(id -u)" -ne 0
+
+      - name: Install Linux media and native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg tar fonts-dejavu-core fonts-noto-cjk \
+            build-essential pkg-config nasm yasm xz-utils \
+            libx264-dev libass-dev libfontconfig1-dev libfreetype6-dev \
+            libharfbuzz-dev libwebp-dev libzimg-dev libfribidi-dev libvpx-dev libmp3lame-dev zlib1g-dev \
+            libgtk-3-0 libnss3 libgbm1 libasound2 libatk-bridge2.0-0 \
+            libxss1 libdrm2 libx11-xcb1 xvfb dbus-x11 xdotool
+
+      - name: Install macOS media tools
+        if: runner.os == 'macOS'
+        run: |
+          if ! brew list --versions ffmpeg >/dev/null 2>&1; then brew install ffmpeg; fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install verified FFmpeg 7.1.5 from source
+        if: runner.os == 'Linux'
+        run: node .github/scripts/install-ffmpeg.ts
+
+      - name: Resolve external media tools and probe capabilities
+        id: media
+        run: |
+          node --input-type=module -e 'import {realpathSync,appendFileSync} from "node:fs"; import {execFileSync} from "node:child_process"; for(const [key,name] of [["MIOON_FFMPEG_PATH","ffmpeg"],["MIOON_FFPROBE_PATH","ffprobe"]]){const value=realpathSync(process.env[key] || execFileSync("which",[name],{encoding:"utf8"}).trim()); appendFileSync(process.env.GITHUB_ENV,key+"="+value+"\n");}'
+          node .github/scripts/media-environment.ts --platform="$MIOON_PLATFORM" --output="artifacts/desktop-$MIOON_TARGET/media.json"
+
+      - name: Build production application
+        id: build
+        run: node scripts/tooling.ts build --channel=production
+
+      - name: Prepare temporary Apple signing credentials
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          umask 077
+          credentials_dir="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$credentials_dir"
+          export MIOON_APPLE_CREDENTIALS_DIR="$credentials_dir"
+          node --input-type=module -e 'import {writeFileSync} from "node:fs"; import path from "node:path"; const dir=process.env.MIOON_APPLE_CREDENTIALS_DIR; writeFileSync(path.join(dir,"signing.p12"),Buffer.from(process.env.APPLE_CERTIFICATE,"base64"),{mode:0o600}); writeFileSync(path.join(dir,"notarization.p8"),process.env.APPLE_API_PRIVATE_KEY,{mode:0o600});'
+          keychain="$credentials_dir/signing.keychain-db"
+          keychain_password=$(uuidgen)
+          echo "::add-mask::$keychain_password"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$credentials_dir/signing.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          rm "$credentials_dir/signing.p12"
+          printf 'CSC_KEYCHAIN=%s\nAPPLE_API_KEY_PATH=%s\n' "$keychain" "$credentials_dir/notarization.p8" >> "$GITHUB_ENV"
+
+      - name: Package Linux archive
+        id: package_linux
+        if: runner.os == 'Linux'
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --config .generated/electron-builder.cjs --linux tar.gz --x64 --publish never
+
+      - name: Package signed and notarized macOS DMG
+        id: package_macos
+        if: runner.os == 'macOS'
+        working-directory: apps/desktop
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          export APPLE_API_KEY="$APPLE_API_KEY_PATH"
+          # electron-builder selects the certificate type and rejects its prefix.
+          signing_qualifier="${APPLE_SIGNING_IDENTITY#Developer ID Application: }"
+          pnpm exec electron-builder --config .generated/electron-builder.cjs --mac dmg "--$MIOON_ARCH" --publish never \
+            "-c.mac.identity=$signing_qualifier" -c.mac.notarize=true -c.dmg.sign=true -c.forceCodeSigning=true
+          # v26 notarizes the application, so submit the final signed DMG too.
+          dmg=$(node --input-type=module -e 'import {readdirSync} from "node:fs"; import path from "node:path"; const dir=path.resolve("../../release/desktop/production"); const names=readdirSync(dir).filter(name=>name.endsWith("-mac-"+process.env.MIOON_ARCH+".dmg")); if(names.length!==1)process.exit(1); process.stdout.write(path.join(dir,names[0]));')
+          notarization_report="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/dmg-notarization.json"
+          xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" --wait --timeout 30m --output-format json > "$notarization_report"
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const report=JSON.parse(readFileSync(process.argv[1],"utf8")); if(report.status!=="Accepted")process.exit(1);' "$notarization_report"
+          xcrun stapler staple "$dmg"
+
+      - name: Inspect final package, signatures and resources
+        id: inspect
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          node .github/scripts/inspect-desktop.ts --platform="$MIOON_PLATFORM" --arch="$MIOON_ARCH" \
+            --package-dir=release/desktop/production --output="$MIOON_DESKTOP_INSPECTION_REPORT"
+
+      - name: Smoke test final packaged application
+        id: smoke
+        run: |
+          executable=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; const report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8")); if(!report.ok || typeof report.executable!=="string")process.exit(1); process.stdout.write(report.executable);')
+          smoke_args=(.github/scripts/desktop-smoke.ts "--platform=$MIOON_PLATFORM" "--arch=$MIOON_ARCH" "--executable=$executable" "--output=$MIOON_DESKTOP_SMOKE_REPORT")
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            dbus-run-session -- xvfb-run -a -s '-screen 0 1440x900x24' node "${smoke_args[@]}"
+          else
+            node "${smoke_args[@]}"
+          fi
+
+      - name: Stage verified release artifacts
+        id: stage
+        run: |
+          node .github/scripts/stage-release.ts --platform="$MIOON_PLATFORM" --arch="$MIOON_ARCH" \
+            --package-dir=release/desktop/production --output="artifacts/release/$MIOON_TARGET"
+
+      - name: Upload verified package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: mioon-desktop-${{ matrix.target }}
+          path: artifacts/release/${{ matrix.target }}/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Write safe package diagnostics
+        if: always()
+        env:
+          MEDIA_RESULT: ${{ steps.media.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
+          LINUX_PACKAGE_RESULT: ${{ steps.package_linux.outcome }}
+          MACOS_PACKAGE_RESULT: ${{ steps.package_macos.outcome }}
+          INSPECT_RESULT: ${{ steps.inspect.outcome }}
+          SMOKE_RESULT: ${{ steps.smoke.outcome }}
+          STAGE_RESULT: ${{ steps.stage.outcome }}
+        run: |
+          mkdir -p "artifacts/desktop-$MIOON_TARGET"
+          printf 'media=%s\nbuild=%s\nlinux-package=%s\nmacos-package=%s\ninspection=%s\nsmoke=%s\nstaging=%s\n' \
+            "$MEDIA_RESULT" "$BUILD_RESULT" "$LINUX_PACKAGE_RESULT" "$MACOS_PACKAGE_RESULT" "$INSPECT_RESULT" "$SMOKE_RESULT" "$STAGE_RESULT" \
+            > "artifacts/desktop-$MIOON_TARGET/status.log"
+          cat "artifacts/desktop-$MIOON_TARGET/status.log" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload package diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desktop-${{ matrix.target }}-diagnostics
+          path: |
+            artifacts/desktop-${{ matrix.target }}/media.json
+            artifacts/desktop-${{ matrix.target }}/inspection.json
+            artifacts/desktop-${{ matrix.target }}/smoke.json
+            artifacts/desktop-${{ matrix.target }}/status.log
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Clean temporary Apple signing credentials
+        if: always() && runner.os == 'macOS'
+        run: |
+          credentials_dir="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          trap 'rm -rf "$credentials_dir"' EXIT
+          if [[ -f "$credentials_dir/signing.keychain-db" ]]; then security delete-keychain "$credentials_dir/signing.keychain-db"; fi
+
+      - name: Clean owned DMG mount after interruption
+        if: always() && runner.os == 'macOS'
+        run: |
+          node --input-type=module -e 'import {readFileSync,realpathSync} from "node:fs"; import {execFileSync} from "node:child_process"; import path from "node:path"; import os from "node:os"; let report; try{report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8"));}catch{process.exit(0);} const mount=report.mountPoint; const temp=realpathSync(os.tmpdir()); if(typeof mount==="string" && mount.startsWith(temp+path.sep+"mioon-ci-dmg-")){try{execFileSync("hdiutil",["detach",mount],{stdio:"ignore"});}catch{const info=execFileSync("hdiutil",["info"],{encoding:"utf8"});if(info.includes(mount))process.exit(1);}}'
+
+      - name: Clean owned Linux archive extraction after interruption
+        if: always() && runner.os == 'Linux'
+        run: |
+          node --input-type=module -e 'import {lstatSync,readFileSync,realpathSync,rmSync} from "node:fs"; import path from "node:path"; import os from "node:os"; let report; try{report=JSON.parse(readFileSync(process.env.MIOON_DESKTOP_INSPECTION_REPORT,"utf8"));}catch(error){if(error.code==="ENOENT")process.exit(0);throw error;} const root=report.extractRoot; if(root===undefined)process.exit(0); const temp=realpathSync(os.tmpdir()); if(typeof root!=="string" || path.dirname(root)!==temp || !/^mioon-ci-extract-[A-Za-z0-9]{6}$/.test(path.basename(root)))throw new Error("INVALID_OWNED_EXTRACTION_ROOT"); let info; try{info=lstatSync(root);}catch(error){if(error.code==="ENOENT")process.exit(0);throw error;} if(!info.isDirectory() || info.isSymbolicLink() || realpathSync(root)!==root)throw new Error("INVALID_OWNED_EXTRACTION_ROOT"); rmSync(root,{recursive:true});'
+
+  publish:
+    name: Publish verified desktop release
+    if: needs.preflight.outputs.should_publish == 'true'
+    needs: [preflight, checks, desktop]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout frozen source with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+
+      - name: Download all verified targets
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: mioon-desktop-*
+          path: artifacts/release
+          merge-multiple: false
+
+      - name: Revalidate remote tag and publish immutable release
+        env:
+          MIOON_RELEASE_TAG: ${{ needs.preflight.outputs.release_tag }}
+          MIOON_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/publish-release.ts --input=artifacts/release

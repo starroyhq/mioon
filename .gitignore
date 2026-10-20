@@ -63,6 +63,7 @@ local-drafts-v1.json
 .npmrc.local
 
 # Logs, caches and editor/OS state
+/artifacts/
 *.log
 __pycache__/
 *.py[cod]

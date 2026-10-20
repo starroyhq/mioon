@@ -14,6 +14,7 @@ import * as previewPlayback from '../apps/web/src/preview-playback.ts';
 import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
+import {generationParameters} from '../apps/web/src/generation-settings.ts';
 
 // Exercise the real component functions with deterministic hook, ref, media,
 // and animation-frame boundaries. These tests intentionally do not claim DOM
@@ -97,7 +98,7 @@ function createHarness(file, exportName = 'default') {
     './api.ts': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },
     './Timeline.tsx': { assetKind: asset => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.ts': { referenceForShot: () => null },
-    './generation-settings.ts': { generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
+    './generation-settings.ts': { generationParameters, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
     './VideoFrameControls.tsx': { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true },
     './ProviderSettings.tsx': { default: 'ProviderSettings', __esModule: true },
     './SubjectVideoSelection.tsx': { default: 'SubjectVideoSelection', __esModule: true },

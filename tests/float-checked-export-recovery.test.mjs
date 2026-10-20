@@ -18,6 +18,7 @@ import {matchesRestoredExport} from '../packages/business/src/workspace-restore-
 import {createTimelineFloatAudioAccumulator} from '../packages/business/src/timeline-float-audio-check.ts';
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement, bindFloatTimelineFailure, ownedFloatTimelineMeasurement,
   floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
+import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 
 const PROFILE = 'mp4_h264_float_checked_v2';
 const settings = () => ({profileId: PROFILE, resolution: 'short_360', rateControl: {mode: 'crf', quality: 'standard'}});
@@ -244,15 +245,39 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
   // separately. The golden can never be refreshed by a live full-database diff.
   const frozenTables = Object.keys(before).filter(table => table !== 'schema_version');
   const frozenVersions = before.schema_version.map(row => row.version);
+  // Seed identities come only from the independently hashed140fa882 fixture,
+  // never from the migrated current rows or its production initializer.
+  const revisions=[],add=(kind,projectId,targetId)=>revisions.push({__rowid__:revisions.length+1,projectId,kind,targetId,revision:1});
+  for(const[kind,table]of [['project','projects'],['asset','assets'],['export','exports']])
+    for(const row of before[table])add(kind,kind==='project'?row.id:row.projectId,row.id);
+  const originalTimelines=before.timelines.map(row=>({projectId:row.projectId,data:JSON.parse(row.data)}));
+  for(const[field,kind]of [['clips','timeline_clip'],['tracks','timeline_track'],['subtitles','timeline_subtitle']])
+    for(const timeline of originalTimelines)for(const target of timeline.data[field]??[])add(kind,timeline.projectId,target.id);
+  for(const timeline of originalTimelines)add('timeline',timeline.projectId,timeline.projectId);
+  assert.equal(revisions.length,9,'the independent golden has exactly nine initial targets');
   function assertFrozenGolden(actual) {
+    const names=new Set(currentOrdinary52Delta.objectNames),objects=store.db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all().map(row=>({...row}));
+    const reviewed=objects.filter(value=>names.has(value.name));
+    assert.deepEqual(reviewed,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+    assert.equal(reviewed.length,currentOrdinary52Delta.v2Catalog.count);
+    assert.equal(sha(JSON.stringify(reviewed)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+    assert.deepEqual(objects.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)),[],'unknown task/target objects are not reviewed52 additions');
+    for(const[name,table]of Object.entries(currentOrdinary52Delta.tables)){
+      assert.deepEqual(store.db.prepare(`PRAGMA table_info("${name}")`).all().map(value=>value.name),table.fields,`${name}: reviewed52 fields`);
+      if(name==='agent_task_target_revisions_v2'){
+        assert.deepEqual(actual[name].map(row=>({__rowid__:row.__rowid__,kind:row.kind})),revisions.map(row=>({__rowid__:row.__rowid__,kind:row.kind})),'initial target rowids and kind ranges');
+        const targets=values=>values.map(row=>{const value={...row};delete value.__rowid__;return value;}).sort((a,b)=>a.kind.localeCompare(b.kind)||a.targetId.localeCompare(b.targetId));
+        assert.deepEqual(targets(actual[name]),targets(revisions),'exact golden project/target identities and initial revision1');
+      }else assert.deepEqual(actual[name],[],`${name}: reviewed empty52 rows`);
+    }
     const projected = Object.fromEntries(frozenTables.map(table => [table, actual[table].map(row => {
       const template = before[table][0];
       return template ? Object.fromEntries(Object.keys(template).map(key => [key, row[key]])) : row;
     })]));
     assert.deepEqual(projected, Object.fromEntries(frozenTables.map(table => [table, before[table]])), 'frozen legacy rows stay byte-exact');
-    assert.deepEqual(actual.schema_version.map(row => row.version), [...frozenVersions, 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50], 'startup adds only the documented additive lineage');
+    assert.deepEqual(actual.schema_version.map(row => row.version), [...frozenVersions, 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52], 'startup adds only the documented additive lineage');
     for (const [table, values] of Object.entries(actual)) {
-      if (table === 'schema_version' || Object.hasOwn(before, table)) continue;
+      if (table === 'schema_version' || Object.hasOwn(before, table) || Object.hasOwn(currentOrdinary52Delta.tables,table)) continue;
       assert.deepEqual(values, [], `additive table ${table} must stay empty`);
     }
   }

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,realpath,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -11,6 +11,7 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
+import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./fixtures/local-shot-text-process-worker.ts',import.meta.url));
 const authority=value=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});
@@ -38,7 +39,19 @@ async function fixture(t){
  put:(value,raw={title:'原始标题 🎬',prompt:'原始提示\n恢复同一保存请求'},target=shot)=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),baseRevision:target.revision,baseText:{title:target.title,prompt:target.prompt},raw}),
  prepare:value=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:value.draft.baseRevision,baseText:value.draft.baseText,draft:{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw},input:{shotId:value.shotId,expectedRevision:value.draft.baseRevision,requestId:randomUUID(),patch:structuredClone(value.draft.raw)}}),
  read(fn){const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{db.exec('PRAGMA query_only=ON; BEGIN');return fn(db);}finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}},
- snapshot(){return this.read(db=>({schema:db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{assert.match(name,/^[a-z_]+$/);return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];}))}));},
+ snapshot(){return this.read(db=>{
+  const schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
+  assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+  assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
+  assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+  assert.deepEqual(schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)),[],'unknown task/target objects are not reviewed52 additions');
+  // Preserve every table and row in the crash oracle; admit digits only in
+  // the independently frozen52 table names rather than any new table name.
+  return {schema,tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{
+   assert.ok(/^[a-z_]+$/.test(name)||Object.hasOwn(currentOrdinary52Delta.tables,name),'only safe legacy or independently frozen52 table names');
+   return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];
+  }))};
+ });},
  receipt:requestId=>f.read(db=>db.prepare('SELECT * FROM mutation_requests WHERE requestId=?').get(requestId)),savedShot:()=>f.read(db=>JSON.parse(db.prepare('SELECT data FROM shots WHERE id=?').get(shot.id).data)),sidecar:()=>readFile(path.join(root,'local-shot-text-v1.json'),'utf8'),
  async crash(phase,method,input){await worker.ask('arm',phase);const reached=worker.waitBoundary(phase),reply=worker.ask(method,input),lost=assert.rejects(reply,{code:'WORKER_EXITED',signal:'SIGKILL'});const point=await reached;assert.deepEqual(await worker.kill(),{code:null,signal:'SIGKILL'});await lost;assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(worker.child.pid),'Product startup must reclaim the exact crash-left stale lock');t.diagnostic(`${phase}: owned child SIGKILL before IPC reply; dispatches=${point.dispatches}`);return point;}};
  await f.start();return f;

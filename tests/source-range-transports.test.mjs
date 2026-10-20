@@ -191,9 +191,19 @@ async function lossProxy(t, backend) {
   };
 }
 
-function onlyRangeWrites(before, after) {
+function onlyRangeWrites(before, after, expectedTargets) {
   assert.deepEqual(Object.keys(after), Object.keys(before), 'saving a range cannot create tables');
-  for (const table of Object.keys(before)) if (!rangeTables.has(table)) assert.deepEqual(after[table], before[table], `${table} remains unchanged`);
+  const targets = before.agent_task_target_revisions_v2.map(row => ({...row}));
+  for (const {projectId, assetId, revision} of expectedTargets) {
+    const index = targets.findIndex(row => row.projectId === projectId && row.kind === 'asset_range' && row.targetId === assetId);
+    if (index < 0) targets.push({projectId, kind: 'asset_range', targetId: assetId, revision});
+    else {
+      assert.equal(targets[index].revision + 1, revision, 'only the saved range target advances once');
+      targets[index] = {...targets[index], revision};
+    }
+  }
+  for (const table of Object.keys(before)) if (!rangeTables.has(table))
+    assert.deepEqual(after[table], table === 'agent_task_target_revisions_v2' ? targets : before[table], `${table}: only the exact saved range target revisions may change`);
 }
 
 function noRangeInspectionFields(value) {
@@ -284,7 +294,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
     assert.deepEqual(await backend.http('asset.range.get', target), newer);
     assert.deepEqual(await backend.http('asset.inspect', {projectId: IDS.project, limit: 25}), inspected, 'inspection DTO does not gain range fields');
     backend.unchanged(afterRestart, 'post-restart exact replay and reads');
-    onlyRangeWrites(before, backend.storage());
+    onlyRangeWrites(before, backend.storage(), [{...target, revision: 2}]);
   });
 
   await t.test('changed reuse, stale revision, missing keys and invalid bounds never write', async () => {
@@ -357,7 +367,9 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
     assert.equal(long.data.sourceFrameCount, 36_000); assert.deepEqual(long.data.range, {inFrame: 20_000, outFrame: 30_000});
     const audioInput = {...target, assetId: RANGE_IDS.audio, expectedRevision: 0, requestId: 'source-range-audio-source', inFrame: 0, outFrame: 60};
     assert.deepEqual((await backend.mcp('asset.range.set', audioInput)).data.range, {inFrame: 0, outFrame: 60});
-    onlyRangeWrites(before, backend.storage());
+    onlyRangeWrites(before, backend.storage(), [
+      {...target, assetId: RANGE_IDS.long, revision: 1}, {...target, assetId: RANGE_IDS.audio, revision: 1},
+    ]);
     const nodeInput = {projectId: IDS.project, type: 'text', text: 'Legacy keyed mutation', position: {x: 0, y: 0}, requestId: 'source-range-legacy-global-key'};
     await backend.http('node.create', nodeInput);
     const stable = backend.checkpoint();
@@ -380,7 +392,7 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
     assert.equal(timeline.clips[0].sourceInFrame, 59); assert.equal(timeline.clips[0].durationFrames, 1);
     const before = backend.storage();
     await backend.http('asset.range.set', {...target, expectedRevision: saved.revision, requestId: 'source-range-after-clip', inFrame: 0, outFrame: 30});
-    onlyRangeWrites(before, backend.storage());
+    onlyRangeWrites(before, backend.storage(), [{...target, revision: 4}]);
     assert.deepEqual((await backend.http('timeline.get', {projectId: IDS.project})).data, timeline);
     assert.equal(await backend.audit(), '', 'zero model/provider, non-owned network or media subprocess attempts');
     assert.deepEqual(await readdir(path.join(backend.root, 'media')), [], 'metadata-only wire fixture never creates media files');

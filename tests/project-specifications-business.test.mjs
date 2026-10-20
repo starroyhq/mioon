@@ -19,6 +19,22 @@ async function fixture(t){
 }
 async function rejected(f,input,code){const before=f.capture();await assert.rejects(f.call('timeline.format.set',input),error=>error.code===code&&(['REVISION_CONFLICT','TIMELINE_FORMAT_LOCKED','TIMELINE_FORMAT_UNCHANGED'].includes(code)?hasRequestNotAppliedProof(error,input,{operation:'timeline.format.set'}):true));assert.deepEqual(f.capture(),before);}
 async function addClip(f,timeline){return f.call('timeline.clip.add',{projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:f.asset().id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:30});}
+function corruptTimelineAggregate(f){
+ const db=f.store.db,names=['agent_target_timeline_update_v2','agent_target_timeline_timeline_clip_update_v2','agent_target_timeline_timeline_track_update_v2','agent_target_timeline_timeline_subtitle_update_v2'];
+ const guards=db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names);
+ assert.deepEqual(guards.map(value=>value.name),[...names].sort());
+ const before=f.capture(),targets=db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY rowid').all();
+ assert.throws(()=>db.prepare('UPDATE timelines SET data=? WHERE projectId=?').run('{',f.project.id),/malformed JSON/);
+ assert.deepEqual(f.capture(),before,'live target guards reject malformed aggregate bytes atomically');
+ assert.deepEqual(db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY rowid').all(),targets);
+ // Only corrupt fixture construction runs without these JSON-reading target
+ // guards; every business refusal below uses the exact restored original SQL.
+ try{
+  for(const guard of guards)db.exec(`DROP TRIGGER "${guard.name}"`);
+  db.prepare('UPDATE timelines SET data=? WHERE projectId=?').run('{',f.project.id);
+ }finally{for(const guard of guards)db.exec(guard.sql);}
+ assert.deepEqual(db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names),guards);
+}
 
 test('format read is genuinely noncreating and absence creates exactly revision one without modifying project bytes',async t=>{
  const f=await fixture(t),before=f.capture();
@@ -127,7 +143,7 @@ test('non-format receipts and all frozen timeline export statuses block even aft
 });
 test('corrupt aggregates, history, receipts and provenance fail closed rather than fabricate eligibility',async t=>{
  for(const tamper of [
-  f=>f.store.db.prepare('UPDATE timelines SET data=? WHERE projectId=?').run('{',f.project.id),
+  corruptTimelineAggregate,
   f=>f.store.db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run(randomUUID(),'a'.repeat(64),'{'),
   f=>f.store.db.prepare('INSERT INTO timeline_history_cursors VALUES(?,1)').run(f.project.id),
   f=>{f.store.db.exec('DROP TRIGGER immutable_timeline_format_requests');f.store.db.prepare('UPDATE timeline_format_requests SET input=? WHERE projectId=?').run(JSON.stringify(f.spec('square_720')),f.project.id);},

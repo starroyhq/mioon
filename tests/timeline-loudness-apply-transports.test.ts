@@ -157,8 +157,17 @@ function assertSingleApplication(f: Fixture,before: Record<string, Record<string
   assert.equal(after.timeline_history.filter(row=>row.operation===operation).length,1);
   assert.equal(after.timeline_requests.filter(row=>row.requestId===f.input.requestId).length,1);
   assert.deepEqual(after.timeline_requests.slice(0,-1),before.timeline_requests,'old immutable receipts retain exact bytes');
+  const changedClips=new Set(f.before.clips.filter(clip=>gains.has(clip.id)&&gains.get(clip.id)!==clip.gain).map(clip=>clip.id));
+  assert.equal(changedClips.size,1,'this fixture adjusts its single saved clip');
+  let targetCount=0;
+  const targets=before.agent_task_target_revisions_v2.map(row=>{
+    if(row.projectId!==f.project.id||row.kind!=='timeline_clip'||!changedClips.has(String(row.targetId)))return row;
+    assert.equal(row.revision,1,'the saved gain target starts at revision1');targetCount++;
+    return Object.assign(Object.create(Object.getPrototypeOf(row)),row,{revision:2});
+  });
+  assert.equal(targetCount,changedClips.size,'every changed gain has one exact target revision');
   for(const table of Object.keys(before))if(!['timelines','timeline_history','timeline_history_cursors','timeline_requests'].includes(table))
-    assert.deepEqual(after[table],before[table],table+' is outside this mutation');
+    assert.deepEqual(after[table],table==='agent_task_target_revisions_v2'?targets:before[table],table+': only the exact changed clip target revision may advance');
   const receipt=f.receipt(String(f.input['requestId']));assert.ok(receipt);assert.equal(JSON.stringify(ack),receipt.response);
 }
 async function waitForReceipt(f: Fixture,requestId: string): Promise<ReceiptRow> {

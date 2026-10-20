@@ -90,7 +90,8 @@ function harness(file, options = {}) {
     render(patch = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = component(props); for (const index of effects) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn(); } return tree; },
     find: id => nodes(tree).find(node => node.props['data-testid'] === id),
     all: id => nodes(tree).filter(node => node.props['data-testid'] === id),
-    change(id, value) { if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
+    showOptions() { if (h.find('agent-chat-composer-options')?.props.hidden) { h.find('agent-chat-target-disclosure').props.onOpenChange(true); h.render(); } },
+    change(id, value) { if (id.startsWith('agent-chat-mode-')) h.showOptions(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-open')?.props.onClick();h.render();} h.find(id).props.onChange({ target: { value, checked: value } }); h.render(); if(id==='agent-chat-consent'&&value){h.find('agent-chat-authorization-confirm').props.onClick();h.render();} },
     click(id) { h.find(id).props.onClick(); h.render(); },
     submit() { nodes(tree).find(node => node.type === 'form').props.onSubmit({ preventDefault() {} }); },
     hide(value = true) { visible = !value; h.render(); },
@@ -227,7 +228,10 @@ test('actual gain card stale selection/dirty/mode callbacks stay inert, while Re
 
 test('actual gain composer keeps separate context consent, mute disclosure and dirty fences with stale callbacks rejected', async () => {
   const f = chatFixture(), h = harness('AgentPanel', { chatClient: f.client, receipts: f.receipts, props: { selectedTimelineGainClip: { ...selected, trackMuted: true } } }); h.render(); await flush(); h.render();
-  h.change('agent-chat-mode-gain', true); h.change('agent-chat-prompt', 'Lower this music to 40%'); assert.ok(h.find('agent-gain-selected-target')); assert.ok(h.find('agent-gain-track-muted'));
+  assert.equal(h.find('agent-chat-composer-options').props.hidden, true);
+  h.find('agent-chat-mode-gain').props.onChange({ target: { checked: true } }); h.render();
+  assert.equal(h.find('agent-gain-selected-target'), undefined, 'collapsed scope controls cannot change the sending scope');
+  h.change('agent-chat-mode-gain', true); h.showOptions(); h.change('agent-chat-prompt', 'Lower this music to 40%'); assert.ok(h.find('agent-gain-selected-target')); assert.ok(h.find('agent-gain-track-muted'));
   assert.equal(h.find('agent-chat-consent').props.checked, false); assert.match(JSON.stringify(h.find('agent-chat-context')), /仅 gain|波形或响度测量/);
   h.change('agent-chat-consent', true); await flush(); h.render(); const staleConsent = h.find('agent-chat-consent').props.onChange, staleSubmit = nodes(h.render()).find(node => node.type === 'form').props.onSubmit;
   h.render({ timelineGainBlockedReason: '未保存源范围草稿' }); h.render(); staleConsent({ target: { checked: true } }); staleSubmit({ preventDefault() {} }); await flush(); h.render();

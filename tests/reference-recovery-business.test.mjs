@@ -9,14 +9,17 @@ import {AppError,REFERENCE_RESPONSE_BYTES,hasRequestNotAppliedProof} from '@mioo
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {DatabaseSync} from 'node:sqlite';
+import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
+import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 
 const at='2026-10-10T00:00:00.000Z',clone=value=>JSON.parse(JSON.stringify(value));
 const tables=['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines','reference_requests','timeline_requests','idempotency'];
-async function fixture(t){
+async function fixture(t,{open=openStore}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-reference-recovery-'));
- let store=openStore(root),services=createServices(store,new Map());
+ let store=open(root),services=createServices(store,new Map());
  const f={root,get store(){return store;},call:(operation,input)=>services.call(operation,input),
-  restart(){store.close();store=openStore(root);services=createServices(store,new Map());},
+  restart(){store.close();store=open(root);services=createServices(store,new Map());},
   capture(){return Object.fromEntries(tables.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));},
   changes(){return store.db.prepare('SELECT total_changes() AS n').get().n;},
   asset(patch={}){const id=randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Reference fixture',mimeType:'image/png',
@@ -261,8 +264,8 @@ test('commit uncertainty, failed transaction entry and incomplete rollback never
  await rejected(f,'reference.attach',stale,{code:'REVISION_CONFLICT',call:(operation,input)=>replacedError.call(operation,input)});
 });
 
-test('retention triggers bootstrap additively, preserve legacy bytes and block delete or replacement',async t=>{
- const f=await fixture(t),{input}=await prepared(f,'reference.attach'),response=await f.call('reference.attach',input);
+test('fixed through24 retention triggers bootstrap additively, preserve legacy bytes and block delete or replacement',async t=>{
+ const f=await fixture(t,{open:openLegacyWorkspaceStore}),{input}=await prepared(f,'reference.attach'),response=await f.call('reference.attach',input);
  const legacy=['legacy-preserved-key','old-hash',' { "legacy": true, "spacing": "preserve" } '];
  f.store.db.prepare('INSERT INTO reference_requests VALUES(?,?,?)').run(...legacy);
  const schema=f.store.db.prepare('SELECT * FROM schema_version ORDER BY version').all(),saved=f.capture();
@@ -277,6 +280,17 @@ test('retention triggers bootstrap additively, preserve legacy bytes and block d
  const removed=await f.call('reference.detach',detach(f,response.edge,response.shot));assert.equal(removed.detached,true);
  const project=await f.call('project.create',{name:'Ordinary lifecycle'});assert.ok(project.id);
  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM reference_requests').get().n,3);
+});
+
+test('current52 startup refuses missing reference retention guards without repairing or rewriting retained evidence',async t=>{
+ const f=await fixture(t),{input}=await prepared(f,'reference.attach');await f.call('reference.attach',input);
+ f.store.db.prepare('INSERT INTO reference_requests VALUES(?,?,?)').run('legacy-preserved-key','old-hash',' { "legacy": true, "spacing": "preserve" } ');
+ f.store.db.exec('DROP TRIGGER reject_reference_request_replacement; DROP TRIGGER retain_reference_requests;');
+ const before=rawSnapshot(f.store.db);
+ assert.throws(()=>f.restart(),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
+ const db=new DatabaseSync(path.join(f.root,'workbench.sqlite'),{readOnly:true});
+ try{assert.deepEqual(rawSnapshot(db),before,'all SQL, SQLite types, raw bytes, rowids, receipts and sequence survive strict refusal');}
+ finally{db.close();}
 });
 
 test('schema-valid maximally escaped shots remain attachable and replayable within the receipt budget',async t=>{
