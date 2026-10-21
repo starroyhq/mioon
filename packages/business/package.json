@@ -16,6 +16,7 @@
     "./native-audio-preview": "./src/native-audio-preview.ts"
   },
   "dependencies": {
-    "@mioon/contracts": "workspace:*"
+    "@mioon/contracts": "workspace:*",
+    "openai": "7.39.0"
   }
 }

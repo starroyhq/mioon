@@ -23,6 +23,7 @@ test('pure help retains exact legacy bytes and schema object content in every pr
   // Only explicit discovery additions differ; retain every frozen legacy byte
   // and operation's relative order, including the original machine prose.
   const expected = frozen
+    .replace('"mioon capabilities",', '"mioon capabilities","mioon agent --help",')
     .replace('"operations":["lut.import",', '"operations":["export.cancel","export.activity.get","export.output.get","workspace.settings.get","workspace.settings.set","workspace.backup.status","workspace.backup.list","workspace.backup.create","workspace.backup.restore.stage","task.disposition.list","task.disposition.markFailed","task.disposition.archiveCompleted","project.rename","project.delete","project.summary.list","agent.authorization.list","agent.authorization.grant","agent.authorization.revoke","lut.import",')
     .replace('"timeline.loudness.prepare",', '"timeline.loudness.prepare","timeline.clip.loudness",')
     .replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",')

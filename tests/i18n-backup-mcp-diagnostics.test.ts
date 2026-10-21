@@ -4,6 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {LOCALES, translate, catalogs, validateCatalogs} from '../packages/i18n/src/index.ts';
+import type {Locale} from '../packages/i18n/src/index.ts';
 import {parseBackupArguments} from '../apps/cli/src/backup.ts';
 import {backupDiagnostic} from '../apps/cli/src/backup-presentation.ts';
 import {errorView} from './helpers/test-error.ts';
@@ -22,12 +23,21 @@ const mcp = (args: string[], hook?: string) => run('apps/mcp/src/index.ts', args
 test('backup explicit locale translates only help prose and preserves legacy help/version', {timeout:180000}, () => {
   assert.deepEqual(validateCatalogs(catalogs),[]);
   const original = backup(['--help']);
-  assert.equal(original.stdout,readFileSync(new URL('./fixtures/backup-help-legacy.json',import.meta.url),'utf8'));
+  const frozen = JSON.parse(readFileSync(new URL('./fixtures/backup-help-legacy.json',import.meta.url),'utf8'));
+  const requirements = [...frozen.data.requirements];
+  // Keep the historical snapshot intact; only the approved Windows readiness
+  // requirement is inserted, without rewriting any existing help prose.
+  requirements.splice(1,0,'Windows requires the complete Node-API private-storage backend on supported local NTFS, including bounded owned handles and durable directory publication. Missing native support refuses before capture; no POSIX or permission-only fallback is used.');
+  assert.equal(original.stdout,JSON.stringify({...frozen,data:{...frozen.data,requirements}})+'\n');
+  const localizedRequirements = JSON.parse(readFileSync(new URL('./fixtures/backup-help-requirements-locales.json',import.meta.url),'utf8')) as {legacy:Record<Locale,string[]>;windows:Record<Locale,string>};
   const base = JSON.parse(original.stdout).data;
   for (const locale of LOCALES) {
     const localized = backup(['--locale',locale,'--help']);
     assert.equal(localized.status,0);
     const data=JSON.parse(localized.stdout).data;
+    const legacyRequirements = [...data.requirements];
+    assert.deepEqual(legacyRequirements.splice(1,1),[localizedRequirements.windows[locale]],'Windows readiness occupies the same help slot in every explicit locale');
+    assert.deepEqual(legacyRequirements,localizedRequirements.legacy[locale],'all pre-existing translated requirements retain their exact text and order');
     for (const section of ['requirements','privacy','safety']) {
       assert.equal(data[section].length,base[section].length);
       for (let i=0;i<data[section].length;i++) assert.equal(data[section][i],translate(locale,`backup.${section}.${i}` as never, {} as never));

@@ -16,6 +16,27 @@ import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schem
 const ordinary = {schemaVersion: 42, profile: 'ordinary'};
 const restored = {schemaVersion: 43, sourceSchema: 42, profile: 'restored-local-v10'};
 const root = new URL('../', import.meta.url);
+const cliDeltaBytes = readFileSync(new URL('./fixtures/agent-cli-reviewed-source-deltas.json', import.meta.url));
+const cliDeltas = JSON.parse(cliDeltaBytes);
+// This guard only closes the legacy Windows draft path. Reverse that exact
+// addition; dormant opacity profiles and every previous source pin stay fixed.
+function reverseReviewedCliDraft(file, bytes) {
+  if (file !== 'packages/business/src/local-drafts.ts') return bytes;
+  const sha256 = value => createHash('sha256').update(value).digest('hex');
+  assert.equal(sha256(cliDeltaBytes), '46376e8cbbb647cd28790fdfbebfc795cb462cbe180d918ff12df160af491398');
+  const entries = cliDeltas.files.filter(item => item.path === file); assert.equal(entries.length, 1);
+  const delta = entries[0]; assert.equal(delta.inverse.length, 1);
+  assert.equal(bytes.byteLength, delta.afterBytes); assert.equal(sha256(bytes), delta.afterSha256, `${file}: exact reviewed Windows draft guard`);
+  let source = bytes.toString('utf8');
+  for (const inverse of delta.inverse) {
+    assert.equal(inverse.before, ''); assert.equal(inverse.occurrences, 1); assert.ok(inverse.after.length > 0);
+    assert.equal(source.split(inverse.after).length - 1, 1, `${file}: unique Windows guard inverse`);
+    source = source.replace(inverse.after, inverse.before);
+  }
+  const previous = Buffer.from(source);
+  assert.equal(previous.byteLength, delta.beforeBytes); assert.equal(sha256(previous), delta.beforeSha256);
+  return previous;
+}
 // The reviewed origin/main integration adds the video catalog and harness v2
 // (ordinary52/restored53). Pin every byte of these eight changed current files,
 // then compare their fixed PR12 predecessors against all unchanged old pins.
@@ -186,7 +207,7 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
     assert.equal(sha256(reverseReviewed(path, bytes, pinned)), pinned, path);
     const mapping=currentMap.mapping[path],currentPath=mapping?.currentPath??path,currentBytes=readFileSync(new URL(currentPath,root));
     const assertCurrent=value=>{
-      const reviewed=reverseReviewedLoudnessRange(path,reverseReviewedIntegration(path,value));
+      const reviewed=reverseReviewedLoudnessRange(path,reverseReviewedIntegration(path,reverseReviewedCliDraft(path,value)));
       assert.equal(sha256(reviewed),mapping?.currentRawSha256??sha256(bytes),`${path}: current raw source`);
       if(mapping?.typeErasedSha256!==null&&mapping?.typeErasedSha256!==undefined)assert.equal(sha256(transformSync(reviewed.toString('utf8'),{loader:'ts',format:'esm',target:'es2022'}).code),mapping.typeErasedSha256,`${path}: current executable source`);
     };
@@ -217,6 +238,24 @@ test('finite LRA inverses preserve all prior raw/runtime pins and reject changed
       for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after), source.replace(inverse.after, ''), source + '\n// synthetic unreviewed source addition\n']) assert.throws(() => assertPinned(changed));
     }
   }
+});
+
+test('finite Windows draft guard inverse retains the original opacity raw/runtime pins and rejects unreviewed bytes', () => {
+  const file = 'packages/business/src/local-drafts.ts', sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+  assert.equal(cliDeltas.predecessorCommit, '3e5ed71c01ff8d06403e1c4b2cb082cd81e26907');
+  assert.equal(cliDeltas.acceptedCommit, '6904a53249a2cdec1ee6a84c8bfb01f8e0056353');
+  const before = execFileSync('git', ['show', `${cliDeltas.predecessorCommit}:${file}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
+  const accepted = execFileSync('git', ['show', `${cliDeltas.acceptedCommit}:${file}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
+  const mapping = JSON.parse(readFileSync(new URL('./fixtures/opacity-current-ts-runtime-map.json', import.meta.url))).mapping[file];
+  assert.equal(sha256(before), mapping.currentRawSha256); assert.deepEqual(reverseReviewedCliDraft(file, accepted), before);
+  const source = readFileSync(new URL(file, root), 'utf8'), inverse = cliDeltas.files.find(item => item.path === file).inverse[0];
+  const assertPinned = value => {
+    const previous = reverseReviewedCliDraft(file, Buffer.from(value));
+    assert.equal(sha256(previous), mapping.currentRawSha256);
+    assert.equal(sha256(transformSync(previous.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256);
+  };
+  assertPinned(source);
+  for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after), source.replace(inverse.after, ''), source + '\nexport const hiddenOpacityAuthority = true;\n']) assert.throws(() => assertPinned(changed));
 });
 
 test('reviewed main integration keeps original current pins and rejects any unknown current source byte', () => {

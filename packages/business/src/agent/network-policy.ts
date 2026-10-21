@@ -7,7 +7,7 @@ import {request as httpRequestDefault, type ClientRequest, type IncomingMessage,
 import {checkServerIdentity, type TLSSocket} from 'node:tls';
 import {parseAgentConfiguration} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
-import {agentChatError, errorCode} from './chat-errors.ts';
+import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatError, agentChatHttpError, errorCode} from './chat-errors.ts';
 import type {AgentChatFailure} from './chat-errors.ts';
 
 export const AGENT_NETWORK_LIMITS = Object.freeze({connectTimeoutMs: 10000, readTimeoutMs: 20000, totalTimeoutMs: 120000, maxHeaderBytes: 16384, maxDnsAnswers: 64});
@@ -38,6 +38,10 @@ export interface AgentTransportRequest {
   beforeSubmit?: unknown;
 }
 export type AgentTransport = (options: AgentTransportRequest) => Promise<AgentTransportStream>;
+const preventedSubmissions=new WeakSet<object>();
+/** Only this transport's local send phase can certify absence of HTTP dispatch.
+ * Codes and externally supplied properties are never evidence. */
+export const wasAgentTransportSubmissionPrevented=(error:unknown):boolean=>error!==null&&typeof error==='object'&&preventedSubmissions.has(error);
 function denied(): never { throw agentChatError('AGENT_CHAT_NETWORK_DENIED'); }
 const bareHost = (host: string): string => host.startsWith('[') ? host.slice(1, -1) : host;
 function ipv6Words(address: string): number[] | null {
@@ -132,6 +136,20 @@ function limitsFor(overrides: Record<string, number> = {}): NetworkLimits {
   }
   return result;
 }
+/** Retain at most the diagnostic limit; incomplete/failed streams have no hints.
+ * The caller owns cancellation and all existing network deadlines. */
+async function readHttp400Diagnostic(incoming: IncomingMessage): Promise<Uint8Array | undefined> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  try {
+    for await (const chunk of incoming) {
+      if (!(chunk instanceof Uint8Array) || chunk.byteLength > AGENT_HTTP_DIAGNOSTIC_MAX_BYTES - size) return undefined;
+      size += chunk.byteLength;
+      chunks.push(Buffer.from(chunk));
+    }
+    return size ? Buffer.concat(chunks, size) : undefined;
+  } catch { return undefined; }
+}
 /** Dependency injection is a trusted-code construction boundary, not an HTTP
  * option. Production uses Node HTTPS directly: no fetch, proxy, redirects,
  * cookie jar, global pooled agent, arbitrary header input or second lookup. */
@@ -139,10 +157,10 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
   const limits = limitsFor(overrides);
   return async function openAgentStream({configuration, apiKey, body, signal, selfPort, beforeSubmit}: AgentTransportRequest): Promise<AgentTransportStream> {
     const controller = new AbortController();
-    let request: ClientRequest | undefined, response: IncomingMessage | undefined, failed: AgentChatFailure | null = null, rejectPending: ((reason: AgentChatFailure) => void) | undefined, closed = false;
-    function fail(code: string): void {
+    let request: ClientRequest | undefined, response: IncomingMessage | undefined, failed: AgentChatFailure | null = null, rejectPending: ((reason: AgentChatFailure) => void) | undefined, closed = false, mayHaveSent = false, readingHttp400 = false;
+    function fail(code: string, httpStatus?: number, diagnosticBody?: Uint8Array): void {
       if (closed || failed) return;
-      failed = agentChatError(code);
+      failed = code === 'AGENT_CHAT_HTTP_ERROR' ? agentChatHttpError(httpStatus, diagnosticBody) : agentChatError(code);
       controller.abort(failed);
       request?.destroy(); response?.destroy();
       rejectPending?.(failed);
@@ -188,14 +206,22 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
         rejectPending = reject;
         request = requestFn(requestOptions as HttpsRequestOptions, incoming => {
           if (failed) { incoming.destroy(); return; }
-          if (incoming.statusCode !== 200) { fail('AGENT_CHAT_HTTP_ERROR'); return; }
+          if (incoming.statusCode === 400) {
+            readingHttp400 = true;
+            // Track the response before awaiting bytes so abort/timeout destroys
+            // it and settles the pending open, even if the body never completes.
+            response = incoming;
+            void readHttp400Diagnostic(incoming).then(bytes => fail('AGENT_CHAT_HTTP_ERROR', 400, bytes), () => fail('AGENT_CHAT_HTTP_ERROR', 400));
+            return;
+          }
+          if (incoming.statusCode !== 200) { fail('AGENT_CHAT_HTTP_ERROR', incoming.statusCode); return; }
           const contentType = incoming.headers['content-type'];
           const encoding = incoming.headers['content-encoding'];
           if (typeof contentType !== 'string' || !/^text\/event-stream(?:\s*;\s*charset\s*=\s*utf-8)?\s*$/i.test(contentType) || (encoding && encoding !== 'identity')) { fail('AGENT_CHAT_PROTOCOL_ERROR'); return; }
           incoming.on('error', () => { if (!closed && !failed) failed = agentChatError('AGENT_CHAT_TRUNCATED'); });
           resolve(incoming);
         });
-        request.on('error', () => fail('AGENT_CHAT_CONNECT_FAILED'));
+        request.on('error', () => readingHttp400 ? fail('AGENT_CHAT_HTTP_ERROR', 400) : fail('AGENT_CHAT_CONNECT_FAILED'));
         request.on('upgrade', (_res, socket) => { socket.destroy(); fail('AGENT_CHAT_PROTOCOL_ERROR'); });
         request.setTimeout(limits.readTimeoutMs, () => fail('AGENT_CHAT_TIMEOUT'));
         request.once('socket', socket => {
@@ -206,7 +232,10 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
             clearTimeout(connectTimer);
             // Wait until the pinned peer and, for HTTPS, authenticated TLS are
             // verified before transmitting any headers, key or request content.
-            request?.end(body);
+            // end() can partially send and then throw; retire the no-send proof
+            // before entering it, regardless of any resulting error's code.
+            mayHaveSent = true;
+            try { request?.end(body); } catch { fail('AGENT_CHAT_CONNECT_FAILED'); }
           });
         });
       });
@@ -214,8 +243,9 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
       return {body: resolved, close, error: () => failed};
     } catch (error) {
       close();
-      if (failed) throw failed;
-      throw agentChatError(errorCode(error) || 'AGENT_CHAT_CONNECT_FAILED');
+      const failure = failed || agentChatError(errorCode(error) || 'AGENT_CHAT_CONNECT_FAILED');
+      if (!mayHaveSent) preventedSubmissions.add(failure);
+      throw failure;
     }
   };
 }

@@ -85,6 +85,10 @@ void dbModule; // Installs the unchanged fixed envelope runtime before schema us
 const profile = restore41.createWorkspaceRestoreProfileV41(schemas.initializeWorkspaceSchemaThrough24);
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const stamp = '2026-10-16T00:00:00.000Z';
+const subtitleHelp = 'Filter drawtext\n  Synthetic drawtext filter\ndrawtext AVOptions:\n' +
+  ['fontfile', 'textfile', 'expansion', 'fontsize', 'borderw', 'line_spacing', 'fontcolor', 'bordercolor', 'x', 'y']
+    .map(name => `   ${name} <string> ..FV....... synthetic option\n`).join('') +
+  "\nThis filter has support for timeline through the 'enable' option.\n";
 
 async function fixture(root, managed) {
   const bytes = imageFixtures.png({width: 8, height: 8});
@@ -182,7 +186,22 @@ function fakeRuntime(snapshot, root) {
       timeout: options.timeout, maxStdoutBytes: options.maxStdoutBytes, maxStderrBytes: options.maxStderrBytes});
   };
   return {calls, scriptOptions, rawArgv,
-    async run(command, args, options) { remember('run', command, args, options); return ''; },
+    async run(command, args, options) {
+      remember('run', command, args, options);
+      if (args.includes('-h')) {
+        assert.equal(command, 'ffmpeg');
+        assert.deepEqual(args, ['-hide_banner', '-h', 'filter=drawtext']);
+        assert.deepEqual(Object.keys(options).sort(), ['beforeEffect', 'maxStderrBytes', 'maxStdoutBytes', 'signal', 'timeout']);
+        assert.equal(options.timeout, 15000);
+        assert.equal(options.maxStdoutBytes, 64 * 1024);
+        assert.equal(options.maxStderrBytes, 64 * 1024);
+        assert.equal(typeof options.beforeEffect, 'function');
+        assert.equal(options.signal, undefined);
+        // An absent FriBidi option retains the baseline filter bytes exactly.
+        return subtitleHelp;
+      }
+      return '';
+    },
     async runStreaming(command, args, options) {
       remember('runStreaming', command, args, options);
       assert.ok(args.includes('-/filter:v'), 'only subtitle ink measurement may stream, using the current file-argument syntax');
@@ -231,6 +250,7 @@ test('old40/41 graphs and argv match pinned pre-seam renderer except equivalent 
         activeRuntime = fakeRuntime(snapshot, root);
         await oldRenderer.renderTimeline(snapshot, source.assets, destination, {beforeEffect() {}});
         const expected = activeRuntime.calls;
+        assert.equal(expected.filter(call => call.argv?.includes('-h')).length, Number(managed), 'only nonempty subtitles inspect drawtext once');
         activeRuntime = fakeRuntime(snapshot, root);
         await currentRenderer.renderTimeline(snapshot, source.assets, destination, {beforeEffect() {}});
         assert.deepEqual(activeRuntime.scriptOptions, managed ? ['-/filter:v', '-/filter_complex', '-/filter_complex', '-/filter_complex'] : [], 'current renderer always uses the supported file-option names');

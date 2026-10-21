@@ -10,6 +10,7 @@
     "start": "node src/index.ts"
   },
   "dependencies": {
+    "@mioon/node-host": "workspace:*",
     "@mioon/client": "workspace:*",
     "@mioon/i18n": "workspace:*"
   }

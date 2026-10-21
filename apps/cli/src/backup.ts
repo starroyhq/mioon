@@ -116,6 +116,7 @@ function help(topic: string | undefined) {
     usage: topic ? [commands[topic]] : [...Object.values(commands), 'node apps/cli/src/backup.ts --help', 'node apps/cli/src/backup.ts --version', 'pnpm backup --help'],
     requirements: [
       'Node.js 24+ with installed source workspace dependencies.',
+      'Windows requires the complete Node-API private-storage backend on supported local NTFS, including bounded owned handles and durable directory publication. Missing native support refuses before capture; no POSIX or permission-only fallback is used.',
       'Close every backend or desktop app using the source workspace before capture. Existing locks and uncheckpointed SQLite sidecars are refused without repair.',
       'Use explicit canonical absolute paths. The destination must be new, with an existing safe parent, and must not overlap the source. Restore also refuses destination ancestors containing workbench.sqlite or server.lock; choose an independent workspace root.',
       'Backup format1 does not record its original source path. Renamed or uninitialized source directories lacking fixed workspace/lock markers cannot be identified automatically; keep the new destination outside your original workspace.',
@@ -192,6 +193,9 @@ export async function runBackupCli(argv: readonly string[] = process.argv.slice(
     if (input.command === 'help') data = localizeBackupHelp(help(input.topic), locale);
     else if (input.command === 'version') data = {name: 'mioon-backup', version: version()};
     else {
+      // Initialize the platform backend before creating any lock or destination.
+      // Backup additionally requires owned streaming handles and durable publication.
+      await (await import('@mioon/node-host/private-storage-bootstrap')).initializeNodePrivateStorage();
       const controller = new AbortController();
       const interrupt = (signal: 'SIGINT' | 'SIGTERM') => {
         firstSignal ??= signal;

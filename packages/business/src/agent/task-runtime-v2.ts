@@ -1,7 +1,7 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {agentTaskControlSchema,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskControlSchema,agentTaskDiagnosticSchema,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
@@ -13,6 +13,7 @@ import type {AgentSettingsService} from './settings.ts';
 import type {ChatAuthorizations} from './chat-runtime.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
+import {agentChatHttpStatus,safeAgentChatError} from './chat-errors.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,TASK_MODEL_LIMITS,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskModelOutput} from './task-gateway-v2.ts';
 
@@ -48,6 +49,13 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   const checkOpen=():void=>{if(closed)throw agentTaskFailure('AGENT_TASK_CLOSED');};
   function mutable():void {checkOpen();if(readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');if(storageFaulted)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');assertMutationAllowed?.();}
   function toolset():AgentTaskTools {mutable();if(!tools)throw agentTaskFailure('AGENT_TASK_CLOSED');return tools;}
+  function runTools(run:AgentTaskRun){
+    const definitions=toolset().list(),diagnostic=run.diagnostic;
+    if(!diagnostic)return definitions;
+    if(diagnostic.profile==='text')return [];
+    if(diagnostic.profile==='read_only')return definitions.filter(tool=>tool.risk==='read_only');
+    return diagnostic.toolNames?definitions.filter(tool=>diagnostic.toolNames!.includes(tool.name)):definitions;
+  }
   const configuration=(run:AgentTaskRun):AgentConfiguration=>parseAgentConfiguration(run.configuration,{selfPort:selfPort()});
   const owned=(projectId:string,id:string):AgentTaskRun=>{checkOpen();if(!hasTables)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const run=journal.run(id);if(run.projectId!==projectId)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return run;};
   function authorize(run:AgentTaskRun):void {
@@ -113,6 +121,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(step&&['unknown','dispatch_started'].includes(step.status))throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
     if(!step&&record(source.data)&&source.data.toolsInvalidated===true)return {...source,kind:'tool',status:'rejected',toolCall:call,result:{error:{code:'TARGET_CHANGED',message:'此批旧工具参数已失效，请按当前保存状态重新规划。'}}};
     const run=fence(runId);let prepared:PreparedAgentTaskTool|undefined;
+    // Diagnostic selection is a host-only restriction, never an authority. In
+    // particular, catalog probes describe write tools without executing them.
+    if(run.diagnostic&&(run.diagnostic.profile!=='read_only'||!runTools(run).some(tool=>tool.name===call.name)))throw agentTaskFailure('AGENT_TASK_DIAGNOSTIC_TOOL_FORBIDDEN');
     if(!step)step=journal.beginStep(runId,{kind:'tool',toolCall:call,data:{sourceModelStepId:source.id}});
     try {
       prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments});
@@ -174,7 +185,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           if(model.status==='intent'){pendingModel=model;break;}
           if(model.status!=='completed')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
           const output=modelOutput(model.result);
-          if(!output.toolCalls.length){
+          if(!output.toolCalls.length||run.diagnostic?.profile==='catalog'){
             if(record(model.data)&&model.data.replanRequested===true){history.push(...taskContinuation(config.protocol,output,[]),{role:'user',content:'原排队操作因目标冲突已取消。请重新读取当前保存状态后规划，不要重放旧参数或假定生成已提交。'});continue;}
             changeStatus(runId,'completed');return;
           }
@@ -186,7 +197,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           history.push(...taskContinuation(config.protocol,output,results));resumeModel=model;
         }
         fence(runId);
-        const body=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:buildTaskModelRequest(config,history,toolset().list(),selfPort()),model=pendingModel??journal.beginStep(runId,{kind:'model',request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}});
+        const body=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:buildTaskModelRequest(config,history,runTools(run),selfPort()),model=pendingModel??journal.beginStep(runId,{kind:'model',request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}});
         journal.markDispatch(runId,model.id);let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
         const flush=()=>{if(pending&&!closed){journal.appendText(runId,model.id,pending);pending='';lastFlush=Date.now();}};
         for await(const item of gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),beforeSubmit:()=>{fence(runId);}})){
@@ -205,9 +216,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const run=journal.run(runId);if(terminal(run)||run.status==='paused'||run.status==='awaiting_approval')return;
       const failure=code(error);
       if(failure==='AGENT_TASK_BUDGET_EXHAUSTED'){pause(runId,'budget');return;}
-      for(const step of journal.snapshot(runId).steps)if(step.status==='dispatch_started')journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:agentTaskFailure(failure).message}});
+      const message=agentChatHttpStatus(error)===undefined?agentTaskFailure(failure).message:safeAgentChatError(error).message;
+      for(const step of journal.snapshot(runId).steps)if(step.status==='dispatch_started')journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message}});
       if(failure==='AGENT_TASK_UNKNOWN_RESULT'){pause(runId,'unknown_outcome');return;}
-      changeStatus(runId,'failed',failure);journal.appendEvent(runId,'error',{code:failure,message:agentTaskFailure(failure).message});
+      changeStatus(runId,'failed',failure);journal.appendEvent(runId,'error',{code:failure,message});
     }
   }
   function launch(runId:string):void {
@@ -220,14 +232,18 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     };
     entry.promise=execute(runId,controller.signal).catch(failClosed).finally(()=>{if(active.get(runId)===entry)active.delete(runId);if(entry.restartRequested&&!closed&&!storageFaulted&&journal.run(runId).status==='running')queueMicrotask(()=>launch(runId));}).catch(failClosed);
   }
-  async function snapshot(projectId:string){checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const settings=sanitizeAgentSettingsResult(await agentSettings.get());return {version:2 as const,instanceId,projectId,readOnly,runs:(hasTables?journal.list(projectId):[]).map(run=>{const {context,...summary}=run;return summary;}),policy:hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),settings,authorization:authorizations.snapshot(settings.configuration)};}
+  async function snapshot(projectId:string){checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));return {version:2 as const,instanceId,projectId,readOnly,runs:(hasTables?journal.list(projectId):[]).map(run=>{const {context,...summary}=run;return summary;}),policy:hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),settings,authorization:authorizations.snapshot(settings.configuration)};}
   async function send(projectId:string,input:unknown):Promise<AgentTaskSnapshot>{
-    mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','text','expectedSettingsRevision','expectedRevision','uploads'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200||typeof input.text!=='string'||!input.text.trim()||Buffer.byteLength(input.text)>32*1024||!Number.isSafeInteger(input.expectedSettingsRevision)||input.uploads!==undefined&&(!Array.isArray(input.uploads)||input.uploads.length>20||input.uploads.some(id=>typeof id!=='string'||!/^[-a-f0-9]{36}$/u.test(id))))throw agentTaskFailure('AGENT_TASK_INVALID');
+    mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','text','expectedSettingsRevision','expectedRevision','uploads','diagnostic'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200||typeof input.text!=='string'||!input.text.trim()||Buffer.byteLength(input.text)>32*1024||!Number.isSafeInteger(input.expectedSettingsRevision)||input.uploads!==undefined&&(!Array.isArray(input.uploads)||input.uploads.length>20||input.uploads.some(id=>typeof id!=='string'||!/^[-a-f0-9]{36}$/u.test(id))))throw agentTaskFailure('AGENT_TASK_INVALID');
+    const parsedDiagnostic=input.diagnostic===undefined?undefined:agentTaskDiagnosticSchema.safeParse(input.diagnostic);
+    if(parsedDiagnostic&&!parsedDiagnostic.success)throw agentTaskFailure('AGENT_TASK_INVALID');
+    const diagnostic=parsedDiagnostic?.success?parsedDiagnostic.data:undefined;
+    if(diagnostic?.toolNames?.some(name=>!toolset().list().some(tool=>tool.name===name)))throw agentTaskFailure('AGENT_TASK_INVALID');
     const uploads=(input.uploads??[]) as string[];
-    const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||!isDeepStrictEqual(previous.run.attachments??[],uploads))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous);}
-    const settings=sanitizeAgentSettingsResult(await agentSettings.get());if(settings.revision!==input.expectedSettingsRevision)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
+    const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||!isDeepStrictEqual(previous.run.attachments??[],uploads)||!isDeepStrictEqual(previous.run.diagnostic,diagnostic))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous);}
+    const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));if(settings.revision!==input.expectedSettingsRevision)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
     const dummy={configuration:json(settings.configuration)} as AgentTaskRun;authorize(dummy);
-    const context:AgentTaskJson[]=[];for(const old of journal.list(projectId).filter(item=>item.status==='completed').slice(0,4).reverse()){
+    const context:AgentTaskJson[]=[];for(const old of (diagnostic?[]:journal.list(projectId).filter(item=>item.status==='completed'&&!item.diagnostic)).slice(0,4).reverse()){
       const final=journal.snapshot(old.id).steps.filter(step=>step.kind==='model'&&step.status==='completed').at(-1);if(final&&record(final.result)&&typeof final.result.text==='string')context.push({role:'user',content:old.text},{role:'assistant',content:final.result.text});
     }
     const attachments=uploads.map(id=>{const row=store.db.prepare('SELECT id,name,mimeType FROM agent_task_imports_v2 WHERE id=? AND projectId=?').get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
@@ -235,7 +251,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     while(context.length>1&&Buffer.byteLength(JSON.stringify(context))>TASK_MODEL_LIMITS.historyBytes)context.splice(0,2);
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
-    const created=journal.create({projectId,requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id));
+    const created=journal.create({projectId,requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id));
   }
   async function action(projectId:string,runId:string,input:unknown):Promise<AgentTaskSnapshot>{
     mutable();const parsed=agentTaskControlSchema.safeParse(record(input)?{...input,runId}:input);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_INVALID');const request=parsed.data;
@@ -246,18 +262,19 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(!terminal(run))throw agentTaskFailure('AGENT_TASK_PAUSED');
       journal.beginControl(request);
       const candidates=journal.snapshot(runId).changes.reverse();
-      const chain=new Map<string,AgentTaskTarget>();
+      const chain=new Map<string,AgentTaskTarget>(),retainedChangeIds:string[]=[];
       try{for(const change of candidates){
         if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(`${target.kind}:${target.id}`,target);continue;}
         if(change.status!=='applied'||!change.reversible||request.action==='undo_change'&&change.id!==request.changeId)continue;
         // A saved compensation revision only bridges adjacent AI changes. It
         // must not jump across an intervening external edit, including ABA.
         const expectedTargets=change.targets.map(target=>{const next=chain.get(`${target.kind}:${target.id}`);return next&&next.revisionBefore===(target.revisionAfter??target.revision)?next:target;});
-        const reverted=toolset().undo(change,{requestId:`${request.requestId}:${change.id}`,expectedTargets,beforeEffect:()=>{owned(projectId,runId);journal.assertTargets(projectId,expectedTargets);},recordInside:()=>{journal.markChangeRevertedInside(change.id);}});
+        const reverted=toolset().undo(change,{requestId:`${request.requestId}:${change.id}`,expectedTargets,beforeEffect:()=>{owned(projectId,runId);journal.assertTargets(projectId,expectedTargets);},recordInside:()=>{journal.markChangeRevertedInside(change.id);},retainInside:(_change,reason)=>{journal.markChangeRetainedInside(change.id,reason);}});
+        if(reverted.retained){retainedChangeIds.push(change.id);continue;}
         for(const target of reverted.targets)chain.set(`${target.kind}:${target.id}`,target);
-      }}catch(error){journal.finishControl(request.requestId,{state:'blocked',code:code(error)});throw error;}
+      }}catch(error){journal.finishControl(request.requestId,{state:'blocked',code:code(error),...(retainedChangeIds.length?{retainedChangeIds}:{})});throw error;}
       run=journal.run(runId);if(request.action==='undo_all'&&!journal.snapshot(runId).changes.some(change=>change.reversible&&change.status==='applied'))changeStatus(runId,'reverted');
-      journal.finishControl(request.requestId,{state:'completed'});
+      journal.finishControl(request.requestId,{state:'completed',...(retainedChangeIds.length?{retainedChangeIds}:{})});
     }else journal.performControl(request,()=>{
       run=owned(projectId,runId);if(run.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
       if(request.action==='pause'){if(run.status==='running'||run.status==='awaiting_approval'||run.status==='completed'&&journal.hasPendingBackground(runId))changeStatus(runId,'paused','user');}
@@ -267,7 +284,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(request.action==='approve'){authorize(run);journal.assertTargets(projectId,background?dispatchTargets(step):step.targets??[]);}
         if(background){journal.updateStep(runId,step.id,{data:{...(record(step.data)?step.data:{}),backgroundApprovalRequired:false,...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{backgroundDenied:true})}});if(request.action==='deny')cancelBackgroundSteps.push(step.id);}
         else journal.updateStep(runId,step.id,{status:request.action==='approve'?'intent':'rejected',data:{...(record(step.data)?step.data:{}),...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{})},...(request.action==='deny'?{result:{error:{code:'USER_REJECTED',message:'用户拒绝了此操作。'}}}:{})});
-        journal.resume(runId,journal.run(runId).revision);
+        journal.resume(runId,journal.run(runId).revision,{extendBudget:false});
       }else if(request.action==='resolve_unknown'){
         if(!request.stepId)throw agentTaskFailure('AGENT_TASK_INVALID');const step=journal.step(request.stepId);if(step.runId!==runId||step.status!=='unknown')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
         if(step.kind==='model'&&request.resolution==='discard')journal.updateStep(runId,step.id,{status:'failed',result:{discarded:true},error:{code:'USER_DISCARDED_UNKNOWN',message:'用户已将未知模型请求标记为失败。'}});
@@ -291,7 +308,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           }
           for(const step of steps)if(step.kind!=='model'&&(step.status==='intent'||step.status==='awaiting_approval'))journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'TARGET_CHANGED',message:'目标已变化，请按当前保存状态重新规划。'}}});
         }
-        journal.resume(runId,journal.run(runId).revision);
+        journal.resume(runId,journal.run(runId).revision,{extendBudget:true});
       }
       return null;
     });

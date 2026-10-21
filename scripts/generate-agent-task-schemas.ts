@@ -1,19 +1,23 @@
 import {writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {isDeepStrictEqual} from 'node:util';
 import {operationDefinition} from '../packages/client/src/index.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
+import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
 
-const hidden=new Set(['projectId','requestId']);
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-function project(value:unknown):unknown{
- if(Array.isArray(value))return value.map(project);
- if(!record(value))return value;
- return Object.fromEntries(Object.entries(value).map(([key,child])=>[key,
-  key==='properties'&&record(child)?Object.fromEntries(Object.entries(child).filter(([field])=>!hidden.has(field)).map(([field,nested])=>[field,project(nested)])):
-  key==='required'&&Array.isArray(child)?child.filter(field=>!hidden.has(String(field))):project(child),
- ]));
-}
-const entries=Object.fromEntries(Object.keys(schemas).map(operation=>[operation,project(operationDefinition(operation).inputSchema)]));
+// Reuse the client's installed converter only at generation time. Public
+// CLI/MCP discovery keeps its original references and runtime dependencies.
+const {zodToJsonSchema}=createRequire(new URL('../packages/client/package.json',import.meta.url))('zod-to-json-schema') as {zodToJsonSchema:(schema:unknown,options:{$refStrategy:'none';strictUnions:true;pipeStrategy:'input'})=>unknown};
+const entries=Object.fromEntries(Object.entries(schemas).map(([operation,schema])=>{
+ const shared=operationDefinition(operation).inputSchema,expected=projectAgentTaskToolSchema(shared);
+ const converted=zodToJsonSchema(schema,{$refStrategy:'none',strictUnions:true,pipeStrategy:'input'});
+ if(!record(converted))throw Error(`Invalid generated tool schema: ${operation}`);
+ const projected=projectAgentTaskToolSchema(shared.type==='object'&&converted.type===undefined?{...converted,type:'object'}:converted);
+ if(!isDeepStrictEqual(projected,expected))throw Error(`Inline tool schema differs from shared constraints: ${operation}`);
+ return [operation,projected];
+}));
 const hash=createHash('sha256').update(JSON.stringify(entries)).digest('hex');
 writeFileSync(new URL('../packages/business/src/agent/task-tool-schemas-v2.ts',import.meta.url),
  '// Generated with node scripts/generate-agent-task-schemas.ts.\n'+

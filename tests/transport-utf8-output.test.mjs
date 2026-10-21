@@ -69,6 +69,11 @@ test('actual full shared catalog survives the reproduced version-list descriptio
 // the same file are counted separately. SDK-owned stdout has no such listener:
 // the SDK concatenates its protocol Buffers before decoding complete messages.
 const textSites = {
+  // Agent CLI JSON/progress and public secret-test diagnostics are UTF-8 text.
+  'tests/cli-agent.test.mjs': 2,
+  'tests/headless-agent-secret-public-native.test.mjs': 2,
+  // Native CLI smoke parses stdout; stderr is counted as raw bytes below.
+  'tests/windows-node-host-smoke.test.mjs': 1,
   'tests/client-version-source.test.ts': 1,
   'tests/comfy-module-http.test.mjs': 2,
   'tests/desktop-exit-recovery.test.mjs': 1,
@@ -228,6 +233,17 @@ const bufferedSites = {
     sink: "await writeFile(path.join(root, 'electron.log'), Buffer.concat(logs), {mode: 0o600});",
   },
 };
+// Some native workers only count diagnostics, without decoding or retaining
+// them. Classify each exact listener so a mixed text/byte file is not exempted.
+const byteCountSites = {
+  'tests/windows-node-host-smoke.test.mjs': {
+    'child.stderr': {counter:'stderrBytes',registration:"child.stderr.on('data',bytes=>{stderrBytes+=bytes.length;});",sink:'assert.ok(stderrBytes<8192)'},
+  },
+  'tests/windows-private-storage-races.test.mjs': {
+    'child.stdout': {counter:'outputBytes',registration:"child.stdout.on('data',bytes=>{outputBytes+=bytes.length;});",sink:"assert.ok(outputBytes<8192,'Worker diagnostic output must remain bounded')"},
+    'child.stderr': {counter:'outputBytes',registration:"child.stderr.on('data',bytes=>{outputBytes+=bytes.length;});",sink:"assert.ok(outputBytes<8192,'Worker diagnostic output must remain bounded')"},
+  },
+};
 const root = fileURLToPath(new URL('..', import.meta.url));
 async function sourceFiles(directory) {
   const files = [];
@@ -247,7 +263,7 @@ const canonicalInventoryName = name => name.replace(/\.(?:mjs|ts|jsx|tsx)$/u, ''
 const canonicalInventory = map => new Map(Object.entries(map).map(([name, value]) => [canonicalInventoryName(name), value]));
 const canonicalTextSites = canonicalInventory(textSites), canonicalBinarySites = canonicalInventory(binarySites),
   canonicalPassthroughSites = canonicalInventory(passthroughSites), canonicalBufferedSites = canonicalInventory(bufferedSites),
-  canonicalDiscardedSites = canonicalInventory(discardedSites);
+  canonicalDiscardedSites = canonicalInventory(discardedSites), canonicalByteCountSites = canonicalInventory(byteCountSites);
 test('every inventoried test/QA text collector configures continuous decoding at its actual listener, before delivery', async () => {
   const found = {};
   for (const file of await sourceFiles(path.join(root, 'tests'))) {
@@ -266,7 +282,7 @@ test('every inventoried test/QA text collector configures continuous decoding at
     if (!sites.length) continue;
     assert.equal(Object.hasOwn(found, inventoryName), false, `${name}: duplicate canonical inventory name during migration`);
     found[inventoryName] = sites.length;
-    assert.ok(canonicalTextSites.has(inventoryName) || canonicalBinarySites.has(inventoryName) || canonicalPassthroughSites.has(inventoryName) || canonicalBufferedSites.has(inventoryName) || canonicalDiscardedSites.has(inventoryName), `${name}: classify each newly introduced stream consumer`);
+    assert.ok(canonicalTextSites.has(inventoryName) || canonicalBinarySites.has(inventoryName) || canonicalPassthroughSites.has(inventoryName) || canonicalBufferedSites.has(inventoryName) || canonicalDiscardedSites.has(inventoryName) || canonicalByteCountSites.has(inventoryName), `${name}: classify each newly introduced stream consumer`);
     if (canonicalDiscardedSites.has(inventoryName)) {
       assert.equal(sites.length, 1, name);
       assert.ok(source.startsWith(canonicalDiscardedSites.get(inventoryName), sites[0].index), `${name}: retain the exact empty byte drain`);
@@ -294,14 +310,29 @@ test('every inventoried test/QA text collector configures continuous decoding at
       for (const site of sites) assert.equal(site.groups.decode, undefined, `${name}: keep raw byte writer binary`);
       continue;
     }
-    assert.equal(sites.length, canonicalTextSites.get(inventoryName), `${name}: all helper instances remain covered`);
+    const byteCounters = canonicalByteCountSites.get(inventoryName) ?? {};
+    assert.equal(sites.length, (canonicalTextSites.get(inventoryName) ?? 0) + Object.keys(byteCounters).length, `${name}: all helper instances remain covered`);
     for (const site of sites) {
       const location = `${name}:${source.slice(0, site.index).split('\n').length}`;
-      assert.ok(site.groups.decode, `${location}: configure decoder on this stream before registering its listener`);
       const stream = new PassThrough();
       const receiver = site.groups.receiver;
       const variable = receiver.split('.')[0];
       const owner = receiver === 'stream' || receiver === 'stderrStream' ? stream : {stdout: stream, stderr: stream};
+      const counter = byteCounters[receiver];
+      if (counter) {
+        assert.equal(site.groups.decode, undefined, `${location}: byte counts must retain raw Buffers`);
+        assert.ok(source.startsWith(counter.registration,site.index), `${location}: retain the exact byte-only counter`);
+        assert.ok(source.includes(counter.sink), `${location}: retain the bounded diagnostic sink`);
+        const register = new Function(variable, `let ${counter.counter}=0;${counter.registration}return ()=>${counter.counter};`);
+        const count = register(owner), ended = once(stream,'end');
+        const expected = Buffer.concat([Buffer.from('中🎬'),Buffer.from([0xff])]);
+        for (const byte of expected) stream.write(Buffer.from([byte]));
+        stream.end();await ended;
+        assert.equal(stream.readableEncoding,null,location);
+        assert.equal(count(),expected.length,`${location}: split UTF-8 and non-text bytes are counted exactly`);
+        continue;
+      }
+      assert.ok(site.groups.decode, `${location}: configure decoder on this stream before registering its listener`);
       let actual = '';
       // Execute only the audited registration expression, not a helper, subprocess
       // or callback body. This proves its exact ordering and optional-chain shape.
@@ -320,5 +351,6 @@ test('every inventoried test/QA text collector configures continuous decoding at
     }
   }
   const expectedSites = {...Object.fromEntries(canonicalTextSites), ...Object.fromEntries(canonicalBinarySites), ...Object.fromEntries(canonicalPassthroughSites), ...Object.fromEntries([...canonicalBufferedSites].map(([name, value]) => [name, value.count])), ...Object.fromEntries([...canonicalDiscardedSites.keys()].map(name => [name, 1]))};
+  for (const [name,counters] of canonicalByteCountSites) expectedSites[name]=(expectedSites[name]??0)+Object.keys(counters).length;
   assert.deepEqual(found, Object.fromEntries(Object.entries(expectedSites).sort(([a], [b]) => a.localeCompare(b))), 'all inventoried helper and raw-file sites are present');
 });

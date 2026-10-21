@@ -271,7 +271,7 @@ test('three canvas presets preserve subtitle exclusive edges, overlapping layers
   await renderTimeline(snapshot,sources.assets,full);
   const events=[],off=onMediaProcess(event=>events.push(event));
   try{await renderTimeline({...snapshot,exportRange:{startFrame:24,endFrame:36}},sources.assets,part);}finally{off();}
-  assert.equal(events.filter(event=>event.type==='started'&&event.kind==='ffmpeg').length,7,'existing two capability processes + subtitle measure + only three intersecting segment encodes + concat');
+  assert.deepEqual(events.filter(event=>event.type==='started').map(event=>event.kind),[...Array(8).fill('ffmpeg'),'ffprobe'],'two delivery capability processes + one bounded drawtext inspection + subtitle measure + only three intersecting segment encodes + concat + output probe');
   await verify(part,12,width,height);
   const fullPixels=await video(full,scale),selectedPixels=await video(part,scale);
   t.diagnostic(JSON.stringify({preset:preset.id,resolution,expectedFrame24SourceMarkers:expectedMarkers,reference23:markerColors(fullPixels,23),reference24:markerColors(fullPixels,24),reference25:markerColors(fullPixels,25),selected0:markerColors(selectedPixels,0)}));

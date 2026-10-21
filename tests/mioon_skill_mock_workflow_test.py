@@ -28,7 +28,7 @@ class WorkflowFixture:
     def __init__(self, root, lost_operation=None):
         root = root.resolve()
         self.repo = root / 'repo'
-        self.cli = self.repo / 'apps/cli/src/index.mjs'
+        self.cli = self.repo / 'apps/cli/src/index.ts'
         self.cli.parent.mkdir(parents=True)
         self.cli.write_text('// Fixture sentinel: never executed.\n')
         self.work = root / 'work'

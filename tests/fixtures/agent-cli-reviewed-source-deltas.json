@@ -1,0 +1,113 @@
+{
+  "formatVersion": 1,
+  "predecessorCommit": "3e5ed71c01ff8d06403e1c4b2cb082cd81e26907",
+  "acceptedCommit": "6904a53249a2cdec1ee6a84c8bfb01f8e0056353",
+  "purpose": "Finite reviewed CLI/native-storage source deltas only. Restore exact predecessor bytes before comparing every unchanged historical/raw/type-erased pin; do not replace historical baselines or broaden the frozen import/schema allowlists.",
+  "files": [
+    {
+      "path": "packages/business/src/agent/chat-errors.ts",
+      "beforeSha256": "0605fd1e54c046d22960f1f768171282eedcaec3fc55e4da48fb672a7311ccd4",
+      "afterSha256": "bf9008651600611138b4e73911a41f92c2141d81ad215fc5104bd9b9b4c3cab6",
+      "beforeBytes": 3538,
+      "afterBytes": 8320,
+      "review": "Reviewed CLI diagnosis adds bounded transport-owned HTTP status and closed parameter hints; old frozen validator source and permission/error catalogs remain unchanged.",
+      "inverse": [
+        {
+          "before": "",
+          "after": "export const AGENT_HTTP_DIAGNOSTIC_MAX_BYTES = 8 * 1024;\nconst parameterFields = ['model','messages','max_tokens','stream','thinking','tools','tool_choice','function','name','parameters','properties','required','additionalProperties','type','anyOf','allOf','$ref','$schema','pattern','format','enum','const'] as const;\nconst parameterCategories = {invalid_request:'请求格式',schema:'工具参数结构',unsupported:'不支持的参数',required:'必填字段',type:'参数类型',value:'参数取值'} as const;\ntype ParameterField = (typeof parameterFields)[number];\ninterface HttpParameterHints {fields: readonly ParameterField[]; categories: readonly (keyof typeof parameterCategories)[]; toolIndices: readonly number[]}\nconst httpEvidence = new WeakMap<object, {status: number; hints?: HttpParameterHints}>();\n/** Hints are untrusted provider suggestions, never permission or retry evidence.\n * Only closed enums and bounded indices survive this in-memory classification. */\nfunction httpParameterHints(bytes: Uint8Array | undefined): HttpParameterHints | undefined {\n  if (!bytes?.byteLength || bytes.byteLength > AGENT_HTTP_DIAGNOSTIC_MAX_BYTES) return undefined;\n  try {\n    const value: unknown = JSON.parse(new TextDecoder('utf-8', {fatal:true}).decode(bytes));\n    if (value === null || typeof value !== 'object' || Array.isArray(value) || !Object.hasOwn(value, 'error')) return undefined;\n    const error: unknown = (value as {error:unknown}).error;\n    if (error === null || typeof error !== 'object' || Array.isArray(error)) return undefined;\n    const entries = error as Record<string,unknown>;\n    const text = ['message','param','code','type'].map(field => typeof entries[field] === 'string' ? entries[field] : '').join('\\n');\n    const categories: (keyof typeof parameterCategories)[] = [];\n    if (entries.code === 'invalid_request_error' || entries.type === 'invalid_request_error') categories.push('invalid_request');\n    if (/\\binvalid (?:json |function )?schema\\b|\\bschema (?:validation|error)\\b/iu.test(text)) categories.push('schema');\n    if (/\\bunsupported (?:parameter|field|type|keyword)\\b|\\bnot (?:supported|allowed|permitted)\\b/iu.test(text)) categories.push('unsupported');\n    if (/\\bmissing required\\b|\\brequired (?:field|property|parameter)\\b|\\bis required\\b/iu.test(text)) categories.push('required');\n    if (/\\binvalid type\\b|\\btype mismatch\\b/iu.test(text)) categories.push('type');\n    if (/\\binvalid (?:parameter|value)\\b/iu.test(text)) categories.push('value');\n    if (!categories.length) return undefined;\n    const fields = parameterFields.filter(field => new RegExp(`(?:^|[^A-Za-z0-9_$])${field.replace(/[.*+?^${}()|[\\]\\\\]/gu, '\\\\$&')}(?:$|[^A-Za-z0-9_$])`, 'u').test(text));\n    const toolIndices: number[] = [];\n    for (const match of text.matchAll(/\\btools(?:\\[(0|[1-9]\\d{0,2})\\]|\\.(0|[1-9]\\d{0,2}))(?=$|[.\\s:])/gu)) {\n      const index = Number(match[1] ?? match[2]);\n      if (index < 128 && !toolIndices.includes(index) && toolIndices.length < 4) toolIndices.push(index);\n    }\n    return Object.freeze({fields:Object.freeze(fields),categories:Object.freeze(categories),toolIndices:Object.freeze(toolIndices)});\n  } catch { return undefined; }\n}\n",
+          "occurrences": 1
+        },
+        {
+          "before": "",
+          "after": "/** Only transport-created errors retain a validated status, never response data. */\nexport function agentChatHttpError(statusCode: unknown, diagnosticBody?: Uint8Array): AgentChatFailure {\n  const failure = agentChatError('AGENT_CHAT_HTTP_ERROR');\n  if (typeof statusCode === 'number' && Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599 && (statusCode < 200 || statusCode >= 300)) {\n    const hints = statusCode === 400 ? httpParameterHints(diagnosticBody) : undefined;\n    httpEvidence.set(failure, {status:statusCode,...(hints ? {hints} : {})});\n  }\n  return failure;\n}\n/** Object properties, copies and wrapped causes cannot forge this evidence. */\nexport function agentChatHttpStatus(error: unknown): number | undefined {\n  return error !== null && typeof error === 'object' ? httpEvidence.get(error)?.status : undefined;\n}\n",
+          "occurrences": 1
+        },
+        {
+          "before": "",
+          "after": "  const httpStatus = agentChatHttpStatus(error);\n  if (safe.code === 'AGENT_CHAT_HTTP_ERROR' && httpStatus !== undefined) safe.message = `模型服务拒绝了请求（HTTP ${httpStatus}），请检查账户、模型和配置后手动重试。`;\n  const hints = error !== null && typeof error === 'object' ? httpEvidence.get(error)?.hints : undefined;\n  if (safe.code === 'AGENT_CHAT_HTTP_ERROR' && hints) safe.message += ` 服务返回的参数提示：${[\n    hints.categories.map(category => parameterCategories[category]).join('、'),\n    ...(hints.fields.length ? [`字段 ${hints.fields.join('、')}`] : []),\n    ...(hints.toolIndices.length ? [`工具索引 ${hints.toolIndices.join('、')}`] : []),\n  ].join('；')}。`;\n",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "path": "packages/business/src/local-drafts.ts",
+      "beforeSha256": "2c6d8e3cd783814ef71f26505b293e23be0a21d9529d22dd97a3b1227e91d083",
+      "afterSha256": "aa44cb73b9276fb0b0f47bd0c432f48ed316c9daff90a263791523d6cd844170",
+      "beforeBytes": 16662,
+      "afterBytes": 16893,
+      "review": "Reviewed Windows source CLI keeps the legacy POSIX directory-fsync draft path closed before reads or writes; it does not activate dormant opacity or historical schema profiles.",
+      "inverse": [
+        {
+          "before": "",
+          "after": "    // The legacy draft ACK still requires POSIX directory-descriptor fsync.\n    // Refuse before reads/persistence; v2 SQLite editing leases are separate.\n    if(process.platform==='win32')fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');\n",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "path": "packages/business/src/workspace-lock.ts",
+      "beforeSha256": "fbf41ded383e7e626bbc6522ebe7aea1cba5c40e8bdd0c627a9beb92969bd181",
+      "afterSha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463",
+      "beforeBytes": 2656,
+      "afterBytes": 2717,
+      "review": "Reviewed native storage integration compares complete bound Windows file identities and keeps size/time/content ownership checks; POSIX identity remains dev/ino through the shared helper.",
+      "inverse": [
+        {
+          "before": "import {validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';\n",
+          "after": "import {validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile,samePrivateStorageIdentity} from '@mioon/contracts/private-storage';\n",
+          "occurrences": 1
+        },
+        {
+          "before": "const identityKeys=['dev','ino','size','mtimeMs','ctimeMs'] as const;\n",
+          "after": "const identityKeys=['size','mtimeMs','ctimeMs'] as const;\n",
+          "occurrences": 1
+        },
+        {
+          "before": "   if(current&&identityKeys.every(key=>current[key]===identity[key])&&readPrivateFile(lockPath,{root,private:true,maxBytes:64,encoding:'utf8'})===token)return true;\n",
+          "after": "   if(current&&samePrivateStorageIdentity(current,identity)&&identityKeys.every(key=>current[key]===identity[key])&&readPrivateFile(lockPath,{root,private:true,maxBytes:64,encoding:'utf8'})===token)return true;\n",
+          "occurrences": 1
+        }
+      ]
+    },
+    {
+      "path": "packages/contracts/src/private-storage.ts",
+      "beforeSha256": "af4252613ecd6cd816e8e638b2d7917efe0f2efd1eeceb5c3918d1ca60d70774",
+      "afterSha256": "83e139126f80988ed5d72adc874cdc4a07cf68333ea82ff3e1eab0d294f03f47",
+      "beforeBytes": 17950,
+      "afterBytes": 23412,
+      "review": "Reviewed standalone Node storage facade dispatches to an explicitly registered complete Windows backend and retains the original POSIX factory; opaque native identity and backup leases add no historical schema admission.",
+      "inverse": [
+        {
+          "before": "// The boundary is other OS users on a local POSIX filesystem. A process running\n// as this user (or root) can still race pathname operations, including SQLite's\n// pathname-only API. No chmod/chown or destructive repair is performed here.\n",
+          "after": "// The facade dispatches to the POSIX policy or an explicitly composed complete\n// Windows backend. The boundary is other ordinary OS users; this account and\n// administrators remain trusted, including for SQLite's pathname-only API.\n// No chmod/chown, ACL repair or destructive repair is performed here.\n",
+          "occurrences": 1
+        },
+        {
+          "before": "  backend: 'posix-owner-mode' | 'unavailable';\n",
+          "after": "  backend: 'posix-owner-mode' | 'windows-current-user-acl' | 'unavailable';\n",
+          "occurrences": 1
+        },
+        {
+          "before": "",
+          "after": "  if (platform === 'win32' && process.platform === 'win32' && windowsBackend) return Object.freeze({available:true,backend:'windows-current-user-acl',code:null,reason:null});\n",
+          "occurrences": 1
+        },
+        {
+          "before": "/** Reserved, code-injected Windows readiness seam. An ACL verifier alone cannot\n * enable storage: private creation and reparse-safe access are not implemented.\n",
+          "after": "/** Legacy informational Windows readiness seam. An ACL verifier alone cannot\n * enable this POSIX factory: the complete native backend is registered separately.\n",
+          "occurrences": 1
+        },
+        {
+          "before": "        // A future backend can consume this readiness result. It deliberately\n        // cannot authorize file operations until that backend exists.\n",
+          "after": "        // This readiness result deliberately cannot authorize file operations.\n",
+          "occurrences": 1
+        },
+        {
+          "before": "export const {assertStoragePrivacyAvailable, ensurePrivateDirectory, validatePrivateDirectory, createPrivateTemporaryDirectory, validateManagedDirectory,\n  validateManagedFile, readPrivateFile, writePrivateFileAtomic, removePrivateFile} = createPrivateStoragePolicy();\n",
+          "after": "export type PrivateStoragePolicy = ReturnType<typeof createPrivateStoragePolicy>;\nexport interface WindowsManagedFileHandle {\n  metadata():Stats;\n  read(size:number):Buffer;\n  write(bytes:Uint8Array):void;\n  flush():void;\n  close():void;\n}\nexport interface WindowsManagedDirectoryHandle {metadata():Stats; next():string|null; close():void}\nexport interface WindowsManagedFileIO {\n  openFile(file:string,options:{root:string;private:boolean;maxBytes?:number;mode:'read'|'create'|'flush';expected?:Stats}):WindowsManagedFileHandle;\n  createDirectoryNew(directory:string,options:{root?:string}):Stats;\n  openDirectory(directory:string,options:{root:string;private:boolean}):WindowsManagedDirectoryHandle;\n  syncDirectory(directory:string,options:{root?:string;private:boolean}):void;\n  renameNoReplace(source:string,destination:string,options:{root:string;expected:Stats}):Stats;\n  removeOwnedFile(file:string,options:{root:string;expected:Stats;maxBytes?:number}):void;\n  removeOwnedDirectory(directory:string,options:{root:string;expected:Stats}):void;\n}\nexport interface WindowsPrivateStorageBackend extends PrivateStoragePolicy {readonly apiVersion:1; readonly platform:'win32'; readonly managedFileIO?:WindowsManagedFileIO}\nlet windowsBackend: WindowsPrivateStorageBackend | undefined;\nconst windowsIdentities = new WeakMap<object,string>();\n/** Trusted Node-host seam. An ACL verifier or caller platform string is never\n * sufficient: every operation must be implemented by the registered backend. */\nexport function registerWindowsPrivateStorageBackend(backend:WindowsPrivateStorageBackend):void {\n  const methods:readonly (keyof PrivateStoragePolicy)[]=['assertStoragePrivacyAvailable','ensurePrivateDirectory','validatePrivateDirectory','createPrivateTemporaryDirectory','validateManagedDirectory','validateManagedFile','readPrivateFile','writePrivateFileAtomic','removePrivateFile'];\n  if(process.platform!=='win32'||windowsBackend||backend?.platform!=='win32'||backend.apiVersion!==1||methods.some(name=>typeof backend[name]!=='function'))throw new PrivateStorageError('WINDOWS_BACKEND_INVALID','A complete, single Windows private storage backend is required.','STORAGE_PRIVACY_UNAVAILABLE');\n  backend.assertStoragePrivacyAvailable();windowsBackend=Object.freeze(backend);\n}\n/** Restricted, opaque native leases for the Node-only backup implementation. */\nexport function getWindowsManagedFileIO():WindowsManagedFileIO {\n  const io=process.platform==='win32'?windowsBackend?.managedFileIO:undefined;\n  if(!io)throw new PrivateStorageError('WINDOWS_MANAGED_IO_UNAVAILABLE','Windows managed streaming storage is unavailable.','STORAGE_PRIVACY_UNAVAILABLE');\n  return io;\n}\n/** Bind only metadata obtained while the native walk pins and revalidates the\n * same filesystem object throughout the trusted Node metadata callback.\n * No Windows uid/mode or truncated Node dev/ino is used as security evidence. */\nexport function bindWindowsPrivateStorageIdentity(metadata:object,volume:string,fileId:string):void {\n  if(process.platform!=='win32'||! /^[a-f0-9]{16}$/u.test(volume)||! /^[a-f0-9]{32}$/u.test(fileId)||windowsIdentities.has(metadata))throw new PrivateStorageError('FILE_IDENTITY','Invalid full Windows file identity.');\n  windowsIdentities.set(metadata,`windows:${volume}:${fileId}`);\n}\nexport function privateStorageIdentity(info:{dev:number|bigint;ino:number|bigint}):string {\n  const native=windowsIdentities.get(info);if(native)return native;\n  if(process.platform==='win32')throw new PrivateStorageError('FILE_IDENTITY_UNVERIFIED','Windows metadata requires a validated full file identity.');\n  return `posix:${String(info.dev)}:${String(info.ino)}`;\n}\nexport function samePrivateStorageIdentity(a:{dev:number|bigint;ino:number|bigint}|null|undefined,b:{dev:number|bigint;ino:number|bigint}|null|undefined):boolean {\n  return Boolean(a&&b&&privateStorageIdentity(a)===privateStorageIdentity(b));\n}\nconst posixPolicy=createPrivateStoragePolicy();\nconst activePolicy=():PrivateStoragePolicy=>process.platform==='win32'&&windowsBackend?windowsBackend:posixPolicy;\n// Stable functions also cover importers evaluated before Node-host bootstrap.\n// Contracts deliberately never import or discover a native binary themselves.\nexport const assertStoragePrivacyAvailable:PrivateStoragePolicy['assertStoragePrivacyAvailable']=(...args)=>activePolicy().assertStoragePrivacyAvailable(...args);\nexport const ensurePrivateDirectory:PrivateStoragePolicy['ensurePrivateDirectory']=(...args)=>activePolicy().ensurePrivateDirectory(...args);\nexport const validatePrivateDirectory:PrivateStoragePolicy['validatePrivateDirectory']=(...args)=>activePolicy().validatePrivateDirectory(...args);\nexport const createPrivateTemporaryDirectory:PrivateStoragePolicy['createPrivateTemporaryDirectory']=(...args)=>activePolicy().createPrivateTemporaryDirectory(...args);\nexport const validateManagedDirectory:PrivateStoragePolicy['validateManagedDirectory']=(...args)=>activePolicy().validateManagedDirectory(...args);\nexport const validateManagedFile:PrivateStoragePolicy['validateManagedFile']=(...args)=>activePolicy().validateManagedFile(...args);\nexport const readPrivateFile:PrivateStoragePolicy['readPrivateFile']=(...args)=>activePolicy().readPrivateFile(...args);\nexport const writePrivateFileAtomic:PrivateStoragePolicy['writePrivateFileAtomic']=(...args)=>activePolicy().writePrivateFileAtomic(...args);\nexport const removePrivateFile:PrivateStoragePolicy['removePrivateFile']=(...args)=>activePolicy().removePrivateFile(...args);\n",
+          "occurrences": 1
+        }
+      ]
+    }
+  ]
+}

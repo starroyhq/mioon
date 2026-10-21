@@ -106,7 +106,7 @@ test('all three timeline aspects deliver native/360/1080 with post-caption scale
   let nativeFile: string | null = null;
   const events: MediaEvent[]=[],off=onMediaProcess((event: ProcessEvent)=>events.push(event));
   try{await render(snapshot,assets,legacy);}finally{off();}
-  assert.equal(events.filter(event=>event.type==='started'&&event.kind==='ffmpeg').length,6,'legacy has one subtitle measurement, four original segments, one final concat, and no capability probe');
+  assert.deepEqual(events.filter(event=>event.type==='started').map(event=>event.kind),[...Array<string>(7).fill('ffmpeg'),'ffprobe'],'legacy has one bounded drawtext inspection, one subtitle measurement, four original segments, one final concat, and one output probe');
   const legacyBytes=await readFile(legacy),legacyPcm=await pcm(legacy);
   if(audioReference)assert.deepEqual(legacyPcm,audioReference);else audioReference=legacyPcm;
   let nativeBounds: {count:number;minX:number;minY:number;maxX:number;maxY:number} | undefined;

@@ -1,0 +1,408 @@
+{
+  "capturedAt": "2026-10-21T04:16:29.373665+00:00",
+  "base": "2d7b0521df3cad45270958b0bec071cde5c8bb17",
+  "branch": "codex/ai-workflows-acceptance",
+  "provenance": "Root capture of tracked changes and untracked source after the independent Standards and Spec reviews recorded in REVIEW.md; file-content fingerprints, not an external signature. Excludes this self-referential manifest, ignored build/runtime files and credentials.",
+  "files": [
+    {
+      "path": "apps/cli/package.json",
+      "sha256": "a94ff9c688f0e36ac373c026f1524ea5638aedb68cfee5ed73b98606a4f3711e"
+    },
+    {
+      "path": "apps/cli/src/agent-key.ts",
+      "sha256": "9c6948c816d96ae6429bcddeb22e15af4e833f6310a6cd20b7f71ef884955179"
+    },
+    {
+      "path": "apps/cli/src/agent.ts",
+      "sha256": "ea57f96bfe1e7288631e03f49e182094472094887825f39fd6d8992bcffdf7f1"
+    },
+    {
+      "path": "apps/cli/src/arguments.ts",
+      "sha256": "d64743b1cc2e97979d6fec7ae6530dedba100b93c49c8048e39c5626be7856e6"
+    },
+    {
+      "path": "apps/cli/src/backup.ts",
+      "sha256": "7d1cf4d74bf3e10059d184f97451e4197ee2428bbe93c21054b767b0c3601c62"
+    },
+    {
+      "path": "apps/cli/src/help.ts",
+      "sha256": "92654066bd28546e3a9ffae668a24b4e2dac35e81ea0776903d584130ad66195"
+    },
+    {
+      "path": "apps/cli/src/index.ts",
+      "sha256": "544d797825b1d16c45d0447957b8ada571c8a869383fab2d4ef3ae18a7296704"
+    },
+    {
+      "path": "apps/mcp/package.json",
+      "sha256": "4febc70a43943fc81c4fdca8ec28777d8d8663b4d696f2d978dec0d60352f8e4"
+    },
+    {
+      "path": "apps/mcp/src/index.ts",
+      "sha256": "02e70dda4adca0a1b37673623e19fd5fa34e6af24a0931a2c5b8926414e46b76"
+    },
+    {
+      "path": "apps/server/package.json",
+      "sha256": "804d99c17fdc5bf1cef1eec44fdb4adf20f287bf205e97801e109735c114d23d"
+    },
+    {
+      "path": "apps/server/src/agent-diagnostics-http.ts",
+      "sha256": "7257f78b185a45cf0e1dc167c3ebec6b8ce5245b48e47ef8f5da4e7726ddb5b8"
+    },
+    {
+      "path": "apps/server/src/cli.ts",
+      "sha256": "169fba3f585de7a5a4958cc946c2e7c2e157083af90b6b739b08d1dc6015dfe1"
+    },
+    {
+      "path": "apps/server/src/headless-agent-secret-client.ts",
+      "sha256": "acc12b830b913cbce0ea2cd8d25ede08018744ec3aa90834a71914e6ca2689a0"
+    },
+    {
+      "path": "apps/server/src/headless-agent-secret-codec.ts",
+      "sha256": "e2ba0378430c28636660d4446108bc87d02ee9bda88a436a43b3ab565ca936a3"
+    },
+    {
+      "path": "apps/server/src/headless-agent-secret-helper.ts",
+      "sha256": "c9c7e3533069fcd03986bff7af7dc429465acc203a6c1dd584313067d21292c1"
+    },
+    {
+      "path": "apps/server/src/index.ts",
+      "sha256": "f0e63da4e00c6d19924bda7aac4f7f393c06f82e3fb66457595a686453ee7583"
+    },
+    {
+      "path": "apps/web/src/AgentTaskPanel.tsx",
+      "sha256": "7908114836149d8576eb4bd25f260ed23a1571b38479584c530f4d05a7fcaff8"
+    },
+    {
+      "path": "apps/web/src/agent-tasks-v2.ts",
+      "sha256": "cb551f2246341e86b9d6ebd01064fd4fc0f0044ad43792db7ec204fedb0de7bf"
+    },
+    {
+      "path": "apps/web/src/native-close-sources.ts",
+      "sha256": "72dc5859ace2d54916bf4c2e4bf7dda5f44f0a0fe8b042bd261922f3d717adde"
+    },
+    {
+      "path": "docs/CLI.md",
+      "sha256": "1b977ac523181d19b049cdecead594420f1d05a360a66c604f15d40a6f3985bb"
+    },
+    {
+      "path": "docs/MANUAL-SUBTITLES.md",
+      "sha256": "cca44dcd2fd9547f8e6766c51c606ed0cbcab926b4cf25e9b9409f6c3391d108"
+    },
+    {
+      "path": "docs/MCP.md",
+      "sha256": "a46eb7d0d63522907faddfcd3353717fda01b73b2c8d2bd3d5c6259d25044b5a"
+    },
+    {
+      "path": "docs/PRIVATE-STORAGE.md",
+      "sha256": "ddf51113fd89f395d0ee05a8e87ae959f569fe22e097cc76efb0a70400f1078e"
+    },
+    {
+      "path": "docs/verification/ai-workflows-acceptance/CLI-IMPLEMENTATION-PLAN.md",
+      "sha256": "72cbee9d527ed6b87224c5e628c0d4a3cc5a6b4b8242391d209c1df5830b7f6f"
+    },
+    {
+      "path": "docs/verification/ai-workflows-acceptance/CLI-SDK-ACCEPTANCE.md",
+      "sha256": "35a435b3ef7cb40ec51ec73041e9a8866729197565198dc76a3a0ad90ce1f65c"
+    },
+    {
+      "path": "docs/verification/ai-workflows-acceptance/README.md",
+      "sha256": "6424b0887678b3e0e39ae3ce132b6cef7e7931a44d9e30752ceeb35af47acf7a"
+    },
+    {
+      "path": "docs/verification/ai-workflows-acceptance/REVIEW.md",
+      "sha256": "d3d100be9bf25f89953788b1086102d1bb8033573f3ebf48bf89de66115407d8"
+    },
+    {
+      "path": "docs/verification/ai-workflows-acceptance/real-cli-film-acceptance.json",
+      "sha256": "705ff33c6525fd01948892d03c63ac8df3a5e9e1d5785748e8ca0a1c2ecb2df6"
+    },
+    {
+      "path": "docs/verification/ai-workflows-acceptance/windows-native-evidence.json",
+      "sha256": "0e54e1b634bbc121678736096b5f717932dd381df71ee8087f36e6c25a30202d"
+    },
+    {
+      "path": "packages/business/package.json",
+      "sha256": "47fdb57a0e14c7fb0fe8cc495e93c4ad1eeaec11a5a09b3d7be43b1c84409bce"
+    },
+    {
+      "path": "packages/business/src/agent/chat-completions.ts",
+      "sha256": "502cf49a9dca3c855a57d8b49643755711e7cecf5a6870f68533a69d7310b6fd"
+    },
+    {
+      "path": "packages/business/src/agent/chat-errors.ts",
+      "sha256": "bf9008651600611138b4e73911a41f92c2141d81ad215fc5104bd9b9b4c3cab6"
+    },
+    {
+      "path": "packages/business/src/agent/network-policy.ts",
+      "sha256": "6b7bca592a57b24ac1b26e85090d5d8b558bcc5390c05881b7bca98e640e801b"
+    },
+    {
+      "path": "packages/business/src/agent/openai-sdk-transport.ts",
+      "sha256": "45aee2c666fdf25b4303e467a4fc1a45995b1d1fac00c91ef5b42cc8bbd35aed"
+    },
+    {
+      "path": "packages/business/src/agent/responses.ts",
+      "sha256": "91d9987704aa1fcd6806cb59fc791effd6f4fbc61a58e4d343956924b3e30c3d"
+    },
+    {
+      "path": "packages/business/src/agent/task-gateway-v2.ts",
+      "sha256": "7ea58311f082539c773fc432a4c633178960b48d3c64b5166e1a5ea3656d750d"
+    },
+    {
+      "path": "packages/business/src/agent/task-journal-v2.ts",
+      "sha256": "0b2bf5992ca5bd6f59e5beb78061a4df29c8751db2874ace57bc05ba714c028c"
+    },
+    {
+      "path": "packages/business/src/agent/task-runtime-v2.ts",
+      "sha256": "2779c86dd83c8765bc2f422fb7987968680d6cbc880714c81437866df6202317"
+    },
+    {
+      "path": "packages/business/src/agent/task-tool-model-schema.ts",
+      "sha256": "2bf2d5e16be986cab981c5d5c5a174683c2dd902f08f5c18c512fb73f81fe52c"
+    },
+    {
+      "path": "packages/business/src/agent/task-tool-schemas-v2.ts",
+      "sha256": "0cddf2367bb1d86f2dcb70edec21a6ed4326393b739fe2f211979c0f80412c7a"
+    },
+    {
+      "path": "packages/business/src/agent/task-tool-wire-schema.ts",
+      "sha256": "8df5a60026dc337799137d9c8032539e06f38959ed18883f4a0216129a839765"
+    },
+    {
+      "path": "packages/business/src/agent/task-tools-v2.ts",
+      "sha256": "e64db4cba1b2ee3c74baf3b9b8a2cc001b1f641626fcfd475d9709178fe344b6"
+    },
+    {
+      "path": "packages/business/src/jobs.ts",
+      "sha256": "66805b2f72c71fdefa01c2b9c938228587d54a513588866fd38ca269eb6b9502"
+    },
+    {
+      "path": "packages/business/src/local-drafts.ts",
+      "sha256": "aa44cb73b9276fb0b0f47bd0c432f48ed316c9daff90a263791523d6cd844170"
+    },
+    {
+      "path": "packages/business/src/subtitle-media.ts",
+      "sha256": "d437cc67289e08e1d8bf042a14c5f9e74f2459f6a59b15a50b3cdd1dbebf3dc4"
+    },
+    {
+      "path": "packages/business/src/subtitle-renderer-capability.ts",
+      "sha256": "e9dedd198bfd89d13c72a5541e9356627bb90b6f39ada85d5bbac80bbac4d24b"
+    },
+    {
+      "path": "packages/business/src/timeline-preflight.ts",
+      "sha256": "e62e3a3e06d8a0fb0900d6dffaadc69dfb5241a3a5267f92f6c45bf65436561d"
+    },
+    {
+      "path": "packages/business/src/workspace-backup-bundle.ts",
+      "sha256": "3023d5e20e13bb88c49fe1e12c5765539305338ea02daf577b4b926a222694ca"
+    },
+    {
+      "path": "packages/business/src/workspace-backup-storage.ts",
+      "sha256": "62c999512ea83dfb810f624476bf9ddd612393ca8e65760d60b0ae2e1b626e5f"
+    },
+    {
+      "path": "packages/business/src/workspace-lock.ts",
+      "sha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463"
+    },
+    {
+      "path": "packages/business/src/workspace-restore.ts",
+      "sha256": "46f74fa3c78b6a020ac1d65074828511ef6c465ddd9ae29fc0c9fc613de79e92"
+    },
+    {
+      "path": "packages/client/package.json",
+      "sha256": "975cc1f46ce3d6cb364ad6abc782b55d0c731eba0aa2e4441762d7b546647a98"
+    },
+    {
+      "path": "packages/client/src/agent.ts",
+      "sha256": "01bd8c1850cc5059fdfa455e36cd4bc92261da02efaa3a37e7d52197549cadf5"
+    },
+    {
+      "path": "packages/contracts/src/agent-tasks-v2.ts",
+      "sha256": "cebfe536ae009f08bf5cc8d0b82c11407da64cdf702a05666e2c58dc11d314ef"
+    },
+    {
+      "path": "packages/contracts/src/private-storage.ts",
+      "sha256": "83e139126f80988ed5d72adc874cdc4a07cf68333ea82ff3e1eab0d294f03f47"
+    },
+    {
+      "path": "packages/contracts/src/workspace-scope.ts",
+      "sha256": "87fd872208a5e191a02734614e4f0b5f115793e71ca0c3c0a2bb7d1f68a85e42"
+    },
+    {
+      "path": "packages/node-host/README.md",
+      "sha256": "27345dd59bea254da3fb7b21328b7ecdc320a875bce1cdef5e2a7f21ce55ec88"
+    },
+    {
+      "path": "packages/node-host/binding.gyp",
+      "sha256": "a887a62e82d9b20588c6cc96f6e96b7364478ec8d772c76edec8709006eb59b0"
+    },
+    {
+      "path": "packages/node-host/native/managed-io.inc",
+      "sha256": "92aefa9acf7f827fbdac2a3bff9b4e31b7d35b413172b66fd9f963c6f52d42b8"
+    },
+    {
+      "path": "packages/node-host/native/private-storage.cc",
+      "sha256": "8f483831457afee1468069e47ffd1fd2801cf6996be021da7ad2c018ee75efa0"
+    },
+    {
+      "path": "packages/node-host/package.json",
+      "sha256": "3e1c831d47fae3f21bc4e9f737f5eb655a13099465d623beb6b86a04a2481e16"
+    },
+    {
+      "path": "packages/node-host/scripts/build-native.mjs",
+      "sha256": "c24c53d7f6654e125557870c116aa9a6f61f2b8cc6a1f2a2a5110222e4340ea5"
+    },
+    {
+      "path": "packages/node-host/scripts/install.mjs",
+      "sha256": "c8247c7a4f9321c6eb45600c9221a891bb0ec2e33edd4043dceba565db03dce6"
+    },
+    {
+      "path": "packages/node-host/src/private-storage-bootstrap.ts",
+      "sha256": "3e041a687fbf1dbefe6dc854c6f77d305276145db59fd056c2fb37ca64cfd8ce"
+    },
+    {
+      "path": "packages/node-host/src/windows-private-storage.ts",
+      "sha256": "5ae922462a5c19eaf3592856ca9669908d3357d268dc724b962a751d88fcd09a"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "e845ed1313c1380bebe5cab04b181ee0f2488938d4fb9dc13fef3bc0b7af3b69"
+    },
+    {
+      "path": "scripts/generate-agent-task-schemas.ts",
+      "sha256": "9e61c35e39943de44323f152dd3ae885568e3c2225984edd6003143d7ee3fe9f"
+    },
+    {
+      "path": "skills/mioon/SKILL.md",
+      "sha256": "365c8897c5459a22268f968a7d858953e5436c6330379554250ba6303c3f4762"
+    },
+    {
+      "path": "skills/mioon/references/agent-tasks.md",
+      "sha256": "7466bc488910b1775acec44db9352cecefa392c0ef05038758177d2e7d60d4a6"
+    },
+    {
+      "path": "skills/mioon/references/connection.md",
+      "sha256": "4c90132537057b324dc7d692c5b332c579f81f0d12f1a8d811f1b6457621d1e5"
+    },
+    {
+      "path": "skills/mioon/references/operations.md",
+      "sha256": "56ab0590f1ce144e2bd8978fe53c5f2ec6ea2c5b74f6d8a5e86c9558b7655f6a"
+    },
+    {
+      "path": "skills/mioon/scripts/mock_workflow.py",
+      "sha256": "4a3c0b16e8e8bddf97a8d4440d8679a4eeeca1cf531466c67fa1a0b1251f0ef3"
+    },
+    {
+      "path": "tests/agent-diagnostics-http.test.ts",
+      "sha256": "af4e1e96036de0398f95b44241919cff132dcb86e949b90500bf07056d9968e3"
+    },
+    {
+      "path": "tests/agent-network.test.mjs",
+      "sha256": "4413156eb176c12d8eb97e4041c6cadfc3a2ffb4f8930a88f9d81e0736483f1b"
+    },
+    {
+      "path": "tests/agent-task-gateway-v2.test.ts",
+      "sha256": "8cec3344324c837f6c93e3dd6c623f12caa873e6e604d70a72de8f2aa475addc"
+    },
+    {
+      "path": "tests/agent-task-panel-v2-components.test.mjs",
+      "sha256": "faef598eb25e23b6322825cf77bf6793f158257c00e9f08ab20fbcadf8eb4ae0"
+    },
+    {
+      "path": "tests/agent-task-runtime-v2.test.ts",
+      "sha256": "6d4120d9f5f861179c2156f731cd62d01ebd8d7b4a80ff75c035419a71946e89"
+    },
+    {
+      "path": "tests/agent-task-tools-v2.test.ts",
+      "sha256": "fd0dcb5c13c85ebee2b442fbbcea30a6a1d2fbd02715f24f8ff7192ff0cea102"
+    },
+    {
+      "path": "tests/agent-task-wire-schema.test.ts",
+      "sha256": "4263c3afb0217a495ae8826824050926972a97631e13176362537e6d88da956f"
+    },
+    {
+      "path": "tests/agent-tasks-v2-ui.test.ts",
+      "sha256": "3e78c1077a1c359e8c351417b6550a007d3035f55159e16fb6bde63957aa51f2"
+    },
+    {
+      "path": "tests/cli-agent.test.mjs",
+      "sha256": "da66dd1a55469dfd35993e946566c63a78d10577c327bebe94035bcc759f4156"
+    },
+    {
+      "path": "tests/client-agent.test.mjs",
+      "sha256": "c981dd412f25548fd1bdfa55671826d9b77abb415a89d97a21bb1305beb5a503"
+    },
+    {
+      "path": "tests/headless-agent-secret-client.test.ts",
+      "sha256": "14081e5e98cd930ec151c38b60e4c9d19cb01fc58a88c7bb05bef68ea40acf3e"
+    },
+    {
+      "path": "tests/headless-agent-secret-codec.test.ts",
+      "sha256": "2a9ab81ce5ad49bb2ba8fd05f87478896ae9fe885980aa8b3b525f7f39d9ed70"
+    },
+    {
+      "path": "tests/headless-agent-secret-helper.test.ts",
+      "sha256": "813da6093c4dd8601c9f3b9e1d7774a7bc9bb751a761e45cfe597cfa78c1b4e6"
+    },
+    {
+      "path": "tests/headless-agent-secret-linux-locked.test.mjs",
+      "sha256": "18aef91734cbda1662f3f0f503d10cd4e573ce0ab1760b817c67a4c986e16773"
+    },
+    {
+      "path": "tests/headless-agent-secret-native.test.mjs",
+      "sha256": "8cd1964e147f270383eec58c6c12f57573580ef098f1e88085bc89ed5ec0a06f"
+    },
+    {
+      "path": "tests/headless-agent-secret-public-native.test.mjs",
+      "sha256": "adf209845a01e6784e9f51c9f8b942b66914d7a0051b7c9ceffd28a3fba9e533"
+    },
+    {
+      "path": "tests/mioon_skill_mock_workflow_test.py",
+      "sha256": "24919cde3b6a739362d44f52d1fdc3743364f3d6d81fbde1f2adf114c9eb1720"
+    },
+    {
+      "path": "tests/subtitles-media.test.mjs",
+      "sha256": "422a9864ef97a40a16a8ff4b49f48a506cfc5f6d3212c1941b36964fd629016d"
+    },
+    {
+      "path": "tests/subtitles-preflight.test.ts",
+      "sha256": "602125ec02f506109585b2c350f678664de63b872b264a94daadba78093ce457"
+    },
+    {
+      "path": "tests/windows-backup-integration-native.test.mjs",
+      "sha256": "ed859dae6065e6b318336a54c277336c0f82d323e4163945d077b450f3eecb5d"
+    },
+    {
+      "path": "tests/windows-backup-publication.test.mjs",
+      "sha256": "ee85caec648a93bbf2a3c5ccf1f0d8c4247769b5bae6da184b2745d82ab11e1d"
+    },
+    {
+      "path": "tests/windows-legacy-storage-gates.test.mjs",
+      "sha256": "ba90b1f96e32393ce8c3e4e0cf53bd514ca4a04bedff90e9a605766e5e2edebf"
+    },
+    {
+      "path": "tests/windows-node-host-smoke.test.mjs",
+      "sha256": "f146ee98b64d6ba1b8feed4107c7f962d18c88447019b2998a49e013a5051b73"
+    },
+    {
+      "path": "tests/windows-private-storage-native.test.mjs",
+      "sha256": "489388f69d3b49f09ff4afa1be143f50dfb70ad901772485be918a6da4a789c5"
+    },
+    {
+      "path": "tests/windows-private-storage-races.test.mjs",
+      "sha256": "55818cfd18904a3028f0b77fa471b99cc83ab9098f301831e6f4286eba0b9160"
+    },
+    {
+      "path": "tests/windows-private-storage-stream.test.mjs",
+      "sha256": "c0ae5ab8a3963cd6fc2850ea9d619833e4b48a9aca67935d29623951c6fc80f6"
+    },
+    {
+      "path": "tests/windows-private-storage-two-user.ps1",
+      "sha256": "5e1246993d62367f51266be817e29bd316c4c86938dafcb637359d3d2d676ef7"
+    },
+    {
+      "path": "tests/windows-private-storage.test.mjs",
+      "sha256": "f4590942c7f43dfde0ebde53e85413db21b29e8d6e316c6d2163ff465de77d99"
+    }
+  ]
+}

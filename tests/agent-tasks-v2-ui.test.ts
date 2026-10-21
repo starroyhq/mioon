@@ -1,18 +1,20 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentTaskClient, createAgentTaskSession, createAgentTaskReceiptStore, safeAgentTaskSnapshot } from '../apps/web/src/agent-tasks-v2.ts';
-import type { AgentTaskClient, AgentTaskLookup, AgentTaskPending, AgentTaskProjectSnapshot, AgentTaskReceiptStore } from '../apps/web/src/agent-tasks-v2.ts';
+import type { AgentTaskClient, AgentTaskLookup, AgentTaskPending, AgentTaskProjectSnapshot, AgentTaskReceiptStore, AgentTaskSessionState } from '../apps/web/src/agent-tasks-v2.ts';
 import type { AgentTaskEvent, AgentTaskSnapshot } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { DEFAULT_AGENT_TASK_POLICY } from '../packages/contracts/src/agent-tasks-v2.ts';
-import { agentTaskCloseState } from '../apps/web/src/native-close-sources.ts';
-import { createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
+import { agentTaskCloseState,createAgentTaskCloseReporter } from '../apps/web/src/native-close-sources.ts';
+import { createNativeCloseRegistry,createNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
+import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 
 const projectId = '11111111-1111-4111-8111-111111111111', runId = '22222222-2222-4222-8222-222222222222', stepId = '33333333-3333-4333-8333-333333333333', time = '2026-10-20T00:00:00.000Z';
 const snapshot = (status: AgentTaskSnapshot['run']['status'] = 'completed', revision = 1): AgentTaskSnapshot => ({ run: { id: runId, projectId, requestId: crypto.randomUUID(), text: 'test task', status, revision, stepLimit: 30, budget: 30, stepsUsed: 1, configuration: {}, createdAt: time, updatedAt: time }, steps: [], changes: [] });
 const project = (): AgentTaskProjectSnapshot => ({ version: 2, instanceId: '44444444-4444-4444-8444-444444444444', projectId, runs: [], policy: structuredClone(DEFAULT_AGENT_TASK_POLICY), authorization: { revision: 1, scopes: ['project_agent'] }, settings: { revision: 0, configuration: { presetId: 'openai', platformId: 'global', baseUrl: 'https://example.invalid/v1', model: 'synthetic', protocol: 'responses' }, secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: null }, presets: [], scope: 'settings_only', verification: 'not_tested' } });
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (value: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); };
-function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}) {
+function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}, options:{onChange?:(state:AgentTaskSessionState)=>void;receipts?:AgentTaskReceiptStore}={}) {
   const receipts = new Map<string, AgentTaskPending>(); if (saved) receipts.set(projectId, saved);
   const store: AgentTaskReceiptStore = { read: id => receipts.get(id) ?? null, write(id, value) { if (value) receipts.set(id, value); else receipts.delete(id); } };
   const streams: { signal: AbortSignal; onEvent: (event: AgentTaskEvent) => void }[] = [], sent: unknown[] = [], actions: unknown[] = [];
@@ -21,8 +23,62 @@ function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending,
     stream: async (_, __, ___, signal, onEvent) => { streams.push({ signal, onEvent }); return new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); },
     policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:value,readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
   };
-  const session = createAgentTaskSession({ projectId, client, receipts: store, onChangeApplied }); return { session, receipts, client, sent, actions, streams };
+  const session = createAgentTaskSession({ projectId, client, receipts: options.receipts??store, onChange:options.onChange??(()=>{}),onChangeApplied }); return { session, receipts, client, sent, actions, streams };
 }
+function closeFixture(t:TestContext,patch:Partial<AgentTaskClient>={},saved?:AgentTaskPending,receipts?:AgentTaskReceiptStore){
+  const registry=createNativeCloseRegistry(),reporter=createAgentTaskCloseReporter(registry),documentURL='http://127.0.0.1:4318/?project='+projectId;
+  const f=fixture(patch,saved,()=>{},{onChange:state=>reporter.publish(state),...(receipts?{receipts}:{})});reporter.publish(f.session.getState());
+  const admission=createNativeCloseAdmission({registry,settings:createSettingsNavigationRegistry(),readScope:()=>projectId,readDocumentURL:()=>documentURL,now:()=>1000});
+  t.after(()=>{f.session.dispose();reporter.release();admission.dispose();});return {...f,registry,reporter,admission,documentURL};
+}
+
+test('a verified-empty receipt and failed initial read allow normal native close or reload without discarding work',async t=>{
+  const held=deferred<AgentTaskProjectSnapshot>();let reads=0;
+  const f=closeFixture(t,{list:async()=>{reads++;return held.promise;}});
+  assert.equal(f.admission.inspect().disposition,'blocked','initial read is busy before any async result');
+  const loading=f.session.load();assert.equal(f.admission.inspect().disposition,'blocked');held.reject(new Error('offline'));await loading;
+  assert.equal(f.session.getState().phase,'read_error');assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().snapshot,null);
+  f.session.setVisible(false);assert.equal(f.admission.inspect().disposition,'clean','hiding keeps the known read-only failure safe');
+  for(const action of ['close','reload'] as const){
+    const targetUrl=action==='reload'?f.documentURL:null,ticket=f.admission.inspect(action,targetUrl);assert.equal(ticket.disposition,'clean');
+    assert.equal(f.admission.commit(ticket.token,{action,targetUrl,discardDirty:false,allowDrainFailure:false,expiresAt:1500}),true);
+    let prevented=false;assert.equal(f.admission.beforeUnload({returnValue:'',preventDefault(){prevented=true;}}),true);assert.equal(prevented,false);
+  }
+  assert.equal(reads,1);assert.equal(f.sent.length,0);assert.equal(f.actions.length,0);
+});
+
+test('read failures preserve draft confirmation and a retry invalidates the previous native close ticket',async t=>{
+  const held=deferred<AgentTaskProjectSnapshot>();let reads=0;
+  const f=closeFixture(t,{list:async()=>{if(++reads===1)throw new Error('offline');return held.promise;}});await f.session.load();f.session.edit('keep this draft');
+  const ticket=f.admission.inspect();assert.equal(ticket.disposition,'dirty');assert.equal(f.admission.commit(ticket.token,{discardDirty:false,allowDrainFailure:false,expiresAt:1500}),false);
+  const retry=f.session.load();assert.equal(f.admission.inspect().disposition,'blocked');assert.equal(f.admission.commit(ticket.token,{discardDirty:true,allowDrainFailure:false,expiresAt:1500}),false);
+  held.resolve(project());await retry;assert.equal(f.session.getState().phase,'ready');assert.equal(f.session.getState().draft,'keep this draft');assert.equal(f.admission.inspect().disposition,'dirty');assert.equal(f.sent.length,0);
+});
+
+test('receipt storage failures and pending requests never become a safe read error',async t=>{
+  let reads=0;const client={list:async()=>{reads++;throw new Error('offline');}};
+  const unavailable=closeFixture(t,client,undefined,{read(){throw new Error('storage unavailable');},write(){throw new Error('must not write');}});
+  await unavailable.session.load();assert.equal(unavailable.session.getState().phase,'error');assert.equal(unavailable.session.getState().error,'LOCAL_RECEIPT_UNAVAILABLE');assert.equal(unavailable.admission.inspect().disposition,'blocked');assert.equal(reads,0);
+  const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action:'pause'},unconfirmed=closeFixture(t,client,pending);
+  await unconfirmed.session.load();assert.equal(unconfirmed.session.getState().phase,'unknown');assert.deepEqual(unconfirmed.session.getState().pending,pending);unconfirmed.session.setVisible(false);assert.equal(unconfirmed.admission.inspect().disposition,'blocked');assert.equal(unconfirmed.sent.length,0);assert.equal(unconfirmed.actions.length,0);
+});
+
+test('a failed task selection retains unknown-step close protection while ordinary read errors remain recoverable',async t=>{
+  for(const unknown of [false,true]){
+    const saved=snapshot(unknown?'interrupted':'completed');if(unknown)saved.steps=[{id:stepId,runId,position:1,kind:'model',status:'unknown',createdAt:time,updatedAt:time}];
+    const held=deferred<AgentTaskSnapshot>();let reads=0;
+    const f=closeFixture(t,{list:async()=>({...project(),runs:[saved.run]}),read:async()=>++reads===1?saved:held.promise});await f.session.load();
+    const selection=f.session.select(crypto.randomUUID());assert.equal(f.admission.inspect().disposition,'blocked');held.reject(new Error('offline selection'));await selection;
+    assert.equal(f.session.getState().phase,'read_error');assert.equal(f.session.getState().snapshot?.run.id,runId);assert.equal(f.admission.inspect().disposition,unknown?'blocked':'clean');assert.equal(f.actions.length,0);assert.equal(f.sent.length,0);
+  }
+});
+
+test('an unknown send and late reads from a replaced session cannot clear the current native owner',async t=>{
+  const f=closeFixture(t,{send:async()=>{throw new Error('lost ACK');},lookup:async()=>({found:false})});await f.session.load();f.session.edit('send once');await f.session.send();assert.equal(f.session.getState().phase,'unknown');f.session.setVisible(false);assert.equal(f.admission.inspect().disposition,'blocked');
+  const held=deferred<AgentTaskProjectSnapshot>(),old=closeFixture(t,{list:async()=>held.promise}),loading=old.session.load();old.session.dispose();
+  const replacement=createAgentTaskCloseReporter(old.registry);replacement.publish({draft:'',phase:'submitting',pending:{requestId:crypto.randomUUID(),runId:null,action:'send'},snapshot:null});
+  t.after(()=>replacement.release());held.resolve(project());await loading;old.reporter.release();assert.equal(old.admission.inspect().disposition,'blocked');assert.equal(old.sent.length,0);assert.equal(old.actions.length,0);
+});
 
 test('send stores identity synchronously, blocks double-send, and never retries a lost acknowledgment', async () => {
   const held = deferred<AgentTaskSnapshot>(); let posts = 0, found: AgentTaskLookup = { found: false };
@@ -59,6 +115,122 @@ test('staged uploads send only handles with a task, never bytes or file paths', 
   const uploads: unknown[] = []; const f = fixture({ upload: async (_, input) => { uploads.push(input); return { id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }; } }); await f.session.load();
   await f.session.upload({ name: 'sample.txt', type: 'text/plain', size: 3, arrayBuffer: async () => Uint8Array.from([65, 66, 67]).buffer }); assert.equal((uploads[0] as { dataBase64: string }).dataBase64, 'QUJD');
   f.session.edit('Use the selected file'); await f.session.send(); assert.deepEqual((f.sent[0] as { uploads: string[] }).uploads, [stepId]); assert.doesNotMatch(JSON.stringify(f.sent), /dataBase64|QUJD|sample\.txt/); f.session.dispose();
+});
+
+const selectedFile = (name: string, type = 'video/mp4') => ({name, type, size: 3, arrayBuffer: async () => Uint8Array.from([65, 66, 67]).buffer});
+
+test('task uploads normalize only the existing closed audio aliases, without guessing types from filenames', async t => {
+  const cases = [
+    ['tone.m4a', 'audio/x-m4a', 'audio/mp4'], ['tone.wav', 'audio/x-wav', 'audio/wav'],
+    ['tone.m4a', 'audio/mp4', 'audio/mp4'], ['clip.mp4', 'video/mp4', 'video/mp4'],
+    ['tone.m4a', '', 'application/octet-stream'], ['tone.m4a', 'text/plain', 'text/plain'],
+    ['tone.m4a', 'audio/not-a-supported-alias', 'audio/not-a-supported-alias'],
+  ] as const;
+  for (const [name, type, expected] of cases) await t.test(`${type || 'empty'} remains ${expected}`, async () => {
+    const requests: Parameters<AgentTaskClient['upload']>[1][] = [];
+    const f = fixture({upload: async (_, input) => { requests.push(input); return {id: stepId, name: input.name, mimeType: input.mimeType, status: 'selected'}; }});
+    try {
+      await f.session.load(); assert.equal(await f.session.upload(selectedFile(name, type)), true);
+      assert.equal(requests.length, 1); assert.equal(requests[0]!.mimeType, expected); assert.equal(requests[0]!.dataBase64, 'QUJD');
+    } finally { f.session.dispose(); }
+  });
+});
+
+test('an actual upload 4xx is visible after receipt lookup, preserves earlier files and draft, and clears only on a new user upload', async () => {
+  const requests: {method: string; url: string; body?: Parameters<AgentTaskClient['upload']>[1]}[] = [];
+  let reject = true, lists = 0;
+  const http = createAgentTaskClient({fetchImpl: async (url, init) => {
+    const method = init?.method ?? 'GET', body = init?.body ? JSON.parse(String(init.body)) as Parameters<AgentTaskClient['upload']>[1] : undefined;
+    requests.push({method, url: String(url), ...(body ? {body} : {})});
+    if (method === 'GET') return Response.json({ok: true, data: {found: false}});
+    if (body?.name === 'tone.m4a' && reject) return Response.json({ok: false, error: {code: 'PRIVATE_RESPONSE_MARKER', message: 'private provider body must not appear'}}, {status: 400});
+    return Response.json({ok: true, data: {id: crypto.randomUUID(), name: body!.name, mimeType: body!.mimeType, status: 'selected'}});
+  }});
+  const f = fixture({list: async () => {lists++; return project();}, upload: http.upload, lookup: http.lookup});
+  try {
+    await f.session.load(); f.session.edit('Keep this intended edit');
+    await f.session.upload(selectedFile('red.mp4')); await f.session.upload(selectedFile('blue.mp4'));
+    const previous = structuredClone(f.session.getState().uploads);
+    assert.equal(await f.session.upload(selectedFile('tone.m4a', 'audio/mp4')), false);
+    assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, 'UPLOAD_REJECTED');
+    assert.equal(agentTaskCloseState(f.session.getState()).blocked, false, 'a proven rejection keeps its notice without trapping normal native close');
+    assert.equal(agentTaskCloseState(f.session.getState()).dirty, true, 'the existing draft still needs normal discard confirmation');
+    assert.equal(agentTaskCloseState({...f.session.getState(), draft: ''}).dirty, false);
+    assert.deepEqual(f.session.getState().uploads, previous); assert.equal(f.session.getState().draft, 'Keep this intended edit');
+    assert.equal(f.session.getState().pending, null); assert.equal(f.receipts.size, 0); assert.equal(lists, 1);
+    assert.equal(requests.filter(row => row.method === 'POST').length, 3); assert.equal(requests.filter(row => row.method === 'GET').length, 1);
+    const rejected = requests[2]!.body!;
+    assert.ok(requests[3]!.url.endsWith(`/uploads/requests/${rejected.requestId}`));
+    assert.doesNotMatch(JSON.stringify(f.session.getState()), /PRIVATE_RESPONSE_MARKER|private provider body/);
+    await f.session.reconcile(); assert.equal(requests.length, 4, 'a settled rejection never reposts or rechecks itself');
+    reject = false;
+    assert.equal(await f.session.upload(selectedFile('tone.m4a', 'audio/x-m4a')), true);
+    assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, ''); assert.equal(f.session.getState().uploads.length, 3);
+    assert.equal(requests[4]!.body!.mimeType, 'audio/mp4'); assert.notEqual(requests[4]!.body!.requestId, rejected.requestId);
+    assert.deepEqual(f.session.getState().uploads.slice(0, 2), previous); assert.equal(f.session.getState().draft, 'Keep this intended edit');
+  } finally { f.session.dispose(); }
+});
+
+test('an upload rejection whose lookup fails stays pending until the original receipt can prove nonacceptance', async () => {
+  let posts = 0, lookups = 0, unavailable = true;
+  const f = fixture({upload: async () => {posts++; throw Object.assign(new Error('private response'), {code: 'INVALID_MEDIA', definitive: true});}, lookup: async () => {lookups++; if (unavailable) throw new Error('private lookup'); return {found: false};}});
+  try {
+    await f.session.load(); f.session.edit('preserve draft');
+    assert.equal(await f.session.upload(selectedFile('tone.m4a', 'audio/mp4')), false);
+    const original = structuredClone(f.session.getState().pending);
+    assert.equal(f.session.getState().phase, 'unknown'); assert.equal(original?.definitiveRejected, true); assert.equal(f.receipts.size, 1);
+    assert.equal(await f.session.upload(selectedFile('tone.m4a', 'audio/mp4')), false); assert.equal(posts, 1);
+    unavailable = false; assert.equal(await f.session.reconcile(), false);
+    assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, 'UPLOAD_REJECTED'); assert.equal(f.session.getState().pending, null);
+    assert.equal(f.session.getState().draft, 'preserve draft'); assert.equal(posts, 1); assert.equal(lookups, 2); assert.equal(f.receipts.size, 0);
+  } finally { f.session.dispose(); }
+});
+
+test('a lost upload acknowledgement retains its identity on not-found and adopts a late accepted handle without reposting', async () => {
+  let posts = 0, lookups = 0, result: AgentTaskLookup = {found: false}; const identities: string[] = [];
+  const f = fixture({upload: async (_, input) => {posts++; identities.push(input.requestId); throw new Error('lost ACK');}, lookup: async (_, pending) => {lookups++; assert.equal(pending.requestId, identities[0]); return result;}});
+  try {
+    await f.session.load(); f.session.edit('preserve draft'); await f.session.upload(selectedFile('tone.m4a', 'audio/mp4'));
+    const pending = structuredClone(f.session.getState().pending); assert.equal(pending?.definitiveRejected, undefined);
+    await f.session.reconcile(); assert.equal(f.session.getState().phase, 'unknown'); assert.deepEqual(f.session.getState().pending, pending); assert.equal(f.receipts.size, 1);
+    assert.equal(await f.session.upload(selectedFile('other.mp4')), false); assert.equal(posts, 1);
+    result = {found: true, upload: {id: stepId, name: 'tone.m4a', mimeType: 'audio/mp4', status: 'selected'}};
+    assert.equal(await f.session.reconcile(), true); assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, '');
+    assert.equal(f.session.getState().uploads[0]?.id, stepId); assert.equal(f.session.getState().draft, 'preserve draft'); assert.equal(f.receipts.size, 0); assert.equal(posts, 1); assert.equal(lookups, 2);
+  } finally { f.session.dispose(); }
+});
+
+test('reopened rejected upload receipts show a safe rejection only after not-found, while an accepted original receipt wins', async t => {
+  for (const found of [false, true]) await t.test(found ? 'accepted original' : 'confirmed rejection', async () => {
+    const pending: AgentTaskPending = {requestId: crypto.randomUUID(), runId: null, action: 'upload', definitiveRejected: true};
+    let posts = 0, lookups = 0;
+    const upload = {id: stepId, name: 'tone.m4a', mimeType: 'audio/mp4', status: 'selected'};
+    const f = fixture({upload: async () => {posts++; return upload;}, lookup: async (_, input) => {lookups++; assert.deepEqual(input, pending); return found ? {found: true, upload} : {found: false};}}, pending);
+    try {
+      await f.session.load(); assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().pending, null); assert.equal(f.receipts.size, 0);
+      assert.equal(f.session.getState().error, found ? '' : 'UPLOAD_REJECTED'); assert.deepEqual(f.session.getState().uploads, found ? [upload] : []);
+      assert.equal(posts, 0); assert.equal(lookups, 1);
+    } finally { f.session.dispose(); }
+  });
+});
+
+test('local file-read failures do not dispatch and preserve the existing selected file and draft', async () => {
+  let posts = 0; const f = fixture({upload: async (_, input) => {posts++; return {id: stepId, name: input.name, mimeType: input.mimeType, status: 'selected'};}});
+  try {
+    await f.session.load(); await f.session.upload(selectedFile('red.mp4')); f.session.edit('preserve draft');
+    const previous = structuredClone(f.session.getState().uploads);
+    assert.equal(await f.session.upload({...selectedFile('tone.m4a', 'audio/mp4'), arrayBuffer: async () => {throw new Error('private file-read failure');}}), false);
+    assert.equal(posts, 1); assert.equal(f.session.getState().phase, 'error'); assert.equal(f.session.getState().error, 'NETWORK');
+    assert.deepEqual(f.session.getState().uploads, previous); assert.equal(f.session.getState().draft, 'preserve draft'); assert.equal(f.session.getState().pending, null); assert.equal(f.receipts.size, 0);
+  } finally { f.session.dispose(); }
+});
+
+test('late rejection lookups cannot publish into a disposed session or clear its recoverable identity', async () => {
+  const held = deferred<AgentTaskLookup>(); let posts = 0, changes = 0;
+  const f = fixture({upload: async () => {posts++; throw Object.assign(new Error('rejected'), {code: 'INVALID_MEDIA', definitive: true});}, lookup: async () => held.promise}, undefined, () => {}, {onChange: () => {changes++;}});
+  await f.session.load(); const uploading = f.session.upload(selectedFile('tone.m4a', 'audio/mp4')); await flush();
+  assert.equal(f.session.getState().pending?.definitiveRejected, true); f.session.dispose(); const previous = changes;
+  held.resolve({found: false}); assert.equal(await uploading, false); assert.equal(changes, previous); assert.equal(f.receipts.size, 1); assert.equal(posts, 1);
 });
 
 test('restored snapshots are viewable but cannot send, upload, authorize or control', async () => {

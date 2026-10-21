@@ -207,7 +207,8 @@ export function createTimelineMixLoudnessServices(store: TimelineMixLoudnessStor
     state.active = entry;
     const fence = (): void => {
       try {
-        assertOwner();
+        // current checks ownership before and after the fresh saved snapshot.
+        // Repeating that catalog scan immediately before it adds no boundary.
         const latest = current(input);
         if (latest.identity !== initial.identity) throw fault('TIMELINE_MIX_LOUDNESS_STALE');
         if (state.stopped || signal.aborted) throw fault(timedOut ? 'TIMELINE_MIX_LOUDNESS_TIMEOUT' : 'OPERATION_CANCELLED', 503);

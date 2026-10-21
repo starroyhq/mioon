@@ -1,7 +1,8 @@
 // Node-only storage policy. Keep this out of the browser/default contracts export.
-// The boundary is other OS users on a local POSIX filesystem. A process running
-// as this user (or root) can still race pathname operations, including SQLite's
-// pathname-only API. No chmod/chown or destructive repair is performed here.
+// The facade dispatches to the POSIX policy or an explicitly composed complete
+// Windows backend. The boundary is other ordinary OS users; this account and
+// administrators remain trusted, including for SQLite's pathname-only API.
+// No chmod/chown, ACL repair or destructive repair is performed here.
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {constants, lstatSync, mkdirSync, mkdtempSync, openSync, fstatSync, readSync, writeFileSync, fsyncSync, closeSync, renameSync, linkSync, unlinkSync, type Stats} from 'node:fs';
@@ -35,12 +36,13 @@ const safe = <T>(fn: () => T): T => {
 
 export interface StoragePrivacyCapability {
   available: boolean;
-  backend: 'posix-owner-mode' | 'unavailable';
+  backend: 'posix-owner-mode' | 'windows-current-user-acl' | 'unavailable';
   code: 'STORAGE_PRIVACY_UNAVAILABLE' | null;
   reason: 'WINDOWS_ACL_UNIMPLEMENTED' | 'PLATFORM_UNSUPPORTED' | null;
 }
 /** Informational only: a platform argument can never change operational checks. */
 export function getStoragePrivacyCapability(platform: string = process.platform): StoragePrivacyCapability {
+  if (platform === 'win32' && process.platform === 'win32' && windowsBackend) return Object.freeze({available:true,backend:'windows-current-user-acl',code:null,reason:null});
   const available = ['linux', 'darwin', 'freebsd', 'openbsd', 'netbsd', 'aix', 'sunos'].includes(platform);
   return Object.freeze({available, backend: available ? 'posix-owner-mode' : 'unavailable',
     code: available ? null : 'STORAGE_PRIVACY_UNAVAILABLE',
@@ -56,8 +58,8 @@ export interface ReadPrivateFileOptions {root?: string; allowMissing?: boolean; 
 export interface WritePrivateFileOptions {root?: string; maxBytes?: number; replace?: boolean}
 export interface RemovePrivateFileOptions {root?: string; maxBytes?: number; private?: boolean}
 
-/** Reserved, code-injected Windows readiness seam. An ACL verifier alone cannot
- * enable storage: private creation and reparse-safe access are not implemented.
+/** Legacy informational Windows readiness seam. An ACL verifier alone cannot
+ * enable this POSIX factory: the complete native backend is registered separately.
  * Neither configuration, environment variables nor caller platform strings can
  * turn this release's Windows gate into a successful POSIX-mode assertion. */
 export function createPrivateStoragePolicy({windowsAclVerifier}: PrivateStoragePolicyOptions = {}) {
@@ -66,8 +68,7 @@ export function createPrivateStoragePolicy({windowsAclVerifier}: PrivateStorageP
     const capability = getStoragePrivacyCapability(platform);
     if (!capability.available || typeof process.getuid !== 'function' || !constants.O_NOFOLLOW) {
       if (platform === 'win32' && typeof windowsAclVerifier === 'function') {
-        // A future backend can consume this readiness result. It deliberately
-        // cannot authorize file operations until that backend exists.
+        // This readiness result deliberately cannot authorize file operations.
         try { windowsAclVerifier(); } catch {}
       }
       throw new PrivateStorageError(capability.reason || 'PRIVACY_PRIMITIVES_UNAVAILABLE',
@@ -281,5 +282,65 @@ export function createPrivateStoragePolicy({windowsAclVerifier}: PrivateStorageP
   return Object.freeze({assertStoragePrivacyAvailable, ensurePrivateDirectory, validatePrivateDirectory, createPrivateTemporaryDirectory, validateManagedDirectory, validateManagedFile, readPrivateFile, writePrivateFileAtomic, removePrivateFile});
 }
 
-export const {assertStoragePrivacyAvailable, ensurePrivateDirectory, validatePrivateDirectory, createPrivateTemporaryDirectory, validateManagedDirectory,
-  validateManagedFile, readPrivateFile, writePrivateFileAtomic, removePrivateFile} = createPrivateStoragePolicy();
+export type PrivateStoragePolicy = ReturnType<typeof createPrivateStoragePolicy>;
+export interface WindowsManagedFileHandle {
+  metadata():Stats;
+  read(size:number):Buffer;
+  write(bytes:Uint8Array):void;
+  flush():void;
+  close():void;
+}
+export interface WindowsManagedDirectoryHandle {metadata():Stats; next():string|null; close():void}
+export interface WindowsManagedFileIO {
+  openFile(file:string,options:{root:string;private:boolean;maxBytes?:number;mode:'read'|'create'|'flush';expected?:Stats}):WindowsManagedFileHandle;
+  createDirectoryNew(directory:string,options:{root?:string}):Stats;
+  openDirectory(directory:string,options:{root:string;private:boolean}):WindowsManagedDirectoryHandle;
+  syncDirectory(directory:string,options:{root?:string;private:boolean}):void;
+  renameNoReplace(source:string,destination:string,options:{root:string;expected:Stats}):Stats;
+  removeOwnedFile(file:string,options:{root:string;expected:Stats;maxBytes?:number}):void;
+  removeOwnedDirectory(directory:string,options:{root:string;expected:Stats}):void;
+}
+export interface WindowsPrivateStorageBackend extends PrivateStoragePolicy {readonly apiVersion:1; readonly platform:'win32'; readonly managedFileIO?:WindowsManagedFileIO}
+let windowsBackend: WindowsPrivateStorageBackend | undefined;
+const windowsIdentities = new WeakMap<object,string>();
+/** Trusted Node-host seam. An ACL verifier or caller platform string is never
+ * sufficient: every operation must be implemented by the registered backend. */
+export function registerWindowsPrivateStorageBackend(backend:WindowsPrivateStorageBackend):void {
+  const methods:readonly (keyof PrivateStoragePolicy)[]=['assertStoragePrivacyAvailable','ensurePrivateDirectory','validatePrivateDirectory','createPrivateTemporaryDirectory','validateManagedDirectory','validateManagedFile','readPrivateFile','writePrivateFileAtomic','removePrivateFile'];
+  if(process.platform!=='win32'||windowsBackend||backend?.platform!=='win32'||backend.apiVersion!==1||methods.some(name=>typeof backend[name]!=='function'))throw new PrivateStorageError('WINDOWS_BACKEND_INVALID','A complete, single Windows private storage backend is required.','STORAGE_PRIVACY_UNAVAILABLE');
+  backend.assertStoragePrivacyAvailable();windowsBackend=Object.freeze(backend);
+}
+/** Restricted, opaque native leases for the Node-only backup implementation. */
+export function getWindowsManagedFileIO():WindowsManagedFileIO {
+  const io=process.platform==='win32'?windowsBackend?.managedFileIO:undefined;
+  if(!io)throw new PrivateStorageError('WINDOWS_MANAGED_IO_UNAVAILABLE','Windows managed streaming storage is unavailable.','STORAGE_PRIVACY_UNAVAILABLE');
+  return io;
+}
+/** Bind only metadata obtained while the native walk pins and revalidates the
+ * same filesystem object throughout the trusted Node metadata callback.
+ * No Windows uid/mode or truncated Node dev/ino is used as security evidence. */
+export function bindWindowsPrivateStorageIdentity(metadata:object,volume:string,fileId:string):void {
+  if(process.platform!=='win32'||! /^[a-f0-9]{16}$/u.test(volume)||! /^[a-f0-9]{32}$/u.test(fileId)||windowsIdentities.has(metadata))throw new PrivateStorageError('FILE_IDENTITY','Invalid full Windows file identity.');
+  windowsIdentities.set(metadata,`windows:${volume}:${fileId}`);
+}
+export function privateStorageIdentity(info:{dev:number|bigint;ino:number|bigint}):string {
+  const native=windowsIdentities.get(info);if(native)return native;
+  if(process.platform==='win32')throw new PrivateStorageError('FILE_IDENTITY_UNVERIFIED','Windows metadata requires a validated full file identity.');
+  return `posix:${String(info.dev)}:${String(info.ino)}`;
+}
+export function samePrivateStorageIdentity(a:{dev:number|bigint;ino:number|bigint}|null|undefined,b:{dev:number|bigint;ino:number|bigint}|null|undefined):boolean {
+  return Boolean(a&&b&&privateStorageIdentity(a)===privateStorageIdentity(b));
+}
+const posixPolicy=createPrivateStoragePolicy();
+const activePolicy=():PrivateStoragePolicy=>process.platform==='win32'&&windowsBackend?windowsBackend:posixPolicy;
+// Stable functions also cover importers evaluated before Node-host bootstrap.
+// Contracts deliberately never import or discover a native binary themselves.
+export const assertStoragePrivacyAvailable:PrivateStoragePolicy['assertStoragePrivacyAvailable']=(...args)=>activePolicy().assertStoragePrivacyAvailable(...args);
+export const ensurePrivateDirectory:PrivateStoragePolicy['ensurePrivateDirectory']=(...args)=>activePolicy().ensurePrivateDirectory(...args);
+export const validatePrivateDirectory:PrivateStoragePolicy['validatePrivateDirectory']=(...args)=>activePolicy().validatePrivateDirectory(...args);
+export const createPrivateTemporaryDirectory:PrivateStoragePolicy['createPrivateTemporaryDirectory']=(...args)=>activePolicy().createPrivateTemporaryDirectory(...args);
+export const validateManagedDirectory:PrivateStoragePolicy['validateManagedDirectory']=(...args)=>activePolicy().validateManagedDirectory(...args);
+export const validateManagedFile:PrivateStoragePolicy['validateManagedFile']=(...args)=>activePolicy().validateManagedFile(...args);
+export const readPrivateFile:PrivateStoragePolicy['readPrivateFile']=(...args)=>activePolicy().readPrivateFile(...args);
+export const writePrivateFileAtomic:PrivateStoragePolicy['writePrivateFileAtomic']=(...args)=>activePolicy().writePrivateFileAtomic(...args);
+export const removePrivateFile:PrivateStoragePolicy['removePrivateFile']=(...args)=>activePolicy().removePrivateFile(...args);

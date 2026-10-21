@@ -73,7 +73,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
 export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];before:Snapshot}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
-export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;recordInside:(change:AgentTaskChange)=>void;expectedTargets?:AgentTaskTarget[]}
+export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
 interface SnapshotEntry {kind:string;id:string;table:string;value:Value;revision:number}
 type Snapshot=Record<string,SnapshotEntry>;
@@ -345,7 +345,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   context.beforeEffect();const value=await services.call(isLut?'lut.import':'asset.import',{projectId:prepared.projectId,name:row.name,...(isLut?{requestId:context.requestId}:{mimeType:row.mimeType}),dataBase64:bytes.toString('base64')},{signal:context.signal});
    return {result:projectResult(value),changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
  }
- function undo(change:AgentTaskChange,context:AgentTaskUndoContext):{targets:AgentTaskTarget[]}{
+ function undo(change:AgentTaskChange,context:AgentTaskUndoContext):{targets:AgentTaskTarget[];retained?:boolean}{
   if(!change.reversible||change.status!=='applied'||!Array.isArray(change.undo))fail('AGENT_TASK_NOT_REVERSIBLE','此项变化不能撤销');
   const undoEntries=change.undo;
   return store.tx(()=>{
@@ -355,6 +355,25 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    for(const item of undoEntries){if(!object(item))fail('AGENT_TASK_INVALID_TARGET','撤销记录无效');const before=item.before,after=item.after;if(before!==undefined&&!object(before)||after!==undefined&&!object(after))fail('AGENT_TASK_INVALID_TARGET','撤销记录无效');
     const entry={...(before?{before:before as unknown as SnapshotEntry}:{}),...(after?{after:after as unknown as SnapshotEntry}:{})},identity=entry.after??entry.before;if(!identity||typeof identity.kind!=='string'||typeof identity.id!=='string'||typeof identity.table!=='string')fail('AGENT_TASK_INVALID_TARGET','撤销目标无效');
     const found=current[key(identity.kind,identity.id)];if(canonical(found?comparable(found.value):null)!==canonical(entry.after?comparable(entry.after.value):null))fail('AGENT_TASK_TARGET_CHANGED','目标已变化，无法覆盖当前编辑');entries.push(entry);
+   }
+   // A generated product keeps its original shot owner. Retention is not a
+   // compensation and cannot hide another entry or advance the revision chain.
+   const created=entries.length===1?entries[0]:undefined,target=change.targets.length===1?change.targets[0]:undefined;
+   if(change.operation==='shot.create'&&created&&!created.before&&created.after?.kind==='shot'&&created.after.table==='shots'&&target?.kind==='shot'&&target.id===created.after.id){
+    const shotId=created.after.id;
+    if(db.prepare("SELECT 1 FROM edges WHERE projectId=? AND (json_extract(data,'$.source')=? OR json_extract(data,'$.target')=?) LIMIT 1").get(change.projectId,shotId,shotId))fail('AGENT_TASK_TARGET_CHANGED','目标已有新连线');
+    const jobs=db.prepare("SELECT id FROM jobs WHERE projectId=? AND json_extract(data,'$.shotId')=?").all(change.projectId,shotId);
+    const ownedJob=db.prepare(`SELECT 1 FROM agent_task_job_origins_v2 b JOIN jobs j ON j.id=b.jobId AND j.projectId=b.projectId
+     JOIN agent_task_steps_v2 s ON s.id=b.stepId AND s.runId=b.runId AND s.projectId=b.projectId
+     WHERE b.kind='job' AND b.jobId=? AND b.projectId=? AND b.runId=? AND b.operation='generation.submit'
+     AND b.requestId=json_extract(j.data,'$.requestId') AND s.status='completed' AND json_extract(s.data,'$.kind')='tool'
+     AND json_extract(s.data,'$.toolCall.name')='mioon_generation_submit' AND json_extract(s.data,'$.toolCall.arguments.shotId')=?
+     AND EXISTS(SELECT 1 FROM agent_task_changes_v2 c,json_each(c.data,'$.targets') t WHERE c.runId=b.runId AND c.stepId=b.stepId AND c.projectId=b.projectId
+      AND json_extract(c.data,'$.operation')='generation.submit' AND json_extract(c.data,'$.reversible')=0 AND json_extract(c.data,'$.status')='applied'
+      AND json_extract(t.value,'$.kind')='job' AND json_extract(t.value,'$.id')=j.id)`);
+    if(jobs.length&&jobs.every(job=>ownedJob.get(job.id,change.projectId,change.runId,shotId))){
+     context.retainInside(change,'保留生成记录及产物所需镜头');return {targets:[],retained:true};
+    }
    }
    const timelineTargets=entries.filter(entry=>(entry.after??entry.before)!.kind.startsWith('timeline'));
    // References are removed before their source node/shot. Restoration inserts

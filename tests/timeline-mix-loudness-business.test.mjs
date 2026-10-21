@@ -98,6 +98,27 @@ test('full saved original and separately rendered candidate are byte-pinned and 
   assert.ok(!JSON.stringify(result).includes('candidateId')); await f.unchanged(before);
 });
 
+test('fresh snapshot rechecks ownership and restore state before any subsequent source read', async t => {
+  for (const drift of ['owner', 'restored']) for (const stage of ['initial', 'decode']) await t.test(`${drift} during ${stage} snapshot`, async t => {
+    let f, armed = stage === 'initial', changed = false, validated = 0, validationsAtDrift = null, decodes = 0;
+    f = await fixture(t, {runtime: {
+      assertOrdinaryWorkspace() {if (changed && drift === 'restored') throw workspaceRestoreError();},
+      ownsLock: () => !(changed && drift === 'owner'),
+      readSavedTimeline(projectId) {
+        const saved = readSaved(f.store, projectId);
+        if (armed) {changed = true; validationsAtDrift ??= validated;}
+        return saved;
+      },
+      validateSource(...args) {validated++; return validateManagedSource(...args);},
+      decode(timeline, assets, options) {decodes++; armed = true; return fakeDecode(timeline, assets, options);},
+    }});
+    const before = await f.checkpoint();
+    await assert.rejects(f.call(), {code: drift === 'owner' ? 'TIMELINE_MIX_LOUDNESS_OWNER_REQUIRED' : 'RESTORE_OPERATION_UNAVAILABLE'});
+    assert.equal(changed, true); assert.equal(validated, validationsAtDrift);
+    assert.equal(decodes, stage === 'initial' ? 0 : 1); await f.unchanged(before);
+  });
+});
+
 test('strict target and fixed profiles reject arbitrary execution fields before any source read', async t => {
   let reads = 0; const f = await fixture(t, {runtime: {validateSource: (...args) => {reads++; return validateManagedSource(...args);}}});
   for (const extra of [{path: '/private/file'}, {filter: 'volume=9'}, {gain: 2}, {timeoutMs: 1}, {exportRange: {startFrame: 0, endFrame: 1}},

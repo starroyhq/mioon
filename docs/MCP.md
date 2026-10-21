@@ -8,9 +8,9 @@ Node.js 24+ and installed source workspace dependencies are required for this op
 
 ```sh
 pnpm install --frozen-lockfile
-node /absolute/path/mioon/apps/mcp/src/index.mjs
+node /absolute/path/mioon/apps/mcp/src/index.ts
 # Existing compatibility entrypoint remains supported:
-node /absolute/path/mioon/server/mcp.mjs
+node /absolute/path/mioon/server/mcp.ts
 ```
 
 The MCP client launches this command with the selected environment. Do not run it through a launcher that prints banners to stdout; stdout is exclusively the MCP wire protocol. The bridge can initialize and list tools while the backend is stopped. Calling `mioon_doctor` then explains readiness through a safe structured error.
@@ -25,7 +25,7 @@ Prefer private connection files, not token literals in client configuration:
 
 Connection files are read again on every HTTP request. A long-lived MCP process follows desktop restarts and direct token-file rotation without restarting itself. Files must be small regular files owned by the current user; POSIX permissions must be `0600` or stricter, and symlinks are rejected. Desktop token location must be beside the descriptor, with a live PID. Origins are restricted to local HTTP (`127.0.0.1` or `localhost`), and redirects, embedded URL credentials, paths, queries, and fragments are refused. No token or credential path is returned by doctor.
 
-Q2 also validates the private parent directory and canonical ancestry and rejects multiply linked credentials. Existing unsafe files/directories are preserved rather than repaired or replaced. Windows persistent-file access is unavailable until a native ACL backend is implemented and verified. See [private storage and recovery](PRIVATE-STORAGE.md); no new MCP authority or operation is introduced.
+Q2 also validates the private parent directory and canonical ancestry and rejects multiply linked credentials. Existing unsafe files/directories are preserved rather than repaired or replaced. The standalone Node MCP entry point now explicitly initializes the complete, locally built [Node-API private-storage helper](../packages/node-host/README.md) on Windows, restricted to fixed local NTFS; missing or incompatible protection still fails closed. Current native acceptance covers Windows 11 ARM64 and does not certify Electron support or Windows distribution. See [private storage and recovery](PRIVATE-STORAGE.md); no new MCP authority or operation is introduced.
 
 Do not mix a desktop descriptor with `MIOON_BASE_URL`/`MIOON_TOKEN_FILE`. Explicit `MIOON_TOKEN` takes precedence when no token file is supplied; `MIOON_TOKEN_FILE` plus `MIOON_TOKEN` is rejected. New setups should choose exactly one mode.
 
@@ -42,7 +42,7 @@ This is a configuration example for the user's review, not an installer. No file
 ```toml
 [mcp_servers.video_workbench]
 command = "node"
-args = ["/absolute/path/mioon/apps/mcp/src/index.mjs"]
+args = ["/absolute/path/mioon/apps/mcp/src/index.ts"]
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 
@@ -70,7 +70,7 @@ The user may review this project `.mcp.json` example and configure it in their o
     "mioon": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/mioon/apps/mcp/src/index.mjs"],
+      "args": ["/absolute/path/mioon/apps/mcp/src/index.ts"],
       "env": {
         "MIOON_CONNECTION_FILE": "/absolute/path/to/userData/mcp-connection.json"
       }
@@ -692,7 +692,7 @@ backend-durable accepted work, not durable preparation of an unsent MCP request.
 
 ## Timeline output presets (schema 21)
 
-`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and one of `portrait_720`, `landscape_720`, `square_720`. Output is respectively 720×1280, 1280×720 or 720×720, always 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
+`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and a preset from the current schema. Current presets are `portrait_1080` (1080×1920), `landscape_1080` (1920×1080) and `square_1080` (1080×1080); new projects default to `portrait_1080`. The contract also retains `portrait_720` (720×1280), `landscape_720` (1280×720) and `square_720` (720×720) for existing projects. All use 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
 
 This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
 
