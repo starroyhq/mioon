@@ -28,7 +28,7 @@ test('native Windows headless backend and separate CLI share private storage, di
  async function cli(words,input={},options={}){
   const child=spawn(process.execPath,[entry,...words,'--input',JSON.stringify(input),...(options.flags??[])],{env,stdio:[options.key===undefined?'ignore':'pipe','pipe','pipe']});
   if(options.key!==undefined)child.stdin.end(options.key);
-  let stdout='',stderrBytes=0;child.stdout.on('data',bytes=>{stdout+=bytes;if(Buffer.byteLength(stdout)>512*1024)child.kill('SIGKILL');});child.stderr.on('data',bytes=>{stderrBytes+=bytes.length;});
+  let stdout='',stderrBytes=0;child.stdout.setEncoding('utf8').on('data',bytes=>{stdout+=bytes;if(Buffer.byteLength(stdout)>512*1024)child.kill('SIGKILL');});child.stderr.on('data',bytes=>{stderrBytes+=bytes.length;});
   const result=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI smoke deadline exceeded'));},20000);child.once('error',()=>{clearTimeout(timer);reject(Error('Synthetic CLI launch failed'));});child.once('exit',(code,signal)=>{clearTimeout(timer);resolve({code,signal});});});
   const lines=stdout.trim().split('\n');assert.equal(lines.length,1);const envelope=JSON.parse(lines[0]);assert.deepEqual(result,{code:0,signal:null},JSON.stringify({command:words.join('.'),code:envelope.error?.code,message:envelope.error?.message}));assert.equal(envelope.ok,true);assert.ok(stderrBytes<8192);return envelope.data;
  }

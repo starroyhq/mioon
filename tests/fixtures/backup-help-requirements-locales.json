@@ -1,0 +1,34 @@
+{
+  "legacy": {
+    "zh-Hans": [
+      "Node.js 24+，并已安装源码工作区的依赖",
+      "捕获前请关闭所有使用源工作区的后端或桌面应用。遇到已有锁及尚未执行检查点的 SQLite 附属文件时，将拒绝操作，不进行修复",
+      "请明确使用规范化的绝对路径。目标目录必须是新目录，其父目录必须已存在且安全，并且目标目录不能与源目录重叠。恢复还会拒绝上级目录中包含 workbench.sqlite 或 server.lock 的目标位置；请选择独立的工作区根目录",
+      "备份 format1 不记录原始源路径。对于已重命名或未初始化、缺少固定工作区/锁标记的源目录，无法自动识别；请将新目标目录放在原始工作区之外"
+    ],
+    "zh-Hant": [
+      "Node.js 24+，並已安裝原始碼工作區的相依套件",
+      "擷取前請關閉所有使用來源工作區的後端或桌面應用程式。遇到既有鎖定檔及尚未執行檢查點的 SQLite 附屬檔案時，將拒絕操作，不進行修復",
+      "請明確使用正規化的絕對路徑。目標目錄必須是新目錄，其父目錄必須已存在且安全，並且目標目錄不能與來源目錄重疊。還原還會拒絕上層目錄中包含 workbench.sqlite 或 server.lock 的目標位置；請選擇獨立的工作區根目錄",
+      "備份 format1 不記錄原始來源路徑。對於已重新命名或未初始化、缺少固定工作區/鎖定標記的來源目錄，無法自動識別；請將新目標目錄放在原始工作區之外"
+    ],
+    "en": [
+      "Node.js 24+ with installed source workspace dependencies",
+      "Close every backend or desktop app using the source workspace before capture. Existing locks and uncheckpointed SQLite sidecars are refused without repair",
+      "Use explicit canonical absolute paths. The destination must be new, with an existing safe parent, and must not overlap the source. Restore also refuses destination ancestors containing workbench.sqlite or server.lock; choose an independent workspace root",
+      "Backup format1 does not record its original source path. Renamed or uninitialized source directories lacking fixed workspace/lock markers cannot be identified automatically; keep the new destination outside your original workspace"
+    ],
+    "ja": [
+      "Node.js 24+ と、ソースワークスペースの依存関係のインストールが必要です",
+      "取得前に、コピー元ワークスペースを使用しているすべてのバックエンドとデスクトップアプリを終了してください。既存のロックやチェックポイント未完了の SQLite 付随ファイルがある場合は、修復せずに操作を拒否します",
+      "正規化済みの絶対パスを明示してください。保存先は新規で、安全な親ディレクトリがすでに存在し、コピー元と重ならない必要があります。復元では、祖先ディレクトリに workbench.sqlite または server.lock がある復元先も拒否します。独立したワークスペースのルートを選んでください",
+      "バックアップ format1 は元のコピー元パスを記録しません。名前が変更された、または未初期化のコピー元ディレクトリで、所定のワークスペース/ロックのマーカーがないものは自動識別できません。新しい保存先は元のワークスペースの外に置いてください"
+    ]
+  },
+  "windows": {
+    "zh-Hans": "Windows 需要在受支持的本地 NTFS 上使用完整的 Node-API 私有存储后端，包括有界的自有句柄和持久化目录发布。缺少原生支持时会在捕获前拒绝；不使用 POSIX 或仅验证权限的回退",
+    "zh-Hant": "Windows 需要在受支援的本機 NTFS 上使用完整的 Node-API 私有儲存後端，包括有界的自有控制代碼和持久化目錄發布。缺少原生支援時會在擷取前拒絕；不使用 POSIX 或僅驗證權限的後援",
+    "en": "Windows requires the complete Node-API private-storage backend on supported local NTFS, including bounded owned handles and durable directory publication. Missing native support refuses before capture; no POSIX or permission-only fallback is used",
+    "ja": "Windows では、対応するローカル NTFS 上の完全な Node-API 非公開ストレージバックエンドが必要です。有界の所有ハンドルと永続的なディレクトリ公開を含みます。ネイティブ対応がない場合は取得前に拒否し、POSIX や権限確認のみへのフォールバックは行いません"
+  }
+}

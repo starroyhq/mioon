@@ -45,3 +45,9 @@
 新生产实现由 `desktop_goal_readiness` 修改，两个审查者均未参与预算及附件实现。最后冻结 SHA：`task-journal-v2.ts` 为 `a8ab0536b7b809c0be986e9605fc5e5d4f8872d9f21b710ca7d35a76a9bcd4c6`；`task-runtime-v2.ts` 为 `57c62112053abea10d73ac539f99f9b567ec4ec5ef8f5fdc3dcb201126ae10f0`；附件 UI 为 `aeac83e6f704e9f9b9614356732fb40814efe66ec2323a4fc13556478c727324`。旧 `reviewed-code-fingerprints.json` 未重写。
 
 完整 runtime/journal 89/89、边界与恢复 25/25、附件相关 82/82、生产及 tests 严格类型、Web/桌面构建均通过。最终原生服务已通过菜单更新，主进程和 session Key 保留，原已完成任务及成片恢复且没有自动重发。完整范围、两个已修复问题及未扩大的平台声明见 [DESKTOP-REAL-ACCEPTANCE.md](DESKTOP-REAL-ACCEPTANCE.md)。验收收口时本批代码和记录未提交；后续提交和 PR 以用户另行授权及 Git 记录为准，不部署或发布。
+
+## PR #15 首轮完整 CI 增量
+
+初轮 Linux 完整分片暴露 16 项失败，原因与修复见 [PR15-CI-REPAIRS.md](PR15-CI-REPAIRS.md)。`main_merge_audit` 实现有限源码 inverse fixture 后，由未参与实现的 `pr15_subtitle_ci` 独立核验 13 个精确变更，原 historical/raw/type-erased pins 和 import allowlist 均保留。`cli_sdk_final_spec` 修复帮助、四语索引和文本流，`main_merge_audit` 独立复审及定向 5/5，no finding。主代理去除响度栅栏中的紧邻重复扫描，`main_merge_audit` 与 `cli_sdk_final_spec` 分别进行 Standards/安全与 Spec 复审，均 no finding；实时快照前后及最后写入前的校验保留。
+
+字幕媒体完整回归 43/43，冻结兼容 23/23，CLI 目标 21/21、补充 35/35，响度业务 34/34、解码/应用/传输边界 42/42；生产及 tests 类型、Web/桌面构建通过。这些组有重叠，且只代表所列本地验证；GitHub x64 完整 CI 仍以 PR 最新 head 的结果为准，不以本地通过替代远端全绿条件。未更新旧验收批次的源码指纹来掩盖这些变化。

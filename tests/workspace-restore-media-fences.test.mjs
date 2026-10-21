@@ -21,13 +21,18 @@ const delivery=resolveTimelineExportDelivery(TIMELINE_OUTPUT_PRESETS[0],{profile
 const metadata={streams:[{index:0,codec_type:'video',codec_name:'h264',width:720,height:1280,r_frame_rate:'30/1',avg_frame_rate:'30/1',nb_frames:'2'},
  {index:1,codec_type:'audio',codec_name:'aac',sample_rate:'48000',channels:2}],format:{duration:String(2/30)}};
 const listing='Encoders:\n ------\n V....D libx264 Synthetic video\n A..... aac Synthetic audio\n';
+const subtitleHelp='Filter drawtext\n  Synthetic drawtext filter\ndrawtext AVOptions:\n'+
+ ['fontfile','textfile','expansion','fontsize','borderw','line_spacing','fontcolor','bordercolor','x','y'].map(name=>`   ${name} <string> ..FV....... synthetic option\n`).join('')+
+ "\nThis filter has support for timeline through the 'enable' option.\n";
 async function sandbox(t){const root=await mkdtemp(path.join(tmpdir(),'mioon-restore-media-'));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
 async function fixture(t){
  const root=await sandbox(t),binary=path.join(root,'synthetic-media.ts');
  await writeFile(binary,`#!${process.execPath}\nimport {writeFileSync} from 'node:fs';
+ import assert from 'node:assert/strict';
  const args=process.argv.slice(2);
  if(args.includes('-show_streams'))process.stdout.write(${JSON.stringify(JSON.stringify(metadata))});
  else if(args.includes('-encoders'))process.stdout.write(${JSON.stringify(listing)});
+ else if(args.includes('-h')){assert.deepEqual(args,['-hide_banner','-h','filter=drawtext']);process.stdout.write(${JSON.stringify(subtitleHelp)});}
  else if(args.includes('rawvideo')){const bytes=Buffer.alloc(4096*256);bytes[64*4096+64]=255;process.stdout.write(bytes);}
  else if(args.at(-1)==='pipe:1')process.stdout.write('synthetic-not-mp4');
  else writeFileSync(args.at(-1),'synthetic-owned-output',{flag:args.includes('-n')?'wx':'w'});\n`,{mode:0o700});
@@ -165,17 +170,17 @@ test('subtitle font copy rechecks before each write and removes only its owned p
  assert.equal((await readdir(root)).some(name=>name.startsWith('.timeline-render-')),false);
 });
 
-test('subtitle measurement expiry never starts a media segment and cleans all known subtitle files',async t=>{
+for(const stopAfter of [1,2])test(`subtitle ${stopAfter===1?'inspection':'measurement'} expiry never starts a media segment and cleans all known subtitle files`,async t=>{
  const root=await fixture(t),{snapshot,assets}=timeline(root,{subtitles:true}),destination=await output(t,root);let live=true;
- const expected=restriction(),events=observe(t,event=>{if(event.type==='exited')live=false;});
+ let exited=0;const expected=restriction(),events=observe(t,event=>{if(event.type==='exited'&&++exited===stopAfter)live=false;});
  await assert.rejects(renderTimeline(snapshot,assets,destination.file,{beforeEffect(){destination.check();if(!live)throw expected;}}),error=>error===expected);
- assert.equal(started(events).length,1);assert.equal((await readdir(root)).some(name=>name.startsWith('.timeline-render-')),false);
+ assert.deepEqual(started(events).map(event=>event.kind),Array(stopAfter).fill('ffmpeg'));assert.equal((await readdir(root)).some(name=>name.startsWith('.timeline-render-')),false);
 });
 
 test('valid guarded subtitle render and omitted-callback legacy paths preserve their normal results',async t=>{
  const root=await fixture(t),{snapshot,assets}=timeline(root,{subtitles:true}),destination=await output(t,root),events=observe(t);let checks=0;
  const result=await renderTimeline(snapshot,assets,destination.file,{beforeEffect(){checks++;destination.check();}});
- assert.equal(result.width,720);assert.ok(checks>20);assert.equal(started(events).length,5);
+ assert.equal(result.width,720);assert.ok(checks>20);assert.deepEqual(started(events).map(event=>event.kind),[...Array(5).fill('ffmpeg'),'ffprobe']);
  assert.equal((await readdir(root)).some(name=>name.startsWith('.timeline-render-')),false);
  const normal=timeline(root),legacy=path.join(root,'legacy.mp4');await renderTimeline(normal.snapshot,normal.assets,legacy);
  assert.equal(await readFile(legacy,'utf8'),'synthetic-owned-output');

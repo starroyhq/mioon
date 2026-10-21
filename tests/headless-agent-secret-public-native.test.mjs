@@ -80,8 +80,8 @@ process.once('message',async input=>{
   const args=[cliEntry,'agent','settings',...words,'--input',JSON.stringify(input),...(key===undefined?[]:['--key-stdin'])];
   const child=spawn(process.execPath,args,{env:environment,stdio:['pipe','pipe','pipe'],windowsHide:true});
   let stdout='',stderr='';
-  child.stdout.on('data',bytes=>{stdout+=bytes;if(Buffer.byteLength(stdout)>512*1024)child.kill('SIGKILL');});
-  child.stderr.on('data',bytes=>{stderr+=bytes;if(Buffer.byteLength(stderr)>8192)child.kill('SIGKILL');});
+  child.stdout.setEncoding('utf8').on('data',bytes=>{stdout+=bytes;if(Buffer.byteLength(stdout)>512*1024)child.kill('SIGKILL');});
+  child.stderr.setEncoding('utf8').on('data',bytes=>{stderr+=bytes;if(Buffer.byteLength(stderr)>8192)child.kill('SIGKILL');});
   child.stdin.on('error',()=>{});child.stdin.end(key??'');
   const result=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI exceeded its deadline.'));},20000);child.once('error',()=>{clearTimeout(timer);reject(Error('Synthetic CLI launch failed.'));});child.once('close',(code,signal)=>{clearTimeout(timer);resolve({code,signal});});});
   assert.equal(result.signal,null);assert.equal(stdout.includes(synthetic),false);assert.equal(stderr.includes(synthetic),false);

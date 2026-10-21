@@ -5,7 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash,randomUUID} from 'node:crypto';
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
@@ -40,6 +40,18 @@ const reviewedLoudnessRangeFragments=Object.freeze({
  'packages/contracts/src/operation-effects.mjs':'Reports bounded complete-window loudness range. An explicit optional LUFS/dBTP target prepares an actually measured supported fixed-gain candidate; no implicit target or apply authority. No persistent report,',
 });
 const currentPath=file=>migrationMap[file]?.currentPath??file;
+const cliDeltaBytes=fs.readFileSync(new URL('./fixtures/agent-cli-reviewed-source-deltas.json',import.meta.url));
+const cliDeltas=JSON.parse(cliDeltaBytes);
+// Keep all historical and migration pins intact. Only the exact reviewed CLI
+// deltas are reversed before comparing the existing raw/type-erased pins.
+function reverseReviewedCli(file,bytes){
+ const delta=cliDeltas.files.find(item=>item.path===currentPath(file));if(!delta)return bytes;
+ const label=`Baseline dependency changed: ${file}; reviewed CLI delta`;
+ assert.equal(bytes.byteLength,delta.afterBytes,label);assert.equal(sha(bytes),delta.afterSha256,label);
+ let source=bytes.toString('utf8');
+ for(const inverse of delta.inverse){assert.equal(inverse.occurrences,1);assert.ok(inverse.after.length>0);assert.equal(source.split(inverse.after).length-1,1,label);source=source.replace(inverse.after,inverse.before);}
+ const previous=Buffer.from(source);assert.equal(previous.byteLength,delta.beforeBytes,label);assert.equal(sha(previous),delta.beforeSha256,label);return previous;
+}
 // Deterministic drift detection: every mapped legacy key pins the current
 // whole-body hash in all environments, and additionally pins an esbuild
 // type-erased body hash (tolerates erasable type-only edits). The esbuild
@@ -56,7 +68,7 @@ function assertPinnedCurrent(file,read=null){
  const prior=reviewed??mapping,next=schema52RuntimeMap[file];
  if(next){assert.equal(next.currentPath,mapping.currentPath);assert.equal(next.previousCurrentSha256,prior.currentSha256);assert.equal(next.previousTypeErasedSha256,prior.typeErasedSha256);}
  const pin=next??prior;
- const text=(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))).toString();
+ const text=reverseReviewedCli(file,Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath)))).toString();
  assert.equal(sha(text),pin.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
  const erased=eraseSource(text);
  if(erased!==null)assert.equal(sha(erased),pin.typeErasedSha256,`${file}: deterministic type-erased current body`);
@@ -274,6 +286,19 @@ test('frozen c3a0a57 schema dependency cycle preserves exact original source has
 });
 test('reviewed schema50 current-runtime pins reject every additional source byte while preserving old pins',()=>{
  for(const file of new Set([...Object.keys(schema50RuntimeMap),...Object.keys(schema52RuntimeMap)])){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
+});
+test('finite CLI source deltas recover exact Git predecessors without changing historical or migration pins',()=>{
+ assert.equal(sha(cliDeltaBytes),'46376e8cbbb647cd28790fdfbebfc795cb462cbe180d918ff12df160af491398');
+ assert.equal(cliDeltas.formatVersion,1);assert.equal(cliDeltas.predecessorCommit,'3e5ed71c01ff8d06403e1c4b2cb082cd81e26907');assert.equal(cliDeltas.acceptedCommit,'6904a53249a2cdec1ee6a84c8bfb01f8e0056353');
+ assert.deepEqual(cliDeltas.files.map(item=>item.path),['packages/business/src/agent/chat-errors.ts','packages/business/src/local-drafts.ts','packages/business/src/workspace-lock.ts','packages/contracts/src/private-storage.ts']);
+ for(const delta of cliDeltas.files){
+  const before=execFileSync('git',['show',`${cliDeltas.predecessorCommit}:${delta.path}`],{cwd:repo,maxBuffer:1024*1024,timeout:5000}),accepted=execFileSync('git',['show',`${cliDeltas.acceptedCommit}:${delta.path}`],{cwd:repo,maxBuffer:1024*1024,timeout:5000});
+  assert.equal(sha(before),delta.beforeSha256);assert.equal(sha(accepted),delta.afterSha256);assert.deepEqual(reverseReviewedCli(delta.path,accepted),before);assert.ok(delta.review.length>40);
+  const file=Object.keys(migrationMap).find(key=>currentPath(key)===delta.path);if(!file)continue;
+  assert.equal(delta.beforeSha256,migrationMap[file].currentSha256,'unchanged migration pin');assertPinnedCurrent(file);
+  const source=fs.readFileSync(path.join(repo,delta.path),'utf8');
+  for(const inverse of delta.inverse)for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,inverse.after+inverse.after),source.replace(inverse.after,''),source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n'])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
+ }
 });
 test('reviewed loudness-range bytes are pinned through schema52 and reject changed, duplicate or unknown source bytes',()=>{
  for(const [file,fragment]of Object.entries(reviewedLoudnessRangeFragments)){
