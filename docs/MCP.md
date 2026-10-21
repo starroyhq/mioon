@@ -8,9 +8,9 @@ Node.js 24+ and installed source workspace dependencies are required for this op
 
 ```sh
 pnpm install --frozen-lockfile
-node /absolute/path/mioon/apps/mcp/src/index.mjs
+node /absolute/path/mioon/apps/mcp/src/index.ts
 # Existing compatibility entrypoint remains supported:
-node /absolute/path/mioon/server/mcp.mjs
+node /absolute/path/mioon/server/mcp.ts
 ```
 
 The MCP client launches this command with the selected environment. Do not run it through a launcher that prints banners to stdout; stdout is exclusively the MCP wire protocol. The bridge can initialize and list tools while the backend is stopped. Calling `mioon_doctor` then explains readiness through a safe structured error.
@@ -42,7 +42,7 @@ This is a configuration example for the user's review, not an installer. No file
 ```toml
 [mcp_servers.video_workbench]
 command = "node"
-args = ["/absolute/path/mioon/apps/mcp/src/index.mjs"]
+args = ["/absolute/path/mioon/apps/mcp/src/index.ts"]
 startup_timeout_sec = 10
 tool_timeout_sec = 60
 
@@ -70,7 +70,7 @@ The user may review this project `.mcp.json` example and configure it in their o
     "mioon": {
       "type": "stdio",
       "command": "node",
-      "args": ["/absolute/path/mioon/apps/mcp/src/index.mjs"],
+      "args": ["/absolute/path/mioon/apps/mcp/src/index.ts"],
       "env": {
         "MIOON_CONNECTION_FILE": "/absolute/path/to/userData/mcp-connection.json"
       }
@@ -692,7 +692,7 @@ backend-durable accepted work, not durable preparation of an unsent MCP request.
 
 ## Timeline output presets (schema 21)
 
-`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and one of `portrait_720`, `landscape_720`, `square_720`. Output is respectively 720×1280, 1280×720 or 720×720, always 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
+`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and a preset from the current schema. Current presets are `portrait_1080` (1080×1920), `landscape_1080` (1920×1080) and `square_1080` (1080×1080); new projects default to `portrait_1080`. The contract also retains `portrait_720` (720×1280), `landscape_720` (1280×720) and `square_720` (720×720) for existing projects. All use 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
 
 This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
 

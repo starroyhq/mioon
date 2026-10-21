@@ -1,5 +1,29 @@
 # Q2: private local storage
 
+## Current standalone Node support (2026-10-21)
+
+The standalone headless server, CLI, MCP and offline backup entry points now
+explicitly initialize the [Node-API Windows backend](../packages/node-host/README.md).
+It requires a locally built complete helper and fixed local NTFS; missing native
+verification fails closed. Actual Windows 11 ARM64 tests cover SID/ACL isolation,
+full file identity, pinned handles, reparse/hardlink refusal, atomic publication
+and streaming backup/restore. The shared interface dispatches at call time and
+does not import native libraries into browser contracts or enable Electron.
+
+Headless Agent credentials additionally use a bounded system-vault helper and
+AES-256-GCM configuration storage. macOS ARM64, Linux ARM64 and Windows ARM64
+cross-host save/read, public removal and missing-DEK refusal evidence is recorded
+in [the current acceptance report](verification/ai-workflows-acceptance/CLI-SDK-ACCEPTANCE.md).
+No existing DEK is silently replaced or rotated. Windows legacy manual-draft
+operations and their draft-protected `project.delete` remain unavailable;
+Windows desktop packaging and native x64 certification are not claimed.
+
+The following Q2 record preserves its original scope and historical results;
+its original Windows gate is superseded only for the standalone entry points
+described above.
+
+## Historical Q2 baseline
+
 Date: 2026-10-09 UTC. Implementation baseline: `dcc69aa`.
 
 Status: released as `dceb8dd` after local synthetic acceptance and independent parent final verification (1,399 passed, zero failed, two explicit skips; 1,401 total). This is not a native Windows/macOS release certification.
@@ -33,7 +57,7 @@ Errors identify a safe category and the next step without echoing token contents
 
 For a desktop startup refusal, a verified private temporary **diagnostic-only** profile may show the error dialog. It never becomes a fallback workspace and does not open the backend, settings or connection token. If even diagnostic storage cannot be verified, startup exits before readiness with the platform's early error reporting. Cleanup is restricted to the owned diagnostic directory. If discovery files become unsafe during normal shutdown, the backend stops and cleanup preserves those files with one sanitized warning instead of repeatedly invoking a fatal dialog. Restart still revalidates the directory and refuses it.
 
-## Windows readiness gate
+## Historical Windows readiness gate
 
 There is no native ACL backend in this increment. Windows persistent workspace/token/settings access fails closed with an explicit unavailable reason. The trusted code-level policy seam is not an environment variable, HTTP field, renderer option or generic “trust this platform” flag. POSIX test fixtures cannot enable a supported Windows claim.
 
@@ -47,7 +71,7 @@ CLI/MCP file-based credentials now also require a verified private parent direct
 
 Git exclusions cover the actual `mcp-token` filename, runtime token/discovery temporary names and Agent-settings envelope paths. Synthetic `git check-ignore` and package-scope checks prove these patterns without scanning, printing or generating real credentials. An ignore rule neither removes an already tracked secret nor replaces package-content review. The developer timeline-demo helper uses the same private-directory gate before creating data or starting a backend. Sample instructions copy closed fixtures into a fresh private workspace rather than changing existing sample permissions.
 
-## Acceptance record
+## Historical acceptance record
 
 - Final affected-file run: **166 passed, 0 failed, 2 explicit skips** (168 tests, 5.3 s). Includes both reviewed-edit protocol/runtime suites, shared storage/server, desktop/settings, client, actual HTTP/CLI/official MCP and secret exclusions. Skips require native Windows and privileged real ownership changes; deterministic foreign-owner/inode fixtures passed. Log: `evidence/q2-private-storage/affected-tests.log`.
 - Shared-policy/server focused 43/43 and desktop/settings focused 71/71 passed separately; these overlap the affected run and are not additive totals. The final demo-helper regression passed **2/2**, exercising the actual script with a test-only backend-spawn guard: unsafe existing permissions and alias/nonexistent descendants both fail without a backend spawn or outside creation. Log: `demo-focused.log`.

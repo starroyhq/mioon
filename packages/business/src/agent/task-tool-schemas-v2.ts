@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="7d1c35d5ba44010851d7644fdf4f528ed9a67ab76b591cd31c5794ef141397ca";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="fe173487c007ebd40537a704fb9a6865af03d917264f89c67e4e541fc2150f64";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -142,7 +142,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        ]
       },
       "taskId": {
-       "$ref": "#/properties/projectId"
+       "type": "string",
+       "format": "uuid"
       }
      },
      "required": [
@@ -218,7 +219,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
        ]
       },
       "taskId": {
-       "$ref": "#/properties/projectId"
+       "type": "string",
+       "format": "uuid"
       },
       "expectedRevision": {
        "type": "integer",
@@ -332,7 +334,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maximum": 9007199254740991
    },
    "expectedSettingsRevision": {
-    "$ref": "#/properties/expectedRevision"
+    "type": "integer",
+    "minimum": 0,
+    "maximum": 9007199254740991
    }
   },
   "required": [
@@ -396,7 +400,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "default": 25
    },
    "after": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [],
@@ -407,7 +412,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "lutId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -434,7 +440,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -447,7 +454,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -460,7 +468,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -626,7 +635,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "sourceAssetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "sourceHash": {
     "type": "string",
@@ -657,7 +667,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "taskId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -688,7 +699,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "taskId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -707,7 +719,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "taskId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -795,7 +808,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "additionalProperties": false
      },
      "groupId": {
-      "$ref": "#/anyOf/0/properties/projectId"
+      "type": "string",
+      "format": "uuid"
      },
      "expectedRevision": {
       "type": "integer",
@@ -816,7 +830,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "type": "object",
     "properties": {
      "name": {
-      "$ref": "#/anyOf/0/properties/name"
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
      },
      "providerId": {
       "type": "string",
@@ -828,7 +844,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "maxLength": 240
      },
      "prompt": {
-      "$ref": "#/anyOf/0/properties/prompt"
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
      },
      "options": {
       "type": "object",
@@ -874,10 +892,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "additionalProperties": false
      },
      "groupId": {
-      "$ref": "#/anyOf/0/properties/projectId"
+      "type": "string",
+      "format": "uuid"
      },
      "expectedRevision": {
-      "$ref": "#/anyOf/0/properties/expectedRevision"
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
      }
     },
     "required": [
@@ -893,7 +914,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "type": "object",
     "properties": {
      "name": {
-      "$ref": "#/anyOf/0/properties/name"
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
      },
      "providerId": {
       "type": "string",
@@ -903,13 +926,48 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ]
      },
      "model": {
-      "$ref": "#/anyOf/0/properties/model"
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120,
+      "pattern": "^[\\x21-\\x7e]+$"
      },
      "prompt": {
-      "$ref": "#/anyOf/0/properties/prompt"
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
      },
      "options": {
-      "$ref": "#/anyOf/0/properties/options"
+      "type": "object",
+      "properties": {
+       "size": {
+        "type": "string",
+        "const": "1024x1024"
+       },
+       "quality": {
+        "type": "string",
+        "const": "low"
+       },
+       "outputFormat": {
+        "type": "string",
+        "const": "png"
+       },
+       "background": {
+        "type": "string",
+        "const": "opaque"
+       },
+       "n": {
+        "type": "number",
+        "const": 1
+       }
+      },
+      "required": [
+       "size",
+       "quality",
+       "outputFormat",
+       "background",
+       "n"
+      ],
+      "additionalProperties": false
      },
      "purpose": {
       "type": "string",
@@ -919,7 +977,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "object",
       "properties": {
        "assetId": {
-        "$ref": "#/anyOf/0/properties/projectId"
+        "type": "string",
+        "format": "uuid"
        },
        "sha256": {
         "type": "string",
@@ -933,10 +992,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "additionalProperties": false
      },
      "groupId": {
-      "$ref": "#/anyOf/0/properties/projectId"
+      "type": "string",
+      "format": "uuid"
      },
      "expectedRevision": {
-      "$ref": "#/anyOf/0/properties/expectedRevision"
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
      }
     },
     "required": [
@@ -965,7 +1027,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "taskId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -988,7 +1051,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maxLength": 768
    },
    "groupId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [],
@@ -1017,7 +1081,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "groupId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -1040,7 +1105,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maxLength": 768
    },
    "groupId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -1053,7 +1119,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "taskId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -1072,7 +1139,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "taskId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -1153,7 +1221,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "additionalProperties": false
        },
        "groupId": {
-        "$ref": "#/properties/input/anyOf/0/properties/projectId"
+        "type": "string",
+        "format": "uuid"
        },
        "expectedRevision": {
         "type": "integer",
@@ -1174,7 +1243,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "object",
       "properties": {
        "name": {
-        "$ref": "#/properties/input/anyOf/0/properties/name"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
        },
        "providerId": {
         "type": "string",
@@ -1186,7 +1257,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "maxLength": 240
        },
        "prompt": {
-        "$ref": "#/properties/input/anyOf/0/properties/prompt"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
        },
        "options": {
         "type": "object",
@@ -1232,10 +1305,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "additionalProperties": false
        },
        "groupId": {
-        "$ref": "#/properties/input/anyOf/0/properties/projectId"
+        "type": "string",
+        "format": "uuid"
        },
        "expectedRevision": {
-        "$ref": "#/properties/input/anyOf/0/properties/expectedRevision"
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
        }
       },
       "required": [
@@ -1251,7 +1327,9 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "type": "object",
       "properties": {
        "name": {
-        "$ref": "#/properties/input/anyOf/0/properties/name"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
        },
        "providerId": {
         "type": "string",
@@ -1261,13 +1339,48 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         ]
        },
        "model": {
-        "$ref": "#/properties/input/anyOf/0/properties/model"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120,
+        "pattern": "^[\\x21-\\x7e]+$"
        },
        "prompt": {
-        "$ref": "#/properties/input/anyOf/0/properties/prompt"
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
        },
        "options": {
-        "$ref": "#/properties/input/anyOf/0/properties/options"
+        "type": "object",
+        "properties": {
+         "size": {
+          "type": "string",
+          "const": "1024x1024"
+         },
+         "quality": {
+          "type": "string",
+          "const": "low"
+         },
+         "outputFormat": {
+          "type": "string",
+          "const": "png"
+         },
+         "background": {
+          "type": "string",
+          "const": "opaque"
+         },
+         "n": {
+          "type": "number",
+          "const": 1
+         }
+        },
+        "required": [
+         "size",
+         "quality",
+         "outputFormat",
+         "background",
+         "n"
+        ],
+        "additionalProperties": false
        },
        "purpose": {
         "type": "string",
@@ -1277,7 +1390,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "type": "object",
         "properties": {
          "assetId": {
-          "$ref": "#/properties/input/anyOf/0/properties/projectId"
+          "type": "string",
+          "format": "uuid"
          },
          "sha256": {
           "type": "string",
@@ -1291,10 +1405,13 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "additionalProperties": false
        },
        "groupId": {
-        "$ref": "#/properties/input/anyOf/0/properties/projectId"
+        "type": "string",
+        "format": "uuid"
        },
        "expectedRevision": {
-        "$ref": "#/properties/input/anyOf/0/properties/expectedRevision"
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
        }
       },
       "required": [
@@ -1327,7 +1444,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "reviewId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -1358,7 +1476,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "taskId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -1371,7 +1490,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "taskId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -1454,7 +1574,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maxLength": 120
    },
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -1469,7 +1590,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "subjectId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -1477,7 +1599,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maximum": 9007199254740991
    },
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -1492,10 +1615,12 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "shotId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "subjectId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "role": {
     "type": "string",
@@ -1507,7 +1632,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "subjectVersionId": {
     "anyOf": [
      {
-      "$ref": "#/properties/projectId"
+      "type": "string",
+      "format": "uuid"
      },
      {
       "type": "null"
@@ -1568,7 +1694,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maxLength": 768
    },
    "subjectId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -1591,10 +1718,12 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maxLength": 768
    },
    "shotId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "subjectId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [],
@@ -1605,7 +1734,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -1618,7 +1748,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -1654,7 +1785,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "assetIds": {
     "type": "array",
     "items": {
-     "$ref": "#/properties/projectId"
+     "type": "string",
+     "format": "uuid"
     },
     "minItems": 1,
     "maxItems": 100,
@@ -1671,7 +1803,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -1703,7 +1836,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "assetIds": {
     "type": "array",
     "items": {
-     "$ref": "#/properties/projectId"
+     "type": "string",
+     "format": "uuid"
     },
     "minItems": 1,
     "maxItems": 100
@@ -1719,7 +1853,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -1751,7 +1886,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "retry": {
     "type": "boolean",
@@ -1769,7 +1905,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "sourceStartFrame": {
     "type": "integer",
@@ -2005,7 +2142,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "exportId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -2018,7 +2156,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "exportId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedArtifactSha256": {
     "type": "string",
@@ -2107,7 +2246,10 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "timelineId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid",
+    "minLength": 36,
+    "maxLength": 36
    },
    "expectedRevision": {
     "type": "integer",
@@ -2115,7 +2257,10 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maximum": 9007199254740991
    },
    "clipId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid",
+    "minLength": 36,
+    "maxLength": 36
    },
    "expectedAssetSha256": {
     "type": "string",
@@ -2218,7 +2363,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "timelineId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -2243,7 +2389,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "timelineId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -2525,14 +2672,16 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "referenceAssetIds": {
     "type": "array",
     "items": {
-     "$ref": "#/properties/projectId"
+     "type": "string",
+     "format": "uuid"
     },
     "maxItems": 8
    },
    "lastFrameAssetId": {
     "anyOf": [
      {
-      "$ref": "#/properties/projectId"
+      "type": "string",
+      "format": "uuid"
      },
      {
       "type": "null"
@@ -2635,14 +2784,16 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "referenceAssetIds": {
       "type": "array",
       "items": {
-       "$ref": "#/properties/shotId"
+       "type": "string",
+       "format": "uuid"
       },
       "maxItems": 8
      },
      "lastFrameAssetId": {
       "anyOf": [
        {
-        "$ref": "#/properties/shotId"
+        "type": "string",
+        "format": "uuid"
        },
        {
         "type": "null"
@@ -2734,7 +2885,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "shotIds": {
     "type": "array",
     "items": {
-     "$ref": "#/properties/projectId"
+     "type": "string",
+     "format": "uuid"
     }
    }
   },
@@ -2766,7 +2918,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maxLength": 5000
    },
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "position": {
     "type": "object",
@@ -2846,10 +2999,12 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "source": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "target": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -2877,10 +3032,12 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "sourceNodeId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "targetShotId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedSourceRevision": {
     "type": "integer",
@@ -2909,7 +3066,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "type": "object",
   "properties": {
    "edgeId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedShotRevision": {
     "type": "integer",
@@ -2964,14 +3122,16 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "maxLength": 100
    },
    "connectionId": {
-    "$ref": "#/properties/shotId"
+    "type": "string",
+    "format": "uuid"
    },
    "configurationRevision": {
     "type": "integer",
     "exclusiveMinimum": 0
    },
    "modelEntryId": {
-    "$ref": "#/properties/shotId"
+    "type": "string",
+    "format": "uuid"
    },
    "parameters": {
     "type": "object",
@@ -3012,7 +3172,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "additionalProperties": false
    },
    "subjectVersionId": {
-    "$ref": "#/properties/shotId",
+    "type": "string",
+    "format": "uuid",
     "description": "Explicit immutable subject version for one subject-reference image; the server resolves its identity and metadata. Omission preserves existing frame generation. Subject and first/last-frame inputs cannot be combined."
    }
   },
@@ -3113,7 +3274,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "format": "uuid"
    },
    "versionId": {
-    "$ref": "#/properties/shotId"
+    "type": "string",
+    "format": "uuid"
    },
    "expectedRevision": {
     "type": "integer",
@@ -3226,7 +3388,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "exclusiveMinimum": 0
    },
    "trackId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "patch": {
     "type": "object",
@@ -3262,7 +3425,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "exclusiveMinimum": 0
    },
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "volumeEnvelope": {},
    "audioRole": {
@@ -3351,7 +3515,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               "format": "uuid"
              },
              "resourceSha256": {
-              "$ref": "#/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
              },
              "resourceProfile": {
               "type": "string",
@@ -3411,7 +3576,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "type": "object",
             "properties": {
              "assetSha256": {
-              "$ref": "#/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
              },
              "profileId": {
               "type": "string",
@@ -3438,7 +3604,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                 "const": "png-rgb8-srgb-v1"
                },
                "sha256": {
-                "$ref": "#/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
                },
                "sourceByteLength": {
                 "type": "integer",
@@ -3510,7 +3677,47 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "look": {
           "anyOf": [
            {
-            "$ref": "#/properties/colour/anyOf/0/anyOf/0/properties/look/anyOf/0"
+            "type": "object",
+            "properties": {
+             "resourceId": {
+              "type": "string",
+              "format": "uuid"
+             },
+             "resourceSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+             },
+             "resourceProfile": {
+              "type": "string",
+              "const": "mioon-cube3d-normalized-tetrahedral-v1"
+             },
+             "purpose": {
+              "type": "string",
+              "const": "rec709-sdr-creative"
+             },
+             "declaredBy": {
+              "type": "string",
+              "const": "user"
+             },
+             "enabled": {
+              "type": "boolean"
+             },
+             "strength": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+             }
+            },
+            "required": [
+             "resourceId",
+             "resourceSha256",
+             "resourceProfile",
+             "purpose",
+             "declaredBy",
+             "enabled",
+             "strength"
+            ],
+            "additionalProperties": false
            },
            {
             "type": "null"
@@ -3538,7 +3745,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
             "type": "object",
             "properties": {
              "assetSha256": {
-              "$ref": "#/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
              },
              "profileId": {
               "type": "string",
@@ -3565,7 +3773,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                 "const": "jfif-ycbcr8-srgb-v1"
                },
                "sha256": {
-                "$ref": "#/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
                },
                "sourceByteLength": {
                 "type": "integer",
@@ -3645,7 +3854,47 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
          "look": {
           "anyOf": [
            {
-            "$ref": "#/properties/colour/anyOf/0/anyOf/0/properties/look/anyOf/0"
+            "type": "object",
+            "properties": {
+             "resourceId": {
+              "type": "string",
+              "format": "uuid"
+             },
+             "resourceSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+             },
+             "resourceProfile": {
+              "type": "string",
+              "const": "mioon-cube3d-normalized-tetrahedral-v1"
+             },
+             "purpose": {
+              "type": "string",
+              "const": "rec709-sdr-creative"
+             },
+             "declaredBy": {
+              "type": "string",
+              "const": "user"
+             },
+             "enabled": {
+              "type": "boolean"
+             },
+             "strength": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+             }
+            },
+            "required": [
+             "resourceId",
+             "resourceSha256",
+             "resourceProfile",
+             "purpose",
+             "declaredBy",
+             "enabled",
+             "strength"
+            ],
+            "additionalProperties": false
            },
            {
             "type": "null"
@@ -3668,7 +3917,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     ]
    },
    "trackId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "name": {
     "type": "string",
@@ -3762,7 +4012,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "exclusiveMinimum": 0
    },
    "clipId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "patch": {
     "type": "object",
@@ -3854,7 +4105,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                 "format": "uuid"
                },
                "resourceSha256": {
-                "$ref": "#/properties/patch/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
                },
                "resourceProfile": {
                 "type": "string",
@@ -3914,7 +4166,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               "type": "object",
               "properties": {
                "assetSha256": {
-                "$ref": "#/properties/patch/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
                },
                "profileId": {
                 "type": "string",
@@ -3941,7 +4194,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                   "const": "png-rgb8-srgb-v1"
                  },
                  "sha256": {
-                  "$ref": "#/properties/patch/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
                  },
                  "sourceByteLength": {
                   "type": "integer",
@@ -4013,7 +4267,47 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "look": {
             "anyOf": [
              {
-              "$ref": "#/properties/patch/properties/colour/anyOf/0/anyOf/0/properties/look/anyOf/0"
+              "type": "object",
+              "properties": {
+               "resourceId": {
+                "type": "string",
+                "format": "uuid"
+               },
+               "resourceSha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+               },
+               "resourceProfile": {
+                "type": "string",
+                "const": "mioon-cube3d-normalized-tetrahedral-v1"
+               },
+               "purpose": {
+                "type": "string",
+                "const": "rec709-sdr-creative"
+               },
+               "declaredBy": {
+                "type": "string",
+                "const": "user"
+               },
+               "enabled": {
+                "type": "boolean"
+               },
+               "strength": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               }
+              },
+              "required": [
+               "resourceId",
+               "resourceSha256",
+               "resourceProfile",
+               "purpose",
+               "declaredBy",
+               "enabled",
+               "strength"
+              ],
+              "additionalProperties": false
              },
              {
               "type": "null"
@@ -4041,7 +4335,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
               "type": "object",
               "properties": {
                "assetSha256": {
-                "$ref": "#/properties/patch/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
                },
                "profileId": {
                 "type": "string",
@@ -4068,7 +4363,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
                   "const": "jfif-ycbcr8-srgb-v1"
                  },
                  "sha256": {
-                  "$ref": "#/properties/patch/properties/colour/anyOf/0/anyOf/0/properties/source/anyOf/0/properties/assetSha256"
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
                  },
                  "sourceByteLength": {
                   "type": "integer",
@@ -4148,7 +4444,47 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
            "look": {
             "anyOf": [
              {
-              "$ref": "#/properties/patch/properties/colour/anyOf/0/anyOf/0/properties/look/anyOf/0"
+              "type": "object",
+              "properties": {
+               "resourceId": {
+                "type": "string",
+                "format": "uuid"
+               },
+               "resourceSha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+               },
+               "resourceProfile": {
+                "type": "string",
+                "const": "mioon-cube3d-normalized-tetrahedral-v1"
+               },
+               "purpose": {
+                "type": "string",
+                "const": "rec709-sdr-creative"
+               },
+               "declaredBy": {
+                "type": "string",
+                "const": "user"
+               },
+               "enabled": {
+                "type": "boolean"
+               },
+               "strength": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+               }
+              },
+              "required": [
+               "resourceId",
+               "resourceSha256",
+               "resourceProfile",
+               "purpose",
+               "declaredBy",
+               "enabled",
+               "strength"
+              ],
+              "additionalProperties": false
              },
              {
               "type": "null"
@@ -4171,7 +4507,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       ]
      },
      "trackId": {
-      "$ref": "#/properties/projectId"
+      "type": "string",
+      "format": "uuid"
      },
      "name": {
       "type": "string",
@@ -4266,13 +4603,16 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "exclusiveMinimum": 0
    },
    "clipId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "assetId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "versionId": {
-    "$ref": "#/properties/projectId",
+    "type": "string",
+    "format": "uuid",
     "description": "Optional exact generated version to pin with its canonical shot. Must belong to the replacement asset and project. Omission keeps an asset-only fixed reference; no version is inferred."
    }
   },
@@ -4292,7 +4632,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "exclusiveMinimum": 0
    },
    "clipId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    }
   },
   "required": [
@@ -4330,7 +4671,8 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
     "exclusiveMinimum": 0
    },
    "clipId": {
-    "$ref": "#/properties/projectId"
+    "type": "string",
+    "format": "uuid"
    },
    "atFrame": {
     "type": "integer",

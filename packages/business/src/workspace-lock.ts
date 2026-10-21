@@ -2,9 +2,9 @@
 // Keep the backend's established stale-lock policy; offline backup never takes
 // over or removes an existing lock, even if its PID is no longer alive.
 import path from 'node:path';
-import {validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
+import {validatePrivateDirectory,validateManagedFile,readPrivateFile,writePrivateFileAtomic,removePrivateFile,samePrivateStorageIdentity} from '@mioon/contracts/private-storage';
 
-const identityKeys=['dev','ino','size','mtimeMs','ctimeMs'] as const;
+const identityKeys=['size','mtimeMs','ctimeMs'] as const;
 export function acquireWorkspaceLock(root: string,{allowStale=false}: {allowStale?: boolean}={}): Readonly<{isOwned: ()=>boolean;release: ()=>boolean}>{
  validatePrivateDirectory(root);
  const lockPath=path.join(root,'server.lock'),token=String(process.pid);
@@ -23,7 +23,7 @@ export function acquireWorkspaceLock(root: string,{allowStale=false}: {allowStal
   if(!active)return false;
   try{
    const current=validateManagedFile(lockPath,{root,allowMissing:true,private:true,maxBytes:64});
-   if(current&&identityKeys.every(key=>current[key]===identity[key])&&readPrivateFile(lockPath,{root,private:true,maxBytes:64,encoding:'utf8'})===token)return true;
+   if(current&&samePrivateStorageIdentity(current,identity)&&identityKeys.every(key=>current[key]===identity[key])&&readPrivateFile(lockPath,{root,private:true,maxBytes:64,encoding:'utf8'})===token)return true;
   }catch{} // Losing the lease never authorizes replacement or repair.
   active=false;return false;
  }

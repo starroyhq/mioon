@@ -13,6 +13,7 @@ import {schemas} from '../packages/contracts/src/index.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped} from '../packages/business/src/agent/task-effects-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
+import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
 import {operationDefinition} from '../packages/client/src/index.ts';
 import {createMockImageAdapter} from '../packages/business/src/images/adapter.ts';
 import type {CreateServicesOptions} from '../packages/business/src/services.ts';
@@ -35,22 +36,78 @@ import {frameTaskResponseSchema} from '../packages/contracts/src/frame-extractio
 import type {VideoConnectionConfiguration} from '../packages/contracts/src/video-providers.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+function schemaReference(root:unknown,reference:unknown):unknown{
+ assert.equal(typeof reference,'string');const ref=reference as string;assert.ok(ref==='#'||ref.startsWith('#/'),`Schema reference must be local: ${ref}`);
+ const tokens=decodeURIComponent(ref.slice(1)).split('/').slice(1);let value=root;
+ for(const token of tokens){const field=token.replaceAll('~1','/').replaceAll('~0','~');assert.ok((record(value)||Array.isArray(value))&&Object.hasOwn(value,field),`Dangling schema reference: ${ref}`);value=(value as Record<string,unknown>)[field];}
+ assert.ok(record(value)||typeof value==='boolean',`Reference must resolve to a schema: ${ref}`);return value;
+}
+function assertSchemaReferences(root:unknown,value:unknown=root):void{
+ if(Array.isArray(value)){for(const child of value)assertSchemaReferences(root,child);return;}if(!record(value))return;
+ if(Object.hasOwn(value,'$ref'))schemaReference(root,value.$ref);
+ if(record(value.properties))for(const hidden of ['projectId','requestId'])assert.equal(Object.hasOwn(value.properties,hidden),false,`Host field ${hidden} must not be model input`);
+ for(const child of Object.values(value))assertSchemaReferences(root,child);
+}
+function schemaAt(root:unknown,path:readonly string[]):unknown{
+ let value=root;for(const field of path){while(record(value)&&typeof value.$ref==='string')value=schemaReference(root,value.$ref);assert.ok(record(value)&&Object.hasOwn(value,field),field);value=value[field];}
+ while(record(value)&&typeof value.$ref==='string')value=schemaReference(root,value.$ref);return value;
+}
+function expandSchemaReferences(root:unknown,value:unknown=root):unknown{
+ if(Array.isArray(value))return value.map(child=>expandSchemaReferences(root,child));if(!record(value))return value;
+ if(Object.hasOwn(value,'$ref')){const target=expandSchemaReferences(root,schemaReference(root,value.$ref));assert.ok(record(target));return {...target,...Object.fromEntries(Object.entries(value).filter(([key])=>key!=='$ref').map(([key,child])=>[key,expandSchemaReferences(root,child)]))};}
+ return Object.fromEntries(Object.entries(value).map(([key,child])=>[key,expandSchemaReferences(root,child)]));
+}
 async function fixture(t:TestContext,options:CreateServicesOptions={},providers:ReadonlyMap<string,Provider>=new Map()){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-tools-v2-')),store=openStore(root),services=createServices(store,providers,options);
  const value=await services.call('project.create',{name:'Tools fixture'});if(!record(value)||typeof value.id!=='string')throw Error('Invalid test project');
  const projectId=value.id,journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
  const run=journal.create({requestId:randomUUID(),projectId,text:'synthetic local task',configuration:{}}).run;
  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
- async function execute(operation:string,input:Record<string,unknown>,options:{beforeEffect?:()=>void;failRecord?:boolean}={}){
-  const prepared=tools.prepare({projectId,operation,input}),step=journal.beginStep(run.id,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:tools.list().find(tool=>tool.operation===prepared.operation)!.name,arguments:JSON.parse(JSON.stringify(input)) as AgentTaskJson}});journal.markDispatch(run.id,step.id);
-  const outcome=await tools.execute(prepared,{runId:run.id,stepId:step.id,requestId:step.id,beforeEffect:()=>{options.beforeEffect?.();journal.assertTargets(projectId,prepared.targets);},
-   recordInside:(result,changes)=>{if(options.failRecord)throw Object.assign(Error('injected durable write failure'),{code:'SQLITE_FULL'});journal.completeStepInside(run.id,step.id,{result,changes});},appendChangesInside:changes=>{journal.appendChangesInside(run.id,step.id,changes);}});
-  if(!outcome.recorded)journal.completeStep(run.id,step.id,{result:outcome.result,changes:outcome.changes});return {outcome,step:journal.step(step.id),changes:journal.snapshot(run.id).changes.filter(change=>change.stepId===step.id)};
+ async function execute(operation:string,input:Record<string,unknown>,options:{beforeEffect?:()=>void;failRecord?:boolean;runId?:string}={}){
+  const runId=options.runId??run.id,prepared=tools.prepare({projectId,operation,input}),step=journal.beginStep(runId,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:tools.list().find(tool=>tool.operation===prepared.operation)!.name,arguments:JSON.parse(JSON.stringify(input)) as AgentTaskJson}});journal.markDispatch(runId,step.id);
+  const outcome=await tools.execute(prepared,{runId,stepId:step.id,requestId:step.id,beforeEffect:()=>{options.beforeEffect?.();journal.assertTargets(projectId,prepared.targets);},
+   recordInside:(result,changes)=>{if(options.failRecord)throw Object.assign(Error('injected durable write failure'),{code:'SQLITE_FULL'});journal.completeStepInside(runId,step.id,{result,changes});},appendChangesInside:changes=>{journal.appendChangesInside(runId,step.id,changes);}});
+  if(!outcome.recorded)journal.completeStep(runId,step.id,{result:outcome.result,changes:outcome.changes});return {outcome,step:journal.step(step.id),changes:journal.snapshot(runId).changes.filter(change=>change.stepId===step.id)};
  }
  async function shot(title:string){const value=await services.call('shot.create',{projectId,title});if(!record(value)||typeof value.id!=='string'||typeof value.revision!=='number')throw Error('Invalid test shot');return {id:value.id,revision:value.revision};}
- function undo(change:AgentTaskChange,expectedTargets?:AgentTaskChange['targets']){return tools.undo(change,{beforeEffect:()=>{},recordInside:item=>{journal.markChangeRevertedInside(item.id);},...(expectedTargets?{expectedTargets}:{})});}
+ function undo(change:AgentTaskChange,expectedTargets?:AgentTaskChange['targets']){return tools.undo(change,{beforeEffect:()=>{},recordInside:item=>{journal.markChangeRevertedInside(item.id);},retainInside:(item,reason)=>{journal.markChangeRetainedInside(item.id,reason);},...(expectedTargets?{expectedTargets}:{})});}
  return {root,store,services,projectId,journal,tools,run,execute,shot,undo};
 }
+async function acceptedGeneratedShot(t:TestContext){
+ const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},async submit(){throw Error('No synthetic worker was started');},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No synthetic output requested');}};
+ const f=await fixture(t,{},new Map([['mock',provider]])),created=await f.execute('shot.create',{title:'Retained generated shot',duration:2});assert.ok(record(created.outcome.result));
+ const shotId=String(created.outcome.result.id),generation={shotId,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};
+ await f.execute('generation.submit',generation);return {...f,created,shotId,generation};
+}
+test('undo retains a same-run generated shot container with explicit durable metadata and original evidence',async t=>{
+ const f=await acceptedGeneratedShot(t),change=f.created.changes[0]!,before=structuredClone(change),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId),targets=f.journal.revisionSnapshot(f.projectId);
+ const result=f.undo(change),retained=f.journal.snapshot(f.run.id).changes.find(item=>item.id===change.id)!;
+ assert.equal(result.retained,true);assert.equal(retained.reversible,false);assert.equal(retained.status,'applied');assert.match(retained.summary??'',/保留生成记录及产物所需镜头/);
+ assert.deepEqual(retained.before,before.before);assert.deepEqual(retained.after,before.after);assert.deepEqual(retained.undo,before.undo);assert.equal(retained.revertedAt,undefined);
+ assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);assert.deepEqual(f.journal.revisionSnapshot(f.projectId),targets);
+ const event=f.journal.events(f.run.id).at(-1)!;assert.equal(event.type,'change');assert.ok(record(event.data));assert.equal(event.data.reversible,false);
+});
+for(const obstacle of ['unbound_job','foreign_run_job','aba','draft','edge','compound','extra_target'] as const)test(`same-run shot retention never skips ${obstacle}`,async t=>{
+ const f=await acceptedGeneratedShot(t);let change=f.created.changes[0]!;
+ if(obstacle==='compound'){const other=await f.execute('shot.create',{title:'Another reversible target'});assert.ok(Array.isArray(change.undo));assert.ok(Array.isArray(other.changes[0]!.undo));change={...change,undo:[...change.undo,...other.changes[0]!.undo],targets:[...change.targets,...other.changes[0]!.targets]};}
+ if(obstacle==='extra_target')change={...change,targets:[...change.targets,...change.targets]};
+ if(obstacle==='unbound_job')await f.services.call('generation.submit',{...f.generation,requestId:randomUUID()});
+ if(obstacle==='foreign_run_job'){
+  f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'completed');const other=f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'Another run',configuration:{}}).run;
+  await f.execute('generation.submit',f.generation,{runId:other.id});
+ }
+ if(obstacle==='aba'){await f.services.call('shot.update',{shotId:f.shotId,expectedRevision:1,patch:{title:'External edit'}});await f.services.call('shot.update',{shotId:f.shotId,expectedRevision:2,patch:{title:'Retained generated shot'}});}
+ if(obstacle==='draft')f.journal.claim({projectId:f.projectId,ownerId:'retention-draft-owner',targets:change.targets});
+ if(obstacle==='edge'){const node=await f.services.call('node.create',{projectId:f.projectId,type:'text',text:'External node',position:{x:0,y:0}});assert.ok(record(node));await f.services.call('edge.create',{projectId:f.projectId,source:f.shotId,target:node.id});}
+ const before=f.journal.snapshot(f.run.id),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId);
+ assert.throws(()=>f.undo(change),{code:obstacle==='draft'?'AGENT_TASK_TARGET_CLAIMED':'AGENT_TASK_TARGET_CHANGED'});
+ assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);
+});
+test('retention audit failure rolls back the change classification, run revision and event atomically',async t=>{
+ const f=await acceptedGeneratedShot(t),change=f.created.changes[0]!,before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId);
+ f.store.db.exec(`CREATE TRIGGER test_retention_audit BEFORE INSERT ON agent_task_events_v2 WHEN NEW.type='change' AND json_extract(NEW.data,'$.data.id')='${change.id}' AND json_extract(NEW.data,'$.data.reversible')=0 BEGIN SELECT RAISE(ABORT,'synthetic retention audit failure');END;`);
+ assert.throws(()=>f.undo(change),/synthetic retention audit failure/);assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);
+});
 test('all public operations have explicit admission; model cannot acquire administration or raw file authority',async t=>{
  const f=await fixture(t);assertAgentTaskOperationCoverage();assert.equal(Object.keys(AGENT_TASK_OPERATION_ADMISSION).length,Object.keys(schemas).length);
  const names=new Set(f.tools.list().map(tool=>tool.operation));
@@ -59,11 +116,40 @@ test('all public operations have explicit admission; model cannot acquire admini
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:'unauthorized',requestId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TOOL'});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:'unauthorized',projectId:randomUUID()}}),{code:'AGENT_TASK_INVALID_TOOL'});
 });
+test('every actual model tool catalog has self-contained schema references in both protocols',async t=>{
+ const f=await fixture(t),tools=f.tools.list(),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());
+ for(const tool of tools)assertSchemaReferences(tool.parameters);
+ const current=await settings.get();
+ for(const protocol of ['chat_completions','responses'] as const){
+  const body:unknown=JSON.parse(buildTaskModelRequest({...current.configuration,protocol},[{role:'user',content:'Synthetic schema discovery only'}],tools,4318));assert.ok(record(body)&&Array.isArray(body.tools));assert.equal(body.tools.length,tools.length);
+  for(const tool of body.tools){assert.ok(record(tool));const definition=protocol==='responses'?tool:tool.function;assert.ok(record(definition));assertSchemaReferences(definition.parameters);}
+ }
+});
+test('projected nested identifiers retain the exact shared UUID constraints and strict host validation',async t=>{
+ const f=await fixture(t);
+ for(const [operation,path] of [
+  ['shot.create',['properties','referenceAssetIds','items']],['shot.update',['properties','patch','properties','referenceAssetIds','items']],
+  ['timeline.clip.add',['properties','assetId']],['timeline.clip.add',['properties','trackId']],['reference.attach',['properties','sourceNodeId']],
+ ] as const){
+  const tool=f.tools.list().find(item=>item.operation===operation);assert.ok(tool);
+  const actual=schemaAt(tool.parameters,path),expected=schemaAt(operationDefinition(operation).inputSchema,path);assert.deepEqual(actual,expected,operation);assert.deepEqual(actual,{type:'string',format:'uuid'});
+ }
+ const input={projectId:f.projectId,title:'Concrete UUID references',referenceAssetIds:[randomUUID()]};assert.equal(schemas['shot.create'].safeParse(input).success,true);
+ for(const id of ['', 'not-a-uuid','11111111-1111-4111-8111'])assert.equal(schemas['shot.create'].safeParse({...input,referenceAssetIds:[id]}).success,false);
+ assert.equal(schemas['shot.create'].safeParse({...input,unexpected:true}).success,false);
+ assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.update',input:{shotId:randomUUID(),expectedRevision:1,patch:{title:'Denied',projectId:f.projectId}}}),{code:'AGENT_TASK_INVALID_TOOL'});
+});
 test('fixed tool JSON schemas match shared runtime schema projection without adding runtime dependencies',()=>{
  assert.equal(AGENT_TASK_TOOL_SCHEMA_HASH,createHash('sha256').update(JSON.stringify(AGENT_TASK_TOOL_SCHEMAS)).digest('hex'));
  const hidden=new Set(['projectId','requestId']);
  function scrub(value:unknown):unknown{if(Array.isArray(value))return value.map(scrub);if(!record(value))return value;return Object.fromEntries(Object.entries(value).map(([key,child])=>[key,key==='properties'&&record(child)?Object.fromEntries(Object.entries(child).filter(([field])=>!hidden.has(field)).map(([field,nested])=>[field,scrub(nested)])):key==='required'&&Array.isArray(child)?child.filter(field=>!hidden.has(String(field))):scrub(child)]));}
- for(const operation of Object.keys(schemas))assert.deepEqual(AGENT_TASK_TOOL_SCHEMAS[operation],scrub(operationDefinition(operation).inputSchema),operation);
+ for(const operation of Object.keys(schemas)){const shared=operationDefinition(operation).inputSchema;assert.deepEqual(AGENT_TASK_TOOL_SCHEMAS[operation],scrub(expandSchemaReferences(shared)),operation);}
+});
+test('schema projection resolves escaped local identities before removing host inputs and refuses recursive or missing evidence',()=>{
+ const source={type:'object',properties:{projectId:{type:'string',format:'uuid'},requestId:{type:'string',minLength:8,maxLength:200},'owned/id~slot':{type:'string',format:'uuid'},assetId:{$ref:'#/properties/projectId'},nested:{type:'object',properties:{requestId:{type:'string'},assetId:{$ref:'#/properties/owned~1id~0slot'}},required:['requestId','assetId'],additionalProperties:false}},required:['projectId','requestId','assetId','nested'],additionalProperties:false};
+ assert.deepEqual(projectAgentTaskToolSchema(source),{type:'object',properties:{'owned/id~slot':{type:'string',format:'uuid'},assetId:{type:'string',format:'uuid'},nested:{type:'object',properties:{assetId:{type:'string',format:'uuid'}},required:['assetId'],additionalProperties:false}},required:['assetId','nested'],additionalProperties:false});
+ for(const bad of [{$ref:'#'},{$ref:'#/missing'},{$ref:'https://example.invalid/schema'},{$ref:'#/properties/bad~2escape'},{properties:{item:{$ref:'#/properties/item'}}}])assert.throws(()=>projectAgentTaskToolSchema(bad),/unresolved or recursive/);
+ assert.deepEqual(source.properties.assetId,{$ref:'#/properties/projectId'},'generation must not mutate the public schema');
 });
 test('real tool discovery projects only protocol-supported definition fields on the wire',async t=>{
  const f=await fixture(t),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});t.after(()=>settings.close());const current=await settings.get();

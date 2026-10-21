@@ -2,8 +2,8 @@ import type {Locale, MessageKey} from '@mioon/i18n';
 import {presentationLocale} from '@mioon/i18n/presentation';
 
 // Pure parsing: callers own errors and locale state; no input reads or dispatch.
-const valueOptions = new Set(['input', 'input-file', 'request-id', 'file', 'timeout-ms', 'interval-ms', 'output', 'max-bytes', 'workspace-origin', 'locale']);
-const switches = new Set(['help', 'version', 'json']);
+const valueOptions = new Set(['input', 'input-file', 'request-id', 'file', 'timeout-ms', 'interval-ms', 'output', 'max-bytes', 'workspace-origin', 'locale', 'key-file', 'storage']);
+const switches = new Set(['help', 'version', 'json', 'key-stdin', 'live']);
 export function argumentsFor(argv: readonly string[], fail: (text: string, key: MessageKey, params?: Record<string, string>) => never, onLocale: (locale: Locale | undefined) => void) {
   const words: string[] = [], options: Record<string, string | true> = {};
   for (let i = 0; i < argv.length; i++) {

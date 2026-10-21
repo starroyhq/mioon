@@ -12,11 +12,14 @@ import {localizeHelp} from '@mioon/i18n/presentation';
 
 import {argumentsFor} from './arguments.ts';
 import {help} from './help.ts';
+import {isAgentCommand,validateAgentOptions,agentCommandHelp,runAgentCommand} from './agent.ts';
 
 type OptionValue = string | true;
 interface CliArguments {words: string[]; options: Record<string, OptionValue>}
 type CliInput = Record<string, unknown>;
 let locale: Locale | undefined;
+const sensitive:string[]=[];
+function redact(value:unknown):unknown {if(typeof value==='string'){let result=value;for(const secret of sensitive)if(secret)result=result.split(secret).join('[redacted]');return result;}if(Array.isArray(value))return value.map(redact);if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,item])=>[String(redact(key)),redact(item)]));return value;}
 const displayErrors = new WeakMap<object, MessageDescriptor>();
 const MAX_INPUT = 42 * 1024 * 1024, MAX_ASSET = 30 * 1024 * 1024;
 const fail = (text: string, key?: MessageKey, params?: MessageParameters): never => { const error = new ClientError('VALIDATION_ERROR', text); if (key) displayErrors.set(error, message(key, params as never)); throw error; };
@@ -79,13 +82,20 @@ process.on('SIGINT', onInterrupt);
 process.on('SIGTERM', onInterrupt);
 try {
   const {words, options} = argumentsFor(process.argv.slice(2), fail, value => { locale = value; });
-  const invocation = Object.freeze(workspaceOriginOptions(optionText(options['workspace-origin'])));
   const operation = words[0] === 'rpc' ? words.slice(1).join('.') : words.join('.');
+  const agent=isAgentCommand(words),agentSchema=words[0]==='schema'&&(words[1]==='agent'&&words[2]!=='authorization'||words[1]?.startsWith('agent.')&&!words[1].startsWith('agent.authorization.'));
+  if(agent)validateAgentOptions(operation,options);
+  else if(['key-stdin','key-file','storage','live'].some(name=>Object.hasOwn(options,name)))fail('This option is only supported by Agent management commands.');
+  const invocation = Object.freeze(workspaceOriginOptions(optionText(options['workspace-origin'])));
   let data: unknown;
   if (options.version) data = {name: 'mioon', version: VERSION};
-  else if (options.help || words.length === 0) data = localizeHelp(help(Object.hasOwn(schemas, operation) ? operation : undefined, {VERSION, EXIT_CODES, discoverSchema, schemas}), locale);
+  else if (options.help || words.length === 0) data = agent?agentCommandHelp(operation):localizeHelp(help(Object.hasOwn(schemas, operation) ? operation : undefined, {VERSION, EXIT_CODES, discoverSchema, schemas}), locale);
   else {
+    if(words[0]!=='schema'){const {initializeNodePrivateStorage}=await import('@mioon/node-host/private-storage-bootstrap');await initializeNodePrivateStorage();}
     let input = await inputFor(options);
+    if(agent)data=await runAgentCommand(operation,input,options,{signal:abort.signal,redact:value=>{if(value)sensitive.push(value);}});
+    else if(agentSchema){if(Object.keys(input).length)fail('schema does not accept input.');data=agentCommandHelp(words.slice(1).join('.'));}
+    else {
     const client = createClient();
     const watch = ['job.watch', 'export.watch'].includes(operation), download = ['asset.download', 'export.download'].includes(operation);
     const file = optionText(options.file), output = optionText(options.output);
@@ -127,12 +137,13 @@ try {
       }
       data = await client.rpc(operation, input, {signal: abort.signal, ...invocation});
     }
+    }
   }
-  process.stdout.write(JSON.stringify(successEnvelope(data)) + '\n');
+  process.stdout.write(JSON.stringify(redact(successEnvelope(data))) + '\n');
 } catch (error) {
   // errorEnvelope always emits a string message for known and unknown errors;
   // the client package currently widens it while its own strict pass completes.
-  const result = errorEnvelope(error) as {ok: false; error: {code: string; message: string}};
+  const result = redact(errorEnvelope(error)) as {ok: false; error: {code: string; message: string}};
   process.stdout.write(JSON.stringify(result) + '\n');
   const diagnostic = result.error.message.replace(/[\r\n\x00-\x1f]/g, ' ');
   const display = error !== null && typeof error === 'object' ? displayErrors.get(error) : undefined;

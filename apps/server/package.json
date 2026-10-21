@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@mioon/business": "workspace:*",
-    "@mioon/contracts": "workspace:*"
+    "@mioon/contracts": "workspace:*",
+    "@mioon/node-host": "workspace:*",
+    "@napi-rs/keyring": "2.1.2"
   }
 }

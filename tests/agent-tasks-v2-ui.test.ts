@@ -1,18 +1,20 @@
 import test from 'node:test';
+import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentTaskClient, createAgentTaskSession, createAgentTaskReceiptStore, safeAgentTaskSnapshot } from '../apps/web/src/agent-tasks-v2.ts';
-import type { AgentTaskClient, AgentTaskLookup, AgentTaskPending, AgentTaskProjectSnapshot, AgentTaskReceiptStore } from '../apps/web/src/agent-tasks-v2.ts';
+import type { AgentTaskClient, AgentTaskLookup, AgentTaskPending, AgentTaskProjectSnapshot, AgentTaskReceiptStore, AgentTaskSessionState } from '../apps/web/src/agent-tasks-v2.ts';
 import type { AgentTaskEvent, AgentTaskSnapshot } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { DEFAULT_AGENT_TASK_POLICY } from '../packages/contracts/src/agent-tasks-v2.ts';
-import { agentTaskCloseState } from '../apps/web/src/native-close-sources.ts';
-import { createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
+import { agentTaskCloseState,createAgentTaskCloseReporter } from '../apps/web/src/native-close-sources.ts';
+import { createNativeCloseRegistry,createNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
+import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 
 const projectId = '11111111-1111-4111-8111-111111111111', runId = '22222222-2222-4222-8222-222222222222', stepId = '33333333-3333-4333-8333-333333333333', time = '2026-10-20T00:00:00.000Z';
 const snapshot = (status: AgentTaskSnapshot['run']['status'] = 'completed', revision = 1): AgentTaskSnapshot => ({ run: { id: runId, projectId, requestId: crypto.randomUUID(), text: 'test task', status, revision, stepLimit: 30, budget: 30, stepsUsed: 1, configuration: {}, createdAt: time, updatedAt: time }, steps: [], changes: [] });
 const project = (): AgentTaskProjectSnapshot => ({ version: 2, instanceId: '44444444-4444-4444-8444-444444444444', projectId, runs: [], policy: structuredClone(DEFAULT_AGENT_TASK_POLICY), authorization: { revision: 1, scopes: ['project_agent'] }, settings: { revision: 0, configuration: { presetId: 'openai', platformId: 'global', baseUrl: 'https://example.invalid/v1', model: 'synthetic', protocol: 'responses' }, secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: null }, presets: [], scope: 'settings_only', verification: 'not_tested' } });
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (value: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); };
-function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}) {
+function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}, options:{onChange?:(state:AgentTaskSessionState)=>void;receipts?:AgentTaskReceiptStore}={}) {
   const receipts = new Map<string, AgentTaskPending>(); if (saved) receipts.set(projectId, saved);
   const store: AgentTaskReceiptStore = { read: id => receipts.get(id) ?? null, write(id, value) { if (value) receipts.set(id, value); else receipts.delete(id); } };
   const streams: { signal: AbortSignal; onEvent: (event: AgentTaskEvent) => void }[] = [], sent: unknown[] = [], actions: unknown[] = [];
@@ -21,8 +23,62 @@ function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending,
     stream: async (_, __, ___, signal, onEvent) => { streams.push({ signal, onEvent }); return new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); },
     policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:value,readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
   };
-  const session = createAgentTaskSession({ projectId, client, receipts: store, onChangeApplied }); return { session, receipts, client, sent, actions, streams };
+  const session = createAgentTaskSession({ projectId, client, receipts: options.receipts??store, onChange:options.onChange??(()=>{}),onChangeApplied }); return { session, receipts, client, sent, actions, streams };
 }
+function closeFixture(t:TestContext,patch:Partial<AgentTaskClient>={},saved?:AgentTaskPending,receipts?:AgentTaskReceiptStore){
+  const registry=createNativeCloseRegistry(),reporter=createAgentTaskCloseReporter(registry),documentURL='http://127.0.0.1:4318/?project='+projectId;
+  const f=fixture(patch,saved,()=>{},{onChange:state=>reporter.publish(state),...(receipts?{receipts}:{})});reporter.publish(f.session.getState());
+  const admission=createNativeCloseAdmission({registry,settings:createSettingsNavigationRegistry(),readScope:()=>projectId,readDocumentURL:()=>documentURL,now:()=>1000});
+  t.after(()=>{f.session.dispose();reporter.release();admission.dispose();});return {...f,registry,reporter,admission,documentURL};
+}
+
+test('a verified-empty receipt and failed initial read allow normal native close or reload without discarding work',async t=>{
+  const held=deferred<AgentTaskProjectSnapshot>();let reads=0;
+  const f=closeFixture(t,{list:async()=>{reads++;return held.promise;}});
+  assert.equal(f.admission.inspect().disposition,'blocked','initial read is busy before any async result');
+  const loading=f.session.load();assert.equal(f.admission.inspect().disposition,'blocked');held.reject(new Error('offline'));await loading;
+  assert.equal(f.session.getState().phase,'read_error');assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().snapshot,null);
+  f.session.setVisible(false);assert.equal(f.admission.inspect().disposition,'clean','hiding keeps the known read-only failure safe');
+  for(const action of ['close','reload'] as const){
+    const targetUrl=action==='reload'?f.documentURL:null,ticket=f.admission.inspect(action,targetUrl);assert.equal(ticket.disposition,'clean');
+    assert.equal(f.admission.commit(ticket.token,{action,targetUrl,discardDirty:false,allowDrainFailure:false,expiresAt:1500}),true);
+    let prevented=false;assert.equal(f.admission.beforeUnload({returnValue:'',preventDefault(){prevented=true;}}),true);assert.equal(prevented,false);
+  }
+  assert.equal(reads,1);assert.equal(f.sent.length,0);assert.equal(f.actions.length,0);
+});
+
+test('read failures preserve draft confirmation and a retry invalidates the previous native close ticket',async t=>{
+  const held=deferred<AgentTaskProjectSnapshot>();let reads=0;
+  const f=closeFixture(t,{list:async()=>{if(++reads===1)throw new Error('offline');return held.promise;}});await f.session.load();f.session.edit('keep this draft');
+  const ticket=f.admission.inspect();assert.equal(ticket.disposition,'dirty');assert.equal(f.admission.commit(ticket.token,{discardDirty:false,allowDrainFailure:false,expiresAt:1500}),false);
+  const retry=f.session.load();assert.equal(f.admission.inspect().disposition,'blocked');assert.equal(f.admission.commit(ticket.token,{discardDirty:true,allowDrainFailure:false,expiresAt:1500}),false);
+  held.resolve(project());await retry;assert.equal(f.session.getState().phase,'ready');assert.equal(f.session.getState().draft,'keep this draft');assert.equal(f.admission.inspect().disposition,'dirty');assert.equal(f.sent.length,0);
+});
+
+test('receipt storage failures and pending requests never become a safe read error',async t=>{
+  let reads=0;const client={list:async()=>{reads++;throw new Error('offline');}};
+  const unavailable=closeFixture(t,client,undefined,{read(){throw new Error('storage unavailable');},write(){throw new Error('must not write');}});
+  await unavailable.session.load();assert.equal(unavailable.session.getState().phase,'error');assert.equal(unavailable.session.getState().error,'LOCAL_RECEIPT_UNAVAILABLE');assert.equal(unavailable.admission.inspect().disposition,'blocked');assert.equal(reads,0);
+  const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action:'pause'},unconfirmed=closeFixture(t,client,pending);
+  await unconfirmed.session.load();assert.equal(unconfirmed.session.getState().phase,'unknown');assert.deepEqual(unconfirmed.session.getState().pending,pending);unconfirmed.session.setVisible(false);assert.equal(unconfirmed.admission.inspect().disposition,'blocked');assert.equal(unconfirmed.sent.length,0);assert.equal(unconfirmed.actions.length,0);
+});
+
+test('a failed task selection retains unknown-step close protection while ordinary read errors remain recoverable',async t=>{
+  for(const unknown of [false,true]){
+    const saved=snapshot(unknown?'interrupted':'completed');if(unknown)saved.steps=[{id:stepId,runId,position:1,kind:'model',status:'unknown',createdAt:time,updatedAt:time}];
+    const held=deferred<AgentTaskSnapshot>();let reads=0;
+    const f=closeFixture(t,{list:async()=>({...project(),runs:[saved.run]}),read:async()=>++reads===1?saved:held.promise});await f.session.load();
+    const selection=f.session.select(crypto.randomUUID());assert.equal(f.admission.inspect().disposition,'blocked');held.reject(new Error('offline selection'));await selection;
+    assert.equal(f.session.getState().phase,'read_error');assert.equal(f.session.getState().snapshot?.run.id,runId);assert.equal(f.admission.inspect().disposition,unknown?'blocked':'clean');assert.equal(f.actions.length,0);assert.equal(f.sent.length,0);
+  }
+});
+
+test('an unknown send and late reads from a replaced session cannot clear the current native owner',async t=>{
+  const f=closeFixture(t,{send:async()=>{throw new Error('lost ACK');},lookup:async()=>({found:false})});await f.session.load();f.session.edit('send once');await f.session.send();assert.equal(f.session.getState().phase,'unknown');f.session.setVisible(false);assert.equal(f.admission.inspect().disposition,'blocked');
+  const held=deferred<AgentTaskProjectSnapshot>(),old=closeFixture(t,{list:async()=>held.promise}),loading=old.session.load();old.session.dispose();
+  const replacement=createAgentTaskCloseReporter(old.registry);replacement.publish({draft:'',phase:'submitting',pending:{requestId:crypto.randomUUID(),runId:null,action:'send'},snapshot:null});
+  t.after(()=>replacement.release());held.resolve(project());await loading;old.reporter.release();assert.equal(old.admission.inspect().disposition,'blocked');assert.equal(old.sent.length,0);assert.equal(old.actions.length,0);
+});
 
 test('send stores identity synchronously, blocks double-send, and never retries a lost acknowledgment', async () => {
   const held = deferred<AgentTaskSnapshot>(); let posts = 0, found: AgentTaskLookup = { found: false };

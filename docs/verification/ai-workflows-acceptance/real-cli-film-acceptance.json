@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "passed": true,
+  "readOnlyAcceptance": true,
+  "projectId": "ed7de618-dd2e-49e5-b480-a33d2b9a092f",
+  "run": {
+    "id": "67fbc103-ca39-4a37-b57e-237e098472c0",
+    "status": "completed",
+    "stepsUsed": 40,
+    "budget": 60,
+    "modelSteps": 16,
+    "toolSteps": 24,
+    "backgroundPending": false
+  },
+  "timeline": {
+    "id": "b170c8db-f406-4d06-81a5-e69b6c268f62",
+    "revision": 7,
+    "composition": {
+      "width": 720,
+      "height": 1280,
+      "fps": 30
+    },
+    "durationFrames": 180,
+    "videoClips": [
+      {
+        "id": "a1cd334c-4ecb-42e1-af2f-fd1768b6f8d6",
+        "assetId": "8b1a5c2e-b3b1-4745-ad43-2f18cb3673ae",
+        "startFrame": 0,
+        "durationFrames": 60,
+        "sourceInFrame": 0
+      },
+      {
+        "id": "6ecfa0ae-0850-4408-8647-99bfebb8147f",
+        "assetId": "b4dee8d9-df7d-461a-b0e9-71407cc03dd0",
+        "startFrame": 60,
+        "durationFrames": 60,
+        "sourceInFrame": 0
+      },
+      {
+        "id": "eef57830-74a3-4e77-a46d-7fea76b41786",
+        "assetId": "bbdfd566-610e-4d6f-845a-3eb9b1694011",
+        "startFrame": 120,
+        "durationFrames": 60,
+        "sourceInFrame": 0
+      }
+    ],
+    "audioClips": [
+      {
+        "id": "3686aea6-e8bd-47fc-8602-663bafdbef65",
+        "assetId": "16732ffe-0e7f-47d0-8b29-de1c0ff335a9",
+        "startFrame": 0,
+        "durationFrames": 180
+      }
+    ],
+    "subtitles": [
+      {
+        "id": "40c726dd-ba1d-49a7-b7db-6ac4722c7ace",
+        "text": "创作从这里开始",
+        "startFrame": 15,
+        "durationFrames": 75
+      },
+      {
+        "id": "129ccc37-4084-4be1-b073-ba2640272f50",
+        "text": "让想象成为画面",
+        "startFrame": 90,
+        "durationFrames": 75
+      }
+    ]
+  },
+  "generation": {
+    "provider": "mock",
+    "model": "mock-motion-v1",
+    "jobId": "2c29433f-4cea-45b4-97aa-a442263649f5",
+    "versionId": "426d5da1-c926-4d40-9abc-c4164d63d826",
+    "submissionRows": 1,
+    "submissionCount": 1
+  },
+  "artifact": {
+    "exportId": "b11119ac-6176-4f59-bb8f-250eb11a1b1a",
+    "assetId": "fa7ca07b-2fa9-453d-87ad-1931c5125534",
+    "path": "/private/tmp/mioon-cli-real-acceptance-control/media/final-captioned.mp4",
+    "sha256": "9701e2bf0d5663e8c9a0b0a73cd114eaae6acfd7fb0dcf4e4865660b5504ad28",
+    "bytes": 242521,
+    "duration": 6,
+    "width": 360,
+    "height": 640,
+    "fps": 30,
+    "frames": 180,
+    "videoCodec": "h264",
+    "pixelFormat": "yuv420p",
+    "audioCodec": "aac",
+    "audioSampleRate": 48000,
+    "audioChannels": 2,
+    "fullDecode": {
+      "exitCode": 0,
+      "errorBytes": 0
+    }
+  },
+  "visualInspection": {
+    "performed": true,
+    "method": "view_image on extracted original frames",
+    "frames": [
+      {
+        "time": 1,
+        "path": "/private/tmp/mioon-cli-real-acceptance-control/independent-film-acceptance/frames/1s-red.png",
+        "observed": "Red full-frame background; legible burned-in Chinese 创作从这里开始"
+      },
+      {
+        "time": 3,
+        "path": "/private/tmp/mioon-cli-real-acceptance-control/independent-film-acceptance/frames/3s-blue.png",
+        "observed": "Blue full-frame background; legible burned-in Chinese 让想象成为画面"
+      },
+      {
+        "time": 5,
+        "path": "/private/tmp/mioon-cli-real-acceptance-control/independent-film-acceptance/frames/5s-mock.png",
+        "observed": "SIMULATED MOCK label and colorful simulated motion; legible burned-in Chinese 让想象成为画面"
+      }
+    ]
+  },
+  "audio": {
+    "rmsDbFS": -51.56178539458901,
+    "peak": 0.004124692641198635,
+    "dominantHz": 220,
+    "originalSourceFrequencyHz": 220,
+    "nonSilent": true,
+    "detail": "/private/tmp/mioon-cli-real-acceptance-control/independent-film-acceptance/audio-evidence.json"
+  },
+  "boundaries": {
+    "assistantWasNotControlled": true,
+    "timelineWasNotEditedByReviewer": true,
+    "noKeySettingsOrVaultRead": true,
+    "localMediaAnalysisOnly": true
+  },
+  "evidenceDirectory": "/private/tmp/mioon-cli-real-acceptance-control/independent-film-acceptance",
+  "provenance": "Independent read-only CLI/SQLite/media verification; root also viewed the three original extracted frames. No Key, token, credential configuration or connection descriptor is included."
+}

@@ -16,9 +16,9 @@ parser.add_argument('--work-dir', required=True, type=Path, help='New private di
 parser.add_argument('--image', type=Path, help='Optional explicitly approved local PNG/JPEG/WebP instead of synthetic image')
 args = parser.parse_args()
 repo = args.repo.resolve()
-cli = repo / 'apps/cli/src/index.mjs'
+cli = repo / 'apps/cli/src/index.ts'
 if not cli.is_file():
-    parser.error('--repo must contain apps/cli/src/index.mjs')
+    parser.error('--repo must contain apps/cli/src/index.ts')
 work = args.work_dir.resolve()
 work.mkdir(mode=0o700, parents=True, exist_ok=False)
 state_path = work / 'requests.json'

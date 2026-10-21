@@ -10,6 +10,7 @@ import {validateTimeline,validateSavedTimeline} from './timeline-inputs.ts';
 import {terminateMediaProcesses} from './media-processes.ts';
 import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.ts';
+import {inspectSubtitleRenderer} from './subtitle-renderer-capability.ts';
 import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
 import {createOpacityCandidatePreflightRuntime,OPACITY_CANDIDATE_PREFLIGHT_MESSAGES} from './opacity-candidate-preflight.ts';
@@ -33,6 +34,7 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  ...TIMELINE_COLOUR_PREFLIGHT_MESSAGES,
  EXPORT_RANGE_BOUNDS:'The export range must fit inside the saved timeline and contain at least one 30fps frame; the end is exclusive.',
  SUBTITLE_RESOURCE_UNAVAILABLE:'The bundled subtitle font is missing or does not match this rendering profile.',
+ SUBTITLE_RENDERER_UNAVAILABLE:'This FFmpeg build lacks the drawtext options required for subtitles. Select a build with libfreetype and libharfbuzz.',
  TIMELINE_MISSING:'This project has no saved timeline. Add clips and save the timeline before exporting.',
  EMPTY_TIMELINE:'The saved timeline has no clips to export.',
  INVALID_TIMELINE_SNAPSHOT:'The saved timeline contains invalid or unsupported settings.',
@@ -63,6 +65,8 @@ function classify(error: unknown,opacity=false): [string,string]{
  if(opacity&&Object.hasOwn(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES,failure.code as string))return ['blocked',failure.code as string];
  if(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,failure.code as string))return ['blocked',failure.code as string];
  if(failure.code==='SUBTITLE_RESOURCE_UNAVAILABLE')return ['blocked','SUBTITLE_RESOURCE_UNAVAILABLE'];
+ if(failure.code==='SUBTITLE_RENDERER_UNAVAILABLE')return ['blocked','SUBTITLE_RENDERER_UNAVAILABLE'];
+ if(failure.code==='SUBTITLE_RENDERER_UNVERIFIED')return ['incomplete','PREFLIGHT_INCOMPLETE'];
  if(failure.code==='INSPECTION_BUDGET_EXCEEDED')return ['incomplete','PREFLIGHT_SNAPSHOT_BUDGET'];
  if(failure.code==='MANAGED_SOURCE_LIMIT'||failure.code==='PREFLIGHT_BUDGET')return ['incomplete','PREFLIGHT_BUDGET'];
  if(['MEDIA_TIMEOUT','MEDIA_OUTPUT_LIMIT','MEDIA_SPAWN_FAILED','MEDIA_INVALID_CONFIGURATION','MEDIA_CANCELLED','MEDIA_PROCESS_FAILED'].includes(failure.code as string))return ['incomplete','PREFLIGHT_INCOMPLETE'];
@@ -126,7 +130,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const budget={sourceBytes:limits.sourceBytes,totalBytes:limits.totalBytes,bytesHashed:0};
   const timer=setTimeout(()=>{timedOut=true;controller.abort();},remaining);
   const preparation=(async()=>{
-   if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;}
+   if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;await inspectSubtitleRenderer({signal,beforeEffect});checkpoint(signal);}
    const options={signal,budget,beforeEffect,probe:async(file: string,probeOptions: PreflightProbeOptions)=>{beforeEffect?.();const result=await probe(file,{...probeOptions,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
    return opacity?opacity.prepare(initial as never,input as never,options as never):prepareTimelineInputs(initial.snapshot as never,{root:store.root,projectId:input.projectId,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id) as unknown as import('./timeline-inputs.ts').ManagedAssetRecord|null;},
     ...options,readLut:createTimelineColourLutReader(store.db,input.projectId) as never});

@@ -87,6 +87,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   try {
     const tool = tools.get(request.params.name);
     if (!tool) throw new ClientError('UNKNOWN_OPERATION', 'Unknown tool. Use tools/list to discover supported tools.');
+    if(request.params.name!=='mioon_schema')await (await import('@mioon/node-host/private-storage-bootstrap')).initializeNodePrivateStorage();
     result = successEnvelope(await tool.call(request.params.arguments ?? {}, {signal: extra.signal, ...invocation}));
   } catch (error) { result = errorEnvelope(error); }
   return {content: [{type: 'text', text: JSON.stringify(result)}], structuredContent: result, isError: !result.ok};

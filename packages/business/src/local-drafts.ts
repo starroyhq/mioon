@@ -90,6 +90,9 @@ export function createLocalDrafts({root,channel='web',guards,storage,signal,faul
   let scope:string|undefined;
   function guarded<T>(fn:()=>T):T{try{return fn();}catch(error){if(error instanceof LocalDraftError)throw error;throw new LocalDraftError('LOCAL_DRAFT_STORAGE_UNAVAILABLE');}}
   function active():boolean{
+    // The legacy draft ACK still requires POSIX directory-descriptor fsync.
+    // Refuse before reads/persistence; v2 SQLite editing leases are separate.
+    if(process.platform==='win32')fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
     if(signal?.aborted)fail('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
     if(guards.isRestored())return false;
     if(!guards.ownsLock())fail('LOCAL_DRAFT_OWNER_REQUIRED');

@@ -3,12 +3,12 @@
 All CLI responses are JSON envelopes: `{ "ok": true, "data": ... }` or `{ "ok": false, "error": { "code": ..., "message": ... } }`. Diagnostics and watch progress use stderr. Do not parse progress lines as JSON results. Run `--help` for current flags and documented exit codes.
 
 ```sh
-node apps/cli/src/index.mjs --help
-node apps/cli/src/index.mjs doctor
-node apps/cli/src/index.mjs capabilities
-node apps/cli/src/index.mjs schema generation.submit
-node apps/cli/src/index.mjs project list --input '{}'
-node apps/cli/src/index.mjs project create --input '{"name":"Agent video study"}'
+node apps/cli/src/index.ts --help
+node apps/cli/src/index.ts doctor
+node apps/cli/src/index.ts capabilities
+node apps/cli/src/index.ts schema generation.submit
+node apps/cli/src/index.ts project list --input '{}'
+node apps/cli/src/index.ts project create --input '{"name":"Agent video study"}'
 ```
 
 Use IDs from actual responses. All business operations are available as space-separated words (`timeline track add`) or `rpc timeline.track.add`; `--input` is a JSON object. Inspect `schema <operation>` for exact required fields instead of guessing. `--input-file` can hold larger requests; keep local request files private when they include sensitive user material.
@@ -54,10 +54,10 @@ also take optional `limit` (integer 1–25, default 10) and `cursor` (at most 51
 characters). For example, after replacing the illustrative UUID:
 
 ```sh
-node apps/cli/src/index.mjs project inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111"}'
-node apps/cli/src/index.mjs asset inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111","limit":10}'
-node apps/cli/src/index.mjs shot inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111","limit":25}'
-node apps/cli/src/index.mjs timeline inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111"}'
+node apps/cli/src/index.ts project inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111"}'
+node apps/cli/src/index.ts asset inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111","limit":10}'
+node apps/cli/src/index.ts shot inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111","limit":25}'
+node apps/cli/src/index.ts timeline inspect --input '{"projectId":"11111111-1111-4111-8111-111111111111"}'
 ```
 
 Pass only a returned next cursor, unchanged, to the same project/operation with
@@ -81,7 +81,7 @@ request replay or current-revision requirements.
 
 A mutation's `expectedRevision` comes from the record being edited: shot revision for shot update/version select/generation, project revision for shot reorder, timeline revision for all track/clip/render operations. They are independent. A generation or export replay may return the original response; read its job/export ID for fresh status.
 
-Timeline output is fixed 30fps, 720×1280. Positions, trims and lengths use integer frames; same-track overlaps are rejected, cross-track layers are allowed. Asset IDs refer to immutable imported or generated files. `timeline seed` only works on an empty timeline; it copies currently selected shot versions once. Later timeline edits are independent of the shot list.
+Timeline editing uses 30fps and the saved output preset; discover `timeline.format.get` rather than assuming dimensions. New projects default to portrait 1080×1920, while existing 720 presets retain their geometry. Positions, trims and lengths use integer frames; same-track overlaps are rejected, cross-track layers are allowed. Asset IDs refer to immutable imported or generated files. `timeline seed` only works on an empty timeline; it copies currently selected shot versions once. Later timeline edits are independent of the shot list.
 
 ## First-frame image connections
 

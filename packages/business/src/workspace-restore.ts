@@ -5,7 +5,7 @@ import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {constants,openSync,closeSync,fstatSync,fsyncSync,lstatSync,linkSync,unlinkSync} from 'node:fs';
-import {validatePrivateDirectory,validateManagedDirectory} from '@mioon/contracts/private-storage';
+import {validatePrivateDirectory,validateManagedDirectory,getWindowsManagedFileIO} from '@mioon/contracts/private-storage';
 import {WORKSPACE_BACKUP_LIMITS as limits} from '../../contracts/src/workspace-backup.ts';
 import {workspaceRestoreOfflineResultSchema,workspaceRestorePublicationStatusSchema} from '../../contracts/src/workspace-restore-offline.ts';
 import {withVerifiedWorkspaceBackup,withDisposableDatabase} from './workspace-backup.ts';
@@ -95,7 +95,16 @@ function sameBinding(info: Record<string,unknown>,expected: Record<string,unknow
 function binding(info: Record<string,unknown>): Record<string,unknown>{return Object.fromEntries(['restorationId','workspaceOrigin','sourceBackupId','manifestHash','sourceDbHash'].map(key=>[key,info[key]]));}
 function syncFile(file: string,root: string,expected?: Stats|null): Stats{
  const before=inspectFile(file,root,{private:true,maxBytes:limits.databaseBytes})!;
- if(expected&&!sameFile(before,expected))fail('CHANGED');let fd;
+ if(expected&&!sameFile(before,expected))fail('CHANGED');
+ if(process.platform==='win32'){
+  const handle=getWindowsManagedFileIO().openFile(file,{root,private:true,maxBytes:limits.databaseBytes,mode:'flush',expected:before});
+  try{
+   if(!sameFile(before,handle.metadata()))fail('CHANGED');handle.flush();
+   if(!sameFile(before,handle.metadata())||!sameFile(before,inspectFile(file,root,{private:true,maxBytes:limits.databaseBytes})))fail('CHANGED');
+   return before;
+  }finally{handle.close();}
+ }
+ let fd;
  try{
   fd=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW|(constants.O_NONBLOCK||0));
   if(!sameFile(before,fstatSync(fd)))fail('CHANGED');fsyncSync(fd);
@@ -118,11 +127,24 @@ async function exactDestination(root: string,identity: Stats,files: Map<string, 
  }
  if(found.size!==files.size+directories.size-1)fail('CHANGED');checkDirectoryIdentity(root,root,identity);check();
 }
-// Link is atomic and no-clobber. Once it succeeds, errors never roll back or
-// delete the launchable pathname. A crash between link/unlink is guarded but
-// fails storage's single-link policy. Existing unknown paths are never removed.
+// POSIX link/unlink and Windows handle-bound rename publish without clobbering.
+// Once published, errors never delete the launchable pathname. A POSIX crash
+// between link/unlink is guarded but fails the single-link storage policy.
 function publishCandidate(candidate: string,final: string,root: string,identity: Stats,check: ()=>void,onAttempt: ()=>void,onLinked: ()=>void): Stats{
  check();if(!sameFile(identity,inspectFile(candidate,root,{private:true,maxBytes:limits.databaseBytes})))fail('CHANGED');
+ if(process.platform==='win32'){
+  onAttempt();let published:Stats;
+  try{published=getWindowsManagedFileIO().renameNoReplace(candidate,final,{root,expected:identity});}
+  catch(cause){
+   // A proved no-clobber rejection is distinct from an uncertain attempted
+   // activation. All other post-attempt failures retain recovery semantics.
+   if((cause as {reason?:unknown}).reason==='ALREADY_EXISTS')throw Object.assign(error('DESTINATION_EXISTS'),{code:'EEXIST'});
+   throw cause;
+  }
+  onLinked();
+  if(!sameNode(identity,published)||published.size!==identity.size||published.mtimeMs!==identity.mtimeMs||!sameFile(published,inspectFile(final,root,{private:true,maxBytes:limits.databaseBytes})))fail('CHANGED');
+  syncDirectory(root,root);return published;
+ }
  onAttempt();linkSync(candidate,final);onLinked();
  const staged=lstatSync(candidate),published=lstatSync(final);
  if(!sameNode(identity,staged)||!sameNode(identity,published)||staged.nlink!==2||published.nlink!==2||

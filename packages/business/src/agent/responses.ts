@@ -3,7 +3,7 @@ import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './co
 import type {AgentConfiguration} from './config.ts';
 import {AGENT_CHAT_LIMITS, CHAT_SYSTEM_INSTRUCTION} from './chat-policy.ts';
 import {agentChatError, errorCode} from './chat-errors.ts';
-import {createAgentTransport} from './network-policy.ts';
+import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
 import type {AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.ts';
 import {isDeepStrictEqual} from 'node:util';
@@ -180,7 +180,7 @@ interface TrackedItem {
  * clean framed transport end. Never execute tools, append final text twice, or
  * derive success from [DONE], a completed part, or a convenience output_text. */
 export function createResponsesGateway(dependencies: AgentTransportDependencies = {}): AgentGateway {
-  const open = createAgentTransport(dependencies);
+  const open = createOpenAiSdkTransport(dependencies);
   return async function* streamResponses({configuration, apiKey, messages, signal, selfPort, readTools, beforeSubmit}) {
     if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
     const request = buildAgentResponsesRequest({configuration, apiKey, messages, selfPort, readTools});
