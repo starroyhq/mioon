@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inflateSync } from 'node:zlib';
 import builderConfig from '../apps/desktop/builder-config.ts';
 import { secureWebPreferences } from '../apps/desktop/src/security.ts';
 
@@ -14,7 +15,8 @@ test('brand PNG dimensions and alpha intent match their fixed local consumers', 
   for (const [name, size, colourType] of [
     ['apps/web/src/assets/mioon-mark.png', 1254, 6],
     ['apps/web/public/favicon.png', 256, 2],
-    ['apps/desktop/resources/icon.png', 1024, 2],
+    ['apps/desktop/resources/icon-source.png', 1024, 2],
+    ['apps/desktop/resources/icon.png', 1024, 6],
   ]) {
     const data = await bytes(name);
     assert.deepEqual(data.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
@@ -34,7 +36,44 @@ test('brand PNG dimensions and alpha intent match their fixed local consumers', 
   assert.match(await text('apps/web/index.html'), /<link rel="icon" type="image\/png" href="\/favicon\.png" \/>/);
 });
 
-test('Mac ICNS remains structurally bounded and its largest PNG equals the desktop source', async () => {
+test('shared desktop PNG has transparent padding and an opaque rounded backplate', async () => {
+  const data = await bytes('apps/desktop/resources/icon.png');
+  assert.equal(data[24], 8); assert.equal(data[25], 6); assert.equal(data[28], 0);
+  const width = data.readUInt32BE(16), height = data.readUInt32BE(20), chunks = [];
+  for (let offset = 8; offset < data.length;) {
+    const size = data.readUInt32BE(offset);
+    assert.ok(offset + size + 12 <= data.length);
+    if (data.toString('ascii', offset + 4, offset + 8) === 'IDAT') chunks.push(data.subarray(offset + 8, offset + 8 + size));
+    offset += size + 12;
+  }
+  const raw = inflateSync(Buffer.concat(chunks)), stride = width * 4 + 1;
+  assert.equal(raw.length, stride * height);
+  const alpha = Array.from({ length: height }, () => Buffer.alloc(width));
+  for (let y = 0; y < height; y++) {
+    const filter = raw[y * stride]; assert.ok(filter <= 4);
+    for (let x = 0; x < width; x++) {
+      const left = x ? alpha[y][x - 1] : 0, up = y ? alpha[y - 1][x] : 0, corner = x && y ? alpha[y - 1][x - 1] : 0;
+      const estimate = left + up - corner, distances = [Math.abs(estimate - left), Math.abs(estimate - up), Math.abs(estimate - corner)];
+      const paeth = distances[0] <= distances[1] && distances[0] <= distances[2] ? left : distances[1] <= distances[2] ? up : corner;
+      const predictor = [0, left, up, Math.floor((left + up) / 2), paeth][filter];
+      alpha[y][x] = (raw[y * stride + 1 + x * 4 + 3] + predictor) & 255;
+    }
+  }
+  assert.ok(alpha[0].every(value => value === 0)); assert.ok(alpha.at(-1).every(value => value === 0));
+  for (const row of alpha) { assert.equal(row[0], 0); assert.equal(row.at(-1), 0); }
+  const middleX = Math.floor(width / 2), middleY = Math.floor(height / 2);
+  assert.equal(alpha[middleY][middleX], 255);
+  assert.ok(alpha[Math.floor(height * 0.09)].every(value => value === 0), 'top padding stays transparent');
+  assert.ok(alpha[Math.floor(height * 0.91)].every(value => value === 0), 'bottom padding stays transparent');
+  for (const row of alpha) {
+    assert.equal(row[Math.floor(width * 0.09)], 0, 'left padding stays transparent');
+    assert.equal(row[Math.floor(width * 0.91)], 0, 'right padding stays transparent');
+  }
+  assert.equal(alpha[Math.floor(height * 0.125)][Math.floor(width * 0.125)], 0, 'backplate corners are rounded');
+  assert.equal(alpha[Math.floor(height * 0.125)][middleX], 255, 'backplate top remains opaque inside the padding');
+});
+
+test('Mac ICNS remains structurally bounded and its largest PNG equals the shared desktop PNG', async () => {
   const data = await bytes('apps/desktop/resources/icon.icns');
   assert.equal(data.toString('ascii', 0, 4), 'icns'); assert.equal(data.readUInt32BE(4), data.length);
   let offset = 8, largest = null;
@@ -55,11 +94,13 @@ test('both desktop channels package brand assets without dropping preload or iso
     assert.equal(config.directories.buildResources, 'resources');
     assert.equal(config.icon, path.join(root, 'apps/desktop/resources/icon.png'));
     assert.equal(config.mac.icon, path.join(root, 'apps/desktop/resources/icon.icns'));
+    assert.equal(config.linux.icon, path.join(root, 'apps/desktop/resources/icon.png'));
     assert.ok(config.files.includes('preload.cjs')); assert.ok(config.files.includes('icons/**/*'));
     assert.ok(config.files.includes('!node_modules/**/*')); assert.equal(config.publish, null);
   }
   const build = await text('apps/desktop/scripts/build.ts');
   assert.match(build, /await cp\(path\.join\(desktop, 'resources\/icon\.png'\), path\.join\(output, 'icons\/icon\.png'\)\)/);
+  assert.doesNotMatch(build, /icon-(?:macos|source)\.png/);
 });
 
 test('actual shared window factory adds the local icon while retaining the secure preload and owned session', async () => {
@@ -99,5 +140,10 @@ test('current package inspection accepts icons while frozen historical V3 still 
     for (const name of ['node_modules', 'workspace', 'data', '.env']) assert.equal(allowed.has(name), false);
   }
   assert.match(source, /historicalV3 \? \[\] : \[[^\]]*'preload\.cjs'[^\]]*'icons\/icon\.png'/);
+  assert.doesNotMatch(source, /icon-(?:macos|source)\.png/);
   assert.match(source, /Packaged \$\{file\} must equal verified staging/);
+  const releaseInspection = await text('.github/scripts/inspect-desktop.ts');
+  assert.match(releaseInspection, /for \(const name of \[[^\]]*'icons\/icon\.png'[^\]]*\]\) asar\.extractFile\(archive, name\)/);
+  assert.doesNotMatch(releaseInspection, /icon-(?:macos|source)\.png/);
+  assert.match(releaseInspection, /assert\.deepEqual\(asar\.extractFile\(archive, entry\), await readFile\(path\.join\(root, 'apps\/desktop\/build', entry\)\), 'ASAR_STAGING_MISMATCH'\)/);
 });

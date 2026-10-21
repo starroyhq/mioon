@@ -33,6 +33,7 @@ export interface BuilderConfig {
   afterPack(context: RuntimeNoticeContext): Promise<void>;
   electronFuses: Record<string, boolean>;
   linux: {
+    icon: string;
     target: Array<{target: string; arch: string[]}>;
     category: string;
     syncDesktopName: true;
@@ -99,6 +100,7 @@ export function builderConfig(channel: string): BuilderConfig {
       grantFileProtocolExtraPrivileges: false
     },
     linux: {
+      icon: path.join(directory, 'resources/icon.png'),
       target: [{ target: 'tar.gz', arch: ['x64'] }],
       category: 'AudioVideo',
       syncDesktopName: true,
