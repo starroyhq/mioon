@@ -117,6 +117,122 @@ test('staged uploads send only handles with a task, never bytes or file paths', 
   f.session.edit('Use the selected file'); await f.session.send(); assert.deepEqual((f.sent[0] as { uploads: string[] }).uploads, [stepId]); assert.doesNotMatch(JSON.stringify(f.sent), /dataBase64|QUJD|sample\.txt/); f.session.dispose();
 });
 
+const selectedFile = (name: string, type = 'video/mp4') => ({name, type, size: 3, arrayBuffer: async () => Uint8Array.from([65, 66, 67]).buffer});
+
+test('task uploads normalize only the existing closed audio aliases, without guessing types from filenames', async t => {
+  const cases = [
+    ['tone.m4a', 'audio/x-m4a', 'audio/mp4'], ['tone.wav', 'audio/x-wav', 'audio/wav'],
+    ['tone.m4a', 'audio/mp4', 'audio/mp4'], ['clip.mp4', 'video/mp4', 'video/mp4'],
+    ['tone.m4a', '', 'application/octet-stream'], ['tone.m4a', 'text/plain', 'text/plain'],
+    ['tone.m4a', 'audio/not-a-supported-alias', 'audio/not-a-supported-alias'],
+  ] as const;
+  for (const [name, type, expected] of cases) await t.test(`${type || 'empty'} remains ${expected}`, async () => {
+    const requests: Parameters<AgentTaskClient['upload']>[1][] = [];
+    const f = fixture({upload: async (_, input) => { requests.push(input); return {id: stepId, name: input.name, mimeType: input.mimeType, status: 'selected'}; }});
+    try {
+      await f.session.load(); assert.equal(await f.session.upload(selectedFile(name, type)), true);
+      assert.equal(requests.length, 1); assert.equal(requests[0]!.mimeType, expected); assert.equal(requests[0]!.dataBase64, 'QUJD');
+    } finally { f.session.dispose(); }
+  });
+});
+
+test('an actual upload 4xx is visible after receipt lookup, preserves earlier files and draft, and clears only on a new user upload', async () => {
+  const requests: {method: string; url: string; body?: Parameters<AgentTaskClient['upload']>[1]}[] = [];
+  let reject = true, lists = 0;
+  const http = createAgentTaskClient({fetchImpl: async (url, init) => {
+    const method = init?.method ?? 'GET', body = init?.body ? JSON.parse(String(init.body)) as Parameters<AgentTaskClient['upload']>[1] : undefined;
+    requests.push({method, url: String(url), ...(body ? {body} : {})});
+    if (method === 'GET') return Response.json({ok: true, data: {found: false}});
+    if (body?.name === 'tone.m4a' && reject) return Response.json({ok: false, error: {code: 'PRIVATE_RESPONSE_MARKER', message: 'private provider body must not appear'}}, {status: 400});
+    return Response.json({ok: true, data: {id: crypto.randomUUID(), name: body!.name, mimeType: body!.mimeType, status: 'selected'}});
+  }});
+  const f = fixture({list: async () => {lists++; return project();}, upload: http.upload, lookup: http.lookup});
+  try {
+    await f.session.load(); f.session.edit('Keep this intended edit');
+    await f.session.upload(selectedFile('red.mp4')); await f.session.upload(selectedFile('blue.mp4'));
+    const previous = structuredClone(f.session.getState().uploads);
+    assert.equal(await f.session.upload(selectedFile('tone.m4a', 'audio/mp4')), false);
+    assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, 'UPLOAD_REJECTED');
+    assert.equal(agentTaskCloseState(f.session.getState()).blocked, false, 'a proven rejection keeps its notice without trapping normal native close');
+    assert.equal(agentTaskCloseState(f.session.getState()).dirty, true, 'the existing draft still needs normal discard confirmation');
+    assert.equal(agentTaskCloseState({...f.session.getState(), draft: ''}).dirty, false);
+    assert.deepEqual(f.session.getState().uploads, previous); assert.equal(f.session.getState().draft, 'Keep this intended edit');
+    assert.equal(f.session.getState().pending, null); assert.equal(f.receipts.size, 0); assert.equal(lists, 1);
+    assert.equal(requests.filter(row => row.method === 'POST').length, 3); assert.equal(requests.filter(row => row.method === 'GET').length, 1);
+    const rejected = requests[2]!.body!;
+    assert.ok(requests[3]!.url.endsWith(`/uploads/requests/${rejected.requestId}`));
+    assert.doesNotMatch(JSON.stringify(f.session.getState()), /PRIVATE_RESPONSE_MARKER|private provider body/);
+    await f.session.reconcile(); assert.equal(requests.length, 4, 'a settled rejection never reposts or rechecks itself');
+    reject = false;
+    assert.equal(await f.session.upload(selectedFile('tone.m4a', 'audio/x-m4a')), true);
+    assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, ''); assert.equal(f.session.getState().uploads.length, 3);
+    assert.equal(requests[4]!.body!.mimeType, 'audio/mp4'); assert.notEqual(requests[4]!.body!.requestId, rejected.requestId);
+    assert.deepEqual(f.session.getState().uploads.slice(0, 2), previous); assert.equal(f.session.getState().draft, 'Keep this intended edit');
+  } finally { f.session.dispose(); }
+});
+
+test('an upload rejection whose lookup fails stays pending until the original receipt can prove nonacceptance', async () => {
+  let posts = 0, lookups = 0, unavailable = true;
+  const f = fixture({upload: async () => {posts++; throw Object.assign(new Error('private response'), {code: 'INVALID_MEDIA', definitive: true});}, lookup: async () => {lookups++; if (unavailable) throw new Error('private lookup'); return {found: false};}});
+  try {
+    await f.session.load(); f.session.edit('preserve draft');
+    assert.equal(await f.session.upload(selectedFile('tone.m4a', 'audio/mp4')), false);
+    const original = structuredClone(f.session.getState().pending);
+    assert.equal(f.session.getState().phase, 'unknown'); assert.equal(original?.definitiveRejected, true); assert.equal(f.receipts.size, 1);
+    assert.equal(await f.session.upload(selectedFile('tone.m4a', 'audio/mp4')), false); assert.equal(posts, 1);
+    unavailable = false; assert.equal(await f.session.reconcile(), false);
+    assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, 'UPLOAD_REJECTED'); assert.equal(f.session.getState().pending, null);
+    assert.equal(f.session.getState().draft, 'preserve draft'); assert.equal(posts, 1); assert.equal(lookups, 2); assert.equal(f.receipts.size, 0);
+  } finally { f.session.dispose(); }
+});
+
+test('a lost upload acknowledgement retains its identity on not-found and adopts a late accepted handle without reposting', async () => {
+  let posts = 0, lookups = 0, result: AgentTaskLookup = {found: false}; const identities: string[] = [];
+  const f = fixture({upload: async (_, input) => {posts++; identities.push(input.requestId); throw new Error('lost ACK');}, lookup: async (_, pending) => {lookups++; assert.equal(pending.requestId, identities[0]); return result;}});
+  try {
+    await f.session.load(); f.session.edit('preserve draft'); await f.session.upload(selectedFile('tone.m4a', 'audio/mp4'));
+    const pending = structuredClone(f.session.getState().pending); assert.equal(pending?.definitiveRejected, undefined);
+    await f.session.reconcile(); assert.equal(f.session.getState().phase, 'unknown'); assert.deepEqual(f.session.getState().pending, pending); assert.equal(f.receipts.size, 1);
+    assert.equal(await f.session.upload(selectedFile('other.mp4')), false); assert.equal(posts, 1);
+    result = {found: true, upload: {id: stepId, name: 'tone.m4a', mimeType: 'audio/mp4', status: 'selected'}};
+    assert.equal(await f.session.reconcile(), true); assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, '');
+    assert.equal(f.session.getState().uploads[0]?.id, stepId); assert.equal(f.session.getState().draft, 'preserve draft'); assert.equal(f.receipts.size, 0); assert.equal(posts, 1); assert.equal(lookups, 2);
+  } finally { f.session.dispose(); }
+});
+
+test('reopened rejected upload receipts show a safe rejection only after not-found, while an accepted original receipt wins', async t => {
+  for (const found of [false, true]) await t.test(found ? 'accepted original' : 'confirmed rejection', async () => {
+    const pending: AgentTaskPending = {requestId: crypto.randomUUID(), runId: null, action: 'upload', definitiveRejected: true};
+    let posts = 0, lookups = 0;
+    const upload = {id: stepId, name: 'tone.m4a', mimeType: 'audio/mp4', status: 'selected'};
+    const f = fixture({upload: async () => {posts++; return upload;}, lookup: async (_, input) => {lookups++; assert.deepEqual(input, pending); return found ? {found: true, upload} : {found: false};}}, pending);
+    try {
+      await f.session.load(); assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().pending, null); assert.equal(f.receipts.size, 0);
+      assert.equal(f.session.getState().error, found ? '' : 'UPLOAD_REJECTED'); assert.deepEqual(f.session.getState().uploads, found ? [upload] : []);
+      assert.equal(posts, 0); assert.equal(lookups, 1);
+    } finally { f.session.dispose(); }
+  });
+});
+
+test('local file-read failures do not dispatch and preserve the existing selected file and draft', async () => {
+  let posts = 0; const f = fixture({upload: async (_, input) => {posts++; return {id: stepId, name: input.name, mimeType: input.mimeType, status: 'selected'};}});
+  try {
+    await f.session.load(); await f.session.upload(selectedFile('red.mp4')); f.session.edit('preserve draft');
+    const previous = structuredClone(f.session.getState().uploads);
+    assert.equal(await f.session.upload({...selectedFile('tone.m4a', 'audio/mp4'), arrayBuffer: async () => {throw new Error('private file-read failure');}}), false);
+    assert.equal(posts, 1); assert.equal(f.session.getState().phase, 'error'); assert.equal(f.session.getState().error, 'NETWORK');
+    assert.deepEqual(f.session.getState().uploads, previous); assert.equal(f.session.getState().draft, 'preserve draft'); assert.equal(f.session.getState().pending, null); assert.equal(f.receipts.size, 0);
+  } finally { f.session.dispose(); }
+});
+
+test('late rejection lookups cannot publish into a disposed session or clear its recoverable identity', async () => {
+  const held = deferred<AgentTaskLookup>(); let posts = 0, changes = 0;
+  const f = fixture({upload: async () => {posts++; throw Object.assign(new Error('rejected'), {code: 'INVALID_MEDIA', definitive: true});}, lookup: async () => held.promise}, undefined, () => {}, {onChange: () => {changes++;}});
+  await f.session.load(); const uploading = f.session.upload(selectedFile('tone.m4a', 'audio/mp4')); await flush();
+  assert.equal(f.session.getState().pending?.definitiveRejected, true); f.session.dispose(); const previous = changes;
+  held.resolve({found: false}); assert.equal(await uploading, false); assert.equal(changes, previous); assert.equal(f.receipts.size, 1); assert.equal(posts, 1);
+});
+
 test('restored snapshots are viewable but cannot send, upload, authorize or control', async () => {
   let writes = 0; const f = fixture({ list: async () => ({ ...project(), readOnly: true }), authorize: async () => { writes++; }, action: async () => { writes++; return snapshot(); } }); await f.session.load(); f.session.edit('task'); assert.equal(await f.session.send(), false); assert.equal(await f.session.authorize(), false); assert.equal(await f.session.action('stop'), false); assert.equal(writes, 0); f.session.dispose();
 });

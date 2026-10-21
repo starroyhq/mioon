@@ -4,7 +4,7 @@
 
 验收包括：内置真实文本模型、工具剪辑及成片、Mock 视频生成完整流程，以及外部 AI 经 MCP、CLI 和 Skill 的等效操作。真实视频供应商尚未配置，相关质量及计费不属于本次通过声明。既有自动化与本次现场结果分别记录。
 
-最新纯 CLI、官方 OpenAI SDK 和三系统存储批次见 [CLI-SDK-ACCEPTANCE.md](CLI-SDK-ACCEPTANCE.md)。下面保留此前阶段的现场结果与失败历史；本轮已通过完整 89 项目录、真实普通回复和只读工具往返，不能再将下面早期的 HTTP 400 记录视为当前结论。
+最新桌面真实回复、工具往返与自主剪片现场结果见 [DESKTOP-REAL-ACCEPTANCE.md](DESKTOP-REAL-ACCEPTANCE.md)，其中保留了发现的审批预算缺陷及其修复验证边界。纯 CLI、官方 OpenAI SDK 和三系统存储批次见 [CLI-SDK-ACCEPTANCE.md](CLI-SDK-ACCEPTANCE.md)。下面保留此前阶段的现场结果与失败历史；完整 89 项目录下的真实回复、只读往返和实际剪片已取得证据，不能再将下面早期的 HTTP 400 记录视为当前结论。
 
 ## 已确认问题与修复
 

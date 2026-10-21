@@ -284,7 +284,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(request.action==='approve'){authorize(run);journal.assertTargets(projectId,background?dispatchTargets(step):step.targets??[]);}
         if(background){journal.updateStep(runId,step.id,{data:{...(record(step.data)?step.data:{}),backgroundApprovalRequired:false,...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{backgroundDenied:true})}});if(request.action==='deny')cancelBackgroundSteps.push(step.id);}
         else journal.updateStep(runId,step.id,{status:request.action==='approve'?'intent':'rejected',data:{...(record(step.data)?step.data:{}),...(request.action==='approve'?{approvalDigest:approvalDigest(step)}:{})},...(request.action==='deny'?{result:{error:{code:'USER_REJECTED',message:'用户拒绝了此操作。'}}}:{})});
-        journal.resume(runId,journal.run(runId).revision);
+        journal.resume(runId,journal.run(runId).revision,{extendBudget:false});
       }else if(request.action==='resolve_unknown'){
         if(!request.stepId)throw agentTaskFailure('AGENT_TASK_INVALID');const step=journal.step(request.stepId);if(step.runId!==runId||step.status!=='unknown')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
         if(step.kind==='model'&&request.resolution==='discard')journal.updateStep(runId,step.id,{status:'failed',result:{discarded:true},error:{code:'USER_DISCARDED_UNKNOWN',message:'用户已将未知模型请求标记为失败。'}});
@@ -308,7 +308,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           }
           for(const step of steps)if(step.kind!=='model'&&(step.status==='intent'||step.status==='awaiting_approval'))journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'TARGET_CHANGED',message:'目标已变化，请按当前保存状态重新规划。'}}});
         }
-        journal.resume(runId,journal.run(runId).revision);
+        journal.resume(runId,journal.run(runId).revision,{extendBudget:true});
       }
       return null;
     });

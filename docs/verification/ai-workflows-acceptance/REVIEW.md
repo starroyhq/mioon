@@ -29,3 +29,19 @@
 收口结论：Standards、Spec 均 **no finding**。三系统密钥及 Windows 原生必要验证已完成；桌面旧草稿和发行范围限制不扩大为已支持能力。没有 commit、push、部署或发布。
 
 `reviewed-code-fingerprints.json` 记录审查收口后当前改动的代码、测试、工具说明及 Skill 文件 SHA-256，用于识别后续变动；不包含凭据或运行数据库。
+
+## 本地 main 合并后的桌面实测批次（2026-10-21）
+
+前一批代码随后按用户授权提交并合并至本地 `main` 的 `f7beb75b239a87f444a828ccf80f780ac3ab41f8`，没有 push。以下审查针对该提交之后的实际工作区增量；前面的基线、指纹和“未提交”描述保留为当时批次的历史记录，不当作本批的提交状态。
+
+| 增量 | Standards | Spec |
+| --- | --- | --- |
+| 原生附件 MIME 别名及明确拒绝反馈 | 未参与实现的 `main_merge_audit` 独立 no finding；UI/panel 45/45 | 未参与实现的 `cli_sdk_final_spec` 独立 no finding；未知提交只查回执、草稿及已有附件保留 |
+| 审批隐式扩预算缺陷 | `main_merge_audit` 发现并独立复审修复，no finding；独立定向 21/21，最终调用次数 4/4 | `cli_sdk_final_spec` 独立确证并复审，no finding；独立定向 22/22，最终实际执行次数断言及 SHA 已核对 |
+| 原生任务、实际媒体及文档范围 | 独立只读核对唯一生成/导出、原子回执、三帧字幕、完整解码及实际音频增益 | 独立核对原 Run、预算历史缺陷、预检参数差异及现场记录，没有把领域拒绝、历史平台证据或合成回归冒充新的原生通过 |
+
+审批修复只让显式 `resume` 增加原 Run 的预算；批准/拒绝恢复原已计步意图，保留 CAS、未知结果、溢出和事务回执保护。修复前真实 Run 的 30→60 预算跃迁仍保留为缺陷证据，未回写历史。两个领域失败也保留失败状态，模型基于真实读取结果恢复后只受理一次生成和一次导出。
+
+新生产实现由 `desktop_goal_readiness` 修改，两个审查者均未参与预算及附件实现。最后冻结 SHA：`task-journal-v2.ts` 为 `a8ab0536b7b809c0be986e9605fc5e5d4f8872d9f21b710ca7d35a76a9bcd4c6`；`task-runtime-v2.ts` 为 `57c62112053abea10d73ac539f99f9b567ec4ec5ef8f5fdc3dcb201126ae10f0`；附件 UI 为 `aeac83e6f704e9f9b9614356732fb40814efe66ec2323a4fc13556478c727324`。旧 `reviewed-code-fingerprints.json` 未重写。
+
+完整 runtime/journal 89/89、边界与恢复 25/25、附件相关 82/82、生产及 tests 严格类型、Web/桌面构建均通过。最终原生服务已通过菜单更新，主进程和 session Key 保留，原已完成任务及成片恢复且没有自动重发。完整范围、两个已修复问题及未扩大的平台声明见 [DESKTOP-REAL-ACCEPTANCE.md](DESKTOP-REAL-ACCEPTANCE.md)。验收收口时本批代码和记录未提交；后续提交和 PR 以用户另行授权及 Git 记录为准，不部署或发布。
