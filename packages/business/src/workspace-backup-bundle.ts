@@ -2,7 +2,7 @@ import path from 'node:path';
 import {constants,openSync,closeSync,fstatSync,writeSync,fsyncSync} from 'node:fs';
 import {createReadStream} from 'node:fs';
 import {AppError} from '@mioon/contracts';
-import {validateManagedDirectory} from '@mioon/contracts/private-storage';
+import {validateManagedDirectory,getWindowsManagedFileIO} from '@mioon/contracts/private-storage';
 import {WORKSPACE_BACKUP_LIMITS,isWorkspaceBackupPayloadPath} from '../../contracts/src/workspace-backup.ts';
 import {withVerifiedWorkspaceBackup,verifyWorkspaceBackup,type VerifiedWorkspaceBackupContext} from './workspace-backup.ts';
 import {createNewDirectory,inspectFile,sameFile,syncDirectory} from './workspace-backup-storage.ts';
@@ -25,6 +25,15 @@ export async function* exportWorkspaceBackupBundle({directory,signal}:{directory
     signal?.throwIfAborted();context.checkFiles();
     const file=path.join(directory,name),identity=inspectFile(file,directory,{private:true,maxBytes:maxBytes(name)})!;
     yield header(name,identity.size);
+    if(process.platform==='win32'){
+      const handle=getWindowsManagedFileIO().openFile(file,{root:directory,private:true,maxBytes:maxBytes(name),mode:'read',expected:identity});let bytes=0;
+      try{
+        if(!sameFile(identity,handle.metadata()))throw failure();
+        for(;;){signal?.throwIfAborted();context.checkFiles();const chunk=handle.read(CHUNK_BYTES);if(!chunk.length)break;bytes+=chunk.length;if(chunk.length>CHUNK_BYTES||bytes>identity.size)throw failure();yield chunk;}
+        if(bytes!==identity.size||!sameFile(identity,handle.metadata())||!sameFile(identity,inspectFile(file,directory,{private:true,maxBytes:maxBytes(name)})))throw failure();
+      }finally{handle.close();}
+      continue;
+    }
     const descriptor=openSync(file,constants.O_RDONLY|constants.O_NOFOLLOW);
     if(!sameFile(identity,fstatSync(descriptor))){closeSync(descriptor);throw failure();}
     const stream=createReadStream(file,{fd:descriptor,autoClose:true,highWaterMark:CHUNK_BYTES});
@@ -73,6 +82,16 @@ export async function importWorkspaceBackupBundle({source,destination,signal,che
       const file=path.join(destination,name),parent=path.dirname(file),relativeParent=path.relative(destination,parent);
       if(relativeParent){let current=destination;for(const part of relativeParent.split(path.sep)){current=path.join(current,part);if(!directories.has(current)){createNewDirectory(current,destination);directories.add(current);}}}
       validateManagedDirectory(parent,{root:destination,private:true});
+      if(process.platform==='win32'){
+        const handle=getWindowsManagedFileIO().openFile(file,{root:destination,private:true,maxBytes:maxBytes(name),mode:'create'});
+        try{
+          let remaining=bytes;
+          while(remaining){check();const chunk=await reader.read(Math.min(remaining,CHUNK_BYTES));handle.write(chunk);remaining-=chunk.length;}
+          handle.flush();const saved=handle.metadata();
+          if(saved.size!==bytes||!sameFile(saved,inspectFile(file,destination,{private:true,maxBytes:maxBytes(name)})))throw failure();
+        }finally{handle.close();}
+        continue;
+      }
       const fd=openSync(file,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
       try{
         const identity=fstatSync(fd);if(!identity.isFile()||identity.nlink!==1||identity.uid!==process.getuid?.())throw failure();

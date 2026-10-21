@@ -1,0 +1,10 @@
+{
+  "name": "@mioon/node-host",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "exports": {"./private-storage-bootstrap": "./src/private-storage-bootstrap.ts"},
+  "scripts": {"install": "node scripts/install.mjs", "build:native": "node scripts/build-native.mjs"},
+  "dependencies": {"@mioon/contracts": "workspace:*"},
+  "devDependencies": {"node-gyp": "12.4.0"}
+}

@@ -21,6 +21,7 @@ import {createAgentTaskTools} from '@mioon/business/agent/task-tools-v2';
 import type {AgentTaskTools} from '@mioon/business/agent/task-tools-v2';
 import type {TaskGateway} from '@mioon/business/agent/task-gateway-v2';
 import {createAgentTaskHttp} from './agent-task-http-v2.ts';
+import {createAgentDiagnosticsHttp} from './agent-diagnostics-http.ts';
 import {createAgentAuthorizations} from '../../../packages/business/src/agent/authorizations.ts';
 import {createUiPreferences} from '../../../packages/business/src/ui-preferences.ts';
 import {createProjectDeletionGate} from './project-deletion-gate.ts';
@@ -68,7 +69,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes, timingSafeEqual} from 'node:crypto';
 import {createAgentSettings, sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
-import type {AgentSettingsService, SettingsContextOptions} from '@mioon/business/agent/settings';
+import type {AgentSettingsService, SettingsContextOptions, SecretCodec, PublicStorage} from '@mioon/business/agent/settings';
 import {createAgentSettingsFile} from '@mioon/business/agent/settings-file';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import {openStore, createServices, startWorker, safePath, createProviderRegistry, createWorkspacePreferences, MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
@@ -142,6 +143,7 @@ export interface ServerOptions {
   distDir?: string;
   token?: string;
   agentSettings?: AgentSettingsPort;
+  agentSecretCodecFactory?:(options:{directory:string;channel:LocalDraftChannel})=>Promise<{secretCodec:SecretCodec;storage:()=>PublicStorage;close:()=>void}>;
   imageSecretCodec?: ImageSecretCodecPort;
   videoSecretCodec?: ImageSecretCodecPort;
   imageNetwork?: ImageNetworkSeam;
@@ -220,6 +222,7 @@ async function composeServer({
   distDir = path.resolve(directory, '../../web/dist'),
   token: suppliedToken,
   agentSettings: suppliedAgentSettings,
+  agentSecretCodecFactory, // Standalone Node launcher only; desktop owns its codec.
   imageSecretCodec, // Trusted desktop main codec only; never supplied by HTTP.
   videoSecretCodec, // Independent video credential namespace on the owned utility channel.
   imageNetwork, // Trusted synthetic DNS/HTTPS fixture only; never HTTP/environment.
@@ -270,7 +273,7 @@ async function composeServer({
     agentAuthorizations: AgentAuthorizations | undefined, uiPreferences: UiPreferences | undefined, imageSettings: ImageSettings | undefined,
     customImageSettings: CustomImageSettings | undefined, videoSettings: VideoSettings | undefined, comfySettings: ComfySettings | undefined, chatRuntime: ChatRuntime | undefined,
     chatHttp: ChatHttp | undefined, taskRuntimeV2: AgentTaskRuntime | undefined, taskToolsV2: AgentTaskTools | undefined,
-    taskHttpV2: ReturnType<typeof createAgentTaskHttp> | undefined, editTasks!: EditTasks, candidateEditor: CandidateEditor | undefined;
+    taskHttpV2: ReturnType<typeof createAgentTaskHttp> | undefined, agentDiagnosticsHttp:ReturnType<typeof createAgentDiagnosticsHttp>|undefined, editTasks!: EditTasks, candidateEditor: CandidateEditor | undefined;
   let services!: Services;
   let serviceCall!: ServiceCall;
   let serviceDrain!: ServiceDrain;
@@ -312,10 +315,12 @@ async function composeServer({
     const providers = restored || candidate ? new Map() : createProviderRegistry({db: store.db, root,env:providerEnv});
     let imageHttp: HttpHandler=async()=>false,comfyHttp: HttpHandler=async()=>false,videoHttp: HttpHandler=async()=>false;
     if(!restored && !candidate){
-    const createdSettings = await createAgentSettings({
-      persistence: createAgentSettingsFile({directory: path.join(root, 'agent-settings')}),
-    });
-    agentSettings = suppliedAgentSettings || createdSettings;
+    if(suppliedAgentSettings)agentSettings=suppliedAgentSettings;
+    else {
+      const directory=path.join(root,'agent-settings'),codec=await agentSecretCodecFactory?.({directory,channel:localDraftChannel});
+      try{agentSettings=await createAgentSettings({persistence:createAgentSettingsFile({directory}),...(codec?{secretCodec:codec.secretCodec,storage:codec.storage}:{})});}
+      catch(error){codec?.close();throw error;}
+    }
     agentAuthorizations = createAgentAuthorizations({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock,isRestored},readCurrentTarget:async()=>{
@@ -439,6 +444,7 @@ async function composeServer({
     taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary});
     taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
+    agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id)});
     }
     if(restored?.schemaVersion===53&&!candidate){
       if(!agentSettings)agentSettings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{throw workspaceRestoreError();}}});
@@ -515,6 +521,7 @@ async function composeServer({
         if (await videoHttp(req,res,url)) return;
         if (await chatHttp?.handle(req, res, url)) return;
         if (await taskHttpV2?.handle(req,res,url)) return;
+        if (await agentDiagnosticsHttp?.(req,res,url)) return;
         if (await editTasksHttp(req, res, url)) return;
         if (await localDraftHttp(req, res, url)) return;
         if (await lastProjectHttp(req, res, url)) return;

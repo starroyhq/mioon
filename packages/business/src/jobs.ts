@@ -446,14 +446,22 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    finally {exportActivity?.close();operations.delete(controller);}
   }
  }
+ async function advance(value: JobRecord|ExportRecord,action: WorkerOperation): Promise<void> {
+  try {await operate(value,action);}
+  catch(error) {
+   // A trusted task control fence defers only its own candidate. Storage,
+   // audit and uncertain-effect failures must still abort the whole cycle.
+   if(!isAgentTaskEffectBlocked(error)||!['AGENT_TASK_PAUSED','AGENT_TASK_STOPPED','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED'].includes(stringValue(property(error,'code'))??''))throw error;
+  }
+ }
  function tick(): Promise<void> {
   if(stopped)return Promise.resolve();
   if(cycle)return cycle;
   cycle=(async()=>{
    try {
-    for(const j of restored||opacity?[]:list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status))await operate(job,processJob as WorkerOperation);}
+    for(const j of restored||opacity?[]:list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status))await advance(job,processJob as WorkerOperation);}
     if(stopped)return;
-    for(const e of workerExports())if(!stopped&&e.status==='queued')await operate(e,processExport as unknown as WorkerOperation);
+    for(const e of workerExports())if(!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);
    } catch(error) {console.error('Worker cycle failed:',stringValue(property(error,'code'))||String(property(error,'name')));}
   })().finally(()=>{cycle=null;});
   return cycle;

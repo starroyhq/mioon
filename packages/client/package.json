@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./connection": "./src/connection.ts",
+    "./agent": "./src/agent.ts",
     "./timeline-mix-loudness": "./src/timeline-mix-loudness.ts",
     "./download": "./src/download.ts",
     "./timeline-loudness-apply": "./src/timeline-loudness-apply.ts",

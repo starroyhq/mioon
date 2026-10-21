@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
-import {mkdtemp,rm,cp,writeFile,readdir,unlink} from 'node:fs/promises';
+import {mkdtemp,rm,cp,writeFile,readdir,unlink,chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -12,8 +12,12 @@ import {initializeSubtitleResources,SUBTITLE_FONT_FILE} from '../packages/busine
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 const bundle=fileURLToPath(new URL('../packages/business/resources/subtitles/',import.meta.url));
 
-test('subtitle preflight only verifies static font/profile read-only; old reports stay unchanged with missing font',async t=>{
+test('subtitle preflight verifies font and renderer read-only without measuring ink; old reports stay unchanged',async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-subtitle-preflight-')),resources=path.join(root,'resources');await cp(bundle,resources,{recursive:true});initializeSubtitleResources(resources);
+ const help='Filter drawtext\n  Draw text on top of video frames using libfreetype library.\ndrawtext AVOptions:\n'+['fontfile','textfile','expansion','fontsize','borderw','line_spacing','fontcolor','bordercolor','x','y'].map(name=>`   ${name} <string> ..FV....... synthetic option\n`).join('')+"\nThis filter has support for timeline through the 'enable' option.\n";
+ const executable=path.join(root,'ffmpeg'),setHelp=(output: string)=>writeFile(executable,`#!${process.execPath}\nif(process.argv.slice(2).join(' ')!=='-hide_banner -h filter=drawtext')process.exit(7);\nprocess.stdout.write(${JSON.stringify(output)});\n`,{mode:0o700});
+ await setHelp(help);await chmod(executable,0o700);const previous=process.env.MIOON_FFMPEG_PATH;process.env.MIOON_FFMPEG_PATH=executable;
+ t.after(()=>{if(previous===undefined)delete process.env.MIOON_FFMPEG_PATH;else process.env.MIOON_FFMPEG_PATH=previous;});
  const store=openStore(path.join(root,'data')),project={id:randomUUID(),name:'Caption preflight'};store.put('projects',project);
  const bytes=Buffer.from('owned synthetic metadata source'),asset={id:randomUUID(),projectId:project.id,name:'audio',mimeType:'audio/wav',relativePath:'media/source.wav',sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length,duration:1,width:0,height:0,hasAudio:true};
  await writeFile(path.join(store.root,asset.relativePath),bytes);store.put('assets',asset);
@@ -25,8 +29,11 @@ test('subtitle preflight only verifies static font/profile read-only; old report
  const input={projectId:project.id,expectedRevision:1},call=()=>preflight.handlers['timeline.export.preflight'](input),changes=()=>(store.db.prepare('SELECT total_changes() n').get() as {n: number}).n;
  let before=changes(),files=await readdir(root,{recursive:true}),report=await call();
  assert.equal(report.status,'ready');assert.ok(isExportPreflightResponse(report,input));assert.deepEqual(report.checks.subtitles,{profileId:TIMELINE_SUBTITLE_PROFILE_ID,fontVerified:true,inkMeasured:false});
- assert.equal(report.checks.bytesHashed,bytes.length);assert.equal(changes(),before);assert.deepEqual(await readdir(root,{recursive:true}),files);assert.deepEqual(events,[]);assert.equal(probes,1);
+ assert.equal(report.checks.bytesHashed,bytes.length);assert.equal(changes(),before);assert.deepEqual(await readdir(root,{recursive:true}),files);assert.equal(events.filter(event=>(event as {type?: string}).type==='started').length,1);assert.equal(probes,1);
  const invalid=structuredClone(report);invalid.checks.subtitles!.inkMeasured=true;assert.equal(isExportPreflightResponse(invalid,input),false);invalid.checks.subtitles!.inkMeasured=false;invalid.checks.subtitles!.fontVerified=false;assert.equal(isExportPreflightResponse(invalid,input),false);
- await unlink(path.join(resources,SUBTITLE_FONT_FILE));before=changes();report=await call();assert.equal(report.status,'blocked');assert.equal(report.issues[0].code,'SUBTITLE_RESOURCE_UNAVAILABLE');assert.equal(report.checks.subtitles!.fontVerified,false);assert.ok(!JSON.stringify(report).includes(root));assert.equal(changes(),before);assert.equal(probes,1);
- delete (timeline as {subtitles?: unknown}).subtitles;store.put('timelines',timeline);before=changes();report=await call();assert.equal(report.status,'ready');assert.deepEqual(report.checks,{totalAssets:1,checkedAssets:1,bytesHashed:bytes.length,fullDecode:false});assert.equal(changes(),before);assert.equal(probes,2);assert.deepEqual(events,[]);
+ await setHelp("Unknown filter 'drawtext'.\n");before=changes();report=await call();assert.equal(report.status,'blocked');assert.equal(report.issues[0].code,'SUBTITLE_RENDERER_UNAVAILABLE');assert.ok(isExportPreflightResponse(report,input));assert.equal(report.checks.subtitles!.fontVerified,true);assert.equal(changes(),before);assert.equal(probes,1);
+ await setHelp('truncated or unrelated help');before=changes();report=await call();assert.equal(report.status,'incomplete');assert.equal(report.issues[0].code,'PREFLIGHT_INCOMPLETE');assert.ok(isExportPreflightResponse(report,input));assert.equal(changes(),before);assert.equal(probes,1);
+ const childCount=events.length;
+ await unlink(path.join(resources,SUBTITLE_FONT_FILE));before=changes();report=await call();assert.equal(report.status,'blocked');assert.equal(report.issues[0].code,'SUBTITLE_RESOURCE_UNAVAILABLE');assert.equal(report.checks.subtitles!.fontVerified,false);assert.ok(!JSON.stringify(report).includes(root));assert.equal(changes(),before);assert.equal(probes,1);assert.equal(events.length,childCount);
+ delete (timeline as {subtitles?: unknown}).subtitles;store.put('timelines',timeline);before=changes();report=await call();assert.equal(report.status,'ready');assert.deepEqual(report.checks,{totalAssets:1,checkedAssets:1,bytesHashed:bytes.length,fullDecode:false});assert.equal(changes(),before);assert.equal(probes,2);assert.equal(events.length,childCount);
 });

@@ -6,8 +6,9 @@ import {createHash,randomUUID} from 'node:crypto';
 import {constants,lstatSync,mkdirSync,openSync,closeSync,fstatSync,readSync,writeSync,fsyncSync,unlinkSync,linkSync,opendirSync,rmdirSync} from 'node:fs';
 import {setImmediate as yieldIO} from 'node:timers/promises';
 import {WORKSPACE_BACKUP_LIMITS} from '../../contracts/src/workspace-backup.ts';
-import {assertStoragePrivacyAvailable,validatePrivateDirectory,validateManagedDirectory,validateManagedFile,readPrivateFile} from '@mioon/contracts/private-storage';
+import {assertStoragePrivacyAvailable,validatePrivateDirectory,validateManagedDirectory,validateManagedFile,readPrivateFile,samePrivateStorageIdentity,privateStorageIdentity,getWindowsManagedFileIO} from '@mioon/contracts/private-storage';
 import type {Stats} from 'node:fs';
+import type {WindowsManagedFileHandle} from '@mioon/contracts/private-storage';
 
 interface DirectoryOptions {private?: boolean}
 interface InspectOptions extends DirectoryOptions {allowMissing?: boolean;maxBytes?: number}
@@ -45,10 +46,16 @@ export function safeBackupError(error: unknown): Error{
  if(typeof failure?.code==='string'&&(failure.code.startsWith('WORKSPACE_BACKUP_')||['STORAGE_PRIVATE_REQUIRED','STORAGE_PRIVACY_UNAVAILABLE','RESTORE_BACKUP_UNAVAILABLE'].includes(failure.code)))return error as Error;
  return backupError('IO');
 }
-export const sameNode=(a: Stats|null|undefined,b: Stats|null|undefined): boolean=>!!a&&!!b&&a.dev===b.dev&&a.ino===b.ino;
-export const sameFile=(a: Stats|null|undefined,b: Stats|null|undefined): boolean=>sameNode(a,b)&&!!a&&!!b&&(['size','mtimeMs','ctimeMs','uid','mode','nlink'] as const).every(key=>a[key]===b[key]);
-export function explicitPath(value: unknown): string{
+export const sameNode=(a: Stats|null|undefined,b: Stats|null|undefined): boolean=>samePrivateStorageIdentity(a,b);
+export const sameFile=(a: Stats|null|undefined,b: Stats|null|undefined): boolean=>sameNode(a,b)&&!!a&&!!b&&(process.platform==='win32'?['size','mtimeMs','ctimeMs','nlink'] as const:['size','mtimeMs','ctimeMs','uid','mode','nlink'] as const).every(key=>a[key]===b[key]);
+/** General private-file readiness is insufficient for streaming and durable
+ * publication. Windows also requires the complete owned-handle I/O extension. */
+export function assertBackupStorageAvailable(): void{
  assertStoragePrivacyAvailable();
+ if(process.platform==='win32')getWindowsManagedFileIO();
+}
+export function explicitPath(value: unknown): string{
+ assertBackupStorageAvailable();
  if(typeof value!=='string'||!value||value.includes('\0')||!path.isAbsolute(value)||path.resolve(value)!==value)fail('INVALID_PATH');
  return value;
 }
@@ -57,12 +64,18 @@ export function checkSeparate(source: string,destination: string): void{
  if(nested(source,destination)||nested(destination,source))fail('INVALID_PATH');
 }
 export function checkedDirectory(directory: string,root: string,{private:privateMode=true}: DirectoryOptions={}): Stats|null{
+ assertBackupStorageAvailable();
  return validateManagedDirectory(directory,{root,private:privateMode});
 }
 export function checkDirectoryIdentity(directory: string,root: string,identity: Stats,{private:privateMode=true}: DirectoryOptions={}): void{
  if(!sameNode(identity,checkedDirectory(directory,root,{private:privateMode})))fail('CHANGED');
 }
 export function createNewDirectory(directory: string,root?: string): Stats{
+ assertBackupStorageAvailable();
+ if(process.platform==='win32'){
+  try{return getWindowsManagedFileIO().createDirectoryNew(directory,{root});}
+  catch(error){if((error as {reason?:unknown}).reason==='ALREADY_EXISTS')fail('DESTINATION_EXISTS');throw error;}
+ }
  if(root)validateManagedDirectory(path.dirname(directory),{root,private:true});
  else{
   // Existing ancestors are checked, never repaired. Only the requested leaf is
@@ -76,6 +89,8 @@ export function createNewDirectory(directory: string,root?: string): Stats{
 // Destination parents may be ordinary owned/system 0755 directories or trusted
 // sticky temporary directories; a newly created destination itself is 0700.
 export function createDestination(directory: string): Stats{
+ assertBackupStorageAvailable();
+ if(process.platform==='win32')return createNewDirectory(directory);
  if(validatePrivateDirectory(directory,{allowMissing:true}))fail('DESTINATION_EXISTS');
  // validatePrivateDirectory checked every existing ancestor up to this leaf.
  // mkdir is non-recursive and fails if its direct parent is absent.
@@ -83,16 +98,24 @@ export function createDestination(directory: string): Stats{
  return validatePrivateDirectory(directory)!;
 }
 function validateDescriptor(info: Stats,{private:privateMode,maxBytes}: DescriptorOptions): Stats{
- if(!info.isFile()||info.uid!==process.getuid!()||info.nlink!==1||info.mode&(privateMode?0o077:0o022))fail('CHANGED');
+ if(process.platform==='win32'){
+  // Only native-validated metadata has a full Windows identity. uid/mode and
+  // Node's lossy dev/ino values are never substituted for the ACL/handle proof.
+  privateStorageIdentity(info);
+  if(!info.isFile()||info.nlink!==1)fail('CHANGED');
+ }else if(!info.isFile()||info.uid!==process.getuid!()||info.nlink!==1||info.mode&(privateMode?0o077:0o022))fail('CHANGED');
  if(!Number.isSafeInteger(info.size)||info.size<0||info.size>maxBytes)fail('LIMIT');
  return info;
 }
 export function inspectFile(file: string,root: string,{allowMissing=false,private:privateMode=false,maxBytes=BACKUP_IO_LIMITS.fileBytes}: InspectOptions={}): Stats|null{
+ assertBackupStorageAvailable();
  const info=validateManagedFile(file,{root,allowMissing,private:privateMode});
  if(info)validateDescriptor(info,{private:privateMode,maxBytes});
  return info;
 }
 export function syncDirectory(directory: string,root: string): void{
+ assertBackupStorageAvailable();
+ if(process.platform==='win32'){getWindowsManagedFileIO().syncDirectory(directory,{root,private:true});return;}
  const before=validateManagedDirectory(directory,{root,private:true});let fd;
  try{
   fd=openSync(directory,constants.O_RDONLY|constants.O_NOFOLLOW|(constants.O_DIRECTORY||0));
@@ -105,6 +128,12 @@ export function syncDirectory(directory: string,root: string): void{
 // Validate the parent as an ancestor (0755 or trusted sticky is permitted),
 // then bind the fsync handle to that verified inode. Do not weaken root policy.
 export function syncDestinationParent(directory: string): void{
+ assertBackupStorageAvailable();
+ if(process.platform==='win32'){
+  validatePrivateDirectory(directory);
+  getWindowsManagedFileIO().syncDirectory(path.dirname(directory),{private:false});
+  validatePrivateDirectory(directory);return;
+ }
  validatePrivateDirectory(directory);
  const parent=path.dirname(directory),before=lstatSync(parent);let fd;
  try{
@@ -117,11 +146,17 @@ export function syncDestinationParent(directory: string): void{
 }
 export function removeOwnedFile(file: string,root: string,identity: Stats|null|undefined): boolean{
  const current=inspectFile(file,root,{allowMissing:true,private:true});
- if(current&&sameFile(current,identity)){unlinkSync(file);return true;}
+ if(current&&sameFile(current,identity)){
+  if(process.platform==='win32')getWindowsManagedFileIO().removeOwnedFile(file,{root,expected:current,maxBytes:BACKUP_IO_LIMITS.fileBytes});
+  else unlinkSync(file);
+  return true;
+ }
  return current===null;
 }
 export async function streamFile({file,root,destination,destinationRoot,signal,check=()=>{},maxBytes=BACKUP_IO_LIMITS.fileBytes,expected,cleanupOnFailure=false,private:privateMode=false}: StreamFileOptions): Promise<StreamFileResult>{
+ assertBackupStorageAvailable();
  checkCancelled(signal);check();
+ if(process.platform==='win32')return streamWindowsFile({file,root,destination,destinationRoot,signal,check,maxBytes,expected,cleanupOnFailure,private:privateMode});
  const before=inspectFile(file,root,{private:privateMode,maxBytes})!;
  if(expected&&!sameFile(before,expected))fail('CHANGED');
  let input: number|undefined,output: number|undefined,created: Stats|undefined,savedIdentity: Stats|undefined;
@@ -162,6 +197,36 @@ export async function streamFile({file,root,destination,destinationRoot,signal,c
   throw error;
  }finally{if(input!==undefined)closeSync(input);if(output!==undefined)closeSync(output);}
 }
+async function streamWindowsFile({file,root,destination,destinationRoot,signal,check=()=>{},maxBytes=BACKUP_IO_LIMITS.fileBytes,expected,cleanupOnFailure=false,private:privateMode=false}: StreamFileOptions): Promise<StreamFileResult>{
+ const io=getWindowsManagedFileIO(),before=inspectFile(file,root,{private:privateMode,maxBytes})!;
+ if(expected&&!sameFile(before,expected))fail('CHANGED');
+ if(destination&&!destinationRoot)fail('INVALID_PATH');
+ let input:WindowsManagedFileHandle|undefined,output:WindowsManagedFileHandle|undefined,created:Stats|undefined,savedIdentity:Stats|undefined;
+ const hash=createHash('sha256');let bytes=0;
+ try{
+  input=io.openFile(file,{root,private:privateMode,maxBytes,mode:'read',expected:before});
+  if(!sameFile(before,validateDescriptor(input.metadata(),{private:privateMode,maxBytes})))fail('CHANGED');
+  if(destination){output=io.openFile(destination,{root:destinationRoot!,private:true,maxBytes,mode:'create'});created=validateDescriptor(output.metadata(),{private:true,maxBytes});}
+  for(;;){
+   checkCancelled(signal);check();const chunk=input.read(BACKUP_IO_LIMITS.chunkBytes);if(!chunk.length)break;
+   if(chunk.length>BACKUP_IO_LIMITS.chunkBytes||bytes+chunk.length>maxBytes||bytes+chunk.length>before.size)fail('LIMIT');
+   hash.update(chunk);output?.write(chunk);bytes+=chunk.length;await yieldIO();
+  }
+  checkCancelled(signal);check();
+  if(bytes!==before.size||!sameFile(before,validateDescriptor(input.metadata(),{private:privateMode,maxBytes}))||!sameFile(before,inspectFile(file,root,{private:privateMode,maxBytes})))fail('CHANGED');
+  if(output){
+   output.flush();savedIdentity=validateDescriptor(output.metadata(),{private:true,maxBytes});
+   if(savedIdentity.size!==bytes||!sameNode(created,savedIdentity)||!sameFile(savedIdentity,inspectFile(destination!,destinationRoot!,{private:true,maxBytes})))fail('CHANGED');
+  }
+  return {bytes,sha256:hash.digest('hex'),identity:before,savedIdentity};
+ }catch(error){
+  if(cleanupOnFailure&&output&&created){try{
+   const current=validateDescriptor(output.metadata(),{private:true,maxBytes});
+   if(sameNode(created,current)){output.close();output=undefined;removeOwnedFile(destination!,destinationRoot!,current);}
+  }catch{} /* An unverified replacement is never removed. */}
+  throw error;
+ }finally{input?.close();output?.close();}
+}
 export function readJsonFile(file: string,root: string,maxBytes: number,{allowMissing=false}: ReadJsonOptions={}): ReadJsonResult|null{
  const raw=readPrivateFile(file,{root,maxBytes,allowMissing,private:true}) as Buffer;
  if(raw===null)return null;
@@ -169,8 +234,17 @@ export function readJsonFile(file: string,root: string,maxBytes: number,{allowMi
  return {raw,value};
 }
 export function writeBoundedFile(file: string,root: string,bytes: Buffer|Uint8Array,maxBytes: number): Stats{
+ assertBackupStorageAvailable();
  if(!Buffer.isBuffer(bytes))bytes=Buffer.from(bytes);
  if(bytes.length>maxBytes)fail('LIMIT');
+ if(process.platform==='win32'){
+  const handle=getWindowsManagedFileIO().openFile(file,{root,private:true,maxBytes,mode:'create'});
+  try{
+   for(let offset=0;offset<bytes.length;offset+=BACKUP_IO_LIMITS.chunkBytes)handle.write(bytes.subarray(offset,offset+BACKUP_IO_LIMITS.chunkBytes));
+   handle.flush();const saved=validateDescriptor(handle.metadata(),{private:true,maxBytes});
+   if(saved.size!==bytes.length||!sameFile(saved,inspectFile(file,root,{private:true,maxBytes})))fail('CHANGED');return saved;
+  }finally{handle.close();}
+ }
  validateManagedDirectory(path.dirname(file),{root,private:true});
  let fd;try{
   fd=openSync(file,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);
@@ -182,6 +256,8 @@ export function writeBoundedFile(file: string,root: string,bytes: Buffer|Uint8Ar
  }finally{if(fd!==undefined)closeSync(fd);}
 }
 export function publishMarker(file: string,root: string,bytes: Buffer|Uint8Array,check: ()=>void): Stats{
+ assertBackupStorageAvailable();
+ if(process.platform==='win32')return publishWindowsMarker(file,root,bytes,check);
  const temporary=path.join(root,`.complete-${randomUUID()}.tmp`);let identity: Stats|undefined,linked=false;
  const removeTemporary=(): void=>{try{const info=lstatSync(temporary);if(identity&&sameNode(identity,info)&&info.isFile()&&info.uid===identity.uid)unlinkSync(temporary);}catch(error){if((error as {code?: unknown}).code!=='ENOENT')throw error;}};
  try{
@@ -210,8 +286,41 @@ export function publishMarker(file: string,root: string,bytes: Buffer|Uint8Array
   throw error;
  }finally{if(identity){try{removeTemporary();}catch{}}}
 }
+function publishWindowsMarker(file:string,root:string,bytes:Buffer|Uint8Array,check:()=>void):Stats{
+ const temporary=path.join(root,`.complete-${randomUUID()}.tmp`),io=getWindowsManagedFileIO();let identity:Stats|undefined,attempted=false;
+ try{
+  identity=writeBoundedFile(temporary,root,bytes,4096);check();
+  if(!sameFile(identity,inspectFile(temporary,root,{private:true,maxBytes:4096})))fail('CHANGED');
+  attempted=true;const final=io.renameNoReplace(temporary,file,{root,expected:identity});
+  if(!sameNode(identity,final)||identity.size!==final.size||identity.mtimeMs!==final.mtimeMs)fail('CHANGED');
+  // Rename preserves single-link ownership; the containing directory must be
+  // durably flushed before COMPLETE can acknowledge a committed backup.
+  syncDirectory(root,root);return final;
+ }catch(error){
+  if(attempted&&(error as {reason?:unknown}).reason!=='ALREADY_EXISTS'){try{
+   const current=inspectFile(file,root,{allowMissing:true,private:true,maxBytes:4096});
+   if(current){
+    if(!sameNode(identity,current)||identity!.size!==current.size||identity!.mtimeMs!==current.mtimeMs||!(readPrivateFile(file,{root,maxBytes:4096}) as Buffer).equals(bytes))fail('CHANGED');
+    if(!removeOwnedFile(file,root,current))fail('CHANGED');
+   }
+   syncDirectory(root,root);
+  }catch{fail('PUBLICATION_UNCONFIRMED');}}
+  throw error;
+ }finally{if(identity){try{removeOwnedFile(temporary,root,identity);}catch{}}}
+}
 
 export async function scanDirectory(directory: string,root: string,{signal,check=()=>{},budget,private:privateMode=false,visit}: ScanDirectoryOptions): Promise<void>{
+ assertBackupStorageAvailable();
+ if(process.platform==='win32'){
+  const before=validateManagedDirectory(directory,{root,allowMissing:true,private:privateMode});if(!before)return;
+  const handle=getWindowsManagedFileIO().openDirectory(directory,{root,private:privateMode});
+  try{
+   if(!sameNode(before,handle.metadata()))fail('CHANGED');let name:string|null;
+   while((name=handle.next())!==null){checkCancelled(signal);check();if(++budget.count>BACKUP_IO_LIMITS.directoryEntries)fail('LIMIT');await visit(name);if(budget.count%128===0)await yieldIO();}
+   if(!sameNode(before,handle.metadata()))fail('CHANGED');
+  }finally{handle.close();}
+  checkDirectoryIdentity(directory,root,before,{private:privateMode});return;
+ }
  const before=validateManagedDirectory(directory,{root,allowMissing:true,private:privateMode});
  if(!before)return;
  const handle=opendirSync(directory);let entry;
@@ -225,5 +334,7 @@ export async function scanDirectory(directory: string,root: string,{signal,check
  checkDirectoryIdentity(directory,root,before,{private:privateMode});
 }
 export function removeOwnedDirectory(directory: string,root: string,identity: Stats): void{
+ assertBackupStorageAvailable();
+ if(process.platform==='win32'){getWindowsManagedFileIO().removeOwnedDirectory(directory,{root,expected:identity});return;}
  checkDirectoryIdentity(directory,root,identity);rmdirSync(directory);
 }

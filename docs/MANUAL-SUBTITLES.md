@@ -95,9 +95,21 @@ process deadline and 64 KiB stderr. Truncated/extra output, guard-edge ink,
 unsupported geometry and overflow fail before publication. Existing media child
 abort/shutdown ownership applies. Composition uses the same staged font/text.
 
+Before measurement, one bounded `ffmpeg -h filter=drawtext` inspection checks
+the required options. Both measurement and composition explicitly use
+`text_shaping=0` when available. FFmpeg exposes that option and its FriBidi
+pre-reordering only in builds with `--enable-libfribidi`; a complete valid help
+response without the option therefore uses the equivalent already-disabled
+behavior. Unrecognized or truncated help never enables this compatibility path.
+The fixed Chinese/ASCII character rules and unsupported RTL/combining-text
+boundary remain unchanged. See the [official filter documentation](https://ffmpeg.org/ffmpeg-filters.html#drawtext-1)
+and [conditional option/processing implementation](https://ffmpeg.org/doxygen/8.1/vf__drawtext_8c_source.html).
+
 An old snapshot or empty cue list returns before any font read/measurement.
-Preflight remains read-only and can report font verification with
-`inkMeasured:false`; actual glyph measurement belongs to render. A passing
+Preflight remains read-only, checks the same renderer options and can report font
+verification with `inkMeasured:false`; actual glyph measurement belongs to render.
+Missing drawtext/options blocks the check; unverified capability is incomplete.
+A passing
 preflight cannot promise future file stability or final rendering success.
 
 ## UI and verification status

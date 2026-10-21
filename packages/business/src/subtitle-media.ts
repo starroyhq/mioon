@@ -3,6 +3,7 @@ import path from 'node:path';
 import {TIMELINE_SUBTITLE_PROFILE} from '@mioon/contracts';
 import {runStreaming,checkMediaEffect} from './media-runtime.ts';
 import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subtitle-resources.ts';
+import {inspectSubtitleRenderer} from './subtitle-renderer-capability.ts';
 import type {FileHandle} from 'node:fs/promises';
 
 interface SubtitleCueRecord {text: string;startFrame: number;durationFrames: number}
@@ -13,7 +14,7 @@ interface SubtitlePreparationOptions {
  openOwnedFile?: (file: string)=>Promise<FileHandle>;
  writeOwnedFile?: (file: string,data: string)=>Promise<void>;
 }
-interface SubtitlePrepared {font: string;cues: SubtitleCueRecord[];entries: Map<string,{file: string;ink: SubtitleInkBounds}>;width: number;height: number}
+interface SubtitlePrepared {font: string;cues: SubtitleCueRecord[];entries: Map<string,{file: string;ink: SubtitleInkBounds}>;width: number;height: number;textShaping: boolean}
 
 const P=TIMELINE_SUBTITLE_PROFILE,WIDTH=4096,HEIGHT=256,FRAME_BYTES=WIDTH*HEIGHT,ORIGIN=64,GUARD=16;
 const fault=(code: string,message: string): Error=>Object.assign(Error(message),{code});
@@ -26,7 +27,11 @@ export function subtitleFilterPath(file: unknown): string{
  const option=file.replace(/[\\':]/g,character=>'\\'+character);
  return option.replace(/[\\',;\[\]]/g,character=>'\\'+character);
 }
-const drawText=(font: string,text: string): string=>`drawtext=fontfile=${subtitleFilterPath(font)}:textfile=${subtitleFilterPath(text)}:expansion=none:text_shaping=0:fontsize=${P.fontSize}:borderw=${P.outline}:line_spacing=${P.lineSpacing}`;
+// FFmpeg compiles both this option and its FriBidi pre-reordering behind
+// CONFIG_LIBFRIBIDI. Without that option, reordering is already disabled. Keep
+// an explicit zero whenever supported, in both measurement and final rendering.
+// The immutable profile still rejects RTL and combining sequences.
+const drawText=(font: string,text: string,textShaping: boolean): string=>`drawtext=fontfile=${subtitleFilterPath(font)}:textfile=${subtitleFilterPath(text)}:expansion=none${textShaping?':text_shaping=0':''}:fontsize=${P.fontSize}:borderw=${P.outline}:line_spacing=${P.lineSpacing}`;
 
 // Streaming scan retains only counters/bounds, never full frames. Exact frame
 // count and edge guards reject partial, extra or potentially clipped output.
@@ -54,6 +59,7 @@ export async function prepareTimelineSubtitles(snapshot: unknown,work: string,{s
  const typedSnapshot=snapshot as SubtitlePreparedSnapshot;
  const cues=typedSnapshot.timeline.subtitles.cues,font=path.join(work,'subtitle-font.otf');
  await verifySubtitleFontResource({signal,destination:font,beforeEffect,openOwnedFile});checkMediaEffect(beforeEffect,signal);
+ const {textShaping}=await inspectSubtitleRenderer({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);
  const distinct=[...new Set(cues.map(c=>c.text))],files: string[]=[];
  for(let i=0;i<distinct.length;i++){
   checkMediaEffect(beforeEffect,signal);
@@ -61,7 +67,7 @@ export async function prepareTimelineSubtitles(snapshot: unknown,work: string,{s
   await (writeOwnedFile?writeOwnedFile(file,distinct[i]):writeFile(file,distinct[i],{encoding:'utf8',flag:'wx',mode:0o600}));checkMediaEffect(beforeEffect,signal);files.push(file);
  }
  const scanner=createSubtitleInkScanner(distinct.length);
- const filters=files.map((file,index)=>`${drawText(font,file)}:fontcolor=white:bordercolor=white:x=${ORIGIN}:y=${ORIGIN}:enable='eq(n,${index})'`);
+ const filters=files.map((file,index)=>`${drawText(font,file,textShaping)}:fontcolor=white:bordercolor=white:x=${ORIGIN}:y=${ORIGIN}:enable='eq(n,${index})'`);
  filters.push('alphaextract,format=gray');
  const script=path.join(work,'subtitle-measure.filter');checkMediaEffect(beforeEffect,signal);await (writeOwnedFile?writeOwnedFile(script,filters.join(',')):writeFile(script,filters.join(','),{flag:'wx',mode:0o600}));checkMediaEffect(beforeEffect,signal);
  await runStreaming('ffmpeg',['-hide_banner','-loglevel','error','-filter_threads','1','-f','lavfi','-i',`color=c=black@0:s=${WIDTH}x${HEIGHT}:r=30,format=rgba`,
@@ -74,7 +80,7 @@ export async function prepareTimelineSubtitles(snapshot: unknown,work: string,{s
   if(ink.width>typedSnapshot.timeline.width-2*(P.outerMargin+P.padding)||ink.height+2*P.padding>P.maxOuterHeight)throw invalid();
   return [text,{file:files[index],ink}];
  }));
- return {font,cues,entries,width:typedSnapshot.timeline.width,height:typedSnapshot.timeline.height};
+ return {font,cues,entries,width:typedSnapshot.timeline.width,height:typedSnapshot.timeline.height,textShaping};
 }
 
 // Captions do not contribute edges or duration. Intersect global cue intervals
@@ -91,7 +97,7 @@ export function timelineSubtitleFilters(prepared: SubtitlePrepared|null,begin: n
   const x=left-(ink.minX-ORIGIN),y=top-(ink.minY-ORIGIN),label=`caption${index++}`;
   if([x,y,left,top,outerWidth,outerHeight,start,stop].some(n=>!Number.isSafeInteger(n)))throw invalid();
   const enable=`gte(n,${start})*lt(n,${stop})`;
-  filters.push(`[${visual}]drawbox=x=${left-P.padding}:y=${top-P.padding}:w=${outerWidth}:h=${outerHeight}:color=black@0.6:t=fill:enable='${enable}',${drawText(prepared.font,file)}:fontcolor=white:bordercolor=black:x=${x}:y=${y}:enable='${enable}'[${label}]`);
+  filters.push(`[${visual}]drawbox=x=${left-P.padding}:y=${top-P.padding}:w=${outerWidth}:h=${outerHeight}:color=black@0.6:t=fill:enable='${enable}',${drawText(prepared.font,file,prepared.textShaping)}:fontcolor=white:bordercolor=black:x=${x}:y=${y}:enable='${enable}'[${label}]`);
   visual=label;
  }
  return {filters,visual};

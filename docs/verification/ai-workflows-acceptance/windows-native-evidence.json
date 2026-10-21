@@ -1,0 +1,55 @@
+{
+  "platform": "Windows 11 build 26200 ARM64",
+  "node": "24.21.0",
+  "vm": "Mioon CLI Acceptance 20261021",
+  "originalVmUntouched": true,
+  "nativeStorage": {
+    "passed": 14,
+    "skipped": 0
+  },
+  "backup": {
+    "realIntegrationPassed": 2,
+    "syntheticPublicationFaultPassed": 1,
+    "skipped": 0
+  },
+  "nativeVault": {
+    "passed": 2,
+    "skipped": 0,
+    "providerCalls": 0
+  },
+  "headlessCli": {
+    "passed": 1,
+    "skipped": 0,
+    "model": "constructor-injected synthetic gateway",
+    "realProviderCalls": 0,
+    "modelRounds": 2,
+    "realSQLiteToolAndUndo": true
+  },
+  "twoAccount": {
+    "passed": true,
+    "temporaryTasksRemaining": 0,
+    "temporaryAccountsRemaining": 0,
+    "ownedProbeDirectoriesRemaining": 0
+  },
+  "logs": {
+    "final": "/private/tmp/mioon-windows-final-native-backup-vault.log",
+    "build": "/private/tmp/mioon-windows-stream-native-type-tag-build.log",
+    "cli": "/private/tmp/mioon-windows-node-host-sdk-v2-final.log",
+    "twoAccount": "/private/tmp/mioon-windows-two-user-final-proof.log",
+    "cleanup": "/private/tmp/mioon-windows-two-user-cleanup-proof.log"
+  },
+  "sourceSha256": {
+    "packages/node-host/native/private-storage.cc": "8f483831457afee1468069e47ffd1fd2801cf6996be021da7ad2c018ee75efa0",
+    "packages/node-host/native/managed-io.inc": "92aefa9acf7f827fbdac2a3bff9b4e31b7d35b413172b66fd9f963c6f52d42b8",
+    "packages/node-host/src/windows-private-storage.ts": "5ae922462a5c19eaf3592856ca9669908d3357d268dc724b962a751d88fcd09a",
+    "tests/windows-private-storage-stream.test.mjs": "c0ae5ab8a3963cd6fc2850ea9d619833e4b48a9aca67935d29623951c6fc80f6",
+    "tests/windows-private-storage-two-user.ps1": "5e1246993d62367f51266be817e29bd316c4c86938dafcb637359d3d2d676ef7",
+    "tests/windows-node-host-smoke.test.mjs": "f146ee98b64d6ba1b8feed4107c7f962d18c88447019b2998a49e013a5051b73",
+    "packages/client/src/agent.ts": "01bd8c1850cc5059fdfa455e36cd4bc92261da02efaa3a37e7d52197549cadf5"
+  },
+  "limits": [
+    "No real provider or video-generation acceptance is claimed for Windows synthetic tests.",
+    "Legacy manual draft operations and their project deletion protection remain explicitly unavailable on Windows; the v2 SQLite editing occupancy and CLI task controls are separate.",
+    "Native validation was on Windows ARM64, not a native x64 host."
+  ]
+}

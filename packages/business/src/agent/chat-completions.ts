@@ -4,7 +4,7 @@ export {CHAT_SYSTEM_INSTRUCTION, AGENT_CHAT_LIMITS} from './chat-policy.ts';
 import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
 import {agentChatError, errorCode} from './chat-errors.ts';
-import {createAgentTransport} from './network-policy.ts';
+import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
 import type {AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.ts';
 import {toolScope, validateReadTools, readToolRequestFields, readToolMessages, chatToolAccumulator, chatToolContinuation} from './tool-wire.ts';
@@ -105,7 +105,7 @@ export function buildAgentChatBody({configuration, messages, selfPort, readTools
  * fallback or model substitution. A done event requires BOTH finish and [DONE]
  * and a clean framed end; partial text remains partial on every failure. */
 export function createChatCompletionGateway(dependencies: AgentTransportDependencies = {}): AgentGateway {
-  const open = createAgentTransport(dependencies);
+  const open = createOpenAiSdkTransport(dependencies);
   return async function* streamChatCompletion({configuration, apiKey, messages, signal, selfPort, readTools, beforeSubmit}) {
     if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
     const request = buildAgentChatRequest({configuration, apiKey, messages, selfPort, readTools});

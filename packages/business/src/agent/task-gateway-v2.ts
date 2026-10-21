@@ -3,7 +3,9 @@ import {validateAgentGatewayConfiguration} from './agent-gateway.ts';
 import {AGENT_CHAT_PROFILES} from './chat-completions.ts';
 import {AGENT_RESPONSES_PROFILES} from './responses.ts';
 import {AGENT_READ_TOOL_PROFILES} from './tool-wire.ts';
-import {createAgentTransport} from './network-policy.ts';
+import {wasAgentTransportSubmissionPrevented} from './network-policy.ts';
+import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
+import {taskToolWireSchema} from './task-tool-wire-schema.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
 import {agentChatError} from './chat-errors.ts';
@@ -56,15 +58,15 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
   if(Buffer.byteLength(JSON.stringify(history))>TASK_MODEL_LIMITS.historyBytes)fail('AGENT_CHAT_LIMIT');
   const profile=AGENT_READ_TOOL_PROFILES[configuration.protocol][configuration.presetId];
   if(!profile)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
-  const controls={...(profile.parallel?{parallel_tool_calls:false}:{}),...(profile.choice?{tool_choice:'auto'}:{})};
-  const wireTools=definitions.map(tool=>({name:tool.name,description:tool.description,parameters:tool.parameters}));
+  const controls=definitions.length?{...(profile.parallel?{parallel_tool_calls:false}:{}),...(profile.choice?{tool_choice:'auto'}:{})}:{};
+  const wireTools=definitions.map(tool=>({name:tool.name,description:tool.description,parameters:taskToolWireSchema(configuration,tool.name,tool.parameters)}));
   const body=configuration.protocol==='chat_completions'
     ?{model:configuration.model,stream:true,messages:[{role:'system',content:instruction},...history],
       [AGENT_CHAT_PROFILES[configuration.presetId].tokenField]:4096,...AGENT_CHAT_PROFILES[configuration.presetId].fields,
-      tools:wireTools.map(tool=>({type:'function',function:{...tool,...(profile.strict?{strict:false}:{})}})),...controls}
+      ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',function:{...tool,...(profile.strict?{strict:false}:{})}}))}:{}),...controls}
     :{model:configuration.model,stream:true,store:false,instructions:instruction,input:history,max_output_tokens:4096,
       ...AGENT_RESPONSES_PROFILES[configuration.presetId].fields,
-      tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})})),...controls};
+      ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})}))}:{}),...controls};
   const serialized=JSON.stringify(body);if(Buffer.byteLength(serialized)>TASK_MODEL_LIMITS.requestBytes)fail('AGENT_CHAT_LIMIT');return serialized;
 }
 export function taskContinuation(protocol:AgentConfiguration['protocol'],output:TaskModelOutput,results:{callId:string;result:AgentTaskJson}[]):AgentTaskJson[] {
@@ -74,10 +76,10 @@ export function taskContinuation(protocol:AgentConfiguration['protocol'],output:
     :[...(output.providerOutput as AgentTaskJson[]),...results.map(item=>({type:'function_call_output',call_id:item.callId,output:JSON.stringify(item.result)}))];
 }
 export function createTaskGateway(dependencies:AgentTransportDependencies={}):TaskGateway {
-  const open=createAgentTransport(dependencies);
+  const open=createOpenAiSdkTransport(dependencies);
   return async function* request(options) {
-    const parsed:unknown=JSON.parse(options.body);if(!object(parsed)||!Array.isArray(parsed.tools))fail('AGENT_CHAT_VALIDATION');
-    const definitions:TaskToolDefinition[]=parsed.tools.map(value=>{
+    const parsed:unknown=JSON.parse(options.body);if(!object(parsed)||parsed.tools!==undefined&&!Array.isArray(parsed.tools))fail('AGENT_CHAT_VALIDATION');
+    const definitions:TaskToolDefinition[]=((parsed.tools??[]) as unknown[]).map(value=>{
       if(!object(value))return fail();const tool=options.configuration.protocol==='chat_completions'?value.function:value;
       if(!object(tool))return fail();return {name:identifier(tool.name),description:string(tool.description),parameters:tool.parameters};
     });
@@ -86,7 +88,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
     let blocked:unknown;
     const guarded={...options,beforeSubmit:()=>{try{options.beforeSubmit?.();}catch(error){blocked=error;if(error!==null&&typeof error==='object')preventedSubmissions.add(error);throw error;}}};
     let stream:Awaited<ReturnType<typeof open>>;
-    try{stream=await open(guarded);}catch(error){if(blocked)throw blocked;throw error;}
+    try{stream=await open(guarded);}catch(error){if(blocked)throw blocked;if(wasAgentTransportSubmissionPrevented(error)&&error!==null&&typeof error==='object')preventedSubmissions.add(error);throw error;}
     try {
       if(options.configuration.protocol==='chat_completions') {
         let text='',finished:string|null=null,done=false,refused=false;

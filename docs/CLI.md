@@ -4,6 +4,53 @@
 
 The CLI is a local HTTP client for the **same running backend and database** used by the browser, Electron, and MCP. It never starts a second service or reads backend database/media paths. Node.js 24+ and the source workspace dependencies are required; this is not a bundled standalone executable.
 
+## 内置 AI 助理的独立管理命令
+
+`mioon agent` 将现有助理 v2 REST 接到 CLI，使用与界面相同的 Run、审批、预算、工具和回执，不运行第二套助理循环。这些命令不加入业务 RPC schema 或 MCP 工具目录。现有 `agent authorization list/grant/revoke` 继续使用原公共授权接口；连接令牌只证明本地连接身份，不能代替 `project_agent` 发送授权。
+
+后端的 Chat Completions 和 Responses 请求使用官方 `openai@7.39.0` SDK；自定义 fetch 固定接回 Mioon 网关，不改变配置中的服务地址或凭据绑定。SDK 不自动重试，不继承 OpenAI 环境凭据，不输出请求日志；harness 保留有界流解析、工具准入及发送前授权复查。此依赖不增加另一套任务循环，也不默认启用深度思考。
+
+| 命令 | 输入与行为 |
+| --- | --- |
+| `agent settings get` | `{}`；只返回配置、revision 和密钥 configured/storage 元数据 |
+| `agent settings set` | `{expectedRevision, configuration}`；保留同一凭据绑定下的密钥，不接收密钥值 |
+| `agent settings secret set/remove` | `{expectedRevision, configuration}`；set 使用下面的安全输入，remove 显式移除 |
+| `agent doctor` | `{projectId?}`；连接本地后端，读取公开设置、策略、授权和目录检查摘要，不发送模型请求 |
+| `agent diagnose --live` | 与 send 相同，必须包含 `diagnostic`；显式允许诊断模型请求 |
+| `agent policy get/set/lookup` | get 为 `{}`；set 为 `{requestId, expectedRevision, stepLimit, modes, acknowledgePaid?}`；lookup 为 `{requestId}` |
+| `agent task list/history` | `{projectId}`；history 另接受原样返回的 `cursor` |
+| `agent task status` | `{projectId, runId}`；读取持久快照 |
+| `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, uploads?}`；lookup 为 `{projectId, requestId}` |
+| `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
+| `agent task pause/resume/stop/approve/deny` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId |
+| `agent task undo-change/undo-all` | 同一控制身份和 revision；undo-change 另传 `changeId` |
+| `agent task resolve-unknown` | 同一控制身份和 revision，另传 `stepId, resolution`；仅接受服务端已有的 `discard` / `accept_result` 边界 |
+| `agent task action-lookup` | `{projectId, runId, requestId}`；只查询原控制回执 |
+| `agent task watch/events` | `{projectId, runId, after?}`；有界观察，默认 60 秒，可设 `--timeout-ms` 和 `--interval-ms` |
+
+自然语言命令、`schema agent.task.send` 和 `schema agent task send` 均可查看严格参数；`agent --help` 列出独立目录。help、version、schema 不连接后端。`agent doctor` 的“离线诊断”指不调用模型，仍会读取所选本地服务；没有连接时会报告连接不可用。
+
+配置中的 `configuration` 应从公开 settings/presets 读取后编辑，保持完整的 presetId、platformId、baseUrl、model、protocol 五字段。写设置需要当前 revision，发送需要当前 settings revision。配置保存不测试供应商，也不自动授权发送。
+
+密钥默认使用 **persistent**。安全存储不可用会拒绝；只有明确传 `--storage session` 才存于后端本次生命周期，不自动降级。密钥不能放在 `--input`、argv、模型提示或输出中：
+
+```sh
+# metadata.json 只包含 expectedRevision 与 configuration，不包含密钥
+mioon agent settings secret set --input-file ./metadata.json
+# 在真实终端隐藏输入；也可选择以下其中一种，不得混用
+mioon agent settings secret set --input-file ./metadata.json --key-stdin
+mioon agent settings secret set --input-file ./metadata.json --key-file /absolute/private/key-file
+mioon agent settings secret set --input-file ./metadata.json --key-stdin --storage session
+```
+
+`--key-stdin` 消费原始密钥，不能与 `--input -` 共用 stdin。`--key-file` 必须是私有目录内的当前用户独占普通文件，遵循共享私有存储策略；不会自动修权限。Windows 独立 Node 入口需要显式构建并验证完整原生私有存储 helper，缺失时拒绝，不将 chmod 或环境开关当作 ACL 证明。持久密钥属于所选 headless/desktop 服务的独立配置，不读取或复制另一实例的密钥。
+
+诊断使用 `agent diagnose --live`，输入中另传 `diagnostic:{profile:"text"|"read_only"|"catalog",toolNames?:[...]}`；普通 `agent task send` 拒绝该字段并指向明确的诊断入口。底层客户端和 REST 仍复用同一发送接口。text 不提供工具；read_only 只提供只读工具；catalog 可选唯一工具名子集，仅验证目录接受情况，绝不执行模型返回的工具。诊断仍检查 requestId、settings revision、`project_agent` 授权和任务预算，可能产生文本模型费用。诊断成功不能替代完整工具目录下的真实回复、只读往返和自主剪片验收。
+
+每项任务、上传、策略和控制写入必须保留调用者自己的 requestId；CLI 不生成它，也不自动提交第二次。响应丢失或无法验证时返回 UNKNOWN 与对应 GET lookup；只查原操作，不换 ID、不自动重发。settings PUT 没有 requestId/持久回执，因此未知时在同一个已绑定本地连接上只追加一次有界 GET，错误仍报告未知，并附 revision、配置是否匹配、configured/storage 的公开观察值；不能把 configured=true 当作新密钥已经保存的证明。读回失败也只报告观察不可用，不重发 PUT；Ctrl+C 不再发起读回。后续可手动 `agent settings get` 核对。
+
+所有 Agent 命令仍只向 stdout 输出一个 JSON envelope；watch/events 的持久快照进度写到 stderr。SSE `after` 是序列游标，流中只有 changed 通知，CLI 会重新读取持久快照；断线也只 GET 恢复。events 是同一观察方式，不声称导出完整原始事件日志。等待审批、预算暂停、中断或未知时退出 3 并返回 `action_needed`；失败/停止退出 6，成功退出 0，期限退出 5，Ctrl+C 退出 130 且仅停止本地观察，不停止 Run。继续、批准、停止和未知处置均需要新的明确控制命令。`--workspace-origin` 不适用于这些管理 REST，明确拒绝，不能被当作 HTTP Origin 或静默丢弃。
+
 From the source checkout:
 
 ```sh
@@ -11,25 +58,39 @@ pnpm install --frozen-lockfile
 pnpm exec mioon --help
 # Equivalent launchers, without a global install:
 pnpm cli --help
-node apps/cli/src/index.mjs --help
+node apps/cli/src/index.ts --help
 ```
 
 `mioon` is the bin of `@mioon/cli`. These instructions do not install globally, edit your agent configuration, open accounts, or enable paid generation.
 
 ## Offline whole-workspace backup
 
-`node apps/cli/src/backup.mjs` (also `pnpm backup`) is a separate local filesystem
+`node apps/cli/src/backup.ts` (also `pnpm backup`) is a separate local filesystem
 command. It never starts the
 backend, resolves a connection descriptor, reads token configuration, contacts a
 provider, or resumes a task. Node.js 24+ and the source workspace dependencies
 are required. Stop every backend/desktop instance using the selected workspace
 before capture, then use explicit canonical absolute paths:
 
+Windows source CLI supports this flow on fixed local NTFS after explicitly
+building the complete [Node-API helper](../packages/node-host/README.md). Offline
+commands initialize the same verified backend and require its managed streaming
+capability; a missing or incomplete helper refuses before locks or destination
+creation. Copies use bounded chunks and opaque verified handle leases, with full
+file identities, directory flushes and no-clobber publication. Native Windows 11
+ARM64 create/verify/restore/status and bundle evidence is recorded in
+[CLI acceptance](verification/ai-workflows-acceptance/CLI-SDK-ACCEPTANCE.md).
+
+The legacy manual-draft store remains unavailable on Windows; its draft-protected
+`project.delete` flow consequently refuses too. The separate v2 SQLite editing
+claims and CLI task controls remain available. Windows desktop packaging and
+native x64 certification are outside this delivery.
+
 ```sh
-node apps/cli/src/backup.mjs --help
-node apps/cli/src/backup.mjs --version
-node apps/cli/src/backup.mjs create --source /absolute/workspace --destination /absolute/new-backup
-node apps/cli/src/backup.mjs verify --directory /absolute/backup
+node apps/cli/src/backup.ts --help
+node apps/cli/src/backup.ts --version
+node apps/cli/src/backup.ts create --source /absolute/workspace --destination /absolute/new-backup
+node apps/cli/src/backup.ts verify --directory /absolute/backup
 # Equivalent source-checkout launcher:
 pnpm backup --help
 ```
@@ -87,9 +148,9 @@ do not assume capture failed without publishing or overwrite/retry in place.
 From a verified original schema24 backup, use a new independent destination:
 
 ```sh
-node apps/cli/src/backup.mjs restore --directory /absolute/original-backup --destination /absolute/new-workspace
+node apps/cli/src/backup.ts restore --directory /absolute/original-backup --destination /absolute/new-workspace
 # Read-only discovery when the original restore stdout was completely lost:
-node apps/cli/src/backup.mjs restore-status --directory /absolute/original-backup --destination /absolute/new-workspace
+node apps/cli/src/backup.ts restore-status --directory /absolute/original-backup --destination /absolute/new-workspace
 ```
 
 The target's parent must exist. Existing targets, locks, partial publication and
@@ -132,7 +193,7 @@ pnpm exec mioon doctor
 
 Every HTTP request re-reads the descriptor and adjacent private token, checks the running PID and local origin, and follows token/port rotation after a desktop restart. A disappeared descriptor returns a safe connection error; no fallback backend is selected.
 
-File-based credentials also require a current-user-owned private parent directory, bounded regular single-linked files and a safe canonical ancestry. A `0600` token directly inside a broadly accessible parent is refused. There is no automatic permission repair or fallback to another token. See [private storage and recovery](PRIVATE-STORAGE.md), including the explicit Windows ACL readiness blocker.
+File-based credentials also require a current-user-owned private parent directory, bounded regular single-linked files and a safe canonical ancestry. A `0600` token directly inside a broadly accessible parent is refused. There is no automatic permission repair or fallback to another token. See [private storage and recovery](PRIVATE-STORAGE.md), including the explicit Windows native-helper readiness requirements.
 
 ### V4.1 渠道对应的连接文件
 
@@ -826,7 +887,7 @@ provider call, Blender dependency or built-in Agent catalog expansion is added.
 
 ## Timeline output presets (schema 21)
 
-`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and one of `portrait_720`, `landscape_720`, `square_720`. Output is respectively 720×1280, 1280×720 or 720×720, always 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
+`timeline.format.get` is noncreating and returns the current project/timeline revision fences, saved/effective preset and bounded eligibility reasons. `timeline.format.set` requires `projectId`, `expectedProjectRevision`, `expectedRevision` (0 means no timeline), a stable `requestId`, and a preset from the current schema. Current presets are `portrait_1080` (1080×1920), `landscape_1080` (1920×1080) and `square_1080` (1080×1080); new projects default to `portrait_1080`. The contract also retains `portrait_720` (720×1280), `landscape_720` (1280×720) and `square_720` (720×720) for existing projects. All use 30 fps. The setter returns the exact full timeline acknowledgement; historical replay precedes fresh CAS checks. Existing same-preset new-key requests reject without a successful mutation.
 
 This changes only timeline preview/export. Legacy storyboard output stays 9:16. Nonempty timelines, any undo/redo history, non-format receipts, timeline exports or another pending timeline edit block reconfiguration; no geometry migration or history deletion occurs. The format operation uses the existing timeline request namespace and is the sixteenth explicit durable UI edit, outside clip undo/redo. The original fifteen entries keep their order and semantics. Public transport access adds no built-in Agent tool or automatic execution authority.
 
