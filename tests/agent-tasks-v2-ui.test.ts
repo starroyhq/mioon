@@ -3,7 +3,7 @@ import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { createAgentTaskClient, createAgentTaskSession, createAgentTaskReceiptStore, safeAgentTaskSnapshot } from '../apps/web/src/agent-tasks-v2.ts';
 import type { AgentTaskClient, AgentTaskLookup, AgentTaskPending, AgentTaskProjectSnapshot, AgentTaskReceiptStore, AgentTaskSessionState } from '../apps/web/src/agent-tasks-v2.ts';
-import type { AgentTaskEvent, AgentTaskSnapshot } from '../packages/contracts/src/agent-tasks-v2.ts';
+import type { AgentTaskEvent, AgentTaskSnapshot, AgentTaskLocale } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { DEFAULT_AGENT_TASK_POLICY } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { agentTaskCloseState,createAgentTaskCloseReporter } from '../apps/web/src/native-close-sources.ts';
 import { createNativeCloseRegistry,createNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
@@ -14,7 +14,7 @@ const snapshot = (status: AgentTaskSnapshot['run']['status'] = 'completed', revi
 const project = (): AgentTaskProjectSnapshot => ({ version: 2, instanceId: '44444444-4444-4444-8444-444444444444', projectId, runs: [], policy: structuredClone(DEFAULT_AGENT_TASK_POLICY), authorization: { revision: 1, scopes: ['project_agent'] }, settings: { revision: 0, configuration: { presetId: 'openai', platformId: 'global', baseUrl: 'https://example.invalid/v1', model: 'synthetic', protocol: 'responses' }, secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: null }, presets: [], scope: 'settings_only', verification: 'not_tested' } });
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (value: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); };
-function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}, options:{onChange?:(state:AgentTaskSessionState)=>void;receipts?:AgentTaskReceiptStore}={}) {
+function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}, options:{onChange?:(state:AgentTaskSessionState)=>void;receipts?:AgentTaskReceiptStore;getLocale?:()=>AgentTaskLocale}={}) {
   const receipts = new Map<string, AgentTaskPending>(); if (saved) receipts.set(projectId, saved);
   const store: AgentTaskReceiptStore = { read: id => receipts.get(id) ?? null, write(id, value) { if (value) receipts.set(id, value); else receipts.delete(id); } };
   const streams: { signal: AbortSignal; onEvent: (event: AgentTaskEvent) => void }[] = [], sent: unknown[] = [], actions: unknown[] = [];
@@ -23,8 +23,21 @@ function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending,
     stream: async (_, __, ___, signal, onEvent) => { streams.push({ signal, onEvent }); return new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); },
     policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:value,readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
   };
-  const session = createAgentTaskSession({ projectId, client, receipts: options.receipts??store, onChange:options.onChange??(()=>{}),onChangeApplied }); return { session, receipts, client, sent, actions, streams };
+  const session = createAgentTaskSession({ projectId, client, receipts: options.receipts??store, onChange:options.onChange??(()=>{}),onChangeApplied,...(options.getLocale?{getLocale:options.getLocale}:{}) }); return { session, receipts, client, sent, actions, streams };
 }
+test('one session captures the current locale at send and keeps drafts and unknown receipts when it changes',async t=>{
+  let locale:AgentTaskLocale='ja',lookups=0;const sent:Parameters<AgentTaskClient['send']>[1][]=[];
+  const f=fixture({send:async(_,input)=>{sent.push(input);throw new Error('lost acknowledgement');},lookup:async()=>{lookups++;return {found:false};}},undefined,()=>{},{getLocale:()=>locale,onChange:state=>{if(state.phase==='submitting')locale='en';}});
+  t.after(()=>f.session.dispose());await f.session.load();f.session.edit('keep my draft');
+  assert.equal(await f.session.send(),false);assert.equal(sent[0]!.locale,'ja');assert.equal(locale,'en');assert.equal(f.session.getState().draft,'keep my draft');
+  const pending=f.session.getState().pending;assert.ok(pending);locale='zh-Hant';await f.session.reconcile();
+  assert.equal(sent.length,1);assert.equal(lookups,1);assert.deepEqual(f.session.getState().pending,pending);assert.equal(f.session.getState().draft,'keep my draft');
+});
+test('the browser client forwards the chosen response locale and rejects unsupported values before fetch',async()=>{
+  const calls:{body?:BodyInit|null}[]=[],client=createAgentTaskClient({fetchImpl:async(_url,options)=>{calls.push(options??{});return new Response(JSON.stringify({ok:true,data:snapshot()}),{status:200});}}),input={requestId:crypto.randomUUID(),text:'synthetic',expectedSettingsRevision:0};
+  for(const locale of [null,'zh-CN','fr',1])await assert.rejects(client.send(projectId,{...input,locale:locale as unknown as AgentTaskLocale}),{code:'AGENT_TASK_INVALID'});
+  assert.equal(calls.length,0);await client.send(projectId,{...input,locale:'en'});assert.equal(JSON.parse(String(calls[0]!.body)).locale,'en');
+});
 function closeFixture(t:TestContext,patch:Partial<AgentTaskClient>={},saved?:AgentTaskPending,receipts?:AgentTaskReceiptStore){
   const registry=createNativeCloseRegistry(),reporter=createAgentTaskCloseReporter(registry),documentURL='http://127.0.0.1:4318/?project='+projectId;
   const f=fixture(patch,saved,()=>{},{onChange:state=>reporter.publish(state),...(receipts?{receipts}:{})});reporter.publish(f.session.getState());
@@ -297,4 +310,52 @@ test('a durable read failure on an otherwise live stream reconnects even when no
   t.mock.timers.enable({apis:['setTimeout']});let online=true,reads=0;
   const f=fixture({list:async()=>({...project(),runs:[snapshot('running').run]}),read:async()=>{reads++;if(!online)throw new Error('offline');return snapshot('running',reads);}});
   await f.session.load();online=false;f.streams[0]!.onEvent({runId,sequence:1,type:'changed',data:{revision:2},createdAt:time});await flush();assert.equal(f.streams[0]!.signal.aborted,true);t.mock.timers.tick(1500);await flush();assert.equal(f.session.getState().phase,'detached');online=true;t.mock.timers.tick(3000);await flush();assert.equal(f.session.getState().phase,'ready');assert.equal(f.streams.length,2);f.session.dispose();const previous=reads;t.mock.timers.tick(60000);await flush();assert.equal(reads,previous);assert.equal(f.sent.length,0);
+});
+
+test('first-send confirmation grants only the reviewed binding and sends exactly once', async t => {
+  const current=project();current.authorization.scopes=[];let grants=0,locale:AgentTaskLocale='ja';
+  const f=fixture({list:async()=>structuredClone(current),authorize:async()=>{grants++;current.authorization={revision:2,scopes:['project_agent']};}},undefined,()=>{},{getLocale:()=>locale});
+  t.after(()=>f.session.dispose());await f.session.load();f.session.edit('reviewed draft');
+  const review=f.session.authorizationReview();assert.ok(review);assert.equal(review.destination,'https://example.invalid/v1/responses');assert.equal(review.locale,'ja');
+  assert.equal(grants,0);assert.equal(f.sent.length,0);
+  assert.equal(await f.session.authorizeAndSend(review),true);assert.equal(grants,1);assert.equal(f.sent.length,1);assert.equal((f.sent[0] as {text:string;locale:string}).text,'reviewed draft');assert.equal((f.sent[0] as {locale:string}).locale,'ja');
+  assert.equal(await f.session.authorizeAndSend(review),false);assert.equal(grants,1);assert.equal(f.sent.length,1);
+});
+
+test('authorization review becomes stale before confirmation when its text, locale, attachments or settings change', async t => {
+  for(const changed of ['draft','locale','upload','settings'] as const)await t.test(changed,async()=>{
+    const current=project();current.authorization.scopes=[];let grants=0,locale:AgentTaskLocale='zh-Hans';
+    const f=fixture({list:async()=>structuredClone(current),authorize:async()=>{grants++;}},undefined,()=>{},{getLocale:()=>locale});
+    try{await f.session.load();f.session.edit('preserve draft');const review=f.session.authorizationReview();assert.ok(review);
+      if(changed==='draft')f.session.edit('new draft');
+      if(changed==='locale')locale='en';
+      if(changed==='upload')await f.session.upload({name:'local.png',type:'image/png',size:1,arrayBuffer:async()=>new Uint8Array([0]).buffer});
+      if(changed==='settings'){current.settings.revision++;current.settings.configuration.model='changed-model';await f.session.load();}
+      assert.equal(await f.session.authorizeAndSend(review),false);assert.equal(grants,0);assert.equal(f.sent.length,0);assert.ok(f.session.getState().draft);
+    }finally{f.session.dispose();}
+  });
+});
+
+test('an authorization response cannot send after changed input, changed settings, revocation or a hide-and-return', async t => {
+  for(const changed of ['draft','settings','revoked','hidden'] as const)await t.test(changed,async()=>{
+    const current=project();current.authorization.scopes=[];const grant=deferred<void>();let grants=0;
+    const f=fixture({list:async()=>structuredClone(current),authorize:async()=>{grants++;await grant.promise;} });
+    try{await f.session.load();f.session.edit('preserve reviewed draft');const review=f.session.authorizationReview();assert.ok(review);const sending=f.session.authorizeAndSend(review);assert.equal(grants,1);
+      current.authorization={revision:2,scopes:['project_agent']};
+      if(changed==='draft')f.session.edit('new unsent draft');
+      if(changed==='settings'){current.settings.revision++;current.settings.configuration.model='new-model';}
+      if(changed==='revoked')current.authorization={revision:3,scopes:[]};
+      if(changed==='hidden'){f.session.setVisible(false);f.session.setVisible(true);}
+      grant.resolve();assert.equal(await sending,false);assert.equal(f.sent.length,0);assert.equal(f.actions.length,0);assert.ok(f.session.getState().draft);
+    }finally{f.session.dispose();}
+  });
+});
+
+test('a lost authorization response preserves the draft and only a later explicit send can call the model', async t=>{
+  const current=project();current.authorization.scopes=[];let grants=0;
+  const f=fixture({list:async()=>structuredClone(current),authorize:async()=>{grants++;current.authorization={revision:2,scopes:['project_agent']};throw new Error('lost acknowledgement');}});
+  t.after(()=>f.session.dispose());await f.session.load();f.session.edit('keep my draft');const review=f.session.authorizationReview();assert.ok(review);
+  assert.equal(await f.session.authorizeAndSend(review),false);assert.equal(grants,1);assert.equal(f.sent.length,0);assert.equal(f.session.getState().draft,'keep my draft');
+  await f.session.load();assert.equal(f.sent.length,0);assert.equal(grants,1);assert.equal(f.session.getState().draft,'keep my draft');
+  await f.session.send();assert.equal(f.sent.length,1);assert.equal(grants,1);
 });

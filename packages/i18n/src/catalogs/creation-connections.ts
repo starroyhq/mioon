@@ -63,16 +63,16 @@ export const connectionMessages = {
     "ja": "設定を離れたため、新しく入力したキーを消去しました。接続の下書きは保持されています"
   },
   "agent.settings.title": {
-    "zh-Hans": "Agent 连接设置",
-    "zh-Hant": "Agent 連線設定",
-    "en": "Agent connection settings",
-    "ja": "Agent 接続設定"
+    "zh-Hans": "Mio",
+    "zh-Hant": "Mio",
+    "en": "Mio",
+    "ja": "Mio"
   },
   "agent.settings.eyebrow": {
-    "zh-Hans": "AGENT · CONNECTION",
-    "zh-Hant": "AGENT · 連線",
-    "en": "AGENT · CONNECTION",
-    "ja": "AGENT · 接続"
+    "zh-Hans": "模型连接",
+    "zh-Hant": "模型連線",
+    "en": "Model connection",
+    "ja": "モデル接続"
   },
   "agent.settings.intro": {
       "zh-Hans": "连接设置不会发起模型请求；相同目标地址、模型和发送范围只需授权一次，可在下方撤销",
@@ -81,10 +81,10 @@ export const connectionMessages = {
       "ja": "接続設定からモデルへのリクエストは送信されません。同じ送信先、モデル、送信範囲の許可は一度だけ必要です。下で取り消せます"
   },
   "agent.settings.backAgent": {
-    "zh-Hans": "返回 Agent 对话",
-    "zh-Hant": "返回 Agent 對話",
-    "en": "Back to Agent chat",
-    "ja": "Agent チャットに戻る"
+    "zh-Hans": "返回 Mio 对话",
+    "zh-Hant": "返回 Mio 對話",
+    "en": "Back to Mio chat",
+    "ja": "Mio チャットに戻る"
   },
   "agent.settings.saveScope": {
     "zh-Hans": "保存仅更新本机工作台设置，不发起模型请求，也不发送项目内容",
@@ -507,10 +507,10 @@ export const connectionMessages = {
     "ja": "ローカル ComfyUI"
   },
   "image.settings.saveScope": {
-    "zh-Hans": "保存只更新本机图像设置，不发送描述、不生成图片。官方与自定义连接各自保存密钥，Agent 与视频设置也相互独立",
-    "zh-Hant": "儲存僅更新本機圖像設定，不會傳送描述或生成圖片。官方與自訂連線各自儲存密鑰，Agent 與影片設定亦互相獨立",
-    "en": "Saving only updates local image settings. It does not send prompts or generate images. Official and custom connections store separate keys; Agent and video settings are also independent",
-    "ja": "保存ではローカルの画像設定のみ更新し、プロンプトの送信や画像生成は行いません。公式接続とカスタム接続のキーは別々に保存し、Agent や動画の設定からも独立しています"
+    "zh-Hans": "保存只更新本机图像设置，不发送描述、不生成图片。官方与自定义连接各自保存密钥，Mio 与视频设置也相互独立",
+    "zh-Hant": "儲存僅更新本機圖像設定，不會傳送描述或生成圖片。官方與自訂連線各自儲存密鑰，Mio 與影片設定亦互相獨立",
+    "en": "Saving only updates local image settings. It does not send prompts or generate images. Official and custom connections store separate keys; Mio and video settings are also independent",
+    "ja": "保存ではローカルの画像設定のみ更新し、プロンプトの送信や画像生成は行いません。公式接続とカスタム接続のキーは別々に保存し、Mio や動画の設定からも独立しています"
   },
   "image.settings.loading": {
     "zh-Hans": "正在读取图像设置…",
@@ -1077,10 +1077,10 @@ export const connectionMessages = {
     "ja": "保存結果を現在確認できません。下書きは保持されています。状態を再読み込みしてから保存してください"
   },
   "agent.settings.notice.loadError": {
-    "zh-Hans": "暂时无法读取 Agent 设置，请检查工作台连接后重试",
-    "zh-Hant": "暫時無法讀取 Agent 設定，請檢查工作台連線後重試",
-    "en": "Agent settings cannot currently be read. Check the workbench connection and retry",
-    "ja": "Agent 設定を現在読み取れません。ワークベンチの接続を確認して再試行してください"
+    "zh-Hans": "暂时无法读取 Mio 设置，请检查工作台连接后重试",
+    "zh-Hant": "暫時無法讀取 Mio 設定，請檢查工作台連線後重試",
+    "en": "Mio settings cannot currently be read. Check the workbench connection and retry",
+    "ja": "Mio 設定を現在読み取れません。ワークベンチの接続を確認して再試行してください"
   },
   "connections.notice.useSaved": {
     "zh-Hans": "已使用当前已保存设置",

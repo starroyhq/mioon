@@ -85,6 +85,11 @@ test('ordinary task send rejects diagnostic profiles before dispatch and points 
  assert.equal(result.code,2);assert.equal(result.body.error.code,'VALIDATION_ERROR');assert.match(result.body.error.message,/agent diagnose --live/u);assert.equal(f.calls.length,0);
  const schema=await command(['schema','agent.task.send']).result;assert.equal(schema.body.data.inputSchema.properties.diagnostic,undefined);
 });
+test('task JSON locale selects response language independently of CLI presentation locale',async t=>{
+ const f=await fixture(t,(_req,res)=>reply(res,snapshot())),input={projectId,requestId,text:'synthetic',expectedSettingsRevision:4,locale:'ja'};
+ const result=await command(['agent','task','send','--locale','en','--input',JSON.stringify(input)],{base:f.base}).result;assert.equal(result.code,0);assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.locale,'ja');assert.equal(f.calls[0].body.requestId,requestId);
+ for(const locale of ['zh-CN','fr',null,1]){const rejected=await command(['agent','task','send','--input',JSON.stringify({...input,locale})],{base:f.base}).result;assert.notEqual(rejected.code,0);}assert.equal(f.calls.length,1);
+});
 
 test('all task control aliases use one action endpoint and preserve CAS',async t=>{
  const f=await fixture(t,(_req,res)=>reply(res,snapshot('paused',2)));

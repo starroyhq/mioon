@@ -4,14 +4,23 @@ import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {spawn} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {startServer} from '../apps/server/src/index.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+async function cliSnapshot(url:string,token:string,projectId:string,runId:string):Promise<AgentTaskSnapshot>{
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task','status','--input',JSON.stringify({projectId,runId})],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
+ let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
+ await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI status timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error('Synthetic CLI status failed'));});});
+ assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return agentTaskSnapshotSchema.parse(value.data);
+}
 async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-http-v2-'));
  const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});const initial=await settings.get();
@@ -20,7 +29,7 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='ch
  const gateway:TaskGateway=async function*(request){models++;const body=JSON.parse(request.body) as {messages?:{role?:string}[];input?:{type?:string}[]};
   const answered=body.messages?.some(item=>item.role==='tool')||body.input?.some(item=>item.type==='function_call_output');
   if(answered){yield {type:'delta',text:'已完成本地创建'};yield {type:'done',output:{text:'已完成本地创建',toolCalls:[],providerOutput:(protocol==='responses'?[{id:'message_final',type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'已完成本地创建',annotations:[]}]}]:{role:'assistant',content:'已完成本地创建'}) as AgentTaskJson}};}
-  else {const toolCall={id:'call_http',name:'mioon_shot_create',arguments:{title:'HTTP 创建的镜头'}};yield {type:'done',output:{text:'',toolCalls:[toolCall],providerOutput:(protocol==='responses'?[{id:'fc_http',call_id:toolCall.id,type:'function_call',name:toolCall.name,arguments:JSON.stringify(toolCall.arguments),status:'completed'}]:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]}) as AgentTaskJson}};}
+  else {const toolCall={id:'call_http',name:'mioon_shot_create',arguments:{title:'HTTP 创建的镜头',duration:4,aspectRatio:'16:9'}};yield {type:'done',output:{text:'',toolCalls:[toolCall],providerOutput:(protocol==='responses'?[{id:'fc_http',call_id:toolCall.id,type:'function_call',name:toolCall.name,arguments:JSON.stringify(toolCall.arguments),status:'completed'}]:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]}) as AgentTaskJson}};}
  };
  const server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:customGateway??gateway});
  t.after(async()=>{await server.close();await settings.close();await rm(root,{recursive:true,force:true});});
@@ -44,7 +53,9 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  assert.equal((await f.request(f.prefix,'POST',input)).status,409);assert.equal(f.models,0);
  await f.authorize();const sent=await f.request(f.prefix,'POST',input);assert.equal(sent.status,200);const accepted=sent.data as AgentTaskSnapshot;
  const ended=await f.settle(accepted.run.id);assert.equal(ended.run.status,'completed');assert.equal(ended.changes.length,1);assert.equal(f.models,2);
- assert.ok(ended.steps.every(step=>step.request===undefined&&step.data===undefined));assert.equal(ended.changes[0]!.before,null);assert.equal(ended.changes[0]!.undo,undefined);
+ assert.ok(ended.steps.every(step=>step.request===undefined&&step.data===undefined));assert.equal(ended.changes[0]!.before,null);assert.equal(ended.changes[0]!.after,null);assert.equal(ended.changes[0]!.undo,undefined);
+ assert.ok(agentTaskSnapshotSchema.safeParse(ended).success);const display=ended.changes[0]!.display;assert.ok(display);assert.equal(display.operation,'shot.create');assert.equal(display.targets[0]?.name,'HTTP 创建的镜头');assert.equal(display.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.equal(display.fields.find(field=>field.property==='aspectRatio')?.after,'16:9');
+ const cli=await cliSnapshot(f.server.url,f.server.token,f.projectId,ended.run.id);assert.deepEqual(cli.changes[0]?.display,display);assert.equal(cli.changes[0]?.before,null);assert.equal(cli.changes[0]?.after,null);assert.equal(cli.changes[0]?.undo,undefined);
  assert.equal((await f.request(f.prefix,'POST',input)).status,200);assert.equal(f.models,2);
  const lookup=await f.request(`${f.prefix}/requests/${input.requestId}`);assert.ok(object(lookup.data)&&lookup.data.found===true);
  const controller=new AbortController();const stream=await fetch(`${f.server.url}${f.prefix}/${ended.run.id}/events?after=0`,{headers:{Authorization:`Bearer ${f.server.token}`},signal:controller.signal});
@@ -54,6 +65,48 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  assert.equal((await f.request(`${f.prefix}/${ended.run.id}/actions`,'POST',undo)).status,200);
  const receipt=await f.request(`${f.prefix}/${ended.run.id}/actions/${undo.requestId}`);assert.ok(object(receipt.data)&&receipt.data.found===true);
  assert.equal(f.models,2);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: paid approval exposes safe typed original plan without submitting generation`,async t=>{
+ let shotId='',shotRevision=0;
+ const gateway:TaskGateway=async function*(){
+  const toolCall={id:'call_generation_preview',name:'mioon_generation_submit',arguments:{shotId,expectedRevision:shotRevision,providerId:'mock',model:'mock-motion-v1',parameters:{seed:123}}};
+  yield {type:'done',output:{text:'synthetic preview',toolCalls:[toolCall],providerOutput:protocol==='responses'?[{id:'fc_preview',call_id:toolCall.id,type:'function_call',name:toolCall.name,arguments:JSON.stringify(toolCall.arguments),status:'completed'}]:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]}}};
+ };
+ const f=await fixture(t,protocol,gateway);const shot=await f.request('/api/rpc','POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Approval target',duration:6,aspectRatio:'16:9',prompt:'DO_NOT_PROJECT_GENERATION_PROMPT'}});assert.equal(shot.status,200);assert.ok(object(shot.data));shotId=String(shot.data.id);shotRevision=Number(shot.data.revision);await f.authorize();
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'synthetic approval preview',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);const pending=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(pending.run.status,'awaiting_approval');assert.equal(pending.changes.length,0);assert.ok(agentTaskSnapshotSchema.safeParse(pending).success);
+ const planned=pending.steps.find(step=>step.kind==='tool')?.display;assert.ok(planned);assert.equal(planned.targets[0]?.name,'Approval target');assert.equal(planned.fields.find(field=>field.property==='durationSeconds')?.after,6);assert.equal(planned.fields.find(field=>field.property==='seed')?.after,123);assert.equal(planned.fields.find(field=>field.property==='mode')?.after,'text_to_video');assert.ok(planned.fields.every(field=>field.before===undefined));assert.doesNotMatch(JSON.stringify(planned),/DO_NOT_PROJECT|prompt|snapshot|requestId|expectedRevision/u);
+ const jobs=await f.request('/api/rpc','POST',{operation:'job.list',input:{projectId:f.projectId}});assert.equal(jobs.status,200);assert.deepEqual(jobs.data,[]);
+ const lookup=await f.request(`${f.prefix}/requests/${(sent.data as AgentTaskSnapshot).run.requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.snapshot));assert.deepEqual((lookup.data.snapshot as unknown as AgentTaskSnapshot).steps.find(step=>step.kind==='tool')?.display,planned);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: conflict snapshot reads current saved values on the server without exposing raw evidence or replaying work`,async t=>{
+ let shotId='',shotRevision=0,models=0,enter=()=>{},release=()=>{};
+ const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
+ const gateway:TaskGateway=async function*(request){
+  models++;request.beforeSubmit?.();enter();await released;
+  const toolCall={id:'call_conflict_current',name:'mioon_shot_update',arguments:{shotId,expectedRevision:shotRevision,patch:{duration:4,prompt:'Mio original plan'}}};
+  yield {type:'done',output:{text:'',toolCalls:[toolCall],providerOutput:protocol==='responses'?[{id:'fc_conflict_current',call_id:toolCall.id,type:'function_call',name:toolCall.name,arguments:JSON.stringify(toolCall.arguments),status:'completed'}]:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]}}};
+ };
+ const f=await fixture(t,protocol,gateway);
+ try{
+  const created=await f.request('/api/rpc','POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Conflict target',duration:2,prompt:'Saved original'}});assert.equal(created.status,200);assert.ok(object(created.data));shotId=String(created.data.id);shotRevision=Number(created.data.revision);await f.authorize();
+  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'synthetic conflict',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);await entered;
+  const changed=await f.request('/api/rpc','POST',{operation:'shot.update',input:{shotId,expectedRevision:shotRevision,patch:{duration:3,prompt:'Saved manual change'}}});assert.equal(changed.status,200);assert.ok(object(changed.data));release();
+  const paused=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'conflict');assert.ok(agentTaskSnapshotSchema.safeParse(paused).success);assert.equal(paused.changes.length,0);
+  const pending=paused.steps.findLast(step=>step.kind==='tool');assert.ok(pending?.display);assert.equal(pending.display.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.equal(pending.display.fields.find(field=>field.property==='durationSeconds')?.current,3);assert.equal(pending.display.fields.find(field=>field.property==='description')?.current,'Saved manual change');assert.ok(pending.display.fields.every(field=>field.before===undefined));assert.equal(pending.data,undefined);assert.equal(pending.request,undefined);
+  const changedAgain=await f.request('/api/rpc','POST',{operation:'shot.update',input:{shotId,expectedRevision:changed.data.revision,patch:{duration:5,prompt:'Latest saved change /private/hidden apiKey=SYNTHETIC_SAVED_PRIVATE'}}});assert.equal(changedAgain.status,200);
+  const refreshed=await f.request(`${f.prefix}/${paused.run.id}`);assert.equal(refreshed.status,200);const fresh=agentTaskSnapshotSchema.parse(refreshed.data),freshStep=fresh.steps.find(step=>step.id===pending.id),display=freshStep?.display;assert.ok(display);assert.equal(display.fields.find(field=>field.property==='durationSeconds')?.current,5);assert.equal(display.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.equal(display.fields.find(field=>field.property==='description')?.current,'Latest saved change /private/hidden apiKey=SYNTHETIC_SAVED_PRIVATE');assert.doesNotMatch(JSON.stringify(display),/Saved manual change/u);assert.equal(freshStep?.data,undefined);assert.equal(freshStep?.request,undefined);assert.equal(models,1);assert.equal(fresh.changes.length,0);
+ }finally{release();}
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: REST validates locale and keeps original request lookup and language conflicts`,async t=>{
+  const requests:string[]=[],gateway:TaskGateway=async function*(request){requests.push(request.body);yield {type:'done',output:{text:'synthetic',toolCalls:[],providerOutput:protocol==='responses'?[]:{role:'assistant',content:'synthetic'}}};};
+  const f=await fixture(t,protocol,gateway);await f.authorize();
+  const input={requestId:randomUUID(),text:'synthetic',expectedSettingsRevision:(await f.settings.get()).revision,locale:'ja'};
+  for(const locale of ['zh-CN','fr',null,1]){const result=await f.request(f.prefix,'POST',{...input,locale});assert.equal(result.status,400);assert.ok(object(result.error));assert.equal(result.error.code,'AGENT_TASK_INVALID');}
+  assert.equal(requests.length,0);
+  const sent=await f.request(f.prefix,'POST',input);assert.equal(sent.status,200);const run=(sent.data as AgentTaskSnapshot).run;await f.settle(run.id);
+  const lookup=await f.request(`${f.prefix}/requests/${input.requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.snapshot));assert.equal((lookup.data.snapshot as unknown as AgentTaskSnapshot).run.id,run.id);
+  assert.equal((await f.request(f.prefix,'POST',input)).status,200);const conflict=await f.request(f.prefix,'POST',{...input,locale:'en'});assert.equal(conflict.status,409);assert.ok(object(conflict.error));assert.equal(conflict.error.code,'AGENT_TASK_REQUEST_CONFLICT');assert.equal(requests.length,1);
+  const body=JSON.parse(requests[0]!) as {instructions?:string;messages?:{content:string}[]};assert.ok((body.instructions??body.messages![0]!.content).includes('簡潔な日本語'));
 });
 test('policy activation requires explicit fee acknowledgement and retained exact request lookup',async t=>{
  const f=await fixture(t),before=await f.request('/api/agent/tasks/v2/policy');assert.ok(object(before.data));const policy=before.data.policy as AgentTaskPolicy;

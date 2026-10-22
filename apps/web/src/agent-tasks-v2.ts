@@ -1,5 +1,5 @@
-import { agentTaskPolicySchema, agentTaskSnapshotSchema, agentTaskRunSchema, agentTaskEventSchema, agentTaskReceiptSchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
-import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import { agentTaskPolicySchema, agentTaskSnapshotSchema, agentTaskRunSchema, agentTaskEventSchema, agentTaskReceiptSchema, agentTaskLocaleSchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt, AgentTaskLocale } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { agentAuthorizationReceiptSchema, safeAgentAuthorizationSnapshot } from './agent-authorization-state.ts';
 import type { AgentAuthorizationSnapshot } from '../../../packages/contracts/src/agent-authorization.ts';
 import { deriveAgentEndpoint, safeAgentSettings } from './agent-settings.ts';
@@ -11,11 +11,12 @@ export interface AgentTaskUpload {id: string; name: string; mimeType: string; st
 export interface AgentTaskPolicyView {policy: AgentTaskPolicy; readOnly: boolean}
 export interface AgentTaskLookup { found: boolean; snapshot?: AgentTaskSnapshot; upload?: AgentTaskUpload; receipt?:AgentTaskReceipt }
 export interface AgentTaskPending { requestId: string; runId: string | null; action: 'send' | 'upload' | AgentTaskControlAction; definitiveRejected?:boolean }
+export interface AgentTaskAuthorizationReview { projectId: string; settingsRevision: number; authorizationRevision: number; destination: string; model: string; text: string; uploads: string[]; locale: AgentTaskLocale }
 export interface AgentTaskClient {
   list(projectId: string): Promise<AgentTaskProjectSnapshot>;
   history(projectId:string,cursor?:string|null):Promise<{runs:AgentTaskRun[];nextCursor:string|null}>;
   read(projectId: string, runId: string): Promise<AgentTaskSnapshot>;
-  send(projectId: string, input: { requestId: string; text: string; expectedSettingsRevision: number; uploads?: string[] }): Promise<AgentTaskSnapshot>;
+  send(projectId: string, input: { requestId: string; text: string; expectedSettingsRevision: number; locale?: AgentTaskLocale; uploads?: string[] }): Promise<AgentTaskSnapshot>;
   upload(projectId: string, input: {requestId: string; name: string; mimeType: string; dataBase64: string}): Promise<AgentTaskUpload>;
   action(projectId: string, input: AgentTaskControlInput): Promise<AgentTaskSnapshot>;
   lookup(projectId: string, pending: AgentTaskPending): Promise<AgentTaskLookup>;
@@ -59,7 +60,7 @@ export function createAgentTaskClient({ fetchImpl = globalThis.fetch, timeoutMs 
     list: async projectId => safeAgentTaskProject(await json(path(projectId)), projectId),
     history:async(projectId,cursor=null)=>{const value=await json(`${path(projectId)}/history${cursor?`?cursor=${encodeURIComponent(cursor)}`:''}`);if(!record(value)||!Array.isArray(value.runs)||value.nextCursor!==null&&typeof value.nextCursor!=='string')throw failure('INVALID_RESPONSE');const runs=value.runs.map(run=>agentTaskRunSchema.parse(run));if(runs.some(run=>run.projectId!==projectId))throw failure('INVALID_RESPONSE');return{runs,nextCursor:value.nextCursor as string|null};},
     read: async (projectId, runId) => safeAgentTaskSnapshot(await json(path(projectId, runId)), projectId, runId),
-    send: async (projectId, input) => safeAgentTaskSnapshot(await json(path(projectId), 'POST', input), projectId),
+    send: async (projectId, input) => { if(input.locale!==undefined&&!agentTaskLocaleSchema.safeParse(input.locale).success)throw failure('AGENT_TASK_INVALID',true);return safeAgentTaskSnapshot(await json(path(projectId), 'POST', input), projectId); },
     upload: async (projectId, input) => safeUpload(await json(`${path(projectId)}/uploads`, 'POST', input)),
     action: async (projectId, input) => safeAgentTaskSnapshot(await json(`${path(projectId, input.runId)}/actions`, 'POST', input), projectId, input.runId),
     lookup: async (projectId, pending) => {
@@ -97,7 +98,8 @@ export function createAgentTaskReceiptStore(storage: () => Storage | null = () =
 }
 const terminal = new Set(['completed', 'failed', 'stopped', 'reverted']);
 const finished=(snapshot:AgentTaskSnapshot):boolean=>terminal.has(snapshot.run.status)&&snapshot.backgroundPending!==true;
-export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), onChange = () => {}, onChangeApplied = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot) => void }) {
+export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', onChange = () => {}, onChangeApplied = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot) => void }) {
+  let authorizationEpoch = 0;
   let restored:AgentTaskPending|null=null,receiptsBlocked=false;try{restored=receipts.read(projectId);}catch{receiptsBlocked=true;}
   let state: AgentTaskSessionState = { phase: receiptsBlocked?'error':'loading', project: null, snapshot: null, draft: '', uploads: [], pending: restored, error: receiptsBlocked?'LOCAL_RECEIPT_UNAVAILABLE':'',history:{runs:[],nextCursor:null,phase:'closed'} }, active = true, generation = 0, visible = true, busy = false, after = 0, historyEpoch=0, retryAttempt=0, stream: AbortController | null = null, retry: ReturnType<typeof setTimeout> | null = null;
   const publish = (patch: Partial<AgentTaskSessionState>) => { state = { ...state, ...patch }; if (active) onChange(state); };
@@ -176,19 +178,43 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
   async function mutate(action: 'send' | AgentTaskControlAction, extras: Partial<Pick<AgentTaskControlInput, 'stepId' | 'changeId' | 'resolution'>> = {}) {
     if (!active || !visible || receiptsBlocked || busy || state.pending || !state.project || state.project.readOnly || action !== 'send' && !state.snapshot) return false;
     if (action === 'send' && (!agentTaskPromptValid(state.draft) || !state.project.authorization.scopes.includes('project_agent') || state.snapshot && !terminal.has(state.snapshot.run.status))) return false;
-    const owner = generation, pending: AgentTaskPending = { requestId: requestId(), action, runId: action === 'send' ? null : state.snapshot!.run.id }, text = state.draft;
+    const owner = generation, pending: AgentTaskPending = { requestId: requestId(), action, runId: action === 'send' ? null : state.snapshot!.run.id }, text = state.draft, locale = action === 'send' ? getLocale() : undefined;
     try { persist(pending); } catch { publish({ phase: 'error', error: 'LOCAL_RECEIPT_UNAVAILABLE' }); return false; }
     busy = true; publish({ phase: 'submitting', error: '' });
-    try { const next = action === 'send' ? await client.send(projectId, { requestId: pending.requestId, text, expectedSettingsRevision: state.project.settings.revision, ...(state.uploads.length ? {uploads:state.uploads.map(upload=>upload.id)} : {}) }) : await client.action(projectId, { requestId: pending.requestId, runId: pending.runId!, expectedRevision: state.snapshot!.run.revision, action, ...extras }); if (!active || owner !== generation) return false; accept(next); if(action==='undo_all'||action==='undo_change'){busy=false;return await reconcile();} persist(null); publish({ phase: 'ready', ...(action === 'send' && state.draft === text ? { draft: '', uploads:[] } : {}) }); void observe(); return true; }
+    try { const next = action === 'send' ? await client.send(projectId, { requestId: pending.requestId, text, expectedSettingsRevision: state.project.settings.revision, locale, ...(state.uploads.length ? {uploads:state.uploads.map(upload=>upload.id)} : {}) }) : await client.action(projectId, { requestId: pending.requestId, runId: pending.runId!, expectedRevision: state.snapshot!.run.revision, action, ...extras }); if (!active || owner !== generation) return false; accept(next); if(action==='undo_all'||action==='undo_change'){busy=false;return await reconcile();} persist(null); publish({ phase: 'ready', ...(action === 'send' && state.draft === text ? { draft: '', uploads:[] } : {}) }); void observe(); return true; }
     catch (error) { if (active && owner === generation) {if(agentTaskDefinitiveFailure(error)){try{persist({...pending,definitiveRejected:true});busy=false;return await reconcile();}catch{}}publish({ phase: 'unknown', error: errorCode(error) });} return false; } finally { busy = false; }
   }
+  function authorizationReview(): AgentTaskAuthorizationReview | null {
+    const project = state.project;
+    if (!active || !visible || !project || project.readOnly || receiptsBlocked || busy || state.pending || !agentTaskPromptValid(state.draft) || state.snapshot && !terminal.has(state.snapshot.run.status)) return null;
+    return { projectId, settingsRevision: project.settings.revision, authorizationRevision: project.authorization.revision, destination: deriveAgentEndpoint(project.settings.configuration), model: project.settings.configuration.model, text: state.draft, uploads: state.uploads.map(upload => upload.id), locale: getLocale() };
+  }
+  function sameReview(review: AgentTaskAuthorizationReview, includeAuthorization: boolean): boolean {
+    const current = authorizationReview();
+    return Boolean(current && current.projectId === review.projectId && current.settingsRevision === review.settingsRevision && (!includeAuthorization || current.authorizationRevision === review.authorizationRevision) && current.destination === review.destination && current.model === review.model && current.text === review.text && current.locale === review.locale && JSON.stringify(current.uploads) === JSON.stringify(review.uploads));
+  }
+  async function authorize(): Promise<boolean> {
+    if (!active || !visible || !state.project || state.project.readOnly || busy || state.pending) return false;
+    busy = true; publish({ phase: 'submitting', error: '' });
+    try { await client.authorize(state.project, requestId()); busy = false; await load(); return state.phase === 'ready' && state.project?.authorization.scopes.includes('project_agent') === true; }
+    catch (error) { if (active) publish({ phase: 'error', error: errorCode(error) }); return false; }
+    finally { busy = false; }
+  }
   return { getState: () => state, load, reconcile, send: () => mutate('send'), action: (action: AgentTaskControlAction, extras?: Partial<Pick<AgentTaskControlInput, 'stepId' | 'changeId' | 'resolution'>>) => mutate(action, extras), edit(text: string) { if (active && visible) publish({ draft: text }); },
+    authorizationReview,
+    async authorizeAndSend(review: AgentTaskAuthorizationReview) {
+      // Confirm exactly the reviewed destination and input. A settings, draft,
+      // attachment or visibility change never grants permission to a new send.
+      const epoch = authorizationEpoch;
+      if (!sameReview(review, true) || !await authorize() || epoch !== authorizationEpoch || !sameReview(review, false)) return false;
+      return mutate('send');
+    },
     async history(older=false){if(!active||!visible||state.history.phase==='loading'||older&&!state.history.nextCursor)return false;const token=++historyEpoch;publish({history:{...state.history,phase:'loading'}});try{const page=await client.history(projectId,older?state.history.nextCursor:null);if(!active||token!==historyEpoch)return false;publish({history:{...page,runs:older?[...state.history.runs,...page.runs.filter(run=>!state.history.runs.some(existing=>existing.id===run.id))]:page.runs,phase:'ready'}});return true;}catch{if(active&&token===historyEpoch)publish({history:{...state.history,phase:'error'}});return false;}},
     async upload(file: {name:string;type:string;size:number;arrayBuffer():Promise<ArrayBuffer>}) { if (!active || !visible || busy || state.pending || state.project?.readOnly || receiptsBlocked || file.size > (/\.cube$/iu.test(file.name)?7:30)*1024*1024 || file.size < 1) return false; const owner=generation,pending:AgentTaskPending={requestId:requestId(),runId:null,action:'upload'}; try{persist(pending);}catch{publish({phase:'error',error:'LOCAL_RECEIPT_UNAVAILABLE'});return false;} busy=true;publish({phase:'submitting',error:''});let dispatched=false;try{const bytes=new Uint8Array(await file.arrayBuffer());if(bytes.byteLength!==file.size)throw failure('INVALID_FILE');let binary='';for(let offset=0;offset<bytes.length;offset+=8192)binary+=String.fromCharCode(...bytes.subarray(offset,offset+8192));dispatched=true;const upload=await client.upload(projectId,{requestId:pending.requestId,name:file.name,mimeType:uploadMimeType(file.type),dataBase64:btoa(binary)});if(!active||owner!==generation)return false;publish({uploads:[...state.uploads,upload],phase:'ready',error:''});persist(null);return true;}catch(error){if(active&&owner===generation){if(!dispatched){try{persist(null);}catch{}publish({phase:'error',error:errorCode(error)});}else if(agentTaskDefinitiveFailure(error)){try{persist({...pending,definitiveRejected:true});busy=false;return await reconcile();}catch{publish({phase:'unknown',error:errorCode(error)});}}else publish({phase:'unknown',error:errorCode(error)});}return false;}finally{busy=false;} },
     removeUpload(id:string){if(active&&visible&&!state.pending&&!busy)publish({uploads:state.uploads.filter(upload=>upload.id!==id)});},
-    async authorize() { if (!active || !visible || !state.project || state.project.readOnly || busy || state.pending) return false; busy = true; publish({ phase: 'submitting' }); try { await client.authorize(state.project, requestId()); busy = false; await load(); return true; } catch (error) { publish({ phase: 'error', error: errorCode(error) }); return false; } finally { busy = false; } },
-    async select(runId: string) { if (busy || receiptsBlocked || state.pending || !active || !visible) return; const owner = ++generation; detach(); publish({ phase: 'loading' }); try { const next = await client.read(projectId, runId); if (active && owner === generation) { accept(next); publish({ phase: 'ready' }); void observe(); } } catch (error) { if (active && owner === generation) publish({ phase: state.pending ? 'unknown' : 'read_error', error: errorCode(error) }); } },
-    setVisible(next: boolean) { if(visible===next)return;visible = next; if (!visible) detach(); else if (active && !busy) void load(); },
-    dispose() { active = false; generation++;historyEpoch++; detach(); },
+    authorize,
+    async select(runId: string) { if (busy || receiptsBlocked || state.pending || !active || !visible) return; authorizationEpoch++; const owner = ++generation; detach(); publish({ phase: 'loading' }); try { const next = await client.read(projectId, runId); if (active && owner === generation) { accept(next); publish({ phase: 'ready' }); void observe(); } } catch (error) { if (active && owner === generation) publish({ phase: state.pending ? 'unknown' : 'read_error', error: errorCode(error) }); } },
+    setVisible(next: boolean) { if(visible===next)return;authorizationEpoch++;visible = next; if (!visible) detach(); else if (active && !busy) void load(); },
+    dispose() { active = false; generation++;historyEpoch++;authorizationEpoch++; detach(); },
   };
 }

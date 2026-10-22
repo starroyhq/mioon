@@ -217,16 +217,16 @@ export const nativeMessages = {
     "ja": "未保存の変更と未送信の入力を破棄して、終了しますか？"
   },
   "native.discardReloadDetail": {
-    "zh-Hans": "包括 Agent、图像工坊和连接设置中的未保存输入。重新载入不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行",
-    "zh-Hant": "包含 Agent、圖像工坊與連線設定中的未儲存輸入。重新載入不會儲存連線設定或重新送出請求。選擇繼續編輯會保留目前視窗與本機服務",
-    "en": "This includes unsaved input in Agent, Image Studio, and connection settings. Reloading will not save connection settings or resend requests. Keep editing leaves the current window and local service running",
-    "ja": "Agent、画像スタジオ、接続設定の未保存の入力も含まれます。再読み込みしても、接続設定の保存やリクエストの再送信は行いません。「編集を続ける」を選ぶと、現在のウィンドウとローカルサービスを維持します"
+    "zh-Hans": "包括 Mio、图像工坊和连接设置中的未保存输入。重新载入不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行",
+    "zh-Hant": "包含 Mio、圖像工坊與連線設定中的未儲存輸入。重新載入不會儲存連線設定或重新送出請求。選擇繼續編輯會保留目前視窗與本機服務",
+    "en": "This includes unsaved input in Mio, Image Studio, and connection settings. Reloading will not save connection settings or resend requests. Keep editing leaves the current window and local service running",
+    "ja": "Mio、画像スタジオ、接続設定の未保存の入力も含まれます。再読み込みしても、接続設定の保存やリクエストの再送信は行いません。「編集を続ける」を選ぶと、現在のウィンドウとローカルサービスを維持します"
   },
   "native.discardQuitDetail": {
-    "zh-Hans": "包括 Agent、图像工坊和连接设置中的未保存输入。退出不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行",
-    "zh-Hant": "包含 Agent、圖像工坊與連線設定中的未儲存輸入。結束不會儲存連線設定或重新送出請求。選擇繼續編輯會保留目前視窗與本機服務",
-    "en": "This includes unsaved input in Agent, Image Studio, and connection settings. Quitting will not save connection settings or resend requests. Keep editing leaves the current window and local service running",
-    "ja": "Agent、画像スタジオ、接続設定の未保存の入力も含まれます。終了しても、接続設定の保存やリクエストの再送信は行いません。「編集を続ける」を選ぶと、現在のウィンドウとローカルサービスを維持します"
+    "zh-Hans": "包括 Mio、图像工坊和连接设置中的未保存输入。退出不会保存连接设置或重新发送请求。选择继续编辑会保持当前窗口和本地服务运行",
+    "zh-Hant": "包含 Mio、圖像工坊與連線設定中的未儲存輸入。結束不會儲存連線設定或重新送出請求。選擇繼續編輯會保留目前視窗與本機服務",
+    "en": "This includes unsaved input in Mio, Image Studio, and connection settings. Quitting will not save connection settings or resend requests. Keep editing leaves the current window and local service running",
+    "ja": "Mio、画像スタジオ、接続設定の未保存の入力も含まれます。終了しても、接続設定の保存やリクエストの再送信は行いません。「編集を続ける」を選ぶと、現在のウィンドウとローカルサービスを維持します"
   },
   "native.leaveBlockedTitle": {
     "zh-Hans": "暂时无法安全离开",
@@ -271,10 +271,10 @@ export const nativeMessages = {
     "ja": "ローカルサービスが予期せず終了しました。保存済みデータは再起動時に復元されます"
   },
   "native.serviceStoppedDetail": {
-    "zh-Hans": "未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求",
-    "zh-Hant": "未儲存的介面變更可能遺失。生成任務會依已儲存的狀態恢復處理；提交結果未知時只會核對，不會自動重新提交。Agent 對話保留已儲存的文字；重新啟動後不會自動繼續推理或重新送出請求",
-    "en": "Unsaved interface changes may be lost. Generation tasks resume according to their saved state. Unknown submission outcomes are reconciled only, never automatically resubmitted. Saved Agent conversation text is retained; restarting does not automatically resume reasoning or resend requests",
-    "ja": "未保存の画面上の変更は失われる可能性があります。生成タスクは保存済みの状態に従って処理を再開します。送信結果が不明な場合は照合のみを行い、自動で再送信しません。Agent の会話は保存済みのテキストを保持しますが、再起動後に推論を自動再開したり、リクエストを再送信したりすることはありません"
+    "zh-Hans": "未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Mio 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求",
+    "zh-Hant": "未儲存的介面變更可能遺失。生成任務會依已儲存的狀態恢復處理；提交結果未知時只會核對，不會自動重新提交。Mio 對話保留已儲存的文字；重新啟動後不會自動繼續推理或重新送出請求",
+    "en": "Unsaved interface changes may be lost. Generation tasks resume according to their saved state. Unknown submission outcomes are reconciled only, never automatically resubmitted. Saved Mio conversation text is retained; restarting does not automatically resume reasoning or resend requests",
+    "ja": "未保存の画面上の変更は失われる可能性があります。生成タスクは保存済みの状態に従って処理を再開します。送信結果が不明な場合は照合のみを行い、自動で再送信しません。Mio の会話は保存済みのテキストを保持しますが、再起動後に推論を自動再開したり、リクエストを再送信したりすることはありません"
   },
   "native.rendererTitle": {
     "zh-Hans": "界面需要重新载入",
@@ -343,10 +343,10 @@ export const nativeMessages = {
     "ja": "ローカルサービスを再起動しますか？"
   },
   "native.restartDetail": {
-    "zh-Hans": "所有窗口都需通过关闭检查后才停止服务。已保存的数据保留。未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Agent 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求",
-    "zh-Hant": "所有視窗都須通過關閉檢查後才會停止服務。已儲存資料會保留。未儲存的介面變更可能遺失。生成任務會依已儲存的狀態恢復處理；提交結果未知時只會核對，不會自動重新提交。Agent 對話保留已儲存的文字；重新啟動後不會自動繼續推理或重新送出請求",
-    "en": "The service stops only after every window passes its close checks. Saved data is retained. Unsaved interface changes may be lost. Generation tasks resume according to their saved state. Unknown submission outcomes are reconciled only, never automatically resubmitted. Saved Agent conversation text is retained; restarting does not automatically resume reasoning or resend requests",
-    "ja": "すべてのウィンドウが終了チェックを通過してからサービスを停止します。保存済みデータは保持されますが、未保存の画面上の変更は失われる可能性があります。生成タスクは保存済みの状態に従って処理を再開します。送信結果が不明な場合は照合のみを行い、自動で再送信しません。Agent の会話は保存済みのテキストを保持しますが、再起動後に推論を自動再開したり、リクエストを再送信したりすることはありません"
+    "zh-Hans": "所有窗口都需通过关闭检查后才停止服务。已保存的数据保留。未保存的界面修改可能丢失。生成任务会按已保存的状态恢复处理；提交结果未知时只对账，不会自动重新提交。Mio 对话保留已保存的文字；重启后不会自动继续推理或重新发送请求",
+    "zh-Hant": "所有視窗都須通過關閉檢查後才會停止服務。已儲存資料會保留。未儲存的介面變更可能遺失。生成任務會依已儲存的狀態恢復處理；提交結果未知時只會核對，不會自動重新提交。Mio 對話保留已儲存的文字；重新啟動後不會自動繼續推理或重新送出請求",
+    "en": "The service stops only after every window passes its close checks. Saved data is retained. Unsaved interface changes may be lost. Generation tasks resume according to their saved state. Unknown submission outcomes are reconciled only, never automatically resubmitted. Saved Mio conversation text is retained; restarting does not automatically resume reasoning or resend requests",
+    "ja": "すべてのウィンドウが終了チェックを通過してからサービスを停止します。保存済みデータは保持されますが、未保存の画面上の変更は失われる可能性があります。生成タスクは保存済みの状態に従って処理を再開します。送信結果が不明な場合は照合のみを行い、自動で再送信しません。Mio の会話は保存済みのテキストを保持しますが、再起動後に推論を自動再開したり、リクエストを再送信したりすることはありません"
   },
   "native.waitExitTitle": {
     "zh-Hans": "正在等待本地进程退出",

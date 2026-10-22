@@ -7,7 +7,9 @@ const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 
 test('task reveal uses a separate overlay and keeps project, view and composition admission', () => {
-  const body = app.slice(app.indexOf('  function openTasks('), app.indexOf('  function inspectTaskJob('));
+  const start = app.indexOf('  function openTasks('), end = app.indexOf('  async function openAgentRequests(', start);
+  assert.ok(start >= 0 && end > start, 'exercise only the complete ordinary task overlay entry');
+  const body = app.slice(start, end);
   const calls = [];
   let composition = false;
   const currentProject = { current: 'project-a' }, viewReady = { current: true };

@@ -308,6 +308,11 @@ export function createFrameExtractionController({ rpc, createRequestId = () => g
       emit({ ...(changedProject ? initial() : {}), projectId, sourceScope, sourceAsset: next.sourceAsset ? copy(next.sourceAsset) : null, assets: copy(next.assets || []) as FrameAsset[], visible: Boolean(next.visible), blocked: Boolean(next.blocked), pending,
         ...(changed ? { loading: false, actionTaskId: null, phase: pending ? 'unknown' : 'idle' } : {}) });
     },
+    async focusTask(taskId: string, current: () => boolean = () => true): Promise<FrameTask | null> {
+      if (!usable() || !current()) return null; const token = owner(), task = await readTask(taskId);
+      if (!task || !owns(token) || !usable() || !current()) return null;
+      emit({focusedTaskId: task.id}); return task;
+    },
     capture, readTask, refreshTasks: (): Promise<FrameListResponse | null> => list('latest'), loadMoreTasks: (): Promise<FrameListResponse | null> => list('older'), previousTasks: (): Promise<FrameListResponse | null> => list('newer'), reconcileUnknown,
     retryUnknown: (): Promise<FrameTask | null> => usable() && state.pending && state.phase !== 'submitting' ? submit(state.pending) : Promise.resolve(null),
     cancelQueued: (task: FrameTask): Promise<FrameTask | null> => control('frame.task.cancelQueued', task), recoverResult: (task: FrameTask): Promise<FrameTask | null> => control('frame.task.recoverResult', task), revealResult,

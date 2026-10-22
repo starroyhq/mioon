@@ -30,6 +30,12 @@ test('Agent management is a separate local client, rejects extra authority and n
  for(const value of [{projectId,text:'test',expectedSettingsRevision:4},{projectId,requestId,text:'test',expectedSettingsRevision:4,approved:true},{projectId,requestId,text:'test',expectedSettingsRevision:4,configuration}])await assert.rejects(client.send(value),error=>error.code==='VALIDATION_ERROR');
  assert.equal(calls,0);
 });
+test('send accepts only explicit supported response locales and forwards them without changing request identity',async()=>{
+ const calls=[],client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options});return ok(snapshot());}}),input={projectId,requestId,text:'synthetic',expectedSettingsRevision:4};
+ for(const locale of ['zh-Hans','zh-Hant','en','ja']){await client.send({...input,locale});const body=JSON.parse(calls.at(-1).options.body);assert.equal(body.locale,locale);assert.equal(body.requestId,requestId);assert.equal(body.projectId,undefined);}
+ for(const locale of [null,'zh-CN','EN','fr',1,{}])await assert.rejects(client.send({...input,locale}),error=>error.code==='VALIDATION_ERROR');assert.equal(calls.length,4);
+ await client.send(input);assert.equal(Object.hasOwn(JSON.parse(calls.at(-1).options.body),'locale'),false);
+});
 
 test('send forwards diagnostic modes and exact identities to REST without host IDs in the body',async()=>{
  for(const profile of ['text','read_only','catalog']){

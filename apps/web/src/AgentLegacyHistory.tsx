@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { Button } from '@mioon/ui/components/button';
-import { Badge } from '@mioon/ui/components/badge';
+import { WorkbenchButton as Button } from '@mioon/ui/components/workbench-controls';
+import { AGENT_TASK_STATUSES } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import { taskOperationTitle } from './agent-task-presentation.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { createAgentChatClient, safeAgentChatSnapshot, safeAgentChatHistory } from './agent-chat.ts';
 import type { AgentChatRun } from './agent-chat.ts';
@@ -10,7 +11,7 @@ import type { AgentEditProposal } from './agent-edits.ts';
 /** Historical records retain their original DTO and approval semantics. This
  * reader exposes no old send, apply, reject or recovery mutation callbacks. */
 export default function AgentLegacyHistory({projectId}:{projectId:string}) {
-  const {t,renderMessage}=useI18n(),[runs,setRuns]=useState<AgentChatRun[]|null>(null),[proposals,setProposals]=useState<AgentEditProposal[]>([]),[chatCursor,setChatCursor]=useState<string|null>(null),[editCursor,setEditCursor]=useState<string|null>(null),[failed,setFailed]=useState(false),[busy,setBusy]=useState(false),epoch=useRef(0),mounted=useRef(false),flight=useRef(false);
+  const {t,renderMessage,locale}=useI18n(),[runs,setRuns]=useState<AgentChatRun[]|null>(null),[proposals,setProposals]=useState<AgentEditProposal[]>([]),[chatCursor,setChatCursor]=useState<string|null>(null),[editCursor,setEditCursor]=useState<string|null>(null),[failed,setFailed]=useState(false),[busy,setBusy]=useState(false),epoch=useRef(0),mounted=useRef(false),flight=useRef(false);
   useLayoutEffect(()=>{mounted.current=true;return()=>{mounted.current=false;epoch.current++;};},[projectId]);
   async function load(older:'chat'|'edits'|null=null){if(flight.current)return;flight.current=true;setBusy(true);setFailed(false);const token=++epoch.current;
     const operations=[older==='edits'?Promise.resolve(null):older==='chat'?createAgentChatClient().history(projectId,chatCursor):createAgentChatClient().read(projectId),older==='chat'?Promise.resolve(null):createAgentEditsClient().list(projectId,{view:'all',cursor:older==='edits'?editCursor:null})];
@@ -23,5 +24,5 @@ export default function AgentLegacyHistory({projectId}:{projectId:string}) {
       setBusy(false);
     }flight.current=false;
   }
-  return <details className="agent-task-legacy" data-testid="agent-task-legacy" onToggle={event=>{if(event.currentTarget.open&&!runs)void load();}}><summary>{t('agent.task.legacy')}</summary>{failed&&<p role="alert">{t('agent.task.error')}</p>}<Button type="button" variant="ghost" disabled={busy} onClick={()=>{void load();}}>{t('agent.task.reload')}</Button>{runs?.map(run=><article key={run.id} data-legacy-run={run.id}><p>{run.userText}</p><p>{run.assistantText}</p><Badge>{run.status}</Badge></article>)}{chatCursor&&<Button type="button" variant="outline" disabled={busy} onClick={()=>{void load('chat');}}>{t('agent.chat.olderPage')}</Button>}{proposals.map(proposal=><article key={proposal.id} data-legacy-proposal={proposal.id}><strong>{proposal.operation}</strong><Badge>{renderMessage(agentEditStatusDescriptor(proposal.status))}</Badge><pre>{JSON.stringify(proposal.diff,null,2)}</pre></article>)}{editCursor&&<Button type="button" variant="outline" disabled={busy} onClick={()=>{void load('edits');}}>{t('agent.chat.olderPage')}</Button>}</details>;
+  return <details className="agent-task-legacy" data-testid="agent-task-legacy" onToggle={event=>{if(event.currentTarget.open&&!runs)void load();}}><summary>{t('agent.task.legacy')}</summary>{failed&&<p role="alert">{t('agent.task.error')}</p>}<Button type="button" variant="ghost" disabled={busy} onClick={()=>{void load();}}>{t('agent.task.reload')}</Button>{runs?.map(run=><article key={run.id} data-legacy-run={run.id}><p>{run.userText}</p><p>{run.assistantText}</p><span className="mio-secondary">{t(AGENT_TASK_STATUSES.some(status=>status===run.status)?`agent.task.status.${AGENT_TASK_STATUSES.find(status=>status===run.status)!}`:'agent.chat.statusUnknown')}</span></article>)}{chatCursor&&<Button type="button" variant="secondary" disabled={busy} onClick={()=>{void load('chat');}}>{t('agent.chat.olderPage')}</Button>}{proposals.map(proposal=><article key={proposal.id} data-legacy-proposal={proposal.id}><strong>{taskOperationTitle(proposal.operation,locale)}</strong><span className="mio-secondary">{renderMessage(agentEditStatusDescriptor(proposal.status))}</span></article>)}{editCursor&&<Button type="button" variant="secondary" disabled={busy} onClick={()=>{void load('edits');}}>{t('agent.chat.olderPage')}</Button>}</details>;
 }

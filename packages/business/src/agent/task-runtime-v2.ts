@@ -1,8 +1,8 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {agentTaskControlSchema,agentTaskDiagnosticSchema,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
-import type {AgentTaskJson,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskControlSchema,agentTaskDiagnosticSchema,agentTaskLocaleSchema,DEFAULT_AGENT_TASK_LOCALE,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
+import type {AgentTaskJson,AgentTaskLocale,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskJournal} from './task-journal-v2.ts';
@@ -14,14 +14,21 @@ import type {ChatAuthorizations} from './chat-runtime.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,safeAgentChatError} from './chat-errors.ts';
-import {createTaskGateway,buildTaskModelRequest,taskContinuation,TASK_MODEL_LIMITS,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
+import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,TASK_MODEL_LIMITS,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskModelOutput} from './task-gateway-v2.ts';
+import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const json=(value:unknown):AgentTaskJson=>JSON.parse(JSON.stringify(value??null)) as AgentTaskJson;
 const code=(value:unknown):string=>record(value)&&typeof value.code==='string'?value.code:'AGENT_TASK_FAILED';
 const storageError=(value:unknown):boolean=>/^(?:ERR_SQLITE|SQLITE_|AGENT_TASK_STORAGE_)/u.test(code(value));
 const terminal=(run:AgentTaskRun):boolean=>['completed','failed','stopped','reverted'].includes(run.status);
+const attachmentInstructions:Record<AgentTaskLocale,string>={
+  'zh-Hans':'用户为本轮选择的附件（仅可使用这些托管句柄）：',
+  'zh-Hant':'使用者為本輪選取的附件（僅可使用這些代管代碼）：',
+  en:'Attachments selected by the user for this run (use only these managed handles):',
+  ja:'ユーザーがこのラウンドで選択した添付ファイル（これらの管理済みハンドルのみ使用可）：',
+};
 export function agentTaskFailure(value:string):Error&{code:string;status:number}{
   const messages:Record<string,string>={AGENT_TASK_NOT_FOUND:'任务不存在。',AGENT_TASK_CLOSED:'任务服务已关闭。',AGENT_TASK_READ_ONLY:'恢复副本中的智能助理任务仅供查看。',AGENT_TASK_STOPPED:'任务已停止，尚未发出的工作已阻断。',AGENT_TASK_INVALID:'任务参数无效。',AGENT_TASK_BUSY:'本项目已有未结束任务，请继续或停止原任务。',AGENT_TASK_CONSENT_REQUIRED:'当前目标、模型和项目任务范围尚未授权，或授权已撤销。',AGENT_TASK_SETTINGS_CHANGED:'连接设置已变化，请重新确认目标和模型。',AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，任务已暂停。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，任务已暂停。',AGENT_TASK_UNKNOWN_RESULT:'上一步结果未知，请先核对原请求。',AGENT_TASK_REVISION_CONFLICT:'任务已被其他窗口更新，请重新读取。',AGENT_TASK_REQUEST_CONFLICT:'此请求标识已用于其他内容。',AGENT_TASK_STORAGE_UNAVAILABLE:'无法安全读取或保存任务记录。',AGENT_TASK_FAILED:'任务未完成，请检查已保存记录。',AGENT_TASK_PAUSED:'任务已暂停。',AGENT_TASK_APPROVAL_REQUIRED:'此操作需要确认。'};
   return Object.assign(new Error(messages[value]??messages.AGENT_TASK_FAILED),{code:value,status:value==='AGENT_TASK_NOT_FOUND'?404:value==='AGENT_TASK_INVALID'?400:409});
@@ -30,10 +37,11 @@ function modelOutput(value:unknown):TaskModelOutput {
   if(!record(value)||typeof value.text!=='string'||!Array.isArray(value.toolCalls)||!Object.hasOwn(value,'providerOutput'))throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
   return value as unknown as TaskModelOutput;
 }
-function safeSnapshot(value:AgentTaskSnapshot):AgentTaskSnapshot {
-  const copy=structuredClone(value);delete copy.run.context;
-  copy.steps=copy.steps.map(step=>{if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
-  copy.changes=copy.changes.map(change=>{change.before=null;change.after=null;delete change.undo;return change;});return copy;
+function safeSnapshot(value:AgentTaskSnapshot,store:WorkspaceStore):AgentTaskSnapshot {
+  const copy=structuredClone(value),readTarget=agentTaskDisplayTargetReader(store,value.run.projectId);delete copy.run.context;
+  const conflict=copy.run.status==='paused'&&['conflict','editing'].includes(copy.run.pauseReason??''),flagged=copy.steps.filter(step=>record(step.data)&&step.data.backgroundInvalidated===true),pending=copy.steps.filter(step=>step.kind==='tool'&&['intent','awaiting_approval'].includes(step.status)).at(-1);
+  copy.steps=copy.steps.map(step=>{if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
+  copy.changes=copy.changes.map(change=>{change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;return change;});return copy;
 }
 interface Active {controller:AbortController;promise:Promise<void>;restartRequested:boolean}
 export interface AgentTaskRuntimeOptions {store:WorkspaceStore;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;readOnly?:boolean;assertMutationAllowed?:()=>void}
@@ -124,7 +132,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     // Diagnostic selection is a host-only restriction, never an authority. In
     // particular, catalog probes describe write tools without executing them.
     if(run.diagnostic&&(run.diagnostic.profile!=='read_only'||!runTools(run).some(tool=>tool.name===call.name)))throw agentTaskFailure('AGENT_TASK_DIAGNOSTIC_TOOL_FORBIDDEN');
-    if(!step)step=journal.beginStep(runId,{kind:'tool',toolCall:call,data:{sourceModelStepId:source.id}});
+    if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id}});}
     try {
       prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments});
       if(['asset.importSelected','lut.importSelected'].includes(prepared.operation)&&(!Array.isArray(run.attachments)||!run.attachments.includes(String(prepared.input.handle))))throw agentTaskFailure('AGENT_TASK_CONSENT_REQUIRED');
@@ -234,29 +242,30 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   }
   async function snapshot(projectId:string){checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));return {version:2 as const,instanceId,projectId,readOnly,runs:(hasTables?journal.list(projectId):[]).map(run=>{const {context,...summary}=run;return summary;}),policy:hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),settings,authorization:authorizations.snapshot(settings.configuration)};}
   async function send(projectId:string,input:unknown):Promise<AgentTaskSnapshot>{
-    mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','text','expectedSettingsRevision','expectedRevision','uploads','diagnostic'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200||typeof input.text!=='string'||!input.text.trim()||Buffer.byteLength(input.text)>32*1024||!Number.isSafeInteger(input.expectedSettingsRevision)||input.uploads!==undefined&&(!Array.isArray(input.uploads)||input.uploads.length>20||input.uploads.some(id=>typeof id!=='string'||!/^[-a-f0-9]{36}$/u.test(id))))throw agentTaskFailure('AGENT_TASK_INVALID');
+    mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','text','expectedSettingsRevision','expectedRevision','locale','uploads','diagnostic'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200||typeof input.text!=='string'||!input.text.trim()||Buffer.byteLength(input.text)>32*1024||!Number.isSafeInteger(input.expectedSettingsRevision)||input.uploads!==undefined&&(!Array.isArray(input.uploads)||input.uploads.length>20||input.uploads.some(id=>typeof id!=='string'||!/^[-a-f0-9]{36}$/u.test(id))))throw agentTaskFailure('AGENT_TASK_INVALID');
+    const parsedLocale=agentTaskLocaleSchema.safeParse(input.locale===undefined?DEFAULT_AGENT_TASK_LOCALE:input.locale);if(!parsedLocale.success)throw agentTaskFailure('AGENT_TASK_INVALID');const locale=parsedLocale.data;
     const parsedDiagnostic=input.diagnostic===undefined?undefined:agentTaskDiagnosticSchema.safeParse(input.diagnostic);
     if(parsedDiagnostic&&!parsedDiagnostic.success)throw agentTaskFailure('AGENT_TASK_INVALID');
     const diagnostic=parsedDiagnostic?.success?parsedDiagnostic.data:undefined;
     if(diagnostic?.toolNames?.some(name=>!toolset().list().some(tool=>tool.name===name)))throw agentTaskFailure('AGENT_TASK_INVALID');
     const uploads=(input.uploads??[]) as string[];
-    const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||!isDeepStrictEqual(previous.run.attachments??[],uploads)||!isDeepStrictEqual(previous.run.diagnostic,diagnostic))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous);}
+    const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||taskResponseLocale(previous.run.context)!==locale||!isDeepStrictEqual(previous.run.attachments??[],uploads)||!isDeepStrictEqual(previous.run.diagnostic,diagnostic))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous,store);}
     const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));if(settings.revision!==input.expectedSettingsRevision)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
     const dummy={configuration:json(settings.configuration)} as AgentTaskRun;authorize(dummy);
-    const context:AgentTaskJson[]=[];for(const old of (diagnostic?[]:journal.list(projectId).filter(item=>item.status==='completed'&&!item.diagnostic)).slice(0,4).reverse()){
+    const context:AgentTaskJson[]=[taskResponseLanguageContext(locale)];for(const old of (diagnostic?[]:journal.list(projectId).filter(item=>item.status==='completed'&&!item.diagnostic)).slice(0,4).reverse()){
       const final=journal.snapshot(old.id).steps.filter(step=>step.kind==='model'&&step.status==='completed').at(-1);if(final&&record(final.result)&&typeof final.result.text==='string')context.push({role:'user',content:old.text},{role:'assistant',content:final.result.text});
     }
     const attachments=uploads.map(id=>{const row=store.db.prepare('SELECT id,name,mimeType FROM agent_task_imports_v2 WHERE id=? AND projectId=?').get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
-    context.push({role:'user',content:input.text+(attachments.length?`\n用户为本次任务选择的附件（仅可使用这些托管句柄）：${JSON.stringify(attachments)}`:'')});
-    while(context.length>1&&Buffer.byteLength(JSON.stringify(context))>TASK_MODEL_LIMITS.historyBytes)context.splice(0,2);
+    context.push({role:'user',content:input.text+(attachments.length?`\n${attachmentInstructions[locale]}${JSON.stringify(attachments)}`:'')});
+    while(context.length>2&&Buffer.byteLength(JSON.stringify(context))>TASK_MODEL_LIMITS.historyBytes)context.splice(1,2);
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
-    const created=journal.create({projectId,requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id));
+    const created=journal.create({projectId,requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
   }
   async function action(projectId:string,runId:string,input:unknown):Promise<AgentTaskSnapshot>{
     mutable();const parsed=agentTaskControlSchema.safeParse(record(input)?{...input,runId}:input);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_INVALID');const request=parsed.data;
     const undo=request.action==='undo_change'||request.action==='undo_all';
-    const old=journal.lookupControl(request.requestId);if(old){owned(projectId,runId);if(undo)journal.beginControl(request);else journal.performControl(request,()=>null);return safeSnapshot(journal.snapshot(runId));}
+    const old=journal.lookupControl(request.requestId);if(old){owned(projectId,runId);if(undo)journal.beginControl(request);else journal.performControl(request,()=>null);return safeSnapshot(journal.snapshot(runId),store);}
     let run=owned(projectId,runId);const cancelBackgroundSteps:string[]=[];try{if(run.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
     if(request.action==='undo_change'||request.action==='undo_all'){
       if(!terminal(run))throw agentTaskFailure('AGENT_TASK_PAUSED');
@@ -316,7 +325,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(request.action==='stop'||request.action==='undo_all'&&journal.run(runId).status==='reverted')await stopAgentTaskJobs(store.db,runId);
     for(const stepId of cancelBackgroundSteps)await stopAgentTaskJobs(store.db,runId,stepId);
     if(request.action==='resume'||request.action==='approve')resumeAgentTaskJobs(store.db,runId);
-    if(journal.run(runId).status==='running')launch(runId);return safeSnapshot(journal.snapshot(runId));
+    if(journal.run(runId).status==='running')launch(runId);return safeSnapshot(journal.snapshot(runId),store);
     }catch(error){
       const failure=code(error);
       if(failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED')pause(runId,failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'editing');
@@ -328,11 +337,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     isBusy:()=>active.size>0||hasTables&&!!store.db.prepare("SELECT 1 FROM agent_task_runs_v2 WHERE status IN ('accepted','running') LIMIT 1").get(),
     history:(projectId:string,cursor?:string)=>{checkOpen();const page=hasTables?journal.history(projectId,{cursor}):{runs:[],nextCursor:null};return {...page,runs:page.runs.map(run=>{const {context,...summary}=run;return summary;})};},
     timelineRevision:(projectId:string)=>{checkOpen();const row=store.db.prepare("SELECT json_extract(data,'$.revision') AS revision FROM timelines WHERE projectId=?").get(projectId);return row?Number(row.revision):null;},
-    get:(projectId:string,id:string)=>{owned(projectId,id);return safeSnapshot(journal.snapshot(id));},
-    lookup:(projectId:string,requestId:string)=>{checkOpen();const found=hasTables?journal.lookupRequest(projectId,requestId):null;return {found:!!found,...(found?{snapshot:safeSnapshot(found)}:{})};},
-    lookupAction:(projectId:string,id:string,requestId:string)=>{owned(projectId,id);const found=journal.lookupControl(requestId);if(found&&found.runId!==id)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {found:!!found,...(found?{snapshot:safeSnapshot(journal.snapshot(id)),receipt:found}:{})};},
+    get:(projectId:string,id:string)=>{owned(projectId,id);return safeSnapshot(journal.snapshot(id),store);},
+    lookup:(projectId:string,requestId:string)=>{checkOpen();const found=hasTables?journal.lookupRequest(projectId,requestId):null;return {found:!!found,...(found?{snapshot:safeSnapshot(found,store)}:{})};},
+    lookupAction:(projectId:string,id:string,requestId:string)=>{owned(projectId,id);const found=journal.lookupControl(requestId);if(found&&found.runId!==id)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {found:!!found,...(found?{snapshot:safeSnapshot(journal.snapshot(id),store),receipt:found}:{})};},
     lookupImport:(projectId:string,requestId:string)=>{mutable();const row=store.db.prepare('SELECT id,name,mimeType,status FROM agent_task_imports_v2 WHERE projectId=? AND requestId=?').get(projectId,requestId);return row?{id:String(row.id),name:String(row.name),mimeType:String(row.mimeType),status:String(row.status)}:null;},
-    events:(projectId:string,id:string,after=0)=>{owned(projectId,id);const items=journal.events(id,after);return {sequence:items.at(-1)?.sequence??after,snapshot:safeSnapshot(journal.snapshot(id))};},
+    events:(projectId:string,id:string,after=0)=>{owned(projectId,id);const items=journal.events(id,after);return {sequence:items.at(-1)?.sequence??after,snapshot:safeSnapshot(journal.snapshot(id),store)};},
     policy:()=>hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),lookupPolicy:(id:string)=>({found:hasTables&&!!journal.lookupPolicy(id),...(hasTables&&journal.lookupPolicy(id)?{policy:journal.lookupPolicy(id)}:{})}),updatePolicy:(input:unknown)=>{
       mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','expectedRevision','revision','stepLimit','modes','acknowledgePaid'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||!record(input.modes))throw agentTaskFailure('AGENT_TASK_INVALID');
       const old=journal.policy();if(old.modes.paid!=='direct'&&input.modes.paid==='direct'&&input.acknowledgePaid!==true)throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');

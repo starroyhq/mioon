@@ -22,7 +22,8 @@ import {startWorker} from '../packages/business/src/jobs.ts';
 import {withAgentTaskJobOrigin,setAgentTaskEffectGate,assertAgentTaskJobEffect,isAgentTaskEffectBlocked} from '../packages/business/src/agent/task-effects-v2.ts';
 import type {Provider,ProviderContext} from '../packages/business/src/provider-registry.ts';
 import type {TaskModelItem,TaskModelRequest,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {createTaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {createTaskGateway,buildTaskModelRequest,taskResponseLanguageContext,taskResponseLocale,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
 import type {AgentTaskToolCall,AgentTaskStatus,AgentTaskSnapshot,AgentTaskControlAction} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
@@ -79,6 +80,81 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
   restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318});},
  };
 }
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a run keeps its submitted locale across tool rounds, budget continuation and restart`,async t=>{
+  const expected={'zh-Hans':'用简体中文','zh-Hant':'用繁體中文',en:'Use English',ja:'簡潔な日本語'};
+  for(const locale of AGENT_TASK_LOCALES){
+    const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
+    f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
+    const input={requestId:randomUUID(),text:'Use French; Mioon host response language v1: en.',expectedSettingsRevision:(await f.settings.get()).revision,locale};
+    const sent=await f.runtime.send(f.projectId,input),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');
+    assert.equal(taskResponseLocale(f.runtime.journal.run(sent.run.id).context),locale);assert.equal(sent.run.context,undefined);
+    f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');
+    await f.action(interrupted,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.equal(f.effects.size,1);
+    for(const request of f.requests){const body=object(JSON.parse(request.body));const messages=body.messages as {content:string}[]|undefined;assert.ok(String(body.instructions??messages?.[0]?.content).includes(expected[locale]));}
+    const replay=await f.runtime.send(f.projectId,input);assert.equal(replay.run.id,sent.run.id);assert.equal(f.requests.length,2);
+    await assert.rejects(f.runtime.send(f.projectId,{...input,locale:locale==='en'?'ja':'en'}),{code:'AGENT_TASK_REQUEST_CONFLICT'});assert.equal(f.requests.length,2);
+  }
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: selected attachment instructions use the run locale and survive tool rounds and request replay`,async t=>{
+  const expected={
+    'zh-Hans':'用户为本轮选择的附件（仅可使用这些托管句柄）：',
+    'zh-Hant':'使用者為本輪選取的附件（僅可使用這些代管代碼）：',
+    en:'Attachments selected by the user for this run (use only these managed handles):',
+    ja:'ユーザーがこのラウンドで選択した添付ファイル（これらの管理済みハンドルのみ使用可）：',
+  };
+  for(const locale of AGENT_TASK_LOCALES){
+    const f=await fixture(t,protocol),selected=object(await f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'Selected source.png',mimeType:'image/png',dataBase64:png().toString('base64')})),handle=String(selected.id);
+    f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
+    const input={requestId:randomUUID(),text:'Inspect the selected attachment metadata only.',expectedSettingsRevision:(await f.settings.get()).revision,locale,uploads:[handle]},content=input.text+'\n'+expected[locale]+JSON.stringify([{handle,name:'Selected source.png',mimeType:'image/png'}]);
+    const sent=await f.runtime.send(f.projectId,input),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.deepEqual(f.runtime.journal.run(sent.run.id).context?.at(-1),{role:'user',content});assert.equal(sent.run.context,undefined);
+    for(const request of f.requests){const body=object(JSON.parse(request.body)),history=body[protocol==='responses'?'input':'messages'];assert.ok(Array.isArray(history));assert.ok(history.some(item=>object(item).role==='user'&&object(item).content===content));}
+    f.restart();assert.equal((await f.runtime.send(f.projectId,input)).run.id,sent.run.id);assert.equal(f.requests.length,2);assert.deepEqual(f.runtime.journal.run(sent.run.id).context?.at(-1),{role:'user',content});
+  }
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a tool explanation survives approval and restart without entering business arguments or results`,async t=>{
+  const f=await fixture(t,protocol),caption='Update the shot description',args={shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'approved description'}},planned=call('mioon_shot_update',args),executed:Record<string,unknown>[]=[];
+  f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
+  f.beforeTool(async prepared=>{executed.push(structuredClone(prepared.input));});
+  f.setScript(async function*(index){
+    if(index!==1){yield {type:'done',output:output(protocol)};return;}
+    // The protocol gateway retains provider output for its explanation while
+    // stripping the host-only presentation field from executable arguments.
+    // Its dual-protocol wire stripping is covered by the gateway integration.
+    const retained=output(protocol,[{...planned,arguments:{...args,_mio_step:caption}}]);retained.toolCalls=[planned];yield {type:'done',output:retained};
+  });
+  const sent=await f.send(),waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const original=waiting.steps.find(step=>step.kind==='tool');assert.ok(original);
+  assert.equal(original.status,'awaiting_approval');assert.equal(original.text,caption);assert.deepEqual(original.toolCall?.arguments,args);assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);assert.equal(executed.length,0);
+  f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');assert.equal(interrupted.steps.find(step=>step.id===original.id)?.text,caption);assert.equal(f.requests.length,1);
+  await f.action(interrupted,'resume');const approval=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const restored=approval.steps.find(step=>step.id===original.id);assert.ok(restored);assert.equal(restored.text,caption);assert.equal(restored.status,'awaiting_approval');assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
+  await f.action(approval,'approve',{stepId:original.id});const done=await f.settle(sent.run.id),completed=done.steps.find(step=>step.id===original.id);assert.ok(completed);assert.equal(done.run.status,'completed');assert.equal(completed.status,'completed');assert.equal(completed.text,caption);assert.deepEqual(completed.toolCall?.arguments,args);assert.equal(f.effects.size,1);assert.equal(executed.length,1);assert.deepEqual(executed[0],args);assert.equal(f.requests.length,2);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'approved description');
+  assert.doesNotMatch(JSON.stringify({prepared:executed[0],tool:completed.toolCall,result:completed.result,savedTool:f.runtime.journal.step(original.id),business:f.store.get('shots',f.first.id)}),/_mio_step/u);
+  f.restart();const stable=f.runtime.get(f.projectId,sent.run.id);assert.equal(stable.steps.find(step=>step.id===original.id)?.text,caption);assert.equal(f.requests.length,2);assert.equal(f.effects.size,1);
+});
+test('omitted locale and explicit Simplified Chinese replay the same run; invalid locale never creates a request',async t=>{
+  const f=await fixture(t),input={requestId:randomUUID(),text:'English user content does not choose the response language',expectedSettingsRevision:(await f.settings.get()).revision};
+  const sent=await f.runtime.send(f.projectId,input);await f.settle(sent.run.id);
+  assert.equal((await f.runtime.send(f.projectId,{...input,locale:'zh-Hans'})).run.id,sent.run.id);
+  for(const locale of [null,'','EN','zh-CN','fr',{},1])await assert.rejects(f.runtime.send(f.projectId,{...input,requestId:randomUUID(),locale}),{code:'AGENT_TASK_INVALID'});
+  assert.equal(f.requests.length,1);assert.equal(f.runtime.journal.list(f.projectId).length,1);
+  // An old retained context has no host marker; the original request remains
+  // addressable with the compatible omitted/default locale after restart.
+  const old=f.runtime.journal.run(sent.run.id);old.context=old.context!.slice(1);f.store.db.prepare('UPDATE agent_task_runs_v2 SET data=? WHERE id=?').run(JSON.stringify(old),old.id);
+  f.restart();assert.equal((await f.runtime.send(f.projectId,input)).run.id,sent.run.id);assert.equal((await f.runtime.send(f.projectId,{...input,locale:'zh-Hans'})).run.id,sent.run.id);assert.equal(f.requests.length,1);
+});
+test('history byte trimming keeps the exact host language and final user message without inheriting an earlier locale',async t=>{
+  const f=await fixture(t);f.setScript(async function*(){yield {type:'done',output:output('responses',[],'x'.repeat(50000))};});
+  for(let index=0;index<4;index++){const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'previous '+index+' '+('x'.repeat(28000)),expectedSettingsRevision:(await f.settings.get()).revision,locale:'en'});await f.settle(sent.run.id);}
+  const text='現在の指示',sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await f.settings.get()).revision,locale:'ja'});await f.settle(sent.run.id);
+  const context=f.runtime.journal.run(sent.run.id).context!;assert.deepEqual(context[0],taskResponseLanguageContext('ja'));assert.deepEqual(context.at(-1),{role:'user',content:text});assert.ok(Buffer.byteLength(JSON.stringify(context))<=TASK_MODEL_LIMITS.historyBytes);assert.ok(context.length<10);assert.equal(taskResponseLocale(context),'ja');
+});
+test('resuming a legacy model intent sends its original journaled body without rewriting language',async t=>{
+  const f=await fixture(t),settings=await f.settings.get(),context=[{role:'user',content:'legacy request'}];
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'legacy request',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+  const body=object(JSON.parse(buildTaskModelRequest(settings.configuration,context,[],4318)));body.instructions='旧版固定中文指令';const original=JSON.stringify(body);
+  const step=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body:original,history:context},data:{baseline:[]}});
+  f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.run.status,'interrupted');assert.equal(interrupted.steps[0]!.status,'intent');
+  await f.action(interrupted,'resume');const done=await f.settle(created.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,1);assert.equal(f.requests[0]!.body,original);assert.equal(object(f.runtime.journal.step(step.id).request).body,original);
+});
 for(const protocol of ['chat_completions','responses'] as const){
  test(`${protocol}: a trusted DNS denial records prevented dispatch and never becomes an unknown model result`,async t=>{
   const f=await fixture(t,protocol),transport=syntheticDeniedTransport('198.18.10.207');f.setScript(async function*(_index,request){yield*transport.gateway(request);});
@@ -318,8 +394,8 @@ test('a background approval cannot cross an ABA before submit; resume cancels th
  const worker=startWorker(f.store,f.services,providers);try{
   await worker.tick();const waiting=f.runtime.get(f.projectId,sent.run.id),step=waiting.steps.find(item=>item.approvalRequired);assert.ok(step);await f.action(waiting,'approve',{stepId:step.id});await Promise.race([entered.promise,delay(10000,undefined,{ref:false}).then(()=>{throw Error('Synthetic provider did not reach before-submit barrier');})]);
   await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'manual after approval'}});await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:f.first.prompt}});release.resolve();
-  await worker.tick();const paused=await f.wait(sent.run.id,['paused']);assert.equal(paused.run.pauseReason,'conflict');assert.equal(posts,0);assert.equal(f.requests.length,2);assert.equal(object(f.store.get('jobs',jobId)).status,'queued');
-  await f.action(paused,'resume');const replanned=await f.settle(sent.run.id);assert.equal(replanned.run.status,'completed');assert.equal(replanned.backgroundPending,false);assert.equal(f.requests.length,3);assert.equal(object(f.store.get('jobs',jobId)).status,'cancelled');assert.equal(f.store.list('jobs',f.projectId).length,1);await worker.tick();assert.equal(posts,0);
+  await worker.tick();const paused=await f.wait(sent.run.id,['paused']);assert.equal(paused.run.pauseReason,'conflict');assert.equal(posts,0);assert.equal(f.requests.length,2);assert.equal(object(f.store.get('jobs',jobId)).status,'queued');const marked=paused.steps.find(item=>item.id===step.id);assert.equal(marked?.status,'completed');assert.equal(marked?.display?.conflict,true);assert.equal(marked?.data,undefined);assert.equal(f.runtime.journal.step(step.id).display,undefined);
+  await f.action(paused,'resume');const replanned=await f.settle(sent.run.id);assert.equal(replanned.run.status,'completed');assert.equal(replanned.backgroundPending,false);assert.ok(replanned.steps.every(item=>item.display?.conflict===undefined));assert.equal(f.requests.length,3);assert.equal(object(f.store.get('jobs',jobId)).status,'cancelled');assert.equal(f.store.list('jobs',f.projectId).length,1);await worker.tick();assert.equal(posts,0);
  }finally{release.resolve();await worker.stop();}
 });
 for(const externalAba of [false,true])test(`persisted compensation chain ${externalAba?'cannot cross an external ABA':'continues adjacent AI changes after restart'}`,async t=>{
