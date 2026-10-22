@@ -15,6 +15,7 @@ import {WORKSPACE_TOOLS_CHANNEL,workspaceInfoSchema} from '../../../packages/con
 import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {WORKSPACE_NATIVE_CHANNEL} from '../../../packages/contracts/src/workspace-native.ts';
 import {createWorkspaceNativeHost,readNativeBackendMetadata} from './workspace-native-host.ts';
+import {createProjectFileOpener,uploadProjectFile,projectFileArguments} from './project-file-open.ts';
 import {inspectMediaTools} from '../../../packages/business/src/media-tool-diagnostics.ts';
 import {run as runMedia} from '@mioon/business/media-runtime';
 import path from 'node:path';
@@ -128,6 +129,25 @@ let startupOperation: DesktopStartup | null = null;
 let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectWindowHost | null | undefined, nativeAudioHost: NativeAudioHost | null | undefined, lutRecoveryHost: LutRecoveryHost | null | undefined;
 let workspaceToolsHost: WorkspaceToolsHost | null = null;
 let workspaceNativeHost:WorkspaceNativeHost|null=null;
+const projectFileFailureText={PROJECT_PACKAGE_NOT_MIOON:'native.openProjectFileNotMioon',PROJECT_PACKAGE_NEWER_FORMAT:'native.openProjectFileNewer',PROJECT_PACKAGE_CORRUPT:'native.openProjectFileDamaged',UNAVAILABLE:'native.openProjectFileUnavailable'} as const;
+// Project files opened from the OS wait here until a backend runs; a window then shows the staged preview.
+const projectFiles=createProjectFileOpener({
+  opened:()=>{if(quitCoordinator.state==='idle'&&!restarting)windowHost?.activate(BrowserWindow.getFocusedWindow());},
+  failed:(file,code)=>{
+    const options={type:'warning' as const,message:nt('native.openProjectFileFailed'),detail:nt(projectFileFailureText[code],{name:path.basename(file)}),buttons:[nt('native.acknowledge')]};
+    if(quitCoordinator.state==='idle'&&!restarting)windowHost?.activate(BrowserWindow.getFocusedWindow());
+    // A window-less box runs a modal loop on macOS that stalls the main process
+    // long enough for the backend lease to expire, so it is shown as a sheet.
+    // A window may still be appearing after activate(); wait briefly for one.
+    const show=(attempt:number)=>{
+      const parent=BrowserWindow.getFocusedWindow()??BrowserWindow.getAllWindows().find(window=>!window.isDestroyed()&&window.isVisible());
+      if(parent){void dialog.showMessageBox(parent,options);return;}
+      if(attempt<20){setTimeout(()=>show(attempt+1),250);return;}
+      if(process.platform!=='darwin')void dialog.showMessageBox(options);
+    };
+    show(0);
+  },
+});
 const windowAdmissions = new WeakMap<BrowserWindow, NativeCloseAdmission>();
 const initialWindowLoads = new WeakMap<BrowserWindow, InitialWindowLoad>();
 const cancelledStartupErrors = new WeakSet<Error>();
@@ -297,10 +317,14 @@ async function start(): Promise<DesktopStartReport> {
       readWorkspaceRoot:async()=>workspaceInfoSchema.parse(await nativeRead('/api/workspace-info')).dataDirectory,
       readExport:identity=>nativeRead('/api/rpc',{operation:'export.output.get',input:identity}),
       openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart,
+      chooseSaveFile:async suggestedName=>{const result=await dialog.showSaveDialog({title:nt('native.saveProjectFile'),defaultPath:path.join(app.getPath('documents'),suggestedName),filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}],properties:['showOverwriteConfirmation','createDirectory']});return result.canceled||!result.filePath?null:result.filePath;},
+      fetchProjectPackage:exportId=>{nativeBackendCurrent();return fetch(new URL(`/api/project-packages/exports/${exportId}/download`,started.url),{headers:{authorization:`Bearer ${token}`},redirect:'error',signal:context.startup.signal});},
     });
     activeSession.webRequest.onBeforeSendHeaders((details, callback) => callback(ownedAudioHost.beforeSendHeaders(details)));
     await openWindow(context);
     startup.checkpoint();
+    const uploadOpened=(file:string)=>{nativeBackendCurrent();return uploadProjectFile({base:started.url,token,file,signal:context.startup.signal});};
+    projectFiles.attach(uploadOpened);context.startup.signal.addEventListener('abort',()=>projectFiles.detach(uploadOpened),{once:true});
     return { identity, runtime: started.runtime, tools: tools.versions };
   } catch (error) {
     if(windowContext?.startup===startup)windowContext.appearance?.dispose();
@@ -553,9 +577,13 @@ async function quitFailed(error: unknown): Promise<void> {
 if (startupStorageError) void showStorageStartupFailure(app, dialog, startupStorageError);
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv, workingDirectory) => {
     if (quitCoordinator.state === 'idle' && !restarting) windowHost?.activate(BrowserWindow.getFocusedWindow());
+    projectFiles.add(projectFileArguments(argv, workingDirectory));
   });
+  // macOS delivers double-clicked files here, possibly before ready; Windows and Linux use argv.
+  app.on('open-file', (event, file) => { event.preventDefault(); projectFiles.add([file]); });
+  projectFiles.add(projectFileArguments(process.argv));
   app.on('activate', () => {
     if (!restarting && !quitting && quitCoordinator.state === 'idle' && ownsWindowContext(windowContext)) windowHost?.activate(BrowserWindow.getFocusedWindow());
   });

@@ -1,5 +1,6 @@
 import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
+import { createProjectFileOpener, uploadProjectFile, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
@@ -167,7 +168,7 @@ async function harness(t, options = {}) {
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
-    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost,
+    WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, createProjectFileOpener, uploadProjectFile, projectFileArguments,
     nativeTheme: Object.assign(new EventEmitter(), {shouldUseDarkColors:true}),
     createDesktopWindowAppearance: options => createDesktopWindowAppearance({...options,
       // This lifecycle fixture has no persistent appearance sidecar. Keep the
