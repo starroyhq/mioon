@@ -33,7 +33,17 @@ export function createAgentTaskJournal(store:WorkspaceStore){
  WHEN 'image' THEN COALESCE(i.state,'unknown') NOT IN ('succeeded','failed','cancelled_before_dispatch')
  WHEN 'frame' THEN COALESCE(f.state,'unknown') NOT IN ('succeeded','failed','cancelled_before_start') ELSE 1 END`;
  const hasPendingBackground=(runId:string):boolean=>Boolean(db.prepare(pendingBackgroundSql('?')+' LIMIT 1').get(runId));
- const snapshot=(runId:string):AgentTaskSnapshot=>({backgroundPending:hasPendingBackground(runId),run:run(runId),steps:db.prepare('SELECT data FROM agent_task_steps_v2 WHERE runId=? ORDER BY position').all(runId).map(row=>decode<AgentTaskStep>(row.data)),changes:db.prepare('SELECT data FROM agent_task_changes_v2 WHERE runId=? ORDER BY rowid').all(runId).map(row=>decode<AgentTaskChange>(row.data))});
+ function executionEndedAt(value:AgentTaskRun):string|undefined {
+  if(!['completed','failed','stopped','reverted'].includes(value.status))return;
+  // Undo touches history recency but cannot extend execution time. Read the
+  // latest execution segment's run event directly, beyond the paged event API;
+  // missing terminal evidence must not fall back to an older completed segment.
+  const saved=db.prepare("SELECT json_extract(data,'$.data.id') AS id,json_extract(data,'$.data.projectId') AS projectId,json_extract(data,'$.data.status') AS status,json_extract(data,'$.data.updatedAt') AS updatedAt FROM agent_task_events_v2 WHERE runId=? AND type='run' AND json_extract(data,'$.data.status') IS NOT 'reverted' ORDER BY sequence DESC LIMIT 1").get(value.id);
+  if(!saved||saved.id!==value.id||saved.projectId!==value.projectId||!['completed','failed','stopped'].includes(String(saved.status))||value.status!=='reverted'&&saved.status!==value.status||typeof saved.updatedAt!=='string')return;
+  const end=Date.parse(saved.updatedAt),start=Date.parse(value.createdAt),updated=Date.parse(value.updatedAt);
+  if(Number.isFinite(end)&&Number.isFinite(start)&&Number.isFinite(updated)&&end>=start&&end<=updated&&new Date(end).toISOString()===saved.updatedAt)return saved.updatedAt;
+ }
+ const snapshot=(runId:string):AgentTaskSnapshot=>{const value=run(runId),ended=executionEndedAt(value);return {backgroundPending:hasPendingBackground(runId),run:value,steps:db.prepare('SELECT data FROM agent_task_steps_v2 WHERE runId=? ORDER BY position').all(runId).map(row=>decode<AgentTaskStep>(row.data)),changes:db.prepare('SELECT data FROM agent_task_changes_v2 WHERE runId=? ORDER BY rowid').all(runId).map(row=>decode<AgentTaskChange>(row.data)),...(ended?{executionEndedAt:ended}:{})};};
  const policy=():AgentTaskPolicy=>{const row=db.prepare('SELECT data FROM agent_task_policy_v2 WHERE id=1').get();return row?agentTaskPolicySchema.parse(decode<unknown>(row.data)):structuredClone(DEFAULT_AGENT_TASK_POLICY);};
  function create(input:{requestId:string;projectId:string;conversationId?:string;text:string;configuration:AgentTaskJson;settingsRevision?:number;context?:AgentTaskJson[];attachments?:string[];policy?:AgentTaskPolicy;diagnostic?:AgentTaskDiagnostic}):AgentTaskSnapshot{return transact(()=>{
   const hash=digest({projectId:input.projectId,conversationId:input.conversationId,text:input.text,configuration:input.configuration,settingsRevision:input.settingsRevision,context:input.context,attachments:input.attachments,...(input.diagnostic?{diagnostic:input.diagnostic}:{})});const old=db.prepare('SELECT id,digest FROM agent_task_runs_v2 WHERE requestId=?').get(input.requestId);

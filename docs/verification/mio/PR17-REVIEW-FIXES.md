@@ -59,4 +59,18 @@
 - `stream-note-capacity-final-green.log`：容量相关定向12/12通过；随后只收紧原请求身份和拒绝审计事件断言，两协议2/2再次通过，见 `stream-note-capacity-final-receipt-green.log`。新增验证还覆盖未超限接收、尚无正文时不虚构输出、未知结果明确丢弃后继续；没有将未知回复混入待发送历史。
 - 后续修复定向日志、`related-r3-summary.json`、`related-r3-sourcepins.json`、`related-r3/`、`build-r3-receipt.json`：最终修复及回归记录（验证结束后生成）。
 
+第三轮修复提交 `db85bbf854b1d1da635d8331ba01c8a70534539a` 的37文件回归随后完整结束：798项，796通过、2个同名同错的共有媒体失败，无新增失败；160个PR变更文件无验证副本或工作树指纹漂移。development构建退出0，含三项目严格检查。
+
+## 第四轮：执行用时与后续撤销分离
+
+固定审查 head `db85bbf854b1d1da635d8331ba01c8a70534539a`。Standards 轴 no finding；Spec 轴发现一项 **[P2] 完成后撤销改写执行用时**：面板把 Run 的 `updatedAt` 当作结束时间，但单条撤销合法更新该字段，导致已完成的0秒执行在一小时后撤销变成3600秒。真实领域修改、合成模型和撤销的保护断言修复前失败1/1；证据 `spec-r4-duration-probe.test.ts`、`spec-r4-duration-probe.log`。
+
+修复将执行结束时间作为可选的只读快照投影 `executionEndedAt`，从持久运行状态事件获取，排除之后撤销时间；保留 `updatedAt` 的活动时间与历史排序语义。该值不进入持久 Run 或旧备份，不改变工作区 schema、状态、撤销补偿或审批。没有可靠证据时隐藏时长，不回退到最后修改时间猜测。恢复或后台审批后再次执行时，应使用新的执行终态证据，不把第一次完成固定为永久结束时间。HTTP、客户端与 CLI 继续共用 Snapshot 契约。
+
+本轮还核对了设计5.8中的预期新版本号。当前后台在产物完成时才分配实际版本号，审批仅展示已知参数与“新增版本”，不会预留或猜测编号。此项作为既有设计偏差保留，不将其声称为逐字符合设计，也不为显示一个未来编号改变本阶段的生成副作用边界。
+
+- `standards-r4.md`、`spec-r4.md`：分轴结论、范围与既有限制。
+- `duration-r4-red.log`、`duration-r4-green.log`：新增定向9项，修复前8项失败／1项旧记录对照通过，修复后9/9通过。三项目typecheck及diff检查通过；四相关文件全量与最终整组回归各自保存，不拼接计数。
+- 后续用时修复定向日志、`related-r4-summary.json`、`related-r4-sourcepins.json`、`related-r4/`、`build-r4-receipt.json`：最终修复与回归证据（结束后生成）。
+
 后续独立双轴复审结论在 PR 描述及同一缓存根单独记录，并绑定具体 commit；此处不预写 no finding。原 M0–M4 报告与设计输入不改写；没有新增依赖、修改凭据、真实调用、合入 main 或发布。

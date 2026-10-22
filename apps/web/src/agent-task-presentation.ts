@@ -1,5 +1,5 @@
 import {AGENT_TASK_STEP_STATUSES} from '../../../packages/contracts/src/agent-tasks-v2.ts';
-import type {AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskStep} from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskSnapshot,AgentTaskStep} from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import {catalogs,translate} from '../../../packages/i18n/src/index.ts';
 import type {Locale,MessageKey} from '../../../packages/i18n/src/index.ts';
 import {mioPanelMessages} from '../../../packages/i18n/src/catalogs/mio-panel.ts';
@@ -206,6 +206,11 @@ export function taskStepTitle(step:AgentTaskStep,locale:Locale):string {
 export function taskDurationSeconds(start:string,end:string):number|undefined {
   const first=Date.parse(start),last=Date.parse(end);
   return Number.isFinite(first)&&Number.isFinite(last)&&last>=first?Math.round((last-first)/100)/10:undefined;
+}
+
+export function taskRunDurationSeconds(snapshot:AgentTaskSnapshot):number|undefined {
+  if(!['completed','failed','stopped','reverted'].includes(snapshot.run.status)||snapshot.executionEndedAt===undefined)return;
+  return taskDurationSeconds(snapshot.run.createdAt,snapshot.executionEndedAt);
 }
 
 /** A view-selection key, never visible copy or permission to reconcile work.

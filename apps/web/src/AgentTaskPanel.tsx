@@ -22,7 +22,7 @@ import type {LegacyConversation} from './agent-conversations.ts';
 import AgentRetainedEditing from './AgentRetainedEditing.tsx';
 import Icon from './icons.tsx';
 import { agentTaskErrorKey } from './agent-task-errors.ts';
-import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle } from './agent-task-presentation.ts';
+import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import './agent-task-v2.css';
 
@@ -70,7 +70,6 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const stopInComposer = Boolean(run && (run.status==='accepted'||noteMode&&!state.draft.trim()));
   const model = project?.settings.configuration.model ?? '';
   const latest = steps.filter(step => step.kind === 'model' && modelText(step)).at(-1);
-  const elapsed = run ? taskDurationSeconds(run.createdAt, run.updatedAt) : undefined;
   const configurationKey = project ? JSON.stringify([project.settings.revision, project.settings.configuration, project.authorization.revision]) : '';
   useLayoutEffect(() => { setReview(null); }, [projectId, configurationKey, locale, state.selectionKey]);
   useLayoutEffect(() => { follow.current = true; setFollowing(true); setLegacyError(false); composition.current=false;setComposing(false); }, [state.selectionKey]);
@@ -129,7 +128,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const interrupted=run?.status==='interrupted',recovery=state.snapshot?recoveryFor(state.snapshot):null;
   function renderRound(snapshot:AgentTaskSnapshot){
     const run=snapshot.run,steps=snapshot.steps,changes=snapshot.changes,skipped=run.skippedTargets??[],notes=run.notes??[],unknown=steps.filter(step=>step.status==='unknown');
-    const latest=steps.filter(step=>step.kind==='model'&&modelText(step)).at(-1),elapsed=taskDurationSeconds(run.createdAt,run.updatedAt),canUndo=['completed','failed','stopped'].includes(run.status),backgroundPending=snapshot.backgroundPending===true;
+    const latest=steps.filter(step=>step.kind==='model'&&modelText(step)).at(-1),elapsed=taskRunDurationSeconds(snapshot),canUndo=['completed','failed','stopped'].includes(run.status),backgroundPending=snapshot.backgroundPending===true;
     const approval=steps.filter(step=>step.status==='awaiting_approval'||step.approvalRequired===true),marked=steps.filter(step=>step.display?.conflict===true);
     const conflictSteps=marked.length?marked:[steps.filter(step=>step.kind==='tool'&&['intent','awaiting_approval'].includes(step.status)).at(-1)].filter((step):step is AgentTaskStep=>step!==undefined);
     const act=(action:Parameters<NonNullable<typeof session.current>['action']>[0],extras?:Parameters<NonNullable<typeof session.current>['action']>[1])=>session.current?.action(action,extras,run.id);

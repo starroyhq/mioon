@@ -13,6 +13,51 @@ import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v
 import {classifyWorkspaceSchemaV48V49} from '../packages/business/src/workspace-restore-schema-v49.ts';
 function fixture(){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=openStore(root),projectId=randomUUID();store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
 function start(f:ReturnType<typeof fixture>,stepLimit=30){return f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'测试',configuration:{protocol:'responses'},policy:{...structuredClone(DEFAULT_AGENT_TASK_POLICY),stepLimit}});}
+function reversibleChange(f:ReturnType<typeof fixture>,runId:string){const step=f.journal.beginStep(runId,{kind:'tool'});f.journal.markDispatch(runId,step.id);f.journal.completeStep(runId,step.id,{change:{projectId:f.projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:true}});return f.journal.snapshot(runId).changes[0]!;}
+
+for(const status of ['completed','failed','stopped'] as const)test(`${status} execution end survives later undo, reverted state and restart`,t=>{
+ const beginning=Date.parse('2026-10-23T00:00:00.000Z');t.mock.timers.enable({apis:['Date'],now:beginning});
+ const f=fixture();try{
+  const run=start(f).run,change=reversibleChange(f,run.id);assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+  t.mock.timers.setTime(beginning+2000);const ended=f.journal.transition(run.id,f.journal.run(run.id).revision,status);
+  assert.equal(f.journal.snapshot(run.id).executionEndedAt,ended.updatedAt);
+  t.mock.timers.setTime(beginning+3602000);f.store.tx(()=>f.journal.markChangeRevertedInside(change.id));
+  const undone=f.journal.snapshot(run.id);assert.equal(undone.run.status,status);assert.equal(undone.changes[0]?.status,'reverted');assert.notEqual(undone.run.updatedAt,ended.updatedAt);assert.equal(undone.executionEndedAt,ended.updatedAt);
+  f.journal.transition(run.id,undone.run.revision,'reverted');assert.equal(f.journal.snapshot(run.id).executionEndedAt,ended.updatedAt);
+  f.store.close();const reopened=openStore(f.root);try{const journal=createAgentTaskJournal(reopened);journal.recover();assert.equal(journal.snapshot(run.id).executionEndedAt,ended.updatedAt);}finally{reopened.close();}
+ }finally{f.close();}
+});
+test('execution end reads the durable run timestamp after clock rollback and more than 2000 events',t=>{
+ const beginning=Date.parse('2026-10-23T00:00:00.000Z');t.mock.timers.enable({apis:['Date'],now:beginning});
+ const f=fixture();try{
+  const run=start(f).run;t.mock.timers.setTime(beginning+10000);const step=f.journal.beginStep(run.id,{kind:'model'});f.journal.completeStep(run.id,step.id,{result:{}});
+  f.store.tx(()=>{for(let index=0;index<2001;index++)f.journal.appendEvent(run.id,'text',{stepId:step.id,text:'saved'});});
+  t.mock.timers.setTime(beginning+2000);const ended=f.journal.transition(run.id,f.journal.run(run.id).revision,'completed');
+  assert.equal(f.journal.events(run.id).length,2000);assert.equal(ended.updatedAt,new Date(beginning+10000).toISOString());
+  const last=f.store.db.prepare("SELECT data FROM agent_task_events_v2 WHERE runId=? AND type='run' ORDER BY sequence DESC LIMIT 1").get(run.id)!;
+  assert.equal(JSON.parse(String(last.data)).createdAt,new Date(beginning+2000).toISOString());assert.equal(f.journal.snapshot(run.id).executionEndedAt,ended.updatedAt);
+ }finally{f.close();}
+});
+test('execution end follows the last execution segment and does not reuse earlier terminal evidence',t=>{
+ const beginning=Date.parse('2026-10-23T00:00:00.000Z');t.mock.timers.enable({apis:['Date'],now:beginning});
+ const f=fixture();try{
+  const run=start(f).run,change=reversibleChange(f,run.id),stepId=change.stepId;
+  f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('image',randomUUID(),run.id,stepId,f.projectId,stepId,'image.generate');
+  t.mock.timers.setTime(beginning+2000);const first=f.journal.transition(run.id,f.journal.run(run.id).revision,'completed');assert.equal(f.journal.snapshot(run.id).executionEndedAt,first.updatedAt);
+  t.mock.timers.setTime(beginning+4000);f.journal.transition(run.id,first.revision,'paused','user');f.journal.resume(run.id,f.journal.run(run.id).revision);assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+  t.mock.timers.setTime(beginning+6000);const last=f.journal.transition(run.id,f.journal.run(run.id).revision,'completed');assert.notEqual(last.updatedAt,first.updatedAt);assert.equal(f.journal.snapshot(run.id).executionEndedAt,last.updatedAt);
+  f.journal.transition(run.id,last.revision,'paused','user');f.journal.resume(run.id,f.journal.run(run.id).revision);
+  const current=f.journal.run(run.id);f.store.db.prepare('UPDATE agent_task_runs_v2 SET status=?,data=? WHERE id=?').run('completed',JSON.stringify({...current,status:'completed'}),run.id);
+  f.journal.appendEvent(run.id,'run',{id:run.id,projectId:f.projectId,status:'completed'});assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+ }finally{f.close();}
+});
+test('legacy terminal runs without execution timestamps do not invent an end from current metadata',()=>{
+ const f=fixture();try{
+  const run=start(f).run;f.store.db.prepare('UPDATE agent_task_runs_v2 SET status=?,data=? WHERE id=?').run('completed',JSON.stringify({...run,status:'completed'}),run.id);
+  assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+  f.journal.appendEvent(run.id,'run',{id:run.id,projectId:f.projectId,status:'completed',updatedAt:'invalid'});assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+ }finally{f.close();}
+});
 test('v2 requests and controls replay original receipt without repeating state changes',()=>{const f=fixture();try{const first=start(f),input={requestId:randomUUID(),runId:first.run.id,expectedRevision:1,action:'pause'};let calls=0;const result=f.journal.performControl(input,()=>{calls++;return {status:f.journal.transition(first.run.id,1,'paused').status};});assert.equal(result.revision,2);assert.deepEqual(f.journal.performControl(input,()=>{calls++;return null;}),result);assert.equal(calls,1);assert.throws(()=>f.journal.performControl({...input,action:'stop'},()=>null),{code:'AGENT_TASK_REQUEST_CONFLICT'});assert.equal(f.journal.lookupRequest(f.projectId,first.run.requestId)?.run.id,first.run.id);}finally{f.close();}});
 test('v2 budget is cumulative and an explicitly resumed round does not repeat completed steps',()=>{const f=fixture();try{const run=start(f,2).run;for(let i=0;i<2;i++){const step=f.journal.beginStep(run.id,{kind:'model',request:{i}});f.journal.completeStep(run.id,step.id,{result:{i}});}assert.throws(()=>f.journal.beginStep(run.id,{kind:'model'}),{code:'AGENT_TASK_BUDGET_EXHAUSTED'});let current=f.journal.run(run.id);current=f.journal.transition(run.id,current.revision,'paused','budget');current=f.journal.resume(run.id,current.revision,{extendBudget:true});assert.equal(current.budget,4);assert.equal(current.stepsUsed,2);assert.equal(f.journal.snapshot(run.id).steps.length,2);}finally{f.close();}});
 test('approval resume preserves an exhausted budget and finishes only the existing counted intent',()=>{

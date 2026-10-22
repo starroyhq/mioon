@@ -32,6 +32,8 @@ The CLI is a local HTTP client for the **same running backend and database** use
 
 `status`、`lookup` 和控制回执返回的公开快照可包含 Step / Change 的 `display` 安全投影；原始 before/after 与补偿数据不因此开放。新版 CLI 与 HTTP 共用 contracts，独立旧版严格客户端需同步升级。内置 Mio 的 `_mio_step` 说明仅存在于模型工具包装，不是 CLI/MCP 业务参数。
 
+终态快照的可选 `executionEndedAt` 是执行结束时间的只读投影；后续撤销的 `run.updatedAt` 仍表示最后更新时间，不能当作执行用时的终点。旧记录没有可靠终态证据时省略该字段；CLI 不推算或补写它。
+
 对话首次发送省略 `conversationId`，由服务端生成并在 `snapshot.run.conversationId` 返回；后续轮次显式传回。不存在、跨项目或诊断身份会被拒绝。省略该参数始终表示新对话，不再把同项目其他对话的最近执行加入上下文。发送 requestId 的重放必须保留原来的对话参数，不能改为另一对话或改变省略状态。响应丢失仍只调用原 `agent task lookup`，不能通过新建对话重发。
 
 `agent task history` 返回标题、更新时间、最后一轮状态、变化条数及轮次数，`cursor` 只用于原项目。`agent task conversation` 的成员 cursor 同时绑定项目与对话，不能跨对话复用。旧 v2 执行各自作为单轮对话；v1 仍按原只读接口读取。诊断运行不进入列表、历史或普通对话上下文，其原始审计记录仍能按 runId／requestId 查询。

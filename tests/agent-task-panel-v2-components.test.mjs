@@ -77,6 +77,16 @@ test('undo controls allow only safely finished runs and remain disabled through 
 });
 
 const renderedText=value=>Array.isArray(value)?value.map(renderedText).join(' '):typeof value==='string'||typeof value==='number'?String(value):value&&typeof value==='object'?renderedText(value.props?.children):'';
+test('finished rounds show the saved execution duration rather than a later undo timestamp, and hide legacy unknown durations',()=>{
+  for(const status of ['completed','failed','stopped','reverted']){
+    const h=harness({status});try{
+      Object.assign(h.state.snapshot.run,{createdAt:'2026-10-23T00:00:00.000Z',updatedAt:'2026-10-23T01:00:00.000Z'});
+      h.state.snapshot.executionEndedAt='2026-10-23T00:00:02.000Z';
+      let text=renderedText(h.render()[0]);assert.ok(text.includes(translate('zh-Hans','agent.panel.elapsed',{seconds:2})),status);assert.ok(!text.includes(translate('zh-Hans','agent.panel.elapsed',{seconds:3600})),status);
+      delete h.state.snapshot.executionEndedAt;text=renderedText(h.render()[0]);assert.ok(!text.includes(translate('zh-Hans','agent.panel.elapsed',{seconds:3600})),`${status}: missing execution evidence must not use updatedAt`);
+    }finally{h.unmount();}
+  }
+});
 test('Mio renders safe change projections and natural step titles without raw badges or arguments',()=>{
   const change={id:'change',operation:'timeline.clip.update',summary:'DO_NOT_SHOW_MODEL_SUMMARY',targets:[{kind:'timeline_clip',id:stepId}],before:{private:'DO_NOT_SHOW_RAW_SNAPSHOT'},after:null,reversible:true,status:'applied',display:{operation:'timeline.clip.update',targets:[{kind:'timeline_clip',id:stepId,name:'sound-bed.wav'}],targetCount:1,fields:[{targetIndex:0,property:'gainDb',unit:'db',before:0,after:-8}]}};
   for(const locale of ['zh-Hans','zh-Hant','en','ja']){

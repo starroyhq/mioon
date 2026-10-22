@@ -56,15 +56,18 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  assert.equal((await f.request(f.prefix,'POST',input)).status,409);assert.equal(f.models,0);
  await f.authorize();const sent=await f.request(f.prefix,'POST',input);assert.equal(sent.status,200);const accepted=sent.data as AgentTaskSnapshot;
  const ended=await f.settle(accepted.run.id);assert.equal(ended.run.status,'completed');assert.equal(ended.changes.length,1);assert.equal(f.models,2);
+ assert.ok(ended.executionEndedAt);assert.equal(Object.hasOwn(ended.run,'executionEndedAt'),false);
  assert.ok(ended.steps.every(step=>step.request===undefined&&step.data===undefined));assert.equal(ended.changes[0]!.before,null);assert.equal(ended.changes[0]!.after,null);assert.equal(ended.changes[0]!.undo,undefined);
  assert.ok(agentTaskSnapshotSchema.safeParse(ended).success);const display=ended.changes[0]!.display;assert.ok(display);assert.equal(display.operation,'shot.create');assert.equal(display.targets[0]?.name,'HTTP 创建的镜头');assert.equal(display.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.equal(display.fields.find(field=>field.property==='aspectRatio')?.after,'16:9');
  const cli=await cliSnapshot(f.server.url,f.server.token,f.projectId,ended.run.id);assert.deepEqual(cli.changes[0]?.display,display);assert.equal(cli.changes[0]?.before,null);assert.equal(cli.changes[0]?.after,null);assert.equal(cli.changes[0]?.undo,undefined);
+ assert.equal(cli.executionEndedAt,ended.executionEndedAt);
  assert.equal((await f.request(f.prefix,'POST',input)).status,200);assert.equal(f.models,2);
  const lookup=await f.request(`${f.prefix}/requests/${input.requestId}`);assert.ok(object(lookup.data)&&lookup.data.found===true);
  const controller=new AbortController();const stream=await fetch(`${f.server.url}${f.prefix}/${ended.run.id}/events?after=0`,{headers:{Authorization:`Bearer ${f.server.token}`},signal:controller.signal});
  assert.equal(stream.status,200);const reader=stream.body!.getReader(),frame=await reader.read();assert.equal(frame.done,false);assert.match(new TextDecoder().decode(frame.value),/event: changed/u);controller.abort();await reader.cancel().catch(()=>{});
  const undo={requestId:randomUUID(),expectedRevision:ended.run.revision,action:'undo_all'};
  const reverted=await f.request(`${f.prefix}/${ended.run.id}/actions`,'POST',undo);assert.equal(reverted.status,200);assert.equal((reverted.data as AgentTaskSnapshot).run.status,'reverted');
+ assert.equal((reverted.data as AgentTaskSnapshot).executionEndedAt,ended.executionEndedAt);
  assert.equal((await f.request(`${f.prefix}/${ended.run.id}/actions`,'POST',undo)).status,200);
  const receipt=await f.request(`${f.prefix}/${ended.run.id}/actions/${undo.requestId}`);assert.ok(object(receipt.data)&&receipt.data.found===true);
  assert.equal(f.models,2);
