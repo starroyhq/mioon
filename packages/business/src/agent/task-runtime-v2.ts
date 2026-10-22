@@ -112,6 +112,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     for(const target of targets)if(!known.some(item=>item.kind===target.kind&&item.id===target.id))known.push(target);
     journal.updateStep(runId,stepId,{targets:known,data:{...(record(current.data)?current.data:{}),conflictTargets:json(targets)}});
   }
+  function unresolvedConflict(step:AgentTaskStep):boolean {
+    return step.kind==='tool'&&record(step.data)&&Array.isArray(step.data.conflictTargets)&&step.data.conflictTargets.length>0&&(step.status==='intent'||step.status==='awaiting_approval'||step.status==='completed'&&step.data.backgroundInvalidated===true);
+  }
   const removeGate=readOnly?()=>{}:setAgentTaskEffectGate(store.db,binding=>{
     mutable();const step=journal.step(binding.stepId);
     if(record(step.data)&&step.data.backgroundDenied===true)throw agentTaskFailure('AGENT_TASK_STOPPED');
@@ -376,12 +379,18 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         }else throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
       }else if(request.action==='resume'||request.action==='skip'){
         authorize(run);const conflict=run.pauseReason==='conflict'||run.pauseReason==='editing';
+        // Recovery acknowledges interruption, never the old conflict's plan.
+        // Older runtimes saved only restart, so also inspect unresolved evidence.
+        if(request.action==='resume'&&run.status==='interrupted'&&(conflict||journal.snapshot(runId).steps.some(unresolvedConflict))){
+          journal.resume(runId,run.revision,{extendBudget:false});
+          changeStatus(runId,'paused',conflict?run.pauseReason:'conflict');return null;
+        }
         if(request.action==='resume'&&conflict)throw agentTaskFailure('AGENT_TASK_SKIP_REQUIRED');
         if(request.action==='skip'&&(run.status!=='paused'||!conflict))throw agentTaskFailure('AGENT_TASK_INVALID');
         let skipped:AgentTaskTarget[]=[];
         if(request.action==='skip'){
           const steps=journal.snapshot(runId).steps;
-          const actual=steps.filter(step=>step.kind==='tool'&&record(step.data)&&Array.isArray(step.data.conflictTargets)&&(step.status==='intent'||step.status==='awaiting_approval'||step.status==='completed'&&step.data.backgroundInvalidated===true)).flatMap(step=>(step.data as unknown as {conflictTargets:AgentTaskTarget[]}).conflictTargets.map(target=>({stepId:step.id,target})));
+          const actual=steps.filter(unresolvedConflict).flatMap(step=>(step.data as unknown as {conflictTargets:AgentTaskTarget[]}).conflictTargets.map(target=>({stepId:step.id,target})));
           skipped=journal.skipTargetsInside(runId,actual).map(item=>item.target);
           const background=steps.filter(step=>step.status==='completed'&&record(step.data)&&(step.data.backgroundApprovalRequired===true||step.data.backgroundInvalidated===true)&&referencedTargets(step).some(target=>skipped.some(item=>item.kind===target.kind&&item.id===target.id)));
           for(const step of background){journal.updateStep(runId,step.id,{data:{...(record(step.data)?step.data:{}),backgroundApprovalRequired:false,backgroundInvalidated:false,backgroundDenied:true}});cancelBackgroundSteps.push(step.id);}
@@ -404,7 +413,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(request.action==='stop')active.get(runId)?.controller.abort();
     if(request.action==='stop'||request.action==='undo_all'&&journal.run(runId).status==='reverted')await stopAgentTaskJobs(store.db,runId);
     for(const stepId of cancelBackgroundSteps)await stopAgentTaskJobs(store.db,runId,stepId);
-    if(request.action==='resume'||request.action==='skip'||request.action==='approve')resumeAgentTaskJobs(store.db,runId);
+    if((request.action==='resume'||request.action==='skip'||request.action==='approve')&&journal.run(runId).status==='running')resumeAgentTaskJobs(store.db,runId);
     if(journal.run(runId).status==='running')launch(runId);return safeSnapshot(journal.snapshot(runId),store);
     }catch(error){
       const failure=code(error);
