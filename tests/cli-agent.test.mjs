@@ -93,8 +93,8 @@ test('task JSON locale selects response language independently of CLI presentati
 
 test('all task control aliases use one action endpoint and preserve CAS',async t=>{
  const f=await fixture(t,(_req,res)=>reply(res,snapshot('paused',2)));
- const aliases={pause:'pause',resume:'resume',stop:'stop',approve:'approve',deny:'deny','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'};
- for(const [commandName,action] of Object.entries(aliases)){const input={projectId,runId,requestId,expectedRevision:1,stepId,changeId,...(commandName==='resolve-unknown'?{resolution:'discard'}:{})};const result=await command(['agent','task',commandName,'--input',JSON.stringify(input)],{base:f.base}).result;assert.equal(result.code,0);assert.equal(f.calls.at(-1).body.action,action);assert.equal(f.calls.at(-1).body.expectedRevision,1);}
+ const aliases={pause:'pause',resume:'resume',stop:'stop',approve:'approve',deny:'deny',skip:'skip',note:'note','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'};
+ for(const [commandName,action] of Object.entries(aliases)){const input={projectId,runId,requestId,expectedRevision:1,...(commandName==='note'?{text:'Additional local instruction'}:{stepId,changeId}),...(commandName==='resolve-unknown'?{resolution:'discard'}:{})};const result=await command(['agent','task',commandName,'--input',JSON.stringify(input)],{base:f.base}).result;assert.equal(result.code,0);assert.equal(f.calls.at(-1).body.action,action);assert.equal(f.calls.at(-1).body.expectedRevision,1);}
  assert.ok(f.calls.every(call=>call.url===`/api/agent/tasks/v2/${projectId}/${runId}/actions`));
 });
 

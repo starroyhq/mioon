@@ -1,3 +1,4 @@
+import {validateWorkspaceSchema56} from './workspace-schema-v56.ts';
 import {validateWorkspaceSchema54} from './workspace-schema-v54.ts';
 import {createHash} from 'node:crypto';
 import {isProxy} from 'node:util/types';
@@ -53,7 +54,7 @@ export function createTaskDispositionServices(store:Store,{ownsLock,isReadOnly,s
     if(signal?.aborted || write && (isReadOnly() || !ownsLock()))fail('TASK_DISPOSITION_UNAVAILABLE');
     const tables=db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' AND name IN ('task_dispositions','task_disposition_requests')").all();
     if(tables.length!==2)fail('TASK_DISPOSITION_UNAVAILABLE');
-    if(write){try{if(readCurrentWorkspaceRole(db)==='ordinary-54')validateWorkspaceSchema54(db);else if(readCurrentWorkspaceRole(db)==='ordinary-52')validateWorkspaceSchema52(db);else validateWorkspaceSchema50(db);}catch{fail('TASK_DISPOSITION_UNAVAILABLE');}}
+    if(write){try{if(readCurrentWorkspaceRole(db)==='ordinary-56')validateWorkspaceSchema56(db);else if(readCurrentWorkspaceRole(db)==='ordinary-54')validateWorkspaceSchema54(db);else if(readCurrentWorkspaceRole(db)==='ordinary-52')validateWorkspaceSchema52(db);else validateWorkspaceSchema50(db);}catch{fail('TASK_DISPOSITION_UNAVAILABLE');}}
   }
   function project(projectId:string):void {
     const row=db.prepare(`SELECT id,CASE WHEN length(CAST(data AS BLOB))<=1048576 AND json_valid(data) THEN json_extract(data,'$.id') END AS bodyId FROM projects WHERE id=?`).get(projectId);

@@ -20,7 +20,7 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   const module={exports:{}};let options;
   const previous=globalThis.document;globalThis.document={visibilityState:'visible',addEventListener(){},removeEventListener(){}};
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,id=>{
-    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>true};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:value=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},action:(...args)=>calls.push(args),send:async()=>{calls.push(['send']);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async value=>{calls.push(['authorizeAndSend',value]);return true;},edit:value=>{state.draft=value;calls.push(['edit',value]);},removeUpload:id=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args)=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
+    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>true};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:value=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},action:(...args)=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async value=>{calls.push(['authorizeAndSend',value]);return true;},edit:value=>{state.draft=value;calls.push(['edit',value]);},removeUpload:id=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args)=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
   const render=()=>{cursor=0;pending=[];tree=module.exports.default({projectId,onSettings(page){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn();}return nodes(tree);};render();
@@ -66,7 +66,7 @@ test('an already accepted generation with renewed approval requirement renders t
 });
 test('unfinished background work blocks another send while retaining pause/stop controls and read-only history selection',()=>{
   const h=harness({backgroundPending:true});try{h.render();assert.ok(h.find('agent-task-background-pending'));assert.ok(h.find('agent-task-pause'));assert.ok(h.find('agent-task-stop'));assert.equal(h.find('agent-task-send').props.disabled,true);assert.equal(h.find('agent-task-new-conversation').props.disabled,true);const upload=h.find('agent-task-upload');assert.equal(upload.type,'input');assert.equal(upload.props.type,'file');assert.equal(upload.props.disabled,false);}finally{h.unmount();}
-  const restored=harness({readOnly:true});try{const tree=restored.render();assert.ok(restored.find('agent-task-read-only'));const history=tree.find(node=>node.type==='conversation-history');assert.equal(history.props.disabled,false);assert.equal(restored.find('agent-task-send'),undefined);assert.equal(restored.find('agent-task-stop').props.disabled,true);assert.equal(restored.find('agent-task-upload'),undefined);}finally{restored.unmount();}
+  const restored=harness({readOnly:true});try{restored.state.draft='';const tree=restored.render();assert.ok(restored.find('agent-task-read-only'));const history=tree.find(node=>node.type==='conversation-history');assert.equal(history.props.disabled,false);assert.equal(restored.find('agent-task-send'),undefined);assert.equal(restored.find('agent-task-stop').props.disabled,true);assert.equal(restored.find('agent-task-upload'),undefined);}finally{restored.unmount();}
 });
 
 test('undo controls allow only safely finished runs and remain disabled through pause, approval and interruption',async()=>{
@@ -97,14 +97,14 @@ test('first send opens a reviewed modal, cancel preserves the draft, and confirm
     assert.equal(h.calls.length,1);assert.equal(h.calls[0][0],'authorizeAndSend');assert.equal(h.calls[0][1].text,'next task');assert.equal(h.calls[0][1].model,'current-model');assert.equal(form.props.value,'next task');
   }finally{h.unmount();}
 });
-test('Enter sends once, Shift+Enter and IME keep editing, while running has a single stop action',async()=>{
+test('Enter sends once and Shift+Enter and IME keep editing while running has one composer action',async()=>{
   const h=harness({status:'completed'});try{
     h.render();const field=h.find('agent-task-draft'),prevented=[];
     for(const patch of [{shiftKey:true},{composing:true},{keyCode:229}])field.props.onKeyDown({key:'Enter',shiftKey:false,keyCode:13,nativeEvent:{isComposing:patch.composing??false},preventDefault(){prevented.push(1);},...patch});
     assert.equal(h.calls.length,0);assert.equal(prevented.length,0);
     field.props.onKeyDown({key:'Enter',shiftKey:false,keyCode:13,nativeEvent:{isComposing:false},preventDefault(){prevented.push(1);}});h.render().find(node=>node.type==='form').props.onSubmit({preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(h.calls,[['send']]);assert.equal(prevented.length,1);
   }finally{h.unmount();}
-  const active=harness({status:'running'});try{const tree=active.render();assert.equal(tree.filter(node=>node.props?.['data-testid']==='agent-task-stop').length,1);assert.equal(active.find('agent-task-send'),undefined);active.find('agent-task-stop').props.onClick();assert.deepEqual(active.calls,[['stop',{},'run']]);}finally{active.unmount();}
+  const active=harness({status:'running'});try{let tree=active.render();assert.equal(active.find('agent-task-stop'),undefined);assert.equal(active.find('agent-task-send').props['aria-label'],translate('zh-Hans','agent.panel.sendNote'));active.state.draft='';tree=active.render();assert.equal(tree.filter(node=>node.props?.['data-testid']==='agent-task-stop').length,1);assert.equal(active.find('agent-task-send'),undefined);active.find('agent-task-stop').props.onClick();assert.deepEqual(active.calls,[['stop',{},'run']]);}finally{active.unmount();}
 });
 test('the header opens the conversation overlay and selects a conversation through its read-only session route',()=>{
   const h=harness({status:'completed'});try{h.render();h.find('agent-task-history-open').props.onClick();const tree=h.render(),history=tree.find(node=>node.type==='conversation-history');assert.equal(history.props.open,true);assert.deepEqual(history.props.conversations,h.state.history.conversations);history.props.onSelect('run');assert.deepEqual(h.calls,[['history'],['selectConversation','run']]);assert.ok(!h.calls.some(call=>call[0]==='send'));}finally{h.unmount();}
@@ -126,6 +126,29 @@ test('failure settings links route by stable error code and unknown diagnostics 
 test('conflict pause shows only the exact safe planned values and server-projected current values',()=>{
   const h=harness({status:'paused'});try{h.state.snapshot.run.pauseReason='conflict';const step=h.state.snapshot.steps[0];step.status='intent';step.approvalRequired=false;step.display={operation:'timeline.clip.update',targets:[{kind:'timeline_clip',id:stepId,name:'opening.mp4'}],targetCount:1,fields:[{targetIndex:0,property:'durationFrames',unit:'frames',after:60,current:90}]};h.render();const card=renderedText(h.find('agent-task-paused'));assert.ok(card.includes('opening.mp4'));assert.ok(card.includes(translate('zh-Hans','agent.panel.yourChanges')));assert.ok(card.includes('90'));assert.ok(card.includes(translate('zh-Hans','agent.panel.originalPlan')));assert.ok(card.includes('60'));assert.ok(!card.includes(stepId));}finally{h.unmount();}
   const missing=harness({status:'paused'});try{missing.state.snapshot.run.pauseReason='conflict';missing.render();assert.ok(!renderedText(missing.find('agent-task-paused')).includes(translate('zh-Hans','agent.panel.yourChanges')));}finally{missing.unmount();}
+});
+
+test('conflict comparison shares target, current and planned rows before its explanation in all four languages',()=>{
+  const content={
+    'zh-Hans':['A/B 对比：雨后的城市，保留左/右机位的长镜头','慢慢推进，让街道的反光进入画面'],
+    'zh-Hant':['A/B 對比：雨後的城市，保留左/右機位的長鏡頭','慢慢推進，讓街道的反光進入畫面'],
+    en:['A/B comparison: a long uninterrupted left/right view of the city after rain','Move slowly closer so that the reflections on the street enter the frame'],
+    ja:['A/B 比較：雨上がりの街を左/右から捉えた長いカットを保つ','ゆっくり近づいて道路に映る光が画面に入るようにする'],
+  };
+  for(const locale of Object.keys(content)){
+    const h=harness({status:'paused',locale});try{
+      h.state.snapshot.run.pauseReason='conflict';const step=h.state.snapshot.steps[0];step.status='intent';step.approvalRequired=false;
+      step.display={operation:'shot.update',targets:[{kind:'shot',id:stepId,name:'左/右机位'}],targetCount:1,fields:[{targetIndex:0,property:'description',unit:'text',current:content[locale][0],after:content[locale][1]}]};
+      h.render();const card=h.find('agent-task-paused'),comparison=h.find('agent-task-conflict-values');
+      assert.equal(comparison.type,'dl');assert.equal(nodes(comparison).filter(node=>node.type==='dl').length,1);
+      assert.deepEqual(nodes(comparison).filter(node=>node.type==='dt').map(renderedText),['agent.panel.conflictTarget','agent.panel.yourChanges','agent.panel.originalPlan'].map(key=>translate(locale,key)));
+      assert.ok(renderedText(comparison).includes('左/右机位'));for(const value of content[locale])assert.ok(renderedText(comparison).includes(value));
+      assert.ok(!renderedText(comparison).includes(stepId));
+      const children=card.props.children.flat(Infinity).filter(Boolean),index=children.indexOf(comparison);
+      assert.ok(index>0);assert.equal(children[index+1].type,'p');assert.equal(renderedText(children[index+1]),translate(locale,'agent.panel.conflictBody'));assert.equal(children[index+2].props.className,'mio-card-actions');
+      step.display.fields=[];h.render();assert.equal(nodes(h.find('agent-task-conflict-values')).filter(node=>node.type==='dt').length,1,'Missing current and planned evidence must not create guessed values');
+    }finally{h.unmount();}
+  }
 });
 
 test('background conflicts use the host-marked completed step rather than guessing from later completed tools',()=>{
@@ -156,4 +179,63 @@ test('selecting legacy history keeps the project recovery owner mounted without 
     assert.equal(owner.props.hidden,true);assert.equal(owner.props.inert,true);assert.equal(h.find('agent-task-read-only'),undefined);assert.equal(h.find('agent-task-empty'),undefined);
     assert.equal(h.find('agent-task-draft').props.disabled,true);assert.equal(h.find('agent-task-send').props.disabled,true);
   }finally{h.unmount();}
+});
+
+test('active round text sends only a note in all three allowed states, and only the running tag offers pause',async()=>{
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'])for(const status of ['running','awaiting_approval','paused']){
+    const h=harness({locale,status});try{
+      h.render();const field=h.find('agent-task-draft'),button=h.find('agent-task-send');assert.equal(field.props.placeholder,translate(locale,status==='paused'?'agent.panel.pausedNoteDraft':'agent.panel.noteDraft'));assert.equal(button.props['aria-label'],translate(locale,'agent.panel.sendNote'));assert.equal(button.props.disabled,false);
+      assert.equal(Boolean(h.find('agent-task-pause')),status==='running');assert.equal(h.find('agent-task-attach').props.disabled,true);assert.equal(h.find('agent-task-upload').props.disabled,true);
+      field.props.onKeyDown({key:'Enter',shiftKey:false,keyCode:13,nativeEvent:{isComposing:false},preventDefault(){}});h.render().find(node=>node.type==='form').props.onSubmit({preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(h.calls,[['note']]);
+      h.state.draft='';h.render();assert.equal(h.find('agent-task-send'),undefined);assert.ok(h.find('agent-task-stop'));
+    }finally{h.unmount();}
+  }
+});
+
+test('the note composer updates after status changes without consuming the draft or its attachments',async()=>{
+  const h=harness({status:'running'});try{
+    const upload={id:'saved-file',name:'next.mp4',status:'staged',mimeType:'video/mp4'};h.state.uploads=[upload];h.render();assert.equal(h.find('agent-task-draft').props.placeholder,translate('zh-Hans','agent.panel.noteDraft'));assert.ok(renderedText(h.render()[0]).includes(translate('zh-Hans','agent.panel.attachNextRound')));
+    h.state.snapshot.run.status='paused';h.render();assert.equal(h.find('agent-task-draft').props.placeholder,translate('zh-Hans','agent.panel.pausedNoteDraft'));
+    h.state.snapshot.run.status='completed';h.render();assert.equal(h.find('agent-task-draft').props.placeholder,translate('zh-Hans','agent.panel.continuedraft'));assert.equal(h.find('agent-task-send').props['aria-label'],translate('zh-Hans','agent.task.send'));assert.equal(h.find('agent-task-upload').props.disabled,false);
+    assert.equal(h.state.draft,'next task');assert.deepEqual(h.state.uploads,[upload]);h.state.unknownOutcome=true;h.render();assert.equal(h.find('agent-task-draft').props.disabled,true);assert.equal(h.find('agent-task-send').props.disabled,true);assert.equal(h.find('agent-task-draft').props.placeholder,translate('zh-Hans','agent.panel.blockedDraft'));
+  }finally{h.unmount();}
+});
+
+test('five pending notes show a translated queue notice and block another submit without clearing the draft',async()=>{
+  for(const locale of ['zh-Hans','zh-Hant','en','ja']){
+    const h=harness({status:'running',locale});try{
+      h.state.snapshot.run.notes=Array.from({length:5},(_,index)=>({requestId:`note-${index}`,text:`An instruction ${index}`,createdAt:'2026-10-22T00:00:00.000Z'}));h.render();assert.equal(h.find('agent-task-send').props.disabled,true);assert.equal(renderedText(h.find('agent-task-note-limit')),translate(locale,'agent.task.error.noteLimit'));
+      h.render().find(node=>node.type==='form').props.onSubmit({preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));assert.equal(h.calls.length,0);assert.equal(h.state.draft,'next task');
+      h.state.snapshot.run.notes[0].modelStepId='next-model';h.render();assert.equal(h.find('agent-task-note-limit'),undefined);assert.equal(h.find('agent-task-send').props.disabled,false);
+    }finally{h.unmount();}
+  }
+});
+
+test('round notes appear as labelled user messages on their model boundary rather than leaking into another round',()=>{
+  for(const locale of ['zh-Hans','zh-Hant','en','ja']){
+    const h=harness({status:'running',locale});try{
+      const snapshot=h.state.snapshot;snapshot.steps=[{id:'model-one',kind:'model',position:1,status:'completed',text:'The first response'},{id:'model-two',kind:'model',position:3,status:'completed',text:'The response after the saved instruction'}];snapshot.run.notes=[{requestId:'bound-note',text:'Keep the A/B subtitle',modelStepId:'model-two',createdAt:'2026-10-22T00:00:00.000Z'},{requestId:'pending-note',text:'Use the left/right angle next',createdAt:'2026-10-22T00:00:01.000Z'}];
+      const old={run:{...snapshot.run,id:'previous-round',status:'completed',notes:undefined},steps:[],changes:[]};h.state.rounds=[old,snapshot];h.render();const rounds=h.render().filter(node=>node.props?.['data-testid']==='agent-task-round');assert.equal(nodes(rounds[0]).filter(node=>node.props?.['data-testid']==='agent-task-note').length,0);
+      const entries=nodes(rounds[1]),messages=entries.filter(node=>node.props?.['data-testid']==='agent-task-note');assert.equal(messages.length,2);for(const entry of messages){assert.match(entry.props.className,/is-user/u);assert.ok(renderedText(entry).includes(translate(locale,'agent.panel.note')));}
+      const reply=entries.findIndex(node=>node.props?.['data-testid']==='agent-task-reply');assert.ok(entries.indexOf(messages[0])<reply);assert.ok(entries.indexOf(messages[1])>reply);assert.ok(!renderedText(rounds[1]).includes('pending-note'));assert.ok(!renderedText(rounds[1]).includes('model-two'));
+    }finally{h.unmount();}
+  }
+});
+
+test('target conflict offers exact-run skip and stop while an ordinary pause still resumes',()=>{
+  for(const reason of ['conflict','editing','user']){
+    const h=harness({status:'paused'});try{
+      h.state.snapshot.run.pauseReason=reason;h.render();const skip=['conflict','editing'].includes(reason);assert.equal(renderedText(h.find('agent-task-resume')),translate('zh-Hans',skip?'agent.panel.skipContinue':'agent.task.resume'));h.find('agent-task-resume').props.onClick();assert.deepEqual(h.calls[0],[skip?'skip':'resume',undefined,'run']);h.find('agent-task-stop').props.onClick();assert.deepEqual(h.calls[1],['stop',undefined,'run']);
+    }finally{h.unmount();}
+  }
+});
+
+test('skipped rows come only from the skip list, expose actual current values and do not become undoable changes',()=>{
+  for(const locale of ['zh-Hans','zh-Hant','en','ja']){
+    const h=harness({status:'completed',locale});try{
+      const step=h.state.snapshot.steps[0];step.approvalRequired=false;step.status='rejected';step.display={operation:'timeline.clip.update',targets:[{kind:'timeline_clip',id:stepId,name:'clips/a.mp4'}],targetCount:1,fields:[{targetIndex:0,property:'gainDb',unit:'db',after:-20,current:-8}]};h.state.snapshot.run.skippedTargets=[{stepId:step.id,target:{kind:'timeline_clip',id:stepId,revision:4},createdAt:'2026-10-22T00:00:00.000Z'}];h.render();let row=h.find('agent-task-skipped'),text=renderedText(row);assert.ok(text.includes('a.mp4'));assert.ok(!text.includes('clips/'));assert.ok(text.includes('-8.0 dB'));assert.ok(!text.includes('-20'));assert.equal(nodes(row).some(node=>node.type==='button'),false);assert.equal(h.find('agent-task-undo-all').props.disabled,true);assert.ok(renderedText(h.render()[0]).includes(translate(locale,'agent.panel.roundChanges',{count:0})));assert.equal(h.state.snapshot.changes.length,0);assert.ok(!text.includes(stepId));
+      delete step.display.fields[0].current;h.render();row=h.find('agent-task-skipped');text=renderedText(row);assert.ok(!text.includes('-20'));assert.ok(!text.includes(translate(locale,'agent.panel.retainedValue',{value:''})));
+      h.state.snapshot.run.skippedTargets=[];h.render();assert.equal(h.find('agent-task-skipped'),undefined);
+    }finally{h.unmount();}
+  }
 });

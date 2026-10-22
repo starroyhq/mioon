@@ -1,6 +1,9 @@
 import type { MessageCatalog } from '../types.ts';
 
 export const agentTaskErrorMessages = {
+  "agent.task.error.skipRequired": {"zh-Hans": "请先选择跳过冲突的这一处，再继续执行", "zh-Hant": "請先選擇跳過衝突的這一處，再繼續執行", "en": "Choose to skip the conflicting content before continuing", "ja": "競合した箇所をスキップしてから続行してください"},
+  "agent.task.error.noteLimit": {"zh-Hans": "待生效的补充说明已满 5 条，请等待下一步读取后再发送", "zh-Hant": "待生效的補充說明已滿 5 條，請等待下一步讀取後再傳送", "en": "Five instructions are waiting. Send another after the next step reads them", "ja": "未反映の補足指示が 5 件あります。次のステップで読み込まれてから追加してください"},
+  "agent.task.error.targetSkipped": {"zh-Hans": "这一处由用户保留，本轮不要再改", "zh-Hant": "這一處由使用者保留，本輪不要再修改", "en": "The user is keeping this content. Do not change it again in this run.", "ja": "この箇所はユーザーの変更を保持します。このラウンドでは再変更しないでください"},
   "agent.task.error.receipt": {
     "zh-Hans": "无法安全读取或保存本地操作记录，请先核对原执行，不要重复发送",
     "zh-Hant": "無法安全讀取或儲存本機操作紀錄，請先核對原執行，不要重複傳送",

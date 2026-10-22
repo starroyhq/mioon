@@ -52,7 +52,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const evidence=record(noOp.data).executedTargets;assert.ok(Array.isArray(evidence));assert.equal(record(evidence[0]).revision,2);
 });
 
-for(const conflict of ['aba','claim'] as const)test(`approval after target ${conflict} pauses and invalidates the old batch before replanning`,async t=>{
+for(const conflict of ['aba','claim'] as const)test(`approval after target ${conflict} pauses until explicit skip invalidates the old batch before replanning`,async t=>{
  const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
  f.calls([call({shotId:f.shotId,expectedRevision:1,patch:{prompt:'Old approved parameters'}}),call({shotId:f.shotId,expectedRevision:2,patch:{title:'Old second call'}})]);
  const waiting=await f.send(),approval=waiting.steps.find(step=>step.status==='awaiting_approval');assert.ok(approval);assert.equal(waiting.run.status,'awaiting_approval');
@@ -65,8 +65,10 @@ for(const conflict of ['aba','claim'] as const)test(`approval after target ${con
  const paused=f.runtime.get(f.projectId,waiting.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,conflict==='aba'?'conflict':'editing');assert.equal(f.modelRequests,1);
  assert.equal(record(f.store.get('shots',f.shotId)).prompt,'Saved prompt');
  if(conflict==='claim')f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:2,action:'release',targets:[target]});
- await f.action(paused,'resume');await f.runtime.drain();const done=f.runtime.get(f.projectId,waiting.run.id);
+ await assert.rejects(f.action(paused,'resume'),{code:'AGENT_TASK_SKIP_REQUIRED'});assert.equal(f.modelRequests,1);assert.deepEqual(f.runtime.get(f.projectId,waiting.run.id).run.skippedTargets,[]);
+ await f.action(paused,'skip');await f.runtime.drain();const done=f.runtime.get(f.projectId,waiting.run.id);
  assert.equal(done.run.status,'completed');assert.equal(f.modelRequests,2);assert.equal(done.changes.length,0);
+ assert.deepEqual(done.run.skippedTargets?.map(item=>({kind:item.target.kind,id:item.target.id,stepId:item.stepId})),[{kind:'shot',id:f.shotId,stepId:approval.id}]);const skipped=done.steps.find(step=>step.id===approval.id);assert.equal(skipped?.status,'denied');assert.equal(record(record(skipped?.result).error).code,'TARGET_SKIPPED');
  assert.equal(record(f.store.get('shots',f.shotId)).title,'Saved title');assert.equal(record(f.store.get('shots',f.shotId)).prompt,'Saved prompt');
 });
 

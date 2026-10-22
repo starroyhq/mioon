@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
-import {validateWorkspaceSchema54} from '../packages/business/src/workspace-schema-v54.ts';
+import {validateWorkspaceSchema56} from '../packages/business/src/workspace-schema-v56.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from '../packages/business/src/timeline-volume-envelope-admission.ts';
 import {initializeFrozenUpgradeFixtureSchema} from './helpers/opacity-upgrade-fixture.ts';
 import {hash} from '../packages/business/src/services.ts';
@@ -22,7 +22,7 @@ function fixture(t,{seedProject=false}={}){
  if(seedProject){
   store.put('projects',{id,name:'Synthetic ingress',description:'',revision:1});
   store.put('assets',{id,projectId:id,name:'Synthetic audio',mimeType:'audio/wav',duration:2,hasAudio:true,provenance:'user-import',sha256:'a'.repeat(64),relativePath:'media/synthetic.wav',createdAt:'2026-10-15T00:00:00.000Z'});
-  validateWorkspaceSchema54(store.db);
+  validateWorkspaceSchema56(store.db);
  }
  const prepare=(operation,input)=>tasks.prepare({projectId:id,operation,input,origin:'new'});
  const state=()=>({changes:store.db.prepare('SELECT total_changes() AS n').get().n,rows:store.db.prepare('SELECT count(*) AS n FROM edit_tasks').get().n});
@@ -67,7 +67,7 @@ test('typed arrays do not relax unrelated paths, malformed Unicode or the 128-no
  assert.equal(f.state().rows,0);
 });
 
-test('owned ordinary54 coordinator captures both exact points paths and production hashes without dispatch',t=>{
+test('owned ordinary56 coordinator captures both exact points paths and production hashes without dispatch',t=>{
  for(const operation of ['timeline.clip.add','timeline.clip.update']){
   const f=fixture(t,{seedProject:true}),input=operation.endsWith('.add')?add():update(),original=JSON.parse(JSON.stringify(input));
   const saved=f.prepare(operation,input);assert.deepEqual(saved.task.input,original);
@@ -82,7 +82,7 @@ test('owned ordinary54 coordinator captures both exact points paths and producti
   assert.equal(f.state().rows,1);
  }
 });
-test('real live coordinator construction admits validated54 without insertion or dispatch',t=>{
+test('real live coordinator construction admits validated56 without insertion or dispatch',t=>{
  const f=fixture(t,{seedProject:true}),before=f.state();
  assert.doesNotThrow(()=>createEditTasks({store:f.store,services:{call(){throw Error('Must not dispatch.');}}}));
  assert.deepEqual(f.state(),before);

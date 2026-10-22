@@ -48,12 +48,12 @@ test('frozen video jobs survive backup and restore while session keys, encrypted
  await services.drain();services=undefined;await settings.close();settings=undefined;sourceStore.close();sourceStore=undefined;
  const sourceDatabase=await readFile(path.join(source,'workbench.sqlite'));
  for(const secret of [SESSION_KEY,PERSISTENT_KEY,encrypted])assert.equal(sourceDatabase.includes(Buffer.from(secret)),false);
- const created=await createWorkspaceBackup({source,destination:backup});assert.equal(created.integrity,'verified');assert.equal(created.databaseSchemaVersion,54);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
+ const created=await createWorkspaceBackup({source,destination:backup});assert.equal(created.integrity,'verified');assert.equal(created.databaseSchemaVersion,56);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
  const manifest=JSON.parse(await readFile(path.join(backup,'manifest.json'),'utf8')) as {entries:Array<{path:string}>};assert.deepEqual(manifest.entries.map(value=>value.path),['payload/workbench.sqlite']);
  for(const file of await files(backup)){assert.equal(path.relative(backup,file).includes('video-settings'),false);const bytes=await readFile(file);for(const secret of [SESSION_KEY,PERSISTENT_KEY,encrypted])assert.equal(bytes.includes(Buffer.from(secret)),false,`${path.relative(backup,file)} excludes credential material`);}
  assert.deepEqual(await readFile(path.join(backup,'payload/workbench.sqlite')),sourceDatabase);assert.deepEqual(await readFile(path.join(source,'video-settings/settings.json')),privateBytes);
  await restoreWorkspaceBackup({directory:backup,destination});await assert.rejects(access(path.join(destination,'video-settings')));
- restoredStore=openStore(destination);assert.equal(getWorkspaceRestoreContext(restoredStore)?.schemaVersion,55);restoredServices=createServices(restoredStore,new Map());
+ restoredStore=openStore(destination);assert.equal(getWorkspaceRestoreContext(restoredStore)?.schemaVersion,57);restoredServices=createServices(restoredStore,new Map());
  const storedJobs=()=>restoredStore!.db.prepare('SELECT id,data FROM jobs ORDER BY id').all();const before=storedJobs(),changes=restoredStore.db.prepare('SELECT total_changes() AS n').get()!.n;
  for(const [index,job] of jobs.entries()){
   const held=await restoredServices.call('job.get',{jobId:job.id}) as JobRecord;assert.deepEqual(held.snapshot,job.snapshot);

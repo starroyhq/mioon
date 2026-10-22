@@ -1,3 +1,6 @@
+import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+import type {currentOrdinary56Delta as schema56DeltaType} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {errorView} from './helpers/test-error.ts';
@@ -94,7 +97,7 @@ function normalizeStartupTaskObject(row: SchemaObject): SchemaObject {
 function sameOld(db: DatabaseSync,before: Snapshot,{startupMigrations=false}: {startupMigrations?: boolean}={}): void {
  const after=snapshot(db),next=new Map(after.objects.map(value=>[value.name,value]));
  if(startupMigrations){
-  after.objects=withoutReviewedConversationObjects(after.objects);
+  after.objects=withoutReviewedCurrentAgentObjects(after.objects);
   // Validate the independent52 catalog and exact initial target evidence before
   // projecting its additive objects out of the frozen22 comparison.
   const v2Names=new Set(currentOrdinary52Delta.objectNames),v2Objects=after.objects.filter(value=>v2Names.has(value.name));

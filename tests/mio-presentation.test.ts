@@ -47,18 +47,34 @@ test('unsafe or malformed tool explanations fall back without reflecting identit
   assert.equal(taskStepTitle(step({toolCall:{id:'x',name:'mioon_unknown_private_tool',arguments:{secret:'synthetic-only'}}}),'en'),translate('en','agent.display.fallback'));
 });
 
-test('display targets prefer existing project names and never show target identities or locations',()=>{
+test('display target names normalize project content and strip only media path prefixes',()=>{
   const value=display();
   assert.equal(taskDisplayTargets(value,'en',()=> 'Current scene.mp4'),'Clip · Current scene.mp4');
-  assert.equal(taskDisplayTargets(value,'en',()=> 'https://private.example/source'),'Clip · scene-b.mp4');
-  value.targets[0]!.name=first;
-  assert.equal(taskDisplayTargets(value,'en'),'Clip');
+  assert.equal(taskDisplayTargets(value,'en',()=> 'clips/a.mp4'),'Clip · a.mp4');
   value.targets[0]!.name='/Users/private/scene.mp4';
   assert.equal(taskDisplayTargets(value,'en'),'Clip · scene.mp4');
-  value.targets[0]!.name='apiKey: synthetic-only';
-  value.targetCount=3;
-  assert.equal(taskDisplayTargets(value,'en'),'Clip、2 more');
+  value.targets[0]!.name='scene.mp4';value.targetCount=3;
+  assert.equal(taskDisplayTargets(value,'en'),'Clip · scene.mp4、2 more');
   assert.equal(taskDisplayTargets(undefined,'ja'),translate('ja','agent.display.target.unknown'));
+  const cases=[
+    {kind:'timeline_subtitle',operation:'timeline.subtitle.add',name:'A/B 对比：雨后的城市',shown:'A/B 对比：雨后的城市'},
+    {kind:'shot',operation:'shot.create',name:'左/右机位',shown:'左/右机位'},
+    {kind:'timeline_clip',operation:'timeline.clip.add',name:'clips/a.mp4',shown:'a.mp4'},
+    {kind:'asset',operation:'asset.update',name:'clips\\a.mp4',shown:'a.mp4'},
+    {kind:'project',operation:'project.update',name:'项目 A/B \\ 版本',shown:'项目 A/B \\ 版本'},
+  ] as const;
+  for(const locale of LOCALES)for(const item of cases){
+    const projection:AgentTaskDisplay={operation:item.operation,targets:[{kind:item.kind,id:first,name:item.name}],targetCount:1,fields:[]};
+    assert.equal(taskDisplayTargets(projection,locale),`${translate(locale,`agent.display.target.${item.kind}`)} · ${item.shown}`);
+    assert.equal(taskDisplayTargets({...projection,targets:[{kind:item.kind,id:first}]},locale,()=>item.name),taskDisplayTargets(projection,locale));
+    if(['shot.create','timeline.subtitle.add','timeline.clip.add'].includes(item.operation))assert.ok(taskChangeSummary(projection,locale).includes(item.shown));
+  }
+  const project:AgentTaskDisplay={operation:'project.update',targets:[{kind:'project',id:first,name:'  A\u202E/B\n  \\ C  '}],targetCount:1,fields:[]};
+  assert.equal(taskDisplayTargets(project,'en'),'Project · A /B \\ C');
+  for(const name of ['apiKey: synthetic-only',first,'https://example.invalid/own-title']){
+    project.targets[0]!.name=name;assert.equal(taskDisplayTargets(project,'en'),`Project · ${name}`);
+  }
+  project.targets[0]!.name='🌃'.repeat(50);assert.equal(taskDisplayTargets(project,'en'),`Project · ${'🌃'.repeat(40)}`);
 });
 
 test('change values retain before and after units and target association',()=>{

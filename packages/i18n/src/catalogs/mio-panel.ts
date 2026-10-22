@@ -1,6 +1,14 @@
 import type {MessageCatalog} from '../types.ts';
 
 export const mioPanelMessages = {
+  "agent.panel.note": {"zh-Hans": "补充说明", "zh-Hant": "補充說明", "en": "Additional instruction", "ja": "補足指示"},
+  "agent.panel.sendNote": {"zh-Hans": "发送补充说明", "zh-Hant": "傳送補充說明", "en": "Send instruction", "ja": "補足指示を送信"},
+  "agent.panel.noteDraft": {"zh-Hans": "补充说明，下一步生效…", "zh-Hant": "補充說明，下一步生效…", "en": "Add an instruction for the next step…", "ja": "次のステップに向けて補足する…"},
+  "agent.panel.pausedNoteDraft": {"zh-Hans": "补充说明，继续时生效…", "zh-Hant": "補充說明，繼續時生效…", "en": "Add an instruction to use when continuing…", "ja": "再開時に反映する補足を入力…"},
+  "agent.panel.attachNextRound": {"zh-Hans": "附件将在下一轮发送", "zh-Hant": "附件將在下一輪傳送", "en": "Attachments will be sent with the next round", "ja": "添付ファイルは次のラウンドで送信します"},
+  "agent.panel.skipContinue": {"zh-Hans": "跳过这一处并继续", "zh-Hant": "跳過這一處並繼續", "en": "Skip this content and continue", "ja": "この箇所をスキップして続行"},
+  "agent.panel.skippedOperation": {"zh-Hans": "已跳过 · {operation}", "zh-Hant": "已跳過 · {operation}", "en": "Skipped · {operation}", "ja": "スキップ済み · {operation}"},
+  "agent.panel.retainedValue": {"zh-Hans": "保留你的修改：{value}", "zh-Hant": "保留你的修改：{value}", "en": "Keeping your changes: {value}", "ja": "現在の変更を保持：{value}"},
   "agent.panel.newConversation": {
     "zh-Hans": "新对话",
     "zh-Hant": "新對話",
@@ -145,13 +153,14 @@ export const mioPanelMessages = {
     "en": "Paused · You edited the same content",
     "ja": "一時停止 · 同じ箇所が手動で編集されました"
   },
+  "agent.panel.conflictTarget": {"zh-Hans":"目标","zh-Hant":"目標","en":"Target","ja":"対象"},
   "agent.panel.yourChanges": {"zh-Hans":"你的修改","zh-Hant":"你的修改","en":"Your changes","ja":"現在の変更"},
   "agent.panel.originalPlan": {"zh-Hans":"Mio 原计划","zh-Hant":"Mio 原計畫","en":"Mio’s original plan","ja":"Mio の元の計画"},
   "agent.panel.conflictBody": {
-    "zh-Hans": "保存或放弃此处修改后，可以继续执行，让 Mio 重新规划后续步骤",
-    "zh-Hant": "儲存或放棄此處修改後，可以繼續執行，讓 Mio 重新規劃後續步驟",
-    "en": "Save or discard your edits, then continue so Mio can plan the next steps again",
-    "ja": "この編集を保存または破棄すると、Mio が後続のステップを再計画して続行できます"
+    "zh-Hans": "继续后 Mio 跳过这一处，本轮不再修改，接着做后面的步骤",
+    "zh-Hant": "繼續後 Mio 跳過這一處，本輪不再修改，接著完成後面的步驟",
+    "en": "Mio will skip this content for the rest of this round and continue with the remaining steps",
+    "ja": "Mio はこのラウンドでこの箇所を変更せず、残りのステップを続行します"
   },
   "agent.panel.approvalTitle": {
     "zh-Hans": "确认这次操作",

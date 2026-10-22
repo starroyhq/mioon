@@ -30,8 +30,8 @@ function name(value:Value|undefined,kind:string):string|undefined {
   if(!value)return;
   const candidate=kind==='timeline_subtitle'?value.text:kind==='shot'?value.title:value.name??value.label??value.title;
   if(typeof candidate!=='string')return;
-  // Historical media display names may contain a path; keep its file component.
-  return safeText(path.win32.basename(path.posix.basename(candidate)),80);
+  // Only media filenames are paths; slashes in project content stay literal.
+  return safeText(kind==='asset'||kind==='timeline_clip'?path.win32.basename(path.posix.basename(candidate)):candidate,80);
 }
 function target(value:Pick<AgentTaskTarget,'kind'|'id'>,record?:Value):AgentTaskDisplayTarget|undefined {
   if(!uuid.test(value.id))return;

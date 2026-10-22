@@ -21,8 +21,8 @@ const location=/(?:\b(?:https?|file|data):|[A-Za-z]:[\\/]|~\/|(?:^|\s)\/)/iu;
 const controls=/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 const internalId=/\b(?:shot|clip|asset|node|job|task|version|project)[_-][A-Za-z\d_-]{8,}\b/iu;
 
-/** Even locally supplied names are presentation content, never locations or
- * identities. The server projection remains the authority for allowed fields. */
+/** Model explanations and service identifiers remain bounded presentation
+ * values. Authorized project names are normalized separately below. */
 function safeText(value:unknown,limit:number):string|undefined {
   if(typeof value!=='string'||value.length>8192||controls.test(value)||uuid.test(value)||sensitive.test(value)||location.test(value)||internalId.test(value))return;
   const clean=value.replace(/\s+/gu,' ').trim();
@@ -31,15 +31,15 @@ function safeText(value:unknown,limit:number):string|undefined {
 }
 /** Description and subtitle text are authorized project content. Normalize
  * presentation controls without guessing whether their words are secrets. */
-function projectText(value:string):string|undefined {
+function projectText(value:string,limit=240):string|undefined {
   const clean=value.replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e-\u200f\u202a-\u202e\u2066-\u2069]/gu,' ').replace(/\s+/gu,' ').trim();
   if(!clean)return;
-  let bounded='';for(const character of clean){if(bounded.length+character.length>240)break;bounded+=character;}return bounded;
+  let bounded='';for(const character of clean){if(bounded.length+character.length>limit)break;bounded+=character;}return bounded;
 }
-function safeName(value:unknown):string|undefined {
-  if(typeof value!=='string'||/^(?:https?|file|data):/iu.test(value)||value.length>8192)return;
-  const basename=value.split(/[\\/]/u).at(-1);
-  return safeText(basename,80);
+function safeName(value:unknown,kind:string):string|undefined {
+  if(typeof value!=='string')return;
+  const text=kind==='asset'||kind==='timeline_clip'?value.split(/[\\/]/u).at(-1)!:value;
+  return projectText(text,80);
 }
 const operationKeys=new Map<string,OperationKey>(Object.keys(mioPanelMessages)
   .filter(key=>key.startsWith('agent.display.operation.'))
@@ -59,9 +59,11 @@ function targetKind(kind:string,locale:Locale):string {
   return translate(locale,Object.hasOwn(mioPanelMessages,key)?key as TargetKey:'agent.display.target.unknown');
 }
 function targetTitle(target:AgentTaskDisplayTarget,locale:Locale,lookup?:TaskDisplayLookup):string {
-  const kind=targetKind(target.kind,locale);
-  const name=safeName(lookup?.(target.kind,target.id))??safeName(target.name);
-  return name&&name!==kind?`${kind} · ${name}`:kind;
+  return taskTargetTitle(target.kind,target.id,locale,lookup,target.name);
+}
+export function taskTargetTitle(kind:string,id:string,locale:Locale,lookup?:TaskDisplayLookup,fallbackName?:string):string {
+  const label=targetKind(kind,locale),name=safeName(lookup?.(kind,id),kind)??safeName(fallbackName,kind);
+  return name&&name!==label?`${label} · ${name}`:label;
 }
 export function taskDisplayTargets(display:AgentTaskDisplay|undefined,locale:Locale,lookup?:TaskDisplayLookup):string {
   if(!display)return translate(locale,'agent.display.target.unknown');
@@ -164,7 +166,7 @@ export function taskChangeSummary(display:AgentTaskDisplay|undefined,locale:Loca
   if(kind){
     const text=kind==='subtitle'?fields.find(item=>item.field.property==='subtitleText'&&typeof item.field.after==='string'):undefined;
     const target=display.targets.find(item=>item.kind===(kind==='subtitle'?'timeline_subtitle':kind==='clip'?'timeline_clip':'shot'));
-    const name=text&&typeof text.field.after==='string'?projectText(text.field.after):target?safeName(options.lookup?.(target.kind,target.id))??safeName(target.name):undefined;
+    const name=text&&typeof text.field.after==='string'?projectText(text.field.after):target?safeName(options.lookup?.(target.kind,target.id),target.kind)??safeName(target.name,target.kind):undefined;
     creation=name?translate(locale,`agent.display.add.${kind}`,{text:name}):taskOperationTitle(operation,locale);
     if(text)fields=fields.filter(item=>item!==text);
   }

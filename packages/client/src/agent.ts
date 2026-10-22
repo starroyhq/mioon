@@ -6,7 +6,7 @@ import {resolveConnection} from './connection.ts';
 import type {LocalConnection} from './connection.ts';
 import {ClientError,EXIT_CODES,safeValue} from './index.ts';
 import type {ClientOptions} from './index.ts';
-import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
 import {agentAuthorizationSnapshotSchema} from '@mioon/contracts';
 
@@ -34,9 +34,11 @@ export const AGENT_COMMAND_SCHEMAS=Object.freeze({
  'agent.task.upload':uploadInput.omit({dataBase64:true}).partial({name:true,mimeType:true}),'agent.task.upload-lookup':z.object({projectId:id,requestId}).strict(),
  'agent.task.action-lookup':location.extend({requestId}),'agent.task.watch':watchInput,'agent.task.events':watchInput,
 });
-export const AGENT_CONTROL_COMMANDS=Object.freeze({'pause':'pause','resume':'resume','stop':'stop','approve':'approve','deny':'deny','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'} as const);
+export const AGENT_CONTROL_COMMANDS=Object.freeze({'pause':'pause','resume':'resume','stop':'stop','approve':'approve','deny':'deny','skip':'skip','note':'note','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'} as const);
 export type AgentControlCommand=keyof typeof AGENT_CONTROL_COMMANDS;
-export const agentControlInputSchema=agentTaskControlSchema.omit({action:true}).extend({projectId:id}).strict();
+export const agentControlInputSchema=agentTaskControlBaseSchema.extend({projectId:id}).strict();
+export const agentNoteInputSchema=agentTaskNoteControlSchema.omit({action:true}).extend({projectId:id}).strict();
+export const agentControlCommandInputSchema=(command:AgentControlCommand)=>command==='note'?agentNoteInputSchema:agentControlInputSchema;
 export const agentInputSchema=(schema:z.ZodTypeAny):unknown=>zodToJsonSchema(schema,{$refStrategy:'none'});
 const uploadSchema=z.object({id,name:text,mimeType:text,status:z.string().max(80),handle:id.optional()});
 const projectSchema=z.object({version:z.literal(2),instanceId:z.string().min(1).max(200),projectId:id,runs:z.array(agentTaskRunSchema).max(100),policy:agentTaskPolicySchema,settings:agentSettingsSnapshotSchema,authorization:agentAuthorizationSnapshotSchema,readOnly:z.boolean().optional()});
@@ -133,7 +135,7 @@ export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeou
   async lookup(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.task.lookup'],value);const result=parsed(requestLookupSchema,await request(`${projectPath(input.projectId)}/requests/${encodeURIComponent(input.requestId)}`,options));if(result.snapshot){validateSnapshot(result.snapshot,input.projectId);if(result.snapshot.run.requestId!==input.requestId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent request mismatch.');}return result;},
   async upload(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(uploadInput,value),{projectId,...body}=input;return parsed(uploadSchema,await request(`${projectPath(projectId)}/uploads`,{...options,method:'POST',body,validate:value=>parsed(uploadSchema,value),recovery:{operation:'task.upload',projectId,requestId:body.requestId,lookup:'agent task upload-lookup'}}));},
   async uploadLookup(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.task.upload-lookup'],value);return parsed(uploadLookupSchema,await request(`${projectPath(input.projectId)}/uploads/requests/${encodeURIComponent(input.requestId)}`,options));},
-  async action(command:AgentControlCommand,value:unknown,options:AgentRequestOptions={}){if(!Object.hasOwn(AGENT_CONTROL_COMMANDS,command))return invalid();const {projectId,...input}=parseAgentInput(agentControlInputSchema,value);const body=parseAgentInput(agentTaskControlSchema,{...input,action:AGENT_CONTROL_COMMANDS[command]});return validateSnapshot(await request(`${runPath(projectId,input.runId)}/actions`,{...options,method:'POST',body,validate:value=>validateSnapshot(value,projectId,input.runId),recovery:{operation:`task.${command}`,projectId,runId:input.runId,requestId:input.requestId,lookup:'agent task action-lookup'}}),projectId,input.runId);},
+  async action(command:AgentControlCommand,value:unknown,options:AgentRequestOptions={}){if(!Object.hasOwn(AGENT_CONTROL_COMMANDS,command))return invalid();const {projectId,...input}=parseAgentInput(agentControlCommandInputSchema(command),value);const body=parseAgentInput(agentTaskControlSchema,{...input,action:AGENT_CONTROL_COMMANDS[command]});return validateSnapshot(await request(`${runPath(projectId,input.runId)}/actions`,{...options,method:'POST',body,validate:value=>validateSnapshot(value,projectId,input.runId),recovery:{operation:`task.${command}`,projectId,runId:input.runId,requestId:input.requestId,lookup:'agent task action-lookup'}}),projectId,input.runId);},
   async actionLookup(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.task.action-lookup'],value);const result=parsed(actionLookupSchema,await request(`${runPath(input.projectId,input.runId)}/actions/${encodeURIComponent(input.requestId)}`,options));if(result.snapshot)validateSnapshot(result.snapshot,input.projectId,input.runId);if(result.receipt&&(result.receipt.runId!==input.runId||result.receipt.requestId!==input.requestId))throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent action receipt mismatch.');return result;},
   async watch(value:unknown,{signal,timeoutMs=60000,intervalMs=500,onProgress}:AgentWatchOptions={}):Promise<AgentWatchResult>{
    const input=parseAgentInput(watchInput,value);timeout(timeoutMs);if(!Number.isInteger(intervalMs)||intervalMs<20||intervalMs>60000)return invalid();

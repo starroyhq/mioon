@@ -475,7 +475,7 @@ test('background automatic selection retains products but pauses on a saved or d
  f.store.tx(()=>f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-result',f.run.id,step.id,f.projectId,step.id,'generation.submit'));
  const remove=setAgentTaskEffectGate(f.store.db,()=>{});t.after(remove);assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),true);
  f.journal.claim({projectId:f.projectId,ownerId:randomUUID(),targets:[target]});
- assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'paused');assert.equal(f.journal.run(f.run.id).pauseReason,'conflict');assert.ok(f.journal.events(f.run.id).some(event=>event.type==='conflict'));
+ assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'paused');assert.equal(f.journal.run(f.run.id).pauseReason,'editing');assert.ok(f.journal.events(f.run.id).some(event=>event.type==='conflict'));const source=f.journal.step(step.id).data;assert.ok(record(source));assert.deepEqual(source.conflictTargets,[target]);
 });
 for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real runtime ${action} after video claim blocks its synthetic POST`,async t=>{
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let posts=0;
@@ -516,4 +516,11 @@ for(const action of ['send','revoke_task_authority','disable_workspace_live'] as
   if(action==='send'){assert.equal(posts,1);assert.equal(authorization,'Bearer SYNTHETIC_BOUND_VIDEO_KEY');assert.equal(current.status,'running');assert.equal(f.journal.step(accepted.step.id).cost,'submitted');}
   else{assert.equal(posts,0);assert.equal(f.journal.step(accepted.step.id).cost,undefined);if(action==='revoke_task_authority'){assert.equal(current.status,'queued');assert.equal(current.submissionCount,0);}else{assert.equal(current.status,'failed');assert.ok(record(current.error));assert.equal(current.error.code,'LIVE_GENERATION_DISABLED');}}
  }finally{release();await worker.stop();}
+});
+
+test('explicit local task observations retain references without claiming mutation targets',async t=>{
+ const f=await acceptedGeneratedShot(t),job=f.store.list('jobs',f.projectId)[0];assert.ok(record(job)&&typeof job.id==='string');
+ for(const [operation,input] of [['task.wait',{kind:'job',id:job.id}],['task.disposition.list',{targets:[{kind:'generation',taskId:job.id}]}]] as const){const prepared=f.tools.prepare({projectId:f.projectId,operation,input});assert.deepEqual(prepared.targets,[]);assert.deepEqual(prepared.referencedTargets?.map(target=>({kind:target.kind,id:target.id})),[{kind:'job',id:job.id}]);assert.equal(prepared.risk,'read_only');}
+ const seen:{kind:string;id:string}[]=[];assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'version.list',input:{shotId:f.shotId},beforeTargetRead:target=>{seen.push(target);throw Object.assign(Error('target skipped'),{code:'AGENT_TASK_TARGET_SKIPPED'});}}),{code:'AGENT_TASK_TARGET_SKIPPED'});assert.deepEqual(seen,[{kind:'shot',id:f.shotId}]);
+ const missing=randomUUID();assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'version.list',input:{shotId:missing},beforeTargetRead:target=>{assert.equal(target.id,missing);throw Object.assign(Error('target skipped before ownership lookup'),{code:'AGENT_TASK_TARGET_SKIPPED'});}}),{code:'AGENT_TASK_TARGET_SKIPPED'});
 });

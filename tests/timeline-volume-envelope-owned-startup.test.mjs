@@ -9,7 +9,7 @@ import {createServices,hash} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {VOLUME_ENVELOPE_PROFILE,VOLUME_ENVELOPE_LIMITS,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';
 import {hasRequestNotAppliedProof} from '../packages/contracts/src/index.ts';
-import {validateWorkspaceSchema54} from '../packages/business/src/workspace-schema-v54.ts';
+import {validateWorkspaceSchema56} from '../packages/business/src/workspace-schema-v56.ts';
 import {readTimelineVolumeEnvelopeCapability} from '../packages/business/src/timeline-volume-envelope-capability.ts';
 import {readTimelineAudioRoleCapability} from '../packages/business/src/timeline-audio-role-business.ts';
 import {TIMELINE_AUDIO_ROLE_PROFILE} from '../packages/contracts/src/timeline-audio-role.ts';
@@ -27,7 +27,7 @@ async function fixture(t){
  const start=()=>{store=openStore(root);services=createServices(store,new Map());tasks=createEditTasks({store,services,fault:label=>fault(label)});};start();
  const close=async()=>{await tasks.drain();await services.drain();store.close();};
  t.after(async()=>{if(store.db.isOpen)await close();rmSync(root,{recursive:true,force:true});});
- assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:54,profile:'ordinary'});
+ assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:56,profile:'ordinary'});
  const project=await services.call('project.create',{name:'Owned envelope fixture'});
  let timeline=await services.call('timeline.get',{projectId:project.id});
  const f={root,project,get store(){return store;},get services(){return services;},get tasks(){return tasks;},get timeline(){return timeline;},
@@ -46,7 +46,7 @@ async function fixture(t){
 }
 const addInput=(f,asset=f.asset(),fields={})=>f.input({assetId:asset.id,trackId:f.timeline.tracks[0].id,startFrame:0,durationFrames:60,volumeEnvelope:envelope(),...fields});
 
-for(const restored of [false,true])test(`current ${restored?'restored55':'ordinary54'} capability queries validate exact profiles and durable ripple removal stays available`,async t=>{
+for(const restored of [false,true])test(`current ${restored?'restored57':'ordinary56'} capability queries validate exact profiles and durable ripple removal stays available`,async t=>{
  const f=await fixture(t);
  await f.call('timeline.clip.add',addInput(f));
  let context;
@@ -68,7 +68,7 @@ for(const restored of [false,true])test(`current ${restored?'restored55':'ordina
  assert.throws(()=>readTimelineAudioRoleCapability(f.store.db),'a marker chain alone never enables the current audio capability');
 });
 
-for(const kind of ['in','out'])for(const fadeFrames of [15,60])test(`owned ordinary54 ${kind} preset ${fadeFrames}/60 replaces the curve through durable Save, history and reopen`,async t=>{
+for(const kind of ['in','out'])for(const fadeFrames of [15,60])test(`owned ordinary56 ${kind} preset ${fadeFrames}/60 replaces the curve through durable Save, history and reopen`,async t=>{
  const f=await fixture(t),durationFrames=60,gain=.75,fadeInFrames=5,fadeOutFrames=7;
  await f.call('timeline.clip.add',addInput(f,f.asset(),{gain,fadeInFrames,fadeOutFrames}));
  const original=structuredClone(f.timeline.clips[0]),clipId=original.id;
@@ -89,7 +89,7 @@ for(const kind of ['in','out'])for(const fadeFrames of [15,60])test(`owned ordin
   else assert.ok(Math.abs(evaluate.atSample(end-1)-(fadeFrames===durationFrames?1-1/end:1))<1e-14);
  };
  assertSaved(done.result.clips[0]);await f.reopen();assertSaved(f.timeline.clips[0]);
- assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:54,profile:'ordinary'});
+ assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:56,profile:'ordinary'});
  const retained=f.tasks.get({projectId:f.project.id,taskId:saved.task.id});assert.equal(retained.task.acknowledged,true);assert.deepEqual((await f.execute(retained)).result,done.result);
  await f.call('timeline.undo');assert.deepEqual(f.timeline.clips[0],original);
  await f.reopen();assert.deepEqual(f.timeline.clips[0],original);await f.call('timeline.redo');assertSaved(f.timeline.clips[0]);
@@ -102,7 +102,7 @@ for(const spec of [
  {name:'triangle with a shared ramp anchor',durationFrames:90,input:{startFrame:10,endFrame:70,multiplier:.5,attackFrames:20,releaseFrames:40},points:[{frame:10,multiplier:1},{frame:30,multiplier:.5},{frame:70,multiplier:1}],samples:[[0,1],[20,.75],[30,.5],[50,.75]],endpoint:1,last:1},
  {name:'full-range zero-ramp attenuation',durationFrames:60,input:{startFrame:0,endFrame:60,multiplier:.25,attackFrames:0,releaseFrames:0},points:[{frame:0,multiplier:.25},{frame:60,multiplier:.25}],samples:[[0,.25],[30,.25]],endpoint:.25,last:.25},
  {name:'one-frame full-range attack',durationFrames:1,input:{startFrame:0,endFrame:1,multiplier:.25,attackFrames:1,releaseFrames:0},points:[{frame:0,multiplier:1},{frame:1,multiplier:.25}],samples:[[0,1],[.5,.625]],endpoint:.25,last:.25+.75/VOLUME_ENVELOPE_LIMITS.samplesPerFrame},
-])test(`owned ordinary54 manual ducking ${spec.name} saves exact anchors and preserves source identity through history and reopen`,async t=>{
+])test(`owned ordinary56 manual ducking ${spec.name} saves exact anchors and preserves source identity through history and reopen`,async t=>{
  const f=await fixture(t),source=f.asset({provenance:'generated'}),durationFrames=spec.durationFrames;
  const shot=await f.services.call('shot.create',{projectId:f.project.id,title:'Metadata-only generated source'}),jobId=randomUUID(),versionId=randomUUID();
  const sourceSnapshot={projectId:f.project.id,shotId:shot.id,referenceAssetIds:[],referenceAssets:[]};
@@ -111,8 +111,8 @@ for(const spec of [
  await f.call('timeline.clip.add',addInput(f,source,{durationFrames,startFrame:23,sourceInFrame:7,gain:.75,fadeInFrames:durationFrames===1?1:5,fadeOutFrames:durationFrames===1?0:7,
   rect:{x:40,y:80,width:360,height:640},audioRole:'human',colour:null,volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,points:[{frame:0,multiplier:.9},{frame:durationFrames,multiplier:.8}]}}));
  // A complete synthetic generated-reference record exercises all optional
- // source pins; ordinary54 validation precedes genuine owned Save dispatch.
- Object.assign(f.timeline.clips[0],{versionId,shotId:shot.id,jobId});f.store.put('timelines',f.timeline);validateWorkspaceSchema54(f.store.db);
+ // source pins; ordinary56 validation precedes genuine owned Save dispatch.
+ Object.assign(f.timeline.clips[0],{versionId,shotId:shot.id,jobId});f.store.put('timelines',f.timeline);validateWorkspaceSchema56(f.store.db);
  const original=structuredClone(f.timeline.clips[0]),clipId=original.id,outside=f.state().tables;
  const preset=createManualDuckingEnvelope(durationFrames,spec.input),rawInput=Object.fromEntries(Object.entries(spec.input).map(([key,value])=>[key,String(value)]));
  const fromRaw=manualDuckingEnvelopeFromRaw(durationFrames,rawInput),expected={profileId:VOLUME_ENVELOPE_PROFILE,points:spec.points};
@@ -132,12 +132,12 @@ for(const spec of [
  const retained=f.tasks.get({projectId:f.project.id,taskId:prepared.task.id});assert.equal(retained.task.acknowledged,true);assert.deepEqual((await f.execute(retained)).result,done.result);
  await f.call('timeline.undo');assert.deepEqual(f.timeline.clips[0],original);await f.reopen();assert.deepEqual(f.timeline.clips[0],original);
  await f.call('timeline.redo');assertSaved(f.timeline.clips[0]);await f.reopen();assertSaved(f.timeline.clips[0]);
- assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:54,profile:'ordinary'});
+ assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:56,profile:'ordinary'});
  for(const name of ['projects','assets','shots','jobs','versions'])assert.deepEqual(f.state().tables[name],outside[name],`${name} identity and metadata bytes remain unchanged`);
  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(input.requestId).n,1);
 });
 
-test('owned ordinary54 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts',async t=>{
+test('owned ordinary56 starts, durably prepares/applies, replays after Undo and reopens exact envelope receipts',async t=>{
  const f=await fixture(t),input=addInput(f),operation='timeline.clip.add',before=f.state();
  const saved=f.prepare(operation,input);assert.equal(saved.task.digest,hash({operation,input}));assert.deepEqual(saved.task.input,input);
  const after=f.state();for(const name of ['timelines','timeline_history','timeline_history_cursors','timeline_requests'])assert.deepEqual(after.tables[name],before.tables[name]);
@@ -152,7 +152,7 @@ test('owned ordinary54 starts, durably prepares/applies, replays after Undo and 
  await f.call('timeline.redo');assert.deepEqual(f.timeline.clips[0].volumeEnvelope,envelope());
 });
 
-test('owned ordinary54 source replacement, atomic shrink/clear, split and history preserve exact anchors',async t=>{
+test('owned ordinary56 source replacement, atomic shrink/clear, split and history preserve exact anchors',async t=>{
  const f=await fixture(t),a=f.asset(),b=f.asset(),bad=f.asset({hasAudio:false});
  await f.call('timeline.clip.add',addInput(f,a));const clipId=f.timeline.clips[0].id;
  await f.call('timeline.clip.replaceSource',{clipId,assetId:b.id});assert.deepEqual(f.timeline.clips[0].volumeEnvelope,envelope());
@@ -172,14 +172,14 @@ test('owned ordinary54 source replacement, atomic shrink/clear, split and histor
  await f.reopen();assert.equal(f.timeline.clips[0].volumeEnvelope,null);await f.call('timeline.undo');assert.deepEqual(f.timeline.clips[0],original);
 });
 
-test('owned ordinary54 durable invalid source is terminal not_applied with no domain writes',async t=>{
+test('owned ordinary56 durable invalid source is terminal not_applied with no domain writes',async t=>{
  const f=await fixture(t),input=addInput(f,f.asset({hasAudio:false})),saved=f.prepare('timeline.clip.add',input),before=f.state();
  const done=await f.execute(saved);assert.equal(done.task.status,'not_applied');assert.equal(done.task.errorCode,'TIMELINE_VOLUME_ENVELOPE_SOURCE_UNSUPPORTED');
  const after=f.state();for(const name of ['timelines','timeline_history','timeline_history_cursors','timeline_requests'])assert.deepEqual(after.tables[name],before.tables[name]);
  await f.reopen();const retained=f.tasks.get({projectId:f.project.id,taskId:saved.task.id});assert.equal(retained.task.status,'not_applied');assert.equal(retained.task.digest,saved.task.digest);
 });
 
-for(const phase of ['afterClaim','afterBusinessCommit'])test(`owned ordinary54 ${phase} interruption recovers without dispatch and rejects stale instance`,async t=>{
+for(const phase of ['afterClaim','afterBusinessCommit'])test(`owned ordinary56 ${phase} interruption recovers without dispatch and rejects stale instance`,async t=>{
  const f=await fixture(t),input=addInput(f),saved=f.prepare('timeline.clip.add',input);
  f.setFault(label=>{if(label===phase)throw Error('Synthetic coordinator interruption');});
  await assert.rejects(f.execute(saved),code('EDIT_TASK_STORAGE_UNAVAILABLE'));f.setFault(()=>{});await f.reopen();
@@ -193,12 +193,12 @@ for(const phase of ['afterClaim','afterBusinessCommit'])test(`owned ordinary54 $
  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_requests WHERE requestId=?').get(input.requestId).n,1);
 });
 
-test('owned restored55 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch',async t=>{
+test('owned restored57 keeps captured evidence immutable and admits envelope writes only in the current origin/epoch',async t=>{
  const f=await fixture(t),asset=f.asset(),added=await f.call('timeline.clip.add',addInput(f,asset));
  const clipId=f.timeline.clips[0].id,pending=f.prepare('timeline.clip.update',f.input({clipId,patch:{volumeEnvelope:null}}));
  const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-15T00:00:00.000Z'};
- await f.reopen(db=>{assert.equal(installCurrentWorkspaceRestoreSchema(db,metadata).schemaVersion,55);});
- assert.equal(getWorkspaceRestoreContext(f.store).schemaVersion,55);const context={expectedWorkspaceOrigin:metadata.workspaceOrigin},before=f.state();
+ await f.reopen(db=>{assert.equal(installCurrentWorkspaceRestoreSchema(db,metadata).schemaVersion,57);});
+ assert.equal(getWorkspaceRestoreContext(f.store).schemaVersion,57);const context={expectedWorkspaceOrigin:metadata.workspaceOrigin},before=f.state();
  assert.deepEqual(await f.services.call('timeline.clip.add',added.input),added.result);assert.deepEqual(f.state(),before);
  const heldRow=f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(pending.task.id);
  assert.equal(heldRow.executionEpoch,'captured');
@@ -229,7 +229,7 @@ test('owned restored55 keeps captured evidence immutable and admits envelope wri
  assert.deepEqual(await f.services.call('timeline.clip.update',input),done.result,'retained receipt replays read-only without origin');
 });
 
-test('owned ordinary54 durable updates distinguish absent/null/value and retain inherited role/colour fields',async t=>{
+test('owned ordinary56 durable updates distinguish absent/null/value and retain inherited role/colour fields',async t=>{
  const f=await fixture(t),source=f.asset();
  await f.call('timeline.clip.add',{assetId:source.id,trackId:f.timeline.tracks[0].id,startFrame:0,durationFrames:60});
  const clipId=f.timeline.clips[0].id;assert.equal(Object.hasOwn(f.timeline.clips[0],'volumeEnvelope'),false);
@@ -243,7 +243,7 @@ test('owned ordinary54 durable updates distinguish absent/null/value and retain 
  await f.call('timeline.undo');assert.equal(Object.hasOwn(f.timeline.clips[0],'volumeEnvelope'),false);
 });
 
-for(const phase of ['afterClaim','afterBusinessCommit'])test(`owned restored55 current-epoch ${phase} recovery preserves captured holds and rejects stale instances`,async t=>{
+for(const phase of ['afterClaim','afterBusinessCommit'])test(`owned restored57 current-epoch ${phase} recovery preserves captured holds and rejects stale instances`,async t=>{
  const f=await fixture(t);await f.call('timeline.clip.add',addInput(f));const clipId=f.timeline.clips[0].id;
  const captured=f.prepare('timeline.clip.update',f.input({clipId,patch:{gain:.75}}));
  const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-15T00:00:00.000Z'};
@@ -261,11 +261,11 @@ for(const phase of ['afterClaim','afterBusinessCommit'])test(`owned restored55 c
  assert.deepEqual(f.store.db.prepare('SELECT * FROM edit_tasks WHERE id=?').get(captured.task.id),heldRow);assert.deepEqual(f.state().tables.workspace_restore_holds,holds);
 });
 
-for(const restored of [false,true])test(`owned ${restored?'restored55':'ordinary54'} complete envelope budget fails atomically before history/redo/receipt/task writes`,async t=>{
+for(const restored of [false,true])test(`owned ${restored?'restored57':'ordinary56'} complete envelope budget fails atomically before history/redo/receipt/task writes`,async t=>{
  const f=await fixture(t),source=f.asset();await f.call('timeline.clip.add',addInput(f,source));
  await f.call('timeline.clip.update',{clipId:f.timeline.clips[0].id,patch:{gain:.5}});await f.call('timeline.undo');
  // Seed a complete valid boundary-sized synthetic record, not an admission or
- // ownership bypass. Full ordinary54 validation precedes production dispatch.
+ // ownership bypass. Full ordinary56 validation precedes production dispatch.
  const timeline=structuredClone(f.timeline);timeline.revision=9;
  timeline.tracks=Array.from({length:12},(_,i)=>({id:randomUUID(),name:'\x01'.repeat(150),kind:'video',orderIndex:i,hidden:false,muted:false}));
  timeline.clips=Array.from({length:100},(_,i)=>({id:randomUUID(),trackId:timeline.tracks[0].id,assetId:source.id,name:'\x01'.repeat(200),startFrame:i*180,durationFrames:180,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1,fadeInFrames:0,fadeOutFrames:0,colour:null,volumeEnvelope:{profileId:VOLUME_ENVELOPE_PROFILE,points:Array.from({length:16},(_,j)=>({frame:j*12,multiplier:.12345678901234567}))}}));
@@ -273,7 +273,7 @@ for(const restored of [false,true])test(`owned ${restored?'restored55':'ordinary
  let excess=Buffer.byteLength(JSON.stringify(timeline))-262144;assert.ok(excess>20);
  for(const clip of timeline.clips){while(excess>=6&&clip.name.length>1){clip.name=clip.name.slice(1);excess-=6;}if(excess<6)break;}
  if(excess)timeline.tracks[0].name=timeline.tracks[0].name.slice(1)+'a'.repeat(6-excess);
- assert.equal(Buffer.byteLength(JSON.stringify(timeline)),262144);f.store.put('timelines',timeline);validateWorkspaceSchema54(f.store.db);
+ assert.equal(Buffer.byteLength(JSON.stringify(timeline)),262144);f.store.put('timelines',timeline);validateWorkspaceSchema56(f.store.db);
  let context;
  if(restored){const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:'2026-10-15T00:00:00.000Z'};await f.reopen(db=>installCurrentWorkspaceRestoreSchema(db,metadata));context={expectedWorkspaceOrigin:metadata.workspaceOrigin};}
  const input=f.input({expectedRevision:9,trackId:timeline.tracks[0].id,patch:{muted:false}}),before=f.state();

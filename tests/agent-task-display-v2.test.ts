@@ -17,6 +17,22 @@ function change(operation:string,kind:string,before:Record<string,AgentTaskJson>
 function step(name:string,args:AgentTaskJson,target?:{kind:string;id:string}):AgentTaskStep {
   return {id:randomUUID(),runId:randomUUID(),position:2,kind:'tool',status:'awaiting_approval',createdAt:now,updatedAt:now,toolCall:{id:'call_synthetic',name,arguments:args},...(target?{targets:[{...target,revision:1}]}:{})};
 }
+test('display names preserve slashes in project content and shorten only media filenames',()=>{
+  for(const [kind,key,text,expected] of [
+    ['timeline_subtitle','text','A/B 对比：雨后的城市','A/B 对比：雨后的城市'],
+    ['shot','title','左/右机位','左/右机位'],
+    ['project','name','A/B 项目','A/B 项目'],
+    ['timeline_clip','name','clips/a.mp4','a.mp4'],
+    ['asset','name','clips/a.mp4','a.mp4'],
+    ['shot','title','左\\右机位','左\\右机位'],
+    ['timeline_clip','name','clips\\a.mp4','a.mp4'],
+  ] as const){
+    const record={[key]:text},display=projectAgentTaskChangeDisplay(change('other',kind,null,record));
+    assert.equal(display.targets[0]?.name,expected);assert.ok(agentTaskDisplaySchema.safeParse(display).success);
+    const id=randomUUID(),planned=projectAgentTaskStepDisplay(step('other',{}, {kind,id}),()=>record);
+    assert.equal(planned?.targets[0]?.name,expected);assert.ok(agentTaskDisplaySchema.safeParse(planned).success);
+  }
+});
 test('clip display exposes only changed timing, transform, audio values and a basename without mutating retained evidence',()=>{
   const original=change('timeline.clip.update','timeline_clip',{name:'/private/project/source.mp4',durationFrames:90,sourceInFrame:10,startFrame:30,gain:1,fadeInFrames:0,fadeOutFrames:0,rect:{x:0,y:0,width:1080,height:1920},path:'DO_NOT_EXPOSE_SOURCE_PATH',colour:{prompt:'DO_NOT_EXPOSE_COLOUR'}},{name:'/private/project/source.mp4',durationFrames:60,sourceInFrame:20,startFrame:0,gain:0.5,fadeInFrames:5,fadeOutFrames:10,rect:{x:10,y:20,width:720,height:1280},apiKey:'DO_NOT_EXPOSE_CREDENTIAL'}),copy=structuredClone(original);
   const display=projectAgentTaskChangeDisplay(original);assert.ok(agentTaskDisplaySchema.safeParse(display).success);assert.equal(display.targets[0]?.name,'source.mp4');

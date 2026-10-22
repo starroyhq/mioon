@@ -1,3 +1,5 @@
+import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 /** Real owned-process death around the shared shot.update service. These tests
  * prove Node business-receipt recovery, never native GUI lost-ACK coverage. */
@@ -41,7 +43,7 @@ async function fixture(t){
  prepare:value=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:value.draft.baseRevision,baseText:value.draft.baseText,draft:{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw},input:{shotId:value.shotId,expectedRevision:value.draft.baseRevision,requestId:randomUUID(),patch:structuredClone(value.draft.raw)}}),
  read(fn){const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{db.exec('PRAGMA query_only=ON; BEGIN');return fn(db);}finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}},
  snapshot(){return this.read(db=>{
-  const schema=withoutReviewedConversationObjects(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all()),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
+  const schema=withoutReviewedCurrentAgentObjects(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all()),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
   assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
   assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
   assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');

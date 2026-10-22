@@ -1,3 +1,4 @@
+import {reverseReviewedSchema56,reviewedSchema56SourceDeltas} from './helpers/current-schema56-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync, readdirSync} from 'node:fs';
@@ -294,7 +295,7 @@ test('finite54 profile and dispatch inverses recover the unchanged52 integration
   for (const delta of applicable) {
     const entry = Object.entries(integrationSources).find(([, value]) => value.currentPath === delta.path);
     assert.ok(entry, 'every inverse is an already pinned integration source');
-    const [file, reviewed] = entry, source = readFileSync(new URL(delta.path, root), 'utf8');
+    const [file, reviewed] = entry, source = reverseReviewedSchema56(delta.path,readFileSync(new URL(delta.path, root))).toString('utf8');
     const previous = execFileSync('git', ['show', `4355c0746821dad76622b9fdaaed72400bdc5a92:${delta.path}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
     assert.equal(sha256(previous), reviewed.currentSha256, `${file}: existing52 hash remains authoritative`);
     const assertPinned = value => assert.deepEqual(reverseReviewedSchema54(delta.path, Buffer.from(value)), previous);
@@ -318,4 +319,17 @@ test('candidate modules remain absent from production exports, startup, operatio
   const renderer = readFileSync(new URL('packages/business/src/timeline-media.ts', root), 'utf8');
   assert.match(renderer, /import\s*\{getTimelineOpacityRenderBinding\}\s*from\s*'\.\/timeline-opacity-render-binding\.ts'/u, 'the renderer exception uses only a fixed internal binding getter');
   assert.equal(/workspace-opacity|local-drafts-opacity/u.test(renderer), false, 'renderer does not select workspace/draft capabilities');
+});
+
+// Reviewed56 admission must reverse byte-exactly before the frozen52 checks.
+test('finite56 interaction admission inverses preserve exact54 source pins and reject unknown edits',()=>{
+ for(const delta of reviewedSchema56SourceDeltas){
+  const source=readFileSync(new URL(delta.path,root),'utf8');
+  const previous=execFileSync('git',['show',`8da3340ddd8627fc6be46a33eca52cabda6b4ffb:${delta.path}`],{cwd:root,maxBuffer:1024*1024,timeout:5000});
+  assert.deepEqual(reverseReviewedSchema56(delta.path,Buffer.from(source)),previous);
+  for(const inverse of delta.inverse){
+   for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,''),source+'\n// unknown56 addition\n'])
+    assert.throws(()=>reverseReviewedSchema56(delta.path,Buffer.from(changed)),`${delta.path}: finite56 inverse rejects drift`);
+  }
+ }
 });

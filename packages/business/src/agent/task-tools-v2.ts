@@ -8,8 +8,9 @@ import type {WorkspaceStore} from '../db.ts';
 import {registerWorkspaceTransactionObserver,registerWorkspaceTransactionFence} from '../db.ts';
 import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskTargetSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
-import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect} from './task-effects-v2.ts';
+import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskEffectOrigin,TaskChangeInput} from './task-effects-v2.ts';
 
@@ -71,7 +72,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
  return parse(operation as OperationName,source) as Value;
 }
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
-export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];before:Snapshot}
+export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
 export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
@@ -160,12 +161,25 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  const journal=createAgentTaskJournal(store);
  const removeDispatchRecorder=setAgentTaskJobDispatchRecorder(db,binding=>{const step=journal.step(binding.stepId);if(step.cost!=='submitted')journal.updateStep(binding.runId,binding.stepId,{cost:'submitted'});});
  const removeTargetGate=setAgentTaskJobTargetGate(db,(binding,target)=>{
+  let expected:AgentTaskTarget|undefined;
   try{
    assertAgentTaskBindingEffect(db,binding);
-   const expected=journal.step(binding.stepId).targets?.find(item=>item.kind===target.kind&&item.id===target.id);if(!expected)fail('AGENT_TASK_TARGET_CHANGED','后台结果没有此目标的修改权限');journal.assertTargets(binding.projectId,[expected]);return true;
-  }catch{
-   journal.appendEvent(binding.runId,'conflict',{stepId:binding.stepId,targetKind:target.kind,targetId:target.id,automaticSelectionSkipped:true});
-   const run=journal.run(binding.runId);if(run.status==='running')journal.transition(run.id,run.revision,'paused','conflict');return false;
+   expected=journal.step(binding.stepId).targets?.find(item=>item.kind===target.kind&&item.id===target.id);if(!expected)fail('AGENT_TASK_TARGET_CHANGED','后台结果没有此目标的修改权限');journal.assertTargets(binding.projectId,[expected]);return true;
+  }catch(error){
+   const failure=object(error)&&typeof error.code==='string'?error.code:'',targetFailure=failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED';
+   const knownGate=isAgentTaskEffectBlocked(error)&&['AGENT_TASK_TARGET_SKIPPED','AGENT_TASK_STOPPED','AGENT_TASK_PAUSED','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_SETTINGS_CHANGED','AGENT_TASK_APPROVAL_REQUIRED','AGENT_TASK_EFFECT_BLOCKED','AGENT_TASK_ABORTED','ABORT_ERR','AGENT_TASK_CLOSED','AGENT_TASK_READ_ONLY'].includes(failure);
+   if(!targetFailure&&!knownGate)throw error;
+   const run=journal.run(binding.runId),step=journal.step(binding.stepId),data=object(step.data)?step.data:{},sameOrigin=step.runId===run.id&&run.projectId===binding.projectId;
+   const targets=(values:unknown):AgentTaskTarget[]=>Array.isArray(values)?values.flatMap(value=>{const parsed=agentTaskTargetSchema.safeParse(value);return parsed.success?[parsed.data]:[];}):[];
+   const references=[target,...(step.targets??[]),...targets(data.dispatchApprovalTargets)];
+   const skipped=knownGate&&failure==='AGENT_TASK_TARGET_SKIPPED'&&sameOrigin&&references.some(reference=>run.skippedTargets?.some(item=>item.target.kind===reference.kind&&item.target.id===reference.id));
+   const denied=knownGate&&failure==='AGENT_TASK_STOPPED'&&sameOrigin&&data.backgroundDenied===true,handled=skipped||denied;
+   // Gate denial is never permission to select a target. Only actual target
+   // conflicts create a conflict pause; handled selections retain their choice.
+   const actual=targetFailure?(data.backgroundInvalidated===true?targets(data.conflictTargets):journal.conflictingTargets(binding.projectId,expected?[expected]:step.targets??[])):[];
+   if(actual.length)journal.updateStep(binding.runId,step.id,{data:{...data,backgroundInvalidated:true,conflictTargets:json(actual)}});
+   journal.appendEvent(binding.runId,handled?'background_selection_skipped':actual.length?'conflict':'background_selection_blocked',{stepId:binding.stepId,targetKind:target.kind,targetId:target.id,automaticSelectionSkipped:true,reason:handled?(skipped?'target_skipped':'background_denied'):failure});
+   if(!handled&&run.status==='running')journal.transition(run.id,journal.run(run.id).revision,'paused',actual.length?(failure==='AGENT_TASK_TARGET_CLAIMED'?'editing':'conflict'):failure);return false;
   }
  });
  const removeJobOrigins=setAgentTaskJobOriginRunner(db,(binding,callback)=>{
@@ -178,7 +192,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const row=db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(id);if(!row||row.projectId!==projectId)return fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
   const record=store.get(table,id);if(!object(record))return fail('AGENT_TASK_INVALID_TARGET','工具目标无效');return record;
  };
- function prepare({projectId,operation,input}:{projectId:string;operation:string;input:unknown}):PreparedAgentTaskTool{
+ function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
   if(operation==='mioon_node_inspect')operation='node.inspect';
   if(operation==='mioon_edge_inspect')operation='edge.inspect';
   if(operation.startsWith('mioon_'))operation=Object.keys(AGENT_TASK_OPERATION_ADMISSION).find(name=>`mioon_${name.replaceAll('.','_')}`===operation)??(operation==='mioon_task_wait'?'task.wait':operation==='mioon_asset_import_selected'?'asset.importSelected':operation);
@@ -191,21 +205,31 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   // Whether identity exists in the exact input is discovered from the generated
   // schema, while authoritative validation remains the shared runtime schema.
   if(schema){const hydrated=hydrateInput(operation,hostInput,projectId,'00000000-0000-4000-8000-000000000000');hostInput={...hydrated};delete hostInput.requestId;}
+  // A persisted skip is checked from validated explicit identities before
+  // looking up the target. Deleting it must not turn a skip into another read.
+  const reference=(kind:string,value:unknown):void=>{if(typeof value==='string')beforeTargetRead?.({kind,id:value});};
+  for(const [field,kind] of [['shotId','shot'],['targetShotId','shot'],['nodeId','node'],['sourceNodeId','node'],['edgeId','edge'],['jobId','job'],['assetId','asset'],['sourceAssetId','asset'],['versionId','version'],['exportId','export'],['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],['taskId',operation.startsWith('frame.')?'frame_task':'image_task'],['groupId','image_group']] as const)reference(kind,hostInput[field]);
+  for(const field of ['source','target'] as const){reference('node',hostInput[field]);reference('shot',hostInput[field]);}
+  for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(hostInput[field]))for(const value of hostInput[field])reference(field==='shotIds'?'shot':'asset',value);
+  if(operation==='task.wait')reference(hostInput.kind==='image'?'image_task':hostInput.kind==='frame'?'frame_task':String(hostInput.kind),hostInput.id);
+  if(operation==='task.disposition.list'&&Array.isArray(hostInput.targets))for(const target of hostInput.targets)if(object(target))reference(target.kind==='generation'?'job':target.kind==='render'?'export':'edit_task',target.taskId);
   const before=snapshot(store,projectId),targets:AgentTaskTarget[]=[];
   if(risk==='local_reversible'&&operation.startsWith('timeline.')&&!before[key('timeline',projectId)])risk='local_irreversible';
+  const add=(kind:string,id:string):void=>{const target={kind,id,revision:readRevision(store,projectId,kind,id)};if(!targets.some(value=>value.kind===kind&&value.id===id))targets.push(target);};
   if(operation==='task.wait'){
    if(!['job','image','frame','export'].includes(String(hostInput.kind))||typeof hostInput.id!=='string')fail('AGENT_TASK_INVALID_TOOL','等待目标无效');
    const table=hostInput.kind==='job'?'jobs':hostInput.kind==='image'?'image_tasks':hostInput.kind==='frame'?'frame_tasks':'exports';
    const owner=db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(hostInput.id);if(owner?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','等待目标不属于当前项目');
+   add(hostInput.kind==='image'?'image_task':hostInput.kind==='frame'?'frame_task':String(hostInput.kind),hostInput.id);
   }
   if(operation==='task.disposition.list'){
    if(!Array.isArray(hostInput.targets))fail('AGENT_TASK_INVALID_TOOL','任务观察目标无效');
    for(const target of hostInput.targets){if(!object(target)||typeof target.taskId!=='string'||!['generation','render','edit'].includes(String(target.kind)))fail('AGENT_TASK_INVALID_TOOL','任务观察目标无效');
     const table=target.kind==='generation'?'jobs':target.kind==='render'?'exports':'edit_tasks';
     if(db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(target.taskId)?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','观察任务不属于当前项目');
+    add(target.kind==='generation'?'job':target.kind==='render'?'export':'edit_task',target.taskId);
    }
   }
-  const add=(kind:string,id:string):void=>{const target={kind,id,revision:readRevision(store,projectId,kind,id)};if(!targets.some(value=>value.kind===kind&&value.id===id))targets.push(target);};
   for(const [field,table,kind] of [['shotId','shots','shot'],['targetShotId','shots','shot'],['nodeId','nodes','node'],['sourceNodeId','nodes','node'],['edgeId','edges','edge'],['jobId','jobs','job'],['assetId','assets','asset'],['sourceAssetId','assets','asset'],['versionId','versions','version'],['exportId','exports','export']] as const)if(hostInput[field]!==undefined){owned(table,hostInput[field],projectId);add(kind,String(hostInput[field]));}
   for(const field of ['source','target'] as const)if(hostInput[field]!==undefined){const id=String(hostInput[field]);const table=store.get('nodes',id)?'nodes':'shots';owned(table,id,projectId);add(table==='nodes'?'node':'shot',id);}
   for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(hostInput[field]))for(const id of hostInput[field]){owned(field==='shotIds'?'shots':'assets',id,projectId);add(field==='shotIds'?'shot':'asset',String(id));}
@@ -230,7 +254,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   // Observations retain all owner checks above but do not reserve mutation
   // targets. A draft or normal background progress must not block reading the
   // last saved value; write tools still carry their exact revision footprint.
-  return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,before};
+  return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,referencedTargets:targets,before};
  }
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
   const beforeEffect=():void=>{
@@ -294,6 +318,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const operation=({job:'job.get',image:'image.task.get',frame:'frame.task.get',export:'export.get'} as const)[input.kind as 'job'|'image'|'frame'|'export'];
   const table=input.kind==='job'?'jobs':input.kind==='image'?'image_tasks':input.kind==='frame'?'frame_tasks':'exports';
   const owner=db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(input.id);if(owner?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','等待目标不属于当前项目');
+
   const args=input.kind==='job'?{jobId:input.id}:input.kind==='export'?{exportId:input.id}:{projectId,taskId:input.id};
   // These four audited handlers are synchronous local observations. Calling the
   // public async dispatcher is unnecessary during unknown-result resolution.

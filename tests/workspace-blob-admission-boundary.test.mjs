@@ -1,3 +1,5 @@
+import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 // Causal boundary tests only. Existing independent goldens and their six
 // current-open expectations remain untouched. TEXT is a separate initial input
 // dataset; its before snapshot is a preservation oracle, not an independent
@@ -133,8 +135,8 @@ function positiveOrdinary(t, {mockLedger = false, repair} = {}) {
   if (repair) breakMarkers(db, repair);
   db.close(); let store;
   try {
-    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 54, profile: 'ordinary'});
-    const currentObjects = withoutReviewedConversationObjects(snapshot(store.db).objects), current52Names = new Set(currentOrdinary52Delta.objectNames);
+    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 56, profile: 'ordinary'});
+    const currentObjects = withoutReviewedCurrentAgentObjects(snapshot(store.db).objects), current52Names = new Set(currentOrdinary52Delta.objectNames);
     assert.deepEqual(currentObjects.filter(object => current52Names.has(object.name)), currentOrdinary52Delta.objects, 'exact reviewed schema52 catalog additions');
     preserveOriginalRows(store.db, input); assertText(store.db); assert.equal(getWorkspaceRestoreContext(store), null);
     const beforeColdReopen = snapshot(store.db); store.close(); store = openStore(root);
@@ -177,6 +179,6 @@ for (const mockLedger of [false, true]) {
   test(`original golden BLOB restored25${mockLedger ? '-mock' : ''} retains its fixed capture evidence and current admission refuses without writes`, t => negativeBlob(t, {mockLedger, restored: true}));
 }
 for (const repair of ['known-marker-gap', 'initial-markers-absent']) {
-  test(`separate initial TEXT ${repair} admits ordinary54 while preserving original rows and cold reopen`, t => positiveOrdinary(t, {repair}));
+  test(`separate initial TEXT ${repair} admits ordinary56 while preserving original rows and cold reopen`, t => positiveOrdinary(t, {repair}));
   test(`original golden BLOB ${repair} is refused by current admission without snapshot or file-byte changes`, t => negativeBlob(t, {repair}));
 }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {createAgentTaskSession,agentTaskNewConversationBlock} from '../apps/web/src/agent-tasks-v2.ts';
 import type {AgentTaskClient,AgentTaskPending,AgentTaskProjectSnapshot,AgentTaskReceiptStore,AgentTaskSessionState} from '../apps/web/src/agent-tasks-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
-import type {AgentTaskConversation,AgentTaskConversationPage,AgentTaskRun,AgentTaskSnapshot} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskConversation,AgentTaskConversationPage,AgentTaskControlInput,AgentTaskReceipt,AgentTaskRun,AgentTaskSnapshot} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createAgentTaskCloseReporter} from '../apps/web/src/native-close-sources.ts';
 import {createNativeCloseRegistry,createNativeCloseAdmission} from '../apps/web/src/native-close-state.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
@@ -20,6 +20,8 @@ function conversation(rounds:AgentTaskSnapshot[]):AgentTaskConversation {
   return {id:first.conversationId!,projectId,title:first.text,createdAt:first.createdAt,updatedAt:last.updatedAt,lastRunId:last.id,lastRunStatus:last.status,runCount:rounds.length,changeCount:rounds.reduce((sum,item)=>sum+item.changes.length,0)};
 }
 function deferred<T>(){let resolve!:(value:T)=>void,reject!:(reason:unknown)=>void;const promise=new Promise<T>((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};}
+function acceptedNote(before:AgentTaskSnapshot,input:AgentTaskControlInput):AgentTaskSnapshot {assert.equal(input.action,'note');if(input.action!=='note')throw new Error('Not a note');return {...before,run:{...before.run,revision:before.run.revision+1,notes:[...before.run.notes??[],{requestId:input.requestId,text:input.text,createdAt:timestamp(20)}]}};}
+function controlReceipt(input:AgentTaskControlInput,result:AgentTaskReceipt['result']):AgentTaskReceipt{return{requestId:input.requestId,runId:input.runId,action:input.action,revision:input.expectedRevision,result};}
 function file(name:string){const bytes=new ArrayBuffer(3);new Uint8Array(bytes).set([1,2,3]);return {name,type:'video/mp4',size:3,arrayBuffer:async()=>bytes.slice(0)};}
 function fixture(t:TestContext,initial:AgentTaskSnapshot[]=[],patch:Partial<AgentTaskClient>={},options:{pending?:AgentTaskPending;authorized?:boolean;recentRuns?:AgentTaskRun[];onChange?:(state:AgentTaskSessionState)=>void}={}){
   const runs=new Map(initial.map(value=>[value.run.id,structuredClone(value)])),receipts=new Map<string,AgentTaskPending>();
@@ -197,4 +199,60 @@ test('legacy selection is read only and cannot inherit a current conversation dr
   assert.equal(f.session.selectLegacy(id(171)),true);assert.equal(f.session.getState().legacy,true);assert.equal(f.session.getState().draft,'');assert.deepEqual(f.session.getState().uploads,[]);assert.deepEqual(f.session.getState().rounds,[]);
   f.session.edit('Do not write this legacy draft');assert.equal(f.session.getState().draft,'');assert.equal(await f.session.upload(file('legacy.mp4')),false);assert.equal(await f.session.send(),false);assert.equal(f.posts.send.length,0);
   await f.session.selectConversation(conversationA);assert.equal(f.session.getState().legacy,false);assert.equal(f.session.getState().draft,'Current draft');assert.deepEqual(f.session.getState().uploads.map(value=>value.id),[uploadId]);assert.equal(f.posts.upload.length,1);
+});
+
+for(const status of ['running','awaiting_approval','paused'] as const)test(`a ${status} round accepts a note without sending a new round or consuming staged attachments`,async t=>{
+  const a=snapshot(id(180),conversationA,'The active request',1,status,4),f=fixture(t,[a],{action:async(_,input)=>acceptedNote(a,input)});
+  await f.session.load();assert.equal(await f.session.upload(file('next-round.mp4')),true);const uploads=f.session.getState().uploads;
+  f.session.edit('Keep the title A/B, and do not change its timing.');assert.equal(await f.session.note(),true);
+  assert.equal(f.posts.send.length,0);assert.equal(f.posts.action.length,1);const input=f.posts.action[0]!;assert.equal(input.action,'note');assert.equal(input.runId,a.run.id);assert.equal(input.expectedRevision,4);
+  assert.ok(input.requestId.length>=8);assert.equal('text'in input&&input.text,'Keep the title A/B, and do not change its timing.');assert.equal(Object.hasOwn(input,'uploads'),false);assert.equal(Object.hasOwn(input,'conversationId'),false);
+  assert.equal(f.session.getState().conversationId,conversationA);assert.equal(f.session.getState().rounds.length,1);assert.equal(f.session.getState().draft,'');assert.deepEqual(f.session.getState().uploads,uploads);assert.equal(f.session.getState().snapshot?.run.notes?.[0]?.requestId,input.requestId);assert.equal(f.session.getState().pending,null);
+});
+
+for(const editedText of ['A later instruction','The submitted instruction'] as const)test(`note acknowledgement preserves a draft edited while in flight (${editedText})`,async t=>{
+  const a=snapshot(id(181),conversationA,'An active request',1,'running',2),held=deferred<AgentTaskSnapshot>(),f=fixture(t,[a],{action:async()=>held.promise});await f.session.load();f.session.edit('The submitted instruction');
+  const writing=f.session.note();assert.equal(await f.session.note(),false);assert.equal(await f.session.send(),false);assert.equal(await f.session.selectConversation(conversationB),false);assert.equal(f.posts.action.length,1);
+  f.session.edit('Intermediate text');f.session.edit(editedText);held.resolve(acceptedNote(a,f.posts.action[0]!));assert.equal(await writing,true);assert.equal(f.session.getState().draft,editedText);assert.equal(f.posts.send.length,0);assert.equal(f.posts.action.length,1);
+});
+
+test('a lost note response only looks up the original operation, clears the exact draft on evidence and keeps its attachments',async t=>{
+  const a=snapshot(id(182),conversationA,'An active request',1,'running',2);let durable:AgentTaskSnapshot|undefined,receipt:AgentTaskReceipt|undefined,ready=false;
+  const f=fixture(t,[a],{action:async(_,input)=>{durable=acceptedNote(a,input);receipt=controlReceipt(input,{state:'completed',noteRequestId:input.requestId});f.runs.set(a.run.id,durable);throw new Error('Lost acknowledgement');},lookup:async()=>ready?{found:true,snapshot:durable,receipt}:{found:false}});
+  await f.session.load();await f.session.upload(file('keep.mp4'));const uploads=f.session.getState().uploads;f.session.edit('Use two short captions');assert.equal(await f.session.note(),false);const pending=f.session.getState().pending;assert.ok(pending);assert.equal(pending.action,'note');assert.equal(await f.session.reconcile(),false);assert.equal(f.session.getState().draft,'Use two short captions');ready=true;
+  assert.equal(await f.session.reconcile(),true);assert.equal(f.posts.action.length,1);assert.equal(f.posts.send.length,0);assert.deepEqual(f.reads.lookup,[pending,pending]);assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().draft,'');assert.deepEqual(f.session.getState().uploads,uploads);assert.equal(f.session.getState().snapshot?.run.notes?.length,1);
+});
+
+test('a lost note acknowledgement does not consume a later draft while its original receipt is queried',async t=>{
+  const a=snapshot(id(183),conversationA,'An active request',1,'paused',2);let durable:AgentTaskSnapshot|undefined;
+  const f=fixture(t,[a],{action:async(_,input)=>{durable=acceptedNote(a,input);f.runs.set(a.run.id,durable);throw new Error('Lost acknowledgement');},lookup:async()=>({found:true,snapshot:durable})});await f.session.load();f.session.edit('The saved note');assert.equal(await f.session.note(),false);f.session.edit('Another unsent note');assert.equal(await f.session.reconcile(),true);
+  assert.equal(f.session.getState().draft,'Another unsent note');assert.equal(f.session.getState().snapshot?.run.notes?.[0]?.text,'The saved note');assert.equal(f.posts.action.length,1);assert.equal(f.posts.send.length,0);
+});
+
+test('a confirmed note consumes its captured draft even when later conversation refresh fails, and reload only reads',async t=>{
+  const a=snapshot(id(190),conversationA,'An active request',1,'running',2);let durable:AgentTaskSnapshot|undefined,failRead=false;
+  const f=fixture(t,[a],{action:async(_,input)=>{durable=acceptedNote(a,input);f.runs.set(a.run.id,durable);throw new Error('Lost acknowledgement');},lookup:async()=>({found:true,snapshot:durable}),conversation:async()=>{if(failRead)throw new Error('Synthetic conversation read failure');const value=durable??a;return{conversation:conversation([value]),runs:[value.run],nextCursor:null};}});await f.session.load();f.session.edit('Save this instruction once');assert.equal(await f.session.note(),false);failRead=true;assert.equal(await f.session.reconcile(),false);
+  assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().phase,'read_error');assert.equal(f.session.getState().draft,'');failRead=false;await f.session.load();assert.equal(f.session.getState().phase,'ready');assert.equal(f.reads.lookup.length,1);assert.equal(f.posts.action.length,1);assert.equal(f.posts.send.length,0);
+});
+
+test('a rejected note receipt is definitive without a notes entry, preserving its draft, attachments and localized error code',async t=>{
+  const a=snapshot(id(184),conversationA,'An active request',1,'awaiting_approval',2);let receipt:AgentTaskReceipt|undefined;
+  const f=fixture(t,[a],{action:async(_,input)=>{receipt=controlReceipt(input,{state:'rejected',code:'AGENT_TASK_NOTE_LIMIT'});throw Object.assign(new Error('Synthetic queue rejection'),{code:'AGENT_TASK_NOTE_LIMIT',definitive:true});},lookup:async()=>({found:true,snapshot:a,receipt})});await f.session.load();await f.session.upload(file('keep.mp4'));const uploads=f.session.getState().uploads;f.session.edit('Do not lose this rejected instruction');assert.equal(await f.session.note(),false);
+  assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().phase,'ready');assert.equal(f.session.getState().error,'AGENT_TASK_NOTE_LIMIT');assert.equal(f.session.getState().draft,'Do not lose this rejected instruction');assert.deepEqual(f.session.getState().uploads,uploads);assert.equal(f.session.getState().snapshot?.run.notes?.length??0,0);assert.equal(f.reads.lookup.length,1);assert.equal(f.posts.action.length,1);assert.equal(f.posts.send.length,0);
+});
+
+test('a server-completed note race refreshes the original round and only a later explicit send starts another round',async t=>{
+  const a=snapshot(id(185),conversationA,'An active request',1,'running',2),done={...a,run:{...a.run,status:'completed' as const,revision:3}};let receipt:AgentTaskReceipt|undefined;
+  const f=fixture(t,[a],{action:async(_,input)=>{f.runs.set(a.run.id,done);receipt=controlReceipt(input,{state:'rejected',code:'AGENT_TASK_STATE'});throw Object.assign(new Error('Already completed'),{code:'AGENT_TASK_STATE',definitive:true});},lookup:async()=>({found:true,snapshot:done,receipt}),send:async(_,input)=>snapshot(id(186),conversationA,input.text,4)});await f.session.load();f.session.edit('A note submitted at completion');assert.equal(await f.session.note(),false);
+  assert.equal(f.session.getState().snapshot?.run.status,'completed');assert.equal(f.session.getState().draft,'A note submitted at completion');assert.equal(f.session.getState().error,'AGENT_TASK_STATE');assert.equal(f.posts.send.length,0);assert.equal(f.posts.action.length,1);assert.equal(f.session.getState().pending,null);
+  assert.equal(await f.session.send(),true);assert.equal(f.posts.send.length,1);assert.equal(f.posts.send[0]?.conversationId,conversationA);assert.equal(f.posts.send[0]?.text,'A note submitted at completion');assert.notEqual(f.posts.send[0]?.requestId,f.posts.action[0]?.requestId);assert.equal(f.session.getState().rounds.length,2);
+});
+
+test('a note acknowledgement without matching persisted note evidence stays unknown and is never replayed',async t=>{
+  const a=snapshot(id(187),conversationA,'An active request',1,'running',2),f=fixture(t,[a],{action:async()=>a,lookup:async()=>({found:true,snapshot:a})});await f.session.load();f.session.edit('Require durable note evidence');assert.equal(await f.session.note(),false);assert.equal(f.session.getState().phase,'unknown');const pending=f.session.getState().pending;assert.ok(pending);assert.equal(await f.session.reconcile(),false);assert.equal(f.session.getState().draft,'Require durable note evidence');assert.deepEqual(f.session.getState().pending,pending);assert.equal(f.posts.action.length,1);assert.equal(f.posts.send.length,0);
+});
+
+for(const action of ['skip','note'] as const)test(`a restored ${action} receipt is queried once without replaying the control`,async t=>{
+  const a=snapshot(id(188),conversationA,'The original request',1,'running',3),pending:AgentTaskPending={requestId:id(189),runId:a.run.id,action,conversationId:conversationA};if(action==='note')a.run.notes=[{requestId:pending.requestId,text:'A saved instruction',createdAt:timestamp(2)}];
+  const f=fixture(t,[a],{lookup:async()=>({found:true,snapshot:a})},{pending});await f.session.load();assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().phase,'ready');assert.equal(f.reads.lookup.length,1);assert.equal(f.posts.action.length,0);assert.equal(f.posts.send.length,0);assert.equal(f.session.getState().conversationId,conversationA);
 });

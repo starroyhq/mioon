@@ -2,6 +2,7 @@ import type { agentTaskErrorMessages } from '../../../packages/i18n/src/catalogs
 
 type ErrorKey = keyof typeof agentTaskErrorMessages;
 const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
+  AGENT_TASK_SKIP_REQUIRED:'agent.task.error.skipRequired', AGENT_TASK_NOTE_LIMIT:'agent.task.error.noteLimit', TARGET_SKIPPED:'agent.task.error.targetSkipped',
   AGENT_TASK_NOT_FOUND:'agent.task.error.notFound', AGENT_CHAT_NOT_FOUND:'agent.task.error.notFound',
   AGENT_TASK_READ_ONLY:'agent.task.error.readOnly', AGENT_TASK_STOPPED:'agent.task.error.stopped', AGENT_CHAT_ABORTED:'agent.task.error.stopped',
   AGENT_TASK_INVALID:'agent.task.error.validation', AGENT_CHAT_VALIDATION:'agent.task.error.validation',

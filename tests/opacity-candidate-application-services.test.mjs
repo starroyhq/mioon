@@ -80,9 +80,9 @@ test('a pre-aborted application call cannot create a project or initialize a mis
   await assert.rejects(f.services.call('timeline.get',{projectId:project.id},{signal:controller.signal}),code('OPERATION_CANCELLED'));
   assert.deepEqual(f.store.list('projects'),projects);assert.deepEqual(f.store.list('timelines'),timelines);
 });
-test('shared ordinary54 importer retains successful bytes/type rejection and cleanup without candidate grant', async t => {
+test('shared ordinary56 importer retains successful bytes/type rejection and cleanup without candidate grant', async t => {
   const f=fixture(t,{ordinary:true}), project=await f.services.call('project.create',{name:'Ordinary unchanged default'});
-  assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,54);
+  assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,56);
   assert.equal(isOpacityCandidateApplicationStore(f.store),false);
   const imported=await f.services.call('asset.import',importInput(project.id));assert.equal(imported.mimeType,'video/mp4');assert.equal(imported.provenance,'user-import');
   const before=probeCount;

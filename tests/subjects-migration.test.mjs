@@ -1,3 +1,5 @@
+import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
@@ -213,7 +215,7 @@ export async function seedSchema14Fixture(store) {
 // This catalog comes from the independent committed52 delta. Initial target
 // identities and revision1 come only from the original schema14 seed snapshot.
 function assertReviewed52(db,legacyRecords) {
- const names=new Set(currentOrdinary52Delta.objectNames),objects=withoutReviewedConversationObjects(schema(db)),reviewed=objects.filter(value=>names.has(value.name));
+ const names=new Set(currentOrdinary52Delta.objectNames),objects=withoutReviewedCurrentAgentObjects(schema(db)),reviewed=objects.filter(value=>names.has(value.name));
  assert.deepEqual(reviewed.map(value=>({...value})),currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
  assert.equal(reviewed.length,currentOrdinary52Delta.v2Catalog.count);
  assert.equal(createHash('sha256').update(JSON.stringify(reviewed)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');

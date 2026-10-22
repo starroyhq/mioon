@@ -49,14 +49,14 @@ export function installAgentTaskDefinitionsV2(db:DatabaseSync):void{
  const bytes=['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2'].map(table=>`(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM ${table})`).join('+');
  for(const table of quotaTables)for(const event of ['INSERT','UPDATE'])db.exec(`CREATE TRIGGER agent_quota_${table}_${event.toLowerCase()} AFTER ${event} ON ${table} BEGIN SELECT CASE WHEN ${counts}>20000 OR ${bytes}>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END;`);
 }/* installAgentTaskDefinitionsV2 */
-export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false}:{allowConversations?:boolean}={}):void{
+export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false,allowInteractions=false}:{allowConversations?:boolean;allowInteractions?:boolean}={}):void{
  for(const table of ['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2'])if(db.prepare(`SELECT 1 FROM ${table} WHERE NOT json_valid(data) OR length(CAST(data AS BLOB))>2097152 LIMIT 1`).get())throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  const invalid=():never=>{throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});};
  const families=[['agent_task_runs_v2',agentTaskRunSchema],['agent_task_steps_v2',agentTaskStepSchema],['agent_task_changes_v2',agentTaskChangeSchema],['agent_task_events_v2',agentTaskEventSchema],['agent_task_controls_v2',agentTaskReceiptSchema],['agent_task_control_states_v2',agentTaskReceiptSchema],['agent_task_policy_v2',agentTaskPolicySchema]] as const;
  let records=0,bytes=0;
  for(const [table,schema] of families)for(const row of db.prepare(`SELECT *,length(CAST(data AS BLOB)) AS bytes FROM ${table} LIMIT 20001`).iterate()){
   if(++records>20000||(bytes+=Number(row.bytes))>67108864||typeof row.data!=='string')invalid();
-  const parsed=schema.safeParse(JSON.parse(String(row.data)));if(!parsed.success)invalid();const value=parsed.data as unknown as Record<string,unknown>;if(table==='agent_task_runs_v2'&&!allowConversations&&Object.hasOwn(value,'conversationId'))invalid();
+  const parsed=schema.safeParse(JSON.parse(String(row.data)));if(!parsed.success)invalid();const value=parsed.data as unknown as Record<string,unknown>;if(table==='agent_task_runs_v2'&&(!allowConversations&&Object.hasOwn(value,'conversationId')||!allowInteractions&&(Object.hasOwn(value,'notes')||Object.hasOwn(value,'skippedTargets'))))invalid();
   for(const key of ['id','projectId','runId','stepId','status','position','sequence','type','requestId'])if(Object.hasOwn(row,key)&&Object.hasOwn(value,key)&&row[key]!==value[key])invalid();
  }
  if(db.prepare('PRAGMA foreign_key_check').get())invalid();

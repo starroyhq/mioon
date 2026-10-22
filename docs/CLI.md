@@ -23,7 +23,8 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent task status` | `{projectId, runId}`；读取持久快照 |
 | `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?}`；lookup 为 `{projectId, requestId}` |
 | `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
-| `agent task pause/resume/stop/approve/deny` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId |
+| `agent task pause/resume/stop/approve/deny/skip` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId |
+| `agent task note` | `{projectId, runId, requestId, expectedRevision, text}`；运行、等待确认或已暂停时，先持久保存补充说明，下一次新模型请求使用。最多排队 5 条，单条同 send 的 32 KiB UTF-8 上限 |
 | `agent task undo-change/undo-all` | 同一控制身份和 revision；undo-change 另传 `changeId` |
 | `agent task resolve-unknown` | 同一控制身份和 revision，另传 `stepId, resolution`；仅接受服务端已有的 `discard` / `accept_result` 边界 |
 | `agent task action-lookup` | `{projectId, runId, requestId}`；只查询原控制回执 |
@@ -34,6 +35,10 @@ The CLI is a local HTTP client for the **same running backend and database** use
 对话首次发送省略 `conversationId`，由服务端生成并在 `snapshot.run.conversationId` 返回；后续轮次显式传回。不存在、跨项目或诊断身份会被拒绝。省略该参数始终表示新对话，不再把同项目其他对话的最近执行加入上下文。发送 requestId 的重放必须保留原来的对话参数，不能改为另一对话或改变省略状态。响应丢失仍只调用原 `agent task lookup`，不能通过新建对话重发。
 
 `agent task history` 返回标题、更新时间、最后一轮状态、变化条数及轮次数，`cursor` 只用于原项目。`agent task conversation` 的成员 cursor 同时绑定项目与对话，不能跨对话复用。旧 v2 执行各自作为单轮对话；v1 仍按原只读接口读取。诊断运行不进入列表、历史或普通对话上下文，其原始审计记录仍能按 runId／requestId 查询。
+
+`agent task skip` 只用于目标冲突或手动编辑导致的暂停：保留实际冲突目标，本轮之后显式涉及它的工具都返回 `TARGET_SKIPPED`，不产生 Change，也不释放用户草稿。其他目标和新一轮不受跳过名单限制。普通 `resume` 不能绕过此选择，会返回 `AGENT_TASK_SKIP_REQUIRED`；预算和用户暂停仍使用 `resume`。选择 `stop` 不写跳过记录。
+
+补充说明属于当前轮，不创建新轮、不增加步骤。已持久化的模型 intent 和已发出的请求不会被改写；最终回复期间到达的补充说明会在同一 Run 预算内继续下一模型步骤，预算不足时保留排队记录，等待明确继续。结束后再发送应使用同对话的 `send`。note/skip 响应丢失后，只查询原 `agent task action-lookup`；回执中的 `result.state=rejected` 是已确定的拒绝，不能换请求 ID 自动重发。
 
 自然语言命令、`schema agent.task.send` 和 `schema agent task send` 均可查看严格参数；`agent --help` 列出独立目录。help、version、schema 不连接后端。`agent doctor` 的“离线诊断”指不调用模型，仍会读取所选本地服务；没有连接时会报告连接不可用。
 

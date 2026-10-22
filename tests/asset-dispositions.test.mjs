@@ -1,3 +1,5 @@
+import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
@@ -31,7 +33,7 @@ const snapshot=(f,omit=[])=>Object.fromEntries(f.store.db.prepare("SELECT name F
 const changes=f=>f.store.db.prepare('SELECT total_changes() AS n').get().n;
 
 function assertReviewed52Migration(f,before,rawBefore,expectedTargetCount){
- const actual=rawSnapshot(f.store.db);actual.objects=withoutReviewedConversationObjects(actual.objects);const names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter(object=>names.has(object.name));
+ const actual=rawSnapshot(f.store.db);actual.objects=withoutReviewedCurrentAgentObjects(actual.objects);const names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter(object=>names.has(object.name));
  assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
  assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
  assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');

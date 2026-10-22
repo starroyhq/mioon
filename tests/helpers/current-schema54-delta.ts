@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {reverseReviewedSchema56} from './current-schema56-delta.ts';
 
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
 /** Independently reviewed A1 additions. The ordinary52 JSON fixture and its
@@ -154,6 +155,7 @@ export const reviewedSchema54IntegrationSourceDeltas=Object.freeze([
   }
 ]);
 export function reverseReviewedSchema54(path:string,bytes:Uint8Array):Buffer {
+  bytes=reverseReviewedSchema56(path,bytes);
   const delta=[...reviewedSchema54SourceDeltas,...reviewedSchema54IntegrationSourceDeltas].find(item=>item.path===path);
   if(!delta)return Buffer.from(bytes);
   let source=Buffer.from(bytes).toString('utf8');

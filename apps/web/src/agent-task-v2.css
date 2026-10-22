@@ -41,8 +41,11 @@
 .mio-card>.wb-button,.mio-unknown-step>.wb-button,.mio-retained-items .wb-button{height:auto;max-width:100%;min-width:0;padding-block:var(--wb-space-1);white-space:normal;overflow-wrap:anywhere;line-height:1.5}
 .mio-card>header{display:flex;align-items:center;gap:var(--wb-space-2)}
 .mio-card>header strong{font-size:var(--wb-text-label);font-weight:500}
-.mio-conflict-values{display:flex;flex-direction:column;gap:var(--wb-space-2)}
-.mio-conflict-values h4{font-size:var(--wb-text-caption);color:var(--wb-soft);font-weight:500}
+.mio-conflict-values{display:flex;flex-direction:column;gap:var(--wb-space-1);margin:0;padding:var(--wb-space-2);background:var(--wb-input);border-radius:var(--wb-radius-control);min-width:0;font-size:var(--wb-text-caption);line-height:1.6}
+.mio-conflict-values>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:var(--wb-space-2);min-width:0}
+.mio-conflict-values dt{color:var(--wb-soft);overflow-wrap:anywhere}
+.mio-conflict-values dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.mio-conflict-values dd>p{margin:0}
 .mio-card-actions{display:flex;flex-wrap:wrap;gap:var(--wb-space-2)}
 .mio-card-actions>.wb-button{flex:1;white-space:normal;min-width:0;height:auto}
 .mio-parameters{display:flex;flex-direction:column;gap:var(--wb-space-1);padding:var(--wb-space-2);background:var(--wb-input);border-radius:var(--wb-radius-control);margin:0}
@@ -94,7 +97,8 @@
 .mio-history-overlay>header{display:flex;align-items:center;justify-content:space-between;gap:var(--wb-space-1);font-size:var(--wb-text-label)}
 .mio-history-overlay>header strong{font-weight:500}
 .mio-history-search{display:flex;align-items:center;gap:var(--wb-space-1);padding-inline:var(--wb-space-2);border:1px solid var(--wb-line);background:var(--wb-input);border-radius:var(--wb-radius-control);min-width:0}
-.mio-history-search input{min-width:0;width:100%;border:0;background:transparent;box-shadow:none;padding-inline:0;font-size:var(--wb-text-label)}
+.mio-history-search:focus-within{border-color:var(--wb-accent-line);box-shadow:0 0 0 calc(var(--wb-space-1)/2) var(--wb-accent-subtle)}
+.mio-panel .mio-history-search input[data-slot="input"],.mio-panel .mio-history-search input[data-slot="input"]:focus,.mio-panel .mio-history-search input[data-slot="input"]:focus-visible{min-width:0;width:100%;border:0;border-radius:0;background:transparent;box-shadow:none;outline:0;outline-offset:0;padding-inline:0;font-size:var(--wb-text-label)}
 .mio-history-list{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;overflow-wrap:anywhere}
 .mio-history-group{display:flex;flex-direction:column;gap:var(--wb-space-1);margin-top:var(--wb-space-2)}
 .mio-history-group h4{font-size:var(--wb-text-caption);color:var(--wb-soft);font-weight:400;margin:var(--wb-space-1) 0}
@@ -102,6 +106,13 @@
 .mio-history-item[aria-current=page]{background:var(--wb-card)}
 .mio-history-title{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:var(--wb-text-label)}
 .mio-history-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--wb-space-1);min-width:0;color:var(--wb-soft);font-size:var(--wb-text-caption)}
+.mio-history-status{display:inline-flex;align-items:center;gap:var(--wb-space-1)}
+.mio-user-note p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.mio-note-label{display:block;margin-bottom:var(--wb-space-1);color:var(--wb-soft);font-size:var(--wb-text-caption)}
+.mio-skipped{display:flex;align-items:flex-start;gap:var(--wb-space-2);padding:var(--wb-space-2);border-radius:var(--wb-radius-control);background:var(--wb-panel);color:var(--wb-soft);font-size:var(--wb-text-label)}
+.mio-skipped>svg{flex:none;width:var(--wb-space-4);height:var(--wb-space-4)}
+.mio-skipped>div{min-width:0;overflow-wrap:anywhere}
+.mio-skipped p{margin:0;line-height:1.5}
 .mio-history-meta [data-tone=success]{color:var(--wb-success)}
 .mio-history-meta [data-tone=danger]{color:var(--wb-danger)}
 .mio-current-conversation{color:var(--wb-soft);font-size:var(--wb-text-min)}

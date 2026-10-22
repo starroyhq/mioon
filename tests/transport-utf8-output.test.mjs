@@ -71,9 +71,9 @@ test('actual full shared catalog survives the reproduced version-list descriptio
 const textSites = {
   // Agent CLI JSON/progress and public secret-test diagnostics are UTF-8 text.
   'tests/cli-agent.test.mjs': 2,
-  // The v2 HTTP test also exercises the real CLI; both pipe collectors decode
-  // continuously before collecting stdout JSON and stderr diagnostics.
-  'tests/agent-task-http-v2.test.ts': 2,
+  // The v2 HTTP test exercises real CLI snapshots and controls. Each helper's
+  // stdout JSON and stderr diagnostics decode continuously before collection.
+  'tests/agent-task-http-v2.test.ts': 4,
   'tests/headless-agent-secret-public-native.test.mjs': 2,
   // Native CLI smoke parses stdout; stderr is counted as raw bytes below.
   'tests/windows-node-host-smoke.test.mjs': 1,

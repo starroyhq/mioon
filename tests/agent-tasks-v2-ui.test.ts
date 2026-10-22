@@ -300,7 +300,7 @@ test('a completed run with pending background work keeps observing late cost and
 
 test('pending task identities remain stable across backend restarts and isolated from restored workspace origins',()=>{
   const values=new Map<string,string>();const storage:Storage={get length(){return values.size;},clear(){values.clear();},getItem:key=>values.get(key)??null,key:index=>[...values.keys()][index]??null,removeItem:key=>{values.delete(key);},setItem:(key,value)=>{values.set(key,value);}};
-  const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action:'pause'};createAgentTaskReceiptStore(()=>storage,'normal').write(projectId,pending);assert.deepEqual(createAgentTaskReceiptStore(()=>storage,'normal').read(projectId),pending);assert.equal(createAgentTaskReceiptStore(()=>storage,'restored:'+crypto.randomUUID()).read(projectId),null);assert.equal(values.size,1);
+  for(const action of ['pause','note','skip'] as const){const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action};createAgentTaskReceiptStore(()=>storage,'normal').write(projectId,pending);assert.deepEqual(createAgentTaskReceiptStore(()=>storage,'normal').read(projectId),pending);assert.equal(createAgentTaskReceiptStore(()=>storage,'restored:'+crypto.randomUUID()).read(projectId),null);assert.equal(values.size,1);}
 });
 
 test('SSE reconnect retries failed durable reads until the network returns, without reposting and with visibility cancellation',async t=>{
