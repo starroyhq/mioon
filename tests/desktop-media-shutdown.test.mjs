@@ -1,5 +1,6 @@
 import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
+import { createProjectFileOpener, uploadProjectFile, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
 import { comfyModuleModeFromEnvironment } from '../apps/server/src/comfy-module.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
@@ -469,7 +470,7 @@ async function mainStartupHarness({ validate, settings } = {}) {
     createDesktopAgentSettings: async () => { counts.settings++; return settings ? settings() : { close() {} }; }, safeStorage: {},
     BackendSupervisor: class { constructor() { counts.forks++; } },
     MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL,
-    CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost,
+    CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, createProjectFileOpener, uploadProjectFile, projectFileArguments,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle: (channel, handler) => {

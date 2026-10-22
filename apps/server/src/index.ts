@@ -46,6 +46,8 @@ import {createLocalShotTextHttp} from './local-shot-text-http.ts';
 import {createTimelineRecoveryBoundary,readTimelineReceipt} from '@mioon/business/timeline-recovery';
 import {createLocalDraftHttp} from './local-drafts-http.ts';
 import {createLastProjectHttp} from './last-project-http.ts';
+import {createProjectPackageHttp} from './project-package-http.ts';
+import {createProjectPackageService} from '@mioon/business/project-package/service';
 import {createLocalDeliveryHttp} from './local-delivery-http.ts';
 import {createChatHttp} from './chat-http.ts';
 import type {ChatHttp} from './chat-http.ts';
@@ -67,7 +69,7 @@ import {createVersionComparisonMediaHttp} from './version-comparison-media.ts';
 import {callObservedRpc} from './rpc-observation.ts';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {randomBytes, timingSafeEqual} from 'node:crypto';
+import {randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
 import {createAgentSettings, sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
 import type {AgentSettingsService, SettingsContextOptions, SecretCodec, PublicStorage} from '@mioon/business/agent/settings';
 import {createAgentSettingsFile} from '@mioon/business/agent/settings-file';
@@ -379,6 +381,13 @@ async function composeServer({
       guards:{ownsLock,isRestored,
         readProject:projectId=>readLastProjectTarget(store.db,projectId)}});
     const lastProjectHttp = createLastProjectHttp({lastProject,signal:shutdown.signal});
+    // Imported generations are finished history, so they are archived out of the task center.
+    const projectPackages = !restored && !candidate ? createProjectPackageService({store:ordinaryStore,appVersion:packageMetadata.version,afterCreate:async({projectId,jobIds})=>{
+      for(let index=0;index<jobIds.length;index+=100)await serviceCall!('task.disposition.archiveCompleted',{projectId,requestId:randomUUID(),targets:jobIds.slice(index,index+100).map(taskId=>({kind:'generation',taskId,expectedRevision:0,expectedStatus:'succeeded'}))},undefined as never);
+    }}) : null;
+    projectPackages?.clearStale();
+    shutdown.signal.addEventListener('abort',()=>{void projectPackages?.close();},{once:true});
+    const projectPackageHttp = createProjectPackageHttp({service:()=>projectPackages!,available:()=>projectPackages!==null,signal:shutdown.signal});
     const localDelivery: LocalDelivery = createLocalDelivery({root,channel:localDraftChannel,signal:shutdown.signal,
       storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
       guards:{ownsLock,isRestored,
@@ -524,6 +533,7 @@ async function composeServer({
         if (await agentDiagnosticsHttp?.(req,res,url)) return;
         if (await editTasksHttp(req, res, url)) return;
         if (await localDraftHttp(req, res, url)) return;
+        if (await projectPackageHttp(req, res, url)) return;
         if (await lastProjectHttp(req, res, url)) return;
         if (await localDeliveryHttp(req, res, url)) return;
         if (await exportFileRecovery.handle(req,res,url)) return;

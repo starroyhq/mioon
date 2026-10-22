@@ -61,6 +61,10 @@ export interface ProjectHomeProps {
   onCreateStateChange?: (state: ProjectHomeCreateState) => void;
   canMutateEntry?: () => boolean;
   createIntentVersion?: number;
+  /** Opens the .mioon file picker; the parent owns the file and the import flow. */
+  onImport?: () => void;
+  /** Projects imported during this session, shown with a "just imported" tag. */
+  justImported?: readonly string[];
 }
 
 function ProjectSymbol({ size = 20 }: { size?: number }) {
@@ -91,7 +95,7 @@ function ProjectTime({ value }: { value: string }) {
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
 export default function ProjectHome({ projects, phase, openingName, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, query = '', onQuery, toolbar, projectMenu, totalProjects = projects.length }: ProjectHomeProps) {
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, projectMenu, totalProjects = projects.length }: ProjectHomeProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const prefix = useId();
   const searchInput=useRef<HTMLInputElement>(null);
@@ -165,6 +169,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
       <Button type="button" variant="ghost" data-testid="project-home-page-projects" className="sr-only" onClick={() => { if (page !== 'projects') onPage('projects'); }}>{t('projects.list')}</Button>
       <WorkbenchButton type="button" variant="icon" className="project-home-help-button" data-testid="project-home-help" aria-label={t('redesign.shell.help')} title={t('redesign.shell.help')} disabled={locked || !active || page !== 'projects'} onClick={() => { if (current.current.active && current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening') changeHelp(true); }}><HelpSymbol /></WorkbenchButton>
       <Button type="button" variant="ghost" data-testid="project-home-page-settings" className="project-home-settings-button" aria-label={t('settings.title')} title={t('settings.title')} disabled={locked} onClick={() => { if (current.current.phase !== 'opening' && !current.current.busy) onPage('settings'); }}><WorkbenchIcon name="settings" /></Button>
+      {totalProjects > 0 && onImport && <WorkbenchButton type="button" data-testid="project-home-import" disabled={locked} onClick={() => { if (canAct()) onImport(); }}><WorkbenchIcon name="upload" />{t('projectPackage.menu.import')}</WorkbenchButton>}
       {totalProjects > 0 && <WorkbenchButton type="button" variant="primary" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => { if (canAct() && !current.current.createDisabledReason) { publishCreate(); setCreateOpen(value => !value); } }}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>}
     </header>
     {helpOpen && active && page === 'projects' && <Dialog open onOpenChange={changeHelp}><WorkbenchDialogContent title={t('redesign.shell.help')} className="project-home-help-dialog">
@@ -218,12 +223,13 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
             {listBusy && !projects.length && <p className="project-home-list-loading" role="status">{t('projects.loadingList')}</p>}
             {empty && <div className="project-home-empty" data-testid="project-home-empty">
               <span className="project-home-empty-symbol"><ProjectSymbol size={28} /></span><h2>{t('projects.emptyTitle')}</h2><p>{t('projects.emptyBody')}</p><WorkbenchButton type="button" variant="primary" size="large" data-testid="project-home-create-toggle" disabled={locked || Boolean(createDisabledReason)} aria-expanded={createOpen} aria-controls={`${prefix}-create`} onClick={() => { if (canAct() && !current.current.createDisabledReason) { publishCreate(); setCreateOpen(true); } }}><WorkbenchIcon name="plus" />{t('projects.createNew')}</WorkbenchButton>
+              {onImport && <WorkbenchButton type="button" variant="ghost" className="project-home-import-link" data-testid="project-home-import-empty" disabled={locked} onClick={() => { if (canAct()) onImport(); }}>{t('projectPackage.home.importLink')}</WorkbenchButton>}
             </div>}
             {projects.length > 0 && <ul className="project-home-list" data-testid="project-home-list">
               {projects.map(project => <li key={project.id}><article className="project-home-card">
                 {projectMenu && <div className="project-home-card-menu">{projectMenu(project)}</div>}
                 <Button type="button" variant="ghost" className="project-home-card-open" data-testid={`project-home-open-${project.id}`} aria-label={t('projects.openNamed', { name: project.name })} disabled={locked} onClick={() => { if (canAct()) onOpen(project.id); }}>
-                  <span className="project-home-cover">{project.cover ? project.cover.mimeType.startsWith('image/') ? <img src={project.cover.url} alt="" loading="lazy" /> : <video src={project.cover.url} muted playsInline preload="metadata" tabIndex={-1} aria-hidden="true" /> : <ProjectSymbol size={32} />}{project.lastOpenedAt && <span className="project-home-recent">{t('projects.recent')}</span>}{project.durationFrames !== undefined && <span className="project-home-duration">{Math.floor(project.durationFrames / (project.fps || 30) / 60).toString().padStart(2, '0')}:{Math.floor(project.durationFrames / (project.fps || 30) % 60).toString().padStart(2, '0')}</span>}</span>
+                  <span className="project-home-cover">{project.cover ? project.cover.mimeType.startsWith('image/') ? <img src={project.cover.url} alt="" loading="lazy" /> : <video src={project.cover.url} muted playsInline preload="metadata" tabIndex={-1} aria-hidden="true" /> : <ProjectSymbol size={32} />}{justImported.includes(project.id) ? <span className="project-home-just-imported" data-testid={`project-home-just-imported-${project.id}`}>{t('projectPackage.home.justImported')}</span> : project.lastOpenedAt && <span className="project-home-recent">{t('projects.recent')}</span>}{project.durationFrames !== undefined && <span className="project-home-duration">{Math.floor(project.durationFrames / (project.fps || 30) / 60).toString().padStart(2, '0')}:{Math.floor(project.durationFrames / (project.fps || 30) % 60).toString().padStart(2, '0')}</span>}</span>
                   <span className="project-home-card-title">{project.name}<small>{project.width && project.height ? project.width === project.height ? '1:1' : project.width > project.height ? '16:9' : '9:16' : ''}</small></span>
                   <span className="project-home-card-info">{project.shotCount !== undefined && <span>{t('redesign.projects.shots', { count: project.shotCount })} · </span>}<ProjectTime value={project.updatedAt} /></span>
                 </Button>

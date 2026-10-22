@@ -1,0 +1,75 @@
+/* Project files (.mioon): standard dialogs, the home drop overlay and the bottom-right notice. */
+.project-package-body { display: flex; flex-direction: column; gap: var(--wb-space-3); min-width: 0; }
+.project-package-field { display: flex; flex-direction: column; gap: var(--wb-space-2); min-width: 0; }
+.project-package-label { color: var(--wb-text); font-size: var(--wb-text-label); font-weight: 500; }
+.wb-tabs.project-package-segmented > [data-slot="tabs-list"] { width: 100%; }
+.wb-tabs.project-package-segmented [data-slot="tabs-trigger"] { flex: 1; }
+.project-package-caption, .project-package-help { margin: 0; color: var(--wb-soft); font-size: var(--wb-text-caption); line-height: 1.6; overflow-wrap: anywhere; }
+.project-package-help { font-size: var(--wb-text-label); }
+.project-package-note { display: flex; align-items: center; gap: var(--wb-space-2); margin: 0; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.5; }
+.project-package-estimate { display: flex; align-items: center; justify-content: space-between; gap: var(--wb-space-3); padding: var(--wb-space-2) var(--wb-space-3); border-radius: var(--wb-radius-control); background: var(--wb-card); color: var(--wb-soft); font-size: var(--wb-text-label); }
+.project-package-estimate strong { color: var(--wb-text); font-family: var(--wb-font-mono); font-weight: 600; }
+
+.project-package-progress { display: flex; flex-direction: column; gap: var(--wb-space-2); }
+.project-package-progress header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--wb-space-3); }
+.project-package-progress header strong { min-width: 0; overflow-wrap: anywhere; font-size: var(--wb-text-section); font-weight: 600; }
+.project-package-progress header span { flex: none; color: var(--wb-soft); font-family: var(--wb-font-mono); font-size: var(--wb-text-caption); }
+.project-package-progress p { margin: 0; color: var(--wb-soft); font-size: var(--wb-text-caption); }
+.project-package-progress .wb-progress > span, .project-package-toast .wb-progress > span { background: var(--wb-text); }
+.project-package-indeterminate { position: relative; height: 3px; width: 100%; overflow: hidden; border-radius: 999px; background: var(--wb-line); }
+.project-package-indeterminate > span { position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--wb-text); animation: project-package-slide 1.4s ease-in-out infinite; }
+@keyframes project-package-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+
+.project-package-result { display: flex; align-items: flex-start; gap: var(--wb-space-3); padding: var(--wb-space-3); border-radius: var(--wb-radius-card); background: var(--wb-card); }
+.project-package-result > div { display: flex; flex-direction: column; gap: var(--wb-space-1); min-width: 0; flex: 1; }
+.project-package-result strong { font-size: var(--wb-text-section); font-weight: 600; overflow-wrap: anywhere; }
+.project-package-result p { margin: 0; color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.6; overflow-wrap: anywhere; }
+.project-package-result-icon { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; color: var(--wb-soft); background: var(--wb-line-subtle); }
+.project-package-result[data-tone="success"] .project-package-result-icon { color: var(--wb-success); background: var(--wb-success-subtle); }
+.project-package-result[data-tone="danger"] .project-package-result-icon { color: var(--wb-danger); background: var(--wb-danger-subtle); }
+.project-package-result[data-tone="danger"] > div > strong { color: var(--wb-danger); }
+
+.project-package-files { display: flex; flex-direction: column; gap: var(--wb-space-1); margin: var(--wb-space-2) 0 0; padding: var(--wb-space-2); list-style: none; border-radius: var(--wb-radius-control); background: var(--wb-input); max-height: 180px; overflow: auto; }
+.project-package-files li { display: flex; align-items: center; gap: var(--wb-space-2); min-width: 0; padding: var(--wb-space-1) var(--wb-space-2); font-size: var(--wb-text-label); }
+.project-package-files li > svg { flex: none; color: var(--wb-danger); }
+.project-package-files li > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-package-files li > small { flex: none; color: var(--wb-soft); font-size: var(--wb-text-caption); }
+
+.project-package-file { display: flex; align-items: center; gap: var(--wb-space-3); padding: var(--wb-space-3); border-radius: var(--wb-radius-card); background: var(--wb-card); min-width: 0; }
+.project-package-file > div { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.project-package-file strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--wb-text-body); font-weight: 500; }
+.project-package-file small { color: var(--wb-soft); font-family: var(--wb-font-mono); font-size: var(--wb-text-caption); }
+.project-package-file-icon { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: var(--wb-radius-control); background: var(--wb-input); color: var(--wb-text); }
+.project-package-badge { display: inline-flex; align-items: center; gap: var(--wb-space-1); flex: none; padding: 2px var(--wb-space-2); border: 1px solid var(--wb-line); border-radius: 999px; color: var(--wb-soft); font-size: var(--wb-text-caption); }
+
+.project-package-summary { display: flex; flex-direction: column; gap: var(--wb-space-2); margin: 0; padding: var(--wb-space-3); border-radius: var(--wb-radius-card); background: var(--wb-card); }
+.project-package-summary > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: var(--wb-space-3); font-size: var(--wb-text-label); }
+.project-package-summary dt { color: var(--wb-soft); }
+.project-package-summary dd { margin: 0; overflow-wrap: anywhere; }
+
+.project-package-toasts.wb-toasts { top: auto; bottom: var(--wb-space-4); right: var(--wb-space-4); }
+.project-package-toast { min-width: 0; }
+.project-package-toast-icon { display: inline-flex; flex: none; color: var(--wb-soft); }
+.project-package-toast-icon[data-tone="success"] { color: var(--wb-success); }
+.project-package-toast-icon[data-tone="danger"] { color: var(--wb-danger); }
+.project-package-toast-copy { display: flex; flex-direction: column; gap: var(--wb-space-1); flex: 1; min-width: 0; }
+.project-package-toast-copy strong { overflow-wrap: anywhere; font-weight: 500; }
+.project-package-toast-copy small { color: var(--wb-soft); font-size: var(--wb-text-caption); overflow-wrap: anywhere; }
+.project-package-toast-progress { display: flex; align-items: center; gap: var(--wb-space-2); }
+.project-package-toast-progress > span { flex: none; color: var(--wb-soft); font-family: var(--wb-font-mono); font-size: var(--wb-text-caption); }
+.project-package-spin { animation: project-package-spin 1s linear infinite; }
+@keyframes project-package-spin { to { transform: rotate(360deg); } }
+
+/* Home page entry points */
+.project-home-import-link.wb-button { margin-top: var(--wb-space-2); color: var(--wb-soft); }
+.project-home-just-imported { position: absolute; top: 8px; left: 8px; border-radius: 4px; background: var(--wb-media-overlay); color: var(--wb-media-text); padding: 3px 6px; font-size: var(--wb-text-caption); }
+.project-package-file-input { display: none; }
+.project-home-screen { position: relative; }
+.project-home-drop-overlay { position: absolute; inset: calc(var(--wb-topbar) + var(--wb-space-4)) var(--wb-space-4) var(--wb-space-4); z-index: 40; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--wb-space-2); border: 1.5px dashed var(--wb-line-strong); border-radius: var(--wb-radius-panel); background: color-mix(in srgb, var(--wb-bg) 88%, transparent); color: var(--wb-text); pointer-events: none; text-align: center; }
+.project-home-drop-overlay span { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--wb-line); background: var(--wb-card); color: var(--wb-soft); }
+.project-home-drop-overlay strong { font-size: var(--wb-text-title); font-weight: 600; }
+.project-home-drop-overlay p { margin: 0; color: var(--wb-soft); font-size: var(--wb-text-label); }
+
+@media (prefers-reduced-motion: reduce) {
+  .project-package-indeterminate > span, .project-package-spin { animation: none; }
+}
