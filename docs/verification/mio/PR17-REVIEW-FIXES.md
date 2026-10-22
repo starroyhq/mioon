@@ -46,4 +46,17 @@
 - `conflict-restart-final-focused.log`、`conflict-restart-final-full.log`、`conflict-restart-final-typecheck.log`：追加对照后的最终四文件验证。
 - `related-r2-summary.json`、`related-r2-sourcepins.json`、`related-r2/`、`build-r2-receipt.json`：最终修复版本的相关回归、源码指纹与构建证据（结束后生成）。
 
+第二轮修复提交 `baddfc88460ae83a9e6596681768ad6d2c18895f` 的37文件回归随后完整结束：790项，788通过、2个同名同错的共有媒体失败，无新增失败；160个PR变更文件的验证副本与工作树指纹均无漂移。development构建退出0，含三项目严格检查。最终定向28/28和单独typecheck也通过；最后一次重复的两文件全量在统一37文件回归开始前停止，不作为完整验证，避免拼接不同阶段计数。
+
+## 第三轮：已持久化的流式回复容量
+
+固定审查 head `baddfc88460ae83a9e6596681768ad6d2c18895f`。Spec 轴 no finding；Standards 轴发现一项 **[P2] 说明容量预检忽略已保存的流式正文**：最新模型步骤尚在 `dispatch_started` 时，虽然正文已由 `appendText` 落库，预检仍只计算原上下文与说明。双协议合成探针均确认：已知正文与说明已超过128KiB，但说明取得受理回执；后续模型没有增加任何正文，原执行仍因续轮超限失败。
+
+修复在容量探针中计入已落库的流式正文，不构造或发出真实请求，不改原模型 intent、不提高上限，不把未来尚未知的输出视为已知，也不把可明确丢弃的未知结果正文加入恢复上下文。拒绝仍回滚说明及其受理对应的修订与事件，保存原请求的 rejected 回执和拒绝审计事件；正文和原执行继续保留。最终定向验证、相关回归及独立复审以各自绑定的提交和证据为准，不将之前版本的成功移植为当前版本通过。
+
+- `standards-r3.md`、`spec-r3.md`：分轴结论与范围。
+- `standards-r3-stream-capacity-probe.test.ts`、`standards-r3-stream-capacity-red.log`：已保存正文的双协议失败复现。
+- `stream-note-capacity-final-green.log`：容量相关定向12/12通过；随后只收紧原请求身份和拒绝审计事件断言，两协议2/2再次通过，见 `stream-note-capacity-final-receipt-green.log`。新增验证还覆盖未超限接收、尚无正文时不虚构输出、未知结果明确丢弃后继续；没有将未知回复混入待发送历史。
+- 后续修复定向日志、`related-r3-summary.json`、`related-r3-sourcepins.json`、`related-r3/`、`build-r3-receipt.json`：最终修复及回归记录（验证结束后生成）。
+
 后续独立双轴复审结论在 PR 描述及同一缓存根单独记录，并绑定具体 commit；此处不预写 no finding。原 M0–M4 报告与设计输入不改写；没有新增依赖、修改凭据、真实调用、合入 main 或发布。

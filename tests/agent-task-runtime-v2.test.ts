@@ -710,6 +710,65 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  assert.equal(object(rejected).code,'AGENT_TASK_NOTE_CAPACITY');assert.deepEqual(after,before);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,0);assert.equal(f.requests.length,1);
 });
 
+function replyOutput(protocol:'chat_completions'|'responses',text:string):TaskModelOutput {
+ return {text,toolCalls:[],providerOutput:protocol==='chat_completions'?{role:'assistant',content:text}:[{type:'message',id:'synthetic-output-message',status:'completed',role:'assistant',content:[{type:'output_text',text,annotations:[]}]}]};
+}
+async function noteHistoryFixture(t:TestContext,protocol:'chat_completions'|'responses',messageLength=30000){
+ const f=await fixture(t,protocol);let conversationId:string|undefined;
+ f.setScript(async function*(){yield {type:'done',output:replyOutput(protocol,'a'.repeat(2000))};});
+ for(let index=0;index<3;index++){
+  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:(await f.settings.get()).revision,...(conversationId?{conversationId}:{})});
+  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');conversationId=done.run.conversationId;
+ }
+ return {...f,sendNext:async()=>f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:(await f.settings.get()).revision,conversationId})};
+}
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity rejects an already persisted streamed reply atomically and replays its rejection`,async t=>{
+ const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(8192),note='n'.repeat(1024);
+ f.setScript(async function*(){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};});
+ const sent=await f.sendNext();await entered.promise;
+ try{
+  const before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.ok(model);assert.equal(model.status,'dispatch_started');assert.equal(model.text,reply);
+  const historyBytes=Buffer.byteLength(JSON.stringify(before.run.context));assert.ok(historyBytes+Buffer.byteLength(note)+200<TASK_MODEL_LIMITS.historyBytes);assert.ok(historyBytes+Buffer.byteLength(model.text)+Buffer.byteLength(note)>TASK_MODEL_LIMITS.historyBytes);
+  const body=f.requests.at(-1)!.body,request={requestId:randomUUID(),expectedRevision:before.run.revision,action:'note',text:note};
+  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:'AGENT_TASK_NOTE_CAPACITY'});
+  const rejectedEvents=f.runtime.journal.events(sent.run.id),receipt=f.runtime.journal.lookupControl(request.requestId);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.deepEqual(rejectedEvents.slice(0,-1),events);assert.equal(rejectedEvents.at(-1)?.type,'control');assert.deepEqual(rejectedEvents.at(-1)?.data,receipt);assert.deepEqual(receipt,{requestId:request.requestId,runId:sent.run.id,action:'note',revision:before.run.revision,result:{state:'rejected',code:'AGENT_TASK_NOTE_CAPACITY'}});
+  await f.runtime.action(f.projectId,sent.run.id,request);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.deepEqual(f.runtime.journal.events(sent.run.id),rejectedEvents);
+  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...request,text:'changed text'}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+  assert.equal(f.requests.at(-1)!.body,body);
+ }finally{release.resolve();await f.runtime.drain();}
+ const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.notes,[]);assert.equal(f.requests.length,4);assert.equal(done.steps.filter(step=>step.kind==='model').length,1);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity accepts a persisted streamed reply below the limit without rewriting its intent`,async t=>{
+ const f=await noteHistoryFixture(t,protocol,28000),entered=gate(),release=gate(),reply='r'.repeat(8192),note='n'.repeat(1024);let count=0;
+ f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};}else yield {type:'done',output:replyOutput(protocol,'Follow-up complete')};});
+ const sent=await f.sendNext();await entered.promise;
+ try{
+  const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.equal(model?.text,reply);const request=model?.request;
+  assert.ok(Buffer.byteLength(JSON.stringify(before.run.context))+Buffer.byteLength(reply)+Buffer.byteLength(note)+1000<TASK_MODEL_LIMITS.historyBytes);
+  const accepted=await f.action(before,'note',{text:note});assert.equal(accepted.run.notes?.[0]?.text,note);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.id===model?.id)?.request,request);
+ }finally{release.resolve();await f.runtime.drain();}
+ const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,5);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity does not invent unpersisted delta bytes`,async t=>{
+ // Freeze the flush clock so this small delta is deterministically still in
+ // the executor buffer, rather than relying on the test finishing within 50ms.
+ t.mock.method(Date,'now',()=>Date.parse('2026-10-23T00:00:00.000Z'));
+ const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(1024);let count=0;
+ f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};}else yield {type:'done',output:replyOutput(protocol,'Short response')};});
+ const sent=await f.sendNext();await entered.promise;
+ try{const before=f.runtime.journal.snapshot(sent.run.id);assert.equal(before.steps.find(step=>step.kind==='model')?.text,undefined);assert.ok(f.runtime.journal.events(sent.run.id).every(event=>event.type!=='text'));await f.action(before,'note',{text:'n'.repeat(1024)});}
+ finally{release.resolve();await f.runtime.drain();}
+ const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,5);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity excludes an unknown reply that is explicitly discarded before continuing`,async t=>{
+ const f=await noteHistoryFixture(t,protocol),reply='r'.repeat(8192);let count=0;
+ f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};throw Object.assign(Error('Synthetic unknown reply'),{code:'AGENT_TASK_UNKNOWN_RESULT'});}yield {type:'done',output:replyOutput(protocol,'Known replacement')};});
+ const sent=await f.sendNext(),paused=await f.settle(sent.run.id),unknown=paused.steps.find(step=>step.kind==='model');assert.ok(unknown);assert.equal(unknown.status,'unknown');assert.equal(unknown.text,reply);
+ const noted=await f.action(paused,'note',{text:'n'.repeat(1024)});await assert.rejects(f.action(noted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,4);
+ await f.action(f.runtime.get(f.projectId,sent.run.id),'resolve_unknown',{stepId:unknown.id,resolution:'discard'});await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');
+ const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,5);assert.equal(f.requests.at(-1)!.body.includes(reply),false);
+});
+
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: skipping a track also denies later nested clip references without blocking another target`,async t=>{
  const f=await fixture(t,protocol),assetId=randomUUID();
  f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic image',mimeType:'image/png',width:720,height:1280,duration:0,hasVideo:true,hasAudio:false,sha256:'a'.repeat(64),relativePath:'media/fixture.png',provenance:'user-import',createdAt:new Date().toISOString()});

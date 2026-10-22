@@ -326,6 +326,13 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         return {callId:call.id,result:tool?.result??null};
       });
       history.push(...taskContinuation(configuration(run).protocol,output,results));
+    }else if(latest?.status==='dispatch_started'&&latest.text){
+      // Persisted deltas are already known continuation content. Count the
+      // protocol's smallest text message, without inventing later output or
+      // treating an unknown reply that may be discarded as saved history.
+      history.push(configuration(run).protocol==='chat_completions'
+        ?{role:'assistant',content:latest.text}
+        :{type:'message',role:'assistant',content:[{type:'output_text',text:latest.text}]});
     }
     history.push(...(run.notes??[]).filter(note=>note.modelStepId===undefined).map(note=>({role:'user',content:note.text})));
     // Reject known overflow in the control transaction, before acknowledging
