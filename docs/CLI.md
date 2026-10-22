@@ -18,9 +18,10 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent doctor` | `{projectId?}`；连接本地后端，读取公开设置、策略、授权和目录检查摘要，不发送模型请求 |
 | `agent diagnose --live` | 与 send 相同，必须包含 `diagnostic`；显式允许诊断模型请求 |
 | `agent policy get/set/lookup` | get 为 `{}`；set 为 `{requestId, expectedRevision, stepLimit, modes, acknowledgePaid?}`；lookup 为 `{requestId}` |
-| `agent task list/history` | `{projectId}`；history 另接受原样返回的 `cursor` |
+| `agent task list/history` | `{projectId}`；history 按对话返回 `conversations`，另接受原样返回的 `cursor`，不含诊断运行 |
+| `agent task conversation` | `{projectId, conversationId, cursor?}`；升序分页读取本对话轮次摘要，逐轮详情使用 status |
 | `agent task status` | `{projectId, runId}`；读取持久快照 |
-| `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, locale?, uploads?}`；lookup 为 `{projectId, requestId}` |
+| `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?}`；lookup 为 `{projectId, requestId}` |
 | `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
 | `agent task pause/resume/stop/approve/deny` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId |
 | `agent task undo-change/undo-all` | 同一控制身份和 revision；undo-change 另传 `changeId` |
@@ -29,6 +30,10 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent task watch/events` | `{projectId, runId, after?}`；有界观察，默认 60 秒，可设 `--timeout-ms` 和 `--interval-ms` |
 
 `status`、`lookup` 和控制回执返回的公开快照可包含 Step / Change 的 `display` 安全投影；原始 before/after 与补偿数据不因此开放。新版 CLI 与 HTTP 共用 contracts，独立旧版严格客户端需同步升级。内置 Mio 的 `_mio_step` 说明仅存在于模型工具包装，不是 CLI/MCP 业务参数。
+
+对话首次发送省略 `conversationId`，由服务端生成并在 `snapshot.run.conversationId` 返回；后续轮次显式传回。不存在、跨项目或诊断身份会被拒绝。省略该参数始终表示新对话，不再把同项目其他对话的最近执行加入上下文。发送 requestId 的重放必须保留原来的对话参数，不能改为另一对话或改变省略状态。响应丢失仍只调用原 `agent task lookup`，不能通过新建对话重发。
+
+`agent task history` 返回标题、更新时间、最后一轮状态、变化条数及轮次数，`cursor` 只用于原项目。`agent task conversation` 的成员 cursor 同时绑定项目与对话，不能跨对话复用。旧 v2 执行各自作为单轮对话；v1 仍按原只读接口读取。诊断运行不进入列表、历史或普通对话上下文，其原始审计记录仍能按 runId／requestId 查询。
 
 自然语言命令、`schema agent.task.send` 和 `schema agent task send` 均可查看严格参数；`agent --help` 列出独立目录。help、version、schema 不连接后端。`agent doctor` 的“离线诊断”指不调用模型，仍会读取所选本地服务；没有连接时会报告连接不可用。
 

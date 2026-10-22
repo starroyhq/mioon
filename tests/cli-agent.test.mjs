@@ -116,3 +116,12 @@ test('watch timeout and process SIGINT stop only local observation',async t=>{
  const streaming=new Promise(resolve=>signalStream=resolve);
  const active=command(['agent','task','watch','--input',JSON.stringify({projectId,runId}),'--timeout-ms','10000'],{base:f.base});await streaming;active.child.kill('SIGINT');const cancelled=await active.result;assert.equal(cancelled.code,130);assert.equal(cancelled.body.error.code,'INTERRUPTED');assert.ok(f.calls.every(call=>call.method==='GET'));
 });
+
+test('conversation is an offline-discoverable management command and forwards the server-owned identity',async t=>{
+ const conversationId=randomUUID(),run={...snapshot().run,conversationId},conversation={id:conversationId,projectId,title:'First prompt',createdAt:run.createdAt,updatedAt:run.updatedAt,lastRunId:runId,lastRunStatus:'completed',changeCount:0,runCount:1};
+ const schema=await command(['schema','agent','task','conversation']).result;assert.equal(schema.code,0);assert.ok(JSON.stringify(schema.body).includes('conversationId'));
+ const f=await fixture(t,(req,res)=>reply(res,req.url.includes('/conversations/')?{conversation,runs:[run],nextCursor:null}:req.method==='POST'?{...snapshot(),run}:{conversations:[conversation],nextCursor:null}));
+ const sent=await command(['agent','task','send','--input',JSON.stringify({projectId,conversationId,requestId,text:'synthetic',expectedSettingsRevision:4})],{base:f.base}).result;assert.equal(sent.code,0);assert.equal(f.calls[0].body.conversationId,conversationId);
+ const history=await command(['agent','task','history','--input',JSON.stringify({projectId})],{base:f.base}).result;assert.equal(history.code,0);assert.deepEqual(history.body.data,{conversations:[conversation],nextCursor:null});
+ const members=await command(['agent','task','conversation','--input',JSON.stringify({projectId,conversationId,cursor:'retained-cursor'})],{base:f.base}).result;assert.equal(members.code,0);assert.deepEqual(members.body.data,{conversation,runs:[run],nextCursor:null});assert.equal(f.calls.at(-1).url,`/api/agent/tasks/v2/${projectId}/conversations/${conversationId}?cursor=retained-cursor`);
+});

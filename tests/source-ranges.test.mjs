@@ -1,3 +1,4 @@
+import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
@@ -25,7 +26,7 @@ async function fixture(t,{open=openStore}={}){
 const snapshot=(f,omit=[])=>Object.fromEntries(f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().filter(({name})=>!omit.includes(name)).map(({name})=>[name,f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));
 
 function assertReviewed52Migration(f,before,rawBefore,expectedTargetCount){
- const actual=rawSnapshot(f.store.db),names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter(object=>names.has(object.name));
+ const actual=rawSnapshot(f.store.db);actual.objects=withoutReviewedConversationObjects(actual.objects);const names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter(object=>names.has(object.name));
  assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
  assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
  assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');

@@ -747,6 +747,36 @@ export const mioPanelMessages = {
     "en": "{count} more",
     "ja": "ほか {count} 箇所"
   },
+  "agent.display.moreFields": {
+    "zh-Hans": "等 {count} 项",
+    "zh-Hant": "等 {count} 項",
+    "en": "{count} more",
+    "ja": "ほか {count} 項目"
+  },
+  "agent.display.setField": {
+    "zh-Hans": "设置{field} {value}",
+    "zh-Hant": "設定{field} {value}",
+    "en": "Set {field} to {value}",
+    "ja": "{field}を{value}に設定"
+  },
+  "agent.display.add.subtitle": {
+    "zh-Hans": "添加字幕「{text}」",
+    "zh-Hant": "新增字幕「{text}」",
+    "en": "Add subtitle “{text}”",
+    "ja": "字幕「{text}」を追加"
+  },
+  "agent.display.add.clip": {
+    "zh-Hans": "添加片段「{text}」",
+    "zh-Hant": "新增片段「{text}」",
+    "en": "Add clip “{text}”",
+    "ja": "クリップ「{text}」を追加"
+  },
+  "agent.display.add.shot": {
+    "zh-Hans": "添加镜头「{text}」",
+    "zh-Hant": "新增鏡頭「{text}」",
+    "en": "Add shot “{text}”",
+    "ja": "ショット「{text}」を追加"
+  },
   "agent.display.unit.frames": {
     "zh-Hans": "{value} 帧",
     "zh-Hant": "{value} 影格",

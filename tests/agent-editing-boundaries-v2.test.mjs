@@ -89,6 +89,19 @@ test('a mismatching receipt keeps the original resolve pending without issuing a
   }finally{h.cleanup();}}
 });
 
+test('hiding the mounted recovery owner for legacy history retains its unknown-receipt close fence and later queries only that receipt',async()=>{
+  const h=harness();try{
+    const original=h.pending();h.storage.set(h.key(),JSON.stringify(original));h.setLookup(async()=>({claims:[],targets:[h.target]}));h.render();await flush();h.render();
+    const registration=h.registrations[0];assert.equal(h.closeState().blocked,true);assert.equal(h.registrations.length,1);
+    h.setVisible(false);h.setRecovery(null);h.render();await flush();
+    assert.equal(h.registrations.length,1);assert.equal(registration.released,false);assert.equal(h.closeState().blocked,true);assert.equal(h.storage.get(h.key()),JSON.stringify(original));assert.equal(h.updates.length,0);assert.equal(h.lookups.length,1);
+    h.setLookup(async()=>({claims:[],targets:[h.target],receipt:{requestId:original.requestId,projectId:original.projectId,ownerId:original.ownerId,generation:original.generation,sequence:original.sequence}}));
+    h.setVisible(true);h.render();await flush();h.render();
+    assert.deepEqual(h.lookups,[[h.initialProjectId,original.ownerId,original.requestId],[h.initialProjectId,original.ownerId,original.requestId]]);
+    assert.equal(h.updates.length,0);assert.equal(h.closeState().blocked,false);assert.equal(h.storage.has(h.key()),false);assert.equal(registration.released,false);
+  }finally{h.cleanup();}
+});
+
 test('a retained resolve confirmation cannot dispatch after hiding, hide/show or a project change',async()=>{
   for(const change of ['hide','hide-show','project','project-return']){const h=harness();try{
     h.addForeign();const confirmation=deferred();h.setConfirm(()=>confirmation.promise);h.render();await flush();resolveButton(h.render()).props.onClick();await flush();

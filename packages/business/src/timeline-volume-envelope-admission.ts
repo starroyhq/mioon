@@ -1,3 +1,5 @@
+import {validateWorkspaceSchema54} from './workspace-schema-v54.ts';
+import {validateWorkspaceRestoreSchemaV55} from './workspace-restore-schema-v55.ts';
 import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
 import {validateWorkspaceRestoreSchemaV51} from './workspace-restore-schema-v51.ts';
 import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
@@ -40,7 +42,9 @@ export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unkn
  try{
   const runtime=requireWorkspaceEnvelopeRuntime();
   const role=readCurrentWorkspaceRole(db);
-  if(role==='ordinary-52')validateWorkspaceSchema52(db);
+  if(role==='ordinary-54')validateWorkspaceSchema54(db);
+ else if(role==='restored-55-evidence')validateWorkspaceRestoreSchemaV55(db);
+ else if(role==='ordinary-52')validateWorkspaceSchema52(db);
   else if(role==='restored-53-evidence')validateWorkspaceRestoreSchemaV53(db);
   else if(role==='ordinary-50')validateWorkspaceSchema50(db);
   else if(role==='restored-51-evidence')validateWorkspaceRestoreSchemaV51(db);

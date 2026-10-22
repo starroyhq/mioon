@@ -1,3 +1,4 @@
+import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -29,7 +30,7 @@ async function fixture(t){const parent=await realpath(await mkdtemp(path.join(tm
   const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});
   try{
    db.exec('PRAGMA query_only=ON; BEGIN');
-   const schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),names=new Set(currentOrdinary52Delta.objectNames);
+   const schema=withoutReviewedConversationObjects(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all()),names=new Set(currentOrdinary52Delta.objectNames);
    const objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
    assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
    assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);

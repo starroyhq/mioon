@@ -47,6 +47,7 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
         if(tail.length===1){query(url,[]);if(req.method==='GET')json(res,200,await runtime.snapshot(projectId));else if(req.method==='POST')json(res,200,await runtime.send(projectId,await mutationBody(req)));else {res.setHeader('Allow','GET, POST');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 POST。'});}return true;}
         if(tail[1]==='requests'&&tail.length===3&&req.method==='GET'){query(url,[]);json(res,200,runtime.lookup(projectId,tail[2]));return true;}
         if(tail[1]==='history'&&tail.length===2&&req.method==='GET'){query(url,['cursor']);json(res,200,runtime.history(projectId,url.searchParams.get('cursor')??undefined));return true;}
+        if(tail[1]==='conversations'&&tail.length===3&&req.method==='GET'){query(url,['cursor']);json(res,200,runtime.conversation(projectId,tail[2]!,url.searchParams.get('cursor')??undefined));return true;}
         if(tail[1]==='uploads'&&tail.length===2&&req.method==='POST'){
           if(runtime.readOnly||!tools)throw agentTaskFailure('AGENT_TASK_READ_ONLY');
           query(url,[]);const input=await mutationBody(req,41*1024*1024);

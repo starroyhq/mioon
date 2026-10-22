@@ -13,6 +13,7 @@ type FieldKey=Extract<DisplayKey,`agent.display.field.${string}`>;
 type EnumKey=Extract<DisplayKey,`agent.display.enum.${string}`>;
 export type TaskDisplayLookup=(kind:string,id:string)=>string|undefined;
 export interface TaskDisplayEntry {label:string;value:string}
+export interface TaskDisplayOptions {fps?:number;lookup?:TaskDisplayLookup}
 
 const uuid=/[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}/iu;
 const sensitive=/(?:\bBearer\s+|\b(?:sk[-_]|ghp_|github_pat_)[A-Za-z\d_-]{8,}|\beyJ[A-Za-z\d_-]+\.[A-Za-z\d_-]+\.[A-Za-z\d_-]+|(?:api[_ -]?key|access[_ -]?token|authorization|password|secret|credential|密钥|密鑰|密码|密碼|令牌)\s*[:=：])/iu;
@@ -95,50 +96,87 @@ function enumText(property:DisplayProperty,value:string,locale:Locale):string|un
   if(property==='background'&&['opaque','transparent','auto'].includes(value))key=`agent.display.enum.background.${value}` as EnumKey;
   return key&&Object.hasOwn(mioPanelMessages,key)?translate(locale,key):undefined;
 }
-function displayValue(field:AgentTaskDisplayField,value:AgentTaskDisplayValue,locale:Locale):string|undefined {
+function displayValue(field:AgentTaskDisplayField,value:AgentTaskDisplayValue,locale:Locale,options:TaskDisplayOptions):string|undefined {
   if(value===null)return translate(locale,'agent.display.empty');
   if(typeof value==='boolean')return field.unit==='boolean'?translate(locale,value?'agent.display.on':'agent.display.off'):undefined;
   if(typeof value==='string'){
     if(field.property==='gainDb'&&value==='muted')return translate(locale,'agent.display.muted');
-    if(field.property==='description'||field.property==='subtitleText')return projectText(value);
+    if(field.property==='description'||field.property==='subtitleText')return projectText(value)??translate(locale,'agent.display.empty');
     return enumText(field.property,value,locale);
   }
   if(!Number.isFinite(value)||Math.abs(value)>Number.MAX_SAFE_INTEGER)return;
   if(field.unit==='db'){if(value < -200 || value > 20)return;}
   else if(!['positionX','positionY'].includes(field.property)&&(value<0||['frames','pixels','count'].includes(field.unit)&&!Number.isSafeInteger(value)))return;
   if(!['frames','seconds','db','pixels','count'].includes(field.unit))return;
-  const formatted=new Intl.NumberFormat(locale,{maximumFractionDigits:3}).format(value);
+  const fps=options.fps,converted=field.unit==='frames'&&typeof fps==='number'&&Number.isFinite(fps)&&fps>0?value/fps:undefined;
+  const seconds=converted!==undefined&&Number.isFinite(converted)?converted:undefined;
+  const precise=seconds!==undefined||field.unit==='seconds'||field.unit==='db';
+  const number=precise&&Math.abs(seconds??value)<0.05?0:seconds??value;
+  const formatted=new Intl.NumberFormat(locale,precise?{minimumFractionDigits:1,maximumFractionDigits:1}:{maximumFractionDigits:3}).format(Object.is(number,-0)?0:number);
   if(field.property==='versionNumber')return `V${formatted}`;
-  return translate(locale,`agent.display.unit.${field.unit}` as 'agent.display.unit.frames'|'agent.display.unit.seconds'|'agent.display.unit.db'|'agent.display.unit.pixels'|'agent.display.unit.count',{value:formatted});
+  return translate(locale,`agent.display.unit.${seconds===undefined?field.unit:'seconds'}` as 'agent.display.unit.frames'|'agent.display.unit.seconds'|'agent.display.unit.db'|'agent.display.unit.pixels'|'agent.display.unit.count',{value:formatted});
+}
+
+interface FormattedField {field:AgentTaskDisplayField;entry:TaskDisplayEntry}
+function emptyValue(field:AgentTaskDisplayField,value:AgentTaskDisplayValue|undefined):boolean {
+  return value===null||typeof value==='string'&&(field.property==='description'||field.property==='subtitleText')&&projectText(value)===undefined;
+}
+function formattedFields(display:AgentTaskDisplay,locale:Locale,options:TaskDisplayOptions):FormattedField[] {
+  const operation=knownOperation(display.operation);if(!operation)return [];
+  const allowed=display.fields.slice(0,2000).filter(field=>{
+    const target=field.targetIndex===undefined?undefined:display.targets[field.targetIndex];
+    return (field.targetIndex===undefined||Number.isSafeInteger(field.targetIndex)&&field.targetIndex>=0&&!!target)&&allowedField(operation,field,target);
+  });
+  const rangeChangeTargets=new Set(allowed.filter(field=>['sourceInFrame','durationFrames'].includes(field.property)
+    &&[field.before,field.after].some(value=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0)
+    &&[field.before,field.after].every(value=>value===undefined||value===null||typeof value==='number'&&Number.isSafeInteger(value)&&value>=0)).map(field=>field.targetIndex));
+  const result:FormattedField[]=[];
+  for(const field of allowed){
+    // A6 calculates out-point from the saved in-point and duration. An
+    // unchanged input is absent from changed fields; either changed input is
+    // sufficient evidence not to repeat its derived out-point in this row.
+    if(field.property==='sourceOutFrame'&&rangeChangeTargets.has(field.targetIndex))continue;
+    const before=field.before===undefined?undefined:displayValue(field,field.before,locale,options);
+    const after=field.after===undefined?undefined:displayValue(field,field.after,locale,options);
+    if(field.before!==undefined&&before===undefined||field.after!==undefined&&after===undefined||before===undefined&&after===undefined)continue;
+    const target=field.targetIndex===undefined?undefined:display.targets[field.targetIndex],fieldKey=`agent.display.field.${field.property}` as FieldKey;
+    const prefix=target&&display.targets.length>1?`${targetTitle(target,locale,options.lookup)} · `:'';
+    result.push({field,entry:{label:prefix+translate(locale,fieldKey),value:before===undefined||emptyValue(field,field.before)?after??before!:after===undefined?before:`${before} → ${after}`}});
+  }
+  return result;
 }
 
 /** Format only the read-only allowlisted projection. Raw snapshots, model
  * summaries, tool arguments and undo material never enter this formatter. */
-export function taskDisplayEntries(display:AgentTaskDisplay|undefined,locale:Locale):TaskDisplayEntry[] {
-  if(!display)return [];
-  const operation=knownOperation(display.operation);
-  if(!operation)return [];
-  const result:TaskDisplayEntry[]=[];
-  for(const field of display.fields.slice(0,2000)){
-    const target=field.targetIndex===undefined?undefined:display.targets[field.targetIndex];
-    if(field.targetIndex!==undefined&&(!Number.isSafeInteger(field.targetIndex)||field.targetIndex<0||!target))continue;
-    if(!allowedField(operation,field,target))continue;
-    const before=field.before===undefined?undefined:displayValue(field,field.before,locale);
-    const after=field.after===undefined?undefined:displayValue(field,field.after,locale);
-    if(field.before!==undefined&&before===undefined||field.after!==undefined&&after===undefined||before===undefined&&after===undefined)continue;
-    const fieldKey=`agent.display.field.${field.property}` as FieldKey;
-    const prefix=target&&display.targets.length>1?`${targetTitle(target,locale)} · `:'';
-    result.push({label:prefix+translate(locale,fieldKey),value:before===undefined?after!:after===undefined?before:`${before} → ${after}`});
-  }
-  return result;
+export function taskDisplayEntries(display:AgentTaskDisplay|undefined,locale:Locale,options:TaskDisplayOptions={}):TaskDisplayEntry[] {
+  return display?formattedFields(display,locale,options).map(item=>item.entry):[];
 }
-export function taskDisplayLines(display:AgentTaskDisplay|undefined,locale:Locale):string[] {
-  return taskDisplayEntries(display,locale).map(entry=>`${entry.label} ${entry.value}`);
+export function taskDisplayLines(display:AgentTaskDisplay|undefined,locale:Locale,options:TaskDisplayOptions={}):string[] {
+  return taskDisplayEntries(display,locale,options).map(entry=>`${entry.label} ${entry.value}`);
+}
+/** Compact Change copy is separate from the full details list. Creation is an
+ * action with a target, never an invented empty-to-value modification. */
+export function taskChangeSummary(display:AgentTaskDisplay|undefined,locale:Locale,options:TaskDisplayOptions={}):string {
+  if(!display)return '';
+  const operation=knownOperation(display.operation);if(!operation)return '';
+  let fields=formattedFields(display,locale,options),creation='';
+  const kind=operation==='timeline.subtitle.add'?'subtitle':operation==='timeline.clip.add'?'clip':operation==='shot.create'?'shot':undefined;
+  if(kind){
+    const text=kind==='subtitle'?fields.find(item=>item.field.property==='subtitleText'&&typeof item.field.after==='string'):undefined;
+    const target=display.targets.find(item=>item.kind===(kind==='subtitle'?'timeline_subtitle':kind==='clip'?'timeline_clip':'shot'));
+    const name=text&&typeof text.field.after==='string'?projectText(text.field.after):target?safeName(options.lookup?.(target.kind,target.id))??safeName(target.name):undefined;
+    creation=name?translate(locale,`agent.display.add.${kind}`,{text:name}):taskOperationTitle(operation,locale);
+    if(text)fields=fields.filter(item=>item!==text);
+  }
+  const shown=fields.slice(0,2).map(({field,entry})=>field.before!==undefined&&emptyValue(field,field.before)&&!kind?translate(locale,'agent.display.setField',{field:entry.label,value:entry.value}):`${entry.label} ${entry.value}`);
+  const omitted=fields.length-shown.length;
+  if(omitted)shown.push(translate(locale,'agent.display.moreFields',{count:omitted}));
+  return [creation,...shown].filter(Boolean).join(' · ')||taskOperationTitle(operation,locale);
 }
 
 /** Only this server snapshot's safe conflict values may be called current.
  * Planned values and unrelated browser caches are never substituted. */
-export function taskCurrentEntries(display:AgentTaskDisplay|undefined,locale:Locale):TaskDisplayEntry[] {
+export function taskCurrentEntries(display:AgentTaskDisplay|undefined,locale:Locale,options:TaskDisplayOptions={}):TaskDisplayEntry[] {
   if(!display)return [];
   const fields:AgentTaskDisplayField[]=[];
   for(const field of display.fields.slice(0,2000)){
@@ -146,7 +184,7 @@ export function taskCurrentEntries(display:AgentTaskDisplay|undefined,locale:Loc
     const target=display.targets[field.targetIndex];if(!target||!allowedField(display.operation,field,target))continue;
     fields.push({targetIndex:field.targetIndex,property:field.property,unit:field.unit,after:field.current});
   }
-  return taskDisplayEntries({...display,fields},locale);
+  return taskDisplayEntries({...display,fields},locale,options);
 }
 
 export function taskStepTitle(step:AgentTaskStep,locale:Locale):string {

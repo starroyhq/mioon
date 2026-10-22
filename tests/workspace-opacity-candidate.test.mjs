@@ -12,6 +12,7 @@ import {
 } from '../packages/contracts/src/workspace-opacity-candidate.ts';
 import {workspaceBackupSourceSchemaVersion, workspaceRestorationPairSchema} from '../packages/contracts/src/workspace-schema-profiles.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
+import {reviewedSchema54SourceDeltas,reviewedSchema54IntegrationSourceDeltas,reverseReviewedSchema54} from './helpers/current-schema54-delta.ts';
 
 const ordinary = {schemaVersion: 42, profile: 'ordinary'};
 const restored = {schemaVersion: 43, sourceSchema: 42, profile: 'restored-local-v10'};
@@ -55,6 +56,7 @@ const integrationSources = Object.freeze({
 function reverseReviewedIntegration(file, bytes) {
   const reviewed = integrationSources[file];
   if (!reviewed) return bytes;
+  bytes = reverseReviewedSchema54(reviewed.currentPath, bytes);
   const sha256 = value => createHash('sha256').update(value).digest('hex');
   assert.equal(sha256(bytes), reviewed.currentSha256, `${file}: exact reviewed main integration source`);
   const previous = execFileSync('git', ['show', `${integrationPredecessor}:${reviewed.currentPath}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
@@ -278,6 +280,30 @@ test('reviewed main integration keeps original current pins and rejects any unkn
     assertPinned(source);
     for (const changed of ['', source.slice(1), source + source, source + '\n', source + '\n// unknown current bytes\n', source + '\nexport const hiddenOpacityAuthority = true;\n'])
       assert.throws(() => assertPinned(changed), `${file}: deleted, duplicated or unknown bytes must fail before predecessor comparison`);
+  }
+});
+
+test('finite54 profile and dispatch inverses recover the unchanged52 integration source and reject source drift', () => {
+  const applicable = [...reviewedSchema54IntegrationSourceDeltas,
+    ...reviewedSchema54SourceDeltas.filter(delta => delta.path === 'packages/business/src/workspace-restore-policy.ts')];
+  assert.deepEqual(applicable.map(delta => delta.path), [
+    'packages/business/src/workspace-backup-schema-versions.ts', 'packages/business/src/workspace-schema-dispatch.ts',
+    'packages/contracts/src/workspace-schema-profiles.ts', 'packages/business/src/workspace-restore-policy.ts',
+  ]);
+  const sha256 = value => createHash('sha256').update(value).digest('hex');
+  for (const delta of applicable) {
+    const entry = Object.entries(integrationSources).find(([, value]) => value.currentPath === delta.path);
+    assert.ok(entry, 'every inverse is an already pinned integration source');
+    const [file, reviewed] = entry, source = readFileSync(new URL(delta.path, root), 'utf8');
+    const previous = execFileSync('git', ['show', `4355c0746821dad76622b9fdaaed72400bdc5a92:${delta.path}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
+    assert.equal(sha256(previous), reviewed.currentSha256, `${file}: existing52 hash remains authoritative`);
+    const assertPinned = value => assert.deepEqual(reverseReviewedSchema54(delta.path, Buffer.from(value)), previous);
+    assertPinned(source);
+    for (const inverse of delta.inverse) {
+      for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after),
+        source.replace(inverse.after, ''), source + '\n// synthetic unreviewed source addition\n'])
+        assert.throws(() => assertPinned(changed), `${file}: unknown bytes do not disappear in the54 inverse`);
+    }
   }
 });
 

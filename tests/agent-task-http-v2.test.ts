@@ -9,17 +9,20 @@ import {fileURLToPath} from 'node:url';
 import {startServer} from '../apps/server/src/index.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
-import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
-async function cliSnapshot(url:string,token:string,projectId:string,runId:string):Promise<AgentTaskSnapshot>{
- const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task','status','--input',JSON.stringify({projectId,runId})],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
+async function cliSnapshot(url:string,token:string,projectId:string,runId:string):Promise<AgentTaskSnapshot>;
+async function cliSnapshot(url:string,token:string,projectId:string,conversationId:string,command:'history'):Promise<AgentTaskHistoryPage>;
+async function cliSnapshot(url:string,token:string,projectId:string,conversationId:string,command:'conversation'):Promise<AgentTaskConversationPage>;
+async function cliSnapshot(url:string,token:string,projectId:string,runId:string,command:'status'|'history'|'conversation'='status'):Promise<AgentTaskSnapshot|AgentTaskHistoryPage|AgentTaskConversationPage>{
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','task',command,'--input',JSON.stringify(command==='status'?{projectId,runId}:command==='history'?{projectId}:{projectId,conversationId:runId})],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
  let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
  await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI status timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error('Synthetic CLI status failed'));});});
- assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return agentTaskSnapshotSchema.parse(value.data);
+ assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return command==='history'?agentTaskHistoryPageSchema.parse(value.data):command==='conversation'?agentTaskConversationPageSchema.parse(value.data):agentTaskSnapshotSchema.parse(value.data);
 }
 async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='chat_completions',customGateway?:TaskGateway){
  const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-task-http-v2-'));
@@ -137,4 +140,19 @@ test('workspace backup refuses a live v2 model after its HTTP acceptance has fin
   release();const done=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(done.run.status,'completed');
   const saved=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(saved.status,200,JSON.stringify(saved.error));
  }finally{release();}
+});
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: HTTP and CLI share conversation grouping, scoped members, diagnostics exclusion and receipt identity`,async t=>{
+ const bodies:string[]=[];const gateway:TaskGateway=async function*(request){request.beforeSubmit?.();bodies.push(request.body);yield {type:'done',output:{text:`reply ${bodies.length}`,toolCalls:[],providerOutput:protocol==='responses'?[]:{role:'assistant',content:`reply ${bodies.length}`}}};};
+ const f=await fixture(t,protocol,gateway);await f.authorize();const revision=(await f.settings.get()).revision;
+ const send=async(text:string,conversationId?:string,requestId:string=randomUUID(),diagnostic?:{profile:'text'})=>f.request(f.prefix,'POST',{requestId,text,expectedSettingsRevision:revision,...(conversationId?{conversationId}:{}),...(diagnostic?{diagnostic}:{})});
+ const firstResponse=await send('First conversation'),first=agentTaskSnapshotSchema.parse(firstResponse.data);assert.equal(firstResponse.status,200);await f.settle(first.run.id);assert.ok(first.run.conversationId);
+ const other=agentTaskSnapshotSchema.parse((await send('Other conversation private')).data);await f.settle(other.run.id);
+ const continuationId=randomUUID(),next=agentTaskSnapshotSchema.parse((await send('Continue first',first.run.conversationId,continuationId)).data);await f.settle(next.run.id);assert.equal(next.run.conversationId,first.run.conversationId);assert.ok(bodies[2]?.includes('First conversation'));assert.doesNotMatch(bodies[2]!,/Other conversation private/u);
+ const diagnostic=agentTaskSnapshotSchema.parse((await send('PRIVATE_DIAGNOSTIC',undefined,randomUUID(),{profile:'text'})).data);await f.settle(diagnostic.run.id);
+ const last=agentTaskSnapshotSchema.parse((await send('After diagnostic',first.run.conversationId)).data);await f.settle(last.run.id);assert.doesNotMatch(bodies.at(-1)!,/PRIVATE_DIAGNOSTIC|Other conversation private/u);
+ const history=agentTaskHistoryPageSchema.parse((await f.request(`${f.prefix}/history`)).data);assert.equal(history.conversations.length,2);assert.equal(history.conversations.find(item=>item.id===first.run.conversationId)?.runCount,3);assert.deepEqual(await cliSnapshot(f.server.url,f.server.token,f.projectId,'','history'),history);
+ const memberRoute=`${f.prefix}/conversations/${first.run.conversationId}`,members=agentTaskConversationPageSchema.parse((await f.request(memberRoute)).data);assert.equal(members.runs.length,3);assert.ok(members.runs.every(run=>!Object.hasOwn(run,'context')));assert.deepEqual(await cliSnapshot(f.server.url,f.server.token,f.projectId,first.run.conversationId!,'conversation'),members);
+ const before=bodies.length;assert.equal((await send('missing',randomUUID())).status,404);const foreign=await f.request('/api/rpc','POST',{operation:'project.create',input:{name:'Foreign conversation owner'}});assert.ok(object(foreign.data)&&typeof foreign.data.id==='string');assert.equal((await f.request(`/api/agent/tasks/v2/${foreign.data.id}/conversations/${first.run.conversationId}`)).status,404);assert.equal((await f.request(`${f.prefix}/conversations/${diagnostic.run.conversationId}`)).status,404);
+ assert.equal((await send('Continue first',undefined,continuationId)).status,409);assert.equal((await send('First conversation',first.run.conversationId,first.run.requestId)).status,409);assert.equal((await send('Continue first',first.run.conversationId,continuationId)).status,200);assert.equal(bodies.length,before);
 });

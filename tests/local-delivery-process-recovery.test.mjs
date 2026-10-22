@@ -1,3 +1,4 @@
+import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 /** Real Node process death around real shared business services and the private
  * delivery sidecar. This does not claim native GUI lost-ACK coverage or media
  * validation; tests/local-delivery-qa-native.mjs covers the native title flow.
@@ -77,7 +78,7 @@ async function fixture(t){
    input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})}}),
   read(fn){const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{db.exec('PRAGMA query_only=ON; BEGIN');return fn(db);}finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}},
   snapshot(){return this.read(db=>{
-   const schema=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all(),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
+   const schema=withoutReviewedConversationObjects(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all()),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
    assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
    assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
    assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');

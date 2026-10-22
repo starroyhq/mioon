@@ -28,14 +28,14 @@ test('orphan annotation evidence and extra schema markers fail closed',t=>{
  db.exec('INSERT INTO schema_version VALUES(36),(37),(999)');assert.throws(()=>readCurrentWorkspaceRole(db));
 });
 
-test('current backup52 restore53 retains exact annotation rows and receipts and denies new writes',async t=>{
+test('current backup54 restore55 retains exact annotation rows and receipts and denies new writes',async t=>{
  const dir=base(t),source=path.join(dir,'source'),backup=path.join(dir,'backup'),destination=path.join(dir,'restored');let store=openStore(source),services=createServices(store,new Map());
  const project=await services.call('project.create',{name:'annotation backup'}),asset=store.put('assets',{id:randomUUID(),projectId:project.id,name:'no file source',mimeType:'image/png'}),input={projectId:project.id,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),tags:['保留'],note:'exact\nbytes'};
  const saved=await services.call('asset.annotation.set',input);const before=snapshot(store.db);await services.drain();store.close();
- const created=await createWorkspaceBackup({source,destination:backup});assert.equal(created.databaseSchemaVersion,52);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
- const restored=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(restored.sourceSchema,52);assert.equal(restored.databaseSchemaVersion,53);assert.equal(restored.profile,'restored-local-v15');
+ const created=await createWorkspaceBackup({source,destination:backup});assert.equal(created.databaseSchemaVersion,54);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
+ const restored=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(restored.sourceSchema,54);assert.equal(restored.databaseSchemaVersion,55);assert.equal(restored.profile,'restored-local-v16');
  store=openStore(destination);services=createServices(store,new Map());try{
-  assert.equal(getWorkspaceRestoreContext(store).schemaVersion,53);
+  assert.equal(getWorkspaceRestoreContext(store).schemaVersion,55);
   for(const table of ['asset_annotations','asset_annotation_requests'])assert.deepEqual(snapshot(store.db).tables[table],before.tables[table]);
   assert.deepEqual((await services.call('asset.annotation.list',{projectId:project.id,assetIds:[asset.id]})).items,[saved]);
   for(const candidate of [input,{...input,requestId:randomUUID(),expectedRevision:1,note:'new'}])await assert.rejects(services.call('asset.annotation.set',candidate,{expectedWorkspaceOrigin:restored.workspaceOrigin}),{code:'RESTORE_OPERATION_UNAVAILABLE'});
@@ -43,7 +43,7 @@ test('current backup52 restore53 retains exact annotation rows and receipts and 
   assert.throws(()=>store.db.exec("UPDATE asset_annotations SET note='changed',revision=2"),/RESTORED_RECORD_HELD/);
   assert.deepEqual(await services.call('lut.list',{projectId:project.id}),{projectId:project.id,items:[],nextAfter:null});
  }finally{await services.drain();store.close();}
- store=openStore(destination);assert.equal(getWorkspaceRestoreContext(store).schemaVersion,53);store.close();
+ store=openStore(destination);assert.equal(getWorkspaceRestoreContext(store).schemaVersion,55);store.close();
 });
 
 for(const sourceVersion of [24,26,28,30,32,34])test(`historical restored${sourceVersion+1} remains frozen and confirms empty only for owned assets`,async t=>{

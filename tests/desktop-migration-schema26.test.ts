@@ -63,18 +63,18 @@ test('desktop migration accepts current ordinary workspace from current openStor
 });
 
 for(const [label,change,code] of ([
- ['complete restored53',db=>{
+ ['complete restored55',db=>{
   const restored=installCurrentWorkspaceRestoreSchema(db,metadata());
-  assert.equal(restored.schemaVersion,53);assert.equal(restored.sourceSchema,52);
-  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),[...ordinaryVersions,53]);
+  assert.equal(restored.schemaVersion,55);assert.equal(restored.sourceSchema,54);
+  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),[...ordinaryVersions,55]);
  },'RESTORE_MIGRATION_UNAVAILABLE'],
- ['partial restoration metadata on ordinary52',db=>db.exec('CREATE TABLE workspace_restoration(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['partial restoration evidence on ordinary52',db=>db.exec('CREATE TABLE workspace_restore_evidence(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['execution epoch without restore marker on ordinary52',db=>db.exec('ALTER TABLE edit_tasks ADD COLUMN executionEpoch TEXT'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['partial restoration metadata on ordinary54',db=>db.exec('CREATE TABLE workspace_restoration(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['partial restoration evidence on ordinary54',db=>db.exec('CREATE TABLE workspace_restore_evidence(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['execution epoch without restore marker on ordinary54',db=>db.exec('ALTER TABLE edit_tasks ADD COLUMN executionEpoch TEXT'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['orphan restored marker on ordinary',db=>db.exec('INSERT INTO schema_version VALUES(35)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['mixed historical restore25 and ordinary52 markers',db=>db.exec('INSERT INTO schema_version VALUES(25)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['future54 marker on ordinary52',db=>db.exec('INSERT INTO schema_version VALUES(54)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['mixed historical restore27 and ordinary52 markers',db=>db.exec('INSERT INTO schema_version VALUES(27)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['mixed historical restore25 and ordinary54 markers',db=>db.exec('INSERT INTO schema_version VALUES(25)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['future56 marker on ordinary54',db=>db.exec('INSERT INTO schema_version VALUES(56)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['mixed historical restore27 and ordinary54 markers',db=>db.exec('INSERT INTO schema_version VALUES(27)'),'RESTORE_SCHEMA_UNSUPPORTED'],
 ] as Array<[string, (db: DatabaseSync) => void, string]>))test(`desktop migration rejects ${label} before destination creation without changing source`,async t=>{
  const f=fixture(t);mutate(f.file,change);
  const before=snapshot(f.source),siblings=fs.readdirSync(f.base).sort();
@@ -84,7 +84,7 @@ for(const [label,change,code] of ([
  assert.equal(fs.existsSync(path.dirname(f.destination)),false);
 });
 
-test('desktop migration retains schema52 selected-input manifests and private bytes without credentials',async t=>{
+test('desktop migration retains schema54 selected-input manifests and private bytes without credentials',async t=>{
  const f=fixture(t),id=randomUUID(),bytes=Buffer.from('selected local input'),relativePath=`agent-imports/${id}.bin`;
  fs.mkdirSync(path.join(f.source,'agent-imports'),{mode:0o700});fs.writeFileSync(path.join(f.source,relativePath),bytes,{mode:0o600});
  mutate(f.file,db=>db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,createdAt) VALUES(?,?,?,?,?,?,?,'selected',?)").run(id,f.projectId,randomUUID(),'chosen.png','image/png',relativePath,createHash('sha256').update(bytes).digest('hex'),'2026-10-20T00:00:00.000Z'));

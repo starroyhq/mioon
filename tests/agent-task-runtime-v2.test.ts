@@ -143,8 +143,8 @@ test('omitted locale and explicit Simplified Chinese replay the same run; invali
 });
 test('history byte trimming keeps the exact host language and final user message without inheriting an earlier locale',async t=>{
   const f=await fixture(t);f.setScript(async function*(){yield {type:'done',output:output('responses',[],'x'.repeat(50000))};});
-  for(let index=0;index<4;index++){const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'previous '+index+' '+('x'.repeat(28000)),expectedSettingsRevision:(await f.settings.get()).revision,locale:'en'});await f.settle(sent.run.id);}
-  const text='現在の指示',sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await f.settings.get()).revision,locale:'ja'});await f.settle(sent.run.id);
+  let conversationId:string|undefined;for(let index=0;index<4;index++){const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'previous '+index+' '+('x'.repeat(28000)),expectedSettingsRevision:(await f.settings.get()).revision,locale:'en',...(conversationId?{conversationId}:{})});conversationId=sent.run.conversationId;await f.settle(sent.run.id);}
+  const text='現在の指示',sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await f.settings.get()).revision,locale:'ja',conversationId});await f.settle(sent.run.id);
   const context=f.runtime.journal.run(sent.run.id).context!;assert.deepEqual(context[0],taskResponseLanguageContext('ja'));assert.deepEqual(context.at(-1),{role:'user',content:text});assert.ok(Buffer.byteLength(JSON.stringify(context))<=TASK_MODEL_LIMITS.historyBytes);assert.ok(context.length<10);assert.equal(taskResponseLocale(context),'ja');
 });
 test('resuming a legacy model intent sends its original journaled body without rewriting language',async t=>{
@@ -449,7 +449,7 @@ test('diagnostics cannot enter ordinary conversation history or narrow normal to
  const f=await fixture(t);f.setScript(async function*(){yield {type:'done',output:output('responses',[],'DIAGNOSTIC_PRIVATE_CONTEXT')};});
  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'DIAGNOSTIC_PROMPT',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'text'}});await f.settle(sent.run.id);
  f.setScript(async function*(){yield {type:'done',output:output('responses')};});const normal=await f.send('普通任务');await f.settle(normal.run.id);
- const request=f.requests[1]!;assert.doesNotMatch(request.body,/DIAGNOSTIC_PRIVATE_CONTEXT|DIAGNOSTIC_PROMPT/u);assert.equal((object(JSON.parse(request.body)).tools as unknown[]).length,f.tools.list().length);assert.equal(f.runtime.get(f.projectId,normal.run.id).run.diagnostic,undefined);
+ const request=f.requests[1]!;assert.doesNotMatch(request.body,/DIAGNOSTIC_PRIVATE_CONTEXT|DIAGNOSTIC_PROMPT/u);assert.equal((object(JSON.parse(request.body)).tools as unknown[]).length,f.tools.list().length);assert.equal(f.runtime.get(f.projectId,normal.run.id).run.diagnostic,undefined);assert.equal(f.runtime.history(f.projectId).conversations.length,1);assert.equal(f.runtime.history(f.projectId).conversations[0]?.lastRunId,normal.run.id);assert.equal((await f.runtime.snapshot(f.projectId)).runs.length,1);assert.throws(()=>f.runtime.conversation(f.projectId,sent.run.conversationId!),{code:'AGENT_TASK_NOT_FOUND'});
 });
 for(const point of [
  {name:'model intent',event:'INSERT',kind:'model',status:'intent',requests:0,effects:0},
@@ -462,4 +462,28 @@ for(const point of [
  const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});
  f.store.db.exec(`CREATE TRIGGER test_block_journal BEFORE ${point.event} ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.kind')='${point.kind}' AND NEW.status='${point.status}' BEGIN SELECT RAISE(ABORT,'synthetic disk write failed');END;`);
  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(f.effects.size,point.effects);assert.equal(f.requests.length,point.requests);assert.equal(done.run.status,'failed');
+});
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: conversations bind prior context, exclude other conversations and retain exact request identity`,async t=>{
+ const f=await fixture(t,protocol);f.setScript(async function*(index){yield {type:'done',output:output(protocol,[],`reply ${index}`)};});
+ const settings=await f.settings.get(),send=(text:string,conversationId?:string,requestId:string=randomUUID())=>f.runtime.send(f.projectId,{requestId,text,expectedSettingsRevision:settings.revision,...(conversationId?{conversationId}:{})});
+ const first=await send('conversation A first');await f.settle(first.run.id);assert.ok(first.run.conversationId);assert.notEqual(first.run.conversationId,first.run.id);
+ const other=await send('conversation B private');await f.settle(other.run.id);assert.notEqual(other.run.conversationId,first.run.conversationId);
+ const requestId=randomUUID(),next=await send('conversation A next',first.run.conversationId,requestId);await f.settle(next.run.id);
+ const retained=f.runtime.journal.run(next.run.id).context!;assert.ok(JSON.stringify(retained).includes('conversation A first'));assert.doesNotMatch(JSON.stringify(retained),/conversation B private|reply 2/u);
+ assert.equal((await send('conversation A next',first.run.conversationId,requestId)).run.id,next.run.id);
+ await assert.rejects(send('conversation A next',undefined,requestId),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+ await assert.rejects(send('conversation A first',first.run.conversationId,first.run.requestId),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+ const before=f.requests.length;await assert.rejects(send('missing',randomUUID()),{code:'AGENT_TASK_NOT_FOUND'});assert.equal(f.requests.length,before);
+ await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'diagnostic cannot join',expectedSettingsRevision:settings.revision,conversationId:first.run.conversationId,diagnostic:{profile:'text'}}),{code:'AGENT_TASK_INVALID'});
+ const history=f.runtime.history(f.projectId);assert.equal(history.conversations.length,2);const group=history.conversations.find(item=>item.id===first.run.conversationId);assert.ok(group);assert.equal(group.title,'conversation A first');assert.equal(group.runCount,2);assert.equal(group.lastRunId,next.run.id);
+ const page=f.runtime.conversation(f.projectId,first.run.conversationId!);assert.deepEqual(new Set(page.runs.map(run=>run.id)),new Set([first.run.id,next.run.id]));assert.ok(page.runs.every(run=>!Object.hasOwn(run,'context')));assert.equal(f.requests.length,before);
+});
+
+test('diagnostics cannot evict a normal conversation from the recent100 project snapshot',async t=>{
+ const f=await fixture(t),journal=f.runtime.journal;
+ const write=(text:string,diagnostic?:{profile:'text'})=>{const run=journal.create({requestId:randomUUID(),projectId:f.projectId,text,configuration:{},...(diagnostic?{diagnostic}:{})}).run;return journal.transition(run.id,run.revision,'completed');};
+ const normal=write('Visible ordinary conversation');let diagnostic=normal;for(let index=0;index<102;index++)diagnostic=write(`Private diagnostic ${index}`,{profile:'text'});
+ assert.equal(journal.list(f.projectId).length,100);assert.ok(journal.list(f.projectId).every(run=>run.diagnostic));const snapshot=await f.runtime.snapshot(f.projectId);assert.deepEqual(snapshot.runs.map(run=>run.id),[normal.id]);assert.equal(f.runtime.history(f.projectId).conversations.length,1);
+ const receipt=f.runtime.lookup(f.projectId,diagnostic.requestId);assert.equal(receipt.found,true);assert.equal(receipt.snapshot?.run.id,diagnostic.id);assert.equal(f.requests.length,0);
 });

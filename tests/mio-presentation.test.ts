@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type {AgentTaskDisplay,AgentTaskDisplayField,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {LOCALES,translate,validateCatalogs} from '../packages/i18n/src/index.ts';
 import {mioPanelMessages} from '../packages/i18n/src/catalogs/mio-panel.ts';
-import {taskCurrentEntries,taskBackgroundLocation,taskDisplayEntries,taskDisplayLines,taskDisplayTargets,taskDurationSeconds,taskOperationTitle,taskStepStatusKey,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
+import {taskCurrentEntries,taskBackgroundLocation,taskChangeSummary,taskDisplayEntries,taskDisplayLines,taskDisplayTargets,taskDurationSeconds,taskOperationTitle,taskStepStatusKey,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
 
 const first='00000000-0000-4000-8000-000000000001',second='00000000-0000-4000-8000-000000000002';
 function display(operation='timeline.clip.update',fields:AgentTaskDisplayField[]=[]):AgentTaskDisplay {
@@ -70,7 +70,7 @@ test('change values retain before and after units and target association',()=>{
   value.targets.push({kind:'timeline_clip',id:second,name:'sound-bed.wav'});value.targetCount=2;
   assert.deepEqual(taskDisplayEntries(value,'zh-Hans'),[
     {label:'片段 · scene-b.mp4 · 时长',value:'180 帧 → 135 帧'},
-    {label:'片段 · sound-bed.wav · 音量',value:'0 dB → -8 dB'},
+    {label:'片段 · sound-bed.wav · 音量',value:'0.0 dB → -8.0 dB'},
     {label:'片段 · sound-bed.wav · 淡入',value:'12 帧'},
   ]);
   for(const locale of LOCALES){
@@ -90,7 +90,7 @@ test('generation previews localize finite enum values and allow fields with no t
     {property:'versionNumber',unit:'count',after:2},
   ]};
   const entries=taskDisplayEntries(value,'zh-Hans');
-  assert.deepEqual(entries,[{label:'服务商',value:'mock'},{label:'方式',value:'图生视频 · 首帧参考'},{label:'比例',value:'9:16'},{label:'时长',value:'5 秒'},{label:'生成声音',value:'关闭'},{label:'版本',value:'V2'}]);
+  assert.deepEqual(entries,[{label:'服务商',value:'mock'},{label:'方式',value:'图生视频 · 首帧参考'},{label:'比例',value:'9:16'},{label:'时长',value:'5.0 秒'},{label:'生成声音',value:'关闭'},{label:'版本',value:'V2'}]);
   assert.match(taskDisplayLines(value,'ja')[1]!,/最初のフレーム/u);
 });
 
@@ -164,13 +164,13 @@ test('generation navigation requires an unambiguous job reference and never gues
 test('conflict current values come only from server fields, retain target association and never substitute planned values',()=>{
   const planned:AgentTaskDisplay={operation:'timeline.clip.update',targets:[{kind:'timeline_clip',id:first,name:'First clip'},{kind:'timeline_clip',id:second,name:'Second clip'}],targetCount:2,fields:[{targetIndex:0,property:'gainDb',unit:'db',after:-6,current:0},{targetIndex:1,property:'startFrame',unit:'frames',after:60,current:30},{targetIndex:0,property:'sourceOutFrame',unit:'frames',after:120,current:100},{targetIndex:0,property:'positionX',unit:'pixels',after:4,current:2}]};
   const snapshot=structuredClone(planned);
-  assert.deepEqual(taskCurrentEntries(planned,'en'),[{label:'Clip · First clip · Volume',value:'0 dB'},{label:'Clip · Second clip · Timeline position',value:'30 frames'},{label:'Clip · First clip · Out-point',value:'100 frames'},{label:'Clip · First clip · Horizontal position',value:'2 px'}]);
+  assert.deepEqual(taskCurrentEntries(planned,'en'),[{label:'Clip · First clip · Volume',value:'0.0 dB'},{label:'Clip · Second clip · Timeline position',value:'30 frames'},{label:'Clip · First clip · Out-point',value:'100 frames'},{label:'Clip · First clip · Horizontal position',value:'2 px'}]);
   assert.deepEqual(planned,snapshot);assert.deepEqual(taskCurrentEntries({...planned,fields:planned.fields.map(({current,...field})=>field)},'en'),[]);
   assert.deepEqual(taskCurrentEntries(undefined,'en'),[]);
 });
 test('server current shot and subtitle values remain bounded and safe; absent and unassociated attributes stay absent',()=>{
   const shot:AgentTaskDisplay={operation:'shot.update',targets:[{kind:'shot',id:first,name:'Scene'}],targetCount:1,fields:[{targetIndex:0,property:'description',unit:'text',after:'plan',current:'A saved description'},{targetIndex:0,property:'durationSeconds',unit:'seconds',after:4,current:2},{targetIndex:0,property:'aspectRatio',unit:'ratio',after:'9:16',current:'16:9'}]};
-  assert.deepEqual(taskCurrentEntries(shot,'en'),[{label:'Description',value:'A saved description'},{label:'Duration',value:'2 s'},{label:'Aspect ratio',value:'16:9'}]);
+  assert.deepEqual(taskCurrentEntries(shot,'en'),[{label:'Description',value:'A saved description'},{label:'Duration',value:'2.0 s'},{label:'Aspect ratio',value:'16:9'}]);
   assert.deepEqual(taskCurrentEntries({...shot,fields:[{targetIndex:0,property:'description',unit:'text',after:'safe plan',current:'apiKey: synthetic-only'}]},'en'),[{label:'Description',value:'apiKey: synthetic-only'}]);
   const subtitle:AgentTaskDisplay={operation:'timeline.subtitle.update',targets:[{kind:'timeline_subtitle',id:first}],targetCount:1,fields:[{targetIndex:0,property:'subtitleText',unit:'text',after:'plan',current:'Saved subtitle'}]};
   assert.equal(taskCurrentEntries(subtitle,'en')[0]?.value,'Saved subtitle');assert.deepEqual(taskCurrentEntries({...subtitle,fields:[{...subtitle.fields[0]!,current:'/synthetic/source'}]},'en'),[{label:'Subtitle text',value:'/synthetic/source'}]);
@@ -191,4 +191,91 @@ test('authorized description and subtitle content survives formatting in all loc
   assert.equal(taskDisplayEntries(value,'en')[0]?.value,'😀'.repeat(120));
   value.fields[0]!.after='a'.repeat(239)+'😀';
   assert.equal(taskDisplayEntries(value,'en')[0]?.value,'a'.repeat(239));
+});
+
+test('change frames use the current timeline fps and seconds and decibels keep one decimal',()=>{
+  const value=display('timeline.clip.update',[
+    {targetIndex:0,property:'durationFrames',unit:'frames',before:180,after:135},
+    {targetIndex:0,property:'gainDb',unit:'db',before:0,after:-8.25},
+    {targetIndex:0,property:'fadeInFrames',unit:'frames',before:null,after:6},
+  ]);
+  assert.deepEqual(taskDisplayLines(value,'zh-Hans',{fps:30}),['时长 6.0 秒 → 4.5 秒','音量 0.0 dB → -8.3 dB','淡入 0.2 秒']);
+  assert.equal(taskChangeSummary(value,'zh-Hans',{fps:30}),'时长 6.0 秒 → 4.5 秒 · 音量 0.0 dB → -8.3 dB · 等 1 项');
+  for(const locale of LOCALES){
+    assert.ok(taskDisplayLines(value,locale,{fps:30})[0]?.includes('6.0'));
+    assert.ok(taskDisplayLines(value,locale,{fps:30})[0]?.includes('4.5'));
+    assert.ok(taskDisplayLines(value,locale,{fps:30})[1]?.includes('-8.3 dB'));
+  }
+  value.fields=[{property:'durationFrames',unit:'frames',after:2997},{property:'gainDb',unit:'db',after:-0.001}];
+  assert.deepEqual(taskDisplayEntries(value,'en',{fps:29.97}),[{label:'Duration',value:'100.0 s'},{label:'Volume',value:'0.0 dB'}]);
+  value.fields=[{property:'gainDb',unit:'db',before:0,after:'muted'}];
+  for(const locale of LOCALES)assert.equal(taskDisplayEntries(value,locale)[0]?.value,`0.0 dB → ${translate(locale,'agent.display.muted')}`);
+});
+
+test('unavailable or unusable timeline fps falls back to frames',()=>{
+  const value=display('timeline.clip.update',[{property:'durationFrames',unit:'frames',before:180,after:135}]);
+  for(const fps of [undefined,0,-30,NaN,Infinity,Number.MIN_VALUE])assert.equal(taskDisplayLines(value,'en',{fps})[0],'Duration 180 frames → 135 frames');
+});
+
+test('derived out-point is omitted for the same target range change without requiring unchanged inputs',()=>{
+  const value=display('timeline.clip.update',[
+    {targetIndex:0,property:'sourceInFrame',unit:'frames',before:0,after:30},
+    {targetIndex:0,property:'durationFrames',unit:'frames',before:180,after:135},
+    {targetIndex:0,property:'sourceOutFrame',unit:'frames',before:180,after:165},
+    {targetIndex:1,property:'sourceOutFrame',unit:'frames',before:30,after:60},
+  ]);
+  value.targets.push({kind:'timeline_clip',id:second,name:'another.mp4'});value.targetCount=2;
+  const entries=taskDisplayEntries(value,'en',{fps:30});
+  assert.equal(entries.length,3);assert.ok(entries[0]?.label.includes('In-point'));assert.ok(entries[1]?.label.includes('Duration'));assert.equal(entries[2]?.value,'1.0 s → 2.0 s');assert.ok(entries[2]?.label.includes('another.mp4'));
+  value.fields[0]!.before=Infinity;value.fields[0]!.after=Infinity;value.fields[1]!.before=Infinity;value.fields[1]!.after=Infinity;
+  assert.ok(taskDisplayEntries(value,'en',{fps:30}).some(entry=>entry.label.includes('scene-b.mp4')&&entry.label.includes('Out-point')));
+  for(const property of ['sourceInFrame','durationFrames'] as const){
+    const changed=display('timeline.clip.update',[{targetIndex:0,property,unit:'frames',before:180,after:135},{targetIndex:0,property:'sourceOutFrame',unit:'frames',before:180,after:135}]);
+    assert.equal(taskDisplayEntries(changed,'en',{fps:30}).length,1);
+    assert.ok(!taskDisplayLines(changed,'en',{fps:30}).join('').includes('Out-point'));
+  }
+});
+
+test('compact changes show two properties with an exact remainder and keep the full details list',()=>{
+  const value=display('timeline.clip.update',[
+    {targetIndex:0,property:'durationFrames',unit:'frames',before:180,after:135},
+    {targetIndex:0,property:'sourceInFrame',unit:'frames',before:0,after:30},
+    {targetIndex:0,property:'sourceOutFrame',unit:'frames',before:180,after:165},
+    {targetIndex:0,property:'gainDb',unit:'db',before:0,after:-6},
+    {targetIndex:0,property:'fadeInFrames',unit:'frames',before:0,after:6},
+    {targetIndex:0,property:'fadeOutFrames',unit:'frames',before:0,after:12},
+  ]);
+  for(const locale of LOCALES){
+    const details=taskDisplayLines(value,locale,{fps:30}),summary=taskChangeSummary(value,locale,{fps:30});
+    assert.equal(details.length,5);assert.ok(summary.includes(details[0]!));assert.ok(summary.includes(details[1]!));assert.ok(summary.endsWith(translate(locale,'agent.display.moreFields',{count:3})));
+    assert.ok(!summary.includes(details[2]!));assert.ok(!summary.includes(details[3]!));assert.ok(!summary.includes(details[4]!));
+  }
+});
+
+test('setting an empty value uses action copy and does not invent an empty-to-value change',()=>{
+  const value=display('timeline.clip.update',[{targetIndex:0,property:'fadeInFrames',unit:'frames',before:null,after:6}]);
+  assert.equal(taskChangeSummary(value,'zh-Hans',{fps:30}),'设置淡入 0.2 秒');
+  for(const locale of LOCALES){
+    const entry=taskDisplayEntries(value,locale,{fps:30})[0]!;
+    assert.equal(taskChangeSummary(value,locale,{fps:30}),translate(locale,'agent.display.setField',{field:entry.label,value:entry.value}));
+    assert.doesNotMatch(taskChangeSummary(value,locale,{fps:30}),/→/u);
+  }
+  value.fields[0]!.before=0;assert.equal(taskChangeSummary(value,'en',{fps:30}),'Fade in 0.0 s → 0.2 s');
+  const shot:AgentTaskDisplay={operation:'shot.update',targets:[],targetCount:0,fields:[{property:'description',unit:'text',before:'',after:'A/B 对比'}]};
+  assert.equal(taskChangeSummary(shot,'zh-Hans'),'设置画面描述 A/B 对比');
+});
+
+test('subtitle clip and shot creation uses localized add copy without empty arrows',()=>{
+  const subtitle:AgentTaskDisplay={operation:'timeline.subtitle.add',targets:[{kind:'timeline_subtitle',id:first}],targetCount:1,fields:[{targetIndex:0,property:'subtitleText',unit:'text',before:null,after:'台词：密码：芝麻开门'}]};
+  assert.equal(taskChangeSummary(subtitle,'zh-Hans'),'添加字幕「台词：密码：芝麻开门」');
+  for(const locale of LOCALES)assert.equal(taskChangeSummary(subtitle,locale),translate(locale,'agent.display.add.subtitle',{text:'台词：密码：芝麻开门'}));
+  const clip=display('timeline.clip.add',[{targetIndex:0,property:'durationFrames',unit:'frames',before:null,after:120}]);
+  const shot:AgentTaskDisplay={operation:'shot.create',targets:[{kind:'shot',id:first,name:'Original title'}],targetCount:1,fields:[{targetIndex:0,property:'durationSeconds',unit:'seconds',before:null,after:4}]};
+  for(const locale of LOCALES){
+    assert.ok(taskChangeSummary(clip,locale,{fps:30}).startsWith(translate(locale,'agent.display.add.clip',{text:'scene-b.mp4'})));
+    assert.ok(taskChangeSummary(shot,locale,{lookup:()=> 'Current title'}).startsWith(translate(locale,'agent.display.add.shot',{text:'Current title'})));
+    assert.doesNotMatch(taskChangeSummary(clip,locale,{fps:30})+taskChangeSummary(shot,locale),/→/u);
+  }
+  subtitle.targets=[];subtitle.targetCount=0;delete subtitle.fields[0]!.targetIndex;
+  assert.equal(taskChangeSummary(subtitle,'en'),'Add subtitle “台词：密码：芝麻开门”');
 });

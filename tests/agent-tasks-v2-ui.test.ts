@@ -12,6 +12,7 @@ import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigat
 const projectId = '11111111-1111-4111-8111-111111111111', runId = '22222222-2222-4222-8222-222222222222', stepId = '33333333-3333-4333-8333-333333333333', time = '2026-10-20T00:00:00.000Z';
 const snapshot = (status: AgentTaskSnapshot['run']['status'] = 'completed', revision = 1): AgentTaskSnapshot => ({ run: { id: runId, projectId, requestId: crypto.randomUUID(), text: 'test task', status, revision, stepLimit: 30, budget: 30, stepsUsed: 1, configuration: {}, createdAt: time, updatedAt: time }, steps: [], changes: [] });
 const project = (): AgentTaskProjectSnapshot => ({ version: 2, instanceId: '44444444-4444-4444-8444-444444444444', projectId, runs: [], policy: structuredClone(DEFAULT_AGENT_TASK_POLICY), authorization: { revision: 1, scopes: ['project_agent'] }, settings: { revision: 0, configuration: { presetId: 'openai', platformId: 'global', baseUrl: 'https://example.invalid/v1', model: 'synthetic', protocol: 'responses' }, secret: { configured: false, storage: 'none' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: null }, presets: [], scope: 'settings_only', verification: 'not_tested' } });
+const conversation=(run:AgentTaskSnapshot['run'])=>({id:run.conversationId??run.id,projectId:run.projectId,title:run.text,createdAt:run.createdAt,updatedAt:run.updatedAt,lastRunId:run.id,lastRunStatus:run.status,changeCount:0,runCount:1});
 function deferred<T>() { let resolve!: (value: T) => void, reject!: (value: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve(); };
 function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending, onChangeApplied: (snapshot: AgentTaskSnapshot) => void = () => {}, options:{onChange?:(state:AgentTaskSessionState)=>void;receipts?:AgentTaskReceiptStore;getLocale?:()=>AgentTaskLocale}={}) {
@@ -19,7 +20,7 @@ function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending,
   const store: AgentTaskReceiptStore = { read: id => receipts.get(id) ?? null, write(id, value) { if (value) receipts.set(id, value); else receipts.delete(id); } };
   const streams: { signal: AbortSignal; onEvent: (event: AgentTaskEvent) => void }[] = [], sent: unknown[] = [], actions: unknown[] = [];
   const client: AgentTaskClient = {
-    history: async()=>({runs:[],nextCursor:null}), list: async () => project(), read: async () => snapshot(), send: async (_, input) => { sent.push(input); return snapshot('running'); }, action: async (_, input) => { actions.push(input); return snapshot('paused', 2); }, lookup: async () => ({ found: false }), authorize: async () => {},
+    history: async()=>({conversations:[],nextCursor:null}), conversation:async(_,id)=>{const run={...snapshot().run,id,conversationId:id};return{conversation:conversation(run),runs:[run],nextCursor:null};}, list: async () => project(), read: async () => snapshot(), send: async (_, input) => { sent.push(input); return snapshot('running'); }, action: async (_, input) => { actions.push(input); return snapshot('paused', 2); }, lookup: async () => ({ found: false }), authorize: async () => {},
     stream: async (_, __, ___, signal, onEvent) => { streams.push({ signal, onEvent }); return new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); },
     policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:value,readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
   };
@@ -168,7 +169,8 @@ test('an actual upload 4xx is visible after receipt lookup, preserves earlier fi
     assert.equal(f.session.getState().phase, 'ready'); assert.equal(f.session.getState().error, 'UPLOAD_REJECTED');
     assert.equal(agentTaskCloseState(f.session.getState()).blocked, false, 'a proven rejection keeps its notice without trapping normal native close');
     assert.equal(agentTaskCloseState(f.session.getState()).dirty, true, 'the existing draft still needs normal discard confirmation');
-    assert.equal(agentTaskCloseState({...f.session.getState(), draft: ''}).dirty, false);
+    assert.equal(agentTaskCloseState({...f.session.getState(), draft: ''}).dirty, true, 'selected attachments and retained conversation drafts still need discard confirmation');
+    assert.equal(agentTaskCloseState({...f.session.getState(), draft: '', draftDirty:false, uploads:[]}).dirty, false, 'only an empty input owner can close without discarding work');
     assert.deepEqual(f.session.getState().uploads, previous); assert.equal(f.session.getState().draft, 'Keep this intended edit');
     assert.equal(f.session.getState().pending, null); assert.equal(f.receipts.size, 0); assert.equal(lists, 1);
     assert.equal(requests.filter(row => row.method === 'POST').length, 3); assert.equal(requests.filter(row => row.method === 'GET').length, 1);
@@ -285,8 +287,8 @@ test('a host project refresh caused by a newly observed Change preserves text ty
 
 test('read-only history can page and select older runs without losing already loaded entries',async()=>{
   const oldId=crypto.randomUUID(),oldRun={...snapshot().run,id:oldId};let reads=0;
-  const f=fixture({list:async()=>({...project(),readOnly:true}),history:async(_,cursor)=>cursor?{runs:[oldRun],nextCursor:null}:{runs:[snapshot().run],nextCursor:'older'},read:async(_,id)=>{reads++;return{...snapshot(),run:{...snapshot().run,id}};}});
-  await f.session.load();await f.session.history();await f.session.history(true);assert.equal(f.session.getState().history.runs.length,2);await f.session.select(oldId);assert.equal(f.session.getState().snapshot?.run.id,oldId);assert.equal(reads,1);assert.equal(f.sent.length,0);f.session.dispose();
+  const f=fixture({list:async()=>({...project(),readOnly:true}),history:async(_,cursor)=>cursor?{conversations:[conversation(oldRun)],nextCursor:null}:{conversations:[conversation(snapshot().run)],nextCursor:'older'},read:async(_,id)=>{reads++;return{...snapshot(),run:{...snapshot().run,id}};}});
+  await f.session.load();await f.session.history();await f.session.history(true);assert.equal(f.session.getState().history.conversations.length,2);await f.session.select(oldId);assert.equal(f.session.getState().snapshot?.run.id,oldId);assert.equal(reads,1);assert.equal(f.sent.length,0);f.session.dispose();
 });
 
 test('a completed run with pending background work keeps observing late cost and Change records until work settles',async()=>{

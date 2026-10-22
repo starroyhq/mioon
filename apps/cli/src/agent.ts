@@ -68,6 +68,7 @@ export async function runAgentCommand(operation:string,input:Record<string,unkno
   case 'agent.policy.lookup':return client.policyLookup(input,request);
   case 'agent.task.list':return client.list(input,request);
   case 'agent.task.history':return client.history(input,request);
+  case 'agent.task.conversation':return client.conversation(input,request);
   case 'agent.task.status':return client.status(input,request);
   case 'agent.task.send':return client.send(input,request);
   case 'agent.task.lookup':return client.lookup(input,request);

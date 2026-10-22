@@ -81,3 +81,27 @@
 
 /* ReactFlow resolves its viewport against this extra ownership boundary. */
 .agent-editing-canvas{position:relative;width:100%;height:100%}.agent-editing-canvas>.agent-editing-protection{position:absolute;z-index:5;top:64px;left:50%;transform:translateX(-50%);width:min(520px,calc(100% - 80px));background:var(--wb-panel)}
+
+/* History covers only the message viewport; the draft owner remains mounted. */
+.mio-message-area{position:relative;display:flex;flex:1;min-height:0;min-width:0;overflow:hidden}
+.mio-panel .mio-log[hidden]{display:none}
+.mio-round,.mio-legacy-conversation{display:flex;flex-direction:column;gap:var(--wb-space-3);min-width:0}
+.mio-round+.mio-round{border-top:1px solid var(--wb-line-subtle);padding-top:var(--wb-space-3)}
+.mio-change{flex-wrap:wrap}
+.mio-change-details{flex-basis:100%;min-width:0;padding-left:var(--wb-space-5)}
+.mio-change-details>p{margin-block:var(--wb-space-1);overflow-wrap:anywhere}
+.mio-history-overlay{position:absolute;inset:var(--wb-space-1) var(--wb-space-2);z-index:1;display:flex;flex-direction:column;gap:var(--wb-space-2);padding:var(--wb-space-2);background:var(--wb-raised);border:1px solid var(--wb-line);border-radius:var(--wb-radius-card);box-shadow:var(--wb-shadow);min-width:0;overflow:hidden}
+.mio-history-overlay>header{display:flex;align-items:center;justify-content:space-between;gap:var(--wb-space-1);font-size:var(--wb-text-label)}
+.mio-history-overlay>header strong{font-weight:500}
+.mio-history-search{display:flex;align-items:center;gap:var(--wb-space-1);padding-inline:var(--wb-space-2);border:1px solid var(--wb-line);background:var(--wb-input);border-radius:var(--wb-radius-control);min-width:0}
+.mio-history-search input{min-width:0;width:100%;border:0;background:transparent;box-shadow:none;padding-inline:0;font-size:var(--wb-text-label)}
+.mio-history-list{flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;overflow-wrap:anywhere}
+.mio-history-group{display:flex;flex-direction:column;gap:var(--wb-space-1);margin-top:var(--wb-space-2)}
+.mio-history-group h4{font-size:var(--wb-text-caption);color:var(--wb-soft);font-weight:400;margin:var(--wb-space-1) 0}
+.mio-history-item.wb-button{display:flex;width:100%;height:auto;min-width:0;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;gap:var(--wb-space-1);padding:var(--wb-space-2);white-space:normal;line-height:1.4}
+.mio-history-item[aria-current=page]{background:var(--wb-card)}
+.mio-history-title{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:var(--wb-text-label)}
+.mio-history-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--wb-space-1);min-width:0;color:var(--wb-soft);font-size:var(--wb-text-caption)}
+.mio-history-meta [data-tone=success]{color:var(--wb-success)}
+.mio-history-meta [data-tone=danger]{color:var(--wb-danger)}
+.mio-current-conversation{color:var(--wb-soft);font-size:var(--wb-text-min)}
