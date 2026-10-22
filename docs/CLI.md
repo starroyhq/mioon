@@ -1019,3 +1019,16 @@ Discover `mioon schema timeline.loudness.apply`. After an explicitly reviewed cu
 ## LUT resource foundation
 
 `mioon lut import --file /owned/path/look.cube --input '{"projectId":"PROJECT_UUID","requestId":"STABLE_REQUEST_KEY"}'` reads bounded local bytes, not a backend path. `mioon lut list` and `mioon lut inspect` use the same RPC input shapes. The shared source limit is7MiB, not the standalone parser's32MiB ceiling. No LUT is yet applied to a clip or rendered. See [LUT resources, replay and recovery](LUT-RESOURCES.md).
+
+
+## 项目文件（.mioon）
+
+`mioon project export|import|duplicate` 走专门的管理接口，不在业务 RPC schema 和 MCP 工具目录里，详见 [PROJECT-PACKAGE.md](PROJECT-PACKAGE.md)。
+
+| 命令 | 输入 |
+| --- | --- |
+| `project export` | `--input '{"projectId":"…","media":"all"\|"used"}' --output <新文件>`；不覆盖已有文件，进度写到 stderr |
+| `project import` | `--file <文件.mioon> --request-id <id>`，可选 `--input '{"name":"…"}'`；先完整校验再创建 |
+| `project duplicate` | `--request-id <id> --input '{"projectId":"…","name":"…"}'` |
+
+导入和复制要求调用方提供 requestId；用同一个 requestId 重试时，返回同一个项目。

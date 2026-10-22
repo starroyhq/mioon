@@ -631,4 +631,11 @@ export const nativeMessages = {
     "ja": "ウィンドウを閉じる"
   },
   'native.chooseBackupLocation': { 'zh-Hans': '选择备份位置', 'zh-Hant': '選擇備份位置', en: 'Choose backup location', ja: 'バックアップ先を選択' },
+  'native.saveProjectFile': { 'zh-Hans': '导出项目', 'zh-Hant': '匯出專案', en: 'Export Project', ja: 'プロジェクトを書き出す' },
+  'native.projectFileFilter': { 'zh-Hans': 'Mioon 项目文件', 'zh-Hant': 'Mioon 專案檔案', en: 'Mioon Project File', ja: 'Mioon プロジェクトファイル' },
+  'native.openProjectFileFailed': { 'zh-Hans': '无法打开项目文件', 'zh-Hant': '無法開啟專案檔案', en: 'Cannot open the project file', ja: 'プロジェクトファイルを開けません' },
+  'native.openProjectFileNotMioon': { 'zh-Hans': '“{name}”不是 Mioon 项目文件。', 'zh-Hant': '「{name}」不是 Mioon 專案檔案。', en: '“{name}” is not a Mioon project file.', ja: '「{name}」は Mioon プロジェクトファイルではありません。' },
+  'native.openProjectFileNewer': { 'zh-Hans': '“{name}”由更新版本的 Mioon 创建，请先升级应用。', 'zh-Hant': '「{name}」由較新版本的 Mioon 建立，請先更新應用程式。', en: '“{name}” was made by a newer version of Mioon. Update the app first.', ja: '「{name}」は新しいバージョンの Mioon で作成されています。先にアプリを更新してください。' },
+  'native.openProjectFileDamaged': { 'zh-Hans': '“{name}”已损坏或不完整。', 'zh-Hant': '「{name}」已損毀或不完整。', en: '“{name}” is damaged or incomplete.', ja: '「{name}」は破損しているか、不完全です。' },
+  'native.openProjectFileUnavailable': { 'zh-Hans': '现在无法导入“{name}”，请稍后在项目主页中重试。', 'zh-Hant': '目前無法匯入「{name}」，請稍後在專案首頁重試。', en: 'Cannot import “{name}” right now. Try again from the project home later.', ja: '「{name}」を今は読み込めません。後でプロジェクトホームから再試行してください。' },
 } as const satisfies MessageCatalog;

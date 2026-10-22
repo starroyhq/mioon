@@ -31,6 +31,7 @@ export interface BuilderConfig {
   beforePack(context: BuilderPackContext): Promise<void>;
   afterExtract(context: RuntimeNoticeContext): Promise<void>;
   afterPack(context: RuntimeNoticeContext): Promise<void>;
+  fileAssociations: Array<{ext: string; name: string; description: string; mimeType: string; role: 'Editor'}>;
   electronFuses: Record<string, boolean>;
   linux: {
     icon: string;
@@ -90,6 +91,8 @@ export function builderConfig(channel: string): BuilderConfig {
       if (appOutDir !== null) runtimeNotices.delete(appOutDir);
       await verifySubtitleResources(packagedSubtitleDirectory(context));
     },
+    // Double-clicking a .mioon file stages an import; see src/project-file-open.ts.
+    fileAssociations: [{ ext: 'mioon', name: 'Mioon Project', description: 'Mioon Project File', mimeType: 'application/vnd.mioon.project', role: 'Editor' }],
     electronFuses: {
       runAsNode: false,
       enableCookieEncryption: true,

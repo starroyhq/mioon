@@ -4,6 +4,7 @@ import type {FileHandle} from 'node:fs/promises';
 import path from 'node:path';
 import {createClient, workspaceOriginOptions, discoverSchema, schemas, ClientError, errorEnvelope, errorExitCode, successEnvelope, VERSION, EXIT_CODES} from '@mioon/client';
 import {downloadAsset} from '@mioon/client/download';
+import {exportProjectPackage,importProjectPackage,duplicateProject} from '@mioon/client/project-package';
 import {importLutFile, LutImportFileError} from './lut-import-file.ts';
 
 import {translate, message} from '@mioon/i18n';
@@ -98,9 +99,11 @@ try {
     else {
     const client = createClient();
     const watch = ['job.watch', 'export.watch'].includes(operation), download = ['asset.download', 'export.download'].includes(operation);
+    // Project files use dedicated management routes, not the RPC/MCP catalog.
+    const projectPackage = ['project.export', 'project.import', 'project.duplicate'].includes(operation);
     const file = optionText(options.file), output = optionText(options.output);
-    if (file !== undefined && !['asset.import', 'lut.import'].includes(operation)) fail('--file is only valid for asset or LUT import.');
-    if (output !== undefined && !download) fail('--output is only valid for asset/export download.');
+    if (file !== undefined && !['asset.import', 'lut.import', 'project.import'].includes(operation)) fail('--file is only valid for asset, LUT or project import.');
+    if (output !== undefined && !download && operation !== 'project.export') fail('--output is only valid for downloads and project export.');
     if (options['max-bytes'] !== undefined && !download) fail('--max-bytes is only valid for download.');
     if (options['interval-ms'] !== undefined && !watch) fail('--interval-ms is only valid for watch.');
     if (options['timeout-ms'] !== undefined && !watch && !download) fail('--timeout-ms is only valid for watch or download.');
@@ -116,6 +119,11 @@ try {
         const current = JSON.stringify(progress);
         if (previous !== current) { process.stderr.write(current + '\n'); previous = current; }
       }});
+    } else if (projectPackage) {
+      const progress = (value: unknown) => { process.stderr.write(JSON.stringify(value) + '\n'); };
+      if (operation === 'project.export') data = await exportProjectPackage(input, output, {signal: abort.signal, onProgress: progress});
+      else if (operation === 'project.import') data = await importProjectPackage(input, file, {signal: abort.signal, onProgress: progress});
+      else data = await duplicateProject(input, {signal: abort.signal});
     } else if (download) {
       let assetId = input.assetId;
       if (operation === 'export.download') {
