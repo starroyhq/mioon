@@ -182,3 +182,17 @@ test('HTTP conflict resume fails closed and CLI skip keeps the saved target with
  const lookup=await f.request(`${f.prefix}/${run.id}/actions/${requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.deepEqual(lookup.data.receipt.result,{state:'completed',skippedTargets:[{kind:'shot',id:shotId}]});const inspected=await f.request('/api/rpc','POST',{operation:'shot.inspect',input:{projectId:f.projectId}});assert.equal(inspected.status,200);assert.ok(object(inspected.data)&&Array.isArray(inspected.data.items));const saved=inspected.data.items.find(item=>object(item)&&item.id===shotId);assert.ok(object(saved));assert.equal(saved.prompt,'manual preserved');
  }finally{release();}
 });
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: HTTP note capacity rejection has a durable receipt and CLI reads the unchanged run`,async t=>{
+ let enter=()=>{},release=()=>{},models=0;const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
+ const gateway:TaskGateway=async function*(request){models++;request.beforeSubmit?.();if(models===1){enter();await released;}yield {type:'done',output:{text:'Synthetic response',toolCalls:[],providerOutput:protocol==='responses'?[]:{role:'assistant',content:'Synthetic response'}}};};
+ const f=await fixture(t,protocol,gateway);
+ try{
+  await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Capacity check',expectedSettingsRevision:(await f.settings.get()).revision});const run=agentTaskSnapshotSchema.parse(sent.data).run;await entered;
+  let current=agentTaskSnapshotSchema.parse((await f.request(`${f.prefix}/${run.id}`)).data);
+  for(let index=0;index<4;index++){const accepted=await f.request(`${f.prefix}/${run.id}/actions`,'POST',{requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:String(index).repeat((index===3?16:32)*1024)});assert.equal(accepted.status,200);current=agentTaskSnapshotSchema.parse(accepted.data);}
+  const requestId=randomUUID(),rejected=await f.request(`${f.prefix}/${run.id}/actions`,'POST',{requestId,expectedRevision:current.run.revision,action:'note',text:'x'.repeat(16*1024)});assert.equal(rejected.status,409);assert.ok(object(rejected.error));assert.equal(rejected.error.code,'AGENT_TASK_NOTE_CAPACITY');
+  const lookup=await f.request(`${f.prefix}/${run.id}/actions/${requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.deepEqual(lookup.data.receipt.result,{state:'rejected',code:'AGENT_TASK_NOTE_CAPACITY'});
+  const fromCli=await cliSnapshot(f.server.url,f.server.token,f.projectId,run.id);assert.deepEqual(fromCli,current);assert.equal(models,1);release();const done=await f.settle(run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,4);assert.equal(models,2);
+ }finally{release();}
+});

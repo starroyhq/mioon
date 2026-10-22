@@ -626,3 +626,55 @@ for(const failure of ['SQLITE_IOERR','UNRECOGNIZED_GATE_FAILURE'] as const)test(
   const before=f.runtime.journal.snapshot(f.sent.run.id);assert.throws(()=>allowAgentTaskJobTargetMutation(f.store.db,'job',f.jobId,{kind:'shot',id:f.first.id}),error=>error===injected);assert.deepEqual(f.runtime.journal.snapshot(f.sent.run.id),before);assert.equal(f.effects.size,1);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(f.submissions,0);await f.action(f.runtime.get(f.projectId,f.sent.run.id),'stop');
  }finally{remove();f.release();await f.runtime.drain();}
 });
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note combinations exceeding known request capacity are durably rejected without failing the run`,async t=>{
+ const f=await fixture(t,protocol),entered=gate(),release=gate();
+ f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output(protocol,[],`response ${index}`)};});
+ const sent=await f.send('initial message');await entered.promise;
+ let current=f.runtime.get(f.projectId,sent.run.id);
+ for(let index=0;index<3;index++)current=await f.action(current,'note',{text:String(index).repeat(32*1024)});
+ const before=f.runtime.journal.snapshot(sent.run.id),body=f.requests[0]!.body,request={requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:'x'.repeat(32*1024)};
+ let rejected:unknown;try{await f.runtime.action(f.projectId,sent.run.id,request);}catch(error){rejected=error;}
+ const after=f.runtime.journal.snapshot(sent.run.id),receipt=f.runtime.journal.lookupControl(request.requestId);
+ await f.runtime.action(f.projectId,sent.run.id,request);
+ release.resolve();const done=await f.settle(sent.run.id);
+ assert.equal(object(rejected).code,'AGENT_TASK_NOTE_CAPACITY');assert.deepEqual(after,before);assert.deepEqual(receipt?.result,{state:'rejected',code:'AGENT_TASK_NOTE_CAPACITY'});
+ assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,3);assert.ok(done.run.notes?.every(note=>note.modelStepId!==undefined));assert.equal(f.requests.length,2);assert.equal(f.requests[0]!.body,body);
+ for(const request of f.requests)assert.ok(Buffer.byteLength(request.body)<=TASK_MODEL_LIMITS.requestBytes);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity accounts for serialized text and retains the run on rejection`,async t=>{
+ const f=await fixture(t,protocol),entered=gate(),release=gate();f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output(protocol)};});
+ const sent=await f.send();await entered.promise;const before=f.runtime.journal.snapshot(sent.run.id);
+ let rejected:unknown;try{await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:'\u0000'.repeat(32*1024)});}catch(error){rejected=error;}
+ const after=f.runtime.journal.snapshot(sent.run.id);release.resolve();const done=await f.settle(sent.run.id);
+ assert.equal(object(rejected).code,'AGENT_TASK_NOTE_CAPACITY');assert.deepEqual(after,before);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,0);assert.equal(f.requests.length,1);
+});
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: skipping a track also denies later nested clip references without blocking another target`,async t=>{
+ const f=await fixture(t,protocol),assetId=randomUUID();
+ f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic image',mimeType:'image/png',width:720,height:1280,duration:0,hasVideo:true,hasAudio:false,sha256:'a'.repeat(64),relativePath:'media/fixture.png',provenance:'user-import',createdAt:new Date().toISOString()});
+ const readTimeline=()=>object(JSON.parse(String(f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.projectId)!.data)));
+ const initial=object(await f.services.call('timeline.get',{projectId:f.projectId}));assert.ok(Array.isArray(initial.tracks));const sourceTrack=String(object(initial.tracks[0]).id);
+ await f.services.call('timeline.track.add',{projectId:f.projectId,requestId:randomUUID(),kind:'video',name:'Kept track',expectedRevision:revisionField(initial)});
+ await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),assetId,trackId:sourceTrack,expectedRevision:revisionField(readTimeline()),startFrame:0,durationFrames:30});
+ const saved=readTimeline();assert.ok(Array.isArray(saved.tracks)&&Array.isArray(saved.clips));const clipId=String(object(saved.clips[0]).id),targetTrack=String(object(saved.tracks.find(value=>object(value).name==='Kept track')).id),timelineRevision=revisionField(saved);
+ const target={kind:'timeline_track',id:targetTrack,revision:f.runtime.journal.targetRevision(f.projectId,'timeline_track',targetTrack)};
+ f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'kept-track-draft',generation:1,sequence:1,action:'claim',targets:[target]});
+ f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_timeline_track_update',{trackId:targetTrack,expectedRevision:timelineRevision,patch:{name:'Never rename'}})]:index===2?[call('mioon_timeline_clip_update',{clipId,expectedRevision:timelineRevision,patch:{trackId:targetTrack}}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:f.other.revision,patch:{prompt:'unrelated target still works'}})]:[])};});
+ const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');await f.action(paused,'skip');const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.length,1);assert.equal(done.run.skippedTargets?.[0]?.target.id,targetTrack);assert.equal(done.changes.length,1);assert.equal(done.changes[0]?.operation,'shot.update');
+ const rejected=done.steps.find(step=>step.toolCall?.name==='mioon_timeline_clip_update');assert.equal(rejected?.status,'denied');assert.equal(rejected?.error?.code,'TARGET_SKIPPED');const final=readTimeline();assert.ok(Array.isArray(final.clips));assert.equal(object(final.clips.find(value=>object(value).id===clipId)).trackId,sourceTrack);assert.equal(f.runtime.journal.claims(f.projectId).length,1);assert.equal(f.requests.length,3);
+});
+
+for(const metadata of ['saved','legacy'] as const)test(`background effect gates reject skipped nested references from ${metadata} accepted steps`,async t=>{
+ const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});
+ const sent=await f.send();await entered.promise;
+ try{
+  const reference={kind:'asset',id:randomUUID(),revision:0},target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};
+  const tool=f.runtime.journal.beginStep(sent.run.id,{kind:'tool',targets:[target],toolCall:call('mioon_image_generate',{purpose:'edit',inputImage:{assetId:reference.id,sha256:'a'.repeat(64)}}),...(metadata==='saved'?{data:{referencedTargets:[reference]}}:{})});
+  f.runtime.journal.markDispatch(sent.run.id,tool.id);f.runtime.journal.completeStep(sent.run.id,tool.id,{result:{accepted:true}});
+  const conflict=f.runtime.journal.beginStep(sent.run.id,{kind:'tool',targets:[reference],data:{conflictTargets:[reference]}});
+  f.store.tx(()=>{f.runtime.journal.skipTargetsInside(sent.run.id,[{stepId:conflict.id,target:reference}]);f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('image','synthetic-pending-image',sent.run.id,tool.id,f.projectId,tool.id,'image.generate');});
+  assert.throws(()=>assertAgentTaskJobEffect(f.store.db,'image','synthetic-pending-image'),{code:'AGENT_TASK_TARGET_SKIPPED'});assert.equal(f.runtime.journal.run(sent.run.id).status,'running');assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
+ }finally{release.resolve();await f.settle(sent.run.id);}
+});

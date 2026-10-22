@@ -71,6 +71,39 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
  }
  return parse(operation as OperationName,source) as Value;
 }
+function taskToolOperation(operation:string):string{
+ if(operation==='mioon_node_inspect')return 'node.inspect';
+ if(operation==='mioon_edge_inspect')return 'edge.inspect';
+ if(operation==='mioon_task_wait')return 'task.wait';
+ if(operation==='mioon_asset_import_selected')return 'asset.importSelected';
+ if(operation==='mioon_lut_import_selected')return 'lut.importSelected';
+ return operation.startsWith('mioon_')?Object.keys(AGENT_TASK_OPERATION_ADMISSION).find(name=>`mioon_${name.replaceAll('.','_')}`===operation)??operation:operation;
+}
+/** Only explicit identity paths are read from already admitted arguments. This
+ * pure fallback also supports old saved steps without reference metadata; it
+ * neither validates a new tool request nor grants mutation authority. */
+export function agentTaskExplicitTargets(operation:string,input:unknown,projectId:string):Array<Pick<AgentTaskTarget,'kind'|'id'>>{
+ if(!object(input))return [];
+ operation=taskToolOperation(operation);
+ const references=new Map<string,Pick<AgentTaskTarget,'kind'|'id'>>();
+ const add=(kind:string,value:unknown):void=>{if(typeof value==='string')references.set(`${kind}:${value}`,{kind,id:value});};
+ for(const [field,kind] of [['shotId','shot'],['targetShotId','shot'],['nodeId','node'],['sourceNodeId','node'],['edgeId','edge'],['jobId','job'],['assetId','asset'],['sourceAssetId','asset'],['versionId','version'],['exportId','export'],['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],['taskId',operation.startsWith('frame.')?'frame_task':'image_task'],['groupId','image_group'],['lutId','lut']] as const)add(kind,input[field]);
+ // The journal identifies this project's timeline by projectId; the wire's
+ // timelineId names the same aggregate without granting another project scope.
+ if(typeof input.timelineId==='string')add('timeline',projectId);
+ for(const field of ['source','target'] as const){add('node',input[field]);add('shot',input[field]);}
+ for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(input[field]))for(const value of input[field])add(field==='shotIds'?'shot':'asset',value);
+ if(operation==='task.wait')add(input.kind==='image'?'image_task':input.kind==='frame'?'frame_task':String(input.kind),input.id);
+ if(operation==='task.disposition.list'&&Array.isArray(input.targets))for(const target of input.targets)if(object(target))add(target.kind==='generation'?'job':target.kind==='render'?'export':'edit_task',target.taskId);
+ const shot=operation==='shot.create'?input:operation==='shot.update'&&object(input.patch)?input.patch:undefined;
+ if(shot){if(Array.isArray(shot.referenceAssetIds))for(const id of shot.referenceAssetIds)add('asset',id);add('asset',shot.lastFrameAssetId);}
+ const clip=operation==='timeline.clip.add'?input:operation==='timeline.clip.update'&&object(input.patch)?input.patch:undefined;
+ if(clip){add('timeline_track',clip.trackId);if(object(clip.colour)&&object(clip.colour.look))add('lut',clip.colour.look.resourceId);}
+ if(operation==='image.generate'&&object(input.inputImage))add('asset',input.inputImage.assetId);
+ const assetKind=operation.startsWith('asset.range.')?'asset_range':operation.startsWith('asset.annotation.')?'asset_annotation':operation.startsWith('asset.disposition.')?'asset_disposition':undefined;
+ if(assetKind){add(assetKind,input.assetId);if(Array.isArray(input.assetIds))for(const id of input.assetIds)add(assetKind,id);}
+ return [...references.values()];
+}
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
 export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
@@ -171,7 +204,8 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    if(!targetFailure&&!knownGate)throw error;
    const run=journal.run(binding.runId),step=journal.step(binding.stepId),data=object(step.data)?step.data:{},sameOrigin=step.runId===run.id&&run.projectId===binding.projectId;
    const targets=(values:unknown):AgentTaskTarget[]=>Array.isArray(values)?values.flatMap(value=>{const parsed=agentTaskTargetSchema.safeParse(value);return parsed.success?[parsed.data]:[];}):[];
-   const references=[target,...(step.targets??[]),...targets(data.dispatchApprovalTargets)];
+   const retainedReferences=data.referencedTargets===undefined&&step.toolCall?agentTaskExplicitTargets(step.toolCall.name,step.toolCall.arguments,run.projectId):targets(data.referencedTargets);
+   const references=[target,...(step.targets??[]),...targets(data.dispatchApprovalTargets),...retainedReferences];
    const skipped=knownGate&&failure==='AGENT_TASK_TARGET_SKIPPED'&&sameOrigin&&references.some(reference=>run.skippedTargets?.some(item=>item.target.kind===reference.kind&&item.target.id===reference.id));
    const denied=knownGate&&failure==='AGENT_TASK_STOPPED'&&sameOrigin&&data.backgroundDenied===true,handled=skipped||denied;
    // Gate denial is never permission to select a target. Only actual target
@@ -193,13 +227,9 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const record=store.get(table,id);if(!object(record))return fail('AGENT_TASK_INVALID_TARGET','工具目标无效');return record;
  };
  function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
-  if(operation==='mioon_node_inspect')operation='node.inspect';
-  if(operation==='mioon_edge_inspect')operation='edge.inspect';
-  if(operation.startsWith('mioon_'))operation=Object.keys(AGENT_TASK_OPERATION_ADMISSION).find(name=>`mioon_${name.replaceAll('.','_')}`===operation)??(operation==='mioon_task_wait'?'task.wait':operation==='mioon_asset_import_selected'?'asset.importSelected':operation);
-  if(operation==='mioon_lut_import_selected')operation='lut.importSelected';
+  operation=taskToolOperation(operation);
   let risk=['task.wait','node.inspect','edge.inspect'].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
-  if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
   let hostInput:Value={...input};
   const schema=Object.hasOwn(schemas,operation)?schemas[operation as OperationName]:null;
   // Whether identity exists in the exact input is discovered from the generated
@@ -207,12 +237,8 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(schema){const hydrated=hydrateInput(operation,hostInput,projectId,'00000000-0000-4000-8000-000000000000');hostInput={...hydrated};delete hostInput.requestId;}
   // A persisted skip is checked from validated explicit identities before
   // looking up the target. Deleting it must not turn a skip into another read.
-  const reference=(kind:string,value:unknown):void=>{if(typeof value==='string')beforeTargetRead?.({kind,id:value});};
-  for(const [field,kind] of [['shotId','shot'],['targetShotId','shot'],['nodeId','node'],['sourceNodeId','node'],['edgeId','edge'],['jobId','job'],['assetId','asset'],['sourceAssetId','asset'],['versionId','version'],['exportId','export'],['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],['taskId',operation.startsWith('frame.')?'frame_task':'image_task'],['groupId','image_group']] as const)reference(kind,hostInput[field]);
-  for(const field of ['source','target'] as const){reference('node',hostInput[field]);reference('shot',hostInput[field]);}
-  for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(hostInput[field]))for(const value of hostInput[field])reference(field==='shotIds'?'shot':'asset',value);
-  if(operation==='task.wait')reference(hostInput.kind==='image'?'image_task':hostInput.kind==='frame'?'frame_task':String(hostInput.kind),hostInput.id);
-  if(operation==='task.disposition.list'&&Array.isArray(hostInput.targets))for(const target of hostInput.targets)if(object(target))reference(target.kind==='generation'?'job':target.kind==='render'?'export':'edit_task',target.taskId);
+  const references=agentTaskExplicitTargets(operation,hostInput,projectId);for(const target of references)beforeTargetRead?.(target);
+  if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
   const before=snapshot(store,projectId),targets:AgentTaskTarget[]=[];
   if(risk==='local_reversible'&&operation.startsWith('timeline.')&&!before[key('timeline',projectId)])risk='local_irreversible';
   const add=(kind:string,id:string):void=>{const target={kind,id,revision:readRevision(store,projectId,kind,id)};if(!targets.some(value=>value.kind===kind&&value.id===id))targets.push(target);};
@@ -254,7 +280,10 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   // Observations retain all owner checks above but do not reserve mutation
   // targets. A draft or normal background progress must not block reading the
   // last saved value; write tools still carry their exact revision footprint.
-  return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,referencedTargets:targets,before};
+  // Reference revisions carry no mutation authority. Preserve the exact
+  // footprint above, and use these extra identities only for skip checks.
+  const referencedTargets=[...targets];for(const reference of references)if(!referencedTargets.some(target=>target.kind===reference.kind&&target.id===reference.id))referencedTargets.push({...reference,revision:0});
+  return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,referencedTargets,before};
  }
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
   const beforeEffect=():void=>{

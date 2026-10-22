@@ -5,7 +5,7 @@ import { LOCALES, translate } from '../packages/i18n/src/index.ts';
 
 test('Mio errors choose localized fixed templates using only stable codes', () => {
   for (const locale of LOCALES) {
-    for (const code of ['AGENT_CHAT_HTTP_ERROR','AGENT_CHAT_TIMEOUT','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_STORAGE_UNAVAILABLE','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_READ_ONLY','FFMPEG_NOT_FOUND']) {
+    for (const code of ['AGENT_CHAT_HTTP_ERROR','AGENT_CHAT_TIMEOUT','AGENT_TASK_CONSENT_REQUIRED','AGENT_TASK_STORAGE_UNAVAILABLE','AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_READ_ONLY','AGENT_TASK_NOTE_CAPACITY','FFMPEG_NOT_FOUND']) {
       const text = translate(locale, agentTaskErrorKey(code));
       assert.ok(text.length > 0);
       assert.ok(!text.includes(code));

@@ -13,12 +13,39 @@ import {initializeWorkspaceSchema56} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {classifyWorkspaceSchemaV54V55} from '../packages/business/src/workspace-restore-schema-v55.ts';
 import {removeReviewedSchema56,currentOrdinary56Delta,withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskRun,AgentTaskNote,AgentTaskSkippedTarget} from '../packages/contracts/src/agent-tasks-v2.ts';
 
 function fixture(){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-interaction-schema-')),store=openStore(root),projectId=randomUUID();store.put('projects',{id:projectId,name:'Interaction schema',revision:1});const journal=createAgentTaskJournal(store);const run=journal.create({requestId:randomUUID(),projectId,text:'Preserved original',configuration:{protocol:'responses'},context:[{role:'user',content:'retained context'}]}).run;return {root,store,projectId,journal,run,close(){store.close();rmSync(root,{recursive:true,force:true});}};}
 function write(f:ReturnType<typeof fixture>,patch:Partial<AgentTaskRun>){const value={...f.journal.run(f.run.id),...patch};f.store.db.prepare('UPDATE agent_task_runs_v2 SET data=? WHERE id=?').run(JSON.stringify(value),f.run.id);}
 const note=(modelStepId?:string):AgentTaskNote=>({requestId:randomUUID(),text:'Additional instruction',createdAt:'2020-01-01T00:00:00.000Z',...(modelStepId?{modelStepId}:{})});
 function evidence(f:ReturnType<typeof fixture>){const one=f.journal.beginStep(f.run.id,{kind:'model'}),two=f.journal.beginStep(f.run.id,{kind:'model'}),target={kind:'shot',id:randomUUID(),revision:9},tool=f.journal.beginStep(f.run.id,{kind:'tool',targets:[{...target,revision:1}],data:{conflictTargets:[target]}});return {one,two,target,tool};}
+
+const display={operation:'shot.update',targets:[],targetCount:0,fields:[]};
+function changeEvidence(f:ReturnType<typeof fixture>){const step=f.journal.beginStep(f.run.id,{kind:'tool'});f.journal.markDispatch(f.run.id,step.id);f.journal.completeStep(f.run.id,step.id,{result:{done:true},change:{projectId:f.projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:false}});return f.journal.snapshot(f.run.id);}
+function sourceSchema(f:ReturnType<typeof fixture>,version:52|54|56){
+ if(version<56)removeReviewedSchema56(f.store.db);
+ if(version===52)f.store.db.exec("DROP INDEX agent_task_conversation_v2;DROP TRIGGER agent_task_conversation_identity_v2;DROP TRIGGER agent_task_conversation_required_v2;UPDATE agent_task_runs_v2 SET data=json_remove(data,'$.conversationId');DELETE FROM schema_version WHERE version=54");
+ assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:version,profile:'ordinary'});
+}
+function restoreMetadata(){return {restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};}
+
+for(const version of [52,54,56] as const)for(const family of ['step','change'] as const)test(`schema${version} rejects persisted ${family} display during classification and restore admission`,()=>{const f=fixture();try{
+ const snapshot=changeEvidence(f),table=family==='step'?'agent_task_steps_v2':'agent_task_changes_v2',id=family==='step'?snapshot.steps[0]!.id:snapshot.changes[0]!.id;sourceSchema(f,version);
+ const markers=f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all();
+ f.store.db.prepare(`UPDATE ${table} SET data=json_set(data,'$.display',json(?)) WHERE id=?`).run(JSON.stringify(display),id);
+ const polluted=f.store.db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id)!.data;
+ assert.throws(()=>classifyCurrentWorkspaceSchema(f.store.db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
+ assert.throws(()=>installCurrentWorkspaceRestoreSchema(f.store.db,restoreMetadata()),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
+ assert.equal(f.store.db.prepare(`SELECT data FROM ${table} WHERE id=?`).get(id)!.data,polluted);assert.deepEqual(f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all(),markers);assert.equal(f.store.db.prepare("SELECT 1 FROM sqlite_schema WHERE name='workspace_restoration'").get(),undefined);
+ f.store.db.prepare(`UPDATE ${table} SET data=json_remove(data,'$.display') WHERE id=?`).run(id);
+ const restored=installCurrentWorkspaceRestoreSchema(f.store.db,restoreMetadata());assert.equal(restored.sourceSchema,version);assert.equal(restored.schemaVersion,version+1);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,version+1);
+}finally{f.close();}});
+
+test('public snapshots accept Step and Change display without changing persistent records',()=>{const f=fixture();try{
+ const snapshot=changeEvidence(f),response=agentTaskSnapshotSchema.parse({...snapshot,steps:snapshot.steps.map(step=>({...step,display})),changes:snapshot.changes.map(change=>({...change,display}))});
+ assert.deepEqual(response.steps[0]!.display,display);assert.deepEqual(response.changes[0]!.display,display);assert.deepEqual(f.journal.snapshot(f.run.id),snapshot);assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:56,profile:'ordinary'});
+}finally{f.close();}});
 
 test('ordinary54 migrates only interaction defaults while preserving original digests, context, events and arbitrary legacy receipts',()=>{const f=fixture();try{
  for(const action of ['note','skip','legacy-extension'])f.journal.performControl({requestId:randomUUID(),runId:f.run.id,expectedRevision:f.journal.run(f.run.id).revision,action},()=>({state:'rejected',legacy:true}));
