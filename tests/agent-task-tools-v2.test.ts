@@ -145,6 +145,46 @@ test('fixed tool JSON schemas match shared runtime schema projection without add
  function scrub(value:unknown):unknown{if(Array.isArray(value))return value.map(scrub);if(!record(value))return value;return Object.fromEntries(Object.entries(value).map(([key,child])=>[key,key==='properties'&&record(child)?Object.fromEntries(Object.entries(child).filter(([field])=>!hidden.has(field)).map(([field,nested])=>[field,scrub(nested)])):key==='required'&&Array.isArray(child)?child.filter(field=>!hidden.has(String(field))):scrub(child)]));}
  for(const operation of Object.keys(schemas)){const shared=operationDefinition(operation).inputSchema;assert.deepEqual(AGENT_TASK_TOOL_SCHEMAS[operation],scrub(expandSchemaReferences(shared)),operation);}
 });
+test('video tool discovery preserves Wan input bounds while runtime admission rejects invalid combinations and host fields',async t=>{
+ const f=await fixture(t),shot=await f.shot('Wan tool discovery'),tool=f.tools.list().find(item=>item.operation==='generation.submit');assert.ok(tool);
+ const parameters=schemaAt(tool.parameters,['properties','parameters']);assert.ok(record(parameters));
+ for(const field of ['durationSeconds','aspectRatio','promptExtend','watermark','resolution','generateAudio'])assert.deepEqual(schemaAt(tool.parameters,['properties','parameters','properties',field]),schemaAt(operationDefinition('generation.submit').inputSchema,['properties','parameters','properties',field]),field);
+ assert.deepEqual(schemaAt(tool.parameters,['properties','parameters','properties','durationSeconds']),{anyOf:[{type:'number',const:-1},{type:'integer',minimum:2,maximum:30}]});
+ assert.deepEqual(schemaAt(tool.parameters,['properties','videoInput','properties','mode']),{type:'string',enum:['text','first_frame','first_last_frame','reference_images']});
+ assert.deepEqual(schemaAt(tool.parameters,['properties','videoInput','properties','images','items','properties','assetId']),{type:'string',format:'uuid'});
+ assert.equal(schemaAt(tool.parameters,['properties','videoInput','properties','images','maxItems']),10);
+ assert.equal(schemaAt(tool.parameters,['properties','videoInput','properties','prompt','maxLength']),20000);assertSchemaReferences(tool.parameters);
+ const input={shotId:shot.id,expectedRevision:shot.revision,providerId:'wan',model:'wan3.0-video',connectionId:randomUUID(),configurationRevision:1,modelEntryId:randomUUID(),videoInput:{version:1,mode:'text',images:[],prompt:'Synthetic tool input'},parameters:{durationSeconds:5,resolution:'720P',aspectRatio:'adaptive',generateAudio:true,promptExtend:true,watermark:false}};
+ for(const durationSeconds of [-1,2,30]){
+  const prepared=f.tools.prepare({projectId:f.projectId,operation:'generation.submit',input:{...input,parameters:{...input.parameters,durationSeconds}}});
+  assert.deepEqual(prepared.input.videoInput,input.videoInput);assert.deepEqual(prepared.input.parameters,{...input.parameters,durationSeconds});assert.equal(Object.hasOwn(prepared.input,'requestId'),false);
+ }
+ const image={role:'reference_image',assetId:randomUUID()};
+ for(const invalid of [
+  {...input,parameters:{...input.parameters,durationSeconds:1}},{...input,parameters:{...input.parameters,durationSeconds:31}},{...input,parameters:{...input.parameters,unexpected:true}},
+  {...input,providerId:'ark'},{...input,subjectVersionId:randomUUID()},
+  {...input,videoInput:{...input.videoInput,images:[image]}},
+  {...input,videoInput:{...input.videoInput,mode:'reference_images',images:[image,image]}},
+  {...input,videoInput:{...input.videoInput,mode:'reference_images',images:Array.from({length:11},()=>({...image,assetId:randomUUID()}))}},
+ ])assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'generation.submit',input:invalid}),{code:'VALIDATION_ERROR'});
+ for(const invalid of [{...input,requestId:randomUUID()},{...input,projectId:f.projectId},{...input,videoInput:{...input.videoInput,projectId:f.projectId}}])assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'generation.submit',input:invalid}),{code:'AGENT_TASK_INVALID_TOOL'});
+});
+test('Wan explicit image references retain order and enforce skipped targets before lookup or paid execution',async t=>{
+ const f=await fixture(t),shot=await f.shot('Wan image references'),images=Array.from({length:10},()=>({role:'reference_image',assetId:randomUUID()}));
+ const input={shotId:shot.id,expectedRevision:shot.revision,providerId:'wan',model:'wan3.0-video',connectionId:randomUUID(),configurationRevision:1,modelEntryId:randomUUID(),videoInput:{version:1,mode:'reference_images',images,prompt:'图1 and 图10 preserve their positions'}};
+ const prepared=f.tools.prepare({projectId:f.projectId,operation:'generation.submit',input});
+ assert.deepEqual(prepared.input.videoInput,input.videoInput);assert.deepEqual(prepared.targets.map(({kind,id})=>({kind,id})),[{kind:'shot',id:shot.id}]);
+ const references=[{kind:'shot',id:shot.id},...images.map(({assetId})=>({kind:'asset',id:assetId}))];
+ assert.deepEqual(prepared.referencedTargets?.map(({kind,id})=>({kind,id})),references);
+ assert.deepEqual(agentTaskExplicitTargets('generation.submit',{...input,videoInput:{...input.videoInput,images:[...images,images[0]]}},f.projectId),references,'Historical duplicate evidence is deduplicated without changing input order');
+ const originalGet=f.store.get.bind(f.store);let lookups=0;const trackedGet=t.mock.method(f.store,'get',(table:string,id:string)=>{lookups++;return originalGet(table,id);});
+ for(const image of images){
+  const visited:Array<{kind:string;id:string}>=[];lookups=0;
+  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'generation.submit',input,beforeTargetRead:target=>{visited.push(target);if(target.kind==='asset'&&target.id===image.assetId)throw Object.assign(Error('Explicit reference was skipped'),{code:'AGENT_TASK_TARGET_SKIPPED'});}}),{code:'AGENT_TASK_TARGET_SKIPPED'});
+  assert.deepEqual(visited,references.slice(0,images.indexOf(image)+2));assert.equal(lookups,0,'Skip rejection precedes project/target lookup and never reaches execution');
+ }
+ trackedGet.mock.restore();
+});
 test('schema projection resolves escaped local identities before removing host inputs and refuses recursive or missing evidence',()=>{
  const source={type:'object',properties:{projectId:{type:'string',format:'uuid'},requestId:{type:'string',minLength:8,maxLength:200},'owned/id~slot':{type:'string',format:'uuid'},assetId:{$ref:'#/properties/projectId'},nested:{type:'object',properties:{requestId:{type:'string'},assetId:{$ref:'#/properties/owned~1id~0slot'}},required:['requestId','assetId'],additionalProperties:false}},required:['projectId','requestId','assetId','nested'],additionalProperties:false};
  assert.deepEqual(projectAgentTaskToolSchema(source),{type:'object',properties:{'owned/id~slot':{type:'string',format:'uuid'},assetId:{type:'string',format:'uuid'},nested:{type:'object',properties:{assetId:{type:'string',format:'uuid'}},required:['assetId'],additionalProperties:false}},required:['assetId','nested'],additionalProperties:false});
