@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="5184637b3624b2108f844752cd4714297b54675787c118a057f58b2a989be0bf";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="10c33740b1e3e79f0cc5b30232cb4b0aaf75cbd4a0dceb8469bbc6d8631c06b9";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -3161,6 +3161,37 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "seed": {
       "type": "integer"
      },
+     "durationSeconds": {
+      "anyOf": [
+       {
+        "type": "number",
+        "const": -1
+       },
+       {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 30
+       }
+      ]
+     },
+     "aspectRatio": {
+      "type": "string",
+      "enum": [
+       "adaptive",
+       "9:16",
+       "16:9",
+       "1:1",
+       "3:4",
+       "4:3",
+       "21:9"
+      ]
+     },
+     "promptExtend": {
+      "type": "boolean"
+     },
+     "watermark": {
+      "type": "boolean"
+     },
      "resolution": {
       "type": "string",
       "minLength": 1,
@@ -3171,6 +3202,61 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      }
     },
     "additionalProperties": false
+   },
+   "videoInput": {
+    "type": "object",
+    "properties": {
+     "version": {
+      "type": "number",
+      "const": 1
+     },
+     "mode": {
+      "type": "string",
+      "enum": [
+       "text",
+       "first_frame",
+       "first_last_frame",
+       "reference_images"
+      ]
+     },
+     "images": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "role": {
+         "type": "string",
+         "enum": [
+          "first_frame",
+          "last_frame",
+          "reference_image"
+         ]
+        },
+        "assetId": {
+         "type": "string",
+         "format": "uuid"
+        }
+       },
+       "required": [
+        "role",
+        "assetId"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 10
+     },
+     "prompt": {
+      "type": "string",
+      "maxLength": 20000
+     }
+    },
+    "required": [
+     "version",
+     "mode",
+     "images"
+    ],
+    "additionalProperties": false,
+    "description": "Versioned explicit Wan 3.0 input. Ordered managed image IDs replace saved shot references for this generation; omission preserves legacy selection."
    },
    "subjectVersionId": {
     "type": "string",

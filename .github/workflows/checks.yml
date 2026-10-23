@@ -7,6 +7,13 @@ on:
         description: Frozen source revision to verify
         type: string
         required: true
+    outputs:
+      ffmpeg_artifact:
+        description: Verified Linux media toolchain artifact for this run
+        value: ${{ jobs.ffmpeg.outputs.artifact_name }}
+      ffmpeg_build_key:
+        description: Frozen Linux media toolchain build identity
+        value: ${{ jobs.ffmpeg.outputs.build_key }}
 
 permissions:
   contents: read
@@ -77,9 +84,93 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  ffmpeg:
+    name: Prepare verified Linux media toolchain
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    outputs:
+      artifact_name: ${{ steps.identity.outputs.artifact_name }}
+      build_key: ${{ steps.identity.outputs.cache_key }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Install media build dependencies
+        timeout-minutes: 10
+        run: |
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends \
+            tar fonts-dejavu-core \
+            build-essential pkg-config nasm yasm xz-utils \
+            libx264-dev libass-dev libfontconfig1-dev libfreetype6-dev \
+            libharfbuzz-dev libwebp-dev libzimg-dev libfribidi-dev libvpx-dev libmp3lame-dev zlib1g-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+
+      - name: Freeze media toolchain identity
+        id: identity
+        run: |
+          node .github/scripts/ffmpeg-toolchain.ts identity
+          printf 'artifact_name=checks-ffmpeg-%s-%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
+      - name: Restore exact media toolchain cache
+        id: cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/mioon-ffmpeg-toolchain
+          key: ${{ steps.identity.outputs.cache_key }}
+
+      - name: Build verified media toolchain on cache miss
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          MIOON_FFMPEG_BUILD_KEY: ${{ steps.identity.outputs.cache_key }}
+        run: node .github/scripts/ffmpeg-toolchain.ts build
+
+      - name: Verify and activate media toolchain
+        env:
+          MIOON_FFMPEG_BUILD_KEY: ${{ steps.identity.outputs.cache_key }}
+        run: node .github/scripts/ffmpeg-toolchain.ts activate
+
+      - name: Probe prepared media capabilities
+        run: node .github/scripts/media-environment.ts --platform=linux --output=artifacts/checks-ffmpeg/media.json
+
+      - name: Save verified media toolchain cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/mioon-ffmpeg-toolchain
+          key: ${{ steps.identity.outputs.cache_key }}
+
+      - name: Upload verified media toolchain
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ steps.identity.outputs.artifact_name }}
+          path: ${{ runner.temp }}/mioon-ffmpeg-toolchain/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload preparation failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-ffmpeg-diagnostics
+          path: artifacts/checks-ffmpeg/
+          retention-days: 7
+          if-no-files-found: warn
+
   quality:
     # Keep existing shard check names stable for branch-protection rules.
     name: Linux full tests and build (shard ${{ matrix.shard }})
+    needs: ffmpeg
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     strategy:
@@ -88,6 +179,7 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       MIOON_TEST_SHARD_INDEX: ${{ matrix.shard }}
+      MIOON_FFMPEG_BUILD_KEY: ${{ needs.ffmpeg.outputs.build_key }}
     defaults:
       run:
         shell: bash
@@ -127,9 +219,15 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install verified FFmpeg 7.1.5 from source
+      - name: Download verified media toolchain
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: ${{ needs.ffmpeg.outputs.artifact_name }}
+          path: ${{ runner.temp }}/mioon-ffmpeg-toolchain
+
+      - name: Verify and activate media toolchain
         id: ffmpeg
-        run: node .github/scripts/install-ffmpeg.ts
+        run: node .github/scripts/ffmpeg-toolchain.ts activate
 
       - name: Probe required media capabilities
         id: media
@@ -225,7 +323,7 @@ jobs:
 
       - name: Test CI and release helpers
         id: helpers
-        run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts tests/actions-test-shards.test.ts
+        run: node --test --test-reporter=tap tests/actions-release.test.ts tests/actions-desktop-helpers.test.ts tests/actions-ffmpeg-install.test.ts tests/actions-ffmpeg-toolchain.test.ts tests/actions-test-shards.test.ts
 
       - name: Write safe diagnostics
         if: always()

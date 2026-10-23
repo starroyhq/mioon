@@ -1,4 +1,5 @@
-import { VIDEO_INPUT_PROFILE_VERSION, getVideoGenerationIssue } from '../../../packages/contracts/src/video-providers.ts';
+import { VIDEO_INPUT_PROFILE_VERSION, getVideoGenerationIssue, wanVideoInputSchema } from '../../../packages/contracts/src/video-providers.ts';
+import { resolveWanGenerationParameters } from '../../../packages/contracts/src/wan-video.ts';
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage, MessageKey } from '../../../packages/i18n/src/index.ts';
 import { isSubjectReference, findModelCapabilities, getGenerationIssue, INPUT_PROFILE_VERSION, FRAME_PAIR_PROFILE_VERSION, SUBJECT_REFERENCE_PROFILE_VERSION, GENERATION_INPUT_ROLES, getShotGenerationReferenceSelection } from '@mioon/contracts';
@@ -40,7 +41,9 @@ export interface GenerationAsset {
   duration?: unknown;
   [key: string]: unknown;
 }
+export type GenerationVideoInput = import('../../../packages/contracts/src/wan-video.ts').WanVideoInput;
 export interface GenerationShot {
+  videoInput?: GenerationVideoInput;
   prompt?: string;
   aspectRatio?: string;
   duration?: number;
@@ -53,7 +56,7 @@ export interface GenerationShot {
   projectId?: string;
   [key: string]: unknown;
 }
-export interface GenerationSelectionOptions { providerId?: string; connectionId?: string; modelEntryId?: string; model?: string; inputMode?: string; scenario?: string }
+export interface GenerationSelectionOptions { videoInput?: GenerationVideoInput; providerId?: string; connectionId?: string; modelEntryId?: string; model?: string; inputMode?: string; scenario?: string }
 export interface GenerationSelectionResult {
   provider: GenerationProvider | undefined;
   model: string;
@@ -163,8 +166,10 @@ export function generationSelection(providers: readonly GenerationProvider[], op
   const model = entry?.id || options.model || (!options.modelEntryId ? models[0]?.id : undefined) || '';
   const capabilities = options.modelEntryId || provider?.connectionId ? entry ?? null : provider ? findModelCapabilities(provider, model) : undefined;
   const capabilityTextMode = Array.isArray(capabilities?.inputModes) && capabilities.inputModes.includes('text');
-  const inputMode = options.inputMode === 'subject' ? 'subject' : shot.referenceAssetIds?.length || shot.lastFrameAssetId ? 'image' : options.inputMode || (capabilityTextMode ? 'text' : 'image');
-  return { provider: provider?.connectionId ? generationProviderForModel(provider, model, options.modelEntryId || entry?.modelEntryId) : provider, model, ...(entry?.modelEntryId ? { modelEntryId: entry.modelEntryId } : {}), capabilities, inputMode, scenario: options.scenario || 'success' };
+  const activeProvider = provider?.connectionId ? generationProviderForModel(provider, model, options.modelEntryId || entry?.modelEntryId) : provider;
+  const explicitInput = options.inputMode !== 'subject' ? generationVideoInput(shot, options, activeProvider) : undefined;
+  const inputMode = explicitInput ? ({ text: 'text', first_frame: 'image', first_last_frame: 'frames', reference_images: 'reference' } as const)[explicitInput.mode] : options.inputMode === 'subject' ? 'subject' : shot.referenceAssetIds?.length || shot.lastFrameAssetId ? 'image' : options.inputMode || (capabilityTextMode ? 'text' : 'image');
+  return { provider: activeProvider, model, ...(entry?.modelEntryId ? { modelEntryId: entry.modelEntryId } : {}), capabilities, inputMode, scenario: options.scenario || 'success' };
 }
 
 export type GenerationIssueLike = { readonly code?: unknown; readonly message?: string; readonly path?: unknown; readonly details?: unknown };
@@ -202,6 +207,7 @@ export interface GenerationInputIssueOptions extends GenerationReferenceOptions 
 // Frozen job IDs already contain the complete manifest. In particular, never
 // expand a historical job from today's shot tail or infer roles by position.
 export function generationReferences(shot: GenerationShot, { frozen = false, subjectReference }: GenerationReferenceOptions = {}): GenerationReferenceSelection {
+  if (shot.videoInput) { const parsed = wanVideoInputSchema.safeParse(shot.videoInput); return parsed.success ? { ok: true, issues: [], references: parsed.data.images.map(image => ({ ...image })) } : { ok: false, issues: [{ code: 'INVALID_REFERENCES', message: 'Invalid video input image order or roles.' }], references: [] }; }
   if (!frozen && subjectReference) return { ok: true, issues: [], references: [{ assetId: subjectReference.subjectVersion?.assetId, role: 'subject_reference' }] };
   if (!frozen) return getShotGenerationReferenceSelection(shot);
   const ids = shot.referenceAssetIds || [];
@@ -231,6 +237,7 @@ export function generationReferenceIdentity(shot: GenerationShot, assets: readon
 
 export function generationInputIssue(shot: GenerationShot, provider: GenerationProvider | null | undefined, model: string, assets: readonly GenerationAsset[], inputMode: string, { frozen = false, subjectReference, boundReference = false, savedShot }: GenerationInputIssueOptions = {}): string {
   if (!provider) return '未找到生成服务商，请刷新工作台后重试。';
+  if (shot.videoInput) { const issue = generationVideoInputIssue(shot, provider, assets, { frozen, subjectReference }); return issue ? issue.key : ''; }
   if (!frozen && inputMode === 'subject') {
     const issue = subjectVideoConflictIssue(shot, { savedShot: savedShot ?? undefined, boundReference }) || subjectVideoProfileIssue(provider, model) || subjectVideoReferenceIssue(subjectReference, subjectVideoAssets(assets), shot.projectId);
     if (issue) return issue;
@@ -278,7 +285,7 @@ export function providerAvailabilityDescriptor(provider: GenerationProvider | nu
  const status = providerStatus(provider);
  return status === 'available' ? null : message(status === 'disabled' ? 'connections.generation.providerDisabled' : status === 'not_configured' ? 'connections.generation.providerIncomplete' : 'connections.generation.providerUnavailable', { provider: provider.id || '—' });
 }
-export const inputModeDescriptor = (mode: string): DisplayMessage | null => mode === 'text' ? message('connections.generation.textMode') : mode === 'image' ? message('connections.generation.imageMode') : mode === 'subject' ? message('connections.generation.subjectMode') : mode === 'frames' ? message('video.providers.frames') : null;
+export const inputModeDescriptor = (mode: string): DisplayMessage | null => mode === 'text' ? message('connections.generation.textMode') : mode === 'image' ? message('connections.generation.imageMode') : mode === 'subject' ? message('connections.generation.subjectMode') : mode === 'frames' ? message('video.providers.frames') : mode === 'reference' ? message('video.wan.reference') : null;
 const generationIssueKeys: Record<string, MessageKey> = Object.freeze({
   INVALID_INPUT: 'connections.generation.issue.inputRecord',
   UNSUPPORTED_MODEL: 'connections.generation.issue.modelUnsupported',
@@ -350,6 +357,7 @@ export function subjectVideoProfileDescriptor(provider: GenerationProvider | nul
 
 export function generationInputIssueDescriptor(shot: GenerationShot, provider: GenerationProvider | null | undefined, model: string, assets: readonly GenerationAsset[], inputMode: string, { frozen = false, subjectReference, boundReference = false, savedShot }: GenerationInputIssueOptions = {}): DisplayMessage | string {
   if (!provider) return message('connections.generation.providerMissing');
+  if (shot.videoInput) return generationVideoInputIssue(shot, provider, assets, { frozen, subjectReference }) || '';
   if (!frozen && inputMode === 'subject') {
     const issue = subjectVideoConflictDescriptor(shot, { savedShot, boundReference }) || subjectVideoProfileDescriptor(provider, model) || subjectVideoReferenceDescriptor(subjectReference, assets, shot.projectId);
     if (issue) return issue;
@@ -427,11 +435,53 @@ export function videoConnectionProviders(value: unknown): GenerationProvider[] {
 export function generationParameters(shot: GenerationShot, provider: GenerationProvider | null | undefined, options: Record<string, unknown> = {}): Record<string, unknown> {
   if (!provider?.connectionId) return { ...(shot.parameters || {}) };
   const overrides = options.parameters && typeof options.parameters === 'object' && !Array.isArray(options.parameters) ? options.parameters as Record<string, unknown> : {};
-  const parameters = { ...(shot.parameters || {}), ...overrides };
+  const wan = wanGenerationCapabilities(provider);
   const model = provider.videoModel as import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry | undefined;
+  if (wan?.defaults && model) return resolveWanGenerationParameters(model, wan.defaults, shot, overrides);
+  const parameters: Record<string, unknown> = { ...(shot.parameters || {}), ...overrides };
   if (parameters.resolution === undefined) {
     const resolution = model?.durationResolutionMap.find(pair => pair.duration.includes(Number(shot.duration)))?.resolution[0];
     if (resolution) parameters.resolution = resolution;
   }
   return parameters;
+}
+
+
+/** Exact server-declared Wan capability metadata; model-name guesses never enable controls. */
+export function wanGenerationCapabilities(provider: GenerationProvider | null | undefined): { smartDuration?: boolean; adaptiveAspectRatio?: boolean; referenceImages?: number; defaults?: { durationSeconds: number; resolution: string; generateAudio: boolean; promptExtend: boolean; watermark: boolean }; [key: string]: unknown } | null {
+  const model = provider?.videoModel as { id?: string } | undefined;
+  const entry = providerModels(provider).find(item => model?.id ? item.modelEntryId === model.id : item.modelEntryId === provider?.modelEntryId);
+  const capabilities = entry?.wanCapabilities ?? (provider?.modelCapabilities?.length === 1 ? provider.modelCapabilities[0]?.wanCapabilities : undefined);
+  return capabilities && typeof capabilities === 'object' && !Array.isArray(capabilities) ? capabilities as Record<string, unknown> : null;
+}
+
+export function generationVideoInput(shot: GenerationShot, options: { videoInput?: GenerationVideoInput } = {}, provider?: GenerationProvider | null): GenerationVideoInput | undefined {
+  if (!wanGenerationCapabilities(provider)) return undefined;
+  if (options.videoInput) return { ...structuredClone(options.videoInput), prompt: options.videoInput.prompt ?? shot.prompt ?? '' };
+  const images: GenerationVideoInput['images'] = (shot.referenceAssetIds || []).map(assetId => ({ role: 'first_frame', assetId }));
+  if (shot.lastFrameAssetId) images.push({ role: 'last_frame', assetId: shot.lastFrameAssetId });
+  return { version: 1, mode: shot.lastFrameAssetId ? 'first_last_frame' : images.length ? 'first_frame' : 'text', images, prompt: shot.prompt ?? '' };
+}
+
+/** Advisory validation uses the same explicit input snapshot sent to the server. */
+export function generationVideoInputIssue(shot: GenerationShot, provider: GenerationProvider, assets: readonly GenerationAsset[], { frozen = false, subjectReference }: GenerationReferenceOptions = {}): DisplayMessage | null {
+  const input = shot.videoInput;
+  if (!input) return null;
+  if (!wanVideoInputSchema.safeParse(input).success) return message('video.wan.invalidImages');
+  if (subjectReference || shot.subjectReference) return message('video.wan.subjectConflict');
+  if (!wanGenerationCapabilities(provider)) return message('video.wan.unsupported');
+  const expectedRoles = input.mode === 'text' ? [] : input.mode === 'first_frame' ? ['first_frame'] : input.mode === 'first_last_frame' ? ['first_frame', 'last_frame'] : input.mode === 'reference_images' ? input.images.map(() => 'reference_image') : null;
+  if (input.version !== 1 || !expectedRoles || input.images.length !== expectedRoles.length || input.mode === 'reference_images' && (input.images.length < 1 || input.images.length > 10) || input.images.some((image, index) => image.role !== expectedRoles[index]) || new Set(input.images.map(image => image.assetId)).size !== input.images.length) return message('video.wan.invalidImages');
+  const prompt = input.prompt ?? shot.prompt ?? '';
+  if (prompt.length > 20000 || input.mode === 'text' && !prompt.trim()) return message('video.wan.invalidPrompt');
+  const references = input.images.map(({ assetId, role }, index) => {
+    const asset = assets.find(item => item.id === assetId && (!shot.projectId || item.projectId === shot.projectId));
+    if (!asset) return null;
+    const pinned = frozen ? shot.referenceAssets?.[index] : asset;
+    if (!pinned || frozen && (pinned.id !== assetId || ['sha256', 'mimeType', 'width', 'height', 'relativePath', 'sizeBytes'].some(key => pinned[key] !== asset[key]))) return null;
+    return { ...pinned, role };
+  });
+  if (references.some(item => !item)) return message('connections.generation.issue.referencesMissing');
+  const snapshot = { ...shot, prompt, model: (provider.videoModel as { modelId?: string } | undefined)?.modelId, referenceAssetIds: input.images.map(image => image.assetId), referenceAssets: references, referenceBindings: input.images.map((image, index) => ({ ...image, sha256: references[index]?.sha256 })) };
+  return generationIssueDescriptor(advisoryGenerationIssue(snapshot, provider));
 }

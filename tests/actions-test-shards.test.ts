@@ -43,6 +43,62 @@ test('Linux CI matrix and launcher count cover the actual full catalog exactly o
   assert.match(quality, /ref: \$\{\{ inputs\.source_sha \}\}/);
   assert.match(quality, /fetch-depth: 0/);
 });
+function workflowJob(workflow: string, name: string): string {
+  const value = new RegExp(`^  ${name}:\\r?\\n([\\s\\S]*?)(?=^  [a-z][\\w-]*:\\r?\\n|(?![\\s\\S]))`, 'm').exec(workflow)?.[1];
+  assert.ok(value, `the ${name} job must exist`);
+  return value;
+}
+test('Linux CI prepares one exact cached media toolchain before distributing it to every shard', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
+  const preparation = workflowJob(workflow, 'ffmpeg'), quality = workflowJob(workflow, 'quality');
+  assert.match(preparation, /ref: \$\{\{ inputs\.source_sha \}\}/);
+  assert.match(preparation, /artifact_name: \$\{\{ steps\.identity\.outputs\.artifact_name \}\}/);
+  assert.match(preparation, /build_key: \$\{\{ steps\.identity\.outputs\.cache_key \}\}/);
+  assert.match(preparation, /printf 'artifact_name=checks-ffmpeg-%s-%s\\n' "\$GITHUB_RUN_ID" "\$GITHUB_RUN_ATTEMPT" >> "\$GITHUB_OUTPUT"/);
+  assert.equal((workflow.match(/node \.github\/scripts\/ffmpeg-toolchain\.ts build/g) ?? []).length, 1, 'only preparation may build FFmpeg');
+  assert.match(preparation, /if: steps\.cache\.outputs\.cache-hit != 'true'[\s\S]*?run: node \.github\/scripts\/ffmpeg-toolchain\.ts build/);
+  for (const action of ['restore', 'save']) {
+    assert.match(preparation, new RegExp(`uses: actions/cache/${action}@[a-f0-9]{40}`));
+  }
+  assert.equal((preparation.match(/^\s+key: \$\{\{ steps\.identity\.outputs\.cache_key \}\}/gm) ?? []).length, 2);
+  assert.doesNotMatch(preparation, /restore-keys:|continue-on-error:/);
+  const stages = ['ffmpeg-toolchain.ts identity', 'actions/cache/restore@', 'ffmpeg-toolchain.ts build', 'ffmpeg-toolchain.ts activate', 'media-environment.ts --platform=linux', 'actions/cache/save@', 'Upload verified media toolchain'].map(stage => preparation.indexOf(stage));
+  assert.ok(stages.every((position, index) => position >= 0 && (index === 0 || position > stages[index - 1]!)), 'only verified and capability-probed tools may enter the cache or artifact');
+  assert.match(preparation, /name: \$\{\{ steps\.identity\.outputs\.artifact_name \}\}/);
+  assert.match(preparation, /path: \$\{\{ runner\.temp \}\}\/mioon-ffmpeg-toolchain\//);
+  assert.match(preparation, /if-no-files-found: error/);
+  assert.match(quality, /name: Linux full tests and build \(shard \$\{\{ matrix\.shard \}\}\)/);
+  assert.match(quality, /needs: ffmpeg/);
+  assert.match(quality, /MIOON_FFMPEG_BUILD_KEY: \$\{\{ needs\.ffmpeg\.outputs\.build_key \}\}/);
+  assert.match(quality, /name: \$\{\{ needs\.ffmpeg\.outputs\.artifact_name \}\}/);
+  assert.match(quality, /path: \$\{\{ runner\.temp \}\}\/mioon-ffmpeg-toolchain/);
+  assert.ok(quality.indexOf('actions/download-artifact@') < quality.indexOf('ffmpeg-toolchain.ts activate'));
+  assert.ok(quality.indexOf('ffmpeg-toolchain.ts activate') < quality.indexOf('media-environment.ts --platform=linux'));
+  assert.ok(quality.indexOf('media-environment.ts --platform=linux') < quality.indexOf('test-shard.ts'));
+  assert.doesNotMatch(quality, /GITHUB_RUN_ATTEMPT|GITHUB_RUN_ID|github\.run_attempt|github\.run_id|install-ffmpeg\.ts|ffmpeg-toolchain\.ts build/);
+  assert.match(workflowJob(workflow, 'portable'), /tests\/actions-ffmpeg-toolchain\.test\.ts/);
+});
+test('desktop Linux packaging reuses the verified run artifact while the CI gate still requires every check', async () => {
+  const [workflow, release, ci] = await Promise.all([
+    readFile(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8'),
+    readFile(new URL('../.github/workflows/release-desktop.yml', import.meta.url), 'utf8'),
+    readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8')
+  ]);
+  assert.match(workflow, /ffmpeg_artifact:[\s\S]*?value: \$\{\{ jobs\.ffmpeg\.outputs\.artifact_name \}\}/);
+  assert.match(workflow, /ffmpeg_build_key:[\s\S]*?value: \$\{\{ jobs\.ffmpeg\.outputs\.build_key \}\}/);
+  const desktop = workflowJob(release, 'desktop');
+  assert.match(desktop, /needs: \[preflight, checks\]/);
+  assert.match(desktop, /name: Download verified Linux media toolchain\r?\n\s+if: runner\.os == 'Linux'\r?\n\s+uses: actions\/download-artifact@[a-f0-9]{40}/);
+  assert.match(desktop, /name: \$\{\{ needs\.checks\.outputs\.ffmpeg_artifact \}\}/);
+  assert.match(desktop, /MIOON_FFMPEG_BUILD_KEY: \$\{\{ needs\.checks\.outputs\.ffmpeg_build_key \}\}/);
+  assert.match(desktop, /name: Verify and activate Linux media toolchain\r?\n\s+if: runner\.os == 'Linux'[\s\S]*?run: node \.github\/scripts\/ffmpeg-toolchain\.ts activate/);
+  assert.doesNotMatch(release, /install-ffmpeg\.ts|ffmpeg-toolchain\.ts build|checks-ffmpeg-.*(?:run_id|run_attempt)/);
+  const gate = workflowJob(ci, 'ci');
+  assert.match(gate, /name: CI/); assert.match(gate, /if: always\(\)/); assert.match(gate, /needs: checks/);
+  assert.match(gate, /CHECKS_RESULT: \$\{\{ needs\.checks\.result \}\}/);
+  assert.match(gate, /test "\$CHECKS_RESULT" = success/);
+  assert.match(workflow, /permissions:\r?\n  contents: read/);
+});
 test('actual full discovery automatically admits additions, removals and migration renames without an exclusion list', async t => {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-test-shard-catalog-'));
   t.after(() => rm(root, {recursive: true, force: true}));

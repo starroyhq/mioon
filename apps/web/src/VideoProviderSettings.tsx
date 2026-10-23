@@ -20,7 +20,7 @@ import type { CompatibleVideoCheckResult } from '../../../packages/contracts/src
 import type { VideoSettingsClient, VideoSettingsSession } from './video-settings.ts';
 import './video-settings.css';
 
-const modeKey = { text: 'video.providers.text', image: 'video.providers.image', frames: 'video.providers.frames', subject: 'video.providers.subject' } as const;
+const modeKey = { text: 'video.providers.text', image: 'video.providers.image', frames: 'video.providers.frames', subject: 'video.providers.subject', reference: 'video.wan.reference' } as const;
 const regionKey: Record<string, MessageKey> = { global: 'video.providers.region.global', 'cn-beijing': 'video.providers.region.beijing', 'ap-southeast-1': 'video.providers.region.singapore', cn: 'video.providers.region.cn', custom: 'video.providers.region.custom' };
 type CheckState = CompatibleVideoCheckResult | { result: 'failed' };
 const sameOrigin = (draft: string | undefined, saved: string | undefined): boolean => { try { return Boolean(saved) && normalizeCompatibleVideoBaseUrl(draft) === saved; } catch { return false; } };

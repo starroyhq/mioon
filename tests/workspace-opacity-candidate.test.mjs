@@ -1,3 +1,4 @@
+import {reverseReviewedWanVideo} from './helpers/current-wan-video-delta.ts';
 import {reverseReviewedSchema56,reviewedSchema56SourceDeltas} from './helpers/current-schema56-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -100,6 +101,8 @@ const compatibleVideoInverses = Object.freeze({
   ]),
 });
 function reverseReviewedCompatibleVideo(file, bytes) {
+  // Undo newer Wan bytes first; keep this older inverse and all its pins intact.
+  bytes = reverseReviewedWanVideo(file === 'packages/contracts/src/index.mjs' ? 'packages/contracts/src/index.ts' : file, bytes);
   const inverses = compatibleVideoInverses[file];
   if (!inverses) return bytes;
   let source = bytes.toString('utf8');

@@ -463,3 +463,49 @@ test('actual create runner rejects missing explicit null or UUID tail ACK, while
     assert.equal(Boolean(submissions.readPending(projectId, 'shot-create')), desired !== undefined);
   });
 });
+
+function wanProvider(modelId = 'wan3.0-video') {
+  const entry = contracts.defaultVideoModels('wan').find(model => model.modelId === modelId);
+  const binding = { version: 1, connectionId: id(60), configurationRevision: 2, providerId: 'wan', region: 'cn-beijing', workspaceId: '', endpoint: contracts.resolveVideoEndpoint('wan', 'cn-beijing'), credentialRef: id(61), model: entry, outputHosts: ['video.example.com'] };
+  return settings.videoConnectionProviders([{ connectionId: binding.connectionId, providerId: 'wan', configurationRevision: 2, name: 'Wan account', enabled: true, configured: true, archived: false, models: [{ entry, capabilities: contracts.videoBindingCapabilities(binding) }] }])[0];
+}
+
+test('Wan exact capabilities expose session-only modes, ordered images and automatic parameters without modifying the shot', async () => {
+  const p = wanProvider(), current = shot({ referenceAssetIds: [], duration: 4, aspectRatio: '9:16' });
+  const h = harness({ shot: current, providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities[0].modelEntryId } });
+  h.render();
+  assert.ok(h.find('wan-video-input')); assert.equal(h.find('wan-video-duration').props.value, 5);
+  assert.equal(h.find('generation-audio').props.checked, true); assert.equal(h.find('wan-prompt-extend').props.checked, true); assert.equal(h.find('wan-watermark').props.checked, false);
+  h.edit('input-mode-select', 'reference');
+  for (const assetId of [firstId, tailId, otherId]) { h.click(`wan-image-choice-${assetId}`); h.render(); }
+  assert.deepEqual(h.props().generationOptions.videoInput.images.map(image => image.assetId), [firstId, tailId, otherId]);
+  h.click('wan-image-up-2'); h.render();
+  assert.deepEqual(h.props().generationOptions.videoInput.images.map(image => image.assetId), [firstId, otherId, tailId]);
+  h.click('wan-image-remove-0'); h.render();
+  assert.deepEqual(h.props().generationOptions.videoInput.images.map(image => image.assetId), [otherId, tailId]);
+  assert.match(text(h.find('wan-video-images')), /图1：另一张图片.*图2：暮色尾帧/);
+  h.edit('wan-video-prompt', '图1 is a landscape and 图2 is the destination');
+  h.edit('wan-video-duration', '-1'); h.edit('wan-video-ratio', 'adaptive');
+  assert.equal(h.props().generationOptions.parameters.durationSeconds, -1); assert.equal(h.props().generationOptions.parameters.aspectRatio, 'adaptive');
+  assert.equal(h.saves.length, 0); assert.equal(h.props().shot.duration, 4); assert.equal(h.props().shot.aspectRatio, '9:16'); assert.deepEqual(h.props().shot.referenceAssetIds, []);
+  await h.click('generate-shot');
+  assert.equal(h.generated.length, 1);
+  assert.equal(h.generated[0][1].videoInput.mode, 'reference_images');
+  assert.deepEqual(h.generated[0][1].videoInput.images.map(image => image.assetId), [otherId, tailId]);
+  assert.equal(h.generated[0][1].parameters.durationSeconds, -1);
+});
+
+test('Wan first/last image reordering keeps roles and unavailable or custom capability metadata cannot enable new controls', () => {
+  const p = wanProvider('wan3.0-video-prime'), h = harness({ shot: shot({ referenceAssetIds: [] }), providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities[0].modelEntryId } });
+  h.render(); h.edit('input-mode-select', 'frames');
+  h.click(`wan-image-choice-${firstId}`); h.render(); h.click(`wan-image-choice-${tailId}`); h.render();
+  h.click('wan-image-down-0'); h.render();
+  assert.deepEqual(h.props().generationOptions.videoInput.images, [{ role: 'first_frame', assetId: tailId }, { role: 'last_frame', assetId: firstId }]);
+  h.visible = false; h.render(); const before = structuredClone(h.props().generationOptions); h.click('wan-image-remove-0'); h.render(); assert.deepEqual(h.props().generationOptions, before);
+  h.visible = true; h.render({ providers: [p, provider()] });
+  h.all().find(node => node.type === 'ProviderSettings').props.onChange({ providerId: 'mock', connectionId: undefined, modelEntryId: undefined, model: '', inputMode: undefined, parameters: undefined }); h.render();
+  assert.equal(h.props().generationOptions.videoInput, undefined); assert.equal(h.find('wan-video-input'), undefined);
+  const legacy = harness(); legacy.render(); assert.equal(legacy.find('wan-video-input'), undefined);
+  const custom = structuredClone(p); delete custom.modelCapabilities[0].wanCapabilities; delete custom.modelCapabilities[0].connectionCapabilities.modelCapabilities[0].wanCapabilities;
+  const unknown = harness({ providers: [custom], generationOptions: { connectionId: custom.connectionId, modelEntryId: custom.modelCapabilities[0].modelEntryId } }); unknown.render(); assert.equal(unknown.find('wan-video-input'), undefined);
+});

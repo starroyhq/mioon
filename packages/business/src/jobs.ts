@@ -27,6 +27,8 @@ import {prepareTimelineInputs,readOwnedTimelineAsset,validateFrozenTimelineSourc
 import {now} from './services.ts';
 import type {JobRecord,OrdinaryServices,ServiceStore,ServiceRow} from './services.ts';
 import type {Provider} from './provider-registry.ts';
+import {readVideoBinding} from './video/generation.ts';
+import {effectiveVideoParameters,isWan30Binding} from '../../contracts/src/wan-video.ts';
 import {markGenerationPreflightFailure,isGenerationPreflightFailure} from './generation-inputs.ts';
 import {assertMediaTerminated,awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 
@@ -252,10 +254,17 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     }
     if(stringValue(property(get('jobs',j.id),'status'))==='cancelled')return;
     if(!provider.capabilities.mock) {
-     const [ratioWidth,ratioHeight]=String(property(j.snapshot,'aspectRatio')).split(':').map(Number);
+     const binding=readVideoBinding(j.snapshot),wan30=Boolean(binding&&isWan30Binding(binding));
+     const effective=binding?effectiveVideoParameters(binding,j.snapshot):null;
+     const expectedAspectRatio=wan30?effective!.aspectRatio:property(j.snapshot,'aspectRatio');
+     const [ratioWidth,ratioHeight]=String(expectedAspectRatio).split(':').map(Number);
      const actualRatio=info.width/info.height,expectedRatio=Number(ratioWidth)/Number(ratioHeight);
-     if(!Number.isFinite(actualRatio)||Math.abs(actualRatio/expectedRatio-1)>0.01) {
+     if(!Number.isFinite(actualRatio)||actualRatio<=0||(expectedAspectRatio==='adaptive'?actualRatio<1/8||actualRatio>8:Math.abs(actualRatio/expectedRatio-1)>0.01)) {
       services.saveJob(j,{status:'cancelled',phase:'output_review_required',cancelScope:'local_only',error:{code:'OUTPUT_ASPECT_RATIO_MISMATCH',message:'供应商已完成，但下载的视频比例与镜头要求不符。已暂停发布版本；请检查已有任务，不要重新提交生成。',retryable:false},nextPollAt:0});
+      return;
+     }
+     if(wan30&&(!Number.isFinite(info.duration)||info.duration<1.85||info.duration>30.15||effective!.durationSeconds!==-1&&Math.abs(info.duration-Number(effective!.durationSeconds))>0.25)){
+      services.saveJob(j,{status:'cancelled',phase:'output_review_required',cancelScope:'local_only',error:{code:'OUTPUT_DURATION_MISMATCH',message:'供应商已完成，但视频时长不符合冻结的 Wan 模型要求。已暂停发布版本；请检查已有任务，不要重新提交生成。',retryable:false},nextPollAt:0});
       return;
      }
     }

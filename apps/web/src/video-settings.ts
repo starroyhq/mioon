@@ -70,7 +70,7 @@ export const restorableVideoCredentials = (saved: VideoConnectionView | undefine
 const credentialStorage = (storage: VideoCredentialView['storage'] | undefined): VideoSettingsState['storage'] => storage === 'persistent' || storage === 'session' ? storage : '';
 export function newVideoConnection(providerId: VideoProviderId): VideoConnectionConfiguration {
   if (!isVideoCatalogProvider(providerId)) throw fail('VIDEO_SETTINGS_VALIDATION');
-  return { id: crypto.randomUUID(), providerId, name: VIDEO_PROVIDER_NAMES[providerId], region: VIDEO_REGIONS[providerId][0]!, workspaceId: '', enabled: false, archived: false, outputHosts: [], models: defaultVideoModels(providerId), ...(providerId === 'compatible' ? { baseUrl: '' } : {}) };
+  return { id: crypto.randomUUID(), providerId, name: VIDEO_PROVIDER_NAMES[providerId], region: VIDEO_REGIONS[providerId][0]!, workspaceId: '', enabled: false, archived: false, outputHosts: [], models: defaultVideoModels(providerId).filter(model => providerId !== 'wan' || model.templateId === 'wan30-v1'), ...(providerId === 'compatible' ? { baseUrl: '' } : {}) };
 }
 export function createVideoSettingsSession({ client = createVideoSettingsClient(), onChange = () => {} }: { client?: VideoSettingsClient; onChange?: (state: VideoSettingsState) => void } = {}) {
   let state = initialVideoSettingsState(), live = true, visible = true, epoch = 0, pending: AbortController | null = null;

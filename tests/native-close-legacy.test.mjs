@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { transformSync } from 'esbuild';
 import { schemas } from '@mioon/contracts';
+import { getWan30Capability } from '../packages/contracts/src/wan-video.ts';
 import * as shotContracts from '@mioon/contracts/local-shot-text';
 import * as shotClient from '../apps/web/src/local-shot-text-client.ts';
 import * as shotModule from '../apps/web/src/local-shot-text-state.ts';
@@ -243,7 +244,7 @@ const between = (source, start, end) => { const from = source.indexOf(start), to
 function actualShotRegistration(shotTextRef, shotCloseRef) {
   return Function('useCallback', 'shotTextRef', 'shotCloseRef', `${between(appSource, '  const registerShotText =', '  const registerClipDraft =')} return registerShotText;`)(callback => callback, shotTextRef, shotCloseRef);
 }
-async function inspectorContinuation(t) {
+async function inspectorContinuation(t, { wan = false, videoInput, referenceLocked = false } = {}) {
   const refs = { mounted: { current: true }, editSerial: { current: 0 }, textVersion: { current: 0 }, dirtyRef: { current: false }, baseRevisionRef: { current: 4 },
     baseline: { current: { ...baseText, referenceAssetIds: [id(20)], lastFrameAssetId: id(21) } }, draftRef: { current: { ...baseText, referenceAssetIds: [id(20)], lastFrameAssetId: id(21) } } };
   const counts = { getCurrent: 0, onChange: 0, transport: 0, timer: 0, clearTimer: 0 }, queuedState = {}, shotText = {}, appShot = { current: null }, appLocal = { current: null };
@@ -252,11 +253,13 @@ async function inspectorContinuation(t) {
   const register = actualShotRegistration(appShot, appLocal);
   const env = { msg, ...refs, shotText, shot: { id: shotId, revision: 4, ...baseText }, project: { id: projectId }, draft: refs.draftRef.current,
     shotTextContext: { ...scope, getCurrent: () => { counts.getCurrent++; return scope; } }, actionScope: 'action:1', actionEpoch: { current: 0 }, frameEpoch: { current: 0 },
-    renderedAction: { frameEpoch: 0 }, renderSerial: 0, actionState: { current: { actionScope: 'action:1', referenceBlocked: false, referenceLocked: false } },
+    renderedAction: { frameEpoch: 0 }, renderSerial: 0, actionState: { current: { actionScope: 'action:1', referenceBlocked: false, referenceLocked } },
     visibleRef: { current: true }, tab: 'settings', referenceBusy: false, referencePending: false, busy: {}, generationOptionsKey: 'options:1',
+    wanCapabilities: wan ? getWan30Capability('wan3.0-video', 'cn-beijing', 'wan30-v1') : null, videoInput,
     confirm: () => confirmation, setDraft: value => { queuedState.draft = value; }, setDirty: value => { queuedState.dirty = value; }, updateGeneration: value => { queuedState.generation = value; },
   };
   const realBoundaries = between(inspectorSource, '  const actionCurrent =', '  const shotText = useLocalShotText(') +
+    between(inspectorSource, '  function updateVideoInput(', '  function updateWanParameter(') +
     between(inspectorSource, '  async function changeInputMode(', '  function chooseLastFrame(') +
     between(inspectorSource, '  async function clearLastFrame(', '  async function save(');
   const handlers = Function(...Object.keys(env), `${realBoundaries}; return { currentTextContext, changeInputMode, clearLastFrame };`)(...Object.values(env));
@@ -294,6 +297,22 @@ for (const stage of ['commit', 'unload']) test(`deferred Inspector input-mode co
   assert.equal(f.read().dirty, true, 'The actual registered local reader observes the continuation');
   if (stage === 'commit') assert.equal(f.commit(capture.token), false); else assert.deepEqual(f.unload(), { result: false, prevented: true });
   assert.deepEqual(f.counts, { getCurrent: 0, onChange: 0, transport: 0, timer: 0, clearTimer: 0 });
+});
+
+test('Inspector Wan input-mode changes preserve saved references and only update session generation input', async t => {
+  for (const [mode, expectedMode, keepImages] of [['image', 'first_frame', true], ['frames', 'first_last_frame', true], ['reference', 'reference_images', false], ['text', 'text', false]]) {
+    const videoInput = { version: 1, mode: 'first_frame', images: [{ role: 'first_frame', assetId: id(25) }], prompt: 'Session prompt' };
+    const f = await inspectorContinuation(t, { wan: true, videoInput, referenceLocked: true });
+    const originalDraft = f.refs.draftRef.current;
+    f.resetCounts();
+    // An unresolved confirmation would leave this pending if Wan used the legacy
+    // saved-reference deletion path instead of its session-only input controls.
+    await f.changeInputMode(mode);
+    assert.deepEqual(f.queuedState.generation, { videoInput: { ...videoInput, mode: expectedMode, images: keepImages ? videoInput.images : [] } });
+    assert.equal(f.refs.draftRef.current, originalDraft); assert.equal(f.refs.editSerial.current, 0); assert.equal(f.refs.dirtyRef.current, false);
+    assert.equal(f.controller.getNativeCloseSnapshot().dirty, false); assert.equal(f.read().dirty, false);
+    assert.deepEqual(f.counts, { getCurrent: 0, onChange: 0, transport: 0, timer: 0, clearTimer: 0 });
+  }
 });
 
 test('Inspector clearLastFrame control already synchronizes through edit; final close still reads purely', async t => {

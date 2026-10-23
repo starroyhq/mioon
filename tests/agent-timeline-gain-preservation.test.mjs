@@ -1,3 +1,4 @@
+import {reverseReviewedWanVideo} from './helpers/current-wan-video-delta.ts';
 import {withoutReviewedInteractionObjects,currentOrdinary56Delta,reverseReviewedSchema56} from './helpers/current-schema56-delta.ts';
 function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 import test from 'node:test';
@@ -65,6 +66,8 @@ const reviewedCompatibleVideoInverses=Object.freeze({
  ]),
 });
 function reverseReviewedCompatibleVideo(file,bytes){
+ // Undo newer Wan bytes first; keep this older inverse and all its pins intact.
+ bytes=reverseReviewedWanVideo(currentPath(file),bytes);
  const inverses=reviewedCompatibleVideoInverses[file];if(!inverses)return bytes;
  let source=bytes.toString('utf8');
  for(const inverse of inverses){assert.equal(source.split(inverse.after).length-1,1,`Baseline dependency changed: ${file}; reviewed compatible-video delta`);source=source.replace(inverse.after,inverse.before);}

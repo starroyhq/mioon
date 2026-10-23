@@ -44,6 +44,7 @@ import {normalizedCapabilities,usesInputProfiles} from './provider-registry.ts';
 import type {Provider} from './provider-registry.ts';
 import {videoBindingCapabilities} from '../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../contracts/src/video-providers.ts';
+import {getWan30Capability,resolveWanGenerationParameters} from '../../contracts/src/wan-video.ts';
 import type {VideoSettingsService} from './video/settings.ts';
 import {createConfiguredVideoProvider} from './video/runtime.ts';
 import {listVideoConnections,readVideoBinding,sameVideoExecutionDomain,prepareConfiguredVideoInputs} from './video/generation.ts';
@@ -170,6 +171,7 @@ export interface GenerationSubmitInput {
  model?: string;
  parameters?: ServiceRow;
  subjectVersionId?: string;
+ videoInput?: unknown;
  retryOfJobId?: string|null;
  readonly [key: string]: unknown;
 }
@@ -254,6 +256,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const hasLastFrameRole=(value: unknown): boolean=>Array.isArray(value)&&value.some(reference=>property(reference,'role')==='last_frame');
  const validateProvider=(source: GenerationSource,providerId: string,requestedModel: string|undefined,parameters: ServiceRow|undefined,projectId: string,frozen=false,subjectGraph: GenerationSubjectGraph|null=null)=>{
   const binding=readVideoBinding(source);
+  if(source.videoInput!==undefined&&!binding)throw new AppError('UNSUPPORTED_INPUT_ROLE','Wan 图片输入需要明确的 Wan 3.0 连接。');
   if(binding){
    configuration.assertLiveEnabled();
    if(binding.providerId!==providerId||requestedModel!==undefined&&requestedModel!==binding.model.modelId)throw new AppError('VIDEO_BINDING_INVALID','请求模型与所选连接不一致。');
@@ -308,6 +311,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   if(!retrySnapshot)check(shot,input.expectedRevision);
   if(profilePolicy||usesInputProfiles(providers.get(input.providerId))||input.subjectVersionId!==undefined||input.connectionId)assertGenerationShotOwnership(db,shot);
   let source: GenerationSource=retrySnapshot||shot as unknown as GenerationSource,subjectGraph: GenerationSubjectGraph|null=null;
+  if(!retrySnapshot&&input.videoInput!==undefined)source={...source,videoInput:input.videoInput};
   const subjectMode=input.subjectVersionId!==undefined||hasSubjectGeneration(source);
   let referenceConnections: unknown;
   if(subjectMode){
@@ -324,11 +328,14 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     referenceConnections=[];
     source={...shot,subjectReference,referenceAssetIds:[version.assetId],referenceConnections,referenceBindings:[{role:'subject_reference',assetId:version.assetId,sha256:version.sha256}]};
    }
-  }else referenceConnections=(retrySnapshot?property(retrySnapshot,'referenceConnections'):undefined)??(!retrySnapshot?references.snapshot(shot as never):[]);
+  }else referenceConnections=source.videoInput!==undefined?(retrySnapshot?property(retrySnapshot,'referenceConnections'):[]):(retrySnapshot?property(retrySnapshot,'referenceConnections'):undefined)??(!retrySnapshot?references.snapshot(shot as never):[]);
   const executionBinding=retrySnapshot?readVideoBinding(retrySnapshot):input.connectionId?videoSettings?.select(input.connectionId,input.configurationRevision!,input.modelEntryId!):null;
   if(input.connectionId&&!executionBinding)throw new AppError('VIDEO_SETTINGS_UNAVAILABLE','所选视频连接不可用。',409);
   if(executionBinding)source={...source,executionBinding};
-  const parameters=(retrySnapshot?property(retrySnapshot,'parameters'):undefined)||{...(isRecord(shot.parameters)?shot.parameters:{}),...input.parameters};
+  let parameters:unknown=(retrySnapshot?property(retrySnapshot,'parameters'):undefined)||{...(isRecord(shot.parameters)?shot.parameters:{}),...input.parameters};
+  const wanCapability=executionBinding?.providerId==='wan'?getWan30Capability(executionBinding.model.modelId,executionBinding.region,executionBinding.model.templateId):undefined;
+  // Missing historical parameters must not borrow the current shot's preferences during retry validation.
+  if(wanCapability&&executionBinding)parameters=retrySnapshot?property(retrySnapshot,'parameters'):resolveWanGenerationParameters(executionBinding.model,wanCapability.defaults,{aspectRatio:shot.aspectRatio,parameters});
   const {model,assets,referenceAssetIds,capabilities,inputFields}=validateProvider({...source,referenceConnections},input.providerId,input.model,isRecord(parameters)?parameters:undefined,shot.projectId,Boolean(retrySnapshot),subjectGraph);
   const snapshot: ServiceRow=retrySnapshot??{shotId:shot.id,shotRevision:shot.revision,title:shot.title,prompt:shot.prompt,referenceAssetIds:[...referenceAssetIds],...(shot.lastFrameAssetId!=null?{lastFrameAssetId:shot.lastFrameAssetId}:{}),referenceAssets:(assets as GenerationAsset[]).map(a=>({id:a.id,relativePath:a.relativePath,mimeType:a.mimeType,sha256:a.sha256,width:a.width,height:a.height,...(Object.hasOwn(a,'role')?{role:a.role}:{}),...(inputFields?{sizeBytes:a.sizeBytes}:{})})),referenceConnections,aspectRatio:shot.aspectRatio,duration:shot.duration,providerId:input.providerId,model,parameters,capabilities,...(inputFields||{}),...(subjectMode?{subjectReference:property(source,'subjectReference')}:{})};
   const job: JobRecord={id:randomUUID(),projectId:shot.projectId,shotId:shot.id,requestId:input.requestId,requestHash,providerId:input.providerId,model,revision:1,status:'queued',phase:'waiting',progress:0,snapshot,providerJobId:null,submissionCount:0,error:null,createdAt:now(),updatedAt:now(),versionId:null,cancelScope:null,retryOfJobId};
@@ -493,7 +500,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    if(subjectMode)validateSubjectGenerationOwnership(db,old);
    const subjectReference=property(old.snapshot,'subjectReference');
    const binding=readVideoBinding(old.snapshot);
-   const newInput: GenerationSubmitInput={shotId:old.shotId,expectedRevision:Number(property(old.snapshot,'shotRevision')),requestId:stringValue(input.requestId) as string,providerId:old.providerId,model:old.model,parameters:recordValue(property(old.snapshot,'parameters'))??undefined,retryOfJobId:old.id,...(binding?{connectionId:binding.connectionId,configurationRevision:binding.configurationRevision,modelEntryId:binding.model.id}:{}),...(subjectMode?{subjectVersionId:stringValue(property(subjectReference,'subjectVersionId'))}:{})};
+   const newInput: GenerationSubmitInput={shotId:old.shotId,expectedRevision:Number(property(old.snapshot,'shotRevision')),requestId:stringValue(input.requestId) as string,providerId:old.providerId,model:old.model,parameters:recordValue(property(old.snapshot,'parameters'))??undefined,retryOfJobId:old.id,...(binding?{connectionId:binding.connectionId,configurationRevision:binding.configurationRevision,modelEntryId:binding.model.id}:{}),...(old.snapshot.videoInput!==undefined?{videoInput:old.snapshot.videoInput}:{}),...(subjectMode?{subjectVersionId:stringValue(property(subjectReference,'subjectVersionId'))}:{})};
    const prior=dedupe('generation',newInput.requestId,hash(newInput),'jobs');if(prior){const priorJob=prior as JobRecord;return subjectMode||hasSubjectGeneration(priorJob.snapshot)?replaySubjectJob(priorJob,newInput,old.id):priorJob;}
    if(old.status!=='failed')throw new AppError('UNSAFE_RETRY','只有明确失败的任务可重新提交；未知提交结果须先对账',409);
    const activeChild=list('jobs',old.projectId).find(child=>property(child,'retryOfJobId')===old.id&&['queued','submitting','running','downloading','submission_unknown'].includes(String(property(child,'status'))));

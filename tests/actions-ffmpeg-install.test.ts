@@ -34,9 +34,9 @@ async function fixture(t: TestContext) {
   };
   return {options: {runnerTemp, githubPath, githubEnv, githubSummary}, transport, calls, get downloads() {return downloads;}};
 }
-test('FFmpeg source URL and SHA256 are fixed to the authenticated official release', () => {
+test('FFmpeg source mirror URL and SHA256 are fixed to the authenticated official release bytes', () => {
   assert.equal(FFMPEG_SOURCE.version, '7.1.5');
-  assert.equal(FFMPEG_SOURCE.url, 'https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz');
+  assert.equal(FFMPEG_SOURCE.url, 'https://github.com/starroyhq/mioon/releases/download/ci-ffmpeg-7.1.5/ffmpeg-7.1.5.tar.xz');
   assert.equal(FFMPEG_SOURCE.sha256, 'de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f');
   assert.equal(Object.isFrozen(FFMPEG_SOURCE), true);
 });
@@ -113,10 +113,91 @@ function downloadFixture(request: typeof fetch) {
     diagnostic: (code: string) => {diagnostics.push(code);},
   }};
 }
+const mirroredAssetUrl = 'https://release-assets.githubusercontent.com/github-production-release-asset/owned/ffmpeg-7.1.5.tar.xz?synthetic-private-signature=fixture';
+function redirectResponse(location: string, status = 302, cancelled: () => void = () => {}): Response {
+  return new Response(new ReadableStream<Uint8Array>({cancel: cancelled}), {status, headers: {location}});
+}
+test('only the pinned mirror may redirect once to the public GitHub asset host with the same signal', async t => {
+  const f = await fixture(t);
+  for (const status of [301, 302, 303, 307, 308]) {
+    const requests: string[] = [], signals: (AbortSignal | null | undefined)[] = []; let cancelled = 0;
+    const d = downloadFixture(async (input, options) => {
+      requests.push(String(input)); signals.push(options?.signal);
+      assert.equal(options?.redirect, 'manual'); assert.equal(options?.headers, undefined); assert.equal(options?.credentials, undefined);
+      return requests.length === 1 ? redirectResponse(mirroredAssetUrl, status, () => {cancelled += 1;}) : new Response(bytes);
+    });
+    const file = path.join(f.options.runnerTemp, `redirect-${status}.tar.xz`);
+    await downloadSource(FFMPEG_SOURCE.url, file, d.services);
+    assert.deepEqual(requests, [FFMPEG_SOURCE.url, mirroredAssetUrl]);
+    assert.ok(signals[0]); assert.equal(signals[0], signals[1]); assert.deepEqual(d.timeouts, [120000]);
+    assert.equal(cancelled, 1); assert.deepEqual(d.diagnostics, []); assert.deepEqual(d.pauses, []);
+    assert.deepEqual(await readFile(file), bytes); assert.equal(await sourceDigest(file), source.sha256);
+  }
+});
+test('redirect targets outside the exact HTTPS asset host are rejected and cancelled without retries or URL leakage', async t => {
+  const f = await fixture(t);
+  const targets = [
+    'https://example.com/synthetic-private', 'http://release-assets.githubusercontent.com/synthetic-private',
+    'https://synthetic-private@release-assets.githubusercontent.com/asset',
+    'https://release-assets.githubusercontent.com:8443/asset',
+    'https://release-assets.githubusercontent.com/asset#synthetic-private',
+    'https://release-assets.githubusercontent.com/asset#',
+    'https://release-assets.githubusercontent.com.example.com/asset',
+    'https://sub.release-assets.githubusercontent.com/asset', '/relative-synthetic-private', 'not-a-synthetic-private-url'
+  ];
+  for (const [index, target] of targets.entries()) {
+    let requests = 0, cancelled = 0;
+    const d = downloadFixture(async () => {requests += 1; return redirectResponse(target, 302, () => {cancelled += 1;});});
+    const file = path.join(f.options.runnerTemp, `invalid-redirect-${index}`);
+    await assert.rejects(downloadSource(FFMPEG_SOURCE.url, file, d.services), {message: 'FFMPEG_DOWNLOAD_REDIRECT_NOT_ALLOWED'});
+    assert.equal(requests, 1); assert.equal(cancelled, 1); assert.deepEqual(d.pauses, []);
+    assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_REDIRECT_NOT_ALLOWED']);
+    await assert.rejects(readFile(file), {code: 'ENOENT'});
+  }
+});
+test('redirect exceptions do not apply to other initial URLs and cannot follow a second asset redirect', async t => {
+  const f = await fixture(t);
+  for (const initialUrl of ['https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz', `${FFMPEG_SOURCE.url}?override=synthetic-private`, mirroredAssetUrl]) {
+    let requests = 0, cancelled = 0;
+    const d = downloadFixture(async () => {requests += 1; return redirectResponse(mirroredAssetUrl, 302, () => {cancelled += 1;});});
+    await assert.rejects(downloadSource(initialUrl, path.join(f.options.runnerTemp, `other-${encodeURIComponent(initialUrl)}`), d.services), {message: 'FFMPEG_DOWNLOAD_REDIRECT_NOT_ALLOWED'});
+    assert.equal(requests, 1); assert.equal(cancelled, 1); assert.deepEqual(d.pauses, []);
+  }
+  let requests = 0, cancelled = 0;
+  const d = downloadFixture(async () => {requests += 1; return redirectResponse(mirroredAssetUrl, 302, () => {cancelled += 1;});});
+  await assert.rejects(downloadSource(FFMPEG_SOURCE.url, path.join(f.options.runnerTemp, 'redirect-loop'), d.services), {message: 'FFMPEG_DOWNLOAD_REDIRECT_NOT_ALLOWED'});
+  assert.equal(requests, 2); assert.equal(cancelled, 2); assert.deepEqual(d.timeouts, [120000]); assert.deepEqual(d.pauses, []);
+});
+test('redirects and retries share the original download budget without replacing the per-attempt signal', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'redirect-budget.tar.xz');
+  const signals: (AbortSignal | null | undefined)[] = []; let requests = 0;
+  const d = downloadFixture(async (_input, options) => {
+    signals.push(options?.signal);
+    if (++requests === 1) {d.advance(40000); return redirectResponse(mirroredAssetUrl);}
+    if (requests === 2) throw networkError('UND_ERR_CONNECT_TIMEOUT');
+    if (requests === 3) return redirectResponse(mirroredAssetUrl);
+    return new Response(bytes);
+  });
+  await downloadSource(FFMPEG_SOURCE.url, file, d.services);
+  assert.equal(requests, 4); assert.equal(signals[0], signals[1]); assert.equal(signals[2], signals[3]); assert.notEqual(signals[0], signals[2]);
+  assert.deepEqual(d.timeouts, [120000, 79500]); assert.deepEqual(d.pauses, [500]);
+  assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_NETWORK_UND_ERR_CONNECT_TIMEOUT']); assert.deepEqual(await readFile(file), bytes);
+});
+test('an exhausted signal while cancelling a redirect prevents dispatch to the asset host', async t => {
+  const f = await fixture(t), file = path.join(f.options.runnerTemp, 'redirect-abort.tar.xz'), controller = new AbortController(); let requests = 0;
+  const d = downloadFixture(async () => {
+    requests += 1;
+    return redirectResponse(mirroredAssetUrl, 302, () => {d.advance(120000); controller.abort();});
+  });
+  d.services.timeoutSignal = () => controller.signal;
+  await assert.rejects(downloadSource(FFMPEG_SOURCE.url, file, d.services), {message: 'FFMPEG_DOWNLOAD_DEADLINE_EXCEEDED'});
+  assert.equal(requests, 1); assert.deepEqual(d.pauses, []); assert.deepEqual(d.diagnostics, ['FFMPEG_DOWNLOAD_TIMEOUT']);
+  await assert.rejects(readFile(file), {code: 'ENOENT'});
+});
 test('source download retries one known transient failure then returns the complete verified fixture bytes', async t => {
   const f = await fixture(t), file = path.join(f.options.runnerTemp, 'download.tar.xz'); let requests = 0;
   const d = downloadFixture(async (_input, options) => {
-    assert.equal(options?.redirect, 'error'); assert.ok(options?.signal);
+    assert.equal(options?.redirect, 'manual'); assert.ok(options?.signal);
     if (++requests === 1) throw networkError();
     return new Response(bytes);
   });
@@ -192,12 +273,12 @@ test('oversize header or body stops immediately and removes only its own partial
     assert.equal(requests, 1); assert.deepEqual(d.pauses, []); await assert.rejects(readFile(file), {code: 'ENOENT'});
   }
 });
-test('hash mismatch after a complete download never retries or extracts', async t => {
+test('hash mismatch after a complete mirrored download never retries or extracts', async t => {
   const f = await fixture(t); let requests = 0;
-  const d = downloadFixture(async () => {requests += 1; return new Response(bytes);});
+  const d = downloadFixture(async () => ++requests === 1 ? redirectResponse(mirroredAssetUrl) : new Response(bytes));
   f.transport.download = (url, file) => downloadSource(url, file, d.services);
   await assert.rejects(installFFmpeg(f.options, f.transport), {message: 'FFMPEG_SOURCE_SHA256_MISMATCH'});
-  assert.equal(requests, 1); assert.equal(f.calls.length, 0); assert.deepEqual(d.pauses, []);
+  assert.equal(requests, 2); assert.equal(f.calls.length, 0); assert.deepEqual(d.pauses, []);
   assert.deepEqual(await readdir(f.options.runnerTemp), []);
 });
 test('an existing file is refused before networking and cannot be removed or overwritten', async t => {
