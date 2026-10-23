@@ -12,7 +12,7 @@ const nodes=value=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value
 const source=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',import.meta.url),'utf8');
 const projectId='11111111-1111-4111-8111-111111111111',stepId='22222222-2222-4222-8222-222222222222';
 function harness({backgroundPending=false,readOnly=false,status,changes=[],locale='zh-Hans'}={}){
-  let currentLocale=locale;
+  let currentLocale=locale,currentProjectId=projectId,refreshResult=null;
   const hooks=[];let cursor=0,pending=[],tree,loads=0;const calls=[];
   const react={createElement:(type,props,...children)=>({type,props:{...props,children:type==='dialog'&&!props.open?[]:type==='dialog-content'?[...children,props.footer]:type==='retained'?[...children,props.recovery]:children}}),Fragment:'fragment',useRef:value=>hooks[cursor++]??={current:value},useState:value=>{const index=cursor++;hooks[index]??={value};return[hooks[index].value,next=>{hooks[index].value=typeof next==='function'?next(hooks[index].value):next;}];},useLayoutEffect:(fn,deps)=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value,at)=>value!==old.deps[at])){hooks[index]={...old,fn,deps};pending.push(index);}}};react.default=react;
   const snapshot={run:{id:'run',projectId,text:'synthetic task',status:status??(backgroundPending?'completed':'awaiting_approval'),stepsUsed:2,budget:30,configuration:{model:'historical-model'}},steps:[{id:stepId,kind:'tool',status:'completed',approvalRequired:true,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}],changes,backgroundPending};
@@ -20,17 +20,17 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   const module={exports:{}};let options;
   const previous=globalThis.document;globalThis.document={visibilityState:'visible',addEventListener(){},removeEventListener(){}};
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,id=>{
-    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>true};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:value=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},action:(...args)=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async value=>{calls.push(['authorizeAndSend',value]);return true;},edit:value=>{state.draft=value;calls.push(['edit',value]);},removeUpload:id=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args)=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
+    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>true};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:value=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async id=>{calls.push(['refreshRound',id]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args)=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async value=>{calls.push(['authorizeAndSend',value]);return true;},edit:value=>{state.draft=value;calls.push(['edit',value]);},removeUpload:id=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args)=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
-  const render=()=>{cursor=0;pending=[];tree=module.exports.default({projectId,onSettings(page){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn();}return nodes(tree);};render();
-  return{render,calls,state,setLocale(value){currentLocale=value;},get options(){return options;},get loads(){return loads;},find:id=>nodes(tree).find(node=>node.props?.['data-testid']===id),unmount(){for(const hook of hooks)hook.cleanup?.();globalThis.document=previous;}};
+  const render=()=>{cursor=0;pending=[];tree=module.exports.default({projectId:currentProjectId,onSettings(page){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn();}return nodes(tree);};render();
+  return{render,calls,state,setLocale(value){currentLocale=value;},setProject(value){currentProjectId=value;},setRefresh(value){refreshResult=value;},get options(){return options;},get loads(){return loads;},find:id=>nodes(tree).find(node=>node.props?.['data-testid']===id),unmount(){for(const hook of hooks)hook.cleanup?.();globalThis.document=previous;}};
 }
 test('a read-only load error keeps its reload action visible and cannot send without a verified project',()=>{
   const h=harness();try{h.state.phase='read_error';h.state.error='NETWORK';h.state.project=null;h.state.snapshot=null;h.state.draft='';h.render();assert.ok(h.find('agent-task-error'));const reload=h.find('agent-task-reload');assert.ok(reload);assert.equal(reload.props.disabled,false);assert.equal(h.find('agent-task-send').props.disabled,true);const loads=h.loads;reload.props.onClick();assert.equal(h.loads,loads+1);assert.deepEqual(h.calls,[]);}finally{h.unmount();}
 });
 test('a saved step failure is localized by code beside its unknown-result controls',()=>{
-  const h=harness();try{const step=h.state.snapshot.steps[0];step.kind='model';step.status='unknown';step.error={code:'AGENT_CHAT_HTTP_ERROR',message:'模型服务拒绝了请求（HTTP 401）。'};h.render();const error=h.find(`agent-task-step-error-${stepId}`);assert.ok(error);assert.equal(error.props.role,'alert');assert.deepEqual(error.props.children,[translate('zh-Hans',agentTaskErrorKey(step.error.code))]);assert.notEqual(error.props.children[0],step.error.message);assert.equal(error.props.dangerouslySetInnerHTML,undefined);}finally{h.unmount();}
+  const h=harness();try{const step=h.state.snapshot.steps[0];step.kind='model';step.status='unknown';step.error={code:'AGENT_CHAT_HTTP_ERROR',message:'模型服务拒绝了请求（HTTP 401）。'};h.render();const error=h.find(`agent-task-step-error-${stepId}`);assert.ok(error);assert.equal(error.props.role,'alert');assert.deepEqual(error.props.children,[translate('zh-Hans','agent.panel.failureReason',{reason:translate('zh-Hans',agentTaskErrorKey(step.error.code))})]);assert.notEqual(error.props.children[0],step.error.message);assert.equal(error.props.dangerouslySetInnerHTML,undefined);}finally{h.unmount();}
 });
 
 test('Mio localizes step, run and transport errors without rendering diagnostic messages',()=>{
@@ -40,11 +40,11 @@ test('Mio localizes step, run and transport errors without rendering diagnostic 
       h.state.snapshot.run.pauseReason='AGENT_CHAT_TIMEOUT';
       h.state.snapshot.steps[0].error={code:'AGENT_CHAT_HTTP_ERROR',message:'diagnostic <b>untrusted text</b>'};
       h.state.error='AGENT_TASK_CONSENT_REQUIRED';h.render();
-      assert.deepEqual(h.find(`agent-task-step-error-${stepId}`).props.children,[translate(locale,agentTaskErrorKey('AGENT_CHAT_HTTP_ERROR'))]);
-      assert.ok(h.find('agent-task-run-error').props.children.includes(translate(locale,agentTaskErrorKey('AGENT_CHAT_TIMEOUT'))));
+      assert.deepEqual(h.find(`agent-task-step-error-${stepId}`).props.children,[translate(locale,'agent.panel.failureReason',{reason:translate(locale,agentTaskErrorKey('AGENT_CHAT_HTTP_ERROR'))})]);
+      assert.ok(h.find('agent-task-run-error').props.children.includes(translate(locale,'agent.panel.failedTail')));
       assert.deepEqual(h.find('agent-task-error').props.children,[translate(locale,agentTaskErrorKey('AGENT_TASK_CONSENT_REQUIRED'))]);
       h.state.snapshot.steps[0].error.code='UNRECOGNIZED';h.render();
-      assert.deepEqual(h.find(`agent-task-step-error-${stepId}`).props.children,[translate(locale,agentTaskErrorKey(undefined))]);
+      assert.deepEqual(h.find(`agent-task-step-error-${stepId}`).props.children,[translate(locale,'agent.panel.failureReason',{reason:translate(locale,agentTaskErrorKey(undefined))})]);
     }finally{h.unmount();}
   }
 });
@@ -70,9 +70,9 @@ test('unfinished background work blocks another send while retaining pause/stop 
 });
 
 test('undo controls allow only safely finished runs and remain disabled through pause, approval and interruption',async()=>{
-  const changes=[{id:'change',summary:'local edit',operation:'shot.update',targets:[],reversible:true,status:'applied'}];
+  const changes=[{id:'change',summary:'local edit',operation:'shot.update',targets:[],reversible:true,status:'applied',undoDisposition:'undo'}];
   for(const status of ['running','paused','awaiting_approval','interrupted','completed','failed','stopped']){
-    const h=harness({status,changes});try{h.render();const allowed=['completed','failed','stopped'].includes(status);assert.equal(h.find('agent-task-undo-all').props.disabled,!allowed,status);assert.equal(h.find('agent-task-undo-change').props.disabled,!allowed,status);if(allowed){await h.find('agent-task-undo-all').props.onClick();assert.deepEqual(h.calls.at(-1),['undo_all',{},'run']);}}finally{h.unmount();}
+    const h=harness({status,changes});try{h.render();const allowed=['completed','failed','stopped'].includes(status);assert.equal(h.find('agent-task-undo-all').props.disabled,!allowed,status);assert.equal(h.find('agent-task-undo-change').props.disabled,!allowed,status);if(allowed){await h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});await new Promise(resolve=>setImmediate(resolve));h.render();assert.deepEqual(h.calls,[['refreshRound','run']]);assert.equal(h.find('agent-task-undo-confirm').props.disabled,false);h.find('agent-task-undo-confirm').props.onClick();assert.deepEqual(h.calls.at(-1),['undo_all',{undoChangeIds:['change']},'run']);}}finally{h.unmount();}
   }
 });
 
@@ -128,7 +128,7 @@ test('only target conflicts show the conflict pause explanation and unknown resu
 });
 
 test('failure settings links route by stable error code and unknown diagnostics add no misleading destination',()=>{
-  for(const [code,page]of [['FFMPEG_MISSING','video-tools'],['SUBTITLE_RENDERER_UNAVAILABLE','video-tools'],['EXPORT_CAPABILITY_UNSUPPORTED','video-tools'],['AGENT_CHAT_TIMEOUT','agent'],['PROVIDER_DISABLED','models'],['UNRECOGNIZED',undefined],['AGENT_CHAT_UNRECOGNIZED',undefined],['AGENT_CHAT_STORAGE_UNAVAILABLE',undefined],['AGENT_CHAT_BUSY',undefined],['AGENT_CHAT_ABORTED',undefined],['PROVIDER_UNRECOGNIZED',undefined],['IMAGE_UNRECOGNIZED',undefined]]){
+  for(const [code,page]of [['FFMPEG_MISSING','video-tools'],['SUBTITLE_RENDERER_UNAVAILABLE','video-tools'],['EXPORT_CAPABILITY_UNSUPPORTED','video-tools'],['AGENT_CHAT_TIMEOUT','agent'],['PROVIDER_DISABLED','models'],['PREFLIGHT_STALE',undefined],['UNRECOGNIZED',undefined],['AGENT_CHAT_UNRECOGNIZED',undefined],['AGENT_CHAT_STORAGE_UNAVAILABLE',undefined],['AGENT_CHAT_BUSY',undefined],['AGENT_CHAT_ABORTED',undefined],['PROVIDER_UNRECOGNIZED',undefined],['IMAGE_UNRECOGNIZED',undefined]]){
     const h=harness({status:'failed'});try{h.state.snapshot.steps[0].error={code,message:'UNTRUSTED_DIAGNOSTIC'};h.render();const link=h.find(`agent-task-error-settings-${stepId}`);if(page){assert.ok(link);link.props.onClick();assert.deepEqual(h.calls,[['settings',page]]);}else assert.equal(link,undefined);}finally{h.unmount();}
   }
 });
@@ -248,4 +248,87 @@ test('skipped rows come only from the skip list, expose actual current values an
       h.state.snapshot.run.skippedTargets=[];h.render();assert.equal(h.find('agent-task-skipped'),undefined);
     }finally{h.unmount();}
   }
+});
+
+
+test('retry is bound to the last failed step and never offers an unknown result replay',()=>{
+  for(const locale of ['zh-Hans','zh-Hant','en','ja'])for(const kind of ['model','tool']){
+    const h=harness({status:'failed',locale});try{
+      const step=h.state.snapshot.steps[0];Object.assign(step,{kind,status:'failed',approvalRequired:false,error:{code:kind==='model'?'AGENT_CHAT_CONNECT_FAILED':'EXPORT_CAPABILITY_UNSUPPORTED',message:'NEVER_ECHO_PROVIDER_DETAIL'}});
+      h.render();const retry=h.find(`agent-task-retry-${stepId}`);assert.ok(retry);assert.equal(retry.props.disabled,false);assert.ok(renderedText(retry).includes(translate(locale,'agent.panel.retry')));retry.props.onClick();assert.deepEqual(h.calls,[['retry',{stepId},'run']]);assert.ok(!renderedText(h.render()[0]).includes('NEVER_ECHO_PROVIDER_DETAIL'));
+      for(const status of ['running','paused','interrupted','completed']){h.state.snapshot.run.status=status;h.render();assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);}
+      h.state.snapshot.run.status='failed';step.status='unknown';h.render();assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
+      step.status='failed';h.state.snapshot.steps.push({...step,id:'later-step',status:'completed'});h.render();assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
+      h.state.snapshot.steps.at(-1).status='unknown';h.render();assert.equal(h.find(`agent-task-retry-${stepId}`),undefined);
+    }finally{h.unmount();}
+  }
+});
+
+test('undo preview lists server-proven chain candidates and retained changes and confirms only explicitly',async()=>{
+  for(const locale of ['zh-Hans','zh-Hant','en','ja']){
+    const changes=[
+      {id:'modified',operation:'shot.update',targets:[],reversible:true,status:'applied',modifiedAfter:true,undoDisposition:'retain',display:{operation:'shot.update',targets:[{kind:'shot',id:stepId,name:'User kept this scene'}],targetCount:1,fields:[]}},
+      {id:'chain',operation:'shot.update',targets:[],reversible:true,status:'applied',modifiedAfter:true,undoDisposition:'undo',display:{operation:'shot.update',targets:[{kind:'shot',id:stepId,name:'Undo this chain'}],targetCount:1,fields:[]}},
+      {id:'undone',operation:'shot.create',targets:[],reversible:true,status:'reverted',undoDisposition:'retain'},
+      {id:'paid',operation:'generation.submit',targets:[],reversible:false,status:'applied',undoDisposition:'retain'}
+    ];
+    const h=harness({status:'completed',changes,locale});try{
+      h.render();assert.equal(h.find('agent-task-undo-modified').props.disabled,true);assert.equal(h.find('agent-task-undo-chain').props.disabled,true);assert.equal(renderedText(h.find('agent-task-modified-modified')),translate(locale,'agent.panel.modifiedAfter'));
+      await h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});await new Promise(resolve=>setImmediate(resolve));h.render();
+      assert.ok(renderedText(h.find('agent-task-undo-list')).includes('Undo this chain'));assert.ok(!renderedText(h.find('agent-task-undo-list')).includes('User kept this scene'));assert.ok(renderedText(h.find('agent-task-keep-list')).includes('User kept this scene'));assert.ok(renderedText(h.find('agent-task-keep-list')).includes(translate(locale,'agent.task.reverted')));assert.equal(renderedText(h.find('agent-task-undo-confirm')).trim(),translate(locale,'agent.panel.undoCount',{count:1}));assert.deepEqual(h.calls,[['refreshRound','run']]);
+      h.find('agent-task-undo-cancel').props.onClick();h.render();assert.equal(h.find('agent-task-undo-dialog'),undefined);assert.deepEqual(h.calls,[['refreshRound','run']]);
+      await h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});await new Promise(resolve=>setImmediate(resolve));h.render();h.find('agent-task-undo-confirm').props.onClick();assert.deepEqual(h.calls.at(-1),['undo_all',{undoChangeIds:['chain']},'run']);
+    }finally{h.unmount();}
+  }
+});
+
+test('zero-count and stale undo previews cannot confirm or silently adopt later changes',async()=>{
+  for(const disposition of ['retain','blocked',undefined]){
+    const h=harness({status:'completed',changes:[{id:'kept',operation:'shot.update',targets:[],reversible:true,status:'applied',modifiedAfter:true,undoDisposition:disposition}]});try{
+      h.render();assert.equal(h.find('agent-task-undo-all').props.disabled,false);h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});await new Promise(resolve=>setImmediate(resolve));h.render();assert.equal(h.find('agent-task-undo-confirm').props.disabled,true);assert.ok(h.find('agent-task-undo-empty'));h.find('agent-task-undo-confirm').props.onClick();assert.deepEqual(h.calls,[['refreshRound','run']]);
+    }finally{h.unmount();}
+  }
+  const h=harness({status:'completed',changes:[{id:'eligible',operation:'shot.update',targets:[],reversible:true,status:'applied',undoDisposition:'undo'}]});try{
+    h.state.snapshot.run.revision=1;h.render();h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});await new Promise(resolve=>setImmediate(resolve));h.render();const next=structuredClone(h.state.snapshot);next.run.revision=2;h.state.snapshot=next;h.state.rounds=[next];h.render();assert.equal(h.find('agent-task-undo-confirm').props.disabled,true);h.find('agent-task-undo-confirm').props.onClick();assert.deepEqual(h.calls,[['refreshRound','run']]);
+  }finally{h.unmount();}
+});
+
+
+test('stale preflight failures explain the required recheck in every locale without suggesting settings changes',()=>{
+  assert.equal(agentTaskErrorKey('PREFLIGHT_STALE'),'agent.task.error.preflightStale');
+  for(const locale of ['zh-Hans','zh-Hant','en','ja']){
+    const h=harness({status:'failed',locale});try{
+      const step=h.state.snapshot.steps[0];Object.assign(step,{status:'failed',approvalRequired:false,error:{code:'PREFLIGHT_STALE',message:'PRIVATE_PREFLIGHT_DETAILS'}});h.render();
+      assert.equal(renderedText(h.find(`agent-task-step-error-${stepId}`)),translate(locale,'agent.panel.failureReason',{reason:translate(locale,'agent.task.error.preflightStale')}));assert.ok(h.find(`agent-task-retry-${stepId}`));assert.equal(h.find(`agent-task-error-settings-${stepId}`),undefined);assert.ok(!renderedText(h.render()[0]).includes('PRIVATE_PREFLIGHT_DETAILS'));
+    }finally{h.unmount();}
+  }
+});
+
+
+test('changing project during undo preflight clears loading and a late response cannot reopen its dialog',async()=>{
+  const changes=[{id:'eligible',operation:'shot.update',targets:[],reversible:true,status:'applied',undoDisposition:'undo'}];
+  const h=harness({status:'completed',changes});let resolve;const held=new Promise(done=>{resolve=done;});
+  try{
+    h.setRefresh(held);h.render();h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});h.render();assert.equal(h.find('agent-task-undo-all').props.disabled,true);
+    h.setProject('44444444-4444-4444-8444-444444444444');h.render();h.render();assert.equal(h.find('agent-task-undo-all').props.disabled,false);
+    resolve(h.state.snapshot);await new Promise(done=>setImmediate(done));h.render();assert.equal(h.find('agent-task-undo-dialog'),undefined);assert.equal(h.find('agent-task-undo-all').props.disabled,false);assert.ok(!h.calls.some(call=>call[0]==='undo_all'));
+    h.setRefresh(null);h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});await new Promise(done=>setImmediate(done));h.render();assert.ok(h.find('agent-task-undo-dialog'));assert.equal(h.find('agent-task-undo-confirm').props.disabled,false);
+  }finally{h.unmount();}
+});
+
+test('a same-revision target change invalidates the reviewed undo projection without selecting another round',async()=>{
+ const h=harness({status:'completed',changes:[{id:'eligible',operation:'shot.update',targets:[],reversible:true,status:'applied',modifiedAfter:false,undoDisposition:'undo'}]});
+ try{
+  h.state.snapshot.run.revision=3;h.render();h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});await new Promise(done=>setImmediate(done));h.render();
+  const changed=structuredClone(h.state.snapshot);changed.changes[0].modifiedAfter=true;changed.changes[0].undoDisposition='retain';h.state.rounds=[changed];h.state.snapshot=changed;h.render();assert.equal(h.find('agent-task-undo-confirm').props.disabled,true);h.find('agent-task-undo-confirm').props.onClick();assert.deepEqual(h.calls,[['refreshRound','run']]);
+ }finally{h.unmount();}
+});
+
+
+test('undo preview for an earlier round keeps the latest round selected and submits only the reviewed round',async()=>{
+ const h=harness({status:'completed',changes:[{id:'old-change',operation:'shot.update',targets:[],reversible:true,status:'applied',undoDisposition:'undo'}]});
+ try{
+  const earlier=structuredClone(h.state.snapshot);earlier.run.id='earlier-round';earlier.run.revision=7;earlier.run.text='Earlier request';h.state.rounds=[earlier,h.state.snapshot];
+  h.render();h.find('agent-task-undo-all').props.onClick({currentTarget:{focus(){}}});await new Promise(done=>setImmediate(done));h.render();assert.equal(h.state.snapshot.run.id,'run');assert.equal(h.find('agent-task-undo-confirm').props.disabled,false);h.find('agent-task-undo-confirm').props.onClick();assert.deepEqual(h.calls,[['refreshRound','earlier-round'],['undo_all',{undoChangeIds:['old-change']},'earlier-round']]);
+ }finally{h.unmount();}
 });

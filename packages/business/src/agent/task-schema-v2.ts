@@ -57,8 +57,10 @@ export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=fals
  for(const [table,schema] of families)for(const row of db.prepare(`SELECT *,length(CAST(data AS BLOB)) AS bytes FROM ${table} LIMIT 20001`).iterate()){
   if(++records>20000||(bytes+=Number(row.bytes))>67108864||typeof row.data!=='string')invalid();
   const parsed=schema.safeParse(JSON.parse(String(row.data)));if(!parsed.success)invalid();const value=parsed.data as unknown as Record<string,unknown>;if(table==='agent_task_runs_v2'&&(!allowConversations&&Object.hasOwn(value,'conversationId')||!allowInteractions&&(Object.hasOwn(value,'notes')||Object.hasOwn(value,'skippedTargets'))))invalid();
-  // Public snapshots add display at read time; no persisted profile admits it.
+  // Public snapshots add display and undo eligibility at read time; widening
+  // their response schema must never widen any fixed persisted profile.
   if((table==='agent_task_steps_v2'||table==='agent_task_changes_v2')&&Object.hasOwn(value,'display'))invalid();
+  if(table==='agent_task_changes_v2'&&(Object.hasOwn(value,'modifiedAfter')||Object.hasOwn(value,'undoDisposition')))invalid();
   for(const key of ['id','projectId','runId','stepId','status','position','sequence','type','requestId'])if(Object.hasOwn(row,key)&&Object.hasOwn(value,key)&&row[key]!==value[key])invalid();
  }
  if(db.prepare('PRAGMA foreign_key_check').get())invalid();

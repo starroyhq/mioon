@@ -300,7 +300,7 @@ test('a completed run with pending background work keeps observing late cost and
 
 test('pending task identities remain stable across backend restarts and isolated from restored workspace origins',()=>{
   const values=new Map<string,string>();const storage:Storage={get length(){return values.size;},clear(){values.clear();},getItem:key=>values.get(key)??null,key:index=>[...values.keys()][index]??null,removeItem:key=>{values.delete(key);},setItem:(key,value)=>{values.set(key,value);}};
-  for(const action of ['pause','note','skip'] as const){const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action};createAgentTaskReceiptStore(()=>storage,'normal').write(projectId,pending);assert.deepEqual(createAgentTaskReceiptStore(()=>storage,'normal').read(projectId),pending);assert.equal(createAgentTaskReceiptStore(()=>storage,'restored:'+crypto.randomUUID()).read(projectId),null);assert.equal(values.size,1);}
+  for(const action of ['pause','note','skip','retry'] as const){const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action};createAgentTaskReceiptStore(()=>storage,'normal').write(projectId,pending);assert.deepEqual(createAgentTaskReceiptStore(()=>storage,'normal').read(projectId),pending);assert.equal(createAgentTaskReceiptStore(()=>storage,'restored:'+crypto.randomUUID()).read(projectId),null);assert.equal(values.size,1);}
 });
 
 test('SSE reconnect retries failed durable reads until the network returns, without reposting and with visibility cancellation',async t=>{
@@ -360,4 +360,36 @@ test('a lost authorization response preserves the draft and only a later explici
   assert.equal(await f.session.authorizeAndSend(review),false);assert.equal(grants,1);assert.equal(f.sent.length,0);assert.equal(f.session.getState().draft,'keep my draft');
   await f.session.load();assert.equal(f.sent.length,0);assert.equal(grants,1);assert.equal(f.session.getState().draft,'keep my draft');
   await f.session.send();assert.equal(f.sent.length,1);assert.equal(grants,1);
+});
+
+
+test('a lost retry response retains its stable identity and only reads the original control receipt',async()=>{
+  const failed=snapshot('failed',4);failed.steps=[{id:stepId,runId,position:1,kind:'model',status:'failed',createdAt:time,updatedAt:time,error:{code:'AGENT_CHAT_CONNECT_FAILED',message:'safe'}}];
+  const actions:Parameters<AgentTaskClient['action']>[1][]=[],lookups:AgentTaskPending[]=[];
+  const f=fixture({list:async()=>({...project(),runs:[failed.run]}),read:async()=>failed,action:async(_,input)=>{actions.push(input);throw new Error('response lost');},lookup:async(_,pending)=>{lookups.push(pending);return{found:true,snapshot:snapshot('completed',6),receipt:{requestId:pending.requestId,runId,action:'retry',revision:6,result:{state:'completed'}}};}});
+  try{
+    await f.session.load();f.session.edit('keep unsent input');assert.equal(await f.session.action('retry',{stepId}),false);const pending=f.session.getState().pending;assert.ok(pending);assert.equal(pending.action,'retry');assert.equal(actions.length,1);assert.equal(actions[0]!.expectedRevision,4);const retried=actions[0]!;assert.ok(retried.action==='retry');assert.equal(retried.stepId,stepId);
+    assert.equal(await f.session.action('retry',{stepId}),false);await f.session.reconcile();assert.equal(actions.length,1);assert.deepEqual(lookups,[pending]);assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().draft,'keep unsent input');
+  }finally{f.session.dispose();}
+});
+
+test('undo preflight refresh is read-only, preserves the draft and refuses a late response after a conversation switch',async()=>{
+  let value=snapshot('completed',2),held:ReturnType<typeof deferred<AgentTaskSnapshot>>|undefined;
+  const f=fixture({list:async()=>({...project(),runs:[value.run]}),read:async()=>held?held.promise:structuredClone(value)});
+  try{
+    await f.session.load();f.session.edit('keep this draft');value={...value,changes:[{id:stepId,stepId,runId,projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:true,status:'applied',createdAt:time,modifiedAfter:true,undoDisposition:'retain'}]};
+    const refreshed=await f.session.refreshRound(runId);assert.equal(refreshed?.changes[0]?.modifiedAfter,true);assert.equal(refreshed?.changes[0]?.undoDisposition,'retain');assert.equal(f.session.getState().draft,'keep this draft');assert.equal(f.actions.length,0);assert.equal(f.receipts.size,0);
+    held=deferred<AgentTaskSnapshot>();const refreshing=f.session.refreshRound(runId);assert.equal(f.session.newConversation(),true);const selection=f.session.getState().selectionKey;held.resolve(value);assert.equal(await refreshing,null);assert.equal(f.session.getState().selectionKey,selection);assert.equal(f.session.getState().snapshot,null);assert.equal(f.actions.length,0);
+  }finally{f.session.dispose();}
+});
+
+
+test('undo submits exactly the reviewed changes and a lost response only queries that control receipt',async()=>{
+  const initial=snapshot('completed',4),changeIds=[crypto.randomUUID(),crypto.randomUUID()],actions:Parameters<AgentTaskClient['action']>[1][]=[],lookups:AgentTaskPending[]=[];
+  const f=fixture({list:async()=>({...project(),runs:[initial.run]}),read:async()=>initial,action:async(_,input)=>{actions.push(structuredClone(input));throw new Error('response lost');},lookup:async(_,pending)=>{lookups.push(pending);return{found:true,snapshot:snapshot('completed',6),receipt:{requestId:pending.requestId,runId,action:'undo_all',revision:6,result:{state:'completed',reverted:2}}};}});
+  try{
+    await f.session.load();f.session.edit('keep unsent input');assert.equal(await f.session.action('undo_all',{undoChangeIds:changeIds}),false);
+    const pending=f.session.getState().pending;assert.ok(pending);assert.equal(pending.action,'undo_all');assert.equal(actions.length,1);const action=actions[0]!;assert.ok(action.action==='undo_all');assert.equal(action.expectedRevision,4);assert.deepEqual(action.undoChangeIds,changeIds);
+    assert.equal(await f.session.action('undo_all',{undoChangeIds:[...changeIds,crypto.randomUUID()]}),false);await f.session.reconcile();assert.equal(actions.length,1);assert.deepEqual(lookups,[pending]);assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().draft,'keep unsent input');
+  }finally{f.session.dispose();}
 });

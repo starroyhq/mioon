@@ -116,3 +116,18 @@
 .mio-history-meta [data-tone=success]{color:var(--wb-success)}
 .mio-history-meta [data-tone=danger]{color:var(--wb-danger)}
 .mio-current-conversation{color:var(--wb-soft);font-size:var(--wb-text-min)}
+
+/* Failure actions wrap within the 320px dock; Tooltip data-slot never owns sizing. */
+.mio-failure-actions{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--wb-space-2);min-width:0}
+.mio-failure-actions>.wb-button{height:auto;min-width:0;max-width:100%;white-space:normal;text-align:left;line-height:1.5}
+.mio-failure-actions>.mio-safe-details{min-width:0;flex:1;flex-basis:var(--wb-control-large)}
+.mio-error-card p{margin:0;font-size:var(--wb-text-caption);overflow-wrap:anywhere}
+.mio-change>.mio-modified-after{grid-column:1/-1;margin:0;padding-inline:var(--wb-space-1);color:var(--wb-warning);font-size:var(--wb-text-caption);line-height:1.5;overflow-wrap:anywhere}
+.mio-undo-dialog .wb-dialog-content{display:flex;flex-direction:column;gap:var(--wb-space-3);font-size:var(--wb-text-label);overflow-wrap:anywhere}
+.mio-undo-dialog section{min-width:0}
+.mio-undo-dialog h4{margin:0 0 var(--wb-space-2);font-size:var(--wb-text-label);font-weight:500}
+.mio-undo-dialog ul{list-style:none;margin:0;padding:var(--wb-space-2);display:flex;flex-direction:column;gap:var(--wb-space-2);background:var(--wb-input);border-radius:var(--wb-radius-control)}
+.mio-undo-dialog p{margin:0;line-height:1.5}
+.mio-undo-dialog .wb-dialog-footer{flex-wrap:wrap}
+.mio-undo-dialog .wb-button{min-width:0;max-width:100%;height:auto;white-space:normal;line-height:1.5}
+.mio-undo-dialog svg{width:var(--wb-space-4);height:var(--wb-space-4);flex:none}

@@ -159,28 +159,28 @@ for(const protocol of ['chat_completions','responses'] as const){
  test(`${protocol}: a trusted DNS denial records prevented dispatch and never becomes an unknown model result`,async t=>{
   const f=await fixture(t,protocol),transport=syntheticDeniedTransport('198.18.10.207');f.setScript(async function*(_index,request){yield*transport.gateway(request);});
   const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_CHAT_NETWORK_DENIED');
-  assert.equal(done.steps.length,1);const model=done.steps[0]!;assert.equal(model.kind,'model');assert.equal(model.status,'intent');assert.equal(done.steps.some(step=>step.status==='unknown'),false);
+  assert.equal(done.steps.length,1);const model=done.steps[0]!;assert.equal(model.kind,'model');assert.equal(model.status,'failed');assert.equal(model.error?.code,'AGENT_CHAT_NETWORK_DENIED');assert.equal(done.steps.some(step=>step.status==='unknown'),false);
   assert.deepEqual(f.runtime.journal.events(sent.run.id).filter(event=>event.type==='dispatch_prevented').map(event=>event.data),[{stepId:model.id,next:'intent'}]);
   assert.deepEqual(transport.counts,{dns:1,requests:0,ends:0});assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);assert.equal(done.changes.length,0);
-  f.restart();assert.equal(f.runtime.lookup(f.projectId,sent.run.requestId).snapshot?.run.status,'failed');const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.status,'intent');
+  f.restart();assert.equal(f.runtime.lookup(f.projectId,sent.run.requestId).snapshot?.run.status,'failed');const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.status,'failed');
   await f.runtime.drain();assert.equal(f.requests.length,1);assert.deepEqual(transport.counts,{dns:1,requests:0,ends:0});assert.equal(f.effects.size,0);
  });
- test(`${protocol}: a provider HTTP error after request end retains an unknown result without automatic replay`,async t=>{
+ test(`${protocol}: a provider HTTP error after request end is a recorded failure without automatic replay`,async t=>{
   const f=await fixture(t,protocol),transport=syntheticDeniedTransport('8.8.8.8');f.setScript(async function*(_index,request){yield*transport.gateway(request);});
-  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_CHAT_HTTP_ERROR');assert.equal(done.steps.length,1);assert.equal(done.steps[0]?.status,'unknown');
+  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_CHAT_HTTP_ERROR');assert.equal(done.steps.length,1);assert.equal(done.steps[0]?.status,'failed');assert.equal(done.steps[0]?.error?.code,'AGENT_CHAT_HTTP_ERROR');
   assert.match(done.steps[0]!.error!.message,/HTTP 401/u);assert.deepEqual(f.runtime.journal.events(sent.run.id).filter(event=>event.type==='error').map(event=>event.data),[{code:'AGENT_CHAT_HTTP_ERROR',message:done.steps[0]!.error!.message}]);
   assert.equal(f.runtime.journal.events(sent.run.id).filter(event=>event.type==='dispatch_prevented').length,0);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);assert.equal(done.changes.length,0);
-  f.restart();const found=f.runtime.lookup(f.projectId,sent.run.requestId);assert.equal(found.snapshot?.steps[0]?.status,'unknown');const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.status,'unknown');
+  f.restart();const found=f.runtime.lookup(f.projectId,sent.run.requestId);assert.equal(found.snapshot?.steps[0]?.status,'failed');const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.status,'failed');
   await f.runtime.drain();assert.equal(f.requests.length,1);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});assert.equal(f.effects.size,0);
  });
  test(`${protocol}: arbitrary provider exception fields never become persisted HTTP diagnostics`,async t=>{
   const f=await fixture(t,protocol);f.setScript(async function*(){throw Object.assign(new Error('PRIVATE_PROVIDER_BODY'),{code:'AGENT_CHAT_HTTP_ERROR',httpStatus:401,statusCode:403,headers:{authorization:'PRIVATE_KEY'}});});
-  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.steps[0]?.status,'unknown');assert.equal(done.steps[0]?.error?.message,'任务未完成，请检查已保存记录。');
+  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.steps[0]?.status,'failed');assert.equal(done.steps[0]?.error?.message,'任务未完成，请检查已保存记录。');
   const serialized=JSON.stringify({done,events:f.runtime.journal.events(sent.run.id)});assert.doesNotMatch(serialized,/PRIVATE_PROVIDER_BODY|PRIVATE_KEY|HTTP 401|HTTP 403/u);assert.equal(f.requests.length,1);
  });
- test(`${protocol}: HTTP 400 persists only fixed parameter hints and retains the original unknown request`,async t=>{
+ test(`${protocol}: HTTP 400 persists only fixed parameter hints and keeps the original failed request`,async t=>{
   const f=await fixture(t,protocol),transport=syntheticDeniedTransport('8.8.8.8',400,JSON.stringify({error:{message:'Invalid function schema for tools[0].function.parameters: PRIVATE_PROVIDER_BODY PRIVATE_KEY',param:'tools'}}));f.setScript(async function*(_index,request){yield*transport.gateway(request);});
-  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.steps[0]?.status,'unknown');const message=done.steps[0]!.error!.message;assert.match(message,/HTTP 400/u);assert.match(message,/参数提示/u);assert.match(message,/tools/u);
+  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.steps[0]?.status,'failed');const message=done.steps[0]!.error!.message;assert.match(message,/HTTP 400/u);assert.match(message,/参数提示/u);assert.match(message,/tools/u);
   assert.doesNotMatch(JSON.stringify({done,events:f.runtime.journal.events(sent.run.id)}),/PRIVATE_PROVIDER_BODY|PRIVATE_KEY/u);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});
   f.restart();const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.error?.message,message);await f.runtime.drain();assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
  });
@@ -796,4 +796,109 @@ for(const metadata of ['saved','legacy'] as const)test(`background effect gates 
   f.store.tx(()=>{f.runtime.journal.skipTargetsInside(sent.run.id,[{stepId:conflict.id,target:reference}]);f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('image','synthetic-pending-image',sent.run.id,tool.id,f.projectId,tool.id,'image.generate');});
   assert.throws(()=>assertAgentTaskJobEffect(f.store.db,'image','synthetic-pending-image'),{code:'AGENT_TASK_TARGET_SKIPPED'});assert.equal(f.runtime.journal.run(sent.run.id).status,'running');assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
  }finally{release.resolve();await f.settle(sent.run.id);}
+});
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: explicit retry starts a new model step after proven unsent failure and keeps its budget and receipt`,async t=>{
+ const f=await fixture(t,protocol),transport=syntheticDeniedTransport('198.18.10.207');f.setScript(async function*(index,request){if(index===1){yield*transport.gateway(request);return;}yield {type:'done',output:output(protocol,[],'Retry completed')};});
+ const sent=await f.send(),failed=await f.settle(sent.run.id),step=failed.steps.at(-1)!;assert.equal(failed.run.status,'failed');assert.equal(step.status,'failed');
+ const control={requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:step.id};await f.runtime.action(f.projectId,sent.run.id,control);await f.runtime.action(f.projectId,sent.run.id,control);const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(done.run.id,failed.run.id);assert.equal(done.run.budget,failed.run.budget);assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.notEqual(done.steps[1]!.id,step.id);assert.equal(done.steps[0]!.status,'failed');assert.equal(done.steps[1]!.status,'completed');assert.equal(done.executionEndedAt,done.run.updatedAt);
+ f.restart();await f.runtime.action(f.projectId,sent.run.id,control);await f.runtime.drain();assert.equal(f.requests.length,2);assert.equal(f.runtime.lookupAction(f.projectId,sent.run.id,control.requestId).receipt?.action,'retry');await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...control,stepId:randomUUID()}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+});
+for(const protocol of ['chat_completions','responses'] as const)for(const statusCode of [429,500] as const)test(`${protocol}: HTTP ${statusCode} after sending is a failure retried only on explicit request`,async t=>{
+ const f=await fixture(t,protocol),transport=syntheticDeniedTransport('8.8.8.8',statusCode);f.setScript(async function*(index,request){if(index===1){yield*transport.gateway(request);return;}yield {type:'done',output:output(protocol,[],'Retry completed')};});
+ const sent=await f.send(),failed=await f.settle(sent.run.id),step=failed.steps.at(-1)!;
+ assert.equal(failed.run.status,'failed');assert.equal(step.kind,'model');assert.equal(step.status,'failed');assert.equal(step.error?.code,'AGENT_CHAT_HTTP_ERROR');assert.match(step.error!.message,new RegExp(`HTTP ${statusCode}`,'u'));assert.equal(failed.steps.some(item=>item.status==='unknown'),false);
+ await f.runtime.drain();assert.equal(f.requests.length,1);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});
+ await f.runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:step.id});const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(done.run.budget,failed.run.budget);assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.equal(done.steps[0]!.status,'failed');assert.equal(done.steps[0]!.error?.code,'AGENT_CHAT_HTTP_ERROR');assert.equal(done.steps[1]!.status,'completed');assert.equal(f.effects.size,0);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a timeout after partial text records a failure and the retry does not feed that text back`,async t=>{
+ // Long enough to pass the 2 KiB flush threshold, so the partial reply is saved.
+ const partial='PARTIAL_REPLY_BEFORE_TIMEOUT '.repeat(100);
+ const f=await fixture(t,protocol);f.setScript(async function*(index){if(index===1){yield {type:'delta',text:partial};throw Object.assign(new Error('timeout'),{code:'AGENT_CHAT_TIMEOUT'});}yield {type:'done',output:output(protocol,[],'Retry completed')};});
+ const sent=await f.send(),failed=await f.settle(sent.run.id),step=failed.steps.at(-1)!;
+ assert.equal(failed.run.status,'failed');assert.equal(step.status,'failed');assert.equal(step.error?.code,'AGENT_CHAT_TIMEOUT');assert.equal(step.text,partial);
+ await f.runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:step.id});const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.doesNotMatch(f.requests[1]!.body,/PARTIAL_REPLY_BEFORE_TIMEOUT/u);assert.equal(done.steps[0]!.text,partial);assert.equal(done.steps[1]!.status,'completed');
+});
+test('an unclassified exception during a model request still keeps the unknown rule',async t=>{
+ const f=await fixture(t);f.setScript(async function*(){throw new Error('unclassified gateway failure');});
+ const sent=await f.send(),done=await f.settle(sent.run.id),step=done.steps.at(-1)!;
+ assert.equal(step.status,'unknown');await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),expectedRevision:done.run.revision,action:'retry',stepId:step.id}),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,1);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: failed tool stops its batch; retry supplies the failure and replans without old parameters`,async t=>{
+ const f=await fixture(t,protocol),invalid=call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{duration:-1}}),stale=call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'MUST NOT EXECUTE OLD BATCH'}});
+ f.setScript(async function*(index,request){if(index===2){assert.match(request.body,/VALIDATION_ERROR/);assert.match(request.body,/TARGET_CHANGED/);}yield {type:'done',output:output(protocol,index===1?[invalid,stale]:index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'Fresh retry plan'}})]:[])};});
+ const sent=await f.send(),failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');assert.equal(failed.steps.at(-1)?.status,'failed');assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);assert.equal(failed.steps.length,2);
+ await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'New manual baseline'}});
+ await f.action(failed,'retry',{stepId:failed.steps.at(-1)!.id});const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,5);assert.equal(done.run.budget,30);assert.equal(f.effects.size,1);assert.equal(f.requests.length,3);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'Fresh retry plan');assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(done.steps.filter(step=>step.toolCall?.id===invalid.id).length,1);assert.equal(done.steps.some(step=>step.toolCall?.id===stale.id),false);
+});
+for(const scenario of ['unknown','last_completed','revoked','busy','budget','receipt_failure'] as const)test(`retry gate preserves safety for ${scenario}`,async t=>{
+ const f=await fixture(t),transport=syntheticDeniedTransport(scenario==='unknown'?'93.184.216.34':'198.18.10.207');if(scenario==='budget')f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:1});
+ // An observed HTTP error is now a plain failure; an unclassified exception
+ // during the request is what still leaves an unknown model result.
+ f.setScript(async function*(index,request){if(scenario==='last_completed'){yield {type:'done',output:output('responses')};await f.revoke();return;}if(index===1){if(scenario==='unknown')throw new Error('unclassified gateway failure');yield*transport.gateway(request);return;}yield {type:'done',output:output('responses')};});const sent=await f.send(),failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');
+ if(scenario==='revoked')await f.revoke();
+ if(scenario==='busy'){const entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const other=await f.send('New active run');await entered.promise;t.after(()=>release.resolve());assert.equal(f.runtime.get(f.projectId,other.run.id).run.status,'running');}
+ const request={requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:failed.steps.at(-1)!.id},before=f.runtime.journal.snapshot(sent.run.id),requests=f.requests.length;
+ if(scenario==='receipt_failure')f.store.db.exec(`CREATE TRIGGER fail_retry_receipt BEFORE INSERT ON agent_task_controls_v2 WHEN NEW.requestId='${request.requestId}' BEGIN SELECT RAISE(ABORT,'synthetic retry receipt failure');END;`);
+ if(scenario==='budget'){
+  const paused=await f.runtime.action(f.projectId,sent.run.id,request);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.run.budget,1);assert.equal(paused.run.stepsUsed,1);assert.equal(f.requests.length,1);await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,2);assert.equal(f.requests.length,2);
+ }else{
+  const codes={unknown:'AGENT_TASK_UNKNOWN_RESULT',last_completed:'AGENT_TASK_STATE_CONFLICT',revoked:'AGENT_TASK_CONSENT_REQUIRED',busy:'AGENT_TASK_BUSY',receipt_failure:'AGENT_TASK_STORAGE_UNAVAILABLE'};
+  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:codes[scenario]});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.equal(f.requests.length,requests);if(scenario==='receipt_failure')assert.equal(f.runtime.journal.lookupControl(request.requestId),null);
+ }
+});
+test('retry replan still requires paid approval and never submits a generation on its own',async t=>{
+ const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{duration:-1}})]:index===2?[call('mioon_generation_submit',{shotId:f.first.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1',parameters:{delayMs:0}})]:[])};});
+ const sent=await f.send(),failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');await f.action(failed,'retry');const waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');assert.equal(waiting.run.budget,30);assert.equal(waiting.steps.at(-1)?.tier,'paid');assert.equal(f.store.list('jobs',f.projectId).length,0);assert.equal(f.requests.length,2);await f.action(waiting,'deny',{stepId:waiting.steps.at(-1)!.id});assert.equal((await f.settle(sent.run.id)).run.status,'completed');assert.equal(f.store.list('jobs',f.projectId).length,0);
+});
+for(const scenario of ['modified','aba','draft','compound','audit_failure'] as const)test(`whole undo safely classifies and preserves ${scenario} while protecting earlier changes`,async t=>{
+ const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'Earlier AI edit'}}),call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Later AI edit'}})]:[])};});
+ const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.changes.length,2);let current=object(await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'Manual after AI'}}));
+ if(scenario==='aba')current=object(await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:current.revision,patch:{prompt:'Later AI edit'}}));
+ if(scenario==='draft')f.runtime.journal.claim({projectId:f.projectId,ownerId:randomUUID(),targets:[{kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)}]});
+ if(scenario==='compound'){const original=f.runtime.journal.snapshot(sent.run.id).changes.at(-1)!;original.targets.push({kind:'shot',id:f.other.id,revision:2,revisionBefore:1,revisionAfter:2});f.store.db.prepare('UPDATE agent_task_changes_v2 SET data=? WHERE id=?').run(JSON.stringify(original),original.id);}
+ const fresh=f.runtime.get(f.projectId,sent.run.id),last=fresh.changes.at(-1)!;assert.equal(last.modifiedAfter,true);assert.equal(last.undoDisposition,scenario==='modified'||scenario==='audit_failure'?'retain':'blocked');assert.equal(fresh.changes[0]!.undoDisposition,scenario==='modified'||scenario==='audit_failure'?'undo':'blocked');
+ await assert.rejects(f.action(fresh,'undo_change',{changeId:last.id}),{code:'AGENT_TASK_TARGET_CHANGED'});
+ const request={requestId:randomUUID(),expectedRevision:f.runtime.journal.run(sent.run.id).revision,action:'undo_all'};
+ if(scenario==='audit_failure')f.store.db.exec(`CREATE TRIGGER fail_superseded_event BEFORE INSERT ON agent_task_events_v2 WHEN json_extract(NEW.data,'$.data.status')='superseded' BEGIN SELECT RAISE(ABORT,'synthetic superseded audit failure');END;`);
+ if(scenario==='modified'){
+  const undone=await f.runtime.action(f.projectId,sent.run.id,request);assert.equal(undone.run.status,'reverted');assert.deepEqual(undone.changes.map(change=>change.status),['reverted','superseded']);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(object(f.store.get('shots',f.first.id)).prompt,'Manual after AI');assert.deepEqual(object(f.runtime.journal.lookupControl(request.requestId)?.result).retainedChangeIds,[last.id]);
+  f.restart();const stable=f.runtime.journal.snapshot(sent.run.id);await f.runtime.action(f.projectId,sent.run.id,request);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),stable);assert.equal(f.requests.length,2);assert.ok(stable.changes.every(change=>change.modifiedAfter===undefined&&change.undoDisposition===undefined));
+ }else{
+  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:scenario==='audit_failure'?'AGENT_TASK_STORAGE_UNAVAILABLE':'AGENT_TASK_TARGET_CHANGED'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id).changes.map(change=>change.status),['applied','applied']);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'Earlier AI edit');assert.equal(object(f.store.get('shots',f.first.id)).prompt,current.prompt);
+ }
+});
+test('whole undo preview includes adjacent own changes without mistaking their revisions for external supersession',async t=>{
+ const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index<=2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:index,patch:{prompt:`AI edit ${index}`}})]:[])};});const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.changes.length,2);assert.deepEqual(done.changes.map(change=>change.undoDisposition),['undo','undo']);assert.deepEqual(done.changes.map(change=>change.modifiedAfter),[true,false]);await assert.rejects(f.action(done,'undo_change',{changeId:done.changes[0]!.id}),{code:'AGENT_TASK_TARGET_CHANGED'});const undone=await f.action(f.runtime.get(f.projectId,sent.run.id),'undo_all');assert.equal(undone.run.status,'reverted');assert.deepEqual(undone.changes.map(change=>change.status),['reverted','reverted']);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');
+});
+
+test('retry retains the same run skipped targets and replans only allowed tools',async t=>{
+ const f=await fixture(t);f.setScript(async function*(index){
+  if(index===1)await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Manual protected content'}});
+  const next=index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Old conflicting plan'}})]:index===2?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{duration:-1}})]:index===3?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'Must stay skipped after retry'}}),call('mioon_project_inspect')]:[];
+  yield {type:'done',output:output('responses',next)};
+ });
+ const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'conflict');await f.action(paused,'skip');const failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');assert.equal(failed.run.skippedTargets?.length,1);
+ await f.action(failed,'retry');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.length,1);assert.ok(done.steps.some(step=>step.status==='denied'&&step.error?.code==='TARGET_SKIPPED'));assert.equal(object(f.store.get('shots',f.first.id)).prompt,'Manual protected content');assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(f.effects.size,1);assert.equal(f.requests.length,4);assert.match(f.requests[3]!.body,/TARGET_SKIPPED/);
+});
+test('retry authorization revoked after its intent blocks actual model submission',async t=>{
+ const f=await fixture(t),transport=syntheticDeniedTransport('198.18.10.207');let submitted=0;f.setScript(async function*(index,request){if(index===1){yield*transport.gateway(request);return;}await f.revoke();assert.ok(request.beforeSubmit);request.beforeSubmit();submitted++;yield {type:'done',output:output('responses')};});
+ const sent=await f.send(),failed=await f.settle(sent.run.id);await f.action(failed,'retry');const blocked=await f.settle(sent.run.id);assert.equal(submitted,0);assert.equal(f.effects.size,0);assert.equal(blocked.run.status,'failed');assert.equal(blocked.run.pauseReason,'AGENT_TASK_CONSENT_REQUIRED');assert.equal(blocked.run.budget,30);assert.equal(blocked.run.stepsUsed,2);
+});
+test('unchanged target with a retained draft blocks whole undo without compensating other targets',async t=>{
+ const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'Earlier AI'}}),call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Draft target AI'}})]:[])};});const sent=await f.send(),done=await f.settle(sent.run.id);f.runtime.journal.claim({projectId:f.projectId,ownerId:randomUUID(),targets:done.changes.at(-1)!.targets});f.runtime.journal.markClaimsUncertain(f.projectId);
+ const fresh=f.runtime.get(f.projectId,sent.run.id);assert.deepEqual(fresh.changes.map(change=>change.undoDisposition),['blocked','blocked']);assert.equal(fresh.changes.at(-1)?.modifiedAfter,false);await assert.rejects(f.action(fresh,'undo_all'),{code:'AGENT_TASK_TARGET_CLAIMED'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id).changes.map(change=>change.status),['applied','applied']);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'Earlier AI');
+});
+
+test('whole undo confirmation cannot expand after a draft is released and replays its rejection receipt',async t=>{
+ const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'First AI'}}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'Second AI'}}),call('mioon_project_rename',{expectedRevision:1,name:'Third AI'})]:[])};});
+ const sent=await f.send(),done=await f.settle(sent.run.id),ownerId=randomUUID();assert.equal(done.changes.length,3);f.runtime.journal.claim({projectId:f.projectId,ownerId,targets:done.changes[1]!.targets});
+ const preview=f.runtime.get(f.projectId,sent.run.id),undoChangeIds=preview.changes.filter(change=>change.undoDisposition==='undo').map(change=>change.id);assert.deepEqual(undoChangeIds,[done.changes[2]!.id]);f.runtime.journal.releaseClaims(f.projectId,ownerId);assert.equal(f.runtime.journal.run(sent.run.id).revision,preview.run.revision);
+ const request={requestId:randomUUID(),expectedRevision:preview.run.revision,action:'undo_all',undoChangeIds};await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:'AGENT_TASK_TARGET_CHANGED'});assert.ok(f.runtime.journal.snapshot(sent.run.id).changes.every(change=>change.status==='applied'));assert.equal(object(f.store.get('projects',f.projectId)).name,'Third AI');
+ assert.equal(object(f.runtime.journal.lookupControl(request.requestId)?.result).state,'rejected');await f.runtime.action(f.projectId,sent.run.id,request);assert.ok(f.runtime.journal.snapshot(sent.run.id).changes.every(change=>change.status==='applied'));
+ await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...request,undoChangeIds:done.changes.map(change=>change.id)}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+ const fresh=f.runtime.get(f.projectId,sent.run.id),accepted={requestId:randomUUID(),expectedRevision:fresh.run.revision,action:'undo_all',undoChangeIds:fresh.changes.filter(change=>change.undoDisposition==='undo').map(change=>change.id)};const undone=await f.runtime.action(f.projectId,sent.run.id,accepted);assert.equal(undone.run.status,'reverted');assert.ok(undone.changes.every(change=>change.status==='reverted'));f.restart();await f.runtime.action(f.projectId,sent.run.id,accepted);assert.ok(f.runtime.journal.snapshot(sent.run.id).changes.every(change=>change.status==='reverted'));
 });

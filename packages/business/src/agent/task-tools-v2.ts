@@ -12,6 +12,8 @@ import {agentTaskTargetSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
 import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
+import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
+import type {TimelineRecord,TimelineClipRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from '../timeline-inputs.ts';
 import type {AgentTaskEffectOrigin,TaskChangeInput} from './task-effects-v2.ts';
 
 type Value=Record<string,unknown>;
@@ -108,7 +110,7 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
 export interface AgentTaskToolDefinition {name:string;operation:string;description:string;parameters:unknown;risk:AgentTaskTier;receipt:string;recovery:string;undo:string}
 export interface PreparedAgentTaskTool {projectId:string;operation:string;input:Value;risk:AgentTaskTier;targets:AgentTaskTarget[];referencedTargets?:AgentTaskTarget[];before:Snapshot}
 export interface AgentTaskToolContext {runId:string;stepId:string;requestId:string;signal?:AbortSignal;beforeEffect:()=>void;recordInside:(result:AgentTaskJson,changes?:TaskChangeInput[])=>void;appendChangesInside?:(changes:TaskChangeInput[])=>void}
-export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
+export interface AgentTaskUndoContext {requestId?:string;beforeEffect:()=>void;beforeCompensation?:()=>void;recordInside:(change:AgentTaskChange)=>void;retainInside:(change:AgentTaskChange,reason:string)=>void;expectedTargets?:AgentTaskTarget[]}
 export interface AgentTaskLocalRecovery {outcome:'not_applied';reason:'read_only'|'atomic_receipt_absent'}
 interface SnapshotEntry {kind:string;id:string;table:string;value:Value;revision:number}
 type Snapshot=Record<string,SnapshotEntry>;
@@ -137,6 +139,100 @@ function snapshot(store:WorkspaceStore,projectId:string):Snapshot{
  return result;
 }
 function comparable(value:Value):Value{return Object.fromEntries(Object.entries(value).filter(([field])=>!['revision','updatedAt','createdAt'].includes(field)));}
+type UndoDisposition=NonNullable<AgentTaskChange['undoDisposition']>;
+const reversibleMetadata=new Set(['asset_range','asset_disposition','asset_annotation','subject_binding']);
+function defaultMetadataCompensation(kind:string,value:Value):Value|null{
+ if(kind==='asset_range')return null;
+ if(kind==='asset_disposition')return {...value,disposition:'neutral'};
+ if(kind==='asset_annotation')return {...value,tags:'[]',note:''};
+ return {...value,subjectVersionId:null};
+}
+function undoEntries(change:AgentTaskChange):Array<{before?:SnapshotEntry;after?:SnapshotEntry}>|null{
+ if(!Array.isArray(change.undo)||!change.undo.length)return null;
+ const entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
+ for(const value of change.undo){
+  if(!object(value))return null;
+  for(const side of [value.before,value.after])if(side!==undefined&&(!object(side)||typeof side.kind!=='string'||typeof side.id!=='string'||typeof side.table!=='string'||!object(side.value)))return null;
+  const entry=value as unknown as {before?:SnapshotEntry;after?:SnapshotEntry},identity=entry.after??entry.before;
+  if(!identity||entry.before&&entry.after&&(entry.before.id!==entry.after.id||entry.before.kind!==entry.after.kind||entry.before.table!==entry.after.table)||!change.targets.some(target=>target.kind===identity.kind&&target.id===identity.id))return null;
+  entries.push(entry);
+ }
+ return entries.length===change.targets.length&&new Set(entries.map(entry=>key((entry.after??entry.before)!.kind,(entry.after??entry.before)!.id))).size===entries.length?entries:null;
+}
+function undoDisposition(change:AgentTaskChange,current:Snapshot,expected:AgentTaskTarget[],revision:(target:AgentTaskTarget)=>number,claimed:(target:AgentTaskTarget)=>boolean):UndoDisposition{
+ if(change.status!=='applied'||!change.reversible)return 'retain';
+ const entries=undoEntries(change);if(!entries||expected.some(claimed))return 'blocked';
+ const unchanged=entries.every(entry=>{const identity=(entry.after??entry.before)!,found=current[key(identity.kind,identity.id)];return canonical(found?comparable(found.value):null)===canonical(entry.after?comparable(entry.after.value):null);});
+ if(expected.every(target=>revision(target)===target.revision))return unchanged?'undo':'blocked';
+ // A revision mismatch alone also describes ABA or an incomplete compound
+ // change. Only one exact target with a different saved value proves that it
+ // can be kept intact while independent earlier changes are compensated.
+ const target=expected.length===1?expected[0]:undefined;
+ return target&&entries.length===1&&target.revisionAfter!==undefined&&revision(target)>target.revision&&!unchanged?'retain':'blocked';
+}
+function undoDependencies(store:WorkspaceStore,change:AgentTaskChange,current:Snapshot,entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>):UndoDisposition{
+ const {db}=store,removedEdges=new Set(entries.filter(entry=>!entry.before&&entry.after?.kind==='edge').map(entry=>entry.after!.id));
+ const timelineEntries=entries.filter(entry=>(entry.after??entry.before)!.kind.startsWith('timeline'));
+ if(timelineEntries.length){
+  // Validate the same merged aggregate as actual compensation. Independent
+  // revisions alone cannot detect new references, clip overlap or source bounds.
+  const next={...current};for(const entry of timelineEntries){const identity=(entry.after??entry.before)!,id=key(identity.kind,identity.id);if(entry.before)next[id]=entry.before;else delete next[id];}
+  try{
+   const boundary=createTimelineRecoveryBoundary(db,{projectId:change.projectId}),base=boundary.read();if(!base)return 'blocked';
+   const values=(kind:string):Value[]=>Object.values(next).filter(item=>item.kind===kind).map(item=>structuredClone(item.value));
+   const timeline={...base,...next[key('timeline',change.projectId)]?.value,tracks:values('timeline_track') as unknown as TimelineTrackRecord[],clips:values('timeline_clip') as unknown as TimelineClipRecord[],...(base.subtitles?{subtitles:{...base.subtitles,cues:values('timeline_subtitle') as unknown as TimelineSubtitleCueRecord[]}}:{})} satisfies TimelineRecord;
+   boundary.validate(timeline);
+  }catch(error){if(error instanceof AppError)return 'blocked';throw error;}
+ }
+ for(const entry of entries){
+  if(entry.before||!entry.after||entry.after.kind.startsWith('timeline'))continue;
+  const identity=entry.after;
+  if(extraTables[identity.table]?.kind===identity.kind&&reversibleMetadata.has(identity.kind)){if(!current[key(identity.kind,identity.id)])return 'blocked';continue;}
+  if(!['shots','nodes','edges'].includes(identity.table))return 'blocked';
+  if(identity.table==='edges')continue;
+  if(Object.values(current).some(item=>item.kind==='edge'&&!removedEdges.has(item.id)&&(item.value.source===identity.id||item.value.target===identity.id)))return 'blocked';
+  if(identity.kind!=='shot')continue;
+  // Cleared bindings remain durable tombstones with the same shot foreign key.
+  if(Object.values(current).some(item=>item.kind==='subject_binding'&&item.value.shotId===identity.id))return 'blocked';
+  const jobs=Object.values(current).filter(item=>item.kind==='job'&&item.value.shotId===identity.id);if(!jobs.length)continue;
+  const target=change.targets.length===1?change.targets[0]:undefined,shotId=identity.id;
+  if(change.operation!=='shot.create'||entries.length!==1||target?.kind!=='shot'||target.id!==shotId)return 'blocked';
+    const ownedJob=db.prepare(`SELECT 1 FROM agent_task_job_origins_v2 b JOIN jobs j ON j.id=b.jobId AND j.projectId=b.projectId
+     JOIN agent_task_steps_v2 s ON s.id=b.stepId AND s.runId=b.runId AND s.projectId=b.projectId
+     WHERE b.kind='job' AND b.jobId=? AND b.projectId=? AND b.runId=? AND b.operation='generation.submit'
+     AND b.requestId=json_extract(j.data,'$.requestId') AND s.status='completed' AND json_extract(s.data,'$.kind')='tool'
+     AND json_extract(s.data,'$.toolCall.name')='mioon_generation_submit' AND json_extract(s.data,'$.toolCall.arguments.shotId')=?
+     AND EXISTS(SELECT 1 FROM agent_task_changes_v2 c,json_each(c.data,'$.targets') t WHERE c.runId=b.runId AND c.stepId=b.stepId AND c.projectId=b.projectId
+      AND json_extract(c.data,'$.operation')='generation.submit' AND json_extract(c.data,'$.reversible')=0 AND json_extract(c.data,'$.status')='applied'
+      AND json_extract(t.value,'$.kind')='job' AND json_extract(t.value,'$.id')=j.id)`);
+  return jobs.every(job=>ownedJob.get(job.id,change.projectId,change.runId,shotId))?'retain':'blocked';
+ }
+ return 'undo';
+}
+/** Read-only whole-run preview. The actual compensation validates again inside
+ * its transaction; this projection never grants permission to undo. */
+export function projectAgentTaskUndo(store:WorkspaceStore,projectId:string,changes:AgentTaskChange[]):Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>{
+ if(!changes.length)return new Map();
+ const current=snapshot(store,projectId),revisions=new Map<string,number>(),chain=new Map<string,AgentTaskTarget>(),result=new Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>();let blocked=false;
+ const revision=(target:AgentTaskTarget):number=>revisions.get(key(target.kind,target.id))??readRevision(store,projectId,target.kind,target.id);
+ const claimed=(target:AgentTaskTarget):boolean=>!!store.db.prepare('SELECT 1 FROM agent_task_edit_claims_v2 WHERE projectId=? AND kind=? AND targetId=?').get(projectId,target.kind,target.id);
+ for(const change of [...changes].reverse()){
+  const modifiedAfter=change.targets.some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>target.revisionAfter);
+  if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(key(target.kind,target.id),target);result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
+  if(change.status!=='applied'||!change.reversible){result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
+  const expected=change.targets.map(target=>{const next=chain.get(key(target.kind,target.id));return next&&next.revisionBefore===(target.revisionAfter??target.revision)?next:target;});
+  let disposition=blocked?'blocked':undoDisposition(change,current,expected,revision,claimed);if(disposition==='undo')disposition=undoDependencies(store,change,current,undoEntries(change)!);result.set(change.id,{modifiedAfter,undoDisposition:disposition});
+  if(disposition==='blocked'){blocked=true;continue;}
+  if(disposition!=='undo')continue;
+  for(const entry of undoEntries(change)!){const identity=(entry.after??entry.before)!,id=key(identity.kind,identity.id);if(entry.before)current[id]=structuredClone(entry.before);else if(reversibleMetadata.has(identity.kind)){const value=defaultMetadataCompensation(identity.kind,identity.value);if(value)current[id]={...identity,value};else delete current[id];}else delete current[id];}
+  for(const target of change.targets){const value={...target,revision:revision(target)+1};revisions.set(key(target.kind,target.id),value.revision);chain.set(key(target.kind,target.id),value);}
+ }
+ return result;
+}
+/** Recheck supersession within the same transaction as its journal record. */
+export function agentTaskChangeWasModified(store:WorkspaceStore,change:AgentTaskChange,expected:AgentTaskTarget[]):boolean{
+ return undoDisposition(change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare('SELECT 1 FROM agent_task_edit_claims_v2 WHERE projectId=? AND kind=? AND targetId=?').get(change.projectId,target.kind,target.id))==='retain';
+}
 function differences(before:Snapshot,after:Snapshot):Array<{before?:SnapshotEntry;after?:SnapshotEntry}>{
  const result:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
  for(const id of new Set([...Object.keys(before),...Object.keys(after)]))if(canonical(before[id]?comparable(before[id]!.value):null)!==canonical(after[id]?comparable(after[id]!.value):null))result.push({before:before[id],after:after[id]});
@@ -411,25 +507,10 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
     const entry={...(before?{before:before as unknown as SnapshotEntry}:{}),...(after?{after:after as unknown as SnapshotEntry}:{})},identity=entry.after??entry.before;if(!identity||typeof identity.kind!=='string'||typeof identity.id!=='string'||typeof identity.table!=='string')fail('AGENT_TASK_INVALID_TARGET','撤销目标无效');
     const found=current[key(identity.kind,identity.id)];if(canonical(found?comparable(found.value):null)!==canonical(entry.after?comparable(entry.after.value):null))fail('AGENT_TASK_TARGET_CHANGED','目标已变化，无法覆盖当前编辑');entries.push(entry);
    }
-   // A generated product keeps its original shot owner. Retention is not a
-   // compensation and cannot hide another entry or advance the revision chain.
-   const created=entries.length===1?entries[0]:undefined,target=change.targets.length===1?change.targets[0]:undefined;
-   if(change.operation==='shot.create'&&created&&!created.before&&created.after?.kind==='shot'&&created.after.table==='shots'&&target?.kind==='shot'&&target.id===created.after.id){
-    const shotId=created.after.id;
-    if(db.prepare("SELECT 1 FROM edges WHERE projectId=? AND (json_extract(data,'$.source')=? OR json_extract(data,'$.target')=?) LIMIT 1").get(change.projectId,shotId,shotId))fail('AGENT_TASK_TARGET_CHANGED','目标已有新连线');
-    const jobs=db.prepare("SELECT id FROM jobs WHERE projectId=? AND json_extract(data,'$.shotId')=?").all(change.projectId,shotId);
-    const ownedJob=db.prepare(`SELECT 1 FROM agent_task_job_origins_v2 b JOIN jobs j ON j.id=b.jobId AND j.projectId=b.projectId
-     JOIN agent_task_steps_v2 s ON s.id=b.stepId AND s.runId=b.runId AND s.projectId=b.projectId
-     WHERE b.kind='job' AND b.jobId=? AND b.projectId=? AND b.runId=? AND b.operation='generation.submit'
-     AND b.requestId=json_extract(j.data,'$.requestId') AND s.status='completed' AND json_extract(s.data,'$.kind')='tool'
-     AND json_extract(s.data,'$.toolCall.name')='mioon_generation_submit' AND json_extract(s.data,'$.toolCall.arguments.shotId')=?
-     AND EXISTS(SELECT 1 FROM agent_task_changes_v2 c,json_each(c.data,'$.targets') t WHERE c.runId=b.runId AND c.stepId=b.stepId AND c.projectId=b.projectId
-      AND json_extract(c.data,'$.operation')='generation.submit' AND json_extract(c.data,'$.reversible')=0 AND json_extract(c.data,'$.status')='applied'
-      AND json_extract(t.value,'$.kind')='job' AND json_extract(t.value,'$.id')=j.id)`);
-    if(jobs.length&&jobs.every(job=>ownedJob.get(job.id,change.projectId,change.runId,shotId))){
-     context.retainInside(change,'保留生成记录及产物所需镜头');return {targets:[],retained:true};
-    }
-   }
+   const dependencies=undoDependencies(store,change,current,entries);
+   if(dependencies==='blocked')fail('AGENT_TASK_TARGET_CHANGED','目标已有新的依赖，无法撤销');
+   if(dependencies==='retain'){context.retainInside(change,'保留生成记录及产物所需镜头');return {targets:[],retained:true};}
+   context.beforeCompensation?.();
    const timelineTargets=entries.filter(entry=>(entry.after??entry.before)!.kind.startsWith('timeline'));
    // References are removed before their source node/shot. Restoration inserts
    // the owning rows first, then edges, so all domain relations remain valid.
@@ -458,15 +539,12 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    if(Object.hasOwn(value,'updatedAt'))value.updatedAt=new Date().toISOString();
    store.put(table,value);return;
   }
-  const descriptor=extraTables[table];if(!descriptor||!['asset_range','asset_disposition','asset_annotation','subject_binding'].includes(identity.kind))fail('AGENT_TASK_NOT_REVERSIBLE','此项没有安全补偿操作');
+  const descriptor=extraTables[table];if(!descriptor||!reversibleMetadata.has(identity.kind))fail('AGENT_TASK_NOT_REVERSIBLE','此项没有安全补偿操作');
   const row=db.prepare(`SELECT * FROM ${table} WHERE ${descriptor.id}=? AND projectId=?`).get(identity.id,projectId);
   if(!row)fail('AGENT_TASK_TARGET_CHANGED','目标记录已改变');
   let value:Value;
   if(entry.before)value={...entry.before.value};
-  else if(identity.kind==='asset_range'){db.prepare('DELETE FROM asset_ranges WHERE assetId=? AND projectId=?').run(identity.id,projectId);return;}
-  else if(identity.kind==='asset_disposition')value={...row,disposition:'neutral'};
-  else if(identity.kind==='asset_annotation')value={...row,tags:'[]',note:''};
-  else value={...row,subjectVersionId:null};
+  else {const defaults=defaultMetadataCompensation(identity.kind,row);if(defaults===null){db.prepare('DELETE FROM asset_ranges WHERE assetId=? AND projectId=?').run(identity.id,projectId);return;}value=defaults;}
   if(typeof row.revision==='number')value.revision=row.revision+1;
   if(Object.hasOwn(value,'updatedAt'))value.updatedAt=new Date().toISOString();
   const fields=Object.keys(value).filter(field=>field!==descriptor.id&&field!=='projectId');
