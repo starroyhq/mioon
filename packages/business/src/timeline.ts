@@ -22,6 +22,8 @@ import {initializeProjectTimelineFormat} from './project-timeline-format.ts';
 export {TIMELINE_LIMITS} from './timeline-inputs.ts';
 import {readTimelinePreflightSnapshot} from './timeline-sources.ts';
 import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
+import {appendTimelineShots,refreshTimelineSources} from './timeline-shot-sync.ts';
+import type {TimelineShotAppendPlan,TimelineSourceRefreshPlan} from './timeline-shot-sync.ts';
 import {createTimelineRecoveryBoundary as legacyRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,admitTimelineImageResponse as legacyAdmitImageResponse,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelineClipRecord,TimelineRecord,TimelineSubtitlesRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from './timeline-inputs.ts';
@@ -203,7 +205,9 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    return saveResponse(operation,input,requestHash,timeline,boundary);
   });
  }
- function mutate(operation: string,input: TimelineMutationInput,apply: (timeline: TimelineRecord,boundary: TimelineRecoveryBoundary)=>void,specialBoundary?: TimelineRecoveryBoundary): unknown{
+ // respond wraps the saved timeline for operations whose acknowledgement also
+ // carries per-item outcomes; by default the response is the timeline itself.
+ function mutate(operation: string,input: TimelineMutationInput,apply: (timeline: TimelineRecord,boundary: TimelineRecoveryBoundary)=>void,specialBoundary?: TimelineRecoveryBoundary,respond?: (timeline: TimelineRecord)=>unknown): unknown{
   return transaction(operation,input,({boundary,requestHash,write})=>{
    const submittedRect=operation==='timeline.clip.add'?input.rect:operation==='timeline.clip.update'?input.patch.rect:undefined;
    // Check explicit input before legacy ensure() can write an absent timeline.
@@ -220,7 +224,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    admitTimelineVolumeEnvelopeWrite(timeline,{before,after:snapshot(timeline),related:input});
    write();put('timelines',timeline);
    recordEdit(operation,timeline,before);
-   return saveResponse(operation,input,requestHash,timeline,boundary);
+   return saveResponse(operation,input,requestHash,respond?respond(timeline):timeline,boundary);
   },specialBoundary);
  }
  function updateClip(input: TimelineMutationInput,boundary?: TimelineRecoveryBoundary): unknown{
@@ -356,6 +360,16 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     startFrame+=durationFrames as number;
    }
   }),
+  'timeline.clip.refreshSources':(input: TimelineMutationInput)=>{
+   let plan: TimelineSourceRefreshPlan|undefined;
+   return mutate('timeline.clip.refreshSources',input,(timeline,boundary)=>{plan=refreshTimelineSources(timeline,boundary,input.clipIds as string[]);},undefined,
+    timeline=>({operation:'timeline.clip.refreshSources',requestId:input.requestId,timeline,...plan}));
+  },
+  'timeline.shots.append':(input: TimelineMutationInput)=>{
+   let plan: TimelineShotAppendPlan|undefined;
+   return mutate('timeline.shots.append',input,(timeline,boundary)=>{plan=appendTimelineShots(timeline,boundary);},undefined,
+    timeline=>({operation:'timeline.shots.append',requestId:input.requestId,timeline,...plan}));
+  },
   'timeline.render':(input: TimelineMutationInput,options: unknown={})=>{
    refuseRestoredOperation(store,'timeline.render',input);
    return input.exportSettings===undefined?render(input):exportAdmission.render(input,options,{

@@ -15,6 +15,8 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {readyMixLoudness,mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.ts';
 
 const at='2026-10-10T00:00:00.000Z',clone=value=>JSON.parse(JSON.stringify(value));
+// Acknowledgements that wrap the saved timeline with their own outcome fields.
+const wrapped=operation=>['timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append'].includes(operation);
 const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_history','timeline_history_cursors','timeline_requests','timeline_format_requests'];
 async function fixture(t){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-timeline-recovery-'));
@@ -30,6 +32,13 @@ async function fixture(t){
    const job=store.put('jobs',{id:jobId,projectId:f.projectId,shotId:shot.id,versionId,assetId:asset.id,status:'succeeded',snapshot:{projectId:f.projectId,shotId:shot.id},...patch});
    const version=store.put('versions',{id:versionId,projectId:f.projectId,shotId:shot.id,jobId,assetId:asset.id,sha256:asset.sha256,number:1});
    store.put('shots',{...shot,selectedVersionId:version.id});return {asset,shot,job,version};
+  },
+  // A second generated version that the shot now selects, so its clip is stale.
+  newerVersion(shot){
+   const asset=f.asset({provenance:'generated'}),jobId=randomUUID(),versionId=randomUUID();
+   store.put('jobs',{id:jobId,projectId:f.projectId,shotId:shot.id,versionId,assetId:asset.id,status:'succeeded',snapshot:{projectId:f.projectId,shotId:shot.id}});
+   const version=store.put('versions',{id:versionId,projectId:f.projectId,shotId:shot.id,jobId,assetId:asset.id,sha256:asset.sha256,number:2});
+   store.put('shots',{...store.get('shots',shot.id),selectedVersionId:version.id});return {asset,version};
   }
  };
  // This recovery suite replaces measurement only. The apply admission service,
@@ -82,12 +91,18 @@ async function allReceipts(f){
  async function call(operation,fields={}){
   const input=params(f,timeline,fields),response=await f.call(operation,input);
   assert.equal(isTimelineMutationResponse(operation,input,response),true,`${operation} complete ACK`);
-  receipts.push({operation,input,response:clone(response)});if(operation!=='timeline.render')timeline=operation==='timeline.loudness.apply'?response.timeline:response;return response;
+  receipts.push({operation,input,response:clone(response)});if(operation!=='timeline.render')timeline=wrapped(operation)?response.timeline:response;return response;
  }
  // Record a real format mutation while the timeline is still pristine; later
  // receipts exercise its historical replay after content and history exist.
  await call('timeline.format.set',{expectedProjectRevision:f.store.get('projects',f.projectId).revision,presetId:'landscape_720'});
  await call('timeline.seed');
+ // The seeded clip keeps the first generated source; only the appended clip is refreshed.
+ const second=await f.generated();
+ await call('timeline.shots.append');
+ const appended=timeline.clips.find(clip=>clip.assetId===second.asset.id);
+ f.newerVersion(second.shot);
+ await call('timeline.clip.refreshSources',{clipIds:[appended.id]});
  await call('timeline.track.add',{kind:'audio',name:'Extra audio'});
  await call('timeline.track.update',{trackId:timeline.tracks[0].id,patch:{name:'Renamed track'}});
  await call('timeline.clip.add',{trackId:timeline.tracks[1].id,assetId:other.id,startFrame:90,durationFrames:30});
@@ -136,7 +151,7 @@ test('service-created empty timelines remain writable while a zero-track sentine
  const before=f.capture();assert.deepEqual(await f.call('timeline.track.add',input),added);assert.deepEqual(f.capture(),before);
 });
 
-test('all seventeen retained responses remain exact after removal, branching, render progress and restart',async t=>{
+test('all nineteen retained responses remain exact after removal, branching, render progress and restart',async t=>{
  const f=await fixture(t),result=await allReceipts(f);let timeline=result.timeline;
  for(const clip of [...timeline.clips])timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
  const render=result.receipts.find(x=>x.operation==='timeline.render').response;
@@ -155,7 +170,7 @@ test('all seventeen retained responses remain exact after removal, branching, re
  assert.deepEqual(f.capture(),before);
 });
 
-test('all seventeen fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
+test('all nineteen fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
  const f=await fixture(t),{receipts,timeline}=await allReceipts(f);
  for(const saved of receipts)await rejected(f,saved.operation,{...saved.input,requestId:randomUUID(),expectedRevision:timeline.revision-1},{code:'REVISION_CONFLICT',proof:true});
  const clip=timeline.clips[0];
@@ -199,14 +214,14 @@ test('lost acknowledgements retain proof absence after project, timeline and his
  });
 });
 
-test('all seventeen malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
+test('all nineteen malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
  for(const corruption of ['hash','JSON','owner','semantics'])await t.test(corruption,async t=>{
   const f=await fixture(t),{receipts}=await allReceipts(f);f.store.db.exec('DROP TRIGGER immutable_timeline_responses');
   for(const {operation,input,response} of receipts){
    const changed=clone(response);
-   if(corruption==='owner')(operation==='timeline.loudness.apply'?changed.timeline:changed).projectId=f.otherId;
+   if(corruption==='owner')(wrapped(operation)?changed.timeline:changed).projectId=f.otherId;
    if(corruption==='semantics'){
-    const timeline=operation==='timeline.render'?changed.snapshot.timeline:operation==='timeline.loudness.apply'?changed.timeline:changed;
+    const timeline=operation==='timeline.render'?changed.snapshot.timeline:wrapped(operation)?changed.timeline:changed;
     if(operation==='timeline.format.set')timeline.width=720; // Valid square pair, wrong accepted preset.
     else if(operation==='timeline.loudness.apply')timeline.clips[0].gain=.1; // Must match the retained application gain proof.
     else timeline.clips[0].sourceInFrame=10000;
@@ -222,13 +237,15 @@ async function prepared(f,operation){
  const generated=await f.generated();let timeline=await f.call('timeline.get',{projectId:f.projectId});
  if(!['timeline.seed','timeline.format.set'].includes(operation))timeline=await f.call('timeline.seed',params(f,timeline));
  if(operation==='timeline.redo')timeline=await f.call('timeline.undo',params(f,timeline));
+ if(operation==='timeline.clip.refreshSources')f.newerVersion(generated.shot);
+ if(operation==='timeline.shots.append')await f.generated();
  if(['timeline.subtitle.update','timeline.subtitle.remove'].includes(operation))timeline=await f.call('timeline.subtitle.add',params(f,timeline,{text:'待修改字幕',startFrame:0,durationFrames:30}));
  const clip=timeline.clips[0];
  const fields={
   'timeline.track.add':{kind:'video'},'timeline.track.update':{trackId:timeline.tracks[0].id,patch:{name:'Changed'}},
   'timeline.clip.add':{assetId:generated.asset.id,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:30},
   'timeline.clip.update':{clipId:clip?.id,patch:{gain:.3}},'timeline.clip.remove':{clipId:clip?.id},
-  'timeline.clip.rippleRemove':{clipId:clip?.id},
+  'timeline.clip.rippleRemove':{clipId:clip?.id},'timeline.clip.refreshSources':{clipIds:[clip?.id]},
   'timeline.clip.split':{clipId:clip?.id,atFrame:30},'timeline.clip.replaceSource':{clipId:clip?.id,assetId:f.asset().id},
   'timeline.render':{purpose:'preview'},
   'timeline.subtitle.add':{text:'新增字幕',startFrame:0,durationFrames:30},

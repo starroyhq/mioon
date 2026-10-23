@@ -5,6 +5,8 @@ import {TIMELINE_MUTATION_OPERATIONS, isTimelineRecord, isTimelineReplacementRes
 import {createClient} from '@mioon/client';
 import {TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES} from '@mioon/contracts/timeline-loudness-apply';
 import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
+import {shotSyncFixture} from './fixtures/timeline-shot-sync.ts';
+const shotSync = (operation: string): boolean => operation === 'timeline.clip.refreshSources' || operation === 'timeline.shots.append';
 
 const env = {MIOON_TOKEN: 'synthetic-timeline-recovery-token'};
 interface ClientFailure {code?: string; details?: Record<string, unknown>; status?: number}
@@ -30,6 +32,10 @@ const rect = (): TClipRect => ({x: 0, y: 0, width: 720, height: 1280});
 const loudnessApply = await loudnessApplyFixture() as unknown as {input: TimelineInput; response: TValue};
 function fixture(operation: string, {empty = false, fades = {}}: {empty?: boolean; fades?: Record<string, unknown>} = {}): {input: TimelineInput; value: TValue} {
   if (operation === 'timeline.loudness.apply') return {input: clone(loudnessApply.input), value: clone(loudnessApply.response)};
+  if (shotSync(operation)) {
+    const synced = shotSyncFixture(operation as never, {projectId: randomUUID(), requestId: randomUUID()});
+    return {input: synced.input as unknown as TimelineInput, value: synced.response as unknown as TValue};
+  }
   const input: TimelineInput = {projectId: randomUUID(), expectedRevision: 7, requestId: randomUUID()};
   if(operation==='timeline.format.set')empty=true;
   const trackId = randomUUID(), clipId = randomUUID(), assetId = randomUUID();
@@ -67,19 +73,19 @@ function fixture(operation: string, {empty = false, fades = {}}: {empty?: boolea
   return {input, value};
 }
 
-test('the strict timeline acknowledgement allowlist covers exactly the seventeen replay-keyed operations', () => {
+test('the strict timeline acknowledgement allowlist covers exactly the nineteen replay-keyed operations', () => {
   assert.deepEqual([...TIMELINE_MUTATION_OPERATIONS].sort(), [
     'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.replaceSource',
     'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
     'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove',
-    'timeline.loudness.apply',
+    'timeline.loudness.apply', 'timeline.clip.refreshSources', 'timeline.shots.append',
   ].sort());
   assert.ok(Object.isFrozen(TIMELINE_MUTATION_OPERATIONS));
   const {input, value} = fixture('timeline.undo');
   for (const operation of ['timeline.get', 'timeline.format.get', 'timeline.history.get', 'timeline.export.preflight', 'export.create', 'reference.attach']) assert.equal(isTimelineMutationResponse(operation, input, value), false);
 });
 
-test('all seventeen complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
+test('all nineteen complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation), before = clone(value), seen: unknown[] = [];
     frozen(input); frozen(value);
@@ -130,9 +136,10 @@ test('empty timelines are valid for track edits, removals, undo and redo, while 
 test('timeline shape rejects malformed complete records across every mutation and preserves exact recovery identity', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation);
-    const edit = (callback: (v: TValue) => void): TValue => {const result = clone(value); callback(operation === 'timeline.render' ? result.snapshot.timeline : operation === 'timeline.loudness.apply' ? result.timeline : result); return result;};
+    const wrapped = operation === 'timeline.loudness.apply' || shotSync(operation);
+    const edit = (callback: (v: TValue) => void): TValue => {const result = clone(value); callback(operation === 'timeline.render' ? result.snapshot.timeline : wrapped ? result.timeline : result); return result;};
     const bad = [null, [], {}, 4, 'timeline',
-      ...(operation === 'timeline.loudness.apply' ? [clone(value.timeline), {...clone(value), projectId: input.projectId}] : []),
+      ...(wrapped ? [clone(value.timeline), {...clone(value), projectId: input.projectId}] : []),
       edit(v => delete (v as {id?: string}).id), edit(v => v.id = 'bad'), edit(v => v.projectId = randomUUID()), edit(v => v.revision++),
       edit(v => v.fps = 24), edit(v => v.durationFrames++), edit(v => v.updatedAt = 'invalid'),
       edit(v => v.tracks = []), edit(v => v.tracks.push(clone(v.tracks[0]))),
@@ -197,6 +204,12 @@ test('each mutation binds the caller-verifiable track, clip or source intent', (
     ['timeline.clip.split', v => v.clips[1].sourceInFrame++],
     ['timeline.clip.split', v => v.clips[1].assetId = randomUUID()],
     ['timeline.clip.split', v => v.clips[1].name = 'Unrelated right clip'],
+    ['timeline.clip.refreshSources', v => v.operation = 'timeline.shots.append'],
+    ['timeline.clip.refreshSources', v => v.timeline.clips[0].versionId = randomUUID()],
+    ['timeline.clip.refreshSources', v => {(v.skipped as unknown[]).pop();}],
+    ['timeline.shots.append', v => v.requestId = randomUUID()],
+    ['timeline.shots.append', v => v.timeline.clips[1].startFrame++],
+    ['timeline.shots.append', v => {(v.appended as {versionId: string}[])[0].versionId = randomUUID();}],
   ];
   for (const [operation, change] of changes) {
     const {input, value} = fixture(operation); change(value, input);

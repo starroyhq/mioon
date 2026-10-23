@@ -551,9 +551,12 @@ All timeline writes accept `{projectId,expectedRevision,requestId,...}`:
 | `timeline.clip.remove` | `clipId` |
 | `timeline.clip.split` | `clipId,atFrame` (strict interior integer timeline frame; non-ripple) |
 | `timeline.seed` | none; only an empty timeline with all shot selections present |
+| `timeline.clip.refreshSources` | `clipIds` (1–100 unique clip UUIDs); see Canvas → timeline bridges |
+| `timeline.shots.append` | none; see Canvas → timeline bridges |
 | `timeline.render` | `purpose:'preview'|'export'`, optional `preflightSnapshotHash` (lowercase SHA-256), optional export-only `exportSettings` (closed MP4/H.264 profile), optional export-only `deliveryName` and `exportRange:{startFrame,endFrame}` |
 
-Mutations return the whole timeline and increment its revision once. Rendering
+Mutations return the whole timeline and increment its revision once; the two
+canvas → timeline bridges wrap it with per-item outcomes. Rendering
 returns a queued `exports` record with `mode:'timeline'`, a frozen snapshot and
 `timelineRevision`; poll `export.get` for current progress. The snapshot and
 render output are never changed by later edits. Rendering does not increment
@@ -663,6 +666,46 @@ bytes, media files, probes, decoding, rendering, provider calls or paid
 generation are involved. External HTTP/CLI/MCP discovery does not expand the
 built-in Agent catalog, inspection DTOs, media context or approval scope.
 Offline transport acceptance: `node --test tests/timeline-replacement-transports.test.mjs`.
+
+### Canvas → timeline bridges (2026-10-23)
+
+Two keyed timeline edits connect the storyboard to the timeline. Both take the
+common `{projectId,expectedRevision,requestId}`, record one undoable history
+entry and never move other clips. Their acknowledgement wraps the saved
+timeline with per-item outcomes, bounded to 100 rows each:
+
+- `timeline.clip.refreshSources` adds `clipIds` (1–100 unique clip UUIDs) and
+  returns `{operation,requestId,timeline,refreshed,skipped}`.
+  - A clip whose shot now selects another version switches to it with exactly
+    the `timeline.clip.replaceSource` edit, pinned to that version and shot.
+    ID, position, duration, source in-point, rectangle, gain and fades stay.
+  - Each `refreshed` row is `{clipId,shotId,fromVersionId,toVersionId,assetId}`.
+  - Skipped clips keep their state. Reasons: `NOT_GENERATED` (not from a
+    generated version), `NO_SELECTION` (the shot selects nothing), `UP_TO_DATE`,
+    and `SOURCE_TOO_SHORT` with `shortByFrames` (the selected version cannot
+    cover `sourceInFrame + durationFrames`).
+  - Rows keep request order. Every requested clip is either refreshed or
+    skipped; an unknown clip rejects the whole request with `CLIP_NOT_FOUND`.
+- `timeline.shots.append` takes nothing more and returns
+  `{operation,requestId,timeline,appended,skipped}`.
+  - Shots without any clip on the timeline are appended in canvas order with
+    their selected version at full length, from frame 0 of the source, one after
+    another after the last clip of the first video track, pinned to that version.
+  - Each `appended` row is `{clipId,shotId,versionId,startFrame,durationFrames}`.
+  - Shots selecting nothing are skipped with `NO_SELECTION`. The usual timeline
+    limits apply to the whole request (`TIMELINE_LIMIT`).
+
+When nothing can be refreshed or appended, the request writes nothing and
+rejects with `NOTHING_TO_REFRESH` / `NOTHING_TO_APPEND` (409), listing the
+reasons in `error.details.skipped`. A fresh-key pre-write rejection (revision,
+revision limit, timeline limit, source bounds, clip type and these two codes)
+carries a not-applied proof that always binds `operation`, `projectId` and
+`requestId`; a missing clip or track does not.
+
+Exact replay returns the original wrapped acknowledgement. Both are local
+reversible Mio tools. They are not part of the durable local edit-task ledger,
+whose table checks its fixed operation list, and restored workspaces only replay
+their retained acknowledgements.
 
 ## V4 discovery and capability validation
 

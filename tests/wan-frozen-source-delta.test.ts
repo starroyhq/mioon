@@ -4,8 +4,11 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {reverseReviewedWanVideo,reviewedWanVideoSourceDeltas} from './helpers/current-wan-video-delta.ts';
+import {reverseReviewedShotSync} from './helpers/current-shot-sync-delta.ts';
 
 const root=new URL('../',import.meta.url);
+// The newer shot-sync layer is reversed first, so the Wan inverse sees exactly its accepted bytes.
+const reviewed=(file:string)=>reverseReviewedShotSync(file,readFileSync(new URL(file,root)));
 const predecessor='2609c57e5865f4cdac4eafbe3383061d4cfe6fc7';
 const accepted='fa4fcb3bcee55a27fa81c06fbbfb9922e116805d';
 const sha=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
@@ -19,7 +22,7 @@ test('finite Wan input-contract inverse recovers the exact fixed PR18 predecesso
   assert.equal(delta.afterSha256,'c0d172e978f81fa314c6750d73d50c7184a4620c2d1bf5c7120bbe3cad38d56e');
   assert.equal(sha(before),delta.beforeSha256);assert.equal(sha(after),delta.afterSha256);
   assert.equal(delta.inverse.length,3,'only the three reviewed contract hunks are reversible');
-  assert.deepEqual(readFileSync(new URL(delta.path,root)),after);
+  assert.deepEqual(reviewed(delta.path),after);
   assert.deepEqual(reverseReviewedWanVideo(delta.path,after),before);
   // Earlier compatible-video and schema52 pins are still checked by their
   // original harnesses; the new exception must not replace their hashes.
@@ -29,7 +32,7 @@ test('finite Wan input-contract inverse recovers the exact fixed PR18 predecesso
 });
 
 test('finite Wan inverse rejects changed, duplicated, reverted, missing and unknown source bytes',()=>{
-  const delta=reviewedWanVideoSourceDeltas[0]!,source=readFileSync(new URL(delta.path,root),'utf8');
+  const delta=reviewedWanVideoSourceDeltas[0]!,source=reviewed(delta.path).toString('utf8');
   const assertRejected=(value:string)=>assert.throws(()=>reverseReviewedWanVideo(delta.path,Buffer.from(value)),/Baseline dependency changed/);
   for(const inverse of delta.inverse){
     assert.equal(source.split(inverse.after).length-1,1,'each reviewed hunk occurs exactly once');

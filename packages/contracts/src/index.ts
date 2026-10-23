@@ -76,6 +76,8 @@ import {exportLoudnessSchemas} from './export-loudness.ts';
 export * from './export-loudness.ts';
 import {timelineLoudnessApplySchemas} from './timeline-loudness-apply.ts';
 export * from './timeline-loudness-apply.ts';
+import {timelineShotSyncSchemas,timelineShotSyncDescriptions} from './timeline-shot-sync.ts';
+export * from './timeline-shot-sync.ts';
 import {timelineClipLoudnessSchemas} from './timeline-clip-loudness.ts';
 import {timelineMixLoudnessSchemas} from './timeline-mix-loudness.ts';
 export * from './timeline-mix-loudness.ts';
@@ -150,6 +152,7 @@ export const schemas={
 ...timelineMixLoudnessSchemas,
 ...timelineClipLoudnessSchemas,
 ...timelineLoudnessApplySchemas,
+...timelineShotSyncSchemas,
 ...audioPreviewSchemas,
 ...continuousAudioSchemas,
 ...timelineExportCapabilitySchemas,
@@ -225,6 +228,7 @@ Object.assign(descriptions,{
  ...lutResourceDescriptions,
  ...lookPackInspectDescriptions,
  ...timelineColourDescriptions,
+ ...timelineShotSyncDescriptions,
  'timeline.audioPreview.plan':'只读规划当前已保存时间线最多20秒的声音试听区间；绑定项目、版本与素材哈希，返回有界PCM准备清单。此调用不解码、不播放、不初始化时间线、不写入；PCM另由固定已认证本地资源显式有界解码，不能作为完整成片或响度/真峰值检查。',
  'timeline.audioPreview.continuousPlan':'只读规划已保存时间线的连续音频预览会话；绑定完整版本与源身份，固定双秒块及全会话96MiB额度。不解码、不播放、不写入；显式播放后由固定认证本地资源按需准备完整多轨混音。不是内置Agent工具。',
  'timeline.subtitle.add':'按时间线版本添加一条手动字幕；固定字体排版，30fps时间，返回完整已保存时间线',

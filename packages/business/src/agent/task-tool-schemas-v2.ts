@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="10c33740b1e3e79f0cc5b30232cb4b0aaf75cbd4a0dceb8469bbc6d8631c06b9";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="192f3578d26fea9b7f741e43afbfd1af1f822f80b230c43b90a639e3c3a76059";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -2355,6 +2355,44 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "target",
    "snapshotSha256",
    "candidateDigest"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.clip.refreshSources": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "clipIds": {
+    "type": "array",
+    "items": {
+     "type": "string",
+     "format": "uuid"
+    },
+    "minItems": 1,
+    "maxItems": 100
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "clipIds"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.shots.append": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   }
+  },
+  "required": [
+   "expectedRevision"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

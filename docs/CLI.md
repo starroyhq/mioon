@@ -532,6 +532,23 @@ for all operations. This edit performs only local timeline/history/replay
 writes, with no media processing or provider calls. Full errors and semantics:
 [Explicit clip source replacement](API.md#explicit-clip-source-replacement).
 
+### Refresh stale clips and append new shots
+
+`timeline clip refreshSources` switches clips whose shot now selects another
+version to that version; `timeline shots append` adds shots that have no clip
+yet to the end of the first video track. Read `timeline get` first:
+
+```sh
+mioon timeline clip refreshSources --input '{"projectId":"PROJECT_UUID","clipIds":["CLIP_UUID"],"expectedRevision":7,"requestId":"refresh-clips-0001"}'
+mioon timeline shots append --input '{"projectId":"PROJECT_UUID","expectedRevision":8,"requestId":"append-shots-0001"}'
+```
+
+Each is one undoable edit. The result wraps the timeline with `refreshed` /
+`appended` and `skipped` rows and their reasons. When nothing applies, the
+request writes nothing and fails with `NOTHING_TO_REFRESH` /
+`NOTHING_TO_APPEND`. Keys and replay follow the timeline edit rules above.
+Full semantics: [Canvas → timeline bridges](API.md#canvas--timeline-bridges-2026-10-23).
+
 ### Clip audio fades
 
 Use existing `timeline clip add` or `timeline clip update` commands; inspect

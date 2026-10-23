@@ -18,7 +18,7 @@ Use IDs from actual responses. All business operations are available as space-se
 - Generation reference: `reference attach/detach` (MCP `reference_attach` / `reference_detach`). Generic canvas edges are visual-only and do not send any image or prompt.
 - Generation: `provider list`, `generation submit`, `job get/list/retry/cancel/reconcile`.
 - Results: `version list/select`.
-- Timeline: `timeline get/inspect`, `timeline history get`, `timeline undo/redo`, `timeline track add/update`, `timeline clip add/update/remove/split`, `timeline seed`, `timeline render`.
+- Timeline: `timeline get/inspect`, `timeline history get`, `timeline undo/redo`, `timeline track add/update`, `timeline clip add/update/remove/split`, `timeline clip refreshSources`, `timeline shots append`, `timeline seed`, `timeline render`.
 - Export: `export create/get`; local convenience commands include `job watch`, `export watch` and `export download`.
 
 MCP tool names replace dots with underscores: `generation_submit`, `timeline_clip_add`, etc. These are actual SDK tools whose schemas use the same contracts as HTTP and CLI. MCP sends ordinary `asset_import` with bytes, not a local path. Use CLI for local-file conveniences and bounded watch/download when the MCP host cannot read or save files directly.

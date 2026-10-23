@@ -30,7 +30,8 @@ test('pure help retains exact legacy bytes and schema object content in every pr
     .replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",')
     .replace('"asset.disposition.set",', '"asset.disposition.set","asset.annotation.list","asset.annotation.set",')
     .replace('"provider.list",', '"provider.list","video.connection.list",')
-    .replace('"timeline.clip.remove",', '"timeline.clip.remove","timeline.clip.rippleRemove",');
+    .replace('"timeline.clip.remove",', '"timeline.clip.remove","timeline.clip.rippleRemove",')
+    .replace('"timeline.loudness.apply",', '"timeline.loudness.apply","timeline.clip.refreshSources","timeline.shots.append",');
   assert.notEqual(expected, frozen);
   assert.equal(JSON.stringify(successEnvelope(original))+'\n', expected);
   assert.equal(localizeHelp(original),original);

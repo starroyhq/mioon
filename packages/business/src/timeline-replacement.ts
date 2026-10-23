@@ -1,13 +1,23 @@
 import {AppError} from '@mioon/contracts';
 import type {DatabaseSync} from 'node:sqlite';
 import {createTimelineRecoveryBoundary,TIMELINE_REPLACEMENT_RESPONSE_BYTES} from './timeline-recovery.ts';
-import type {TimelineRecord} from './timeline-inputs.ts';
+import type {TimelineClipRecord,TimelineRecord} from './timeline-inputs.ts';
 
 export interface ReplacementInput {[key: string]: unknown;projectId: string;requestId: string;expectedRevision: number;clipId: string;assetId: string;versionId?: string}
 
 export const REPLACEMENT_RESPONSE_BYTES=TIMELINE_REPLACEMENT_RESPONSE_BYTES;
 const category=(value: unknown): string|null=>typeof value==='string'?value.split('/')[0]:null;
 const provenance=['versionId','shotId','jobId'] as const;
+
+/** The source edit itself, shared by replaceSource and refreshSources: every
+ * editable field stays, old provenance and the colour source binding go, and
+ * an optional version pins the clip to that version and its shot. */
+export function replaceClipSource(clip: TimelineClipRecord,sourceId: string,version: {id: string;shotId: string}|null): void{
+ for(const key of provenance)delete clip[key];
+ clip.assetId=sourceId;
+ if(clip.colour!==undefined&&clip.colour!==null)clip.colour={...clip.colour,source:null};
+ if(version){clip.versionId=version.id;clip.shotId=version.shotId;}
+}
 
 // Source replacement shares the common receipt/ownership boundary with every
 // other keyed timeline write. Its only distinct behavior is the source edit.
@@ -26,10 +36,7 @@ export function createTimelineReplacementBoundary(db: DatabaseSync,input: Replac
   if(!['video','audio','image'].includes(category(source.mimeType) as string)||category(previous.mimeType)!==category(source.mimeType))
    throw new AppError('INVALID_CLIP_TYPE','替换素材必须与原素材同为视频、音频或图片',400);
   const version=input.versionId===undefined?null:boundary.version(input.versionId as string,undefined,source.id);
-  for(const key of provenance)delete clip[key];
-  clip.assetId=source.id;
-  if(clip.colour!==undefined&&clip.colour!==null)clip.colour={...clip.colour,source:null};
-  if(version){clip.versionId=version.id;clip.shotId=version.shotId;}
+  replaceClipSource(clip,source.id,version);
  }
  return {...boundary,read,apply};
 }
