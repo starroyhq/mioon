@@ -23,9 +23,9 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent task status` | `{projectId, runId}`；读取持久快照 |
 | `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?}`；lookup 为 `{projectId, requestId}` |
 | `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
-| `agent task pause/resume/stop/approve/deny/skip` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId |
+| `agent task pause/resume/retry/stop/approve/deny/skip` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId；retry 可携带最后失败步骤的 stepId |
 | `agent task note` | `{projectId, runId, requestId, expectedRevision, text}`；运行、等待确认或已暂停时，先持久保存补充说明，下一次新模型请求使用。最多排队 5 条，单条同 send 的 32 KiB UTF-8 上限；已知上下文（含已落库的流式回复）与说明组合超过原历史／请求容量时返回 `AGENT_TASK_NOTE_CAPACITY` 和持久 rejected 回执，不改变原执行 |
-| `agent task undo-change/undo-all` | 同一控制身份和 revision；undo-change 另传 `changeId` |
+| `agent task undo-change/undo-all` | 同一控制身份和 revision；undo-change 另传 `changeId`，之后被修改的变化不能单撤；undo-all 逆序保留可证明被后续修改的单目标变化，可带 `undoChangeIds` 绑定确认时的可撤销集合 |
 | `agent task resolve-unknown` | 同一控制身份和 revision，另传 `stepId, resolution`；仅接受服务端已有的 `discard` / `accept_result` 边界 |
 | `agent task action-lookup` | `{projectId, runId, requestId}`；只查询原控制回执 |
 | `agent task watch/events` | `{projectId, runId, after?}`；有界观察，默认 60 秒，可设 `--timeout-ms` 和 `--interval-ms` |
@@ -41,6 +41,10 @@ The CLI is a local HTTP client for the **same running backend and database** use
 `agent task skip` 只用于目标冲突或手动编辑导致的暂停：保留实际冲突目标，本轮之后显式涉及它的工具都返回 `TARGET_SKIPPED`，不产生 Change，也不释放用户草稿。其他目标和新一轮不受跳过名单限制。普通 `resume` 不能绕过此选择，会返回 `AGENT_TASK_SKIP_REQUIRED`；预算和用户暂停仍使用 `resume`。重启中断前还有未处理冲突时，`resume` 只恢复到冲突暂停，随后必须明确 `skip` 或 `stop`；未知结果仍须先按原 `resolve-unknown` 边界处置。选择 `stop` 不写跳过记录。
 
 补充说明属于当前轮，不创建新轮、不增加步骤。已持久化的模型 intent 和已发出的请求不会被改写；最终回复期间到达的补充说明会在同一 Run 预算内继续下一模型步骤，预算不足时保留排队记录，等待明确继续。结束后再发送应使用同对话的 `send`。note/skip 响应丢失后，只查询原 `agent task action-lookup`；回执中的 `result.state=rejected` 是已确定的拒绝，不能换请求 ID 自动重发。
+
+`agent task retry` 仅用于 failed 轮次，最后一步必须是 failed，并且没有 unknown / dispatch_started 步骤。若传 stepId，必须精确匹配最后失败步骤；本项目已有其他未结束轮次时拒绝重试。只有可证明未发送的模型失败才能重新规划下一次模型请求，已发送而结果未知时仍须先明确处置。工具失败会停止这一轮；重试把失败结果交回模型并废弃同批后续旧参数，不重放原工具。原 Run、步数已用值和预算保留；预算耗尽时进入 budget 暂停，只有后续明确 resume 才扩额。重试仍经过发送授权、执行前复查、付费确认、跳过名单及网络策略。retry 响应丢失只查 action-lookup，不自动重发。
+
+公开 Change 的 `modifiedAfter` 按当前目标修订与原 revisionAfter 比较；`undoDisposition` 为服务端逆序预判的 `undo` / `retain` / `blocked`。后者考虑本轮连续撤销链和已保存的回退进度；它不是操作授权，实际撤销仍逐项复查。单条变化之后被修改时拒绝单撤；整体撤销只把严格证明被后续改动、且无草稿的单目标变化标为 superseded 并保留，再处理其他变化。复合变化、ABA、草稿及缺少证明仍停止，前面已完成的撤销保留。确认后发送可选 `undoChangeIds`（唯一 Change ID 数组），服务端先比较当前可撤销集合；集合改变时拒绝并保存原请求回执，零补偿。每条实际补偿还必须位于该集合。旧调用方省略时保留原行为。两个展示字段不写库或进入备份。
 
 自然语言命令、`schema agent.task.send` 和 `schema agent task send` 均可查看严格参数；`agent --help` 列出独立目录。help、version、schema 不连接后端。`agent doctor` 的“离线诊断”指不调用模型，仍会读取所选本地服务；没有连接时会报告连接不可用。
 

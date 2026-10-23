@@ -6,7 +6,7 @@ import {resolveConnection} from './connection.ts';
 import type {LocalConnection} from './connection.ts';
 import {ClientError,EXIT_CODES,safeValue} from './index.ts';
 import type {ClientOptions} from './index.ts';
-import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
 import {agentAuthorizationSnapshotSchema} from '@mioon/contracts';
 
@@ -34,11 +34,12 @@ export const AGENT_COMMAND_SCHEMAS=Object.freeze({
  'agent.task.upload':uploadInput.omit({dataBase64:true}).partial({name:true,mimeType:true}),'agent.task.upload-lookup':z.object({projectId:id,requestId}).strict(),
  'agent.task.action-lookup':location.extend({requestId}),'agent.task.watch':watchInput,'agent.task.events':watchInput,
 });
-export const AGENT_CONTROL_COMMANDS=Object.freeze({'pause':'pause','resume':'resume','stop':'stop','approve':'approve','deny':'deny','skip':'skip','note':'note','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'} as const);
+export const AGENT_CONTROL_COMMANDS=Object.freeze({'pause':'pause','resume':'resume','retry':'retry','stop':'stop','approve':'approve','deny':'deny','skip':'skip','note':'note','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'} as const);
 export type AgentControlCommand=keyof typeof AGENT_CONTROL_COMMANDS;
 export const agentControlInputSchema=agentTaskControlBaseSchema.extend({projectId:id}).strict();
 export const agentNoteInputSchema=agentTaskNoteControlSchema.omit({action:true}).extend({projectId:id}).strict();
-export const agentControlCommandInputSchema=(command:AgentControlCommand)=>command==='note'?agentNoteInputSchema:agentControlInputSchema;
+export const agentUndoAllInputSchema=agentTaskUndoAllControlSchema.omit({action:true}).extend({projectId:id}).strict();
+export const agentControlCommandInputSchema=(command:AgentControlCommand)=>command==='note'?agentNoteInputSchema:command==='undo-all'?agentUndoAllInputSchema:agentControlInputSchema;
 export const agentInputSchema=(schema:z.ZodTypeAny):unknown=>zodToJsonSchema(schema,{$refStrategy:'none'});
 const uploadSchema=z.object({id,name:text,mimeType:text,status:z.string().max(80),handle:id.optional()});
 const projectSchema=z.object({version:z.literal(2),instanceId:z.string().min(1).max(200),projectId:id,runs:z.array(agentTaskRunSchema).max(100),policy:agentTaskPolicySchema,settings:agentSettingsSnapshotSchema,authorization:agentAuthorizationSnapshotSchema,readOnly:z.boolean().optional()});

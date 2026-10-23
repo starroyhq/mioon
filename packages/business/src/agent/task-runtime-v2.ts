@@ -7,7 +7,7 @@ import type {WorkspaceStore} from '../db.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskJournal} from './task-journal-v2.ts';
 import type {AgentTaskTools,PreparedAgentTaskTool} from './task-tools-v2.ts';
-import {agentTaskExplicitTargets} from './task-tools-v2.ts';
+import {agentTaskExplicitTargets,agentTaskChangeWasModified,projectAgentTaskUndo} from './task-tools-v2.ts';
 import {setAgentTaskEffectGate,resumeAgentTaskJobs,stopAgentTaskJobs} from './task-effects-v2.ts';
 import {AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentCredentialResult,sanitizeAgentSettingsResult} from './settings.ts';
 import type {AgentSettingsService} from './settings.ts';
@@ -49,7 +49,8 @@ function safeSnapshot(value:AgentTaskSnapshot,store:WorkspaceStore):AgentTaskSna
   const conflict=copy.run.status==='paused'&&['conflict','editing'].includes(copy.run.pauseReason??''),flagged=copy.steps.filter(step=>record(step.data)&&step.data.backgroundInvalidated===true),pending=copy.steps.filter(step=>step.kind==='tool'&&['intent','awaiting_approval'].includes(step.status)).at(-1);
   const skippedSteps=new Set(copy.run.skippedTargets?.map(item=>item.stepId)??[]);
   copy.steps=copy.steps.map(step=>{if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,skippedSteps.has(step.id)||conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
-  copy.changes=copy.changes.map(change=>{change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;return change;});return copy;
+  const undoPreview=projectAgentTaskUndo(store,value.run.projectId,value.changes);
+  copy.changes=copy.changes.map(change=>{Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;return change;});return copy;
 }
 interface Active {controller:AbortController;promise:Promise<void>;restartRequested:boolean}
 export interface AgentTaskRuntimeOptions {store:WorkspaceStore;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;readOnly?:boolean;assertMutationAllowed?:()=>void}
@@ -235,6 +236,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         for(const model of snapshot.steps.filter(item=>item.kind==='model')){
           history.push(...(run.notes??[]).filter(note=>note.modelStepId===model.id).map(note=>({role:'user',content:note.text})));
           if(model.status==='failed'&&record(model.result)&&model.result.discarded===true){history.push({role:'user',content:'上一次模型请求结果未知，用户已将其标记为失败。请重新读取当前保存状态后继续，不要假定此前有工具执行。'});continue;}
+          if(model.status==='failed'&&record(model.data)&&model.data.retryRequested===true)continue;
           if(model.status==='intent'){pendingModel=model;break;}
           if(model.status!=='completed')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
           const output=modelOutput(model.result);
@@ -250,6 +252,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           const results:{callId:string;result:AgentTaskJson}[]=[];
           for(const call of output.toolCalls){
             const finished=await performTool(runId,model,call,signal);if(!finished)return;
+            if(finished.status==='failed'&&(!record(model.data)||model.data.toolsInvalidated!==true)){
+              changeStatus(runId,'failed',finished.error?.code??'AGENT_TASK_FAILED');return;
+            }
             results.push({callId:call.id,result:finished.result??{error:{code:finished.status}}});
           }
           history.push(...taskContinuation(config.protocol,output,results));resumeModel=model;
@@ -271,11 +276,13 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       }
     }catch(error){
       if(closed)return;
-      if(wasTaskSubmissionPrevented(error))for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='dispatch_started')journal.dispatchPrevented(runId,step.id,'intent');
+      const prevented=wasTaskSubmissionPrevented(error);
+      if(prevented)for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='dispatch_started')journal.dispatchPrevented(runId,step.id,'intent');
       const run=journal.run(runId);if(terminal(run)||run.status==='paused'||run.status==='awaiting_approval')return;
       const failure=code(error);
       if(failure==='AGENT_TASK_BUDGET_EXHAUSTED'){pause(runId,'budget');return;}
       const message=agentChatHttpStatus(error)===undefined?agentTaskFailure(failure).message:safeAgentChatError(error).message;
+      if(prevented)for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='intent')journal.updateStep(runId,step.id,{status:'failed',error:{code:failure,message}});
       for(const step of journal.snapshot(runId).steps)if(step.status==='dispatch_started')journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message}});
       if(failure==='AGENT_TASK_UNKNOWN_RESULT'){pause(runId,'unknown_outcome');return;}
       changeStatus(runId,'failed',failure);journal.appendEvent(runId,'error',{code:failure,message});
@@ -348,8 +355,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     let run=owned(projectId,runId);const cancelBackgroundSteps:string[]=[];try{if(run.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
     if(request.action==='undo_change'||request.action==='undo_all'){
       if(!terminal(run))throw agentTaskFailure('AGENT_TASK_PAUSED');
+      const changes=journal.snapshot(runId).changes,undoChangeIds=request.action==='undo_all'&&request.undoChangeIds!==undefined?new Set(request.undoChangeIds):undefined;
+      if(undoChangeIds){const planned=projectAgentTaskUndo(store,projectId,changes),currentIds=changes.filter(change=>planned.get(change.id)?.undoDisposition==='undo').map(change=>change.id);if(currentIds.length!==undoChangeIds.size||currentIds.some(id=>!undoChangeIds.has(id)))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');}
       journal.beginControl(request);
-      const candidates=journal.snapshot(runId).changes.reverse();
+      const candidates=changes.reverse();
       const chain=new Map<string,AgentTaskTarget>(),retainedChangeIds:string[]=[];
       try{for(const change of candidates){
         if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(`${target.kind}:${target.id}`,target);continue;}
@@ -357,7 +366,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         // A saved compensation revision only bridges adjacent AI changes. It
         // must not jump across an intervening external edit, including ABA.
         const expectedTargets=change.targets.map(target=>{const next=chain.get(`${target.kind}:${target.id}`);return next&&next.revisionBefore===(target.revisionAfter??target.revision)?next:target;});
-        const reverted=toolset().undo(change,{requestId:`${request.requestId}:${change.id}`,expectedTargets,beforeEffect:()=>{owned(projectId,runId);journal.assertTargets(projectId,expectedTargets);},recordInside:()=>{journal.markChangeRevertedInside(change.id);},retainInside:(_change,reason)=>{journal.markChangeRetainedInside(change.id,reason);}});
+        if(request.action==='undo_change'&&change.targets.some(target=>target.revisionAfter!==undefined&&journal.targetRevision(projectId,target.kind,target.id)>target.revisionAfter))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
+        if(request.action==='undo_all'&&store.tx(()=>{if(!agentTaskChangeWasModified(store,change,expectedTargets))return false;journal.markChangeSupersededInside(change.id);return true;})){retainedChangeIds.push(change.id);continue;}
+        const reverted=toolset().undo(change,{requestId:`${request.requestId}:${change.id}`,expectedTargets,beforeEffect:()=>{owned(projectId,runId);journal.assertTargets(projectId,expectedTargets);},beforeCompensation:()=>{if(undoChangeIds&&!undoChangeIds.has(change.id))throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');},recordInside:()=>{journal.markChangeRevertedInside(change.id);},retainInside:(_change,reason)=>{journal.markChangeRetainedInside(change.id,reason);}});
         if(reverted.retained){retainedChangeIds.push(change.id);continue;}
         for(const target of reverted.targets)chain.set(`${target.kind}:${target.id}`,target);
       }}catch(error){journal.finishControl(request.requestId,{state:'blocked',code:code(error),...(retainedChangeIds.length?{retainedChangeIds}:{})});throw error;}
@@ -366,6 +377,22 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     }else journal.performControl(request,():AgentTaskJson=>{
       run=owned(projectId,runId);if(run.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
       if(request.action==='note'){journal.appendNoteInside(runId,request.requestId,request.text);assertNoteCapacity(runId);return {state:'completed',noteRequestId:request.requestId};}
+      if(request.action==='retry'){
+        const steps=journal.snapshot(runId).steps,last=steps.at(-1);
+        if(steps.some(step=>step.status==='unknown'||step.status==='dispatch_started'))throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
+        if(run.status!=='failed'||!last||last.status!=='failed'||request.stepId!==undefined&&request.stepId!==last.id)throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');
+        if(store.db.prepare("SELECT 1 FROM agent_task_runs_v2 WHERE projectId=? AND id<>? AND status IN ('accepted','running','paused','awaiting_approval','interrupted') LIMIT 1").get(projectId,runId))throw agentTaskFailure('AGENT_TASK_BUSY');
+        authorize(run);
+        if(last.kind==='model')journal.updateStep(runId,last.id,{data:{...(record(last.data)?last.data:{}),retryRequested:true}});
+        else {
+          const sourceId=record(last.data)&&typeof last.data.sourceModelStepId==='string'?last.data.sourceModelStepId:undefined,source=sourceId?steps.find(step=>step.id===sourceId):undefined;
+          if(!source||source.kind!=='model'||source.status!=='completed')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');
+          journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});
+        }
+        changeStatus(runId,'running');
+        if(run.stepsUsed>=run.budget)changeStatus(runId,'paused','budget');
+        return {state:'completed',stepId:last.id};
+      }
       if(request.action==='pause'){if(run.status==='running'||run.status==='awaiting_approval'||run.status==='completed'&&journal.hasPendingBackground(runId))changeStatus(runId,'paused','user');}
       else if(request.action==='stop'){if(!terminal(run)||run.status==='completed'&&journal.hasPendingBackground(runId)){changeStatus(runId,'stopped');for(const step of journal.snapshot(runId).steps)if(step.status==='dispatch_started')journal.updateStep(runId,step.id,{status:'unknown'});}}
       else if(request.action==='approve'||request.action==='deny'){
@@ -383,6 +410,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         }else if(step.toolCall&&request.resolution==='discard'){
           const prepared=toolset().prepare({projectId,operation:step.toolCall.name,input:step.toolCall.arguments}),proof=toolset().recoverLocalUnknown(prepared,{runId,stepId:step.id,requestId:step.id});
           if(!proof)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');journal.updateStep(runId,step.id,{status:'failed',result:{...proof,error:{code:'UNKNOWN_NOT_APPLIED',message:'已核对原子回执，旧步骤未提交。请重新读取当前状态后规划，不要重放旧参数。'}}});
+          const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;
+          if(sourceId){const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model'||source.status!=='completed')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});}
         }else throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
       }else if(request.action==='resume'||request.action==='skip'){
         authorize(run);const conflict=run.pauseReason==='conflict'||run.pauseReason==='editing';

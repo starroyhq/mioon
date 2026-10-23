@@ -11,7 +11,7 @@ export interface AgentTaskUpload {id: string; name: string; mimeType: string; st
 export interface AgentTaskPolicyView {policy: AgentTaskPolicy; readOnly: boolean}
 export interface AgentTaskLookup { found: boolean; snapshot?: AgentTaskSnapshot; upload?: AgentTaskUpload; receipt?:AgentTaskReceipt }
 export interface AgentTaskPending { requestId: string; runId: string | null; action: 'send' | 'upload' | AgentTaskControlAction; definitiveRejected?:boolean; conversationId?:string|null }
-interface AgentTaskControlExtras {stepId?:string;changeId?:string;resolution?:'discard'|'accept_result';text?:string}
+interface AgentTaskControlExtras {stepId?:string;changeId?:string;undoChangeIds?:string[];resolution?:'discard'|'accept_result';text?:string}
 export interface AgentTaskAuthorizationReview { projectId: string; settingsRevision: number; authorizationRevision: number; destination: string; model: string; text: string; uploads: string[]; locale: AgentTaskLocale; conversationId?:string|null }
 export interface AgentTaskClient {
   list(projectId: string): Promise<AgentTaskProjectSnapshot>;
@@ -97,7 +97,7 @@ export interface AgentTaskSessionState { phase: 'loading' | 'ready' | 'submittin
 export interface AgentTaskReceiptStore { read(projectId: string): AgentTaskPending | null; write(projectId: string, value: AgentTaskPending | null): void }
 export function createAgentTaskReceiptStore(storage: () => Storage | null = () => typeof sessionStorage === 'undefined' ? null : sessionStorage, workspaceScope = 'normal'): AgentTaskReceiptStore {
   const key = (id: string) => `mioon.agent-task-v2.pending.${encodeURIComponent(workspaceScope)}.${id}`;
-  return { read(id) { const store=storage();if(!store)throw failure('LOCAL_RECEIPT_UNAVAILABLE');const raw:unknown=JSON.parse(store.getItem(key(id))??'null');if(raw===null)return null;if(!record(raw)||typeof raw.requestId!=='string'||raw.requestId.length<8||raw.runId!==null&&typeof raw.runId!=='string'||raw.conversationId!==undefined&&raw.conversationId!==null&&(typeof raw.conversationId!=='string'||!uuid.test(raw.conversationId))||typeof raw.action!=='string'||!['send','upload','pause','resume','skip','note','stop','approve','deny','undo_change','undo_all','resolve_unknown'].includes(raw.action))throw failure('LOCAL_RECEIPT_UNAVAILABLE');return raw as unknown as AgentTaskPending; }, write(id, value) { const store = storage(); if (!store)throw failure('LOCAL_RECEIPT_UNAVAILABLE'); if (value) store.setItem(key(id), JSON.stringify(value)); else store.removeItem(key(id)); } };
+  return { read(id) { const store=storage();if(!store)throw failure('LOCAL_RECEIPT_UNAVAILABLE');const raw:unknown=JSON.parse(store.getItem(key(id))??'null');if(raw===null)return null;if(!record(raw)||typeof raw.requestId!=='string'||raw.requestId.length<8||raw.runId!==null&&typeof raw.runId!=='string'||raw.conversationId!==undefined&&raw.conversationId!==null&&(typeof raw.conversationId!=='string'||!uuid.test(raw.conversationId))||typeof raw.action!=='string'||!['send','upload','pause','resume','retry','skip','note','stop','approve','deny','undo_change','undo_all','resolve_unknown'].includes(raw.action))throw failure('LOCAL_RECEIPT_UNAVAILABLE');return raw as unknown as AgentTaskPending; }, write(id, value) { const store = storage(); if (!store)throw failure('LOCAL_RECEIPT_UNAVAILABLE'); if (value) store.setItem(key(id), JSON.stringify(value)); else store.removeItem(key(id)); } };
 }
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/iu;
 const terminal = new Set(['completed', 'failed', 'stopped', 'reverted']);
@@ -225,6 +225,17 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     // window behind the same close gate needed to restart its local service.
     catch (error) { if (active && owner === generation) publish({ phase: state.pending ? 'unknown' : 'read_error', error: errorCode(error) }); }
   }
+  async function refreshRound(runId:string):Promise<AgentTaskSnapshot|null> {
+    const owner=generation,key=state.selectionKey,conversationId=state.conversationId;
+    if(!active||!visible||busy||state.pending||state.phase==='loading'||state.legacy||!state.rounds.some(item=>item.run.id===runId))return null;
+    try {
+      const next=await client.read(projectId,runId);
+      if(!active||!visible||owner!==generation||key!==state.selectionKey||busy||state.pending)return null;
+      safeAgentTaskSnapshot(next,projectId,runId);
+      if(conversationIdOf(next.run)!==conversationId)throw failure('INVALID_RESPONSE');
+      accept(next);return state.rounds.find(item=>item.run.id===runId)??null;
+    }catch(error){if(active&&visible&&owner===generation&&key===state.selectionKey)publish({error:errorCode(error)});return null;}
+  }
   async function mutate(action: 'send' | AgentTaskControlAction, extras: AgentTaskControlExtras = {},targetRunId=state.snapshot?.run.id) {
     const target=state.rounds.find(item=>item.run.id===targetRunId)??(state.snapshot?.run.id===targetRunId?state.snapshot:null);
     if (!active || !visible || receiptsBlocked || busy || state.phase==='loading' || state.pending || !state.project || state.project.readOnly || state.legacy || action !== 'send' && !target) return false;
@@ -253,7 +264,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     catch (error) { if (active) publish({ phase: 'error', error: errorCode(error) }); return false; }
     finally { busy = false; }
   }
-  return { getState: () => state, load, reconcile, send: () => mutate('send'), note: () => mutate('note',{text:state.draft}), action: (action: AgentTaskControlAction, extras?: AgentTaskControlExtras,runId?:string) => mutate(action, extras,runId), edit(text: string,selectionKey=state.selectionKey) { if (active && visible&&!state.legacy&&selectionKey===state.selectionKey) publish({ draft: text }); },
+  return { getState: () => state, load, reconcile, refreshRound, send: () => mutate('send'), note: () => mutate('note',{text:state.draft}), action: (action: AgentTaskControlAction, extras?: AgentTaskControlExtras,runId?:string) => mutate(action, extras,runId), edit(text: string,selectionKey=state.selectionKey) { if (active && visible&&!state.legacy&&selectionKey===state.selectionKey) publish({ draft: text }); },
     authorizationReview,
     async authorizeAndSend(review: AgentTaskAuthorizationReview) {
       // Confirm exactly the reviewed destination and input. A settings, draft,

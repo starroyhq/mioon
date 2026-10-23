@@ -1,6 +1,20 @@
 import type {MessageCatalog} from '../types.ts';
 
 export const mioPanelMessages = {
+  "agent.panel.retry": {"zh-Hans": "重试这一步", "zh-Hant": "重試這一步", "en": "Retry this step", "ja": "このステップを再試行"},
+  "agent.panel.failureReason": {"zh-Hans": "原因：{reason}", "zh-Hant": "原因：{reason}", "en": "Reason: {reason}", "ja": "原因：{reason}"},
+  "agent.panel.errorSettings.agent": {"zh-Hans": "检查 Mio 的模型连接", "zh-Hant": "檢查 Mio 的模型連線", "en": "Check Mio’s model connection", "ja": "Mio のモデル接続を確認"},
+  "agent.panel.errorSettings.models": {"zh-Hans": "打开模型与服务设置", "zh-Hant": "開啟模型與服務設定", "en": "Open Models and services settings", "ja": "モデルとサービスの設定を開く"},
+  "agent.panel.errorSettings.video-tools": {"zh-Hans": "打开视频工具设置", "zh-Hant": "開啟影片工具設定", "en": "Open Video tools settings", "ja": "動画ツール設定を開く"},
+  "agent.panel.modifiedAfter": {"zh-Hans": "之后又被你修改过，无法单独撤销", "zh-Hant": "之後又被你修改過，無法單獨復原", "en": "Changed again afterward; cannot undo this change individually", "ja": "その後に変更されているため、個別に取り消せません"},
+  "agent.panel.undoTitle": {"zh-Hans": "撤销这一轮的 {count} 处变化？", "zh-Hant": "復原這一輪的 {count} 處變化？", "en": "Undo changes from this round ({count})?", "ja": "このラウンドの変更 {count} 件を取り消しますか？"},
+  "agent.panel.undoRetained": {"zh-Hans": "{count} 处之后被你修改过，将保留。", "zh-Hant": "{count} 處之後被你修改過，將保留。", "en": "Modified afterward and kept: {count}.", "ja": "その後に変更された {count} 件は保持します。"},
+  "agent.panel.undoWillUndo": {"zh-Hans": "将撤销", "zh-Hant": "將復原", "en": "Will undo", "ja": "取り消す変更"},
+  "agent.panel.undoWillKeep": {"zh-Hans": "将保留", "zh-Hant": "將保留", "en": "Will keep", "ja": "保持する変更"},
+  "agent.panel.undoBlocked": {"zh-Hans": "这处暂时无法安全撤销，将在这里停止；更早的变化会保留。", "zh-Hant": "這處暫時無法安全復原，將在此停止；更早的變化會保留。", "en": "Undo will stop at this change because it cannot be safely undone. Earlier changes will be kept.", "ja": "安全に取り消せないため、ここで停止します。それより前の変更は保持します。"},
+  "agent.panel.undoNone": {"zh-Hans": "当前没有可以安全撤销的变化。", "zh-Hant": "目前沒有可以安全復原的變化。", "en": "There are no changes that can be safely undone now.", "ja": "現在、安全に取り消せる変更はありません。"},
+  "agent.panel.undoCount": {"zh-Hans": "撤销 {count} 处", "zh-Hant": "復原 {count} 處", "en": "Undo {count}", "ja": "{count} 件を取り消す"},
+  "agent.panel.undoUnavailable": {"zh-Hans": "暂时无法安全撤销", "zh-Hant": "暫時無法安全復原", "en": "Cannot safely undo now", "ja": "現在は安全に取り消せません"},
   "agent.panel.note": {"zh-Hans": "补充说明", "zh-Hant": "補充說明", "en": "Additional instruction", "ja": "補足指示"},
   "agent.panel.sendNote": {"zh-Hans": "发送补充说明", "zh-Hant": "傳送補充說明", "en": "Send instruction", "ja": "補足指示を送信"},
   "agent.panel.noteDraft": {"zh-Hans": "补充说明，下一步生效…", "zh-Hant": "補充說明，下一步生效…", "en": "Add an instruction for the next step…", "ja": "次のステップに向けて補足する…"},
@@ -283,10 +297,10 @@ export const mioPanelMessages = {
     "ja": "プロバイダーに結果を確認"
   },
   "agent.panel.failedTail": {
-    "zh-Hans": "这一步没有成功，后面的步骤还没有执行",
-    "zh-Hant": "這一步沒有成功，後面的步驟還沒有執行",
-    "en": "This step failed. The following steps have not run",
-    "ja": "このステップは失敗し、後続のステップは実行されていません"
+    "zh-Hans": "这一步没有成功，后面的步骤还没有执行。处理好后可以让 Mio 重试这一步。",
+    "zh-Hant": "這一步沒有成功，後面的步驟還沒有執行。處理好後可以讓 Mio 重試這一步。",
+    "en": "This step failed. The following steps have not run. Once the issue is resolved, ask Mio to retry this step.",
+    "ja": "このステップは失敗し、後続のステップは実行されていません。問題を解決してから Mio にこのステップの再試行を依頼できます。"
   },
   "agent.panel.authorizationTitle": {
     "zh-Hans": "首次向 {model} 发送",

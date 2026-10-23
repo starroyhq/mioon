@@ -3,6 +3,9 @@ import type { agentTaskErrorMessages } from '../../../packages/i18n/src/catalogs
 type ErrorKey = keyof typeof agentTaskErrorMessages;
 const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
   AGENT_TASK_SKIP_REQUIRED:'agent.task.error.skipRequired', AGENT_TASK_NOTE_LIMIT:'agent.task.error.noteLimit', AGENT_TASK_NOTE_CAPACITY:'agent.task.error.noteCapacity', TARGET_SKIPPED:'agent.task.error.targetSkipped',
+  PREFLIGHT_STALE:'agent.task.error.preflightStale',
+  GENERATION_FAILED:'agent.task.error.generation', PROVIDER_ERROR:'agent.task.error.generation', PROVIDER_GENERATION_FAILED:'agent.task.error.generation', PROVIDER_NOT_FOUND:'agent.task.error.generation', PROVIDER_UNAVAILABLE:'agent.task.error.generation', PROVIDER_NOT_READY:'agent.task.error.generation', PROVIDER_POLL_TIMEOUT:'agent.task.error.generation', PROVIDER_CONFIGURATION:'agent.task.error.generation', PROVIDER_DISABLED:'agent.task.error.generation', PROVIDER_REGION_CHANGED:'agent.task.error.generation',
+  EXPORT_CAPABILITY_TOOL_UNAVAILABLE:'agent.task.error.media', EXPORT_CAPABILITY_UNSUPPORTED:'agent.task.error.media', EXPORT_CAPABILITY_CONFIGURATION:'agent.task.error.media', EXPORT_CAPABILITY_FAILED:'agent.task.error.media', EXPORT_CAPABILITY_TIMEOUT:'agent.task.error.media', SUBTITLE_RENDERER_UNAVAILABLE:'agent.task.error.media',
   AGENT_TASK_NOT_FOUND:'agent.task.error.notFound', AGENT_CHAT_NOT_FOUND:'agent.task.error.notFound',
   AGENT_TASK_READ_ONLY:'agent.task.error.readOnly', AGENT_TASK_STOPPED:'agent.task.error.stopped', AGENT_CHAT_ABORTED:'agent.task.error.stopped',
   AGENT_TASK_INVALID:'agent.task.error.validation', AGENT_CHAT_VALIDATION:'agent.task.error.validation',

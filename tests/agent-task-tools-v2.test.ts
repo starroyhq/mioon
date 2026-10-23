@@ -7,7 +7,7 @@ import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
+import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -81,6 +81,7 @@ async function acceptedGeneratedShot(t:TestContext){
 }
 test('undo retains a same-run generated shot container with explicit durable metadata and original evidence',async t=>{
  const f=await acceptedGeneratedShot(t),change=f.created.changes[0]!,before=structuredClone(change),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId),targets=f.journal.revisionSnapshot(f.projectId);
+ assert.equal(projectAgentTaskUndo(f.store,f.projectId,f.journal.snapshot(f.run.id).changes).get(change.id)?.undoDisposition,'retain');
  const result=f.undo(change),retained=f.journal.snapshot(f.run.id).changes.find(item=>item.id===change.id)!;
  assert.equal(result.retained,true);assert.equal(retained.reversible,false);assert.equal(retained.status,'applied');assert.match(retained.summary??'',/保留生成记录及产物所需镜头/);
  assert.deepEqual(retained.before,before.before);assert.deepEqual(retained.after,before.after);assert.deepEqual(retained.undo,before.undo);assert.equal(retained.revertedAt,undefined);
@@ -100,6 +101,7 @@ for(const obstacle of ['unbound_job','foreign_run_job','aba','draft','edge','com
  if(obstacle==='draft')f.journal.claim({projectId:f.projectId,ownerId:'retention-draft-owner',targets:change.targets});
  if(obstacle==='edge'){const node=await f.services.call('node.create',{projectId:f.projectId,type:'text',text:'External node',position:{x:0,y:0}});assert.ok(record(node));await f.services.call('edge.create',{projectId:f.projectId,source:f.shotId,target:node.id});}
  const before=f.journal.snapshot(f.run.id),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId);
+ assert.equal(projectAgentTaskUndo(f.store,f.projectId,[change]).get(change.id)?.undoDisposition,'blocked');
  assert.throws(()=>f.undo(change),{code:obstacle==='draft'?'AGENT_TASK_TARGET_CLAIMED':'AGENT_TASK_TARGET_CHANGED'});
  assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);
 });
@@ -591,4 +593,51 @@ for(const metadata of ['saved','legacy'] as const)test(`late selection recognize
  const remove=setAgentTaskEffectGate(f.store.db,()=>{throw Object.assign(Error('Explicit reference was skipped'),{code:'AGENT_TASK_TARGET_SKIPPED'});});t.after(remove);
  assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-reference-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'running');
  const event=f.journal.events(f.run.id).at(-1)!;assert.equal(event.type,'background_selection_skipped');assert.ok(record(event.data));assert.equal(event.data.reason,'target_skipped');assert.equal(f.journal.events(f.run.id).some(item=>item.type==='conflict'),false);
+});
+
+for(const kind of ['asset_range','asset_disposition','asset_annotation','subject_binding'] as const)test(`undo preview preserves the existing first ${kind} metadata compensation`,async t=>{
+ const f=await fixture(t),assetId=randomUUID();f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic source',mimeType:kind==='asset_range'?'video/mp4':'image/png',width:640,height:480,duration:4,hasVideo:true,hasAudio:false,relativePath:'media/synthetic-fixture',sha256:'a'.repeat(64),provenance:'user-import'});
+ let operation:string,input:Record<string,unknown>;
+ if(kind==='asset_range'){operation='asset.range.set';input={assetId,expectedRevision:0,inFrame:0,outFrame:30};}
+ else if(kind==='asset_disposition'){operation='asset.disposition.set';input={assetId,expectedRevision:0,disposition:'favorite'};}
+ else if(kind==='asset_annotation'){operation='asset.annotation.set';input={assetId,expectedRevision:0,tags:['Synthetic'],note:'Synthetic note'};}
+ else{const subject=await f.services.call('subject.create',{projectId:f.projectId,requestId:randomUUID(),kind:'character',name:'Synthetic subject',assetId});assert.ok(record(subject));const shot=await f.shot('Bound shot');operation='subject.binding.set';input={shotId:shot.id,subjectId:subject.id,role:'subject',subjectVersionId:subject.headVersionId,expectedRevision:0,expectedSubjectRevision:subject.revision};}
+ const created=await f.execute(operation,input),change=created.changes[0]!;assert.equal(created.changes.length,1);assert.equal(change.targets[0]?.kind,kind);assert.equal(projectAgentTaskUndo(f.store,f.projectId,[change]).get(change.id)?.undoDisposition,'undo');
+ f.undo(change);assert.equal(f.journal.snapshot(f.run.id).changes[0]?.status,'reverted');
+ if(kind==='asset_range')assert.equal(f.store.db.prepare('SELECT 1 FROM asset_ranges WHERE assetId=?').get(assetId),undefined);
+ else if(kind==='asset_disposition')assert.equal(f.store.db.prepare('SELECT disposition FROM asset_dispositions WHERE assetId=?').get(assetId)?.disposition,'neutral');
+ else if(kind==='asset_annotation'){const row=f.store.db.prepare('SELECT tags,note FROM asset_annotations WHERE assetId=?').get(assetId);assert.equal(row?.tags,'[]');assert.equal(row?.note,'');}
+ else assert.equal(f.store.db.prepare('SELECT subjectVersionId FROM subject_bindings WHERE id=?').get(change.targets[0]!.id)?.subjectVersionId,null);
+ assert.ok(f.store.get('assets',assetId));
+});
+
+for(const owner of ['manual','same_run'] as const)test(`whole undo preview respects a ${owner} clip depending on a newly created track`,async t=>{
+ const f=await fixture(t),assetId=randomUUID();f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic image',mimeType:'image/png',width:720,height:1280,duration:0,hasVideo:true,hasAudio:false,sha256:'a'.repeat(64),relativePath:'media/fixture.png',provenance:'user-import',createdAt:new Date().toISOString()});
+ await f.services.call('timeline.get',{projectId:f.projectId});const created=await f.execute('timeline.track.add',{kind:'video',name:'AI track',expectedRevision:1}),change=created.changes[0]!,trackId=change.targets.find(target=>target.kind==='timeline_track')!.id;
+ const input={expectedRevision:2,assetId,trackId,startFrame:0,durationFrames:30,name:'Later clip'};
+ if(owner==='manual'){
+  await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),...input});assert.deepEqual(projectAgentTaskUndo(f.store,f.projectId,[change]).get(change.id),{modifiedAfter:false,undoDisposition:'blocked'});assert.throws(()=>f.undo(change),{code:'AGENT_TASK_TARGET_CHANGED'});
+  const timeline=await f.services.call('timeline.inspect',{projectId:f.projectId});assert.ok(record(timeline)&&Array.isArray(timeline.clips));assert.equal(timeline.clips.length,1);
+ }else{
+  const clip=await f.execute('timeline.clip.add',input),changes=f.journal.snapshot(f.run.id).changes;assert.deepEqual([...projectAgentTaskUndo(f.store,f.projectId,changes).values()].map(value=>value.undoDisposition),['undo','undo']);f.undo(clip.changes[0]!);f.undo(change);
+  const timeline=await f.services.call('timeline.inspect',{projectId:f.projectId});assert.ok(record(timeline)&&Array.isArray(timeline.clips)&&Array.isArray(timeline.tracks));assert.equal(timeline.clips.length,0);assert.equal(timeline.tracks.some(item=>record(item)&&item.id===trackId),false);
+ }
+});
+
+for(const owner of ['manual','same_run'] as const)test(`undo preview preserves a created shot referenced by a ${owner} subject binding`,async t=>{
+ const f=await fixture(t),assetId=randomUUID();f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic source',mimeType:'image/png',width:640,height:480,duration:0,hasVideo:true,hasAudio:false,relativePath:'media/synthetic-fixture',sha256:'a'.repeat(64),provenance:'user-import'});
+ const created=await f.execute('shot.create',{title:'AI created shot'}),change=created.changes[0]!,shotId=change.targets.find(target=>target.kind==='shot')!.id;
+ const subject=await f.services.call('subject.create',{projectId:f.projectId,requestId:randomUUID(),kind:'character',name:'Synthetic subject',assetId});assert.ok(record(subject));
+ const input={shotId,subjectId:subject.id,role:'subject',subjectVersionId:subject.headVersionId,expectedRevision:0,expectedSubjectRevision:subject.revision};
+ if(owner==='manual')await f.services.call('subject.binding.set',{projectId:f.projectId,requestId:randomUUID(),...input});
+ else{const binding=await f.execute('subject.binding.set',input),preview=projectAgentTaskUndo(f.store,f.projectId,f.journal.snapshot(f.run.id).changes);assert.equal(preview.get(binding.changes[0]!.id)?.undoDisposition,'undo');assert.equal(preview.get(change.id)?.undoDisposition,'blocked');f.undo(binding.changes[0]!);assert.equal(f.store.db.prepare('SELECT subjectVersionId FROM subject_bindings WHERE shotId=?').get(shotId)?.subjectVersionId,null);}
+ assert.deepEqual(projectAgentTaskUndo(f.store,f.projectId,[change]).get(change.id),{modifiedAfter:false,undoDisposition:'blocked'});assert.throws(()=>f.undo(change),{code:'AGENT_TASK_TARGET_CHANGED'});assert.ok(f.store.get('shots',shotId));
+});
+test('undo preview uses timeline validation when restoring a clip would overlap a later manual clip',async t=>{
+ const f=await fixture(t),assetId=randomUUID();f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic image',mimeType:'image/png',width:720,height:1280,duration:0,hasVideo:true,hasAudio:false,sha256:'a'.repeat(64),relativePath:'media/fixture.png',provenance:'user-import',createdAt:new Date().toISOString()});
+ const timeline=await f.services.call('timeline.get',{projectId:f.projectId});assert.ok(record(timeline)&&Array.isArray(timeline.tracks)&&record(timeline.tracks[0]));const trackId=timeline.tracks[0].id;
+ const added=await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),expectedRevision:1,assetId,trackId,startFrame:0,durationFrames:30});assert.ok(record(added)&&Array.isArray(added.clips)&&record(added.clips[0]));const clipId=added.clips[0].id;
+ const changed=await f.execute('timeline.clip.update',{expectedRevision:2,clipId,patch:{startFrame:60}}),change=changed.changes[0]!;assert.equal(projectAgentTaskUndo(f.store,f.projectId,[change]).get(change.id)?.undoDisposition,'undo');
+ await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),expectedRevision:3,assetId,trackId,startFrame:0,durationFrames:30});assert.deepEqual(projectAgentTaskUndo(f.store,f.projectId,[change]).get(change.id),{modifiedAfter:false,undoDisposition:'blocked'});assert.throws(()=>f.undo(change),{code:'AGENT_TASK_TARGET_CHANGED'});
+ const retained=await f.services.call('timeline.inspect',{projectId:f.projectId});assert.ok(record(retained)&&Array.isArray(retained.clips));assert.equal(retained.clips.length,2);assert.equal(retained.clips.find(item=>record(item)&&item.id===clipId)?.startFrame,60);
 });
