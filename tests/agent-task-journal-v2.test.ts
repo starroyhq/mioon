@@ -13,6 +13,51 @@ import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v
 import {classifyWorkspaceSchemaV48V49} from '../packages/business/src/workspace-restore-schema-v49.ts';
 function fixture(){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-v2-')),store=openStore(root),projectId=randomUUID();store.put('projects',{id:projectId,name:'Task fixture',revision:1,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});return {root,store,projectId,journal:createAgentTaskJournal(store),close(){store.close();rmSync(root,{recursive:true,force:true});}};}
 function start(f:ReturnType<typeof fixture>,stepLimit=30){return f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'测试',configuration:{protocol:'responses'},policy:{...structuredClone(DEFAULT_AGENT_TASK_POLICY),stepLimit}});}
+function reversibleChange(f:ReturnType<typeof fixture>,runId:string){const step=f.journal.beginStep(runId,{kind:'tool'});f.journal.markDispatch(runId,step.id);f.journal.completeStep(runId,step.id,{change:{projectId:f.projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:true}});return f.journal.snapshot(runId).changes[0]!;}
+
+for(const status of ['completed','failed','stopped'] as const)test(`${status} execution end survives later undo, reverted state and restart`,t=>{
+ const beginning=Date.parse('2026-10-23T00:00:00.000Z');t.mock.timers.enable({apis:['Date'],now:beginning});
+ const f=fixture();try{
+  const run=start(f).run,change=reversibleChange(f,run.id);assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+  t.mock.timers.setTime(beginning+2000);const ended=f.journal.transition(run.id,f.journal.run(run.id).revision,status);
+  assert.equal(f.journal.snapshot(run.id).executionEndedAt,ended.updatedAt);
+  t.mock.timers.setTime(beginning+3602000);f.store.tx(()=>f.journal.markChangeRevertedInside(change.id));
+  const undone=f.journal.snapshot(run.id);assert.equal(undone.run.status,status);assert.equal(undone.changes[0]?.status,'reverted');assert.notEqual(undone.run.updatedAt,ended.updatedAt);assert.equal(undone.executionEndedAt,ended.updatedAt);
+  f.journal.transition(run.id,undone.run.revision,'reverted');assert.equal(f.journal.snapshot(run.id).executionEndedAt,ended.updatedAt);
+  f.store.close();const reopened=openStore(f.root);try{const journal=createAgentTaskJournal(reopened);journal.recover();assert.equal(journal.snapshot(run.id).executionEndedAt,ended.updatedAt);}finally{reopened.close();}
+ }finally{f.close();}
+});
+test('execution end reads the durable run timestamp after clock rollback and more than 2000 events',t=>{
+ const beginning=Date.parse('2026-10-23T00:00:00.000Z');t.mock.timers.enable({apis:['Date'],now:beginning});
+ const f=fixture();try{
+  const run=start(f).run;t.mock.timers.setTime(beginning+10000);const step=f.journal.beginStep(run.id,{kind:'model'});f.journal.completeStep(run.id,step.id,{result:{}});
+  f.store.tx(()=>{for(let index=0;index<2001;index++)f.journal.appendEvent(run.id,'text',{stepId:step.id,text:'saved'});});
+  t.mock.timers.setTime(beginning+2000);const ended=f.journal.transition(run.id,f.journal.run(run.id).revision,'completed');
+  assert.equal(f.journal.events(run.id).length,2000);assert.equal(ended.updatedAt,new Date(beginning+10000).toISOString());
+  const last=f.store.db.prepare("SELECT data FROM agent_task_events_v2 WHERE runId=? AND type='run' ORDER BY sequence DESC LIMIT 1").get(run.id)!;
+  assert.equal(JSON.parse(String(last.data)).createdAt,new Date(beginning+2000).toISOString());assert.equal(f.journal.snapshot(run.id).executionEndedAt,ended.updatedAt);
+ }finally{f.close();}
+});
+test('execution end follows the last execution segment and does not reuse earlier terminal evidence',t=>{
+ const beginning=Date.parse('2026-10-23T00:00:00.000Z');t.mock.timers.enable({apis:['Date'],now:beginning});
+ const f=fixture();try{
+  const run=start(f).run,change=reversibleChange(f,run.id),stepId=change.stepId;
+  f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('image',randomUUID(),run.id,stepId,f.projectId,stepId,'image.generate');
+  t.mock.timers.setTime(beginning+2000);const first=f.journal.transition(run.id,f.journal.run(run.id).revision,'completed');assert.equal(f.journal.snapshot(run.id).executionEndedAt,first.updatedAt);
+  t.mock.timers.setTime(beginning+4000);f.journal.transition(run.id,first.revision,'paused','user');f.journal.resume(run.id,f.journal.run(run.id).revision);assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+  t.mock.timers.setTime(beginning+6000);const last=f.journal.transition(run.id,f.journal.run(run.id).revision,'completed');assert.notEqual(last.updatedAt,first.updatedAt);assert.equal(f.journal.snapshot(run.id).executionEndedAt,last.updatedAt);
+  f.journal.transition(run.id,last.revision,'paused','user');f.journal.resume(run.id,f.journal.run(run.id).revision);
+  const current=f.journal.run(run.id);f.store.db.prepare('UPDATE agent_task_runs_v2 SET status=?,data=? WHERE id=?').run('completed',JSON.stringify({...current,status:'completed'}),run.id);
+  f.journal.appendEvent(run.id,'run',{id:run.id,projectId:f.projectId,status:'completed'});assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+ }finally{f.close();}
+});
+test('legacy terminal runs without execution timestamps do not invent an end from current metadata',()=>{
+ const f=fixture();try{
+  const run=start(f).run;f.store.db.prepare('UPDATE agent_task_runs_v2 SET status=?,data=? WHERE id=?').run('completed',JSON.stringify({...run,status:'completed'}),run.id);
+  assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+  f.journal.appendEvent(run.id,'run',{id:run.id,projectId:f.projectId,status:'completed',updatedAt:'invalid'});assert.equal(f.journal.snapshot(run.id).executionEndedAt,undefined);
+ }finally{f.close();}
+});
 test('v2 requests and controls replay original receipt without repeating state changes',()=>{const f=fixture();try{const first=start(f),input={requestId:randomUUID(),runId:first.run.id,expectedRevision:1,action:'pause'};let calls=0;const result=f.journal.performControl(input,()=>{calls++;return {status:f.journal.transition(first.run.id,1,'paused').status};});assert.equal(result.revision,2);assert.deepEqual(f.journal.performControl(input,()=>{calls++;return null;}),result);assert.equal(calls,1);assert.throws(()=>f.journal.performControl({...input,action:'stop'},()=>null),{code:'AGENT_TASK_REQUEST_CONFLICT'});assert.equal(f.journal.lookupRequest(f.projectId,first.run.requestId)?.run.id,first.run.id);}finally{f.close();}});
 test('v2 budget is cumulative and an explicitly resumed round does not repeat completed steps',()=>{const f=fixture();try{const run=start(f,2).run;for(let i=0;i<2;i++){const step=f.journal.beginStep(run.id,{kind:'model',request:{i}});f.journal.completeStep(run.id,step.id,{result:{i}});}assert.throws(()=>f.journal.beginStep(run.id,{kind:'model'}),{code:'AGENT_TASK_BUDGET_EXHAUSTED'});let current=f.journal.run(run.id);current=f.journal.transition(run.id,current.revision,'paused','budget');current=f.journal.resume(run.id,current.revision,{extendBudget:true});assert.equal(current.budget,4);assert.equal(current.stepsUsed,2);assert.equal(f.journal.snapshot(run.id).steps.length,2);}finally{f.close();}});
 test('approval resume preserves an exhausted budget and finishes only the existing counted intent',()=>{
@@ -48,6 +93,16 @@ test('approval and explicit continuation both preserve unknown-result fencing be
   for(const extendBudget of [false,true]){assert.throws(()=>f.journal.resume(run.id,saved.run.revision,{extendBudget}),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.deepEqual(f.journal.snapshot(run.id),saved);}
  }finally{f.close();}
 });
+for(const reason of ['editing','conflict','user','budget'] as const)test(`restart preserves unresolved ${reason} selection without resuming the run`,()=>{
+ const f=fixture();try{
+  const run=start(f,2).run,step=f.journal.beginStep(run.id,{kind:'tool'});
+  f.journal.transition(run.id,f.journal.run(run.id).revision,'paused',reason);
+  assert.equal(f.journal.recover(),1);const saved=f.journal.snapshot(run.id);
+  assert.equal(saved.run.status,'interrupted');assert.equal(saved.run.pauseReason,reason==='editing'||reason==='conflict'?reason:'restart');
+  assert.equal(saved.steps[0]?.id,step.id);assert.equal(saved.steps[0]?.status,'intent');assert.equal(saved.run.budget,2);assert.equal(saved.run.stepsUsed,1);
+  assert.equal(f.journal.recover(),0);assert.deepEqual(f.journal.snapshot(run.id),saved);
+ }finally{f.close();}
+});
 test('v2 dispatch result and changes share domain transaction, failure rolls back both',()=>{const f=fixture();try{const run=start(f).run,step=f.journal.beginStep(run.id,{kind:'tool'});f.journal.markDispatch(run.id,step.id);const nodeId=randomUUID();assert.throws(()=>f.store.tx(()=>{f.store.put('nodes',{id:nodeId,projectId:f.projectId,type:'text',text:'side effect'});f.journal.completeStepInside(run.id,step.id,{result:{ok:true}});throw new Error('disk fault');}),/disk fault/);assert.equal(f.store.get('nodes',nodeId),null);assert.equal(f.journal.step(step.id).status,'dispatch_started');assert.equal(f.journal.recover(),1);assert.equal(f.journal.run(run.id).status,'interrupted');assert.equal(f.journal.step(step.id).status,'unknown');assert.throws(()=>f.journal.resume(run.id,f.journal.run(run.id).revision),{code:'AGENT_TASK_UNKNOWN_RESULT'});}finally{f.close();}});
 test('target revisions preserve ABA and separate timeline clip conflicts',()=>{const f=fixture();try{const a=randomUUID(),b=randomUUID(),timelineId=randomUUID();const timeline={id:timelineId,projectId:f.projectId,revision:1,width:720,height:1280,fps:30,tracks:[],clips:[{id:a,name:'A'},{id:b,name:'B'}]};f.store.put('timelines',timeline);const before=f.journal.targetRevision(f.projectId,'timeline_clip',a),other=f.journal.targetRevision(f.projectId,'timeline_clip',b);f.store.put('timelines',{...timeline,revision:2,clips:[{id:a,name:'changed'},{id:b,name:'B'}]});f.store.put('timelines',{...timeline,revision:3});assert.equal(f.journal.targetRevision(f.projectId,'timeline_clip',a),before+2);assert.equal(f.journal.targetRevision(f.projectId,'timeline_clip',b),other);assert.throws(()=>f.journal.assertTargets(f.projectId,[{kind:'timeline_clip',id:a,revision:before}]),{code:'AGENT_TASK_TARGET_CHANGED'});f.journal.assertTargets(f.projectId,[{kind:'timeline_clip',id:b,revision:other}]);}finally{f.close();}});
 test('multiple editing owners block AI until all release; stale release cannot unlock new generation',()=>{const f=fixture();try{const target={kind:'shot',id:randomUUID(),revision:0},ownerA=randomUUID(),ownerB=randomUUID();const edit=(ownerId:string,sequence:number,action:'claim'|'release',generation=1)=>f.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation,sequence,action,targets:[target]});edit(ownerA,1,'claim');edit(ownerB,1,'claim');assert.equal(f.journal.claims(f.projectId).length,2);edit(ownerA,2,'release');assert.throws(()=>f.journal.assertTargets(f.projectId,[target]),{code:'AGENT_TASK_TARGET_CLAIMED'});edit(ownerB,2,'release');f.journal.assertTargets(f.projectId,[target]);edit(ownerA,3,'claim');assert.throws(()=>edit(ownerA,2,'release'),{code:'AGENT_TASK_EDIT_OWNER_STALE'});f.journal.recover();assert.equal(f.journal.claims(f.projectId)[0]?.state,'uncertain');assert.throws(()=>edit(ownerA,4,'claim',2),{code:'AGENT_TASK_EDIT_OWNER_UNCERTAIN'});}finally{f.close();}});
@@ -63,9 +118,9 @@ test('explicit same-owner restore retains claim identity, checks original target
  assert.throws(()=>f.journal.edit({...input,requestId:randomUUID(),generation:3,action:'restore',targets:[{...target,revision:f.journal.targetRevision(f.projectId,'shot',id)}]}),{code:'AGENT_TASK_TARGET_CHANGED'});assert.equal(f.journal.claims(f.projectId,ownerId)[0]?.state,'uncertain');
  f.journal.edit({...input,requestId:randomUUID(),generation:3,action:'resolve'});assert.equal(f.journal.claims(f.projectId,ownerId).length,0);
 }finally{f.close();}});
-test('schema52 is an exact new profile and restored53 retains immutable v2 evidence',()=>{const f=fixture();try{const run=start(f).run;assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:52,profile:'ordinary'});assert.throws(()=>classifyWorkspaceSchemaV48V49(f.store.db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});const info=installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});assert.equal(info.schemaVersion,53);assert.equal(info.sourceSchema,52);assert.throws(()=>f.store.db.prepare("UPDATE agent_task_runs_v2 SET status='running' WHERE id=?").run(run.id),/RESTORED_RECORD_HELD/);assert.equal(f.journal.run(run.id).text,'测试');}finally{f.close();}});
+test('schema56 is an exact new profile and restored57 retains immutable v2 evidence',()=>{const f=fixture();try{const run=start(f).run;assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:56,profile:'ordinary'});assert.throws(()=>classifyWorkspaceSchemaV48V49(f.store.db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});const info=installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});assert.equal(info.schemaVersion,57);assert.equal(info.sourceSchema,56);assert.throws(()=>f.store.db.prepare("UPDATE agent_task_runs_v2 SET status='running' WHERE id=?").run(run.id),/RESTORED_RECORD_HELD/);assert.equal(f.journal.run(run.id).text,'测试');}finally{f.close();}});
 
-test('schema52 backup restores policy receipts and selected import bytes into fixed53',async()=>{
+test('schema56 backup restores policy receipts and selected import bytes into fixed57',async()=>{
  const f=fixture(),backup=`${f.root}-backup`,restored=`${f.root}-restored`;try{
   const requestId=randomUUID(),selected=randomUUID(),bytes=Buffer.from('selected local file'),sha256=createHash('sha256').update(bytes).digest('hex');
   const policy=f.journal.updatePolicy({...structuredClone(DEFAULT_AGENT_TASK_POLICY),modes:{...DEFAULT_AGENT_TASK_POLICY.modes,paid:'direct'}},requestId);
@@ -73,8 +128,8 @@ test('schema52 backup restores policy receipts and selected import bytes into fi
   mkdirSync(join(f.root,'agent-imports'),{mode:0o700});writeFileSync(join(f.root,'agent-imports',`${selected}.bin`),bytes,{mode:0o600});
   f.store.db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,createdAt) VALUES(?,?,?,?,?,?,?,'selected',?)").run(selected,f.projectId,randomUUID(),'chosen.png','image/png',`agent-imports/${selected}.bin`,sha256,new Date().toISOString());
   const original=f.store.db.prepare('SELECT * FROM agent_task_imports_v2').all();f.store.close();
-  const created=await createWorkspaceBackup({source:f.root,destination:backup});assert.equal(created.databaseSchemaVersion,52);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
-  const result=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(result.databaseSchemaVersion,53);
+  const created=await createWorkspaceBackup({source:f.root,destination:backup});assert.equal(created.databaseSchemaVersion,56);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
+  const result=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(result.databaseSchemaVersion,57);
   const copy=openStore(restored);try{assert.deepEqual(copy.db.prepare('SELECT * FROM agent_task_imports_v2').all(),original);assert.deepEqual(readFileSync(join(restored,'agent-imports',`${selected}.bin`)),bytes);assert.deepEqual(createAgentTaskJournal(copy).lookupPolicy(requestId),policy);}finally{copy.close();}
  }finally{f.close();rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});}
 });
@@ -86,11 +141,11 @@ test('restart marks pending undo control on completed run blocked without replay
 
 test('aggregate project revision changes do not invalidate a project text target',()=>{const f=fixture();try{const before=f.journal.targetRevision(f.projectId,'project',f.projectId),project=f.store.get('projects',f.projectId) as Record<string,unknown>;f.store.put('projects',{...project,revision:2,updatedAt:new Date(Date.now()+1000).toISOString()});assert.equal(f.journal.targetRevision(f.projectId,'project',f.projectId),before);f.store.put('projects',{...project,revision:3,name:'Updated project title'});assert.equal(f.journal.targetRevision(f.projectId,'project',f.projectId),before+1);}finally{f.close();}});
 
-test('history keyset pages discover every run without overlap and reject a foreign project cursor',()=>{const f=fixture();try{const ids:string[]=[];for(let i=0;i<4;i++){const run=start(f).run;ids.push(run.id);f.journal.transition(run.id,run.revision,'completed');}const first=f.journal.history(f.projectId,{limit:2});assert.equal(first.runs.length,2);assert.ok(first.nextCursor);const second=f.journal.history(f.projectId,{limit:2,cursor:first.nextCursor});assert.equal(second.nextCursor,null);assert.deepEqual([...first.runs,...second.runs].map(run=>run.id).sort(),ids.sort());assert.throws(()=>f.journal.history(randomUUID(),{cursor:first.nextCursor!}),{code:'AGENT_TASK_INVALID'});}finally{f.close();}});
+test('history keyset pages discover every run without overlap and reject a foreign project cursor',()=>{const f=fixture();try{const ids:string[]=[];for(let i=0;i<4;i++){const run=start(f).run;ids.push(run.id);f.journal.transition(run.id,run.revision,'completed');}const first=f.journal.history(f.projectId,{limit:2});assert.equal(first.conversations.length,2);assert.ok(first.nextCursor);const second=f.journal.history(f.projectId,{limit:2,cursor:first.nextCursor});assert.equal(second.nextCursor,null);assert.deepEqual([...first.conversations,...second.conversations].map(conversation=>conversation.lastRunId).sort(),ids.sort());assert.throws(()=>f.journal.history(randomUUID(),{cursor:first.nextCursor!}),{code:'AGENT_TASK_INVALID'});}finally{f.close();}});
 
 test('stale control rejection has a retained receipt and exact replay never performs the action',()=>{const f=fixture();try{const run=start(f).run;f.journal.transition(run.id,run.revision,'paused');const input={requestId:randomUUID(),runId:run.id,expectedRevision:run.revision,action:'resume'};let calls=0;assert.throws(()=>f.journal.performControl(input,()=>{calls++;return null;}),{code:'AGENT_TASK_REVISION_CONFLICT'});const rejected=f.journal.rejectControl(input,'AGENT_TASK_REVISION_CONFLICT');assert.equal(rejected.revision,f.journal.run(run.id).revision);assert.deepEqual(rejected.result,{state:'rejected',code:'AGENT_TASK_REVISION_CONFLICT'});assert.deepEqual(f.journal.lookupControl(input.requestId),rejected);assert.deepEqual(f.journal.performControl(input,()=>{calls++;return null;}),rejected);assert.equal(calls,0);assert.throws(()=>f.journal.rejectControl({...input,action:'stop'},'AGENT_TASK_REVISION_CONFLICT'),{code:'AGENT_TASK_REQUEST_CONFLICT'});}finally{f.close();}});
 
-test('restored53 server reads v2 history without credentials or recovery and rejects every mutation without database changes',async()=>{
+test('restored57 server reads v2 history without credentials or recovery and rejects every mutation without database changes',async()=>{
  const f=fixture(),backup=`${f.root}-http-backup`,restored=`${f.root}-http-restored`;let server:Awaited<ReturnType<typeof import('../apps/server/src/index.ts')['startServer']>>|undefined;
  const dump=(root:string)=>{const db=new DatabaseSync(join(root,'workbench.sqlite'),{readOnly:true});try{return db.prepare("SELECT name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row=>({name:row.name,sql:row.sql,...(String(row.sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${String(row.name)}"`).all().map(item=>JSON.stringify(item)).sort()}: {})}));}finally{db.close();}};
  try{
@@ -99,7 +154,7 @@ test('restored53 server reads v2 history without credentials or recovery and rej
   const {startServer}=await import('../apps/server/src/index.ts');let models=0;server=await startServer({dataDir:restored,port:0,taskGatewayV2:async function*(){models++;throw Error('Restored records must never execute');}});
   const request=async(route:string,method='GET',input?:unknown)=>{const response=await fetch(server!.url+route,{method,headers:{Authorization:`Bearer ${server!.token}`,...(input!==undefined?{'Content-Type':'application/json'}:{})},...(input!==undefined?{body:JSON.stringify(input)}:{})});return {status:response.status,value:await response.json() as {ok?:boolean;data?:Record<string,unknown>;error?:{code:string}}};};
   const prefix=`/api/agent/tasks/v2/${f.projectId}`,listed=await request(prefix);assert.equal(listed.status,200,JSON.stringify(listed.value));assert.equal(listed.value.data?.readOnly,true);assert.ok(listed.value.data?.settings);assert.equal((listed.value.data?.runs as {id:string}[])[0]?.id,run.id);
-  const history=await request(`${prefix}/history`);assert.equal(history.status,200);assert.equal((history.value.data?.runs as {id:string}[])[0]?.id,run.id);
+  const history=await request(`${prefix}/history`);assert.equal(history.status,200);assert.equal((history.value.data?.conversations as {lastRunId:string}[])[0]?.lastRunId,run.id);
   const detail=await request(`${prefix}/${run.id}`);assert.equal(detail.status,200);assert.equal((detail.value.data?.run as {status:string}).status,expected.run.status);assert.equal((detail.value.data?.steps as {status:string}[])[0]?.status,'dispatch_started');
   const writes:[string,string,unknown][]=[
    [prefix,'POST',{requestId:randomUUID(),text:'禁止发送',expectedSettingsRevision:0}],

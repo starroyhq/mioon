@@ -421,10 +421,10 @@ export const commandMessages = {
     "ja": "検証は、対応するマニフェストとデータの整合性を確認するもので、復元の準備が整っていることを保証しません。復元は別の操作で、分類済みの schema24 のみを受け入れ、schema25 に保留中の作業に対する恒久的な保護を設定します"
   },
   "backup.safety.2": {
-    "zh-Hans": "恢复后的分支允许受支持的新本地编辑和导出。捕获的任务、审批、历史记录、回执和未知结果仍保持暂缓；生成、Agent、Comfy、帧及波形工作不可用。无法为恢复后的分支创建备份；请保留原始已验证备份",
-    "zh-Hant": "還原後的分支允許受支援的新本機編輯和匯出。擷取的任務、核准、歷史記錄、回執和未知結果仍保持暫緩；生成、Agent、Comfy、影格及波形工作無法使用。無法為還原後的分支建立備份；請保留原始已驗證備份",
-    "en": "Restored branches allow supported fresh local editing and export. Captured tasks, approvals, histories, receipts and unknown outcomes remain held; generation, Agent, Comfy, frame and waveform work are unavailable. Backup creation of restored branches is unavailable; keep the original verified backup",
-    "ja": "復元済みブランチでは、対応する新規のローカル編集とエクスポートが可能です。記録されたタスク、承認、履歴、受領記録、不明な結果は保留のままです。生成、Agent、Comfy、フレーム、波形の作業は利用できません。復元済みブランチのバックアップ作成は利用できないため、元の検証済みバックアップを保管してください"
+    "zh-Hans": "恢复后的分支允许受支持的新本地编辑和导出。捕获的任务、审批、历史记录、回执和未知结果仍保持暂缓；生成、Mio、Comfy、帧及波形工作不可用。无法为恢复后的分支创建备份；请保留原始已验证备份",
+    "zh-Hant": "還原後的分支允許受支援的新本機編輯和匯出。擷取的任務、核准、歷史記錄、回執和未知結果仍保持暫緩；生成、Mio、Comfy、影格及波形工作無法使用。無法為還原後的分支建立備份；請保留原始已驗證備份",
+    "en": "Restored branches allow supported fresh local editing and export. Captured tasks, approvals, histories, receipts and unknown outcomes remain held; generation, Mio, Comfy, frame and waveform work are unavailable. Backup creation of restored branches is unavailable; keep the original verified backup",
+    "ja": "復元済みブランチでは、対応する新規のローカル編集とエクスポートが可能です。記録されたタスク、承認、履歴、受領記録、不明な結果は保留のままです。生成、Mio、Comfy、フレーム、波形の作業は利用できません。復元済みブランチのバックアップ作成は利用できないため、元の検証済みバックアップを保管してください"
   },
   "backup.safety.3": {
     "zh-Hans": "恢复绝不会自动打开或切换后端。对于 Web，请使用 MIOON_DATA_DIR 选择新工作区。对于 Desktop，请恢复到新 root/workspace 子目录，再使用 MIOON_DESKTOP_USER_DATA 明确选择该新根目录；绝不能共用旧令牌/会话文件",

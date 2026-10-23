@@ -90,11 +90,11 @@ export async function buildWorkspaceInventory({db,source,signal,check,issues,dat
   if(!validHash||!validSize)issues.add('INVALID_ASSET_RECORD',relative);
   if(!add(relative,'asset',{sha256:validHash?asset.sha256:undefined,bytes:validSize?asset.sizeBytes:undefined}))issues.add('MISSING_REGISTERED_MEDIA',relative);
  }
- if(version===52&&tables.has('agent_task_imports_v2'))for(const row of db.prepare("SELECT id,relativePath,sha256 FROM agent_task_imports_v2 LIMIT 20001").iterate()){
+ if([52,54,56].includes(version)&&tables.has('agent_task_imports_v2'))for(const row of db.prepare("SELECT id,relativePath,sha256 FROM agent_task_imports_v2 LIMIT 20001").iterate()){
   consume();if(!uuid(row.id)||row.relativePath!==`agent-imports/${String(row.id)}.bin`||!hash(row.sha256)){issues.add('INVALID_TASK_RECORD');continue;}
   if(!add(String(row.relativePath),'agent_import',{sha256:String(row.sha256)}))issues.add('MISSING_REGISTERED_MEDIA',String(row.relativePath));
  }
- if(version===52&&tables.has('agent_task_runs_v2'))for(const row of db.prepare("SELECT status FROM agent_task_runs_v2 LIMIT 20001").iterate()){consume();if(!['completed','failed','stopped','reverted'].includes(String(row.status)))issues.add('UNRESOLVED_TASK_RETAINED');}
+ if([52,54,56].includes(version)&&tables.has('agent_task_runs_v2'))for(const row of db.prepare("SELECT status FROM agent_task_runs_v2 LIMIT 20001").iterate()){consume();if(!['completed','failed','stopped','reverted'].includes(String(row.status)))issues.add('UNRESOLVED_TASK_RETAINED');}
  const taskFamilies: [string, Set<string>][]=[['jobs',jobs],['exports',exports]];
  for(const [table,ids] of taskFamilies)if(tables.has(table)){
   for(const row of db.prepare(`SELECT ${text('id',36)},CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB))<=131072 AND json_valid(data) THEN CASE WHEN length(CAST(json_extract(data,'$.status') AS BLOB))<=64 THEN json_extract(data,'$.status') END END AS state,${limited({id:36,data:131072})} FROM ${table}`).iterate()){
@@ -156,7 +156,7 @@ export async function buildWorkspaceInventory({db,source,signal,check,issues,dat
  }
  // Only these three shallow managed directories are scanned. No settings,
  // access token, browser profile, renderer directory or arbitrary tree is read.
- for(const family of ['media','image-staging','frame-staging',...(version===52?['agent-imports']:[])]){
+ for(const family of ['media','image-staging','frame-staging',...([52,54,56].includes(version)?['agent-imports']:[])]){
   const directory=path.join(source,family);
   await scanDirectory(directory,source,{signal,check,budget,private:family!=='media',visit:async name=>{
    const relative=`${family}/${name}`,file=path.join(directory,name),info=lstatSync(file);

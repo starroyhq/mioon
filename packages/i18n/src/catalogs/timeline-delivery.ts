@@ -1849,10 +1849,10 @@ export const timelineDeliveryMessages = {
     "ja": "これは元のバックアップ時点の独立したワークスペースです。元のワークスペースでの以後の変更は統合されません。古いタスク状態は現在実行中であることを意味しません"
   },
   "recovery.restored.disabledReason": {
-    "zh-Hans": "恢复分支第一版暂不支持新生成、Agent、Comfy、抽帧或波形解码。历史任务保持原状态并暂停执行",
-    "zh-Hant": "還原分支第一版暫不支援新生成、Agent、Comfy、影格擷取或波形解碼。歷史工作保留原狀態並暫停執行",
-    "en": "The first version of restored branches does not support new generation, Agent, Comfy, frame extraction or waveform decoding. Historical tasks retain their original status and execution is paused",
-    "ja": "復元ブランチの初期版は、新規生成、Agent、Comfy、フレーム抽出、波形デコードに対応していません。過去のタスクは元の状態を保持し、実行を停止しています"
+    "zh-Hans": "恢复分支第一版暂不支持新生成、Mio、Comfy、抽帧或波形解码。历史任务保持原状态并暂停执行",
+    "zh-Hant": "還原分支第一版暫不支援新生成、Mio、Comfy、影格擷取或波形解碼。歷史工作保留原狀態並暫停執行",
+    "en": "The first version of restored branches does not support new generation, Mio, Comfy, frame extraction or waveform decoding. Historical tasks retain their original status and execution is paused",
+    "ja": "復元ブランチの初期版は、新規生成、Mio、Comfy、フレーム抽出、波形デコードに対応していません。過去のタスクは元の状態を保持し、実行を停止しています"
   },
   "recovery.restored.backupReason": {
     "zh-Hans": "此恢复分支暂不能再次创建可恢复备份；请保留原始备份。新成片可本地导出",
@@ -3571,16 +3571,16 @@ export const timelineDeliveryMessages = {
     "ja": "書き出しタスク"
   },
   "recovery.backup.count.agentRuns": {
-    "zh-Hans": "Agent 运行",
-    "zh-Hant": "Agent 執行",
-    "en": "Agent runs",
-    "ja": "Agent の実行"
+    "zh-Hans": "Mio 运行",
+    "zh-Hant": "Mio 執行",
+    "en": "Mio runs",
+    "ja": "Mio の実行"
   },
   "recovery.backup.count.agentProposals": {
-    "zh-Hans": "Agent 提案",
-    "zh-Hant": "Agent 提案",
-    "en": "Agent proposals",
-    "ja": "Agent の提案"
+    "zh-Hans": "Mio 提案",
+    "zh-Hant": "Mio 提案",
+    "en": "Mio proposals",
+    "ja": "Mio の提案"
   },
   "recovery.backup.count.editTasks": {
     "zh-Hans": "编辑请求",

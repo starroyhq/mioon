@@ -30,6 +30,7 @@ import type { SettingsNavigationRegistry } from './settings-navigation-state.ts'
 import type { EditorSettingsScope } from './editor-settings-scope.ts';
 import type { MessageKey } from '../../../packages/i18n/src/index.ts';
 import type { ChangeEvent, FormEvent, KeyboardEvent } from 'react';
+import type {AgentTaskRecoveryIntent} from './agent-task-recovery-location.ts';
 
 type I18n = ReturnType<typeof useI18n>;
 type TranslateFn = I18n['t'];
@@ -62,6 +63,7 @@ interface ImageGenerationCallbacks {
   onRevealAsset?: ((assetId: string, projectId: string) => unknown) | undefined;
 }
 interface ImageGenerationProps {
+  revealTask?: AgentTaskRecoveryIntent | null;
   editIntent?: ImageEditIntent | null;
   isEditIntentCurrent?: ((intent: ImageEditIntent) => boolean | undefined) | undefined;
   onOpenSettings?: ((slot: string) => unknown) | undefined;
@@ -88,9 +90,10 @@ const shortDate = (value: string, formatDate: FormatDateFn): string => formatDat
 const sourceDetails = (source: SourceView | Record<string, unknown> | null | undefined, visible: boolean, title: string, t: TranslateFn) => { const value = source as SourceView; return <div className="image-generation-source-preview" data-testid="image-source-preview"><img src={visible ? `/media/${encodeURIComponent(value.assetId || value.id || '')}` : undefined} alt={t('image.studio.sourcePreviewAlt', { title, name: creationParameter(value.name) })} width={value.width ?? undefined} height={value.height ?? undefined} loading="lazy" decoding="async" /><div><strong>{title} · {value.name}</strong><span>{value.width} × {value.height} · PNG · {Math.ceil(Number(value.byteLength || value.sizeBytes || 0) / 1024)} KB</span>{value.origin && <span>{t('image.studio.sourceLabel', { value: creationParameter({ 'user-import': t('image.studio.importedAsset'), generated: t('image.studio.generatedImage'), 'synthetic-mock': t('image.studio.mockTestImage'), 'extracted-frame': t('image.studio.extractedFrame') }[value.origin.kind ?? ''] as MessageKey) })}</span>}<details><summary>{t('image.studio.fixedSourceIdentity')}</summary><span className="image-generation-id">{t('image.studio.assetIdentity', { value: creationParameter(value.assetId || value.id) })}</span><span className="image-generation-id">SHA-256 {value.sha256}</span></details></div></div>; };
 
 /** Kept mounted by AgentDockPane. Hiding stops reads and media, never resets a draft. */
-export default function ImageGeneration({ editIntent = null, isEditIntentCurrent, onOpenSettings, settingsOverlayOpen = false, nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, projectName, projectAssets = [], api, storage, settingsClient, customSettingsClient, comfySettingsClient, reviewClient, onDirtyChange = noop, onGenerated = noop, onRevealAsset }: ImageGenerationProps) {
+export default function ImageGeneration({ revealTask = null, editIntent = null, isEditIntentCurrent, onOpenSettings, settingsOverlayOpen = false, nativeSettingsScope, nativeCloseRegistry, navigationRegistry, projectId, projectName, projectAssets = [], api, storage, settingsClient, customSettingsClient, comfySettingsClient, reviewClient, onDirtyChange = noop, onGenerated = noop, onRevealAsset }: ImageGenerationProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const [state, setState] = useState<ImageGenerationState>(initialImageGenerationState), [page, setPage] = useState('compose'), [settingsSlot, setSettingsSlot] = useState<SettingsSlot>('official');
+  const recoveryRoot = useRef<HTMLElement | null>(null), recoveryAttempt = useRef<string | null>(null);
   const imageSettingsClient = useMemo(() => settingsClient || createImageSettingsClient(), [settingsClient]);
   const customImageSettingsClient = useMemo(() => customSettingsClient || createImageSettingsClient({ slot: 'custom' }), [customSettingsClient]);
   const localImageSettingsClient = useMemo(() => comfySettingsClient || createComfyImageSettingsClient(), [comfySettingsClient]);
@@ -137,6 +140,16 @@ export default function ImageGeneration({ editIntent = null, isEditIntentCurrent
     document.addEventListener('visibilitychange', hide);
     return () => { document.removeEventListener('visibilitychange', hide); editController.retire(); };
   }, [editController]);
+  useLayoutEffect(() => {
+    const current = session.current;
+    if (!revealTask || revealTask.projectId !== projectId || !composerVisible || !revealTask.current() || !current || !current.canRevealTask() || current.getState().historyPhase === 'loading' || !current.getState().loaded || recoveryAttempt.current === revealTask.key) return;
+    recoveryAttempt.current = revealTask.key;
+    void current.revealTask(revealTask.taskId, revealTask.current);
+  }, [revealTask, projectId, composerVisible, state.loaded, state.historyPhase, state.phase, state.actionTaskId, state.reviewActionId, state.remoteActionTaskId]);
+  useLayoutEffect(() => {
+    if (!revealTask || !composerVisible || revealTask.projectId !== projectId || !revealTask.current() || !state.tasks.some(task => task.id === revealTask.taskId)) return;
+    recoveryRoot.current?.querySelector<HTMLElement>(`[data-task-id="${revealTask.taskId}"]`)?.scrollIntoView?.({block:'nearest'});
+  }, [revealTask, projectId, composerVisible, state.tasks]);
   useLayoutEffect(() => { generationDirty.current = imageDraftDirty(state) && !state.pending; callbacks.current.onDirtyChange(generationDirty.current || Object.values(settingsDirty.current).some(Boolean)); }, [state.draft, state.target, state.mode, state.inputImage, state.pending]);
   const owner = lifetime.current;
   const usable = () => Boolean(composerVisible && interactionRef.current === interaction && owner && !owner.closed && lifetime.current === owner && owner.projectId === projectId && (typeof document === 'undefined' || document.visibilityState !== 'hidden'));
@@ -154,7 +167,7 @@ export default function ImageGeneration({ editIntent = null, isEditIntentCurrent
   const observeRemote = (task: ImageTaskView): unknown => session.current?.observeRemote(task as never);
   const settingsDirtyChanged = (slot: SettingsSlot, dirty: boolean) => { settingsDirty.current[slot] = dirty; callbacks.current.onDirtyChange(generationDirty.current || Object.values(settingsDirty.current).some(Boolean)); };
   function run(action: (current: Session | null) => unknown) { if (usable()) void action(session.current); }
-  return <section className="image-generation-page" data-testid="image-generation-page" data-project-id={projectId || ''} data-phase={state.phase} hidden={!visible} inert={!visible} aria-label={t('image.studio.imageGeneration')}>
+  return <section ref={recoveryRoot} className="image-generation-page" data-testid="image-generation-page" data-project-id={projectId || ''} data-phase={state.phase} hidden={!visible} inert={!visible} aria-label={t('image.studio.imageGeneration')}>
     <div className="image-generation-workbench" hidden={page !== 'compose'} inert={page !== 'compose'}>
     <header className="image-generation-heading"><div><span className="image-generation-eyebrow">{t('image.studio.studioEyebrow')}</span><h2>{t('image.studio.workshopTitle')}</h2><p>{projectName || t('image.studio.currentProject')}</p></div><div className="image-generation-heading-actions"><Badge className="small-badge neutral">{state.providerId === 'mock' ? t('image.studio.mockTest') : comfy ? t('image.studio.localComfy') : custom ? t('image.studio.customPaid') : t('image.studio.openaiPaid')}</Badge><Button type="button" variant="ghost" className="button quiet" data-testid="image-settings-open" disabled={!composerVisible} onClick={() => run(current => { if (onOpenSettings) { current?.setVisible(false); interactionRef.current = null;
       const restoreRejectedSettings = (accepted?: unknown) => {

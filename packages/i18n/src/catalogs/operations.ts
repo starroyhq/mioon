@@ -93,22 +93,22 @@ export const operationMessages = {
     "ja": "既存のカバー、保存済みタイムラインの仕様、ショット数、長さ、内容の更新日時、ローカルの最終オープン日時を含むプロジェクトホームの概要を読み取り専用で一覧表示します。タイムラインの初期化、サムネイル生成、メディアのバイト列の読み取り、プロバイダー呼び出しは行いません"
   },
   "operation.agent.authorization.list": {
-    "zh-Hans": "只读列出当前本地工作区按完整目标地址、模型与发送范围保存的智能助理授权，以及当前安全目标；不读取凭据、不调用模型或供应商，不作为内置助理模型工具开放",
-    "zh-Hant": "唯讀列出目前本機工作區按完整目標位址、模型與傳送範圍儲存的智慧助理授權，以及目前安全目標；不讀取憑證、不呼叫模型或供應商，不作為內建助理模型工具開放",
-    "en": "Read-only listing of this local workspace's persistent Agent grants for each full destination, model and sending scope, plus its current safe target. Does not access credentials or call models or providers; unavailable as a built-in Agent model tool",
-    "ja": "このローカルワークスペースに保存された、完全な送信先アドレス、モデル、送信範囲ごとのAgent権限と、現在の安全な送信先を読み取り専用で一覧表示します。認証情報の読み取りやモデル、プロバイダーの呼び出しは行いません。組み込みのAgentモデルツールとしては公開しません"
+    "zh-Hans": "只读列出当前本地工作区按完整目标地址、模型与发送范围保存的 Mio 授权，以及当前安全目标；不读取凭据、不调用模型或供应商，不作为 Mio 模型工具开放",
+    "zh-Hant": "唯讀列出目前本機工作區按完整目標位址、模型與傳送範圍儲存的 Mio 授權，以及目前安全目標；不讀取憑證、不呼叫模型或供應商，不作為 Mio 模型工具開放",
+    "en": "Read-only listing of this local workspace's persistent Mio grants for each full destination, model and sending scope, plus its current safe target. Does not access credentials or call models or providers; unavailable as a built-in Mio model tool",
+    "ja": "このローカルワークスペースに保存された、完全な送信先アドレス、モデル、送信範囲ごとの Mio の許可と、現在の安全な送信先を読み取り専用で一覧表示します。認証情報の読み取りやモデル、プロバイダーの呼び出しは行いません。Mio のモデルツールとしては公開しません"
   },
   "operation.agent.authorization.grant": {
-    "zh-Hans": "明确授权当前智能助理的完整目标地址、模型与一种已定义的发送范围，并持久保存到本地工作区；需要设置版本、授权版本与稳定requestId，不发送消息、不读取凭据。精确重放不会恢复后来已撤销的授权；不作为内置助理模型工具开放",
-    "zh-Hant": "明確授權目前智慧助理的完整目標位址、模型與一種已定義的傳送範圍，並持久儲存至本機工作區；需要設定版本、授權版本與穩定requestId，不傳送訊息、不讀取憑證。精確重播不會恢復後來已撤銷的授權；不作為內建助理模型工具開放",
-    "en": "Explicitly grant persistent authorization for the current Agent's full destination, model and one defined sending scope in this local workspace. Requires settings and authorization revisions plus a stable requestId; sends no message and accesses no credentials. Exact replay does not restore a subsequently revoked grant; unavailable as a built-in Agent model tool",
-    "ja": "現在のAgentの完全な送信先アドレス、モデル、定義済みの送信範囲1つに対する永続的な権限を、このローカルワークスペースで明示的に付与します。設定と権限のバージョンおよび安定したrequestIdが必要です。メッセージ送信や認証情報の読み取りは行いません。元の結果の再現によって後から取り消した権限が復活することはありません。組み込みのAgentモデルツールとしては公開しません"
+    "zh-Hans": "明确授权当前 Mio 的完整目标地址、模型与一种已定义的发送范围，并持久保存到本地工作区；需要设置版本、授权版本与稳定requestId，不发送消息、不读取凭据。精确重放不会恢复后来已撤销的授权；不作为 Mio 模型工具开放",
+    "zh-Hant": "明確授權目前 Mio 的完整目標位址、模型與一種已定義的傳送範圍，並持久儲存至本機工作區；需要設定版本、授權版本與穩定requestId，不傳送訊息、不讀取憑證。精確重播不會恢復後來已撤銷的授權；不作為 Mio 模型工具開放",
+    "en": "Explicitly authorize the full destination and model currently configured for Mio with one defined sending scope, and save the grant in this local workspace. Requires settings and authorization revisions plus a stable requestId; sends no message and accesses no credentials. Exact replay does not restore a subsequently revoked grant; unavailable as a built-in Mio model tool",
+    "ja": "現在の Mio の完全な送信先アドレス、モデル、定義済みの送信範囲1つに対する永続的な権限を、このローカルワークスペースで明示的に付与します。設定と権限のバージョンおよび安定したrequestIdが必要です。メッセージ送信や認証情報の読み取りは行いません。元の結果の再現によって後から取り消した権限が復活することはありません。Mio のモデルツールとしては公開しません"
   },
   "operation.agent.authorization.revoke": {
-    "zh-Hans": "按授权版本与稳定requestId撤销一条本地智能助理持久授权，阻止对应目标、模型与范围的后续外发；不撤回已发送请求、不读取凭据或调用模型，不作为内置助理模型工具开放",
-    "zh-Hant": "按授權版本與穩定requestId撤銷一筆本機智慧助理持久授權，阻止對應目標、模型與範圍的後續外送；不撤回已傳送請求、不讀取憑證或呼叫模型，不作為內建助理模型工具開放",
-    "en": "Revoke one persistent local Agent grant against its authorization revision with a stable requestId, blocking future sending for that destination, model and scope. Does not recall requests already sent, access credentials or call models; unavailable as a built-in Agent model tool",
-    "ja": "権限のバージョンと安定したrequestIdを使ってローカルAgentの永続的な権限を1つ取り消し、該当する送信先、モデル、範囲への今後の送信を停止します。送信済みリクエストの回収、認証情報の読み取り、モデルの呼び出しは行いません。組み込みのAgentモデルツールとしては公開しません"
+    "zh-Hans": "按授权版本与稳定requestId撤销一条本地 Mio 持久授权，阻止对应目标、模型与范围的后续外发；不撤回已发送请求、不读取凭据或调用模型，不作为 Mio 模型工具开放",
+    "zh-Hant": "按授權版本與穩定requestId撤銷一筆本機 Mio 持久授權，阻止對應目標、模型與範圍的後續外送；不撤回已傳送請求、不讀取憑證或呼叫模型，不作為 Mio 模型工具開放",
+    "en": "Revoke one persistent local Mio grant against its authorization revision with a stable requestId, blocking future sending for that destination, model and scope. Does not recall requests already sent, access credentials or call models; unavailable as a built-in Mio model tool",
+    "ja": "権限のバージョンと安定したrequestIdを使ってローカルの Mio の永続的な権限を1つ取り消し、該当する送信先、モデル、範囲への今後の送信を停止します。送信済みリクエストの回収、認証情報の読み取り、モデルの呼び出しは行いません。Mio のモデルツールとしては公開しません"
   },
   "operation.lut.import": {
     "zh-Hans": "导入项目拥有的标准化3D Cube资源，最大7 MiB，支持以稳定请求精确重放。此操作仅保存资源，不应用视觉LUT",
@@ -471,10 +471,10 @@ export const operationMessages = {
     "ja": "現在の保存済みタイムラインで最大20秒の音声試聴範囲を読み取り専用で計画します。プロジェクト、バージョン、素材ハッシュに紐づく、範囲制限付きPCM準備マニフェストを返します。この呼び出しではデコード、再生、タイムライン初期化、書き込みを行いません。PCMは固定された認証済みローカルリソースを通じて、別の明示的な範囲制限付き操作でデコードします。作品全体やラウドネス／トゥルーピークの検査には使用できません"
   },
   "operation.timeline.audioPreview.continuousPlan": {
-    "zh-Hans": "只读规划已保存时间线的 V2 连续音频预览会话；绑定项目、完整版本和源身份，固定 2 秒混音块，共享全会话 96 MiB 应用额度。仅返回元数据，不读取媒体字节、不解码、不播放、不初始化时间线、不写文件或数据库，不调用网络、模型或付费供应商。仅在显式播放操作后，由固定认证本地资源按需有界准备完整多轨混音。不是内置 Agent 工具，也不是视频合成或响度/真峰值检查；恢复副本拒绝该操作",
-    "zh-Hant": "唯讀規劃已儲存時間軸的 V2 連續音訊預覽工作階段；綁定專案、完整版本和來源身分，固定 2 秒混音區塊，共用整個工作階段的 96 MiB 應用程式額度。僅傳回中繼資料，不讀取媒體位元組、不解碼、不播放、不初始化時間軸、不寫入檔案或資料庫，不呼叫網路、模型或付費供應商。僅在明確播放操作後，由固定認證本機資源按需有界準備完整多軌混音。不是內建 Agent 工具，也不是影片合成或響度／真峰值檢查；復原副本拒絕此操作",
-    "en": "Read-only planning of a V2 continuous audio preview session for a saved timeline. Binds the project, full revision, and source identities; fixed 2-second mixed blocks share one 96 MiB application reservation for the entire session. Metadata only: no media-byte reads, decoding, playback, timeline initialization, file/database writes, network, model, or paid-provider calls. Only after an explicit playback gesture does a fixed authenticated local resource prepare complete multitrack mixes on demand within bounds. Not a built-in Agent tool, composed-video preview, or loudness/true-peak check; restored copies reject this operation",
-    "ja": "保存済みタイムラインの V2 連続音声プレビューセッションを読み取り専用で計画します。プロジェクト、完全なリビジョン、ソース識別情報に紐づけ、固定 2 秒のミックスブロックでセッション全体の 96 MiB アプリケーション予約枠を共有します。メタデータのみを返し、メディアバイトの読み取り、デコード、再生、タイムライン初期化、ファイルやデータベースへの書き込み、ネットワーク、モデル、有料プロバイダーの呼び出しは行いません。明示的な再生操作後に限り、固定の認証済みローカルリソースが完全なマルチトラックミックスを必要に応じて範囲内で準備します。組み込み Agent ツール、合成映像プレビュー、ラウドネス／トゥルーピーク検査ではありません。復元コピーでは拒否されます"
+    "zh-Hans": "只读规划已保存时间线的 V2 连续音频预览会话；绑定项目、完整版本和源身份，固定 2 秒混音块，共享全会话 96 MiB 应用额度。仅返回元数据，不读取媒体字节、不解码、不播放、不初始化时间线、不写文件或数据库，不调用网络、模型或付费供应商。仅在显式播放操作后，由固定认证本地资源按需有界准备完整多轨混音。不是内置 Mio 工具，也不是视频合成或响度/真峰值检查；恢复副本拒绝该操作",
+    "zh-Hant": "唯讀規劃已儲存時間軸的 V2 連續音訊預覽工作階段；綁定專案、完整版本和來源身分，固定 2 秒混音區塊，共用整個工作階段的 96 MiB 應用程式額度。僅傳回中繼資料，不讀取媒體位元組、不解碼、不播放、不初始化時間軸、不寫入檔案或資料庫，不呼叫網路、模型或付費供應商。僅在明確播放操作後，由固定認證本機資源按需有界準備完整多軌混音。不是內建 Mio 工具，也不是影片合成或響度／真峰值檢查；復原副本拒絕此操作",
+    "en": "Read-only planning of a V2 continuous audio preview session for a saved timeline. Binds the project, full revision, and source identities; fixed 2-second mixed blocks share one 96 MiB application reservation for the entire session. Metadata only: no media-byte reads, decoding, playback, timeline initialization, file/database writes, network, model, or paid-provider calls. Only after an explicit playback gesture does a fixed authenticated local resource prepare complete multitrack mixes on demand within bounds. Not a built-in Mio tool, composed-video preview, or loudness/true-peak check; restored copies reject this operation",
+    "ja": "保存済みタイムラインの V2 連続音声プレビューセッションを読み取り専用で計画します。プロジェクト、完全なリビジョン、ソース識別情報に紐づけ、固定 2 秒のミックスブロックでセッション全体の 96 MiB アプリケーション予約枠を共有します。メタデータのみを返し、メディアバイトの読み取り、デコード、再生、タイムライン初期化、ファイルやデータベースへの書き込み、ネットワーク、モデル、有料プロバイダーの呼び出しは行いません。明示的な再生操作後に限り、固定の認証済みローカルリソースが完全なマルチトラックミックスを必要に応じて範囲内で準備します。組み込み Mio ツール、合成映像プレビュー、ラウドネス／トゥルーピーク検査ではありません。復元コピーでは拒否されます"
   },
   "operation.timeline.export.capabilities": {
     "zh-Hans": "显式检查所选 MP4/H264 导出配置的本地编码能力；运行有界本地计算，不修改项目或导出，不调用供应商；结果绑定项目和时间线版本，实际导出会再次验证",

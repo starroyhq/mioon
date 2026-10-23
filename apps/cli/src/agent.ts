@@ -1,7 +1,7 @@
 import {open} from 'node:fs/promises';
 import path from 'node:path';
 import {ClientError,EXIT_CODES} from '@mioon/client';
-import {createAgentClient,AGENT_COMMAND_SCHEMAS,AGENT_CONTROL_COMMANDS,agentControlInputSchema,parseAgentInput,agentInputSchema} from '@mioon/client/agent';
+import {createAgentClient,AGENT_COMMAND_SCHEMAS,AGENT_CONTROL_COMMANDS,agentControlCommandInputSchema,parseAgentInput,agentInputSchema} from '@mioon/client/agent';
 import type {AgentControlCommand} from '@mioon/client/agent';
 import {readAgentKey} from './agent-key.ts';
 
@@ -10,7 +10,7 @@ const generic=new Set(['help','version','json','locale','input','input-file','re
 export const isAgentCommand=(words:readonly string[]):boolean=>words[0]==='agent'&&words[1]!=='authorization';
 export const canonicalAgentOperation=(operation:string):string=>operation==='agent.secret.set'?'agent.settings.secret.set':operation==='agent.secret.remove'?'agent.settings.secret.remove':operation;
 const fail=(message='Invalid Agent command arguments. Run agent --help.'):never=>{throw new ClientError('VALIDATION_ERROR',message);};
-const selected=(source:string)=>{const operation=canonicalAgentOperation(source);return operation==='agent.task.send'?AGENT_COMMAND_SCHEMAS[operation].omit({diagnostic:true}):Object.hasOwn(AGENT_COMMAND_SCHEMAS,operation)?AGENT_COMMAND_SCHEMAS[operation as keyof typeof AGENT_COMMAND_SCHEMAS]:operation.startsWith('agent.task.')&&Object.hasOwn(AGENT_CONTROL_COMMANDS,operation.slice('agent.task.'.length))?agentControlInputSchema:undefined;};
+const selected=(source:string)=>{const operation=canonicalAgentOperation(source);return operation==='agent.task.send'?AGENT_COMMAND_SCHEMAS[operation].omit({diagnostic:true}):Object.hasOwn(AGENT_COMMAND_SCHEMAS,operation)?AGENT_COMMAND_SCHEMAS[operation as keyof typeof AGENT_COMMAND_SCHEMAS]:operation.startsWith('agent.task.')&&Object.hasOwn(AGENT_CONTROL_COMMANDS,operation.slice('agent.task.'.length))?agentControlCommandInputSchema(operation.slice('agent.task.'.length) as AgentControlCommand):undefined;};
 export function validateAgentOptions(operation:string,options:Options):void{
  operation=canonicalAgentOperation(operation);const secret=operation==='agent.settings.secret.set',watch=['agent.task.watch','agent.task.events'].includes(operation),upload=operation==='agent.task.upload',diagnose=operation==='agent.diagnose';
  if(Object.hasOwn(options,'workspace-origin'))fail('Agent management commands do not support --workspace-origin; it is not an HTTP Origin override.');
@@ -68,6 +68,7 @@ export async function runAgentCommand(operation:string,input:Record<string,unkno
   case 'agent.policy.lookup':return client.policyLookup(input,request);
   case 'agent.task.list':return client.list(input,request);
   case 'agent.task.history':return client.history(input,request);
+  case 'agent.task.conversation':return client.conversation(input,request);
   case 'agent.task.status':return client.status(input,request);
   case 'agent.task.send':return client.send(input,request);
   case 'agent.task.lookup':return client.lookup(input,request);

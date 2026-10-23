@@ -45,7 +45,7 @@ test('Windows native offline CLI create/verify/restore/status preserves source a
   // restored roots require a protected DACL; parent durability still must flush.
   mkdirSync(parent);const backup=path.join(parent,'backup'),restored=path.join(parent,'restored');
   const created=success(cli(['create','--source',f.source,'--destination',backup]));
-  assert.equal(created.databaseSchemaVersion,52);assert.ok(existsSync(path.join(backup,'COMPLETE.json')));
+  assert.equal(created.databaseSchemaVersion,56);assert.ok(existsSync(path.join(backup,'COMPLETE.json')));
   const verified=success(cli(['verify','--directory',backup]));assert.equal(verified.backupId,created.backupId);
   const result=success(cli(['restore','--directory',backup,'--destination',restored]));
   assert.equal(result.sourceBackupId,created.backupId);
@@ -55,7 +55,7 @@ test('Windows native offline CLI create/verify/restore/status preserves source a
   assert.equal(hash(readFileSync(path.join(f.source,'workbench.sqlite'))),f.dbHash);
   for(const [root,file] of [[f.source,f.relative],[backup,`payload/${f.relative}`],[restored,f.relative]])assert.equal((await streamFile({file:path.join(root,file),root,private:true})).sha256,f.mediaHash);
   const db=new DatabaseSync(path.join(restored,'workbench.sqlite'),{readOnly:true});
-  try{assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion,53);}finally{db.close();}
+  try{assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion,57);}finally{db.close();}
   const finalHash=hash(readFileSync(path.join(restored,'workbench.sqlite')));
   failure(cli(['create','--source',f.source,'--destination',backup]),'WORKSPACE_BACKUP_DESTINATION_EXISTS');
   failure(cli(['restore','--directory',backup,'--destination',restored]),'WORKSPACE_RESTORE_DESTINATION_EXISTS');

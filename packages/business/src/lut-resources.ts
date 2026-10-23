@@ -25,7 +25,7 @@ export function assertLutReadProfile(schemaVersion:number):void {
 /** The verified restore-53 assembly is a separate generation. Preserve the
  * historical read gate above for callers bound to frozen restore profiles. */
 export function assertAgentTaskLutReadProfile(schemaVersion:number):void {
-  if(schemaVersion===53)return;
+  if(schemaVersion===53||schemaVersion===55||schemaVersion===57)return;
   assertLutReadProfile(schemaVersion);
 }
 function input<T>(schema:{safeParse(value:unknown):{success:true;data:T}|{success:false}},value:unknown):T {

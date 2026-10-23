@@ -9,10 +9,12 @@ import type { FrameAsset, FrameExtractionState, FrameTask } from './frame-extrac
 type FrameController = ReturnType<typeof createFrameExtractionController>;
 type FrameLiveToken = {controller: FrameController; visible: boolean; projectId: string | null; sourceScope: string | null};
 import './frame-extraction.css';
+import type {AgentTaskRecoveryIntent} from './agent-task-recovery-location.ts';
 
 const active = (task: FrameTask): boolean => ['queued', 'running', 'persisting'].includes(task.state);
-export default function FrameExtractionPanel({ controller, visible = true }: {controller: FrameController; visible?: boolean}) {
+export default function FrameExtractionPanel({ controller, visible = true, revealTask = null }: {controller: FrameController; visible?: boolean; revealTask?: AgentTaskRecoveryIntent | null}) {
   const { t, renderMessage, formatNumber } = useI18n();
+  const root = useRef<HTMLElement | null>(null), attempted = useRef<string | null>(null);
   const ancestorVisible = useWorkspaceVisibility();
   visible = visible && ancestorVisible;
   const [snapshot, setSnapshot] = useState<FrameExtractionState>(() => controller.getSnapshot());
@@ -37,10 +39,17 @@ export default function FrameExtractionPanel({ controller, visible = true }: {co
     if (!binding || !binding.visible || binding.controller !== controller || binding.projectId !== capturedProject || binding.sourceScope !== capturedScope || !current.visible || current.projectId !== capturedProject || current.sourceScope !== capturedScope) return;
     return action();
   };
+  useEffect(() => {
+    if (!revealTask || !visible || !state.visible || state.blocked || state.projectId !== revealTask.projectId || !revealTask.current() || state.loading || attempted.current === revealTask.key) return;
+    attempted.current = revealTask.key; void controller.focusTask(revealTask.taskId, revealTask.current);
+  }, [controller, revealTask, visible, state.visible, state.blocked, state.projectId, state.sourceScope, state.loading]);
+  useEffect(() => {
+    if (revealTask && visible && revealTask.current() && state.focusedTaskId === revealTask.taskId) root.current?.querySelector<HTMLElement>(`[data-task-id="${revealTask.taskId}"]`)?.scrollIntoView?.({block:'nearest'});
+  }, [revealTask, visible, state.focusedTaskId, state.tasks]);
   const busy = !visible || frameCaptureBusy(state);
   const source = state.sourceAsset;
   const resultAsset = (task: FrameTask): FrameAsset | undefined => state.assets.find(asset => asset.projectId === task.projectId && asset.id === task.result?.assetId && asset.sha256 === task.result?.sha256 && asset.mimeType === 'image/png' && asset.provenance === 'extracted-frame');
-  return <section className="frame-extraction-panel" aria-label={t('timeline.frame.title')} data-testid="frame-extraction-panel">
+  return <section ref={root} className="frame-extraction-panel" aria-label={t('timeline.frame.title')} data-testid="frame-extraction-panel">
     <div className="frame-extraction-heading"><h3>{t('timeline.frame.title')}</h3><Badge className="small-badge neutral">{t('timeline.frame.local')}</Badge></div>
     <p className="input-hint">{t('timeline.frame.timebase')}</p>
     <p className="frame-extraction-profile" data-testid="frame-extraction-profile">{t('timeline.frame.profile', { edge: FRAME_PROFILE.maxEdge })}</p>
