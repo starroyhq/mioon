@@ -1,6 +1,7 @@
+import {randomUUID} from 'node:crypto';
 import {providerError} from '../providers/live-common.ts';
 
-export type ConfiguredVideoFamily = 'runway'|'ark'|'veo'|'minimax'|'vidu'|'kling'|'wan';
+export type ConfiguredVideoFamily = 'runway'|'ark'|'veo'|'minimax'|'vidu'|'kling'|'wan'|'compatible';
 export interface VideoAdapterSelection {
   providerId: ConfiguredVideoFamily;
   model: string;
@@ -12,7 +13,7 @@ export interface VideoAdapterInput {
   prompt: string; aspectRatio: string; duration: number; parameters: Record<string, unknown>;
   images: VideoAdapterImage[]; subjectReference: boolean;
 }
-export interface VideoSubmissionRequest {path: string; body: Record<string, unknown>; headers?: Record<string,string>}
+export interface VideoSubmissionRequest {path: string; body?: Record<string, unknown>; raw?: {bytes: Uint8Array; contentType: string}; headers?: Record<string,string>}
 export interface ConfiguredVideoTask {
   id: string; status: 'running'|'succeeded'|'failed'; progress?: number; url?: string; externalId?: string;
 }
@@ -22,6 +23,27 @@ const TASK_ID=/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 const RUNWAY_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RUNWAY_RATIOS: Readonly<Record<string,string>>={'9:16':'720:1280','16:9':'1280:720','1:1':'960:960','3:4':'832:1104','4:3':'1104:832','21:9':'1584:672'};
 const invalidTask=()=>providerError('INVALID_PROVIDER_RESPONSE','The provider response did not match the existing task.',{retryable:true});
+
+/** OpenAI Videos sizes are WIDTHxHEIGHT strings. The resolution label names the
+ * short edge; both edges are kept even, as video encoders require. */
+export function compatibleVideoSize(aspectRatio: string,resolution: string): string {
+  const short=Number(/^([1-9][0-9]{2,3})p$/i.exec(resolution)?.[1]),[a,b]=aspectRatio.split(':').map(Number);
+  if(!Number.isInteger(short)||!Number.isInteger(a)||!Number.isInteger(b)||!a||!b)throw providerError('UNSUPPORTED_CAPABILITY','The output size cannot be derived from this aspect ratio and resolution.');
+  const long=(edge: number)=>Math.round(edge/2)*2;
+  return a===b?`${short}x${short}`:a<b?`${short}x${long(short*b/a)}`:`${long(short*a/b)}x${short}`;
+}
+/** multipart/form-data exactly like the official client: text fields, then the
+ * optional first-frame file as input_reference. The boundary is random per call. */
+export function compatibleVideoForm(fields: Readonly<Record<string,string>>,image?: VideoAdapterImage,boundary=`mioon${randomUUID().replaceAll('-','')}`): {bytes: Uint8Array; contentType: string} {
+  const parts: Buffer[]=[];
+  for(const [name,value] of Object.entries(fields))parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,'utf8'));
+  if(image){
+    const extension=image.mimeType==='image/jpeg'?'jpg':image.mimeType==='image/webp'?'webp':'png';
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="input_reference"; filename="reference.${extension}"\r\nContent-Type: ${image.mimeType}\r\n\r\n`,'utf8'),Buffer.from(image.base64,'base64'),Buffer.from('\r\n','utf8'));
+  }
+  parts.push(Buffer.from(`--${boundary}--\r\n`,'utf8'));
+  return {bytes:Buffer.concat(parts),contentType:`multipart/form-data; boundary=${boundary}`};
+}
 
 export function assertConfiguredTaskId(selection: VideoAdapterSelection,id: unknown): asserts id is string {
   if(typeof id!=='string')throw providerError('INVALID_PROVIDER_TASK_ID','The provider task identity is invalid.');
@@ -42,6 +64,7 @@ export function configuredSubmission(selection: VideoAdapterSelection,input: Vid
     case 'minimax':return {path:'/v2/video_generation',body:{model,content:[{type:'text',text:prompt},...(first?[{type:'image_url',image_url:{url:uri(first)},role:'first_frame'}]:[])],duration,resolution,ratio:first?'adaptive':aspectRatio}};
     case 'vidu':return {path:first?'/ent/v2/img2video':'/ent/v2/text2video',body:{model,prompt,duration,resolution,audio:false,off_peak:false,...(first?{images:[uri(first)],is_rec:false}:{aspect_ratio:aspectRatio})}};
     case 'kling':return {path:`/${first?'image-to-video':'text-to-video'}/${model}`,body:{...(first?{contents:[{type:'prompt',text:prompt},{type:'first_frame',url:first.base64}]}:{prompt}),settings:{resolution,duration,audio:selection.audio==='on'||selection.audio==='optional'&&parameters.generateAudio===true?'native':'off',multi_shot:false,...(first?{}:{aspect_ratio:aspectRatio})},options:{external_task_id:requestId}}};
+    case 'compatible':return {path:'/videos',raw:compatibleVideoForm({model,prompt,seconds:String(duration),size:compatibleVideoSize(aspectRatio,resolution)},first)};
     case 'wan':return {path:'/services/aigc/video-generation/video-synthesis',headers:{'X-DashScope-Async':'enable'},body:{model,input:{prompt,...(first?{media:[{type:'first_frame',url:uri(first)}]}:{})},parameters:{resolution,duration,prompt_extend:false,watermark:false,...(parameters.seed===undefined?{}:{seed:parameters.seed}),...(first?{}:{ratio:aspectRatio})}}};
   }
 }
@@ -65,6 +88,7 @@ export function configuredTaskPath(selection: VideoAdapterSelection,id: string):
     case 'vidu':return `/ent/v2/tasks/${id}/creations`;
     case 'kling':return `/tasks?task_ids=${encodeURIComponent(id)}`;
     case 'wan':return `/tasks/${id}`;
+    case 'compatible':return `/videos/${id}`;
   }
 }
 
@@ -110,6 +134,11 @@ export function configuredTask(selection: VideoAdapterSelection,id: string,respo
       // UNKNOWN includes expired/unavailable observations and does not establish
       // a definitive generation failure that would authorize another paid POST.
       return statusTask(id,{...output,id:output.task_id},'task_status',['PENDING','RUNNING'],'SUCCEEDED',['FAILED','CANCELED'],output.video_url);
+    }
+    case 'compatible':{
+      // Progress is 0-100 in the OpenAI shape; statusTask expects a fraction.
+      const progress=typeof response.progress==='number'&&Number.isFinite(response.progress)?response.progress/100:undefined;
+      return statusTask(id,{...response,progress},'status',['queued','in_progress'],'completed',['failed','cancelled'],undefined);
     }
     case 'veo':{
       if(response.name!==id||response.done!==undefined&&typeof response.done!=='boolean')throw invalidTask();

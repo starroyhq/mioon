@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {VIDEO_PROVIDER_IDS,VIDEO_SECRET_NAMESPACE,VIDEO_SETTINGS_LIMITS,videoConnectionConfigurationSchema,videoSettingsUpdateSchema,videoSecretUpdateSchema,
-  parseVideoBinding,resolveVideoEndpoint,videoOutputHosts} from '../../../contracts/src/video-providers.ts';
+  parseVideoBinding,videoConnectionEndpoint,videoOutputHosts} from '../../../contracts/src/video-providers.ts';
 import type {VideoConnectionConfiguration,VideoConnectionView,VideoSettingsSnapshot,VideoSettingsUpdate,VideoStorage,VideoExecutionBinding,VideoSecretUpdate,VideoProviderId} from '../../../contracts/src/video-providers.ts';
 import {createVideoSettingsFile} from './settings-file.ts';
 
@@ -14,7 +14,9 @@ export interface VideoSettingsOptions {directory:string;privateRoot?:string;secr
 export interface VideoSettingsService {
  get():Promise<VideoSettingsSnapshot>;put(input:unknown):Promise<VideoSettingsSnapshot>;list():VideoConnectionView[];
  select(connectionId:string,configurationRevision:number,modelEntryId:string):VideoExecutionBinding;
- assertBinding(binding:unknown):void;acquire(binding:unknown,signal?:AbortSignal):Promise<string>;close():Promise<void>;
+ assertBinding(binding:unknown):void;acquire(binding:unknown,signal?:AbortSignal):Promise<string>;
+ /** Saved key of a compatible connection's current revision, with the exact origin it is bound to. */
+ acquireCompatible(connectionId:string,configurationRevision:number,signal?:AbortSignal):Promise<{endpoint:string;value:string}>;close():Promise<void>;
 }
 const messages:Readonly<Record<string,readonly[number,string]>>=Object.freeze({
  VIDEO_SETTINGS_VALIDATION:[400,'视频供应商配置格式无效。'],VIDEO_SETTINGS_CONFLICT:[409,'视频供应商配置已改变，请重新读取后确认。'],
@@ -46,10 +48,11 @@ function parseRevision(value:unknown):Revision {
 }
 function parseCredential(value:unknown):Credential {
  if(!exact(value,['ref','connectionId','providerId','region','workspaceId','endpoint','encrypted'])||!uuid(value.ref)||!uuid(value.connectionId)||!VIDEO_PROVIDER_IDS.includes(value.providerId as VideoProviderId)||typeof value.region!=='string'||typeof value.workspaceId!=='string'||value.encrypted!==null&&!validCiphertext(value.encrypted))return fail('VIDEO_SETTINGS_CORRUPT');
- try{if(value.endpoint!==resolveVideoEndpoint(value.providerId as VideoProviderId,value.region,value.workspaceId))throw Error();}catch{return fail('VIDEO_SETTINGS_CORRUPT');}
+ // A compatible credential is bound to its exact reviewed base URL; an official one to its fixed endpoint.
+ try{if(typeof value.endpoint!=='string'||value.endpoint!==videoConnectionEndpoint({providerId:value.providerId as VideoProviderId,region:value.region,workspaceId:value.workspaceId,...(value.providerId==='compatible'?{baseUrl:value.endpoint}:{})}))throw Error();}catch{return fail('VIDEO_SETTINGS_CORRUPT');}
  return {ref:value.ref,connectionId:value.connectionId,providerId:value.providerId as VideoProviderId,region:value.region,workspaceId:value.workspaceId,endpoint:value.endpoint as string,encrypted:value.encrypted as string|null};
 }
-const recipient=(value:Pick<VideoConnectionConfiguration,'id'|'providerId'|'region'|'workspaceId'>)=>[value.id,value.providerId,value.region,value.workspaceId,resolveVideoEndpoint(value.providerId,value.region,value.workspaceId)];
+const recipient=(value:Pick<VideoConnectionConfiguration,'id'|'providerId'|'region'|'workspaceId'|'baseUrl'>)=>[value.id,value.providerId,value.region,value.workspaceId,videoConnectionEndpoint(value)];
 const credentialRecipient=(value:Credential)=>[value.connectionId,value.providerId,value.region,value.workspaceId,value.endpoint];
 export function validateVideoSettingsEnvelope(value:unknown):VideoSettingsEnvelope {
  try{
@@ -95,8 +98,15 @@ export async function createVideoSettings({directory,privateRoot=directory,secre
  const view=(entry:Revision):VideoConnectionView=>{const selected=material(entry.credentialRef);return {configuration:copy(entry.configuration),revision:entry.revision,credentialRef:entry.credentialRef,secret:{configured:selected!=='none',storage:selected},credentials:state.credentials.filter(item=>item.connectionId===entry.configuration.id).map(item=>{const selected=material(item.ref);return {ref:item.ref,region:item.region,endpoint:item.endpoint,configured:selected!=='none',storage:selected};})};};
  const snapshot=():VideoSettingsSnapshot=>({revision:state.revision,connections:state.connections.map(view),storage:capabilities()});
  const ensureStable=()=>{check();if(pendingPuts)fail('VIDEO_SETTINGS_CONFLICT');};
- const binding=(entry:Revision,modelEntryId:string):VideoExecutionBinding=>{const model=entry.configuration.models.find(item=>item.id===modelEntryId);if(!model||!entry.credentialRef)return fail('VIDEO_SETTINGS_NOT_CONFIGURED');return parseVideoBinding({version:1,connectionId:entry.configuration.id,configurationRevision:entry.revision,providerId:entry.configuration.providerId,region:entry.configuration.region,workspaceId:entry.configuration.workspaceId,endpoint:resolveVideoEndpoint(entry.configuration.providerId,entry.configuration.region,entry.configuration.workspaceId),credentialRef:entry.credentialRef,model:copy(model),outputHosts:copy(entry.configuration.outputHosts)});};
+ const binding=(entry:Revision,modelEntryId:string):VideoExecutionBinding=>{const model=entry.configuration.models.find(item=>item.id===modelEntryId);if(!model||!entry.credentialRef)return fail('VIDEO_SETTINGS_NOT_CONFIGURED');return parseVideoBinding({version:1,connectionId:entry.configuration.id,configurationRevision:entry.revision,providerId:entry.configuration.providerId,region:entry.configuration.region,workspaceId:entry.configuration.workspaceId,endpoint:videoConnectionEndpoint(entry.configuration),credentialRef:entry.credentialRef,model:copy(model),outputHosts:copy(entry.configuration.outputHosts)});};
  const assertBinding=(input:unknown):VideoExecutionBinding=>{ensureStable();let selected:VideoExecutionBinding;try{selected=parseVideoBinding(input);}catch{return fail('VIDEO_BINDING_INVALID');}const historical=state.history.find(item=>item.configuration.id===selected.connectionId&&item.revision===selected.configurationRevision);if(!historical||!same(binding(historical,selected.model.id),selected))return fail('VIDEO_BINDING_INVALID');if(material(selected.credentialRef)==='none')return fail('VIDEO_SETTINGS_NOT_CONFIGURED');return selected;};
+ async function secretOf(credential:Credential,requestSignal?:AbortSignal):Promise<string|undefined> {
+  if(!credential.encrypted)return sessions.get(credential.ref);
+  await refresh(requestSignal);check();if(!capabilities().persistentAvailable||!secretCodec)return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');
+  const plaintext=validateVideoSecretPlaintext(await bounded(()=>secretCodec.decrypt(credential.encrypted!),operationSignal(requestSignal)));
+  if(plaintext.credentialRef!==credential.ref||!same(credentialRecipient(credential),[plaintext.connectionId,plaintext.providerId,plaintext.region,plaintext.workspaceId,plaintext.endpoint]))return fail('VIDEO_SETTINGS_CORRUPT');
+  return plaintext.value;
+ }
  async function storeSecret(nextSessions:Map<string,string>,credential:Credential,secret:Extract<VideoSecretUpdate,{action:'replace'}>) {
   credential.encrypted=null;nextSessions.delete(credential.ref);
   if(secret.storage==='session'){nextSessions.set(credential.ref,secret.value);return;}
@@ -109,7 +119,16 @@ export async function createVideoSettings({directory,privateRoot=directory,secre
   list(){ensureStable();return state.connections.map(view);},
   select(connectionId:string,configurationRevision:number,modelEntryId:string){ensureStable();const entry=state.connections.find(item=>item.configuration.id===connectionId);if(!entry||entry.revision!==configurationRevision)return fail('VIDEO_SETTINGS_CONFLICT');const model=entry.configuration.models.find(item=>item.id===modelEntryId);if(!entry.configuration.enabled||entry.configuration.archived||!model?.enabled||model.archived)return fail('VIDEO_SETTINGS_DISABLED');const selected=binding(entry,modelEntryId);if(!videoOutputHosts(selected).length)return fail('VIDEO_SETTINGS_NOT_CONFIGURED');assertBinding(selected);return selected;},
   assertBinding(input:unknown){assertBinding(input);},
-  acquire(input:unknown,requestSignal?:AbortSignal){return schedule(async()=>{const selected=assertBinding(input),credential=state.credentials.find(item=>item.ref===selected.credentialRef)!;if(requestSignal?.aborted)return fail('VIDEO_SETTINGS_CLOSED');let value=sessions.get(credential.ref);if(credential.encrypted){await refresh(requestSignal);check();if(!capabilities().persistentAvailable||!secretCodec)return fail('VIDEO_SETTINGS_STORAGE_UNAVAILABLE');const plaintext=validateVideoSecretPlaintext(await bounded(()=>secretCodec.decrypt(credential.encrypted!),operationSignal(requestSignal)));if(plaintext.credentialRef!==credential.ref||!same(credentialRecipient(credential),[plaintext.connectionId,plaintext.providerId,plaintext.region,plaintext.workspaceId,plaintext.endpoint]))return fail('VIDEO_SETTINGS_CORRUPT');value=plaintext.value;}assertBinding(selected);if(requestSignal?.aborted)return fail('VIDEO_SETTINGS_CLOSED');if(!value)return fail('VIDEO_SETTINGS_NOT_CONFIGURED');return value;});},
+  acquire(input:unknown,requestSignal?:AbortSignal){return schedule(async()=>{const selected=assertBinding(input),credential=state.credentials.find(item=>item.ref===selected.credentialRef)!;if(requestSignal?.aborted)return fail('VIDEO_SETTINGS_CLOSED');const value=await secretOf(credential,requestSignal);assertBinding(selected);if(requestSignal?.aborted)return fail('VIDEO_SETTINGS_CLOSED');if(!value)return fail('VIDEO_SETTINGS_NOT_CONFIGURED');return value;});},
+  acquireCompatible(connectionId:string,configurationRevision:number,requestSignal?:AbortSignal){return schedule(async()=>{
+   ensureStable();const entry=state.connections.find(item=>item.configuration.id===connectionId);
+   if(!entry||entry.revision!==configurationRevision)return fail('VIDEO_SETTINGS_CONFLICT');if(entry.configuration.providerId!=='compatible')return fail('VIDEO_SETTINGS_VALIDATION');
+   const credential=entry.credentialRef?state.credentials.find(item=>item.ref===entry.credentialRef):undefined;if(!credential)return fail('VIDEO_SETTINGS_NOT_CONFIGURED');
+   const value=await secretOf(credential,requestSignal);if(requestSignal?.aborted)return fail('VIDEO_SETTINGS_CLOSED');
+   // The key leaves only for the origin it was saved with, and only if nothing changed meanwhile.
+   if(state.connections.find(item=>item.configuration.id===connectionId)?.revision!==configurationRevision||credential.endpoint!==videoConnectionEndpoint(entry.configuration))return fail('VIDEO_SETTINGS_CONFLICT');
+   if(!value)return fail('VIDEO_SETTINGS_NOT_CONFIGURED');return {endpoint:credential.endpoint,value};
+  });},
   put(input:unknown){let update:VideoSettingsUpdate;try{if(Buffer.byteLength(JSON.stringify(input))>VIDEO_SETTINGS_LIMITS.updateBytes)throw Error();update=videoSettingsUpdateSchema.parse(input);if(!Number.isSafeInteger(update.expectedRevision))throw Error();}catch{return Promise.reject(videoSettingsError('VIDEO_SETTINGS_VALIDATION'));}pendingPuts++;return schedule(async()=>{
    if(update.expectedRevision!==state.revision)return fail('VIDEO_SETTINGS_CONFLICT');if(state.revision===Number.MAX_SAFE_INTEGER)return fail('VIDEO_SETTINGS_SAVE_FAILED');
    const candidate=copy(state),nextSessions=new Map(sessions);candidate.revision++;
@@ -120,7 +139,7 @@ export async function createVideoSettings({directory,privateRoot=directory,secre
     if(!sameRecipient&&ref&&secret.action==='keep'&&material(ref)!=='none')return fail('VIDEO_SETTINGS_CONFLICT');
     if(secret.action==='remove'&&ref){const credential=candidate.credentials.find(item=>item.ref===ref)!;credential.encrypted=null;nextSessions.delete(ref);}
     if(!sameRecipient)ref=null;
-    if(secret.action==='replace'){if(candidate.credentials.length>=VIDEO_SETTINGS_LIMITS.credentials)return fail('VIDEO_SETTINGS_VALIDATION');const credential:Credential={ref:randomUUID(),connectionId:configuration.id,providerId:configuration.providerId,region:configuration.region,workspaceId:configuration.workspaceId,endpoint:resolveVideoEndpoint(configuration.providerId,configuration.region,configuration.workspaceId),encrypted:null};candidate.credentials.push(credential);ref=credential.ref;await storeSecret(nextSessions,credential,secret);}
+    if(secret.action==='replace'){if(candidate.credentials.length>=VIDEO_SETTINGS_LIMITS.credentials)return fail('VIDEO_SETTINGS_VALIDATION');const credential:Credential={ref:randomUUID(),connectionId:configuration.id,providerId:configuration.providerId,region:configuration.region,workspaceId:configuration.workspaceId,endpoint:videoConnectionEndpoint(configuration),encrypted:null};candidate.credentials.push(credential);ref=credential.ref;await storeSecret(nextSessions,credential,secret);}
     const entry:Revision={configuration:copy(configuration),revision:(current?.revision??0)+1,credentialRef:ref};if(current)candidate.connections[candidate.connections.indexOf(current)]=entry;else candidate.connections.push(entry);candidate.history.push(copy(entry));
    }
    check();validateVideoSettingsEnvelope(candidate);try{await persistence.save(candidate);}catch{try{const actual=await bounded(()=>persistence.load());if(!same(actual??{version:1,namespace:VIDEO_SECRET_NAMESPACE,revision:0,connections:[],history:[],credentials:[]},state))throw Error();}catch{fault=videoSettingsError('VIDEO_SETTINGS_SAVE_FAILED');sessions.clear();}return fail('VIDEO_SETTINGS_SAVE_FAILED');}

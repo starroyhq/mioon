@@ -5,9 +5,10 @@
 Open **Settings → Model services** to add named connections for Ark Seedance,
 Google Veo, MiniMax, Vidu, Kling and Alibaba Wan. Each connection has
 its own regional credentials and model directory. The application derives API
-addresses from official region templates; third-party relays, arbitrary API
-origins and executable provider scripts are not supported. Wan also accepts an
-official workspace ID. Multiple accounts of the same provider remain separate.
+addresses from official region templates. The one exception is a **compatible
+service** (below), which names its own https base URL; executable provider
+scripts are not supported. Wan also accepts an official workspace ID. Multiple
+accounts of the same provider remain separate.
 
 Runway is omitted from the UI's connection and generation choices. Its stored
 configuration and adapter remain readable for historical task recovery; removing
@@ -76,6 +77,57 @@ An unreadable or invalid video directory disables its configured connections and
 shows a persistent status notice; project loading, local editing and legacy
 environment providers remain available. Refreshing after recovery clears the
 notice. Authentication failures still invalidate the session.
+
+## Compatible services, OpenAI video format (2026-10-23)
+
+Choose **Compatible service (OpenAI video format)** when adding a connection to use
+a service or aggregator that implements the OpenAI Videos API shape. Protocol
+template `openai-video-v1`:
+
+- create: `POST {base}/videos`, `multipart/form-data` with `model`, `prompt`,
+  `seconds` and `size` (`WIDTHxHEIGHT`, derived from the aspect ratio and the
+  short-edge resolution, e.g. 9:16 at 720p is `720x1280`), plus the optional first
+  frame as `input_reference`;
+- status: `GET {base}/videos/{id}`; `queued`/`in_progress` are running,
+  `completed` succeeded, `failed`/`cancelled` failed, `progress` is 0-100;
+- result: `GET {base}/videos/{id}/content` with the key. A redirect may only reach
+  a declared output host, and authentication is dropped on every redirect.
+
+Base URL and key:
+- The base URL must be https with a DNS host name and a plain path: no IP literal,
+  port, query, fragment or account part. It is saved normalized (lower-case host,
+  no trailing slash).
+- The key is bound to that exact base URL. Changing the base URL requires entering
+  a new key; the old key is never sent to the new address.
+- The service host is always an allowed output host. Other CDN hosts must be added
+  under **Other result hosts**.
+
+Network:
+- Every request to the service and to its result hosts goes through a pinned
+  transport. DNS answers must all be public addresses. The socket is pinned to the
+  checked address and TLS is verified for the original host name.
+- Nothing is written until the pinned peer is confirmed. There is no proxy,
+  environment variable, pooled agent or automatic redirect.
+- A request that provably never left the process fails plainly (it can be retried
+  by hand without a duplicate charge). An ambiguous submission still becomes
+  "submission unknown" and is never resubmitted automatically.
+
+**Test connection** (`POST /api/video-providers/compatible-check`, private route
+like the settings route):
+- It reads `GET {base}/models` with either the typed draft key (sent only to the
+  typed base URL) or the saved key of the current revision (sent only to the base
+  URL it was saved with).
+- It never creates a video, never follows a redirect and returns only an outcome:
+  `ok`, `unauthorized`, `unsupported` (no model list), `http_error`, `denied`
+  (private or local address) or `unreachable`, plus the HTTP status.
+
+Limits of this increment:
+- Text-to-video and first-frame only.
+- No audio switch: the service decides.
+- No remote cancellation or reconciliation.
+- Platform presets that adjust paths and fields for specific aggregators are
+  **not implemented yet**. Each needs a real-account check before it is offered.
+- Like the other UI protocols, the template is offline tested, not live verified.
 
 The notes below describe the original environment-configured adapter baseline;
 their enable flags and image approval lists still apply to that legacy path.

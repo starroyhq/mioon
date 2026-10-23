@@ -52,6 +52,21 @@ function reverseReviewedCli(file,bytes){
  for(const inverse of delta.inverse){assert.equal(inverse.occurrences,1);assert.ok(inverse.after.length>0);assert.equal(source.split(inverse.after).length-1,1,label);source=source.replace(inverse.after,inverse.before);}
  const previous=Buffer.from(source);assert.equal(previous.byteLength,delta.beforeBytes,label);assert.equal(sha(previous),delta.beforeSha256,label);return previous;
 }
+// The compatible video service (OpenAI video format) adds one provider ID to
+// generation.submit and to its connection-only rule. Reverse exactly these two
+// unique additions before the unchanged schema52 pin; any other byte still fails.
+const reviewedCompatibleVideoInverses=Object.freeze({
+ 'packages/contracts/src/index.mjs':Object.freeze([
+  {before:"providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan']),",after:"providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan','compatible']),"},
+  {before:"!has&&['kling','wan'].includes(value.providerId)",after:"!has&&['kling','wan','compatible'].includes(value.providerId)"},
+ ]),
+});
+function reverseReviewedCompatibleVideo(file,bytes){
+ const inverses=reviewedCompatibleVideoInverses[file];if(!inverses)return bytes;
+ let source=bytes.toString('utf8');
+ for(const inverse of inverses){assert.equal(source.split(inverse.after).length-1,1,`Baseline dependency changed: ${file}; reviewed compatible-video delta`);source=source.replace(inverse.after,inverse.before);}
+ return Buffer.from(source);
+}
 // Deterministic drift detection: every mapped legacy key pins the current
 // whole-body hash in all environments, and additionally pins an esbuild
 // type-erased body hash (tolerates erasable type-only edits). The esbuild
@@ -68,7 +83,7 @@ function assertPinnedCurrent(file,read=null){
  const prior=reviewed??mapping,next=schema52RuntimeMap[file];
  if(next){assert.equal(next.currentPath,mapping.currentPath);assert.equal(next.previousCurrentSha256,prior.currentSha256);assert.equal(next.previousTypeErasedSha256,prior.typeErasedSha256);}
  const pin=next??prior;
- const text=reverseReviewedCli(file,Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath)))).toString();
+ const text=reverseReviewedCompatibleVideo(file,reverseReviewedCli(file,Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))))).toString();
  assert.equal(sha(text),pin.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
  const erased=eraseSource(text);
  if(erased!==null)assert.equal(sha(erased),pin.typeErasedSha256,`${file}: deterministic type-erased current body`);
@@ -315,6 +330,22 @@ test('reviewed loudness-range bytes are pinned through schema52 and reject chang
  }
 });
 
+test('reviewed compatible-video bytes are pinned through schema52 and reject changed, duplicate or unknown source bytes',()=>{
+ for(const [file,inverses]of Object.entries(reviewedCompatibleVideoInverses)){
+  const source=fs.readFileSync(path.join(repo,currentPath(file)),'utf8');
+  assertPinnedCurrent(file);
+  for(const inverse of inverses){
+   assert.equal(source.split(inverse.after).length-1,1,`${file}: unique reviewed compatible-video bytes`);assert.equal(source.split(inverse.before).length-1,0,`${file}: predecessor snippet replaced`);
+   for(const changed of [
+    source.replace(inverse.after,inverse.after+' '),
+    source.replace(inverse.after,inverse.after+inverse.after),
+    source.replace(inverse.after,''),
+    source.replace(inverse.after,inverse.before),
+    source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n',
+   ])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
+  }
+ }
+});
 test('frozen validator loader rejects changed historical source before import',async()=>{
  const changed=plain(baseline);changed.sources['packages/business/src/db.mjs'].text+='\n// deliberate drift';
  await assert.rejects(loadFrozenValidators(changed),/Baseline dependency changed: packages\/business\/src\/db\.mjs/u);
