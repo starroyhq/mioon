@@ -1648,16 +1648,16 @@ const shellCoreMessages = {
     "ja": "編集"
   },
   "shell.agentChat": {
-    "zh-Hans": "Agent 文字对话",
-    "zh-Hant": "Agent 文字對話",
-    "en": "Agent chat",
-    "ja": "Agent チャット"
+    "zh-Hans": "Mio 文字对话",
+    "zh-Hant": "Mio 文字對話",
+    "en": "Mio chat",
+    "ja": "Mio チャット"
   },
   "shell.agentConnections": {
-    "zh-Hans": "Agent 连接设置",
-    "zh-Hant": "Agent 連線設定",
-    "en": "Agent connection settings",
-    "ja": "Agent 接続設定"
+    "zh-Hans": "Mio 连接设置",
+    "zh-Hant": "Mio 連線設定",
+    "en": "Mio connection settings",
+    "ja": "Mio 接続設定"
   },
   "shell.regionGuide": {
     "zh-Hans": "区域说明",
@@ -2038,10 +2038,10 @@ const shellCoreMessages = {
     "ja": "プロパティ"
   },
   "shell.inspectorTabs": {
-    "zh-Hans": "属性、Agent、图像、交付检查与任务",
-    "zh-Hant": "屬性、Agent、圖像、交付檢查與工作",
-    "en": "Properties, Agent, Images, Delivery checks, and Tasks",
-    "ja": "プロパティ、Agent、画像、納品チェック、タスク"
+    "zh-Hans": "属性、Mio、图像、交付检查与任务",
+    "zh-Hant": "屬性、Mio、圖像、交付檢查與工作",
+    "en": "Properties, Mio, Images, Delivery checks, and Tasks",
+    "ja": "プロパティ、Mio、画像、納品チェック、タスク"
   },
   "shell.rightWorkspace": {
     "zh-Hans": "右侧工作区",
@@ -2086,10 +2086,10 @@ const shellCoreMessages = {
     "ja": "復元ブランチでは新たなバックアップを作成できません"
   },
   "shell.restoredAgentHistory": {
-    "zh-Hans": "Agent 历史保留，执行暂不可用",
-    "zh-Hant": "Agent 歷程已保留，暫時無法執行",
-    "en": "Agent history retained; execution unavailable",
-    "ja": "Agent 履歴は保持されていますが、実行は利用できません"
+    "zh-Hans": "Mio 历史保留，执行暂不可用",
+    "zh-Hant": "Mio 歷程已保留，暫時無法執行",
+    "en": "Mio history retained; execution unavailable",
+    "ja": "Mio 履歴は保持されていますが、実行は利用できません"
   },
   "shell.restoredImageHistory": {
     "zh-Hans": "图像与 Comfy 历史保留，执行暂不可用",
@@ -2218,10 +2218,10 @@ const shellCoreMessages = {
     "ja": "バージョン {number} を選択"
   },
   "shell.confirm.unsentBoth": {
-    "zh-Hans": "Agent 和图像工坊都有未发送的草稿。切换项目会放弃草稿和属性面板中未保存的修改；已接受的任务可能继续。继续切换？",
-    "zh-Hant": "Agent 與圖像工坊皆有尚未傳送的草稿。切換專案會放棄草稿與屬性面板中尚未儲存的修改；已接受的工作可能繼續。是否繼續切換？",
-    "en": "Agent and the image workshop both have unsent drafts. Switching projects discards these drafts and unsaved properties changes. Accepted tasks may continue. Switch projects?",
-    "ja": "Agent と画像ワークショップに未送信の下書きがあります。プロジェクトを切り替えると下書きとプロパティの未保存の変更は破棄されます。受理済みタスクは続行する可能性があります。切り替えますか？"
+    "zh-Hans": "Mio 和图像工坊都有未发送的草稿。切换项目会放弃草稿和属性面板中未保存的修改；已接受的任务可能继续。继续切换？",
+    "zh-Hant": "Mio 與圖像工坊皆有尚未傳送的草稿。切換專案會放棄草稿與屬性面板中尚未儲存的修改；已接受的工作可能繼續。是否繼續切換？",
+    "en": "Mio and the image workshop both have unsent drafts. Switching projects discards these drafts and unsaved properties changes. Accepted tasks may continue. Switch projects?",
+    "ja": "Mio と画像ワークショップに未送信の下書きがあります。プロジェクトを切り替えると下書きとプロパティの未保存の変更は破棄されます。受理済みタスクは続行する可能性があります。切り替えますか？"
   },
   "shell.confirm.unsentImage": {
     "zh-Hans": "图像工坊有未发送的草稿。切换项目会放弃草稿和属性面板中未保存的修改；已接受的任务可能继续。继续切换？",
@@ -2230,10 +2230,10 @@ const shellCoreMessages = {
     "ja": "画像ワークショップに未送信の下書きがあります。プロジェクトを切り替えると下書きとプロパティの未保存の変更は破棄されます。受理済みタスクは続行する可能性があります。切り替えますか？"
   },
   "shell.confirm.unsentAgent": {
-    "zh-Hans": "Agent 有未发送的草稿。切换项目会放弃该草稿和属性面板中未保存的修改；已发送的回复可能继续。继续切换？",
-    "zh-Hant": "Agent 有尚未傳送的草稿。切換專案會放棄該草稿與屬性面板中尚未儲存的修改；已傳送的回覆可能繼續。是否繼續切換？",
-    "en": "Agent has an unsent draft. Switching projects discards it and unsaved properties changes. Replies already sent may continue. Switch projects?",
-    "ja": "Agent に未送信の下書きがあります。プロジェクトを切り替えると下書きとプロパティの未保存の変更は破棄されます。送信済みの応答は続行する可能性があります。切り替えますか？"
+    "zh-Hans": "Mio 有未发送的草稿。切换项目会放弃该草稿和属性面板中未保存的修改；已发送的回复可能继续。继续切换？",
+    "zh-Hant": "Mio 有尚未傳送的草稿。切換專案會放棄該草稿與屬性面板中尚未儲存的修改；已傳送的回覆可能繼續。是否繼續切換？",
+    "en": "Mio has an unsent draft. Switching projects discards it and unsaved properties changes. Replies already sent may continue. Switch projects?",
+    "ja": "Mio に未送信の下書きがあります。プロジェクトを切り替えると下書きとプロパティの未保存の変更は破棄されます。送信済みの応答は続行する可能性があります。切り替えますか？"
   },
   "shell.error.referenceRequestPending": {
     "zh-Hans": "上一条首帧参考请求的结果尚未确认。原请求已保留，请先在任务面板恢复同一请求",
@@ -4132,10 +4132,10 @@ const shellCoreMessages = {
     "ja": "白紙のキャンバス、新しい視点"
   },
   "shell.agentLabel": {
-    "zh-Hans": "智能助理",
-    "zh-Hant": "智慧助理",
-    "en": "Agent",
-    "ja": "エージェント"
+    "zh-Hans": "Mio",
+    "zh-Hant": "Mio",
+    "en": "Mio",
+    "ja": "Mio"
   },
   "shell.node.textType": {
     "zh-Hans": "文本",

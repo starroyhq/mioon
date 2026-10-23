@@ -4,11 +4,11 @@
 
 The CLI is a local HTTP client for the **same running backend and database** used by the browser, Electron, and MCP. It never starts a second service or reads backend database/media paths. Node.js 24+ and the source workspace dependencies are required; this is not a bundled standalone executable.
 
-## 内置 AI 助理的独立管理命令
+## Mio 的独立管理命令
 
-`mioon agent` 将现有助理 v2 REST 接到 CLI，使用与界面相同的 Run、审批、预算、工具和回执，不运行第二套助理循环。这些命令不加入业务 RPC schema 或 MCP 工具目录。现有 `agent authorization list/grant/revoke` 继续使用原公共授权接口；连接令牌只证明本地连接身份，不能代替 `project_agent` 发送授权。
+`mioon agent` 将现有 Mio v2 REST 接到 CLI，使用与界面相同的 Run、审批、预算、工具和回执，不运行第二套执行循环。这些命令不加入业务 RPC schema 或 MCP 工具目录。现有 `agent authorization list/grant/revoke` 继续使用原公共授权接口；连接令牌只证明本地连接身份，不能代替 `project_agent` 发送授权。
 
-后端的 Chat Completions 和 Responses 请求使用官方 `openai@7.39.0` SDK；自定义 fetch 固定接回 Mioon 网关，不改变配置中的服务地址或凭据绑定。SDK 不自动重试，不继承 OpenAI 环境凭据，不输出请求日志；harness 保留有界流解析、工具准入及发送前授权复查。此依赖不增加另一套任务循环，也不默认启用深度思考。
+后端的 Chat Completions 和 Responses 请求使用官方 `openai@7.39.0` SDK；自定义 fetch 固定接回 Mioon 网关，不改变配置中的服务地址或凭据绑定。SDK 不自动重试，不继承 OpenAI 环境凭据，不输出请求日志；harness 保留有界流解析、工具准入及发送前授权复查。此依赖不增加另一套执行循环，也不默认启用深度思考。
 
 | 命令 | 输入与行为 |
 | --- | --- |
@@ -18,19 +18,35 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent doctor` | `{projectId?}`；连接本地后端，读取公开设置、策略、授权和目录检查摘要，不发送模型请求 |
 | `agent diagnose --live` | 与 send 相同，必须包含 `diagnostic`；显式允许诊断模型请求 |
 | `agent policy get/set/lookup` | get 为 `{}`；set 为 `{requestId, expectedRevision, stepLimit, modes, acknowledgePaid?}`；lookup 为 `{requestId}` |
-| `agent task list/history` | `{projectId}`；history 另接受原样返回的 `cursor` |
+| `agent task list/history` | `{projectId}`；history 按对话返回 `conversations`，另接受原样返回的 `cursor`，不含诊断运行 |
+| `agent task conversation` | `{projectId, conversationId, cursor?}`；升序分页读取本对话轮次摘要，逐轮详情使用 status |
 | `agent task status` | `{projectId, runId}`；读取持久快照 |
-| `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, uploads?}`；lookup 为 `{projectId, requestId}` |
+| `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?}`；lookup 为 `{projectId, requestId}` |
 | `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
-| `agent task pause/resume/stop/approve/deny` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId |
+| `agent task pause/resume/stop/approve/deny/skip` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId |
+| `agent task note` | `{projectId, runId, requestId, expectedRevision, text}`；运行、等待确认或已暂停时，先持久保存补充说明，下一次新模型请求使用。最多排队 5 条，单条同 send 的 32 KiB UTF-8 上限；已知上下文（含已落库的流式回复）与说明组合超过原历史／请求容量时返回 `AGENT_TASK_NOTE_CAPACITY` 和持久 rejected 回执，不改变原执行 |
 | `agent task undo-change/undo-all` | 同一控制身份和 revision；undo-change 另传 `changeId` |
 | `agent task resolve-unknown` | 同一控制身份和 revision，另传 `stepId, resolution`；仅接受服务端已有的 `discard` / `accept_result` 边界 |
 | `agent task action-lookup` | `{projectId, runId, requestId}`；只查询原控制回执 |
 | `agent task watch/events` | `{projectId, runId, after?}`；有界观察，默认 60 秒，可设 `--timeout-ms` 和 `--interval-ms` |
 
+`status`、`lookup` 和控制回执返回的公开快照可包含 Step / Change 的 `display` 安全投影；原始 before/after 与补偿数据不因此开放。新版 CLI 与 HTTP 共用 contracts，独立旧版严格客户端需同步升级。内置 Mio 的 `_mio_step` 说明仅存在于模型工具包装，不是 CLI/MCP 业务参数。
+
+终态快照的可选 `executionEndedAt` 是执行结束时间的只读投影；后续撤销的 `run.updatedAt` 仍表示最后更新时间，不能当作执行用时的终点。旧记录没有可靠终态证据时省略该字段；CLI 不推算或补写它。
+
+对话首次发送省略 `conversationId`，由服务端生成并在 `snapshot.run.conversationId` 返回；后续轮次显式传回。不存在、跨项目或诊断身份会被拒绝。省略该参数始终表示新对话，不再把同项目其他对话的最近执行加入上下文。发送 requestId 的重放必须保留原来的对话参数，不能改为另一对话或改变省略状态。响应丢失仍只调用原 `agent task lookup`，不能通过新建对话重发。
+
+`agent task history` 返回标题、更新时间、最后一轮状态、变化条数及轮次数，`cursor` 只用于原项目。`agent task conversation` 的成员 cursor 同时绑定项目与对话，不能跨对话复用。旧 v2 执行各自作为单轮对话；v1 仍按原只读接口读取。诊断运行不进入列表、历史或普通对话上下文，其原始审计记录仍能按 runId／requestId 查询。
+
+`agent task skip` 只用于目标冲突或手动编辑导致的暂停：保留实际冲突目标，本轮之后显式涉及它的工具都返回 `TARGET_SKIPPED`，不产生 Change，也不释放用户草稿。其他目标和新一轮不受跳过名单限制。普通 `resume` 不能绕过此选择，会返回 `AGENT_TASK_SKIP_REQUIRED`；预算和用户暂停仍使用 `resume`。重启中断前还有未处理冲突时，`resume` 只恢复到冲突暂停，随后必须明确 `skip` 或 `stop`；未知结果仍须先按原 `resolve-unknown` 边界处置。选择 `stop` 不写跳过记录。
+
+补充说明属于当前轮，不创建新轮、不增加步骤。已持久化的模型 intent 和已发出的请求不会被改写；最终回复期间到达的补充说明会在同一 Run 预算内继续下一模型步骤，预算不足时保留排队记录，等待明确继续。结束后再发送应使用同对话的 `send`。note/skip 响应丢失后，只查询原 `agent task action-lookup`；回执中的 `result.state=rejected` 是已确定的拒绝，不能换请求 ID 自动重发。
+
 自然语言命令、`schema agent.task.send` 和 `schema agent task send` 均可查看严格参数；`agent --help` 列出独立目录。help、version、schema 不连接后端。`agent doctor` 的“离线诊断”指不调用模型，仍会读取所选本地服务；没有连接时会报告连接不可用。
 
 配置中的 `configuration` 应从公开 settings/presets 读取后编辑，保持完整的 presetId、platformId、baseUrl、model、protocol 五字段。写设置需要当前 revision，发送需要当前 settings revision。配置保存不测试供应商，也不自动授权发送。
+
+`send` 和显式诊断输入中的 `locale` 只接受 `zh-Hans`、`zh-Hant`、`en`、`ja`。省略时沿用简体中文；它固定本轮 Mio 的回复及工具调用说明语言，继续或恢复时不随界面语言变化。同一 requestId 的不同语言会冲突，省略与显式 `zh-Hans` 等价；响应未知时仍只查询原请求。现有 `--locale` 只控制 CLI 呈现，不替代 JSON 中的本轮语言。旧执行记录没有语言标记时沿用简体中文。 本轮传给模型的托管附件说明也使用该语言；四种语言均保留同样的句柄范围限制。
 
 密钥默认使用 **persistent**。安全存储不可用会拒绝；只有明确传 `--storage session` 才存于后端本次生命周期，不自动降级。密钥不能放在 `--input`、argv、模型提示或输出中：
 
@@ -45,9 +61,9 @@ mioon agent settings secret set --input-file ./metadata.json --key-stdin --stora
 
 `--key-stdin` 消费原始密钥，不能与 `--input -` 共用 stdin。`--key-file` 必须是私有目录内的当前用户独占普通文件，遵循共享私有存储策略；不会自动修权限。Windows 独立 Node 入口需要显式构建并验证完整原生私有存储 helper，缺失时拒绝，不将 chmod 或环境开关当作 ACL 证明。持久密钥属于所选 headless/desktop 服务的独立配置，不读取或复制另一实例的密钥。
 
-诊断使用 `agent diagnose --live`，输入中另传 `diagnostic:{profile:"text"|"read_only"|"catalog",toolNames?:[...]}`；普通 `agent task send` 拒绝该字段并指向明确的诊断入口。底层客户端和 REST 仍复用同一发送接口。text 不提供工具；read_only 只提供只读工具；catalog 可选唯一工具名子集，仅验证目录接受情况，绝不执行模型返回的工具。诊断仍检查 requestId、settings revision、`project_agent` 授权和任务预算，可能产生文本模型费用。诊断成功不能替代完整工具目录下的真实回复、只读往返和自主剪片验收。
+诊断使用 `agent diagnose --live`，输入中另传 `diagnostic:{profile:"text"|"read_only"|"catalog",toolNames?:[...]}`；普通 `agent task send` 拒绝该字段并指向明确的诊断入口。底层客户端和 REST 仍复用同一发送接口。text 不提供工具；read_only 只提供只读工具；catalog 可选唯一工具名子集，仅验证目录接受情况，绝不执行模型返回的工具。诊断仍检查 requestId、settings revision、`project_agent` 授权和步数预算，可能产生文本模型费用。诊断成功不能替代完整工具目录下的真实回复、只读往返和自主剪片验收。
 
-每项任务、上传、策略和控制写入必须保留调用者自己的 requestId；CLI 不生成它，也不自动提交第二次。响应丢失或无法验证时返回 UNKNOWN 与对应 GET lookup；只查原操作，不换 ID、不自动重发。settings PUT 没有 requestId/持久回执，因此未知时在同一个已绑定本地连接上只追加一次有界 GET，错误仍报告未知，并附 revision、配置是否匹配、configured/storage 的公开观察值；不能把 configured=true 当作新密钥已经保存的证明。读回失败也只报告观察不可用，不重发 PUT；Ctrl+C 不再发起读回。后续可手动 `agent settings get` 核对。
+每轮执行、上传、策略和控制写入必须保留调用者自己的 requestId；CLI 不生成它，也不自动提交第二次。响应丢失或无法验证时返回 UNKNOWN 与对应 GET lookup；只查原操作，不换 ID、不自动重发。settings PUT 没有 requestId/持久回执，因此未知时在同一个已绑定本地连接上只追加一次有界 GET，错误仍报告未知，并附 revision、配置是否匹配、configured/storage 的公开观察值；不能把 configured=true 当作新密钥已经保存的证明。读回失败也只报告观察不可用，不重发 PUT；Ctrl+C 不再发起读回。后续可手动 `agent settings get` 核对。
 
 所有 Agent 命令仍只向 stdout 输出一个 JSON envelope；watch/events 的持久快照进度写到 stderr。SSE `after` 是序列游标，流中只有 changed 通知，CLI 会重新读取持久快照；断线也只 GET 恢复。events 是同一观察方式，不声称导出完整原始事件日志。等待审批、预算暂停、中断或未知时退出 3 并返回 `action_needed`；失败/停止退出 6，成功退出 0，期限退出 5，Ctrl+C 退出 130 且仅停止本地观察，不停止 Run。继续、批准、停止和未知处置均需要新的明确控制命令。`--workspace-origin` 不适用于这些管理 REST，明确拒绝，不能被当作 HTTP Origin 或静默丢弃。
 

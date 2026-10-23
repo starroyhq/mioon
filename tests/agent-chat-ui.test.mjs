@@ -496,7 +496,7 @@ test('actual App image draft guard Cancel preserves project and Confirm changes 
   assert.equal(cancelled.calls.length, 1); assert.match(createI18nTestContext().renderMessage(cancelled.calls[0][1]), /图像工坊有未发送的草稿/);
   const confirmed = projectNavigation({ draft: false, imageDraft: true }); assert.equal(await confirmed.selectProject(navigationNextId), true); assert.equal(confirmed.currentProject.current, navigationNextId); assert.equal(confirmed.calls.filter(call => call[0] === 'confirm').length, 1);
   assert.deepEqual(confirmed.calls.filter(call => call[0] === 'setSelectedTaskId'), [['setSelectedTaskId', undefined]]);
-  const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject(navigationNextId); assert.match(createI18nTestContext().renderMessage(both.calls[0][1]), /Agent 和图像工坊都有未发送的草稿/);
+  const both = projectNavigation({ imageDraft: true, confirmation: false }); await both.selectProject(navigationNextId); assert.match(createI18nTestContext().renderMessage(both.calls[0][1]), /Mio 和图像工坊都有未发送的草稿/);
   assert.doesNotMatch(projectSource, /image\.task\.|image\.generate|setRightDockTab\((?!value => value === 'tasks' \? 'properties' : value\))/);
   assert.equal(confirmed.calls.find(call => call[0] === 'setRightDockTab')[1]('image'), 'image');
 });

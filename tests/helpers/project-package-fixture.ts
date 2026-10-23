@@ -8,8 +8,9 @@ import {createServices} from '../../packages/business/src/services.ts';
 
 type Row=Record<string,any>;
 const tools=process.env.MIOON_TEST_MEDIA_TOOLS??'/opt/homebrew/bin';
-export const mediaToolsAvailable=existsSync(path.join(tools,'ffmpeg'))&&existsSync(path.join(tools,'ffprobe'));
-if(mediaToolsAvailable){process.env.MIOON_FFMPEG_PATH??=path.join(tools,'ffmpeg');process.env.MIOON_FFPROBE_PATH??=path.join(tools,'ffprobe');}
+const ffmpeg=process.env.MIOON_FFMPEG_PATH??path.join(tools,'ffmpeg'),ffprobe=process.env.MIOON_FFPROBE_PATH??path.join(tools,'ffprobe');
+export const mediaToolsAvailable=existsSync(ffmpeg)&&existsSync(ffprobe);
+if(mediaToolsAvailable){process.env.MIOON_FFMPEG_PATH??=ffmpeg;process.env.MIOON_FFPROBE_PATH??=ffprobe;}
 
 function render(dir:string,name:string,args:string[]):Buffer{
  const file=path.join(dir,name);execFileSync(process.env.MIOON_FFMPEG_PATH!,['-v','error','-y',...args,file]);return readFileSync(file);

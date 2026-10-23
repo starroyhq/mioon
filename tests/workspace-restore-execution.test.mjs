@@ -1,3 +1,4 @@
+import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -17,6 +18,7 @@ import {initializeWorkspaceSchema34} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchema36} from '../packages/business/src/workspace-schema-v36.ts';
 import {initializeWorkspaceSchema38} from '../packages/business/src/workspace-schema-v38.ts';
 import {initializeWorkspaceSchema40} from '../packages/business/src/workspace-schema-v40.ts';
+import {classifyWorkspaceSchemaV52V53} from '../packages/business/src/workspace-restore-schema-v53.ts';
 import {snapshot as rawSchemaSnapshot} from './workspace-schema26-fixtures.mjs';
 import {RESTORE_READ_OPERATIONS,RESTORE_LOCAL_OPERATIONS,RESTORE_DENIED_OPERATIONS,assertWorkspaceRestoreOrigin,refuseRestoredOperation} from '../packages/business/src/workspace-restore-policy.ts';
 import {createServices} from '../packages/business/src/services.ts';
@@ -126,19 +128,25 @@ test('restored catalogue reports exact disabled media and redesign operations an
  assert.equal(existsSync(path.join(root,'agent-authorizations-v1.json')),false);
 });
 
-test('restored summary reads saved metadata in current53 and historical25/41 without writes or recent-opened access',async t=>{
- for(const version of [24,40,52])await t.test(`source${version} restored${version+1}`,async t=>{
+test('restored summary reads saved metadata in current57 and historical25/41/53/55 without writes or recent-opened access',async t=>{
+ for(const version of [24,40,52,54,56])await t.test(`source${version} restored${version+1}`,async t=>{
   const root=mkdtempSync(path.join(tmpdir(),'mioon-restored-summary-')),filename=path.join(root,'workbench.sqlite');
   let store,services;
   t.after(async()=>{await services?.drain();store?.close();rmSync(root,{recursive:true,force:true});});
-  if(version===52){const source=openStore(root);source.close();}
+  if(version>=52){const source=openStore(root);source.close();}
   const db=new DatabaseSync(filename),projectId=randomUUID(),emptyId=randomUUID(),assetId=randomUUID(),timelineId=randomUUID(),trackId=randomUUID();
   const stamp='2026-10-19T00:00:00.000Z',bytes=Buffer.from('SYNTHETIC_OPAQUE_MEDIA_MUST_NOT_BE_DECODED'),relativePath=`media/${assetId}.png`;
   const metadata={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:stamp};
-  const width=version===52?1080:720,height=version===52?1920:1280;
+  const width=version>=52?1080:720,height=version>=52?1920:1280;
   try{
    db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;');
-   if(version!==52){
+   if(version===52||version===54)removeReviewedSchema56(db);
+   if(version===52){
+    // Keep the historical52 case exact instead of silently turning it into a
+    // current56 test when openStore's ordinary startup version advances.
+    db.exec('DROP INDEX agent_task_conversation_v2;DROP TRIGGER agent_task_conversation_identity_v2;DROP TRIGGER agent_task_conversation_required_v2;DELETE FROM schema_version WHERE version=54');assert.deepEqual(classifyWorkspaceSchemaV52V53(db),{schemaVersion:52,profile:'ordinary'});
+   }
+   if(version<52){
     initializeWorkspaceSchemaThrough24(db);
     if(version===40)for(const initialize of [initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38,initializeWorkspaceSchema40])initialize(db);
    }

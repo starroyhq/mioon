@@ -58,7 +58,7 @@ test('continuous plan discovery has four explicit locales without changing machi
     const description = localizeToolDescription(operation, definition.description, locale);
     assert.match(description, /V2/);
     assert.match(description, /96 MiB/);
-    assert.match(description, /Agent/);
+    assert.match(description, /Mio/);
     assert.notEqual(description, translate(locale, 'operation.timeline.audioPreview.plan'));
     assert.equal(JSON.stringify(operationDefinition(operation)), before);
     assert.equal(JSON.stringify(discoverSchema({operation})), schema);

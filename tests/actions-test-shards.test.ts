@@ -1,28 +1,47 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, mkdir, realpath, rename, rm, unlink, writeFile} from 'node:fs/promises';
+import {mkdtemp, mkdir, readFile, realpath, rename, rm, unlink, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {discoverTests, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
 import {parseShardArguments, partitionFullTests, shardCommand, shardReport, verifyFullPartition} from '../.github/scripts/test-shard.ts';
 
 const sourceSha = 'a'.repeat(40);
 const files = Array.from({length: 784}, (_, index) => `tests/file-${String(index).padStart(4, '0')}.test.${index % 2 ? 'mjs' : 'ts'}`);
-test('four shards include every authoritative full test exactly once', () => {
-  const shards = partitionFullTests(files, 4);
-  assert.deepEqual(shards.map(shard => shard.length), [196, 196, 196, 196]);
-  assert.equal(new Set(shards.flat()).size, files.length);
-  assert.deepEqual(shards.flat().sort(), files);
-  for (const [index, shard] of shards.entries()) assert.deepEqual(shard, files.filter((_file, position) => position % 4 === index));
-});
-test('catalog ordering cannot change shard membership or the shared full-list hash', () => {
-  const reversed = [...files].reverse(), reports = [0, 1, 2, 3].map(index => shardReport(reversed, {index, count: 4}, sourceSha));
-  assert.equal(new Set(reports.map(report => report.fullListSha256)).size, 1);
-  assert.match(reports[0]!.fullListSha256, /^[a-f0-9]{64}$/);
-  for (const report of reports) {
-    assert.equal(report.sourceSha, sourceSha); assert.equal(report.fullCount, 784); assert.equal(report.selectedCount, 196);
-    assert.deepEqual(report.files, partitionFullTests(files, 4)[report.shardIndex]);
-  }
+for (const count of [4, 8]) {
+  test(`${count} shards include every authoritative full test exactly once`, () => {
+    const shards = partitionFullTests(files, count);
+    assert.deepEqual(shards.map(shard => shard.length), Array<number>(count).fill(files.length / count));
+    assert.equal(new Set(shards.flat()).size, files.length);
+    assert.deepEqual(shards.flat().sort(), files);
+    for (const [index, shard] of shards.entries()) assert.deepEqual(shard, files.filter((_file, position) => position % count === index));
+  });
+  test(`${count}-shard catalog ordering cannot change membership or the shared full-list hash`, () => {
+    const reversed = [...files].reverse(), reports = Array.from({length: count}, (_, index) => shardReport(reversed, {index, count}, sourceSha));
+    assert.equal(new Set(reports.map(report => report.fullListSha256)).size, 1);
+    assert.match(reports[0]!.fullListSha256, /^[a-f0-9]{64}$/);
+    for (const report of reports) {
+      assert.equal(report.sourceSha, sourceSha); assert.equal(report.fullCount, files.length); assert.equal(report.selectedCount, files.length / count);
+      assert.deepEqual(report.files, partitionFullTests(files, count)[report.shardIndex]);
+    }
+  });
+}
+test('Linux CI matrix and launcher count cover the actual full catalog exactly once', async () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const workflow = await readFile(path.join(root, '.github/workflows/checks.yml'), 'utf8');
+  const quality = /^  quality:\r?\n([\s\S]*?)(?=^  [a-z][\w-]*:\r?\n|(?![\s\S]))/m.exec(workflow)?.[1];
+  assert.ok(quality, 'the Linux test job must remain in the shared checks workflow');
+  const matrix = /^\s+shard:\s*\[([\d,\s]+)\]\s*$/m.exec(quality);
+  const launchers = [...quality.matchAll(/node \.github\/scripts\/test-shard\.ts [^\r\n]*--count=(\d+)(?=\s|$)/g)];
+  assert.ok(matrix, 'the complete shard matrix must be explicit');
+  assert.equal(launchers.length, 1, 'each matrix job must execute one full-lane partition');
+  const indexes = matrix[1]!.split(',').map(value => Number(value.trim())), count = Number(launchers[0]![1]);
+  assert.deepEqual(indexes, Array.from({length: count}, (_, index) => index), 'a matrix/count mismatch would silently omit full tests');
+  const full = await discoverTests(root, {suite: 'full', platform: 'linux'});
+  verifyFullPartition(full, indexes.map(index => shardReport(full, {index, count}, sourceSha).files));
+  assert.match(quality, /ref: \$\{\{ inputs\.source_sha \}\}/);
+  assert.match(quality, /fetch-depth: 0/);
 });
 test('actual full discovery automatically admits additions, removals and migration renames without an exclusion list', async t => {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-test-shard-catalog-'));
@@ -62,6 +81,7 @@ test('empty or malformed catalogs and impossible shard counts fail before execut
 test('CLI accepts only a bounded explicit index and count', () => {
   assert.deepEqual(parseShardArguments(['--index=0', '--count=4']), {index: 0, count: 4});
   assert.deepEqual(parseShardArguments(['--count=4', '--index=3']), {index: 3, count: 4});
+  assert.deepEqual(parseShardArguments(['--count=8', '--index=7']), {index: 7, count: 8});
   for (const args of [[], ['--index=0'], ['--count=4'], ['--index=0', '--count=4', '--index=1'], ['--index=0', '--count=4', '--output=/tmp/private'], ['--index=-1', '--count=4'], ['--index=1.5', '--count=4'], ['--index=01', '--count=4'], ['--index=4', '--count=4'], ['--index=0', '--count=0'], ['--index=0', '--count=33'], ['--index=99999999999999999', '--count=4']]) {
     assert.throws(() => parseShardArguments(args), /INVALID_SHARD_(ARGUMENTS|INDEX|COUNT)/);
   }

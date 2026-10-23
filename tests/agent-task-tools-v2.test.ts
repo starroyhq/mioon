@@ -7,7 +7,7 @@ import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {createAgentTaskTools,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
+import {createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -475,7 +475,7 @@ test('background automatic selection retains products but pauses on a saved or d
  f.store.tx(()=>f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-result',f.run.id,step.id,f.projectId,step.id,'generation.submit'));
  const remove=setAgentTaskEffectGate(f.store.db,()=>{});t.after(remove);assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),true);
  f.journal.claim({projectId:f.projectId,ownerId:randomUUID(),targets:[target]});
- assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'paused');assert.equal(f.journal.run(f.run.id).pauseReason,'conflict');assert.ok(f.journal.events(f.run.id).some(event=>event.type==='conflict'));
+ assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'paused');assert.equal(f.journal.run(f.run.id).pauseReason,'editing');assert.ok(f.journal.events(f.run.id).some(event=>event.type==='conflict'));const source=f.journal.step(step.id).data;assert.ok(record(source));assert.deepEqual(source.conflictTargets,[target]);
 });
 for(const action of ['revoke_grant','disable_paid_direct'] as const)test(`real runtime ${action} after video claim blocks its synthetic POST`,async t=>{
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let posts=0;
@@ -516,4 +516,79 @@ for(const action of ['send','revoke_task_authority','disable_workspace_live'] as
   if(action==='send'){assert.equal(posts,1);assert.equal(authorization,'Bearer SYNTHETIC_BOUND_VIDEO_KEY');assert.equal(current.status,'running');assert.equal(f.journal.step(accepted.step.id).cost,'submitted');}
   else{assert.equal(posts,0);assert.equal(f.journal.step(accepted.step.id).cost,undefined);if(action==='revoke_task_authority'){assert.equal(current.status,'queued');assert.equal(current.submissionCount,0);}else{assert.equal(current.status,'failed');assert.ok(record(current.error));assert.equal(current.error.code,'LIVE_GENERATION_DISABLED');}}
  }finally{release();await worker.stop();}
+});
+
+test('explicit local task observations retain references without claiming mutation targets',async t=>{
+ const f=await acceptedGeneratedShot(t),job=f.store.list('jobs',f.projectId)[0];assert.ok(record(job)&&typeof job.id==='string');
+ for(const [operation,input] of [['task.wait',{kind:'job',id:job.id}],['task.disposition.list',{targets:[{kind:'generation',taskId:job.id}]}]] as const){const prepared=f.tools.prepare({projectId:f.projectId,operation,input});assert.deepEqual(prepared.targets,[]);assert.deepEqual(prepared.referencedTargets?.map(target=>({kind:target.kind,id:target.id})),[{kind:'job',id:job.id}]);assert.equal(prepared.risk,'read_only');}
+ const seen:{kind:string;id:string}[]=[];assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'version.list',input:{shotId:f.shotId},beforeTargetRead:target=>{seen.push(target);throw Object.assign(Error('target skipped'),{code:'AGENT_TASK_TARGET_SKIPPED'});}}),{code:'AGENT_TASK_TARGET_SKIPPED'});assert.deepEqual(seen,[{kind:'shot',id:f.shotId}]);
+ const missing=randomUUID();assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'version.list',input:{shotId:missing},beforeTargetRead:target=>{assert.equal(target.id,missing);throw Object.assign(Error('target skipped before ownership lookup'),{code:'AGENT_TASK_TARGET_SKIPPED'});}}),{code:'AGENT_TASK_TARGET_SKIPPED'});
+});
+
+test('validated explicit identity paths are checked before missing project or target reads',async t=>{
+ const f=await fixture(t),missing=randomUUID(),other=randomUUID(),projectId=randomUUID();
+ const colour={profileId:'mioon-rec709-sdr-clip-v1',source:null,look:{resourceId:missing,resourceSha256:'a'.repeat(64),resourceProfile:'mioon-cube3d-normalized-tetrahedral-v1',purpose:'rec709-sdr-creative',declaredBy:'user',enabled:true,strength:1}};
+ const cases:Array<{operation:string;input:Record<string,unknown>;kind:string;id?:string}>=[
+  {operation:'timeline.clip.add',input:{assetId:other,trackId:missing,expectedRevision:1,startFrame:0,durationFrames:30},kind:'timeline_track'},
+  {operation:'timeline.clip.update',input:{clipId:other,expectedRevision:1,patch:{trackId:missing}},kind:'timeline_track'},
+  {operation:'shot.create',input:{title:'New shot',referenceAssetIds:[missing]},kind:'asset'},
+  {operation:'shot.create',input:{title:'New shot',lastFrameAssetId:missing},kind:'asset'},
+  {operation:'shot.update',input:{shotId:other,expectedRevision:1,patch:{referenceAssetIds:[missing]}},kind:'asset'},
+  {operation:'shot.update',input:{shotId:other,expectedRevision:1,patch:{lastFrameAssetId:missing}},kind:'asset'},
+  {operation:'image.generate',input:{name:'Edited image',providerId:'mock',model:IMAGE_MODELS.mock,prompt:'Edit the selected image',options:IMAGE_FIXED_OPTIONS,purpose:'edit',inputImage:{assetId:missing,sha256:'a'.repeat(64)}},kind:'asset'},
+  {operation:'lut.inspect',input:{lutId:missing},kind:'lut'},
+  {operation:'timeline.clip.add',input:{assetId:other,trackId:other,expectedRevision:1,startFrame:0,durationFrames:30,colour},kind:'lut'},
+  {operation:'timeline.clip.update',input:{clipId:other,expectedRevision:1,patch:{colour}},kind:'lut'},
+  {operation:'timeline.audioPreview.plan',input:{timelineId:missing,expectedRevision:1,startFrame:0},kind:'timeline',id:projectId},
+  {operation:'asset.range.get',input:{assetId:missing},kind:'asset_range'},
+ ];
+ for(const item of cases){let checked=false;assert.throws(()=>f.tools.prepare({projectId,operation:item.operation,input:item.input,beforeTargetRead:target=>{if(target.kind===item.kind&&target.id===(item.id??missing)){checked=true;throw Object.assign(Error('Skipped before any saved-target lookup'),{code:'AGENT_TASK_TARGET_SKIPPED'});}}}),{code:'AGENT_TASK_TARGET_SKIPPED'},item.operation);assert.equal(checked,true,item.operation);}
+});
+
+test('nested references are deduplicated without adding mutation authority or interpreting prose',async t=>{
+ const f=await fixture(t),assetId=randomUUID(),literal=randomUUID();
+ const prepared=f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:`asset ${literal}`,prompt:JSON.stringify({assetId:literal,trackId:literal}),referenceAssetIds:[assetId,assetId],lastFrameAssetId:assetId,parameters:{seed:42}}});
+ assert.deepEqual(prepared.targets,[]);assert.deepEqual(prepared.referencedTargets,[{kind:'asset',id:assetId,revision:0}]);
+ const cleared=f.tools.prepare({projectId:f.projectId,operation:'shot.create',input:{title:literal,lastFrameAssetId:null}});assert.deepEqual(cleared.referencedTargets,[]);
+ const image=f.tools.prepare({projectId:f.projectId,operation:'image.generate',input:{name:'Edit image',providerId:'mock',model:IMAGE_MODELS.mock,prompt:literal,options:IMAGE_FIXED_OPTIONS,purpose:'edit',inputImage:{assetId,sha256:'a'.repeat(64)}}});
+ assert.deepEqual(image.targets,[]);assert.deepEqual(image.referencedTargets,[{kind:'asset',id:assetId,revision:0}]);
+});
+
+test('clip destination references stay separate from exact mutation and revision targets',async t=>{
+ const f=await fixture(t),assetId=randomUUID();f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic image',mimeType:'image/png',width:720,height:1280,duration:0,hasVideo:true,hasAudio:false,sha256:'b'.repeat(64),relativePath:'media/fixture.png',provenance:'user-import',createdAt:new Date().toISOString()});
+ const timeline=await f.services.call('timeline.get',{projectId:f.projectId});assert.ok(record(timeline)&&Array.isArray(timeline.tracks)&&record(timeline.tracks[0])&&record(timeline.tracks[1]));const first=timeline.tracks[0].id,second=timeline.tracks[1].id;assert.equal(typeof first,'string');assert.equal(typeof second,'string');
+ await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),assetId,trackId:first,expectedRevision:1,startFrame:0,durationFrames:30});
+ const row=f.store.db.prepare("SELECT json_extract(data,'$.clips[0].id') AS id FROM timelines WHERE projectId=?").get(f.projectId)!;assert.equal(typeof row.id,'string');
+ const prepared=f.tools.prepare({projectId:f.projectId,operation:'timeline.clip.update',input:{clipId:row.id,expectedRevision:2,patch:{trackId:second}}});
+ assert.deepEqual(prepared.targets.map(target=>({kind:target.kind,id:target.id})),[{kind:'timeline_clip',id:row.id}]);assert.deepEqual(prepared.referencedTargets?.map(target=>({kind:target.kind,id:target.id})),[{kind:'timeline_clip',id:row.id},{kind:'timeline_track',id:second}]);
+ await f.services.call('timeline.track.update',{projectId:f.projectId,requestId:randomUUID(),trackId:second,expectedRevision:2,patch:{name:'Manual rename outside the clip footprint'}});
+ f.journal.claim({projectId:f.projectId,ownerId:'destination-track-draft',targets:[{kind:'timeline_track',id:String(second),revision:f.journal.targetRevision(f.projectId,'timeline_track',String(second))}]});
+ assert.doesNotThrow(()=>f.journal.assertTargets(f.projectId,prepared.targets));
+});
+
+test('saved argument reference fallback treats canonical and model tool names identically',()=>{
+ const projectId=randomUUID(),id=randomUUID(),other=randomUUID();
+ for(const [operation,input,expected] of [
+  ['timeline.clip.update',{clipId:other,patch:{trackId:id}},[{kind:'timeline_clip',id:other},{kind:'timeline_track',id}]],
+  ['shot.update',{shotId:other,patch:{referenceAssetIds:[id],lastFrameAssetId:id}},[{kind:'shot',id:other},{kind:'asset',id}]],
+  ['image.generate',{inputImage:{assetId:id,sha256:'a'.repeat(64)}},[{kind:'asset',id}]],
+  ['frame.task.get',{taskId:id},[{kind:'frame_task',id}]],
+  ['task.wait',{kind:'image',id},[{kind:'image_task',id}]],
+  ['node.inspect',{limit:20,after:id},[]],
+  ['edge.inspect',{limit:20,after:id},[]],
+  ['asset.importSelected',{handle:id},[]],
+  ['lut.importSelected',{handle:id},[]],
+ ] as const){const model=`mioon_${operation.replaceAll('.','_').replace('importSelected','import_selected')}`;assert.deepEqual(agentTaskExplicitTargets(operation,input,projectId),expected,operation);assert.deepEqual(agentTaskExplicitTargets(model,input,projectId),expected,model);}
+ assert.deepEqual(agentTaskExplicitTargets('shot.create',{title:id,prompt:JSON.stringify({assetId:id})},projectId),[]);
+ assert.deepEqual(agentTaskExplicitTargets('image.generate',null,projectId),[]);
+});
+
+for(const metadata of ['saved','legacy'] as const)test(`late selection recognizes a skipped reference with ${metadata} metadata without another conflict`,async t=>{
+ const f=await fixture(t),shot=await f.shot('Late product target'),reference={kind:'asset',id:randomUUID(),revision:0},target={kind:'shot',id:shot.id,revision:f.journal.targetRevision(f.projectId,'shot',shot.id)};
+ const source=f.journal.beginStep(f.run.id,{kind:'tool',targets:[reference],data:{conflictTargets:[reference]}});f.store.tx(()=>f.journal.skipTargetsInside(f.run.id,[{stepId:source.id,target:reference}]));
+ const accepted=f.journal.beginStep(f.run.id,{kind:'tool',targets:[target],toolCall:{id:randomUUID(),name:'mioon_image_generate',arguments:{name:'Synthetic retained edit',providerId:'mock',model:IMAGE_MODELS.mock,prompt:'Retained input',options:IMAGE_FIXED_OPTIONS,purpose:'edit',inputImage:{assetId:reference.id,sha256:'a'.repeat(64)}}},...(metadata==='saved'?{data:{referencedTargets:[reference]}}:{})});
+ f.store.tx(()=>f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('job','synthetic-reference-result',f.run.id,accepted.id,f.projectId,accepted.id,'generation.submit'));
+ const remove=setAgentTaskEffectGate(f.store.db,()=>{throw Object.assign(Error('Explicit reference was skipped'),{code:'AGENT_TASK_TARGET_SKIPPED'});});t.after(remove);
+ assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job','synthetic-reference-result',{kind:'shot',id:shot.id}),false);assert.equal(f.journal.run(f.run.id).status,'running');
+ const event=f.journal.events(f.run.id).at(-1)!;assert.equal(event.type,'background_selection_skipped');assert.ok(record(event.data));assert.equal(event.data.reason,'target_skipped');assert.equal(f.journal.events(f.run.id).some(item=>item.type==='conflict'),false);
 });
