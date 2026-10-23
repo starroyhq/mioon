@@ -7,11 +7,12 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 
 interface Source {readonly version: string; readonly url: string; readonly sha256: string}
-// Official release archive, independently checked against ffmpeg.org's signed
-// .asc using release-key fingerprint FCF986EA15E6E293A5644F10B4322F04D67658D8.
+// Byte-for-byte mirror of https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz,
+// independently checked against the official .asc using release-key fingerprint
+// FCF986EA15E6E293A5644F10B4322F04D67658D8. CI never falls back to mutable sources.
 export const FFMPEG_SOURCE: Source = Object.freeze({
   version: '7.1.5',
-  url: 'https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz',
+  url: 'https://github.com/starroyhq/mioon/releases/download/ci-ffmpeg-7.1.5/ffmpeg-7.1.5.tar.xz',
   sha256: 'de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f'
 });
 export const FFMPEG_LIBRARIES = Object.freeze([
@@ -70,6 +71,16 @@ class DownloadAttemptFailure extends FFmpegInstallFailure {
   constructor(code: string, retryable: boolean) {super(code); this.retryable = retryable;}
 }
 const transientNetworkCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT', 'UND_ERR_SOCKET']);
+const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+function mirrorRedirect(initialUrl: string, location: string, followed: number): string {
+  // Public GitHub release downloads have exactly one hop to their signed asset
+  // URL. Keep that exception local to this pinned mirror, without credentials.
+  if (initialUrl !== FFMPEG_SOURCE.url || followed !== 0) fail('FFMPEG_DOWNLOAD_REDIRECT_NOT_ALLOWED');
+  let target: URL;
+  try {target = new URL(location);} catch {fail('FFMPEG_DOWNLOAD_REDIRECT_NOT_ALLOWED');}
+  if (target.protocol !== 'https:' || target.hostname !== 'release-assets.githubusercontent.com' || target.username || target.password || target.port || target.hash || location.includes('#')) fail('FFMPEG_DOWNLOAD_REDIRECT_NOT_ALLOWED');
+  return target.href;
+}
 function downloadFailure(error: unknown, phase: string): DownloadAttemptFailure {
   if (error instanceof DownloadAttemptFailure) return error;
   if (error instanceof FFmpegInstallFailure) return new DownloadAttemptFailure(error.code, false);
@@ -97,7 +108,15 @@ async function downloadAttempt(url: string, file: string, signal: AbortSignal, r
   let failure: DownloadAttemptFailure | undefined;
   try {
     identity = await output.stat(); phase = 'FETCH';
-    const response = await request(url, {redirect: 'error', signal});
+    let requestUrl = url, followed = 0;
+    let response = await request(requestUrl, {redirect: 'manual', signal});
+    while (redirectStatuses.has(response.status) && response.headers.has('location')) {
+      const location = response.headers.get('location')!;
+      await response.body?.cancel().catch(() => {});
+      requestUrl = mirrorRedirect(url, location, followed++);
+      if (signal.aborted) throw new DownloadAttemptFailure('FFMPEG_DOWNLOAD_TIMEOUT', true);
+      response = await request(requestUrl, {redirect: 'manual', signal});
+    }
     if (!response.ok) {
       await response.body?.cancel().catch(() => {});
       throw new DownloadAttemptFailure(`FFMPEG_DOWNLOAD_HTTP_${response.status}`, response.status === 408 || response.status === 429 || response.status >= 500 && response.status <= 599);
@@ -191,7 +210,7 @@ function defaultTransport(): InstallTransport {
   };
 }
 /** The source descriptor is injectable for owned transport fixtures. The CLI
- * always uses the pinned official archive; no environment or argument overrides it. */
+ * always uses the pinned mirror of the official archive; no environment or argument overrides it. */
 export async function installFFmpeg(options: InstallOptions, transport: InstallTransport = defaultTransport(), source: Source = FFMPEG_SOURCE): Promise<FFmpegInstallation> {
   if (transport.platform !== 'linux' || transport.arch !== 'x64') fail('FFMPEG_INSTALL_REQUIRES_LINUX_X64');
   if (!Number.isSafeInteger(transport.uid) || transport.uid === undefined || transport.uid <= 0) fail('FFMPEG_INSTALL_REQUIRES_NON_ROOT');

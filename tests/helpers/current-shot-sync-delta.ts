@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 export const reviewedShotSyncSourceDeltas=Object.freeze([
  {
   path:'packages/contracts/src/index.ts',
-  previousSha256:'5c3f96682bcdaedf235bbd8996b7ec8f642a88e8818fa0cd3304992b60ad4957',
+  previousSha256:'c0d172e978f81fa314c6750d73d50c7184a4620c2d1bf5c7120bbe3cad38d56e',
   inverse:[
    {before:"export * from './timeline-loudness-apply.ts';\n",
     after:"export * from './timeline-loudness-apply.ts';\nimport {timelineShotSyncSchemas,timelineShotSyncDescriptions} from './timeline-shot-sync.ts';\nexport * from './timeline-shot-sync.ts';\n"},

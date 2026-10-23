@@ -13,14 +13,15 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
+import {defaultVideoModels} from '../packages/contracts/src/video-providers.ts';
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='profile-parity-local-synthetic-token';
 const pause=(ms: number): Promise<void>=>new Promise(resolve=>setTimeout(resolve,ms));
 type EnvMap = Record<string, string|undefined>;
 function environment(extra: EnvMap = {}): EnvMap {const env: EnvMap = {...process.env};for(const key of Object.keys(env))if(/^(MIOON_|ARK_|VEO_|RUNWAY|MINIMAX_|VIDU_|GEMINI_|GOOGLE_)/.test(key))delete env[key];return {...env,MIOON_ENABLE_LIVE_PROVIDER:'0',...extra};}
-async function cli(args: string[], env: EnvMap): Promise<{ok?: boolean; [key: string]: unknown}>{
+async function cli(args: string[], env: EnvMap,failureExit=6): Promise<{ok?: boolean; [key: string]: unknown}>{
  const child=spawn(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],{cwd:repo,env:environment(env),stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(data: string)=>stdout+=data);child.stderr.setEncoding('utf8').on('data',(data: string)=>stderr+=data);
  const timer=setTimeout(()=>child.kill('SIGKILL'),10000);let code,signal;try{[code,signal]=await once(child,'close') as [number|null, string|null];}finally{clearTimeout(timer);}
- assert.equal(signal,null,stderr);const response=JSON.parse(stdout);assert.equal(code,response.ok?0:6,stderr);return response;
+ assert.equal(signal,null,stderr);const response=JSON.parse(stdout);assert.equal(code,response.ok?0:failureExit,stderr);return response;
 }
 
 test('actual HTTP, CLI and official MCP expose identical dated profiles and reject complete oversized saved reference',{timeout:30000},async (t: unknown)=>{
@@ -44,4 +45,16 @@ test('actual HTTP, CLI and official MCP expose identical dated profiles and reje
  assert.deepEqual(await cli(['generation','submit','--input',JSON.stringify(input)],env),failure);assert.deepEqual(await mcp('generation_submit',input),failure);
  assert.deepEqual((await http('job.list',{projectId:project.id})).data,[]);
  assert.ok(!JSON.stringify(discovery).includes(token)&&!JSON.stringify(failure).includes('relativePath'));
+ // A configured Wan model is discoverable through every transport, while the
+ // persisted live switch prevents this parity test from dispatching any media.
+ const connection={id:randomUUID(),providerId:'wan',name:'Offline Wan SDK parity',region:'cn-beijing',workspaceId:'test-workspace',enabled:true,archived:false,outputHosts:['output.example'],models:defaultVideoModels('wan').filter(model=>model.templateId==='wan30-v1')};
+ const saved=await fetch(url!+'/api/video-providers/settings',{method:'PUT',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({action:'save',expectedRevision:0,configuration:connection,secret:{action:'replace',value:'synthetic-wan-parity-key',storage:'session'}})});
+ assert.equal(saved.status,200);
+ const directory=await http('video.connection.list',{});
+ assert.equal(directory.ok,true);assert.deepEqual(await cli(['video','connection','list'],env),directory);assert.deepEqual(await mcp('video_connection_list'),directory);
+ const wanInput={shotId:shot.id,expectedRevision:shot.revision,providerId:'wan',requestId:randomUUID(),connectionId:connection.id,configurationRevision:1,modelEntryId:connection.models[0]!.id,videoInput:{version:1,mode:'text',images:[],prompt:'No network generation.'},parameters:{durationSeconds:-1,aspectRatio:'adaptive',resolution:'480P',generateAudio:false,promptExtend:false,watermark:true}};
+ const disabled=await http('generation.submit',wanInput);assert.equal(disabled.error?.code,'LIVE_GENERATION_DISABLED');
+ assert.deepEqual(await cli(['generation','submit','--input',JSON.stringify(wanInput)],env,3),disabled);assert.deepEqual(await mcp('generation_submit',wanInput),disabled);
+ const schema=await cli(['schema','generation.submit'],env);assert.match(JSON.stringify(schema),/videoInput/);assert.match(JSON.stringify(schema),/durationSeconds/);
+ assert.deepEqual((await http('job.list',{projectId:project.id})).data,[]);
 });

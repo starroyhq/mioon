@@ -98,7 +98,7 @@ function createHarness(file, exportName = 'default') {
     './api.ts': { assetUrl: asset => asset?.url || '', versionUrl: version => version?.url || '', activeJob, statusText: value => value, jobStatusText: value => value, outputReviewRequired: () => false },
     './Timeline.tsx': { assetKind: asset => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.ts': { referenceForShot: () => null },
-    './generation-settings.ts': { generationParameters, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
+    './generation-settings.ts': { generationParameters, wanGenerationCapabilities: () => null, generationVideoInput: () => undefined, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
     './VideoFrameControls.tsx': { default: 'VideoFrameControls', VideoFrameSummary: 'VideoFrameSummary', __esModule: true },
     './ProviderSettings.tsx': { default: 'ProviderSettings', __esModule: true },
     './SubjectVideoSelection.tsx': { default: 'SubjectVideoSelection', __esModule: true },
@@ -282,6 +282,21 @@ test('Inspector version cards expose stable version numbers and keep frozen deta
     assert.deepEqual(comparisons, ['shot-one']);
     assert.deepEqual(selections, [['shot-one', 'version-one']]); assert.deepEqual(additions, ['asset-one']);
     h.unmount();
+  }
+});
+
+test('Wan history summaries prefer frozen generation duration and ratio with localized automatic values', () => {
+  const treeText = node => Array.isArray(node) ? node.map(treeText).join('') : node && typeof node === 'object' ? treeText(node.props?.children) : node == null || typeof node === 'boolean' ? '' : String(node);
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja']) {
+    const h = createHarness('Inspector.tsx'); h.locale = locale;
+    const version = { id: 'version-one', shotId: 'shot-one', number: 1, model: 'wan3.0-video', createdAt: '2026-10-23T00:00:00Z',
+      snapshot: { duration: 4, aspectRatio: '9:16', parameters: { durationSeconds: 30, aspectRatio: '21:9' } } };
+    const props = inspectorProps({ versions: [version], highlightedVersionId: null });
+    const specs = () => treeNodes(h.find('version-card-version-one')).find(node => node.props?.className === 'version-generation-specs');
+    h.render(props); assert.match(treeText(specs()), /30s.*21:9/); assert.doesNotMatch(treeText(specs()), /4s|9:16/);
+    h.render({ ...props, versions: [{ ...version, snapshot: { ...version.snapshot, parameters: { durationSeconds: -1, aspectRatio: 'adaptive' } } }] });
+    assert.ok(treeText(specs()).includes(translate(locale, 'video.wan.smartDuration'))); assert.ok(treeText(specs()).includes(translate(locale, 'video.wan.adaptive')));
+    assert.doesNotMatch(treeText(specs()), /-1s|4s|9:16/); h.unmount();
   }
 });
 

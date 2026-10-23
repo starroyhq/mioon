@@ -9,7 +9,7 @@ import type { GenerationAsset, GenerationShot } from './generation-settings.ts';
 type Translate = ReturnType<typeof useI18n>['t'];
 import './video-frame-controls.css';
 
-const roleLabel = (role: string, t: Translate): string => role === 'first_frame' ? t('timeline.references.first') : role === 'last_frame' ? t('timeline.references.last') : t('timeline.references.role', { role });
+const roleLabel = (role: string, t: Translate): string => role === 'first_frame' ? t('timeline.references.first') : role === 'last_frame' ? t('timeline.references.last') : role === 'reference_image' ? t('video.wan.referenceImages') : t('timeline.references.role', { role });
 
 // Display the complete manifest, including unresolved historical identities.
 // A job's frozen manifest is never expanded from the current shot selection.
@@ -20,7 +20,7 @@ export function VideoFrameSummary({ shot, assets = [], frozen = false, compact =
   return <div className={`video-frame-summary ${compact ? 'compact' : ''}`} data-testid="video-frame-summary" aria-label={t('timeline.references.all')}>
     {references.map((reference, index) => <div className="video-frame-summary-item" key={`${reference.role}:${reference.assetId}:${index}`} data-testid={`video-frame-summary-${reference.role}`}>
       {reference.asset ? <img src={assetUrl(reference.asset)} alt={t('timeline.references.alt', { role: roleLabel(reference.role, t), name: reference.name || t('timeline.references.unnamedImage') })} /> : <span className="video-frame-thumbnail-missing">{t('timeline.references.unavailable')}</span>}
-      <div><strong>{roleLabel(reference.role, t)}</strong><span className="video-frame-name">{reference.name || t('timeline.references.unnamedAsset')}</span>
+      <div><strong>{reference.role === 'reference_image' ? t('video.wan.imageNumber', { number: index + 1, name: roleLabel(reference.role, t) }) : roleLabel(reference.role, t)}</strong><span className="video-frame-name">{reference.name || t('timeline.references.unnamedAsset')}</span>
         <details className="video-frame-identity"><summary>{t('timeline.references.identity')}</summary><dl><dt>{t('timeline.references.id')}</dt><dd>{reference.assetId}</dd><dt>SHA-256</dt><dd>{reference.sha256 || t('timeline.references.noHash')}</dd></dl></details>
       </div>
     </div>)}

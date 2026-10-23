@@ -6,7 +6,8 @@ import {taskDispositionSchemas,taskDispositionDescriptions} from './task-disposi
 export * from './task-dispositions.ts';
 import {AppError} from './app-error.ts';
 export * from './video-providers.ts';
-import {parseVideoBinding,videoBindingCapabilities} from './video-providers.ts';
+import {getVideoGenerationIssue,parseVideoBinding,videoBindingCapabilities} from './video-providers.ts';
+import {videoGenerationParametersSchema,wanVideoInputSchema,wanVideoParametersSchema} from './wan-video.ts';
 export * from './timeline-volume-envelope-capability.ts';
 import {isVolumeEnvelope} from './timeline-volume-envelope-processing.ts';
 import {clipAudioRoleSchema} from './timeline-audio-role.ts';
@@ -171,10 +172,13 @@ export const schemas={
 'reference.detach':z.object({projectId:id,edgeId:id,expectedShotRevision:z.number().int().positive(),requestId:key}).strict(),
 'provider.list':z.object({}).strict(),
 'video.connection.list':z.object({}).strict(),
-'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan','compatible']),model:z.string().max(100).optional(),connectionId:id.optional(),configurationRevision:z.number().int().positive().optional(),modelEntryId:id.optional(),parameters:params.extend({resolution:z.string().min(1).max(20).optional(),generateAudio:z.boolean().optional()}).optional(),subjectVersionId:id.optional().describe('Explicit immutable subject version for one subject-reference image; the server resolves its identity and metadata. Omission preserves existing frame generation. Subject and first/last-frame inputs cannot be combined.')}).strict().superRefine((value,ctx)=>{
+'generation.submit':z.object({shotId:id,expectedRevision:z.number().int().positive(),requestId:key,providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan','compatible']),model:z.string().max(100).optional(),connectionId:id.optional(),configurationRevision:z.number().int().positive().optional(),modelEntryId:id.optional(),parameters:params.merge(videoGenerationParametersSchema).optional(),videoInput:wanVideoInputSchema.optional().describe('Versioned explicit Wan 3.0 input. Ordered managed image IDs replace saved shot references for this generation; omission preserves legacy selection.'),subjectVersionId:id.optional().describe('Explicit immutable subject version for one subject-reference image; the server resolves its identity and metadata. Omission preserves existing frame generation. Subject and first/last-frame inputs cannot be combined.')}).strict().superRefine((value,ctx)=>{
  const fields=[value.connectionId,value.configurationRevision,value.modelEntryId],has=fields.some(field=>field!==undefined);
  if(has&&!fields.every(field=>field!==undefined)||!has&&['kling','wan','compatible'].includes(value.providerId))ctx.addIssue({code:'custom',path:['connectionId'],message:'Select an exact configured video connection and model revision.'});
- if(!has&&(value.parameters?.resolution!==undefined||value.parameters?.generateAudio!==undefined))ctx.addIssue({code:'custom',path:['parameters'],message:'Configured video parameters require an explicit connection.'});
+ if(!has&&(value.parameters?.resolution!==undefined||value.parameters?.generateAudio!==undefined||Object.keys(wanVideoParametersSchema.shape).some(key=>value.parameters?.[key as keyof typeof value.parameters]!==undefined)))ctx.addIssue({code:'custom',path:['parameters'],message:'Configured video parameters require an explicit connection.'});
+ if(value.videoInput!==undefined&&(value.providerId!=='wan'||!has))ctx.addIssue({code:'custom',path:['videoInput'],message:'Explicit video input requires a configured Wan 3.0 connection.'});
+ if(value.videoInput!==undefined&&value.subjectVersionId!==undefined)ctx.addIssue({code:'custom',path:['videoInput'],message:'Explicit video input and subject reference are mutually exclusive.'});
+ if(value.providerId!=='wan'&&Object.keys(wanVideoParametersSchema.shape).some(key=>value.parameters?.[key as keyof typeof value.parameters]!==undefined))ctx.addIssue({code:'custom',path:['parameters'],message:'Wan parameters require a Wan video model.'});
 }),
 'job.get':z.object({jobId:id}).strict(),
 'job.list':z.object({projectId:id}).strict(),
@@ -367,6 +371,7 @@ export function getGenerationIssue(snapshot: unknown, capabilities: unknown): Ge
  const dataRecord=(value: unknown): boolean=>Boolean(value&&typeof value==='object'&&!Array.isArray(value)&&[Object.prototype,null].includes(Object.getPrototypeOf(value))&&!Object.getOwnPropertySymbols(value).length&&Object.values(Object.getOwnPropertyDescriptors(value)).every(d=>!d.get&&!d.set&&d.enumerable));
  const denseArray=(value: unknown): value is unknown[]=>{if(!Array.isArray(value)||Object.getPrototypeOf(value)!==Array.prototype||value.length>8)return false;const descriptors=Object.getOwnPropertyDescriptors(value);return Reflect.ownKeys(descriptors).length===value.length+1&&Reflect.ownKeys(descriptors).every(key=>key==='length'||typeof key==='string'&&/^(0|[1-9]\d*)$/.test(key)&&Number(key)<value.length&&!descriptors[key].get&&!descriptors[key].set&&descriptors[key].enumerable);};
  if(!dataRecord(snapshot))return issue('INVALID_INPUT','生成输入必须为对象');
+ if(dataRecord(capabilities)&&(capabilities as Record<string,unknown>).videoConnection&&(capabilities as Record<string,unknown>).videoModel)return getVideoGenerationIssue(snapshot,capabilities);
  const request = snapshot as Record<string, unknown>;
  const subjectIssue=getSubjectGenerationSnapshotIssue(snapshot);
  if(subjectIssue)return issue(subjectIssue.code,subjectIssue.message);

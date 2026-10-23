@@ -8,19 +8,22 @@ Mioon 的自动检查与桌面发布分开运行。PR 和 main 自动检查代�
 
 - 固定 Node **24.21.0**、pnpm **11.25.0**，执行 `pnpm install --frozen-lockfile`，缓存 pnpm store
 - 独立 Ubuntu 22.04 source job 执行一次 actionlint 和 development Web/桌面暂存构建；构建入口包含源码与 CI 辅助代码的严格 TypeScript 检查，保留桌面暂存替换前的内部类型检查
-- 八个独立 Ubuntu 22.04 测试 job 安装 GNU tar、DejaVu 字体及 FFmpeg 编译依赖，从固定哈希的官方源码构建 CI 专用 FFmpeg **7.1.5**，实际检查所需滤镜、编码器及命令参数，再运行 Linux full 测试分片
+- 一个独立 Ubuntu 22.04 准备 job 恢复精确构建缓存；未命中时从固定源码镜像构建 CI 专用 FFmpeg **7.1.5**。验证工具文件、版本、所需滤镜、编码器及命令参数后，才保存缓存并上传本轮 artifact
+- 八个独立 Ubuntu 22.04 测试 job 安装 GNU tar、DejaVu 字体及媒体运行依赖，从同一准备 job 的 artifact 读取 FFmpeg，核验构建身份及文件哈希、恢复可执行权限，重新检查实际媒体能力，再运行 Linux full 测试分片
 - macOS 和 Windows 运行类型、portable 和发布辅助脚本检查；不在这两个平台调用明确限于 Linux 的 full 通道
-- source 与测试 job 并行运行，使用相同冻结源码 SHA；总检查要求 source、八个 full 分片和两个 portable job 全部成功。PR 不接触 Apple 签名凭据
+- source、媒体准备和 portable job 并行运行，八个 full 分片等待媒体准备，全部使用相同冻结源码 SHA；总检查要求 source、媒体准备、八个 full 分片和两个 portable job 全部成功。PR 不接触 Apple 签名凭据
 
 完整测试使用现有 tooling 的环境清理和真实生成关闭策略，每个 job 内测试文件串行、独立进程，八个 Linux 测试 job 各限时 60 分钟，source job 限时 20 分钟。测试 job 不重复执行工作流检查和应用构建，也不依赖 source job 的暂存产物；保留现有测试选择、断言和 FFmpeg 自身的阶段期限。分片从 full 权威列表按排序索引自动分配，先校验并集完整且互不重叠，再通过已有 `--file` 参数执行；新测试会自动进入，不维护排除名单。矩阵保持 `fail-fast: false`，八个分片全部成功才允许总检查通过。每片记录源码 SHA、全集哈希和选中文件，便于核查覆盖范围。失败不会被自动忽略；日志和诊断报告分别标明执行范围。本地 macOS 缺失的媒体滤镜是否在 Ubuntu 已解决，以实际能力检查和测试结果为准
 
-测试 job 不安装随后会被替代的系统 FFmpeg，也不安装只供桌面窗口冒烟使用的 GTK、Xvfb、DBus 和 xdotool 依赖。字幕使用仓库内固定哈希的字体文件，无需下载整套系统 Noto CJK；DejaVu 为模拟视频的英文标记提供默认字体。apt 步骤独立限时 10 分钟，HTTP/HTTPS 下载超时为 30 秒，最多重试两次；超限直接失败，不占满整个测试窗口。发布 job 仍保留生产应用构建、桌面运行依赖和真实安装包冒烟
+测试 job 不安装随后会被替代的系统 FFmpeg，也不安装只供桌面窗口冒烟使用的 GTK、Xvfb、DBus 和 xdotool 依赖。FFmpeg 仍依赖 Ubuntu 的动态库，因此准备 job 和各消费者保留相同的媒体依赖包；分片不会重新下载源码或编译。字幕使用仓库内固定哈希的字体文件，无需下载整套系统 Noto CJK；DejaVu 为模拟视频的英文标记提供默认字体。apt 步骤独立限时 10 分钟，HTTP/HTTPS 下载超时为 30 秒，最多重试两次；超限直接失败，不占满整个测试窗口。发布 job 仍保留生产应用构建、桌面运行依赖和真实安装包冒烟；Linux 打包复用本轮 checks 的 FFmpeg artifact，macOS 保留现有 Homebrew 工具
 
 项目文件测试的媒体 fixture 同样优先使用已选定的 `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH`，避免 Linux 已安装工具却因检测 Mac 目录而跳过导入、导出和备份用例。没有显式路径时保留既有测试目录约定；显式路径不存在时不能用备用目录掩盖配置错误
 
 Linux full 完整检出现有 Git 历史，以读取历史回归中固定提交的源码；历史对象不足时直接失败，不改用当前源码替代旧基线
 
-Ubuntu 22.04 的系统 FFmpeg 4.4.2 缺少当前代码使用的文件值参数及 `fps_mode`，只检查滤镜列表不足以证明兼容。CI 固定使用[官方 7.1.5 源码](https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz)，SHA-256 为 `de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f`；引入时已按[官方签名方法](https://ffmpeg.org/download.html)在独立临时密钥环核验发布签名。安装后还实际运行 `-/filter:v`、`-/filter_complex` 和 `-fps_mode` 单帧探针，并确认 PNG 编解码能力。这个工具仅用于 runner，不随 Mioon 安装包发布，不改变 pnpm 依赖
+Ubuntu 22.04 的系统 FFmpeg 4.4.2 缺少当前代码使用的文件值参数及 `fps_mode`，只检查滤镜列表不足以证明兼容。CI 使用[仓库固定源码镜像](https://github.com/starroyhq/mioon/releases/download/ci-ffmpeg-7.1.5/ffmpeg-7.1.5.tar.xz)，与[官方 7.1.5 源码](https://ffmpeg.org/releases/ffmpeg-7.1.5.tar.xz)的 SHA-256 相同：`de668509caf9e35e3cd162473441fdb29538c6d96ed080292b3cf9e6fc5d558f`。引入时已按[官方签名方法](https://ffmpeg.org/download.html)在独立临时密钥环核验发布签名；镜像不改变官方来源、版本和哈希校验。专用 `ci-ffmpeg-7.1.5` 预发布仅存放 CI 源码，不属于 Mioon 应用发布，也不标记为最新应用版本。安装后还实际运行 `-/filter:v`、`-/filter_complex` 和 `-fps_mode` 单帧探针，并确认 PNG 编解码能力。这个工具仅用于 runner，不随 Mioon 安装包发布，不改变 pnpm 依赖
+
+构建缓存严格按工具链身份匹配，不使用前缀降级恢复；命中后仍须核验清单、构建配置、二进制哈希及版本。每轮只由准备 job 保存缓存和上传 artifact，消费者读取该 job 输出的 artifact 名称及构建身份；只重跑失败分片时仍复用原准备结果，不按新的运行次数猜测名称。缓存缺失只触发一次构建，校验或媒体能力失败直接阻断该轮检查，不回退系统 FFmpeg，也不跳过测试
 
 源码下载仅对已知临时网络错误、HTTP 408/429/5xx 重试，最多三次并共用 120 秒总预算。每次重新下载完整文件，之后仍须通过固定哈希；校验、构建和测试失败不会因此重试或被忽略
 

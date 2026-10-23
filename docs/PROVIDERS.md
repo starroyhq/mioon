@@ -19,10 +19,82 @@ duration/resolution combinations, audio policy and seed support. These are bound
 by the implemented template, not a declaration that every vendor model is
 compatible. Custom entries remain **not live verified**. The directory is managed
 manually; saving does not discover models, probe accounts or generate media.
-Kling initially uses the current API-Key protocol with `kling-3.0`; Wan uses the
-2.7 text and first-frame templates (`wan2.7-t2v`, `wan2.7-i2v`), not the older
-2.6 request shape. Reference video/audio and arbitrary workflow import are outside
-this increment. Existing Ark frame-pair and one-image subject modes are retained.
+Kling initially uses the current API-Key protocol with `kling-3.0`. New Wan
+connections offer `wan3.0-video` and `wan3.0-video-prime`; existing Wan 2.7
+connections and their text/first-frame templates remain unchanged. Reference
+video/audio and arbitrary workflow import are outside this increment. Existing
+Ark frame-pair and one-image subject modes are retained.
+
+### Wan official SDK and reviewed model capabilities (2026-10-23)
+
+Wan submission and task retrieval use the pinned official Node.js package
+`dashscope-sdk-official@1.27.0`, through `VideoSynthesis.asyncCall()` and `fetch()`.
+The SDK builds the request body and service route; its protected request seam
+uses Mioon's transport for the final dispatch fence, cancellation, 30-second
+timeout, credential acquisition, redirect rejection and sanitized errors. The
+SDK's blocking `call()`/wait loop is not used. Accepted or uncertain tasks are
+never automatically submitted again. Output downloads retain the shared exact
+host policy, unauthenticated CDN requests and decoded-media publication checks.
+
+The exact model/region/protocol capability table is maintained in
+`packages/contracts/src/wan-video.ts`, with official source and review date.
+SDK model metadata describes modalities but does not supply the complete video
+parameter limits. The same reviewed table drives the UI, connection discovery,
+CLI/MCP schemas and backend validation. A custom model ID cannot gain Wan 3.0
+features merely by resembling an official name. Protocol fixtures remain
+**offline-tested, not live verified**.
+
+Wan 3.0 supports text, one first frame, an ordered first/last-frame pair, or
+1–10 ordered reference images. Frames cannot be mixed with reference images.
+All image bytes come from project-owned managed assets and are sent as Base64
+data URIs. Implemented imports are PNG/JPEG/WebP, at most 20,000,000 bytes per
+image, sides 240–8000 pixels, at most an 8:1 aspect ratio, and no transparency.
+BMP import, remote URLs, uploads/OSS, reference video/audio, documents, webpages,
+video editing and extension are not implemented.
+
+For the reviewed Wan 3.0 models, controls include 480P/720P/1080P, fixed 2–30
+seconds or intelligent duration, six fixed aspect ratios or adaptive output,
+audio, seed, prompt rewriting and watermark. Defaults for new selections are
+720P, five seconds, audio on, prompt rewriting on and watermark off. These
+generation options do not rewrite the shot's saved duration or aspect ratio.
+The backend fills omitted options for every new Wan 3.0 request and freezes
+them in its task snapshot, using the same defaults as Web, CLI and MCP. Narrowed
+model configurations use their first available duration/resolution when the
+preferred default is unavailable. Historical tasks and their explicit retries
+retain their original snapshots and parameter interpretation.
+Adaptive results retain their actual decoded dimensions and duration; fixed
+requests retain output review checks. Original Wan 2.7 behavior remains bounded
+by its original templates.
+
+`generation.submit` optionally accepts a versioned `videoInput` for Wan 3.0:
+
+```json
+{
+  "videoInput": {
+    "version": 1,
+    "mode": "reference_images",
+    "images": [{ "role": "reference_image", "assetId": "<project asset UUID>" }],
+    "prompt": "图1中的人物在草地上散步。"
+  },
+  "parameters": {
+    "durationSeconds": 5,
+    "aspectRatio": "16:9",
+    "resolution": "720P",
+    "generateAudio": true,
+    "promptExtend": true,
+    "watermark": false
+  }
+}
+```
+
+Modes are `text`, `first_frame`, `first_last_frame`, and `reference_images`.
+The explicit input replaces saved frame choices for this generation only; it
+does not merge with them or with subject reference. Omission keeps the legacy
+input path. Selection order, asset identities/hashes, optional prompt (up to
+20,000 code units), parameters and original connection are frozen into the
+existing job snapshot. Explicit retry retains that snapshot. Intelligent
+duration uses `durationSeconds: -1`; adaptive output uses `aspectRatio:
+"adaptive"`. No new SQL table or migration is required.
 
 Enter the API key, choose its storage scope and explicitly enable the connection.
 The workspace **Real generation** switch must also be enabled in Model services.
