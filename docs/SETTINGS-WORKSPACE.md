@@ -14,4 +14,4 @@
 
 “打开所在位置”在桌面端只打开当前工作区目录，不接受调用方路径。浏览器展示可复制的规范路径；项目内容由工作区数据库与托管媒体共同保存，没有每项目独立目录。
 
-项目永久删除的准入、受控事务和中断恢复见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。智能助理授权见 [AGENT-AUTHORIZATION.md](AGENT-AUTHORIZATION.md)。
+项目永久删除的准入、受控事务和中断恢复见 [PROJECT-LIFECYCLE.md](PROJECT-LIFECYCLE.md)。Mio授权见 [AGENT-AUTHORIZATION.md](AGENT-AUTHORIZATION.md)。

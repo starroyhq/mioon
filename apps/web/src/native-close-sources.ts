@@ -65,6 +65,10 @@ export const createAgentChatCloseReporter = (registry?: NativeCloseSourceRegistr
 
 interface AgentTaskCloseInput {
   readonly draft: string;
+  readonly draftDirty?:boolean;
+  readonly draftVersion?:number;
+  readonly unknownOutcome?:boolean;
+  readonly uploads?:readonly {readonly id:string}[];
   readonly phase: string;
   readonly pending: { readonly requestId: string; readonly runId: string | null; readonly action: string } | null;
   readonly snapshot: { readonly run: { readonly id: string; readonly status: string }; readonly steps: readonly { readonly id: string; readonly status: string }[] } | null;
@@ -73,8 +77,8 @@ export function agentTaskCloseState(state: AgentTaskCloseInput): Projection {
   const unknown = state.snapshot?.steps.filter(step => step.status === 'unknown').map(step => step.id).sort() ?? [];
   // Read-only failures retain drafts and durable evidence. Initial/retry reads
   // stay busy until their owner settles; receipt failures remain hard errors.
-  return { dirty: Boolean(state.draft.trim()) && !state.pending, busy: state.phase === 'loading' || state.phase === 'submitting', blocked: Boolean(state.pending || unknown.length) || ['unknown', 'error'].includes(state.phase),
-    identity: [state.draft, state.pending?.requestId, state.pending?.runId, state.pending?.action, state.snapshot?.run.id, ...unknown] };
+  return { dirty: Boolean(state.draftDirty || state.draft.trim() || state.uploads?.length) && !state.pending, busy: state.phase === 'loading' || state.phase === 'submitting', blocked: Boolean(state.pending || unknown.length || state.unknownOutcome) || ['unknown', 'error'].includes(state.phase),
+    identity: [state.draft, state.draftVersion, ...(state.uploads?.map(upload=>upload.id)??[]), state.pending?.requestId, state.pending?.runId, state.pending?.action, state.snapshot?.run.id, ...unknown] };
 }
 export const createAgentTaskCloseReporter = (registry?: NativeCloseSourceRegistry) => createReporter(registry, 'agent-task-v2', agentTaskCloseState);
 

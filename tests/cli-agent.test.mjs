@@ -85,11 +85,16 @@ test('ordinary task send rejects diagnostic profiles before dispatch and points 
  assert.equal(result.code,2);assert.equal(result.body.error.code,'VALIDATION_ERROR');assert.match(result.body.error.message,/agent diagnose --live/u);assert.equal(f.calls.length,0);
  const schema=await command(['schema','agent.task.send']).result;assert.equal(schema.body.data.inputSchema.properties.diagnostic,undefined);
 });
+test('task JSON locale selects response language independently of CLI presentation locale',async t=>{
+ const f=await fixture(t,(_req,res)=>reply(res,snapshot())),input={projectId,requestId,text:'synthetic',expectedSettingsRevision:4,locale:'ja'};
+ const result=await command(['agent','task','send','--locale','en','--input',JSON.stringify(input)],{base:f.base}).result;assert.equal(result.code,0);assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.locale,'ja');assert.equal(f.calls[0].body.requestId,requestId);
+ for(const locale of ['zh-CN','fr',null,1]){const rejected=await command(['agent','task','send','--input',JSON.stringify({...input,locale})],{base:f.base}).result;assert.notEqual(rejected.code,0);}assert.equal(f.calls.length,1);
+});
 
 test('all task control aliases use one action endpoint and preserve CAS',async t=>{
  const f=await fixture(t,(_req,res)=>reply(res,snapshot('paused',2)));
- const aliases={pause:'pause',resume:'resume',stop:'stop',approve:'approve',deny:'deny','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'};
- for(const [commandName,action] of Object.entries(aliases)){const input={projectId,runId,requestId,expectedRevision:1,stepId,changeId,...(commandName==='resolve-unknown'?{resolution:'discard'}:{})};const result=await command(['agent','task',commandName,'--input',JSON.stringify(input)],{base:f.base}).result;assert.equal(result.code,0);assert.equal(f.calls.at(-1).body.action,action);assert.equal(f.calls.at(-1).body.expectedRevision,1);}
+ const aliases={pause:'pause',resume:'resume',stop:'stop',approve:'approve',deny:'deny',skip:'skip',note:'note','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'};
+ for(const [commandName,action] of Object.entries(aliases)){const input={projectId,runId,requestId,expectedRevision:1,...(commandName==='note'?{text:'Additional local instruction'}:{stepId,changeId}),...(commandName==='resolve-unknown'?{resolution:'discard'}:{})};const result=await command(['agent','task',commandName,'--input',JSON.stringify(input)],{base:f.base}).result;assert.equal(result.code,0);assert.equal(f.calls.at(-1).body.action,action);assert.equal(f.calls.at(-1).body.expectedRevision,1);}
  assert.ok(f.calls.every(call=>call.url===`/api/agent/tasks/v2/${projectId}/${runId}/actions`));
 });
 
@@ -110,4 +115,13 @@ test('watch timeout and process SIGINT stop only local observation',async t=>{
  const timeout=await command(['agent','task','watch','--input',JSON.stringify({projectId,runId}),'--timeout-ms','50'],{base:f.base}).result;assert.equal(timeout.code,5);assert.equal(timeout.body.error.code,'WATCH_TIMEOUT');
  const streaming=new Promise(resolve=>signalStream=resolve);
  const active=command(['agent','task','watch','--input',JSON.stringify({projectId,runId}),'--timeout-ms','10000'],{base:f.base});await streaming;active.child.kill('SIGINT');const cancelled=await active.result;assert.equal(cancelled.code,130);assert.equal(cancelled.body.error.code,'INTERRUPTED');assert.ok(f.calls.every(call=>call.method==='GET'));
+});
+
+test('conversation is an offline-discoverable management command and forwards the server-owned identity',async t=>{
+ const conversationId=randomUUID(),run={...snapshot().run,conversationId},conversation={id:conversationId,projectId,title:'First prompt',createdAt:run.createdAt,updatedAt:run.updatedAt,lastRunId:runId,lastRunStatus:'completed',changeCount:0,runCount:1};
+ const schema=await command(['schema','agent','task','conversation']).result;assert.equal(schema.code,0);assert.ok(JSON.stringify(schema.body).includes('conversationId'));
+ const f=await fixture(t,(req,res)=>reply(res,req.url.includes('/conversations/')?{conversation,runs:[run],nextCursor:null}:req.method==='POST'?{...snapshot(),run}:{conversations:[conversation],nextCursor:null}));
+ const sent=await command(['agent','task','send','--input',JSON.stringify({projectId,conversationId,requestId,text:'synthetic',expectedSettingsRevision:4})],{base:f.base}).result;assert.equal(sent.code,0);assert.equal(f.calls[0].body.conversationId,conversationId);
+ const history=await command(['agent','task','history','--input',JSON.stringify({projectId})],{base:f.base}).result;assert.equal(history.code,0);assert.deepEqual(history.body.data,{conversations:[conversation],nextCursor:null});
+ const members=await command(['agent','task','conversation','--input',JSON.stringify({projectId,conversationId,cursor:'retained-cursor'})],{base:f.base}).result;assert.equal(members.code,0);assert.deepEqual(members.body.data,{conversation,runs:[run],nextCursor:null});assert.equal(f.calls.at(-1).url,`/api/agent/tasks/v2/${projectId}/conversations/${conversationId}?cursor=retained-cursor`);
 });

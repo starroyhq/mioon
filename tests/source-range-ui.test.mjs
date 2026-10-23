@@ -160,12 +160,16 @@ test('App guards dirty clip before source selection, clears clip selection, and 
     quickAssetId:'asset-a',sourceAsset:asset(),application:null,AgentEditingBoundary:'AgentEditingBoundary',SourceRangeInspector:'SourceRangeInspector',
     workspaceOriginScope:()=> 'normal',workspace:{restored:false},restored:false,data:{project:{id:'project-a'}},sourceDirty:true,
     sourceRanges:{state:{scope:'source:1'},controller:{getState:()=>({scope:ownerScope}),discard:()=>{discards++;}}},
-    timeline:timeline(),sourceRangeBlocked:false,addSavedSourceRange:()=>{},FrameExtractionPanel:'FrameExtractionPanel',frameExtraction:{controller:{}},
+    timeline:timeline(),sourceRangeBlocked:false,addSavedSourceRange:()=>{},FrameExtractionPanel:'FrameExtractionPanel',frameExtraction:{controller:{}},agentRecovery:null,
   };
   const render=Function('env',`with(env){${renderCode};return render;}`)(environment),boundary=render();
   assert.equal(boundary.type,'AgentEditingBoundary');assert.equal(boundary.props.disabled,false);assert.equal(boundary.props.projectId,'project-a');
   assert.deepEqual(boundary.props.targets,[{kind:'asset_range',id:'asset-a',revision:0}]);
   assert.equal(boundary.props.children[0].type,'SourceRangeInspector');assert.equal(boundary.props.children[0].props.asset,environment.sourceAsset);
+  assert.equal(boundary.props.children[0].props.children[0].props.revealTask,null);
+  const recovery={kind:'frame',projectId:'project-a',taskId:'frame-a',key:'fixed-original-frame',current:()=>true};environment.agentRecovery=recovery;
+  assert.equal(render().props.children[0].props.children[0].props.revealTask,recovery,'retain the exact read-only recovery intent without changing range ownership');
+  environment.agentRecovery={...recovery,kind:'image'};assert.equal(render().props.children[0].props.children[0].props.revealTask,null);environment.agentRecovery=null;
   assert.equal(boundary.props.canRelease(),false,'an unsaved range retains its exact target claim');
   environment.sourceDirty=false;assert.equal(render().props.canRelease(),true);
   ownerScope='source:2';boundary.props.onDiscard();assert.equal(discards,0,'a retained callback cannot discard another source scope');

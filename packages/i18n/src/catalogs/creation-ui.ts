@@ -11,7 +11,7 @@ export const creationUiMessages = {
   "agent.activity.shotDetailsHeading": {"zh-Hans": "镜头修改范围", "zh-Hant": "鏡頭修改範圍", "en": "Shot change scope", "ja": "ショットの変更範囲"},
   "agent.activity.proposalActivity": {"zh-Hans": "生成修改建议", "zh-Hant": "產生修改建議", "en": "Prepare suggested changes", "ja": "変更の提案を作成"},
   "agent.activity.inspectionActivity": {"zh-Hans": "读取项目信息", "zh-Hant": "讀取專案資訊", "en": "Read project information", "ja": "プロジェクト情報を確認"},
-  "agent.authorization.title": {"zh-Hans": "确认智能助理发送范围", "zh-Hant": "確認智慧助理傳送範圍", "en": "Authorize Agent sending scope", "ja": "アシスタントの送信範囲を許可"},
+  "agent.authorization.title": {"zh-Hans": "确认 Mio 发送范围", "zh-Hant": "確認 Mio 傳送範圍", "en": "Authorize Mio sending scope", "ja": "Mio の送信範囲を許可"},
   "agent.authorization.explanation": {"zh-Hans": "相同目标地址、模型和发送范围只需确认一次，授权保存在本机工作区，可在设置中撤销", "zh-Hant": "相同目標位址、模型與傳送範圍只需確認一次，授權儲存在本機工作區，可在設定中撤銷", "en": "Authorize each destination, model, and sending scope once. Permission is saved in this local workspace and can be revoked in Settings", "ja": "送信先、モデル、送信範囲ごとに一度許可します。許可はこのローカルワークスペースに保存され、設定で取り消せます"},
   "agent.authorization.cost": {"zh-Hans": "发送内容可能离开本机，模型调用可能计费；撤销不会撤回已发送的请求", "zh-Hant": "傳送內容可能離開本機，模型呼叫可能計費；撤銷不會撤回已傳送的請求", "en": "Content may leave this device and model calls may incur charges. Revoking permission cannot recall a request already sent", "ja": "内容が端末外に送信され、モデルの呼び出しに料金が発生する場合があります。許可を取り消しても送信済みのリクエストは撤回されません"},
   "agent.authorization.remember": {"zh-Hans": "我确认此目标、模型与发送范围，并保存授权", "zh-Hant": "我確認此目標、模型與傳送範圍，並儲存授權", "en": "I approve this destination, model, and sending scope and want to save permission", "ja": "この送信先、モデル、送信範囲を確認し、許可を保存します"},
@@ -146,10 +146,10 @@ export const creationUiMessages = {
     "ja": "保存された返信は中断されました。自動で再開や再送はしません。リモート側で処理や課金が発生している可能性があります"
   },
   "agent.chat.conversationEyebrow": {
-    "zh-Hans": "AGENT · CONVERSATION",
-    "zh-Hant": "AGENT · 對話",
-    "en": "AGENT · CONVERSATION",
-    "ja": "AGENT · 会話"
+    "zh-Hans": "Mio · CONVERSATION",
+    "zh-Hant": "Mio · 對話",
+    "en": "Mio · CONVERSATION",
+    "ja": "Mio · 会話"
   },
   "agent.chat.conversationHeading": {
     "zh-Hans": "聊聊你的创作想法",
@@ -188,10 +188,10 @@ export const creationUiMessages = {
     "ja": "新しいメッセージの対象：テキストチャットのみ"
   },
   "agent.chat.connectionSettings": {
-    "zh-Hans": "Agent 连接设置",
-    "zh-Hant": "Agent 連線設定",
-    "en": "Agent connection settings",
-    "ja": "Agent 接続設定"
+    "zh-Hans": "Mio 连接设置",
+    "zh-Hant": "Mio 連線設定",
+    "en": "Mio connection settings",
+    "ja": "Mio 接続設定"
   },
   "agent.chat.settingsKeepDraft": {
     "zh-Hans": "连接设置（保留聊天草稿）",
@@ -200,10 +200,10 @@ export const creationUiMessages = {
     "ja": "接続設定（チャットの下書きを保持）"
   },
   "agent.chat.collapsePanel": {
-    "zh-Hans": "收起 Agent 面板",
-    "zh-Hant": "收起 Agent 面板",
-    "en": "Collapse Agent panel",
-    "ja": "Agent パネルを折りたたむ"
+    "zh-Hans": "收起 Mio 面板",
+    "zh-Hant": "收起 Mio 面板",
+    "en": "Collapse Mio panel",
+    "ja": "Mio パネルを折りたたむ"
   },
   "agent.chat.currentProject": {
     "zh-Hans": "当前项目",
@@ -314,22 +314,22 @@ export const creationUiMessages = {
     "ja": "アイデアから始めましょう"
   },
   "agent.chat.gainEmptyHint": {
-    "zh-Hans": "可请 Agent 把一个已保存有声片段的音量调到 40% 等数值。先核对发送范围，再审阅固定倍率；明确批准后才会应用",
-    "zh-Hant": "可請 Agent 將一個已儲存且含音訊的片段音量調至 40% 等數值。先核對傳送範圍，再審閱固定倍率；只有明確批准後才會套用",
-    "en": "Ask Agent to set a saved clip with audio to a level such as 40%. Check the sending scope, then review the fixed gain. It is applied only after explicit approval",
-    "ja": "音声を含む保存済みクリップの音量を40%などにする提案を Agent に依頼できます。送信範囲を確認してから固定倍率をレビューしてください。明示的に承認するまで適用されません"
+    "zh-Hans": "可请 Mio 把一个已保存有声片段的音量调到 40% 等数值。先核对发送范围，再审阅固定倍率；明确批准后才会应用",
+    "zh-Hant": "可請 Mio 將一個已儲存且含音訊的片段音量調至 40% 等數值。先核對傳送範圍，再審閱固定倍率；只有明確批准後才會套用",
+    "en": "Ask Mio to set a saved clip with audio to a level such as 40%. Check the sending scope, then review the fixed gain. It is applied only after explicit approval",
+    "ja": "音声を含む保存済みクリップの音量を40%などにする提案を Mio に依頼できます。送信範囲を確認してから固定倍率をレビューしてください。明示的に承認するまで適用されません"
   },
   "agent.chat.moveEmptyHint": {
-    "zh-Hans": "可请 Agent 为一个已保存时间线片段提出同轨移动。先核对发送范围，再审阅固定前后时间；明确批准后才会应用",
-    "zh-Hant": "可請 Agent 為一個已儲存的時間軸片段提議同軌移動。先核對傳送範圍，再審閱固定的前後時間；只有明確批准後才會套用",
-    "en": "Ask Agent to propose moving a saved timeline clip on the same track. Check the sending scope, then review the fixed before-and-after timing. It is applied only after explicit approval",
-    "ja": "保存済みタイムラインクリップを同じトラック内で移動する提案を Agent に依頼できます。送信範囲を確認してから移動前後の固定時刻をレビューしてください。明示的に承認するまで適用されません"
+    "zh-Hans": "可请 Mio 为一个已保存时间线片段提出同轨移动。先核对发送范围，再审阅固定前后时间；明确批准后才会应用",
+    "zh-Hant": "可請 Mio 為一個已儲存的時間軸片段提議同軌移動。先核對傳送範圍，再審閱固定的前後時間；只有明確批准後才會套用",
+    "en": "Ask Mio to propose moving a saved timeline clip on the same track. Check the sending scope, then review the fixed before-and-after timing. It is applied only after explicit approval",
+    "ja": "保存済みタイムラインクリップを同じトラック内で移動する提案を Mio に依頼できます。送信範囲を確認してから移動前後の固定時刻をレビューしてください。明示的に承認するまで適用されません"
   },
   "agent.chat.shotEmptyHint": {
-    "zh-Hans": "可请 Agent 为当前选中镜头的已保存标题或画面描述提出修改，审阅差异并明确批准后才会应用",
-    "zh-Hant": "可請 Agent 為目前所選鏡頭的已儲存標題或畫面描述提議修改；審閱差異並明確批准後才會套用",
-    "en": "Ask Agent to propose changes to the selected shot’s saved title or visual description. Changes are applied only after you review the diff and explicitly approve",
-    "ja": "選択中ショットの保存済みタイトルや画面描写の変更を Agent に提案してもらえます。差分をレビューし、明示的に承認した後でのみ適用されます"
+    "zh-Hans": "可请 Mio 为当前选中镜头的已保存标题或画面描述提出修改，审阅差异并明确批准后才会应用",
+    "zh-Hant": "可請 Mio 為目前所選鏡頭的已儲存標題或畫面描述提議修改；審閱差異並明確批准後才會套用",
+    "en": "Ask Mio to propose changes to the selected shot’s saved title or visual description. Changes are applied only after you review the diff and explicitly approve",
+    "ja": "選択中ショットの保存済みタイトルや画面描写の変更を Mio に提案してもらえます。差分をレビューし、明示的に承認した後でのみ適用されます"
   },
   "agent.chat.inspectionEmptyHint": {
     "zh-Hans": "可请求查看本项目已保存的文字与元数据。不会查看媒体画面或执行修改",
@@ -788,10 +788,10 @@ export const creationUiMessages = {
     "ja": "上記のプロトコル、URL、モデルで今回の入力とテキストチャットのコンテキストを送信し、記録を保存することを確認します。1回のモデルへのリクエストに料金が発生する場合があります"
   },
   "agent.chat.messageLabel": {
-    "zh-Hans": "给 Agent 的消息",
-    "zh-Hant": "給 Agent 的訊息",
-    "en": "Message to Agent",
-    "ja": "Agent へのメッセージ"
+    "zh-Hans": "给 Mio 的消息",
+    "zh-Hant": "給 Mio 的訊息",
+    "en": "Message to Mio",
+    "ja": "Mio へのメッセージ"
   },
   "agent.chat.messagePlaceholder": {
     "zh-Hans": "输入想讨论的内容…",
@@ -830,10 +830,10 @@ export const creationUiMessages = {
     "ja": "停止すると後続の処理を止め、既存の文章と結果を保持します。発生済みの料金は取り消せません。再起動しても自動では再開しません"
   },
   "agent.chat.conversationAria": {
-    "zh-Hans": "Agent 文字对话",
-    "zh-Hant": "Agent 文字對話",
-    "en": "Agent text conversation",
-    "ja": "Agent テキスト会話"
+    "zh-Hans": "Mio 文字对话",
+    "zh-Hant": "Mio 文字對話",
+    "en": "Mio text conversation",
+    "ja": "Mio テキスト会話"
   },
   "agent.activity.notStartedStopped": {
     "zh-Hans": "未发起 · 不会自动继续",

@@ -35,7 +35,7 @@ export const workbenchShellMessages = {
   'redesign.shell.help': { 'zh-Hans': '帮助', 'zh-Hant': '說明', en: 'Help', ja: 'ヘルプ' },
   'redesign.shell.export': { 'zh-Hans': '导出', 'zh-Hant': '匯出', en: 'Export', ja: '書き出し' },
   'redesign.shell.versions': { 'zh-Hans': '版本', 'zh-Hant': '版本', en: 'Versions', ja: 'バージョン' },
-  'redesign.shell.agent': { 'zh-Hans': '智能助理', 'zh-Hant': '智慧助理', en: 'Assistant', ja: 'アシスタント' },
+  'redesign.shell.agent': { 'zh-Hans': 'Mio', 'zh-Hant': 'Mio', en: 'Mio', ja: 'Mio' },
   'redesign.shell.offline': { 'zh-Hans': '离线', 'zh-Hant': '離線', en: 'Offline', ja: 'オフライン' },
   'redesign.shell.saved': { 'zh-Hans': '已保存', 'zh-Hant': '已儲存', en: 'Saved', ja: '保存済み' },
   'redesign.shell.draft': { 'zh-Hans': '草稿', 'zh-Hant': '草稿', en: 'Draft', ja: '下書き' },

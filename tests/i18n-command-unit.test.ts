@@ -24,6 +24,7 @@ test('pure help retains exact legacy bytes and schema object content in every pr
   // and operation's relative order, including the original machine prose.
   const expected = frozen
     .replace('"mioon capabilities",', '"mioon capabilities","mioon agent --help",')
+    .replace('"mioon export download --input <JSON> --output <new-local-file>"', '"mioon export download --input <JSON> --output <new-local-file>","mioon project export --input <JSON> --output <new-local-file.mioon>","mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]","mioon project duplicate --request-id <id> --input <JSON>"')
     .replace('"operations":["lut.import",', '"operations":["export.cancel","export.activity.get","export.output.get","workspace.settings.get","workspace.settings.set","workspace.backup.status","workspace.backup.list","workspace.backup.create","workspace.backup.restore.stage","task.disposition.list","task.disposition.markFailed","task.disposition.archiveCompleted","project.rename","project.delete","project.summary.list","agent.authorization.list","agent.authorization.grant","agent.authorization.revoke","lut.import",')
     .replace('"timeline.loudness.prepare",', '"timeline.loudness.prepare","timeline.clip.loudness",')
     .replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",')

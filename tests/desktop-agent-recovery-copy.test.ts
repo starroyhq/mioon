@@ -28,7 +28,7 @@ for (const [name, pattern] of dialogs as Array<[string, 'native.restartDetail' |
 
   test(`desktop ${name} preserves saved Agent text without promising resumed inference or resending`, () => {
     const detail = recoveryDetail(pattern);
-    assert.match(detail, /Agent 对话保留已保存的文字/);
-    assert.match(detail, /Agent 对话[^。]*重启后不会自动继续推理或重新发送请求/);
+    assert.match(detail, /Mio 对话保留已保存的文字/);
+    assert.match(detail, /Mio 对话[^。]*重启后不会自动继续推理或重新发送请求/);
   });
 }

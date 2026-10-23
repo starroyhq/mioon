@@ -1,5 +1,5 @@
 import {AppError} from '../../../contracts/src/app-error.ts';
-import {parseVideoBinding,resolveVideoEndpoint,validateVideoSnapshot,videoBindingCapabilities,videoInputProfile} from '../../../contracts/src/video-providers.ts';
+import {parseVideoBinding,videoConnectionEndpoint,validateVideoSnapshot,videoBindingCapabilities,videoInputProfile} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding,VideoConnectionDescriptor} from '../../../contracts/src/video-providers.ts';
 import type {VideoSettingsService} from './settings.ts';
 import type {GenerationSource,GenerationAsset,PreparedGenerationInputs} from '../generation-inputs.ts';
@@ -11,7 +11,7 @@ export function listVideoConnections(settings:VideoSettingsService|undefined,asO
   const c=view.configuration;
   return {connectionId:c.id,configurationRevision:view.revision,providerId:c.providerId,name:c.name,region:c.region,enabled:c.enabled,archived:c.archived,configured:view.secret.configured,
    models:c.models.map(model=>{
-    const binding:VideoExecutionBinding={version:1,connectionId:c.id,configurationRevision:view.revision,providerId:c.providerId,region:c.region,workspaceId:c.workspaceId,endpoint:resolveVideoEndpoint(c.providerId,c.region,c.workspaceId),credentialRef:view.credentialRef??'00000000-0000-4000-8000-000000000000',model,outputHosts:c.outputHosts};
+    const binding:VideoExecutionBinding={version:1,connectionId:c.id,configurationRevision:view.revision,providerId:c.providerId,region:c.region,workspaceId:c.workspaceId,endpoint:videoConnectionEndpoint(c),credentialRef:view.credentialRef??'00000000-0000-4000-8000-000000000000',model,outputHosts:c.outputHosts};
     return {entry:model,capabilities:videoBindingCapabilities(binding,{configured:view.secret.configured,enabled:c.enabled&&!c.archived&&model.enabled&&!model.archived,asOf})};
    })};
  });

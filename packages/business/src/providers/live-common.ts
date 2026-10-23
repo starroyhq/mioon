@@ -48,7 +48,7 @@ export interface LiveConfiguration {
 }
 export interface ManagedImage {width: number; height: number; bytes: Buffer; mimeType: string; base64: string}
 export interface OutputDownload {mimeType: 'video/mp4'; sizeBytes: number; isMock: false}
-export interface JsonRequestOptions {method?: string; body?: unknown; context?: ProviderContext}
+export interface JsonRequestOptions {method?: string; body?: unknown; raw?: {bytes: Uint8Array; contentType: string}; context?: ProviderContext}
 export interface JsonRequestFactoryOptions {
   api: string; headers: Readonly<Record<string, string>>; fetchImpl: typeof fetch; ensureEnabled: () => void; name: string;
   isRetryableStatus?: (status: number) => boolean;
@@ -109,7 +109,7 @@ export function liveConfiguration(env: NodeJS.ProcessEnv, keyName: string, prefi
 
 /** Never forward provider bodies, network errors, request data, or credentials. */
 export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name, isRetryableStatus = () => true }: JsonRequestFactoryOptions) {
-  return async (endpoint: string, { method = 'GET', body, context = {} }: JsonRequestOptions = {}): Promise<Record<string, unknown>> => {
+  return async (endpoint: string, { method = 'GET', body, raw, context = {} }: JsonRequestOptions = {}): Promise<Record<string, unknown>> => {
     // This check is deliberately outside the fetch catch. No fetch was invoked,
     // so only this explicit path can certify an unsubmitted POST on shutdown.
     if (context.signal?.aborted) throw operationCancelled({beforeDispatch: method === 'POST'});
@@ -120,10 +120,14 @@ export function createJsonRequest({ api, headers, fetchImpl, ensureEnabled, name
     let response: Response;
     try {
       response = await fetchImpl(`${api}${endpoint}`, {
-        method, headers: { ...headers, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-        ...(body ? { body: JSON.stringify(body) } : {}), redirect: 'error', signal: timeoutSignal(context, 30_000),
+        method, headers: { ...headers, Accept: 'application/json', ...(raw ? { 'Content-Type': raw.contentType } : body ? { 'Content-Type': 'application/json' } : {}) },
+        ...(raw ? { body: raw.bytes as BodyInit } : body ? { body: JSON.stringify(body) } : {}), redirect: 'error', signal: timeoutSignal(context, 30_000),
       });
-    } catch {
+    } catch (cause) {
+      // Only a pinned transport can prove that nothing was written. Such a POST
+      // is definitely unsubmitted: fail it plainly instead of marking it unknown.
+      if (object(cause)?.notDispatched === true && context.signal?.aborted) throw operationCancelled({beforeDispatch: method === 'POST'});
+      if (object(cause)?.notDispatched === true) throw providerError(codeOf(cause) === 'VIDEO_NETWORK_DENIED' ? 'PROVIDER_NETWORK_DENIED' : 'PROVIDER_UNREACHABLE', method === 'POST' ? `${name} could not be reached. The request was not sent.` : `${name} could not be reached.`, { retryable: method !== 'POST' });
       throw providerError(method === 'POST' ? 'SUBMISSION_UNKNOWN' : 'PROVIDER_UNAVAILABLE', method === 'POST' ? `${name} submission response was not received. Do not resubmit; acceptance may have occurred.` : `${name} status request failed. Query the existing task again.`, { uncertain: method === 'POST', retryable: method !== 'POST' });
     }
     if (!response.ok) {

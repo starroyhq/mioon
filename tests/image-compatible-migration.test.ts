@@ -1,3 +1,7 @@
+import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+import type {currentOrdinary56Delta as schema56DeltaType} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
+import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {errorView} from './helpers/test-error.ts';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
@@ -30,6 +34,7 @@ function snapshot(db: DatabaseSync): CompatSnapshot {const objects=db.prepare('S
 // comparison. Check exact SQL, fields and initial rows before stripping it.
 function stripReviewed52(db: DatabaseSync,after: CompatSnapshot,before: CompatSnapshot): void {
  if(!db.prepare('SELECT 1 FROM schema_version WHERE version=52').get())return;
+ if(db.prepare('SELECT 1 FROM schema_version WHERE version=54').get())after.objects=withoutReviewedCurrentAgentObjects(after.objects);
  const names=new Set(currentOrdinary52Delta.objectNames),objects=after.objects.filter(value=>names.has(value.name));
  assert.deepEqual(objects.map(value=>({...value})),currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
  assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);

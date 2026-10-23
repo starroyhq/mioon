@@ -302,7 +302,7 @@ test('desktop source keeps the renderer sandbox and native secret channel privat
   const languageBridge = await readFile(new URL('../apps/desktop/src/app-language-preload.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(preload + bridge + audioBridge + languageBridge + await readFile(new URL('../apps/desktop/src/workspace-native-preload.ts', import.meta.url), 'utf8'), /safeStorage|secretCodec|agentSettings|decrypt|process\.parentPort|imageSecret|\.env|access-token/);
   assert.deepEqual([...preload.matchAll(/exposeInMainWorld\('([^']+)'/g)].map(match => match[1]).sort(),
-    ['__mioonAppLanguage', '__mioonDesktop', '__mioonExportFiles', '__mioonLutRecovery', '__mioonNativeAudioPreview', '__mioonProjectWindow', '__mioonWorkspaceBackups', '__mioonWorkspaceTools']);
+    ['__mioonAppLanguage', '__mioonDesktop', '__mioonExportFiles', '__mioonLutRecovery', '__mioonNativeAudioPreview', '__mioonProjectPackages', '__mioonProjectWindow', '__mioonWorkspaceBackups', '__mioonWorkspaceTools']);
 });
 
 for (const platform of ['linux', 'darwin'] as const) test('desktop settings persist ciphertext outside project data with owner-only files (' + platform + ')', async () => {

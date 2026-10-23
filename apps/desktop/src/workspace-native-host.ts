@@ -1,12 +1,12 @@
 import path from 'node:path';
-import {createHash} from 'node:crypto';
-import {createReadStream,constants,openSync,fstatSync,closeSync} from 'node:fs';
+import {createHash,randomUUID} from 'node:crypto';
+import {createReadStream,constants,openSync,fstatSync,closeSync,writeSync,fsyncSync,renameSync,unlinkSync} from 'node:fs';
 import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {workspaceNativeRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {workspaceSettingsSchema,type WorkspaceSettings} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {exportOutputSchema,type ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
 interface Owner {projectId?:string;isCurrent():boolean}
-interface Options<E>{ownerForEvent(event:E):Owner|null;chooseDirectory():Promise<string|null>;setBackupDirectory(directory:string):Promise<unknown>;readSettings():Promise<WorkspaceSettings>;readWorkspaceRoot():Promise<string>;readExport(identity:{projectId:string;exportId:string}):Promise<unknown>;openPath(file:string):Promise<string>;revealPath(file:string):void;restart():Promise<boolean>}
+interface Options<E>{ownerForEvent(event:E):Owner|null;chooseDirectory():Promise<string|null>;setBackupDirectory(directory:string):Promise<unknown>;readSettings():Promise<WorkspaceSettings>;readWorkspaceRoot():Promise<string>;readExport(identity:{projectId:string;exportId:string}):Promise<unknown>;openPath(file:string):Promise<string>;revealPath(file:string):void;restart():Promise<boolean>;chooseSaveFile?(suggestedName:string):Promise<string|null>;fetchProjectPackage?(exportId:string):Promise<Response>}
 const unavailable=()=>Object.assign(new Error('Native workspace action is unavailable.'),{code:'WORKSPACE_NATIVE_UNAVAILABLE'});
 const same=(a:{dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number},b:{dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number})=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
 /** Fixed authenticated metadata reads for the current backend lifetime. */
@@ -28,8 +28,23 @@ async function verifyExport(root:string,output:ExportOutput,check:()=>void) {
 }
 /** Renderer input contains only fixed actions and export identities. Paths come
  * from the OS picker or a verified current backend response, never IPC input. */
+const PACKAGE_TOKEN_TTL_MS=2*60*60*1000;
+/** Streams a finished backend package to a part file beside the destination,
+ * then renames it; the save dialog already confirmed any overwrite. */
+async function writeProjectPackage(response:Response,destination:string,check:()=>void):Promise<void>{
+ const expected=Number(response.headers.get('content-length'));
+ if(!response.ok||!response.body||!Number.isSafeInteger(expected))throw unavailable();
+ const part=`${destination}.part`,fd=openSync(part,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|constants.O_NOFOLLOW,0o600);let bytes=0,done=false;
+ try{
+  for await(const chunk of response.body as unknown as AsyncIterable<Uint8Array>){check();let offset=0;while(offset<chunk.length)offset+=writeSync(fd,chunk,offset,chunk.length-offset);bytes+=chunk.length;}
+  if(bytes!==expected)throw unavailable();fsyncSync(fd);done=true;
+ }finally{closeSync(fd);if(!done){try{unlinkSync(part);}catch{}}}
+ renameSync(part,destination);
+}
 export function createWorkspaceNativeHost<E>(options:Options<E>) {
  let busy=false;
+ const destinations=new Map<string,{file:string;expires:number}>();
+ const destination=(token:string):string=>{const entry=destinations.get(token);if(!entry||entry.expires<Date.now()){destinations.delete(token);throw unavailable();}return entry.file;};
  return {async dispatch(event:E,raw:unknown):Promise<unknown>{
   const request=workspaceNativeRequestSchema.parse(raw),owner=options.ownerForEvent(event);if(!owner||busy)throw unavailable();
   const check=()=>{if(!owner.isCurrent())throw unavailable();};check();
@@ -37,6 +52,19 @@ export function createWorkspaceNativeHost<E>(options:Options<E>) {
   busy=true;
   try{
    if(request.action==='restart'){return await options.restart();}
+   if(request.action==='chooseProjectPackageDestination'){
+    if(!options.chooseSaveFile)throw unavailable();
+    const selected=await options.chooseSaveFile(request.suggestedName);check();if(selected===null)return null;
+    if(!path.isAbsolute(selected)||path.resolve(selected)!==selected)throw unavailable();
+    const file=selected.toLowerCase().endsWith('.mioon')?selected:`${selected}.mioon`,token=randomUUID();
+    destinations.set(token,{file,expires:Date.now()+PACKAGE_TOKEN_TTL_MS});return {token,fileName:path.basename(file)};
+   }
+   if(request.action==='saveProjectPackage'){
+    if(!options.fetchProjectPackage)throw unavailable();
+    const file=destination(request.token);
+    await writeProjectPackage(await options.fetchProjectPackage(request.exportId),file,check);check();return {fileName:path.basename(file)};
+   }
+   if(request.action==='revealProjectPackage'){options.revealPath(destination(request.token));return true;}
    if(request.action==='chooseBackupLocation'){
     const selected=await options.chooseDirectory();check();if(selected===null)return null;
     if(!path.isAbsolute(selected)||path.resolve(selected)!==selected)throw unavailable();

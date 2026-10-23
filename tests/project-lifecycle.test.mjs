@@ -77,7 +77,7 @@ test('completed project permanently deletes real rows, retained replies and excl
   assert.equal(f.store.db.prepare('SELECT count(*) n FROM reference_requests').get().n,0);assert.equal(f.store.db.prepare('SELECT count(*) n FROM project_deletion_scope').get().n,0);assert.equal(f.store.db.prepare('PRAGMA foreign_key_check').get(),undefined);
   assert.deepEqual(f.lifecycle.handlers['project.delete'](input),result);assert.throws(()=>f.lifecycle.handlers['project.delete']({...input,expectedRevision:99}),{code:'IDEMPOTENCY_CONFLICT'});
   assert.equal(f.store.db.prepare('SELECT count(*) n FROM project_deletion_receipts').get().n,1);assert.equal(f.store.db.prepare('SELECT count(*) n FROM project_deletion_cleanup').get().n,0);
-  assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,52);assert.ok(timeline.id);
+  assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,56);assert.ok(timeline.id);
 });
 
 test('running, unknown and locally stopped paid jobs block deletion without removing records or media',async t=>{
@@ -169,7 +169,7 @@ test('permanent deletion includes archived task dispositions and receipts but pr
   assert.equal(f.store.db.prepare('SELECT count(*) n FROM task_dispositions').get().n,2);
   assert.equal(f.lifecycle.handlers['project.delete'](f.removeInput()).cleanup,'complete');
   for(const table of ['task_dispositions','task_disposition_requests']){assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${table} WHERE projectId=?`).get(f.project.id).n,0);assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${table} WHERE projectId=?`).get(f.other.id).n,1);}
-  assert.equal(f.store.db.prepare('PRAGMA foreign_key_check').get(),undefined);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,52);
+  assert.equal(f.store.db.prepare('PRAGMA foreign_key_check').get(),undefined);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,56);
 });
 
 test('a local markFailed cannot unlock permanent deletion of an unknown original task',async t=>{

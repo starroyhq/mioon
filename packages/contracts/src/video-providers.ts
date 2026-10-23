@@ -4,13 +4,14 @@ import {getCapabilityProfile,INPUT_ROLES} from './generation-input-profiles.ts';
 import type {GenerationInputProfile} from './generation-input-profiles.ts';
 import {effectiveVideoParameters,getWan30Capability,isWan30Binding,wanVideoInputSchema,WAN30_CAPABILITIES,WAN30_REVIEWED_ON} from './wan-video.ts';
 export * from './wan-video.ts';
+import {normalizeCustomImageBaseUrl} from './image-compatible.ts';
 
-export const VIDEO_PROVIDER_IDS=['runway','ark','veo','minimax','vidu','kling','wan'] as const;
+export const VIDEO_PROVIDER_IDS=['runway','ark','veo','minimax','vidu','kling','wan','compatible'] as const;
 export type VideoProviderId=typeof VIDEO_PROVIDER_IDS[number];
 // Keep historical protocol IDs readable while limiting the suppliers offered in the UI.
 export const VIDEO_CATALOG_PROVIDER_IDS=VIDEO_PROVIDER_IDS.filter(id=>id!=='runway');
 export const isVideoCatalogProvider=(id:string):boolean=>VIDEO_CATALOG_PROVIDER_IDS.some(providerId=>providerId===id);
-export const VIDEO_TEMPLATE_IDS=['runway-v1','ark-v3','veo-v1','minimax-v2','vidu-v2','kling-v1','wan27-t2v','wan27-i2v','wan30-v1'] as const;
+export const VIDEO_TEMPLATE_IDS=['runway-v1','ark-v3','veo-v1','minimax-v2','vidu-v2','kling-v1','wan27-t2v','wan27-i2v','wan30-v1','openai-video-v1'] as const;
 export type VideoTemplateId=typeof VIDEO_TEMPLATE_IDS[number];
 export const VIDEO_INPUT_MODES=['text','image','frames','subject','reference'] as const;
 export type VideoInputMode=typeof VIDEO_INPUT_MODES[number];
@@ -44,13 +45,22 @@ export const VIDEO_TEMPLATES:readonly VideoTemplate[]=Object.freeze([
  {id:'wan27-t2v',providerId:'wan',inputModes:['text'],aspectRatios:['9:16','16:9','1:1','3:4','4:3'],durations:range(2,15),resolutions:['720P','1080P'],audio:['default'],seed:true,...image,minDimension:240,maxDimension:8000,defaultOutputHosts:[]},
  {id:'wan27-i2v',providerId:'wan',inputModes:['image'],aspectRatios:['9:16','16:9','1:1','3:4','4:3'],durations:range(2,15),resolutions:['720P','1080P'],audio:['default'],seed:true,...image,minDimension:240,maxDimension:8000,defaultOutputHosts:[]},
  {id:'wan30-v1',providerId:'wan',inputModes:['text','image','frames','reference'],aspectRatios:wan30Protocol.aspectRatios,durations:wan30Protocol.durationsSeconds,resolutions:wan30Protocol.resolutions,audio:['optional'],seed:true,...image,maxImageBytes:wan30Protocol.maxImageBytes,minDimension:wan30Protocol.minDimension,maxDimension:wan30Protocol.maxDimension,mimeTypes:['image/png','image/jpeg','image/webp'],defaultOutputHosts:[]},
+ // OpenAI Videos API shape (create / retrieve / content). The account's actual
+ // limits are declared per model and only narrow this template; output hosts
+ // always include the service host itself.
+ {id:'openai-video-v1',providerId:'compatible',inputModes:['text','image'],aspectRatios:VIDEO_ASPECT_RATIOS,durations:range(1,20),resolutions:['480p','720p','1080p'],audio:['default'],seed:false,...image,minDimension:64,maxDimension:4096,defaultOutputHosts:[]},
 ]);
-export const VIDEO_REGIONS:Readonly<Record<VideoProviderId,readonly string[]>>={runway:['global'],ark:['cn-beijing'],veo:['global'],minimax:['global','cn'],vidu:['global','cn'],kling:['global','cn'],wan:['cn-beijing','ap-southeast-1']};
-export const VIDEO_PROVIDER_NAMES:Readonly<Record<VideoProviderId,string>>={runway:'Runway',ark:'Seedance · 火山方舟',veo:'Google Veo',minimax:'MiniMax',vidu:'Vidu',kling:'Kling · 可灵',wan:'Wan · 通义万相'};
+export const VIDEO_REGIONS:Readonly<Record<VideoProviderId,readonly string[]>>={runway:['global'],ark:['cn-beijing'],veo:['global'],minimax:['global','cn'],vidu:['global','cn'],kling:['global','cn'],wan:['cn-beijing','ap-southeast-1'],compatible:['custom']};
+export const VIDEO_PROVIDER_NAMES:Readonly<Record<VideoProviderId,string>>={runway:'Runway',ark:'Seedance · 火山方舟',veo:'Google Veo',minimax:'MiniMax',vidu:'Vidu',kling:'Kling · 可灵',wan:'Wan · 通义万相',compatible:'OpenAI Compatible'};
 export const videoConnectionConfigurationSchema=z.object({
  id:z.string().uuid(),providerId:z.enum(VIDEO_PROVIDER_IDS),name,region:z.string().min(1).max(40),workspaceId:z.string().regex(/^[A-Za-z0-9_-]{0,80}$/),
  enabled:z.boolean(),archived:z.boolean(),outputHosts:z.array(host).max(32),models:z.array(videoModelEntrySchema).max(VIDEO_SETTINGS_LIMITS.models),
+ // Only a compatible service names its own origin. Official providers keep
+ // their fixed, implemented endpoints and must never carry a base URL.
+ baseUrl:z.string().min(1).max(2048).optional(),
 }).strict().superRefine((value,ctx)=>{
+ if(value.providerId==='compatible'){if(!isCompatibleVideoBaseUrl(value.baseUrl))ctx.addIssue({code:'custom',path:['baseUrl'],message:'A compatible service needs a normalized https base URL.'});}
+ else if(value.baseUrl!==undefined)ctx.addIssue({code:'custom',path:['baseUrl'],message:'Official providers use their fixed endpoint.'});
  if(!VIDEO_REGIONS[value.providerId].includes(value.region))ctx.addIssue({code:'custom',path:['region'],message:'Unsupported official region.'});
  if(value.providerId!=='wan'&&value.workspaceId)ctx.addIssue({code:'custom',path:['workspaceId'],message:'This provider does not use a workspace ID.'});
  if(new Set(value.models.map(model=>model.id)).size!==value.models.length)ctx.addIssue({code:'custom',path:['models'],message:'Duplicate model entry identity.'});
@@ -73,6 +83,16 @@ export const videoSettingsUpdateSchema=z.discriminatedUnion('action',[
  z.object({action:z.literal('restoreCredential'),expectedRevision:z.number().int().nonnegative(),connectionId:z.string().uuid(),credentialRef:z.string().uuid(),secret:z.object({action:z.literal('replace'),value:z.string().min(1).max(8192).refine(value=>value===value.trim()&&!/[\u0000-\u0020\u007f]/.test(value)),storage:z.enum(['session','persistent'])}).strict()}).strict(),
 ]);
 export type VideoSettingsUpdate=z.infer<typeof videoSettingsUpdateSchema>;
+const checkKey=z.string().min(1).max(8192).refine(value=>value===value.trim()&&!/[\u0000-\u0020\u007f]/.test(value),'Invalid API key.');
+/** "Test connection" for a compatible service: a typed draft key goes only to the
+ * typed base URL; a saved key only to the base URL it was saved for. */
+export const compatibleVideoCheckSchema=z.discriminatedUnion('source',[
+ z.object({source:z.literal('draft'),baseUrl:z.string().min(1).max(2048),value:checkKey}).strict(),
+ z.object({source:z.literal('saved'),connectionId:z.string().uuid(),configurationRevision:z.number().int().positive()}).strict(),
+]);
+export type CompatibleVideoCheck=z.infer<typeof compatibleVideoCheckSchema>;
+export const COMPATIBLE_VIDEO_CHECK_RESULTS=['ok','unauthorized','unsupported','http_error','denied','unreachable'] as const;
+export interface CompatibleVideoCheckResult {result:typeof COMPATIBLE_VIDEO_CHECK_RESULTS[number];httpStatus?:number}
 export interface VideoStorage {persistentAvailable:boolean;sessionScope:'app'|'server';reasonCode:string|null}
 export interface VideoCredentialView {ref:string;region:string;endpoint:string;configured:boolean;storage:'none'|'session'|'persistent'}
 export interface VideoConnectionView {
@@ -97,20 +117,43 @@ export function resolveVideoEndpoint(providerId:VideoProviderId,region:string,wo
   case 'vidu':return region==='cn'?'https://api.vidu.cn':'https://api.vidu.com';
   case 'kling':return region==='cn'?'https://api-beijing.klingai.com':'https://api-singapore.klingai.com';
   case 'wan':return `${workspaceId?`https://${workspaceId}.${region}.maas.aliyuncs.com`:region==='cn-beijing'?'https://dashscope.aliyuncs.com':'https://dashscope-intl.aliyuncs.com'}/api/v1`;
+  // A compatible endpoint is the connection's own reviewed base URL; use videoConnectionEndpoint.
+  case 'compatible':throw videoSettingsError();
  }
+}
+/** Syntax-only normalization shared with compatible images: https, a DNS name
+ * (no IP literal, userinfo, port, query or fragment) and a plain path. DNS and
+ * address classification stay with the pinned transport at request time. */
+export function normalizeCompatibleVideoBaseUrl(value:unknown):string {
+ try{return normalizeCustomImageBaseUrl(value);}catch{throw videoSettingsError('VIDEO_SETTINGS_VALIDATION','兼容服务地址无效，只支持 https。');}
+}
+export function isCompatibleVideoBaseUrl(value:unknown):value is string {
+ try{return typeof value==='string'&&normalizeCompatibleVideoBaseUrl(value)===value;}catch{return false;}
+}
+/** The exact origin a connection (or its credential, or a frozen binding) talks to. */
+export function videoConnectionEndpoint(value:{providerId:VideoProviderId;region:string;workspaceId:string;baseUrl?:string}):string {
+ if(value.providerId!=='compatible')return resolveVideoEndpoint(value.providerId,value.region,value.workspaceId);
+ if(value.region!=='custom'||value.workspaceId||!isCompatibleVideoBaseUrl(value.baseUrl))throw videoSettingsError();
+ return value.baseUrl;
 }
 export function parseVideoBinding(value:unknown):VideoExecutionBinding {
  const parsed=videoExecutionBindingSchema.safeParse(value);if(!parsed.success)throw videoSettingsError('VIDEO_BINDING_INVALID','视频任务连接绑定无效。');
  const binding=parsed.data;
- videoConnectionConfigurationSchema.parse({id:binding.connectionId,providerId:binding.providerId,name:'bound',region:binding.region,workspaceId:binding.workspaceId,enabled:true,archived:false,models:[binding.model],outputHosts:binding.outputHosts});
- if(binding.endpoint!==resolveVideoEndpoint(binding.providerId,binding.region,binding.workspaceId))throw videoSettingsError('VIDEO_BINDING_INVALID','视频任务必须使用绑定的原厂端点。');
+ const baseUrl=binding.providerId==='compatible'?{baseUrl:binding.endpoint}:{};
+ if(!videoConnectionConfigurationSchema.safeParse({id:binding.connectionId,providerId:binding.providerId,name:'bound',region:binding.region,workspaceId:binding.workspaceId,enabled:true,archived:false,models:[binding.model],outputHosts:binding.outputHosts,...baseUrl}).success)throw videoSettingsError('VIDEO_BINDING_INVALID','视频任务连接绑定无效。');
+ let endpoint:string;try{endpoint=videoConnectionEndpoint({...binding,...baseUrl});}catch{throw videoSettingsError('VIDEO_BINDING_INVALID','视频任务连接绑定无效。');}
+ if(binding.endpoint!==endpoint)throw videoSettingsError('VIDEO_BINDING_INVALID','视频任务必须使用绑定的原厂端点。');
  return binding;
 }
 export const videoTemplate=(id:VideoTemplateId):VideoTemplate=>{const template=VIDEO_TEMPLATES.find(item=>item.id===id);if(!template)throw videoSettingsError();return template;};
-export function videoOutputHosts(binding:VideoExecutionBinding):string[]{return [...new Set([...videoTemplate(binding.model.templateId).defaultOutputHosts,...binding.outputHosts])];}
+export function videoOutputHosts(binding:VideoExecutionBinding):string[]{
+ // A compatible service may stream its own /content route; that host is always allowed.
+ const own=binding.providerId==='compatible'?[new URL(binding.endpoint).hostname]:[];
+ return [...new Set([...videoTemplate(binding.model.templateId).defaultOutputHosts,...own,...binding.outputHosts])];
+}
 export function defaultVideoModels(providerId:VideoProviderId):VideoModelEntry[]{
- const modelNames:Record<VideoProviderId,string[]>={runway:['gen4_turbo'],ark:['doubao-seedance-2-5-260628'],veo:['veo-3.1-generate-preview'],minimax:['MiniMax-H3'],vidu:['viduq3-turbo'],kling:['kling-3.0'],wan:['wan2.7-t2v','wan2.7-i2v']};
- return VIDEO_TEMPLATES.filter(template=>template.providerId===providerId).flatMap((template,index)=>(template.id==='wan30-v1'?['wan3.0-video','wan3.0-video-prime']:[modelNames[providerId][index]!]).map(modelId=>({id:crypto.randomUUID(),name:modelId,modelId,templateId:template.id,enabled:true,archived:false,inputModes:[...template.inputModes],aspectRatios:[...template.aspectRatios] as VideoModelEntry['aspectRatios'],durationResolutionMap:[{duration:template.id==='wan30-v1'?[...template.durations]:providerId==='kling'?[5,10]:providerId==='wan'?[5,10,15]:[...template.durations],resolution:template.id==='wan30-v1'?[...template.resolutions]:[template.resolutions[0]!]}],audio:template.audio[0]!,seed:template.seed})));
+ const modelNames:Record<VideoProviderId,string[]>={runway:['gen4_turbo'],ark:['doubao-seedance-2-5-260628'],veo:['veo-3.1-generate-preview'],minimax:['MiniMax-H3'],vidu:['viduq3-turbo'],kling:['kling-3.0'],wan:['wan2.7-t2v','wan2.7-i2v'],compatible:['sora-2']};
+ return VIDEO_TEMPLATES.filter(template=>template.providerId===providerId).flatMap((template,index)=>(template.id==='wan30-v1'?['wan3.0-video','wan3.0-video-prime']:[modelNames[providerId][index]!]).map(modelId=>({id:crypto.randomUUID(),name:modelId,modelId,templateId:template.id,enabled:true,archived:false,inputModes:[...template.inputModes],aspectRatios:(providerId==='compatible'?['9:16','16:9']:[...template.aspectRatios]) as VideoModelEntry['aspectRatios'],durationResolutionMap:[{duration:template.id==='wan30-v1'?[...template.durations]:providerId==='kling'?[5,10]:providerId==='wan'?[5,10,15]:providerId==='compatible'?[4,8,12]:[...template.durations],resolution:template.id==='wan30-v1'?[...template.resolutions]:[providerId==='compatible'?'720p':template.resolutions[0]!]}],audio:template.audio[0]!,seed:template.seed})));
 }
 
 /** Capability data is compiled from the bounded, backend-owned connection, never from a generation request. */

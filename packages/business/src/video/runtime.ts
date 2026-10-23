@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {readFile,realpath,stat} from 'node:fs/promises';
 import path from 'node:path';
-import {parseVideoBinding,resolveVideoEndpoint,validateVideoSnapshot,videoBindingCapabilities,videoOutputHosts,videoTemplate} from '../../../contracts/src/video-providers.ts';
+import {parseVideoBinding,videoConnectionEndpoint,validateVideoSnapshot,videoBindingCapabilities,videoOutputHosts,videoTemplate} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../../contracts/src/video-providers.ts';
 import type {Provider,ProviderContext as RegisteredContext} from '../provider-registry.ts';
 import {awaitProvider,checkpoint,operationCancelled} from '../operation-lifecycle.ts';
@@ -11,6 +11,7 @@ import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configur
 import type {ConfiguredVideoTask,VideoAdapterInput,VideoAdapterSelection} from './adapters.ts';
 import {createWanSdkClient,validateWanImageBytes} from './wan-sdk.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../../contracts/src/wan-video.ts';
+import {createPinnedVideoFetch} from './network.ts';
 
 export interface ConfiguredVideoProviderOptions {
   root: string;
@@ -52,9 +53,13 @@ async function managedWebp(root: string,asset: ProviderReferenceAsset,maximum: n
 /** A factory has no network or credential side effects. Its immutable binding
  * chooses only an implemented official protocol; secrets are acquired for each
  * observation/dispatch and are never retained by the provider or its poll cache. */
-export function createConfiguredVideoProvider({root,binding,acquireCredential,fetchImpl=globalThis.fetch,now=Date.now}: ConfiguredVideoProviderOptions): Provider {
+export function createConfiguredVideoProvider({root,binding,acquireCredential,fetchImpl,now=Date.now}: ConfiguredVideoProviderOptions): Provider {
   const frozen=parseVideoBinding(binding),template=videoTemplate(frozen.model.templateId),hosts=new Set(videoOutputHosts(frozen));
-  if(frozen.endpoint!==resolveVideoEndpoint(frozen.providerId,frozen.region,frozen.workspaceId))throw providerError('VIDEO_BINDING_INVALID','The configured endpoint is not an implemented official endpoint.');
+  const compatible=frozen.providerId==='compatible';
+  let endpoint='';try{endpoint=videoConnectionEndpoint({...frozen,...(compatible?{baseUrl:frozen.endpoint}:{})});}catch{}
+  if(frozen.endpoint!==endpoint)throw providerError('VIDEO_BINDING_INVALID','The configured endpoint is not an implemented official endpoint.');
+  // A user-named service host is only ever reached through the pinned transport.
+  const transport=fetchImpl??(compatible?createPinnedVideoFetch():globalThis.fetch);
   const asOf=()=>new Date(now()).toISOString().slice(0,10);
   const capabilities={...videoBindingCapabilities(frozen,{configured:true,enabled:true,asOf:asOf()}),minPollIntervalMs:frozen.providerId==='runway'?5000:10000};
   const selection: VideoAdapterSelection={providerId:frozen.providerId,model:frozen.model.modelId,resolution:'',audio:frozen.model.audio};
@@ -70,11 +75,11 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
     if(typeof value!=='string'||!value||value!==value.trim()||value.length>8192||/[\u0000-\u0020\u007f]/.test(value))throw providerError('VIDEO_CREDENTIAL_UNAVAILABLE','The credential bound to this video task is unavailable. Restore it before continuing.',{beforeDispatch:true});
     return value;
   }
-  async function request(endpoint: string,{method='GET',body,headers={},context={}}: {method?:string;body?:unknown;headers?:Record<string,string>;context?:ProviderContext}={}): Promise<Record<string,unknown>> {
+  async function request(endpoint: string,{method='GET',body,raw,headers={},context={}}: {method?:string;body?:unknown;raw?:{bytes:Uint8Array;contentType:string};headers?:Record<string,string>;context?:ProviderContext}={}): Promise<Record<string,unknown>> {
     const secret=await credential(context);
     const authentication:Record<string,string>=frozen.providerId==='veo'?{'x-goog-api-key':secret}:{Authorization:`${frozen.providerId==='vidu'?'Token':'Bearer'} ${secret}`};
-    const run=createJsonRequest({api:frozen.endpoint,headers:{...authentication,...(frozen.providerId==='runway'?{'X-Runway-Version':'2024-11-06'}:{}),...headers},fetchImpl,ensureEnabled:()=>{},name:'Video provider'});
-    return run(endpoint,{method,body,context});
+    const run=createJsonRequest({api:frozen.endpoint,headers:{...authentication,...(frozen.providerId==='runway'?{'X-Runway-Version':'2024-11-06'}:{}),...headers},fetchImpl:transport,ensureEnabled:()=>{},name:'Video provider'});
+    return run(endpoint,{method,body,raw,context});
   }
   const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,await request(configuredTaskPath(selection,id),{context}))}});
   const retrieve=async(id: string,context: ProviderContext):Promise<ConfiguredVideoTask>=>{
@@ -106,7 +111,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
       if(frozen.providerId==='kling'&&(typeof requestId!=='string'||!requestId||requestId.length>200))throw providerError('INVALID_REQUEST_ID','A stable request ID is required before creating a Kling task.');
       if(wan)return {providerJobId:await wan.submit(input,context)};
       const submission=configuredSubmission({...selection,resolution},input,requestId??'');
-      return {providerJobId:configuredSubmissionId(selection,await request(submission.path,{method:'POST',body:submission.body,headers:submission.headers,context}))};
+      return {providerJobId:configuredSubmissionId(selection,await request(submission.path,{method:'POST',body:submission.body,raw:submission.raw,headers:submission.headers,context}))};
     },
     async poll(id: string,registered: RegisteredContext={}){
       const task=await retrieve(id,contextOf(registered));
@@ -121,12 +126,16 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
     async download(id: string,destination: string,registered: RegisteredContext={}){
       ensureHosts();const context=contextOf(registered),task=await retrieve(id,context);
       if(task.status!=='succeeded')throw providerError('PROVIDER_NOT_READY','The existing provider task has no completed output.',{retryable:true});
-      let url=outputUrl(task.url,hosts);let headers:Record<string,string>|undefined;
+      let url:URL,headers:Record<string,string>|undefined;
+      // The OpenAI shape streams the result from the service's own authenticated
+      // /content route; a redirect may only reach a declared output host.
+      if(compatible){url=new URL(`${frozen.endpoint}/videos/${encodeURIComponent(id)}/content`);headers={Authorization:`Bearer ${await credential(context)}`};}
+      else url=outputUrl(task.url,hosts);
       if(frozen.providerId==='veo'&&url.origin==='https://generativelanguage.googleapis.com'){
         if(!/^\/v1beta\/files\/[A-Za-z0-9_-]{1,200}:download$/.test(url.pathname))throw providerError('UNAPPROVED_OUTPUT_HOST','Veo authenticated downloads must use its official file route.');
         url=new URL(url.pathname+'?alt=media',url.origin);headers={'x-goog-api-key':await credential(context)};
       }
-      const allowRedirect=frozen.providerId==='veo'?(location:string|null,current:URL)=>{if(!location)throw providerError('INVALID_OUTPUT_URL','The output redirect has no destination.');let next:URL;try{next=new URL(location,current);}catch{throw providerError('INVALID_OUTPUT_URL','The output redirect is invalid.');}return outputUrl(next.href,hosts);}:undefined;
+      const allowRedirect=frozen.providerId==='veo'||compatible?(location:string|null,current:URL)=>{if(!location)throw providerError('INVALID_OUTPUT_URL','The output redirect has no destination.');let next:URL;try{next=new URL(location,current);}catch{throw providerError('INVALID_OUTPUT_URL','The output redirect is invalid.');}return outputUrl(next.href,hosts);}:undefined;
       let credentialFailure:unknown;
       const downloadFetch:typeof fetch=async(input,init)=>{
         let secret:string;
@@ -134,7 +143,8 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
         // The shared downloader drops authentication on every redirect. Refresh
         // only its initial authenticated file request; never add a key to a CDN.
         const currentHeaders=new Headers(init?.headers);
-        return fetchImpl(input,frozen.providerId==='veo'&&currentHeaders.has('x-goog-api-key')?{...init,headers:{...Object.fromEntries(currentHeaders),'x-goog-api-key':secret}}:init);
+        if(compatible&&currentHeaders.has('authorization'))return transport(input,{...init,headers:{...Object.fromEntries(currentHeaders),authorization:`Bearer ${secret}`}});
+        return transport(input,frozen.providerId==='veo'&&currentHeaders.has('x-goog-api-key')?{...init,headers:{...Object.fromEntries(currentHeaders),'x-goog-api-key':secret}}:init);
       };
       try{return await downloadMp4({root,destination,url,headers,fetchImpl:downloadFetch,context,allowRedirect,invalidate:()=>cache.invalidate(id)});}
       catch(error){

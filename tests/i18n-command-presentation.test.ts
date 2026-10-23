@@ -58,7 +58,7 @@ test('continuous plan discovery has four explicit locales without changing machi
     const description = localizeToolDescription(operation, definition.description, locale);
     assert.match(description, /V2/);
     assert.match(description, /96 MiB/);
-    assert.match(description, /Agent/);
+    assert.match(description, /Mio/);
     assert.notEqual(description, translate(locale, 'operation.timeline.audioPreview.plan'));
     assert.equal(JSON.stringify(operationDefinition(operation)), before);
     assert.equal(JSON.stringify(discoverSchema({operation})), schema);
@@ -80,6 +80,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('timeline.clip.remove') + 1, 0, 'timeline.clip.rippleRemove');
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');
+  expectedUsage.splice(expectedUsage.indexOf('mioon export download --input <JSON> --output <new-local-file>') + 1, 0, 'mioon project export --input <JSON> --output <new-local-file.mioon>', 'mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]', 'mioon project duplicate --request-id <id> --input <JSON>');
   assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, usage:expectedUsage, operations:expectedOperations}});
   const schema=cli(['schema','project.create']).stdout;
   const version=cli(['--version']).stdout;

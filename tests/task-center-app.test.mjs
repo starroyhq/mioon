@@ -5,12 +5,16 @@ import {readFileSync} from 'node:fs';
 import {captureTaskWorkspaceIntent, navigateTaskShot} from '../apps/web/src/task-workspace-intent.ts';
 import {findGenerationProvider, generationProviderForModel, generationProviderIdentity, generationParameters} from '../apps/web/src/generation-settings.ts';
 import {parseVideoBinding, videoBindingCapabilities} from '../packages/contracts/src/video-providers.ts';
+import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS} from '@mioon/contracts';
+import {parseAgentTaskRecoveryLocation,resolveAgentTaskRecoveryLocation} from '../apps/web/src/agent-task-recovery-location.ts';
+import {createSubtitleController} from '../apps/web/src/subtitle-state.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 function section(start, end) { const a=app.indexOf(start),b=app.indexOf(end,a);assert.ok(a>=0&&b>a);return app.slice(a,b); }
-const bridge=section('  function readTaskRevealContext()', '  function openExportHistory()');
+const bridge=section('  function readTaskRevealContext()', '  async function openAgentRequests(')+section('  function inspectTaskJob(', '  function openExportHistory()');
+const agentBridge=section('  async function openAgentRequests(', '  function inspectTaskJob(');
 const runBody=section('  async function runDurable(', '  async function recoverTask(');
 const recoverBody=section('  async function recoverTask(', '  async function adoptLegacyTask(');
 const make=(code,deps,names)=>Function(...Object.keys(deps),`${code}\nreturn {${names.join(',')}};`)(...Object.values(deps));
@@ -41,6 +45,78 @@ test('actual Tasks view capture is separate from a generic delayed reveal captur
  const h=harness();h.refs.taskWorkspaceState.current.visible=false;
  assert.equal(h.captureTaskView(),null);assert.equal(captureTaskWorkspaceIntent(h.readTaskRevealContext)(),true);
  h.refs.taskWorkspaceState.current.connected=false;assert.equal(captureTaskWorkspaceIntent(h.readTaskRevealContext),null);
+});
+
+function agentRequestHarness({kind='image',identity='task',holdAt=null}={}) {
+ const sourceId='44444444-4444-4444-8444-444444444444',groupId='55555555-5555-4555-8555-555555555555',requestId='66666666-6666-4666-8666-666666666666',at='2026-10-22T00:00:00.000Z';
+ const state={ready:true,nativeAllowed:true,nativeUnknown:false,composing:false,accept:true,guardCalls:0,discards:0,reads:[],effects:[],notices:[],recovery:null,draft:{text:'Keep my manual draft',inFrame:12,outFrame:88}},entered=gate(),release=gate();
+ const clipCapture={};
+ const refs={currentProject:{current:projectId},projectEpoch:{current:2},navigationEpoch:{current:3},panelIntent:{current:4},viewRef:{current:{activeMode:'canvas'}},viewReady:{current:true},taskWorkspaceState:{current:{connected:true}},workspaceRef:{current:'original'},shotTextRef:{current:null},subtitlesRef:{current:null},clipDraftRef:{current:{hasPendingComposition:()=>state.composing,capture:()=>clipCapture,isCurrent:token=>token===clipCapture}},document:{visibilityState:'visible'}};
+ const task=kind==='image'?{id:jobId,projectId,groupId,requestId,name:'Saved image',prompt:'Saved prompt',providerId:'mock',model:IMAGE_MODELS.mock,options:{...IMAGE_FIXED_OPTIONS},state:'local_result_error',revision:3,dispatched:true,versionId:null,errorCode:'LOCAL_RESULT_ERROR',createdAt:at,updatedAt:at}:{id:jobId,projectId,requestId,sourceAssetId:sourceId,sourceHash:'a'.repeat(64),sourceFrame:30,fps:30,profileId:'local-png-1024-v1',state:'interrupted',revision:3,started:true,result:null,errorCode:'INTERRUPTED',createdAt:at,updatedAt:at};
+ const deps={...refs,application:null,restored:false,loading:false,online:true,auth:true,nativeWindow:true,data:{project:{id:projectId}},dataRef:{current:{assets:[{id:sourceId,projectId,sha256:'a'.repeat(64),mimeType:'video/mp4'}]}},parseAgentTaskRecoveryLocation,resolveAgentTaskRecoveryLocation,
+  projectSessionReady:()=>state.ready,readEditorWindowInputs:navigation=>{assert.equal(navigation,true);return {busy:!state.nativeAllowed,unknown:state.nativeUnknown};},context:()=>({projectId:refs.currentProject.current,epoch:refs.navigationEpoch.current,workspace:refs.workspaceRef.current}),isCurrent:value=>value.projectId===refs.currentProject.current&&value.epoch===refs.navigationEpoch.current&&value.workspace===refs.workspaceRef.current,
+  guardNavigation:async(_message,_extra,current)=>{state.guardCalls++;if(holdAt==='guard'){entered.resolve();await release.promise;}if(!state.accept||!current())return false;state.discards++;return true;},msg:message,
+  rpc:async(operation,input)=>{state.reads.push({operation,input});if(holdAt==='read'){entered.resolve();await release.promise;}if(state.throwRead)throw Error('PRIVATE_READ_FAILURE');if(operation.endsWith('request.get'))return {projectId,requestId,operation:kind==='image'?'image.generate':'frame.extract',response:{...task,state:'queued',revision:1,...(kind==='image'?{dispatched:false}:{started:false}),errorCode:null}};return task;},
+  notify:(...args)=>state.notices.push(args),markPanelIntent:()=>refs.panelIntent.current++,requestId:()=> 'fixed-reveal-click',setAgentRecovery:value=>{state.recovery=value;},
+  openTasks:(current,selection)=>{if(refs.clipDraftRef.current?.hasPendingComposition()||!current()||!refs.currentProject.current||!refs.viewReady.current)return false;state.effects.push(['tasks',selection]);return true;},
+  setShowTasks:value=>state.effects.push(['tasks',value]),setShowDelivery:value=>state.effects.push(['delivery',value]),setShowImage:value=>state.effects.push(['image',value]),setPropertiesPage:value=>state.effects.push(['properties',value]),setRightDockTab:value=>state.effects.push(['dock',value]),setPanelOpen:(...args)=>{state.effects.push(['panel',...args]);refs.panelIntent.current++;},updateView:(section,value)=>{state.effects.push([section,value]);if(section==='activeMode')refs.viewRef.current.activeMode=value;},
+ };
+ const remake=()=>make(agentBridge,deps,['openAgentRequests']).openAgentRequests;
+ return {state,refs,deps,entered,release,remake,open:remake(),selection:`${kind}${identity==='request'?'-request':''}:${identity==='request'?requestId:jobId}`};
+}
+function originalRequestDraftOwner(h, kind) {
+ let version=0,state={draft:{text:'Saved input'},dirty:false};
+ const controller={capture:()=>({version}),isCurrent:token=>token.version===version,getState:()=>state,hasPendingComposition:()=>false};
+ const install=next=>{if(kind==='shot')h.refs.shotTextRef.current=next;else if(kind==='clip')h.refs.clipDraftRef.current=next;else h.refs.subtitlesRef.current=next?{controller:next}:null;};
+ install(controller);
+ return {controller,install,edit(text){version++;state={draft:{text},dirty:true};},dispose(){version++;},getState:()=>state};
+}
+for(const kind of ['image','frame'])for(const input of ['shot','clip','subtitle'])for(const change of ['edit','edit-back','owner'])test(`Mio ${kind} lookup rejects a new ordinary ${input} ${change} after confirmation`,async()=>{
+ const h=agentRequestHarness({kind,holdAt:'read'}),draft=originalRequestDraftOwner(h,input),pending=h.open(h.selection);await h.entered.promise;
+ draft.edit('Typed after confirmation');if(change==='edit-back')draft.edit('Saved input');if(change==='owner')draft.install({...draft.controller});
+ const retained=draft.getState();h.release.resolve();assert.equal(await pending,false);assert.equal(h.state.discards,1);assert.equal(h.state.reads.length,1);assert.deepEqual(h.state.effects,[]);assert.deepEqual(h.state.notices,[]);assert.equal(h.state.recovery,null);assert.equal(draft.getState(),retained,'a late lookup neither discards nor alters the new ordinary input');
+});
+for(const input of ['shot','clip','subtitle'])test(`Mio lookup captures the ${input} owner after the approved discard`,async()=>{
+ const h=agentRequestHarness({kind:'frame'}),draft=originalRequestDraftOwner(h,input),guard=h.deps.guardNavigation;draft.edit('Old confirmed input');
+ h.deps.guardNavigation=async(...args)=>{const allowed=await guard(...args);if(allowed)draft.edit('Discarded baseline');return allowed;};
+ assert.equal(await h.remake()(h.selection),true);assert.equal(h.state.recovery.current(),true);assert.equal(draft.getState().draft.text,'Discarded baseline');
+});
+for(const input of ['shot','clip','subtitle'])test(`Mio image recovery intent rejects new ${input} input while its owner remains mounted`,async()=>{
+ const h=agentRequestHarness(),draft=originalRequestDraftOwner(h,input);assert.equal(await h.open(h.selection),true);assert.equal(h.state.recovery.current(),true);
+ draft.edit('New input before image lookup');assert.equal(h.state.recovery.current(),false);assert.equal(draft.getState().draft.text,'New input before image lookup');
+});
+for(const input of ['shot','clip'])test(`Mio frame recovery intent survives its own expected ${input} form unmount`,async()=>{
+ const h=agentRequestHarness({kind:'frame'}),draft=originalRequestDraftOwner(h,input),subtitle=originalRequestDraftOwner(h,'subtitle');
+ assert.equal(await h.open(h.selection),true);draft.dispose();draft.install(null);assert.equal(h.state.recovery.current(),true,'the legal frame navigation must not invalidate itself by disposing its old form');
+ subtitle.edit('Retained App subtitle');assert.equal(h.state.recovery.current(),false);assert.equal(subtitle.getState().draft.text,'Retained App subtitle');
+});
+test('the App-owned subtitle controller preserves ordinary input when frame navigation hides its page',()=>{
+ const timeline={id:jobId,projectId,revision:1,durationFrames:90,fps:30,subtitles:{profileId:'bottom_cjk_v1',cues:[{id:shotId,text:'Saved',startFrame:0,durationFrames:30}]}},scope=`${projectId}:2`;
+ const controller=createSubtitleController({submit:async()=>{throw Error('The retained subtitle must not submit');}});controller.setContext({scope,projectId,timeline,connected:true,pending:false});controller.setVisible(true);assert.equal(controller.select(shotId),true);assert.equal(controller.edit('text','Retained subtitle'),true);
+ const draft=controller.getState();controller.setVisible(false);controller.setContext({scope,projectId,timeline,connected:true,pending:false});assert.equal(controller.getState(),draft);assert.equal(controller.getState().draft.text,'Retained subtitle');assert.equal(controller.hasUnsaved(),true);controller.dispose();
+ assert.match(app,/const subtitles = useSubtitles\(/);assert.match(app,/scope: `\$\{projectId\}:\$\{projectEpoch\.current\}`/);
+});
+for(const kind of ['image','frame'])for(const identity of ['task','request'])test(`Mio ${kind} ${identity} reveal reads only the exact original record and preserves manual input`,async()=>{
+ const h=agentRequestHarness({kind,identity}),before=structuredClone(h.state.draft);assert.equal(await h.open(h.selection),true);assert.deepEqual(h.state.reads.map(item=>item.operation),identity==='request'?[`${kind}.request.get`,`${kind}.task.get`]:[`${kind}.task.get`]);assert.ok(h.state.reads.every(item=>item.input.projectId===projectId));assert.equal(h.state.recovery.projectId,projectId);assert.equal(h.state.recovery.taskId,jobId);assert.equal(h.state.recovery.current(),true);assert.deepEqual(h.state.draft,before);assert.ok(h.state.effects.some(item=>item[0]==='image'&&item[1]===(kind==='image')));
+ if(kind==='frame'){assert.deepEqual(h.state.effects.find(item=>item[0]==='editing'),['editing',{quickAssetId:'44444444-4444-4444-8444-444444444444',selectedClipId:null,previewKind:'source'}]);assert.ok(h.state.effects.some(item=>item[0]==='dock'&&item[1]==='properties'));}else assert.ok(!h.state.effects.some(item=>['dock','editing','properties','panel'].includes(item[0])));
+ h.state.composing=true;assert.equal(h.state.recovery.current(),false,'an already delivered intent loses navigation authority when IME begins');
+});
+test('Mio original-request reveal rejects malformed namespaces and retains ordinary Tasks admission',async()=>{
+ const h=agentRequestHarness();for(const value of ['image:https://private.invalid','frame-request:not-a-uuid'])assert.equal(await h.open(value),false);assert.deepEqual(h.state.reads,[]);assert.deepEqual(h.state.effects,[]);
+ assert.equal(await h.open(jobId),true);assert.deepEqual(h.state.effects,[['tasks',jobId]]);h.state.effects=[];h.refs.currentProject.current='other';assert.equal(await h.open(jobId),false);h.refs.currentProject.current=projectId;h.state.composing=true;assert.equal(await h.open(jobId),false);h.state.composing=false;h.refs.viewReady.current=false;assert.equal(await h.open(jobId),false);assert.deepEqual(h.state.effects,[]);
+});
+for(const admission of ['application','restored','loading','offline','auth','project','ready','view','connected','IME','retained','retained-unknown'])test(`Mio original-request reveal rejects ${admission} before lookup or navigation`,async()=>{
+ const h=agentRequestHarness();if(['application','restored','loading'].includes(admission))h.deps[admission]=true;if(admission==='offline')h.deps.online=false;if(admission==='auth')h.deps.auth=false;if(admission==='project')h.refs.currentProject.current=null;if(admission==='ready')h.state.ready=false;if(admission==='view')h.refs.viewReady.current=false;if(admission==='connected')h.refs.taskWorkspaceState.current.connected=false;if(admission==='IME')h.state.composing=true;if(admission==='retained')h.state.nativeAllowed=false;if(admission==='retained-unknown')h.state.nativeUnknown=true;
+ assert.equal(await h.remake()(h.selection),false);assert.equal(h.state.guardCalls,0);assert.deepEqual(h.state.reads,[]);assert.deepEqual(h.state.effects,[]);assert.equal(h.state.recovery,null);
+});
+for(const phase of ['guard','read'])for(const change of ['project','projectEpoch','workspace','navigation','panel','mode','hidden','view','ready','connected','IME','retained','retained-unknown'])test(`Mio original-request reveal ignores ${change} during ${phase}`,async()=>{
+ const h=agentRequestHarness({kind:'frame',holdAt:phase}),before=structuredClone(h.state.draft),pending=h.open(h.selection);await h.entered.promise;
+ if(change==='project')h.refs.currentProject.current='other';if(change==='projectEpoch')h.refs.projectEpoch.current++;if(change==='workspace')h.refs.workspaceRef.current='restored';if(change==='navigation')h.refs.navigationEpoch.current++;if(change==='panel')h.refs.panelIntent.current++;if(change==='mode')h.refs.viewRef.current.activeMode='editing';if(change==='hidden')h.refs.document.visibilityState='hidden';if(change==='view')h.refs.viewReady.current=false;if(change==='ready')h.state.ready=false;if(change==='connected')h.refs.taskWorkspaceState.current.connected=false;if(change==='IME')h.state.composing=true;if(change==='retained')h.state.nativeAllowed=false;if(change==='retained-unknown')h.state.nativeUnknown=true;
+ h.release.resolve();assert.equal(await pending,false);assert.equal(h.state.discards,phase==='guard'?0:1);assert.equal(h.state.reads.length,phase==='guard'?0:1);assert.deepEqual(h.state.effects,[]);assert.deepEqual(h.state.notices,[]);assert.equal(h.state.recovery,null);assert.deepEqual(h.state.draft,before);
+});
+test('Mio frame reveal requires the original project-local source hash and keeps failure diagnostics private',async()=>{
+ for(const invalid of ['project','hash','missing']){const h=agentRequestHarness({kind:'frame'});if(invalid==='missing')h.deps.dataRef.current.assets=[];else h.deps.dataRef.current.assets[0][invalid==='project'?'projectId':'sha256']='wrong';assert.equal(await h.open(h.selection),false);assert.deepEqual(h.state.effects,[]);assert.equal(h.state.recovery,null);assert.equal(h.state.notices.length,1);}
+ const h=agentRequestHarness();h.state.throwRead=true;assert.equal(await h.open(h.selection),false);assert.deepEqual(h.state.effects,[]);assert.equal(h.state.notices.length,1);assert.doesNotMatch(JSON.stringify(h.state.notices),/PRIVATE_READ_FAILURE/);
 });
 test('a retained disconnected clip blocks durable dispatch and recovery before touching task state', async () => {
  const h=harness();h.deps.clipConnectionBlocked.current=true;
@@ -136,6 +212,9 @@ test('actual App keeps retained owners mounted and routes task opening through i
  for(const page of ['properties','agent','image','delivery','tasks'])assert.match(app,new RegExp(`id="right-dock-${page}"`));
  assert.match(app,/onReload=\{\(\(\) => tasksRef\.current!\.load\(currentProject\.current as string\)\) as never\}/);
  assert.doesNotMatch(bridge,/\.execute\(|\.recover\(|\.acknowledge\(|\.load\(|\brpc\(|setInterval|setTimeout/);
+ assert.doesNotMatch(agentBridge,/\.execute\(|\.recover\(|\.acknowledge\(|\.load\(|setInterval|setTimeout/);
+ assert.equal([...agentBridge.matchAll(/\brpc\(/g)].length,1,'the separate original-request route has exactly one resolver-owned read seam');
+ assert.match(agentBridge,/resolveAgentTaskRecoveryLocation\(location, projectId, async \(operation, input\) => rpc\(operation, input\), current\)/);
 });
 
 

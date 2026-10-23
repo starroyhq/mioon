@@ -19,10 +19,11 @@ import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2
 import type {PreparedAgentTaskTool,AgentTaskToolContext} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
-import {withAgentTaskJobOrigin,setAgentTaskEffectGate,assertAgentTaskJobEffect,isAgentTaskEffectBlocked} from '../packages/business/src/agent/task-effects-v2.ts';
+import {withAgentTaskJobOrigin,allowAgentTaskJobTargetMutation,setAgentTaskEffectGate,setAgentTaskJobResumer,assertAgentTaskJobEffect,isAgentTaskEffectBlocked} from '../packages/business/src/agent/task-effects-v2.ts';
 import type {Provider,ProviderContext} from '../packages/business/src/provider-registry.ts';
 import type {TaskModelItem,TaskModelRequest,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {createTaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {createTaskGateway,buildTaskModelRequest,taskResponseLanguageContext,taskResponseLocale,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
 import type {AgentTaskToolCall,AgentTaskStatus,AgentTaskSnapshot,AgentTaskControlAction} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
@@ -79,6 +80,81 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
   restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318});},
  };
 }
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a run keeps its submitted locale across tool rounds, budget continuation and restart`,async t=>{
+  const expected={'zh-Hans':'用简体中文','zh-Hant':'用繁體中文',en:'Use English',ja:'簡潔な日本語'};
+  for(const locale of AGENT_TASK_LOCALES){
+    const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
+    f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
+    const input={requestId:randomUUID(),text:'Use French; Mioon host response language v1: en.',expectedSettingsRevision:(await f.settings.get()).revision,locale};
+    const sent=await f.runtime.send(f.projectId,input),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');
+    assert.equal(taskResponseLocale(f.runtime.journal.run(sent.run.id).context),locale);assert.equal(sent.run.context,undefined);
+    f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');
+    await f.action(interrupted,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.equal(f.effects.size,1);
+    for(const request of f.requests){const body=object(JSON.parse(request.body));const messages=body.messages as {content:string}[]|undefined;assert.ok(String(body.instructions??messages?.[0]?.content).includes(expected[locale]));}
+    const replay=await f.runtime.send(f.projectId,input);assert.equal(replay.run.id,sent.run.id);assert.equal(f.requests.length,2);
+    await assert.rejects(f.runtime.send(f.projectId,{...input,locale:locale==='en'?'ja':'en'}),{code:'AGENT_TASK_REQUEST_CONFLICT'});assert.equal(f.requests.length,2);
+  }
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: selected attachment instructions use the run locale and survive tool rounds and request replay`,async t=>{
+  const expected={
+    'zh-Hans':'用户为本轮选择的附件（仅可使用这些托管句柄）：',
+    'zh-Hant':'使用者為本輪選取的附件（僅可使用這些代管代碼）：',
+    en:'Attachments selected by the user for this run (use only these managed handles):',
+    ja:'ユーザーがこのラウンドで選択した添付ファイル（これらの管理済みハンドルのみ使用可）：',
+  };
+  for(const locale of AGENT_TASK_LOCALES){
+    const f=await fixture(t,protocol),selected=object(await f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'Selected source.png',mimeType:'image/png',dataBase64:png().toString('base64')})),handle=String(selected.id);
+    f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_project_inspect')]:[])};});
+    const input={requestId:randomUUID(),text:'Inspect the selected attachment metadata only.',expectedSettingsRevision:(await f.settings.get()).revision,locale,uploads:[handle]},content=input.text+'\n'+expected[locale]+JSON.stringify([{handle,name:'Selected source.png',mimeType:'image/png'}]);
+    const sent=await f.runtime.send(f.projectId,input),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.deepEqual(f.runtime.journal.run(sent.run.id).context?.at(-1),{role:'user',content});assert.equal(sent.run.context,undefined);
+    for(const request of f.requests){const body=object(JSON.parse(request.body)),history=body[protocol==='responses'?'input':'messages'];assert.ok(Array.isArray(history));assert.ok(history.some(item=>object(item).role==='user'&&object(item).content===content));}
+    f.restart();assert.equal((await f.runtime.send(f.projectId,input)).run.id,sent.run.id);assert.equal(f.requests.length,2);assert.deepEqual(f.runtime.journal.run(sent.run.id).context?.at(-1),{role:'user',content});
+  }
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a tool explanation survives approval and restart without entering business arguments or results`,async t=>{
+  const f=await fixture(t,protocol),caption='Update the shot description',args={shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'approved description'}},planned=call('mioon_shot_update',args),executed:Record<string,unknown>[]=[];
+  f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
+  f.beforeTool(async prepared=>{executed.push(structuredClone(prepared.input));});
+  f.setScript(async function*(index){
+    if(index!==1){yield {type:'done',output:output(protocol)};return;}
+    // The protocol gateway retains provider output for its explanation while
+    // stripping the host-only presentation field from executable arguments.
+    // Its dual-protocol wire stripping is covered by the gateway integration.
+    const retained=output(protocol,[{...planned,arguments:{...args,_mio_step:caption}}]);retained.toolCalls=[planned];yield {type:'done',output:retained};
+  });
+  const sent=await f.send(),waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const original=waiting.steps.find(step=>step.kind==='tool');assert.ok(original);
+  assert.equal(original.status,'awaiting_approval');assert.equal(original.text,caption);assert.deepEqual(original.toolCall?.arguments,args);assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);assert.equal(executed.length,0);
+  f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');assert.equal(interrupted.steps.find(step=>step.id===original.id)?.text,caption);assert.equal(f.requests.length,1);
+  await f.action(interrupted,'resume');const approval=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const restored=approval.steps.find(step=>step.id===original.id);assert.ok(restored);assert.equal(restored.text,caption);assert.equal(restored.status,'awaiting_approval');assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
+  await f.action(approval,'approve',{stepId:original.id});const done=await f.settle(sent.run.id),completed=done.steps.find(step=>step.id===original.id);assert.ok(completed);assert.equal(done.run.status,'completed');assert.equal(completed.status,'completed');assert.equal(completed.text,caption);assert.deepEqual(completed.toolCall?.arguments,args);assert.equal(f.effects.size,1);assert.equal(executed.length,1);assert.deepEqual(executed[0],args);assert.equal(f.requests.length,2);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'approved description');
+  assert.doesNotMatch(JSON.stringify({prepared:executed[0],tool:completed.toolCall,result:completed.result,savedTool:f.runtime.journal.step(original.id),business:f.store.get('shots',f.first.id)}),/_mio_step/u);
+  f.restart();const stable=f.runtime.get(f.projectId,sent.run.id);assert.equal(stable.steps.find(step=>step.id===original.id)?.text,caption);assert.equal(f.requests.length,2);assert.equal(f.effects.size,1);
+});
+test('omitted locale and explicit Simplified Chinese replay the same run; invalid locale never creates a request',async t=>{
+  const f=await fixture(t),input={requestId:randomUUID(),text:'English user content does not choose the response language',expectedSettingsRevision:(await f.settings.get()).revision};
+  const sent=await f.runtime.send(f.projectId,input);await f.settle(sent.run.id);
+  assert.equal((await f.runtime.send(f.projectId,{...input,locale:'zh-Hans'})).run.id,sent.run.id);
+  for(const locale of [null,'','EN','zh-CN','fr',{},1])await assert.rejects(f.runtime.send(f.projectId,{...input,requestId:randomUUID(),locale}),{code:'AGENT_TASK_INVALID'});
+  assert.equal(f.requests.length,1);assert.equal(f.runtime.journal.list(f.projectId).length,1);
+  // An old retained context has no host marker; the original request remains
+  // addressable with the compatible omitted/default locale after restart.
+  const old=f.runtime.journal.run(sent.run.id);old.context=old.context!.slice(1);f.store.db.prepare('UPDATE agent_task_runs_v2 SET data=? WHERE id=?').run(JSON.stringify(old),old.id);
+  f.restart();assert.equal((await f.runtime.send(f.projectId,input)).run.id,sent.run.id);assert.equal((await f.runtime.send(f.projectId,{...input,locale:'zh-Hans'})).run.id,sent.run.id);assert.equal(f.requests.length,1);
+});
+test('history byte trimming keeps the exact host language and final user message without inheriting an earlier locale',async t=>{
+  const f=await fixture(t);f.setScript(async function*(){yield {type:'done',output:output('responses',[],'x'.repeat(50000))};});
+  let conversationId:string|undefined;for(let index=0;index<4;index++){const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'previous '+index+' '+('x'.repeat(28000)),expectedSettingsRevision:(await f.settings.get()).revision,locale:'en',...(conversationId?{conversationId}:{})});conversationId=sent.run.conversationId;await f.settle(sent.run.id);}
+  const text='現在の指示',sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await f.settings.get()).revision,locale:'ja',conversationId});await f.settle(sent.run.id);
+  const context=f.runtime.journal.run(sent.run.id).context!;assert.deepEqual(context[0],taskResponseLanguageContext('ja'));assert.deepEqual(context.at(-1),{role:'user',content:text});assert.ok(Buffer.byteLength(JSON.stringify(context))<=TASK_MODEL_LIMITS.historyBytes);assert.ok(context.length<10);assert.equal(taskResponseLocale(context),'ja');
+});
+test('resuming a legacy model intent sends its original journaled body without rewriting language',async t=>{
+  const f=await fixture(t),settings=await f.settings.get(),context=[{role:'user',content:'legacy request'}];
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'legacy request',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+  const body=object(JSON.parse(buildTaskModelRequest(settings.configuration,context,[],4318)));body.instructions='旧版固定中文指令';const original=JSON.stringify(body);
+  const step=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body:original,history:context},data:{baseline:[]}});
+  f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.run.status,'interrupted');assert.equal(interrupted.steps[0]!.status,'intent');
+  await f.action(interrupted,'resume');const done=await f.settle(created.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,1);assert.equal(f.requests[0]!.body,original);assert.equal(object(f.runtime.journal.step(step.id).request).body,original);
+});
 for(const protocol of ['chat_completions','responses'] as const){
  test(`${protocol}: a trusted DNS denial records prevented dispatch and never becomes an unknown model result`,async t=>{
   const f=await fixture(t,protocol),transport=syntheticDeniedTransport('198.18.10.207');f.setScript(async function*(_index,request){yield*transport.gateway(request);});
@@ -150,13 +226,65 @@ for(const action of ['approve','deny'] as const)test(`${action} receipt failure 
 });
 test('read and reversible tiers independently require approval and exact duplicate controls do not repeat',async t=>{const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,read_only:'confirm',local_reversible:'confirm'}});f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect'),call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'AI edit'}})]:[])};});const sent=await f.send();let waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();assert.equal(f.effects.size,0);const first=waiting.steps.find(step=>step.status==='awaiting_approval');assert.ok(first);const control={requestId:randomUUID(),action:'approve',expectedRevision:waiting.run.revision,stepId:first.id};await f.runtime.action(f.projectId,sent.run.id,control);await f.runtime.action(f.projectId,sent.run.id,control);waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const second=waiting.steps.find(step=>step.status==='awaiting_approval');assert.ok(second);assert.equal(second.tier,'local_reversible');assert.equal(f.effects.size,1);await f.action(waiting,'deny',{stepId:second.id});const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,1);assert.equal(object(f.store.get('shots',String(f.first.id))).prompt,'saved first');});
 test('same target ABA during model wait pauses while another shot edit does not',async t=>{for(const same of [true,false]){const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'AI edit'}})]:[])};});const sent=await f.send();await entered.promise;const target=same?f.first:f.other;let saved=object(await f.services.call('shot.update',{shotId:target.id,expectedRevision:target.revision,patch:{prompt:'manual edit'}}));if(same)saved=object(await f.services.call('shot.update',{shotId:target.id,expectedRevision:saved.revision,patch:{prompt:target.prompt}}));release.resolve();const end=await f.settle(sent.run.id);assert.equal(end.run.status,same?'paused':'completed');assert.equal(f.effects.size,same?0:1);if(same){assert.equal(end.run.pauseReason,'conflict');assert.equal(f.requests.length,1);}else assert.equal(object(f.store.get('shots',String(f.other.id))).prompt,'manual edit');}});
-test('unsaved editing claim blocks only its target and resume re-plans after explicit release',async t=>{const f=await fixture(t);const target={kind:'shot',id:String(f.first.id),revision:f.runtime.journal.targetRevision(f.projectId,'shot',String(f.first.id))};f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'runtime-edit-owner',generation:1,sequence:1,action:'claim',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'AI edit'}})])};});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'editing');assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'runtime-edit-owner',generation:1,sequence:2,action:'release',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses')};});await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,0);assert.equal(f.requests.length,2);assert.match(f.requests[1].body,/TARGET_CHANGED/);});
+test('unsaved editing claim blocks only its target and skip re-plans after explicit release',async t=>{const f=await fixture(t);const target={kind:'shot',id:String(f.first.id),revision:f.runtime.journal.targetRevision(f.projectId,'shot',String(f.first.id))};f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'runtime-edit-owner',generation:1,sequence:1,action:'claim',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'AI edit'}})])};});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'editing');assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'runtime-edit-owner',generation:1,sequence:2,action:'release',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses')};});await f.action(paused,'skip');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,0);assert.equal(f.requests.length,2);assert.match(f.requests[1].body,/TARGET_SKIPPED/);});
+for(const protocol of ['chat_completions','responses'] as const)for(const legacy of [false,true])for(const reason of ['editing','conflict'] as const)test(`${protocol}: interrupted ${legacy?'legacy restart':'preserved'} ${reason} returns to conflict selection before any old tool can run`,async t=>{
+ const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID(),entered=gate(),release=gate();
+ if(reason==='editing')f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});
+ f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'old parameters must not run'}})]:[])};});
+ const sent=await f.send();await entered.promise;
+ if(reason==='conflict'){
+  const changed=object(await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'manual ABA'}}));
+  await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:revisionField(changed),patch:{prompt:f.first.prompt}});
+ }
+ release.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,reason);
+ if(reason==='editing')f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:2,action:'release',targets:[target]});
+ await assert.rejects(f.action(paused,'resume'),{code:'AGENT_TASK_SKIP_REQUIRED'});assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);
+ f.restart();let interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');
+ if(legacy){const saved=f.runtime.journal.run(sent.run.id);f.store.db.prepare('UPDATE agent_task_runs_v2 SET data=? WHERE id=?').run(JSON.stringify({...saved,pauseReason:'restart'}),sent.run.id);interrupted=f.runtime.get(f.projectId,sent.run.id);}
+ let wakeups=0;const removeResumer=setAgentTaskJobResumer(f.store.db,'synthetic-conflict-resume',()=>{wakeups++;});t.after(removeResumer);
+ const control={requestId:randomUUID(),expectedRevision:interrupted.run.revision,action:'resume'},selected=await f.runtime.action(f.projectId,sent.run.id,control);await f.runtime.drain();
+ assert.equal(selected.run.status,'paused');assert.equal(selected.run.pauseReason,legacy?'conflict':reason);assert.equal(selected.run.budget,paused.run.budget);assert.equal(selected.run.stepsUsed,paused.run.stepsUsed);
+ assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);assert.equal(wakeups,0);assert.deepEqual(selected.run.skippedTargets,[]);assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
+ const stable=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id);await f.runtime.action(f.projectId,sent.run.id,control);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),stable);assert.deepEqual(f.runtime.journal.events(sent.run.id),events);assert.equal(wakeups,0);
+ await assert.rejects(f.action(selected,'resume'),{code:'AGENT_TASK_SKIP_REQUIRED'});await f.action(selected,'skip');const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.[0]?.target.id,f.first.id);assert.equal(done.changes.length,0);assert.equal(f.effects.size,0);assert.equal(f.requests.length,2);assert.match(f.requests[1]!.body,/TARGET_SKIPPED/);assert.equal(wakeups,1);assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
+});
+for(const status of ['denied','rejected','completed'] as const)test(`interrupted restart ignores handled ${status} conflict metadata`,async t=>{
+ const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.claim({projectId:f.projectId,ownerId:'handled-conflict',targets:[target]});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'handled old parameters'}})]:[])};});
+ const sent=await f.send(),paused=await f.settle(sent.run.id),step=paused.steps.find(item=>item.kind==='tool');assert.ok(step);assert.equal(paused.run.pauseReason,'editing');f.runtime.journal.releaseClaims(f.projectId,'handled-conflict');
+ if(status==='completed'){f.runtime.journal.markDispatch(sent.run.id,step.id);f.runtime.journal.completeStep(sent.run.id,step.id,{result:{handled:true}});const current=f.runtime.journal.step(step.id);f.runtime.journal.updateStep(sent.run.id,step.id,{data:{...object(current.data),backgroundInvalidated:false}});}
+ else f.runtime.journal.updateStep(sent.run.id,step.id,{status,result:{handled:true}});
+ const resumed=f.runtime.journal.resume(sent.run.id,f.runtime.journal.run(sent.run.id).revision);f.runtime.journal.transition(sent.run.id,resumed.revision,'paused','user');f.restart();
+ await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,0);assert.equal(f.requests.length,2);assert.deepEqual(done.run.skippedTargets,[]);
+});
+for(const protocol of ['chat_completions','responses'] as const)for(const kind of ['model','tool'] as const)test(`${protocol}: interrupted conflict selection still requires unknown ${kind} result disposition first`,async t=>{
+ const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.claim({projectId:f.projectId,ownerId:'unknown-conflict',targets:[target]});
+ f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'unknown old parameters'}})]:[])};});
+ const sent=await f.send(),paused=await f.settle(sent.run.id);f.runtime.journal.resume(sent.run.id,paused.run.revision);const uncertain=f.runtime.journal.beginStep(sent.run.id,{kind,...(kind==='tool'?{toolCall:call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'unknown tool must not run'}})}:{})});f.runtime.journal.markDispatch(sent.run.id,uncertain.id);f.runtime.journal.transition(sent.run.id,f.runtime.journal.run(sent.run.id).revision,'paused','editing');f.restart();
+ const interrupted=f.runtime.get(f.projectId,sent.run.id),before=f.runtime.journal.snapshot(sent.run.id);await assert.rejects(f.action(interrupted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);
+ const disposed=await f.action(interrupted,'resolve_unknown',{stepId:uncertain.id,resolution:'discard'}),selected=await f.action(disposed,'resume');assert.equal(selected.run.status,'paused');assert.equal(selected.run.pauseReason,'editing');assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: interrupted conflict recovery preserves an exhausted budget until separate continuation`,async t=>{
+ const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});f.runtime.journal.claim({projectId:f.projectId,ownerId:'budget-conflict',targets:[target]});
+ f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'no budget for old parameters'}})]:[])};});
+ const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');assert.equal(paused.run.stepsUsed,2);assert.equal(paused.run.budget,2);f.runtime.journal.releaseClaims(f.projectId,'budget-conflict');f.restart();
+ const selected=await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');assert.equal(selected.run.status,'paused');assert.equal(selected.run.pauseReason,'editing');assert.equal(selected.run.budget,2);assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
+ await f.action(selected,'skip');const budget=await f.settle(sent.run.id);assert.equal(budget.run.status,'paused');assert.equal(budget.run.pauseReason,'budget');assert.equal(budget.run.budget,2);assert.equal(budget.run.skippedTargets?.[0]?.target.id,f.first.id);assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
+ await f.action(budget,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,4);assert.equal(f.requests.length,2);assert.equal(f.effects.size,0);assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
+});
+test('interrupted conflict recovery and its control receipt roll back together on storage failure',async t=>{
+ const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.claim({projectId:f.projectId,ownerId:'atomic-conflict',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never commits'}})])};});
+ const sent=await f.send();await f.settle(sent.run.id);f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id),request={requestId:randomUUID(),expectedRevision:interrupted.run.revision,action:'resume'},before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id);
+ f.store.db.exec(`CREATE TRIGGER fail_conflict_recovery_receipt BEFORE INSERT ON agent_task_controls_v2 WHEN NEW.requestId='${request.requestId}' BEGIN SELECT RAISE(ABORT,'synthetic conflict recovery receipt failure');END;`);
+ await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.deepEqual(f.runtime.journal.events(sent.run.id),events);assert.equal(f.runtime.journal.lookupControl(request.requestId),null);assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
+});
 test('conflict invalidates the whole old tool batch including a not yet created third call',async t=>{
  const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID();
  f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});
  f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect'),call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'stale call two'}}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'stale call three'}})]:[])};});
  const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');assert.equal(f.effects.size,1);assert.equal(paused.steps.filter(step=>step.kind==='tool').length,2);
- f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:2,action:'release',targets:[target]});await f.action(paused,'resume');const done=await f.settle(sent.run.id);
+ f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:2,action:'release',targets:[target]});await f.action(paused,'skip');const done=await f.settle(sent.run.id);
  assert.equal(done.run.status,'completed');assert.equal(f.effects.size,1);assert.equal(f.requests.length,2);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.match(f.requests[1]!.body,/TARGET_CHANGED/);
 });
 test('budget pauses retain pending tool calls without invalidating or repeating the batch',async t=>{
@@ -307,19 +435,27 @@ for(const stepLimit of [3,30])for(const action of ['approve','deny'] as const)te
   const controlled=f.runtime.get(f.projectId,sent.run.id);assert.equal(controlled.run.status,'completed');assert.equal(controlled.run.stepsUsed,3);assert.equal(controlled.run.stepLimit,stepLimit);assert.equal(controlled.run.budget,stepLimit);assert.deepEqual(controlled.steps.map(step=>step.id),done.steps.map(step=>step.id));
  }finally{await worker.stop();}
 });
-test('a background approval cannot cross an ABA before submit; resume cancels the old job and replans once',async t=>{
+for(const protocol of ['chat_completions','responses'] as const)for(const recovery of ['none','preserved','legacy'] as const)test(`${protocol}: ${recovery} background conflict recovery cannot cross an ABA before submit; skip cancels the old job and replans once`,async t=>{
  const entered=gate(),release=gate();let posts=0;
  const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},
   async submit(_snapshot,context){entered.resolve();await release.promise;context.beforeSubmit?.();posts++;return {providerJobId:'synthetic-must-not-send'};},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No output requested');}};
- const providers=new Map([['mock',provider]]),f=await fixture(t,'responses',providers);f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
- f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_generation_submit',{shotId:f.first.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'})]:[])};});
+ const providers=new Map([['mock',provider]]),f=await fixture(t,protocol,providers);f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
+ f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_generation_submit',{shotId:f.first.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'})]:[])};});
  const sent=await f.send();await f.settle(sent.run.id);const jobId=String(object(f.store.list('jobs',f.projectId)[0]).id);
  f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'confirm'}});
  const worker=startWorker(f.store,f.services,providers);try{
   await worker.tick();const waiting=f.runtime.get(f.projectId,sent.run.id),step=waiting.steps.find(item=>item.approvalRequired);assert.ok(step);await f.action(waiting,'approve',{stepId:step.id});await Promise.race([entered.promise,delay(10000,undefined,{ref:false}).then(()=>{throw Error('Synthetic provider did not reach before-submit barrier');})]);
   await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'manual after approval'}});await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:f.first.prompt}});release.resolve();
-  await worker.tick();const paused=await f.wait(sent.run.id,['paused']);assert.equal(paused.run.pauseReason,'conflict');assert.equal(posts,0);assert.equal(f.requests.length,2);assert.equal(object(f.store.get('jobs',jobId)).status,'queued');
-  await f.action(paused,'resume');const replanned=await f.settle(sent.run.id);assert.equal(replanned.run.status,'completed');assert.equal(replanned.backgroundPending,false);assert.equal(f.requests.length,3);assert.equal(object(f.store.get('jobs',jobId)).status,'cancelled');assert.equal(f.store.list('jobs',f.projectId).length,1);await worker.tick();assert.equal(posts,0);
+  await worker.tick();let paused=await f.wait(sent.run.id,['paused']);assert.equal(paused.run.pauseReason,'conflict');assert.equal(posts,0);assert.equal(f.requests.length,2);assert.equal(object(f.store.get('jobs',jobId)).status,'queued');const marked=paused.steps.find(item=>item.id===step.id);assert.equal(marked?.status,'completed');assert.equal(marked?.display?.conflict,true);assert.equal(marked?.data,undefined);assert.equal(f.runtime.journal.step(step.id).display,undefined);
+  if(recovery!=='none'){
+   f.restart();let interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');
+   if(recovery==='legacy'){const saved=f.runtime.journal.run(sent.run.id);f.store.db.prepare('UPDATE agent_task_runs_v2 SET data=? WHERE id=?').run(JSON.stringify({...saved,pauseReason:'restart'}),sent.run.id);interrupted=f.runtime.get(f.projectId,sent.run.id);}
+   let wakeups=0;const removeResumer=setAgentTaskJobResumer(f.store.db,'synthetic-background-conflict-resume',()=>{wakeups++;});t.after(removeResumer);
+   await worker.tick();assert.equal(posts,0);assert.equal(f.requests.length,2);
+   const control={requestId:randomUUID(),expectedRevision:interrupted.run.revision,action:'resume'};paused=await f.runtime.action(f.projectId,sent.run.id,control);await f.runtime.drain();assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'conflict');assert.equal(paused.run.budget,interrupted.run.budget);assert.equal(wakeups,0);assert.equal(f.requests.length,2);assert.equal(posts,0);
+   const stable=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id);await f.runtime.action(f.projectId,sent.run.id,control);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),stable);assert.deepEqual(f.runtime.journal.events(sent.run.id),events);assert.equal(wakeups,0);await worker.tick();assert.equal(posts,0);assert.equal(object(f.store.get('jobs',jobId)).status,'queued');
+  }
+  await f.action(paused,'skip');const replanned=await f.settle(sent.run.id);assert.equal(replanned.run.status,'completed');assert.equal(replanned.backgroundPending,false);assert.ok(replanned.steps.every(item=>item.display?.conflict===undefined));assert.equal(f.requests.length,3);assert.equal(object(f.store.get('jobs',jobId)).status,'cancelled');assert.equal(f.store.list('jobs',f.projectId).length,1);await worker.tick();assert.equal(posts,0);
  }finally{release.resolve();await worker.stop();}
 });
 for(const externalAba of [false,true])test(`persisted compensation chain ${externalAba?'cannot cross an external ABA':'continues adjacent AI changes after restart'}`,async t=>{
@@ -331,7 +467,7 @@ for(const externalAba of [false,true])test(`persisted compensation chain ${exter
   yield {type:'done',output:output('responses',calls)};
  });
  const sent=await f.send();let done=await f.settle(sent.run.id);
- if(externalAba){assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'conflict');assert.equal(insertedAba,true);await f.action(done,'resume');done=await f.settle(sent.run.id);}
+ if(externalAba){assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'conflict');assert.equal(insertedAba,true);await f.action(done,'skip');done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.changes.length,1);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'AI first');await assert.rejects(f.action(done,'undo_all'),{code:'AGENT_TASK_TARGET_CHANGED'});return;}
  assert.equal(done.run.status,'completed');assert.equal(done.changes.length,2);const latest=done.changes[1]!;
  await f.action(done,'undo_change',{changeId:latest.id});const reverted=f.runtime.journal.snapshot(sent.run.id).changes[1]!;
  assert.equal(reverted.status,'reverted');assert.ok(reverted.revertedTargets?.length);assert.equal(reverted.revertedTargets[0]?.revisionBefore,latest.targets[0]?.revisionBefore);assert.equal(reverted.revertedTargets[0]?.revisionAfter,latest.targets[0]?.revisionAfter);
@@ -373,7 +509,7 @@ test('diagnostics cannot enter ordinary conversation history or narrow normal to
  const f=await fixture(t);f.setScript(async function*(){yield {type:'done',output:output('responses',[],'DIAGNOSTIC_PRIVATE_CONTEXT')};});
  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'DIAGNOSTIC_PROMPT',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'text'}});await f.settle(sent.run.id);
  f.setScript(async function*(){yield {type:'done',output:output('responses')};});const normal=await f.send('普通任务');await f.settle(normal.run.id);
- const request=f.requests[1]!;assert.doesNotMatch(request.body,/DIAGNOSTIC_PRIVATE_CONTEXT|DIAGNOSTIC_PROMPT/u);assert.equal((object(JSON.parse(request.body)).tools as unknown[]).length,f.tools.list().length);assert.equal(f.runtime.get(f.projectId,normal.run.id).run.diagnostic,undefined);
+ const request=f.requests[1]!;assert.doesNotMatch(request.body,/DIAGNOSTIC_PRIVATE_CONTEXT|DIAGNOSTIC_PROMPT/u);assert.equal((object(JSON.parse(request.body)).tools as unknown[]).length,f.tools.list().length);assert.equal(f.runtime.get(f.projectId,normal.run.id).run.diagnostic,undefined);assert.equal(f.runtime.history(f.projectId).conversations.length,1);assert.equal(f.runtime.history(f.projectId).conversations[0]?.lastRunId,normal.run.id);assert.equal((await f.runtime.snapshot(f.projectId)).runs.length,1);assert.throws(()=>f.runtime.conversation(f.projectId,sent.run.conversationId!),{code:'AGENT_TASK_NOT_FOUND'});
 });
 for(const point of [
  {name:'model intent',event:'INSERT',kind:'model',status:'intent',requests:0,effects:0},
@@ -386,4 +522,278 @@ for(const point of [
  const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});
  f.store.db.exec(`CREATE TRIGGER test_block_journal BEFORE ${point.event} ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.kind')='${point.kind}' AND NEW.status='${point.status}' BEGIN SELECT RAISE(ABORT,'synthetic disk write failed');END;`);
  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(f.effects.size,point.effects);assert.equal(f.requests.length,point.requests);assert.equal(done.run.status,'failed');
+});
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: conversations bind prior context, exclude other conversations and retain exact request identity`,async t=>{
+ const f=await fixture(t,protocol);f.setScript(async function*(index){yield {type:'done',output:output(protocol,[],`reply ${index}`)};});
+ const settings=await f.settings.get(),send=(text:string,conversationId?:string,requestId:string=randomUUID())=>f.runtime.send(f.projectId,{requestId,text,expectedSettingsRevision:settings.revision,...(conversationId?{conversationId}:{})});
+ const first=await send('conversation A first');await f.settle(first.run.id);assert.ok(first.run.conversationId);assert.notEqual(first.run.conversationId,first.run.id);
+ const other=await send('conversation B private');await f.settle(other.run.id);assert.notEqual(other.run.conversationId,first.run.conversationId);
+ const requestId=randomUUID(),next=await send('conversation A next',first.run.conversationId,requestId);await f.settle(next.run.id);
+ const retained=f.runtime.journal.run(next.run.id).context!;assert.ok(JSON.stringify(retained).includes('conversation A first'));assert.doesNotMatch(JSON.stringify(retained),/conversation B private|reply 2/u);
+ assert.equal((await send('conversation A next',first.run.conversationId,requestId)).run.id,next.run.id);
+ await assert.rejects(send('conversation A next',undefined,requestId),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+ await assert.rejects(send('conversation A first',first.run.conversationId,first.run.requestId),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+ const before=f.requests.length;await assert.rejects(send('missing',randomUUID()),{code:'AGENT_TASK_NOT_FOUND'});assert.equal(f.requests.length,before);
+ await assert.rejects(f.runtime.send(f.projectId,{requestId:randomUUID(),text:'diagnostic cannot join',expectedSettingsRevision:settings.revision,conversationId:first.run.conversationId,diagnostic:{profile:'text'}}),{code:'AGENT_TASK_INVALID'});
+ const history=f.runtime.history(f.projectId);assert.equal(history.conversations.length,2);const group=history.conversations.find(item=>item.id===first.run.conversationId);assert.ok(group);assert.equal(group.title,'conversation A first');assert.equal(group.runCount,2);assert.equal(group.lastRunId,next.run.id);
+ const page=f.runtime.conversation(f.projectId,first.run.conversationId!);assert.deepEqual(new Set(page.runs.map(run=>run.id)),new Set([first.run.id,next.run.id]));assert.ok(page.runs.every(run=>!Object.hasOwn(run,'context')));assert.equal(f.requests.length,before);
+});
+
+test('diagnostics cannot evict a normal conversation from the recent100 project snapshot',async t=>{
+ const f=await fixture(t),journal=f.runtime.journal;
+ const write=(text:string,diagnostic?:{profile:'text'})=>{const run=journal.create({requestId:randomUUID(),projectId:f.projectId,text,configuration:{},...(diagnostic?{diagnostic}:{})}).run;return journal.transition(run.id,run.revision,'completed');};
+ const normal=write('Visible ordinary conversation');let diagnostic=normal;for(let index=0;index<102;index++)diagnostic=write(`Private diagnostic ${index}`,{profile:'text'});
+ assert.equal(journal.list(f.projectId).length,100);assert.ok(journal.list(f.projectId).every(run=>run.diagnostic));const snapshot=await f.runtime.snapshot(f.projectId);assert.deepEqual(snapshot.runs.map(run=>run.id),[normal.id]);assert.equal(f.runtime.history(f.projectId).conversations.length,1);
+ const receipt=f.runtime.lookup(f.projectId,diagnostic.requestId);assert.equal(receipt.found,true);assert.equal(receipt.snapshot?.run.id,diagnostic.id);assert.equal(f.requests.length,0);
+});
+
+for(const protocol of ['chat_completions','responses'] as const){
+ test(`${protocol}: conflict skip retains the draft, rejects repeated explicit targets and lets another target and a new run proceed`,async t=>{
+  const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID();
+  f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});
+  f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'blocked initial'}}),call('mioon_version_list',{shotId:f.first.id})]:index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'blocked again'}}),call('mioon_version_list',{shotId:f.first.id}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'other allowed'}}),call('mioon_project_inspect')]:[])};});
+  const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');
+  await assert.rejects(f.action(paused,'resume'),{code:'AGENT_TASK_SKIP_REQUIRED'});assert.deepEqual(f.runtime.journal.run(sent.run.id).skippedTargets,[]);
+  const request={requestId:randomUUID(),expectedRevision:paused.run.revision,action:'skip'};await f.runtime.action(f.projectId,sent.run.id,request);const done=await f.settle(sent.run.id);
+  assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.length,1);assert.equal(done.run.skippedTargets?.[0]?.target.id,f.first.id);assert.equal(done.changes.length,1);assert.equal(done.changes[0]?.operation,'shot.update');assert.equal(f.effects.size,2);
+  assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');assert.equal(object(f.store.get('shots',f.other.id)).prompt,'other allowed');assert.equal(f.runtime.journal.claims(f.projectId).length,1);
+  assert.equal(done.steps.filter(step=>step.status==='denied'&&step.error?.code==='TARGET_SKIPPED').length,2);assert.match(f.requests[1]!.body,/TARGET_SKIPPED/);assert.match(f.requests[2]!.body,/这一处由用户保留，本轮不要再改/u);
+  const stable=f.runtime.journal.snapshot(sent.run.id);await f.runtime.action(f.projectId,sent.run.id,request);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),stable);
+  f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:2,action:'release',targets:[target]});
+  let round=0;f.setScript(async function*(){yield {type:'done',output:output(protocol,round++===0?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'new run allowed'}})]:[])};});
+  const next=await f.send('new run');assert.deepEqual(next.run.skippedTargets,[]);assert.equal((await f.settle(next.run.id)).run.status,'completed');assert.equal(object(f.store.get('shots',f.first.id)).prompt,'new run allowed');
+ });
+ test(`${protocol}: notes arriving during a final model response join only the next request and survive same-conversation context`,async t=>{
+  const f=await fixture(t,protocol),entered=gate(),release=gate();f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output(protocol,[],index===1?'first response':'noted response')};});
+  const sent=await f.send('initial message');await entered.promise;const initialBody=f.requests[0]!.body,current=f.runtime.get(f.projectId,sent.run.id),request={requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:'KEEP_THIS_ADDITIONAL_INSTRUCTION'};
+  const noted=await f.runtime.action(f.projectId,sent.run.id,request);assert.equal(noted.run.notes?.length,1);assert.equal(noted.run.notes?.[0]?.modelStepId,undefined);await f.runtime.action(f.projectId,sent.run.id,request);assert.equal(f.runtime.journal.run(sent.run.id).notes?.length,1);
+  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...request,text:'different text'}),{code:'AGENT_TASK_REQUEST_CONFLICT'});assert.equal(f.requests[0]!.body,initialBody);assert.doesNotMatch(initialBody,/KEEP_THIS_ADDITIONAL_INSTRUCTION/);
+  release.resolve();const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.match(f.requests[1]!.body,/KEEP_THIS_ADDITIONAL_INSTRUCTION/);assert.equal(done.run.notes?.[0]?.modelStepId,done.steps.filter(step=>step.kind==='model')[1]?.id);
+  const next=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'same conversation next round',conversationId:done.run.conversationId,expectedSettingsRevision:(await f.settings.get()).revision});assert.equal((await f.settle(next.run.id)).run.status,'completed');assert.match(f.requests[2]!.body,/KEEP_THIS_ADDITIONAL_INSTRUCTION/);
+ });
+}
+for(const state of ['paused','awaiting_approval'] as const)test(`notes submitted while ${state} wait for a new model request, not the pending tool batch`,async t=>{
+ const f=await fixture(t),entered=gate(),release=gate();if(state==='awaiting_approval')f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,read_only:'confirm'}});
+ f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});const sent=await f.send();await entered.promise;
+ if(state==='paused')await f.action(f.runtime.get(f.projectId,sent.run.id),'pause');release.resolve();let waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,state);
+ waiting=await f.action(waiting,'note',{text:`NOTE_IN_${state}`});assert.equal(waiting.run.status,state);assert.equal(waiting.run.notes?.[0]?.modelStepId,undefined);assert.equal(f.requests.length,1);
+ if(state==='paused')await f.action(waiting,'resume');else await f.action(waiting,'approve',{stepId:waiting.steps.find(step=>step.status==='awaiting_approval')?.id});
+ const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,1);assert.equal(f.requests.length,2);assert.match(f.requests[1]!.body,new RegExp(`NOTE_IN_${state}`));assert.equal(done.run.stepsUsed,3);
+});
+test('queued notes have a five-item limit, durable rejected receipts, exact replay, and no notes after a stopped run',async t=>{
+ const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const sent=await f.send();await entered.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'pause');
+ let current=f.runtime.get(f.projectId,sent.run.id);for(let index=0;index<5;index++)current=await f.action(current,'note',{text:`queued ${index}`});
+ const rejected={requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:'sixth note'};await assert.rejects(f.runtime.action(f.projectId,sent.run.id,rejected),{code:'AGENT_TASK_NOTE_LIMIT'});assert.deepEqual(f.runtime.journal.lookupControl(rejected.requestId)?.result,{state:'rejected',code:'AGENT_TASK_NOTE_LIMIT'});assert.equal(f.runtime.journal.run(sent.run.id).notes?.length,5);
+ await f.runtime.action(f.projectId,sent.run.id,rejected);assert.equal(f.runtime.journal.run(sent.run.id).notes?.length,5);await assert.rejects(f.action(current,'note',{text:' '.repeat(10)}),{code:'AGENT_TASK_INVALID'});await assert.rejects(f.action(current,'note',{text:'汉'.repeat(11000)}),{code:'AGENT_TASK_INVALID'});
+ const stopped=await f.action(current,'stop');assert.deepEqual(stopped.run.skippedTargets,[]);await assert.rejects(f.action(stopped,'note',{text:'after stop'}),{code:'AGENT_TASK_STATE_CONFLICT'});release.resolve();await f.settle(sent.run.id);assert.equal(f.requests.length,1);
+});
+test('a final response note at exhausted budget stays pending until explicit continuation of the same run',async t=>{
+ const f=await fixture(t),entered=gate(),release=gate();f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:1});f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output('responses')};});
+ const sent=await f.send();await entered.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:'pending across budget'});release.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.run.notes?.[0]?.modelStepId,undefined);assert.equal(f.requests.length,1);
+ await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,2);assert.equal(done.run.stepsUsed,2);assert.match(f.requests[1]!.body,/pending across budget/);assert.ok(done.run.notes?.[0]?.modelStepId);
+});
+test('failed model intent rolls back note binding and cannot submit its request',async t=>{
+ const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const sent=await f.send();await entered.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:'must remain queued'});
+ f.store.db.exec("CREATE TRIGGER fail_note_model_intent BEFORE INSERT ON agent_task_steps_v2 WHEN NEW.position=2 BEGIN SELECT RAISE(ABORT,'synthetic note intent failure');END;");release.resolve();const done=await f.settle(sent.run.id);assert.equal(f.requests.length,1);assert.equal(done.steps.length,1);assert.equal(done.run.notes?.[0]?.modelStepId,undefined);assert.ok(done.run.status!=='completed');assert.equal(done.run.stepsUsed,1);
+});
+test('stopping a conflict never adds skipped targets or releases a user draft',async t=>{
+ const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID();f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never'}})])};});const sent=await f.send(),paused=await f.settle(sent.run.id),stopped=await f.action(paused,'stop');assert.equal(stopped.run.status,'stopped');assert.deepEqual(stopped.run.skippedTargets,[]);assert.equal(f.runtime.journal.claims(f.projectId).length,1);assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);
+});
+
+test('a multi-target conflict skips only the claimed target, and another target can still be changed',async t=>{
+ const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},project=object(f.store.get('projects',f.projectId));f.runtime.journal.claim({projectId:f.projectId,ownerId:'multi-target-user',targets:[target]});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_reorder',{expectedRevision:revisionField(project),shotIds:[f.other.id,f.first.id]})]:index===2?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'unaffected edit'}})]:[])};});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');const step=f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.kind==='tool');assert.ok(step);assert.equal(step.targets?.length,2);await f.action(paused,'skip');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.skippedTargets?.map(item=>item.target.id),[f.first.id]);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'unaffected edit');assert.equal(done.changes.length,1);
+});
+test('failed note receipt rolls back the queued text and event as one transaction',async t=>{
+ const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const sent=await f.send();await entered.promise;const current=f.runtime.get(f.projectId,sent.run.id),request={requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:'must not partially save'},before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id);
+ f.store.db.exec(`CREATE TRIGGER fail_note_receipt BEFORE INSERT ON agent_task_controls_v2 WHEN NEW.requestId='${request.requestId}' BEGIN SELECT RAISE(ABORT,'synthetic note receipt failure');END;`);await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.deepEqual(f.runtime.journal.events(sent.run.id),events);assert.equal(f.runtime.journal.lookupControl(request.requestId),null);release.resolve();await f.settle(sent.run.id);assert.equal(f.requests.length,1);
+});
+test('a bound note in an unknown model request is never automatically resubmitted after restart',async t=>{
+ const f=await fixture(t),first=gate(),releaseFirst=gate(),second=gate(),releaseSecond=gate();f.setScript(async function*(index){if(index===1){first.resolve();await releaseFirst.promise;}if(index===2){second.resolve();await releaseSecond.promise;}yield {type:'done',output:output('responses')};});const sent=await f.send();await first.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:'BOUND_NOTE_UNKNOWN'});releaseFirst.resolve();await second.promise;const body=f.requests[1]!.body;assert.match(body,/BOUND_NOTE_UNKNOWN/);f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');assert.equal(f.requests.length,2);assert.equal(interrupted.steps.at(-1)?.status,'unknown');assert.equal(interrupted.run.notes?.[0]?.modelStepId,interrupted.steps.at(-1)?.id);await assert.rejects(f.action(interrupted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,2);assert.equal(f.requests[1]!.body,body);releaseSecond.resolve();
+ const disposed=await f.action(interrupted,'resolve_unknown',{stepId:interrupted.steps.at(-1)?.id,resolution:'discard'});await f.action(disposed,'resume');assert.equal((await f.settle(sent.run.id)).run.status,'completed');assert.equal(f.requests.length,3);assert.ok(f.runtime.journal.events(sent.run.id).some(event=>event.type==='notes_bound'));assert.equal(f.runtime.journal.run(sent.run.id).notes?.length,1);
+});
+test('skipped-target instructions use the submitted locale in every model continuation',async t=>{
+ const expected={'zh-Hans':'这一处由用户保留，本轮不要再改','zh-Hant':'這一處由使用者保留，本輪不要再修改',en:'The user kept this target.',ja:'この対象はユーザーが保持しました。'};
+ for(const locale of AGENT_TASK_LOCALES){const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.claim({projectId:f.projectId,ownerId:'locale-skip-user',targets:[target]});f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never applies'}})]:[])};});const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic skip locale',locale,expectedSettingsRevision:(await f.settings.get()).revision}),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');await f.action(paused,'skip');assert.equal((await f.settle(sent.run.id)).run.status,'completed');assert.ok(f.requests[1]!.body.includes(expected[locale]));assert.equal(f.effects.size,0);}
+});
+test('a note accepted during replay of a completed tool is observed before completing the saved final reply',async t=>{
+ const f=await fixture(t),enteredFinal=gate(),releaseFinal=gate();f.setScript(async function*(index){if(index===2){enteredFinal.resolve();await releaseFinal.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});const sent=await f.send();await enteredFinal.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'pause');releaseFinal.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.steps.filter(step=>step.kind==='model'&&step.status==='completed').length,2);
+ const original=f.runtime.journal.snapshot;let reads=0,injected:Promise<AgentTaskSnapshot>|undefined;
+ f.runtime.journal.snapshot=(runId:string)=>{const snapshot=original(runId);
+  // On resume: public control snapshot, executor history snapshot, then the
+  // completed tool lookup. The note lands at that tool's awaited return.
+  if(snapshot.run.status==='running'&&snapshot.steps.filter(step=>step.kind==='model'&&step.status==='completed').length===2&&++reads===3)queueMicrotask(()=>{injected=f.action(f.runtime.get(f.projectId,runId),'note',{text:'NOTE_AT_COMPLETED_TOOL_YIELD'});});
+  return snapshot;
+ };
+ await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.ok(injected,'The completed-tool replay yielded to the queued note');await injected;assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,3);assert.match(f.requests[2]!.body,/NOTE_AT_COMPLETED_TOOL_YIELD/);
+});
+
+async function lateSelectionFixture(t:TestContext,mode:'skip'|'deny'|'unhandled'){
+ let submissions=0;const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},async submit(){submissions++;throw Error('No provider submission is allowed in this test');},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No media download is allowed in this test');}};
+ const f=await fixture(t,'responses',new Map([['mock',provider]])),secondEntered=gate(),secondRelease=gate(),thirdEntered=gate(),thirdRelease=gate();
+ f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
+ f.setScript(async function*(index){if(index===2){secondEntered.resolve();await secondRelease.promise;}if(mode!=='unhandled'&&index===3){thirdEntered.resolve();await thirdRelease.promise;}
+  const calls=index===1?[call('mioon_generation_submit',{shotId:f.first.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'})]:mode==='skip'&&index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'stale automatic edit'}})]:index===(mode==='skip'?3:2)?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'other target continues'}})]:[];
+  yield {type:'done',output:output('responses',calls)};
+ });
+ const sent=await f.send();await secondEntered.promise;const job=f.store.list('jobs',f.projectId)[0] as JobRecord,step=f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.toolCall?.name==='mioon_generation_submit');assert.ok(step);
+ // Model a previously submitted job through its normal local result boundary.
+ // No worker, provider transport or FFmpeg process is started.
+ withAgentTaskJobOrigin(f.store.db,'job',job.id,()=>f.services.saveJob(job,{status:'running',phase:'polling',providerJobId:'synthetic-known-submitted-job',submissionCount:1,progress:25}));
+ return {...f,sent,jobId:job.id,generationStepId:step.id,secondRelease,thirdRelease,thirdEntered,get submissions(){return submissions;},release(){secondRelease.resolve();thirdRelease.resolve();}};
+}
+for(const mode of ['skip','deny'] as const)test(`a late ${mode==='skip'?'skipped-target':'denied-background'} result stays recorded without pausing unrelated work`,async t=>{
+ const f=await lateSelectionFixture(t,mode);try{
+  if(mode==='skip'){
+   await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'manual content kept'}});f.secondRelease.resolve();const paused=await f.settle(f.sent.run.id);assert.equal(paused.run.pauseReason,'conflict');const changes=paused.changes;
+   const skipped=await f.action(paused,'skip');assert.deepEqual(skipped.changes,changes);assert.equal(skipped.run.skippedTargets?.length,1);await f.thirdEntered.promise;
+  }else{
+   f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'confirm'}});assert.throws(()=>assertAgentTaskJobEffect(f.store.db,'job',f.jobId),{code:'AGENT_TASK_APPROVAL_REQUIRED'});f.secondRelease.resolve();await f.runtime.drain();const waiting=f.runtime.get(f.projectId,f.sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');await f.action(waiting,'deny',{stepId:f.generationStepId});await f.thirdEntered.promise;assert.equal(object(f.runtime.journal.step(f.generationStepId).data).backgroundDenied,true);
+  }
+  const before=f.runtime.journal.snapshot(f.sent.run.id);assert.equal(before.run.status,'running');assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job',f.jobId,{kind:'shot',id:f.first.id}),false);const after=f.runtime.journal.snapshot(f.sent.run.id);assert.equal(after.run.status,'running');assert.deepEqual(after.run.skippedTargets,before.run.skippedTargets);assert.deepEqual(after.changes,before.changes);
+  if(mode==='skip'){
+   const original=f.runtime.journal.step(f.generationStepId);f.runtime.journal.updateStep(f.sent.run.id,original.id,{targets:[...(original.targets??[]),{kind:'shot',id:f.other.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.other.id)}]});
+   assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job',f.jobId,{kind:'shot',id:f.other.id}),false);assert.equal(f.runtime.journal.run(f.sent.run.id).status,'running');assert.equal(f.runtime.journal.run(f.sent.run.id).skippedTargets?.some(item=>item.target.id===f.other.id),false);
+  }
+  const handled=f.runtime.journal.events(f.sent.run.id).filter(event=>event.type==='background_selection_skipped').at(-1);assert.ok(handled);assert.equal(object(handled.data).reason,mode==='skip'?'target_skipped':'background_denied');
+  const current=f.store.get('jobs',f.jobId) as JobRecord;withAgentTaskJobOrigin(f.store.db,'job',f.jobId,()=>f.services.saveJob(current,{status:'succeeded',phase:'complete',progress:100,error:null}));assert.equal(object(f.store.get('jobs',f.jobId)).status,'succeeded');assert.equal(f.runtime.journal.run(f.sent.run.id).status,'running');
+  f.release();const done=await f.settle(f.sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.backgroundPending,false);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'other target continues');assert.equal(object(f.store.get('shots',f.first.id)).prompt,mode==='skip'?'manual content kept':'saved first');assert.equal(f.submissions,0);
+ }finally{f.release();await f.runtime.drain();}
+});
+test('a late unhandled target conflict still pauses with actual source evidence while retaining the result',async t=>{
+ const f=await lateSelectionFixture(t,'unhandled');try{
+  await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'unhandled manual edit'}});assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job',f.jobId,{kind:'shot',id:f.first.id}),false);const paused=f.runtime.journal.snapshot(f.sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'conflict');assert.deepEqual(paused.run.skippedTargets,[]);const source=object(f.runtime.journal.step(f.generationStepId).data);assert.equal(source.backgroundInvalidated,true);assert.ok(Array.isArray(source.conflictTargets)&&source.conflictTargets.some(target=>object(target).kind==='shot'&&object(target).id===f.first.id));
+  const job=f.store.get('jobs',f.jobId) as JobRecord;withAgentTaskJobOrigin(f.store.db,'job',f.jobId,()=>f.services.saveJob(job,{status:'succeeded',phase:'complete',progress:100,error:null}));assert.equal(object(f.store.get('jobs',f.jobId)).status,'succeeded');assert.equal(f.runtime.journal.run(f.sent.run.id).status,'paused');assert.equal(object(f.store.get('shots',f.first.id)).prompt,'unhandled manual edit');assert.equal(f.submissions,0);
+ }finally{f.release();await f.runtime.drain();}
+});
+test('a late selection denied by revoked authorization reads no target and resumes only after reauthorization',async t=>{
+ const f=await lateSelectionFixture(t,'unhandled');try{
+  await f.revoke();const prepare=f.store.db.prepare.bind(f.store.db);let targetReads=0;
+  f.store.db.prepare=(sql:string)=>{if(/\bFROM\s+(?:shots|agent_task_target_revisions_v2|agent_task_edit_claims_v2)\b/iu.test(sql))targetReads++;return prepare(sql);};
+  try{assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job',f.jobId,{kind:'shot',id:f.first.id}),false);}finally{f.store.db.prepare=prepare;}
+  assert.equal(targetReads,0);const denied=f.runtime.journal.snapshot(f.sent.run.id);assert.equal(denied.run.status,'paused');assert.equal(denied.run.pauseReason,'AGENT_TASK_CONSENT_REQUIRED');assert.deepEqual(denied.run.skippedTargets,[]);assert.equal(object(f.runtime.journal.step(f.generationStepId).data).conflictTargets,undefined);assert.equal(f.effects.size,1);
+  f.release();await f.runtime.drain();await authorizeTestScope(f.authorizations,'project_agent');await f.action(f.runtime.get(f.projectId,f.sent.run.id),'resume');const done=await f.settle(f.sent.run.id);assert.equal(done.run.status,'completed');assert.equal(object(f.store.get('shots',f.other.id)).prompt,'other target continues');assert.equal(f.submissions,0);
+ }finally{f.release();await f.runtime.drain();}
+});
+test('a stopped run still rejects late selection without changing its terminal status or another target',async t=>{
+ const f=await lateSelectionFixture(t,'unhandled');try{
+  const stopped=await f.action(f.runtime.get(f.projectId,f.sent.run.id),'stop');assert.equal(stopped.run.status,'stopped');assert.equal(allowAgentTaskJobTargetMutation(f.store.db,'job',f.jobId,{kind:'shot',id:f.first.id}),false);assert.equal(f.runtime.journal.run(f.sent.run.id).status,'stopped');assert.deepEqual(f.runtime.journal.run(f.sent.run.id).skippedTargets,[]);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(f.effects.size,1);assert.equal(f.submissions,0);
+ }finally{f.release();await f.runtime.drain();}
+});
+for(const failure of ['SQLITE_IOERR','UNRECOGNIZED_GATE_FAILURE'] as const)test(`late selection propagates ${failure} instead of disguising it as a handled choice`,async t=>{
+ const f=await lateSelectionFixture(t,'unhandled'),injected=Object.assign(Error('Synthetic late gate failure'),{code:failure}),remove=setAgentTaskEffectGate(f.store.db,()=>{throw injected;});try{
+  const before=f.runtime.journal.snapshot(f.sent.run.id);assert.throws(()=>allowAgentTaskJobTargetMutation(f.store.db,'job',f.jobId,{kind:'shot',id:f.first.id}),error=>error===injected);assert.deepEqual(f.runtime.journal.snapshot(f.sent.run.id),before);assert.equal(f.effects.size,1);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(f.submissions,0);await f.action(f.runtime.get(f.projectId,f.sent.run.id),'stop');
+ }finally{remove();f.release();await f.runtime.drain();}
+});
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note combinations exceeding known request capacity are durably rejected without failing the run`,async t=>{
+ const f=await fixture(t,protocol),entered=gate(),release=gate();
+ f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output(protocol,[],`response ${index}`)};});
+ const sent=await f.send('initial message');await entered.promise;
+ let current=f.runtime.get(f.projectId,sent.run.id);
+ for(let index=0;index<3;index++)current=await f.action(current,'note',{text:String(index).repeat(32*1024)});
+ const before=f.runtime.journal.snapshot(sent.run.id),body=f.requests[0]!.body,request={requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:'x'.repeat(32*1024)};
+ let rejected:unknown;try{await f.runtime.action(f.projectId,sent.run.id,request);}catch(error){rejected=error;}
+ const after=f.runtime.journal.snapshot(sent.run.id),receipt=f.runtime.journal.lookupControl(request.requestId);
+ await f.runtime.action(f.projectId,sent.run.id,request);
+ release.resolve();const done=await f.settle(sent.run.id);
+ assert.equal(object(rejected).code,'AGENT_TASK_NOTE_CAPACITY');assert.deepEqual(after,before);assert.deepEqual(receipt?.result,{state:'rejected',code:'AGENT_TASK_NOTE_CAPACITY'});
+ assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,3);assert.ok(done.run.notes?.every(note=>note.modelStepId!==undefined));assert.equal(f.requests.length,2);assert.equal(f.requests[0]!.body,body);
+ for(const request of f.requests)assert.ok(Buffer.byteLength(request.body)<=TASK_MODEL_LIMITS.requestBytes);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity accounts for serialized text and retains the run on rejection`,async t=>{
+ const f=await fixture(t,protocol),entered=gate(),release=gate();f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output(protocol)};});
+ const sent=await f.send();await entered.promise;const before=f.runtime.journal.snapshot(sent.run.id);
+ let rejected:unknown;try{await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:'\u0000'.repeat(32*1024)});}catch(error){rejected=error;}
+ const after=f.runtime.journal.snapshot(sent.run.id);release.resolve();const done=await f.settle(sent.run.id);
+ assert.equal(object(rejected).code,'AGENT_TASK_NOTE_CAPACITY');assert.deepEqual(after,before);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,0);assert.equal(f.requests.length,1);
+});
+
+function replyOutput(protocol:'chat_completions'|'responses',text:string):TaskModelOutput {
+ return {text,toolCalls:[],providerOutput:protocol==='chat_completions'?{role:'assistant',content:text}:[{type:'message',id:'synthetic-output-message',status:'completed',role:'assistant',content:[{type:'output_text',text,annotations:[]}]}]};
+}
+async function noteHistoryFixture(t:TestContext,protocol:'chat_completions'|'responses',messageLength=30000){
+ const f=await fixture(t,protocol);let conversationId:string|undefined;
+ f.setScript(async function*(){yield {type:'done',output:replyOutput(protocol,'a'.repeat(2000))};});
+ for(let index=0;index<3;index++){
+  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:(await f.settings.get()).revision,...(conversationId?{conversationId}:{})});
+  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');conversationId=done.run.conversationId;
+ }
+ return {...f,sendNext:async()=>f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:(await f.settings.get()).revision,conversationId})};
+}
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity rejects an already persisted streamed reply atomically and replays its rejection`,async t=>{
+ const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(8192),note='n'.repeat(1024);
+ f.setScript(async function*(){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};});
+ const sent=await f.sendNext();await entered.promise;
+ try{
+  const before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.ok(model);assert.equal(model.status,'dispatch_started');assert.equal(model.text,reply);
+  const historyBytes=Buffer.byteLength(JSON.stringify(before.run.context));assert.ok(historyBytes+Buffer.byteLength(note)+200<TASK_MODEL_LIMITS.historyBytes);assert.ok(historyBytes+Buffer.byteLength(model.text)+Buffer.byteLength(note)>TASK_MODEL_LIMITS.historyBytes);
+  const body=f.requests.at(-1)!.body,request={requestId:randomUUID(),expectedRevision:before.run.revision,action:'note',text:note};
+  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:'AGENT_TASK_NOTE_CAPACITY'});
+  const rejectedEvents=f.runtime.journal.events(sent.run.id),receipt=f.runtime.journal.lookupControl(request.requestId);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.deepEqual(rejectedEvents.slice(0,-1),events);assert.equal(rejectedEvents.at(-1)?.type,'control');assert.deepEqual(rejectedEvents.at(-1)?.data,receipt);assert.deepEqual(receipt,{requestId:request.requestId,runId:sent.run.id,action:'note',revision:before.run.revision,result:{state:'rejected',code:'AGENT_TASK_NOTE_CAPACITY'}});
+  await f.runtime.action(f.projectId,sent.run.id,request);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.deepEqual(f.runtime.journal.events(sent.run.id),rejectedEvents);
+  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...request,text:'changed text'}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
+  assert.equal(f.requests.at(-1)!.body,body);
+ }finally{release.resolve();await f.runtime.drain();}
+ const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.notes,[]);assert.equal(f.requests.length,4);assert.equal(done.steps.filter(step=>step.kind==='model').length,1);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity accepts a persisted streamed reply below the limit without rewriting its intent`,async t=>{
+ const f=await noteHistoryFixture(t,protocol,28000),entered=gate(),release=gate(),reply='r'.repeat(8192),note='n'.repeat(1024);let count=0;
+ f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};}else yield {type:'done',output:replyOutput(protocol,'Follow-up complete')};});
+ const sent=await f.sendNext();await entered.promise;
+ try{
+  const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.equal(model?.text,reply);const request=model?.request;
+  assert.ok(Buffer.byteLength(JSON.stringify(before.run.context))+Buffer.byteLength(reply)+Buffer.byteLength(note)+1000<TASK_MODEL_LIMITS.historyBytes);
+  const accepted=await f.action(before,'note',{text:note});assert.equal(accepted.run.notes?.[0]?.text,note);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.id===model?.id)?.request,request);
+ }finally{release.resolve();await f.runtime.drain();}
+ const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,5);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity does not invent unpersisted delta bytes`,async t=>{
+ // Freeze the flush clock so this small delta is deterministically still in
+ // the executor buffer, rather than relying on the test finishing within 50ms.
+ t.mock.method(Date,'now',()=>Date.parse('2026-10-23T00:00:00.000Z'));
+ const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(1024);let count=0;
+ f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};}else yield {type:'done',output:replyOutput(protocol,'Short response')};});
+ const sent=await f.sendNext();await entered.promise;
+ try{const before=f.runtime.journal.snapshot(sent.run.id);assert.equal(before.steps.find(step=>step.kind==='model')?.text,undefined);assert.ok(f.runtime.journal.events(sent.run.id).every(event=>event.type!=='text'));await f.action(before,'note',{text:'n'.repeat(1024)});}
+ finally{release.resolve();await f.runtime.drain();}
+ const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,5);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity excludes an unknown reply that is explicitly discarded before continuing`,async t=>{
+ const f=await noteHistoryFixture(t,protocol),reply='r'.repeat(8192);let count=0;
+ f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};throw Object.assign(Error('Synthetic unknown reply'),{code:'AGENT_TASK_UNKNOWN_RESULT'});}yield {type:'done',output:replyOutput(protocol,'Known replacement')};});
+ const sent=await f.sendNext(),paused=await f.settle(sent.run.id),unknown=paused.steps.find(step=>step.kind==='model');assert.ok(unknown);assert.equal(unknown.status,'unknown');assert.equal(unknown.text,reply);
+ const noted=await f.action(paused,'note',{text:'n'.repeat(1024)});await assert.rejects(f.action(noted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,4);
+ await f.action(f.runtime.get(f.projectId,sent.run.id),'resolve_unknown',{stepId:unknown.id,resolution:'discard'});await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');
+ const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,5);assert.equal(f.requests.at(-1)!.body.includes(reply),false);
+});
+
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: skipping a track also denies later nested clip references without blocking another target`,async t=>{
+ const f=await fixture(t,protocol),assetId=randomUUID();
+ f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic image',mimeType:'image/png',width:720,height:1280,duration:0,hasVideo:true,hasAudio:false,sha256:'a'.repeat(64),relativePath:'media/fixture.png',provenance:'user-import',createdAt:new Date().toISOString()});
+ const readTimeline=()=>object(JSON.parse(String(f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.projectId)!.data)));
+ const initial=object(await f.services.call('timeline.get',{projectId:f.projectId}));assert.ok(Array.isArray(initial.tracks));const sourceTrack=String(object(initial.tracks[0]).id);
+ await f.services.call('timeline.track.add',{projectId:f.projectId,requestId:randomUUID(),kind:'video',name:'Kept track',expectedRevision:revisionField(initial)});
+ await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),assetId,trackId:sourceTrack,expectedRevision:revisionField(readTimeline()),startFrame:0,durationFrames:30});
+ const saved=readTimeline();assert.ok(Array.isArray(saved.tracks)&&Array.isArray(saved.clips));const clipId=String(object(saved.clips[0]).id),targetTrack=String(object(saved.tracks.find(value=>object(value).name==='Kept track')).id),timelineRevision=revisionField(saved);
+ const target={kind:'timeline_track',id:targetTrack,revision:f.runtime.journal.targetRevision(f.projectId,'timeline_track',targetTrack)};
+ f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'kept-track-draft',generation:1,sequence:1,action:'claim',targets:[target]});
+ f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_timeline_track_update',{trackId:targetTrack,expectedRevision:timelineRevision,patch:{name:'Never rename'}})]:index===2?[call('mioon_timeline_clip_update',{clipId,expectedRevision:timelineRevision,patch:{trackId:targetTrack}}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:f.other.revision,patch:{prompt:'unrelated target still works'}})]:[])};});
+ const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');await f.action(paused,'skip');const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.length,1);assert.equal(done.run.skippedTargets?.[0]?.target.id,targetTrack);assert.equal(done.changes.length,1);assert.equal(done.changes[0]?.operation,'shot.update');
+ const rejected=done.steps.find(step=>step.toolCall?.name==='mioon_timeline_clip_update');assert.equal(rejected?.status,'denied');assert.equal(rejected?.error?.code,'TARGET_SKIPPED');const final=readTimeline();assert.ok(Array.isArray(final.clips));assert.equal(object(final.clips.find(value=>object(value).id===clipId)).trackId,sourceTrack);assert.equal(f.runtime.journal.claims(f.projectId).length,1);assert.equal(f.requests.length,3);
+});
+
+for(const metadata of ['saved','legacy'] as const)test(`background effect gates reject skipped nested references from ${metadata} accepted steps`,async t=>{
+ const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});
+ const sent=await f.send();await entered.promise;
+ try{
+  const reference={kind:'asset',id:randomUUID(),revision:0},target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};
+  const tool=f.runtime.journal.beginStep(sent.run.id,{kind:'tool',targets:[target],toolCall:call('mioon_image_generate',{purpose:'edit',inputImage:{assetId:reference.id,sha256:'a'.repeat(64)}}),...(metadata==='saved'?{data:{referencedTargets:[reference]}}:{})});
+  f.runtime.journal.markDispatch(sent.run.id,tool.id);f.runtime.journal.completeStep(sent.run.id,tool.id,{result:{accepted:true}});
+  const conflict=f.runtime.journal.beginStep(sent.run.id,{kind:'tool',targets:[reference],data:{conflictTargets:[reference]}});
+  f.store.tx(()=>{f.runtime.journal.skipTargetsInside(sent.run.id,[{stepId:conflict.id,target:reference}]);f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run('image','synthetic-pending-image',sent.run.id,tool.id,f.projectId,tool.id,'image.generate');});
+  assert.throws(()=>assertAgentTaskJobEffect(f.store.db,'image','synthetic-pending-image'),{code:'AGENT_TASK_TARGET_SKIPPED'});assert.equal(f.runtime.journal.run(sent.run.id).status,'running');assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
+ }finally{release.resolve();await f.settle(sent.run.id);}
 });

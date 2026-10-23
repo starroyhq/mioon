@@ -24,7 +24,7 @@ function fixture(overrides: Partial<VideoSettingsClient> = {}) {
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; };
 
 test('settings exclude Runway from new choices and default drafts without removing stored history', async () => {
-  assert.deepEqual(VIDEO_CATALOG_PROVIDER_IDS, ['ark', 'veo', 'minimax', 'vidu', 'kling', 'wan']);
+  assert.deepEqual(VIDEO_CATALOG_PROVIDER_IDS, ['ark', 'veo', 'minimax', 'vidu', 'kling', 'wan', 'compatible']);
   const current = newVideoConnection('ark');
   const retired = { ...newVideoConnection('ark'), providerId: 'runway' as const, name: 'Previous Runway connection', region: 'global', models: defaultVideoModels('runway') };
   const row = (configuration: typeof current) => ({ configuration, revision: 1, credentialRef: null, secret: { configured: false, storage: 'none' as const }, credentials: [] });
