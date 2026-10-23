@@ -26,3 +26,9 @@
 .video-connection-identity { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
 .video-connection-caption { display: grid; gap: 3px; min-width: 0; }
 .video-connection-caption > span, .video-connection-caption > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-compatible-hosts { display: grid; gap: 4px; margin: 10px 0; }
+.video-compatible-hosts > p { margin: 0; overflow-wrap: anywhere; }
+.video-compatible-check { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.video-provider-settings .video-compatible-check-result { margin: 4px 0 0; padding: 8px 10px; border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.video-provider-settings .video-compatible-check-result.ok { background: var(--wb-success-subtle); color: var(--wb-success); }
+.video-provider-settings .video-compatible-check-result.failed { background: var(--wb-danger-subtle); color: var(--wb-danger); }

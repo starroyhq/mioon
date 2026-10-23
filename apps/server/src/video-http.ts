@@ -1,5 +1,6 @@
 import type {IncomingMessage,ServerResponse} from 'node:http';
-import {VIDEO_SETTINGS_LIMITS} from '../../../packages/contracts/src/video-providers.ts';
+import {VIDEO_SETTINGS_LIMITS,compatibleVideoCheckSchema,isCompatibleVideoBaseUrl,normalizeCompatibleVideoBaseUrl} from '../../../packages/contracts/src/video-providers.ts';
+import {checkCompatibleVideoService} from '../../../packages/business/src/video/compatible-check.ts';
 import {sanitizeVideoSettingsError,videoSettingsError} from '../../../packages/business/src/video/settings.ts';
 import type {VideoSettingsService} from '../../../packages/business/src/video/settings.ts';
 
@@ -13,11 +14,22 @@ async function body(req:IncomingMessage,res:ServerResponse):Promise<unknown>{
  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));}catch{throw invalid();}
 }
 /** Fixed private user-settings route after Host/Origin/session admission; absent from RPC, CLI and Agent tools. */
-export function createVideoHttp({settings,signal}:{settings:VideoSettingsService;signal?:AbortSignal}){
+export function createVideoHttp({settings,signal,checkFetch}:{settings:VideoSettingsService;signal?:AbortSignal;checkFetch?:typeof fetch}){
  return async(req:IncomingMessage,res:ServerResponse,url:URL):Promise<boolean>=>{
   if(!/^\/api\/video-providers(?:\/|$)/u.test(url.pathname))return false;
   try{
    if(Buffer.byteLength(req.url??'')>2048||url.search)throw invalid();
+   if(url.pathname==='/api/video-providers/compatible-check'){
+    if(req.method!=='POST'){res.setHeader('Allow','POST');json(res,405,{ok:false,error:{code:'METHOD_NOT_ALLOWED',message:'请使用 POST。',details:{},retryable:false}});return true;}
+    if(signal?.aborted)throw videoSettingsError('VIDEO_SETTINGS_CLOSED');
+    const parsed=compatibleVideoCheckSchema.safeParse(await body(req,res));if(!parsed.success)throw invalid();
+    const input=parsed.data;
+    // A draft key is only ever sent to the normalized draft origin; a saved key only to its own origin.
+    const target=input.source==='draft'?(()=>{let origin='';try{origin=normalizeCompatibleVideoBaseUrl(input.baseUrl);}catch{}if(!isCompatibleVideoBaseUrl(origin))throw invalid();return {endpoint:origin,value:input.value};})():await settings.acquireCompatible(input.connectionId,input.configurationRevision,signal);
+    const result=await checkCompatibleVideoService({baseUrl:target.endpoint,apiKey:target.value,...(checkFetch?{fetchImpl:checkFetch}:{}),...(signal?{signal}:{})});
+    if(signal?.aborted)throw videoSettingsError('VIDEO_SETTINGS_CLOSED');
+    json(res,200,{ok:true,data:result});return true;
+   }
    if(url.pathname!=='/api/video-providers/settings'){json(res,404,{ok:false,error:{code:'NOT_FOUND',message:'视频配置接口不存在。',details:{},retryable:false}});return true;}
    if(!['GET','PUT'].includes(req.method??'')){res.setHeader('Allow','GET, PUT');json(res,405,{ok:false,error:{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 PUT。',details:{},retryable:false}});return true;}
    if(signal?.aborted)throw videoSettingsError('VIDEO_SETTINGS_CLOSED');

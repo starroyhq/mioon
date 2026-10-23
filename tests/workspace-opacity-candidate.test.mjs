@@ -90,6 +90,26 @@ function reverseReviewedLoudnessRange(file, bytes) {
   return Buffer.from(source);
 }
 
+// The compatible video service (OpenAI video format) adds one provider ID to
+// generation.submit and to its connection-only rule. Reverse exactly these two
+// unique additions; every other current byte of the contract stays pinned.
+const compatibleVideoInverses = Object.freeze({
+  'packages/contracts/src/index.mjs': Object.freeze([
+    {before: "providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan']),", after: "providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan','compatible']),"},
+    {before: "!has&&['kling','wan'].includes(value.providerId)", after: "!has&&['kling','wan','compatible'].includes(value.providerId)"},
+  ]),
+});
+function reverseReviewedCompatibleVideo(file, bytes) {
+  const inverses = compatibleVideoInverses[file];
+  if (!inverses) return bytes;
+  let source = bytes.toString('utf8');
+  for (const inverse of inverses) {
+    assert.equal(source.split(inverse.after).length - 1, 1, `${file}: reviewed compatible-video inverse must match exactly once`);
+    source = source.replace(inverse.after, inverse.before);
+  }
+  return Buffer.from(source);
+}
+
 test('only explicit dormant42/43 descriptors are accepted, with no numeric inheritance', () => {
   assert.deepEqual([OPACITY_ORDINARY_SCHEMA_CANDIDATE, OPACITY_RESTORED_SCHEMA_CANDIDATE, OPACITY_RESTORED_PROFILE_CANDIDATE], [42, 43, 'restored-local-v10']);
   for (const value of [ordinary, restored]) {
@@ -210,7 +230,7 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
     assert.equal(sha256(reverseReviewed(path, bytes, pinned)), pinned, path);
     const mapping=currentMap.mapping[path],currentPath=mapping?.currentPath??path,currentBytes=readFileSync(new URL(currentPath,root));
     const assertCurrent=value=>{
-      const reviewed=reverseReviewedLoudnessRange(path,reverseReviewedIntegration(path,reverseReviewedCliDraft(path,value)));
+      const reviewed=reverseReviewedLoudnessRange(path,reverseReviewedIntegration(path,reverseReviewedCompatibleVideo(path,reverseReviewedCliDraft(path,value))));
       assert.equal(sha256(reviewed),mapping?.currentRawSha256??sha256(bytes),`${path}: current raw source`);
       if(mapping?.typeErasedSha256!==null&&mapping?.typeErasedSha256!==undefined)assert.equal(sha256(transformSync(reviewed.toString('utf8'),{loader:'ts',format:'esm',target:'es2022'}).code),mapping.typeErasedSha256,`${path}: current executable source`);
     };
@@ -232,7 +252,7 @@ test('finite LRA inverses preserve all prior raw/runtime pins and reject changed
   for (const [file, inverses] of Object.entries(loudnessRangeInverses)) {
     const mapping = map[file], bytes = readFileSync(new URL(mapping.currentPath, root)), source = bytes.toString('utf8');
     const assertPinned = value => {
-      const reviewed = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, Buffer.from(value)));
+      const reviewed = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
       assert.equal(sha256(reviewed), mapping.currentRawSha256, `${file}: unchanged current raw pin`);
       if (mapping.typeErasedSha256 !== null) assert.equal(sha256(transformSync(reviewed.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256, `${file}: unchanged executable pin`);
     };
@@ -274,13 +294,30 @@ test('reviewed main integration keeps original current pins and rejects any unkn
     const mapping = map[file], source = readFileSync(new URL(reviewed.currentPath, root), 'utf8');
     assert.equal(reviewed.currentPath, mapping.currentPath);
     const assertPinned = value => {
-      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, Buffer.from(value)));
+      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
       assert.equal(sha256(previous), mapping.currentRawSha256, `${file}: original current raw pin`);
       if (mapping.typeErasedSha256 !== null) assert.equal(sha256(transformSync(previous.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256, `${file}: original current executable pin`);
     };
     assertPinned(source);
     for (const changed of ['', source.slice(1), source + source, source + '\n', source + '\n// unknown current bytes\n', source + '\nexport const hiddenOpacityAuthority = true;\n'])
       assert.throws(() => assertPinned(changed), `${file}: deleted, duplicated or unknown bytes must fail before predecessor comparison`);
+  }
+});
+
+test('finite compatible-video inverse keeps the integration pin and rejects changed, duplicated or unknown additions', () => {
+  const map = JSON.parse(readFileSync(new URL('./fixtures/opacity-current-ts-runtime-map.json', import.meta.url))).mapping;
+  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+  for (const [file, inverses] of Object.entries(compatibleVideoInverses)) {
+    const mapping = map[file], source = readFileSync(new URL(mapping.currentPath, root), 'utf8');
+    const assertPinned = value => {
+      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
+      assert.equal(sha256(previous), mapping.currentRawSha256, `${file}: original current raw pin`);
+    };
+    assertPinned(source);
+    for (const inverse of inverses) {
+      assert.equal(source.split(inverse.before).length - 1, 0, `${file}: the reviewed predecessor snippet is no longer present`);
+      for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after), source.replace(inverse.after, ''), source.replace(inverse.after, inverse.before), source + '\n// synthetic unreviewed source addition\n']) assert.throws(() => assertPinned(changed));
+    }
   }
 });
 
