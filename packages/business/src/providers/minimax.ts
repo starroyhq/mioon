@@ -1,11 +1,13 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderModelSpec, ProviderSnapshotView, ProviderReferenceAsset } from './live-common.ts';
+import {createMinimaxSdkClient} from '../video/minimax-sdk.ts';
+import type {VideoAdapterImage} from '../video/adapters.ts';
 
 const REGIONS: Readonly<Record<string, string>> = { global: 'https://api.minimax.io', cn: 'https://api.minimax.cn' };
 const MODEL: ProviderModelSpec = {
   id: 'MiniMax-H3', name: 'MiniMax H3', inputModes: ['text', 'image'], aspectRatios: ['9:16', '16:9'], durations: [4, 8],
   referenceImages: { min: 0, max: 1, mimeTypes: ['image/png', 'image/jpeg'], minDimension: 256, maxDimension: 5760, matchAspectRatio: true },
-  resolutions: ['768P'], parameters: [], promptRequired: true, maxPromptLength: 1000,
+  resolutions: ['2K'], parameters: [], promptRequired: true, maxPromptLength: 1000,
 };
 const INTERVAL = 10_000;
 const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
@@ -31,7 +33,14 @@ export function createMinimaxProvider({ root, fetchImpl = globalThis.fetch, env 
   const approvedHashes = approvedAssetHashes(env.MINIMAX_APPROVED_ASSET_SHA256);
   const outputHosts = approvedOutputHosts(env.MINIMAX_OUTPUT_HOSTS, ['cdn.hailuoai.com', 'video-product.cdn.minimax.io']);
   const request = createJsonRequest({ api: REGIONS[region] ?? REGIONS.global, headers: { Authorization: `Bearer ${config.secret}` }, fetchImpl, ensureEnabled, name: 'MiniMax' });
+  const sdk = createMinimaxSdkClient({api:REGIONS[region]??REGIONS.global,model:MODEL.id,send:request});
   function validate(snapshot: unknown): true {
+    const capabilities=object(object(snapshot)?.capabilities);
+    const models=Array.isArray(capabilities?.modelCapabilities)?capabilities.modelCapabilities.map(object):[];
+    const frozenModel=models.find(model=>model?.id===MODEL.id);
+    // A historical legacy snapshot may omit parameters while freezing 768P in
+    // its advertised model. It remains observable, but must not retry as 2K.
+    if(Array.isArray(frozenModel?.resolutions)&&!frozenModel.resolutions.includes('2K'))throw providerError('UNSUPPORTED_PARAMETERS','The original MiniMax task resolution is not supported by the official SDK. Its frozen snapshot was not changed.',{beforeDispatch:true});
     validateModelSnapshot(snapshot, MODEL);
     const value = snapshot as ProviderSnapshotView;
     if (value.referenceAssets[0]) validateFirstFrame(value.referenceAssets[0], value.aspectRatio as string);
@@ -42,7 +51,8 @@ export function createMinimaxProvider({ root, fetchImpl = globalThis.fetch, env 
     return id;
   }
   const cache = createPollCache({ now, interval: INTERVAL, retrieve: async (id, context) => {
-    const response = await request(`/v2/query/video_generation/${taskId(id)}`, { context });
+    taskId(id);
+    const response = await sdk.retrieve(id,context);
     const task = object(response.task);
     if (!task || task.id !== id || typeof task.status !== 'string' || !(STATUSES as readonly string[]).includes(task.status)) throw providerError('INVALID_PROVIDER_RESPONSE', 'MiniMax status did not match the requested task.', { retryable: true });
     return task;
@@ -60,15 +70,13 @@ export function createMinimaxProvider({ root, fetchImpl = globalThis.fetch, env 
     async submit(snapshot: unknown, context: ProviderContext = {}): Promise<{providerJobId: string}> {
       ensureEnabled(); ensureRegion(context); validate(snapshot);
       const value = snapshot as ProviderSnapshotView;
-      const content: Array<Record<string, unknown>> = [{ type: 'text', text: value.prompt }], asset = value.referenceAssets[0];
+      const images:VideoAdapterImage[]=[],asset=value.referenceAssets[0];
       if (asset) {
         const image = await managedImage({ root, asset, approvedHashes });
         validateFirstFrame(image, value.aspectRatio as string);
-        content.push({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}` }, role: 'first_frame' });
+        images.push({mimeType:image.mimeType,base64:image.base64,role:'first_frame'});
       }
-      const response = await request('/v2/video_generation', { method: 'POST', context, body: {
-        model: MODEL.id, content, duration: value.duration, resolution: '768P', ratio: asset ? 'adaptive' : value.aspectRatio,
-      } });
+      const response=await sdk.submit({prompt:value.prompt as string,aspectRatio:value.aspectRatio as string,duration:value.duration as number,parameters:{resolution:'2K'},images,subjectReference:false},context);
       if (typeof response.task_id !== 'string' || !TASK_ID.test(response.task_id)) throw providerError('SUBMISSION_UNKNOWN', 'MiniMax did not return a valid task ID. Do not resubmit.', { uncertain: true });
       return { providerJobId: response.task_id };
     },

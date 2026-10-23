@@ -82,7 +82,7 @@ for (const kind of Object.keys(specs) as ('minimax' | 'vidu')[]) {
     assert.equal(body.model, spec.model); assert.equal(body.duration, 4);
     if (kind === 'minimax') {
       assert.equal(url, `${spec.origin}/v2/video_generation`); assert.equal(headersOf(init).Authorization, 'Bearer PRIVATE-KEY');
-      assert.equal(body.resolution, '768P'); assert.equal(body.ratio, image ? 'adaptive' : '9:16'); assert.equal(contentOf(body)[0]?.text, input.prompt);
+      assert.equal(body.resolution, '2K'); assert.equal(body.ratio, image ? 'adaptive' : '9:16'); assert.equal(contentOf(body)[0]?.text, input.prompt);
       assert.equal(contentOf(body).length, image ? 2 : 1);
       if (image) assert.deepEqual(contentOf(body)[1], { type: 'image_url', image_url: { url: `data:image/png;base64,${bytes.toString('base64')}` }, role: 'first_frame' });
     } else {

@@ -3,9 +3,10 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { createJsonRequest, createPollCache, downloadMp4, outputUrl, providerError } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderReferenceAsset, ProviderSnapshotView } from './live-common.ts';
+import {createRunwaySdkClient} from '../video/runway-sdk.ts';
+import type {VideoAdapterImage} from '../video/adapters.ts';
 
 const API = 'https://api.dev.runwayml.com';
-const VERSION = '2024-11-06';
 const MAX_DATA_URI = 5 * 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RATIOS: Readonly<Record<string, string>> = { '9:16': '720:1280', '16:9': '1280:720', '1:1': '960:960', '3:4': '832:1104', '4:3': '1104:832', '21:9': '1584:672' };
@@ -31,27 +32,25 @@ export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env =
   // can be configured server-side, never by a request, prompt, or provider response.
   const outputHosts = new Set(['dnznrvs05pmza.cloudfront.net', ...(env.RUNWAY_OUTPUT_HOSTS ?? '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(x))]);
   const ensureEnabled = (): void => { if (!enabled()) throw error('PROVIDER_DISABLED', 'Runway live calls are disabled or its server credential is missing.'); };
-  const taskPath = (id: unknown): string => {
+  const assertTaskId = (id: unknown): void => {
     if (typeof id !== 'string' || !UUID.test(id)) throw error('INVALID_PROVIDER_TASK_ID', 'Runway task ID is invalid.');
-    return `/v1/tasks/${id}`;
   };
-  const request = createJsonRequest({
-    api: API, headers: { Authorization: `Bearer ${secret}`, 'X-Runway-Version': VERSION },
-    fetchImpl, ensureEnabled, name: 'Runway',
-    // Preserve Runway's existing GET status retryability; POST classification is
-    // owned by the shared conservative explicit-rejection policy.
-    isRetryableStatus: status => status >= 500 || status === 429 || status === 408,
-  });
+  const sdk=createRunwaySdkClient({api:API,send:(endpoint,options)=>createJsonRequest({
+    api:API,headers:{Authorization:`Bearer ${secret}`,'X-Runway-Version':new Headers(options.headers).get('x-runway-version')??''},fetchImpl,ensureEnabled,name:'Runway',
+    // Preserve the legacy GET retryability and conservative POST classification.
+    isRetryableStatus:status=>status>=500||status===429||status===408,
+  })(endpoint,options)});
   const cache = createPollCache({ now, interval: 5000, retrieve: async (id, context) => {
-    const task = await request(taskPath(id), { context });
+    assertTaskId(id);
+    const task = await sdk.retrieve(id,context);
     if (task.id !== id || typeof task.status !== 'string' || !(STATUSES as readonly string[]).includes(task.status)) throw error('INVALID_PROVIDER_RESPONSE', 'Runway task response did not match the requested task.', { retryable: true });
     return task;
   } });
   const retrieve = (id: unknown, context: ProviderContext = {}): Promise<Record<string, unknown>> => {
-    taskPath(id);
+    assertTaskId(id);
     return cache.get(id as string, context);
   };
-  async function imageDataUri(asset: ProviderReferenceAsset): Promise<string> {
+  async function referenceImage(asset: ProviderReferenceAsset): Promise<VideoAdapterImage> {
     if (!root || !asset || typeof asset.path !== 'string' || !/^[0-9a-f]{64}$/i.test(typeof asset.sha256 === 'string' ? asset.sha256 : '')) throw error('INVALID_REFERENCE', 'A managed reference image with its checksum is required.');
     const sha256 = (asset.sha256 as string).toLowerCase();
     if (!approvedHashes.has(sha256)) throw error('REFERENCE_NOT_APPROVED', 'This reference image has not been approved in the server-side Runway asset allowlist.');
@@ -69,9 +68,9 @@ export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env =
     }
     if (!isImage(bytes, asset.mimeType)) throw error('INVALID_REFERENCE_TYPE', 'Reference must be a PNG, JPEG, or WebP matching its declared type.');
     if (createHash('sha256').update(bytes).digest('hex') !== sha256) throw error('REFERENCE_CHANGED', 'Reference image changed after its generation snapshot was created.');
-    const uri = `data:${asset.mimeType as string};base64,${bytes.toString('base64')}`;
+    const base64=bytes.toString('base64'),uri = `data:${asset.mimeType as string};base64,${base64}`;
     if (Buffer.byteLength(uri) > MAX_DATA_URI) throw error('REFERENCE_TOO_LARGE', 'Encoded reference image exceeds Runway’s 5 MiB data URI limit.');
-    return uri;
+    return {mimeType:asset.mimeType as string,base64,role:'first_frame'};
   }
   function validate(snapshot: unknown): true {
     const value = object(snapshot) as ProviderSnapshotView | null;
@@ -98,12 +97,8 @@ export function createRunwayProvider({ root, fetchImpl = globalThis.fetch, env =
       ensureEnabled();
       validate(snapshot);
       const value = snapshot as ProviderSnapshotView, parameters = object(value.parameters ?? {}) ?? {};
-      const body = {
-        model: 'gen4_turbo', promptImage: await imageDataUri(value.referenceAssets[0]), promptText: value.prompt as string,
-        ratio: RATIOS[value.aspectRatio as string], duration: value.duration,
-        ...(parameters.seed === undefined ? {} : { seed: parameters.seed }),
-      };
-      const response = await request('/v1/image_to_video', { method: 'POST', body, context });
+      const image=await referenceImage(value.referenceAssets[0]);
+      const response = await sdk.submit({prompt:value.prompt as string,aspectRatio:value.aspectRatio as string,duration:value.duration as number,parameters,images:[image],subjectReference:false},context);
       if (typeof response.id !== 'string' || !UUID.test(response.id)) throw error('SUBMISSION_UNKNOWN', 'Runway accepted the request but no valid task ID was received. Do not resubmit.', { uncertain: true });
       return { providerJobId: response.id };
     },

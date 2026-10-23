@@ -68,7 +68,7 @@ for(const [family,templateId]of entries){
       case 'runway':assert.equal(submit.url,'https://api.dev.runwayml.com/v1/image_to_video');assert.equal(body.model,f.snapshot.model);assert.equal(body.ratio,'720:1280');assert.equal(headers['X-Runway-Version'],'2024-11-06');assert.equal(body.promptImage,`data:image/png;base64,${f.bytes.toString('base64')}`);break;
       case 'ark':assert.equal(submit.url,'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks');assert.equal(body.model,f.snapshot.model);assert.equal(body.generate_audio,false);assert.equal(body.output_format,'mp4');break;
       case 'veo':assert.equal(submit.url,`https://generativelanguage.googleapis.com/v1beta/models/${f.snapshot.model}:predictLongRunning`);assert.deepEqual(body.instances,[{prompt:f.snapshot.prompt}]);assert.equal(view(body.parameters).sampleCount,1);break;
-      case 'minimax':assert.equal(submit.url,'https://api.minimax.io/v2/video_generation');assert.equal(body.resolution,'768P');assert.equal(body.model,f.snapshot.model);break;
+      case 'minimax':assert.equal(submit.url,'https://api.minimax.io/v2/video_generation');assert.equal(body.resolution,'2K');assert.equal(body.model,f.snapshot.model);break;
       case 'vidu':assert.equal(submit.url,'https://api.vidu.com/ent/v2/text2video');assert.equal(body.audio,false);assert.equal(body.off_peak,false);break;
       case 'kling':assert.equal(submit.url,'https://api-singapore.klingai.com/text-to-video/kling-3.0');assert.equal(view(body.options).external_task_id,requestId);assert.equal(view(body.settings).audio,'off');assert.equal(view(body.settings).multi_shot,false);assert.equal(body.model_name,undefined);break;
       case 'wan':assert.equal(submit.url,'https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis');assert.equal(headers['X-DashScope-Async'],'enable');assert.equal(body.model,f.snapshot.model);assert.equal(view(body.parameters).prompt_extend,false);assert.equal(view(body.parameters).watermark,false);if(templateId==='wan27-i2v')assert.deepEqual(view(body.input).media,[{type:'first_frame',url:`data:image/png;base64,${f.bytes.toString('base64')}`}]);else assert.equal(view(body.parameters).ratio,RATIO);assert.equal(view(body.parameters).audio,undefined);break;
@@ -185,10 +185,14 @@ test('Runway WebP dimensions, checksum and 5 MiB encoded size use actual managed
   await assert.rejects(f.provider.submit({...f.snapshot,referenceAssets:[{...reference,sizeBytes:maximumRaw.length,sha256:createHash('sha256').update(maximumRaw).digest('hex')}]},{}),{code:'REFERENCE_TOO_LARGE'});assert.equal(f.calls.length,1);
 });
 
-for(const [family,templateId]of entries)test(`${family}/${templateId??'default'} manual model IDs remain bound to the selected native protocol`,async t=>{
+for(const [family,templateId]of entries)test(`${family}/${templateId??'default'} manual model IDs remain bounded by the selected native protocol and SDK`,async t=>{
   const f=await fixture(t,family,templateId);f.binding.model.modelId='official-model-snapshot-2026';if(family==='ark')f.binding.model.inputModes=['text','image'];
   const calls:Array<{url:string;body:Record<string,unknown>}> = [];
   const provider=createConfiguredVideoProvider({root:f.root,binding:f.binding,acquireCredential:async()=> 'PRIVATE-KEY',fetchImpl:async(url,init)=>{calls.push({url:String(url),body:view(JSON.parse(String(init?.body)))});return json(receipt(f.binding));}});
+  if(family==='minimax'){
+    await assert.rejects(provider.submit({...f.snapshot,model:f.binding.model.modelId},{requestId:'manual-model-request'}),{code:'UNSUPPORTED_MODEL'});
+    assert.equal(calls.length,0,'Unsupported official SDK models never fall back to REST');return;
+  }
   await provider.submit({...f.snapshot,model:f.binding.model.modelId},{requestId:'manual-model-request'});assert.equal(calls.length,1);
   if(family==='veo')assert.equal(calls[0]!.url,`${f.binding.endpoint}/models/official-model-snapshot-2026:predictLongRunning`);
   else if(family==='kling')assert.equal(calls[0]!.url,`${f.binding.endpoint}/text-to-video/official-model-snapshot-2026`);

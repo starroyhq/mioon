@@ -12,6 +12,11 @@ import type {ConfiguredVideoTask,VideoAdapterInput,VideoAdapterSelection} from '
 import {createWanSdkClient,validateWanImageBytes} from './wan-sdk.ts';
 import {effectiveVideoParameters,isWan30Binding} from '../../../contracts/src/wan-video.ts';
 import {createPinnedVideoFetch} from './network.ts';
+import {createCompatibleVideoSdkClient} from './compatible-sdk.ts';
+import {createRunwaySdkClient} from './runway-sdk.ts';
+import {createVeoSdkClient} from './veo-sdk.ts';
+import {createArkSdkClient} from './ark-sdk.ts';
+import {createMinimaxSdkClient} from './minimax-sdk.ts';
 
 export interface ConfiguredVideoProviderOptions {
   root: string;
@@ -81,7 +86,9 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
     const run=createJsonRequest({api:frozen.endpoint,headers:{...authentication,...(frozen.providerId==='runway'?{'X-Runway-Version':'2024-11-06'}:{}),...headers},fetchImpl:transport,ensureEnabled:()=>{},name:'Video provider'});
     return run(endpoint,{method,body,raw,context});
   }
-  const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,await request(configuredTaskPath(selection,id),{context}))}});
+  const sdkOptions={api:frozen.endpoint,model:frozen.model.modelId,send:request};
+  const sdk=frozen.providerId==='compatible'?createCompatibleVideoSdkClient(sdkOptions):frozen.providerId==='runway'?createRunwaySdkClient(sdkOptions):frozen.providerId==='veo'?createVeoSdkClient(sdkOptions):frozen.providerId==='ark'?createArkSdkClient(sdkOptions):frozen.providerId==='minimax'?createMinimaxSdkClient(sdkOptions):null;
+  const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,sdk?await sdk.retrieve(id,context):await request(configuredTaskPath(selection,id),{context}))}});
   const retrieve=async(id: string,context: ProviderContext):Promise<ConfiguredVideoTask>=>{
     assertConfiguredTaskId(selection,id);
     // A cached successful observation must not let a removed key authorize a
@@ -110,6 +117,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
       const requestId=registered.requestId;
       if(frozen.providerId==='kling'&&(typeof requestId!=='string'||!requestId||requestId.length>200))throw providerError('INVALID_REQUEST_ID','A stable request ID is required before creating a Kling task.');
       if(wan)return {providerJobId:await wan.submit(input,context)};
+      if(sdk)return {providerJobId:configuredSubmissionId(selection,await sdk.submit(input,context))};
       const submission=configuredSubmission({...selection,resolution},input,requestId??'');
       return {providerJobId:configuredSubmissionId(selection,await request(submission.path,{method:'POST',body:submission.body,raw:submission.raw,headers:submission.headers,context}))};
     },

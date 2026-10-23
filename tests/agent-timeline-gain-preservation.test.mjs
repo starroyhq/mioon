@@ -1,3 +1,4 @@
+import {reverseReviewedMinimaxSdk} from './helpers/current-minimax-sdk-delta.ts';
 import {reverseReviewedWanVideo} from './helpers/current-wan-video-delta.ts';
 import {withoutReviewedInteractionObjects,currentOrdinary56Delta,reverseReviewedSchema56} from './helpers/current-schema56-delta.ts';
 function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
@@ -66,7 +67,8 @@ const reviewedCompatibleVideoInverses=Object.freeze({
  ]),
 });
 function reverseReviewedCompatibleVideo(file,bytes){
- // Undo newer Wan bytes first; keep this older inverse and all its pins intact.
+ // Undo newer reviewed SDK contract bytes first; keep the older inverse and pins intact.
+ bytes=reverseReviewedMinimaxSdk(currentPath(file),bytes);
  bytes=reverseReviewedWanVideo(currentPath(file),bytes);
  const inverses=reviewedCompatibleVideoInverses[file];if(!inverses)return bytes;
  let source=bytes.toString('utf8');

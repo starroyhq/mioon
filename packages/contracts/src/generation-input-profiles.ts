@@ -163,7 +163,7 @@ const legacyProfiles = deepFreeze([
     regions: ['global', 'cn'], regionMeaning: 'Explicit regional account/API selection; credentials must match.', apiFamily: 'minimax-video-v2',
     origins: { global: 'https://api.minimax.io', cn: 'https://api.minimax.cn' },
     adapterSource: 'packages/business/src/providers/minimax.ts', inputModes: ['text', 'image'],
-    output: { resolution: '768P', audio: 'model-default' },
+    output: { resolution: '2K', audio: 'model-default' },
     inputs: roles(0, { ...image, dimensions: { min: 256, max: 5760, matchAspectRatio: true } }),
   }),
   profile('vidu', 'viduq3-turbo', {

@@ -1,5 +1,6 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderSnapshotView, ProviderModelSpec } from './live-common.ts';
+import {createVeoSdkClient} from '../video/veo-sdk.ts';
 
 const ORIGIN = 'https://generativelanguage.googleapis.com';
 const API = `${ORIGIN}/v1beta`;
@@ -34,13 +35,15 @@ export function createVeoProvider({ root, fetchImpl = globalThis.fetch, env = pr
   const approvedHashes = approvedAssetHashes(env.VEO_APPROVED_ASSET_SHA256);
   const outputHosts = approvedOutputHosts(env.VEO_OUTPUT_HOSTS, ['generativelanguage.googleapis.com']);
   const request = createJsonRequest({ api: API, headers: { 'x-goog-api-key': config.secret }, fetchImpl, ensureEnabled: config.ensureEnabled, name: 'Veo' });
+  const sdk = createVeoSdkClient({api: API,model: MODEL.id,send: request});
   const validate = (snapshot: unknown): true => validateModelSnapshot(snapshot, MODEL);
   function operationPath(id: unknown): string {
     if (typeof id !== 'string' || !OPERATION.test(id)) throw providerError('INVALID_PROVIDER_TASK_ID', 'Veo operation name is invalid.');
     return `/${id}`;
   }
   const cache = createPollCache({ now, interval: INTERVAL, retrieve: async (id, context) => {
-    const operation = await request(operationPath(id), { context });
+    operationPath(id);
+    const operation = await sdk.retrieve(id, context);
     if (operation.name !== id || operation.done !== undefined && typeof operation.done !== 'boolean') throw providerError('INVALID_PROVIDER_RESPONSE', 'Veo response did not match the requested operation.', { retryable: true });
     resultOf(operation);
     return operation;
@@ -58,14 +61,12 @@ export function createVeoProvider({ root, fetchImpl = globalThis.fetch, env = pr
     async submit(snapshot: unknown, context: ProviderContext = {}): Promise<{providerJobId: string}> {
       config.ensureEnabled(); validate(snapshot);
       const value = snapshot as ProviderSnapshotView;
-      const instance: Record<string, unknown> = { prompt: value.prompt };
+      const images = [];
       if (value.referenceAssets[0]) {
-        const image = await managedImage({ root, asset: value.referenceAssets[0], approvedHashes });
-        instance.image = { bytesBase64Encoded: image.base64, mimeType: image.mimeType };
+        const image = await managedImage({ root, asset: value.referenceAssets[0], approvedHashes, signal: context.signal, validateCurrent: context.validateReferenceState });
+        images.push({base64: image.base64,mimeType: image.mimeType,role: 'first_frame'});
       }
-      const response = await request(`/models/${MODEL.id}:predictLongRunning`, { method: 'POST', context, body: {
-        instances: [instance], parameters: { aspectRatio: value.aspectRatio, durationSeconds: value.duration, resolution: '720p', sampleCount: 1 },
-      } });
+      const response = await sdk.submit({prompt: value.prompt as string,aspectRatio: value.aspectRatio as string,duration: value.duration as number,parameters: {resolution: '720p'},images,subjectReference: false}, context);
       if (typeof response.name !== 'string' || !OPERATION.test(response.name)) throw providerError('SUBMISSION_UNKNOWN', 'Veo did not return a valid operation name. Do not resubmit.', { uncertain: true });
       return { providerJobId: response.name };
     },

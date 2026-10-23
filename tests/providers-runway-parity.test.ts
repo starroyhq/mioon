@@ -105,8 +105,8 @@ test('Runway parity: malformed GET is cached, then retries the same ID only', as
   assert.equal(f.calls.length, 2);
 });
 for (const failure of [false, true]) test(`Runway parity: slow concurrent GET ${failure ? 'failure' : 'success'} stays deduplicated through settlement cooldown`, async t => {
-  let now = 0; const gate = deferred(), f = await fixture(t, [() => gate.promise, json({ id: ID, status: 'RUNNING' })], { now: () => now });
-  const first = f.provider.poll(ID); await Promise.resolve(); assert.equal(f.calls.length, 1);
+  let now = 0; const gate = deferred(), dispatched = deferred<void>(), f = await fixture(t, [() => {dispatched.resolve();return gate.promise;}, json({ id: ID, status: 'RUNNING' })], { now: () => now });
+  const first = f.provider.poll(ID); await dispatched.promise; assert.equal(f.calls.length, 1);
   now = 20000; const second = f.provider.poll(ID); await Promise.resolve(); assert.equal(f.calls.length, 1);
   const settled = Promise.allSettled([first, second]);
   if (failure) gate.reject(new Error(SECRET)); else gate.resolve(json({ id: ID, status: 'RUNNING' }));

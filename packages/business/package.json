@@ -16,9 +16,13 @@
     "./native-audio-preview": "./src/native-audio-preview.ts"
   },
   "dependencies": {
+    "@google/genai": "2.30.0",
     "@mioon/contracts": "workspace:*",
+    "@runwayml/sdk": "4.22.0",
+    "@volcengine/ark-runtime": "1.0.12",
     "axios": "1.20.0",
     "dashscope-sdk-official": "1.27.0",
+    "mmx-cli": "1.0.28",
     "openai": "7.39.0"
   }
 }

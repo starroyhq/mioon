@@ -1,6 +1,8 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.ts';
-import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderModelSpec, ProviderSnapshotView, ProviderReferenceAsset } from './live-common.ts';
+import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderModelSpec, ProviderSnapshotView } from './live-common.ts';
 import { SUBJECT_REFERENCE_PROFILE_VERSION, getSubjectGenerationSnapshotIssue } from '@mioon/contracts';
+import {createArkSdkClient} from '../video/ark-sdk.ts';
+import type {VideoAdapterImage} from '../video/adapters.ts';
 
 const API = 'https://ark.cn-beijing.volces.com/api/v3';
 const MODEL: ProviderModelSpec = {
@@ -36,6 +38,7 @@ export function createArkProvider({ root, fetchImpl = globalThis.fetch, env = pr
   const approvedHashes = approvedAssetHashes(env.ARK_APPROVED_ASSET_SHA256);
   const outputHosts = approvedOutputHosts(env.ARK_OUTPUT_HOSTS, ['ark-content-generation-cn-beijing.tos-cn-beijing.volces.com', 'ark-acg-cn-beijing.tos-cn-beijing.volces.com']);
   const request = createJsonRequest({ api: API, headers: { Authorization: `Bearer ${config.secret}` }, fetchImpl, ensureEnabled: config.ensureEnabled, name: 'Seedance' });
+  const sdk = createArkSdkClient({api:API,model:MODEL.id,send:request});
   function validate(snapshot: unknown): true {
     validateModelSnapshot(snapshot, MODEL);
     const value = snapshot as ProviderSnapshotView;
@@ -69,12 +72,12 @@ export function createArkProvider({ root, fetchImpl = globalThis.fetch, env = pr
     for(const asset of assets)validateFrame(asset, value.aspectRatio as string);
     return true;
   }
-  function taskPath(id: unknown): string {
+  function assertTaskId(id: unknown): asserts id is string {
     if (typeof id !== 'string' || !TASK_ID.test(id)) throw providerError('INVALID_PROVIDER_TASK_ID', 'Seedance task ID is invalid.');
-    return `/contents/generations/tasks/${id}`;
   }
   const cache = createPollCache({ now, interval: INTERVAL, retrieve: async (id, context) => {
-    const task = await request(taskPath(id), { context });
+    assertTaskId(id);
+    const task = await sdk.retrieve(id, context);
     if (task.id !== id || typeof task.status !== 'string' || !(STATUSES as readonly string[]).includes(task.status)) throw providerError('INVALID_PROVIDER_RESPONSE', 'Seedance status did not match the requested task.', { retryable: true });
     return task;
   } });
@@ -93,25 +96,21 @@ export function createArkProvider({ root, fetchImpl = globalThis.fetch, env = pr
       validate(snapshot);
       const value = snapshot as ProviderSnapshotView;
       const subject = Object.hasOwn(value, 'subjectReference');
-      const content: Array<Record<string, unknown>> = [{ type: 'text', text: value.prompt }];
+      const images: VideoAdapterImage[] = [];
       // Each image is independently approved and verified from actual bytes.
       // Only the legacy one-image case may default to the first-frame role.
       for(const asset of value.referenceAssets){
         const image = await managedImage({ root, asset, approvedHashes, signal: context.signal, validateCurrent: context.validateReferenceState });
         if(subject)validateSubjectImage(image);else validateFrame(image, value.aspectRatio as string);
         if(image.width !== asset.width || image.height !== asset.height)throw providerError('REFERENCE_CHANGED', 'Actual frame dimensions differ from the frozen image metadata.');
-        content.push({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.base64}` }, role: subject ? 'reference_image' : asset.role ?? 'first_frame' });
+        images.push({mimeType:image.mimeType,base64:image.base64,role:subject?'subject_reference':String(asset.role??'first_frame')});
       }
-      const response = await request('/contents/generations/tasks', { method: 'POST', context, body: {
-        model: MODEL.id, content, duration: value.duration, ratio: !subject && value.referenceAssets.length ? 'adaptive' : value.aspectRatio,
-        ...(subject ? {omni_reference_task_type: 'reference'} : {}),
-        resolution: '720p', output_format: 'mp4', generate_audio: false,
-      } });
+      const response = await sdk.submit({prompt:value.prompt as string,aspectRatio:value.aspectRatio as string,duration:value.duration as number,parameters:{resolution:'720p'},images,subjectReference:subject},context);
       if (typeof response.id !== 'string' || !TASK_ID.test(response.id)) throw providerError('SUBMISSION_UNKNOWN', 'Seedance did not return a valid task ID. Do not resubmit.', { uncertain: true });
       return { providerJobId: response.id };
     },
     async poll(id: string, context: ProviderContext = {}) {
-      config.ensureEnabled(); taskPath(id);
+      config.ensureEnabled(); assertTaskId(id);
       const task = await cache.get(id, context);
       if (task.status === 'succeeded') return { status: 'succeeded' as const, progress: 1 };
       if (['failed', 'cancelled', 'expired'].includes(task.status as string)) return { status: 'failed' as const, error: {
@@ -121,7 +120,7 @@ export function createArkProvider({ root, fetchImpl = globalThis.fetch, env = pr
       return { status: 'running' as const, progress: 0 };
     },
     async download(id: string, destination: string, context: ProviderContext = {}): Promise<OutputDownload> {
-      config.ensureEnabled(); taskPath(id);
+      config.ensureEnabled(); assertTaskId(id);
       const task = await cache.get(id, context);
       if (task.status !== 'succeeded') throw providerError('PROVIDER_NOT_READY', 'Seedance output is not available yet.', { retryable: true });
       const content = object(task.content);

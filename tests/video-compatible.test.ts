@@ -9,7 +9,8 @@ import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
 import {createConfiguredVideoProvider} from '../packages/business/src/video/runtime.ts';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
-import {compatibleVideoForm,compatibleVideoSize} from '../packages/business/src/video/adapters.ts';
+import {compatibleVideoSize} from '../packages/business/src/video/adapters.ts';
+import {createCompatibleVideoSdkClient} from '../packages/business/src/video/compatible-sdk.ts';
 import {createPinnedVideoFetch,isUndispatchedVideoNetworkFailure} from '../packages/business/src/video/network.ts';
 import {checkCompatibleVideoService} from '../packages/business/src/video/compatible-check.ts';
 import {createVideoHttp} from '../apps/server/src/video-http.ts';
@@ -57,17 +58,20 @@ test('frozen compatible bindings keep their own host as an output host and rejec
   assert.throws(()=>parseVideoBinding({...binding,endpoint:'https://10.0.0.1/v1'}),{code:'VIDEO_BINDING_INVALID'});
 });
 
-test('OpenAI-shaped sizes and multipart bodies are derived exactly',()=>{
+test('OpenAI sizes and the official SDK multipart fields preserve the complete image bytes',async()=>{
   assert.equal(compatibleVideoSize('9:16','720p'),'720x1280');assert.equal(compatibleVideoSize('16:9','1080p'),'1920x1080');
   assert.equal(compatibleVideoSize('1:1','480p'),'480x480');assert.equal(compatibleVideoSize('21:9','720p'),'1680x720');assert.equal(compatibleVideoSize('3:4','720p'),'720x960');
   assert.throws(()=>compatibleVideoSize('9:16','4k'),{code:'UNSUPPORTED_CAPABILITY'});
   const image={mimeType:'image/png',base64:Buffer.from('PNGBYTES').toString('base64'),role:'first_frame'};
-  const form=compatibleVideoForm({model:'sora-2',prompt:'Slow dolly',seconds:'4',size:'720x1280'},image,'B');
-  assert.equal(form.contentType,'multipart/form-data; boundary=B');
-  assert.equal(Buffer.from(form.bytes).toString('utf8'),
-    '--B\r\nContent-Disposition: form-data; name="model"\r\n\r\nsora-2\r\n--B\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nSlow dolly\r\n'+
-    '--B\r\nContent-Disposition: form-data; name="seconds"\r\n\r\n4\r\n--B\r\nContent-Disposition: form-data; name="size"\r\n\r\n720x1280\r\n'+
-    '--B\r\nContent-Disposition: form-data; name="input_reference"; filename="reference.png"\r\nContent-Type: image/png\r\n\r\nPNGBYTES\r\n--B--\r\n');
+  const sdk=createCompatibleVideoSdkClient({api:BASE,model:'sora-2',send:async(endpoint,{raw})=>{
+    assert.equal(endpoint,'/videos');assert.ok(raw);
+    const form=await new Response(Buffer.from(raw.bytes),{headers:{'content-type':raw.contentType}}).formData();
+    assert.deepEqual([...form.keys()],['model','prompt','seconds','size','input_reference']);
+    assert.deepEqual(['model','prompt','seconds','size'].map(key=>form.get(key)),['sora-2','Slow dolly','4','720x1280']);
+    const file=form.get('input_reference');assert.ok(file instanceof File);assert.equal(file.name,'reference.png');assert.equal(file.type,'image/png');assert.equal(Buffer.from(await file.arrayBuffer()).toString(),'PNGBYTES');
+    return {id:'task-123'};
+  }});
+  assert.deepEqual(await sdk.submit({prompt:'Slow dolly',aspectRatio:'9:16',duration:4,parameters:{resolution:'720p'},images:[image],subjectReference:false}),{id:'task-123'});
 });
 
 async function settingsFixture(t:{after(fn:()=>unknown):void}){
@@ -115,7 +119,7 @@ test('submission is OpenAI-shaped multipart to the bound origin with the bound k
   assert.deepEqual(await f.provider.submit(f.snapshot,{requestId:'stable-request-1'}),{providerJobId:'video_123'});
   const call=f.calls[0]!,body=Buffer.from(call.init.body as Uint8Array).toString('utf8');
   assert.equal(call.url,`${BASE}/videos`);assert.equal(call.init.method,'POST');assert.equal(call.init.redirect,'error');
-  assert.equal(headerOf(call.init,'authorization'),`Bearer ${KEY}`);assert.match(String(headerOf(call.init,'content-type')),/^multipart\/form-data; boundary=mioon[0-9a-f]{32}$/);
+  assert.equal(headerOf(call.init,'authorization'),`Bearer ${KEY}`);assert.match(String(headerOf(call.init,'content-type')),/^multipart\/form-data; boundary=[A-Za-z0-9_-]{16,70}$/);
   for(const [name,value] of [['model','sora-2'],['prompt','Synthetic shapes move slowly.'],['seconds','4'],['size','720x1280']])assert.ok(body.includes(`name="${name}"\r\n\r\n${value}\r\n`),name);
   assert.equal(body.includes('input_reference'),false);
 

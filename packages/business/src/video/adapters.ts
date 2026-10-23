@@ -1,4 +1,3 @@
-import {randomUUID} from 'node:crypto';
 import {providerError} from '../providers/live-common.ts';
 
 export type ConfiguredVideoFamily = 'runway'|'ark'|'veo'|'minimax'|'vidu'|'kling'|'wan'|'compatible';
@@ -21,7 +20,6 @@ const object=(value: unknown): Record<string,unknown>|null=>value!==null&&typeof
 const uri=(image: VideoAdapterImage)=>`data:${image.mimeType};base64,${image.base64}`;
 const TASK_ID=/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/;
 const RUNWAY_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const RUNWAY_RATIOS: Readonly<Record<string,string>>={'9:16':'720:1280','16:9':'1280:720','1:1':'960:960','3:4':'832:1104','4:3':'1104:832','21:9':'1584:672'};
 const invalidTask=()=>providerError('INVALID_PROVIDER_RESPONSE','The provider response did not match the existing task.',{retryable:true});
 
 /** OpenAI Videos sizes are WIDTHxHEIGHT strings. The resolution label names the
@@ -32,19 +30,6 @@ export function compatibleVideoSize(aspectRatio: string,resolution: string): str
   const long=(edge: number)=>Math.round(edge/2)*2;
   return a===b?`${short}x${short}`:a<b?`${short}x${long(short*b/a)}`:`${long(short*a/b)}x${short}`;
 }
-/** multipart/form-data exactly like the official client: text fields, then the
- * optional first-frame file as input_reference. The boundary is random per call. */
-export function compatibleVideoForm(fields: Readonly<Record<string,string>>,image?: VideoAdapterImage,boundary=`mioon${randomUUID().replaceAll('-','')}`): {bytes: Uint8Array; contentType: string} {
-  const parts: Buffer[]=[];
-  for(const [name,value] of Object.entries(fields))parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,'utf8'));
-  if(image){
-    const extension=image.mimeType==='image/jpeg'?'jpg':image.mimeType==='image/webp'?'webp':'png';
-    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="input_reference"; filename="reference.${extension}"\r\nContent-Type: ${image.mimeType}\r\n\r\n`,'utf8'),Buffer.from(image.base64,'base64'),Buffer.from('\r\n','utf8'));
-  }
-  parts.push(Buffer.from(`--${boundary}--\r\n`,'utf8'));
-  return {bytes:Buffer.concat(parts),contentType:`multipart/form-data; boundary=${boundary}`};
-}
-
 export function assertConfiguredTaskId(selection: VideoAdapterSelection,id: unknown): asserts id is string {
   if(typeof id!=='string')throw providerError('INVALID_PROVIDER_TASK_ID','The provider task identity is invalid.');
   if(selection.providerId==='veo'){
@@ -58,13 +43,9 @@ export function assertConfiguredTaskId(selection: VideoAdapterSelection,id: unkn
 export function configuredSubmission(selection: VideoAdapterSelection,input: VideoAdapterInput,requestId: string): VideoSubmissionRequest {
   const {providerId,model,resolution}=selection,{prompt,aspectRatio,duration,images,parameters}=input,first=images[0];
   switch(providerId){
-    case 'runway':return {path:'/v1/image_to_video',body:{model,promptImage:first?uri(first):undefined,promptText:prompt,ratio:RUNWAY_RATIOS[aspectRatio],duration,...(parameters.seed===undefined?{}:{seed:parameters.seed})}};
-    case 'ark':return {path:'/contents/generations/tasks',body:{model,content:[{type:'text',text:prompt},...images.map(image=>({type:'image_url',image_url:{url:uri(image)},role:input.subjectReference?'reference_image':image.role}))],duration,ratio:!input.subjectReference&&images.length?'adaptive':aspectRatio,...(input.subjectReference?{omni_reference_task_type:'reference'}:{}),resolution,output_format:'mp4',generate_audio:false}};
-    case 'veo':return {path:`/models/${model}:predictLongRunning`,body:{instances:[{prompt,...(first?{image:{bytesBase64Encoded:first.base64,mimeType:first.mimeType}}:{})}],parameters:{aspectRatio,durationSeconds:duration,resolution,sampleCount:1}}};
-    case 'minimax':return {path:'/v2/video_generation',body:{model,content:[{type:'text',text:prompt},...(first?[{type:'image_url',image_url:{url:uri(first)},role:'first_frame'}]:[])],duration,resolution,ratio:first?'adaptive':aspectRatio}};
     case 'vidu':return {path:first?'/ent/v2/img2video':'/ent/v2/text2video',body:{model,prompt,duration,resolution,audio:false,off_peak:false,...(first?{images:[uri(first)],is_rec:false}:{aspect_ratio:aspectRatio})}};
     case 'kling':return {path:`/${first?'image-to-video':'text-to-video'}/${model}`,body:{...(first?{contents:[{type:'prompt',text:prompt},{type:'first_frame',url:first.base64}]}:{prompt}),settings:{resolution,duration,audio:selection.audio==='on'||selection.audio==='optional'&&parameters.generateAudio===true?'native':'off',multi_shot:false,...(first?{}:{aspect_ratio:aspectRatio})},options:{external_task_id:requestId}}};
-    case 'compatible':return {path:'/videos',raw:compatibleVideoForm({model,prompt,seconds:String(duration),size:compatibleVideoSize(aspectRatio,resolution)},first)};
+    case 'runway':case 'ark':case 'veo':case 'compatible':case 'minimax':throw providerError('VIDEO_BINDING_INVALID','This video protocol must use its official SDK.');
     case 'wan':throw providerError('VIDEO_BINDING_INVALID','Wan requests must use the official SDK.');
   }
 }
@@ -81,14 +62,10 @@ export function configuredSubmissionId(selection: VideoAdapterSelection,response
 export function configuredTaskPath(selection: VideoAdapterSelection,id: string): string {
   assertConfiguredTaskId(selection,id);
   switch(selection.providerId){
-    case 'runway':return `/v1/tasks/${id}`;
-    case 'ark':return `/contents/generations/tasks/${id}`;
-    case 'veo':return `/${id}`;
-    case 'minimax':return `/v2/query/video_generation/${id}`;
     case 'vidu':return `/ent/v2/tasks/${id}/creations`;
     case 'kling':return `/tasks?task_ids=${encodeURIComponent(id)}`;
     case 'wan':throw providerError('VIDEO_BINDING_INVALID','Wan task queries must use the official SDK.');
-    case 'compatible':return `/videos/${id}`;
+    case 'runway':case 'ark':case 'veo':case 'compatible':case 'minimax':throw providerError('VIDEO_BINDING_INVALID','This video protocol must use its official SDK.');
   }
 }
 
