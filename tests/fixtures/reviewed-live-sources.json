@@ -1,0 +1,94 @@
+{
+  "formatVersion": 1,
+  "note": "Sources the frozen-source harnesses depend on that keep changing on main. Each is pinned to its exact reviewed bytes, first at main bbff40e (2026-10-23) when the per-change inverse layers were removed. After reviewing a change to one of them, run node tests/helpers/reviewed-live-sources.ts --update and commit the new pin with the change.",
+  "files": {
+    "packages/business/src/agent/chat-errors.ts": {
+      "bytes": 8320,
+      "sha256": "bf9008651600611138b4e73911a41f92c2141d81ad215fc5104bd9b9b4c3cab6"
+    },
+    "packages/business/src/db.ts": {
+      "bytes": 12861,
+      "sha256": "828ad0f57179b5090fd0a650780bf31765974f957c27bd41d8532b14be85d2cb"
+    },
+    "packages/business/src/local-drafts.ts": {
+      "bytes": 16893,
+      "sha256": "aa44cb73b9276fb0b0f47bd0c432f48ed316c9daff90a263791523d6cd844170"
+    },
+    "packages/business/src/timeline-media.ts": {
+      "bytes": 22921,
+      "sha256": "f4150ce725c187ef0c207a8dd613434e766acf96fbd343942862bf1f01a88aad"
+    },
+    "packages/business/src/timeline-recovery.ts": {
+      "bytes": 23185,
+      "sha256": "4b21abdb2258c1152a4e7b9150956e042ed069255fc5e908dc1f3505f4c08bfb"
+    },
+    "packages/business/src/workspace-backup-schema-versions.ts": {
+      "bytes": 7739,
+      "sha256": "38bba066fcdba9be983c49a70db318c6f67c516c1a3185a541831879aa0e5c62"
+    },
+    "packages/business/src/workspace-lock.ts": {
+      "bytes": 2717,
+      "sha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463"
+    },
+    "packages/business/src/workspace-restore-policy.ts": {
+      "bytes": 11200,
+      "sha256": "d3a7e3ddb7aedcf0161c11c581748580e6a74a6f35e9712c3a992ae5cdc8357b"
+    },
+    "packages/business/src/workspace-schema-dispatch.ts": {
+      "bytes": 44257,
+      "sha256": "874e293370c8c77302a8c70c2b53030229aeff6837d1f3737b23f74b67f44c8a"
+    },
+    "packages/business/src/workspace-volume-envelope-validation.ts": {
+      "bytes": 16939,
+      "sha256": "cb5beeacd993cbfdbbbe121bd2d531000215e18cb282c35e5b5584e22014a650"
+    },
+    "packages/contracts/package.json": {
+      "bytes": 1515,
+      "sha256": "834f278da97be115249aa5b8e86236f680b2fa782d331c63fca78a3f5c756bed"
+    },
+    "packages/contracts/src/edit-tasks.ts": {
+      "bytes": 7158,
+      "sha256": "83305455edab9ae639262bae1b1a542e7b3124fd22178aea4acc8ba9cf79882c"
+    },
+    "packages/contracts/src/generation-input-profiles.ts": {
+      "bytes": 14029,
+      "sha256": "0b3f2b90986a0082066da21c89407709d3ac6efb03db5817d9f5dc61b7d3dac4"
+    },
+    "packages/contracts/src/index.ts": {
+      "bytes": 49473,
+      "sha256": "a31886e72bf0a2001a3d99478495f65e0abbfa82aafcd63c82a9b1727512bf51"
+    },
+    "packages/contracts/src/operation-effects.ts": {
+      "bytes": 33259,
+      "sha256": "7e478c8fe1e00e69d1e98bf9dc5a80f25f064583876f11572750ca9c28a17003"
+    },
+    "packages/contracts/src/private-storage.ts": {
+      "bytes": 23412,
+      "sha256": "83e139126f80988ed5d72adc874cdc4a07cf68333ea82ff3e1eab0d294f03f47"
+    },
+    "packages/contracts/src/subject-generation.ts": {
+      "bytes": 17844,
+      "sha256": "fc3c3c7b5b81425713b21176e453b0598019951702533ca66e511f4a4294a9bb"
+    },
+    "packages/contracts/src/timeline-acknowledgement.ts": {
+      "bytes": 28136,
+      "sha256": "5a0a5ba5e1c19b1ccd6fdcc26ea79d48ada1ebb89e92be1cbd8d1de1aba0b16c"
+    },
+    "packages/contracts/src/timeline-clip-loudness.ts": {
+      "bytes": 10958,
+      "sha256": "4374d1d1d5c0a9bcab4b015b90677053eaeb6357790236ef8fbcf4c762115370"
+    },
+    "packages/contracts/src/workspace-backup.ts": {
+      "bytes": 7488,
+      "sha256": "2abbb12bf020b3cb94a344b5fc009da1513148cfd84fc4ea17817aa31f881bb5"
+    },
+    "packages/contracts/src/workspace-restore.ts": {
+      "bytes": 5791,
+      "sha256": "7515b6829f6042599822579e966cae9d986bbb00a0136bb76ec27e76f73dbea9"
+    },
+    "packages/contracts/src/workspace-schema-profiles.ts": {
+      "bytes": 4156,
+      "sha256": "6b9771fb9e58ac1c1734001a3e70869ec691e73f4bacce83c61e9999db86f821"
+    }
+  }
+}

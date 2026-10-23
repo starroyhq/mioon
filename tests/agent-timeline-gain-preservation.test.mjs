@@ -1,6 +1,5 @@
-import {reverseReviewedMinimaxSdk} from './helpers/current-minimax-sdk-delta.ts';
-import {reverseReviewedWanVideo} from './helpers/current-wan-video-delta.ts';
-import {withoutReviewedInteractionObjects,currentOrdinary56Delta,reverseReviewedSchema56} from './helpers/current-schema56-delta.ts';
+import {assertReviewedLiveSource,isReviewedLiveSource} from './helpers/reviewed-live-sources.ts';
+import {withoutReviewedInteractionObjects,currentOrdinary56Delta} from './helpers/current-schema56-delta.ts';
 function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,8 +13,7 @@ import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
-import {currentOrdinary54Delta,withoutReviewedConversationObjects,reviewedSchema54SourceDeltas,reverseReviewedSchema54} from './helpers/current-schema54-delta.ts';
-import {reverseReviewedShotSync} from './helpers/current-shot-sync-delta.ts';
+import {currentOrdinary54Delta,withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
@@ -34,68 +32,24 @@ const compatibility=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-c3
 // legacy key to its current `.ts` source and pins deterministic esbuild
 // type-erased hashes so later edits are still detected.
 const migrationMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-ts-migration-map.json',import.meta.url),'utf8')).mapping;
-const schema50RuntimeMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-schema50-runtime-map.json',import.meta.url),'utf8')).mapping;
-assert.deepEqual(Object.keys(schema50RuntimeMap).sort(),['packages/business/src/workspace-restore-policy.mjs','packages/contracts/src/index.mjs','packages/contracts/src/operation-effects.mjs','packages/contracts/src/workspace-restore.mjs'].sort());
-const schema52RuntimeMap=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-schema52-runtime-map.json',import.meta.url),'utf8')).mapping;
-assert.deepEqual(Object.keys(schema52RuntimeMap).sort(),['packages/business/src/db.mjs','packages/business/src/workspace-restore-policy.mjs','packages/contracts/src/index.mjs','packages/contracts/src/operation-effects.mjs','packages/contracts/src/subject-generation.mjs','packages/contracts/src/workspace-backup.mjs','packages/contracts/src/workspace-restore.mjs'].sort());
 const subjectClosure=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-origin-main-subject-closure.json',import.meta.url),'utf8'));
-// The schema52 pins include both the reviewed LRA and v2 changes. Check their
-// actual whole source; schema50 remains the unchanged predecessor pin below.
-const reviewedLoudnessRangeFragments=Object.freeze({
- 'packages/contracts/src/index.mjs':"export * from './loudness-range.ts';\n",
- 'packages/contracts/src/operation-effects.mjs':'Reports bounded complete-window loudness range. An explicit optional LUFS/dBTP target prepares an actually measured supported fixed-gain candidate; no implicit target or apply authority. No persistent report,',
-});
 const currentPath=file=>migrationMap[file]?.currentPath??file;
-const cliDeltaBytes=fs.readFileSync(new URL('./fixtures/agent-cli-reviewed-source-deltas.json',import.meta.url));
-const cliDeltas=JSON.parse(cliDeltaBytes);
-// Keep all historical and migration pins intact. Only the exact reviewed CLI
-// deltas are reversed before comparing the existing raw/type-erased pins.
-function reverseReviewedCli(file,bytes){
- const delta=cliDeltas.files.find(item=>item.path===currentPath(file));if(!delta)return bytes;
- const label=`Baseline dependency changed: ${file}; reviewed CLI delta`;
- assert.equal(bytes.byteLength,delta.afterBytes,label);assert.equal(sha(bytes),delta.afterSha256,label);
- let source=bytes.toString('utf8');
- for(const inverse of delta.inverse){assert.equal(inverse.occurrences,1);assert.ok(inverse.after.length>0);assert.equal(source.split(inverse.after).length-1,1,label);source=source.replace(inverse.after,inverse.before);}
- const previous=Buffer.from(source);assert.equal(previous.byteLength,delta.beforeBytes,label);assert.equal(sha(previous),delta.beforeSha256,label);return previous;
-}
-// The compatible video service (OpenAI video format) adds one provider ID to
-// generation.submit and to its connection-only rule. Reverse exactly these two
-// unique additions before the unchanged schema52 pin; any other byte still fails.
-const reviewedCompatibleVideoInverses=Object.freeze({
- 'packages/contracts/src/index.mjs':Object.freeze([
-  {before:"providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan']),",after:"providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan','compatible']),"},
-  {before:"!has&&['kling','wan'].includes(value.providerId)",after:"!has&&['kling','wan','compatible'].includes(value.providerId)"},
- ]),
-});
-function reverseReviewedCompatibleVideo(file,bytes){
- // Undo newer reviewed SDK contract bytes first; keep the older inverse and pins intact.
- bytes=reverseReviewedMinimaxSdk(currentPath(file),bytes);
- bytes=reverseReviewedWanVideo(currentPath(file),bytes);
- const inverses=reviewedCompatibleVideoInverses[file];if(!inverses)return bytes;
- let source=bytes.toString('utf8');
- for(const inverse of inverses){assert.equal(source.split(inverse.after).length-1,1,`Baseline dependency changed: ${file}; reviewed compatible-video delta`);source=source.replace(inverse.after,inverse.before);}
- return Buffer.from(source);
-}
-// Deterministic drift detection: every mapped legacy key pins the current
-// whole-body hash in all environments, and additionally pins an esbuild
-// type-erased body hash (tolerates erasable type-only edits). The esbuild
-// native binary is platform-specific, so the type-erased half is verified when
-// that binary is available (host gate); the canonical container verifies the
-// exact whole-body pins and the untouched historical hashes below.
+// Deterministic drift detection for the current sources this harness loads.
+// Sources that keep changing on main are pinned to their reviewed current bytes
+// (tests/fixtures/reviewed-live-sources.json). Every other mapped legacy key
+// still pins its migrated whole-body hash in all environments and an esbuild
+// type-erased body hash where that platform-specific binary is available.
 const transform={transformSync:null};
 try{Object.assign(transform,await import('esbuild'));}catch{/* native esbuild binary not installed for this platform */}
 function eraseSource(source){if(!transform.transformSync)return null;try{return transform.transformSync(source,{loader:'ts',format:'esm',target:'es2022'}).code;}catch{return null;}}
 function assertPinnedCurrent(file,read=null){
  const mapping=migrationMap[file];if(!mapping)return;
- const reviewed=schema50RuntimeMap[file];
- if(reviewed){assert.equal(reviewed.currentPath,mapping.currentPath);assert.equal(reviewed.previousCurrentSha256,mapping.currentSha256);assert.equal(reviewed.previousTypeErasedSha256,mapping.typeErasedSha256);}
- const prior=reviewed??mapping,next=schema52RuntimeMap[file];
- if(next){assert.equal(next.currentPath,mapping.currentPath);assert.equal(next.previousCurrentSha256,prior.currentSha256);assert.equal(next.previousTypeErasedSha256,prior.typeErasedSha256);}
- const pin=next??prior;
- const text=reverseReviewedSchema54(mapping.currentPath,reverseReviewedCompatibleVideo(file,reverseReviewedCli(file,reverseReviewedShotSync(mapping.currentPath,Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))))))).toString();
- assert.equal(sha(text),pin.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
- const erased=eraseSource(text);
- if(erased!==null)assert.equal(sha(erased),pin.typeErasedSha256,`${file}: deterministic type-erased current body`);
+ const bytes=Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath)));
+ const label=`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`;
+ if(isReviewedLiveSource(mapping.currentPath)){assertReviewedLiveSource(mapping.currentPath,bytes,label);return;}
+ assert.equal(sha(bytes),mapping.currentSha256,label);
+ const erased=eraseSource(bytes.toString());
+ if(erased!==null)assert.equal(sha(erased),mapping.typeErasedSha256,`${file}: deterministic type-erased current body`);
 }
 const plain=value=>JSON.parse(JSON.stringify(value));
 const sha=value=>createHash('sha256').update(value).digest('hex');
@@ -308,62 +262,11 @@ test('frozen c3a0a57 schema dependency cycle preserves exact original source has
   assertPinnedCurrent(file);
  }
 });
-test('reviewed schema50 current-runtime pins reject every additional source byte while preserving old pins',()=>{
- for(const file of new Set([...Object.keys(schema50RuntimeMap),...Object.keys(schema52RuntimeMap)])){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
-});
-test('reviewed schema54 source edits reverse exactly to frozen52 pins and reject changed, repeated or unknown bytes',()=>{
- assert.deepEqual(reviewedSchema54SourceDeltas.map(delta=>delta.path),['packages/business/src/workspace-restore-policy.ts','packages/contracts/src/workspace-backup.ts','packages/contracts/src/workspace-restore.ts']);
- for(const delta of reviewedSchema54SourceDeltas){
-  const file=Object.keys(schema52RuntimeMap).find(key=>currentPath(key)===delta.path);assert.ok(file);
-  const before=execFileSync('git',['show',`4355c0746821dad76622b9fdaaed72400bdc5a92:${delta.path}`],{cwd:repo,maxBuffer:1024*1024,timeout:5000}),source=reverseReviewedSchema56(delta.path,fs.readFileSync(path.join(repo,delta.path))).toString('utf8');
-  assert.equal(sha(before),schema52RuntimeMap[file].currentSha256,'the old schema52 pin is unchanged');
-  assert.deepEqual(reverseReviewedSchema54(delta.path,Buffer.from(source)),before,'only the reviewed capability/profile bytes reverse');assertPinnedCurrent(file);
-  for(const inverse of delta.inverse)for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,inverse.after+inverse.after),source.replace(inverse.after,''),source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n'])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
- }
-});
-test('finite CLI source deltas recover exact Git predecessors without changing historical or migration pins',()=>{
- assert.equal(sha(cliDeltaBytes),'46376e8cbbb647cd28790fdfbebfc795cb462cbe180d918ff12df160af491398');
- assert.equal(cliDeltas.formatVersion,1);assert.equal(cliDeltas.predecessorCommit,'3e5ed71c01ff8d06403e1c4b2cb082cd81e26907');assert.equal(cliDeltas.acceptedCommit,'6904a53249a2cdec1ee6a84c8bfb01f8e0056353');
- assert.deepEqual(cliDeltas.files.map(item=>item.path),['packages/business/src/agent/chat-errors.ts','packages/business/src/local-drafts.ts','packages/business/src/workspace-lock.ts','packages/contracts/src/private-storage.ts']);
- for(const delta of cliDeltas.files){
-  const before=execFileSync('git',['show',`${cliDeltas.predecessorCommit}:${delta.path}`],{cwd:repo,maxBuffer:1024*1024,timeout:5000}),accepted=execFileSync('git',['show',`${cliDeltas.acceptedCommit}:${delta.path}`],{cwd:repo,maxBuffer:1024*1024,timeout:5000});
-  assert.equal(sha(before),delta.beforeSha256);assert.equal(sha(accepted),delta.afterSha256);assert.deepEqual(reverseReviewedCli(delta.path,accepted),before);assert.ok(delta.review.length>40);
-  const file=Object.keys(migrationMap).find(key=>currentPath(key)===delta.path);if(!file)continue;
-  assert.equal(delta.beforeSha256,migrationMap[file].currentSha256,'unchanged migration pin');assertPinnedCurrent(file);
-  const source=reverseReviewedSchema56(delta.path,fs.readFileSync(path.join(repo,delta.path))).toString('utf8');
-  for(const inverse of delta.inverse)for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,inverse.after+inverse.after),source.replace(inverse.after,''),source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n'])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
- }
-});
-test('reviewed loudness-range bytes are pinned through schema52 and reject changed, duplicate or unknown source bytes',()=>{
- for(const [file,fragment]of Object.entries(reviewedLoudnessRangeFragments)){
-  const source=fs.readFileSync(path.join(repo,currentPath(file)),'utf8');
-  assert.equal(source.split(fragment).length-1,1,`${file}: unique reviewed loudness-range bytes`);
-  assert.equal(schema52RuntimeMap[file].previousCurrentSha256,schema50RuntimeMap[file].currentSha256,`${file}: unchanged schema50 predecessor`);
-  assertPinnedCurrent(file);
-  for(const changed of [
-   source.replace(fragment,fragment+' '),
-   source.replace(fragment,fragment+fragment),
-   source.replace(fragment,''),
-   source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n',
-  ])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
- }
-});
-
-test('reviewed compatible-video bytes are pinned through schema52 and reject changed, duplicate or unknown source bytes',()=>{
- for(const [file,inverses]of Object.entries(reviewedCompatibleVideoInverses)){
-  const source=fs.readFileSync(path.join(repo,currentPath(file)),'utf8');
-  assertPinnedCurrent(file);
-  for(const inverse of inverses){
-   assert.equal(source.split(inverse.after).length-1,1,`${file}: unique reviewed compatible-video bytes`);assert.equal(source.split(inverse.before).length-1,0,`${file}: predecessor snippet replaced`);
-   for(const changed of [
-    source.replace(inverse.after,inverse.after+' '),
-    source.replace(inverse.after,inverse.after+inverse.after),
-    source.replace(inverse.after,''),
-    source.replace(inverse.after,inverse.before),
-    source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n',
-   ])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
-  }
- }
+test('reviewed live dependencies match their pins and reject every unreviewed source byte',()=>{
+ const live=Object.keys(migrationMap).filter(file=>isReviewedLiveSource(currentPath(file)));
+ assert.ok(live.length>0,'the harness loads reviewed live sources');
+ for(const file of live){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
+ for(const file of Object.keys(migrationMap).filter(file=>!isReviewedLiveSource(currentPath(file))))assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n'),/Baseline dependency changed/,`${file}: frozen sources stay frozen`);
 });
 test('frozen validator loader rejects changed historical source before import',async()=>{
  const changed=plain(baseline);changed.sources['packages/business/src/db.mjs'].text+='\n// deliberate drift';

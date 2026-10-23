@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {readFileSync} from 'node:fs';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -11,7 +10,6 @@ import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-rest
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
-import {reviewedShotSyncSourceDeltas,reverseReviewedShotSync} from './helpers/current-shot-sync-delta.ts';
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,TIMELINE_MUTATION_OPERATIONS,
  TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES,DURABLE_EDIT_OPERATIONS} from '@mioon/contracts';
 import {translate} from '../packages/i18n/src/index.ts';
@@ -235,18 +233,6 @@ test('both operations stay out of the durable edit-task ledger, whose table chec
  for(const [operation,fields] of [[REFRESH,{clipIds:[clip.id]}],[APPEND,{}]])
   assert.throws(()=>tasks.prepare({projectId:f.projectId,operation,input:f.request(timeline,fields),origin:'new'}),error=>typeof error.code==='string',operation);
  assert.equal(rows(),before,'nothing is recorded in the ledger');
-});
-
-test('reviewed shot-sync deltas recover the previous pinned sources exactly and reject any other byte', () => {
- for(const delta of reviewedShotSyncSourceDeltas){
-  const source=readFileSync(new URL(`../${delta.path}`,import.meta.url),'utf8');
-  assert.ok(reverseReviewedShotSync(delta.path,Buffer.from(source)).length>0,delta.path);
-  assert.deepEqual(reverseReviewedShotSync(delta.path,reverseReviewedShotSync(delta.path,Buffer.from(source))),reverseReviewedShotSync(delta.path,Buffer.from(source)),'already recovered bytes pass unchanged');
-  for(const inverse of delta.inverse){
-   for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,inverse.after+inverse.after),source.replace(inverse.after,''),source+'\n// unreviewed addition\n'])
-    assert.throws(()=>reverseReviewedShotSync(delta.path,Buffer.from(changed)),delta.path);
-  }
- }
 });
 
 test('shot-sync history and receipts survive backup and restore; restored copies only replay them', async t => {
