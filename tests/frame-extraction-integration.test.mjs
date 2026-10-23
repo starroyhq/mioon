@@ -119,25 +119,26 @@ test('actual App hook connects capture/rpc/reveal with source or narrow Properti
   assert.deepEqual(rpcCalls, [], 'restored mode neither reads live frame history nor starts or controls a task');
   assert.equal(h.value.controller.getSnapshot().pending, null); h.unmount();
   assert.match(app, /onCaptureFrame=\{application \? undefined :/); assert.match(app, /frameExtraction\.controller as unknown as \{capture\(\): unknown\}\)\.capture\(\)/); assert.match(app, /captureBusy=\{frameCaptureBusy\(frameExtraction\.state\)\}/);
-  assert.match(app, /quickAssetId && sourceAsset \? application \?/); assert.match(app, /<SourceRangeInspector[^>]+>\{restored \? <RestoredUnavailable[^>]+\/> : <FrameExtractionPanel controller=\{frameExtraction\.controller(?: as never)?\} \/>\}<\/SourceRangeInspector>/);
+  assert.match(app, /quickAssetId && sourceAsset \? application \?/); assert.match(app, /<SourceRangeInspector[^>]+>\{restored \? <RestoredUnavailable[^>]+\/> : <FrameExtractionPanel controller=\{frameExtraction\.controller(?: as never)?\} revealTask=\{agentRecovery\?\.kind === 'frame' \? agentRecovery : null\} \/>\}<\/SourceRangeInspector>/);
 });
 
 test('actual App source inspector keeps the normal frame panel and replaces it with the restored hold notice', () => {
   const app = text('App.tsx'), start = app.indexOf('<SourceRangeInspector '), end = app.indexOf('</SourceRangeInspector>', start) + '</SourceRangeInspector>'.length;
   assert.ok(start > 0 && end > start);
   const controller = {}, rangeState = { dirty: true, draft: { inFrame: 12, outFrame: 88 } }, rangeController = {};
-  for (const restored of [false, true]) {
+  for (const restored of [false, true]) for (const recoveryKind of [null, 'image', 'frame']) {
+    const agentRecovery = recoveryKind ? {kind: recoveryKind, projectId, taskId, key: 'fixed-reveal', current: () => true} : null;
     const h = hooksHarness(`import React from 'react'; export default function Fixture() { return (${app.slice(start, end)}); }`, {}, 'default', {
       SourceRangeInspector: 'SourceRangeInspector', FrameExtractionPanel: 'FrameExtractionPanel', RestoredUnavailable: 'RestoredUnavailable', t: key => translate('zh-Hans', key),
       restored, sourceAsset, sourceRanges: { state: rangeState, controller: rangeController }, timeline: { projectId }, sourceRangeBlocked: false,
-      addSavedSourceRange() {}, frameExtraction: { controller },
+      addSavedSourceRange() {}, frameExtraction: { controller }, agentRecovery,
     });
     const tree = h.render(), all = nodes(tree), panel = all.find(node => node.type === 'FrameExtractionPanel'), notice = all.find(node => node.type === 'RestoredUnavailable');
     assert.equal(tree.type, 'SourceRangeInspector'); assert.equal(tree.props.asset, sourceAsset);
     assert.equal(tree.props.state, rangeState); assert.equal(tree.props.controller, rangeController);
     assert.equal(Boolean(panel), !restored); assert.equal(Boolean(notice), restored);
     if (restored) assert.equal(notice.props.title, '抽帧任务保留，执行暂不可用');
-    else assert.equal(panel.props.controller, controller);
+    else { assert.equal(panel.props.controller, controller); assert.equal(panel.props.revealTask, recoveryKind === 'frame' ? agentRecovery : null, 'only an exact frame recovery intent reaches the retained panel'); }
     assert.deepEqual(rangeState, { dirty: true, draft: { inFrame: 12, outFrame: 88 } }); h.unmount();
   }
 });

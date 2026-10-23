@@ -68,7 +68,7 @@ const targets: Readonly<Record<string, readonly [string,...string[]]>>=Object.fr
 export function refuseRestoredOperation(store: RestoreStore,operation: string,input: Record<string, unknown>|undefined): void {
  const context=getWorkspaceRestoreContext(store);
  if(!context)return;
- if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53].includes(context.schemaVersion))throw workspaceRestoreError();
+ if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57].includes(context.schemaVersion))throw workspaceRestoreError();
  if(RESTORE_LOCAL_OPERATIONS.includes(operation)||operation==='timeline.get'||operation==='workspace.preferences.put'){
   assertRestoreInvocation(store,operation,input);
   assertRestoreRequestVacant(store,operation,input);

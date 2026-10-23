@@ -1,3 +1,5 @@
+import {withoutReviewedInteractionObjects,currentOrdinary56Delta,reverseReviewedSchema56} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,6 +12,7 @@ import {createRequire} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
+import {currentOrdinary54Delta,withoutReviewedConversationObjects,reviewedSchema54SourceDeltas,reverseReviewedSchema54} from './helpers/current-schema54-delta.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
@@ -68,7 +71,7 @@ function assertPinnedCurrent(file,read=null){
  const prior=reviewed??mapping,next=schema52RuntimeMap[file];
  if(next){assert.equal(next.currentPath,mapping.currentPath);assert.equal(next.previousCurrentSha256,prior.currentSha256);assert.equal(next.previousTypeErasedSha256,prior.typeErasedSha256);}
  const pin=next??prior;
- const text=reverseReviewedCli(file,Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath)))).toString();
+ const text=reverseReviewedSchema54(mapping.currentPath,reverseReviewedCli(file,Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))))).toString();
  assert.equal(sha(text),pin.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
  const erased=eraseSource(text);
  if(erased!==null)assert.equal(sha(erased),pin.typeErasedSha256,`${file}: deterministic type-erased current body`);
@@ -88,7 +91,7 @@ function sqlState(db){return {objects:objects(db),sequence:sequences(db),markers
 function reviewedCurrentObjects(all){
  const reviewedNames=new Set(currentOrdinary52Delta.objectNames),v2=all.filter(object=>reviewedNames.has(object.name));
  assert.equal(v2.length,currentOrdinary52Delta.v2Catalog.count,'reviewed v2 catalog size');assert.equal(sha(JSON.stringify(v2)),currentOrdinary52Delta.v2Catalog.sha256,'reviewed v2 catalog sha256');
- const actual=all.filter(object=>!reviewedNames.has(object.name));
+ const actual=withoutReviewedCurrentAgentObjects(all).filter(object=>!reviewedNames.has(object.name));
  // Reviewed current-schema48 view of the historical24 catalog: retained objects
  // keep their frozen historical SQL except for reviewed objectSql upgrades;
  // annotation/LUT/lifecycle additions are pinned by the reviewed catalog hashes
@@ -109,7 +112,7 @@ function reviewedCurrentObjects(all){
  assert.deepEqual(actual.filter(object=>taskNames.has(object.name)),currentOrdinary50Delta.objects);
  const unreviewed=actual.filter(object=>!expected.some(value=>value.name===object.name)&&!additions.some(value=>value.name===object.name));
  assert.deepEqual(unreviewed,[],'only reviewed current-schema additions');
- return [...expected,...additions,...v2].sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
+ return [...expected,...additions,...v2,...currentOrdinary54Delta.objects,...currentOrdinary56Delta.objects].sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
 }
 function legacyRows(db){return Object.fromEntries(Object.entries(baseline.tables).filter(([table])=>!['schema_version','agent_chat_quota'].includes(table)).map(([table,rows])=>{
  const ids=rows.map(row=>row.id??row.requestId??row.projectId),key=Object.hasOwn(rows[0],'id')?'id':Object.hasOwn(rows[0],'requestId')?'requestId':'projectId';
@@ -287,6 +290,16 @@ test('frozen c3a0a57 schema dependency cycle preserves exact original source has
 test('reviewed schema50 current-runtime pins reject every additional source byte while preserving old pins',()=>{
  for(const file of new Set([...Object.keys(schema50RuntimeMap),...Object.keys(schema52RuntimeMap)])){assertPinnedCurrent(file);assert.throws(()=>assertPinnedCurrent(file,()=>fs.readFileSync(path.join(repo,currentPath(file)),'utf8')+'\n// synthetic unauthorized drift\n'),/Baseline dependency changed/);}
 });
+test('reviewed schema54 source edits reverse exactly to frozen52 pins and reject changed, repeated or unknown bytes',()=>{
+ assert.deepEqual(reviewedSchema54SourceDeltas.map(delta=>delta.path),['packages/business/src/workspace-restore-policy.ts','packages/contracts/src/workspace-backup.ts','packages/contracts/src/workspace-restore.ts']);
+ for(const delta of reviewedSchema54SourceDeltas){
+  const file=Object.keys(schema52RuntimeMap).find(key=>currentPath(key)===delta.path);assert.ok(file);
+  const before=execFileSync('git',['show',`4355c0746821dad76622b9fdaaed72400bdc5a92:${delta.path}`],{cwd:repo,maxBuffer:1024*1024,timeout:5000}),source=reverseReviewedSchema56(delta.path,fs.readFileSync(path.join(repo,delta.path))).toString('utf8');
+  assert.equal(sha(before),schema52RuntimeMap[file].currentSha256,'the old schema52 pin is unchanged');
+  assert.deepEqual(reverseReviewedSchema54(delta.path,Buffer.from(source)),before,'only the reviewed capability/profile bytes reverse');assertPinnedCurrent(file);
+  for(const inverse of delta.inverse)for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,inverse.after+inverse.after),source.replace(inverse.after,''),source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n'])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
+ }
+});
 test('finite CLI source deltas recover exact Git predecessors without changing historical or migration pins',()=>{
  assert.equal(sha(cliDeltaBytes),'46376e8cbbb647cd28790fdfbebfc795cb462cbe180d918ff12df160af491398');
  assert.equal(cliDeltas.formatVersion,1);assert.equal(cliDeltas.predecessorCommit,'3e5ed71c01ff8d06403e1c4b2cb082cd81e26907');assert.equal(cliDeltas.acceptedCommit,'6904a53249a2cdec1ee6a84c8bfb01f8e0056353');
@@ -296,7 +309,7 @@ test('finite CLI source deltas recover exact Git predecessors without changing h
   assert.equal(sha(before),delta.beforeSha256);assert.equal(sha(accepted),delta.afterSha256);assert.deepEqual(reverseReviewedCli(delta.path,accepted),before);assert.ok(delta.review.length>40);
   const file=Object.keys(migrationMap).find(key=>currentPath(key)===delta.path);if(!file)continue;
   assert.equal(delta.beforeSha256,migrationMap[file].currentSha256,'unchanged migration pin');assertPinnedCurrent(file);
-  const source=fs.readFileSync(path.join(repo,delta.path),'utf8');
+  const source=reverseReviewedSchema56(delta.path,fs.readFileSync(path.join(repo,delta.path))).toString('utf8');
   for(const inverse of delta.inverse)for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,inverse.after+inverse.after),source.replace(inverse.after,''),source+'\nimport unknown from "./not-a-reviewed-dependency.ts";\n'])assert.throws(()=>assertPinnedCurrent(file,()=>changed),/Baseline dependency changed/);
  }
 });
@@ -367,7 +380,7 @@ test('fixed c3a0a57 shot, move and inspection catalogs stay exact and reject eve
 
 test('fixed real v1/v2 records survive startup, read, pagination and recovery with every raw byte and sequence intact',async t=>{
  const f=legacyFixture(t),beforeRows=allRows(f.store.db),beforeSql=sqlState(f.store.db);
- assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.deepEqual(sequences(f.store.db),baseline.sequence);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,52);
+ assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.deepEqual(sequences(f.store.db),baseline.sequence);assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,56);
  for(const p of baseline.proposals){const row=f.store.db.prepare('SELECT definition,approval FROM agent_edit_proposals WHERE id=?').get(p.id);assert.ok(row.definition.startsWith(' \n'));assert.ok(row.approval.startsWith(' \n'));assert.equal(JSON.parse(row.definition).version,p.version);}
  f.reopen();let calls=0;const services=createServices(f.store,new Map()),edits=createAgentEditService({store:f.store,services:{...services,updateShotInProject(){calls++;throw Error('legacy dispatch forbidden');},moveTimelineClipInProject(){calls++;throw Error('legacy dispatch forbidden');},setTimelineClipGainInProject(){calls++;throw Error('gain dispatch forbidden');}}});
  assert.equal(edits.reconcile().reconciled,0);let cursor,ids=[];do{const page=edits.list({projectId:baseline.projectId,view:'all',limit:1,...(cursor?{cursor}:{})});ids.push(...page.proposals.map(p=>p.id));cursor=page.nextCursor;}while(cursor);
@@ -381,7 +394,7 @@ test('v3 uses existing SQL only and the frozen old validator rejects or holds ne
  const services={updateShotInProject(){calls++;throw Error('no dispatch');},moveTimelineClipInProject(){calls++;throw Error('no dispatch');},setTimelineClipGainInProject(){calls++;throw Error('no dispatch');}};
  const current=allRows(f.store.db);assert.throws(()=>old.createAgentEditService({store:f.store,services}),code('RESTORE_STORE_UNVERIFIED'));assert.deepEqual(allRows(f.store.db),current);
  const historical=historicalStore(t,f.store),oldEdits=old.createAgentEditService({store:historical,services}),before=domain(historical.db),legacy=legacyRows(historical.db),schema=sqlState(historical.db);
- assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.equal(classifyCurrentWorkspaceSchema(f.store.db).profile,'ordinary');assert.equal(markers(f.store.db).at(-1).version,52);assert.deepEqual(schema.objects,baseline.objects);
+ assert.deepEqual(objects(f.store.db),reviewedCurrentObjects(objects(f.store.db)));assert.equal(classifyCurrentWorkspaceSchema(f.store.db).profile,'ordinary');assert.equal(markers(f.store.db).at(-1).version,56);assert.deepEqual(schema.objects,baseline.objects);
  assert.throws(()=>old.parseChatConsent({context:'selected_timeline_clip_gain',destination:'http://127.0.0.1:11434/v1',protocol:'chat_completions',model:'synthetic',projectId:f.project.id,gain:0.4}),code('AGENT_CHAT_VALIDATION'));
  for(const {proposal:p}of proposals){assert.throws(()=>oldEdits.get({projectId:f.project.id,proposalId:p.id}),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));await assert.rejects(oldEdits.approve(f.request(p)),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));await assert.rejects(oldEdits.recover(f.request(p)),code('AGENT_EDIT_STORAGE_UNAVAILABLE'));}
  assert.equal(calls,0);assert.deepEqual(domain(historical.db),before);assert.deepEqual(sqlState(historical.db),schema);
@@ -404,18 +417,18 @@ test('frozen old definition version gate rejects v3 even when a valid old move m
  assert.equal(calls,0);assert.deepEqual(allRows(db),before);assert.deepEqual(objects(db),baseline.objects);
 });
 
-test('actual offline backup CLI retains mixed legacy and v3 gain bytes; restored-local-v15 schema53 holds inherited authority while fresh manual gain stays local',{timeout:120000},async t=>{
+test('actual offline backup CLI retains mixed legacy and v3 gain bytes; restored-local-v17 schema57 holds inherited authority while fresh manual gain stays local',{timeout:120000},async t=>{
  const {f,proposals}=await capturedGainStates(t),source=f.root,before=allRows(f.store.db),beforeSql=sqlState(f.store.db),legacy=legacyRows(f.store.db);
  const base=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-gain-backup-')),backup=path.join(base,'backup'),destination=path.join(base,'branch');t.after(()=>fs.rmSync(base,{recursive:true,force:true}));
  f.store.close();const sourceTree=tree(source);
- const created=await backupCli(t,['create','--source',source,'--destination',backup]);assert.equal(created.databaseSchemaVersion,52);const backupTree=tree(backup);
+ const created=await backupCli(t,['create','--source',source,'--destination',backup]);assert.equal(created.databaseSchemaVersion,56);const backupTree=tree(backup);
  const verified=await backupCli(t,['verify','--directory',backup]);assert.deepEqual(verified,created);
- const restored=await backupCli(t,['restore','--directory',backup,'--destination',destination]);assert.equal(restored.databaseSchemaVersion,53);assert.equal(restored.publication,'confirmed');
+ const restored=await backupCli(t,['restore','--directory',backup,'--destination',destination]);assert.equal(restored.databaseSchemaVersion,57);assert.equal(restored.publication,'confirmed');
  assert.deepEqual(tree(source),sourceTree);assert.deepEqual(tree(backup),backupTree);
  let store=openStore(destination);t.after(()=>store.close());let services=createServices(store,new Map());
- assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:53,profile:'restored-local-v15'});
- const after=allRows(store.db);for(const [table,rows]of Object.entries(before)){if(table==='schema_version'){assert.deepEqual(after[table].filter(row=>row.version<=52),rows);continue;}if(table==='edit_tasks'){assert.deepEqual(after[table].map(row=>{const result={...row};delete result.executionEpoch;return result;}),rows);continue;}assert.deepEqual(after[table],rows,table);}
- assert.deepEqual(sequences(store.db),beforeSql.sequence);assert.deepEqual(legacyRows(store.db),legacy);assert.equal(markers(store.db).length,37);
+ assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:57,profile:'restored-local-v17'});
+ const after=allRows(store.db);for(const [table,rows]of Object.entries(before)){if(table==='schema_version'){assert.deepEqual(after[table].filter(row=>row.version<=56),rows);continue;}if(table==='edit_tasks'){assert.deepEqual(after[table].map(row=>{const result={...row};delete result.executionEpoch;return result;}),rows);continue;}assert.deepEqual(after[table],rows,table);}
+ assert.deepEqual(sequences(store.db),beforeSql.sequence);assert.deepEqual(legacyRows(store.db),legacy);assert.equal(markers(store.db).length,39);
  // Existing SQL is unchanged except the two documented restoration edit-task
  // additions and new restore-owned objects; all Agent SQL remains exact.
  for(const object of beforeSql.objects.filter(value=>value.tbl_name.startsWith('agent_')))assert.deepEqual(objects(store.db).find(value=>value.name===object.name),object);

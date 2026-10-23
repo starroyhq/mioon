@@ -133,7 +133,7 @@ export MIOON_DESKTOP_USER_DATA="$HOME/Library/Application Support/app.starroy.mi
 4. 完全退出 Mioon，再按同一条启动命令打开，重新进入同一项目，检查素材、片段和已完成导出。
 5. 想试生成流程时，创建镜头并只选带“本地模拟”标记的 `Mock · simulated motion`，使用“正常完成”场景。模拟 MP4 带有 SIMULATED MOCK 标记，它验证流程，不会根据提示词生成真实 AI 画面；模拟视频本身不带音频。
 
-先使用无关紧要的试用素材。首次验收不要输入供应商、Agent 或 Images 密钥，不配置或调用 Agent 模型；官方/自定义 Images 与 ComfyUI 保持未启用，也不点击 ComfyUI 的连接检查（检查本身会发送 HTTP）。不要用重要项目测试中断或恢复。MIOON_ENABLE_LIVE_PROVIDER=0 是视频供应商的开关，不应把它当作所有模型联网调用的总开关。完整记录表见 [Mac 试用记录](MAC-TRIAL-CHECKLIST.zh-CN.md)。
+先使用无关紧要的试用素材。首次验收不要输入供应商、Mio 或 Images 密钥，不配置或调用 Mio 模型；官方/自定义 Images 与 ComfyUI 保持未启用，也不点击 ComfyUI 的连接检查（检查本身会发送 HTTP）。不要用重要项目测试中断或恢复。MIOON_ENABLE_LIVE_PROVIDER=0 是视频供应商的开关，不应把它当作所有模型联网调用的总开关。完整记录表见 [Mac 试用记录](MAC-TRIAL-CHECKLIST.zh-CN.md)。
 
 ## 任务中心与恢复的范围
 

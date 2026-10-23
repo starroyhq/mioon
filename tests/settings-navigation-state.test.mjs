@@ -256,7 +256,7 @@ for (const slot of ['agent', 'official', 'custom', 'comfy']) test(`${slot}: opti
   for (const closeLabel of [undefined, '返回项目列表']) {
     const f = fixture(slot), ui = renderer(slot, f, undefined, { closeLabel }); await ready(ui);
     const back = ui.find('back');
-    assert.equal(back.props['aria-label'], closeLabel ?? (slot === 'agent' ? '返回 Agent 对话' : slot === 'comfy' ? i18nCore.translate('zh-Hans', 'connections.back') : '返回图像工坊'));
+    assert.equal(back.props['aria-label'], closeLabel ?? (slot === 'agent' ? '返回 Mio 对话' : slot === 'comfy' ? i18nCore.translate('zh-Hans', 'connections.back') : '返回图像工坊'));
     assert.equal(textContent(slot === 'agent' ? ui.find('cancel') : back), closeLabel ?? (slot === 'agent' ? '返回对话' : '返回'));
     assert.equal(back.props.disabled, false); assert.equal(ui.latest().dirty, false); assert.equal(ui.latest().busy, false); assert.equal(ui.latest().blocked, false);
     ui.back(); assert.equal(ui.closes, 1, 'Presentation-only label must retain the same synchronous onClose behavior');

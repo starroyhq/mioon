@@ -30,6 +30,12 @@ test('Agent management is a separate local client, rejects extra authority and n
  for(const value of [{projectId,text:'test',expectedSettingsRevision:4},{projectId,requestId,text:'test',expectedSettingsRevision:4,approved:true},{projectId,requestId,text:'test',expectedSettingsRevision:4,configuration}])await assert.rejects(client.send(value),error=>error.code==='VALIDATION_ERROR');
  assert.equal(calls,0);
 });
+test('send accepts only explicit supported response locales and forwards them without changing request identity',async()=>{
+ const calls=[],client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options});return ok(snapshot());}}),input={projectId,requestId,text:'synthetic',expectedSettingsRevision:4};
+ for(const locale of ['zh-Hans','zh-Hant','en','ja']){await client.send({...input,locale});const body=JSON.parse(calls.at(-1).options.body);assert.equal(body.locale,locale);assert.equal(body.requestId,requestId);assert.equal(body.projectId,undefined);}
+ for(const locale of [null,'zh-CN','EN','fr',1,{}])await assert.rejects(client.send({...input,locale}),error=>error.code==='VALIDATION_ERROR');assert.equal(calls.length,4);
+ await client.send(input);assert.equal(Object.hasOwn(JSON.parse(calls.at(-1).options.body),'locale'),false);
+});
 
 test('send forwards diagnostic modes and exact identities to REST without host IDs in the body',async()=>{
  for(const profile of ['text','read_only','catalog']){
@@ -44,7 +50,7 @@ test('send forwards diagnostic modes and exact identities to REST without host I
 test('all controls preserve caller CAS and request ID and action lookups are GET only',async()=>{
  const calls=[];const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options});return ok(options.method==='POST'?snapshot('paused',9):{found:true,snapshot:snapshot('paused',9),receipt:{requestId,runId,action:'pause',revision:9,result:{}}});}});
  for(const [command,action] of Object.entries(AGENT_CONTROL_COMMANDS)){
-  await client.action(command,{projectId,runId,requestId,expectedRevision:8,stepId,changeId,...(command==='resolve-unknown'?{resolution:'discard'}:{})});
+  await client.action(command,{projectId,runId,requestId,expectedRevision:8,...(command==='note'?{text:'Additional local instruction'}:{stepId,changeId}),...(command==='resolve-unknown'?{resolution:'discard'}:{})});
   const body=JSON.parse(calls.at(-1).options.body);assert.equal(body.action,action);assert.equal(body.expectedRevision,8);assert.equal(body.requestId,requestId);assert.equal(body.projectId,undefined);
  }
  await client.actionLookup({projectId,runId,requestId});assert.equal(calls.at(-1).options.method,'GET');assert.ok(calls.at(-1).url.endsWith(`/actions/${requestId}`));
@@ -163,7 +169,16 @@ test('receipt lookups reject a different resource or request identity',async()=>
 
 test('policy CAS and independent read routes preserve their exact boundaries',async()=>{
  const calls=[];const upload={id:randomUUID(),name:'reference.png',mimeType:'image/png',status:'selected'};
- const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options});if(url.includes('/policy/requests/'))return ok({found:true,policy:{...policy,revision:1},readOnly:false});if(url.endsWith('/policy'))return ok({policy:{...policy,revision:options.method==='PUT'?1:0},readOnly:false});if(url.includes('/uploads/requests/'))return ok({found:true,upload});if(url.includes('/history?'))return ok({runs:[snapshot().run],nextCursor:null});return ok({version:2,instanceId:'synthetic-instance',projectId,runs:[snapshot().run],policy,settings,authorization:{revision:0,scopes:[]}});}});
+ const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options});if(url.includes('/policy/requests/'))return ok({found:true,policy:{...policy,revision:1},readOnly:false});if(url.endsWith('/policy'))return ok({policy:{...policy,revision:options.method==='PUT'?1:0},readOnly:false});if(url.includes('/uploads/requests/'))return ok({found:true,upload});if(url.includes('/history?'))return ok({conversations:[{id:runId,projectId,title:'synthetic',createdAt:snapshot().run.createdAt,updatedAt:snapshot().run.updatedAt,lastRunId:runId,lastRunStatus:'completed',changeCount:0,runCount:1}],nextCursor:null});return ok({version:2,instanceId:'synthetic-instance',projectId,runs:[snapshot().run],policy,settings,authorization:{revision:0,scopes:[]}});}});
  await client.policyGet();await client.policySet({requestId,expectedRevision:0,stepLimit:30,modes:policy.modes});await client.policyLookup({requestId});await client.list({projectId});await client.history({projectId,cursor:'retained-cursor'});await client.uploadLookup({projectId,requestId});
  assert.equal(calls.filter(call=>call.options.method!=='GET').length,1);assert.equal(calls[1].options.method,'PUT');assert.equal(JSON.parse(calls[1].options.body).expectedRevision,0);assert.ok(calls[4].url.endsWith('/history?cursor=retained-cursor'));assert.ok(calls[5].url.endsWith(`/uploads/requests/${requestId}`));
+});
+
+test('conversation send and read bind project, conversation and cursor without expanding authority',async()=>{
+ const conversationId=randomUUID(),calls=[],saved={...snapshot(),run:{...snapshot().run,conversationId}},conversation={id:conversationId,projectId,title:'First prompt',createdAt:saved.run.createdAt,updatedAt:saved.run.updatedAt,lastRunId:runId,lastRunStatus:'completed',changeCount:0,runCount:1};
+ const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options});return ok(options.method==='POST'?saved:url.includes('/conversations/')?{conversation,runs:[saved.run],nextCursor:null}:{conversations:[conversation],nextCursor:null});}});
+ await client.send({projectId,conversationId,requestId,text:'synthetic',expectedSettingsRevision:4});assert.equal(JSON.parse(calls[0].options.body).conversationId,conversationId);
+ assert.deepEqual(await client.history({projectId}),{conversations:[conversation],nextCursor:null});assert.deepEqual(await client.conversation({projectId,conversationId,cursor:'retained-cursor'}),{conversation,runs:[saved.run],nextCursor:null});assert.ok(calls.at(-1).url.endsWith(`/conversations/${conversationId}?cursor=retained-cursor`));
+ const other=createAgentClient({env,fetchImpl:async()=>ok({conversation:{...conversation,projectId:randomUUID()},runs:[saved.run],nextCursor:null})});await assert.rejects(other.conversation({projectId,conversationId}),error=>error.code==='BACKEND_PROTOCOL_ERROR');
+ const diagnostic=createAgentClient({env,fetchImpl:async()=>ok({conversation,runs:[{...saved.run,diagnostic:{profile:'text'}}],nextCursor:null})});await assert.rejects(diagnostic.conversation({projectId,conversationId}),error=>error.code==='BACKEND_PROTOCOL_ERROR');
 });

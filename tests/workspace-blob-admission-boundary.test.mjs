@@ -1,3 +1,5 @@
+import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
 // Causal boundary tests only. Existing independent goldens and their six
 // current-open expectations remain untouched. TEXT is a separate initial input
 // dataset; its before snapshot is a preservation oracle, not an independent
@@ -16,6 +18,7 @@ import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspac
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {open, fixture, snapshot, golden, quote} from './workspace-schema26-fixtures.mjs';
 import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
+import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 
 let forbiddenEffects = 0;
 const forbidden = () => {forbiddenEffects++; throw Error('No provider, child, listener or network in BLOB admission boundary tests');};
@@ -132,8 +135,8 @@ function positiveOrdinary(t, {mockLedger = false, repair} = {}) {
   if (repair) breakMarkers(db, repair);
   db.close(); let store;
   try {
-    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 52, profile: 'ordinary'});
-    const currentObjects = snapshot(store.db).objects, current52Names = new Set(currentOrdinary52Delta.objectNames);
+    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 56, profile: 'ordinary'});
+    const currentObjects = withoutReviewedCurrentAgentObjects(snapshot(store.db).objects), current52Names = new Set(currentOrdinary52Delta.objectNames);
     assert.deepEqual(currentObjects.filter(object => current52Names.has(object.name)), currentOrdinary52Delta.objects, 'exact reviewed schema52 catalog additions');
     preserveOriginalRows(store.db, input); assertText(store.db); assert.equal(getWorkspaceRestoreContext(store), null);
     const beforeColdReopen = snapshot(store.db); store.close(); store = openStore(root);
@@ -170,12 +173,12 @@ function negativeBlob(t, {mockLedger = false, restored = false, repair} = {}) {
 }
 
 for (const mockLedger of [false, true]) {
-  test(`separate initial TEXT ordinary24${mockLedger ? '-mock' : ''} enters52 and cold reopens without changing original typed rows`, t => positiveOrdinary(t, {mockLedger}));
+  test(`separate initial TEXT ordinary24${mockLedger ? '-mock' : ''} enters54 and cold reopens without changing original typed rows`, t => positiveOrdinary(t, {mockLedger}));
   test(`separate initial TEXT source captured by fixed25${mockLedger ? '-mock' : ''} cold reopens with its complete snapshot unchanged`, t => positiveRestored(t, mockLedger));
   test(`original golden BLOB ordinary24${mockLedger ? '-mock' : ''} remains historically valid and current admission refuses without writes`, t => negativeBlob(t, {mockLedger}));
   test(`original golden BLOB restored25${mockLedger ? '-mock' : ''} retains its fixed capture evidence and current admission refuses without writes`, t => negativeBlob(t, {mockLedger, restored: true}));
 }
 for (const repair of ['known-marker-gap', 'initial-markers-absent']) {
-  test(`separate initial TEXT ${repair} admits ordinary52 while preserving original rows and cold reopen`, t => positiveOrdinary(t, {repair}));
+  test(`separate initial TEXT ${repair} admits ordinary56 while preserving original rows and cold reopen`, t => positiveOrdinary(t, {repair}));
   test(`original golden BLOB ${repair} is refused by current admission without snapshot or file-byte changes`, t => negativeBlob(t, {repair}));
 }

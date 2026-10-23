@@ -1,17 +1,21 @@
+import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { openStore, getWorkspaceRestoreContext } from '../packages/business/src/db.ts';
 import { createServices } from '../packages/business/src/services.ts';
 import { startWorker } from '../packages/business/src/jobs.ts';
 import { run } from '../packages/business/src/media-runtime.ts';
 import { createWorkspaceBackup } from '../packages/business/src/workspace-backup.ts';
 import { restoreWorkspaceBackup } from '../packages/business/src/workspace-restore.ts';
+import { classifyWorkspaceSchemaV52V53 } from '../packages/business/src/workspace-restore-schema-v53.ts';
+import { withoutReviewedConversationObjects } from './helpers/current-schema54-delta.ts';
 
-for (const sourceSchema of [52]) test(`project-owned Look survives removed source file, cold reopen, render and ordinary${sourceSchema}/restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
+for (const sourceSchema of [52,54,56]) test(`project-owned Look survives removed source file, cold reopen, render and ordinary${sourceSchema}/restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-look-portable-')), root = path.join(base, 'workspace');
   (t as {after(callback: ()=>void): void}).after(() => rm(base, { recursive: true, force: true }));
   const localPack = path.join(base, 'selected.mioon-look.cube'), source = path.join(base, 'source.mp4');
@@ -49,6 +53,19 @@ for (const sourceSchema of [52]) test(`project-owned Look survives removed sourc
     worker = startWorker(store, services, new Map()); await worker.tick();
     const result = await services.call('export.get', { exportId: accepted.id }) as {status: string; error?: unknown}; assert.equal(result.status, 'succeeded', JSON.stringify(result.error));
   } finally { await worker?.stop(); await services.drain(); store.close(); }
+  if(sourceSchema!==56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema56(db);}finally{db.close();}}
+  if(sourceSchema===52){
+    // Keep the historical backup case exact after all ordinary reopen/render
+    // work: opening it through current openStore again would migrate it to56.
+    const db=new DatabaseSync(path.join(root,'workbench.sqlite'));
+    try{
+      assert.equal(db.prepare('SELECT MAX(version) AS version FROM schema_version').get()!.version,54);
+      withoutReviewedConversationObjects(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as {type:string;name:string;tbl_name:string;sql:string|null}[]);
+      assert.equal(db.prepare('SELECT count(*) AS n FROM agent_task_runs_v2').get()!.n,0);
+      db.exec('DROP INDEX agent_task_conversation_v2;DROP TRIGGER agent_task_conversation_identity_v2;DROP TRIGGER agent_task_conversation_required_v2;DELETE FROM schema_version WHERE version=54');
+      assert.deepEqual(classifyWorkspaceSchemaV52V53(db),{schemaVersion:52,profile:'ordinary'});
+    }finally{db.close();}
+  }
   const backup = path.join(base, 'backup'), restored = path.join(base, 'restored');
   assert.equal((await createWorkspaceBackup({ source: root, destination: backup })).databaseSchemaVersion, sourceSchema);
   assert.equal((await restoreWorkspaceBackup({ directory: backup, destination: restored })).databaseSchemaVersion, sourceSchema + 1);

@@ -11,7 +11,7 @@ export const settingsRedesignMessages = {
   'redesign.settings.video-tools': { 'zh-Hans': '视频工具', 'zh-Hant': '影片工具', en: 'Video tools', ja: '動画ツール' },
   'redesign.settings.models': { 'zh-Hans': '模型与服务', 'zh-Hant': '模型與服務', en: 'Models and services', ja: 'モデルとサービス' },
   'redesign.settings.providers': { 'zh-Hans': '服务商', 'zh-Hant': '服務商', en: 'Providers', ja: 'プロバイダー' },
-  'redesign.settings.agent': { 'zh-Hans': '智能助理', 'zh-Hant': '智慧助理', en: 'Assistant', ja: 'アシスタント' },
+  'redesign.settings.agent': { 'zh-Hans': 'Mio', 'zh-Hant': 'Mio', en: 'Mio', ja: 'Mio' },
   'redesign.settings.extensions': { 'zh-Hans': '扩展', 'zh-Hant': '擴充功能', en: 'Extensions', ja: '拡張機能' },
   'redesign.settings.shortcuts': { 'zh-Hans': '快捷键', 'zh-Hant': '快速鍵', en: 'Shortcuts', ja: 'ショートカット' },
   'redesign.settings.about': { 'zh-Hans': '关于', 'zh-Hant': '關於', en: 'About', ja: '情報' },

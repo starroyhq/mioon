@@ -258,7 +258,7 @@ test('settings integration stays in the shared dock, uses local controls and has
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /<AgentWorkspace/); assert.match(app, /data-testid="agent-settings-open"/);
   assert.match(source, /from '\.\/WorkspaceControls\.tsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
-  assert.match(localizedSource(source), /连接用于项目智能助理任务；发送授权与各档位执行确认分别管理/);
+  assert.match(localizedSource(source), /Mio 通过这里的模型理解你的要求并决定下一步/);
   assert.doesNotMatch(source, /尚无工具执行/); assert.match(localizedSource(source), /尚未验证连接/);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);
   assert.doesNotMatch(app, /showAgentSettings|showAgentChat/);
@@ -330,8 +330,8 @@ test('actual selected Responses guidance describes multi-step tasks constrained 
     assert.equal(h.find('agent-settings-model-guidance'), undefined);
     h.change('agent-settings-protocol', 'responses');
     const guidance = JSON.stringify(h.find('agent-settings-model-guidance'));
-    assert.match(guidance, /支持连续多步任务与工具往返/);
-    assert.match(guidance, /实际操作受执行档位、授权和步数上限约束/);
+    assert.match(guidance, /支持连续多步执行/);
+    assert.match(guidance, /实际操作受执行方式、授权和步数上限约束/);
     assert.doesNotMatch(guidance, /每轮最多 1 次只读工具调用|2 次模型请求|不支持媒体生成|自动批准/);
     if (preset === 'custom') assert.match(guidance, /兼容性未经验证/);
     h.change('agent-settings-protocol', 'chat_completions');

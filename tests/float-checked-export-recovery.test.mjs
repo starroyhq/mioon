@@ -1,3 +1,6 @@
+import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
+import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
@@ -256,7 +259,7 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
   for(const timeline of originalTimelines)add('timeline',timeline.projectId,timeline.projectId);
   assert.equal(revisions.length,9,'the independent golden has exactly nine initial targets');
   function assertFrozenGolden(actual) {
-    const names=new Set(currentOrdinary52Delta.objectNames),objects=store.db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all().map(row=>({...row}));
+    const names=new Set(currentOrdinary52Delta.objectNames),objects=withoutReviewedCurrentAgentObjects(store.db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all().map(row=>({...row})));
     const reviewed=objects.filter(value=>names.has(value.name));
     assert.deepEqual(reviewed,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
     assert.equal(reviewed.length,currentOrdinary52Delta.v2Catalog.count);
@@ -275,7 +278,7 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
       return template ? Object.fromEntries(Object.keys(template).map(key => [key, row[key]])) : row;
     })]));
     assert.deepEqual(projected, Object.fromEntries(frozenTables.map(table => [table, before[table]])), 'frozen legacy rows stay byte-exact');
-    assert.deepEqual(actual.schema_version.map(row => row.version), [...frozenVersions, 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52], 'startup adds only the documented additive lineage');
+    assert.deepEqual(actual.schema_version.map(row => row.version), [...frozenVersions, 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52, 54, 56], 'startup adds only the documented additive lineage');
     for (const [table, values] of Object.entries(actual)) {
       if (table === 'schema_version' || Object.hasOwn(before, table) || Object.hasOwn(currentOrdinary52Delta.tables,table)) continue;
       assert.deepEqual(values, [], `additive table ${table} must stay empty`);

@@ -59,7 +59,7 @@ node apps/cli/src/backup.mjs restore-status --directory /绝对路径/原始备�
 `observed_guarded`只说明当前目标的固定schema及来源绑定符合原备份；它不证明
 上次命令成功或此前fsync已完成，不会补发布、修复或执行任务。
 打开恢复分支后，可开始新的本地导入、编辑、预览、导出。继承任务/审批/未知
-结果保持历史状态且停止执行；新生成/Agent/Comfy/抽帧/波形解码暂不可用。
+结果保持历史状态且停止执行；新生成/Mio/Comfy/抽帧/波形解码暂不可用。
 恢复分支首版也不能再次创建备份，保留原始备份是必要条件。
 Desktop需把目标放在新根目录的`workspace`子目录，并显式选择新根目录；
 不要复制旧token或会话文件。完整范围、限制和验证状态见[安全恢复说明](WORKSPACE-RESTORE.md)。

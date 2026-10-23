@@ -1,4 +1,4 @@
-import { message as localizedMessage } from '../../../packages/i18n/src/index.ts';
+import { message as localizedMessage, renderMessage } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { ApiError, rpc, requestId as newRequestId } from './api.ts';
 import { createImageRejectionCloseLatch } from './native-close-sources.ts';
@@ -290,7 +290,7 @@ async function notAccepted(error: unknown, operation: string, input: ImageMutati
 
 /** One project lifetime. Reads never dispatch work; every mutation needs a saved exact intent. */
 export function createImageGenerationSession({ projectId, api = rpc as unknown as ImageApi, reviewClient = createImageReviewClient() as unknown as ImageReviewClient, settings, settingsReader, customSettings, customSettingsReader, comfySettings, comfySettingsReader, comfyAvailability, comfyAvailabilityReader, storage, requestId = newRequestId, onChange = () => {}, onGenerated = () => {}, setTimer = setTimeout, clearTimer = clearTimeout, pollMs = 1500, pollLimit = 40, timeoutMs = 15000 }: ImageGenerationSessionOptions) {
-  let state: ImageGenerationState = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer: number | null = null, polls = 0, reading = false, availabilityEpoch = 0;
+  let state: ImageGenerationState = initialImageGenerationState(), disposed = false, visible = true, readEpoch = 0, selectionEpoch = 0, interactionEpoch = 0, timer: number | null = null, polls = 0, reading = false, availabilityEpoch = 0, focusedTaskId: string | null = null;
   if (settings) state.settings = safeImageSettings(settings) as ImageSettingsView;
   if (customSettings) state.customSettings = safeImageSettings(customSettings, 'custom') as ImageSettingsView;
   if (comfySettings) state.comfySettings = safeComfyImageSettings(comfySettings) as unknown as ImageSettingsView;
@@ -486,7 +486,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
         emit({ reviews: [...(pinned && !pageReviews.some(item => item.id === pinned.id) ? [pinned] : []), ...pageReviews.map(review => state.reviews.find(item => item.id === review.id) ?? review)], nextReviewCursor: reviewPage.nextCursor });
       }
       if (!owned(epoch)) return false;
-      for (const taskId of tracked.keys()) if (!tasks.items.some(task => task.id === taskId)) {
+      for (const taskId of new Set([...tracked.keys(), ...(focusedTaskId ? [focusedTaskId] : [])])) if (!tasks.items.some(task => task.id === taskId)) {
         const task = safeTask(await call('image.task.get', { projectId, taskId }), projectId);
         if (task.id !== taskId) throw problem('INVALID_RESPONSE');
         tasks.items.push(task);
@@ -720,6 +720,23 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
     requestTarget(groupId: string | null = null): boolean | Promise<boolean> { if (!visible || state.pending || state.remotePending || state.remoteActionTaskId || state.actionTaskId || state.reviewActionId) return false; if (imageDraftDirty(state)) { emit({ targetRequest: { groupId } }); return false; } return chooseTarget(groupId); },
     confirmTarget(): Promise<boolean> | boolean { const request = state.targetRequest; if (!request) return false; if (request.reviewId) return chooseEditReview(request.reviewId); return chooseTarget(request.groupId ?? null); },
     keepDraft(): void { emit({ targetRequest: null }); },
+    canRevealTask: (): boolean => !disposed && visible && !reading && !state.actionTaskId && !state.reviewActionId && !state.remoteActionTaskId && state.phase !== 'submitting',
+    async revealTask(taskId: string, current: () => boolean = () => true): Promise<boolean> {
+      if (!visible || disposed || reading || state.actionTaskId || state.reviewActionId || state.remoteActionTaskId || state.phase === 'submitting' || !current()) return false;
+      stopTimer(); const epoch = ++readEpoch, interaction = interactionEpoch; reading = true;
+      const valid = () => owned(epoch) && visible && interaction === interactionEpoch && current();
+      let found = false;
+      try {
+        const task = safeTask(await call('image.task.get', {projectId, taskId}), projectId); if (!valid()) return false;
+        if (task.id !== taskId) throw problem('INVALID_RESPONSE');
+        const group = await call('image.group.get', {projectId, groupId: task.groupId}); if (!valid()) return false;
+        if (!isImageGroupResponse(group) || group.id !== task.groupId || group.projectId !== projectId) throw problem('INVALID_RESPONSE');
+        focusedTaskId = task.id; mergeTask(task);
+        emit({selectedGroupId: task.groupId, groups: [...state.groups.filter(item => item.id !== group.id), copy(group)], versionCursor: null, versionTrail: []}); found = true;
+      } catch { if (valid()) { const displayMessage = localizedMessage('image.state.originalNotFoundUnknown'); emit({historyPhase: 'read_error', message: renderMessage('zh-Hans', displayMessage), displayMessage}); } }
+      finally { if (owned(epoch)) reading = false; }
+      return found && valid() ? load() : false;
+    },
     async selectGroup(groupId: string): Promise<boolean> { if (!visible || state.remotePending || state.remoteActionTaskId || reading || !state.groups.some(group => group.id === groupId)) return false; emit({ selectedGroupId: groupId, versionCursor: null, versionTrail: [] }); return load(); },
     async pageGroups(older: boolean): Promise<boolean> { if (!visible || state.remotePending || state.remoteActionTaskId || reading || (older ? !state.nextGroupCursor : !state.groupTrail.length)) return false; const trail = [...state.groupTrail], cursor = older ? state.nextGroupCursor : trail.pop() ?? null; if (older) trail.push(state.groupCursor); emit({ groupCursor: cursor, groupTrail: trail, selectedGroupId: null, versionCursor: null, versionTrail: [] }); return load(); },
     async pageVersions(older: boolean): Promise<boolean> { if (!visible || state.remotePending || state.remoteActionTaskId || reading || (older ? !state.nextVersionCursor : !state.versionTrail.length)) return false; const trail = [...state.versionTrail], cursor = older ? state.nextVersionCursor : trail.pop() ?? null; if (older) trail.push(state.versionCursor); emit({ versionCursor: cursor, versionTrail: trail }); return load(); },
