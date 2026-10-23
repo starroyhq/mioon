@@ -23,7 +23,7 @@ function codec(){
  const key=randomBytes(32);
  return {encrypt(value:string){const iv=randomBytes(12),cipher=createCipheriv('aes-256-gcm',key,iv);return Buffer.concat([iv,cipher.update(value),cipher.final(),cipher.getAuthTag()]).toString('base64');},decrypt(value:string){const bytes=Buffer.from(value,'base64'),cipher=createDecipheriv('aes-256-gcm',key,bytes.subarray(0,12));cipher.setAuthTag(bytes.subarray(-16));return Buffer.concat([cipher.update(bytes.subarray(12,-16)),cipher.final()]).toString();}};
 }
-async function fixture(t:TestContext,{persistent=false,providerId='minimax' as VideoConnectionConfiguration['providerId'],liveGeneration=true}={}){
+async function fixture(t:TestContext,{persistent=false,providerId='minimax' as VideoConnectionConfiguration['providerId'],liveGeneration=true,modelId=''}={}){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-generation-'))),secretCodec=codec();
  const settingsOptions={directory:path.join(root,'video-settings'),privateRoot:root,...(persistent?{secretCodec,storage:{persistentAvailable:true,sessionScope:'server' as const,reasonCode:null}}:{})};
  let store=openStore(root),settings=await createVideoSettings(settingsOptions),worker:ReturnType<typeof startWorker>|null=null;
@@ -34,6 +34,7 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
  let providers=registry(),services=createServices(store,providers,{videoSettings:settings,videoFetch,profileNow:frozenDate});
  if(liveGeneration)await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
  const configuration:VideoConnectionConfiguration={id:randomUUID(),providerId,name:'Original account',region:providerId==='ark'?'cn-beijing':providerId==='wan'?'cn-beijing':'global',workspaceId:'',enabled:true,archived:false,outputHosts:['output.example'],models:defaultVideoModels(providerId)};
+ if(modelId)configuration.models[0]!.modelId=modelId;
  const secret=(value='original-synthetic-key')=>({action:'replace' as const,value,storage:persistent?'persistent' as const:'session' as const});
  await settings.put({action:'save',expectedRevision:0,configuration,secret:secret()});
  const project=await services.call('project.create',{name:'Configured video integration'}) as ServiceRow;
@@ -54,22 +55,24 @@ async function fixture(t:TestContext,{persistent=false,providerId='minimax' as V
  return f;
 }
 
-// Seed a pre-SDK persisted row through the real settings history. Current
+// Seed a historical persisted row through the real settings history. Current
 // admission deliberately refuses these parameters, so historical rows are
 // fixtures rather than newly submitted paid work.
-async function historicalMinimaxJob(f:Awaited<ReturnType<typeof fixture>>,status:JobRecord['status'],parameters:Record<string,unknown>={}){
+async function historicalMinimaxJob(f:Awaited<ReturnType<typeof fixture>>,status:JobRecord['status'],parameters:Record<string,unknown>={},options:{modelId?:string;resolution?:'768P'|'2K'}={}){
  const current=await f.submit(),configuration=structuredClone(f.configuration);
- configuration.models[0]!.durationResolutionMap=[{duration:[4,8],resolution:['768P']}];
+ const resolution=options.resolution??'768P';
+ if(options.modelId)configuration.models[0]!.modelId=options.modelId;
+ configuration.models[0]!.durationResolutionMap=[{duration:[4,8],resolution:[resolution]}];
  await f.settings.put({action:'save',expectedRevision:1,configuration,secret:{action:'keep'}});
  const binding=f.settings.select(configuration.id,2,configuration.models[0]!.id),profile=videoInputProfile(binding),capabilities=videoBindingCapabilities(binding);
- capabilities.modelCapabilities[0]!.resolutions=['768P'];
- const snapshot={...current.snapshot,parameters,executionBinding:binding,inputProfileId:profile.profileId,inputProfileVersion:profile.profileVersion,capabilities};
- f.store.put('jobs',{...current,status,phase:status==='queued'?'waiting':'polling',snapshot,providerJobId:status==='running'?'original-task':null,submissionCount:status==='queued'?0:1,nextPollAt:0});
+ capabilities.modelCapabilities[0]!.resolutions=[resolution];
+ const snapshot={...current.snapshot,model:binding.model.modelId,parameters,executionBinding:binding,inputProfileId:profile.profileId,inputProfileVersion:profile.profileVersion,capabilities};
+ f.store.put('jobs',{...current,model:binding.model.modelId,status,phase:status==='queued'?'waiting':'polling',snapshot,providerJobId:status==='running'?'original-task':null,submissionCount:status==='queued'?0:1,nextPollAt:0});
  return f.job(current.id);
 }
 
-test('historical 768P settings and paid tasks restart, query and publish unchanged through the SDK after a 2K account edit',async t=>{
- const f=await fixture(t,{persistent:true}),job=await historicalMinimaxJob(f,'running',{resolution:'768P'}),snapshot=structuredClone(job.snapshot),binding=job.snapshot.executionBinding as VideoExecutionBinding;
+for(const modelId of ['MiniMax-H3','historical-custom-h3'])test(`historical 768P ${modelId} settings and paid tasks restart, query and publish unchanged through the SDK after a 2K account edit`,async t=>{
+ const f=await fixture(t,{persistent:true}),job=await historicalMinimaxJob(f,'running',{resolution:'768P'},{modelId}),snapshot=structuredClone(job.snapshot),binding=job.snapshot.executionBinding as VideoExecutionBinding;
  await f.restart();
  assert.deepEqual(f.settings.list()[0]!.configuration.models[0]!.durationResolutionMap,[{duration:[4,8],resolution:['768P']}]);
  assert.equal(await f.settings.acquire(binding),'original-synthetic-key');assert.deepEqual(f.job(job.id).snapshot,snapshot);
@@ -90,6 +93,24 @@ test('historical 768P settings and paid tasks restart, query and publish unchang
  assert.equal(f.job(job.id).status,'succeeded');assert.equal(f.calls.length,2);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,0);
  assert.deepEqual(f.job(job.id).snapshot,snapshot);assert.equal(f.store.list('versions').length,1);
  assert.deepEqual((f.store.list('versions')[0] as ServiceRow).snapshot,snapshot);assert.equal(await f.settings.acquire(binding),'original-synthetic-key');
+});
+
+test('unsupported MiniMax custom models fail admission before creating a job or sending HTTP',async t=>{
+ const f=await fixture(t,{modelId:'custom-h3-name'});
+ await assert.rejects(f.submit(),{code:'UNSUPPORTED_MODEL'});
+ assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);
+ assert.equal(f.settings.list()[0]!.configuration.models[0]!.modelId,'custom-h3-name');
+});
+
+test('persisted MiniMax custom-model queued work fails visibly once instead of requeueing forever',async t=>{
+ const f=await fixture(t,{persistent:true}),job=await historicalMinimaxJob(f,'queued',{resolution:'2K'},{modelId:'custom-h3-name',resolution:'2K'}),snapshot=structuredClone(job.snapshot);
+ await f.restart();await f.tick();await f.stop();
+ const failed=structuredClone(f.job(job.id));
+ assert.equal(failed.status,'failed');assert.equal((failed.error as ServiceRow).code,'UNSUPPORTED_MODEL');
+ assert.equal(failed.submissionCount,0);assert.equal(failed.providerJobId,null);assert.equal(f.calls.length,0);assert.deepEqual(failed.snapshot,snapshot);
+ await f.tick();await f.stop();assert.deepEqual(f.job(job.id),failed);
+ await assert.rejects(f.services.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:'UNSUPPORTED_MODEL'});
+ assert.equal(f.store.list('jobs').length,1);assert.equal(f.calls.length,0);
 });
 
 for(const parameters of [{},{resolution:'768P'}])test(`historical ${Object.keys(parameters).length?'explicit':'implicit'} 768P queued work and retries cannot silently submit as 2K`,async t=>{

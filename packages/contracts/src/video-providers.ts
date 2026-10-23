@@ -183,6 +183,9 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
  const binding=parseVideoBinding(bindingValue),model=binding.model,template=videoTemplate(model.templateId),wan30=isWan30Binding(binding);
  const fail=(code:string,message:string):never=>{throw new AppError(code,message,400);};
  if(!object(snapshot)||snapshot.model!==model.modelId||snapshot.providerId!==undefined&&snapshot.providerId!==binding.providerId)fail('VIDEO_BINDING_INVALID','生成模型与冻结连接不一致。');
+ // Keep custom historical bindings readable for GET/download, but reject new
+ // work here rather than leaving the SDK's local rejection in a retry loop.
+ if(binding.providerId==='minimax'&&model.modelId!=='MiniMax-H3')fail('UNSUPPORTED_MODEL','MiniMax 官方 SDK 仅支持 MiniMax-H3 新生成；历史自定义模型任务仍可查询和下载。');
  const value=snapshot as Record<string,unknown>,profile=videoInputProfile(binding),params=value.parameters??{};
  if(profile.lifecycle&&asOf>=profile.lifecycle.earliestShutdownDate)fail('MODEL_LIFECYCLE_REVALIDATION_REQUIRED','此视频模型已到达需要重新核验的日期。');
  const explicit=value.videoInput===undefined?null:wanVideoInputSchema.safeParse(value.videoInput);

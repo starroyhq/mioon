@@ -45,6 +45,7 @@ export function createMinimaxSdkClient({api,model,send}:{api:string;model:string
   }
   return {
     async submit(input:VideoAdapterInput,context:ProviderContext={}):Promise<Record<string,unknown>> {
+      if(model!=='MiniMax-H3')throw providerError('UNSUPPORTED_MODEL','The official MiniMax SDK supports only MiniMax-H3 for new submissions. Historical tasks can still be queried.',{beforeDispatch:true});
       if(Object.keys(input.parameters).some(key=>key!=='resolution'))throw providerError('UNSUPPORTED_PARAMETER','MiniMax accepts only its advertised video parameters.');
       if(input.parameters.resolution!=='2K')throw providerError('UNSUPPORTED_PARAMETERS','The official MiniMax H3 SDK requires 2K resolution. The original task snapshot was not changed.',{beforeDispatch:true});
       if(input.subjectReference||input.images.length>1||input.images.some(image=>image.role!=='first_frame'))throw providerError('UNSUPPORTED_INPUT_ROLE','The implemented MiniMax protocol accepts text or one first-frame image.');

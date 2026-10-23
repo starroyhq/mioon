@@ -52,7 +52,7 @@ test('MiniMax SDK rejects frozen 768P parameters before dispatch without upgradi
 test('MiniMax generate retains official model/duration/ratio/content validation',async()=>{
   const f=fixture([]);
   for(const patch of [{duration:3},{duration:16},{aspectRatio:'invalid-ratio'},{prompt:' '},{prompt:'x'.repeat(7001)}])await assert.rejects(f.sdk.submit({...input,...patch}),{code:'VIDEO_SDK_REQUEST_FAILED',beforeDispatch:true});
-  const custom=fixture([],{model:'custom-h3-name'});await assert.rejects(custom.sdk.submit(input),{code:'VIDEO_SDK_REQUEST_FAILED',beforeDispatch:true});
+  const custom=fixture([],{model:'custom-h3-name'});await assert.rejects(custom.sdk.submit(input),{code:'UNSUPPORTED_MODEL',beforeDispatch:true});
   assert.equal(f.calls.length,0);assert.equal(custom.calls.length,0);
 });
 

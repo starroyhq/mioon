@@ -190,7 +190,7 @@ for(const [family,templateId]of entries)test(`${family}/${templateId??'default'}
   const calls:Array<{url:string;body:Record<string,unknown>}> = [];
   const provider=createConfiguredVideoProvider({root:f.root,binding:f.binding,acquireCredential:async()=> 'PRIVATE-KEY',fetchImpl:async(url,init)=>{calls.push({url:String(url),body:view(JSON.parse(String(init?.body)))});return json(receipt(f.binding));}});
   if(family==='minimax'){
-    await assert.rejects(provider.submit({...f.snapshot,model:f.binding.model.modelId},{requestId:'manual-model-request'}),{code:'VIDEO_SDK_REQUEST_FAILED',beforeDispatch:true});
+    await assert.rejects(provider.submit({...f.snapshot,model:f.binding.model.modelId},{requestId:'manual-model-request'}),{code:'UNSUPPORTED_MODEL'});
     assert.equal(calls.length,0,'Unsupported official SDK models never fall back to REST');return;
   }
   await provider.submit({...f.snapshot,model:f.binding.model.modelId},{requestId:'manual-model-request'});assert.equal(calls.length,1);

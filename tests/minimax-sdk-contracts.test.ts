@@ -37,6 +37,15 @@ test('historical MiniMax 768P settings and frozen bindings remain readable witho
   assert.throws(()=>parseVideoBinding({...legacy,model:{...legacy.model,durationResolutionMap:[{duration:[4],resolution:['1080p']}]}}),{code:'VIDEO_BINDING_INVALID'});
 });
 
+test('unsupported MiniMax custom models are rejected for generation without invalidating historical bindings',()=>{
+  const custom=binding();custom.model.modelId='historical-custom-h3';
+  const before=structuredClone(custom),input={...snapshot(),model:custom.model.modelId};
+  assert.deepEqual(parseVideoBinding(custom),before);
+  assert.throws(()=>validateVideoSnapshot(custom,input),{code:'UNSUPPORTED_MODEL'});
+  assert.equal(getVideoGenerationIssue(input,videoBindingCapabilities(custom))?.code,'UNSUPPORTED_MODEL');
+  assert.deepEqual(custom,before);
+});
+
 test('historical 768P new dispatch is rejected without changing implicit or explicit frozen resolution',()=>{
   const legacy=binding(['768P']);
   for(const parameters of [undefined,{}, {resolution:'768P'}]){

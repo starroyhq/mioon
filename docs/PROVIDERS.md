@@ -83,6 +83,9 @@ omission in a provenance notice, without fabricating a license text.
 
 MiniMax uses its official TypeScript SDK without a REST fallback. The reviewed
 SDK rejects H3 resolutions other than `2K`, and that validator remains active.
+It accepts only the exact `MiniMax-H3` model ID for new generation. Unsupported
+custom IDs fail generation preflight before creating or dispatching a job;
+historical custom-model bindings remain readable for task queries and downloads.
 New MiniMax model entries and the legacy environment entry point use `2K`.
 Existing `768P` configurations, original task bindings and snapshots are not
 rewritten or silently upgraded: new submissions through those configurations
