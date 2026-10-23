@@ -15,7 +15,9 @@ jobs:
   quality:
     name: Linux full tests and build (shard ${{ matrix.shard }})
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    # Bootstrap and the complete serial test partition share this budget;
+    # slow package mirrors must not consume the test suite's remaining window.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
