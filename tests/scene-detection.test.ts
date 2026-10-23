@@ -282,11 +282,14 @@ async function managed(t: TestContext, graph: string, encode: string[] = []) {
   const asset = {relativePath, sha256: sha(bytes), mimeType: 'video/mp4', sizeBytes: bytes.length};
   return {root, file, asset, info: validateManagedSource(root, asset).info as unknown as Record<string, unknown>};
 }
-// Three distinct shots with cuts at native frames k1 and k2.
+// Three distinct shots with cuts at native frames k1 and k2. Full-frame overlays
+// switch on the main stream's frame number, so the cuts do not depend on how an
+// FFmpeg version times concatenated segments (FFmpeg 7.1 shifted a concat of a
+// mandelbrot segment by one frame).
 const threeShots = (rate: number, k1: number, k2: number, total: number): string =>
-  `testsrc2=${small}:r=${rate},trim=end_frame=${k1},setpts=PTS-STARTPTS[a];` +
-  `mandelbrot=${small}:r=${rate},trim=end_frame=${k2 - k1},setpts=PTS-STARTPTS[b];` +
-  `${perlin(3, rate)},trim=end_frame=${total - k2},setpts=PTS-STARTPTS[c];[a][b][c]concat=n=3`;
+  `testsrc2=${small}:r=${rate},trim=end_frame=${total}[a];${perlin(3, rate)}[b];` +
+  `smptehdbars=${small}:r=${rate},noise=alls=12:allf=t+u[c];` +
+  `[a][b]overlay=shortest=1:enable='between(n,${k1},${k2 - 1})'[ab];[ab][c]overlay=shortest=1:enable='gte(n,${k2})'`;
 function watchMedia(t: TestContext): string[] {
   const events: string[] = [];
   const stop = onMediaProcess(event => events.push(`${event.type}:${event.kind}`));
