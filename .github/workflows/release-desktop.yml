@@ -164,9 +164,18 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install verified FFmpeg 7.1.5 from source
+      - name: Download verified Linux media toolchain
         if: runner.os == 'Linux'
-        run: node .github/scripts/install-ffmpeg.ts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: ${{ needs.checks.outputs.ffmpeg_artifact }}
+          path: ${{ runner.temp }}/mioon-ffmpeg-toolchain
+
+      - name: Verify and activate Linux media toolchain
+        if: runner.os == 'Linux'
+        env:
+          MIOON_FFMPEG_BUILD_KEY: ${{ needs.checks.outputs.ffmpeg_build_key }}
+        run: node .github/scripts/ffmpeg-toolchain.ts activate
 
       - name: Resolve external media tools and probe capabilities
         id: media
