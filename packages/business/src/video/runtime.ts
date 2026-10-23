@@ -9,6 +9,8 @@ import {createJsonRequest,createPollCache,downloadMp4,managedImage,outputUrl,pro
 import type {ProviderContext,ProviderReferenceAsset,ManagedImage} from '../providers/live-common.ts';
 import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configuredSubmissionId,configuredTask,configuredTaskPath} from './adapters.ts';
 import type {ConfiguredVideoTask,VideoAdapterInput,VideoAdapterSelection} from './adapters.ts';
+import {createWanSdkClient,validateWanImageBytes} from './wan-sdk.ts';
+import {effectiveVideoParameters,isWan30Binding} from '../../../contracts/src/wan-video.ts';
 
 export interface ConfiguredVideoProviderOptions {
   root: string;
@@ -56,6 +58,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
   const asOf=()=>new Date(now()).toISOString().slice(0,10);
   const capabilities={...videoBindingCapabilities(frozen,{configured:true,enabled:true,asOf:asOf()}),minPollIntervalMs:frozen.providerId==='runway'?5000:10000};
   const selection: VideoAdapterSelection={providerId:frozen.providerId,model:frozen.model.modelId,resolution:'',audio:frozen.model.audio};
+  const wan=frozen.providerId==='wan'?createWanSdkClient({binding:frozen,acquireCredential,fetchImpl}):null;
   const ensureHosts=()=>{if(!hosts.size)throw providerError('PROVIDER_CONFIGURATION','Configure independently reviewed exact output hosts before generation.');};
   const validate=(snapshot: unknown): true=>{ensureHosts();return validateVideoSnapshot(frozen,snapshot,{asOf:asOf()});};
   async function credential(context: ProviderContext): Promise<string> {
@@ -73,7 +76,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
     const run=createJsonRequest({api:frozen.endpoint,headers:{...authentication,...(frozen.providerId==='runway'?{'X-Runway-Version':'2024-11-06'}:{}),...headers},fetchImpl,ensureEnabled:()=>{},name:'Video provider'});
     return run(endpoint,{method,body,context});
   }
-  const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>({...configuredTask(selection,id,await request(configuredTaskPath(selection,id),{context}))})});
+  const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,await request(configuredTaskPath(selection,id),{context}))}});
   const retrieve=async(id: string,context: ProviderContext):Promise<ConfiguredVideoTask>=>{
     assertConfiguredTaskId(selection,id);
     // A cached successful observation must not let a removed key authorize a
@@ -91,15 +94,17 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
       const images=[];
       for(const asset of references){
         const image=asset.mimeType==='image/webp'?await managedWebp(root,asset,template.maxImageBytes,context):await managedImage({root,asset,approvedHashes,maxBytes:template.maxImageBytes,signal:context.signal,validateCurrent:context.validateReferenceState});
+        if(isWan30Binding(frozen))validateWanImageBytes(image.bytes,image.mimeType);
         if(image.width!==asset.width||image.height!==asset.height||image.bytes.length!==asset.sizeBytes)throw providerError('REFERENCE_CHANGED','Actual reference bytes differ from the frozen metadata.');
         if(frozen.providerId==='runway'&&Buffer.byteLength(`data:${image.mimeType};base64,${image.base64}`)>5*1024*1024)throw providerError('REFERENCE_TOO_LARGE','Encoded reference exceeds the Runway data URI limit.');
         images.push({mimeType:image.mimeType,base64:image.base64,role:asset.role??'first_frame'});
       }
-      const parameters=(value.parameters??{}) as Record<string,unknown>,duration=value.duration as number;
-      const resolution=parameters.resolution as string|undefined??frozen.model.durationResolutionMap.find(pair=>pair.duration.includes(duration))!.resolution[0]!;
-      const input:VideoAdapterInput={prompt:value.prompt as string,aspectRatio:value.aspectRatio as string,duration,parameters,images,subjectReference:Object.hasOwn(value,'subjectReference')};
+      const parameters=(value.parameters??{}) as Record<string,unknown>,effective=effectiveVideoParameters(frozen,value),duration=effective.durationSeconds as number;
+      const resolution=effective.resolution as string;
+      const input:VideoAdapterInput={prompt:effective.prompt as string,aspectRatio:effective.aspectRatio as string,duration,parameters:{...parameters,resolution},images,subjectReference:Object.hasOwn(value,'subjectReference')};
       const requestId=registered.requestId;
       if(frozen.providerId==='kling'&&(typeof requestId!=='string'||!requestId||requestId.length>200))throw providerError('INVALID_REQUEST_ID','A stable request ID is required before creating a Kling task.');
+      if(wan)return {providerJobId:await wan.submit(input,context)};
       const submission=configuredSubmission({...selection,resolution},input,requestId??'');
       return {providerJobId:configuredSubmissionId(selection,await request(submission.path,{method:'POST',body:submission.body,headers:submission.headers,context}))};
     },

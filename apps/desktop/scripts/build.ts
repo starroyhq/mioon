@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { rm, mkdir, cp, readFile, writeFile, readdir } from 'node:fs/promises';
+import { rm, mkdir, cp, readFile, writeFile, readdir, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,11 +49,14 @@ const seen = new Set(), notices = ['# Third-party notices', '',
   'Packaged Electron and Chromium notices: LICENSE.electron.txt and LICENSES.chromium.html.',
   'On macOS they are in the application bundle at Contents/Resources/licenses; on Linux they are beside the executable.', ''];
 async function collectLicenses(packageFile: string): Promise<void> {
-  const metadata = JSON.parse(await readFile(packageFile, 'utf8'));
+  // Export-restricted packages use the fallback path below. Resolve its pnpm
+  // symlink before walking dependencies, whose modules are beside the real file.
+  const manifest = await realpath(packageFile);
+  const metadata = JSON.parse(await readFile(manifest, 'utf8'));
   const key = `${metadata.name}@${metadata.version}`;
   if (seen.has(key)) return;
   seen.add(key);
-  const directory = path.dirname(packageFile), require = createRequire(packageFile);
+  const directory = path.dirname(manifest), require = createRequire(manifest);
   if (!metadata.name.startsWith('@mioon/')) {
     const files = (await readdir(directory)).filter(name => /^(license|licence|copying|notice)([.-]|$)/i.test(name));
     for (const file of files) await cp(path.join(directory, file), path.join(output, 'licenses', `${metadata.name.replaceAll('/', '-')}-${file}`));

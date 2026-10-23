@@ -42,7 +42,7 @@ export function configuredSubmission(selection: VideoAdapterSelection,input: Vid
     case 'minimax':return {path:'/v2/video_generation',body:{model,content:[{type:'text',text:prompt},...(first?[{type:'image_url',image_url:{url:uri(first)},role:'first_frame'}]:[])],duration,resolution,ratio:first?'adaptive':aspectRatio}};
     case 'vidu':return {path:first?'/ent/v2/img2video':'/ent/v2/text2video',body:{model,prompt,duration,resolution,audio:false,off_peak:false,...(first?{images:[uri(first)],is_rec:false}:{aspect_ratio:aspectRatio})}};
     case 'kling':return {path:`/${first?'image-to-video':'text-to-video'}/${model}`,body:{...(first?{contents:[{type:'prompt',text:prompt},{type:'first_frame',url:first.base64}]}:{prompt}),settings:{resolution,duration,audio:selection.audio==='on'||selection.audio==='optional'&&parameters.generateAudio===true?'native':'off',multi_shot:false,...(first?{}:{aspect_ratio:aspectRatio})},options:{external_task_id:requestId}}};
-    case 'wan':return {path:'/services/aigc/video-generation/video-synthesis',headers:{'X-DashScope-Async':'enable'},body:{model,input:{prompt,...(first?{media:[{type:'first_frame',url:uri(first)}]}:{})},parameters:{resolution,duration,prompt_extend:false,watermark:false,...(parameters.seed===undefined?{}:{seed:parameters.seed}),...(first?{}:{ratio:aspectRatio})}}};
+    case 'wan':throw providerError('VIDEO_BINDING_INVALID','Wan requests must use the official SDK.');
   }
 }
 
@@ -64,7 +64,7 @@ export function configuredTaskPath(selection: VideoAdapterSelection,id: string):
     case 'minimax':return `/v2/query/video_generation/${id}`;
     case 'vidu':return `/ent/v2/tasks/${id}/creations`;
     case 'kling':return `/tasks?task_ids=${encodeURIComponent(id)}`;
-    case 'wan':return `/tasks/${id}`;
+    case 'wan':throw providerError('VIDEO_BINDING_INVALID','Wan task queries must use the official SDK.');
   }
 }
 

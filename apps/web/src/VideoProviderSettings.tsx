@@ -18,7 +18,7 @@ import { createVideoSettingsSession, initialVideoSettingsState, videoSettingsBus
 import type { VideoSettingsClient, VideoSettingsSession } from './video-settings.ts';
 import './video-settings.css';
 
-const modeKey = { text: 'video.providers.text', image: 'video.providers.image', frames: 'video.providers.frames', subject: 'video.providers.subject' } as const;
+const modeKey = { text: 'video.providers.text', image: 'video.providers.image', frames: 'video.providers.frames', subject: 'video.providers.subject', reference: 'video.wan.reference' } as const;
 const regionKey: Record<string, MessageKey> = { global: 'video.providers.region.global', 'cn-beijing': 'video.providers.region.beijing', 'ap-southeast-1': 'video.providers.region.singapore', cn: 'video.providers.region.cn' };
 const pairText = (model: VideoModelEntry): string => model.durationResolutionMap.flatMap(pair => pair.duration.flatMap(duration => pair.resolution.map(resolution => `${duration}:${resolution}`))).join('\n');
 

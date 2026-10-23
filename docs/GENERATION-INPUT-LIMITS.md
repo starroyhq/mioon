@@ -1,5 +1,15 @@
 # Wired model input limits
 
+Wan SDK update (2026-10-23): UI-configured Wan connections also provide exact
+`wan3.0-video` / `wan3.0-video-prime` profiles under `wan30-v1`. The reviewed
+model/region table drives local image-only input modes, request controls and
+backend checks. Ordered first/last frames or up to ten reference images use
+managed Base64 bytes; reference groups never mix with frames. Explicit
+`generation.submit.videoInput` replaces saved frame selection for one request,
+and remains frozen for recovery. Intelligent duration/adaptive output do not
+change saved shot geometry. See [Wan SDK scope and limits](PROVIDERS.md#wan-official-sdk-and-reviewed-model-capabilities-2026-10-23).
+The dated baseline and archived profile evidence below remain unchanged.
+
 Date: 2026-10-10. Baseline: `cfbbfd3`. Implementation, final 414-case focused
 verification, fresh web/desktop builds and actual Linux native acceptance are
 complete. Its independent full aggregate release gate passed (recorded below). No live
