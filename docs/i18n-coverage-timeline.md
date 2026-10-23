@@ -11,6 +11,7 @@ Every listed component uses the four-locale catalog for static and dynamic UI, a
 - `ClipAudioControls.jsx`, `TimelineWaveform.jsx`, `TimelineAudioPreview.tsx`.
 - `SourceRangeInspector.jsx`, `FrameExtractionPanel.jsx`, `Preview.jsx`, `VideoFrameControls.jsx`.
 - `SubtitleInspector.jsx`, `SubtitleLane.jsx`.
+- `TimelineSourceBanner.tsx` and the canvas ↔ timeline status on shot nodes, the storyboard strip, the shot inspector and the export content choice; their messages are in `packages/i18n/src/catalogs/canvas-timeline.ts`.
 
 Core messages are in `packages/i18n/src/catalogs/timeline.ts`; every entry has exact `zh-Hans`, region-neutral `zh-Hant`, `en`, and `ja` fields. The core and delivery fragments are checked for duplicate keys before spreading, using `assertNoDuplicateMessageKeys`.
 
