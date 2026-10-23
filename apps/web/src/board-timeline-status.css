@@ -1,0 +1,22 @@
+.timeline-status-dot{flex:none;width:5px;height:5px;border-radius:50%;background:currentColor}
+.shot-node .shot-media{position:relative}
+.shot-node .shot-media .node-timeline-view{position:absolute;top:var(--wb-space-2);left:50%;z-index:2;transform:translateX(-50%);display:flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:var(--wb-radius-control);background:var(--wb-media-overlay);color:var(--wb-media-text);font-size:var(--wb-text-min);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s}
+.shot-node:hover .shot-media .node-timeline-view,.shot-node:focus-within .shot-media .node-timeline-view{opacity:1;pointer-events:auto}
+.shot-node .node-footer .node-timeline-chip{margin-left:auto;min-width:0;max-width:60%;display:flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb, var(--wb-text) 8%, transparent);color:var(--wb-soft);font-size:var(--wb-text-min);white-space:nowrap}
+.shot-node .node-footer .node-timeline-chip>span:last-child,.board-storyboard .storyboard-timeline-chip>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.shot-node .node-footer .node-timeline-chip.is-stale,.board-storyboard .storyboard-shot .storyboard-timeline-chip.is-stale{background:var(--wb-warning-subtle);color:var(--wb-warning)}
+.shot-node .node-footer .node-timeline-chip+.node-link{margin-left:0}
+.board-storyboard{container-type:inline-size}
+.board-storyboard>header>.storyboard-append-group{margin-left:auto;min-width:0;display:flex;align-items:center;gap:var(--wb-space-2)}
+.board-storyboard>header>.storyboard-append-group+.wb-button{margin-left:0}
+.board-storyboard .storyboard-append-hint{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--wb-text-min);color:var(--wb-muted)}
+.board-storyboard>header .storyboard-append{flex:none;gap:4px;white-space:nowrap}
+@container (max-width: 620px){.board-storyboard .storyboard-append-hint{display:none}}
+.board-storyboard .storyboard-shot .storyboard-timeline-chip{align-self:flex-start;max-width:100%;min-width:0;display:flex;align-items:center;gap:4px;height:18px;min-height:18px;padding:0 6px;border-radius:4px;background:color-mix(in srgb, var(--wb-text) 8%, transparent);color:var(--wb-soft);font-size:var(--wb-text-min);white-space:nowrap}
+.shot-timeline-status{display:flex;align-items:center;gap:var(--wb-space-2);margin:var(--wb-space-2) var(--wb-space-3) 0;padding:var(--wb-space-2) var(--wb-space-3);border:1px solid var(--wb-line);border-radius:var(--wb-radius-control);background:var(--wb-card)}
+.shot-timeline-status.is-stale{border-color:color-mix(in srgb, var(--wb-warning) 45%, transparent);background:var(--wb-warning-subtle)}
+.shot-timeline-status>div{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.shot-timeline-status strong{display:flex;align-items:center;gap:6px;font-size:var(--wb-text-label);font-weight:500;color:var(--wb-text)}
+.shot-timeline-status.is-stale strong{color:var(--wb-warning)}
+.shot-timeline-status>div>span{font-size:var(--wb-text-caption);color:var(--wb-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shot-timeline-status [data-slot="button"]{flex:none;white-space:nowrap}
