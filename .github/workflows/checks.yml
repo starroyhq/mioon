@@ -12,16 +12,80 @@ permissions:
   contents: read
 
 jobs:
+  source:
+    name: Linux source checks and build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout frozen source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
+        with:
+          version: 11.25.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check workflow syntax
+        id: workflows
+        run: |
+          GOBIN="$RUNNER_TEMP/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/actionlint-bin/actionlint" -color
+
+      - name: Typecheck and build development application
+        id: build
+        # The build entrypoint includes strict source and CI helper type checks.
+        run: node scripts/tooling.ts build --channel=development
+
+      - name: Write safe diagnostics
+        if: always()
+        env:
+          WORKFLOW_RESULT: ${{ steps.workflows.outcome }}
+          BUILD_RESULT: ${{ steps.build.outcome }}
+        run: |
+          mkdir -p artifacts/checks-source
+          {
+            node --version
+            pnpm --version
+            printf 'workflow-syntax=%s\ntypecheck-and-build=%s\n' "$WORKFLOW_RESULT" "$BUILD_RESULT"
+          } > artifacts/checks-source/status.log
+          cat artifacts/checks-source/status.log >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: checks-source-diagnostics
+          path: artifacts/checks-source/
+          retention-days: 7
+          if-no-files-found: warn
+
   quality:
+    # Keep existing shard check names stable for branch-protection rules.
     name: Linux full tests and build (shard ${{ matrix.shard }})
     runs-on: ubuntu-22.04
-    # Bootstrap and the complete serial test partition share this budget;
-    # slow package mirrors must not consume the test suite's remaining window.
-    timeout-minutes: 120
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     env:
       MIOON_TEST_SHARD_INDEX: ${{ matrix.shard }}
     defaults:
@@ -36,16 +100,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Install media and desktop dependencies
+      - name: Install media build dependencies
+        id: dependencies
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg tar fonts-dejavu-core fonts-noto-cjk \
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y --no-install-recommends \
+            tar fonts-dejavu-core \
             build-essential pkg-config nasm yasm xz-utils \
             libx264-dev libass-dev libfontconfig1-dev libfreetype6-dev \
-            libharfbuzz-dev libwebp-dev libzimg-dev libfribidi-dev libvpx-dev libmp3lame-dev zlib1g-dev \
-            libgtk-3-0 libnss3 libgbm1 libasound2 libatk-bridge2.0-0 \
-            libxss1 libdrm2 libx11-xcb1 xvfb dbus-x11 xdotool
+            libharfbuzz-dev libwebp-dev libzimg-dev libfribidi-dev libvpx-dev libmp3lame-dev zlib1g-dev
 
       - name: Setup pnpm
         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
@@ -64,12 +128,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install verified FFmpeg 7.1.5 from source
+        id: ffmpeg
         run: node .github/scripts/install-ffmpeg.ts
-
-      - name: Check workflow syntax
-        run: |
-          GOBIN="$RUNNER_TEMP/actionlint-bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          "$RUNNER_TEMP/actionlint-bin/actionlint" -color
 
       - name: Probe required media capabilities
         id: media
@@ -77,17 +137,9 @@ jobs:
           mkdir -p "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX"
           node .github/scripts/media-environment.ts --platform=linux --output="artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/media.json"
 
-      - name: Typecheck source and CI helpers
-        id: typecheck
-        run: node scripts/tooling.ts typecheck
-
-      - name: Build development application
-        id: build
-        run: node scripts/tooling.ts build --channel=development
-
       - name: Run complete Linux full-lane partition in isolated files
         id: tests
-        run: env -u NODE_OPTIONS -u NODE_PATH node .github/scripts/test-shard.ts --index="$MIOON_TEST_SHARD_INDEX" --count=4
+        run: env -u NODE_OPTIONS -u NODE_PATH node .github/scripts/test-shard.ts --index="$MIOON_TEST_SHARD_INDEX" --count=8
 
       - name: Upload full test partition proof
         if: always()
@@ -101,16 +153,16 @@ jobs:
       - name: Write safe diagnostics
         if: always()
         env:
+          DEPENDENCY_RESULT: ${{ steps.dependencies.outcome }}
+          FFMPEG_RESULT: ${{ steps.ffmpeg.outcome }}
           MEDIA_RESULT: ${{ steps.media.outcome }}
-          TYPECHECK_RESULT: ${{ steps.typecheck.outcome }}
-          BUILD_RESULT: ${{ steps.build.outcome }}
           TEST_RESULT: ${{ steps.tests.outcome }}
         run: |
           mkdir -p "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX"
           {
             node --version
             pnpm --version
-            printf 'media=%s\ntypecheck=%s\nbuild=%s\ntests=%s\n' "$MEDIA_RESULT" "$TYPECHECK_RESULT" "$BUILD_RESULT" "$TEST_RESULT"
+            printf 'dependencies=%s\nffmpeg=%s\nmedia=%s\ntests=%s\n' "$DEPENDENCY_RESULT" "$FFMPEG_RESULT" "$MEDIA_RESULT" "$TEST_RESULT"
           } > "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/status.log"
           cat "artifacts/checks-linux-$MIOON_TEST_SHARD_INDEX/status.log" >> "$GITHUB_STEP_SUMMARY"
 
