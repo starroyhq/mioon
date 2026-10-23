@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
+import {reverseReviewedShotSync} from './current-shot-sync-delta.ts';
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
 /** Independently reviewed A2/A3 additions. Fixed52/54 catalogs remain unchanged;
  * exclude these exact definitions only after checking their retained SQL. */
@@ -174,6 +175,9 @@ export function reverseReviewedSchema56(path:string,bytes:Uint8Array):Buffer {
  const delta=reviewedSchema56SourceDeltas.find(item=>item.path===path);if(!delta)return Buffer.from(bytes);
  const sha=(value:Uint8Array)=>createHash('sha256').update(value).digest('hex');
  if(sha(bytes)===delta.previousSha256)return Buffer.from(bytes);
+ // Current bytes first lose the newer reviewed shot-sync layer, as schema54
+ // reverses this layer first; already reversed bytes returned above.
+ bytes=reverseReviewedShotSync(path,bytes);
  let source=Buffer.from(bytes).toString('utf8');
  for(const inverse of delta.inverse){
   assert.equal(source.split(inverse.after).length-1,1,`Baseline dependency changed: ${path}; reviewed56 edit must occur exactly once`);

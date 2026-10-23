@@ -13,6 +13,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {currentOrdinary54Delta,withoutReviewedConversationObjects,reviewedSchema54SourceDeltas,reverseReviewedSchema54} from './helpers/current-schema54-delta.ts';
+import {reverseReviewedShotSync} from './helpers/current-shot-sync-delta.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
@@ -86,7 +87,7 @@ function assertPinnedCurrent(file,read=null){
  const prior=reviewed??mapping,next=schema52RuntimeMap[file];
  if(next){assert.equal(next.currentPath,mapping.currentPath);assert.equal(next.previousCurrentSha256,prior.currentSha256);assert.equal(next.previousTypeErasedSha256,prior.typeErasedSha256);}
  const pin=next??prior;
- const text=reverseReviewedSchema54(mapping.currentPath,reverseReviewedCompatibleVideo(file,reverseReviewedCli(file,Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath)))))).toString();
+ const text=reverseReviewedSchema54(mapping.currentPath,reverseReviewedCompatibleVideo(file,reverseReviewedCli(file,reverseReviewedShotSync(mapping.currentPath,Buffer.from(read?read(file):fs.readFileSync(path.join(repo,mapping.currentPath))))))).toString();
  assert.equal(sha(text),pin.currentSha256,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);
  const erased=eraseSource(text);
  if(erased!==null)assert.equal(sha(erased),pin.typeErasedSha256,`${file}: deterministic type-erased current body`);

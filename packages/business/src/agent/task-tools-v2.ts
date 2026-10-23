@@ -34,6 +34,7 @@ const reversibleOperations=[
  'project.rename','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','subject.binding.set','asset.range.set','asset.disposition.set','asset.annotation.set',
  'shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select',
  'timeline.loudness.apply','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed',
+ 'timeline.clip.refreshSources','timeline.shots.append',
 ] as const;
 const irreversibleOperations=[
  'frame.extract','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render',

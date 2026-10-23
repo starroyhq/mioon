@@ -716,6 +716,18 @@ export const operationMessages = {
     "en": "Copy the currently selected versions in shot order only into an empty timeline, which is edited independently afterward",
     "ja": "空のタイムラインに限り、現在選択されているバージョンをショット順にコピーします。その後は独立して編集します"
   },
+  "operation.timeline.clip.refreshSources": {
+    "zh-Hans": "按时间线版本把来源镜头已改选新版本的片段批量换成选中版本并固定来源；保留片段ID、位置、时长、源入点、画面、音量和淡入淡出；未来自生成版本、镜头未选版本、已是最新或新版本不足以覆盖源区间的片段跳过并返回原因；整批记一条历史，撤销一次全部回退；没有可更新的片段时不写入；使用必填稳定requestId精确重放，不生成或处理媒体",
+    "zh-Hant": "按時間軸版本把來源鏡頭已改選新版本的片段批次換成所選版本並固定來源；保留片段ID、位置、時長、來源入點、畫面、音量和淡入淡出；非來自生成版本、鏡頭未選版本、已是最新或新版本不足以涵蓋來源區間的片段略過並回傳原因；整批記為一筆歷史，復原一次全部還原；沒有可更新的片段時不寫入；使用必填穩定requestId精確重放，不生成或處理媒體",
+    "en": "Against the timeline version, switch clips whose source shot now selects another version to that version and pin it. Keeps clip ID, position, duration, source in-point, visuals, volume, and fades. Clips not from a generated version, whose shot selects no version, that are already current, or whose new version cannot cover the source range are skipped with their reasons. The whole batch is one history entry that a single undo reverts. Nothing is written when no clip can be refreshed. A stable requestId is required for exact replay; no media is generated or processed",
+    "ja": "タイムラインのバージョンを照合し、ソースショットが別のバージョンを選択したクリップをそのバージョンに一括で切り替えて固定します。クリップID、位置、長さ、ソースのイン点、映像、音量、フェードを保持します。生成バージョン由来でないクリップ、ショットがバージョンを選択していないクリップ、既に最新のクリップ、新しいバージョンがソース範囲を満たさないクリップはスキップし、理由を返します。一括で1件の履歴となり、1回の取り消しですべて元に戻ります。更新できるクリップがない場合は書き込みません。同一リクエストの元の結果の再現には安定したrequestIdが必須で、メディアの生成や処理は行いません"
+  },
+  "operation.timeline.shots.append": {
+    "zh-Hans": "按时间线版本把还没有片段的镜头按画板顺序、用其选中版本完整时长追加到第一条视频轨末尾并固定来源；已有片段不动；未选版本的镜头跳过并返回原因；记一条历史可撤销；没有可追加的镜头时不写入；使用必填稳定requestId精确重放，不生成或处理媒体",
+    "zh-Hant": "按時間軸版本把還沒有片段的鏡頭按畫布順序、以其所選版本完整時長附加到第一條影片軌道末尾並固定來源；既有片段不動；未選版本的鏡頭略過並回傳原因；記為一筆歷史可復原；沒有可附加的鏡頭時不寫入；使用必填穩定requestId精確重放，不生成或處理媒體",
+    "en": "Against the timeline version, append shots that have no clip yet, in canvas order and at the full length of their selected versions, to the end of the first video track, pinning each clip to its version. Existing clips do not move. Shots without a selected version are skipped with their reasons. Records one undoable history entry. Nothing is written when no shot can be appended. A stable requestId is required for exact replay; no media is generated or processed",
+    "ja": "タイムラインのバージョンを照合し、まだクリップのないショットをキャンバスの順に、選択バージョンの全長で最初の動画トラックの末尾へ追加し、そのバージョンに固定します。既存のクリップは動かしません。バージョン未選択のショットはスキップし、理由を返します。取り消し可能な履歴を1件記録します。追加できるショットがない場合は書き込みません。同一リクエストの元の結果の再現には安定したrequestIdが必須で、メディアの生成や処理は行いません"
+  },
   "operation.timeline.render": {
     "zh-Hans": "冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询",
     "zh-Hant": "凍結完整多軌時間軸和素材雜湊，排隊產生真實預覽或匯出；匯出可指定30fps左閉右開的影格範圍，快照保持完整；透過export_get查詢",

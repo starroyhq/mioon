@@ -107,6 +107,7 @@ All RPC operation names replace dots with underscores. For example:
 - `timeline_track_add`, `timeline_track_update`
 - `timeline_clip_add`, `timeline_clip_update`, `timeline_clip_remove`, `timeline_clip_split`, `timeline_clip_replaceSource`
 - `timeline_seed`, `timeline_render`
+- `timeline_clip_refreshSources`, `timeline_shots_append`
 - `export_create`, `export_get`
 
 Three additional read-only discovery tools are available:

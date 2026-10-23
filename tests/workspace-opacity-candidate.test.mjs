@@ -14,6 +14,7 @@ import {
 import {workspaceBackupSourceSchemaVersion, workspaceRestorationPairSchema} from '../packages/contracts/src/workspace-schema-profiles.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {reviewedSchema54SourceDeltas,reviewedSchema54IntegrationSourceDeltas,reverseReviewedSchema54} from './helpers/current-schema54-delta.ts';
+import {reverseReviewedShotSync} from './helpers/current-shot-sync-delta.ts';
 
 const ordinary = {schemaVersion: 42, profile: 'ordinary'};
 const restored = {schemaVersion: 43, sourceSchema: 42, profile: 'restored-local-v10'};
@@ -109,6 +110,9 @@ function reverseReviewedCompatibleVideo(file, bytes) {
   }
   return Buffer.from(source);
 }
+// The newest reviewed layer (timeline shot sync) is reversed before every older one.
+const shotSyncPaths = JSON.parse(readFileSync(new URL('./fixtures/opacity-current-ts-runtime-map.json', import.meta.url))).mapping;
+const reverseReviewedShotSyncFile = (file, bytes) => reverseReviewedShotSync(shotSyncPaths[file]?.currentPath ?? file, Buffer.from(bytes));
 
 test('only explicit dormant42/43 descriptors are accepted, with no numeric inheritance', () => {
   assert.deepEqual([OPACITY_ORDINARY_SCHEMA_CANDIDATE, OPACITY_RESTORED_SCHEMA_CANDIDATE, OPACITY_RESTORED_PROFILE_CANDIDATE], [42, 43, 'restored-local-v10']);
@@ -230,7 +234,7 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
     assert.equal(sha256(reverseReviewed(path, bytes, pinned)), pinned, path);
     const mapping=currentMap.mapping[path],currentPath=mapping?.currentPath??path,currentBytes=readFileSync(new URL(currentPath,root));
     const assertCurrent=value=>{
-      const reviewed=reverseReviewedLoudnessRange(path,reverseReviewedIntegration(path,reverseReviewedCompatibleVideo(path,reverseReviewedCliDraft(path,value))));
+      const reviewed=reverseReviewedLoudnessRange(path,reverseReviewedIntegration(path,reverseReviewedCompatibleVideo(path,reverseReviewedCliDraft(path,reverseReviewedShotSyncFile(path,value)))));
       assert.equal(sha256(reviewed),mapping?.currentRawSha256??sha256(bytes),`${path}: current raw source`);
       if(mapping?.typeErasedSha256!==null&&mapping?.typeErasedSha256!==undefined)assert.equal(sha256(transformSync(reviewed.toString('utf8'),{loader:'ts',format:'esm',target:'es2022'}).code),mapping.typeErasedSha256,`${path}: current executable source`);
     };
@@ -252,7 +256,7 @@ test('finite LRA inverses preserve all prior raw/runtime pins and reject changed
   for (const [file, inverses] of Object.entries(loudnessRangeInverses)) {
     const mapping = map[file], bytes = readFileSync(new URL(mapping.currentPath, root)), source = bytes.toString('utf8');
     const assertPinned = value => {
-      const reviewed = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
+      const reviewed = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, reverseReviewedShotSyncFile(file, value))));
       assert.equal(sha256(reviewed), mapping.currentRawSha256, `${file}: unchanged current raw pin`);
       if (mapping.typeErasedSha256 !== null) assert.equal(sha256(transformSync(reviewed.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256, `${file}: unchanged executable pin`);
     };
@@ -294,7 +298,7 @@ test('reviewed main integration keeps original current pins and rejects any unkn
     const mapping = map[file], source = readFileSync(new URL(reviewed.currentPath, root), 'utf8');
     assert.equal(reviewed.currentPath, mapping.currentPath);
     const assertPinned = value => {
-      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
+      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, reverseReviewedShotSyncFile(file, value))));
       assert.equal(sha256(previous), mapping.currentRawSha256, `${file}: original current raw pin`);
       if (mapping.typeErasedSha256 !== null) assert.equal(sha256(transformSync(previous.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256, `${file}: original current executable pin`);
     };
@@ -310,7 +314,7 @@ test('finite compatible-video inverse keeps the integration pin and rejects chan
   for (const [file, inverses] of Object.entries(compatibleVideoInverses)) {
     const mapping = map[file], source = readFileSync(new URL(mapping.currentPath, root), 'utf8');
     const assertPinned = value => {
-      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
+      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, reverseReviewedShotSyncFile(file, value))));
       assert.equal(sha256(previous), mapping.currentRawSha256, `${file}: original current raw pin`);
     };
     assertPinned(source);

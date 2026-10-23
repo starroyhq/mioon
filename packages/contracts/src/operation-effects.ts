@@ -145,6 +145,8 @@ export const operationEffects = Object.freeze({
   'timeline.clip.rippleRemove': define({...replayEdit,notes:'Removes one clip and shifts only later clips on its track by the removed duration. Preserves source clocks, assets and other tracks. Records one undoable edit and durable exact replay; a new branch can discard redo history.'}),
   'timeline.clip.split': define({...replayEdit,notes:'Shortens the original clip and adds the right-hand clip; a new branch can discard redo history. Exact replay preserves the new ID.'}),
   'timeline.seed': define({...replayEdit,notes:'Copies selected shot assets into an empty timeline and records an edit; a new branch can discard redo history. Exact replay is durable.'}),
+  'timeline.clip.refreshSources': define({...replayEdit,notes:'Switches listed clips to the version their shot now selects, keeping every editable clip field; skipped clips and reasons are returned. One edit for the whole batch; a new branch can discard redo history. Exact replay is durable.'}),
+  'timeline.shots.append': define({...replayEdit,notes:'Appends shots without a clip, in canvas order with their selected versions pinned, to the end of the first video track; skipped shots and reasons are returned. Records one edit; a new branch can discard redo history. Exact replay preserves the new clip IDs.'}),
   'timeline.render': define({...render,notes:'Queues a frozen timeline render once per exact request. Optional export-only fixed delivery settings invoke bounded local capability compute before fresh acceptance; historical replay runs no probe. Later worker work revalidates and invokes local FFmpeg/ffprobe and writes managed output. Omission retains the legacy path. No provider call.'}),
 });
 

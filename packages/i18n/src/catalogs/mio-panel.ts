@@ -1032,6 +1032,18 @@ export const mioPanelMessages = {
     "en": "Arrange timeline",
     "ja": "タイムラインを構成"
   },
+  "agent.display.operation.timeline.clip.refreshSources": {
+    "zh-Hans": "更新片段来源",
+    "zh-Hant": "更新片段來源",
+    "en": "Refresh clip sources",
+    "ja": "クリップのソースを更新"
+  },
+  "agent.display.operation.timeline.shots.append": {
+    "zh-Hans": "追加镜头到时间线",
+    "zh-Hant": "附加鏡頭到時間軸",
+    "en": "Append shots to timeline",
+    "ja": "ショットをタイムラインに追加"
+  },
   "agent.display.operation.timeline.history.get": {
     "zh-Hans": "查看编辑历史",
     "zh-Hant": "查看編輯歷史",
