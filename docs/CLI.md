@@ -42,7 +42,7 @@ The CLI is a local HTTP client for the **same running backend and database** use
 
 补充说明属于当前轮，不创建新轮、不增加步骤。已持久化的模型 intent 和已发出的请求不会被改写；最终回复期间到达的补充说明会在同一 Run 预算内继续下一模型步骤，预算不足时保留排队记录，等待明确继续。结束后再发送应使用同对话的 `send`。note/skip 响应丢失后，只查询原 `agent task action-lookup`；回执中的 `result.state=rejected` 是已确定的拒绝，不能换请求 ID 自动重发。
 
-`agent task retry` 仅用于 failed 轮次，最后一步必须是 failed，并且没有 unknown / dispatch_started 步骤。若传 stepId，必须精确匹配最后失败步骤；本项目已有其他未结束轮次时拒绝重试。只有可证明未发送的模型失败才能重新规划下一次模型请求，已发送而结果未知时仍须先明确处置。工具失败会停止这一轮；重试把失败结果交回模型并废弃同批后续旧参数，不重放原工具。原 Run、步数已用值和预算保留；预算耗尽时进入 budget 暂停，只有后续明确 resume 才扩额。重试仍经过发送授权、执行前复查、付费确认、跳过名单及网络策略。retry 响应丢失只查 action-lookup，不自动重发。
+`agent task retry` 仅用于 failed 轮次，最后一步必须是 failed，并且没有 unknown / dispatch_started 步骤。若传 stepId，必须精确匹配最后失败步骤；本项目已有其他未结束轮次时拒绝重试。模型请求未发出，或运行中观察到的模型失败（非 200 响应、超时、连接中断、流截断等），都记为 failed，可以重试并重新发出下一次模型请求；进程在请求途中退出等没有记录结果的情况仍为 unknown，须先明确处置。工具失败会停止这一轮；重试把失败结果交回模型并废弃同批后续旧参数，不重放原工具。原 Run、步数已用值和预算保留；预算耗尽时进入 budget 暂停，只有后续明确 resume 才扩额。重试仍经过发送授权、执行前复查、付费确认、跳过名单及网络策略。retry 响应丢失只查 action-lookup，不自动重发。
 
 公开 Change 的 `modifiedAfter` 按当前目标修订与原 revisionAfter 比较；`undoDisposition` 为服务端逆序预判的 `undo` / `retain` / `blocked`。后者考虑本轮连续撤销链和已保存的回退进度；它不是操作授权，实际撤销仍逐项复查。单条变化之后被修改时拒绝单撤；整体撤销只把严格证明被后续改动、且无草稿的单目标变化标为 superseded 并保留，再处理其他变化。复合变化、ABA、草稿及缺少证明仍停止，前面已完成的撤销保留。确认后发送可选 `undoChangeIds`（唯一 Change ID 数组），服务端先比较当前可撤销集合；集合改变时拒绝并保存原请求回执，零补偿。每条实际补偿还必须位于该集合。旧调用方省略时保留原行为。两个展示字段不写库或进入备份。
 

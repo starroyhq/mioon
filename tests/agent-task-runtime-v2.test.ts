@@ -165,22 +165,22 @@ for(const protocol of ['chat_completions','responses'] as const){
   f.restart();assert.equal(f.runtime.lookup(f.projectId,sent.run.requestId).snapshot?.run.status,'failed');const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.status,'failed');
   await f.runtime.drain();assert.equal(f.requests.length,1);assert.deepEqual(transport.counts,{dns:1,requests:0,ends:0});assert.equal(f.effects.size,0);
  });
- test(`${protocol}: a provider HTTP error after request end retains an unknown result without automatic replay`,async t=>{
+ test(`${protocol}: a provider HTTP error after request end is a recorded failure without automatic replay`,async t=>{
   const f=await fixture(t,protocol),transport=syntheticDeniedTransport('8.8.8.8');f.setScript(async function*(_index,request){yield*transport.gateway(request);});
-  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_CHAT_HTTP_ERROR');assert.equal(done.steps.length,1);assert.equal(done.steps[0]?.status,'unknown');
+  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_CHAT_HTTP_ERROR');assert.equal(done.steps.length,1);assert.equal(done.steps[0]?.status,'failed');assert.equal(done.steps[0]?.error?.code,'AGENT_CHAT_HTTP_ERROR');
   assert.match(done.steps[0]!.error!.message,/HTTP 401/u);assert.deepEqual(f.runtime.journal.events(sent.run.id).filter(event=>event.type==='error').map(event=>event.data),[{code:'AGENT_CHAT_HTTP_ERROR',message:done.steps[0]!.error!.message}]);
   assert.equal(f.runtime.journal.events(sent.run.id).filter(event=>event.type==='dispatch_prevented').length,0);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);assert.equal(done.changes.length,0);
-  f.restart();const found=f.runtime.lookup(f.projectId,sent.run.requestId);assert.equal(found.snapshot?.steps[0]?.status,'unknown');const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.status,'unknown');
+  f.restart();const found=f.runtime.lookup(f.projectId,sent.run.requestId);assert.equal(found.snapshot?.steps[0]?.status,'failed');const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.status,'failed');
   await f.runtime.drain();assert.equal(f.requests.length,1);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});assert.equal(f.effects.size,0);
  });
  test(`${protocol}: arbitrary provider exception fields never become persisted HTTP diagnostics`,async t=>{
   const f=await fixture(t,protocol);f.setScript(async function*(){throw Object.assign(new Error('PRIVATE_PROVIDER_BODY'),{code:'AGENT_CHAT_HTTP_ERROR',httpStatus:401,statusCode:403,headers:{authorization:'PRIVATE_KEY'}});});
-  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.steps[0]?.status,'unknown');assert.equal(done.steps[0]?.error?.message,'任务未完成，请检查已保存记录。');
+  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.steps[0]?.status,'failed');assert.equal(done.steps[0]?.error?.message,'任务未完成，请检查已保存记录。');
   const serialized=JSON.stringify({done,events:f.runtime.journal.events(sent.run.id)});assert.doesNotMatch(serialized,/PRIVATE_PROVIDER_BODY|PRIVATE_KEY|HTTP 401|HTTP 403/u);assert.equal(f.requests.length,1);
  });
- test(`${protocol}: HTTP 400 persists only fixed parameter hints and retains the original unknown request`,async t=>{
+ test(`${protocol}: HTTP 400 persists only fixed parameter hints and keeps the original failed request`,async t=>{
   const f=await fixture(t,protocol),transport=syntheticDeniedTransport('8.8.8.8',400,JSON.stringify({error:{message:'Invalid function schema for tools[0].function.parameters: PRIVATE_PROVIDER_BODY PRIVATE_KEY',param:'tools'}}));f.setScript(async function*(_index,request){yield*transport.gateway(request);});
-  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.steps[0]?.status,'unknown');const message=done.steps[0]!.error!.message;assert.match(message,/HTTP 400/u);assert.match(message,/参数提示/u);assert.match(message,/tools/u);
+  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.steps[0]?.status,'failed');const message=done.steps[0]!.error!.message;assert.match(message,/HTTP 400/u);assert.match(message,/参数提示/u);assert.match(message,/tools/u);
   assert.doesNotMatch(JSON.stringify({done,events:f.runtime.journal.events(sent.run.id)}),/PRIVATE_PROVIDER_BODY|PRIVATE_KEY/u);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});
   f.restart();const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.error?.message,message);await f.runtime.drain();assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});assert.equal(f.requests.length,1);assert.equal(f.effects.size,0);
  });
@@ -805,6 +805,28 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  assert.equal(done.run.status,'completed');assert.equal(done.run.id,failed.run.id);assert.equal(done.run.budget,failed.run.budget);assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.notEqual(done.steps[1]!.id,step.id);assert.equal(done.steps[0]!.status,'failed');assert.equal(done.steps[1]!.status,'completed');assert.equal(done.executionEndedAt,done.run.updatedAt);
  f.restart();await f.runtime.action(f.projectId,sent.run.id,control);await f.runtime.drain();assert.equal(f.requests.length,2);assert.equal(f.runtime.lookupAction(f.projectId,sent.run.id,control.requestId).receipt?.action,'retry');await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...control,stepId:randomUUID()}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
 });
+for(const protocol of ['chat_completions','responses'] as const)for(const statusCode of [429,500] as const)test(`${protocol}: HTTP ${statusCode} after sending is a failure retried only on explicit request`,async t=>{
+ const f=await fixture(t,protocol),transport=syntheticDeniedTransport('8.8.8.8',statusCode);f.setScript(async function*(index,request){if(index===1){yield*transport.gateway(request);return;}yield {type:'done',output:output(protocol,[],'Retry completed')};});
+ const sent=await f.send(),failed=await f.settle(sent.run.id),step=failed.steps.at(-1)!;
+ assert.equal(failed.run.status,'failed');assert.equal(step.kind,'model');assert.equal(step.status,'failed');assert.equal(step.error?.code,'AGENT_CHAT_HTTP_ERROR');assert.match(step.error!.message,new RegExp(`HTTP ${statusCode}`,'u'));assert.equal(failed.steps.some(item=>item.status==='unknown'),false);
+ await f.runtime.drain();assert.equal(f.requests.length,1);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});
+ await f.runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:step.id});const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(done.run.budget,failed.run.budget);assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.equal(done.steps[0]!.status,'failed');assert.equal(done.steps[0]!.error?.code,'AGENT_CHAT_HTTP_ERROR');assert.equal(done.steps[1]!.status,'completed');assert.equal(f.effects.size,0);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a timeout after partial text records a failure and the retry does not feed that text back`,async t=>{
+ // Long enough to pass the 2 KiB flush threshold, so the partial reply is saved.
+ const partial='PARTIAL_REPLY_BEFORE_TIMEOUT '.repeat(100);
+ const f=await fixture(t,protocol);f.setScript(async function*(index){if(index===1){yield {type:'delta',text:partial};throw Object.assign(new Error('timeout'),{code:'AGENT_CHAT_TIMEOUT'});}yield {type:'done',output:output(protocol,[],'Retry completed')};});
+ const sent=await f.send(),failed=await f.settle(sent.run.id),step=failed.steps.at(-1)!;
+ assert.equal(failed.run.status,'failed');assert.equal(step.status,'failed');assert.equal(step.error?.code,'AGENT_CHAT_TIMEOUT');assert.equal(step.text,partial);
+ await f.runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:step.id});const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.doesNotMatch(f.requests[1]!.body,/PARTIAL_REPLY_BEFORE_TIMEOUT/u);assert.equal(done.steps[0]!.text,partial);assert.equal(done.steps[1]!.status,'completed');
+});
+test('an unclassified exception during a model request still keeps the unknown rule',async t=>{
+ const f=await fixture(t);f.setScript(async function*(){throw new Error('unclassified gateway failure');});
+ const sent=await f.send(),done=await f.settle(sent.run.id),step=done.steps.at(-1)!;
+ assert.equal(step.status,'unknown');await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),expectedRevision:done.run.revision,action:'retry',stepId:step.id}),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,1);
+});
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: failed tool stops its batch; retry supplies the failure and replans without old parameters`,async t=>{
  const f=await fixture(t,protocol),invalid=call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{duration:-1}}),stale=call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'MUST NOT EXECUTE OLD BATCH'}});
  f.setScript(async function*(index,request){if(index===2){assert.match(request.body,/VALIDATION_ERROR/);assert.match(request.body,/TARGET_CHANGED/);}yield {type:'done',output:output(protocol,index===1?[invalid,stale]:index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'Fresh retry plan'}})]:[])};});
@@ -814,7 +836,9 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
 });
 for(const scenario of ['unknown','last_completed','revoked','busy','budget','receipt_failure'] as const)test(`retry gate preserves safety for ${scenario}`,async t=>{
  const f=await fixture(t),transport=syntheticDeniedTransport(scenario==='unknown'?'93.184.216.34':'198.18.10.207');if(scenario==='budget')f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:1});
- f.setScript(async function*(index,request){if(scenario==='last_completed'){yield {type:'done',output:output('responses')};await f.revoke();return;}if(index===1){yield*transport.gateway(request);return;}yield {type:'done',output:output('responses')};});const sent=await f.send(),failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');
+ // An observed HTTP error is now a plain failure; an unclassified exception
+ // during the request is what still leaves an unknown model result.
+ f.setScript(async function*(index,request){if(scenario==='last_completed'){yield {type:'done',output:output('responses')};await f.revoke();return;}if(index===1){if(scenario==='unknown')throw new Error('unclassified gateway failure');yield*transport.gateway(request);return;}yield {type:'done',output:output('responses')};});const sent=await f.send(),failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');
  if(scenario==='revoked')await f.revoke();
  if(scenario==='busy'){const entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const other=await f.send('New active run');await entered.promise;t.after(()=>release.resolve());assert.equal(f.runtime.get(f.projectId,other.run.id).run.status,'running');}
  const request={requestId:randomUUID(),expectedRevision:failed.run.revision,action:'retry',stepId:failed.steps.at(-1)!.id},before=f.runtime.journal.snapshot(sent.run.id),requests=f.requests.length;

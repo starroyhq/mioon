@@ -24,6 +24,11 @@ const json=(value:unknown):AgentTaskJson=>JSON.parse(JSON.stringify(value??null)
 const code=(value:unknown):string=>record(value)&&typeof value.code==='string'?value.code:'AGENT_TASK_FAILED';
 const storageError=(value:unknown):boolean=>/^(?:ERR_SQLITE|SQLITE_|AGENT_TASK_STORAGE_)/u.test(code(value));
 const terminal=(run:AgentTaskRun):boolean=>['completed','failed','stopped','reverted'].includes(run.status);
+// Failures this process observed from the model exchange itself. No tool runs
+// before a model step completes, so the project is unchanged and the user may
+// explicitly retry. Interrupted dispatches (no recorded outcome), storage
+// faults and explicit unknown results keep the unknown rule.
+const observedModelFailures=new Set(['AGENT_CHAT_CONNECT_FAILED','AGENT_CHAT_TIMEOUT','AGENT_CHAT_HTTP_ERROR','AGENT_CHAT_PROTOCOL_ERROR','AGENT_CHAT_TRUNCATED','AGENT_CHAT_PROVIDER_ERROR','AGENT_CHAT_LIMIT','AGENT_CHAT_TOOLS_UNSUPPORTED','AGENT_CHAT_REASONING_UNSUPPORTED']);
 const attachmentInstructions:Record<AgentTaskLocale,string>={
   'zh-Hans':'用户为本轮选择的附件（仅可使用这些托管句柄）：',
   'zh-Hant':'使用者為本輪選取的附件（僅可使用這些代管代碼）：',
@@ -223,6 +228,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     }
   }
   async function execute(runId:string,signal:AbortSignal):Promise<void>{
+    let inflight:string|undefined;
     try {
       let run=fence(runId);const config=configuration(run),expected={expectedRevision:run.settingsRevision??0,configuration:config};
       const credential=await new Promise<Awaited<ReturnType<AgentSettingsService[typeof AGENT_CREDENTIAL_ACQUIRE]>>>((resolve,reject)=>{
@@ -262,7 +268,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         run=fence(runId);const pendingNotes=pendingModel?[]:(run.notes??[]).filter(note=>note.modelStepId===undefined);
         history.push(...pendingNotes.map(note=>({role:'user',content:note.text})));
         const body=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:buildTaskModelRequest(config,history,runTools(run),selfPort()),model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}},pendingNotes.map(note=>note.requestId));
-        journal.markDispatch(runId,model.id);let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
+        journal.markDispatch(runId,model.id);inflight=model.id;let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
         const flush=()=>{if(pending&&!closed){journal.appendText(runId,model.id,pending);pending='';lastFlush=Date.now();}};
         for await(const item of gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),beforeSubmit:()=>{fence(runId);}})){
           if(closed||journal.run(runId).status==='stopped')return;
@@ -271,7 +277,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           else output=item.output;
         }
         flush();if(!output)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
-        journal.completeStep(runId,model.id,{result:json(output)});
+        journal.completeStep(runId,model.id,{result:json(output)});inflight=undefined;
         if(journal.run(runId).status!=='running')return;
       }
     }catch(error){
@@ -283,6 +289,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(failure==='AGENT_TASK_BUDGET_EXHAUSTED'){pause(runId,'budget');return;}
       const message=agentChatHttpStatus(error)===undefined?agentTaskFailure(failure).message:safeAgentChatError(error).message;
       if(prevented)for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='intent')journal.updateStep(runId,step.id,{status:'failed',error:{code:failure,message}});
+      if(inflight&&!prevented&&observedModelFailures.has(failure)&&journal.step(inflight).status==='dispatch_started')journal.updateStep(runId,inflight,{status:'failed',error:{code:failure,message}});
       for(const step of journal.snapshot(runId).steps)if(step.status==='dispatch_started')journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message}});
       if(failure==='AGENT_TASK_UNKNOWN_RESULT'){pause(runId,'unknown_outcome');return;}
       changeStatus(runId,'failed',failure);journal.appendEvent(runId,'error',{code:failure,message});
