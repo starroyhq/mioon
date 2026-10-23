@@ -25,6 +25,86 @@ connections and their text/first-frame templates remain unchanged. Reference
 video/audio and arbitrary workflow import are outside this increment. Existing
 Ark frame-pair and one-image subject modes are retained.
 
+### Official SDK coverage (reviewed 2026-10-23)
+
+Video submission and task queries use the following pinned official Node.js
+SDKs wherever they cover the application's existing protocol. The legacy
+environment-configured Runway, Ark, Veo and MiniMax entry points use the same SDK bridges
+as UI-configured connections; their separate credentials and enable/approval
+gates remain in effect.
+
+| Provider/protocol | Package and pinned version | Submission and query methods |
+| --- | --- | --- |
+| Runway | `@runwayml/sdk@4.22.0` | `imageToVideo.create()`, `tasks.retrieve()` |
+| Ark Seedance | `@volcengine/ark-runtime@1.0.12` | `createContentGenerationTask()`, `getContentGenerationTask()` |
+| Gemini Veo | `@google/genai@2.30.0` | `models.generateVideos()`, `operations.getVideosOperation()` |
+| MiniMax H3 | `mmx-cli@1.0.28`, public `mmx-cli/sdk` entry point | `video.generate({async: true})`, `video.getTask()` |
+| OpenAI-compatible Videos | Existing `openai@7.39.0` dependency | `videos.create()`, `videos.retrieve()` |
+| Alibaba Wan | Existing `dashscope-sdk-official@1.27.0` dependency | `VideoSynthesis.asyncCall()`, `fetch()` |
+
+Version review uses the published package source and type declarations, rather
+than assuming a package named after a vendor is official. Sources:
+[Runway package](https://registry.npmjs.org/@runwayml/sdk/4.22.0) and
+[official SDK repository](https://github.com/runwayml/sdk-node),
+[Ark package and publisher](https://registry.npmjs.org/@volcengine/ark-runtime/1.0.12),
+[Google package](https://registry.npmjs.org/@google/genai/2.30.0) and
+[official SDK repository](https://github.com/googleapis/js-genai),
+[MiniMax package](https://registry.npmjs.org/mmx-cli/1.0.28) and
+[official SDK guide](https://github.com/MiniMax-AI/cli/blob/main/SDK.md),
+[OpenAI package](https://registry.npmjs.org/openai/7.39.0) and
+[official SDK repository](https://github.com/openai/openai-node), and
+[DashScope official implementation](https://github.com/dashscope/dashscope-sdk-nodejs/blob/v1.27.0/src/aigc/videoSynthesis/index.ts).
+Google's package is pinned to 2.30.0 to satisfy this repository's minimum release
+age policy; the newer package available on the review date is not installed.
+
+The SDKs construct protocol paths, parameters and serialization. New MiniMax
+submissions now require the official SDK's `2K` resolution; the existing 4/8-second
+duration choices and text/first-frame modes remain unchanged. Other providers'
+model capabilities, accepted parameters and defaults are unchanged. Public
+interfaces and persisted snapshots are not expanded. Custom model IDs remain bounded by their
+selected protocol template. Existing task identities, original connection and
+credential bindings, response interpretation and historical snapshots remain
+valid without migration. SDK automatic retries are disabled; the new bridges
+also permit at most one transport dispatch per operation. Lost, timed-out or
+otherwise uncertain submissions retain their existing unknown-acceptance state
+and never trigger a hidden generation retry.
+
+The application retains the final submit fence, credential acquisition, bounded
+timeouts, cancellation, sanitized errors, redirect restrictions, polling,
+recovery and safe output download/publication. SDK blocking wait, automatic
+download and remote-cancel helpers are not used. Cancellation retains each
+provider's existing local-only behavior. Only injected offline transport tests
+have been performed; no paid generation or live-service verification is implied.
+
+Desktop notices collect the SDK packages' supplied licenses. `mmx-cli@1.0.28`
+declares MIT in its published README but omits the LICENSE text and manifest
+license field; the desktop package records that upstream declaration and
+omission in a provenance notice, without fabricating a license text.
+
+MiniMax uses its official TypeScript SDK without a REST fallback. The reviewed
+SDK rejects H3 resolutions other than `2K`, and that validator remains active.
+New MiniMax model entries and the legacy environment entry point use `2K`.
+Existing `768P` configurations, original task bindings and snapshots are not
+rewritten or silently upgraded: new submissions through those configurations
+are rejected before dispatch, while accepted tasks retain their original
+identities and can still be queried and safely downloaded. To generate at `2K`,
+explicitly review and save a supported model configuration. See the
+[official SDK validator](https://github.com/MiniMax-AI/cli/blob/main/src/video/v2.ts)
+and [service video capabilities](https://platform.minimax.io/docs/guides/video-generation).
+
+Only Vidu and Kling retain their current REST implementations:
+
+- **Vidu:** no official Node SDK covering the current Q3 asynchronous video API
+  was identified in the [official API documentation](https://docs.platform.vidu.com/)
+  or [integration help](https://platform.vidu.com/help-center). Official MCP and
+  Vidu S real-time RTC examples implement other integration paths and do not
+  replace this protocol.
+- **Kling:** no official Node SDK covering the current API-Key video protocol
+  was identified in the [official API documentation](https://kling.ai/document-api).
+  The [official CLI/MCP client](https://kling.ai/app/mcp/guide) uses a different
+  account-login integration; callback signature examples are not a video API
+  SDK. Community packages are not substituted for an official SDK.
+
 ### Wan official SDK and reviewed model capabilities (2026-10-23)
 
 Wan submission and task retrieval use the pinned official Node.js package
@@ -153,8 +233,16 @@ notice. Authentication failures still invalidate the session.
 ## Compatible services, OpenAI video format (2026-10-23)
 
 Choose **Compatible service (OpenAI video format)** when adding a connection to use
-a service or aggregator that implements the OpenAI Videos API shape. Protocol
-template `openai-video-v1`:
+a service or aggregator that implements the OpenAI Videos API shape, using
+protocol template `openai-video-v1`.
+
+Submission and status queries use the official `openai@7.39.0` SDK with the
+connection's frozen base URL. The SDK creates the multipart request and first-
+frame file; the application still controls result downloads and all network
+boundaries below. Reusing this SDK does not certify an aggregator's model
+availability or compatibility beyond the implemented template.
+
+The preserved protocol is:
 
 - create: `POST {base}/videos`, `multipart/form-data` with `model`, `prompt`,
   `seconds` and `size` (`WIDTHxHEIGHT`, derived from the aspect ratio and the
@@ -276,7 +364,7 @@ These are deliberately smaller than the providers' full catalogs. The UI and ser
 | runway | gen4_turbo | One first-frame image | See Runway below | Integer 2–10 | Ratio-dependent |
 | ark | doubao-seedance-2-5-260628 | Text / one first-frame image | 9:16, 16:9 | 4, 8 | 720p |
 | veo | veo-3.1-generate-preview | Text / one first-frame image | 9:16, 16:9 | 4, 6, 8 | 720p |
-| minimax | MiniMax-H3 | Text / one first-frame image | 9:16, 16:9 | 4, 8 | 768P |
+| minimax | MiniMax-H3 | Text / one first-frame image | 9:16, 16:9 | 4, 8 | 2K for new submissions; historical 768P tasks remain readable |
 | vidu | viduq3-turbo | Text / one first-frame image | 9:16, 16:9 | 4, 8 | 720p |
 
 New adapters deliberately accept PNG/JPEG only, at most one image, and a nonblank prompt of at most 1000 UTF-16 code units. That prompt cap is a conservative application limit, not a claim about the provider's full limit. They expose no seed, arbitrary URL, reference-video, first/last-frame pair, audio option, webhook, batch count, or other advanced parameter. Resolution is fixed per adapter. Veo audio is always on; Ark/Vidu explicitly disable it. MiniMax uses the selected model's default audio behavior.
@@ -299,7 +387,7 @@ The application does not impose a generation-count limit. Legacy count environme
 
 ### Shared live-adapter safeguards
 
-`live-common.mjs` provides fixed-origin authenticated JSON requests, approved local image reads, PNG/JPEG byte/dimension parsing, ten-second success/error/in-flight polling cache, and atomic MP4 downloads for Ark, Veo, MiniMax and Vidu. No SDK or hidden POST retry wrapper is used. Network loss, abort, HTTP 408/5xx, redirects/conflict, unreadable JSON, and successful create responses without valid task identities remain uncertain. Explicit request/auth/billing/quota rejection HTTP codes are failed safely. Provider bodies, failure reasons, signed URLs and credentials are not returned to clients. Known-task GET failures never authorize a new generation.
+`live-common.ts` provides fixed-origin authenticated transport, approved local image reads, PNG/JPEG byte/dimension parsing, ten-second success/error/in-flight polling cache, and atomic MP4 downloads for Ark, Veo, MiniMax and Vidu. Ark, Veo and MiniMax use official SDK protocol builders over that transport; Vidu retains its REST implementation. SDK automatic retries are disabled, and no hidden POST retry wrapper is used. Network loss, abort, HTTP 408/5xx, redirects/conflict, unreadable JSON, and successful create responses without valid task identities remain uncertain. Explicit request/auth/billing/quota rejection HTTP codes are failed safely. Provider bodies, failure reasons, signed URLs and credentials are not returned to clients. Known-task GET failures never authorize a new generation.
 
 Only managed files resolving beneath `root` are read; checksum approval is checked before reading, actual checksum/signature/dimensions before transmission. Inputs are locally limited to 10 MiB for Ark/Veo/MiniMax and less than 10,000,000 bytes for Vidu. There is no standalone upload POST. Reference asset URLs are never fetched.
 
@@ -335,7 +423,7 @@ Scenarios:
 
 The adapter targets `gen4_turbo`, using `POST /v1/image_to_video`, then `GET /v1/tasks/{id}`. It maps UI 9:16 to provider `720:1280`, accepts one first-frame image and optional unsigned 32-bit `seed`, and validates duration as an integer 2–10 seconds. Other supported adapter ratio labels map to the provider's documented resolutions. The current machine-readable OpenAPI is the source of truth; older Runway billing documentation still describes 5/10-second choices. [Official OpenAPI](https://docs.dev.runwayml.com/openapi.json)
 
-Requests use the fixed `https://api.dev.runwayml.com` origin, Bearer authentication and `X-Runway-Version: 2024-11-06`. There is no configurable request-supplied API base, SDK retry wrapper, automatic POST retry, or undocumented idempotency header. [Official getting-started guide](https://docs.dev.runwayml.com/guides/using-the-api/)
+The official `@runwayml/sdk@4.22.0` builds create and task-query requests using the fixed `https://api.dev.runwayml.com` origin, Bearer authentication and `X-Runway-Version: 2024-11-06`. There is no configurable request-supplied API base, automatic POST retry, or undocumented idempotency header; SDK retries are explicitly disabled. [Official getting-started guide](https://docs.dev.runwayml.com/guides/using-the-api/)
 
 `PENDING`, `THROTTLED`, and `RUNNING` map to running. `SUCCEEDED`, `FAILED`, and `CANCELLED` map to their application outcomes. Status reads are cached for five seconds. No documented create-request-ID lookup is assumed; `reconcile(requestId)` returns null and a missing provider ID remains unresolved. Raw provider error bodies and failure text are not returned to clients. [Official task interface](https://github.com/runwayml/sdk-node/blob/main/src/resources/tasks.ts)
 
@@ -388,7 +476,7 @@ The same bundled approval is required independently for each additional provider
 
 ## Ark Seedance 2.5
 
-The mainland-China Ark adapter uses the fixed `https://ark.cn-beijing.volces.com/api/v3` origin with Bearer `ARK_API_KEY`, `POST /contents/generations/tasks`, and `GET /contents/generations/tasks/{id}`. The create body contains the exact model, a text content item, optional inline PNG/JPEG `image_url` with `role: first_frame`, duration, `resolution: 720p`, `output_format: mp4` and `generate_audio: false`. Text requests send the selected `ratio`. Image requests must send `ratio: adaptive`, so the adapter verifies both snapshot metadata and actual image bytes are 300–6000 pixels per side and exactly match the selected ratio. It does not silently stretch or crop the image. [Official create API](https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh), [Seedance 2.5](https://docs.volcengine.com/docs/ark/seedance-2-5?lang=zh).
+The mainland-China Ark adapter uses official `@volcengine/ark-runtime@1.0.12` against the fixed `https://ark.cn-beijing.volces.com/api/v3` origin with Bearer `ARK_API_KEY`, `POST /contents/generations/tasks`, and `GET /contents/generations/tasks/{id}`. The SDK receives the exact model, a text content item, optional inline PNG/JPEG `image_url` with `role: first_frame`, duration, `resolution: 720p`, `output_format: mp4` and `generate_audio: false`; its injected Axios transport keeps protocol serialization inside the SDK and dispatch inside the application. Text requests send the selected `ratio`. Image requests must send `ratio: adaptive`, so the adapter verifies both snapshot metadata and actual image bytes are 300–6000 pixels per side and exactly match the selected ratio. It does not silently stretch or crop the image. Existing explicit first/last-frame pairs and subject-reference mappings remain unchanged. [Official create API](https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh), [Seedance 2.5](https://docs.volcengine.com/docs/ark/seedance-2-5?lang=zh).
 
 `queued`/`running` map to running; `succeeded` to succeeded; `failed`/`cancelled`/`expired` to failed, with sanitized outcome codes. Output is `content.video_url`. Tasks are retained seven days; output links are documented as valid for 24 hours. Seedance 2.5 also documents a download-count limit, so successful downloads are stored locally. Default trusted example hosts are `ark-content-generation-cn-beijing.tos-cn-beijing.volces.com` and `ark-acg-cn-beijing.tos-cn-beijing.volces.com`; these are verified examples, not an exhaustive future CDN list. [Official task retrieval](https://docs.volcengine.com/docs/ark/get-video-generation-task-api?lang=zh).
 
@@ -396,7 +484,7 @@ No configurable seed is exposed: current create documentation restricts that req
 
 ## Gemini Veo 3.1 preview
 
-This adapter targets the **Gemini Developer API**, not Vertex AI. It uses `GEMINI_API_KEY` in `x-goog-api-key` against `https://generativelanguage.googleapis.com/v1beta`. Create is `POST /models/veo-3.1-generate-preview:predictLongRunning`; the body contains one `instances` element with prompt and optional `image: {bytesBase64Encoded, mimeType}`, plus `parameters: {aspectRatio, durationSeconds, resolution: 720p, sampleCount: 1}`. Inline bytes are raw base64, without a data-URI prefix. The complete returned `name` is persisted and polled at `GET /v1beta/{name}`. [Official Veo guide](https://ai.google.dev/gemini-api/docs/veo?hl=en), [official REST-field converter](https://raw.githubusercontent.com/googleapis/js-genai/main/src/converters/_models_converters.ts).
+This adapter targets the **Gemini Developer API**, not Vertex AI, using official `@google/genai@2.30.0`. It uses `GEMINI_API_KEY` in `x-goog-api-key` against `https://generativelanguage.googleapis.com/v1beta`. The SDK converts `models.generateVideos()` inputs into `POST /models/veo-3.1-generate-preview:predictLongRunning`; the body contains one `instances` element with prompt and optional `image: {bytesBase64Encoded, mimeType}`, plus `parameters: {aspectRatio, durationSeconds, resolution: 720p, sampleCount: 1}`. Inline bytes are raw base64, without a data-URI prefix. The complete returned `name` is persisted and queried through `operations.getVideosOperation()`. The bridge returns the raw transport response to the existing parser, preserving historical operation shapes even though the SDK's public result converter uses different field names. [Official Veo guide](https://ai.google.dev/gemini-api/docs/veo?hl=en), [official REST-field converter](https://raw.githubusercontent.com/googleapis/js-genai/main/src/converters/_models_converters.ts).
 
 `done: false` or omitted means running. `done: true` plus `error` is terminal failure. Generated video is read from `response.generateVideoResponse.generatedSamples[0].video.uri`. A completed safety-filtered response with no samples is terminal filtered failure; empty completed output is terminal no-output. Raw safety reasons are not exposed. Videos have always-on audio, and documented retention is two days. No `seed`, `generateAudio` or regional `personGeneration` override is sent: Gemini and Vertex options differ, and the selected API's official converter rejects the seed/audio controls. Provider policy/account/region restrictions may still reject a request.
 
@@ -406,9 +494,11 @@ There is no documented client request-ID reconciliation or guaranteed create ide
 
 ## MiniMax H3 V2
 
-The adapter explicitly implements **MiniMax-H3 with V2**, not a guessed Hailuo V1 payload. `MINIMAX_REGION=global` uses `https://api.minimax.io`; `cn` uses `https://api.minimax.cn`, each with its corresponding account's Bearer key. `POST /v2/video_generation` receives `model`, text/optional first-frame content items, `duration`, `resolution: 768P` and `ratio`. It sends a data URI for approved images and `ratio: adaptive` for first-frame input, requiring actual image dimensions of 256–5760 per side and exact requested ratio. Text uses the selected ratio. This subset omits 2K, longer durations, last-frame inputs and unsupported seed settings. [Official V2 create](https://platform.minimax.io/docs/api-reference/video-generation-v2-create), [China V2 create](https://platform.minimax.cn/docs/api-reference/video-generation-v2-create), [official V2 schema](https://platform.minimax.io/docs/api-reference/video/generation/api/v2-video-generation.json).
+The adapter implements **MiniMax-H3 V2** through official `mmx-cli/sdk@1.0.28` (`mmx-cli@1.0.28`). `video.generate({async: true})` runs the SDK's parameter validation and returns immediately after creating the task; there is no REST fallback. `MINIMAX_REGION=global` uses `https://api.minimax.io`; `cn` uses `https://api.minimax.cn`, each with its corresponding account's Bearer key. The SDK builds `POST /v2/video_generation` with `model`, text/optional first-frame content items, the existing 4/8-second `duration`, `resolution: 2K` and `ratio`. It sends a data URI for approved images and `ratio: adaptive` for first-frame input, requiring actual image dimensions of 256–5760 per side and exact requested ratio. Text uses the selected ratio. Longer durations, last-frame inputs and unsupported seed settings remain outside this subset. [Official SDK guide](https://github.com/MiniMax-AI/cli/blob/main/SDK.md), [official V2 create](https://platform.minimax.io/docs/api-reference/video-generation-v2-create), [China V2 create](https://platform.minimax.cn/docs/api-reference/video-generation-v2-create).
 
-Create returns string `task_id`; `GET /v2/query/video_generation/{task_id}` returns `task.id`, `task.status` and successful `task.content.url`. Queued/running, succeeded, failed/cancelled map to the shared lifecycle. Query retention is seven days. Signed output URLs can expire; a failed download invalidates the cache for a fresh query. Official example output hosts `cdn.hailuoai.com` and `video-product.cdn.minimax.io` are trusted by default, with no Bearer header on downloads. [Official V2 query](https://platform.minimax.io/docs/api-reference/video-generation-v2-query).
+`768P` remains present only in historical configurations, task bindings and snapshots. It is not silently replaced with `2K`: new submissions or retries retaining that old resolution fail before dispatch. Accepted historical tasks still use their original ID/credentials for queries and downloads, and their actual output resolution remains intact. The bridge instantiates the SDK only during an operation and replaces its derived CLI configuration before calling the protected request seam; local CLI credentials, OAuth and environment defaults cannot retarget a frozen task.
+
+Create returns string `task_id`; SDK `video.getTask()` builds `GET /v2/query/video_generation/{task_id}`. The bridge preserves the original raw wrapper with `task.id`, `task.status` and successful `task.content.url` for existing parsers and historical recovery. Queued/running, succeeded, failed/cancelled map to the shared lifecycle. Query retention is seven days. Signed output URLs can expire; a failed download invalidates the cache for a fresh query. Official example output hosts `cdn.hailuoai.com` and `video-product.cdn.minimax.io` are trusted by default, with no Bearer header on downloads. [Official V2 query](https://platform.minimax.io/docs/api-reference/video-generation-v2-query).
 
 Cancellation stays local because the documented DELETE endpoint also deletes succeeded/failed records; a preceding status check cannot remove that race. V2 real HTTP errors are used instead of incorrectly treating the legacy V1 `base_resp` wrapper as this protocol. No undocumented idempotency/reconciliation is claimed. [Official V2 delete](https://platform.minimax.io/docs/api-reference/video-generation-v2-delete).
 
@@ -423,5 +513,6 @@ The narrow adapter omits seed because the reviewed docs did not establish an exa
 ## Explicit exclusions and remaining verification
 
 OpenAI Sora is not added: its API shutdown date was September 24, 2026, before this implementation review. Model names copied from older examples are not evidence of a working endpoint. [Official OpenAI deprecations](https://platform.openai.com/docs/deprecations).
+The compatible-service protocol reuses the official OpenAI SDK without adding a direct OpenAI Sora integration or certifying any particular service/model.
 
 Real-provider smoke tests remain unrun for all five real adapters. A future authorized check must confirm the exact regional account/model, actual media acceptance, task lifecycle, CDN/auth behavior, decoded dimensions/duration/audio, credit charge and output quality. Vidu additionally needs independent evidence for the precise production CDN host before enabling any paid request. Offline contract tests do not remove these blockers.

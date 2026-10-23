@@ -60,7 +60,15 @@ async function collectLicenses(packageFile: string): Promise<void> {
   if (!metadata.name.startsWith('@mioon/')) {
     const files = (await readdir(directory)).filter(name => /^(license|licence|copying|notice)([.-]|$)/i.test(name));
     for (const file of files) await cp(path.join(directory, file), path.join(output, 'licenses', `${metadata.name.replaceAll('/', '-')}-${file}`));
-    notices.push(`- ${key}: ${metadata.license || 'See bundled notices'}${files.length ? ` (${files.join(', ')})` : ''}`);
+    if (metadata.name === 'mmx-cli' && metadata.version === '1.0.28' && !metadata.license && !files.length) {
+      // This published SDK declares MIT in README but omits LICENSE and the
+      // manifest field. Preserve that evidence without inventing license text.
+      const readme = await readFile(path.join(directory, 'README.md'), 'utf8');
+      if (!/^## License\s+\[MIT\]\(LICENSE\)\s*$/m.test(readme)) throw new Error('mmx-cli upstream license declaration changed');
+      const notice = 'mmx-cli-LICENSE-DECLARATION.md';
+      await writeFile(path.join(output, 'licenses', notice), `# ${key} upstream license declaration\n\nSource: https://registry.npmjs.org/mmx-cli/1.0.28 (published README.md)\nRepository: https://github.com/MiniMax-AI/cli\n\nREADME declaration: [MIT](LICENSE).\nThe published package omits the LICENSE text and package.json license field. No full license text was supplied by the publisher.\n`);
+      notices.push(`- ${key}: MIT (upstream README declaration; full license text omitted by publisher; ${notice})`);
+    } else notices.push(`- ${key}: ${metadata.license || 'See bundled notices'}${files.length ? ` (${files.join(', ')})` : ''}`);
   }
   for (const name of Object.keys(metadata.dependencies || {})) {
     let dependency;

@@ -1,7 +1,7 @@
 import { providerDisplayName } from '../apps/web/src/creation-i18n.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultVideoModels, resolveVideoEndpoint, videoBindingCapabilities } from '../packages/contracts/src/video-providers.ts';
+import { defaultVideoModels, resolveVideoEndpoint, videoBindingCapabilities, videoTemplate } from '../packages/contracts/src/video-providers.ts';
 import type { VideoConnectionDescriptor, VideoExecutionBinding } from '../packages/contracts/src/video-providers.ts';
 import { generationSelection, generationParameters, videoConnectionProviders, generationInputIssue, generationProfileSelection, findGenerationProvider } from '../apps/web/src/generation-settings.ts';
 import { execFileSync } from 'node:child_process';
@@ -15,6 +15,19 @@ function descriptor(connectionId = idA): VideoConnectionDescriptor {
     models: models.map(entry => { const binding: VideoExecutionBinding = { version: 1, connectionId, configurationRevision: 3, providerId: 'wan', region: 'cn-beijing', workspaceId: '', endpoint: resolveVideoEndpoint('wan', 'cn-beijing'), credentialRef: '00000000-0000-4000-8000-000000000099', model: entry, outputHosts: ['video.example.com'] }; return { entry, capabilities: videoBindingCapabilities(binding) }; }) };
 }
 const shot = { prompt: 'A quiet sunset', aspectRatio: '16:9', duration: 5, parameters: {}, referenceAssetIds: [] };
+
+test('explicitly applying the MiniMax settings template offers only SDK-supported 2K combinations', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { extractBetween, lenientFunction } = await import('./helpers/eval-source.ts');
+  const source = readFileSync(new URL('../apps/web/src/VideoProviderSettings.tsx', import.meta.url), 'utf8');
+  const template = videoTemplate('minimax-v2'), before = structuredClone(template);
+  let pairs = '', patch: Record<string, unknown> = {};
+  const apply = lenientFunction('setPairs', 'onChange', `${extractBetween(source, '  const changeTemplate =', '  return <article')}; return changeTemplate;`)((value: string) => { pairs = value; }, (value: Record<string, unknown>) => { patch = value; }) as (value: typeof template) => void;
+  apply(template);
+  assert.equal(pairs, '4:2K\n8:2K');
+  assert.deepEqual(patch.durationResolutionMap, [{ duration: [4, 8], resolution: ['2K'] }]);
+  assert.deepEqual(template, before, 'Historical 768P template acceptance remains unchanged');
+});
 
 test('retired Runway choices never fall back to another connection while historical lookup remains available', () => {
   const environment = { id: 'runway', configured: true, status: 'available', models: ['gen4_turbo'] };
