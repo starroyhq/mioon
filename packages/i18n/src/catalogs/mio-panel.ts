@@ -7,6 +7,8 @@ export const mioPanelMessages = {
   "agent.panel.errorSettings.models": {"zh-Hans": "打开模型与服务设置", "zh-Hant": "開啟模型與服務設定", "en": "Open Models and services settings", "ja": "モデルとサービスの設定を開く"},
   "agent.panel.errorSettings.video-tools": {"zh-Hans": "打开视频工具设置", "zh-Hant": "開啟影片工具設定", "en": "Open Video tools settings", "ja": "動画ツール設定を開く"},
   "agent.panel.modifiedAfter": {"zh-Hans": "之后又被你修改过，无法单独撤销", "zh-Hant": "之後又被你修改過，無法單獨復原", "en": "Changed again afterward; cannot undo this change individually", "ja": "その後に変更されているため、個別に取り消せません"},
+  "agent.mark.label": {"zh-Hans": "Mio 修改", "zh-Hant": "Mio 修改", "en": "Edited by Mio", "ja": "Mio が変更"},
+  "agent.mark.open": {"zh-Hans": "Mio 修改，查看这处变化", "zh-Hant": "Mio 修改，查看這處變化", "en": "Edited by Mio. Show this change", "ja": "Mio が変更。この変更を表示"},
   "agent.panel.modifiedAfterKept": {"zh-Hans": "之后又被你修改过", "zh-Hant": "之後又被你修改過", "en": "Changed again afterward", "ja": "その後に変更されています"},
   "agent.panel.undoTitle": {"zh-Hans": "撤销这一轮的 {count} 处变化？", "zh-Hant": "復原這一輪的 {count} 處變化？", "en": "Undo changes from this round ({count})?", "ja": "このラウンドの変更 {count} 件を取り消しますか？"},
   "agent.panel.undoRetained": {"zh-Hans": "{count} 处之后被你修改过，将保留。", "zh-Hant": "{count} 處之後被你修改過，將保留。", "en": "Modified afterward and kept: {count}.", "ja": "その後に変更された {count} 件は保持します。"},

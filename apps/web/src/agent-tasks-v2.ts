@@ -111,7 +111,7 @@ export function agentTaskNewConversationBlock(state:AgentTaskSessionState):'unav
   if(state.backgroundPending||state.project.runs.some(run=>!terminal.has(run.status))||state.rounds.some(item=>!finished(item)))return 'running';
   return null;
 }
-export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', onChange = () => {}, onChangeApplied = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot) => void }) {
+export function createAgentTaskSession({ projectId, client = createAgentTaskClient(), receipts = createAgentTaskReceiptStore(), requestId = () => crypto.randomUUID(), getLocale = () => 'zh-Hans', onChange = () => {}, onChangeApplied = () => {} }: { projectId: string; client?: AgentTaskClient; receipts?: AgentTaskReceiptStore; requestId?: () => string; getLocale?: () => AgentTaskLocale; onChange?: (state: AgentTaskSessionState) => void; onChangeApplied?: (snapshot: AgentTaskSnapshot, landed: readonly string[]) => void }) {
   let authorizationEpoch = 0,selectionOwner:number|null=null;
   let restored:AgentTaskPending|null=null,receiptsBlocked=false;try{restored=receipts.read(projectId);}catch{receiptsBlocked=true;}
   const drafts=new Map<string,{text:string;uploads:AgentTaskUpload[]}>(),unknownRuns=new Set<string>(),backgroundRuns=new Set<string>();let selectionChosen=false;
@@ -140,13 +140,16 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     rememberPendingResults(next);
     if (state.snapshot?.run.id !== next.run.id) after = 0;
     const changed = JSON.stringify(previous?.changes) !== JSON.stringify(next.changes);
+    // Only a change new to a round already on screen was saved while it was watched. A first read of a round
+    // (opening history, reloading, selecting a run) reports none, so old changes are never announced again.
+    const landed = previous ? next.changes.filter(change => change.status === 'applied' && !previous.changes.some(item => item.id === change.id)).map(change => change.id) : [];
     const existing=same?state.rounds:[],rounds=existing.some(item=>item.run.id===next.run.id)?existing.map(item=>item.run.id===next.run.id?next:item):[...existing,next];
     // A first-send receipt assigns the server identity to the unsent draft;
     // keep input typed while that exact request was in flight in its new bucket.
     if(state.selectionKey==='new'&&!state.conversationId){drafts.delete('new');}
     const first=rounds[0]!.run,last=rounds.at(-1)!.run;
     const conversation:AgentTaskConversation={id,projectId,title:(same?state.conversation?.title:undefined)??conversationTitle(first.text),createdAt:first.createdAt,updatedAt:rounds.reduce((value,item)=>item.run.updatedAt>value?item.run.updatedAt:value,last.updatedAt),lastRunId:last.id,lastRunStatus:last.status,changeCount:rounds.reduce((sum,item)=>sum+item.changes.length,0),runCount:rounds.length};
-    selectionChosen=true;publish({ snapshot: rounds.at(-1)!,rounds,conversationId:id,conversation,selectionKey:id,legacy:false, ...(state.project?{project:{...state.project,runs:[next.run,...state.project.runs.filter(run=>run.id!==next.run.id)].slice(0,100)}}:{}) }); if (changed) onChangeApplied(next);
+    selectionChosen=true;publish({ snapshot: rounds.at(-1)!,rounds,conversationId:id,conversation,selectionKey:id,legacy:false, ...(state.project?{project:{...state.project,runs:[next.run,...state.project.runs.filter(run=>run.id!==next.run.id)].slice(0,100)}}:{}) }); if (changed) onChangeApplied(next, landed);
   };
   const detach = () => { stream?.abort(); stream = null; if (retry) clearTimeout(retry); retry = null; };
   function reconnect(owner: number, runId: string) {
