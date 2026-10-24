@@ -4,6 +4,7 @@ import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {createTimelineLoudnessApplyContracts,TIMELINE_LOUDNESS_APPLY_OPERATION,hasTimelineLoudnessApplyNotAppliedProof} from './timeline-loudness-apply.ts';
 import {createTimelineShotSyncContracts,hasTimelineShotSyncNotAppliedProof,TIMELINE_SHOT_SYNC_OPERATIONS} from './timeline-shot-sync.ts';
+import {createTimelineSceneSplitContracts,hasTimelineSceneSplitNotAppliedProof,TIMELINE_SCENE_SPLIT_OPERATION} from './timeline-scene-split.ts';
 import {isTimelineExportRangeInput,isTimelineExportRangeProofInput,hasTimelineExportRangeBoundsProof} from './timeline-export-range.ts';
 import {isTimelineExportAudioOutcome} from './timeline-export-float.ts';
 import {isTimelineDeliveryNameInput} from './timeline-delivery.ts';
@@ -59,7 +60,7 @@ export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update',
   'timeline.clip.replaceSource', 'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.seed',
   'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
-  ...TIMELINE_SUBTITLE_OPERATIONS, TIMELINE_LOUDNESS_APPLY_OPERATION, ...TIMELINE_SHOT_SYNC_OPERATIONS,
+  ...TIMELINE_SUBTITLE_OPERATIONS, TIMELINE_LOUDNESS_APPLY_OPERATION, ...TIMELINE_SHOT_SYNC_OPERATIONS, TIMELINE_SCENE_SPLIT_OPERATION,
 ]);
 export const TIMELINE_RENDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 
@@ -68,10 +69,12 @@ export const TIMELINE_RENDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 // are additionally checked by the backend. No validator edits the supplied data.
 const loudnessApplyContracts=createTimelineLoudnessApplyContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
 const shotSyncContracts=createTimelineShotSyncContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
+const sceneSplitContracts=createTimelineSceneSplitContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
 export function isTimelineMutationResponse(operation: unknown, input: unknown, value: unknown): boolean {
   const request = input as Rec;
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessApplyContracts.isTimelineLoudnessApplyResponse(value,input);
   if((TIMELINE_SHOT_SYNC_OPERATIONS as readonly unknown[]).includes(operation))return shotSyncContracts.isTimelineShotSyncResponse(operation,input,value);
+  if(operation===TIMELINE_SCENE_SPLIT_OPERATION)return sceneSplitContracts.isTimelineSceneSplitResponse(value,input);
   if(operation==='timeline.format.set') return (timelineFormatSchemas as Record<string, z.ZodTypeAny>)['timeline.format.set'].safeParse(input).success &&
     isTimelineRecord(value,{projectId:request.projectId}) && (value as Rec).revision===((request.expectedRevision as number)+1) &&
     timelineOutputPreset(value)?.id===request.presetId && (value as TimelineRecord).clips.length===0 && (value as Rec).durationFrames===0;
@@ -213,6 +216,7 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
     ['mutationOutcome','operation','projectId','requestId'].every(key=>Object.hasOwn(details,key))&&
     details.mutationOutcome==='not_applied'&&details.operation===operation&&details.projectId===request.projectId&&details.requestId===request.requestId);
   if((TIMELINE_SHOT_SYNC_OPERATIONS as readonly unknown[]).includes(operation))return hasTimelineShotSyncNotAppliedProof(failure,input,operation);
+  if(operation===TIMELINE_SCENE_SPLIT_OPERATION)return hasTimelineSceneSplitNotAppliedProof(failure,input,operation);
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return hasTimelineLoudnessApplyNotAppliedProof(failure,input);
   if(failure?.code==='AUDIO_ROLE_CLIP_UNSUPPORTED')return Boolean(baseInput(input)&&
     (operation==='timeline.clip.add'&&operationInput(input,['trackId','assetId','startFrame','durationFrames'],['name','sourceInFrame','rect','gain','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope'])&&uuid(request.trackId)&&uuid(request.assetId)&&Object.hasOwn(request,'audioRole')&&isClipAudioRole(request.audioRole)||

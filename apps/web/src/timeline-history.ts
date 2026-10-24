@@ -15,6 +15,7 @@ const operationMessages: Readonly<Record<string, DisplayMessage>> = {
   'timeline.seed': message('timeline.view.seed'),
   'timeline.clip.refreshSources': message('timeline.history.sourcesRefresh'),
   'timeline.shots.append': message('timeline.history.shotsAppend'),
+  'timeline.clip.splitAtScenes': message('timeline.history.splitAtScenes'),
 };
 interface HistoryEntryView {id?: unknown; operation?: unknown}
 interface HistoryView {

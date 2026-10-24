@@ -1,9 +1,9 @@
-import {FRAME_LIMITS, SOURCE_RANGE_FPS} from '@mioon/contracts';
+import {FRAME_LIMITS, SOURCE_RANGE_FPS, SCENE_DETECTION_PROFILE_ID, SCENE_DETECTION_MODES, SCENE_DETECTION_DEFAULTS as DEFAULTS, SCENE_MIN_SHOT_SECONDS} from '@mioon/contracts';
 
-// Names the scoring and selection rules below. Change it whenever they change,
-// so stored results can be told apart from results of another version.
-export const SCENE_DETECTION_PROFILE_ID = 'scene-cuts-v1';
-export const SCENE_DETECTION_MODES = Object.freeze(['adaptive', 'fixed'] as const);
+// The profile ID names the scoring and selection rules below; change it in the
+// contracts whenever they change, so stored results can be told apart. The
+// modes, defaults and shot bounds are the stored task's option contract.
+export {SCENE_DETECTION_PROFILE_ID, SCENE_DETECTION_MODES};
 export type SceneDetectionMode = typeof SCENE_DETECTION_MODES[number];
 export interface SceneDetectionOptions {
   readonly mode: SceneDetectionMode;
@@ -11,7 +11,7 @@ export interface SceneDetectionOptions {
   readonly sensitivity: number;
   readonly minShotSeconds: number;
 }
-export const SCENE_DETECTION_DEFAULTS: SceneDetectionOptions = Object.freeze({mode: 'adaptive', sensitivity: 60, minShotSeconds: 0.6});
+export const SCENE_DETECTION_DEFAULTS: SceneDetectionOptions = DEFAULTS;
 export const SCENE_DETECTION_LIMITS = Object.freeze({
   // Frames are analysed on the editing grid, so a cut frame is directly a
   // source-range frame: the first frame at or after N/30 starts the new shot.
@@ -19,7 +19,7 @@ export const SCENE_DETECTION_LIMITS = Object.freeze({
   maxEdge: 256,
   // Frame capture's limit, so every segment's keyframe can be captured.
   maxDurationSeconds: FRAME_LIMITS.sourceDuration,
-  minShotSeconds: Object.freeze([0.1, 10] as const),
+  minShotSeconds: SCENE_MIN_SHOT_SECONDS,
   adaptiveWindowFrames: Math.round(1.2 * SOURCE_RANGE_FPS),
   flashFrames: Math.round(0.2 * SOURCE_RANGE_FPS),
 });

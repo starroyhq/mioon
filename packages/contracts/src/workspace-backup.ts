@@ -47,7 +47,7 @@ export const workspaceBackupManifestSchema=z.object({
  databaseSchemaVersion:workspaceBackupSourceSchemaVersion,scope:z.literal('whole_workspace'),
  entries:z.array(workspaceBackupEntrySchema).min(1).max(WORKSPACE_BACKUP_LIMITS.fileCount),inventory:workspaceBackupInventorySchema,
 }).strict().superRefine((value,ctx)=>{
- if(![52,54,56].includes(value.databaseSchemaVersion)&&value.entries.some(entry=>entry.role==='agent_import'))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Managed Agent inputs require an exact schema52, schema54 or schema56 backup source.'});
+ if(![52,54,56,58].includes(value.databaseSchemaVersion)&&value.entries.some(entry=>entry.role==='agent_import'))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Managed Agent inputs require an exact schema52, schema54, schema56 or schema58 backup source.'});
  let bytes=0;const paths=new Set();let databases=0,previous='';
  for(const entry of value.entries){bytes+=entry.bytes;if(paths.has(entry.path)||entry.path<=previous)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Entries must have unique, lexically sorted paths.'});paths.add(entry.path);previous=entry.path;if(entry.role==='database')databases++;}
  if(databases!==1||bytes>WORKSPACE_BACKUP_LIMITS.totalBytes)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Exactly one database and a bounded total payload are required.'});

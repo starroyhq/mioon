@@ -13,6 +13,7 @@ import {readOwnedTimelineAsset} from './timeline-sources.ts';
 import {createWaveformHistoryReaders} from './waveforms-history.ts';
 import {createImageHistoryReaders} from './images/history.ts';
 import {createFrameHistoryReaders} from './frames-history.ts';
+import {createSceneHistoryReaders} from './scene-history.ts';
 import {AppError,parse,publicValue,TIMELINE_MUTATION_OPERATIONS,REFERENCE_MUTATION_OPERATIONS,SUBJECT_MUTATION_OPERATIONS,LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {getWorkspaceRestoreContext,isRestoredRecordHeld} from './workspace-restore-schema.ts';
 import {RESTORE_READ_OPERATIONS,RESTORE_LOCAL_OPERATIONS,RESTORE_DENIED_OPERATIONS,refuseRestoredOperation,workspaceRestoreError} from './workspace-restore-policy.ts';
@@ -91,12 +92,13 @@ export function createRestoredReadServices(store: RestoreReadStore,{signal}: Res
   ...createWaveformHistoryReaders(store).handlers,
   ...createImageHistoryReaders(store).handlers,
   ...createFrameHistoryReaders(store).handlers,
+  ...createSceneHistoryReaders(store).handlers,
   'workspace.restore.inspect':(input: RestoreReadInput)=>({restored:true,...(input.includeVolumeEnvelopeCapability?{volumeEnvelopeCapability:readTimelineVolumeEnvelopeCapability(db)}:{}),...(input.includeAudioRoleCapability?{audioRoleCapability:readTimelineAudioRoleCapability(db)}:{}),schemaVersion:restored.schemaVersion,workspaceOrigin:restored.workspaceOrigin,restorationId:restored.restorationId,
    profile:restored.profile,createdAt:restored.createdAt,
    source:{backupId:restored.sourceBackupId,schemaVersion:restored.sourceSchema,manifestHash:restored.manifestHash,dbHash:restored.sourceDbHash},
    heldCounts:Object.entries(restored.heldCounts as Record<string,unknown>).map(([kind,count])=>({kind,count})),
-   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57].includes(restored.schemaVersion)
-    ?{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}:lutRestorePolicy(operation,[53,55,57].includes(restored.schemaVersion)?51:restored.schemaVersion)),
+   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57,59].includes(restored.schemaVersion)
+    ?{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}:lutRestorePolicy(operation,[53,55,57,59].includes(restored.schemaVersion)?51:restored.schemaVersion)),
     ...RESTORE_DENIED_OPERATIONS.map(operation=>({operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}))],
    backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}}),
   ...inspection.handlers,

@@ -19,6 +19,7 @@ export const RESTORE_READ_OPERATIONS = Object.freeze([
  'shot.inspect', 'timeline.inspect', 'asset.range.get', 'asset.disposition.list',
  'subject.list', 'subject.version.list', 'subject.binding.list','asset.waveform.get',
  'image.request.get','image.task.get','image.task.list','image.group.get','image.group.list','image.version.list','frame.request.get','frame.task.get','frame.task.list',
+ 'scene.request.get','scene.task.get','scene.task.list','scene.result.get',
 ]);
 export const RESTORE_LOCAL_OPERATIONS = Object.freeze([
  'timeline.clip.rippleRemove',
@@ -32,8 +33,8 @@ export const RESTORE_DENIED_OPERATIONS = Object.freeze([
  'agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','project.rename','project.delete',
  'asset.annotation.set', 'lut.import',
  'timeline.audioPreview.continuousPlan','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect',
- 'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','video.connection.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
- 'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
+ 'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','video.connection.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
+ 'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','scene.detect','scene.task.cancel','scene.cuts.save','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
 ]);
 const messages: Readonly<Record<RestoreErrorCode, string>>=Object.freeze({
  RESTORE_OPERATION_UNAVAILABLE:'This operation is unavailable in this restored workspace.',
@@ -68,7 +69,7 @@ const targets: Readonly<Record<string, readonly [string,...string[]]>>=Object.fr
 export function refuseRestoredOperation(store: RestoreStore,operation: string,input: Record<string, unknown>|undefined): void {
  const context=getWorkspaceRestoreContext(store);
  if(!context)return;
- if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57].includes(context.schemaVersion))throw workspaceRestoreError();
+ if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57,59].includes(context.schemaVersion))throw workspaceRestoreError();
  if(RESTORE_LOCAL_OPERATIONS.includes(operation)||operation==='timeline.get'||operation==='workspace.preferences.put'){
   assertRestoreInvocation(store,operation,input);
   assertRestoreRequestVacant(store,operation,input);

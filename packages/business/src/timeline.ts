@@ -23,6 +23,9 @@ export {TIMELINE_LIMITS} from './timeline-inputs.ts';
 import {readTimelinePreflightSnapshot} from './timeline-sources.ts';
 import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
 import {appendTimelineShots,refreshTimelineSources} from './timeline-shot-sync.ts';
+import {splitTimelineAtScenes} from './timeline-scene-split.ts';
+import type {TimelineSceneSplitPlan} from './timeline-scene-split.ts';
+import {readSceneSplitCuts} from './scene-history.ts';
 import type {TimelineShotAppendPlan,TimelineSourceRefreshPlan} from './timeline-shot-sync.ts';
 import {createTimelineRecoveryBoundary as legacyRecoveryBoundary,readTimelineReceipt,rejectTimelineMutation,invalidTimeline,admitTimelineImageResponse as legacyAdmitImageResponse,TIMELINE_RESPONSE_BYTES} from './timeline-recovery.ts';
 import type {DatabaseSync} from 'node:sqlite';
@@ -227,6 +230,31 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    return saveResponse(operation,input,requestHash,respond?respond(timeline):timeline,boundary);
   },specialBoundary);
  }
+ // One split edit, shared by the single split and the scene split: the left
+ // clip is shortened in place and the right clip is inserted after it.
+ function splitClip(timeline: TimelineRecord,left: TimelineClipRecord,atFrame: number,boundary: TimelineRecoveryBoundary): TimelineClipRecord{
+  const end=left.startFrame+left.durationFrames;
+  if(atFrame<=left.startFrame||atFrame>=end)
+   throw new AppError('SPLIT_BOUNDS','分割点必须位于所选片段内部，不能位于起止帧',400,{clipId:left.id,startFrame:left.startFrame,endFrame:end,atFrame});
+  const source=boundary.asset(left.assetId),leftDuration=atFrame-left.startFrame;
+  const fadeInFrames=left.fadeInFrames??0,fadeOutFrames=left.fadeOutFrames??0;
+  if(leftDuration<fadeInFrames||leftDuration>left.durationFrames-fadeOutFrames)
+   throw new AppError('SPLIT_FADE_BOUNDS','分割点不能位于音频淡入或淡出内部；可在淡入结束或淡出开始帧分割',400,{clipId:left.id,atFrame,minFrame:left.startFrame+fadeInFrames,maxFrame:end-fadeOutFrames});
+  // A still has no advancing source clock. Moving media keeps contiguous
+  // source ranges; copying the complete clip also preserves frozen references.
+  let envelopes;try{envelopes=splitVolumeEnvelopeFields(left as never,leftDuration as never);}
+  catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
+  const right={...clone(left),...(envelopes as [unknown,unknown])[1] as object,id:randomUUID(),startFrame:atFrame,durationFrames:end-atFrame,
+   sourceInFrame:(source.mimeType.startsWith('image/')?0:left.sourceInFrame+leftDuration) as number} as TimelineClipRecord;
+  // Preserve the original envelope at its two outer edges. Do not introduce
+  // keys into legacy clips or make an omitted zero explicit at an inner edge.
+  if(Object.hasOwn(left,'fadeInFrames'))right.fadeInFrames=0;
+  if(Object.hasOwn(left,'fadeOutFrames'))left.fadeOutFrames=0;
+  Object.assign(left,(envelopes as [unknown,unknown])[0] as object);
+  left.durationFrames=leftDuration;
+  timeline.clips.splice(timeline.clips.indexOf(left)+1,0,right);
+  return right;
+ }
  function updateClip(input: TimelineMutationInput,boundary?: TimelineRecoveryBoundary): unknown{
   return mutate('timeline.clip.update',input,timeline=>{
    const target=clip(timeline,input.clipId as string);let envelope;
@@ -321,27 +349,15 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   }),
   'timeline.clip.rippleRemove':(input: TimelineMutationInput)=>mutate('timeline.clip.rippleRemove',input,timeline=>removeTimelineClipWithRipple(timeline,input.clipId as string)),
   'timeline.clip.split':(input: TimelineMutationInput)=>mutate('timeline.clip.split',input,(timeline,boundary)=>{
-   const left=clip(timeline,input.clipId as string),end=left.startFrame+left.durationFrames;
-   if((input.atFrame as number)<=left.startFrame||(input.atFrame as number)>=end)
-    throw new AppError('SPLIT_BOUNDS','分割点必须位于所选片段内部，不能位于起止帧',400,{clipId:left.id,startFrame:left.startFrame,endFrame:end,atFrame:input.atFrame});
-   const source=boundary.asset(left.assetId),leftDuration=(input.atFrame as number)-left.startFrame;
-   const fadeInFrames=left.fadeInFrames??0,fadeOutFrames=left.fadeOutFrames??0;
-   if(leftDuration<fadeInFrames||leftDuration>left.durationFrames-fadeOutFrames)
-    throw new AppError('SPLIT_FADE_BOUNDS','分割点不能位于音频淡入或淡出内部；可在淡入结束或淡出开始帧分割',400,{clipId:left.id,atFrame:input.atFrame,minFrame:left.startFrame+fadeInFrames,maxFrame:end-fadeOutFrames});
-   // A still has no advancing source clock. Moving media keeps contiguous
-   // source ranges; copying the complete clip also preserves frozen references.
-   let envelopes;try{envelopes=splitVolumeEnvelopeFields(left as never,leftDuration as never);}
-   catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
-   const right={...clone(left),...(envelopes as [unknown,unknown])[1] as object,id:randomUUID(),startFrame:input.atFrame as number,durationFrames:end-(input.atFrame as number),
-    sourceInFrame:(source.mimeType.startsWith('image/')?0:left.sourceInFrame+leftDuration) as number} as TimelineClipRecord;
-   // Preserve the original envelope at its two outer edges. Do not introduce
-   // keys into legacy clips or make an omitted zero explicit at an inner edge.
-   if(Object.hasOwn(left,'fadeInFrames'))right.fadeInFrames=0;
-   if(Object.hasOwn(left,'fadeOutFrames'))left.fadeOutFrames=0;
-   Object.assign(left,(envelopes as [unknown,unknown])[0] as object);
-   left.durationFrames=leftDuration;
-   timeline.clips.splice(timeline.clips.indexOf(left)+1,0,right);
+   splitClip(timeline,clip(timeline,input.clipId as string),input.atFrame as number,boundary);
   }),
+  'timeline.clip.splitAtScenes':(input: TimelineMutationInput)=>{
+   let plan: TimelineSceneSplitPlan|undefined;
+   return mutate('timeline.clip.splitAtScenes',input,(timeline,boundary)=>{
+    const cuts=readSceneSplitCuts(db,input.projectId,input.assetId as string,input.resultId as string);
+    plan=splitTimelineAtScenes(timeline,input.assetId as string,cuts,(piece,atFrame)=>splitClip(timeline,piece,atFrame,boundary));
+   },undefined,timeline=>({operation:'timeline.clip.splitAtScenes',requestId:input.requestId,timeline,...plan}));
+  },
   'timeline.seed':(input: TimelineMutationInput)=>mutate('timeline.seed',input,(timeline,boundary)=>{
    if(timeline.clips.length)throw new AppError('TIMELINE_NOT_EMPTY','只有空时间线可以从镜头顺序导入',409);
    const shots=boundary.shots();

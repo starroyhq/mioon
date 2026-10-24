@@ -48,6 +48,8 @@ export {TIMELINE_RIPPLE_REMOVE_OPERATION,timelineRippleRemoveSchema,isTimelineRi
 export * from './timeline-format.ts';
 import {frameSchemas} from './frame-extraction.ts';
 export * from './frame-extraction.ts';
+import {sceneSchemas,sceneDescriptions} from './scene-tasks.ts';
+export * from './scene-tasks.ts';
 import {imageSchemas} from './images.ts';
 export * from './images.ts';
 import {imageReviewSchemas} from './image-reviews.ts';
@@ -78,6 +80,8 @@ import {timelineLoudnessApplySchemas} from './timeline-loudness-apply.ts';
 export * from './timeline-loudness-apply.ts';
 import {timelineShotSyncSchemas,timelineShotSyncDescriptions} from './timeline-shot-sync.ts';
 export * from './timeline-shot-sync.ts';
+import {timelineSceneSplitSchemas,timelineSceneSplitDescriptions} from './timeline-scene-split.ts';
+export * from './timeline-scene-split.ts';
 import {timelineClipLoudnessSchemas} from './timeline-clip-loudness.ts';
 import {timelineMixLoudnessSchemas} from './timeline-mix-loudness.ts';
 export * from './timeline-mix-loudness.ts';
@@ -137,6 +141,7 @@ export const schemas={
 ...timelineFormatSchemas,
 ...timelineSubtitleSchemas,
 ...frameSchemas,
+...sceneSchemas,
 ...imageSchemas,
 ...imageReviewSchemas,
 ...comfyRemoteSchemas,
@@ -153,6 +158,7 @@ export const schemas={
 ...timelineClipLoudnessSchemas,
 ...timelineLoudnessApplySchemas,
 ...timelineShotSyncSchemas,
+...timelineSceneSplitSchemas,
 ...audioPreviewSchemas,
 ...continuousAudioSchemas,
 ...timelineExportCapabilitySchemas,
@@ -229,6 +235,8 @@ Object.assign(descriptions,{
  ...lookPackInspectDescriptions,
  ...timelineColourDescriptions,
  ...timelineShotSyncDescriptions,
+ ...timelineSceneSplitDescriptions,
+ ...sceneDescriptions,
  'timeline.audioPreview.plan':'只读规划当前已保存时间线最多20秒的声音试听区间；绑定项目、版本与素材哈希，返回有界PCM准备清单。此调用不解码、不播放、不初始化时间线、不写入；PCM另由固定已认证本地资源显式有界解码，不能作为完整成片或响度/真峰值检查。',
  'timeline.audioPreview.continuousPlan':'只读规划已保存时间线的连续音频预览会话；绑定完整版本与源身份，固定双秒块及全会话96MiB额度。不解码、不播放、不写入；显式播放后由固定认证本地资源按需准备完整多轨混音。不是内置Agent工具。',
  'timeline.subtitle.add':'按时间线版本添加一条手动字幕；固定字体排版，30fps时间，返回完整已保存时间线',
