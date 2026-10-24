@@ -8,12 +8,19 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {discoverTests} from '../../scripts/lib/local-tooling.ts';
 import {TIMINGS_FILE, parseTestTimings} from './test-shard.ts';
 
-/** New measurements replace recorded ones; files the run did not measure keep theirs; deleted tests drop out. */
+const median = (values: readonly number[]): number => {
+  const sorted = [...values].sort((a, b) => a - b), middle = Math.floor(sorted.length / 2);
+  return Math.round((sorted.length % 2 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2) * 100) / 100;
+};
+/**
+ * A file's time is the median of its recorded time and every new measurement, so one noisy run (files share
+ * CPUs) cannot swing the partition. Files no run measured keep theirs; deleted tests drop out.
+ */
 export function mergeTestTimings(previous: string, reports: readonly string[], catalog: readonly string[]): string {
-  const files = new Map(parseTestTimings(previous));
-  for (const report of reports) for (const [file, seconds] of parseTestTimings(report)) files.set(file, seconds);
+  const samples = new Map([...parseTestTimings(previous)].map(([file, seconds]) => [file, [seconds]]));
+  for (const report of reports) for (const [file, seconds] of parseTestTimings(report)) samples.set(file, [...samples.get(file) ?? [], seconds]);
   const known = new Set(catalog);
-  const kept = [...files].filter(([file]) => known.has(file)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  const kept = [...samples].filter(([file]) => known.has(file)).map(([file, values]) => [file, median(values)] as const).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
   if (kept.length === 0) throw new Error('NO_TEST_TIMINGS');
   return `${JSON.stringify({schema: 1, unit: 'seconds', files: Object.fromEntries(kept)}, null, 1)}\n`;
 }
@@ -27,7 +34,7 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
   const target = path.join(root, TIMINGS_FILE), catalog = await discoverTests(root, {suite: 'full', platform: 'linux'});
   const merged = mergeTestTimings(await readFile(target, 'utf8'), reports, catalog);
   await writeFile(target, merged);
-  console.log(`Updated ${TIMINGS_FILE} from ${found.length} shard timing files.`);
+  console.log(`Updated ${TIMINGS_FILE} from ${found.length} timing files.`);
   return 0;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {

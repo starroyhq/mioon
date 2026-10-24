@@ -202,14 +202,16 @@ test('the committed timing table parses and covers most of the full catalog', as
   const full = await discoverTests(root, {suite: 'full', platform: 'linux'});
   assert.ok(full.filter(file => timings.has(file)).length >= full.length * 0.9, 'refresh the table with .github/scripts/test-timings.ts');
 });
-test('a CI run\'s shard timings refresh the table without losing unmeasured or keeping deleted files', () => {
+test('CI timings refresh the table by median without losing unmeasured or keeping deleted files', () => {
   const previous = table({'tests/a.test.ts': 5, 'tests/b.test.ts': 6, 'tests/gone.test.ts': 7});
-  const merged = mergeTestTimings(previous, [table({'tests/a.test.ts': 4}), table({'tests/c.test.mjs': 2.5})], ['tests/a.test.ts', 'tests/b.test.ts', 'tests/c.test.mjs']);
-  assert.equal(merged, `${JSON.stringify({schema: 1, unit: 'seconds', files: {'tests/a.test.ts': 4, 'tests/b.test.ts': 6, 'tests/c.test.mjs': 2.5}}, null, 1)}\n`);
+  const merged = mergeTestTimings(previous, [table({'tests/a.test.ts': 4}), table({'tests/c.test.mjs': 2.5}), table({'tests/a.test.ts': 30})], ['tests/a.test.ts', 'tests/b.test.ts', 'tests/c.test.mjs']);
+  // a: median of 5, 4 and one noisy 30 is 5; b keeps its time; c is new; the deleted file drops out.
+  assert.equal(merged, `${JSON.stringify({schema: 1, unit: 'seconds', files: {'tests/a.test.ts': 5, 'tests/b.test.ts': 6, 'tests/c.test.mjs': 2.5}}, null, 1)}\n`);
+  assert.equal(mergeTestTimings(table({'tests/a.test.ts': 4}), [table({'tests/a.test.ts': 5})], ['tests/a.test.ts']), `${JSON.stringify({schema: 1, unit: 'seconds', files: {'tests/a.test.ts': 4.5}}, null, 1)}\n`);
   assert.throws(() => mergeTestTimings(table({}), [table({'tests/gone.test.ts': 1})], ['tests/a.test.ts']), /NO_TEST_TIMINGS/);
   assert.throws(() => mergeTestTimings(previous, ['{broken'], ['tests/a.test.ts']), /INVALID_TEST_TIMINGS/);
 });
-test('exclusive files run alone after the shared ones and weigh their full time', () => {
+test('exclusive files run alone before the shared ones and weigh their full time', () => {
   const [alone] = EXCLUSIVE_TEST_FILES;
   const full = [alone!, 'tests/a.test.ts', 'tests/b.test.ts', 'tests/c.test.ts'];
   const timings = new Map([[alone!, 30], ['tests/a.test.ts', 30], ['tests/b.test.ts', 30], ['tests/c.test.ts', 30]]);
@@ -220,8 +222,8 @@ test('exclusive files run alone after the shared ones and weigh their full time'
   const root = path.resolve('synthetic root'), executable = path.resolve('synthetic-node');
   const commands = shardCommands(root, {shardIndex: 4, files: [alone!, 'tests/a.test.ts'].sort(), exclusiveFiles: [alone!]}, 3, executable);
   assert.deepEqual(commands.map(command => command.args.slice(3)), [
-    ['--concurrency=3', '--reporter=tap', '--timings=artifacts/checks-linux-4/timings.json', '--file=a.test.ts'],
     ['--concurrency=1', '--reporter=tap', '--timings=artifacts/checks-linux-4/timings-alone.json', `--file=${alone!.slice('tests/'.length)}`],
+    ['--concurrency=3', '--reporter=tap', '--timings=artifacts/checks-linux-4/timings.json', '--file=a.test.ts'],
   ]);
   assert.equal(shardCommands(root, {shardIndex: 0, files: ['tests/a.test.ts'], exclusiveFiles: []}, 3, executable).length, 1);
   assert.deepEqual([...EXCLUSIVE_TEST_FILES], [...new Set(EXCLUSIVE_TEST_FILES)].sort());

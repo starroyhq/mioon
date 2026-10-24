@@ -24,15 +24,28 @@ export interface ShardReport {
 }
 export const TIMINGS_FILE = '.github/test-timings.json';
 /**
- * Test files whose own deadlines fail when they share the runner's CPUs (seen in CI with three files at a time).
- * Each shard runs its share of these alone, after its other files. Add a file only with evidence from a CI run.
+ * Test files that must not share the runner's CPUs; each shard runs its share of them alone, before its other
+ * files. With three files at a time a file runs about 1.5 times slower on average and up to about twice as slow,
+ * so a test needs real headroom against its own deadline. The list holds files with a test whose serial CI time
+ * (main, 2026-10-23) was at least a third of its declared timeout, shown as that share, and files that failed in
+ * CI for another reason when sharing CPUs. Add a file only with such evidence.
  */
 export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
-  'tests/http-file-shutdown.test.mjs', // 20-second shutdown bound timed out
-  'tests/races.test.mjs', // 5-second tests; some take 4.4 s even alone
+  'tests/agent-edit-wire.test.mjs', // 100%
+  'tests/asset-disposition-transports.test.mjs', // 46%
+  'tests/desktop-async-secrets.test.ts', // 40%
+  'tests/export-settings-capabilities.test.ts', // 70%
+  'tests/export-settings-media.test.ts', // 66%; timed out while sharing CPUs
+  'tests/http-file-shutdown.test.mjs', // 83%; timed out while sharing CPUs
+  'tests/inspection-wire.test.mjs', // 35%
+  'tests/mock-renderer-capability-fences.test.mjs', // 61%
+  'tests/races.test.mjs', // 62%; timed out while sharing CPUs
+  'tests/server-worker-shutdown.test.ts', // 67%
   'tests/test-compile-cache.test.ts', // a self-sent SIGTERM must land while the cache handler is installed
-  'tests/timeline-mix-loudness-service-media.test.mjs', // fixed operation budget for a 600-second mix
-  'tests/worker-shutdown.test.mjs', // 7- and 8-second worker stop tests timed out
+  'tests/timeline-history-transports.test.mjs', // 35%
+  'tests/timeline-mix-loudness-service-media.test.mjs', // 69%; fixed operation budget for a 600-second mix
+  'tests/typecheck-runtime.test.mjs', // 50%
+  'tests/worker-shutdown.test.mjs', // 83%; timed out while sharing CPUs
 ]);
 const testPath = /^tests\/[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/;
 function fail(code: string): never {throw new Error(code);}
@@ -125,12 +138,12 @@ export function shardCommand(root: string, files: readonly string[], execPath = 
   return {command: execPath, cwd: root, args: [path.join(root, 'scripts/tooling.ts'), 'test', '--suite=full', `--concurrency=${concurrency}`, '--reporter=tap',
     ...(timings ? [`--timings=${timings}`] : []), ...selected.map(file => `--file=${file.slice('tests/'.length)}`)]};
 }
-/** The shard's shared files `concurrency` at a time, then its exclusive files alone; each phase records timings. */
+/** The shard's exclusive files alone on a quiet runner, then its shared files `concurrency` at a time; each phase records timings. */
 export function shardCommands(root: string, report: Pick<ShardReport, 'files' | 'exclusiveFiles' | 'shardIndex'>, concurrency: number, execPath = process.execPath): CommandSpec[] {
   const directory = `artifacts/checks-linux-${report.shardIndex}`, alone = new Set(report.exclusiveFiles), shared = report.files.filter(file => !alone.has(file));
   return [
-    ...(shared.length ? [shardCommand(root, shared, execPath, {concurrency, timings: `${directory}/timings.json`})] : []),
     ...(alone.size ? [shardCommand(root, report.exclusiveFiles, execPath, {concurrency: 1, timings: `${directory}/timings-alone.json`})] : []),
+    ...(shared.length ? [shardCommand(root, shared, execPath, {concurrency, timings: `${directory}/timings.json`})] : []),
   ];
 }
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<number> {
