@@ -5,12 +5,13 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {discoverTests, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
-import {parseShardArguments, partitionFullTests, shardCommand, shardReport, verifyFullPartition} from '../.github/scripts/test-shard.ts';
+import {parseShardArguments, parseTestTimings, partitionFullTests, shardCommand, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
+import {mergeTestTimings} from '../.github/scripts/test-timings.ts';
 
 const sourceSha = 'a'.repeat(40);
 const files = Array.from({length: 784}, (_, index) => `tests/file-${String(index).padStart(4, '0')}.test.${index % 2 ? 'mjs' : 'ts'}`);
 for (const count of [4, 8]) {
-  test(`${count} shards include every authoritative full test exactly once`, () => {
+  test(`${count} shards without recorded timings include every authoritative full test exactly once, round-robin by name`, () => {
     const shards = partitionFullTests(files, count);
     assert.deepEqual(shards.map(shard => shard.length), Array<number>(count).fill(files.length / count));
     assert.equal(new Set(shards.flat()).size, files.length);
@@ -39,7 +40,10 @@ test('Linux CI matrix and launcher count cover the actual full catalog exactly o
   const indexes = matrix[1]!.split(',').map(value => Number(value.trim())), count = Number(launchers[0]![1]);
   assert.deepEqual(indexes, Array.from({length: count}, (_, index) => index), 'a matrix/count mismatch would silently omit full tests');
   const full = await discoverTests(root, {suite: 'full', platform: 'linux'});
-  verifyFullPartition(full, indexes.map(index => shardReport(full, {index, count}, sourceSha).files));
+  const timingsText = await readFile(path.join(root, TIMINGS_FILE), 'utf8'), timings = parseTestTimings(timingsText);
+  verifyFullPartition(full, indexes.map(index => shardReport(full, {index, count}, sourceSha, timings, timingsText).files));
+  assert.match(quality, /node \.github\/scripts\/test-shard\.ts [^\r\n]*--concurrency=3(?=\s|$)/, 'each 4-vCPU shard runs three isolated files at a time');
+  assert.match(quality, /artifacts\/checks-linux-\$\{\{ matrix\.shard \}\}\/timings\.json/, 'shards upload the timings that refresh the table');
   assert.match(quality, /ref: \$\{\{ inputs\.source_sha \}\}/);
   assert.match(quality, /fetch-depth: 0/);
 });
@@ -134,10 +138,13 @@ test('empty or malformed catalogs and impossible shard counts fail before execut
   for (const count of [0, -1, 1.5, NaN, Infinity, 33]) assert.throws(() => partitionFullTests(files, count), /INVALID_SHARD_COUNT/);
   assert.throws(() => partitionFullTests(files.slice(0, 3), 4), /INCOMPLETE_TEST_PARTITION/);
 });
-test('CLI accepts only a bounded explicit index and count', () => {
-  assert.deepEqual(parseShardArguments(['--index=0', '--count=4']), {index: 0, count: 4});
-  assert.deepEqual(parseShardArguments(['--count=4', '--index=3']), {index: 3, count: 4});
-  assert.deepEqual(parseShardArguments(['--count=8', '--index=7']), {index: 7, count: 8});
+test('CLI accepts only a bounded explicit index, count and per-shard concurrency', () => {
+  assert.deepEqual(parseShardArguments(['--index=0', '--count=4']), {index: 0, count: 4, concurrency: 1});
+  assert.deepEqual(parseShardArguments(['--count=4', '--index=3']), {index: 3, count: 4, concurrency: 1});
+  assert.deepEqual(parseShardArguments(['--count=8', '--index=7', '--concurrency=3']), {index: 7, count: 8, concurrency: 3});
+  for (const args of [['--index=0', '--count=4', '--concurrency=0'], ['--index=0', '--count=4', '--concurrency=5'], ['--index=0', '--count=4', '--concurrency=2', '--concurrency=3']]) {
+    assert.throws(() => parseShardArguments(args), /INVALID_SHARD_(ARGUMENTS|CONCURRENCY)/);
+  }
   for (const args of [[], ['--index=0'], ['--count=4'], ['--index=0', '--count=4', '--index=1'], ['--index=0', '--count=4', '--output=/tmp/private'], ['--index=-1', '--count=4'], ['--index=1.5', '--count=4'], ['--index=01', '--count=4'], ['--index=4', '--count=4'], ['--index=0', '--count=0'], ['--index=0', '--count=33'], ['--index=99999999999999999', '--count=4']]) {
     assert.throws(() => parseShardArguments(args), /INVALID_SHARD_(ARGUMENTS|INDEX|COUNT)/);
   }
@@ -146,11 +153,57 @@ test('report rejects invalid indexes and source identities', () => {
   for (const index of [-1, 4, 1.5, NaN]) assert.throws(() => shardReport(files, {index, count: 4}, sourceSha), /INVALID_SHARD_INDEX/);
   for (const sha of ['', 'main', 'b'.repeat(39), 'z'.repeat(40), 'a'.repeat(40) + '\n']) assert.throws(() => shardReport(files, {index: 0, count: 4}, sha), /INVALID_SOURCE_SHA/);
 });
-test('test launcher preserves the full lane, process isolation and one-file concurrency', () => {
+test('test launcher preserves the full lane and process isolation, with bounded concurrency and timings', () => {
   const root = path.resolve('synthetic root'), executable = path.resolve('synthetic-node');
   const selected = ['tests/b.test.ts', 'tests/a.test.mjs'];
   assert.deepEqual(shardCommand(root, selected, executable), {command: executable, cwd: root, args: [path.join(root, 'scripts/tooling.ts'), 'test', '--suite=full', '--concurrency=1', '--reporter=tap', '--file=a.test.mjs', '--file=b.test.ts']});
+  assert.deepEqual(shardCommand(root, selected, executable, {concurrency: 3, timings: 'artifacts/checks-linux-2/timings.json'}).args,
+    [path.join(root, 'scripts/tooling.ts'), 'test', '--suite=full', '--concurrency=3', '--reporter=tap', '--timings=artifacts/checks-linux-2/timings.json', '--file=a.test.mjs', '--file=b.test.ts']);
   const environment = toolingEnvironment({PATH: '/usr/bin', HOME: '/owned', NODE_OPTIONS: '--import=private-loader', NODE_PATH: '/private-modules', GH_TOKEN: 'private-gh-token', APPLE_API_KEY: 'private-key', MIOON_FFMPEG_PATH: '/owned/ffmpeg', MIOON_FFPROBE_PATH: '/owned/ffprobe'}, {mediaPaths: true});
   assert.equal(environment.NODE_OPTIONS, undefined); assert.equal(environment.NODE_PATH, undefined); assert.equal(environment.GH_TOKEN, undefined); assert.equal(environment.APPLE_API_KEY, undefined);
   assert.equal(environment.MIOON_FFMPEG_PATH, '/owned/ffmpeg'); assert.equal(environment.MIOON_FFPROBE_PATH, '/owned/ffprobe'); assert.equal(environment.MIOON_ENABLE_LIVE_PROVIDER, '0');
+});
+
+const table = (files: Record<string, unknown>) => JSON.stringify({schema: 1, unit: 'seconds', files});
+test('timed shards keep every test exactly once and finish within one file of an even split', () => {
+  // Deterministic uneven weights, with a few files far heavier than the rest.
+  const weights = new Map(files.map((file, index) => [file, index % 97 === 0 ? 300 : (index * 37) % 61 + 1]));
+  const total = [...weights.values()].reduce((sum, value) => sum + value, 0), heaviest = Math.max(...weights.values());
+  for (const count of [4, 8]) {
+    const shards = partitionFullTests(files, count, weights);
+    verifyFullPartition(files, shards);
+    assert.deepEqual(partitionFullTests([...files].reverse(), count, weights), shards, 'catalog order cannot change the partition');
+    for (const shard of shards) {
+      assert.deepEqual(shard, [...shard].sort());
+      assert.ok(shard.reduce((sum, file) => sum + weights.get(file)!, 0) <= total / count + heaviest);
+    }
+  }
+});
+test('files missing from the timing table weigh the recorded median and stale entries are ignored', () => {
+  const full = ['tests/a.test.ts', 'tests/b.test.ts', 'tests/c.test.ts', 'tests/new.test.ts'];
+  const timings = new Map([['tests/a.test.ts', 10], ['tests/b.test.ts', 1], ['tests/c.test.ts', 2], ['tests/removed.test.ts', 999]]);
+  // a=10 alone; b and c with the median-weighted new file (2) on the other shard.
+  assert.deepEqual(partitionFullTests(full, 2, timings), [['tests/a.test.ts'], ['tests/b.test.ts', 'tests/c.test.ts', 'tests/new.test.ts']]);
+  const report = shardReport(full, {index: 1, count: 2}, sourceSha, timings, 'recorded');
+  assert.equal(report.schema, 2); assert.equal(report.estimatedSeconds, 5); assert.match(report.timingsSha256, /^[a-f0-9]{64}$/);
+});
+test('the timing table must be a bounded per-file map', () => {
+  assert.deepEqual([...parseTestTimings(table({'tests/a.test.ts': 1.5, 'tests/b.test.mjs': 0}))], [['tests/a.test.ts', 1.5], ['tests/b.test.mjs', 0]]);
+  for (const text of ['not json', JSON.stringify({schema: 2, files: {}}), JSON.stringify({schema: 1, files: []}), JSON.stringify({schema: 1}),
+    table({'tests/../a.test.ts': 1}), table({'a.test.ts': 1}), table({'tests/a.test.ts': -1}), table({'tests/a.test.ts': 'slow'}), table({'tests/a.test.ts': 3601})]) {
+    assert.throws(() => parseTestTimings(text), /INVALID_TEST_TIMINGS/);
+  }
+});
+test('the committed timing table parses and covers most of the full catalog', async () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const timings = parseTestTimings(await readFile(path.join(root, TIMINGS_FILE), 'utf8'));
+  const full = await discoverTests(root, {suite: 'full', platform: 'linux'});
+  assert.ok(full.filter(file => timings.has(file)).length >= full.length * 0.9, 'refresh the table with .github/scripts/test-timings.ts');
+});
+test('a CI run\'s shard timings refresh the table without losing unmeasured or keeping deleted files', () => {
+  const previous = table({'tests/a.test.ts': 5, 'tests/b.test.ts': 6, 'tests/gone.test.ts': 7});
+  const merged = mergeTestTimings(previous, [table({'tests/a.test.ts': 4}), table({'tests/c.test.mjs': 2.5})], ['tests/a.test.ts', 'tests/b.test.ts', 'tests/c.test.mjs']);
+  assert.equal(merged, `${JSON.stringify({schema: 1, unit: 'seconds', files: {'tests/a.test.ts': 4, 'tests/b.test.ts': 6, 'tests/c.test.mjs': 2.5}}, null, 1)}\n`);
+  assert.throws(() => mergeTestTimings(table({}), [table({'tests/gone.test.ts': 1})], ['tests/a.test.ts']), /NO_TEST_TIMINGS/);
+  assert.throws(() => mergeTestTimings(previous, ['{broken'], ['tests/a.test.ts']), /INVALID_TEST_TIMINGS/);
 });
