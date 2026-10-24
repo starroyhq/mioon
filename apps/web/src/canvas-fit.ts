@@ -12,14 +12,20 @@ const OVERLAYS: ReadonlyArray<readonly [Side, string]> = [
 ];
 const MAX_SHARE = 0.8;
 
-/** Pure geometry: how far each side of `pane` is covered, plus `margin`, never more than 80% of an axis in total. */
-export function fitPadding(pane: Box, overlays: ReadonlyArray<{ side: Side; box: Box }>, margin = 20): FitPadding {
+/** Pure geometry: how far floating overlays cover each side of `pane`, with no margin added. */
+export function coveredInsets(pane: Box, overlays: ReadonlyArray<{ side: Side; box: Box }>): Record<Side, number> {
   const inset: Record<Side, number> = { left: 0, right: 0, top: 0, bottom: 0 };
   for (const { side, box } of overlays) {
     const covered = side === 'left' ? box.right - pane.left : side === 'right' ? pane.right - box.left
       : side === 'top' ? box.bottom - pane.top : pane.bottom - box.top;
     inset[side] = Math.max(inset[side], covered);
   }
+  return inset;
+}
+
+/** Pure geometry: how far each side of `pane` is covered, plus `margin`, never more than 80% of an axis in total. */
+export function fitPadding(pane: Box, overlays: ReadonlyArray<{ side: Side; box: Box }>, margin = 20): FitPadding {
+  const inset = coveredInsets(pane, overlays);
   const axis = (a: Side, b: Side, size: number) => {
     const first = inset[a] > 0 ? inset[a] + margin : margin, second = inset[b] > 0 ? inset[b] + margin : margin;
     const scale = Math.min(1, (MAX_SHARE * Math.max(size, 0)) / (first + second || 1));
@@ -30,17 +36,21 @@ export function fitPadding(pane: Box, overlays: ReadonlyArray<{ side: Side; box:
   return { top: `${top}px`, right: `${right}px`, bottom: `${bottom}px`, left: `${left}px` };
 }
 
+/** The overlays currently shown over a pane, with their boxes. */
+export function measuredOverlays(pane: Element): Array<{ side: Side; box: Box }> {
+  const overlays: Array<{ side: Side; box: Box }> = [];
+  for (const [side, selector] of OVERLAYS) for (const element of pane.ownerDocument.querySelectorAll(selector)) {
+    if (!element.getClientRects().length) continue;
+    const box = element.getBoundingClientRect();
+    if (box.width > 0 && box.height > 0) overlays.push({ side, box });
+  }
+  return overlays;
+}
+
 /** Measures the live overlays over `pane`; falls back to a plain fraction when the pane is not on screen. */
 export function measuredFitPadding(pane: Element | null | undefined, fallback = 0.16, margin = 20): FitPadding | number {
   if (!pane) return fallback;
   const paneBox = pane.getBoundingClientRect();
   if (paneBox.width <= 0 || paneBox.height <= 0) return fallback;
-  const root = pane.ownerDocument;
-  const overlays: Array<{ side: Side; box: Box }> = [];
-  for (const [side, selector] of OVERLAYS) for (const element of root.querySelectorAll(selector)) {
-    if (!element.getClientRects().length) continue;
-    const box = element.getBoundingClientRect();
-    if (box.width > 0 && box.height > 0) overlays.push({ side, box });
-  }
-  return fitPadding(paneBox, overlays, margin);
+  return fitPadding(paneBox, measuredOverlays(pane), margin);
 }
