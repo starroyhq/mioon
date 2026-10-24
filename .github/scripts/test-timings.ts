@@ -21,7 +21,7 @@ export function mergeTestTimings(previous: string, reports: readonly string[], c
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<number> {
   if (args.length !== 1 || !args[0]) {console.error('Usage: node .github/scripts/test-timings.ts <downloaded-artifacts-directory>'); return 1;}
   const root = fileURLToPath(new URL('../../', import.meta.url)), directory = path.resolve(args[0]);
-  const found = (await readdir(directory, {recursive: true})).filter(entry => path.basename(entry) === 'timings.json');
+  const found = (await readdir(directory, {recursive: true})).filter(entry => /^timings(?:-alone)?\.json$/.test(path.basename(entry)));
   if (found.length === 0) {console.error('No timings.json files found.'); return 1;}
   const reports = await Promise.all(found.map(entry => readFile(path.join(directory, entry), 'utf8')));
   const target = path.join(root, TIMINGS_FILE), catalog = await discoverTests(root, {suite: 'full', platform: 'linux'});

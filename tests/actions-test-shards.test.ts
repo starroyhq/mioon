@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {discoverTests, toolingEnvironment} from '../scripts/lib/local-tooling.ts';
-import {parseShardArguments, parseTestTimings, partitionFullTests, shardCommand, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
+import {EXCLUSIVE_TEST_FILES, parseShardArguments, parseTestTimings, partitionFullTests, shardCommand, shardCommands, shardReport, verifyFullPartition, TIMINGS_FILE} from '../.github/scripts/test-shard.ts';
 import {mergeTestTimings} from '../.github/scripts/test-timings.ts';
 
 const sourceSha = 'a'.repeat(40);
@@ -43,7 +43,9 @@ test('Linux CI matrix and launcher count cover the actual full catalog exactly o
   const timingsText = await readFile(path.join(root, TIMINGS_FILE), 'utf8'), timings = parseTestTimings(timingsText);
   verifyFullPartition(full, indexes.map(index => shardReport(full, {index, count}, sourceSha, timings, timingsText).files));
   assert.match(quality, /node \.github\/scripts\/test-shard\.ts [^\r\n]*--concurrency=3(?=\s|$)/, 'each 4-vCPU shard runs three isolated files at a time');
-  assert.match(quality, /artifacts\/checks-linux-\$\{\{ matrix\.shard \}\}\/timings\.json/, 'shards upload the timings that refresh the table');
+  for (const name of ['timings', 'timings-alone']) assert.match(quality, new RegExp(`artifacts/checks-linux-\\$\\{\\{ matrix\\.shard \\}\\}/${name}\\.json`), 'shards upload the timings that refresh the table');
+  const exclusive = full.filter(file => EXCLUSIVE_TEST_FILES.includes(file));
+  assert.deepEqual(exclusive, [...EXCLUSIVE_TEST_FILES], 'every file run alone must still exist in the full catalog');
   assert.match(quality, /ref: \$\{\{ inputs\.source_sha \}\}/);
   assert.match(quality, /fetch-depth: 0/);
 });
@@ -206,4 +208,21 @@ test('a CI run\'s shard timings refresh the table without losing unmeasured or k
   assert.equal(merged, `${JSON.stringify({schema: 1, unit: 'seconds', files: {'tests/a.test.ts': 4, 'tests/b.test.ts': 6, 'tests/c.test.mjs': 2.5}}, null, 1)}\n`);
   assert.throws(() => mergeTestTimings(table({}), [table({'tests/gone.test.ts': 1})], ['tests/a.test.ts']), /NO_TEST_TIMINGS/);
   assert.throws(() => mergeTestTimings(previous, ['{broken'], ['tests/a.test.ts']), /INVALID_TEST_TIMINGS/);
+});
+test('exclusive files run alone after the shared ones and weigh their full time', () => {
+  const [alone] = EXCLUSIVE_TEST_FILES;
+  const full = [alone!, 'tests/a.test.ts', 'tests/b.test.ts', 'tests/c.test.ts'];
+  const timings = new Map([[alone!, 30], ['tests/a.test.ts', 30], ['tests/b.test.ts', 30], ['tests/c.test.ts', 30]]);
+  // Three at a time, a shared file costs 10 s of wall time but the exclusive one all 30 s.
+  assert.deepEqual(partitionFullTests(full, 2, timings, 3), [[alone!].sort(), ['tests/a.test.ts', 'tests/b.test.ts', 'tests/c.test.ts']]);
+  const report = shardReport(full, {index: 0, count: 2, concurrency: 3}, sourceSha, timings, 'recorded');
+  assert.deepEqual(report.exclusiveFiles, [alone!]); assert.equal(report.estimatedSeconds, 30);
+  const root = path.resolve('synthetic root'), executable = path.resolve('synthetic-node');
+  const commands = shardCommands(root, {shardIndex: 4, files: [alone!, 'tests/a.test.ts'].sort(), exclusiveFiles: [alone!]}, 3, executable);
+  assert.deepEqual(commands.map(command => command.args.slice(3)), [
+    ['--concurrency=3', '--reporter=tap', '--timings=artifacts/checks-linux-4/timings.json', '--file=a.test.ts'],
+    ['--concurrency=1', '--reporter=tap', '--timings=artifacts/checks-linux-4/timings-alone.json', `--file=${alone!.slice('tests/'.length)}`],
+  ]);
+  assert.equal(shardCommands(root, {shardIndex: 0, files: ['tests/a.test.ts'], exclusiveFiles: []}, 3, executable).length, 1);
+  assert.deepEqual([...EXCLUSIVE_TEST_FILES], [...new Set(EXCLUSIVE_TEST_FILES)].sort());
 });

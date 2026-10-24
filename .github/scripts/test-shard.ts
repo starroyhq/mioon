@@ -20,8 +20,19 @@ export interface ShardReport {
   selectedCount: number;
   estimatedSeconds: number;
   files: string[];
+  exclusiveFiles: string[];
 }
 export const TIMINGS_FILE = '.github/test-timings.json';
+/**
+ * Test files whose own deadlines fail when they share the runner's CPUs (seen in CI with three files at a time).
+ * Each shard runs its share of these alone, after its other files. Add a file only with evidence from a CI run.
+ */
+export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
+  'tests/http-file-shutdown.test.mjs', // 20-second shutdown bound timed out
+  'tests/races.test.mjs', // 5-second tests; some take 4.4 s even alone
+  'tests/timeline-mix-loudness-service-media.test.mjs', // fixed operation budget for a 600-second mix
+  'tests/worker-shutdown.test.mjs', // 7- and 8-second worker stop tests timed out
+]);
 const testPath = /^tests\/[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/;
 function fail(code: string): never {throw new Error(code);}
 function validateCount(count: number): void {
@@ -73,14 +84,19 @@ function weightsOf(sorted: readonly string[], timings: TestTimings): number[] {
   const typical = known.length ? known[Math.floor((known.length - 1) / 2)]! : 1;
   return sorted.map(file => timings.get(file) ?? typical);
 }
+/** Wall time a file adds to its shard: shared files run `concurrency` at a time, exclusive ones alone. */
+function costsOf(sorted: readonly string[], timings: TestTimings, concurrency: number): number[] {
+  const exclusive = new Set(EXCLUSIVE_TEST_FILES), weights = weightsOf(sorted, timings);
+  return sorted.map((file, position) => exclusive.has(file) ? weights[position]! : weights[position]! / concurrency);
+}
 /**
  * Longest recorded files first, each into the shard with the least recorded time so far (ties: the lower
  * index), so shards finish together. Without timings every file weighs the same and this is the earlier
- * round-robin by sorted name. The result depends only on the catalog and the committed table.
+ * round-robin by sorted name. The result depends only on the catalog, the committed table and the concurrency.
  */
-export function partitionFullTests(full: readonly string[], count: number, timings: TestTimings = new Map()): string[][] {
+export function partitionFullTests(full: readonly string[], count: number, timings: TestTimings = new Map(), concurrency = 1): string[][] {
   validateCount(count);
-  const sorted = catalog(full), weights = weightsOf(sorted, timings);
+  const sorted = catalog(full), weights = costsOf(sorted, timings, concurrency);
   const order = sorted.map((_file, position) => position).sort((a, b) => weights[b]! - weights[a]! || a - b);
   const loads = Array<number>(count).fill(0), shards: string[][] = Array.from({length: count}, () => []);
   for (const position of order) {
@@ -94,18 +110,27 @@ export function partitionFullTests(full: readonly string[], count: number, timin
 }
 export function shardReport(full: readonly string[], options: ShardOptions, sourceSha: string, timings: TestTimings = new Map(), timingsText = ''): ShardReport {
   if (!/^[a-f0-9]{40}$/.test(sourceSha)) fail('INVALID_SOURCE_SHA');
-  const shards = partitionFullTests(full, options.count, timings);
+  const concurrency = options.concurrency ?? 1, shards = partitionFullTests(full, options.count, timings, concurrency);
   if (!Number.isSafeInteger(options.index) || options.index < 0 || options.index >= shards.length) fail('INVALID_SHARD_INDEX');
-  const sorted = catalog(full), files = shards[options.index]!, weights = weightsOf(sorted, timings);
-  const estimatedSeconds = Math.round(files.reduce((sum, file) => sum + weights[sorted.indexOf(file)]!, 0));
+  const sorted = catalog(full), files = shards[options.index]!, costs = costsOf(sorted, timings, concurrency), exclusive = new Set(EXCLUSIVE_TEST_FILES);
+  const estimatedSeconds = Math.round(files.reduce((sum, file) => sum + costs[sorted.indexOf(file)]!, 0));
   return {schema: 2, sourceSha, fullListSha256: createHash('sha256').update(sorted.join('\n') + '\n').digest('hex'),
     timingsSha256: createHash('sha256').update(timingsText).digest('hex'),
-    fullCount: sorted.length, shardIndex: options.index, shardCount: options.count, selectedCount: files.length, estimatedSeconds, files};
+    fullCount: sorted.length, shardIndex: options.index, shardCount: options.count, selectedCount: files.length, estimatedSeconds, files,
+    exclusiveFiles: files.filter(file => exclusive.has(file))};
 }
 export function shardCommand(root: string, files: readonly string[], execPath = process.execPath, {concurrency = 1, timings}: {concurrency?: number; timings?: string} = {}): CommandSpec {
   const selected = catalog(files);
   return {command: execPath, cwd: root, args: [path.join(root, 'scripts/tooling.ts'), 'test', '--suite=full', `--concurrency=${concurrency}`, '--reporter=tap',
     ...(timings ? [`--timings=${timings}`] : []), ...selected.map(file => `--file=${file.slice('tests/'.length)}`)]};
+}
+/** The shard's shared files `concurrency` at a time, then its exclusive files alone; each phase records timings. */
+export function shardCommands(root: string, report: Pick<ShardReport, 'files' | 'exclusiveFiles' | 'shardIndex'>, concurrency: number, execPath = process.execPath): CommandSpec[] {
+  const directory = `artifacts/checks-linux-${report.shardIndex}`, alone = new Set(report.exclusiveFiles), shared = report.files.filter(file => !alone.has(file));
+  return [
+    ...(shared.length ? [shardCommand(root, shared, execPath, {concurrency, timings: `${directory}/timings.json`})] : []),
+    ...(alone.size ? [shardCommand(root, report.exclusiveFiles, execPath, {concurrency: 1, timings: `${directory}/timings-alone.json`})] : []),
+  ];
 }
 export async function main(args: readonly string[] = process.argv.slice(2)): Promise<number> {
   const options = parseShardArguments(args), root = fileURLToPath(new URL('../../', import.meta.url));
@@ -120,9 +145,15 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
   const output = path.join(root, `artifacts/checks-linux-${options.index}/shard.json`);
   await mkdir(path.dirname(output), {recursive: true});
   await writeFile(output, JSON.stringify(report, null, 2) + '\n', {mode: 0o600});
-  process.stdout.write(`Full test shard ${options.index}/${options.count}: ${report.selectedCount}/${report.fullCount} files, about ${report.estimatedSeconds} s recorded, ${options.concurrency ?? 1} at a time; catalog SHA256 ${report.fullListSha256}\n`);
-  const timings = `artifacts/checks-linux-${options.index}/timings.json`;
-  return (await executeCommand(shardCommand(root, report.files, process.execPath, {concurrency: options.concurrency, timings}), {env: environment})).code;
+  process.stdout.write(`Full test shard ${options.index}/${options.count}: ${report.selectedCount}/${report.fullCount} files (${report.exclusiveFiles.length} alone), about ${report.estimatedSeconds} s, ${options.concurrency ?? 1} at a time; catalog SHA256 ${report.fullListSha256}\n`);
+  // Both phases run so one failure still reports the other; an interrupted phase (signal exit) ends the shard.
+  let code = 0;
+  for (const command of shardCommands(root, report, options.concurrency ?? 1)) {
+    const result = (await executeCommand(command, {env: environment})).code;
+    code ||= result;
+    if (result >= 128) break;
+  }
+  return code;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main().then(code => {process.exitCode = code;}).catch(() => {console.error('TEST_SHARD_FAILED'); process.exitCode = 1;});
