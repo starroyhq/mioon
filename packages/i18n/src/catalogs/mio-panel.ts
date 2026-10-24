@@ -1059,6 +1059,12 @@ export const mioPanelMessages = {
     "en": "Append shots to timeline",
     "ja": "ショットをタイムラインに追加"
   },
+  "agent.display.operation.timeline.clip.splitAtScenes": {
+    "zh-Hans": "按切点分割",
+    "zh-Hant": "按切點分割",
+    "en": "Split at cuts",
+    "ja": "カット点で分割"
+  },
   "agent.display.operation.timeline.history.get": {
     "zh-Hans": "查看编辑历史",
     "zh-Hant": "查看編輯歷史",
@@ -1280,6 +1286,36 @@ export const mioPanelMessages = {
     "zh-Hant": "查看擷取紀錄",
     "en": "List extraction records",
     "ja": "抽出記録を確認"
+  },
+  "agent.display.operation.scene.detect": {
+    "zh-Hans": "拆解镜头",
+    "zh-Hant": "拆解鏡頭",
+    "en": "Detect shots",
+    "ja": "ショットを分割"
+  },
+  "agent.display.operation.scene.request.get": {
+    "zh-Hans": "查看拆解记录",
+    "zh-Hant": "查看拆解紀錄",
+    "en": "Read detection record",
+    "ja": "分割記録を確認"
+  },
+  "agent.display.operation.scene.task.get": {
+    "zh-Hans": "查看拆解进度",
+    "zh-Hant": "查看拆解進度",
+    "en": "Read detection progress",
+    "ja": "分割の進行状況を確認"
+  },
+  "agent.display.operation.scene.task.list": {
+    "zh-Hans": "查看拆解记录",
+    "zh-Hant": "查看拆解紀錄",
+    "en": "List detection records",
+    "ja": "分割記録を確認"
+  },
+  "agent.display.operation.scene.result.get": {
+    "zh-Hans": "读取切点",
+    "zh-Hant": "讀取切點",
+    "en": "Read cuts",
+    "ja": "カット点を確認"
   },
   "agent.display.operation.image.profile.list": {
     "zh-Hans": "查看图像连接",

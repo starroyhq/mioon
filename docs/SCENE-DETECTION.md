@@ -1,11 +1,15 @@
 # Reference scene detection
 
-2026-10-23. Detector and decoder only:
+The detector and decoder are
 `packages/business/src/scene-detection.ts` (pure, frames in, cuts out) and
 `packages/business/src/scene-detection-decoder.ts` (managed source → FFmpeg →
-detector). Nothing calls them yet: there is no operation, HTTP route, CLI, MCP or
-Mio tool, no UI and no storage. The background task, the stored result, "建分镜",
-"按切点分割" and the panel come in a later increment.
+detector), added on 2026-10-23.
+
+Since 2026-10-24 they run as a background task (`scene.detect`) that saves each
+cut list as a retained result, with manual edits (`scene.cuts.save`) and
+"按切点分割" (`timeline.clip.splitAtScenes`). Operations, storage (schema 58) and
+error codes are in [the API](API.md#reference-film-scene-detection-2026-10-24).
+"建分镜" and the panel come in later increments.
 
 ## Result
 

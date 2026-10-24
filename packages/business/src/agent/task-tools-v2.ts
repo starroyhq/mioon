@@ -27,7 +27,10 @@ function fail(code:string,message:string):never{throw new AppError(code,message,
 const readOperations=[
  'video.connection.list','export.activity.get','task.disposition.list',
  'lut.list','lut.inspect','lut.look.inspect','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect',
- 'timeline.format.get','frame.request.get','frame.task.get','frame.task.list','image.profile.list','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get',
+ 'timeline.format.get','frame.request.get','frame.task.get','frame.task.list',
+ // Scene detection only analyses an owned video and saves a cut list; it changes
+ // no project content, so it shares the read-only tier with its readers.
+ 'scene.detect','scene.request.get','scene.task.get','scene.task.list','scene.result.get','image.profile.list','image.request.get','image.task.get','image.task.list','image.group.list','image.group.get','image.version.list','image.task.remote.get',
  'project.inspect','asset.inspect','shot.inspect','timeline.inspect','subject.list','subject.version.list','subject.binding.list','asset.range.get','asset.disposition.list','asset.annotation.list','asset.waveform.get',
  'timeline.export.preflight','timeline.export.samplePeak','timeline.export.loudness','timeline.loudness.prepare','timeline.clip.loudness','timeline.audioPreview.plan','timeline.audioPreview.continuousPlan','timeline.export.capabilities',
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
@@ -36,7 +39,7 @@ const reversibleOperations=[
  'project.rename','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','subject.binding.set','asset.range.set','asset.disposition.set','asset.annotation.set',
  'shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select',
  'timeline.loudness.apply','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed',
- 'timeline.clip.refreshSources','timeline.shots.append',
+ 'timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes',
 ] as const;
 const irreversibleOperations=[
  'frame.extract','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render',
@@ -46,7 +49,7 @@ const forbiddenOperations=[
  'export.cancel','export.output.get','task.disposition.markFailed','task.disposition.archiveCompleted',
  'workspace.settings.get','workspace.settings.set','workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage',
  'project.delete','project.summary.list','agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','lut.import','workspace.backup.inspect','workspace.restore.inspect','project.create','project.list','project.get','asset.import',
- 'job.retry','job.cancel','job.reconcile','frame.task.cancelQueued','frame.task.recoverResult','image.task.cancelQueued','image.task.recoverResult','image.task.observeRemote','image.review.prepare','image.review.get','image.review.list','timeline.get','timeline.undo','timeline.redo',
+ 'job.retry','job.cancel','job.reconcile','frame.task.cancelQueued','frame.task.recoverResult','scene.task.cancel','scene.cuts.save','image.task.cancelQueued','image.task.recoverResult','image.task.observeRemote','image.review.prepare','image.review.get','image.review.list','timeline.get','timeline.undo','timeline.redo',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),
@@ -90,13 +93,13 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  operation=taskToolOperation(operation);
  const references=new Map<string,Pick<AgentTaskTarget,'kind'|'id'>>();
  const add=(kind:string,value:unknown):void=>{if(typeof value==='string')references.set(`${kind}:${value}`,{kind,id:value});};
- for(const [field,kind] of [['shotId','shot'],['targetShotId','shot'],['nodeId','node'],['sourceNodeId','node'],['edgeId','edge'],['jobId','job'],['assetId','asset'],['sourceAssetId','asset'],['versionId','version'],['exportId','export'],['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],['taskId',operation.startsWith('frame.')?'frame_task':'image_task'],['groupId','image_group'],['lutId','lut']] as const)add(kind,input[field]);
+ for(const [field,kind] of [['shotId','shot'],['targetShotId','shot'],['nodeId','node'],['sourceNodeId','node'],['edgeId','edge'],['jobId','job'],['assetId','asset'],['sourceAssetId','asset'],['versionId','version'],['exportId','export'],['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],['taskId',operation.startsWith('frame.')?'frame_task':operation.startsWith('scene.')?'scene_task':'image_task'],['groupId','image_group'],['lutId','lut']] as const)add(kind,input[field]);
  // The journal identifies this project's timeline by projectId; the wire's
  // timelineId names the same aggregate without granting another project scope.
  if(typeof input.timelineId==='string')add('timeline',projectId);
  for(const field of ['source','target'] as const){add('node',input[field]);add('shot',input[field]);}
  for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(input[field]))for(const value of input[field])add(field==='shotIds'?'shot':'asset',value);
- if(operation==='task.wait')add(input.kind==='image'?'image_task':input.kind==='frame'?'frame_task':String(input.kind),input.id);
+ if(operation==='task.wait')add(input.kind==='image'?'image_task':input.kind==='frame'?'frame_task':input.kind==='scene'?'scene_task':String(input.kind),input.id);
  if(operation==='task.disposition.list'&&Array.isArray(input.targets))for(const target of input.targets)if(object(target))add(target.kind==='generation'?'job':target.kind==='render'?'export':'edit_task',target.taskId);
  const shot=operation==='shot.create'?input:operation==='shot.update'&&object(input.patch)?input.patch:undefined;
  if(shot){if(Array.isArray(shot.referenceAssetIds))for(const id of shot.referenceAssetIds)add('asset',id);add('asset',shot.lastFrameAssetId);}
@@ -341,10 +344,10 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(risk==='local_reversible'&&operation.startsWith('timeline.')&&!before[key('timeline',projectId)])risk='local_irreversible';
   const add=(kind:string,id:string):void=>{const target={kind,id,revision:readRevision(store,projectId,kind,id)};if(!targets.some(value=>value.kind===kind&&value.id===id))targets.push(target);};
   if(operation==='task.wait'){
-   if(!['job','image','frame','export'].includes(String(hostInput.kind))||typeof hostInput.id!=='string')fail('AGENT_TASK_INVALID_TOOL','等待目标无效');
-   const table=hostInput.kind==='job'?'jobs':hostInput.kind==='image'?'image_tasks':hostInput.kind==='frame'?'frame_tasks':'exports';
+   if(!['job','image','frame','scene','export'].includes(String(hostInput.kind))||typeof hostInput.id!=='string')fail('AGENT_TASK_INVALID_TOOL','等待目标无效');
+   const table=hostInput.kind==='job'?'jobs':hostInput.kind==='image'?'image_tasks':hostInput.kind==='frame'?'frame_tasks':hostInput.kind==='scene'?'scene_tasks':'exports';
    const owner=db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(hostInput.id);if(owner?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','等待目标不属于当前项目');
-   add(hostInput.kind==='image'?'image_task':hostInput.kind==='frame'?'frame_task':String(hostInput.kind),hostInput.id);
+   add(hostInput.kind==='image'?'image_task':hostInput.kind==='frame'?'frame_task':hostInput.kind==='scene'?'scene_task':String(hostInput.kind),hostInput.id);
   }
   if(operation==='task.disposition.list'){
    if(!Array.isArray(hostInput.targets))fail('AGENT_TASK_INVALID_TOOL','任务观察目标无效');
@@ -357,7 +360,9 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   for(const [field,table,kind] of [['shotId','shots','shot'],['targetShotId','shots','shot'],['nodeId','nodes','node'],['sourceNodeId','nodes','node'],['edgeId','edges','edge'],['jobId','jobs','job'],['assetId','assets','asset'],['sourceAssetId','assets','asset'],['versionId','versions','version'],['exportId','exports','export']] as const)if(hostInput[field]!==undefined){owned(table,hostInput[field],projectId);add(kind,String(hostInput[field]));}
   for(const field of ['source','target'] as const)if(hostInput[field]!==undefined){const id=String(hostInput[field]);const table=store.get('nodes',id)?'nodes':'shots';owned(table,id,projectId);add(table==='nodes'?'node':'shot',id);}
   for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(hostInput[field]))for(const id of hostInput[field]){owned(field==='shotIds'?'shots':'assets',id,projectId);add(field==='shotIds'?'shot':'asset',String(id));}
-  for(const [field,kind] of [['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],['taskId',operation.startsWith('frame.')?'frame_task':'image_task'],['groupId','image_group']] as const)if(hostInput[field]!==undefined){const found=before[key(kind,String(hostInput[field]))];if(!found)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');if(kind!=='timeline_track'||!operation.startsWith('timeline.clip.'))add(kind,String(hostInput[field]));}
+  // Scene tasks are observed directly; they are not part of the change snapshot.
+  if(operation.startsWith('scene.')&&hostInput.taskId!==undefined&&db.prepare('SELECT projectId FROM scene_tasks WHERE id=?').get(String(hostInput.taskId))?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
+  for(const [field,kind] of [['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],...(operation.startsWith('scene.')?[]:[['taskId',operation.startsWith('frame.')?'frame_task':'image_task']] as const),['groupId','image_group']] as const)if(hostInput[field]!==undefined){const found=before[key(kind,String(hostInput[field]))];if(!found)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');if(kind!=='timeline_track'||!operation.startsWith('timeline.clip.'))add(kind,String(hostInput[field]));}
   if(operation==='timeline.clip.rippleRemove'){
    const removed=before[key('timeline_clip',String(hostInput.clipId))];
    if(removed)for(const entry of Object.values(before))if(entry.kind==='timeline_clip'&&entry.value.trackId===removed.value.trackId&&Number(entry.value.startFrame)>=Number(removed.value.startFrame))add(entry.kind,entry.id);
@@ -371,7 +376,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(operation==='shot.reorder')for(const item of Object.values(before).filter(item=>item.kind==='shot'))add(item.kind,item.id);
   // Aggregate operations genuinely affect all these targets. A single clip or
   // subtitle edit deliberately does not claim the complete timeline revision.
-  if(['timeline.seed','timeline.loudness.apply'].includes(operation))for(const item of Object.values(before).filter(item=>item.kind.startsWith('timeline_')||operation==='timeline.seed'&&item.kind==='shot'))add(item.kind,item.id);
+  if(['timeline.seed','timeline.loudness.apply','timeline.clip.splitAtScenes'].includes(operation))for(const item of Object.values(before).filter(item=>item.kind.startsWith('timeline_')||operation==='timeline.seed'&&item.kind==='shot'))add(item.kind,item.id);
   if(operation.startsWith('asset.range.'))add('asset_range',String(hostInput.assetId));
   if(operation==='asset.annotation.set')add('asset_annotation',String(hostInput.assetId));
   if(operation==='asset.disposition.set')add('asset_disposition',String(hostInput.assetId));
@@ -441,17 +446,19 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   for(;;){beforeEffect();if(signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');const result=readWaitResult(projectId,input);if(result!==null)return result;await waitDelay(500,undefined,{signal});}
  }
  function readWaitResult(projectId:string,input:Value):AgentTaskJson|null{
-  if(!['job','image','frame','export'].includes(String(input.kind))||typeof input.id!=='string')fail('AGENT_TASK_INVALID_TOOL','等待目标无效');
-  const operation=({job:'job.get',image:'image.task.get',frame:'frame.task.get',export:'export.get'} as const)[input.kind as 'job'|'image'|'frame'|'export'];
-  const table=input.kind==='job'?'jobs':input.kind==='image'?'image_tasks':input.kind==='frame'?'frame_tasks':'exports';
+  if(!['job','image','frame','scene','export'].includes(String(input.kind))||typeof input.id!=='string')fail('AGENT_TASK_INVALID_TOOL','等待目标无效');
+  const operation=({job:'job.get',image:'image.task.get',frame:'frame.task.get',scene:'scene.task.get',export:'export.get'} as const)[input.kind as 'job'|'image'|'frame'|'scene'|'export'];
+  const table=input.kind==='job'?'jobs':input.kind==='image'?'image_tasks':input.kind==='frame'?'frame_tasks':input.kind==='scene'?'scene_tasks':'exports';
   const owner=db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(input.id);if(owner?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','等待目标不属于当前项目');
 
   const args=input.kind==='job'?{jobId:input.id}:input.kind==='export'?{exportId:input.id}:{projectId,taskId:input.id};
-  // These four audited handlers are synchronous local observations. Calling the
+  // These five audited handlers are synchronous local observations. Calling the
   // public async dispatcher is unnecessary during unknown-result resolution.
   const value=services.handlers[operation]!(args as never);if(!object(value)||typeof value.then==='function')fail('AGENT_TASK_INVALID_TARGET','任务无法验证');
   if(value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
   const state=value.status??value.state;
+  // An interrupted detection saved nothing and can simply be run again.
+  if(input.kind==='scene')return ['succeeded','failed','cancelled','cancelled_before_start','interrupted'].includes(String(state))?projectResult(value):null;
   if(['outcome_unknown','submission_unknown','interrupted_before_dispatch','interrupted','local_result_error'].includes(String(state)))fail('AGENT_TASK_UNKNOWN_RESULT','已有任务结果需要人工核对，不能重新提交');
   return ['succeeded','failed','cancelled','cancelled_before_dispatch','cancelled_before_start'].includes(String(state))?projectResult(value):null;
  }
@@ -554,7 +561,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  }
  const list=():AgentTaskToolDefinition[]=>[...[...tierByOperation].map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:descriptions[operation]??operation,parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:operationEffect(operation).readOnly?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
-  {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
+  {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
   {name:'mioon_asset_import_selected',operation:'asset.importSelected',description:'导入用户已选择并授权的文件句柄，不能指定路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
   {name:'mioon_lut_import_selected',operation:'lut.importSelected',description:'导入用户选择的Cube文件句柄，最多7MiB，不允许路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
  ];
