@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -16,22 +17,34 @@ import {readyMixLoudness,mixLoudnessInput} from './fixtures/timeline-mix-loudnes
 
 const at='2026-10-10T00:00:00.000Z',clone=value=>JSON.parse(JSON.stringify(value));
 // Acknowledgements that wrap the saved timeline with their own outcome fields.
-const wrapped=operation=>['timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append'].includes(operation);
+const wrapped=operation=>['timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes'].includes(operation);
+// Scene detection is replaced by a fixed cut list; the task, result and split
+// storage, receipts and recovery are production code.
+const sceneOptions={detect:async input=>{input.beforeSpawn(input.signal);
+ return {profileId:'scene-cuts-v1',fps:30,frameCount:300,options:input.options,cuts:[{frame:20,score:.4},{frame:40,score:.5}],segments:[],sourceHash:input.asset.sha256,analysis:{width:256,height:144,decodedFrames:300}};}};
 const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_history','timeline_history_cursors','timeline_requests','timeline_format_requests'];
 async function fixture(t){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-timeline-recovery-'));
- let store=openStore(root),services=createServices(store,new Map()),apply;
+ let store=openStore(root),services=createServices(store,new Map(),{sceneOptions}),apply;
  const f={root,get store(){return store;},call:(op,input)=>op==='timeline.loudness.apply'?apply(input):services.call(op,input),
   liveCall:(op,input)=>services.call(op,input),
-  restart(){store.close();store=openStore(root);services=createServices(store,new Map());connectApply();},
+  restart(){store.close();store=openStore(root);services=createServices(store,new Map(),{sceneOptions});connectApply();},
   capture(){return Object.fromEntries(tables.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));},
-  asset(patch={}){const id=randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Recovery fixture',mimeType:'video/mp4',
+  asset(patch={}){const id=patch.id??randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Recovery fixture',mimeType:'video/mp4',
    duration:10,width:720,height:1280,hasAudio:true,hasVideo:true,provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`,createdAt:at,...patch});},
   async generated(patch={}){
    const asset=f.asset({provenance:'generated'}),shot=await f.call('shot.create',{projectId:f.projectId,title:'Recovery shot'}),jobId=randomUUID(),versionId=randomUUID();
    const job=store.put('jobs',{id:jobId,projectId:f.projectId,shotId:shot.id,versionId,assetId:asset.id,status:'succeeded',snapshot:{projectId:f.projectId,shotId:shot.id},...patch});
    const version=store.put('versions',{id:versionId,projectId:f.projectId,shotId:shot.id,jobId,assetId:asset.id,sha256:asset.sha256,number:1});
    store.put('shots',{...shot,selectedVersionId:version.id});return {asset,shot,job,version};
+  },
+  // A reference video with real managed bytes and a finished scene result (cuts 20 and 40).
+  async film(){
+   const id=randomUUID(),bytes=Buffer.from(`Recovery reference film ${id}`),relativePath=`media/${id}.mp4`;writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
+   const asset=f.asset({id,relativePath,sha256:createHash('sha256').update(bytes).digest('hex'),sizeBytes:bytes.length});
+   const ack=await f.call('scene.detect',{projectId:f.projectId,sourceAssetId:asset.id,sourceHash:asset.sha256,requestId:randomUUID()});
+   for(let tries=0;tries<2000;tries++){const task=await f.call('scene.task.get',{projectId:f.projectId,taskId:ack.id});if(task.state==='succeeded')return {asset,resultId:task.result.id};await new Promise(resolve=>setTimeout(resolve,5));}
+   assert.fail('scene detection did not finish');
   },
   // A second generated version that the shot now selects, so its clip is stale.
   newerVersion(shot){
@@ -110,6 +123,9 @@ async function allReceipts(f){
  await call('timeline.clip.update',{clipId,patch:{startFrame:100,durationFrames:20,gain:.6}});
  await call('timeline.clip.split',{clipId,atFrame:110});
  await call('timeline.clip.replaceSource',{clipId,assetId:replacement.id});
+ const film=await f.film();
+ await call('timeline.clip.add',{trackId:timeline.tracks[1].id,assetId:film.asset.id,startFrame:200,durationFrames:60});
+ await call('timeline.clip.splitAtScenes',{assetId:film.asset.id,resultId:film.resultId});
  await call('timeline.subtitle.add',{text:'初始字幕',startFrame:0,durationFrames:30});
  const cueId=timeline.subtitles.cues[0].id;
  await call('timeline.subtitle.update',{cueId,patch:{text:'更新字幕'}});
@@ -151,7 +167,7 @@ test('service-created empty timelines remain writable while a zero-track sentine
  const before=f.capture();assert.deepEqual(await f.call('timeline.track.add',input),added);assert.deepEqual(f.capture(),before);
 });
 
-test('all nineteen retained responses remain exact after removal, branching, render progress and restart',async t=>{
+test('all twenty retained responses remain exact after removal, branching, render progress and restart',async t=>{
  const f=await fixture(t),result=await allReceipts(f);let timeline=result.timeline;
  for(const clip of [...timeline.clips])timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
  const render=result.receipts.find(x=>x.operation==='timeline.render').response;
@@ -170,7 +186,7 @@ test('all nineteen retained responses remain exact after removal, branching, ren
  assert.deepEqual(f.capture(),before);
 });
 
-test('all nineteen fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
+test('all twenty fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
  const f=await fixture(t),{receipts,timeline}=await allReceipts(f);
  for(const saved of receipts)await rejected(f,saved.operation,{...saved.input,requestId:randomUUID(),expectedRevision:timeline.revision-1},{code:'REVISION_CONFLICT',proof:true});
  const clip=timeline.clips[0];
@@ -188,7 +204,7 @@ test('legacy initialization and transaction lifecycle failures never manufacture
  assert.equal(f.store.list('timelines').length,0);
  const timeline=await f.call('timeline.get',{projectId:f.projectId});
  const before=f.capture();
- const services=createServices({...f.store,tx:callback=>{f.store.tx(callback);throw new AppError('REVISION_CONFLICT','Ambiguous after commit',409);}},new Map());
+ const services=createServices({...f.store,tx:callback=>{f.store.tx(callback);throw new AppError('REVISION_CONFLICT','Ambiguous after commit',409);}},new Map(),{sceneOptions});
  const accepted=params(f,timeline,{kind:'video'});
  await assert.rejects(services.call('timeline.track.add',accepted),error=>error.code==='REVISION_CONFLICT'&&error.details?.mutationOutcome===undefined);
  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM timeline_requests WHERE requestId=?').get(accepted.requestId).n,1);
@@ -214,7 +230,7 @@ test('lost acknowledgements retain proof absence after project, timeline and his
  });
 });
 
-test('all nineteen malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
+test('all twenty malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
  for(const corruption of ['hash','JSON','owner','semantics'])await t.test(corruption,async t=>{
   const f=await fixture(t),{receipts}=await allReceipts(f);f.store.db.exec('DROP TRIGGER immutable_timeline_responses');
   for(const {operation,input,response} of receipts){
@@ -240,12 +256,14 @@ async function prepared(f,operation){
  if(operation==='timeline.clip.refreshSources')f.newerVersion(generated.shot);
  if(operation==='timeline.shots.append')await f.generated();
  if(['timeline.subtitle.update','timeline.subtitle.remove'].includes(operation))timeline=await f.call('timeline.subtitle.add',params(f,timeline,{text:'待修改字幕',startFrame:0,durationFrames:30}));
+ let scene={};
+ if(operation==='timeline.clip.splitAtScenes'){const film=await f.film();timeline=await f.call('timeline.clip.add',params(f,timeline,{assetId:film.asset.id,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:60}));scene={assetId:film.asset.id,resultId:film.resultId};}
  const clip=timeline.clips[0];
  const fields={
   'timeline.track.add':{kind:'video'},'timeline.track.update':{trackId:timeline.tracks[0].id,patch:{name:'Changed'}},
   'timeline.clip.add':{assetId:generated.asset.id,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:30},
   'timeline.clip.update':{clipId:clip?.id,patch:{gain:.3}},'timeline.clip.remove':{clipId:clip?.id},
-  'timeline.clip.rippleRemove':{clipId:clip?.id},'timeline.clip.refreshSources':{clipIds:[clip?.id]},
+  'timeline.clip.rippleRemove':{clipId:clip?.id},'timeline.clip.refreshSources':{clipIds:[clip?.id]},'timeline.clip.splitAtScenes':scene,
   'timeline.clip.split':{clipId:clip?.id,atFrame:30},'timeline.clip.replaceSource':{clipId:clip?.id,assetId:f.asset().id},
   'timeline.render':{purpose:'preview'},
   'timeline.subtitle.add':{text:'新增字幕',startFrame:0,durationFrames:30},

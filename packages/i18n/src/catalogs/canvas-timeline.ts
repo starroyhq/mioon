@@ -26,6 +26,7 @@ export const canvasTimelineMessages = {
   'timeline.sync.skip.notGenerated': { 'zh-Hans': '{clip} 不是画板生成的素材', 'zh-Hant': '{clip} 不是畫板產生的素材', en: '{clip} was not generated on the canvas', ja: '{clip} はキャンバスで生成された素材ではありません' },
   'timeline.history.sourcesRefresh': { 'zh-Hans': '更新片段来源', 'zh-Hant': '更新片段來源', en: 'Refresh clip sources', ja: 'クリップのソースを更新' },
   'timeline.history.shotsAppend': { 'zh-Hans': '追加镜头到时间线', 'zh-Hant': '附加鏡頭到時間軸', en: 'Append shots to timeline', ja: 'ショットをタイムラインに追加' },
+  'timeline.history.splitAtScenes': { 'zh-Hans': '按切点分割', 'zh-Hant': '按切點分割', en: 'Split at cuts', ja: 'カット点で分割' },
   'timeline.sync.clipBadge': { 'zh-Hans': '已过期', 'zh-Hant': '已過期', en: 'Outdated', ja: '古い' },
   'timeline.sync.restoredUnavailable': { 'zh-Hans': '恢复出的工作区暂不支持批量更新来源和追加镜头', 'zh-Hant': '還原出的工作區暫不支援批次更新來源與附加鏡頭', en: 'Restored workspaces can’t update sources in bulk or append shots yet', ja: '復元したワークスペースでは、ソースの一括更新とショットの追加はまだ使えません' },
   'timeline.sync.error.nothingToRefresh': { 'zh-Hans': '没有片段被更新，原因见时间线上方的说明', 'zh-Hant': '沒有片段被更新，原因見時間軸上方的說明', en: 'No clips were updated. The note above the timeline lists why', ja: '更新されたクリップはありません。理由はタイムライン上部に表示しています' },

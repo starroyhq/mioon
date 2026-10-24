@@ -13,6 +13,7 @@ import {initializeWorkspaceSchema56} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {classifyWorkspaceSchemaV54V55} from '../packages/business/src/workspace-restore-schema-v55.ts';
 import {removeReviewedSchema56,currentOrdinary56Delta,withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
+import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskRun,AgentTaskNote,AgentTaskSkippedTarget} from '../packages/contracts/src/agent-tasks-v2.ts';
 
@@ -23,14 +24,15 @@ function evidence(f:ReturnType<typeof fixture>){const one=f.journal.beginStep(f.
 
 const display={operation:'shot.update',targets:[],targetCount:0,fields:[]};
 function changeEvidence(f:ReturnType<typeof fixture>){const step=f.journal.beginStep(f.run.id,{kind:'tool'});f.journal.markDispatch(f.run.id,step.id);f.journal.completeStep(f.run.id,step.id,{result:{done:true},change:{projectId:f.projectId,operation:'shot.update',targets:[],before:null,after:null,reversible:false}});return f.journal.snapshot(f.run.id);}
-function sourceSchema(f:ReturnType<typeof fixture>,version:52|54|56){
+function sourceSchema(f:ReturnType<typeof fixture>,version:52|54|56|58){
+ if(version===56)removeReviewedSchema58(f.store.db);
  if(version<56)removeReviewedSchema56(f.store.db);
  if(version===52)f.store.db.exec("DROP INDEX agent_task_conversation_v2;DROP TRIGGER agent_task_conversation_identity_v2;DROP TRIGGER agent_task_conversation_required_v2;UPDATE agent_task_runs_v2 SET data=json_remove(data,'$.conversationId');DELETE FROM schema_version WHERE version=54");
  assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:version,profile:'ordinary'});
 }
 function restoreMetadata(){return {restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};}
 
-for(const version of [52,54,56] as const)for(const family of ['step','change'] as const)test(`schema${version} rejects persisted ${family} display during classification and restore admission`,()=>{const f=fixture();try{
+for(const version of [52,54,56,58] as const)for(const family of ['step','change'] as const)test(`schema${version} rejects persisted ${family} display during classification and restore admission`,()=>{const f=fixture();try{
  const snapshot=changeEvidence(f),table=family==='step'?'agent_task_steps_v2':'agent_task_changes_v2',id=family==='step'?snapshot.steps[0]!.id:snapshot.changes[0]!.id;sourceSchema(f,version);
  const markers=f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all();
  f.store.db.prepare(`UPDATE ${table} SET data=json_set(data,'$.display',json(?)) WHERE id=?`).run(JSON.stringify(display),id);
@@ -44,7 +46,7 @@ for(const version of [52,54,56] as const)for(const family of ['step','change'] a
 
 test('public snapshots accept Step and Change display without changing persistent records',()=>{const f=fixture();try{
  const snapshot=changeEvidence(f),response=agentTaskSnapshotSchema.parse({...snapshot,steps:snapshot.steps.map(step=>({...step,display})),changes:snapshot.changes.map(change=>({...change,display}))});
- assert.deepEqual(response.steps[0]!.display,display);assert.deepEqual(response.changes[0]!.display,display);assert.deepEqual(f.journal.snapshot(f.run.id),snapshot);assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:56,profile:'ordinary'});
+ assert.deepEqual(response.steps[0]!.display,display);assert.deepEqual(response.changes[0]!.display,display);assert.deepEqual(f.journal.snapshot(f.run.id),snapshot);assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:58,profile:'ordinary'});
 }finally{f.close();}});
 
 test('ordinary54 migrates only interaction defaults while preserving original digests, context, events and arbitrary legacy receipts',()=>{const f=fixture();try{
@@ -73,9 +75,9 @@ test('notes and skipped targets keep append-only evidence while binding unconsum
  assert.equal(f.journal.run(f.run.id).notes?.[0]?.modelStepId,one.id);
 }finally{f.close();}});
 
-test('valid interaction order survives wall-clock rollback and restored57 retains it read-only',()=>{const f=fixture();try{
+test('valid interaction order survives wall-clock rollback and restored59 retains it read-only',()=>{const f=fixture();try{
  const {one,two,target,tool}=evidence(f),notes=[note(one.id),note(two.id),note()],skippedTargets=[{target,stepId:tool.id,createdAt:'2019-01-01T00:00:00.000Z'}];write(f,{notes,skippedTargets});validateAgentInteractionRowsV2(f.store.db);assert.ok(notes[0]!.createdAt<f.run.createdAt);
- const info=installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});assert.equal(info.schemaVersion,57);assert.equal(info.sourceSchema,56);assert.deepEqual(f.journal.run(f.run.id).notes,notes);assert.deepEqual(f.journal.run(f.run.id).skippedTargets,skippedTargets);assert.throws(()=>write(f,{text:'must remain held'}),/RESTORED_RECORD_HELD/u);
+ const info=installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});assert.equal(info.schemaVersion,59);assert.equal(info.sourceSchema,58);assert.deepEqual(f.journal.run(f.run.id).notes,notes);assert.deepEqual(f.journal.run(f.run.id).skippedTargets,skippedTargets);assert.throws(()=>write(f,{text:'must remain held'}),/RESTORED_RECORD_HELD/u);
 }finally{f.close();}});
 
 for(const kind of ['missing arrays','six pending','duplicate note','foreign model','tool as model','reverse model order','pending before consumed','duplicate skipped target','model as skipped step','foreign skipped step','missing conflict target','invalid conflict target','missing step target','invalid note timestamp','invalid skip timestamp'] as const)test(`schema56 rejects corrupt ${kind} metadata before recovery`,()=>{const f=fixture();try{
@@ -87,14 +89,14 @@ for(const kind of ['missing arrays','six pending','duplicate note','foreign mode
 }finally{f.close();}});
 
 
-test('offline56 backup restores57 with exact note bindings, skipped targets, receipts and events, without recovery dispatch',async()=>{const f=fixture(),backup=f.root+'-backup',restored=f.root+'-restored';try{
+test('offline58 backup restores59 with exact note bindings, skipped targets, receipts and events, without recovery dispatch',async()=>{const f=fixture(),backup=f.root+'-backup',restored=f.root+'-restored';try{
  const requestId=randomUUID(),input={requestId,runId:f.run.id,expectedRevision:f.journal.run(f.run.id).revision,action:'note',text:'Keep this local choice'};
  f.journal.performControl(input,()=>{f.journal.appendNoteInside(f.run.id,requestId,input.text);return {state:'completed',noteRequestId:requestId};});
  const model=f.journal.beginModelStep(f.run.id,{request:{messages:[]}},[requestId]);f.journal.completeStep(f.run.id,model.id,{result:{done:true}});
  const target={kind:'shot',id:randomUUID(),revision:2},tool=f.journal.beginStep(f.run.id,{kind:'tool',targets:[target],data:{conflictTargets:[target]}});f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'paused','conflict');
  f.journal.performControl({requestId:randomUUID(),runId:f.run.id,expectedRevision:f.journal.run(f.run.id).revision,action:'skip'},()=>{f.journal.skipTargetsInside(f.run.id,[{stepId:tool.id,target}]);return {state:'completed',skippedTargets:[{kind:target.kind,id:target.id}]};});
  const before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),receipts=f.store.db.prepare('SELECT * FROM agent_task_controls_v2 ORDER BY rowid').all();f.store.close();
- const captured=await createWorkspaceBackup({source:f.root,destination:backup});assert.equal(captured.databaseSchemaVersion,56);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),captured);assert.equal((await restoreWorkspaceBackup({directory:backup,destination:restored})).databaseSchemaVersion,57);
+ const captured=await createWorkspaceBackup({source:f.root,destination:backup});assert.equal(captured.databaseSchemaVersion,58);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),captured);assert.equal((await restoreWorkspaceBackup({directory:backup,destination:restored})).databaseSchemaVersion,59);
  const copy=openStore(restored);try{const journal=createAgentTaskJournal(copy);assert.deepEqual(journal.snapshot(f.run.id),before);assert.deepEqual(journal.events(f.run.id),events);assert.deepEqual(copy.db.prepare('SELECT * FROM agent_task_controls_v2 ORDER BY rowid').all(),receipts);assert.throws(()=>journal.resume(f.run.id,before.run.revision),/RESTORED_RECORD_HELD/u);}finally{copy.close();}
 }finally{f.close();rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});}});
 
@@ -103,6 +105,6 @@ test('later background conflicts may append a skip originating from an earlier t
  const earlier={kind:'shot',id:randomUUID(),revision:1},later={kind:'shot',id:randomUUID(),revision:3};
  const first=f.journal.beginStep(f.run.id,{kind:'tool',targets:[earlier],data:{conflictTargets:[earlier]}}),second=f.journal.beginStep(f.run.id,{kind:'tool',targets:[later],data:{conflictTargets:[later]}});
  for(const step of [first,second]){f.journal.markDispatch(f.run.id,step.id);f.journal.completeStep(f.run.id,step.id,{result:{queued:true}});}
- const skips:AgentTaskSkippedTarget[]=[{target:later,stepId:second.id,createdAt:'2026-10-22T00:00:00.000Z'},{target:earlier,stepId:first.id,createdAt:'2026-10-22T00:01:00.000Z'}];write(f,{skippedTargets:skips});validateAgentInteractionRowsV2(f.store.db);assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:56,profile:'ordinary'});
- assert.equal(installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()}).schemaVersion,57);assert.deepEqual(f.journal.run(f.run.id).skippedTargets,skips);
+ const skips:AgentTaskSkippedTarget[]=[{target:later,stepId:second.id,createdAt:'2026-10-22T00:00:00.000Z'},{target:earlier,stepId:first.id,createdAt:'2026-10-22T00:01:00.000Z'}];write(f,{skippedTargets:skips});validateAgentInteractionRowsV2(f.store.db);assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:58,profile:'ordinary'});
+ assert.equal(installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()}).schemaVersion,59);assert.deepEqual(f.journal.run(f.run.id).skippedTargets,skips);
 }finally{f.close();}});

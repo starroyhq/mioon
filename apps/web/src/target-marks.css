@@ -1,0 +1,37 @@
+/* Short-lived marks on canvas and timeline targets ("Mio 修改"). The glow sits outside the target and keeps
+   its selection outline, so a selected target that Mio changed shows both. Colours follow the accent, which
+   is near-white in the dark theme and near-black in the light theme. */
+[data-mio-mark] {
+  --mio-mark-ring: color-mix(in srgb, var(--wb-accent) 70%, transparent);
+  --mio-mark-glow: color-mix(in srgb, var(--wb-accent) 35%, transparent);
+  box-shadow: var(--mio-mark-selection, 0 0 0 0 transparent), 0 0 0 var(--mio-mark-ring-width, 1px) var(--mio-mark-ring), 0 0 var(--mio-mark-blur, 14px) var(--mio-mark-glow) !important;
+  transition: box-shadow .4s ease-out;
+  animation: mio-mark-glow-in .18s ease-out;
+}
+[data-mio-mark="fading"] { --mio-mark-ring: transparent; --mio-mark-glow: transparent; }
+.react-flow__node .canvas-node[data-mio-mark] { --mio-mark-blur: 16px; }
+.react-flow__node .canvas-node.is-selected[data-mio-mark] { --mio-mark-selection: 0 0 0 1px var(--wb-accent-line); --mio-mark-ring-width: 2px; }
+/* Above neighbouring clips so the glow is not hidden under them; a selected clip stays on top. */
+.timeline-clip[data-mio-mark] { z-index: 3; }
+
+/* Above the canvas and the timeline panel, below popovers, menus and dialogs. */
+.mio-mark-layer { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; }
+/* The shared button supplies focus and hover behaviour; the label keeps the design's 18px pill. */
+.mio-mark-layer .mio-mark.wb-button {
+  position: absolute; left: 0; top: 0; display: inline-flex; align-items: center; gap: 3px;
+  min-width: 0; min-height: 0; height: 18px; padding: 0 6px; border: 0; border-radius: 9px;
+  background: var(--wb-accent); color: var(--wb-accent-foreground); box-shadow: 0 2px 8px rgb(0 0 0 / .45);
+  font-family: var(--wb-font-sans); font-size: 10px; font-weight: 600; line-height: 18px; white-space: nowrap;
+  pointer-events: auto; cursor: pointer; transition: opacity .4s ease-out; animation: mio-mark-in .18s ease-out;
+}
+/* The visual stays 18px tall; the hit area grows to the 24px floor. */
+.mio-mark::after { content: ""; position: absolute; inset: -3px -2px; }
+.mio-mark > svg { flex: none; width: 11px; height: 11px; }
+.mio-mark[data-placed="false"] { visibility: hidden; }
+.mio-mark[data-phase="fading"] { opacity: 0; pointer-events: none; }
+.mio-mark-layer .mio-mark.wb-button:focus-visible { outline: 2px solid var(--wb-accent-line); outline-offset: 2px; }
+@keyframes mio-mark-in { from { opacity: 0; } }
+@keyframes mio-mark-glow-in { from { box-shadow: none; } }
+@media (prefers-reduced-motion: reduce) {
+  [data-mio-mark], .mio-mark-layer .mio-mark.wb-button { animation: none; transition: none; }
+}

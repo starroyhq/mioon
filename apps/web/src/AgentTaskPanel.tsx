@@ -10,6 +10,8 @@ import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { createAgentTaskSession, createAgentTaskReceiptStore, agentTaskPromptValid, agentTaskNewConversationBlock } from './agent-tasks-v2.ts';
 import type { AgentTaskAuthorizationReview, AgentTaskSessionState } from './agent-tasks-v2.ts';
 import type { AgentTaskChange, AgentTaskSnapshot, AgentTaskStep } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import { revealAgentTaskChangeRow } from './agent-task-location.ts';
+import type { AgentTaskReveal } from './agent-task-location.ts';
 import { createAgentTaskCloseReporter } from './native-close-sources.ts';
 import type { NativeCloseSourceRegistry } from './native-close-sources.ts';
 import { deriveAgentEndpoint } from './agent-settings.ts';
@@ -24,7 +26,7 @@ import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDis
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import './agent-task-v2.css';
 
-export interface AgentTaskPanelProps { projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot) => unknown; onLocate?: (change: AgentTaskChange) => unknown; nativeCloseRegistry?: unknown }
+export interface AgentTaskPanelProps { projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; nativeCloseRegistry?: unknown }
 const finished = (status: string) => ['completed', 'failed', 'stopped', 'reverted'].includes(status);
 const errorSettings = (code: string): 'agent' | 'models' | 'video-tools' | undefined => {
   if (['FFMPEG_UNAVAILABLE', 'FFMPEG_NOT_FOUND', 'FFMPEG_MISSING', 'FFPROBE_UNAVAILABLE', 'FFPROBE_NOT_FOUND', 'FFMPEG_CAPABILITY_UNAVAILABLE', 'FFMPEG_FILTER_UNAVAILABLE', 'EXPORT_CAPABILITY_TOOL_UNAVAILABLE', 'EXPORT_CAPABILITY_UNSUPPORTED', 'EXPORT_CAPABILITY_CONFIGURATION', 'EXPORT_CAPABILITY_FAILED', 'EXPORT_CAPABILITY_TIMEOUT', 'SUBTITLE_RENDERER_UNAVAILABLE'].includes(code)) return 'video-tools';
@@ -39,7 +41,7 @@ function StepIcon({ step }: { step: AgentTaskStep }) {
     {working ? <span className="wb-spinner" /> : <Icon name={step.status === 'completed' ? 'check' : step.status === 'failed' ? 'close' : step.status === 'unknown' ? 'info' : step.status === 'awaiting_approval' ? 'pause' : 'minus'} />}
   </span>;
 }
-export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, nativeCloseRegistry }: AgentTaskPanelProps) {
+export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, nativeCloseRegistry }: AgentTaskPanelProps) {
   const { t, locale } = useI18n(), visible = useWorkspaceVisibility();
   const [state, setState] = useState<AgentTaskSessionState>({ phase: 'loading', project: null, snapshot: null, draft: '', uploads: [], pending: null, error: '', conversationId:null,conversation:null,rounds:[],selectionKey:'new',legacy:false,draftDirty:false,draftVersion:0,unknownOutcome:false,history: { conversations: [], nextCursor: null, phase: 'closed' } });
   const [undoPreview,setUndoPreview]=useState<{snapshot:AgentTaskSnapshot;selectionKey:string}|null>(null),[undoLoading,setUndoLoading]=useState(false);
@@ -54,7 +56,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   useLayoutEffect(() => {
     let mounted = true;
     const close = createAgentTaskCloseReporter(nativeCloseRegistry as NativeCloseSourceRegistry | undefined);
-    const current = createAgentTaskSession({ projectId, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onChangeApplied: next => callbacks.current.onApplied?.(projectId, next) });
+    const current = createAgentTaskSession({ projectId, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
     session.current = current; close.publish(current.getState());
     const changed = () => current.setVisible(visibility.current && document.visibilityState !== 'hidden');
     document.addEventListener('visibilitychange', changed); void current.load();
@@ -77,6 +79,18 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   useLayoutEffect(() => { if(run)setStepsOpen(value=>({...value,[run.id]:!finished(run.status)||run.status==='failed'})); }, [run?.id, run?.status]);
   useLayoutEffect(() => { if (follow.current && log.current) log.current.scrollTop = log.current.scrollHeight; }, [run?.id, run?.revision, latest && modelText(latest), changes.length, state.error]);
   useLayoutEffect(() => { if(historyOpen)void session.current?.history(); }, [historyOpen]);
+  // A "Mio 修改" label on the canvas or timeline opens its change row. The history overlay hides the log, so it
+  // closes first; a row of another conversation is not searched for.
+  const revealed = useRef(0);
+  useLayoutEffect(() => {
+    if (!reveal || !visible || reveal.nonce === revealed.current) return;
+    if (historyOpen) { closeHistory(); return; }
+    revealed.current = reveal.nonce;
+    const shown = log.current ? revealAgentTaskChangeRow(log.current, reveal.changeId) : null;
+    if (!shown) return;
+    follow.current = shown.following; setFollowing(shown.following);
+    return shown.cleanup;
+  }, [reveal, visible, historyOpen]);
   const formatOptions={fps:timelineFps,lookup:targetName};
   const newBlocked=agentTaskNewConversationBlock(state);
   const closeHistory=()=>{historyVisible.current=false;session.current?.cancelSelection();setHistoryOpen(false);historyButton.current?.focus();};

@@ -79,10 +79,10 @@ test('fresh real through24 constructor still boots ordinary26 with all fixed rec
  assert.ok(db.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='timeline_requests_project'").get());
 });
 
-nodeTest('current default dispatcher independently boots ordinary56 with the same receipt protections',t=>{
+nodeTest('current default dispatcher independently boots ordinary58 with the same receipt protections',t=>{
  const db=open(':memory:');t.after(()=>db.close());let legacyCalls=0,realCalls=0;
  assert.equal(currentDispatch(target=>{legacyCalls++;if(target===db)realCalls++;}).initialize(db),null);assert.equal(realCalls,1);
- assert.equal(readCurrentWorkspaceRole(db),'ordinary-56');assert.deepEqual(protections(db),currentFixed.toSorted((a,b)=>a.name.localeCompare(b.name)));
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-58');assert.deepEqual(protections(db),currentFixed.toSorted((a,b)=>a.name.localeCompare(b.name)));
 });
 
 nodeTest('current feature admission refuses the intentionally raw historical receipt fixture without changing it',t=>{

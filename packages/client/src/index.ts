@@ -25,6 +25,7 @@ import {resolveConnection, connectionSource, ConnectionError, type ConnectionSou
 import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,isImageGroupResponse,isImageRequestResponse,isImageProfilesResponse,isImageListResponse} from '@mioon/contracts';
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
 import {FRAME_MUTATION_OPERATIONS,frameSchemas,canonicalFrameInput,isFrameMutationResponse,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '@mioon/contracts';
+import {SCENE_MUTATION_OPERATIONS,sceneSchemas,canonicalSceneInput,isSceneMutationResponse,isSceneTaskResponse,isSceneRequestResponse,isSceneListResponse,isSceneResultResponse} from '@mioon/contracts';
 import {isTimelineExportCapabilitiesResponse} from '@mioon/contracts';
 import {isExportSamplePeakResponse, EXPORT_SAMPLE_PEAK_LIMITS} from '@mioon/contracts/export-sample-peak';
 import {isExportLoudnessResponse, EXPORT_LOUDNESS_LIMITS} from '@mioon/contracts/export-loudness';
@@ -153,7 +154,7 @@ export function validateDiscovery(name: string, input: unknown): {operation?: st
 function interrupted(): ClientError { return new ClientError('INTERRUPTED', 'Stopped waiting locally. No remote job was cancelled.'); }
 function checkSignal(signal: AbortSignal | undefined): void { if (signal?.aborted) throw interrupted(); }
 const keyedMutationOperations = new Set<string>([
-  ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS,
+  ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS, ...SCENE_MUTATION_OPERATIONS,
   'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
 ]);
 interface RpcBody {operation: string; input: Record<string, unknown>; expectedWorkspaceOrigin?: string}
@@ -193,6 +194,24 @@ function frameNotAccepted(error: unknown, status: number, operation: string, inp
     proof.status === 'not_accepted' && proof.operation === operation && proof.projectId === request.projectId &&
     proof.requestId === request.requestId && typeof proof.inputHash === 'string' && /^[a-f0-9]{64}$/.test(proof.inputHash) &&
     proof.inputHash === createHash('sha256').update(canonicalFrameInput(input)).digest('hex');
+}
+
+const sceneRefusalStatuses: Record<string, number> = Object.freeze({SCENE_CAPACITY:507,SCENE_QUEUE_FULL:409,SCENE_TASK_ACTIVE:409,SCENE_REVISION_CONFLICT:409,
+  SCENE_STATE_CONFLICT:409,SCENE_SOURCE_INVALID:409,SCENE_SOURCE_CHANGED:409,SCENE_RESULT_CONFLICT:409,SCENE_RESULT_STALE:409,SCENE_CUTS_INVALID:409});
+/** The scene proof has the frame proof's shape: exact operation, project,
+ * request and canonical input hash, under the code's own status. */
+function sceneNotAccepted(error: unknown, status: number, operation: string, input: unknown): boolean {
+  const failure = error as {code?: unknown; details?: {sceneOutcome?: Record<string, unknown>}};
+  const proof = failure?.details?.sceneOutcome;
+  const request = input as {projectId?: unknown; requestId?: unknown};
+  const code = failure?.code;
+  return (SCENE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && typeof code === 'string' && Object.hasOwn(sceneRefusalStatuses, code) &&
+    status === sceneRefusalStatuses[code] && (sceneSchemas as Record<string, z.ZodTypeAny>)[operation].safeParse(input).success &&
+    Boolean(proof) && typeof proof === 'object' && !Array.isArray(proof) &&
+    Object.keys(proof).sort().join(',') === 'inputHash,operation,projectId,requestId,status' &&
+    proof.status === 'not_accepted' && proof.operation === operation && proof.projectId === request.projectId &&
+    proof.requestId === request.requestId && typeof proof.inputHash === 'string' && /^[a-f0-9]{64}$/.test(proof.inputHash) &&
+    proof.inputHash === createHash('sha256').update(canonicalSceneInput(input)).digest('hex');
 }
 
 export interface ClientOptions {env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; requestTimeoutMs?: number}
@@ -260,6 +279,14 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
           if (!proven) delete (details as Record<string, unknown>).frameOutcome;
           else delete (details as Record<string, unknown>).recovery;
         }
+        if (body && Object.hasOwn(sceneSchemas, body.operation)) {
+          const mutation = (SCENE_MUTATION_OPERATIONS as readonly string[]).includes(body.operation);
+          const proven = mutation && sceneNotAccepted(failure, response.status, body.operation, body.input);
+          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
+            ...(mutation ? proven ? {operation:body.operation,requestId:body.input.requestId,submissionMayHaveSucceeded:false} : recoveryDetails : {})};
+          if (!proven) delete (details as Record<string, unknown>).sceneOutcome;
+          else delete (details as Record<string, unknown>).recovery;
+        }
         if(body?.operation==='image.task.observeRemote'){
           const proven=comfyObservationNotAccepted(failure,response.status,body.input);
           details={...(details&&typeof details==='object'&&!Array.isArray(details)?details:{}),
@@ -269,7 +296,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
         if (body?.operation==='lut.import') details={...(details&&typeof details==='object'&&!Array.isArray(details)?details:{}),...recoveryDetails};
         if (body && ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'RESTORE_BACKUP_UNAVAILABLE'].includes(failure.code as string)) {
           details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}), ...recoveryDetails};
-          delete (details as Record<string, unknown>).mutationOutcome; delete (details as Record<string, unknown>).frameOutcome; delete (details as Record<string, unknown>).observation;
+          delete (details as Record<string, unknown>).mutationOutcome; delete (details as Record<string, unknown>).frameOutcome; delete (details as Record<string, unknown>).sceneOutcome; delete (details as Record<string, unknown>).observation;
         }
         throw new ClientError(typeof failure.code === 'string' ? safeValue(failure.code, [token]) : 'BACKEND_UNAVAILABLE', typeof failure.message === 'string' ? safeValue(failure.message, [token]) : 'The backend rejected the request.', {status: response.status, details});
       }
@@ -315,6 +342,13 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       : operation === 'frame.request.get' ? isFrameRequestResponse(result) && (result === null || resultRecord?.projectId === parsed.projectId && resultRecord?.requestId === parsed.requestId)
       : operation === 'frame.task.list' ? isFrameListResponse(operation, parsed, result) : true;
     if (!frameReadValid) throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid frame record.');
+    if ((SCENE_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isSceneMutationResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid scene acknowledgement.', {details: uncertainRequestDetails(body)});
+    const sceneReadValid = operation === 'scene.task.get' ? isSceneTaskResponse(result) && resultRecord?.projectId === parsed.projectId && resultRecord?.id === parsed.taskId
+      : operation === 'scene.request.get' ? isSceneRequestResponse(result) && (result === null || resultRecord?.projectId === parsed.projectId && resultRecord?.requestId === parsed.requestId)
+      : operation === 'scene.task.list' ? isSceneListResponse(operation, parsed, result)
+      : operation === 'scene.result.get' ? isSceneResultResponse(result) && resultRecord?.projectId === parsed.projectId && resultRecord?.assetId === parsed.assetId : true;
+    if (!sceneReadValid) throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid scene record.');
     if(operation==='image.task.observeRemote'&&!isComfyObserveResponse(parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid ComfyUI observation acknowledgement.',{details:{...uncertainRequestDetails(body),submissionMayHaveSucceeded:true}});
     if(operation==='image.task.remote.get'&&(!isComfyRemoteResponse(result)||resultRecord?.projectId!==parsed.projectId||resultRecord?.taskId!==parsed.taskId))

@@ -1,3 +1,4 @@
+import {validateWorkspaceSchema58} from './workspace-schema-v58.ts';
 import {validateWorkspaceSchema56} from './workspace-schema-v56.ts';
 import {validateWorkspaceSchema54} from './workspace-schema-v54.ts';
 import {createHash} from 'node:crypto';
@@ -11,7 +12,7 @@ import type {ProjectDeleteManifest} from '../../contracts/src/project-lifecycle.
 import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
 import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
 import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
-const validateLifecycleSchema=(db:DatabaseSync):void=>{if(db.prepare('SELECT 1 FROM schema_version WHERE version=56').get()){validateWorkspaceSchema56(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=54').get()){validateWorkspaceSchema54(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=52').get()){validateWorkspaceSchema52(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=50').get())validateWorkspaceSchema50(db);else validateWorkspaceSchema48(db);};
+const validateLifecycleSchema=(db:DatabaseSync):void=>{if(db.prepare('SELECT 1 FROM schema_version WHERE version=58').get()){validateWorkspaceSchema58(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=56').get()){validateWorkspaceSchema56(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=54').get()){validateWorkspaceSchema54(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=52').get()){validateWorkspaceSchema52(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=50').get())validateWorkspaceSchema50(db);else validateWorkspaceSchema48(db);};
 
 interface Store{db:DatabaseSync;root:string;get(table:string,id:string):unknown;put(table:string,value:Record<string,unknown>):unknown;tx<T>(callback:()=>T):T}
 export interface ProjectDeletionCompanions{assertDeletable(projectId:string):void;removeProject(projectId:string):void}
@@ -69,6 +70,7 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
       ['image_remote_runs',"state NOT IN ('completed','failed') OR contentVerified!=1"],
       ['image_remote_observations',"state IN ('queued','running')"],
       ['frame_tasks',"state NOT IN ('succeeded','cancelled_before_start','failed')"],
+      ['scene_tasks',"state IN ('queued','running','cancelling','persisting')"],
       ['edit_tasks',"status NOT IN ('applied','not_applied')"],
       ['agent_edit_proposals',"status IN ('pending','approved','dispatching','unknown')"],
       ['agent_chat_runs',"status='running' OR json_extract(data,'$.modelRequestState') IN ('dispatch_started','unknown')"],

@@ -1,5 +1,6 @@
+import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(objects)));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 /** Real Node process death around real shared business services and the private
  * delivery sidecar. This does not claim native GUI lost-ACK coverage or media

@@ -79,6 +79,7 @@ import {createAssetDispositionServices} from './asset-dispositions.ts';
 import {createWaveformServices} from './waveforms.ts';
 import {createImageServices} from './images.ts';
 import {createFrameServices} from './frames.ts';
+import {createSceneServices} from './scene-tasks.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 
@@ -97,6 +98,7 @@ export interface CreateServicesOptions {
  profileNow?: ()=>number;
  imageOptions?: Parameters<typeof createImageServices>[1];
  frameOptions?: Parameters<typeof createFrameServices>[1];
+ sceneOptions?: Parameters<typeof createSceneServices>[1];
  exportOptions?: Parameters<typeof createTimelineExportAdmissionServices>[1];
  agentAuthorizations?: AgentAuthorizations | null;
  readRecentOpened?: ()=>Readonly<Record<string,string>>;
@@ -185,7 +187,7 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
+ {env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
  if(getOpacityCandidateAssembly(inputStore))return createOpacityCandidateServices(inputStore,{signal:ownerSignal}) as unknown as OrdinaryServices;
  // Ordinary/candidate stores expose the same workspace surface; candidate
  // table-name narrowing stays inside its own verified assembly.
@@ -427,6 +429,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const waveforms=restored?inactive():createWaveformServices(store,{signal:ownerSignal});
  const images=restored?inactive():createImageServices(store,{...imageOptions,signal:ownerSignal,assertLiveAllowed:()=>configuration.assertLiveEnabled()} as Parameters<typeof createImageServices>[1]);
  const frames=restored?inactive():createFrameServices(store,{...frameOptions,signal:ownerSignal} as Parameters<typeof createFrameServices>[1]);
+ const scenes=restored?inactive():createSceneServices(store,{...sceneOptions,signal:ownerSignal});
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
  function subjectDisclosure(table: string,value: ServiceRow,projectId?: string,exportId?: string): ServiceRow {
@@ -458,6 +461,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'workspace.backup.inspect':()=>inspectWorkspaceBackup(store),
   'workspace.restore.inspect':(input: never)=>{const request=recordValue(input)??{};return {restored:false,...(request.includeVolumeEnvelopeCapability?{volumeEnvelopeCapability:readTimelineVolumeEnvelopeCapability(db)}:{}),...(request.includeAudioRoleCapability?{audioRoleCapability:readTimelineAudioRoleCapability(db)}:{})};},
   ...frames.handlers,
+  ...scenes.handlers,
   ...images.handlers,
   ...preflight.handlers,
   ...samplePeak.handlers,
@@ -565,7 +569,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&isRecord(parsed.patch)&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35,37,39,41,45,49,51,53,55,57].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35,37,39,41,45,49,51,53,55,57,59].includes(restored.schemaVersion))throw workspaceRestoreError();
      const patch=isRecord(parsed.patch)?parsed.patch:null;
      const colour=op==='timeline.clip.add'?parsed.colour:patch?.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();
@@ -595,7 +599,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   restoredLifetime?.abort();backups.stop();await backups.drain();
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
-  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
+  const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),scenes.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
   const results=await boundedShutdown(Promise.allSettled([...ownerDrains,...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
   for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;

@@ -224,6 +224,79 @@ journals use plaintext local SQLite; PNGs/manifests are local managed files,
 not vault-encrypted. No built-in Agent tool/catalog or generic recovery allowlist
 is expanded by these six external operations.
 
+## Reference-film scene detection (2026-10-24)
+
+Seven strict RPCs on the same backend detect the cuts of one owned reference
+video and keep the resulting cut lists. Schemas and response validators are in
+`packages/contracts/src/scene-tasks.ts`; the detector itself is described in
+[reference scene detection](SCENE-DETECTION.md).
+
+| Operation | Exact input | Result / effect |
+| --- | --- | --- |
+| `scene.detect` | `{projectId,sourceAssetId,sourceHash,options?,requestId}` | Immutable queued task acknowledgement; accepts one local decode |
+| `scene.request.get` | `{projectId,requestId}` | `{projectId,requestId,operation,response}` or `null`; original acknowledgement only |
+| `scene.task.get` | `{projectId,taskId}` | Current task, with live `progress` while it runs |
+| `scene.task.list` | `{projectId,sourceAssetId?,limit?,cursor?}` | `{projectId,items,nextCursor}`; newest first, read-only |
+| `scene.task.cancel` | `{projectId,taskId,expectedRevision,requestId}` | Queued (or unstarted interrupted) task → `cancelled_before_start`; running task → `cancelling` |
+| `scene.result.get` | `{projectId,assetId}` | `{projectId,assetId,result,current,staleReason}` for the newest saved result |
+| `scene.cuts.save` | `{projectId,assetId,sourceHash,expectedResultId,cuts,requestId}` | Summary of a new manual result |
+
+Detection:
+- `options` may set `mode` (`adaptive`/`fixed`), `sensitivity` (0–100) and
+  `minShotSeconds` (0.1–10); omitted fields use adaptive, 60 and 0.6. Task DTOs
+  report the normalized options.
+- The source must be an owned managed MP4/WebM within frame capture's limits
+  (600 s, 512 MiB); its current hash must equal `sourceHash`. A second detection
+  of a video whose detection is still queued, running or cancelling is refused
+  with `SCENE_TASK_ACTIVE`.
+- The acknowledgement is committed before any decode. One scene task decodes at
+  a time, with at most two queued per project and eight per workspace; 256 tasks
+  per project and 2048 per workspace are retained, without silent eviction.
+- A finished run saves the cut list as the video's newest result and the task
+  becomes `succeeded` with `result:{id,frameCount,cutCount}`. More than 1500
+  cuts fail the task with `SCENE_CUTS_LIMIT`.
+- States: `queued`, `running`, `cancelling`, `succeeded`,
+  `cancelled_before_start`, `cancelled`, `interrupted`, `failed` (the table also
+  reserves the storyboard states `persisting`, `local_result_error` and
+  `undone`). Only `interrupted` and `failed` carry an `errorCode`.
+- Cancelling a running task stops its decoder; the task ends `cancelled` and saves
+  nothing, even when the decoder had already finished.
+- Restart turns queued and running tasks into `interrupted`
+  (`SCENE_INTERRUPTED`) and cancelling ones into `cancelled`. Reads, replay and
+  restart never decode; run a new detection instead.
+- `progress` (`{frames,frameCount,cuts}`) is advisory, reported at most once per
+  source second, and never stored or replayed.
+
+Results:
+- A result is `{id,projectId,assetId,sourceHash,origin,taskId,basedOnResultId,
+  requestId,profileId,fps,frameCount,options,cuts,createdAt}`. `cuts` are
+  `{frame,score}`: the first frame of each new shot on the 30 fps grid
+  (`SOURCE_RANGE_FPS`). Detected results keep their options and scores.
+- Every result is retained (256 per video, 4096 per project); the newest one is
+  current. `scene.result.get` marks it stale with `SOURCE_CHANGED` when the
+  video's hash no longer matches, or `PROFILE_CHANGED` when its scoring profile
+  is not the current `scene-cuts-v1`.
+- `scene.cuts.save` stores the complete edited list (strictly increasing frames
+  below `frameCount`, at most 1500) as a `manual` result based on
+  `expectedResultId`, which must be the current valid result; otherwise it fails
+  with `SCENE_RESULT_CONFLICT` or `SCENE_RESULT_STALE`. A kept cut keeps its
+  score; an added or moved cut has `score:null`. The response is the result
+  summary (`cutCount` instead of `options` and `cuts`).
+
+Writes need caller-owned 8–200-character request IDs in a workspace-wide scene
+namespace; exact replay returns the original acknowledgement, and changed reuse
+fails with `SCENE_REQUEST_CONFLICT`. A provable fresh refusal carries
+`details.sceneOutcome:{status:"not_accepted",operation,projectId,requestId,inputHash}`
+with `inputHash` = SHA-256 of `canonicalSceneInput(input)`. Clients accept it only
+for HTTP 507 `SCENE_CAPACITY`, or HTTP 409 with `SCENE_QUEUE_FULL`,
+`SCENE_TASK_ACTIVE`, `SCENE_REVISION_CONFLICT`, `SCENE_STATE_CONFLICT`,
+`SCENE_SOURCE_INVALID`, `SCENE_SOURCE_CHANGED`, `SCENE_RESULT_CONFLICT`,
+`SCENE_RESULT_STALE` or `SCENE_CUTS_INVALID`. Restored workspaces read retained
+tasks and results; the three writes are unavailable there. Mio may run
+`scene.detect` and the four reads as read-only tools (detection changes no
+project content) and wait for a task with `task.wait` kind `scene`; cancelling
+and manual saves are user actions.
+
 ## Local image generation and review preparation
 ### Single-PNG reference edits
 
@@ -706,6 +779,33 @@ Exact replay returns the original wrapped acknowledgement. Both are local
 reversible Mio tools. They are not part of the durable local edit-task ledger,
 whose table checks its fixed operation list, and restored workspaces only replay
 their retained acknowledgements.
+
+### Split at scene cuts (2026-10-24)
+
+`timeline.clip.splitAtScenes` takes the common
+`{projectId,expectedRevision,requestId}` plus `assetId` (the reference video) and
+`resultId` (its current scene result) and returns
+`{operation,requestId,timeline,split,skipped}`.
+- Every clip of that video is split at each cut strictly inside its source range
+  (`sourceInFrame` to `sourceInFrame + durationFrames`), left to right, with the
+  `timeline.clip.split` edit: the original clip keeps its ID and first piece,
+  pieces stay contiguous in time and source, and outer audio fades stay at the
+  outer edges.
+- Each `split` row is `{clipId,clipIds,cutFrames,fadeCutFrames}`: the pieces in
+  order, the source frames they start at, and in-range cuts left out because they
+  fall inside an audio fade-in or fade-out.
+- Clips without any applicable cut are `skipped` with `NO_CUT_IN_RANGE`, or with
+  `FADE_BOUNDS` and their `cutFrames` when every in-range cut is inside a fade.
+- The whole batch is one history entry. With nothing to split it writes nothing
+  and fails with `NOTHING_TO_SPLIT` (409, `error.details.skipped`). A result that
+  is no longer the video's newest fails with `SCENE_RESULT_CONFLICT`; a stale one
+  with `SCENE_RESULT_STALE`. These, revision conflicts and `TIMELINE_LIMIT`
+  (the 100-clip limit) carry not-applied proofs binding `operation`, `projectId`
+  and `requestId`.
+
+Exact replay returns the original acknowledgement. It is a local reversible Mio
+tool, outside the durable edit-task ledger and unavailable in restored
+workspaces.
 
 ## V4 discovery and capability validation
 
