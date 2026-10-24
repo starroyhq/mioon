@@ -22,7 +22,9 @@ async function isolated(t, mode) {
   assert.equal(result.code, 0, errors); assert.equal(result.signal, null); return JSON.parse(output.trim());
 }
 
-test('actual server bounds nonsettling open/stat shutdown without claiming released slots or descriptors', {timeout: 20000}, async t => {
+// Watchdogs bound the fixtures only. Every test starts real server processes, whose startup varies with the
+// runner's file cache and load (about 2 s each on a cold CI runner); budgets are asserted from inside them.
+test('actual server bounds nonsettling open/stat shutdown without claiming released slots or descriptors', {timeout: 40000}, async t => {
   for (const mode of ['open', 'stat']) {
     const result = await isolated(t, mode);
     assert.equal(result.busyStatus, 503);
@@ -73,13 +75,13 @@ function assertHeaderDrain(result) {
   // causal timer/descriptor/socket assertions test ownership, not CPU speed.
 }
 
-test('actual HEAD/empty stalled headers release descriptors and remain owned by server socket shutdown', {timeout: 10000}, async t => {
+test('actual HEAD/empty stalled headers release descriptors and remain owned by server socket shutdown', {timeout: 20000}, async t => {
   const result = await isolated(t, 'headers');
   t.diagnostic(JSON.stringify(result));
   assertHeaderDrain(result);
 });
 
-test('pre-arm scheduling delay can exceed five-second total elapsed without changing the force-drain or server deadline', {timeout: 12000}, async t => {
+test('pre-arm scheduling delay can exceed five-second total elapsed without changing the force-drain or server deadline', {timeout: 24000}, async t => {
   const result = await isolated(t, 'headers-prearm-delay');
   t.diagnostic(JSON.stringify(result));
   assertHeaderDrain(result);
