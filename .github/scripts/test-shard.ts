@@ -30,6 +30,7 @@ export const TIMINGS_FILE = '.github/test-timings.json';
 export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
   'tests/http-file-shutdown.test.mjs', // 20-second shutdown bound timed out
   'tests/races.test.mjs', // 5-second tests; some take 4.4 s even alone
+  'tests/test-compile-cache.test.ts', // a self-sent SIGTERM must land while the cache handler is installed
   'tests/timeline-mix-loudness-service-media.test.mjs', // fixed operation budget for a 600-second mix
   'tests/worker-shutdown.test.mjs', // 7- and 8-second worker stop tests timed out
 ]);
