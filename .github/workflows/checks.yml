@@ -237,8 +237,8 @@ jobs:
 
       - name: Run complete Linux full-lane partition in isolated files
         id: tests
-        # Shards are balanced by .github/test-timings.json; a 4-vCPU runner tests three isolated files at a time,
-        # then the shard's EXCLUSIVE_TEST_FILES alone (see .github/scripts/test-shard.ts).
+        # Shards are balanced by .github/test-timings.json. A shard first runs its EXCLUSIVE_TEST_FILES alone, then
+        # its other isolated files three at a time on the 4-vCPU runner (see .github/scripts/test-shard.ts).
         run: env -u NODE_OPTIONS -u NODE_PATH node .github/scripts/test-shard.ts --index="$MIOON_TEST_SHARD_INDEX" --count=8 --concurrency=3
 
       - name: Upload full test partition proof
