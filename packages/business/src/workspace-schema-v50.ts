@@ -1,12 +1,14 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {createWorkspaceRestoreProfileV49} from './workspace-restore-schema-v49.ts';
+import {oneProfilePerConstructor} from './workspace-restore-profile-cache.ts';
 import {classifyWorkspaceSchemaV50V51} from './workspace-restore-schema-v51.ts';
 import {installTaskDispositionDefinitions,validateTaskDispositionRows} from './task-disposition-schema.ts';
+const sourceProfile=oneProfilePerConstructor(createWorkspaceRestoreProfileV49);
 
 /** The frozen48 classifier proves the complete source before any schema50 write. */
 export function initializeWorkspaceSchema50(db:DatabaseSync,initializeThrough24:(db:DatabaseSync)=>void):void {
   if(db.isTransaction)throw Object.assign(new Error('Isolated migration required'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
-  const source=createWorkspaceRestoreProfileV49(initializeThrough24);
+  const source=sourceProfile(initializeThrough24);
   let role;
   try{role=source.classifyWorkspaceSchemaV48V49(db);}
   catch(strictFailure){try{role=source.classifyWorkspaceSchemaV48V49AllowingUnknown(db);}catch{throw strictFailure;}}

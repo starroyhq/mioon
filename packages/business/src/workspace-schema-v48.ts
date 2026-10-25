@@ -1,10 +1,12 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {createWorkspaceRestoreProfileV45} from './workspace-restore-schema-v45.ts';
+import {oneProfilePerConstructor} from './workspace-restore-profile-cache.ts';
 import {classifyWorkspaceSchemaV48V49} from './workspace-restore-schema-v49.ts';
 import {migrateProjectLifecycleSchema} from './project-lifecycle-schema.ts';
+const sourceProfile=oneProfilePerConstructor(createWorkspaceRestoreProfileV45);
 
 export function initializeWorkspaceSchema48(db:DatabaseSync,initializeThrough24:(db:DatabaseSync)=>void):void{
-  const source=createWorkspaceRestoreProfileV45(initializeThrough24);
+  const source=sourceProfile(initializeThrough24);
   migrateProjectLifecycleSchema(db,value=>{
     let role;
     try{role=source.classifyWorkspaceSchemaV44V45(value);}

@@ -1,8 +1,10 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {createWorkspaceRestoreProfileV41} from './workspace-restore-schema-v41.ts';
+import {oneProfilePerConstructor} from './workspace-restore-profile-cache.ts';
 import {migrateRippleTaskSchema} from './workspace-ripple-schema.ts';
 import {classifyWorkspaceSchemaV44V45} from './workspace-restore-schema-v45.ts';
 import {assertNoRippleWorkspaceOpacity} from './workspace-ripple-evidence.ts';
+const sourceProfile = oneProfilePerConstructor(createWorkspaceRestoreProfileV41);
 
 export function validateWorkspaceSchema44(db: DatabaseSync): void {
   const profile = classifyWorkspaceSchemaV44V45(db);
@@ -13,7 +15,7 @@ export function validateWorkspaceSchema44(db: DatabaseSync): void {
 /** Ordinary44 descends directly from40. It never constructs or admits opacity
  * candidate42/43; version numbers do not define a contiguous capability chain. */
 export function initializeWorkspaceSchema44(db: DatabaseSync, initializeThrough24: (db: DatabaseSync) => void): void {
-  const source = createWorkspaceRestoreProfileV41(initializeThrough24);
+  const source = sourceProfile(initializeThrough24);
   migrateRippleTaskSchema(db, 44, connection => {
     let profile;
     try {
