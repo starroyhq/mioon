@@ -1,4 +1,5 @@
-import {realpath} from 'node:fs/promises';
+import {mkdir, realpath} from 'node:fs/promises';
+import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseArguments, preflight, discoverTests, buildCommands, testCommand, typecheckCommands, executeCommand, toolingEnvironment} from './lib/local-tooling.ts';
 
@@ -30,7 +31,8 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     }
     if (!report.buildReady) {console.error(JSON.stringify(report, null, 2)); return 1;}
     const commands = options.command === 'build' ? [...await typecheckCommands(root), ...buildCommands(root, entries, options.channel)]
-      : [testCommand(root, await discoverTests(root, options), options.concurrency, process.execPath, options.reporter)];
+      : [testCommand(root, await discoverTests(root, options), options.concurrency, process.execPath, options.reporter, options.timings)];
+    if (options.command === 'test' && options.timings) await mkdir(path.dirname(path.join(root, ...options.timings.split('/'))), {recursive: true});
     for (const command of commands) {
       const env = toolingEnvironment(process.env, {mediaPaths: options.command === 'test'});
       const result = options.command === 'test' && options.compileCache
