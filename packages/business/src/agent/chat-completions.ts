@@ -30,6 +30,16 @@ const profiles: Record<string, AgentChatProfile> = {
   ollama: Object.freeze({models: ['qwen3:8b'], tokenField: 'max_tokens', fields: {reasoning_effort: 'none'}}),
 };
 export const AGENT_CHAT_PROFILES: Readonly<Record<string, AgentChatProfile>> = freeze(profiles);
+/** MiniMax recommends the OpenAI SDK, whose SSE iterator accepts natural EOF.
+ * Restrict that terminal contract to this exact official non-thinking profile;
+ * an edited/custom endpoint or a journaled request for another model cannot opt in. */
+export function agentChatAllowsNaturalEof(configuration: AgentConfiguration, body: Record<string, unknown>): boolean {
+  return configuration.protocol === 'chat_completions' && configuration.presetId === 'minimax' &&
+    configuration.model === 'MiniMax-M3' && body.model === configuration.model && body.stream === true &&
+    object(body.thinking) && Object.keys(body.thinking).length === 1 && body.thinking.type === 'disabled' &&
+    ((configuration.platformId === 'china' && configuration.baseUrl === 'https://api.minimax.cn/v1') ||
+      (configuration.platformId === 'international' && configuration.baseUrl === 'https://api.minimax.io/v1'));
+}
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const wellFormed = (value: string): boolean => Buffer.from(value, 'utf8').toString('utf8') === value;
 function fail(code: string): never { throw agentChatError(code); }
@@ -102,8 +112,8 @@ export function buildAgentChatBody({configuration, messages, selfPort, readTools
 }
 
 /** Exactly one POST, with no tool execution, follow-on rounds, retry, protocol
- * fallback or model substitution. A done event requires BOTH finish and [DONE]
- * and a clean framed end; partial text remains partial on every failure. */
+ * fallback or model substitution. A done event requires finish and a clean framed
+ * end; [DONE] is additionally required outside the exact MiniMax EOF profile. */
 export function createChatCompletionGateway(dependencies: AgentTransportDependencies = {}): AgentGateway {
   const open = createOpenAiSdkTransport(dependencies);
   return async function* streamChatCompletion({configuration, apiKey, messages, signal, selfPort, readTools, beforeSubmit}) {
@@ -170,7 +180,8 @@ export function createChatCompletionGateway(dependencies: AgentTransportDependen
       }
       if (stream.error()) throw stream.error();
       if (signal?.aborted) fail('AGENT_CHAT_ABORTED');
-      if (!done || !finishReason) fail('AGENT_CHAT_TRUNCATED');
+      const naturalEof = agentChatAllowsNaturalEof(request.configuration, JSON.parse(request.body) as Record<string, unknown>) && (finishReason === 'stop' || finishReason === 'tool_calls');
+      if ((!done && !naturalEof) || !finishReason) fail('AGENT_CHAT_TRUNCATED');
       stream.close(); // Release sockets/timers before handing off the terminal event.
       if (tools.present && refusal) fail('AGENT_CHAT_PROTOCOL_ERROR');
       const toolCall: ToolCall | null = tools.present ? tools.finish() : null;

@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {parseAgentConfiguration} from './config.ts';
-import {agentChatError} from './chat-errors.ts';
+import {agentChatError, agentChatStreamError} from './chat-errors.ts';
 import {createAgentTransport, AGENT_NETWORK_LIMITS} from './network-policy.ts';
 import type {AgentTransport, AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 
@@ -79,7 +79,8 @@ export function createOpenAiSdkTransport(dependencies: AgentTransportDependencie
           }
         } catch {
           if (options.signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');
-          throw incoming.error() || agentChatError('AGENT_CHAT_TRUNCATED');
+          const failure = incoming.error();
+          throw failure && failure.code !== 'AGENT_CHAT_TRUNCATED' ? failure : agentChatStreamError('read_failed');
         } finally { close(); }
       };
       return {body: bodyStream(), close, error: () => incoming.error()};

@@ -12,7 +12,7 @@ import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import type {AgentTaskJson,AgentTaskChange} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped} from '../packages/business/src/agent/task-effects-v2.ts';
+import {setAgentTaskEffectGate,assertAgentTaskJobEffect,allowAgentTaskJobTargetMutation,resumeAgentTaskJobs,stopAgentTaskJobs,isAgentTaskJobStopped,withAgentTaskJobOrigin,recordAgentTaskJobDispatch} from '../packages/business/src/agent/task-effects-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS,AGENT_TASK_TOOL_SCHEMA_HASH} from '../packages/business/src/agent/task-tool-schemas-v2.ts';
 import {projectAgentTaskToolSchema} from '../packages/business/src/agent/task-tool-model-schema.ts';
 import {operationDefinition} from '../packages/client/src/index.ts';
@@ -80,6 +80,54 @@ async function acceptedGeneratedShot(t:TestContext){
  const shotId=String(created.outcome.result.id),generation={shotId,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};
  await f.execute('generation.submit',generation);return {...f,created,shotId,generation};
 }
+test('background generation polling keeps one submission audit and bounded history while preserving cost uncertainty and publication',async t=>{
+ const f=await acceptedGeneratedShot(t),job=f.store.list('jobs',f.projectId)[0];assert.ok(record(job)&&typeof job.id==='string');
+ const jobId=job.id,generation=f.journal.snapshot(f.run.id).steps.find(step=>step.toolCall?.name==='mioon_generation_submit')!;
+ const update=(patch:Record<string,unknown>)=>withAgentTaskJobOrigin(f.store.db,'job',jobId,()=>f.store.tx(()=>{const current=f.store.get('jobs',jobId);assert.ok(record(current));return f.store.put('jobs',{...current,...patch,revision:Number(current.revision)+1,updatedAt:new Date().toISOString()});}));
+ recordAgentTaskJobDispatch(f.store.db,'job',jobId);
+ update({status:'running',phase:'polling',providerJobId:'synthetic-accepted-task',submissionCount:1});
+ const before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),revision=f.journal.targetRevision(f.projectId,'job',jobId);
+ // A full business-history budget must not block ordinary provider polling.
+ f.store.db.exec("CREATE TRIGGER synthetic_poll_history_full BEFORE INSERT ON agent_task_changes_v2 BEGIN SELECT RAISE(ABORT,'synthetic history full');END;");
+ for(let i=0;i<300;i++)update({progress:i%80,nextPollAt:1000+i});
+ assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);
+ assert.ok(f.journal.targetRevision(f.projectId,'job',jobId)>revision);assert.equal((f.store.get('jobs',jobId) as Record<string,unknown>).nextPollAt,1299);
+ f.store.db.exec('DROP TRIGGER synthetic_poll_history_full');
+ const originalJob=f.store.get('jobs',jobId);
+ f.store.db.exec("CREATE TRIGGER synthetic_cost_audit_full BEFORE UPDATE ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.cost')='unknown' BEGIN SELECT RAISE(ABORT,'synthetic cost audit full');END;");
+ assert.throws(()=>update({status:'submission_unknown',phase:'reconciliation_required'}),/synthetic cost audit full/u);
+ assert.deepEqual(f.store.get('jobs',jobId),originalJob);assert.deepEqual(f.journal.snapshot(f.run.id),before);
+ f.store.db.exec('DROP TRIGGER synthetic_cost_audit_full');
+ update({status:'submission_unknown',phase:'reconciliation_required'});assert.equal(f.journal.step(generation.id).cost,'unknown');
+ const unknown=f.journal.snapshot(f.run.id);update({nextPollAt:5000});assert.deepEqual(f.journal.snapshot(f.run.id),unknown);
+ update({status:'running',phase:'reconciled'});
+ const assetId=randomUUID(),versionId=randomUUID(),publish=()=>withAgentTaskJobOrigin(f.store.db,'job',jobId,()=>f.store.tx(()=>{
+  f.store.put('assets',{id:assetId,projectId:f.projectId,name:'Synthetic published result.mp4',mimeType:'video/mp4'});
+  f.store.put('versions',{id:versionId,projectId:f.projectId,jobId,shotId:f.shotId,assetId,number:1,isMock:true});
+  const shot=f.store.get('shots',f.shotId);assert.ok(record(shot));f.store.put('shots',{...shot,selectedVersionId:versionId,revision:Number(shot.revision)+1});
+  const current=f.store.get('jobs',jobId);assert.ok(record(current));f.store.put('jobs',{...current,status:'succeeded',phase:'complete',progress:100,versionId,nextPollAt:0});
+ }));
+ publish();const done=f.journal.snapshot(f.run.id);
+ assert.equal(done.changes.filter(change=>change.operation==='generation.submit').length,1);
+ assert.equal(done.changes.filter(change=>change.operation==='generation.publish').length,1);
+ assert.equal(done.changes.filter(change=>change.operation==='version.select').length,1);
+ assert.equal(done.changes.filter(change=>change.operation==='generation.status').length,4);
+ assert.equal(done.run.stepsUsed,before.run.stepsUsed);assert.equal(f.journal.step(generation.id).cost,'unknown');
+ const publication=done.changes.find(change=>change.operation==='generation.publish')!;
+ assert.deepEqual(publication.targets.map(target=>target.kind).sort(),['asset','version']);assert.equal(publication.reversible,false);
+ update({progress:100,nextPollAt:6000});assert.equal(f.journal.snapshot(f.run.id).changes.length,done.changes.length);
+ assert.equal(f.store.list('jobs',f.projectId).length,1);assert.equal(f.store.list('versions',f.projectId).length,1);
+ assert.equal((f.store.get('jobs',jobId) as Record<string,unknown>).submissionCount,1);
+});
+test('background generation audit never suppresses frozen input changes or another request',async t=>{
+ const f=await acceptedGeneratedShot(t),job=f.store.list('jobs',f.projectId)[0];assert.ok(record(job)&&typeof job.id==='string');
+ const before=f.journal.snapshot(f.run.id);
+ withAgentTaskJobOrigin(f.store.db,'job',job.id,()=>f.store.tx(()=>f.store.put('jobs',{...job,snapshot:{...(record(job.snapshot)?job.snapshot:{}),prompt:'Synthetic changed frozen input'},nextPollAt:1000})));
+ const after=f.journal.snapshot(f.run.id);assert.equal(after.changes.length,before.changes.length+1);assert.equal(after.changes.at(-1)?.operation,'generation.status');
+ const other=await f.services.call('generation.submit',{...f.generation,requestId:randomUUID()});assert.ok(record(other)&&typeof other.id==='string');
+ withAgentTaskJobOrigin(f.store.db,'job',job.id,()=>f.store.tx(()=>f.store.put('jobs',{...other,nextPollAt:2000})));
+ const unrelated=f.journal.snapshot(f.run.id);assert.equal(unrelated.changes.length,after.changes.length+1);assert.equal(unrelated.changes.at(-1)?.targets[0]?.id,other.id);
+});
 test('undo retains a same-run generated shot container with explicit durable metadata and original evidence',async t=>{
  const f=await acceptedGeneratedShot(t),change=f.created.changes[0]!,before=structuredClone(change),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId),targets=f.journal.revisionSnapshot(f.projectId);
  assert.equal(projectAgentTaskUndo(f.store,f.projectId,f.journal.snapshot(f.run.id).changes).get(change.id)?.undoDisposition,'retain');

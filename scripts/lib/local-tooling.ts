@@ -23,6 +23,7 @@ export interface ParsedArguments {
   nativeReady: boolean;
   reporter?: 'tap' | 'spec';
   compileCache?: boolean;
+  timings?: string;
   [key: string]: unknown;
 }
 export interface NativeReadiness {
@@ -99,6 +100,8 @@ export const PORTABLE_TEST_FILES: readonly string[] = Object.freeze([
   'desktop-build-metadata.test.mjs', 'local-tooling.test.mjs',
   'typecheck-contract.test.mjs', 'typecheck-tooling.test.mjs',
 ]);
+/** Per-file test timings may only be written under the repository's artifacts directory. */
+export const TIMINGS_PATH = /^artifacts(?:\/[a-zA-Z0-9][a-zA-Z0-9._-]*)+\.json$/;
 export function parseArguments(args: readonly string[]): ParsedArguments {
   const [command, ...flags] = args;
   if (!['doctor', 'build', 'test', 'typecheck'].includes(command)) throw fail('TOOLING_USAGE', 'Usage: tooling.ts doctor|build|test|typecheck [documented options]');
@@ -113,11 +116,14 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
     else if (key === '--native-ready' && flag === key && command === 'doctor') result.nativeReady = true;
     else if (key === '--reporter' && command === 'test' && ['tap', 'spec'].includes(value)) result.reporter = value as 'tap' | 'spec';
     else if (key === '--compile-cache' && flag === key && command === 'test') result.compileCache = true;
+    else if (key === '--timings' && command === 'test' && TIMINGS_PATH.test(value)) result.timings = value;
     else if (key === '--concurrency' && command === 'test' && /^[1-4]$/.test(value)) result.concurrency = Number(value);
     else if (key === '--suite' && command === 'test' && ['portable', 'full'].includes(value)) result.suite = value as 'portable' | 'full';
     else if (key === '--file' && command === 'test' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/.test(value) && !result.files.includes(value)) result.files.push(value);
     else throw fail('TOOLING_USAGE', 'Unknown or invalid tooling option. See docs/PORTABLE-TOOLING.md.');
   }
+  // The timing reporter runs beside the chosen one; Node needs every reporter's destination named.
+  if (result.timings !== undefined && result.reporter === undefined) throw fail('TOOLING_USAGE', 'Test timings require an explicit --reporter.');
   return result;
 }
 
@@ -392,10 +398,13 @@ export function buildCommands(root: string, entries: Record<string, InstalledPac
     {command: execPath, args: [path.join(root, 'apps/desktop/scripts/build.ts'), `--channel=${channel}`], cwd: root},
   ];
 }
-export function testCommand(root: string, files: readonly string[], concurrency = 1, execPath: string = process.execPath, reporter?: 'tap' | 'spec'): CommandSpec {
+export function testCommand(root: string, files: readonly string[], concurrency = 1, execPath: string = process.execPath, reporter?: 'tap' | 'spec', timings?: string): CommandSpec {
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 4) throw fail('TOOLING_USAGE', 'Test concurrency must be between 1 and 4.');
   if (reporter !== undefined && !['tap', 'spec'].includes(reporter)) throw fail('TOOLING_USAGE', 'Test reporter must be tap or spec.');
-  return {command: execPath, args: ['--test', ...(reporter ? [`--test-reporter=${reporter}`] : []), `--test-concurrency=${concurrency}`, ...files], cwd: root};
+  if (timings !== undefined && (reporter === undefined || !TIMINGS_PATH.test(timings))) throw fail('TOOLING_USAGE', 'Test timings need an explicit reporter and a JSON path under artifacts/.');
+  const reporters = timings === undefined ? (reporter ? [`--test-reporter=${reporter}`] : [])
+    : [`--test-reporter=${reporter}`, '--test-reporter-destination=stdout', `--test-reporter=${path.join(root, 'scripts/lib/test-timing-reporter.ts')}`, `--test-reporter-destination=${path.join(root, ...timings.split('/'))}`];
+  return {command: execPath, args: ['--test', ...reporters, `--test-concurrency=${concurrency}`, ...files], cwd: root};
 }
 
 // Owned direct child only; never a shell, numeric PID signal, or automatic retry.

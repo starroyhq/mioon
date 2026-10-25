@@ -1,4 +1,8 @@
+import {validateWorkspaceSchema60} from './workspace-schema-v60.ts';
 import {validateWorkspaceSchema58} from './workspace-schema-v58.ts';
+import {AGENT_TASK_TABLES} from './agent/task-schema-v2.ts';
+import {AGENT_TASK_STORAGE_BYTES_V60} from './agent/task-storage-schema-v2.ts';
+import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
 import {validateWorkspaceSchema56} from './workspace-schema-v56.ts';
 import {validateWorkspaceSchema54} from './workspace-schema-v54.ts';
 import {createHash} from 'node:crypto';
@@ -12,7 +16,7 @@ import type {ProjectDeleteManifest} from '../../contracts/src/project-lifecycle.
 import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
 import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
 import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
-const validateLifecycleSchema=(db:DatabaseSync):void=>{if(db.prepare('SELECT 1 FROM schema_version WHERE version=58').get()){validateWorkspaceSchema58(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=56').get()){validateWorkspaceSchema56(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=54').get()){validateWorkspaceSchema54(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=52').get()){validateWorkspaceSchema52(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=50').get())validateWorkspaceSchema50(db);else validateWorkspaceSchema48(db);};
+const validateLifecycleSchema=(db:DatabaseSync):void=>{if(readCurrentWorkspaceRole(db)==='ordinary-60'){validateWorkspaceSchema60(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=58').get()){validateWorkspaceSchema58(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=56').get()){validateWorkspaceSchema56(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=54').get()){validateWorkspaceSchema54(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=52').get()){validateWorkspaceSchema52(db);return;}if(db.prepare('SELECT 1 FROM schema_version WHERE version=50').get())validateWorkspaceSchema50(db);else validateWorkspaceSchema48(db);};
 
 interface Store{db:DatabaseSync;root:string;get(table:string,id:string):unknown;put(table:string,value:Record<string,unknown>):unknown;tx<T>(callback:()=>T):T}
 export interface ProjectDeletionCompanions{assertDeletable(projectId:string):void;removeProject(projectId:string):void}
@@ -56,7 +60,11 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
     // Imported legacy JSON columns are not all constrained. Bound the complete
     // native result before any payload crosses into JavaScript.
     const size=db.prepare(`SELECT count(*) AS records,coalesce(sum(${bytes}),0) AS bytes FROM (SELECT * FROM ${quote(table)} ${where} LIMIT 20001)`).get(...args);
-    if(!size||typeof size.records!=='number'||size.records>20000||typeof size.bytes!=='number'||size.bytes>64*1024*1024)fail();
+    // Journal quotas charge JSON evidence; this native projection also carries
+    // its duplicated SQL owner/identity columns. Keep a finite metadata margin
+    // so a journal near its admitted limit can still be explicitly deleted.
+    const maximumBytes=AGENT_TASK_TABLES.some(name=>name===table)&&readCurrentWorkspaceRole(db)==='ordinary-60'?AGENT_TASK_STORAGE_BYTES_V60+8*1024*1024:64*1024*1024;
+    if(!size||typeof size.records!=='number'||size.records>20000||typeof size.bytes!=='number'||size.bytes>maximumBytes)fail();
     const read=db.prepare(`SELECT rowid AS deletionRowid,* FROM ${quote(table)} ${where} LIMIT 20001`);read.setReadBigInts(true);return read.all(...args) as Row[];
   }
   function blocked(projectId:string):void{

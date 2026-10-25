@@ -152,6 +152,14 @@ test('tooling options are explicit and bounded; no shell or arbitrary command ar
   assert.throws(() => testCommand('.', [], 1, process.execPath, 'outside' as unknown as 'tap' | 'spec'));
   assert.ok(testCommand('.', [], 1, process.execPath, 'tap').args.includes('--test-reporter=tap'));
   assert.equal(parseArguments(['test', '--compile-cache']).compileCache, true);
+  assert.equal(parseArguments(['test', '--reporter=tap', '--timings=artifacts/checks-linux-0/timings.json']).timings, 'artifacts/checks-linux-0/timings.json');
+  for (const args of [['test', '--timings=artifacts/t.json'], ['build', '--reporter=tap', '--timings=artifacts/t.json'], ['test', '--reporter=tap', '--timings=tests/t.json'],
+    ['test', '--reporter=tap', '--timings=artifacts/../t.json'], ['test', '--reporter=tap', '--timings=/tmp/t.json'], ['test', '--reporter=tap', '--timings=artifacts/t.txt'],
+    ['test', '--reporter=tap', '--timings=artifacts/.hidden.json'], ['test', '--reporter=tap', '--timings=artifacts/a.json', '--timings=artifacts/b.json']]) assert.throws(() => parseArguments(args));
+  assert.deepEqual(testCommand('/repo', ['tests/a.test.mjs'], 3, process.execPath, 'tap', 'artifacts/checks-linux-1/timings.json').args,
+    ['--test', '--test-reporter=tap', '--test-reporter-destination=stdout', `--test-reporter=${path.join('/repo', 'scripts/lib/test-timing-reporter.ts')}`,
+      `--test-reporter-destination=${path.join('/repo', 'artifacts', 'checks-linux-1', 'timings.json')}`, '--test-concurrency=3', 'tests/a.test.mjs']);
+  for (const [reporter, timings] of [[undefined, 'artifacts/t.json'], ['tap', '../t.json']] as const) assert.throws(() => testCommand('/repo', [], 1, process.execPath, reporter, timings));
   for (const args of [['build', '--compile-cache'], ['doctor', '--compile-cache'], ['test', '--compile-cache=yes'], ['test', '--compile-cache', '--compile-cache']]) assert.throws(() => parseArguments(args));
   assert.deepEqual(parseArguments(['test', '--suite=full', '--concurrency=2', '--file=a.test.mjs']).files, ['a.test.mjs']);
   assert.equal(parseArguments(['doctor', '--channel=production', '--native-ready']).nativeReady, true);

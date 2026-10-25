@@ -3,6 +3,8 @@ import path from 'node:path';
 import {setTimeout as waitDelay} from 'node:timers/promises';
 import {AppError,schemas,descriptions,operationEffect,parse} from '@mioon/contracts';
 import {ensurePrivateDirectory,readPrivateFile,writePrivateFileAtomic} from '@mioon/contracts/private-storage';
+import {isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudness';
+import {isTimelineLoudnessApplicableReport,timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
 import type {OperationName} from '@mioon/contracts';
 import type {WorkspaceStore} from '../db.ts';
 import {registerWorkspaceTransactionObserver,registerWorkspaceTransactionFence} from '../db.ts';
@@ -10,6 +12,7 @@ import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskTargetSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
+import {agentTaskParameterFeedback} from './task-tool-errors-v2.ts';
 import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
@@ -99,7 +102,7 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  // The journal identifies this project's timeline by projectId; the wire's
  // timelineId names the same aggregate without granting another project scope.
  if(typeof input.timelineId==='string')add('timeline',projectId);
- for(const field of ['source','target'] as const){add('node',input[field]);add('shot',input[field]);}
+ if(operation==='edge.create')for(const field of ['source','target'] as const){add('node',input[field]);add('shot',input[field]);}
  for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(input[field]))for(const value of input[field])add(field==='shotIds'?'shot':'asset',value);
  if(operation==='task.wait')add(input.kind==='image'?'image_task':input.kind==='frame'?'frame_task':input.kind==='scene'?'scene_task':String(input.kind),input.id);
  if(operation==='task.disposition.list'&&Array.isArray(input.targets))for(const target of input.targets)if(object(target))add(target.kind==='generation'?'job':target.kind==='render'?'export':'edit_task',target.taskId);
@@ -244,14 +247,21 @@ function differences(before:Snapshot,after:Snapshot):Array<{before?:SnapshotEntr
  for(const id of new Set([...Object.keys(before),...Object.keys(after)]))if(canonical(before[id]?comparable(before[id]!.value):null)!==canonical(after[id]?comparable(after[id]!.value):null))result.push({before:before[id],after:after[id]});
  return result;
 }
-function changes(prepared:PreparedAgentTaskTool,after:Snapshot):TaskChangeInput[]{
- const diff=differences(prepared.before,after);if(!diff.length)return [];
+function changes(prepared:PreparedAgentTaskTool,after:Snapshot,{backgroundGeneration=false}:{backgroundGeneration?:boolean}={}):TaskChangeInput[]{
+ const diff=differences(prepared.before,after).filter(entry=>{
+  if(!backgroundGeneration||entry.before?.kind!=='job'||entry.after?.kind!=='job'||entry.before.id!==entry.after.id||entry.before.value.requestId!==prepared.input.requestId||entry.after.value.requestId!==prepared.input.requestId)return true;
+  // Progress and scheduling remain durable in the job itself. They are not
+  // separate business effects and must not consume the assistant audit quota.
+  const lifecycleValue=(value:Value):Value=>Object.fromEntries(Object.entries(comparable(value)).filter(([field])=>!['progress','nextPollAt'].includes(field)));
+  return canonical(lifecycleValue(entry.before.value))!==canonical(lifecycleValue(entry.after.value));
+ });if(!diff.length)return [];
  const build=(entries:typeof diff,operation:string,reversible:boolean):TaskChangeInput=>({projectId:prepared.projectId,operation,
   targets:entries.map(({before,after:next})=>({kind:(next??before)!.kind,id:(next??before)!.id,revision:next?.revision??before!.revision+1,revisionBefore:before?.revision??0,revisionAfter:next?.revision??before!.revision+1})),
   before:json(entries.map(change=>change.before??null)),after:json(entries.map(change=>change.after??null)),undo:json(entries),reversible,summary:descriptions[operation]??operation});
  const autoSelections=prepared.operation==='generation.submit'?diff.filter(entry=>entry.before?.kind==='shot'&&entry.after?.kind==='shot'&&entry.before.value.selectedVersionId!==entry.after.value.selectedVersionId):[];
- const remaining=diff.filter(entry=>!autoSelections.includes(entry));
- return [...(remaining.length?[build(remaining,prepared.operation,prepared.risk==='local_reversible')]:[]),...autoSelections.map(entry=>build([entry],'version.select',true))];
+ const remaining=diff.filter(entry=>!autoSelections.includes(entry)),jobUpdates=backgroundGeneration?remaining.filter(entry=>(entry.after??entry.before)?.kind==='job'):[];
+ const outputs=remaining.filter(entry=>!jobUpdates.includes(entry));
+ return [...(jobUpdates.length?[build(jobUpdates,'generation.status',false)]:[]),...(outputs.length?[build(outputs,backgroundGeneration?'generation.publish':prepared.operation,prepared.risk==='local_reversible')]:[]),...autoSelections.map(entry=>build([entry],'version.select',true))];
 }
 
 /** Paths and raw bytes are never sent to the model. Local task results retain
@@ -277,12 +287,17 @@ function transactionResult(operation:string,projectId:string,value:unknown):Agen
 export function createAgentTaskTools({store,services}:{store:WorkspaceStore;services:OrdinaryServices}){
  const {db}=store;
  const preparedOrigins=new WeakMap<AgentTaskEffectOrigin,PreparedAgentTaskTool>();
+ const backgroundOrigins=new WeakSet<AgentTaskEffectOrigin>();
  const transactionSnapshots=new WeakMap<AgentTaskEffectOrigin,Snapshot>();
  const transactionCounts=new WeakMap<AgentTaskEffectOrigin,number>();
  const removeFence=registerWorkspaceTransactionFence(db,()=>{const origin=taskEffectOrigin();if(!origin)return;if(!origin.recorded)origin.beforeEffect();transactionSnapshots.set(origin,snapshot(store,origin.projectId));transactionCounts.set(origin,Number(db.prepare('SELECT total_changes() AS n').get()!.n));});
  const removeObserver=registerWorkspaceTransactionObserver(db,result=>{
   const origin=taskEffectOrigin(),active=origin?preparedOrigins.get(origin):undefined,before=origin?transactionSnapshots.get(origin):undefined;if(!origin||!active||!before||origin.projectId!==active.projectId)return;
-  const after=snapshot(store,active.projectId),captured=changes({...active,before},after);
+  const after=snapshot(store,active.projectId),backgroundGeneration=backgroundOrigins.has(origin)&&active.operation==='generation.submit',captured=changes({...active,before},after,{backgroundGeneration});
+  // Cost uncertainty is audit evidence even when only a scheduling field was
+  // updated. Keep it independent of the filtered business-change projection.
+  const uncertain=captured.some(change=>Array.isArray(change.after)&&change.after.some(entry=>object(entry)&&object(entry.value)&&['submission_unknown','outcome_unknown'].includes(String(entry.value.status??entry.value.state))))||backgroundGeneration&&Object.values(after).some(entry=>entry.kind==='job'&&entry.value.requestId===origin.requestId&&entry.value.status==='submission_unknown');
+  if(uncertain){const step=journal.step(origin.stepId);if(step.cost==='submitted')journal.updateStep(origin.runId,origin.stepId,{cost:'unknown'});}
   if(!captured.length){
    // Same-value local mutations can still commit a revision and immutable RPC
    // receipt. Their task receipt must share that transaction as well. Paid
@@ -292,7 +307,6 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   }
   if(origin.recorded){if(!origin.appendChangesInside)throw Error('Late task changes require a durable origin recorder');origin.appendChangesInside(captured);}
   else{origin.recordInside(transactionResult(active.operation,active.projectId,result),captured);origin.recorded=true;}
-  if(captured.some(change=>Array.isArray(change.after)&&change.after.some(entry=>object(entry)&&object(entry.value)&&['submission_unknown','outcome_unknown'].includes(String(entry.value.status??entry.value.state))))){const step=journal.step(origin.stepId);if(step.cost==='submitted')journal.updateStep(origin.runId,origin.stepId,{cost:'unknown'});}
  });
  const journal=createAgentTaskJournal(store);
  const removeDispatchRecorder=setAgentTaskJobDispatchRecorder(db,binding=>{const step=journal.step(binding.stepId);if(step.cost!=='submitted')journal.updateStep(binding.runId,binding.stepId,{cost:'submitted'});});
@@ -321,7 +335,8 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  });
  const removeJobOrigins=setAgentTaskJobOriginRunner(db,(binding,callback)=>{
   const origin:AgentTaskEffectOrigin={...binding,beforeEffect:()=>{},recorded:true,recordInside:()=>{throw Error('A worker cannot replace its acceptance receipt');},appendChangesInside:captured=>{journal.appendChangesInside(binding.runId,binding.stepId,captured);}};
-  preparedOrigins.set(origin,{projectId:binding.projectId,operation:binding.operation,input:{},risk:'local_irreversible',targets:[],before:snapshot(store,binding.projectId)});
+  backgroundOrigins.add(origin);
+  preparedOrigins.set(origin,{projectId:binding.projectId,operation:binding.operation,input:{requestId:binding.requestId},risk:'local_irreversible',targets:[],before:snapshot(store,binding.projectId)});
   return withTaskEffectOrigin(origin,callback);
  });
  const owned=(table:string,id:unknown,projectId:string):Value=>{
@@ -329,6 +344,22 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const row=db.prepare(`SELECT projectId FROM ${table} WHERE id=?`).get(id);if(!row||row.projectId!==projectId)return fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
   const record=store.get(table,id);if(!object(record))return fail('AGENT_TASK_INVALID_TARGET','工具目标无效');return record;
  };
+ async function parameterFeedback({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}){
+  operation=taskToolOperation(operation);if(operation!=='generation.submit'||!object(input))return null;
+  rejectHostFields(input);
+  for(const target of agentTaskExplicitTargets(operation,input,projectId))beforeTargetRead?.(target);
+  owned('shots',input.shotId,projectId);
+  let capabilities:unknown;
+  if(typeof input.connectionId==='string'&&typeof input.modelEntryId==='string'){
+   const connections:unknown=await services.call('video.connection.list',{});
+   const connection=Array.isArray(connections)?connections.find(item=>object(item)&&item.connectionId===input.connectionId&&item.configurationRevision===input.configurationRevision&&item.providerId===input.providerId):undefined;
+   if(object(connection)&&Array.isArray(connection.models)){
+    const model=connection.models.find(item=>object(item)&&object(item.entry)&&item.entry.id===input.modelEntryId&&(input.model===undefined||item.entry.modelId===input.model));
+    if(object(model))capabilities=model.capabilities;
+   }
+  }
+  return agentTaskParameterFeedback({operation,input,capabilities});
+ }
  function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
   let risk=['task.wait','node.inspect','edge.inspect'].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
@@ -360,7 +391,9 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    }
   }
   for(const [field,table,kind] of [['shotId','shots','shot'],['targetShotId','shots','shot'],['nodeId','nodes','node'],['sourceNodeId','nodes','node'],['edgeId','edges','edge'],['jobId','jobs','job'],['assetId','assets','asset'],['sourceAssetId','assets','asset'],['versionId','versions','version'],['exportId','exports','export']] as const)if(hostInput[field]!==undefined){owned(table,hostInput[field],projectId);add(kind,String(hostInput[field]));}
-  for(const field of ['source','target'] as const)if(hostInput[field]!==undefined){const id=String(hostInput[field]);const table=store.get('nodes',id)?'nodes':'shots';owned(table,id,projectId);add(table==='nodes'?'node':'shot',id);}
+  // Only edge endpoints are entity identities. Loudness tools use `target`
+  // for measurement settings and must retain their own shared-schema checks.
+  if(operation==='edge.create')for(const field of ['source','target'] as const)if(hostInput[field]!==undefined){const id=String(hostInput[field]);const table=store.get('nodes',id)?'nodes':'shots';owned(table,id,projectId);add(table==='nodes'?'node':'shot',id);}
   for(const field of ['shotIds','assetIds'] as const)if(Array.isArray(hostInput[field]))for(const id of hostInput[field]){owned(field==='shotIds'?'shots':'assets',id,projectId);add(field==='shotIds'?'shot':'asset',String(id));}
   // Scene tasks are observed directly; they are not part of the change snapshot.
   if(operation.startsWith('scene.')&&hostInput.taskId!==undefined&&db.prepare('SELECT projectId FROM scene_tasks WHERE id=?').get(String(hostInput.taskId))?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
@@ -422,7 +455,16 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
     try{value=prepared.operation==='image.generate'&&input.providerId!=='mock'?await generateApprovedImage(parsed,prepared,context):await services.call(prepared.operation,parsed,{signal:context.signal});}
     catch(error){if(origin.effectFailure)throw origin.effectFailure;throw error;}
     if(origin.effectFailure)throw origin.effectFailure;
-    return {result:projectResult(value),changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
+    let result:AgentTaskJson;
+    if(prepared.operation==='timeline.loudness.prepare'){
+     if(!isTimelineMixLoudnessResponse(value,parsed))fail('AGENT_TASK_INVALID_TOOL_RESULT','响度工具未返回完整且匹配本次请求的报告');
+     result=projectResult(value);
+     // Bind only the complete report actually returned to Mio. Projection must
+     // never mint a usable digest for a stripped or truncated observation.
+     if(!isTimelineMixLoudnessResponse(result,parsed)||canonical(result)!==canonical(value))fail('AGENT_TASK_INVALID_TOOL_RESULT','响度报告无法完整提供给助理');
+     if(isTimelineLoudnessApplicableReport(result))result={...result,candidateDigest:await timelineLoudnessCandidateDigest(result)};
+    }else result=projectResult(value);
+    return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
   });
  }
  function inspectCanvas(projectId:string,operation:string,input:Value):AgentTaskJson{
@@ -568,6 +610,6 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   {name:'mioon_asset_import_selected',operation:'asset.importSelected',description:'导入用户已选择并授权的文件句柄，不能指定路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
   {name:'mioon_lut_import_selected',operation:'lut.importSelected',description:'导入用户选择的Cube文件句柄，最多7MiB，不允许路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
  ];
- return {list,prepare,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
+ return {list,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

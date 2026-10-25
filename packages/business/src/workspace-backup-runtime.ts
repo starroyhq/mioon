@@ -44,8 +44,13 @@ export function createWorkspaceBackupRuntime({store,configuration,isQuiescent=()
   const readIndex=()=>readJson(root,INDEX,indexSchema,empty);
   const saveIndex=(value:Index)=>writePrivateFileAtomic(path.join(root,INDEX),JSON.stringify(indexSchema.parse(value)),{root,maxBytes:MAX_INDEX});
   const publicEntry=({directory:_,...entry}:Index['entries'][number]):WorkspaceBackupEntry=>entry;
+  const assertOwner=(requireQuiescence=false)=>{
+    // A retained read transaction can hide external commits from data_version.
+    // Maintenance must observe the current connection state between chunks.
+    if(!ownsStoreLock(store)||store.db.isTransaction||getWorkspaceRestoreContext(store)||requireQuiescence&&!isQuiescent())throw failure('WORKSPACE_BACKUP_BUSY');
+  };
   const assertIdle=(requireQuiescence=true)=>{
-    if(!ownsStoreLock(store)||getWorkspaceRestoreContext(store)||requireQuiescence&&!isQuiescent())throw failure('WORKSPACE_BACKUP_BUSY');
+    assertOwner(requireQuiescence);
     const report=inspectWorkspaceBackup(store);
     if(!report.inspectionComplete||Object.values(report.unresolved).some(value=>value!==0))throw failure('WORKSPACE_BACKUP_BUSY');
     // Legacy cold capture preserves cancelled paid work as evidence. Online
@@ -54,8 +59,15 @@ export function createWorkspaceBackupRuntime({store,configuration,isQuiescent=()
     const cancelledPaid=store.db.prepare(`SELECT 1 FROM jobs WHERE json_valid(data) AND json_extract(data,'$.status')='cancelled' AND ((json_type(data,'$.providerJobId')='text' AND length(json_extract(data,'$.providerJobId'))>0) OR (json_type(data,'$.submissionCount') IN ('integer','real') AND json_extract(data,'$.submissionCount')>0)) LIMIT 1`).get();
     if(cancelledPaid)throw failure('WORKSPACE_BACKUP_BUSY');
   };
-  const fingerprint=()=>`${store.db.prepare('SELECT total_changes() AS n').get()?.n}:${store.db.prepare('PRAGMA schema_version').get()?.schema_version}`;
-  const assertCurrent=(stamp:string,signal:AbortSignal)=>{signal.throwIfAborted();assertIdle(false);if(fingerprint()!==stamp)throw failure('WORKSPACE_BACKUP_CHANGED');};
+  const fingerprint=()=>`${store.db.prepare('SELECT CAST(total_changes() AS TEXT) AS n').get()?.n}:${store.db.prepare('PRAGMA main.schema_version').get()?.schema_version}:${store.db.prepare('PRAGMA main.data_version').get()?.data_version}`;
+  // The full admission belongs only to this queued operation. Reuse it between
+  // phase boundaries while every progress/chunk still checks the owner and all
+  // three change counters. data_version also detects another connection's
+  // committed data writes, which total_changes cannot see. Never refresh the
+  // original stamp after a change or turn revalidation into permission to retry.
+  const assertCurrent=(stamp:string,signal:AbortSignal)=>{signal.throwIfAborted();assertOwner();if(fingerprint()!==stamp)throw failure('WORKSPACE_BACKUP_CHANGED');};
+  const admit=(signal:AbortSignal)=>{signal.throwIfAborted();assertOwner();const stamp=fingerprint();assertIdle();assertCurrent(stamp,signal);return stamp;};
+  const assertValidatedCurrent=(stamp:string,signal:AbortSignal)=>{assertCurrent(stamp,signal);assertIdle(false);assertCurrent(stamp,signal);};
   const ensureDirectory=()=>{
     const directory=configuration.get().backupDirectory;checkSeparate(store.root,directory);checkSeparate(root,directory);
     if(!validatePrivateDirectory(directory,{allowMissing:true}))createDestination(directory);
@@ -74,21 +86,22 @@ export function createWorkspaceBackupRuntime({store,configuration,isQuiescent=()
     const existing=readIndex().entries.find(entry=>entry.requestId===input.requestId);
     if(existing)return existing.trigger===trigger?Promise.resolve(publicEntry(existing)):Promise.reject(failure('WORKSPACE_BACKUP_IDEMPOTENCY_CONFLICT'));
     return queue('creating',async signal=>{
-      assertIdle();const index=readIndex();if(index.entries.length>=100)throw failure('WORKSPACE_BACKUP_LIMIT');
+      const stamp=admit(signal),index=readIndex();if(index.entries.length>=100)throw failure('WORKSPACE_BACKUP_LIMIT');
       if(readActivation(root))throw failure('WORKSPACE_RESTORE_PENDING');
-      const stamp=fingerprint(),directory=ensureDirectory(),id=randomUUID(),snapshot=path.join(directory,`.snapshot-${id}`),snapshotIdentity=createDestination(snapshot),destination=path.join(directory,id);
+      const directory=ensureDirectory(),id=randomUUID(),snapshot=path.join(directory,`.snapshot-${id}`),snapshotIdentity=createDestination(snapshot),destination=path.join(directory,id);
       const ownedFiles=new Map<string,Stats>(),ownedDirectories=new Map<string,Stats>();let snapshotDb:DatabaseSync|undefined;
       const database=path.join(snapshot,'workbench.sqlite');
       try{
         writeBoundedFile(database,snapshot,Buffer.alloc(0),WORKSPACE_BACKUP_LIMITS.databaseBytes);
         await sqliteBackup(store.db,database,{rate:128,progress:()=>assertCurrent(stamp,signal)});
-        assertCurrent(stamp,signal);
+        assertValidatedCurrent(stamp,signal);
         const databaseIdentity=inspectFile(database,snapshot,{private:true,maxBytes:WORKSPACE_BACKUP_LIMITS.databaseBytes})!;ownedFiles.set(database,databaseIdentity);
         // Normalize only our newly created snapshot, never the active WAL.
         snapshotDb=new DatabaseSync(database);snapshotDb.exec('PRAGMA journal_mode=DELETE; PRAGMA trusted_schema=OFF;');
         const databaseCopy=await streamFile({file:database,root:snapshot,private:true,maxBytes:WORKSPACE_BACKUP_LIMITS.databaseBytes,signal,check:()=>assertCurrent(stamp,signal)});
         const issues=createIssueCollector(),inventory=await buildWorkspaceInventory({db:snapshotDb,source:store.root,signal,check:()=>assertCurrent(stamp,signal),issues,databaseEntry:{path:'payload/workbench.sqlite',role:'database',bytes:databaseCopy.bytes,sha256:databaseCopy.sha256}});
         if(!issues.result().complete)throw failure('WORKSPACE_BACKUP_INCOMPLETE');
+        assertValidatedCurrent(stamp,signal);
         snapshotDb.close();snapshotDb=undefined;
         ownedFiles.set(database,inspectFile(database,snapshot,{private:true,maxBytes:WORKSPACE_BACKUP_LIMITS.databaseBytes})!);
         for(const entry of inventory.plan){
@@ -98,8 +111,8 @@ export function createWorkspaceBackupRuntime({store,configuration,isQuiescent=()
           if(entry.sha256&&copied.sha256!==entry.sha256||entry.bytes!==undefined&&copied.bytes!==entry.bytes)throw failure('WORKSPACE_BACKUP_CHANGED');
           ownedFiles.set(output,copied.savedIdentity!);
         }
-        assertCurrent(stamp,signal);const result=await createWorkspaceBackup({source:snapshot,destination,signal});
-        assertCurrent(stamp,signal);await verifyWorkspaceBackup({directory:destination,signal});assertCurrent(stamp,signal);
+        assertValidatedCurrent(stamp,signal);const result=await createWorkspaceBackup({source:snapshot,destination,signal});
+        assertValidatedCurrent(stamp,signal);await verifyWorkspaceBackup({directory:destination,signal});assertValidatedCurrent(stamp,signal);
         const entry={id,createdAt:new Date(now()).toISOString(),fileCount:result.fileCount,payloadBytes:result.payloadBytes,trigger,requestId:input.requestId,directory:destination};
         saveIndex({...readIndex(),entries:[...readIndex().entries,entry],lastError:null,nextBackupAt:configuration.get().automaticBackup?new Date(now()+configuration.get().backupIntervalHours*3600_000).toISOString():null});
         return publicEntry(entry);
@@ -118,13 +131,13 @@ export function createWorkspaceBackupRuntime({store,configuration,isQuiescent=()
     const pointer=readActivation(root);
     if(pointer?.requestId===input.requestId){if(pointer.backupId!==input.backupId)return Promise.reject(failure('WORKSPACE_BACKUP_IDEMPOTENCY_CONFLICT'));return Promise.resolve({requestId:pointer.requestId,backupId:pointer.backupId,state:pointer.state,restartRequired:pointer.state==='pending'});}
     return queue('restoring',async signal=>{
-      assertIdle();if(pointer)throw failure('WORKSPACE_RESTORE_PENDING');
+      const stamp=admit(signal);if(pointer)throw failure('WORKSPACE_RESTORE_PENDING');
       const entry=readIndex().entries.find(value=>value.id===input.backupId);if(!entry)throw failure('WORKSPACE_BACKUP_NOT_FOUND');
-      const stamp=fingerprint();await verifyWorkspaceBackup({directory:entry.directory,signal});assertCurrent(stamp,signal);
+      await verifyWorkspaceBackup({directory:entry.directory,signal});assertValidatedCurrent(stamp,signal);
       const destination=path.join(path.dirname(entry.directory),`restored-${randomUUID()}`);
-      const result=await restoreWorkspaceBackup({directory:entry.directory,destination,signal});assertCurrent(stamp,signal);
+      const result=await restoreWorkspaceBackup({directory:entry.directory,destination,signal});assertValidatedCurrent(stamp,signal);
       const activation=activationSchema.parse({formatVersion:1,state:'pending',requestId:input.requestId,backupId:input.backupId,destination,restorationId:result.restorationId,sourceBackupId:result.sourceBackupId,manifestHash:result.manifestHash,sourceDbHash:result.sourceDbHash});
-      await inspectWorkspaceRestorePublication({destination,restorationId:activation.restorationId,sourceBackupId:activation.sourceBackupId,manifestHash:activation.manifestHash,sourceDbHash:activation.sourceDbHash,signal});assertCurrent(stamp,signal);
+      await inspectWorkspaceRestorePublication({destination,restorationId:activation.restorationId,sourceBackupId:activation.sourceBackupId,manifestHash:activation.manifestHash,sourceDbHash:activation.sourceDbHash,signal});assertValidatedCurrent(stamp,signal);
       writePrivateFileAtomic(path.join(root,ACTIVATION),JSON.stringify(activation),{root,maxBytes:MAX_INDEX});
       saveIndex({...readIndex(),lastError:null});
       return {requestId:input.requestId,backupId:input.backupId,state:'pending' as const,restartRequired:true};
@@ -139,10 +152,10 @@ export function createWorkspaceBackupRuntime({store,configuration,isQuiescent=()
     input=workspaceConfigurationSchemas['workspace.backup.create'].parse(input);
     const existing=readIndex().entries.find(entry=>entry.requestId===input.requestId);if(existing)return existing.trigger==='import'?Promise.resolve(publicEntry(existing)):Promise.reject(failure('WORKSPACE_BACKUP_IDEMPOTENCY_CONFLICT'));
     return queue('importing',async signal=>{
-      assertIdle();const index=readIndex();if(index.entries.length>=100)throw failure('WORKSPACE_BACKUP_LIMIT');
+      const stamp=admit(signal),index=readIndex();if(index.entries.length>=100)throw failure('WORKSPACE_BACKUP_LIMIT');
       if(readActivation(root))throw failure('WORKSPACE_RESTORE_PENDING');
-      const stamp=fingerprint(),directory=ensureDirectory(),id=randomUUID(),destination=path.join(directory,id);createDestination(destination);
-      const result=await importWorkspaceBackupBundle({source,destination,signal,check:()=>assertCurrent(stamp,signal)});assertCurrent(stamp,signal);
+      const directory=ensureDirectory(),id=randomUUID(),destination=path.join(directory,id);createDestination(destination);
+      const result=await importWorkspaceBackupBundle({source,destination,signal,check:()=>assertCurrent(stamp,signal)});assertValidatedCurrent(stamp,signal);
       const entry={id,createdAt:new Date(now()).toISOString(),fileCount:result.fileCount,payloadBytes:result.payloadBytes,trigger:'import' as const,requestId:input.requestId,directory:destination};
       saveIndex({...readIndex(),entries:[...readIndex().entries,entry],lastError:null});return publicEntry(entry);
     });

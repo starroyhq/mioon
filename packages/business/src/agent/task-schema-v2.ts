@@ -1,5 +1,6 @@
 import {agentTaskRunSchema,agentTaskStepSchema,agentTaskChangeSchema,agentTaskEventSchema,agentTaskReceiptSchema,agentTaskPolicySchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {validateAgentTaskModelRequestReferences} from './task-model-requests-v2.ts';
 
 export const AGENT_TASK_TABLES=Object.freeze(['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_target_revisions_v2','agent_task_edit_claims_v2','agent_task_edit_owners_v2','agent_task_edit_receipts_v2','agent_task_job_origins_v2','agent_task_imports_v2'] as const);
 const revisions='agent_task_target_revisions_v2';
@@ -49,13 +50,15 @@ export function installAgentTaskDefinitionsV2(db:DatabaseSync):void{
  const bytes=['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2'].map(table=>`(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM ${table})`).join('+');
  for(const table of quotaTables)for(const event of ['INSERT','UPDATE'])db.exec(`CREATE TRIGGER agent_quota_${table}_${event.toLowerCase()} AFTER ${event} ON ${table} BEGIN SELECT CASE WHEN ${counts}>20000 OR ${bytes}>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END;`);
 }/* installAgentTaskDefinitionsV2 */
-export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false,allowInteractions=false}:{allowConversations?:boolean;allowInteractions?:boolean}={}):void{
+export interface AgentTaskRowValidationOptions {allowConversations?:boolean;allowInteractions?:boolean;allowRequestReferences?:boolean;maxBytes?:number}
+export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false,allowInteractions=false,allowRequestReferences=false,maxBytes=64*1024*1024}:AgentTaskRowValidationOptions={}):void{
  for(const table of ['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2'])if(db.prepare(`SELECT 1 FROM ${table} WHERE NOT json_valid(data) OR length(CAST(data AS BLOB))>2097152 LIMIT 1`).get())throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  const invalid=():never=>{throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});};
+ if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>256*1024*1024)invalid();
  const families=[['agent_task_runs_v2',agentTaskRunSchema],['agent_task_steps_v2',agentTaskStepSchema],['agent_task_changes_v2',agentTaskChangeSchema],['agent_task_events_v2',agentTaskEventSchema],['agent_task_controls_v2',agentTaskReceiptSchema],['agent_task_control_states_v2',agentTaskReceiptSchema],['agent_task_policy_v2',agentTaskPolicySchema]] as const;
  let records=0,bytes=0;
  for(const [table,schema] of families)for(const row of db.prepare(`SELECT *,length(CAST(data AS BLOB)) AS bytes FROM ${table} LIMIT 20001`).iterate()){
-  if(++records>20000||(bytes+=Number(row.bytes))>67108864||typeof row.data!=='string')invalid();
+  if(++records>20000||(bytes+=Number(row.bytes))>maxBytes||typeof row.data!=='string')invalid();
   const parsed=schema.safeParse(JSON.parse(String(row.data)));if(!parsed.success)invalid();const value=parsed.data as unknown as Record<string,unknown>;if(table==='agent_task_runs_v2'&&(!allowConversations&&Object.hasOwn(value,'conversationId')||!allowInteractions&&(Object.hasOwn(value,'notes')||Object.hasOwn(value,'skippedTargets'))))invalid();
   // Public snapshots add display and undo eligibility at read time; widening
   // their response schema must never widen any fixed persisted profile.
@@ -68,6 +71,7 @@ export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=fals
  for(const table of ['agent_task_changes_v2','agent_task_job_origins_v2'])if(db.prepare(`SELECT 1 FROM ${table} t JOIN agent_task_steps_v2 s ON s.id=t.stepId WHERE t.runId IS NOT s.runId OR t.projectId IS NOT s.projectId LIMIT 1`).get())invalid();
  if(db.prepare("SELECT 1 FROM agent_task_edit_claims_v2 WHERE typeof(revision)!='integer' OR revision NOT BETWEEN 0 AND 9007199254740991 LIMIT 1").get())invalid();
  if(db.prepare("SELECT 1 FROM agent_task_target_revisions_v2 WHERE typeof(revision)!='integer' OR revision NOT BETWEEN 1 AND 9007199254740991 LIMIT 1").get())throw Object.assign(new Error('Invalid Agent target revision'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
+ try{validateAgentTaskModelRequestReferences(db,{allowReferences:allowRequestReferences});}catch{invalid();}
 }
 
 /** Restoration freezes captured revision evidence while its legacy local

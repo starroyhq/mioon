@@ -3,8 +3,8 @@
   "note": "Sources the frozen-source harnesses depend on that keep changing on main. Each is pinned to its exact reviewed bytes, first at main bbff40e (2026-10-23) when the per-change inverse layers were removed. After reviewing a change to one of them, run node tests/helpers/reviewed-live-sources.ts --update and commit the new pin with the change.",
   "files": {
     "packages/business/src/agent/chat-errors.ts": {
-      "bytes": 8320,
-      "sha256": "bf9008651600611138b4e73911a41f92c2141d81ad215fc5104bd9b9b4c3cab6"
+      "bytes": 11166,
+      "sha256": "f702ba73dadb32a3d08c43d9512f379b1884c3fbceadd23b0bd7db5838f8480b"
     },
     "packages/business/src/db.ts": {
       "bytes": 12861,
@@ -31,28 +31,28 @@
       "sha256": "3fcfac61cf4420155d6e61d11182610abb32cd450801677d4e28f18f0e7be0e1"
     },
     "packages/business/src/workspace-backup-schema-versions.ts": {
-      "bytes": 8198,
-      "sha256": "141df0fd497a1f3caf12b79c3e527e5336cb4896483534395e0269d4ee3fe40e"
+      "bytes": 8964,
+      "sha256": "88b49f1331f32bb0ba5e03f3a2341565ecfa9be113802f982e3d9b2882ca9ce7"
     },
     "packages/business/src/workspace-lock.ts": {
       "bytes": 2717,
       "sha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463"
     },
     "packages/business/src/workspace-restore-policy.ts": {
-      "bytes": 11402,
-      "sha256": "3eaa927d20f5600e7e64c6e17ae7cf817baa218ce4c438bda27e26111a63a4f8"
+      "bytes": 11739,
+      "sha256": "581731f6fc305b05ed63b664e518a64ef17e789c3315726f2714ac04faaa95f8"
     },
     "packages/business/src/workspace-schema-dispatch.ts": {
-      "bytes": 47464,
-      "sha256": "e50b3dd17f5312c63410f882c211e68083d8746d08f291d96a0642a0633576d7"
+      "bytes": 52185,
+      "sha256": "acde2ca67c54da846d81cd57ee3839c0dbc65eeaa46ca1dc1a644c1cf9cdba81"
     },
     "packages/business/src/workspace-volume-envelope-validation.ts": {
       "bytes": 16939,
       "sha256": "cb5beeacd993cbfdbbbe121bd2d531000215e18cb282c35e5b5584e22014a650"
     },
     "packages/contracts/package.json": {
-      "bytes": 1515,
-      "sha256": "834f278da97be115249aa5b8e86236f680b2fa782d331c63fca78a3f5c756bed"
+      "bytes": 1574,
+      "sha256": "0ab5014c062db5f0b107a3a17a14a3c754e8a0da40c9a940993cb865600d2c52"
     },
     "packages/contracts/src/edit-tasks.ts": {
       "bytes": 7303,
@@ -87,16 +87,16 @@
       "sha256": "4374d1d1d5c0a9bcab4b015b90677053eaeb6357790236ef8fbcf4c762115370"
     },
     "packages/contracts/src/workspace-backup.ts": {
-      "bytes": 7501,
-      "sha256": "10c81166309f23a409a58efa1718f4df94ac402e7a9e8d5c2350cce76174295c"
+      "bytes": 7514,
+      "sha256": "2b212d4ec2445b7d3215f5f537a2482ed492e4ac668899a4a4620e53c73f2696"
     },
     "packages/contracts/src/workspace-restore.ts": {
-      "bytes": 5797,
-      "sha256": "41830292dabfe19e9f76120a7f347131651b8b0c698acc95b5793fa9d4232cd1"
+      "bytes": 5803,
+      "sha256": "40c783894deb385db4aa9e4805fc27c6b547bc8eaf7c5afd36ebb7d106a3048f"
     },
     "packages/contracts/src/workspace-schema-profiles.ts": {
-      "bytes": 4349,
-      "sha256": "b5a5882a7d17a67016f895a131bb3b06c25b45614c9e7bd8e3b3853f5af90cb4"
+      "bytes": 4542,
+      "sha256": "971be2e8ef2a6bfbe60270b4ed55dfcde5ab22b4099bb427ac4de1f2713733bb"
     }
   }
 }

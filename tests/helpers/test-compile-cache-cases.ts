@@ -81,10 +81,12 @@ for (const signal of ['SIGINT', 'SIGTERM']) for (const phase of ['setup', 'clean
     await assert.rejects(lstat(path.join(await realpath(tmpdir()), prepared.cacheId)), {code: 'ENOENT'});
   });
 }
+// Node dispatches a self-sent signal on a later event-loop turn, and signal listeners do not keep the loop alive.
+// Wait for it under a timer so it lands while the cache is owned, not after a quick refused cleanup released the handlers.
 test('real interruption retains a visible refused-cleanup diagnostic and restores listeners', {timeout: 30000}, async t => {
   const script = `import {withOwnedTestCompileCache} from ${JSON.stringify(helper)};import {rename,mkdir,writeFile} from 'node:fs/promises';
     const before=['SIGINT','SIGTERM'].map(x=>process.listenerCount(x));
-    try{await withOwnedTestCompileCache({PATH:process.env.PATH||'',HOME:process.env.HOME},async env=>{const r=env.NODE_COMPILE_CACHE;await rename(r,r+'-relocated');await mkdir(r,{mode:0o700});await writeFile(r+'/untouched','keep');process.kill(process.pid,'SIGTERM');return {code:0};},{source:{},report:x=>console.log(JSON.stringify(x))});}
+    try{await withOwnedTestCompileCache({PATH:process.env.PATH||'',HOME:process.env.HOME},async env=>{const r=env.NODE_COMPILE_CACHE;await rename(r,r+'-relocated');await mkdir(r,{mode:0o700});await writeFile(r+'/untouched','keep');await new Promise(resolve=>{const alive=setTimeout(()=>{},5000);process.once('SIGTERM',()=>{clearTimeout(alive);resolve();});process.kill(process.pid,'SIGTERM');});return {code:0};},{source:{},report:x=>console.log(JSON.stringify(x))});}
     catch(error){console.log(JSON.stringify({outcome:error.code,cleanupFailed:Boolean(error.cacheCleanupFailed),before,after:['SIGINT','SIGTERM'].map(x=>process.listenerCount(x))}));process.exitCode=error.exitCode||1;}`;
   let failure: any; try {await node(script, env);} catch (error) {failure = error;}
   assert.ok(failure); assert.equal(failure.signal, null); assert.equal(failure.code, 143);

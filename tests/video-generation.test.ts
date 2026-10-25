@@ -229,6 +229,59 @@ test('known task recovery downloads and publishes one decoded immutable version 
  await f.tick();assert.equal(f.store.list('versions').length,1);assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
 });
 
+test('MiniMax CN rejected output recovery restores the same credential and downloads the existing task without another generation',async t=>{
+ const f=await fixture(t,{persistent:true}),configuration=structuredClone(f.configuration),video=path.join(f.root,'recovered-output.mp4');
+ configuration.region='cn';
+ await f.settings.put({action:'save',expectedRevision:1,configuration,secret:{...f.secret(),storage:'session'}});
+ await promisify(execFile)('ffmpeg',['-v','error','-f','lavfi','-i','color=c=blue:s=360x640:r=24','-t','4','-c:v','libx264','-pix_fmt','yuv420p','-threads','1','-y',video]);
+ const bytes=await readFile(video),job=await f.submit({configurationRevision:2,parameters:{resolution:'2K'}}),snapshot=structuredClone(job.snapshot),binding=snapshot.executionBinding as VideoExecutionBinding;
+ const unapprovedUrl='https://unverified.example/private-signed-path.mp4?token=synthetic-secret-token&signature=synthetic-secret-signature';
+ let output=unapprovedUrl;
+ f.reply((url,init)=>{
+  if(init.method==='POST'){
+   assert.equal(url,'https://api.minimax.cn/v2/video_generation');
+   assert.equal(new Headers(init.headers).get('Authorization'),'Bearer original-synthetic-key');
+   const body=JSON.parse(String(init.body)) as ServiceRow;
+   assert.equal(body.model,'MiniMax-H3');assert.equal(body.resolution,'2K');assert.equal(body.duration,4);
+   return json({task_id:'original-task'});
+  }
+  assert.equal(init.method,'GET');
+  if(url==='https://output.example/recovered.mp4'){
+   assert.equal(new Headers(init.headers).get('Authorization'),null);return new Response(bytes);
+  }
+  assert.equal(url,'https://api.minimax.cn/v2/query/video_generation/original-task');
+  assert.equal(new Headers(init.headers).get('Authorization'),'Bearer original-synthetic-key');
+  return json({task:{id:'original-task',status:'succeeded',content:{url:output}}});
+ });
+ const assertIdentity=()=>{
+  const current=f.job(job.id);
+  assert.equal(current.requestId,job.requestId);assert.equal(current.providerJobId,'original-task');assert.equal(current.submissionCount,1);
+  assert.deepEqual(current.snapshot,snapshot);assert.equal(f.store.list('jobs').length,1);
+  assert.equal(f.calls.filter(call=>call.init.method==='POST').length,1);
+ };
+ await f.tick();await f.stop();assert.equal(f.job(job.id).status,'running');assertIdentity();
+ f.ready(job.id);await f.tick();await f.stop();
+ const rejected=f.job(job.id),error=rejected.error as ServiceRow;
+ assert.equal(rejected.status,'downloading');assert.equal(error.code,'UNAPPROVED_OUTPUT_HOST');
+ assert.match(String(error.message),/unverified\.example/);
+ assert.doesNotMatch(String(error.message),/private-signed-path|synthetic-secret-token|synthetic-secret-signature|\?token=/);
+ assert.equal(f.calls.length,2);assert.equal(f.store.list('versions').length,0);assertIdentity();
+ await f.live(false);await f.restart();
+ await assert.rejects(f.settings.acquire(binding),{code:'VIDEO_SETTINGS_NOT_CONFIGURED'});
+ f.ready(job.id);await f.tick();await f.stop();
+ assert.equal(f.job(job.id).status,'downloading');assert.equal(f.job(job.id).phase,'connection_required');assert.equal(f.calls.length,2);assertIdentity();
+ await f.settings.put({action:'restoreCredential',expectedRevision:2,connectionId:binding.connectionId,credentialRef:binding.credentialRef,secret:f.secret()});
+ await f.restart();assert.equal(await f.settings.acquire(binding),'original-synthetic-key');
+ output='https://output.example/recovered.mp4';
+ f.ready(job.id);await f.tick();await f.stop();
+ const completed=f.job(job.id),versions=f.store.list('versions') as ServiceRow[],assets=f.store.list('assets') as ServiceRow[];
+ assert.equal(completed.status,'succeeded');assert.equal(completed.error,null);assertIdentity();
+ assert.equal(f.calls.length,4);assert.equal(versions.length,1);assert.equal(assets.length,1);
+ assert.equal(versions[0]!.id,completed.versionId);assert.equal(versions[0]!.jobId,job.id);assert.deepEqual(versions[0]!.snapshot,snapshot);
+ assert.equal(assets[0]!.id,versions[0]!.assetId);assert.equal(assets[0]!.width,360);assert.equal(assets[0]!.height,640);assert.equal(assets[0]!.duration,4);
+ await f.tick();await f.stop();assertIdentity();assert.equal(f.calls.length,4);assert.equal(f.store.list('versions').length,1);
+});
+
 test('Kling external task reconciliation binds the existing task without a replacement submit',async t=>{
  const f=await fixture(t,{providerId:'kling'});f.reply((_url,init)=>{if(init.method==='POST')throw Error('synthetic response lost');return json({code:0,data:[]});});
  const job=await f.submit();await f.tick();assert.equal(f.job(job.id).status,'submission_unknown');await f.stop();

@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
-import {validateWorkspaceSchema58} from '../packages/business/src/workspace-schema-v58.ts';
+import {validateWorkspaceSchema60} from '../packages/business/src/workspace-schema-v60.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from '../packages/business/src/timeline-volume-envelope-admission.ts';
 import {initializeFrozenUpgradeFixtureSchema} from './helpers/opacity-upgrade-fixture.ts';
 import {hash} from '../packages/business/src/services.ts';
@@ -22,7 +22,7 @@ function fixture(t,{seedProject=false}={}){
  if(seedProject){
   store.put('projects',{id,name:'Synthetic ingress',description:'',revision:1});
   store.put('assets',{id,projectId:id,name:'Synthetic audio',mimeType:'audio/wav',duration:2,hasAudio:true,provenance:'user-import',sha256:'a'.repeat(64),relativePath:'media/synthetic.wav',createdAt:'2026-10-15T00:00:00.000Z'});
-  validateWorkspaceSchema58(store.db);
+  validateWorkspaceSchema60(store.db);
  }
  const prepare=(operation,input)=>tasks.prepare({projectId:id,operation,input,origin:'new'});
  const state=()=>({changes:store.db.prepare('SELECT total_changes() AS n').get().n,rows:store.db.prepare('SELECT count(*) AS n FROM edit_tasks').get().n});

@@ -2,6 +2,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {agentTaskNoteSchema,agentTaskSkippedTargetSchema,agentTaskTargetSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskRun,AgentTaskStep,AgentTaskTarget} from '../../../contracts/src/agent-tasks-v2.ts';
 import {validateAgentTaskRowsV2} from './task-schema-v2.ts';
+import type {AgentTaskRowValidationOptions} from './task-schema-v2.ts';
 
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/iu;
 function invalid():never{throw Object.assign(new Error('Invalid Agent interaction evidence'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});}
@@ -32,8 +33,8 @@ export function installAgentInteractionDefinitionsV2(db:DatabaseSync):void {
 /** Preserve the old generic receipt.action format. Only actual new metadata is
  * interpreted here, including its links to the exact originating model/tool
  * steps; an old receipt merely named note/skip does not manufacture metadata. */
-export function validateAgentInteractionRowsV2(db:DatabaseSync):void {
- validateAgentTaskRowsV2(db,{allowConversations:true,allowInteractions:true});
+export function validateAgentInteractionRowsV2(db:DatabaseSync,options:Pick<AgentTaskRowValidationOptions,'allowRequestReferences'|'maxBytes'>={}):void {
+ validateAgentTaskRowsV2(db,{...options,allowConversations:true,allowInteractions:true});
  const getStep=db.prepare('SELECT data FROM agent_task_steps_v2 WHERE id=? AND runId=?');
  const step=(id:string,runId:string):AgentTaskStep=>{const row=getStep.get(id,runId);if(!row)invalid();return JSON.parse(String(row.data)) as AgentTaskStep;};
  for(const row of db.prepare('SELECT data FROM agent_task_runs_v2 LIMIT 20001').iterate()){
