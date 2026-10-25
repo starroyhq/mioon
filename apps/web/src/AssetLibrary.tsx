@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@mioon/ui/components/t
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@mioon/ui/components/collapsible';
 import { ScrollArea } from '@mioon/ui/components/scroll-area';
 import { WorkbenchTooltip, WorkbenchSelect } from './WorkspaceControls.tsx';
+import AssetContextMenu from './AssetContextMenu.tsx';
 import Icon from './icons.tsx';
 import SubjectLibrary from './SubjectLibrary.tsx';
 import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
@@ -52,6 +53,8 @@ export interface AssetLibraryProps {
   onPreview: (asset: AppAsset) => void;
   onCanvas?: ((kind: string, asset: AppAsset) => void) | undefined;
   onTimeline?: ((assetId: string) => void) | undefined;
+  /** Opens shot detection for a video; offered in the card's right-click menu. */
+  onDetectScenes?: ((asset: AppAsset) => void) | undefined;
   busy: Readonly<Record<string, boolean>>;
   collapsed: boolean;
   onCollapse: () => void;
@@ -74,7 +77,7 @@ export interface AssetLibraryProps {
   restored?: unknown;
   confirm?: unknown;
 }
-export default function AssetLibrary({ activeTab, onTabChange, mutationDisabled = false, assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set<string>(), onShowTasks, subjects, subjectBlocked, onInspectShot, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked, restored, confirm }: AssetLibraryProps) {
+export default function AssetLibrary({ activeTab, onTabChange, mutationDisabled = false, assets, filter, onFilter, search, onSearch, onImport, onFiles, onPreview, onCanvas, onTimeline, onDetectScenes, busy, collapsed, onCollapse, project, mode = 'canvas', versions = [], shots = [], dispositions, dispositionBlocked, selectedAsset, inUseAssetIds = new Set<string>(), onShowTasks, subjects, subjectBlocked, onInspectShot, timelineUsage, onLocateTimelineUse, annotations, annotationBlocked, restored, confirm }: AssetLibraryProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const editing = mode === 'editing';
   const [libraryTab, setLibraryTab] = useState<{scope: string | undefined; value: AssetLibraryTab}>({ scope: undefined, value: 'assets' });
@@ -96,6 +99,7 @@ export default function AssetLibrary({ activeTab, onTabChange, mutationDisabled 
   const chooseDispositionFilter = (value: string) => interaction.admit(() => setLocalFilter({ scope: dispositionScope, value }));
   const usageProps = { projectId: project?.id, scope: dispositionScope || libraryScope, usage: timelineUsage, visible: interaction.visible && !collapsed && libraryView === 'assets' };
   const [tagChoice, setTagChoice] = useState<{scope: unknown; value: string}>({ scope: null, value: '' });
+  const [menu, setMenu] = useState<{assetId: string; scope: string | undefined; x: number; y: number} | null>(null);
   const tagFilter = tagChoice.scope === annotations?.state?.ownerScope ? tagChoice.value : '';
   const tags = annotationTags(annotations?.state);
   const unknownAnnotations = annotations ? assets.filter(asset => asset.projectId === project?.id && !annotationRow(annotations.state, asset.id)).length : 0;
@@ -110,6 +114,8 @@ export default function AssetLibrary({ activeTab, onTabChange, mutationDisabled 
   const hiddenUsed = assets.filter(asset => inUseAssetIds.has(asset.id) && !visibleIds.has(asset.id)).length;
   const outsideSelected = selectedAsset && selectedAsset.projectId === project?.id && !visibleIds.has(selectedAsset.id) ? selectedAsset : null;
   const filtered = Boolean(tagFilter) || dispositionFilter !== 'all' || filter !== 'all' || Boolean(search) || usageFilter.filter !== 'all';
+  // The right-click menu belongs to the project it opened in and to a card still listed.
+  const menuAsset = menu && menu.scope === libraryScope && interaction.visible ? visible.find(asset => asset.id === menu.assetId) ?? null : null;
 
   return <Collapsible open={!collapsed} onOpenChange={open => { if (!open) onCollapse(); }} className={`asset-panel ${collapsed ? 'panel-collapsed' : ''}`} render={<aside aria-label={t('assets.indexedLibrary')} />} data-testid="asset-panel" onDragOver={(e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); if (mutationDisabled) e.dataTransfer.dropEffect = 'none'; } }} onDrop={(e: DragEvent) => { if (e.dataTransfer.files.length) { e.preventDefault(); if (!mutationDisabled && typeof onFiles === 'function') onFiles(Array.from(e.dataTransfer.files)); } }}>
      {!subjects && <div className="asset-panel-heading"><h2>{t('assets.library')}</h2><span>{assets.length}</span><CollapsibleTrigger render={<Button variant="ghost" className="icon-button" aria-label={t('assets.collapse')} title={t('assets.collapse')} data-testid="toggle-assets" />}><Icon name="minus" size={16} /></CollapsibleTrigger></div>}
@@ -149,7 +155,7 @@ export default function AssetLibrary({ activeTab, onTabChange, mutationDisabled 
             {hiddenUsed > 0 && <p data-testid="asset-filter-hidden-used">{t('assets.hiddenUsed', { count: hiddenUsed })}</p>}
           </div>}
           {outsideSelected && <section className="asset-disposition-selected" data-testid="asset-filter-selected-outside" aria-label={t('assets.selectedHidden')}><strong title={outsideSelected.name}>{outsideSelected.name}</strong><p>{t('assets.selectedHiddenHint')}</p><Button variant="ghost" className="text-button" type="button" data-testid="asset-filter-show-selected" onClick={resetFilters}>{t('assets.showAllKeepSelection')}</Button><AssetDispositionControls asset={outsideSelected} state={state as unknown as Parameters<typeof AssetDispositionControls>[0]['state']} controller={controller as unknown as Parameters<typeof AssetDispositionControls>[0]['controller']} blocked={dispositionBlocked} prefix="selected-asset" /></section>}
-          {visible.map((asset: AppAsset) => { const kind = assetKind(asset); const version = versions.find(item => item.assetId === asset.id); const shot = version ? shots.find(item => item.id === version.shotId) : null; return <div className={`asset-card ${kind} ${selectedAsset?.id === asset.id ? 'selected' : ''}`} key={asset.id} data-testid={`asset-card-${asset.id}`} draggable={!mutationDisabled} onPointerDownCapture={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled && !(event.target as Element).closest?.('[data-no-asset-drag]'); }} onPointerUp={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled; }} onPointerCancel={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled; }} onDragStart={(e: DragEvent) => { if (mutationDisabled || (e.target as Element).closest?.('[data-no-asset-drag]')) { e.preventDefault(); return; } dragAsset(e, asset.id); }}>
+          {visible.map((asset: AppAsset) => { const kind = assetKind(asset); const version = versions.find(item => item.assetId === asset.id); const shot = version ? shots.find(item => item.id === version.shotId) : null; return <div className={`asset-card ${kind} ${selectedAsset?.id === asset.id ? 'selected' : ''}`} key={asset.id} data-testid={`asset-card-${asset.id}`} onContextMenu={(event: React.MouseEvent<HTMLDivElement>) => { if (!interaction.visible || (event.target as Element).closest?.('input, textarea, [contenteditable="true"]')) return; event.preventDefault(); setMenu({ assetId: asset.id, scope: libraryScope, x: event.clientX, y: event.clientY }); }} draggable={!mutationDisabled} onPointerDownCapture={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled && !(event.target as Element).closest?.('[data-no-asset-drag]'); }} onPointerUp={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled; }} onPointerCancel={(event: PointerEvent<HTMLDivElement>) => { event.currentTarget.draggable = !mutationDisabled; }} onDragStart={(e: DragEvent) => { if (mutationDisabled || (e.target as Element).closest?.('[data-no-asset-drag]')) { e.preventDefault(); return; } dragAsset(e, asset.id); }}>
             <Button variant="ghost" className="asset-thumbnail" onClick={() => onPreview(asset)} aria-label={t('assets.previewNamed', { name: asset.name })}>{kind === 'audio' && layout === 'grid' ? <div className="asset-audio-thumbnail" aria-hidden="true"><Icon name="music" size={24} /></div> : <Media asset={asset} />}<span className="asset-kind" title={t(`assets.${kind}` as MessageKey)}><Icon name={kind === 'video' ? 'play' : kind === 'audio' ? 'music' : 'image'} size={11} />{kind === 'image' ? t('assets.image') : `${kind === 'audio' ? t('assets.audio') : t('assets.video')} · ${asset.duration ? formatNumber(Number(asset.duration), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 's' : '—'}`}</span>{Number(asset.duration) > 0 && <span className="asset-duration">{formatNumber(Number(asset.duration), { maximumFractionDigits: 0 })}s</span>}</Button>
             <div className="asset-card-meta"><div><strong title={asset.name}>{asset.name}</strong><span>{asset.width && asset.height ? `${asset.width} × ${asset.height}` : `${formatNumber(asset.sizeBytes / 1024, { maximumFractionDigits: 0 })} KB`}</span>{version && <span className="asset-generated-badge" data-testid={`generated-badge-${asset.id}`} title={t('assets.generatedVersion', { name: shot?.title || t('assets.generatedShot'), number: version.number })}><Icon name="sparkle" size={10} /><span>{shot?.title || t('assets.generatedShot')} · V{version.number}</span>{shot?.selectedVersionId === version.id && <b>{t('assets.selected')}</b>}</span>}</div></div>
             {annotations && !annotationRow(annotations.state, asset.id) && <p className="annotation-unverified" data-testid={`annotation-unverified-${asset.id}`}>{t('annotations.unknown')}</p>}
@@ -160,6 +166,9 @@ export default function AssetLibrary({ activeTab, onTabChange, mutationDisabled 
           {!visible.length && <div className="asset-empty"><div className="dashed-icon"><Icon name="folder" size={25} /></div><h4>{filtered ? t('assets.noMatches') : t('assets.emptyTitle')}</h4><p>{filtered ? t('assets.filterHint') : t('assets.emptyHint')}</p><span>PNG · JPG · MP4 · WAV · MP3</span></div>}
         </TabsContent></ScrollArea>
       </Tabs>
+      {menuAsset && menu && <AssetContextMenu asset={menuAsset} kind={assetKind(menuAsset)} anchor={menu} onClose={() => setMenu(null)} onCanvas={onCanvas ? () => onCanvas(assetKind(menuAsset), menuAsset) : undefined}
+        onTimeline={mutationDisabled || typeof onTimeline !== 'function' ? undefined : () => onTimeline(menuAsset.id)} timelineDisabled={mutationDisabled || !project || Boolean(busy.timeline)} onPreview={() => onPreview(menuAsset)}
+        onDetectScenes={onDetectScenes ? () => onDetectScenes(menuAsset) : undefined} />}
       <div className="asset-bottom"><Icon name="lock" size={12} /><span>{t('assets.localOnly')}</span></div>
       </div></WorkspaceVisibilityProvider>
       {subjects && <WorkspaceVisibilityProvider visible={libraryView === 'subjects'}><div className="library-view-pane" id="library-subjects-pane" role="tabpanel" aria-labelledby="library-subjects-tab" hidden={libraryView !== 'subjects'} inert={libraryView !== 'subjects'}><SubjectLibrary restored={Boolean(restored)} subjects={subjects} assets={assets} shots={shots} blocked={subjectBlocked} onShowTasks={onShowTasks} onInspectShot={onInspectShot} /></div></WorkspaceVisibilityProvider>}

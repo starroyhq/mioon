@@ -131,7 +131,7 @@ test('actual App source inspector keeps the normal frame panel and replaces it w
     const h = hooksHarness(`import React from 'react'; export default function Fixture() { return (${app.slice(start, end)}); }`, {}, 'default', {
       SourceRangeInspector: 'SourceRangeInspector', FrameExtractionPanel: 'FrameExtractionPanel', RestoredUnavailable: 'RestoredUnavailable', t: key => translate('zh-Hans', key),
       restored, sourceAsset, sourceRanges: { state: rangeState, controller: rangeController }, timeline: { projectId }, sourceRangeBlocked: false,
-      addSavedSourceRange() {}, frameExtraction: { controller }, agentRecovery,
+      addSavedSourceRange() {}, frameExtraction: { controller }, agentRecovery, sceneSummary: () => null,
     });
     const tree = h.render(), all = nodes(tree), panel = all.find(node => node.type === 'FrameExtractionPanel'), notice = all.find(node => node.type === 'RestoredUnavailable');
     assert.equal(tree.type, 'SourceRangeInspector'); assert.equal(tree.props.asset, sourceAsset);

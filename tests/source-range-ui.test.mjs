@@ -160,7 +160,7 @@ test('App guards dirty clip before source selection, clears clip selection, and 
     quickAssetId:'asset-a',sourceAsset:asset(),application:null,AgentEditingBoundary:'AgentEditingBoundary',SourceRangeInspector:'SourceRangeInspector',
     workspaceOriginScope:()=> 'normal',workspace:{restored:false},restored:false,data:{project:{id:'project-a'}},sourceDirty:true,
     sourceRanges:{state:{scope:'source:1'},controller:{getState:()=>({scope:ownerScope}),discard:()=>{discards++;}}},
-    timeline:timeline(),sourceRangeBlocked:false,addSavedSourceRange:()=>{},FrameExtractionPanel:'FrameExtractionPanel',frameExtraction:{controller:{}},agentRecovery:null,
+    timeline:timeline(),sourceRangeBlocked:false,addSavedSourceRange:()=>{},FrameExtractionPanel:'FrameExtractionPanel',frameExtraction:{controller:{}},agentRecovery:null,sceneSummary:()=>null,
   };
   const render=Function('env',`with(env){${renderCode};return render;}`)(environment),boundary=render();
   assert.equal(boundary.type,'AgentEditingBoundary');assert.equal(boundary.props.disabled,false);assert.equal(boundary.props.projectId,'project-a');
