@@ -230,6 +230,48 @@ export const operationMessages = {
     "en": "Using the task version and a stable request key, explicitly verify and publish an existing complete PNG and task receipt; does not decode again or resubmit",
     "ja": "タスクのバージョンと安定したリクエストキーを使用し、既存の完全なPNGとタスク証憑を明示的に検証して公開します。再デコードや再送信は行いません"
   },
+  "operation.scene.detect": {
+    "zh-Hans": "为本项目一段视频素材排队本地镜头拆解：先持久化任务再解码，按30fps网格找出切点并保存为该素材的最新结果；可设模式、灵敏度和最短镜头；不修改素材、不生成或付费；使用必填稳定requestId精确重放",
+    "zh-Hant": "為本專案一段影片素材排隊本機鏡頭拆解：先持久化任務再解碼，按30fps網格找出切點並儲存為該素材的最新結果；可設定模式、靈敏度和最短鏡頭；不修改素材、不生成或付費；使用必填穩定requestId精確重放",
+    "en": "Queue local shot detection for one video asset in this project: the task is saved before decoding, cuts are found on the 30fps grid and saved as the asset's newest result. Mode, sensitivity and shortest shot are adjustable. Does not modify the asset, generate or charge. A stable requestId is required for exact replay",
+    "ja": "このプロジェクトの動画素材1件に対し、ローカルのショット分割を待機列に追加します。タスクを保存してからデコードし、30fpsグリッドでカット点を検出して素材の最新結果として保存します。モード、感度、最短ショットを設定できます。素材の変更、生成、課金は行いません。正確な再実行には安定したrequestIdが必須です"
+  },
+  "operation.scene.request.get": {
+    "zh-Hans": "只读查询镜头拆解相关操作的不可变受理回执；不触发执行，当前状态另查task.get",
+    "zh-Hant": "唯讀查詢鏡頭拆解相關操作的不可變受理回執；不觸發執行，目前狀態另查task.get",
+    "en": "Read the immutable acceptance receipt of a shot detection operation, read-only; never triggers execution. Query task.get for the current state",
+    "ja": "ショット分割関連操作の変更不可の受付記録を読み取り専用で照会します。実行は行いません。現在の状態はtask.getで照会します"
+  },
+  "operation.scene.task.get": {
+    "zh-Hans": "只读查询本项目已有镜头拆解任务、运行进度和结果摘要；不读取媒体或恢复任务",
+    "zh-Hant": "唯讀查詢本專案既有鏡頭拆解任務、執行進度和結果摘要；不讀取媒體或恢復任務",
+    "en": "Read an existing shot detection task in this project with its progress and result summary, read-only; no media reads or task recovery",
+    "ja": "このプロジェクトの既存のショット分割タスクと進行状況、結果の概要を読み取り専用で照会します。メディアの読み取りやタスクの再開は行いません"
+  },
+  "operation.scene.task.list": {
+    "zh-Hans": "按项目分页只读列出镜头拆解任务，可按素材筛选，默认20条、最多50条；重启和查询不会自动解码",
+    "zh-Hant": "按專案分頁唯讀列出鏡頭拆解任務，可按素材篩選，預設20條、最多50條；重新啟動和查詢不會自動解碼",
+    "en": "List shot detection tasks by project in read-only pages, optionally for one asset, 20 by default and at most 50; restarting or querying never automatically decodes",
+    "ja": "プロジェクトごとのショット分割タスクを読み取り専用でページ単位に一覧表示します。素材で絞り込めます。既定は20件、最大50件です。再起動や照会で自動デコードは行いません"
+  },
+  "operation.scene.task.cancel": {
+    "zh-Hans": "按任务版本和稳定请求键取消排队或运行中的镜头拆解；运行中的任务先进入取消中，解码进程关闭后变为已取消，不保存结果",
+    "zh-Hant": "按任務版本和穩定請求鍵取消排隊或執行中的鏡頭拆解；執行中的任務先進入取消中，解碼行程關閉後變為已取消，不儲存結果",
+    "en": "Cancel a queued or running shot detection by task revision and a stable request key. A running task first becomes cancelling and is cancelled once its decoder has closed; no result is saved",
+    "ja": "タスクのリビジョンと安定したリクエストキーで、待機中または実行中のショット分割を取り消します。実行中のタスクはまず取り消し中となり、デコーダーが終了すると取り消し済みになります。結果は保存しません"
+  },
+  "operation.scene.result.get": {
+    "zh-Hans": "只读读取一段视频素材最新的切点结果（检测所得或手动保存）；素材哈希或打分规则不一致时标为失效",
+    "zh-Hant": "唯讀讀取一段影片素材最新的切點結果（偵測所得或手動儲存）；素材雜湊或評分規則不一致時標為失效",
+    "en": "Read the newest cut result of one video asset (detected or saved by hand), read-only; marked stale when the asset hash or scoring profile no longer matches",
+    "ja": "動画素材1件の最新のカット点結果（検出または手動保存）を読み取り専用で取得します。素材のハッシュや採点規則が一致しない場合は無効と表示します"
+  },
+  "operation.scene.cuts.save": {
+    "zh-Hans": "把手动增删或移动后的完整切点列表保存为该素材的新结果；必须基于当前最新且有效的结果，其后又有新结果时冲突；不修改素材或时间线；使用必填稳定requestId精确重放",
+    "zh-Hant": "把手動增刪或移動後的完整切點列表儲存為該素材的新結果；必須基於目前最新且有效的結果，其後又有新結果時衝突；不修改素材或時間軸；使用必填穩定requestId精確重放",
+    "en": "Save the complete cut list after manual additions, removals or moves as the asset's new result. It must start from the current newest valid result and conflicts if a newer one exists. Does not modify the asset or timeline. A stable requestId is required for exact replay",
+    "ja": "手動で追加、削除、移動した後のカット点リスト全体を、その素材の新しい結果として保存します。現在の最新かつ有効な結果を基にする必要があり、その後に新しい結果がある場合は競合します。素材やタイムラインは変更しません。正確な再実行には安定したrequestIdが必須です"
+  },
   "operation.image.profile.list": {
     "zh-Hans": "读取图像预设；includeSettingsRevision:true 可发现对应槽的非秘密配置版本，默认响应不变；不探测网络、解密密钥或授予生成批准",
     "zh-Hant": "讀取影像預設；includeSettingsRevision:true 可探索對應槽的非秘密設定版本，預設回應不變；不探測網路、解密密鑰或授予生成批准",
@@ -715,6 +757,24 @@ export const operationMessages = {
     "zh-Hant": "僅向空時間軸按鏡頭順序複製目前所選版本，之後獨立編輯",
     "en": "Copy the currently selected versions in shot order only into an empty timeline, which is edited independently afterward",
     "ja": "空のタイムラインに限り、現在選択されているバージョンをショット順にコピーします。その後は独立して編集します"
+  },
+  "operation.timeline.clip.refreshSources": {
+    "zh-Hans": "按时间线版本把来源镜头已改选新版本的片段批量换成选中版本并固定来源；保留片段ID、位置、时长、源入点、画面、音量和淡入淡出；未来自生成版本、镜头未选版本、已是最新或新版本不足以覆盖源区间的片段跳过并返回原因；整批记一条历史，撤销一次全部回退；没有可更新的片段时不写入；使用必填稳定requestId精确重放，不生成或处理媒体",
+    "zh-Hant": "按時間軸版本把來源鏡頭已改選新版本的片段批次換成所選版本並固定來源；保留片段ID、位置、時長、來源入點、畫面、音量和淡入淡出；非來自生成版本、鏡頭未選版本、已是最新或新版本不足以涵蓋來源區間的片段略過並回傳原因；整批記為一筆歷史，復原一次全部還原；沒有可更新的片段時不寫入；使用必填穩定requestId精確重放，不生成或處理媒體",
+    "en": "Against the timeline version, switch clips whose source shot now selects another version to that version and pin it. Keeps clip ID, position, duration, source in-point, visuals, volume, and fades. Clips not from a generated version, whose shot selects no version, that are already current, or whose new version cannot cover the source range are skipped with their reasons. The whole batch is one history entry that a single undo reverts. Nothing is written when no clip can be refreshed. A stable requestId is required for exact replay; no media is generated or processed",
+    "ja": "タイムラインのバージョンを照合し、ソースショットが別のバージョンを選択したクリップをそのバージョンに一括で切り替えて固定します。クリップID、位置、長さ、ソースのイン点、映像、音量、フェードを保持します。生成バージョン由来でないクリップ、ショットがバージョンを選択していないクリップ、既に最新のクリップ、新しいバージョンがソース範囲を満たさないクリップはスキップし、理由を返します。一括で1件の履歴となり、1回の取り消しですべて元に戻ります。更新できるクリップがない場合は書き込みません。同一リクエストの元の結果の再現には安定したrequestIdが必須で、メディアの生成や処理は行いません"
+  },
+  "operation.timeline.shots.append": {
+    "zh-Hans": "按时间线版本把还没有片段的镜头按画板顺序、用其选中版本完整时长追加到第一条视频轨末尾并固定来源；已有片段不动；未选版本的镜头跳过并返回原因；记一条历史可撤销；没有可追加的镜头时不写入；使用必填稳定requestId精确重放，不生成或处理媒体",
+    "zh-Hant": "按時間軸版本把還沒有片段的鏡頭按畫布順序、以其所選版本完整時長附加到第一條影片軌道末尾並固定來源；既有片段不動；未選版本的鏡頭略過並回傳原因；記為一筆歷史可復原；沒有可附加的鏡頭時不寫入；使用必填穩定requestId精確重放，不生成或處理媒體",
+    "en": "Against the timeline version, append shots that have no clip yet, in canvas order and at the full length of their selected versions, to the end of the first video track, pinning each clip to its version. Existing clips do not move. Shots without a selected version are skipped with their reasons. Records one undoable history entry. Nothing is written when no shot can be appended. A stable requestId is required for exact replay; no media is generated or processed",
+    "ja": "タイムラインのバージョンを照合し、まだクリップのないショットをキャンバスの順に、選択バージョンの全長で最初の動画トラックの末尾へ追加し、そのバージョンに固定します。既存のクリップは動かしません。バージョン未選択のショットはスキップし、理由を返します。取り消し可能な履歴を1件記録します。追加できるショットがない場合は書き込みません。同一リクエストの元の結果の再現には安定したrequestIdが必須で、メディアの生成や処理は行いません"
+  },
+  "operation.timeline.clip.splitAtScenes": {
+    "zh-Hans": "按时间线版本把来自一段参考视频的所有片段，在其源区间内的每个切点处批量分割；切点取该素材当前有效的拆解结果；分割规则与单次分割相同，落在音频淡入淡出内的切点跳过并返回；没有可分割的片段时不写入；整批记一条历史，撤销一次全部回退；使用必填稳定requestId精确重放，不处理媒体",
+    "zh-Hant": "按時間軸版本把來自一段參考影片的所有片段，在其來源區間內的每個切點處批次分割；切點取該素材目前有效的拆解結果；分割規則與單次分割相同，落在音訊淡入淡出內的切點略過並回傳；沒有可分割的片段時不寫入；整批記為一筆歷史，復原一次全部還原；使用必填穩定requestId精確重放，不處理媒體",
+    "en": "Against the timeline version, split every clip from one reference video at each cut inside its source range, using the asset's current valid detection result. Splits follow the single-split rules; cuts inside audio fades are skipped and returned. Nothing is written when no clip can be split. The whole batch is one history entry that a single undo reverts. A stable requestId is required for exact replay; no media is processed",
+    "ja": "タイムラインのバージョンを照合し、参照動画1件に由来するすべてのクリップを、ソース範囲内の各カット点で一括分割します。カット点はその素材の現在有効な分割結果を使います。分割規則は単一分割と同じで、音声のフェードイン・フェードアウト内のカット点はスキップして返します。分割できるクリップがない場合は書き込みません。一括で1件の履歴となり、1回の取り消しですべて元に戻ります。正確な再実行には安定したrequestIdが必須で、メディアの処理は行いません"
   },
   "operation.timeline.render": {
     "zh-Hans": "冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询",

@@ -1,6 +1,8 @@
+import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
+import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
 import type {currentOrdinary56Delta as schema56DeltaType} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
+function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {errorView} from './helpers/test-error.ts';

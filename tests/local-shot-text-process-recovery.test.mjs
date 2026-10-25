@@ -1,5 +1,7 @@
+import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
+import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 /** Real owned-process death around the shared shot.update service. These tests
  * prove Node business-receipt recovery, never native GUI lost-ACK coverage. */

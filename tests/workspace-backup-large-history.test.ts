@@ -121,7 +121,7 @@ test('large stable history performs a constant number of full inspections and su
   assert.deepEqual(await large.runtime.create({requestId: entry.requestId}), entry);
   const directory = large.backupDirectory(entry.id);await verifyWorkspaceBackup({directory});
   const result = await restoreWorkspaceBackup({directory, destination: join(large.base, 'restored')});
-  assert.equal(result.databaseSchemaVersion, 59);
+  assert.equal(result.databaseSchemaVersion, 61);
   const restored = openStore(join(large.base, 'restored'));
   try {assert.equal(retainedDigest(restored.db), before);assert.equal(restored.list('jobs', large.projectId).length, 0);} finally {restored.close();}
   t.diagnostic(`synthetic >64MiB: ${stats.fullScans} full source inspections, ${stats.cheapChecks} progress/chunk fences`);

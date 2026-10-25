@@ -1,6 +1,6 @@
 import {installAgentConversationDefinitionsV2} from './agent/task-conversation-schema-v2.ts';
-import {installAgentInteractionDefinitionsV2} from './agent/task-interaction-schema-v2.ts';
-import {installAgentTaskStorageDefinitionsV2,validateAgentTaskStorageRowsV2} from './agent/task-storage-schema-v2.ts';
+import {installAgentInteractionDefinitionsV2,validateAgentInteractionRowsV2} from './agent/task-interaction-schema-v2.ts';
+import {installSceneDefinitions,validateSceneRows} from './scene-schema.ts';
 // Fixed project-lifecycle source58 / restored59 profile; no opacity candidate capability. Historical source and restored
 // closures are not widened, converted or changed by this implementation.
 // Fixed schema58/59 profiles used by startup, backup inspection and restore.
@@ -123,7 +123,7 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
   const db=new DatabaseSync(':memory:');
   try {
    safety(db);db.exec('PRAGMA foreign_keys=ON;');
-   initializeThrough24(db);initializeWorkspaceSchema26(db);initializeWorkspaceSchema28(db);initializeWorkspaceSchema30(db);initializeWorkspaceSchema32(db);initializeWorkspaceSchema34(db);initializeWorkspaceSchema36(db);initializeWorkspaceSchema38(db);initializeWorkspaceSchema40(db);initializeWorkspaceSchema44(db,initializeThrough24);installProjectLifecycleDefinitions(db);db.exec('INSERT INTO schema_version VALUES(48);BEGIN IMMEDIATE');installTaskDispositionDefinitions(db);db.exec('INSERT INTO schema_version VALUES(50)');installAgentTaskDefinitionsV2(db);db.exec('INSERT INTO schema_version VALUES(52)');installAgentConversationDefinitionsV2(db);db.exec('INSERT INTO schema_version VALUES(54)');installAgentInteractionDefinitionsV2(db);db.exec('INSERT INTO schema_version VALUES(56)');installAgentTaskStorageDefinitionsV2(db);db.exec('INSERT INTO schema_version VALUES(58);COMMIT');
+   initializeThrough24(db);initializeWorkspaceSchema26(db);initializeWorkspaceSchema28(db);initializeWorkspaceSchema30(db);initializeWorkspaceSchema32(db);initializeWorkspaceSchema34(db);initializeWorkspaceSchema36(db);initializeWorkspaceSchema38(db);initializeWorkspaceSchema40(db);initializeWorkspaceSchema44(db,initializeThrough24);installProjectLifecycleDefinitions(db);db.exec('INSERT INTO schema_version VALUES(48);BEGIN IMMEDIATE');installTaskDispositionDefinitions(db);db.exec('INSERT INTO schema_version VALUES(50)');installAgentTaskDefinitionsV2(db);db.exec('INSERT INTO schema_version VALUES(52)');installAgentConversationDefinitionsV2(db);db.exec('INSERT INTO schema_version VALUES(54)');installAgentInteractionDefinitionsV2(db);db.exec('INSERT INTO schema_version VALUES(56)');installSceneDefinitions(db);db.exec('INSERT INTO schema_version VALUES(58);COMMIT');
    const ordinary=schema(db);
    installDefinitionsV59(db);const restored=schema(db);
    db.exec(MOCK_SCHEMA_SQL);
@@ -163,10 +163,10 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
   assertNoRippleWorkspaceOpacity(db);
   const actual=schema(db),fixed=fixedProfilesV58V59();
   if(matches(actual,fixed.ordinary)||matches(actual,fixed.ordinaryMock)){
-   markers(db,false);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:58,profile:'ordinary'});
+   markers(db,false);validateTaskDispositionRows(db);validateAgentInteractionRowsV2(db);validateSceneRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:58,profile:'ordinary'});
   }
   if(matches(actual,fixed.restored)||matches(actual,fixed.restoredMock)){
-   markers(db,true);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:59,profile:WORKSPACE_RESTORE_PROFILE});
+   markers(db,true);validateTaskDispositionRows(db);validateAgentInteractionRowsV2(db);validateSceneRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:59,profile:WORKSPACE_RESTORE_PROFILE});
   }
   fail('RESTORE_SCHEMA_UNSUPPORTED');
  }
@@ -176,7 +176,7 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
   assertNoRippleWorkspaceOpacity(db);
   const actual=schema(db),fixed=fixedProfilesV58V59();
   if(!matchesToleratingUnknown(actual,fixed.ordinary))fail('RESTORE_SCHEMA_UNSUPPORTED');
-  markers(db,false);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});
+  markers(db,false);validateTaskDispositionRows(db);validateAgentInteractionRowsV2(db);validateSceneRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});
   return Object.freeze({schemaVersion:58,profile:'ordinary'});
  }
 
@@ -200,7 +200,8 @@ const families=[
  ['image_groups','id','projectId'],['image_tasks','id','projectId','requestId'],['image_versions','id','projectId'],['image_requests','requestId','projectId','requestId','operation','image'],
  ['image_reviews','id','projectId','requestId',null,'image.review'],['image_remote_runs','taskId','projectId'],['image_remote_observations','id','projectId','requestId',null,'image.remote'],
  ['project_lut_resources','id','projectId'],['lut_import_requests','requestId','projectId','requestId',null,'lut-import'],
- ['frame_tasks','id','projectId','requestId'],['frame_requests','requestId','projectId','requestId','operation','frame'],['waveform_cache','cacheKey','projectId']
+ ['frame_tasks','id','projectId','requestId'],['frame_requests','requestId','projectId','requestId','operation','frame'],['waveform_cache','cacheKey','projectId'],
+ ['scene_tasks','id','projectId','requestId'],['scene_requests','requestId','projectId','requestId','operation','scene'],['scene_results','id','projectId']
 ].map(([table,key,project,request,operation,namespace])=>Object.freeze({table:table!,key:key!,project:project??null,request:request??null,operation:operation??null,namespace:namespace??null})) satisfies Family[];
 const familyMap=new Map(families.map(value=>[value.table,value]));
 const identity=(family: Family,prefix='')=>{
@@ -242,7 +243,7 @@ function guardSql(){return `
  CREATE TRIGGER restore_edit_epoch_insert BEFORE INSERT ON edit_tasks
  WHEN NEW.executionEpoch IS NOT (SELECT workspaceOrigin FROM workspace_restoration WHERE id=1)
  BEGIN SELECT RAISE(ABORT,'RESTORE_ORIGIN_REQUIRED');END;
- ${[...AGENT_TASK_TABLES,'project_mutation_requests','project_deletion_receipts','project_deletion_cleanup','project_deletion_scope','task_dispositions','task_disposition_requests','asset_annotations','asset_annotation_requests'].map(table=>`CREATE TRIGGER restore_${table}_new_insert BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT,'RESTORE_OPERATION_UNAVAILABLE');END;`).join('\n')}
+ ${[...AGENT_TASK_TABLES,'project_mutation_requests','project_deletion_receipts','project_deletion_cleanup','project_deletion_scope','task_dispositions','task_disposition_requests','asset_annotations','asset_annotation_requests','scene_tasks','scene_requests','scene_results'].map(table=>`CREATE TRIGGER restore_${table}_new_insert BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT,'RESTORE_OPERATION_UNAVAILABLE');END;`).join('\n')}
  CREATE TRIGGER restore_lut_resource_import_insert BEFORE INSERT ON project_lut_resources
  BEGIN SELECT RAISE(ABORT,'RESTORE_OPERATION_UNAVAILABLE');END;
  CREATE TRIGGER restore_lut_import_receipt_insert BEFORE INSERT ON lut_import_requests

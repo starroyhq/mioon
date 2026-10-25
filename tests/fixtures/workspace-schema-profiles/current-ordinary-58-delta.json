@@ -1,0 +1,311 @@
+{
+  "formatVersion": 1,
+  "synthetic": true,
+  "baseSchema": 56,
+  "targetSchema": 58,
+  "provenance": "Reviewed scene task, request and result schema58 additive delta, frozen once on 2026-10-24. Historical fixtures remain unchanged. Tests never reconstruct this expectation from application schema definitions.",
+  "schemaVersionRows": [
+    [
+      "58",
+      "integer",
+      "3538"
+    ]
+  ],
+  "objects": [
+    {
+      "type": "index",
+      "name": "scene_requests_project",
+      "tbl_name": "scene_requests",
+      "sql": "CREATE INDEX scene_requests_project ON scene_requests(projectId,requestId)"
+    },
+    {
+      "type": "index",
+      "name": "scene_requests_task",
+      "tbl_name": "scene_requests",
+      "sql": "CREATE INDEX scene_requests_task ON scene_requests(taskId,requestId)"
+    },
+    {
+      "type": "index",
+      "name": "scene_results_asset",
+      "tbl_name": "scene_results",
+      "sql": "CREATE INDEX scene_results_asset ON scene_results(projectId,assetId,position DESC)"
+    },
+    {
+      "type": "index",
+      "name": "scene_tasks_asset_page",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE INDEX scene_tasks_asset_page ON scene_tasks(projectId,sourceAssetId,createdAt DESC,id DESC)"
+    },
+    {
+      "type": "index",
+      "name": "scene_tasks_project_page",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE INDEX scene_tasks_project_page ON scene_tasks(projectId,createdAt DESC,id DESC)"
+    },
+    {
+      "type": "index",
+      "name": "scene_tasks_state",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE INDEX scene_tasks_state ON scene_tasks(state,projectId,id)"
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_requests_1",
+      "tbl_name": "scene_requests",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_requests_2",
+      "tbl_name": "scene_requests",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_results_1",
+      "tbl_name": "scene_results",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_results_2",
+      "tbl_name": "scene_results",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_results_3",
+      "tbl_name": "scene_results",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_results_4",
+      "tbl_name": "scene_results",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_results_5",
+      "tbl_name": "scene_results",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_tasks_1",
+      "tbl_name": "scene_tasks",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_tasks_2",
+      "tbl_name": "scene_tasks",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_tasks_3",
+      "tbl_name": "scene_tasks",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_scene_tasks_4",
+      "tbl_name": "scene_tasks",
+      "sql": null
+    },
+    {
+      "type": "table",
+      "name": "scene_requests",
+      "tbl_name": "scene_requests",
+      "sql": "CREATE TABLE scene_requests(\n requestId TEXT PRIMARY KEY NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),\n operation TEXT NOT NULL CHECK(operation IN ('scene.detect','scene.task.cancel','scene.cuts.save','scene.shots.create','scene.shots.undo')),\n projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n taskId TEXT CHECK(taskId IS NULL OR length(CAST(taskId AS BLOB))=36),\n resultId TEXT CHECK(resultId IS NULL OR length(CAST(resultId AS BLOB))=36),\n inputHash TEXT NOT NULL CHECK(length(inputHash)=64 AND inputHash NOT GLOB '*[^a-f0-9]*'),\n canonicalInput TEXT NOT NULL CHECK(json_valid(canonicalInput) AND json_type(canonicalInput)='object' AND length(CAST(canonicalInput AS BLOB)) BETWEEN 1 AND 16384),\n response TEXT NOT NULL CHECK(json_valid(response) AND json_type(response)='object' AND length(CAST(response AS BLOB)) BETWEEN 1 AND 16384),\n UNIQUE(requestId,taskId,projectId),\n FOREIGN KEY(taskId,projectId) REFERENCES scene_tasks(id,projectId),\n FOREIGN KEY(resultId,projectId) REFERENCES scene_results(id,projectId),\n CHECK((operation='scene.cuts.save')=(resultId IS NOT NULL)),\n CHECK((operation='scene.cuts.save')=(taskId IS NULL)),\n CHECK(json_extract(canonicalInput,'$.projectId') IS projectId AND json_extract(canonicalInput,'$.requestId') IS requestId),\n CHECK(json_extract(response,'$.projectId') IS projectId AND json_extract(response,'$.id') IS COALESCE(taskId,resultId)),\n CHECK(operation!='scene.detect' OR (json_extract(response,'$.requestId') IS requestId AND json_extract(response,'$.state') IS 'queued'\n AND json_extract(response,'$.revision') IS 1 AND json_extract(response,'$.started') IS 0)),\n CHECK(operation!='scene.task.cancel' OR (json_extract(canonicalInput,'$.taskId') IS taskId\n AND json_extract(response,'$.revision') IS json_extract(canonicalInput,'$.expectedRevision')+1\n AND (json_extract(response,'$.state') IS 'cancelled_before_start' OR json_extract(response,'$.state') IS 'cancelling'))),\n CHECK(operation!='scene.cuts.save' OR (json_extract(response,'$.requestId') IS requestId AND json_extract(response,'$.origin') IS 'manual'\n AND json_extract(response,'$.basedOnResultId') IS json_extract(canonicalInput,'$.expectedResultId'))),\n CHECK(length(CAST(canonicalInput AS BLOB))+length(CAST(response AS BLOB))+length(CAST(requestId AS BLOB))+1024<=49152)\n)"
+    },
+    {
+      "type": "table",
+      "name": "scene_results",
+      "tbl_name": "scene_results",
+      "sql": "CREATE TABLE scene_results(\n id TEXT PRIMARY KEY NOT NULL CHECK(length(CAST(id AS BLOB))=36),\n projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n assetId TEXT NOT NULL REFERENCES assets(id) CHECK(length(CAST(assetId AS BLOB))=36),\n position INTEGER NOT NULL UNIQUE CHECK(typeof(position)='integer' AND position BETWEEN 1 AND 9007199254740991),\n sourceHash TEXT NOT NULL CHECK(length(sourceHash)=64 AND sourceHash NOT GLOB '*[^a-f0-9]*'),\n origin TEXT NOT NULL CHECK(origin IN ('detected','manual')),\n taskId TEXT UNIQUE CHECK(taskId IS NULL OR length(CAST(taskId AS BLOB))=36),\n basedOnResultId TEXT CHECK(basedOnResultId IS NULL OR length(CAST(basedOnResultId AS BLOB))=36),\n requestId TEXT UNIQUE CHECK(requestId IS NULL OR (length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800)),\n profileId TEXT NOT NULL CHECK(length(profileId) BETWEEN 1 AND 40 AND profileId NOT GLOB '*[^a-z0-9-]*'),\n fps INTEGER NOT NULL CHECK(fps=30),\n frameCount INTEGER NOT NULL CHECK(typeof(frameCount)='integer' AND frameCount BETWEEN 1 AND 18000),\n options TEXT CHECK(options IS NULL OR (json_valid(options) AND json_type(options)='object' AND length(CAST(options AS BLOB)) BETWEEN 1 AND 1024)),\n cuts TEXT NOT NULL CHECK(json_valid(cuts) AND json_type(cuts)='array' AND length(CAST(cuts AS BLOB)) BETWEEN 2 AND 65536 AND json_array_length(cuts)<=1500),\n createdAt TEXT NOT NULL CHECK(length(createdAt) BETWEEN 1 AND 40),\n UNIQUE(id,projectId),\n FOREIGN KEY(taskId,projectId) REFERENCES scene_tasks(id,projectId),\n FOREIGN KEY(basedOnResultId,projectId) REFERENCES scene_results(id,projectId),\n FOREIGN KEY(requestId) REFERENCES scene_requests(requestId) DEFERRABLE INITIALLY DEFERRED,\n CHECK(origin!='detected' OR (taskId IS NOT NULL AND basedOnResultId IS NULL AND requestId IS NULL AND options IS NOT NULL)),\n CHECK(origin!='manual' OR (taskId IS NULL AND basedOnResultId IS NOT NULL AND requestId IS NOT NULL AND options IS NULL))\n)"
+    },
+    {
+      "type": "table",
+      "name": "scene_tasks",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TABLE scene_tasks(\n id TEXT PRIMARY KEY NOT NULL CHECK(length(CAST(id AS BLOB))=36),\n projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n kind TEXT NOT NULL CHECK(kind IN ('detect','shots')),\n sourceAssetId TEXT NOT NULL REFERENCES assets(id) CHECK(length(CAST(sourceAssetId AS BLOB))=36),\n requestId TEXT NOT NULL UNIQUE CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),\n inputHash TEXT NOT NULL CHECK(length(inputHash)=64 AND inputHash NOT GLOB '*[^a-f0-9]*'),\n input TEXT NOT NULL CHECK(json_valid(input) AND json_type(input)='object' AND length(CAST(input AS BLOB)) BETWEEN 1 AND 16384),\n snapshot TEXT NOT NULL CHECK(json_valid(snapshot) AND json_type(snapshot)='object' AND length(CAST(snapshot AS BLOB)) BETWEEN 1 AND 8192),\n state TEXT NOT NULL CHECK(state IN ('queued','running','cancelling','persisting','succeeded','cancelled_before_start','cancelled','interrupted','local_result_error','failed','undone')),\n revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),\n started INTEGER NOT NULL CHECK(started IN (0,1)),\n resultId TEXT UNIQUE CHECK(resultId IS NULL OR length(CAST(resultId AS BLOB))=36),\n stagedReceipt TEXT CHECK(stagedReceipt IS NULL OR (json_valid(stagedReceipt) AND json_type(stagedReceipt)='object' AND length(CAST(stagedReceipt AS BLOB)) BETWEEN 1 AND 32768)),\n outcome TEXT CHECK(outcome IS NULL OR (json_valid(outcome) AND json_type(outcome)='object' AND length(CAST(outcome AS BLOB)) BETWEEN 1 AND 16384)),\n errorCode TEXT CHECK(errorCode IS NULL OR (length(errorCode) BETWEEN 1 AND 80 AND errorCode GLOB '[A-Z]*' AND errorCode NOT GLOB '*[^A-Z0-9_]*')),\n createdAt TEXT NOT NULL CHECK(length(createdAt) BETWEEN 1 AND 40),updatedAt TEXT NOT NULL CHECK(length(updatedAt) BETWEEN 1 AND 40),\n UNIQUE(id,projectId),\n FOREIGN KEY(requestId,id,projectId) REFERENCES scene_requests(requestId,taskId,projectId) DEFERRABLE INITIALLY DEFERRED,\n FOREIGN KEY(resultId,projectId) REFERENCES scene_results(id,projectId) DEFERRABLE INITIALLY DEFERRED,\n CHECK(json_extract(input,'$.projectId') IS projectId AND json_extract(input,'$.requestId') IS requestId AND json_extract(input,'$.sourceAssetId') IS sourceAssetId),\n CHECK(json_type(input,'$.sourceHash') IS 'text' AND length(json_extract(input,'$.sourceHash'))=64 AND json_extract(input,'$.sourceHash') NOT GLOB '*[^a-f0-9]*'),\n CHECK(json_extract(snapshot,'$.schemaVersion') IS 1 AND json_extract(snapshot,'$.projectId') IS projectId AND json_extract(snapshot,'$.taskId') IS id AND json_extract(snapshot,'$.kind') IS kind),\n CHECK(json_extract(snapshot,'$.source.assetId') IS sourceAssetId AND json_extract(snapshot,'$.source.sha256') IS json_extract(input,'$.sourceHash')),\n CHECK(kind!='detect' OR (stagedReceipt IS NULL AND outcome IS NULL AND (state='succeeded')=(resultId IS NOT NULL) AND state NOT IN ('persisting','local_result_error','undone'))),\n CHECK(kind!='shots' OR (resultId IS NULL AND (state IN ('succeeded','undone'))=(outcome IS NOT NULL))),\n CHECK(state NOT IN ('queued','cancelled_before_start') OR (started=0 AND stagedReceipt IS NULL)),\n CHECK(state NOT IN ('running','cancelling','persisting','succeeded','cancelled','local_result_error','undone') OR started=1),\n CHECK(state NOT IN ('persisting','local_result_error') OR stagedReceipt IS NOT NULL),\n CHECK((state IN ('interrupted','failed','local_result_error'))=(errorCode IS NOT NULL)),\n CHECK(state!='queued' OR revision=1),\n CHECK(length(CAST(input AS BLOB))+length(CAST(snapshot AS BLOB))+COALESCE(length(CAST(stagedReceipt AS BLOB)),0)+COALESCE(length(CAST(outcome AS BLOB)),0)+length(CAST(requestId AS BLOB))+1024<=81920)\n)"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_scene_requests",
+      "tbl_name": "scene_requests",
+      "sql": "CREATE TRIGGER immutable_scene_requests BEFORE UPDATE ON scene_requests\n BEGIN SELECT RAISE(ABORT,'scene request responses are immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_scene_results",
+      "tbl_name": "scene_results",
+      "sql": "CREATE TRIGGER immutable_scene_results BEFORE UPDATE ON scene_results\n BEGIN SELECT RAISE(ABORT,'scene results are immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_scene_task_identity",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER immutable_scene_task_identity BEFORE UPDATE ON scene_tasks\n WHEN NEW.id IS NOT OLD.id OR NEW.projectId IS NOT OLD.projectId OR NEW.kind IS NOT OLD.kind OR NEW.sourceAssetId IS NOT OLD.sourceAssetId\n OR NEW.requestId IS NOT OLD.requestId OR NEW.inputHash IS NOT OLD.inputHash OR NEW.input IS NOT OLD.input OR NEW.snapshot IS NOT OLD.snapshot OR NEW.createdAt IS NOT OLD.createdAt\n OR (OLD.resultId IS NOT NULL AND NEW.resultId IS NOT OLD.resultId) OR (OLD.stagedReceipt IS NOT NULL AND NEW.stagedReceipt IS NOT OLD.stagedReceipt)\n OR (OLD.outcome IS NOT NULL AND NEW.outcome IS NOT OLD.outcome)\n OR NEW.started<OLD.started OR (NEW.started IS NOT OLD.started AND NOT (OLD.state='queued' AND NEW.state='running' AND OLD.started=0 AND NEW.started=1))\n BEGIN SELECT RAISE(ABORT,'scene task identity and durable results are immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "reject_scene_request_replacement",
+      "tbl_name": "scene_requests",
+      "sql": "CREATE TRIGGER reject_scene_request_replacement BEFORE INSERT ON scene_requests\n WHEN EXISTS(SELECT 1 FROM scene_requests WHERE requestId=NEW.requestId)\n BEGIN SELECT RAISE(ABORT,'scene request responses cannot be replaced');END"
+    },
+    {
+      "type": "trigger",
+      "name": "reject_scene_result_replacement",
+      "tbl_name": "scene_results",
+      "sql": "CREATE TRIGGER reject_scene_result_replacement BEFORE INSERT ON scene_results\n WHEN EXISTS(SELECT 1 FROM scene_results WHERE id=NEW.id OR position=NEW.position OR taskId=NEW.taskId OR requestId=NEW.requestId)\n BEGIN SELECT RAISE(ABORT,'scene results cannot be replaced');END"
+    },
+    {
+      "type": "trigger",
+      "name": "reject_scene_task_replacement",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER reject_scene_task_replacement BEFORE INSERT ON scene_tasks\n WHEN EXISTS(SELECT 1 FROM scene_tasks WHERE id=NEW.id OR requestId=NEW.requestId)\n BEGIN SELECT RAISE(ABORT,'scene tasks cannot be replaced');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_scene_requests",
+      "tbl_name": "scene_requests",
+      "sql": "CREATE TRIGGER retain_scene_requests BEFORE DELETE ON scene_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='scene_requests' AND rowId=OLD.rowid)\n BEGIN SELECT RAISE(ABORT,'scene request responses must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_scene_results",
+      "tbl_name": "scene_results",
+      "sql": "CREATE TRIGGER retain_scene_results BEFORE DELETE ON scene_results\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='scene_results' AND rowId=OLD.rowid)\n BEGIN SELECT RAISE(ABORT,'scene results must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_scene_tasks",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER retain_scene_tasks BEFORE DELETE ON scene_tasks\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='scene_tasks' AND rowId=OLD.rowid)\n BEGIN SELECT RAISE(ABORT,'scene tasks must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_request_capacity",
+      "tbl_name": "scene_requests",
+      "sql": "CREATE TRIGGER scene_request_capacity BEFORE INSERT ON scene_requests\n WHEN (NEW.taskId IS NOT NULL AND (SELECT COUNT(*) FROM scene_requests WHERE taskId=NEW.taskId)>=16)\n OR (SELECT COUNT(*) FROM scene_requests WHERE projectId=NEW.projectId)>=4096 OR (SELECT COUNT(*) FROM scene_requests)>=32768\n BEGIN SELECT RAISE(ABORT,'scene retained request capacity exceeded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_request_identity",
+      "tbl_name": "scene_requests",
+      "sql": "CREATE TRIGGER scene_request_identity BEFORE INSERT ON scene_requests\n WHEN (NEW.taskId IS NOT NULL AND NOT EXISTS(SELECT 1 FROM scene_tasks t WHERE t.id=NEW.taskId AND t.projectId=NEW.projectId\n AND json_extract(NEW.response,'$.requestId') IS t.requestId AND json_extract(NEW.response,'$.kind') IS t.kind\n AND json_extract(NEW.response,'$.sourceAssetId') IS t.sourceAssetId AND json_extract(NEW.response,'$.sourceHash') IS json_extract(t.input,'$.sourceHash')\n AND json_extract(NEW.response,'$.state') IS t.state AND json_extract(NEW.response,'$.revision') IS t.revision AND json_extract(NEW.response,'$.started') IS t.started\n AND json_extract(NEW.response,'$.errorCode') IS t.errorCode AND json_extract(NEW.response,'$.createdAt') IS t.createdAt AND json_extract(NEW.response,'$.updatedAt') IS t.updatedAt\n AND (NEW.operation!='scene.detect' OR (NEW.requestId=t.requestId AND NEW.inputHash=t.inputHash AND NEW.canonicalInput=t.input))))\n OR (NEW.resultId IS NOT NULL AND NOT EXISTS(SELECT 1 FROM scene_results r WHERE r.id=NEW.resultId AND r.projectId=NEW.projectId AND r.requestId IS NEW.requestId\n AND json_extract(NEW.response,'$.assetId') IS r.assetId AND json_extract(NEW.response,'$.sourceHash') IS r.sourceHash\n AND json_extract(NEW.response,'$.createdAt') IS r.createdAt AND json_extract(NEW.response,'$.cutCount') IS json_array_length(r.cuts)))\n BEGIN SELECT RAISE(ABORT,'scene request must bind its original acknowledgement');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_result_capacity",
+      "tbl_name": "scene_results",
+      "sql": "CREATE TRIGGER scene_result_capacity BEFORE INSERT ON scene_results\n WHEN (SELECT COUNT(*) FROM scene_results WHERE projectId=NEW.projectId AND assetId=NEW.assetId)>=256\n OR (SELECT COUNT(*) FROM scene_results WHERE projectId=NEW.projectId)>=4096 OR (SELECT COUNT(*) FROM scene_results)>=32768\n BEGIN SELECT RAISE(ABORT,'scene retained result capacity exceeded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_result_identity",
+      "tbl_name": "scene_results",
+      "sql": "CREATE TRIGGER scene_result_identity BEFORE INSERT ON scene_results\n WHEN NOT EXISTS(SELECT 1 FROM assets WHERE id=NEW.assetId AND projectId=NEW.projectId)\n OR NEW.position<=COALESCE((SELECT MAX(position) FROM scene_results),0)\n OR (NEW.origin='detected' AND NOT EXISTS(SELECT 1 FROM scene_tasks t WHERE t.id=NEW.taskId AND t.projectId=NEW.projectId AND t.kind='detect'\n AND t.sourceAssetId=NEW.assetId AND json_extract(t.input,'$.sourceHash') IS NEW.sourceHash AND json_extract(t.snapshot,'$.profileId') IS NEW.profileId\n AND t.state='running' AND t.resultId IS NULL))\n OR (NEW.origin='manual' AND NOT EXISTS(SELECT 1 FROM scene_results b WHERE b.id=NEW.basedOnResultId AND b.projectId=NEW.projectId AND b.assetId=NEW.assetId\n AND b.sourceHash=NEW.sourceHash AND b.profileId=NEW.profileId AND b.frameCount=NEW.frameCount))\n BEGIN SELECT RAISE(ABORT,'scene result must bind its detection or base result');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_task_active_capacity",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER scene_task_active_capacity BEFORE UPDATE OF state ON scene_tasks\n WHEN NEW.state IN ('running','cancelling','persisting') AND OLD.state NOT IN ('running','cancelling','persisting')\n AND EXISTS(SELECT 1 FROM scene_tasks WHERE state IN ('running','cancelling','persisting') AND id!=NEW.id)\n BEGIN SELECT RAISE(ABORT,'scene active task capacity exceeded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_task_capacity",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER scene_task_capacity BEFORE INSERT ON scene_tasks\n WHEN (SELECT COUNT(*) FROM scene_tasks)>=2048 OR (SELECT COUNT(*) FROM scene_tasks WHERE projectId=NEW.projectId)>=256\n BEGIN SELECT RAISE(ABORT,'scene retained task capacity exceeded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_task_insert_identity",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER scene_task_insert_identity BEFORE INSERT ON scene_tasks\n WHEN NEW.state IS NOT 'queued' OR NEW.revision IS NOT 1 OR NEW.started IS NOT 0 OR NEW.resultId IS NOT NULL OR NEW.stagedReceipt IS NOT NULL\n OR NEW.outcome IS NOT NULL OR NEW.errorCode IS NOT NULL OR NEW.updatedAt IS NOT NEW.createdAt\n OR NOT EXISTS(SELECT 1 FROM assets WHERE id=NEW.sourceAssetId AND projectId=NEW.projectId)\n BEGIN SELECT RAISE(ABORT,'scene tasks must be accepted before execution');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_task_queue_capacity",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER scene_task_queue_capacity BEFORE INSERT ON scene_tasks\n WHEN (SELECT COUNT(*) FROM scene_tasks WHERE state='queued')>=8 OR (SELECT COUNT(*) FROM scene_tasks WHERE projectId=NEW.projectId AND state='queued')>=2\n BEGIN SELECT RAISE(ABORT,'scene queued task capacity exceeded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_task_result_binding",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER scene_task_result_binding BEFORE UPDATE OF resultId ON scene_tasks\n WHEN NEW.resultId IS NOT NULL AND NOT EXISTS(SELECT 1 FROM scene_results r WHERE r.id=NEW.resultId AND r.taskId=NEW.id AND r.projectId=NEW.projectId AND r.assetId=NEW.sourceAssetId)\n BEGIN SELECT RAISE(ABORT,'scene task result must be its own detection');END"
+    },
+    {
+      "type": "trigger",
+      "name": "scene_task_state_transitions",
+      "tbl_name": "scene_tasks",
+      "sql": "CREATE TRIGGER scene_task_state_transitions BEFORE UPDATE ON scene_tasks\n WHEN NEW.revision IS NOT OLD.revision+1 OR NOT (\n (OLD.state='queued' AND NEW.state IN ('running','interrupted','cancelled_before_start','failed')) OR\n (OLD.state='running' AND NEW.state IN ('cancelling','persisting','succeeded','interrupted','local_result_error','failed')) OR\n (OLD.state='cancelling' AND NEW.state='cancelled') OR\n (OLD.state='persisting' AND NEW.state IN ('succeeded','interrupted','local_result_error')) OR\n (OLD.state='interrupted' AND OLD.started=0 AND OLD.stagedReceipt IS NULL AND NEW.state='cancelled_before_start') OR\n (OLD.state IN ('interrupted','local_result_error') AND OLD.started=1 AND OLD.stagedReceipt IS NOT NULL AND NEW.state='persisting') OR\n (OLD.state='succeeded' AND OLD.kind='shots' AND NEW.state='undone'))\n BEGIN SELECT RAISE(ABORT,'invalid scene task transition');END"
+    }
+  ],
+  "tables": {
+    "scene_requests": {
+      "fields": [
+        "requestId",
+        "operation",
+        "projectId",
+        "taskId",
+        "resultId",
+        "inputHash",
+        "canonicalInput",
+        "response"
+      ],
+      "rows": 0
+    },
+    "scene_results": {
+      "fields": [
+        "id",
+        "projectId",
+        "assetId",
+        "position",
+        "sourceHash",
+        "origin",
+        "taskId",
+        "basedOnResultId",
+        "requestId",
+        "profileId",
+        "fps",
+        "frameCount",
+        "options",
+        "cuts",
+        "createdAt"
+      ],
+      "rows": 0
+    },
+    "scene_tasks": {
+      "fields": [
+        "id",
+        "projectId",
+        "kind",
+        "sourceAssetId",
+        "requestId",
+        "inputHash",
+        "input",
+        "snapshot",
+        "state",
+        "revision",
+        "started",
+        "resultId",
+        "stagedReceipt",
+        "outcome",
+        "errorCode",
+        "createdAt",
+        "updatedAt"
+      ],
+      "rows": 0
+    }
+  },
+  "catalog": {
+    "count": 39,
+    "sha256": "702600f0b07f6e2335aa0a1937d09cb14881eef9e3b290b946eabef76e3e65cc"
+  }
+}

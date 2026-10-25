@@ -1,5 +1,7 @@
+import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
+import {withoutReviewedSceneObjects,currentOrdinary58Delta} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
@@ -244,6 +246,7 @@ function assertLegacyPreserved(db,before) {
  assertReviewed52(db,before.records);
  const after=snapshotSchema14(db);
  for(const name of Object.keys(currentOrdinary52Delta.tables))delete after.records[name];
+ for(const name of Object.keys(currentOrdinary58Delta.tables)){assert.deepEqual(after.records[name],[],`${name}: reviewed empty58 table`);delete after.records[name];}
  assertAgentEditTargetTrigger(after.schema);
  after.records.agent_edit_proposals=legacyAgentEditProposalRows(after.records.agent_edit_proposals);
  assert.deepEqual(after.records,before.records,'all preexisting table records, including sequence rows, remain byte-for-byte equivalent');

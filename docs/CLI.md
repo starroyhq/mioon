@@ -532,6 +532,39 @@ for all operations. This edit performs only local timeline/history/replay
 writes, with no media processing or provider calls. Full errors and semantics:
 [Explicit clip source replacement](API.md#explicit-clip-source-replacement).
 
+### Refresh stale clips and append new shots
+
+`timeline clip refreshSources` switches clips whose shot now selects another
+version to that version; `timeline shots append` adds shots that have no clip
+yet to the end of the first video track. Read `timeline get` first:
+
+```sh
+mioon timeline clip refreshSources --input '{"projectId":"PROJECT_UUID","clipIds":["CLIP_UUID"],"expectedRevision":7,"requestId":"refresh-clips-0001"}'
+mioon timeline shots append --input '{"projectId":"PROJECT_UUID","expectedRevision":8,"requestId":"append-shots-0001"}'
+```
+
+Each is one undoable edit. The result wraps the timeline with `refreshed` /
+`appended` and `skipped` rows and their reasons. When nothing applies, the
+request writes nothing and fails with `NOTHING_TO_REFRESH` /
+`NOTHING_TO_APPEND`. Keys and replay follow the timeline edit rules above.
+Full semantics: [Canvas → timeline bridges](API.md#canvas--timeline-bridges-2026-10-23).
+
+### Split at scene cuts
+
+`timeline clip splitAtScenes` splits every clip of one reference video at the
+cuts of its current scene result. Read `timeline get` and `scene result get` first:
+
+```sh
+mioon timeline clip splitAtScenes --input '{"projectId":"PROJECT_UUID","expectedRevision":9,"requestId":"split-scenes-0001","assetId":"VIDEO_UUID","resultId":"RESULT_UUID"}'
+```
+
+It is one undoable edit. The result wraps the timeline with `split` rows (the
+pieces of each clip and the cuts used) and `skipped` clips. Cuts inside audio
+fades are left out. With nothing to split it writes nothing and fails with
+`NOTHING_TO_SPLIT`; a newer or stale result fails with `SCENE_RESULT_CONFLICT`
+or `SCENE_RESULT_STALE`. Full semantics:
+[Split at scene cuts](API.md#split-at-scene-cuts-2026-10-24).
+
 ### Clip audio fades
 
 Use existing `timeline clip add` or `timeline clip update` commands; inspect
@@ -904,6 +937,36 @@ storage; retain any not-yet-accepted request outside the short-lived CLI process
 The local limits and supported video profile are in the API contract. No paid
 provider call, Blender dependency or built-in Agent catalog expansion is added.
 
+
+## Reference-film scene detection
+
+The seven `scene` commands use the same backend and the strict
+[scene RPC contract](API.md#reference-film-scene-detection-2026-10-24). Detect,
+then read the newest result of the video:
+
+```sh
+mioon scene detect --input '{"projectId":"PROJECT_UUID","sourceAssetId":"VIDEO_UUID","sourceHash":"VIDEO_SHA256","options":{"sensitivity":60},"requestId":"scene-detect-0001"}'
+mioon scene task get --input '{"projectId":"PROJECT_UUID","taskId":"TASK_UUID"}'
+mioon scene result get --input '{"projectId":"PROJECT_UUID","assetId":"VIDEO_UUID"}'
+```
+
+`scene detect` queues one local decode of an owned MP4/WebM (at most 600 s and
+512 MiB) and saves the cuts as the video's newest result. Poll `scene task get`
+until `succeeded`, `failed`, `cancelled` or `interrupted`; while it runs, the
+task reports `progress`. `scene task list` takes `{projectId,sourceAssetId?,limit?,cursor?}`.
+`scene task cancel` takes `{projectId,taskId,expectedRevision,requestId}`; a
+running task first becomes `cancelling` and saves nothing.
+
+`scene cuts save` stores an edited complete list as a new result:
+
+```sh
+mioon scene cuts save --input '{"projectId":"PROJECT_UUID","assetId":"VIDEO_UUID","sourceHash":"VIDEO_SHA256","expectedResultId":"RESULT_UUID","cuts":[45,100],"requestId":"scene-cuts-0001"}'
+```
+
+`expectedResultId` must be the current valid result from `scene result get`.
+Writes use caller-owned 8–200-character keys; keep the exact input until the
+outcome is known, and replay it unchanged after an uncertain response. Restart,
+reads and replay never decode.
 
 ## Timeline output presets (schema 21)
 

@@ -13,6 +13,8 @@ import { defaultWorkspaceState, reconcileWorkspaceState } from '../apps/web/src/
 import { readGenerationProviderDirectory } from '../apps/web/src/video-provider-directory.ts';
 import { isReferenceOperation } from '../apps/web/src/reference-connections.ts';
 import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.ts';
+import { shotSyncFixture } from './fixtures/timeline-shot-sync.ts';
+import { sceneSplitFixture } from './fixtures/timeline-scene-split.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
 import { creationParameter } from '../apps/web/src/creation-i18n.ts';
 
@@ -27,7 +29,9 @@ const refreshSource = source.slice(source.indexOf('const refresh = useCallback('
 const id = n => `82000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), otherProjectId = id(2), trackId = id(3), clipId = id(4), assetId = id(5);
 const operations = ['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.clip.rippleRemove',
-  'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.loudness.apply'];
+  'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.loudness.apply',
+  'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes'];
+const shotSync = operation => operation === 'timeline.clip.refreshSources' || operation === 'timeline.shots.append';
 const clone = value => structuredClone(value);
 const loudnessApply = await loudnessApplyFixture({projectId, expectedRevision: 7, requestId: 'original-timeline.loudness.apply'});
 function storage(t) {
@@ -41,6 +45,8 @@ function storage(t) {
 }
 function inputFor(operation, patch = {}) {
   if (operation === 'timeline.loudness.apply') return {...clone(loudnessApply.input), ...patch};
+  if (shotSync(operation)) return {...shotSyncFixture(operation, {projectId, expectedRevision: 7, requestId: `original-${operation}`}).input, ...patch};
+  if (operation === 'timeline.clip.splitAtScenes') return {...sceneSplitFixture({projectId, expectedRevision: 7, requestId: `original-${operation}`}).input, ...patch};
   const fields = {
     'timeline.track.add': { kind: 'audio', name: 'Sound' },
     'timeline.track.update': { trackId, patch: { muted: true, name: 'Edited track' } },
@@ -67,6 +73,8 @@ function timeline(revision = 8, owner = projectId) {
     createdAt: '2026-10-10T00:00:00.000Z', updatedAt: '2026-10-10T00:00:01.000Z' };
 }
 function acknowledged(operation, input) {
+  if (shotSync(operation)) return shotSyncFixture(operation, {projectId: input.projectId, expectedRevision: input.expectedRevision, requestId: input.requestId}).response;
+  if (operation === 'timeline.clip.splitAtScenes') return sceneSplitFixture({projectId: input.projectId, expectedRevision: input.expectedRevision, requestId: input.requestId}).response;
   if (operation === 'timeline.loudness.apply') {
     const value = clone(loudnessApply.response);
     value.requestId = input.requestId;
@@ -134,7 +142,7 @@ function harness(dispatch, { projectSnapshot, workspace = { restored: false } } 
 const keyFor = operation => operation === 'timeline.render' ? 'timeline:render:preview' : 'timeline:mutation';
 const error = (code, details = {}, definitive = true) => Object.assign(Error('Synthetic failure'), { code, details, definitive });
 
-test('actual App legacy session runner guards exactly the seventeen timeline writes and accepts their complete matching acknowledgements', async t => {
+test('actual App legacy session runner guards exactly the twenty timeline writes and accepts their complete matching acknowledgements', async t => {
   storage(t); assert.deepEqual(new Set(TIMELINE_MUTATION_OPERATIONS), new Set(operations));
   const h = harness(acknowledged);
   for (const operation of operations) {
@@ -181,7 +189,7 @@ test('every timeline write retains the exact original receipt after loss, 404/40
     failure = null;
     const expected = acknowledged(operation, input);
     for (const invalid of [null, {}, { projectId, revision: 8 }, { ...expected, projectId: otherProjectId },
-      ...(operation === 'timeline.loudness.apply' ? [expected.timeline, {...expected, timeline: {...expected.timeline, projectId: otherProjectId}}] : [])]) {
+      ...(operation === 'timeline.loudness.apply' || shotSync(operation) || operation === 'timeline.clip.splitAtScenes' ? [expected.timeline, {...expected, timeline: {...expected.timeline, projectId: otherProjectId}}] : [])]) {
       result = invalid; await h.run(key, operation, input, undefined, { replay: true });
       assert.deepEqual(submissions.readPending(projectId, key), original, `${operation}: corrupt ACK`);
     }
@@ -203,7 +211,7 @@ test('timeline rollback requires matching request-bound proof and rejects forbid
     let failure = Error('Response lost');
     const h = harness(() => { throw failure; }); await h.run(key, operation, input);
     const original = submissions.readPending(projectId, key);
-    const strictOwnerProof = operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.');
+    const strictOwnerProof = operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.') || shotSync(operation) || operation === 'timeline.clip.splitAtScenes';
     const proof = { mutationOutcome: 'not_applied', requestId: input.requestId, ...(strictOwnerProof ? { operation, projectId: input.projectId } : {}) };
     for (const invalid of [error('REVISION_CONFLICT', { ...proof, requestId: 'wrong-request' }), error('REVISION_CONFLICT', proof, false),
       error('REVISION_CONFLICT', { ...proof, mutationOutcome: 'applied' }), error('UNAUTHORIZED', proof), error('IDEMPOTENCY_CONFLICT', proof),

@@ -20,7 +20,7 @@ import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.t
 import {startServer} from '../apps/server/src/index.ts';
 import {createAgentClient} from '../packages/client/src/agent.ts';
 import {createTestAuthorizations, authorizeTestScope} from './helpers/agent-authorizations.ts';
-import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
+import {removeReviewedSchema60} from './helpers/current-schema60-delta.ts';
 
 // These lists independently pin the pre-existing SQL quota's two inventories.
 const byteTables = ['agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_changes_v2', 'agent_task_events_v2',
@@ -71,10 +71,10 @@ test('storage diagnostics preserve the historical byte and row inventories, incl
   assert.doesNotMatch(JSON.stringify(actual), /PRIVATE_PROMPT|PRIVATE_FILE_NAME|PRIVATE_PATH/u);
 });
 
-test('fresh58 reports256MiB, genuine inline56 reports64MiB, and pre-Agent databases are unavailable without mutation', t => {
+test('fresh60 reports256MiB, genuine inline58 reports64MiB, and pre-Agent databases are unavailable without mutation', t => {
   const f = temporary(t), fresh = readAgentTaskStorage(f.store.db), before = retained(f.store.db);
   assert.equal(fresh.version, 1); assert.equal(fresh.format, 'model_request_references'); assert.equal(fresh.limits.bytes, 256 * 1024 * 1024);
-  removeReviewedSchema58(f.store.db);
+  removeReviewedSchema60(f.store.db);
   const historical = readAgentTaskStorage(f.store.db);
   assert.equal(historical.format, 'inline'); assert.equal(historical.limits.bytes, 64 * 1024 * 1024);
   assert.deepEqual(historical.usage, fresh.usage); assert.deepEqual(retained(f.store.db), before);

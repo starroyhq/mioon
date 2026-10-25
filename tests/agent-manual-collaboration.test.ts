@@ -69,6 +69,6 @@ test('the actual App refresh rechecks workspace origin after an asynchronous edi
 
 test('the actual App agent-dock gate opens only exact schema53, schema55, schema57 and schema59 restored task histories',()=>{
   const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8'),start=source.indexOf('<AgentDockPane id="right-dock-agent"'),segment=source.slice(start),expression=segment.slice(segment.indexOf('>{')+2,segment.indexOf(' ? <RestoredUnavailable'));
-  for(const schemaVersion of [undefined,49,51,52,53,54,55,56,57,58,59,60])assert.equal(evaluateExpression('', '('+expression+')',['restored','workspace'],[true,{restored:true,schemaVersion}]),![53,55,57,59].includes(schemaVersion??0));
+  for(const schemaVersion of [undefined,49,51,52,53,54,55,56,57,58,59,60,61])assert.equal(evaluateExpression('', '('+expression+')',['restored','workspace'],[true,{restored:true,schemaVersion}]),![53,55,57,59,61].includes(schemaVersion??0));
   assert.equal(evaluateExpression('', '('+expression+')',['restored','workspace'],[false,{restored:false}]),false);
 });

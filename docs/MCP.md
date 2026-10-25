@@ -107,6 +107,8 @@ All RPC operation names replace dots with underscores. For example:
 - `timeline_track_add`, `timeline_track_update`
 - `timeline_clip_add`, `timeline_clip_update`, `timeline_clip_remove`, `timeline_clip_split`, `timeline_clip_replaceSource`
 - `timeline_seed`, `timeline_render`
+- `timeline_clip_refreshSources`, `timeline_shots_append`
+- `timeline_clip_splitAtScenes`
 - `export_create`, `export_get`
 
 Three additional read-only discovery tools are available:
@@ -689,6 +691,28 @@ resume work. Request/task metadata is stored in plaintext local SQLite; PNG and
 manifest files are ordinary private local files, not vault-encrypted. This is
 backend-durable accepted work, not durable preparation of an unsent MCP request.
 
+
+## Scene detection tools
+
+Seven strict tools share the runtime schemas of the
+[scene RPCs](API.md#reference-film-scene-detection-2026-10-24): `scene_detect`,
+`scene_request_get`, `scene_task_get`, `scene_task_list`, `scene_task_cancel`,
+`scene_result_get` and `scene_cuts_save`.
+
+- `scene_detect`: `{projectId,sourceAssetId,sourceHash,options?,requestId}`. Queues
+  one local decode of an owned video; a finished run saves its cuts (first frames
+  of new shots on the 30 fps grid) as the video's newest result.
+- `scene_task_get` / `scene_task_list`: current state and live `progress`; reads
+  never resume work.
+- `scene_result_get`: `{projectId,assetId}`; the newest result and whether it is
+  still current.
+- `scene_task_cancel` and `scene_cuts_save` are explicit user writes with their
+  own keys; `scene_cuts_save` must start from the current result.
+
+Only a verified `sceneOutcome` proof for the exact operation, project, key and
+canonical input hash clears an uncertain write. No path, decoder argument,
+provider or network access is involved. Use `timeline_clip_splitAtScenes` to
+split timeline clips at a result's cuts.
 
 ## Timeline output presets (schema 21)
 

@@ -25,13 +25,15 @@ export function ExportWorkflowSection({ steps, children, className = '' }: { ste
 export interface ExportWorkflowProps {
   preview?: ReactNode; children: ReactNode; resultDetails?: ReactNode; phase: string; attempted?: boolean; exportBusy?: boolean; pendingExport?: boolean;
   checkAction?:ReactNode; settingsEstimate?:ReactNode;
+  /** Replaces the settings step's Next button, e.g. when the settings choose a different kind of export. */
+  nextAction?:ReactNode;
   record?: ExportWorkflowRecord | null; projectId?: string | null; activity?: ExportActivity | null; output?: ExportOutput | null;
   onTasks?: () => void; onRecheck?: () => void; canCheck?: boolean; downloadEnabled?: boolean; fileRecoveryEnabled?:boolean; reviewVersion?: number;
   onCancel?: () => unknown; cancelBusy?: boolean; onClose?: () => void; onHistory?: () => void; onReexport?: () => void;
 }
 /** This shell retains presentation only. App owns the exact preflight binding,
  * fixed export identity, observations, cancellation and durable receipt. */
-export default function ExportWorkflow({ preview, children, phase, attempted, exportBusy, pendingExport, record, projectId, activity, output, resultDetails, onTasks, onRecheck, canCheck, downloadEnabled = true, fileRecoveryEnabled=true, reviewVersion = 0, onCancel, cancelBusy, onClose, onHistory, onReexport,checkAction,settingsEstimate }: ExportWorkflowProps) {
+export default function ExportWorkflow({ preview, children, phase, attempted, exportBusy, pendingExport, record, projectId, activity, output, resultDetails, onTasks, onRecheck, canCheck, downloadEnabled = true, fileRecoveryEnabled=true, reviewVersion = 0, onCancel, cancelBusy, onClose, onHistory, onReexport,checkAction,settingsEstimate,nextAction }: ExportWorkflowProps) {
   const { t, formatNumber } = useI18n(), confirm = useConfirmation(), visible=useWorkspaceVisibility();
   const [step, setStep] = useState<Step>(1), [confirming,setConfirming]=useState(false);
   const owner=useMemo(()=>({}),[projectId,record?.id,visible]);
@@ -86,7 +88,7 @@ export default function ExportWorkflow({ preview, children, phase, attempted, ex
       <footer className="export-workflow-navigation" hidden={step > 2} inert={step > 2}>
         {step===2&&settingsEstimate}{checkAction&&<div className="export-workflow-check-action">{checkAction}</div>}
         {step===1&&onClose&&<WorkbenchButton variant="ghost" onClick={onClose}>{t('redesign.export.close')}</WorkbenchButton>}{step === 2 && <WorkbenchButton variant="ghost" onClick={() => choose(1)}>{t('redesign.export.previous')}</WorkbenchButton>}
-        <WorkbenchButton variant="primary" disabled={!checked || Boolean(active || exportBusy || pendingExport)} onClick={() => choose(step === 1 ? 2 : 3)} data-testid="export-workflow-next">{t(step === 1 ? 'redesign.export.nextSettings' : 'redesign.export.nextConfirm')}</WorkbenchButton>
+        {step === 2 && nextAction ? nextAction : <WorkbenchButton variant="primary" disabled={!checked || Boolean(active || exportBusy || pendingExport)} onClick={() => choose(step === 1 ? 2 : 3)} data-testid="export-workflow-next">{t(step === 1 ? 'redesign.export.nextSettings' : 'redesign.export.nextConfirm')}</WorkbenchButton>}
       </footer>
     </div>
   </div></WorkflowMediaContext.Provider></WorkflowNavigateContext.Provider></WorkflowContext.Provider>;

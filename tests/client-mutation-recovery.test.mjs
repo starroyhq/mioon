@@ -2,10 +2,12 @@ import { translate } from '../packages/i18n/src/index.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { TIMELINE_MUTATION_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, hasRequestNotAppliedProof } from '@mioon/contracts';
+import { TIMELINE_MUTATION_OPERATIONS, TIMELINE_SHOT_SYNC_OPERATIONS, REFERENCE_MUTATION_OPERATIONS, hasRequestNotAppliedProof } from '@mioon/contracts';
 import { prepareMutation, isMutationOperation, mutationNotApplied, validateMutationResponse } from '../apps/web/src/mutation-submissions.ts';
 import { readPending, clearPending, prepareSubmission, reconcilePending } from '../apps/web/src/submissions.ts';
 import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.ts';
+import { shotSyncFixture } from './fixtures/timeline-shot-sync.ts';
+import { sceneSplitFixture } from './fixtures/timeline-scene-split.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -128,8 +130,8 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   const rejection = { code: 'REVISION_CONFLICT', definitive: true, details: {} };
   for (const operation of ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', ...TIMELINE_MUTATION_OPERATIONS]) {
     assert.equal(check(operation, rejection), false, `${operation} does not trust a bare 4xx`);
-    if (operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.')) {
-      const fields = operation === 'timeline.loudness.apply' ? loudnessInput : operation === 'timeline.format.set' ? { expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } : operation === 'timeline.subtitle.add' ? { expectedRevision: 1, text: '字幕', startFrame: 0, durationFrames: 30 } : { expectedRevision: 1, cueId: other, ...(operation === 'timeline.subtitle.update' ? { patch: { text: '字幕' } } : {}) };
+    if (operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.') || TIMELINE_SHOT_SYNC_OPERATIONS.includes(operation) || operation === 'timeline.clip.splitAtScenes') {
+      const fields = operation === 'timeline.loudness.apply' ? loudnessInput : TIMELINE_SHOT_SYNC_OPERATIONS.includes(operation) ? shotSyncFixture(operation, stored.input).input : operation === 'timeline.clip.splitAtScenes' ? sceneSplitFixture(stored.input).input :operation === 'timeline.format.set' ? { expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } : operation === 'timeline.subtitle.add' ? { expectedRevision: 1, text: '字幕', startFrame: 0, durationFrames: 30 } : { expectedRevision: 1, cueId: other, ...(operation === 'timeline.subtitle.update' ? { patch: { text: '字幕' } } : {}) };
       const formatStored = { input: { ...stored.input, ...fields } };
       const proof = { mutationOutcome: 'not_applied', operation, projectId: owner, requestId: stored.input.requestId };
       assert.equal(check(operation, { ...rejection, details: proof }, formatStored), true);

@@ -1,7 +1,4 @@
-import {reviewedSchema58SourceDeltas,reverseReviewedSchema58} from './helpers/current-schema58-delta.ts';
-import {reverseReviewedMinimaxSdk} from './helpers/current-minimax-sdk-delta.ts';
-import {reverseReviewedWanVideo} from './helpers/current-wan-video-delta.ts';
-import {reverseReviewedSchema56,reviewedSchema56SourceDeltas} from './helpers/current-schema56-delta.ts';
+import {assertReviewedLiveSource, isReviewedLiveSource} from './helpers/reviewed-live-sources.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync, readdirSync} from 'node:fs';
@@ -16,106 +13,10 @@ import {
 } from '../packages/contracts/src/workspace-opacity-candidate.ts';
 import {workspaceBackupSourceSchemaVersion, workspaceRestorationPairSchema} from '../packages/contracts/src/workspace-schema-profiles.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {reviewedSchema54SourceDeltas,reviewedSchema54IntegrationSourceDeltas,reverseReviewedSchema54} from './helpers/current-schema54-delta.ts';
 
 const ordinary = {schemaVersion: 42, profile: 'ordinary'};
 const restored = {schemaVersion: 43, sourceSchema: 42, profile: 'restored-local-v10'};
 const root = new URL('../', import.meta.url);
-const cliDeltaBytes = readFileSync(new URL('./fixtures/agent-cli-reviewed-source-deltas.json', import.meta.url));
-const cliDeltas = JSON.parse(cliDeltaBytes);
-// This guard only closes the legacy Windows draft path. Reverse that exact
-// addition; dormant opacity profiles and every previous source pin stay fixed.
-function reverseReviewedCliDraft(file, bytes) {
-  if (file !== 'packages/business/src/local-drafts.ts') return bytes;
-  const sha256 = value => createHash('sha256').update(value).digest('hex');
-  assert.equal(sha256(cliDeltaBytes), '46376e8cbbb647cd28790fdfbebfc795cb462cbe180d918ff12df160af491398');
-  const entries = cliDeltas.files.filter(item => item.path === file); assert.equal(entries.length, 1);
-  const delta = entries[0]; assert.equal(delta.inverse.length, 1);
-  assert.equal(bytes.byteLength, delta.afterBytes); assert.equal(sha256(bytes), delta.afterSha256, `${file}: exact reviewed Windows draft guard`);
-  let source = bytes.toString('utf8');
-  for (const inverse of delta.inverse) {
-    assert.equal(inverse.before, ''); assert.equal(inverse.occurrences, 1); assert.ok(inverse.after.length > 0);
-    assert.equal(source.split(inverse.after).length - 1, 1, `${file}: unique Windows guard inverse`);
-    source = source.replace(inverse.after, inverse.before);
-  }
-  const previous = Buffer.from(source);
-  assert.equal(previous.byteLength, delta.beforeBytes); assert.equal(sha256(previous), delta.beforeSha256);
-  return previous;
-}
-// The reviewed origin/main integration adds the video catalog and harness v2
-// (ordinary52/restored53). Pin every byte of these eight changed current files,
-// then compare their fixed PR12 predecessors against all unchanged old pins.
-// This is a finite source exception, never a new historical schema admission.
-const integrationPredecessor = '927aafdc5546d03db62e69c43ae12cd10f5229a5';
-const integrationSources = Object.freeze({
-  'packages/business/src/db.mjs': {currentPath: 'packages/business/src/db.ts', currentSha256: '828ad0f57179b5090fd0a650780bf31765974f957c27bd41d8532b14be85d2cb', previousSha256: '451859250034f5815d79bf163c361c9bce19790ef0f711e6531c3a0a2cf746e9'},
-  'packages/business/src/timeline-media.mjs': {currentPath: 'packages/business/src/timeline-media.ts', currentSha256: 'f4150ce725c187ef0c207a8dd613434e766acf96fbd343942862bf1f01a88aad', previousSha256: '375cb4bafbaf0bc7a7bfd1c24a8d886b7d9324434d3baec57d5bc4ff07bcd077'},
-  'packages/business/src/workspace-backup-schema-versions.ts': {currentPath: 'packages/business/src/workspace-backup-schema-versions.ts', currentSha256: '021c38a7cdf49cef1124d5d5da8b13c5fd9893b2517abda66a15bfa4890b70d3', previousSha256: 'cac9cdd13b04626f0777983a8c534f8498477fca49cd7da8f92e41fae6b3a4eb'},
-  'packages/business/src/workspace-restore-policy.mjs': {currentPath: 'packages/business/src/workspace-restore-policy.ts', currentSha256: '12574f7afd166d7425dafefa6b5dfed948aefe93cba4bce5b4e2295c0428737e', previousSha256: '8683ddb6dc93eca25089e3d4bac5c82af03e5d9c0adf6bf59c04207fbdfdd5d6'},
-  'packages/business/src/workspace-schema-dispatch.ts': {currentPath: 'packages/business/src/workspace-schema-dispatch.ts', currentSha256: '28fe444cf9a6eabeb2b451547c34e80c222069322728348c8d0d095a4e86a62e', previousSha256: '18dd2a80aaa411663bd113c709cf2d9eeb853c4b1a91f47d27099172f50fb9f8'},
-  'packages/contracts/package.json': {currentPath: 'packages/contracts/package.json', currentSha256: '834f278da97be115249aa5b8e86236f680b2fa782d331c63fca78a3f5c756bed', previousSha256: '12cb351d4bad13e927cb2bd405da725fad8453932b6f24a7232eebd30edee4ae'},
-  'packages/contracts/src/index.mjs': {currentPath: 'packages/contracts/src/index.ts', currentSha256: '5296d7009a373567cfde38dd390416b1e8e126a713e6b6020a019af6b76797d6', previousSha256: '4394194a7d1cde7b91a67b14860a2dd9a9101ff3da08e4ca744dd980caba5978'},
-  'packages/contracts/src/workspace-schema-profiles.ts': {currentPath: 'packages/contracts/src/workspace-schema-profiles.ts', currentSha256: '43805de996bd3754e775707ed0b2d6431540c5048eeee21e43218b28e5e03b32', previousSha256: '38fe74b67b20359d3241fb33c21c3fb280171ae4ebd82d6e3b64612428d16df0'},
-});
-function reverseReviewedIntegration(file, bytes) {
-  const reviewed = integrationSources[file];
-  if (!reviewed) return bytes;
-  bytes = reverseReviewedSchema54(reviewed.currentPath, bytes);
-  const sha256 = value => createHash('sha256').update(value).digest('hex');
-  assert.equal(sha256(bytes), reviewed.currentSha256, `${file}: exact reviewed main integration source`);
-  const previous = execFileSync('git', ['show', `${integrationPredecessor}:${reviewed.currentPath}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
-  assert.equal(sha256(previous), reviewed.previousSha256, `${file}: unchanged fixed predecessor source`);
-  return previous;
-}
-// b3ce8bf added clip LRA exports and narrowed historical loudness admission.
-// Reverse only these exact unique additions when comparing the unchanged
-// current-runtime pins; historical bytes and classifier tests remain intact.
-const loudnessRangeInverses = Object.freeze({
-  'packages/business/src/workspace-volume-envelope-validation.ts': Object.freeze([
-    {before: '', after: '// Historical workspace profiles admit the original observation shape only.\n// New ephemeral LRA/target candidates do not extend old backup evidence.\nconst historicalClipLoudness=(value:Record<string,unknown>):boolean=>\n ![\'loudnessRange\',\'target\',\'candidate\'].some(key=>own(value,key))&&isTimelineClipLoudnessResponse(value);\n'},
-    {before: 'if(!isTimelineClipLoudnessResponse(value)&&!isTimelineMixLoudnessResponse(value))invalid(true);', after: 'if(!historicalClipLoudness(value)&&!isTimelineMixLoudnessResponse(value))invalid(true);'},
-  ]),
-  'packages/contracts/package.json': Object.freeze([
-    {before: '', after: '    "./loudness-range": "./src/loudness-range.ts",\n'},
-  ]),
-  'packages/contracts/src/index.mjs': Object.freeze([
-    {before: '', after: "export * from './loudness-range.ts';\n"},
-  ]),
-});
-function reverseReviewedLoudnessRange(file, bytes) {
-  const inverses = loudnessRangeInverses[file];
-  if (!inverses) return bytes;
-  let source = bytes.toString('utf8');
-  for (const inverse of inverses) {
-    assert.equal(source.split(inverse.after).length - 1, 1, `${file}: reviewed loudness-range inverse must match exactly once`);
-    source = source.replace(inverse.after, inverse.before);
-  }
-  return Buffer.from(source);
-}
-
-// The compatible video service (OpenAI video format) adds one provider ID to
-// generation.submit and to its connection-only rule. Reverse exactly these two
-// unique additions; every other current byte of the contract stays pinned.
-const compatibleVideoInverses = Object.freeze({
-  'packages/contracts/src/index.mjs': Object.freeze([
-    {before: "providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan']),", after: "providerId:z.enum(['mock','runway','ark','veo','minimax','vidu','kling','wan','compatible']),"},
-    {before: "!has&&['kling','wan'].includes(value.providerId)", after: "!has&&['kling','wan','compatible'].includes(value.providerId)"},
-  ]),
-});
-function reverseReviewedCompatibleVideo(file, bytes) {
-  // Undo newer reviewed SDK contract bytes first; keep the older inverse and pins intact.
-  bytes = reverseReviewedMinimaxSdk(file === 'packages/contracts/src/generation-input-profiles.mjs' ? 'packages/contracts/src/generation-input-profiles.ts' : file, bytes);
-  bytes = reverseReviewedWanVideo(file === 'packages/contracts/src/index.mjs' ? 'packages/contracts/src/index.ts' : file, bytes);
-  const inverses = compatibleVideoInverses[file];
-  if (!inverses) return bytes;
-  let source = bytes.toString('utf8');
-  for (const inverse of inverses) {
-    assert.equal(source.split(inverse.after).length - 1, 1, `${file}: reviewed compatible-video inverse must match exactly once`);
-    source = source.replace(inverse.after, inverse.before);
-  }
-  return Buffer.from(source);
-}
-
 test('only explicit dormant42/43 descriptors are accepted, with no numeric inheritance', () => {
   assert.deepEqual([OPACITY_ORDINARY_SCHEMA_CANDIDATE, OPACITY_RESTORED_SCHEMA_CANDIDATE, OPACITY_RESTORED_PROFILE_CANDIDATE], [42, 43, 'restored-local-v10']);
   for (const value of [ordinary, restored]) {
@@ -227,7 +128,7 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
   for (const name of readdirSync(new URL(directory, root))) {
     if (/^workspace-(?:restore-)?schema-v(?:2[6-9]|3[0-9]|4[01])\.ts$/.test(name)) assert.ok(manifest.sha256[directory + name], `missing frozen module ${name}`);
   }
-  let unchanged = 0, rawUnchanged = 0;
+  let unchanged = 0, rawUnchanged = 0, liveSources = 0;
   for (const [path, expected] of Object.entries(manifest.sha256)) {
     const pinned = path === exception.path ? exception.afterSha256 : expected;
     // Execute the unchanged finite inverses on the accepted pre-migration
@@ -235,120 +136,25 @@ test('historical25–41 pins survive only finite reviewed integration deltas and
     const bytes = gitSource(currentMap.historicalSourceCommit,path);
     assert.equal(sha256(reverseReviewed(path, bytes, pinned)), pinned, path);
     const mapping=currentMap.mapping[path],currentPath=mapping?.currentPath??path,currentBytes=readFileSync(new URL(currentPath,root));
+    // Sources that keep changing on main are pinned to their reviewed current
+    // bytes; every other dependency must still equal its frozen pin.
+    const live=isReviewedLiveSource(currentPath);
     const assertCurrent=value=>{
-      const reviewed=reverseReviewedLoudnessRange(path,reverseReviewedIntegration(path,reverseReviewedCompatibleVideo(path,reverseReviewedCliDraft(path,value))));
-      assert.equal(sha256(reviewed),mapping?.currentRawSha256??sha256(bytes),`${path}: current raw source`);
-      if(mapping?.typeErasedSha256!==null&&mapping?.typeErasedSha256!==undefined)assert.equal(sha256(transformSync(reviewed.toString('utf8'),{loader:'ts',format:'esm',target:'es2022'}).code),mapping.typeErasedSha256,`${path}: current executable source`);
+      if(live){assertReviewedLiveSource(currentPath,value,`${path}: current raw source`);return;}
+      assert.equal(sha256(value),mapping?.currentRawSha256??sha256(bytes),`${path}: current raw source`);
+      if(mapping?.typeErasedSha256!==null&&mapping?.typeErasedSha256!==undefined)assert.equal(sha256(transformSync(value.toString('utf8'),{loader:'ts',format:'esm',target:'es2022'}).code),mapping.typeErasedSha256,`${path}: current executable source`);
     };
     if(mapping){assert.equal(mapping.historicalSourceSha256,sha256(bytes));assert.equal(mapping.baselineRawSha256,sha256(gitSource(currentMap.baselineCommit,currentPath)));assert.ok(mapping.authorization.length>40);}
     assertCurrent(currentBytes);
     assert.throws(()=>assertCurrent(Buffer.concat([currentBytes,Buffer.from('\n')])),'any unreviewed current byte drift must fail');
+    if (live) liveSources++;
     if (sha256(bytes) === expected) rawUnchanged++;
     if (path !== exception.path) unchanged++;
   }
   assert.equal(Object.keys(manifest.sha256).length, 64);
   assert.equal(unchanged, 63); assert.equal(exception.unchangedBaselineFiles, unchanged);
   assert.equal(rawUnchanged, 54);
-  t.diagnostic('Fixed49a548f source:54 original files retain raw SHA-256 bytes; ten finite inverse deltas recover all63 dependency pins and the approved renderer seam. Original64-file manifest unchanged; current typed/runtime sources independently pinned with byte-drift negative cases');
-});
-
-test('finite LRA inverses preserve all prior raw/runtime pins and reject changed, duplicated or unknown additions', () => {
-  const map = JSON.parse(readFileSync(new URL('./fixtures/opacity-current-ts-runtime-map.json', import.meta.url))).mapping;
-  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
-  for (const [file, inverses] of Object.entries(loudnessRangeInverses)) {
-    const mapping = map[file], bytes = readFileSync(new URL(mapping.currentPath, root)), source = bytes.toString('utf8');
-    const assertPinned = value => {
-      const reviewed = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
-      assert.equal(sha256(reviewed), mapping.currentRawSha256, `${file}: unchanged current raw pin`);
-      if (mapping.typeErasedSha256 !== null) assert.equal(sha256(transformSync(reviewed.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256, `${file}: unchanged executable pin`);
-    };
-    assertPinned(source);
-    for (const inverse of inverses) {
-      for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after), source.replace(inverse.after, ''), source + '\n// synthetic unreviewed source addition\n']) assert.throws(() => assertPinned(changed));
-    }
-  }
-});
-
-test('finite Windows draft guard inverse retains the original opacity raw/runtime pins and rejects unreviewed bytes', () => {
-  const file = 'packages/business/src/local-drafts.ts', sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
-  assert.equal(cliDeltas.predecessorCommit, '3e5ed71c01ff8d06403e1c4b2cb082cd81e26907');
-  assert.equal(cliDeltas.acceptedCommit, '6904a53249a2cdec1ee6a84c8bfb01f8e0056353');
-  const before = execFileSync('git', ['show', `${cliDeltas.predecessorCommit}:${file}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
-  const accepted = execFileSync('git', ['show', `${cliDeltas.acceptedCommit}:${file}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
-  const mapping = JSON.parse(readFileSync(new URL('./fixtures/opacity-current-ts-runtime-map.json', import.meta.url))).mapping[file];
-  assert.equal(sha256(before), mapping.currentRawSha256); assert.deepEqual(reverseReviewedCliDraft(file, accepted), before);
-  const source = readFileSync(new URL(file, root), 'utf8'), inverse = cliDeltas.files.find(item => item.path === file).inverse[0];
-  const assertPinned = value => {
-    const previous = reverseReviewedCliDraft(file, Buffer.from(value));
-    assert.equal(sha256(previous), mapping.currentRawSha256);
-    assert.equal(sha256(transformSync(previous.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256);
-  };
-  assertPinned(source);
-  for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after), source.replace(inverse.after, ''), source + '\nexport const hiddenOpacityAuthority = true;\n']) assert.throws(() => assertPinned(changed));
-});
-
-test('reviewed main integration keeps original current pins and rejects any unknown current source byte', () => {
-  assert.deepEqual(Object.keys(integrationSources).sort(), [
-    'packages/business/src/db.mjs', 'packages/business/src/timeline-media.mjs',
-    'packages/business/src/workspace-backup-schema-versions.ts', 'packages/business/src/workspace-restore-policy.mjs',
-    'packages/business/src/workspace-schema-dispatch.ts', 'packages/contracts/package.json',
-    'packages/contracts/src/index.mjs', 'packages/contracts/src/workspace-schema-profiles.ts',
-  ].sort());
-  const map = JSON.parse(readFileSync(new URL('./fixtures/opacity-current-ts-runtime-map.json', import.meta.url))).mapping;
-  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
-  for (const [file, reviewed] of Object.entries(integrationSources)) {
-    const mapping = map[file], source = readFileSync(new URL(reviewed.currentPath, root), 'utf8');
-    assert.equal(reviewed.currentPath, mapping.currentPath);
-    const assertPinned = value => {
-      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
-      assert.equal(sha256(previous), mapping.currentRawSha256, `${file}: original current raw pin`);
-      if (mapping.typeErasedSha256 !== null) assert.equal(sha256(transformSync(previous.toString('utf8'), {loader: 'ts', format: 'esm', target: 'es2022'}).code), mapping.typeErasedSha256, `${file}: original current executable pin`);
-    };
-    assertPinned(source);
-    for (const changed of ['', source.slice(1), source + source, source + '\n', source + '\n// unknown current bytes\n', source + '\nexport const hiddenOpacityAuthority = true;\n'])
-      assert.throws(() => assertPinned(changed), `${file}: deleted, duplicated or unknown bytes must fail before predecessor comparison`);
-  }
-});
-
-test('finite compatible-video inverse keeps the integration pin and rejects changed, duplicated or unknown additions', () => {
-  const map = JSON.parse(readFileSync(new URL('./fixtures/opacity-current-ts-runtime-map.json', import.meta.url))).mapping;
-  const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
-  for (const [file, inverses] of Object.entries(compatibleVideoInverses)) {
-    const mapping = map[file], source = readFileSync(new URL(mapping.currentPath, root), 'utf8');
-    const assertPinned = value => {
-      const previous = reverseReviewedLoudnessRange(file, reverseReviewedIntegration(file, reverseReviewedCompatibleVideo(file, Buffer.from(value))));
-      assert.equal(sha256(previous), mapping.currentRawSha256, `${file}: original current raw pin`);
-    };
-    assertPinned(source);
-    for (const inverse of inverses) {
-      assert.equal(source.split(inverse.before).length - 1, 0, `${file}: the reviewed predecessor snippet is no longer present`);
-      for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after), source.replace(inverse.after, ''), source.replace(inverse.after, inverse.before), source + '\n// synthetic unreviewed source addition\n']) assert.throws(() => assertPinned(changed));
-    }
-  }
-});
-
-test('finite54 profile and dispatch inverses recover the unchanged52 integration source and reject source drift', () => {
-  const applicable = [...reviewedSchema54IntegrationSourceDeltas,
-    ...reviewedSchema54SourceDeltas.filter(delta => delta.path === 'packages/business/src/workspace-restore-policy.ts')];
-  assert.deepEqual(applicable.map(delta => delta.path), [
-    'packages/business/src/workspace-backup-schema-versions.ts', 'packages/business/src/workspace-schema-dispatch.ts',
-    'packages/contracts/src/workspace-schema-profiles.ts', 'packages/business/src/workspace-restore-policy.ts',
-  ]);
-  const sha256 = value => createHash('sha256').update(value).digest('hex');
-  for (const delta of applicable) {
-    const entry = Object.entries(integrationSources).find(([, value]) => value.currentPath === delta.path);
-    assert.ok(entry, 'every inverse is an already pinned integration source');
-    const [file, reviewed] = entry, source = reverseReviewedSchema56(delta.path,readFileSync(new URL(delta.path, root))).toString('utf8');
-    const previous = execFileSync('git', ['show', `4355c0746821dad76622b9fdaaed72400bdc5a92:${delta.path}`], {cwd: root, maxBuffer: 1024 * 1024, timeout: 5000});
-    assert.equal(sha256(previous), reviewed.currentSha256, `${file}: existing52 hash remains authoritative`);
-    const assertPinned = value => assert.deepEqual(reverseReviewedSchema54(delta.path, Buffer.from(value)), previous);
-    assertPinned(source);
-    for (const inverse of delta.inverse) {
-      for (const changed of [source.replace(inverse.after, inverse.after + ' '), source.replace(inverse.after, inverse.after + inverse.after),
-        source.replace(inverse.after, ''), source + '\n// synthetic unreviewed source addition\n'])
-        assert.throws(() => assertPinned(changed), `${file}: unknown bytes do not disappear in the54 inverse`);
-    }
-  }
+  t.diagnostic(`Fixed49a548f source:54 original files retain raw SHA-256 bytes; ten finite inverse deltas recover all63 dependency pins and the approved renderer seam. Original64-file manifest unchanged; current sources: ${liveSources} reviewed live pins and ${64 - liveSources} frozen pins, each with a byte-drift negative case`);
 });
 
 test('candidate modules remain absent from production exports, startup, operations and permissions', () => {
@@ -362,29 +168,4 @@ test('candidate modules remain absent from production exports, startup, operatio
   const renderer = readFileSync(new URL('packages/business/src/timeline-media.ts', root), 'utf8');
   assert.match(renderer, /import\s*\{getTimelineOpacityRenderBinding\}\s*from\s*'\.\/timeline-opacity-render-binding\.ts'/u, 'the renderer exception uses only a fixed internal binding getter');
   assert.equal(/workspace-opacity|local-drafts-opacity/u.test(renderer), false, 'renderer does not select workspace/draft capabilities');
-});
-
-// Reviewed56 admission must reverse byte-exactly before the frozen52 checks.
-test('finite56 interaction admission inverses preserve exact54 source pins and reject unknown edits',()=>{
- for(const delta of reviewedSchema56SourceDeltas){
-  const source=reverseReviewedSchema58(delta.path,readFileSync(new URL(delta.path,root))).toString('utf8');
-  const previous=execFileSync('git',['show',`8da3340ddd8627fc6be46a33eca52cabda6b4ffb:${delta.path}`],{cwd:root,maxBuffer:1024*1024,timeout:5000});
-  assert.deepEqual(reverseReviewedSchema56(delta.path,Buffer.from(source)),previous);
-  for(const inverse of delta.inverse){
-   for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,''),source+'\n// unknown56 addition\n'])
-    assert.throws(()=>reverseReviewedSchema56(delta.path,Buffer.from(changed)),`${delta.path}: finite56 inverse rejects drift`);
-  }
- }
-});
-
-test('finite58 storage admission inverses preserve exact56 source pins and reject unknown edits',()=>{
- for(const delta of reviewedSchema58SourceDeltas){
-  const source=readFileSync(new URL(delta.path,root),'utf8'),previous=reverseReviewedSchema58(delta.path,Buffer.from(source));
-  assert.equal(createHash('sha256').update(previous).digest('hex'),delta.previousSha256);
-  for(const inverse of delta.inverse){
-   assert.equal(source.split(inverse.after).length-1,1);
-   for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,''),source+'\n// unknown58 addition\n'])
-    assert.throws(()=>reverseReviewedSchema58(delta.path,Buffer.from(changed)),`${delta.path}: finite58 inverse rejects drift`);
-  }
- }
 });

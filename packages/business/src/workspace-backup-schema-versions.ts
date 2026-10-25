@@ -1,3 +1,6 @@
+import {validateWorkspaceSchema60} from './workspace-schema-v60.ts';
+import {createWorkspaceRestoreProfileV61} from './workspace-restore-schema-v61.ts';
+import {createWorkspaceRestoreProfileV59 as createPrivateStorageProfileV59} from './workspace-storage-restore-schema-v59.ts';
 import {validateWorkspaceSchema58} from './workspace-schema-v58.ts';
 import {createWorkspaceRestoreProfileV59} from './workspace-restore-schema-v59.ts';
 import {validateWorkspaceSchema56} from './workspace-schema-v56.ts';
@@ -39,14 +42,15 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
  // Verify also handles imported nonstandard marker tables, whose values may be
  // arbitrarily large text or blobs; a row cap alone does not bound those cells.
  for(const row of db.prepare(`SELECT CASE WHEN typeof(version)='integer' AND
-   (version BETWEEN 1 AND 24 OR version IN (26,28,30,32,34,36,38,40,44,48,50,52,54,56,58)) THEN version ELSE NULL END AS version
-   FROM main.schema_version LIMIT 40`).iterate()){
-  if(versions.size>=39||typeof row.version!=='number'||
-     !((row.version>=1&&row.version<=24)||row.version===26||row.version===28||row.version===30||row.version===32||row.version===34||row.version===36||row.version===38||row.version===40||row.version===44||row.version===48||row.version===50||row.version===52||row.version===54||row.version===56||row.version===58)||versions.has(row.version))invalid();
+   (version BETWEEN 1 AND 24 OR version IN (26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60)) THEN version ELSE NULL END AS version
+   FROM main.schema_version LIMIT 41`).iterate()){
+  if(versions.size>=40||typeof row.version!=='number'||
+     !((row.version>=1&&row.version<=24)||row.version===26||row.version===28||row.version===30||row.version===32||row.version===34||row.version===36||row.version===38||row.version===40||row.version===44||row.version===48||row.version===50||row.version===52||row.version===54||row.version===56||row.version===58||row.version===60)||versions.has(row.version))invalid();
   versions.add(row.version);version=Math.max(version,row.version);
  }
  if(!version)invalid();
- if(version===58){try{validateWorkspaceSchema58(db);}catch{try{const classification=createWorkspaceRestoreProfileV59(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV58V59AllowingUnknown(db);if(classification.schemaVersion!==58)invalid();}catch{invalid();}}return version;}
+ if(version===60){try{validateWorkspaceSchema60(db);}catch{try{const classification=createWorkspaceRestoreProfileV61(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV60V61AllowingUnknown(db);if(classification.schemaVersion!==60)invalid();}catch{invalid();}}return version;}
+ if(version===58){try{validateWorkspaceSchema58(db);}catch{try{const classification=createWorkspaceRestoreProfileV59(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV58V59AllowingUnknown(db);if(classification.schemaVersion!==58)invalid();}catch{try{const classification=createPrivateStorageProfileV59(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV58V59(db);if(classification.schemaVersion!==58)invalid();}catch{invalid();}}}return version;}
  if(version===56){try{validateWorkspaceSchema56(db);}catch{try{const classification=createWorkspaceRestoreProfileV57(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV56V57AllowingUnknown(db);if(classification.schemaVersion!==56)invalid();}catch{invalid();}}return version;}
  if(version===54){try{validateWorkspaceSchema54(db);}catch{try{const classification=createWorkspaceRestoreProfileV55(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV54V55AllowingUnknown(db);if(classification.schemaVersion!==54)invalid();}catch{invalid();}}return version;}
  if(version===52){try{validateWorkspaceSchema52(db);}catch{try{const classification=createWorkspaceRestoreProfileV53(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV52V53AllowingUnknown(db);if(classification.schemaVersion!==52)invalid();}catch{invalid();}}return version;}

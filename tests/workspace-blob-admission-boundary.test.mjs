@@ -1,5 +1,7 @@
+import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
+import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(objects));}
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
 // Causal boundary tests only. Existing independent goldens and their six
 // current-open expectations remain untouched. TEXT is a separate initial input
 // dataset; its before snapshot is a preservation oracle, not an independent
@@ -135,7 +137,7 @@ function positiveOrdinary(t, {mockLedger = false, repair} = {}) {
   if (repair) breakMarkers(db, repair);
   db.close(); let store;
   try {
-    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 58, profile: 'ordinary'});
+    store = openStore(root); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 60, profile: 'ordinary'});
     const currentObjects = withoutReviewedCurrentAgentObjects(snapshot(store.db).objects), current52Names = new Set(currentOrdinary52Delta.objectNames);
     assert.deepEqual(currentObjects.filter(object => current52Names.has(object.name)), currentOrdinary52Delta.objects, 'exact reviewed schema52 catalog additions');
     preserveOriginalRows(store.db, input); assertText(store.db); assert.equal(getWorkspaceRestoreContext(store), null);

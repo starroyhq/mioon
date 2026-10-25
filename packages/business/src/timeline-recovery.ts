@@ -5,7 +5,7 @@ import {validateTimelineColourBindings} from './timeline-colour-business.ts';
 import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';
 import {TIMELINE_LOUDNESS_APPLY_OPERATION,TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES,createTimelineLoudnessApplyContracts} from '@mioon/contracts/timeline-loudness-apply';
 import {readTimelineFormatProvenance} from './timeline-format-receipts.ts';
-import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
+import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES,TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_PROOF_CODES,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_PROOF_CODES,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES} from '@mioon/contracts';
 export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
@@ -25,6 +25,7 @@ interface OwnedMediaGraph {
  asset(id: string): TimelineAssetRecord;
  clipSource(clip: TimelineClipRecord|Record<string, unknown>): TimelineAssetRecord;
  version(id: string,shotId?: string|null,assetId?: string|null): TimelineVersionRecord;
+ legacySource(assetId: string): TimelineVersionRecord|null;
 }
 export interface TimelineRecoveryInput {
  projectId: string;requestId?: string;
@@ -42,6 +43,8 @@ export interface TimelineRecoveryBoundary {
  inputAsset(id: string): TimelineAssetRecord;
  clipSource(clip: TimelineClipRecord|Record<string, unknown>): TimelineAssetRecord;
  version(id: string,shotId?: string|null,assetId?: string|null): TimelineVersionRecord;
+ /** The one generated version that owns an asset, or null for imports. */
+ legacySource(assetId: string): TimelineVersionRecord|null;
  sources(timeline: TimelineRecord): Map<string, TimelineAssetRecord>;
  shots(): TimelineShotRecord[];
  validate(timeline: TimelineRecord): TimelineRecord;
@@ -57,6 +60,12 @@ const clone=(value: unknown)=>JSON.parse(JSON.stringify(value));
 const object=(value: unknown): boolean=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const uuid=(value: unknown): value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 export const invalidTimeline: ()=>never=()=>{throw new AppError('INVALID_TIMELINE_SNAPSHOT','时间线或已保存的请求响应无效',409);};
+// Shot-sync and scene-split acknowledgements wrap the saved timeline with
+// per-item outcomes; every other non-render timeline acknowledgement is the
+// timeline itself.
+const wrapsTimeline=(operation: string): boolean=>(TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation)||operation===TIMELINE_SCENE_SPLIT_OPERATION;
+const responseTimeline=(operation: string,response: unknown): unknown=>
+ wrapsTimeline(operation)?(response as {timeline?: unknown}).timeline:response;
 const unavailable: ()=>never=()=>{throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);};
 export function admitTimelineImageResponse(timeline: TimelineRecord): void{
  const issue=timelineImageResponseBudgetIssue(timeline,TIMELINE_RESPONSE_BYTES);
@@ -94,12 +103,25 @@ export function rejectTimelineMutation(db: DatabaseSync,input: TimelineRecoveryI
   return;
  }
  if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return;
+ // Shot-sync proofs always bind operation and project, and only for the codes
+ // the client accepts for these operations; nothing looser is attached.
+ if((TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation)){
+  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&(TIMELINE_SHOT_SYNC_PROOF_CODES as readonly string[]).includes(error.code))
+   failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',operation,projectId:input.projectId,requestId:input.requestId};
+  return;
+ }
+ if(operation===TIMELINE_SCENE_SPLIT_OPERATION){
+  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&(TIMELINE_SCENE_SPLIT_PROOF_CODES as readonly string[]).includes(error.code))
+   failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',operation,projectId:input.projectId,requestId:input.requestId};
+  return;
+ }
  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&definiteRejections.has(error.code))
   failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',requestId:input.requestId,...(error.code==='AUDIO_ROLE_CLIP_UNSUPPORTED'||error.code==='TIMELINE_IMAGE_AGGREGATE_BUDGET'||operation==='timeline.format.set'||TIMELINE_SUBTITLE_OPERATIONS.includes(operation)||operation==='timeline.render'&&(Object.hasOwn(input,'exportRange')||TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES.includes(error.code))?{operation,projectId:input.projectId}:{})};
 }
 
 export function readTimelineReceipt(db: DatabaseSync,input: TimelineRecoveryInput,operation: string): TimelineReceiptRow|undefined{
- const bytes=operation===TIMELINE_LOUDNESS_APPLY_OPERATION?TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES:operation==='timeline.render'?TIMELINE_RENDER_RESPONSE_BYTES:operation==='timeline.clip.replaceSource'?TIMELINE_REPLACEMENT_RESPONSE_BYTES:TIMELINE_RESPONSE_BYTES;
+ const bytes=operation===TIMELINE_LOUDNESS_APPLY_OPERATION?TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES:operation==='timeline.render'?TIMELINE_RENDER_RESPONSE_BYTES:operation==='timeline.clip.replaceSource'?TIMELINE_REPLACEMENT_RESPONSE_BYTES:
+  (TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation)?TIMELINE_SHOT_SYNC_RESPONSE_BYTES:operation===TIMELINE_SCENE_SPLIT_OPERATION?TIMELINE_SCENE_SPLIT_RESPONSE_BYTES:TIMELINE_RESPONSE_BYTES;
  const row=db.prepare(`SELECT ${bounded('requestHash',64)} AS requestHash,${bounded('response',bytes)} AS response FROM timeline_requests WHERE requestId=?`).get(input.requestId as string);
  if(row&&(typeof row.requestHash!=='string'||!/^[a-f0-9]{64}$/.test(row.requestHash)))invalidTimeline();
  return row as TimelineReceiptRow|undefined;
@@ -120,6 +142,7 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
  };
  const clipSource=(clip: TimelineClipRecord|Record<string, unknown>): TimelineAssetRecord=>guarded(()=>graph().clipSource(clip as TimelineClipRecord));
  const version=(id: string,shotId?: string|null,assetId?: string|null): TimelineVersionRecord=>guarded(()=>graph().version(id,shotId,assetId));
+ const legacySource=(assetId: string): TimelineVersionRecord|null=>guarded(()=>graph().legacySource(assetId));
  function sources(timeline: TimelineRecord): Map<string, TimelineAssetRecord>{
   const assets=new Map<string, TimelineAssetRecord>(),seen=new Set<string>();
   for(const clip of timeline.clips){
@@ -207,9 +230,10 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   return current;
  }
  function responseSources(operation: string,response: unknown,{historical=false}: {historical?: boolean}={}): TimelineRecord{
-  assertTimelineAudioRoleWorkspace(db,response);
-  assertTimelineVolumeEnvelopeWorkspace(db,response);
-  const record=response as TimelineRenderResponseLike&TimelineRecord;
+  const saved=responseTimeline(operation,response);
+  assertTimelineAudioRoleWorkspace(db,saved);
+  assertTimelineVolumeEnvelopeWorkspace(db,saved);
+  const record=saved as TimelineRenderResponseLike&TimelineRecord;
   const timeline=operation==='timeline.render'?record.snapshot.timeline:record;
   if(operation==='timeline.render'&&historical){
    // The shared ACK validator checked frame/fade semantics against the frozen
@@ -265,9 +289,9 @@ export function createTimelineRecoveryBoundary(db: DatabaseSync,input: TimelineR
   if(operation==='timeline.render'){
    const responseRecord=response as TimelineRenderResponseLike;
    if(current.id!==responseRecord.snapshot.timeline.id||JSON.stringify(renderRecord(responseRecord))!==JSON.stringify(response))invalidTimeline();
-  }else if(JSON.stringify(current)!==JSON.stringify(response))invalidTimeline();
+  }else if(JSON.stringify(current)!==JSON.stringify(responseTimeline(operation,response)))invalidTimeline();
   const saved=readTimelineReceipt(db,input,operation);
   if(saved?.requestHash!==requestHash||saved.response!==JSON.stringify(response))invalidTimeline();
  }
- return {read,asset,inputAsset,clipSource,version,sources,shots,validate,validateReadonly,restored,replay,verify};
+ return {read,asset,inputAsset,clipSource,version,legacySource,sources,shots,validate,validateReadonly,restored,replay,verify};
 }

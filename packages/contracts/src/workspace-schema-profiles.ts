@@ -20,8 +20,10 @@ export const workspaceBackupSourceSchemaVersion = z.union([
   z.literal(54),
   z.literal(56),
   z.literal(58),
+  z.literal(60),
 ]);
 export const workspaceRestorationPairSchema = z.union([
+  z.object({profile:z.literal('restored-local-v19'),sourceSchema:z.literal(60),databaseSchemaVersion:z.literal(61)}).strict(),
   z.object({profile:z.literal('restored-local-v18'),sourceSchema:z.literal(58),databaseSchemaVersion:z.literal(59)}).strict(),
   z.object({profile:z.literal('restored-local-v17'),sourceSchema:z.literal(56),databaseSchemaVersion:z.literal(57)}).strict(),
   z.object({profile:z.literal('restored-local-v16'),sourceSchema:z.literal(54),databaseSchemaVersion:z.literal(55)}).strict(),
@@ -45,9 +47,9 @@ export function isWorkspaceRestorationPair(value: unknown): value is WorkspaceRe
   return workspaceRestorationPairSchema.safeParse(value).success;
 }
 
-export const workspaceRestoreProfile = z.enum(['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6','restored-local-v7','restored-local-v8','restored-local-v9','restored-local-v11','restored-local-v13','restored-local-v14','restored-local-v15','restored-local-v16','restored-local-v17','restored-local-v18']);
-export const workspaceRestoreSourceVersion = z.union([z.literal(24),z.literal(26),z.literal(28),z.literal(30),z.literal(32),z.literal(34),z.literal(36),z.literal(38),z.literal(40),z.literal(44),z.literal(48),z.literal(50),z.literal(52),z.literal(54),z.literal(56),z.literal(58)]);
-export const workspaceRestoreDatabaseVersion = z.union([z.literal(25),z.literal(27),z.literal(29),z.literal(31),z.literal(33),z.literal(35),z.literal(37),z.literal(39),z.literal(41),z.literal(45),z.literal(49),z.literal(51),z.literal(53),z.literal(55),z.literal(57),z.literal(59)]);
+export const workspaceRestoreProfile = z.enum(['restored-local-v1','restored-local-v2','restored-local-v3','restored-local-v4','restored-local-v5','restored-local-v6','restored-local-v7','restored-local-v8','restored-local-v9','restored-local-v11','restored-local-v13','restored-local-v14','restored-local-v15','restored-local-v16','restored-local-v17','restored-local-v18','restored-local-v19']);
+export const workspaceRestoreSourceVersion = z.union([z.literal(24),z.literal(26),z.literal(28),z.literal(30),z.literal(32),z.literal(34),z.literal(36),z.literal(38),z.literal(40),z.literal(44),z.literal(48),z.literal(50),z.literal(52),z.literal(54),z.literal(56),z.literal(58),z.literal(60)]);
+export const workspaceRestoreDatabaseVersion = z.union([z.literal(25),z.literal(27),z.literal(29),z.literal(31),z.literal(33),z.literal(35),z.literal(37),z.literal(39),z.literal(41),z.literal(45),z.literal(49),z.literal(51),z.literal(53),z.literal(55),z.literal(57),z.literal(59),z.literal(61)]);
 
 export function validateWorkspaceRestorationPair(
   value: {profile:unknown;sourceSchema:unknown;databaseSchemaVersion:unknown},

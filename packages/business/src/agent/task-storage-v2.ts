@@ -6,7 +6,7 @@ import {readCurrentWorkspaceRole} from '../workspace-schema-dispatch.ts';
 /** Read only aggregate counts from fixed local table names. No request, prompt,
  * credential, path or provider data crosses this management diagnostic. */
 export function readAgentTaskStorage(db:DatabaseSync):AgentTaskStorageSnapshot {
- const role=readCurrentWorkspaceRole(db),references=role==='ordinary-58'||role==='restored-59-evidence';
+ const role=readCurrentWorkspaceRole(db),references=role==='ordinary-60'||role==='restored-61-evidence'||role==='storage-private-58'||role==='storage-private-59-evidence';
  const limits={bytes:references?268435456:67108864,rows:20000,rowBytes:2097152,eventPageBytes:8388608} as const;
  const available=!!db.prepare("SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='agent_task_runs_v2'").get();
  const tables=available?AGENT_TASK_STORAGE_TABLES.map(name=>{

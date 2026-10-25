@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="10c33740b1e3e79f0cc5b30232cb4b0aaf75cbd4a0dceb8469bbc6d8631c06b9";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="7fccbd0124664c062d6c8d600e19f9a05f1637a677cfe7999295ba25b39df44d";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -731,6 +731,164 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "required": [
    "taskId",
    "expectedRevision"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.detect": {
+  "type": "object",
+  "properties": {
+   "sourceAssetId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "sourceHash": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$"
+   },
+   "options": {
+    "type": "object",
+    "properties": {
+     "mode": {
+      "type": "string",
+      "enum": [
+       "adaptive",
+       "fixed"
+      ]
+     },
+     "sensitivity": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "0–100. Higher finds more cuts; every 20 points halve the threshold. Default 60."
+     },
+     "minShotSeconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 10,
+      "description": "Shortest shot in seconds, 0.1–10. Default 0.6."
+     }
+    },
+    "additionalProperties": false,
+    "description": "Omitted fields use the defaults: adaptive, 60, 0.6 s."
+   }
+  },
+  "required": [
+   "sourceAssetId",
+   "sourceHash"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.request.get": {
+  "type": "object",
+  "properties": {},
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.task.get": {
+  "type": "object",
+  "properties": {
+   "taskId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "taskId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.task.list": {
+  "type": "object",
+  "properties": {
+   "sourceAssetId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 50
+   },
+   "cursor": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 768
+   }
+  },
+  "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.task.cancel": {
+  "type": "object",
+  "properties": {
+   "taskId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "expectedRevision": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 9007199254740991
+   }
+  },
+  "required": [
+   "taskId",
+   "expectedRevision"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.result.get": {
+  "type": "object",
+  "properties": {
+   "assetId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "assetId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.cuts.save": {
+  "type": "object",
+  "properties": {
+   "assetId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "sourceHash": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$"
+   },
+   "expectedResultId": {
+    "type": "string",
+    "format": "uuid",
+    "description": "The current result the edit starts from; a newer result conflicts."
+   },
+   "cuts": {
+    "type": "array",
+    "items": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 17999
+    },
+    "maxItems": 1500,
+    "description": "Every cut after the edit: first frames of new shots on the 30 fps grid, strictly increasing, below the result frameCount."
+   }
+  },
+  "required": [
+   "assetId",
+   "sourceHash",
+   "expectedResultId",
+   "cuts"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
@@ -2355,6 +2513,70 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "target",
    "snapshotSha256",
    "candidateDigest"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.clip.refreshSources": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "clipIds": {
+    "type": "array",
+    "items": {
+     "type": "string",
+     "format": "uuid"
+    },
+    "minItems": 1,
+    "maxItems": 100
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "clipIds"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.shots.append": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   }
+  },
+  "required": [
+   "expectedRevision"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.clip.splitAtScenes": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "assetId": {
+    "type": "string",
+    "format": "uuid",
+    "description": "The reference video whose clips are split."
+   },
+   "resultId": {
+    "type": "string",
+    "format": "uuid",
+    "description": "Its current scene result (scene.result.get); a newer or stale result conflicts."
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "assetId",
+   "resultId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
