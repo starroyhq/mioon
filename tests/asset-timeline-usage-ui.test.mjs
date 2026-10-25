@@ -64,6 +64,7 @@ function harness() {
     './Nodes.tsx': { Media: 'Media' },
     './icons.tsx': { __esModule: true, default: 'Icon' },
     './SubjectLibrary.tsx': { __esModule: true, default: 'SubjectLibrary' },
+    './AssetContextMenu.tsx': { __esModule: true, default: 'AssetContextMenu' },
     '@mioon/ui/components/input': { Input: 'Input' },
     '@mioon/ui/components/tabs': { Tabs: 'Tabs', TabsList: 'TabsList', TabsTrigger: 'TabsTrigger', TabsContent: 'TabsContent' },
     '@mioon/ui/components/collapsible': { Collapsible: 'Collapsible', CollapsibleTrigger: 'CollapsibleTrigger', CollapsibleContent: 'CollapsibleContent' },
