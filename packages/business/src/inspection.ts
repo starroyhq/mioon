@@ -1,6 +1,6 @@
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
 import {types} from 'node:util';
-import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue} from '@mioon/contracts';
+import {AppError, parse, inspectionArgumentSchemas, inspectionSchemas,timelineOutputPreset,getTimelineSubtitleIssue,getSubjectGenerationSnapshotIssue,SCENE_KEYFRAME_PROVENANCE} from '@mioon/contracts';
 import {INSPECTION_ROW_LIMITS as rowLimits, INSPECTION_VERSION_ASSET_EXPRESSION} from './inspection-query.ts';
 import {canonicalImageInput, IMAGE_EDIT_LIMITS} from '../../contracts/src/images.ts';
 import {describeImageEditSource} from './images/edit-source.ts';
@@ -8,6 +8,7 @@ import {validateImageTaskReview} from './images/reviews.ts';
 import {createImageOwnershipReader} from './image-ownership.ts';
 import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownership.ts';
 import {createSubjectOwnershipReader} from './subject-ownership.ts';
+import {createSceneKeyframeOwnershipReader} from './scene-keyframe-ownership.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 type InspectionRecord = Record<string, unknown>;
@@ -122,6 +123,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
     const consume=(text: unknown): void=>{if(++readRecords>INSPECTION_LIMITS.maxReadRecords||(readBytes+=Buffer.byteLength(text as string))>INSPECTION_LIMITS.maxReadBytes)exhausted();};
     const imageReader=createImageOwnershipReader(db,projectId,{fail:unavailable,consume,validateSource:validateImageTask});
     const frameReader=createFrameOwnershipReader(db,projectId,{fail:unavailable,consume});
+    const sceneReader=createSceneKeyframeOwnershipReader(db,projectId,{fail:unavailable,consume});
     const subjectReader=createSubjectOwnershipReader(db,projectId,{fail:unavailable,notFound:unavailable,consume,resolveAsset:(assetId: string)=>{
       const asset=validateAsset(get('assets',id(assetId)));
       return {asset,legacySource:assetVersions.get(assetId),imageSource:imageSources.get(assetId),frameSource:frameSources.get(assetId)} as never;
@@ -242,11 +244,12 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       // have no version; generated assets require exactly one. Foreign and
       // duplicate owners are rejected, including mismatched SQL/JSON scope.
       const rows = db.prepare(`SELECT ${identity('id')} FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`).all(asset.id as string);
-      const images=imageReader.owners(asset.id as string) as {id?: unknown}[],frames=frameReader.owners(asset.id as string) as {id?: unknown}[],total=rows.length+images.length+frames.length;
+      const images=imageReader.owners(asset.id as string) as {id?: unknown}[],frames=frameReader.owners(asset.id as string) as {id?: unknown}[],scenes=sceneReader.owners(asset.id as string);
+      const total=rows.length+images.length+frames.length+scenes.length;
       // A damaged oversized legacy owner must never become an unowned import
       // or hide beside a typed owner, regardless of its provenance label.
       if(db.prepare(`SELECT 1 FROM versions WHERE length(CAST(data AS BLOB))>${(rowLimits as Record<string,number>).versions} AND CASE WHEN json_valid(data) THEN json_extract(data,'$.assetId') END=? LIMIT 1`).get(asset.id as string))unavailable();
-      if (total > 1 || (total === 0 && ['generated', 'synthetic-mock', 'extracted-frame'].includes(asset.provenance as string))) unavailable();
+      if (total > 1 || (total === 0 && ['generated', 'synthetic-mock', 'extracted-frame', SCENE_KEYFRAME_PROVENANCE].includes(asset.provenance as string))) unavailable();
       if (rows.length) assetVersions.set(asset.id as string, validateVersion(rows[0].id, undefined, asset.id));
       if (images.length) imageSources.set(asset.id as string,imageReader.source(id(images[0].id),asset as never) as unknown);
       if (frames.length) {
@@ -254,6 +257,14 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         validateFrameTask(source.frameTaskId);frameSources.set(asset.id as string,source);
       }
       if(asset.provenance==='extracted-frame'&&!frames.length)unavailable();
+      // A storyboard keyframe belongs to its finished task's receipt and to the
+      // unchanged reference video that task decoded.
+      if (scenes.length) {
+        const source=sceneReader.source(id(scenes[0]!.id),asset as never),video=get('assets',id(source.sourceAssetId));
+        if(!['video/mp4','video/webm'].includes(video.mimeType as string)||video.sha256!==source.sourceHash)unavailable();
+        validateAsset(video);
+      }
+      if(asset.provenance===SCENE_KEYFRAME_PROVENANCE&&!scenes.length)unavailable();
       validatedAssets.add(asset.id as string);return asset;
       }catch(error){validatedAssets.delete(asset.id as string);assetVersions.delete(asset.id as string);imageSources.delete(asset.id as string);frameSources.delete(asset.id as string);throw error;}finally{pendingAssets.delete(asset.id as string);}
     }
@@ -290,7 +301,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       validateAsset(asset);
       return {id: asset.id, name: string(asset.name, 200), mimeType: enumValue(asset.mimeType, ['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4']),
         ...optional(asset, {width: value => number(value, 0, 100000, true), height: value => number(value, 0, 100000, true), duration: value => number(value, 0, 864000),
-          hasAudio: boolean, hasVideo: boolean, provenance: value => enumValue(value, ['user-import', 'generated', 'synthetic-mock', 'export', 'extracted-frame']), createdAt: timestamp})};
+          hasAudio: boolean, hasVideo: boolean, provenance: value => enumValue(value, ['user-import', 'generated', 'synthetic-mock', 'export', 'extracted-frame', SCENE_KEYFRAME_PROVENANCE]), createdAt: timestamp})};
     }
     function shotDto(shot: InspectionRecord): Record<string, unknown> {
       const references = referenceAssets(shot);

@@ -40,16 +40,20 @@ export function createAgentTaskJournal(store:WorkspaceStore){
  // SSE observes sequence numbers and a safe snapshot; it need not expand
  // private historical requests merely to signal that progress changed.
  const eventSequence=(runId:string,after=0):number=>Number(db.prepare('SELECT max(sequence) AS sequence FROM (SELECT sequence FROM agent_task_events_v2 WHERE runId=? AND sequence>? ORDER BY sequence LIMIT 2000)').get(runId,after)?.sequence??after);
- const pendingBackgroundSql=(runExpression:string):string=>`SELECT 1 FROM agent_task_job_origins_v2 b
+ // Storyboard tasks exist from schema58; older restored copies have no table to join.
+ const sceneTasks=():boolean=>Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='scene_tasks'").get());
+ const pendingBackgroundSql=(runExpression:string):string=>{const scenes=sceneTasks();return `SELECT 1 FROM agent_task_job_origins_v2 b
  LEFT JOIN jobs j ON b.kind='job' AND j.id=b.jobId AND j.projectId=b.projectId
  LEFT JOIN exports e ON b.kind='export' AND e.id=b.jobId AND e.projectId=b.projectId
  LEFT JOIN image_tasks i ON b.kind='image' AND i.id=b.jobId AND i.projectId=b.projectId
  LEFT JOIN frame_tasks f ON b.kind='frame' AND f.id=b.jobId AND f.projectId=b.projectId
+ ${scenes?"LEFT JOIN scene_tasks s ON b.kind='scene' AND s.id=b.jobId AND s.projectId=b.projectId":''}
  WHERE b.runId=${runExpression} AND CASE b.kind
  WHEN 'job' THEN COALESCE(CASE WHEN json_valid(j.data) THEN json_extract(j.data,'$.status') END,'unknown') NOT IN ('succeeded','failed','cancelled')
  WHEN 'export' THEN COALESCE(CASE WHEN json_valid(e.data) THEN json_extract(e.data,'$.status') END,'unknown') NOT IN ('succeeded','failed','cancelled')
  WHEN 'image' THEN COALESCE(i.state,'unknown') NOT IN ('succeeded','failed','cancelled_before_dispatch')
- WHEN 'frame' THEN COALESCE(f.state,'unknown') NOT IN ('succeeded','failed','cancelled_before_start') ELSE 1 END`;
+ WHEN 'frame' THEN COALESCE(f.state,'unknown') NOT IN ('succeeded','failed','cancelled_before_start')
+ ${scenes?"WHEN 'scene' THEN COALESCE(s.state,'unknown') NOT IN ('succeeded','undone','failed','local_result_error','interrupted','cancelled','cancelled_before_start')":''} ELSE 1 END`;};
  const hasPendingBackground=(runId:string):boolean=>Boolean(db.prepare(pendingBackgroundSql('?')+' LIMIT 1').get(runId));
  function executionEndedAt(value:AgentTaskRun):string|undefined {
   if(!['completed','failed','stopped','reverted'].includes(value.status))return;

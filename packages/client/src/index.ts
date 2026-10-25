@@ -197,7 +197,8 @@ function frameNotAccepted(error: unknown, status: number, operation: string, inp
 }
 
 const sceneRefusalStatuses: Record<string, number> = Object.freeze({SCENE_CAPACITY:507,SCENE_QUEUE_FULL:409,SCENE_TASK_ACTIVE:409,SCENE_REVISION_CONFLICT:409,
-  SCENE_STATE_CONFLICT:409,SCENE_SOURCE_INVALID:409,SCENE_SOURCE_CHANGED:409,SCENE_RESULT_CONFLICT:409,SCENE_RESULT_STALE:409,SCENE_CUTS_INVALID:409});
+  SCENE_STATE_CONFLICT:409,SCENE_SOURCE_INVALID:409,SCENE_SOURCE_CHANGED:409,SCENE_RESULT_CONFLICT:409,SCENE_RESULT_STALE:409,SCENE_CUTS_INVALID:409,
+  SCENE_SEGMENTS_INVALID:409,SCENE_UNDO_BLOCKED:409});
 /** The scene proof has the frame proof's shape: exact operation, project,
  * request and canonical input hash, under the code's own status. */
 function sceneNotAccepted(error: unknown, status: number, operation: string, input: unknown): boolean {

@@ -694,10 +694,10 @@ backend-durable accepted work, not durable preparation of an unsent MCP request.
 
 ## Scene detection tools
 
-Seven strict tools share the runtime schemas of the
+Nine strict tools share the runtime schemas of the
 [scene RPCs](API.md#reference-film-scene-detection-2026-10-24): `scene_detect`,
 `scene_request_get`, `scene_task_get`, `scene_task_list`, `scene_task_cancel`,
-`scene_result_get` and `scene_cuts_save`.
+`scene_result_get`, `scene_cuts_save`, `scene_shots_create` and `scene_shots_undo`.
 
 - `scene_detect`: `{projectId,sourceAssetId,sourceHash,options?,requestId}`. Queues
   one local decode of an owned video; a finished run saves its cuts (first frames
@@ -708,6 +708,13 @@ Seven strict tools share the runtime schemas of the
   still current.
 - `scene_task_cancel` and `scene_cuts_save` are explicit user writes with their
   own keys; `scene_cuts_save` must start from the current result.
+- `scene_shots_create`: `{projectId,sourceAssetId,sourceHash,resultId,segments,titlePrefix?,position?,requestId}`.
+  Queues one local decode that captures each chosen segment's middle keyframe,
+  then creates a shot per segment with that image as its first-frame reference.
+  Cancelled or failed storyboards leave no shots.
+- `scene_shots_undo`: `{projectId,taskId,expectedRevision,requestId}`. Deletes a
+  built storyboard's shots while `scene_task_get` reports `undo.available`; the
+  keyframe images stay.
 
 Only a verified `sceneOutcome` proof for the exact operation, project, key and
 canonical input hash clears an uncertain write. No path, decoder argument,
