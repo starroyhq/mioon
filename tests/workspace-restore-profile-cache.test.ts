@@ -19,6 +19,7 @@ import {initializeWorkspaceSchema52} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchema54} from '../packages/business/src/workspace-schema-v54.ts';
 import {initializeWorkspaceSchema56} from '../packages/business/src/workspace-schema-v56.ts';
 import {initializeWorkspaceSchema58} from '../packages/business/src/workspace-schema-v58.ts';
+import {initializeWorkspaceSchema60} from '../packages/business/src/workspace-schema-v60.ts';
 
 function ordinary40(t: TestContext): DatabaseSync {
   const db = new DatabaseSync(':memory:');
@@ -29,18 +30,18 @@ function ordinary40(t: TestContext): DatabaseSync {
   return db;
 }
 
-test('ordinary40 upgrades to58 build each fixed historical catalog once per constructor', t => {
+test('ordinary40 upgrades to60 build each fixed historical catalog once per constructor', t => {
   // Every fixed catalog is built by replaying the historical chain through the constructor it is given.
   let replays = 0;
   const through24 = (db: DatabaseSync): void => {replays++; initializeWorkspaceSchemaThrough24(db);};
   const upgrade = (db: DatabaseSync): DatabaseSync => {
     for (const initialize of [initializeWorkspaceSchema44, initializeWorkspaceSchema48, initializeWorkspaceSchema50, initializeWorkspaceSchema52,
-      initializeWorkspaceSchema54, initializeWorkspaceSchema56, initializeWorkspaceSchema58]) initialize(db, through24);
+      initializeWorkspaceSchema54, initializeWorkspaceSchema56, initializeWorkspaceSchema58, initializeWorkspaceSchema60]) initialize(db, through24);
     return db;
   };
-  assert.deepEqual(classifyCurrentWorkspaceSchema(upgrade(ordinary40(t))), {schemaVersion: 58, profile: 'ordinary'});
+  assert.deepEqual(classifyCurrentWorkspaceSchema(upgrade(ordinary40(t))), {schemaVersion: 60, profile: 'ordinary'});
   const first = replays;
-  assert.ok(first >= 7, `each upgrade step classifies its source against fixed catalogs (${first} replays)`);
-  assert.deepEqual(classifyCurrentWorkspaceSchema(upgrade(ordinary40(t))), {schemaVersion: 58, profile: 'ordinary'});
+  assert.ok(first >= 8, `each upgrade step classifies its source against fixed catalogs (${first} replays)`);
+  assert.deepEqual(classifyCurrentWorkspaceSchema(upgrade(ordinary40(t))), {schemaVersion: 60, profile: 'ordinary'});
   assert.equal(replays, first, 'a second workspace in the same process reuses every fixed catalog');
 });
