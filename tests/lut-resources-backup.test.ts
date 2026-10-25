@@ -1,3 +1,4 @@
+import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,readFileSync,readdirSync,lstatSync,writeFileSync} from 'node:fs';import path from 'node:path';import os from 'node:os';import {createHash} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';
@@ -20,6 +21,7 @@ async function source(t: import('node:test').TestContext,sourceSchema:52|54|56=5
  const project=await s.call('project.create',{name:'Portable LUT'}) as ProjectView;
  const input: LutImportInput={projectId:project.id,requestId:'portable-resource-request',name:'look.cube',dataBase64:Buffer.from(text).toString('base64')};
  const response=await s.call('lut.import',input) as LutImportResponse;await s.drain();store.close();
+ {const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema58(db);}finally{db.close();}}
  if(sourceSchema!==56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema56(db);}finally{db.close();}}
  if(sourceSchema===52){
   // Keep a real historical52 backup, rather than relabelling current56 bytes.

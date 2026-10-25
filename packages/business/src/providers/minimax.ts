@@ -1,6 +1,7 @@
 import { approvedAssetHashes, approvedOutputHosts, createJsonRequest, createPollCache, downloadMp4, liveConfiguration, managedImage, outputUrl, providerError, validateModelSnapshot } from './live-common.ts';
 import type { OutputDownload, ProviderContext, ProviderFactoryOptions, ProviderModelSpec, ProviderSnapshotView, ProviderReferenceAsset } from './live-common.ts';
 import {createMinimaxSdkClient} from '../video/minimax-sdk.ts';
+import {minimaxOutputHosts} from '../../../contracts/src/video-providers.ts';
 import type {VideoAdapterImage} from '../video/adapters.ts';
 
 const REGIONS: Readonly<Record<string, string>> = { global: 'https://api.minimax.io', cn: 'https://api.minimax.cn' };
@@ -31,7 +32,7 @@ export function createMinimaxProvider({ root, fetchImpl = globalThis.fetch, env 
   const ensureEnabled = (): void => { config.ensureEnabled(); if (!validRegion) throw providerError('PROVIDER_CONFIGURATION', 'MiniMax server region must be global or cn.'); };
   const ensureRegion = (context: ProviderContext): void => { if (context.providerRegion !== undefined && context.providerRegion !== region) throw providerError('PROVIDER_REGION_CHANGED', 'MiniMax account region changed after this job was created. Restore its original server region before continuing.'); };
   const approvedHashes = approvedAssetHashes(env.MINIMAX_APPROVED_ASSET_SHA256);
-  const outputHosts = approvedOutputHosts(env.MINIMAX_OUTPUT_HOSTS, ['cdn.hailuoai.com', 'video-product.cdn.minimax.io']);
+  const outputHosts = approvedOutputHosts(env.MINIMAX_OUTPUT_HOSTS, minimaxOutputHosts(region));
   const request = createJsonRequest({ api: REGIONS[region] ?? REGIONS.global, headers: { Authorization: `Bearer ${config.secret}` }, fetchImpl, ensureEnabled, name: 'MiniMax' });
   const sdk = createMinimaxSdkClient({api:REGIONS[region]??REGIONS.global,model:MODEL.id,send:request});
   function validate(snapshot: unknown): true {

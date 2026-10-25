@@ -1,3 +1,4 @@
+import {reviewedSchema58SourceDeltas,reverseReviewedSchema58} from './helpers/current-schema58-delta.ts';
 import {reverseReviewedMinimaxSdk} from './helpers/current-minimax-sdk-delta.ts';
 import {reverseReviewedWanVideo} from './helpers/current-wan-video-delta.ts';
 import {reverseReviewedSchema56,reviewedSchema56SourceDeltas} from './helpers/current-schema56-delta.ts';
@@ -366,12 +367,24 @@ test('candidate modules remain absent from production exports, startup, operatio
 // Reviewed56 admission must reverse byte-exactly before the frozen52 checks.
 test('finite56 interaction admission inverses preserve exact54 source pins and reject unknown edits',()=>{
  for(const delta of reviewedSchema56SourceDeltas){
-  const source=readFileSync(new URL(delta.path,root),'utf8');
+  const source=reverseReviewedSchema58(delta.path,readFileSync(new URL(delta.path,root))).toString('utf8');
   const previous=execFileSync('git',['show',`8da3340ddd8627fc6be46a33eca52cabda6b4ffb:${delta.path}`],{cwd:root,maxBuffer:1024*1024,timeout:5000});
   assert.deepEqual(reverseReviewedSchema56(delta.path,Buffer.from(source)),previous);
   for(const inverse of delta.inverse){
    for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,''),source+'\n// unknown56 addition\n'])
     assert.throws(()=>reverseReviewedSchema56(delta.path,Buffer.from(changed)),`${delta.path}: finite56 inverse rejects drift`);
+  }
+ }
+});
+
+test('finite58 storage admission inverses preserve exact56 source pins and reject unknown edits',()=>{
+ for(const delta of reviewedSchema58SourceDeltas){
+  const source=readFileSync(new URL(delta.path,root),'utf8'),previous=reverseReviewedSchema58(delta.path,Buffer.from(source));
+  assert.equal(createHash('sha256').update(previous).digest('hex'),delta.previousSha256);
+  for(const inverse of delta.inverse){
+   assert.equal(source.split(inverse.after).length-1,1);
+   for(const changed of [source.replace(inverse.after,inverse.after+' '),source.replace(inverse.after,''),source+'\n// unknown58 addition\n'])
+    assert.throws(()=>reverseReviewedSchema58(delta.path,Buffer.from(changed)),`${delta.path}: finite58 inverse rejects drift`);
   }
  }
 });

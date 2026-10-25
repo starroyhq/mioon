@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
+import {withoutReviewedStorageObjects,removeReviewedSchema58,reverseReviewedSchema58} from './current-schema58-delta.ts';
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
 /** Independently reviewed A2/A3 additions. Fixed52/54 catalogs remain unchanged;
  * exclude these exact definitions only after checking their retained SQL. */
@@ -22,12 +23,14 @@ export const currentOrdinary56Delta=Object.freeze({
 ] as readonly SchemaObject[],
 });
 export function withoutReviewedInteractionObjects<T extends SchemaObject>(objects:readonly T[]):T[] {
+ objects=withoutReviewedStorageObjects(objects);
  const names=new Set(currentOrdinary56Delta.objects.map(object=>object.name));
  assert.deepEqual(objects.filter(object=>names.has(object.name)).map(object=>({...object})),currentOrdinary56Delta.objects,'independent reviewed56 interaction SQL');
  return objects.filter(object=>!names.has(object.name));
 }
 /** Build genuine54 fixture bytes only when no interaction evidence exists. */
 export function removeReviewedSchema56(db:DatabaseSync):void {
+ removeReviewedSchema58(db);
  const objects=db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name GLOB 'agent_task_interaction_*' ORDER BY type,name").all() as unknown as SchemaObject[];
  assert.deepEqual(withoutReviewedInteractionObjects(objects),[]);
  assert.equal(db.prepare("SELECT count(*) AS n FROM agent_task_runs_v2 WHERE json_array_length(data,'$.notes')!=0 OR json_array_length(data,'$.skippedTargets')!=0").get()!.n,0);
@@ -171,9 +174,10 @@ export const reviewedSchema56SourceDeltas=Object.freeze([
   }
 ]);
 export function reverseReviewedSchema56(path:string,bytes:Uint8Array):Buffer {
- const delta=reviewedSchema56SourceDeltas.find(item=>item.path===path);if(!delta)return Buffer.from(bytes);
+ const delta=reviewedSchema56SourceDeltas.find(item=>item.path===path);if(!delta)return reverseReviewedSchema58(path,bytes);
  const sha=(value:Uint8Array)=>createHash('sha256').update(value).digest('hex');
  if(sha(bytes)===delta.previousSha256)return Buffer.from(bytes);
+ bytes=reverseReviewedSchema58(path,bytes);
  let source=Buffer.from(bytes).toString('utf8');
  for(const inverse of delta.inverse){
   assert.equal(source.split(inverse.after).length-1,1,`Baseline dependency changed: ${path}; reviewed56 edit must occur exactly once`);

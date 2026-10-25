@@ -101,6 +101,11 @@ function appendFields(output:AgentTaskDisplay,index:number|undefined,before:Proj
 /** No model summary or undo material is consulted by this projection. */
 export function projectAgentTaskChangeDisplay(change:AgentTaskChange):AgentTaskDisplay {
   const display:AgentTaskDisplay={operation:operation(change.operation),targets:[],targetCount:0,fields:[]},before=snapshotEntries(change.before),after=snapshotEntries(change.after);
+  // Old workers labelled every lifecycle update as a submission. Correct only
+  // its read-time label; the original audit row and reversal evidence stay intact.
+  if(display.operation==='generation.submit'&&change.targets.some(item=>item.kind==='job'&&before.has(`job:${item.id}`)&&after.has(`job:${item.id}`))&&!change.targets.some(item=>item.kind==='job'&&!before.has(`job:${item.id}`)&&after.has(`job:${item.id}`))){
+    display.operation=change.targets.some(item=>['asset','version'].includes(item.kind)&&!before.has(`${item.kind}:${item.id}`)&&after.has(`${item.kind}:${item.id}`))?'generation.publish':'generation.status';
+  }
   for(const item of change.targets){
     const key=`${item.kind}:${item.id}`,previous=before.get(key),next=after.get(key),projected=target(item,next??previous);if(!projected)continue;
     display.targetCount++;if(display.targets.length>=200)continue;

@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+// The reviewed MiniMax stream diagnosis adds only private WeakMap evidence,
+// closed enums/bounded counters and safe error text. Undo exactly these edits
+// before the unchanged CLI and historical source pins; unknown bytes still fail.
+export const reviewedMinimaxStreamSourceDeltas=Object.freeze([
+  {
+    "path": "packages/business/src/agent/chat-errors.ts",
+    "previousSha256": "bf9008651600611138b4e73911a41f92c2141d81ad215fc5104bd9b9b4c3cab6",
+    "previousBytes": 8320,
+    "inverse": [
+      {
+        "after": "type ParameterField = (typeof parameterFields)[number];\ninterface HttpParameterHints {fields: readonly ParameterField[]; categories: readonly (keyof typeof parameterCategories)[]; toolIndices: readonly number[]}\nconst httpEvidence = new WeakMap<object, {status: number; hints?: HttpParameterHints}>();\nconst streamReasons = ['missing_done','missing_finish','unframed_sse','output_limit','read_failed'] as const;\ntype AgentStreamReason = (typeof streamReasons)[number];\nexport interface AgentStreamState {\n  finishReason?: 'stop' | 'tool_calls' | 'length' | 'content_filter' | null;\n  done?: boolean;\n  frameCount?: number;\n  toolCount?: number;\n  outputBytes?: number;\n}\nconst streamEvidence = new WeakMap<object, {reason: AgentStreamReason; state: Readonly<AgentStreamState>}>();\nfunction safeStreamState(state: AgentStreamState): Readonly<AgentStreamState> {\n  const safe: AgentStreamState = {};\n  if (state.finishReason === null || typeof state.finishReason === 'string' && ['stop','tool_calls','length','content_filter'].includes(state.finishReason)) safe.finishReason = state.finishReason;\n  if (typeof state.done === 'boolean') safe.done = state.done;\n  for (const [key, maximum] of [['frameCount',8192],['toolCount',30],['outputBytes',128*1024]] as const) {\n    const value = state[key];\n    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maximum) safe[key] = value;\n  }\n  return Object.freeze(safe);\n}\n/** Only locally classified stream failures carry hints. Provider properties,\n * copied errors and causes cannot forge them; no response content is retained. */\nexport function agentChatStreamError(reason: AgentStreamReason, state: AgentStreamState = {}): AgentChatFailure {\n  const failure = agentChatError('AGENT_CHAT_TRUNCATED');\n  if (streamReasons.includes(reason)) streamEvidence.set(failure, {reason, state: safeStreamState(state)});\n  return failure;\n}\nexport function agentChatStreamReason(error: unknown): AgentStreamReason | undefined {\n  return error !== null && typeof error === 'object' ? streamEvidence.get(error)?.reason : undefined;\n}\nexport function annotateAgentChatStreamError(error: unknown, state: AgentStreamState): void {\n  if (error === null || typeof error !== 'object') return;\n  const evidence = streamEvidence.get(error);\n  if (evidence) streamEvidence.set(error, {reason: evidence.reason, state: safeStreamState(state)});\n}\n/** Hints are untrusted provider suggestions, never permission or retry evidence.\n * Only closed enums and bounded indices survive this in-memory classification. */\nfunction httpParameterHints(bytes: Uint8Array | undefined): HttpParameterHints | undefined {\n",
+        "before": "type ParameterField = (typeof parameterFields)[number];\ninterface HttpParameterHints {fields: readonly ParameterField[]; categories: readonly (keyof typeof parameterCategories)[]; toolIndices: readonly number[]}\nconst httpEvidence = new WeakMap<object, {status: number; hints?: HttpParameterHints}>();\n/** Hints are untrusted provider suggestions, never permission or retry evidence.\n * Only closed enums and bounded indices survive this in-memory classification. */\nfunction httpParameterHints(bytes: Uint8Array | undefined): HttpParameterHints | undefined {\n"
+      },
+      {
+        "after": "    ...(hints.fields.length ? [`字段 ${hints.fields.join('、')}`] : []),\n    ...(hints.toolIndices.length ? [`工具索引 ${hints.toolIndices.join('、')}`] : []),\n  ].join('；')}。`;\n  const stream = error !== null && typeof error === 'object' ? streamEvidence.get(error) : undefined;\n  if (safe.code === 'AGENT_CHAT_TRUNCATED' && stream) {\n    const state = stream.state;\n    safe.message += ` 流终止诊断：${[\n      stream.reason,\n      ...(state.finishReason !== undefined ? [`结束原因 ${state.finishReason ?? '未收到'}`] : []),\n      ...(state.done !== undefined ? [`完成标记 ${state.done ? '已收到' : '未收到'}`] : []),\n      ...(state.frameCount !== undefined ? [`帧数 ${state.frameCount}`] : []),\n      ...(state.toolCount !== undefined ? [`工具数 ${state.toolCount}`] : []),\n      ...(state.outputBytes !== undefined ? [`输出字节 ${state.outputBytes}`] : []),\n    ].join('；')}。`;\n  }\n  return {code: safe.code, status: safe.status, message: safe.message};\n}\n",
+        "before": "    ...(hints.fields.length ? [`字段 ${hints.fields.join('、')}`] : []),\n    ...(hints.toolIndices.length ? [`工具索引 ${hints.toolIndices.join('、')}`] : []),\n  ].join('；')}。`;\n  return {code: safe.code, status: safe.status, message: safe.message};\n}\n"
+      }
+    ]
+  }
+]);
+export function reverseReviewedMinimaxStream(path:string,bytes:Uint8Array):Buffer {
+ const delta=reviewedMinimaxStreamSourceDeltas.find(item=>item.path===path);if(!delta)return Buffer.from(bytes);
+ const sha=(value:Uint8Array)=>createHash('sha256').update(value).digest('hex');
+ if(bytes.byteLength===delta.previousBytes&&sha(bytes)===delta.previousSha256)return Buffer.from(bytes);
+ let source=Buffer.from(bytes).toString('utf8');
+ for(const inverse of delta.inverse){assert.equal(source.split(inverse.after).length-1,1,`Baseline dependency changed: ${path}; reviewed stream diagnosis must occur exactly once`);source=source.replace(inverse.after,inverse.before);}
+ const previous=Buffer.from(source);assert.equal(previous.byteLength,delta.previousBytes);assert.equal(sha(previous),delta.previousSha256,`Baseline dependency changed: ${path}; unreviewed stream diagnosis source drift`);return previous;
+}

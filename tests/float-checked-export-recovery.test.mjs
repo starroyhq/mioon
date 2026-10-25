@@ -278,7 +278,7 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
       return template ? Object.fromEntries(Object.keys(template).map(key => [key, row[key]])) : row;
     })]));
     assert.deepEqual(projected, Object.fromEntries(frozenTables.map(table => [table, before[table]])), 'frozen legacy rows stay byte-exact');
-    assert.deepEqual(actual.schema_version.map(row => row.version), [...frozenVersions, 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52, 54, 56], 'startup adds only the documented additive lineage');
+    assert.deepEqual(actual.schema_version.map(row => row.version), [...frozenVersions, 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52, 54, 56, 58], 'startup adds only the documented additive lineage');
     for (const [table, values] of Object.entries(actual)) {
       if (table === 'schema_version' || Object.hasOwn(before, table) || Object.hasOwn(currentOrdinary52Delta.tables,table)) continue;
       assert.deepEqual(values, [], `additive table ${table} must stay empty`);

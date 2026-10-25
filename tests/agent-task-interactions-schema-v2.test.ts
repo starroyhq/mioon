@@ -1,3 +1,4 @@
+import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
@@ -16,7 +17,7 @@ import {removeReviewedSchema56,currentOrdinary56Delta,withoutReviewedInteraction
 import {agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskRun,AgentTaskNote,AgentTaskSkippedTarget} from '../packages/contracts/src/agent-tasks-v2.ts';
 
-function fixture(){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-interaction-schema-')),store=openStore(root),projectId=randomUUID();store.put('projects',{id:projectId,name:'Interaction schema',revision:1});const journal=createAgentTaskJournal(store);const run=journal.create({requestId:randomUUID(),projectId,text:'Preserved original',configuration:{protocol:'responses'},context:[{role:'user',content:'retained context'}]}).run;return {root,store,projectId,journal,run,close(){store.close();rmSync(root,{recursive:true,force:true});}};}
+function fixture(){const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-interaction-schema-')),store=openStore(root),projectId=randomUUID();removeReviewedSchema58(store.db);store.put('projects',{id:projectId,name:'Interaction schema',revision:1});const journal=createAgentTaskJournal(store);const run=journal.create({requestId:randomUUID(),projectId,text:'Preserved original',configuration:{protocol:'responses'},context:[{role:'user',content:'retained context'}]}).run;return {root,store,projectId,journal,run,close(){store.close();rmSync(root,{recursive:true,force:true});}};}
 function write(f:ReturnType<typeof fixture>,patch:Partial<AgentTaskRun>){const value={...f.journal.run(f.run.id),...patch};f.store.db.prepare('UPDATE agent_task_runs_v2 SET data=? WHERE id=?').run(JSON.stringify(value),f.run.id);}
 const note=(modelStepId?:string):AgentTaskNote=>({requestId:randomUUID(),text:'Additional instruction',createdAt:'2020-01-01T00:00:00.000Z',...(modelStepId?{modelStepId}:{})});
 function evidence(f:ReturnType<typeof fixture>){const one=f.journal.beginStep(f.run.id,{kind:'model'}),two=f.journal.beginStep(f.run.id,{kind:'model'}),target={kind:'shot',id:randomUUID(),revision:9},tool=f.journal.beginStep(f.run.id,{kind:'tool',targets:[{...target,revision:1}],data:{conflictTargets:[target]}});return {one,two,target,tool};}

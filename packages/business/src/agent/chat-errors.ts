@@ -29,6 +29,41 @@ const parameterCategories = {invalid_request:'请求格式',schema:'工具参数
 type ParameterField = (typeof parameterFields)[number];
 interface HttpParameterHints {fields: readonly ParameterField[]; categories: readonly (keyof typeof parameterCategories)[]; toolIndices: readonly number[]}
 const httpEvidence = new WeakMap<object, {status: number; hints?: HttpParameterHints}>();
+const streamReasons = ['missing_done','missing_finish','unframed_sse','output_limit','read_failed'] as const;
+type AgentStreamReason = (typeof streamReasons)[number];
+export interface AgentStreamState {
+  finishReason?: 'stop' | 'tool_calls' | 'length' | 'content_filter' | null;
+  done?: boolean;
+  frameCount?: number;
+  toolCount?: number;
+  outputBytes?: number;
+}
+const streamEvidence = new WeakMap<object, {reason: AgentStreamReason; state: Readonly<AgentStreamState>}>();
+function safeStreamState(state: AgentStreamState): Readonly<AgentStreamState> {
+  const safe: AgentStreamState = {};
+  if (state.finishReason === null || typeof state.finishReason === 'string' && ['stop','tool_calls','length','content_filter'].includes(state.finishReason)) safe.finishReason = state.finishReason;
+  if (typeof state.done === 'boolean') safe.done = state.done;
+  for (const [key, maximum] of [['frameCount',8192],['toolCount',30],['outputBytes',128*1024]] as const) {
+    const value = state[key];
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= maximum) safe[key] = value;
+  }
+  return Object.freeze(safe);
+}
+/** Only locally classified stream failures carry hints. Provider properties,
+ * copied errors and causes cannot forge them; no response content is retained. */
+export function agentChatStreamError(reason: AgentStreamReason, state: AgentStreamState = {}): AgentChatFailure {
+  const failure = agentChatError('AGENT_CHAT_TRUNCATED');
+  if (streamReasons.includes(reason)) streamEvidence.set(failure, {reason, state: safeStreamState(state)});
+  return failure;
+}
+export function agentChatStreamReason(error: unknown): AgentStreamReason | undefined {
+  return error !== null && typeof error === 'object' ? streamEvidence.get(error)?.reason : undefined;
+}
+export function annotateAgentChatStreamError(error: unknown, state: AgentStreamState): void {
+  if (error === null || typeof error !== 'object') return;
+  const evidence = streamEvidence.get(error);
+  if (evidence) streamEvidence.set(error, {reason: evidence.reason, state: safeStreamState(state)});
+}
 /** Hints are untrusted provider suggestions, never permission or retry evidence.
  * Only closed enums and bounded indices survive this in-memory classification. */
 function httpParameterHints(bytes: Uint8Array | undefined): HttpParameterHints | undefined {
@@ -91,5 +126,17 @@ export function safeAgentChatError(error: unknown): {code: AgentChatErrorCode; s
     ...(hints.fields.length ? [`字段 ${hints.fields.join('、')}`] : []),
     ...(hints.toolIndices.length ? [`工具索引 ${hints.toolIndices.join('、')}`] : []),
   ].join('；')}。`;
+  const stream = error !== null && typeof error === 'object' ? streamEvidence.get(error) : undefined;
+  if (safe.code === 'AGENT_CHAT_TRUNCATED' && stream) {
+    const state = stream.state;
+    safe.message += ` 流终止诊断：${[
+      stream.reason,
+      ...(state.finishReason !== undefined ? [`结束原因 ${state.finishReason ?? '未收到'}`] : []),
+      ...(state.done !== undefined ? [`完成标记 ${state.done ? '已收到' : '未收到'}`] : []),
+      ...(state.frameCount !== undefined ? [`帧数 ${state.frameCount}`] : []),
+      ...(state.toolCount !== undefined ? [`工具数 ${state.toolCount}`] : []),
+      ...(state.outputBytes !== undefined ? [`输出字节 ${state.outputBytes}`] : []),
+    ].join('；')}。`;
+  }
   return {code: safe.code, status: safe.status, message: safe.message};
 }

@@ -1,3 +1,4 @@
+import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
 
 type SourceVersion=52|54|56;
 function fixture(t:TestContext){
- const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-m5-storage-')),store=openStore(root),projectId=randomUUID(),journal=createAgentTaskJournal(store);let closed=false;
+ const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-m5-storage-')),store=openStore(root),projectId=randomUUID();removeReviewedSchema58(store.db);const journal=createAgentTaskJournal(store);let closed=false;
  const close=()=>{if(!closed){closed=true;store.close();}};
  t.after(()=>{close();for(const path of [root,root+'-backup',root+'-restored'])rmSync(path,{recursive:true,force:true});});
  store.put('projects',{id:projectId,name:'M5 storage compatibility',revision:1});

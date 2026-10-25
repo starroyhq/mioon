@@ -22,6 +22,7 @@ import type {AgentTaskTools} from '@mioon/business/agent/task-tools-v2';
 import type {TaskGateway} from '@mioon/business/agent/task-gateway-v2';
 import {createAgentTaskHttp} from './agent-task-http-v2.ts';
 import {createAgentDiagnosticsHttp} from './agent-diagnostics-http.ts';
+import {readAgentTaskStorage} from '@mioon/business/agent/task-storage-v2';
 import {createAgentAuthorizations} from '../../../packages/business/src/agent/authorizations.ts';
 import {createUiPreferences} from '../../../packages/business/src/ui-preferences.ts';
 import {createProjectDeletionGate} from './project-deletion-gate.ts';
@@ -453,9 +454,9 @@ async function composeServer({
     taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary});
     taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
-    agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id)});
+    agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:()=>readAgentTaskStorage(store.db)});
     }
-    if((restored?.schemaVersion===53||restored?.schemaVersion===55||restored?.schemaVersion===57)&&!candidate){
+    if((restored?.schemaVersion===53||restored?.schemaVersion===55||restored?.schemaVersion===57||restored?.schemaVersion===59)&&!candidate){
       if(!agentSettings)agentSettings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{throw workspaceRestoreError();}}});
       taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:agentSettings as unknown as AgentSettingsService,
         authorizations:{assertAuthorized(){throw workspaceRestoreError();},snapshot(){return {revision:0,scopes:[]};}},selfPort:()=>listeningPort(),readOnly:true});
@@ -488,7 +489,7 @@ async function composeServer({
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
           deletionGate.track(res);
         }
-        const restoredTaskHistory=(restored?.schemaVersion===53||restored?.schemaVersion===55||restored?.schemaVersion===57)&&!candidate&&(url.pathname==='/api/agent/tasks/v2'||url.pathname.startsWith('/api/agent/tasks/v2/'));
+        const restoredTaskHistory=(restored?.schemaVersion===53||restored?.schemaVersion===55||restored?.schemaVersion===57||restored?.schemaVersion===59)&&!candidate&&(url.pathname==='/api/agent/tasks/v2'||url.pathname.startsWith('/api/agent/tasks/v2/'));
         if(restored&&(!restoredTaskHistory&&isUnavailableRestoredRoute(url.pathname,req.method ?? '')||/^\/api\/video-providers(?:\/|$)/u.test(url.pathname)))throw workspaceRestoreError();
         if(candidate && /^\/api\/(?:agent|images|comfy|video-providers|timeline-audio-preview)(?:\/|$)/u.test(url.pathname))throw workspaceRestoreError();
         if(!candidate&&!restored&&req.method!=='GET'&&url.pathname.startsWith('/api/')&&url.pathname!=='/api/rpc'&&!url.pathname.startsWith('/api/workspace-backups/'))(services as OrdinaryServices).backups.assertMutationAllowed();

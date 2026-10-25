@@ -1,3 +1,4 @@
+import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -128,7 +129,7 @@ test('restored catalogue reports exact disabled media and redesign operations an
  assert.equal(existsSync(path.join(root,'agent-authorizations-v1.json')),false);
 });
 
-test('restored summary reads saved metadata in current57 and historical25/41/53/55 without writes or recent-opened access',async t=>{
+test('restored summary reads saved metadata in exact historical25/41/53/55/57 without writes or recent-opened access',async t=>{
  for(const version of [24,40,52,54,56])await t.test(`source${version} restored${version+1}`,async t=>{
   const root=mkdtempSync(path.join(tmpdir(),'mioon-restored-summary-')),filename=path.join(root,'workbench.sqlite');
   let store,services;
@@ -140,6 +141,7 @@ test('restored summary reads saved metadata in current57 and historical25/41/53/
   const width=version>=52?1080:720,height=version>=52?1920:1280;
   try{
    db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;');
+   if(version===56)removeReviewedSchema58(db);
    if(version===52||version===54)removeReviewedSchema56(db);
    if(version===52){
     // Keep the historical52 case exact instead of silently turning it into a
