@@ -40,9 +40,10 @@ function completed(binding:VideoExecutionBinding,url='https://result.example/out
     case 'wan':return {output:{task_id:id,task_status:'SUCCEEDED',video_url:url}};
   }
 }
-async function fixture(t:import('node:test').TestContext,providerId:VideoProviderId,templateId?:VideoTemplateId) {
+async function fixture(t:import('node:test').TestContext,providerId:VideoProviderId,templateId?:VideoTemplateId,bindingOptions:Partial<Pick<VideoExecutionBinding,'region'|'outputHosts'>>={}) {
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-runtime-')));t.after(()=>rm(root,{recursive:true,force:true}));
-  const binding=bindingFor(providerId,templateId),bytes=png(),file=path.join(root,'frame.png');await writeFile(file,bytes);
+  const binding={...bindingFor(providerId,templateId),...bindingOptions};binding.endpoint=resolveVideoEndpoint(providerId,binding.region);
+  const bytes=png(),file=path.join(root,'frame.png');await writeFile(file,bytes);
   const asset={id:randomUUID(),path:file,mimeType:'image/png',sizeBytes:bytes.length,width:360,height:640,sha256:createHash('sha256').update(bytes).digest('hex'),role:'first_frame'};
   const calls:Array<{url:string;init:RequestInit}> = [],queue:Array<Response|Error>=[];let key='PRIVATE-KEY',acquisitions=0,time=Date.UTC(2026,9,20);
   const provider=createConfiguredVideoProvider({root,binding,now:()=>time,acquireCredential:async()=>{acquisitions++;return key;},fetchImpl:async(input,init)=>{calls.push({url:String(input),init:init??{}});const response=queue.shift();if(response instanceof Error)throw response;if(!response)throw Error('Real HTTP forbidden');return response;}});
@@ -137,6 +138,48 @@ test('a failed download refreshes the existing task URL and never posts generati
 
 test('an unapproved output host is rejected before sending credentials or downloading bytes',async t=>{
   const f=await fixture(t,'ark');f.queue.push(json(completed(f.binding,'https://unapproved.example/private.mp4')));await assert.rejects(f.provider.download(taskId(f.binding),path.join(f.root,'result.mp4'),{}),{code:'UNAPPROVED_OUTPUT_HOST'});assert.equal(f.calls.length,1);
+});
+
+const minimaxCnOutputHost='algeng-video-infer.oss-cn-shanghai.aliyuncs.com';
+test('an existing MiniMax CN task downloads from its verified exact OSS bucket without altering the frozen binding or creating a task',async t=>{
+  const f=await fixture(t,'minimax',undefined,{region:'cn',outputHosts:[]}),original=structuredClone(f.binding),url=`https://${minimaxCnOutputHost}/private-signed-output.mp4?token=PRIVATE-URL&signature=SIGNED-PARAMETER`;
+  f.queue.push(json(completed(f.binding,url)),new Response(mp4));
+  assert.equal((await f.provider.poll(taskId(f.binding),{})).status,'succeeded');
+  const destination=path.join(f.root,'cn-existing-result.mp4');await f.provider.download(taskId(f.binding),destination,{});
+  assert.deepEqual(await readFile(destination),mp4);assert.deepEqual(f.binding,original);assert.deepEqual(f.binding.outputHosts,[]);
+  assert.equal(f.calls.length,2);assert.ok(f.calls.every(call=>call.init.method==='GET'));
+  assert.equal(f.calls[0]!.url,'https://api.minimax.cn/v2/query/video_generation/task-123');
+  assert.equal(new Headers(f.calls[0]!.init.headers).get('authorization'),'Bearer PRIVATE-KEY');
+  assert.equal(f.calls[1]!.url,url);assert.equal(f.calls[1]!.init.headers,undefined);assert.equal(f.calls[1]!.init.redirect,'error');
+});
+
+for(const [region,origin]of [
+  ['global',`https://${minimaxCnOutputHost}`],
+  ['cn','https://another-tenant.oss-cn-shanghai.aliyuncs.com'],
+  ['cn',`https://child.${minimaxCnOutputHost}`],
+  ['cn',`https://${minimaxCnOutputHost}.attacker.example`],
+  ['cn',`http://${minimaxCnOutputHost}`],
+  ['cn',`https://PRIVATE-USER:PRIVATE-PASSWORD@${minimaxCnOutputHost}`],
+  ['cn',`https://${minimaxCnOutputHost}:8443`],
+]as const)test(`MiniMax ${region} rejects unapproved output origin ${origin.replace(/PRIVATE-USER:PRIVATE-PASSWORD@/,'[userinfo]@')} before any download`,async t=>{
+  const f=await fixture(t,'minimax',undefined,{region,outputHosts:[]}),original=structuredClone(f.binding),destination=path.join(f.root,'rejected-result.mp4');
+  f.queue.push(json(completed(f.binding,`${origin}/private-signed-output.mp4?token=PRIVATE-URL&signature=SIGNED-PARAMETER`)));
+  await assert.rejects(f.provider.download(taskId(f.binding),destination,{}),(error:unknown)=>{
+    assert.equal(view(error).code,'UNAPPROVED_OUTPUT_HOST');
+    assert.doesNotMatch(String(view(error).message),/private-signed-output|PRIVATE-URL|SIGNED-PARAMETER|PRIVATE-USER|PRIVATE-PASSWORD|PRIVATE-KEY|\?token=/);return true;
+  });
+  assert.deepEqual(f.binding,original);assert.equal(f.calls.length,1);assert.equal(f.calls[0]!.url,`${f.binding.endpoint}/v2/query/video_generation/task-123`);assert.equal(f.calls[0]!.init.method,'GET');
+  await assert.rejects(readFile(destination),{code:'ENOENT'});
+});
+
+test('MiniMax CN verified OSS output still refuses redirects even to the same approved host',async t=>{
+  const f=await fixture(t,'minimax',undefined,{region:'cn',outputHosts:[]}),original=structuredClone(f.binding),destination=path.join(f.root,'redirected-result.mp4');
+  f.queue.push(json(completed(f.binding,`https://${minimaxCnOutputHost}/private-signed-output.mp4?token=PRIVATE-URL`)),new Response(null,{status:302,headers:{location:`https://${minimaxCnOutputHost}/private-redirected-output.mp4?token=REDIRECT-URL`}}));
+  await assert.rejects(f.provider.download(taskId(f.binding),destination,{}),(error:unknown)=>{
+    assert.equal(view(error).code,'UNSAFE_OUTPUT_REDIRECT');assert.doesNotMatch(String(view(error).message),/private-signed-output|private-redirected-output|PRIVATE-URL|REDIRECT-URL/);return true;
+  });
+  assert.deepEqual(f.binding,original);assert.equal(f.calls.length,2);assert.ok(f.calls.every(call=>call.init.method==='GET'));
+  assert.equal(f.calls[1]!.init.headers,undefined);assert.equal(f.calls[1]!.init.redirect,'error');await assert.rejects(readFile(destination),{code:'ENOENT'});
 });
 
 test('Veo authenticates only its fixed file route and strips the key on approved redirects',async t=>{

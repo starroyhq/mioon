@@ -1,6 +1,7 @@
+import {withoutReviewedStorageObjects,withReviewedStorageObjects,currentOrdinary60Delta} from './helpers/current-schema60-delta.ts';
 import {withoutReviewedSceneObjects,currentOrdinary58Delta} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects,currentOrdinary56Delta} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(objects)));}
+function withoutReviewedCurrentAgentObjects(objects){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import {currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta,currentMarkerChain} from './helpers/current-schema-delta.ts';
@@ -100,7 +101,7 @@ function preservedCurrent(db,before) {
  after.objects=after.objects.filter(object=>!lifecycleNames.has(object.name));
  for(const [name,value] of Object.entries(currentOrdinary48Delta.lifecycleTables)){assert.deepEqual(after.tables[name],{fields:value.fields,rows:[]});delete after.tables[name];}
  for(const object of expected.objects){const reviewed=currentOrdinary48Delta.objectSql[object.name];if(reviewed!==undefined)object.sql=reviewed;}
- expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238'],['30','integer','3330'],['32','integer','3332'],['34','integer','3334'],['36','integer','3336'],['38','integer','3338'],['40','integer','3430'],...currentOrdinary48Delta.schemaVersionRows,...currentOrdinary50Delta.schemaVersionRows,...currentOrdinary52Delta.schemaVersionRows,...currentOrdinary54Delta.schemaVersionRows,...currentOrdinary56Delta.schemaVersionRows,...currentOrdinary58Delta.schemaVersionRows);
+ expected.tables.schema_version.rows.push(['26','integer','3236'],['28','integer','3238'],['30','integer','3330'],['32','integer','3332'],['34','integer','3334'],['36','integer','3336'],['38','integer','3338'],['40','integer','3430'],...currentOrdinary48Delta.schemaVersionRows,...currentOrdinary50Delta.schemaVersionRows,...currentOrdinary52Delta.schemaVersionRows,...currentOrdinary54Delta.schemaVersionRows,...currentOrdinary56Delta.schemaVersionRows,...currentOrdinary58Delta.schemaVersionRows,...currentOrdinary60Delta.schemaVersionRows);
  assert.deepEqual(after,expected,'exact legacy catalog/raw rows plus independently reviewed through48 and additive50 definitions');
  assert.equal(db.prepare('PRAGMA quick_check(1)').get().quick_check,'ok');assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
 }
@@ -135,7 +136,7 @@ for(const profile of [null,'ordinary-1','ordinary-14','ordinary-21','ordinary-23
  const db=ordinaryDatabase(t,profile);let calls=0,realCalls=0;
  assert.equal(ordinaryDispatch(target=>{calls++;if(target===db)realCalls++;}).initialize(db),null);assert.equal(realCalls,1);
  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
- assert.equal(readCurrentWorkspaceRole(db),'ordinary-58');
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-60');
 });
 
 for(const [name,sql]of [

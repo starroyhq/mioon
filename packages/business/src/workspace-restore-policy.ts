@@ -1,3 +1,4 @@
+import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
 import {TIMELINE_MUTATION_OPERATIONS,REFERENCE_MUTATION_OPERATIONS,SUBJECT_MUTATION_OPERATIONS,AppError} from '@mioon/contracts';
 import {getWorkspaceRestoreContext, isRestoredRecordHeld} from './workspace-restore-schema.ts';
 import {assertRestoreInvocation,restoreDigest} from './workspace-restore-invocation.ts';
@@ -69,7 +70,10 @@ const targets: Readonly<Record<string, readonly [string,...string[]]>>=Object.fr
 export function refuseRestoredOperation(store: RestoreStore,operation: string,input: Record<string, unknown>|undefined): void {
  const context=getWorkspaceRestoreContext(store);
  if(!context)return;
- if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57,59].includes(context.schemaVersion))throw workspaceRestoreError();
+ // The pre-release storage-59 profile shares a number with scene restore-59,
+ // but preserves captured evidence only; the role must never grant new effects.
+ if(readCurrentWorkspaceRole(store.db)==='storage-private-59-evidence')throw workspaceRestoreError();
+ if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57,59,61].includes(context.schemaVersion))throw workspaceRestoreError();
  if(RESTORE_LOCAL_OPERATIONS.includes(operation)||operation==='timeline.get'||operation==='workspace.preferences.put'){
   assertRestoreInvocation(store,operation,input);
   assertRestoreRequestVacant(store,operation,input);

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {removeReviewedSchema60} from './current-schema60-delta.ts';
 import type {DatabaseSync} from 'node:sqlite';
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
 interface CurrentOrdinary58Delta {
@@ -18,6 +19,7 @@ export function withoutReviewedSceneObjects<T extends SchemaObject>(objects:read
 }
 /** Build genuine56 fixture bytes only when no scene rows exist. */
 export function removeReviewedSchema58(db:DatabaseSync):void {
+ if(db.prepare('SELECT 1 FROM schema_version WHERE version=60').get())removeReviewedSchema60(db);
  const tables=Object.keys(currentOrdinary58Delta.tables);
  const objects=db.prepare(`SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE tbl_name IN (${tables.map(()=>'?').join(',')}) ORDER BY type,name`).all(...tables) as unknown as SchemaObject[];
  assert.deepEqual(withoutReviewedSceneObjects(objects),[]);

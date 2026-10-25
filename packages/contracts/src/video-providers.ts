@@ -146,10 +146,17 @@ export function parseVideoBinding(value:unknown):VideoExecutionBinding {
  return binding;
 }
 export const videoTemplate=(id:VideoTemplateId):VideoTemplate=>{const template=VIDEO_TEMPLATES.find(item=>item.id===id);if(!template)throw videoSettingsError();return template;};
+export function minimaxOutputHosts(region:string):readonly string[]{
+ const defaults=videoTemplate('minimax-v2').defaultOutputHosts;
+ // Reviewed from an authenticated api.minimax.cn V2 task query on 2026-10-23.
+ // Keep this exact CN output bucket; never learn hosts from arbitrary task URLs.
+ return region==='cn'?[...defaults,'algeng-video-infer.oss-cn-shanghai.aliyuncs.com']:defaults;
+}
 export function videoOutputHosts(binding:VideoExecutionBinding):string[]{
  // A compatible service may stream its own /content route; that host is always allowed.
  const own=binding.providerId==='compatible'?[new URL(binding.endpoint).hostname]:[];
- return [...new Set([...videoTemplate(binding.model.templateId).defaultOutputHosts,...own,...binding.outputHosts])];
+ const defaults=binding.providerId==='minimax'?minimaxOutputHosts(binding.region):videoTemplate(binding.model.templateId).defaultOutputHosts;
+ return [...new Set([...defaults,...own,...binding.outputHosts])];
 }
 export function defaultVideoModels(providerId:VideoProviderId):VideoModelEntry[]{
  const modelNames:Record<VideoProviderId,string[]>={runway:['gen4_turbo'],ark:['doubao-seedance-2-5-260628'],veo:['veo-3.1-generate-preview'],minimax:['MiniMax-H3'],vidu:['viduq3-turbo'],kling:['kling-3.0'],wan:['wan2.7-t2v','wan2.7-i2v'],compatible:['sora-2']};

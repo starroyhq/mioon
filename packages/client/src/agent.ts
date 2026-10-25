@@ -8,6 +8,7 @@ import {ClientError,EXIT_CODES,safeValue} from './index.ts';
 import type {ClientOptions} from './index.ts';
 import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskStorageSnapshotSchema} from '@mioon/contracts/agent-task-storage';
 import {agentAuthorizationSnapshotSchema} from '@mioon/contracts';
 
 const id=z.string().uuid(),revision=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),requestId=z.string().min(8).max(200);
@@ -44,7 +45,7 @@ export const agentInputSchema=(schema:z.ZodTypeAny):unknown=>zodToJsonSchema(sch
 const uploadSchema=z.object({id,name:text,mimeType:text,status:z.string().max(80),handle:id.optional()});
 const projectSchema=z.object({version:z.literal(2),instanceId:z.string().min(1).max(200),projectId:id,runs:z.array(agentTaskRunSchema).max(100),policy:agentTaskPolicySchema,settings:agentSettingsSnapshotSchema,authorization:agentAuthorizationSnapshotSchema,readOnly:z.boolean().optional()});
 const policyView=z.object({policy:agentTaskPolicySchema,readOnly:z.boolean()});
-const doctorSchema=z.object({version:z.literal(1),settings:agentSettingsSnapshotSchema,policy:agentTaskPolicySchema,authorization:agentAuthorizationSnapshotSchema,catalog:z.object({count:revision,valid:z.boolean(),issues:z.array(z.object({code,tool:z.string().max(100).optional(),path:z.string().max(512).optional()})).max(500)}),projectId:id.optional(),verification:z.literal('not_tested')});
+const doctorSchema=z.object({version:z.literal(1),settings:agentSettingsSnapshotSchema,policy:agentTaskPolicySchema,authorization:agentAuthorizationSnapshotSchema,catalog:z.object({count:revision,valid:z.boolean(),issues:z.array(z.object({code,tool:z.string().max(100).optional(),path:z.string().max(512).optional()})).max(500)}),storage:agentTaskStorageSnapshotSchema.optional(),projectId:id.optional(),verification:z.literal('not_tested')});
 type Json=Record<string,unknown>;
 type Recovery={operation:string;projectId?:string;runId?:string;requestId?:string;lookup:string};
 export interface AgentRequestOptions {signal?:AbortSignal;timeoutMs?:number}

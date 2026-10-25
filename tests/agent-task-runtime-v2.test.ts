@@ -50,10 +50,10 @@ function desktopSettingsBridge(settings:AgentSettingsService,selfPort:number){
  // Production supplies this same validated transport at the settings boundary.
  return {settings:client as unknown as AgentSettingsService,requests,close(){client.close();broker.close();}};
 }
-function syntheticDeniedTransport(address:string,statusCode=401,errorBody=''){
+function syntheticDeniedTransport(address:string,statusCode=401,errorBody='',readFailure=false){
  const counts={dns:0,requests:0,ends:0};
  const dependencies={lookup:async()=>{counts.dns++;return [{address,family:4}];},httpsRequest:(_options:unknown,respond:(response:IncomingMessage)=>void)=>{
-  counts.requests++;const request=Object.assign(new EventEmitter(),{setTimeout(){},destroy(){},end(){counts.ends++;respond(Object.assign(Readable.from([Buffer.from(errorBody)]),{statusCode,headers:{'content-type':'text/event-stream'}}) as IncomingMessage);}});
+  counts.requests++;const request=Object.assign(new EventEmitter(),{setTimeout(){},destroy(){},end(){counts.ends++;const source=readFailure?(async function*(){yield Buffer.from(errorBody);throw Error('PRIVATE_PROVIDER_READ_FAILURE');})():[Buffer.from(errorBody)];respond(Object.assign(Readable.from(source),{statusCode,headers:{'content-type':'text/event-stream'}}) as IncomingMessage);}});
   queueMicrotask(()=>{const socket=Object.assign(new EventEmitter(),{remoteAddress:address,remotePort:443,authorized:true,destroy(){}});request.emit('socket',socket);socket.emit('secureConnect');});return request;
  }} as unknown as AgentTransportDependencies;
  return {counts,gateway:createTaskGateway(dependencies)};
@@ -80,6 +80,27 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
   restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318});},
  };
 }
+test('all classified Chat Completions stream failures persist safe diagnostics, execute no tools and never replay',async t=>{
+  const frame=(value:unknown)=>`data: ${JSON.stringify(value)}\n\n`,finish=(reason:string)=>frame({choices:[{index:0,delta:{},finish_reason:reason}]});
+  for(const reason of ['missing_done','missing_finish','unframed_sse','output_limit','read_failed'] as const){
+    await t.test(reason,async t=>{
+    const f=await fixture(t,'chat_completions'),argumentsJson=JSON.stringify({shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'PRIVATE_TOOL_ARGUMENT'}});
+    const prefix=frame({choices:[{index:0,delta:{content:'预备',tool_calls:[{index:0,id:'private_call',type:'function',function:{name:'mioon_shot_update',arguments:argumentsJson}}]},finish_reason:null}]});
+    const wire=prefix+(reason==='missing_done'?finish('tool_calls'):reason==='missing_finish'?'data: [DONE]\n\n':reason==='unframed_sse'?finish('tool_calls')+'data: [DONE]':reason==='output_limit'?finish('length')+'data: [DONE]\n\n':'');
+    const transport=syntheticDeniedTransport('8.8.8.8',200,wire,reason==='read_failed');f.setScript(async function*(_index,request){yield*transport.gateway(request);});
+    const sent=await f.send(),done=await f.settle(sent.run.id),model=done.steps[0]!;
+    assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_CHAT_TRUNCATED');assert.equal(done.steps.length,1);assert.equal(model.status,'failed');assert.equal(model.error?.code,'AGENT_CHAT_TRUNCATED');
+    assert.ok(model.error!.message.includes(`流终止诊断：${reason}`));assert.match(model.error!.message,/工具数 1/u);assert.match(model.error!.message,/输出字节 6/u);
+    assert.doesNotMatch(JSON.stringify({done,events:f.runtime.journal.events(sent.run.id).filter(event=>event.type==='error')}),/PRIVATE_TOOL_ARGUMENT|PRIVATE_PROVIDER_READ_FAILURE|mioon_shot_update|private_call/u);
+    assert.equal(f.effects.size,0);assert.equal(done.changes.length,0);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});
+    f.restart();const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);assert.equal(replay.steps[0]?.error?.message,model.error?.message);await f.runtime.drain();assert.equal(f.requests.length,1);assert.deepEqual(transport.counts,{dns:1,requests:1,ends:1});assert.equal(f.effects.size,0);
+    });
+  }
+});
+test('forged stream diagnostics and provider causes never reach persisted task error messages',async t=>{
+  const f=await fixture(t,'chat_completions');f.setScript(async function*(){throw Object.assign(Error('PRIVATE_PROVIDER_BODY'),{code:'AGENT_CHAT_TRUNCATED',reason:'missing_done',streamEvidence:{reason:'read_failed'},state:{finishReason:'PRIVATE_KEY'},cause:{reason:'output_limit'}});});
+  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.steps[0]?.status,'failed');assert.equal(done.steps[0]?.error?.message,'任务未完成，请检查已保存记录。');assert.doesNotMatch(JSON.stringify({done,events:f.runtime.journal.events(sent.run.id)}),/PRIVATE_PROVIDER_BODY|PRIVATE_KEY|missing_done|read_failed|output_limit/u);assert.equal(f.effects.size,0);assert.equal(f.requests.length,1);
+});
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a run keeps its submitted locale across tool rounds, budget continuation and restart`,async t=>{
   const expected={'zh-Hans':'用简体中文','zh-Hant':'用繁體中文',en:'Use English',ja:'簡潔な日本語'};
   for(const locale of AGENT_TASK_LOCALES){

@@ -1,3 +1,4 @@
+import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
 import {assertTimelineVolumeEnvelopeWorkspace} from './timeline-volume-envelope-admission.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {getWorkspaceRestoreContext as legacyRestoreContext} from './workspace-restore-schema.ts';
@@ -272,10 +273,14 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  }
  const methods = {
   prepare(input: unknown,context: Record<string,unknown>={}) { return guarded(()=>{
-   open();owner();let args: {projectId: string;operation: string;input: Record<string,unknown>;origin: string};
+   open();owner();
+   // Private storage59 preserves captured history only; do not persist a new
+   // executable intent before the shared domain dispatch can reject it.
+   if(restored&&!opacity&&readCurrentWorkspaceRole(db)==='storage-private-59-evidence')refuseRestoredTask(store);
+   let args: {projectId: string;operation: string;input: Record<string,unknown>;origin: string};
    if(domain){try{args=domain.capturePrepare(input) as unknown as typeof args;}catch{invalid();}}else args=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
-   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:![45,49,51,53,55,57,59].includes(restored.schemaVersion)))refuseRestoredTask(store);
+   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:![45,49,51,53,55,57,59,61].includes(restored.schemaVersion)))refuseRestoredTask(store);
    const intent=parseIntent(args.operation,args.input,args.projectId);
    if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}
    const result=store.tx(()=>{

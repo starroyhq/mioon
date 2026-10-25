@@ -17,8 +17,9 @@ export const currentOrdinary52Delta:CurrentOrdinary50Delta & {readonly objectNam
 export {currentOrdinary54Delta,withoutReviewedConversationObjects} from './current-schema54-delta.ts';
 export {currentOrdinary56Delta,withoutReviewedInteractionObjects} from './current-schema56-delta.ts';
 export {currentOrdinary58Delta,withoutReviewedSceneObjects} from './current-schema58-delta.ts';
+export {currentOrdinary60Delta,withoutReviewedStorageObjects} from './current-schema60-delta.ts';
 export const currentMarkerChain = Object.freeze([
-  ...Array.from({length: 24}, (_, index) => index + 1), 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52, 54, 56, 58,
+  ...Array.from({length: 24}, (_, index) => index + 1), 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52, 54, 56, 58, 60,
 ]);
 /** The current reviewed SQL for an object whose historical SQL was upgraded by
  * the reviewed current-schema delta, or the historical SQL when unchanged. */

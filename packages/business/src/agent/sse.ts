@@ -1,4 +1,4 @@
-import {agentChatError} from './chat-errors.ts';
+import {agentChatError, agentChatStreamError} from './chat-errors.ts';
 
 export const AGENT_SSE_LIMITS = Object.freeze({maxBytes: 1024 * 1024, maxEventBytes: 64 * 1024, maxEvents: 8192});
 export interface AgentSseOptions {
@@ -76,5 +76,5 @@ export async function* parseAgentSse(source: AsyncIterable<Uint8Array>, options:
   let last = '';
   try { last = decoder.decode(); } catch { throw agentChatError('AGENT_CHAT_PROTOCOL_ERROR'); }
   yield* consume(last);
-  if (hasData || (line && !line.startsWith(':'))) throw agentChatError('AGENT_CHAT_TRUNCATED');
+  if (hasData || (line && !line.startsWith(':'))) throw agentChatStreamError('unframed_sse');
 }
