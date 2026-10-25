@@ -147,11 +147,14 @@ export function frameDecodePlan(metadata: ProbeResult, { mimeType, requestedFram
   const select = `if(eq(TB,1/${denominator}),if(isnan(pts),0,if(eq(interlace_type,PROGRESSIVE),between(pts,${threshold},${FRAME_DECODE_LIMITS.duration * denominator}),0)),0)`;
   return {
     width: outputWidth, height: outputHeight,
-    filter: `select='${select}',scale=${outputWidth}:${outputHeight}:flags=bilinear,setsar=1,format=rgb24`,
+    filter: `select='${select}',${frameCaptureOutputFilter(outputWidth,outputHeight)}`,
     probe: { streamIndex: safeInteger(video.index) ?? 0, timeBaseNumerator: 1, timeBaseDenominator: denominator,
       width, height, rotation: 0, sarNumerator: 1, sarDenominator: 1 },
   };
 }
+/** Everything after frame selection: the capture profile's scale and pixel
+ * format. Storyboard keyframes share it, so both PNGs come out identically. */
+export const frameCaptureOutputFilter=(width: number,height: number): string=>`scale=${width}:${height}:flags=bilinear,setsar=1,format=rgb24`;
 function attachedPicture(stream: ProbeStream): unknown {
   const disposition=stream.disposition;
   return object(disposition)?disposition.attached_pic:undefined;

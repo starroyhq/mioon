@@ -243,22 +243,22 @@ export const operationMessages = {
     "ja": "ショット分割関連操作の変更不可の受付記録を読み取り専用で照会します。実行は行いません。現在の状態はtask.getで照会します"
   },
   "operation.scene.task.get": {
-    "zh-Hans": "只读查询本项目已有镜头拆解任务、运行进度和结果摘要；不读取媒体或恢复任务",
-    "zh-Hant": "唯讀查詢本專案既有鏡頭拆解任務、執行進度和結果摘要；不讀取媒體或恢復任務",
-    "en": "Read an existing shot detection task in this project with its progress and result summary, read-only; no media reads or task recovery",
-    "ja": "このプロジェクトの既存のショット分割タスクと進行状況、結果の概要を読み取り専用で照会します。メディアの読み取りやタスクの再開は行いません"
+    "zh-Hans": "只读查询本项目已有镜头拆解或建分镜任务、运行进度和结果摘要；已建好的分镜同时给出能否撤销及原因；不读取媒体或恢复任务",
+    "zh-Hant": "唯讀查詢本專案既有鏡頭拆解或建分鏡任務、執行進度和結果摘要；已建好的分鏡同時給出能否復原及原因；不讀取媒體或恢復任務",
+    "en": "Read an existing shot detection or storyboard task in this project with its progress and result summary, read-only; a built storyboard also reports whether it can still be undone and why not. No media reads or task recovery",
+    "ja": "このプロジェクトの既存のショット分割または絵コンテ作成タスクと進行状況、結果の概要を読み取り専用で照会します。作成済みの絵コンテは取り消せるかどうかとその理由も返します。メディアの読み取りやタスクの再開は行いません"
   },
   "operation.scene.task.list": {
-    "zh-Hans": "按项目分页只读列出镜头拆解任务，可按素材筛选，默认20条、最多50条；重启和查询不会自动解码",
-    "zh-Hant": "按專案分頁唯讀列出鏡頭拆解任務，可按素材篩選，預設20條、最多50條；重新啟動和查詢不會自動解碼",
-    "en": "List shot detection tasks by project in read-only pages, optionally for one asset, 20 by default and at most 50; restarting or querying never automatically decodes",
-    "ja": "プロジェクトごとのショット分割タスクを読み取り専用でページ単位に一覧表示します。素材で絞り込めます。既定は20件、最大50件です。再起動や照会で自動デコードは行いません"
+    "zh-Hans": "按项目分页只读列出镜头拆解和建分镜任务，可按素材筛选，默认20条、最多50条；重启和查询不会自动解码",
+    "zh-Hant": "按專案分頁唯讀列出鏡頭拆解和建分鏡任務，可按素材篩選，預設20條、最多50條；重新啟動和查詢不會自動解碼",
+    "en": "List shot detection and storyboard tasks by project in read-only pages, optionally for one asset, 20 by default and at most 50; restarting or querying never automatically decodes",
+    "ja": "プロジェクトごとのショット分割と絵コンテ作成のタスクを読み取り専用でページ単位に一覧表示します。素材で絞り込めます。既定は20件、最大50件です。再起動や照会で自動デコードは行いません"
   },
   "operation.scene.task.cancel": {
-    "zh-Hans": "按任务版本和稳定请求键取消排队或运行中的镜头拆解；运行中的任务先进入取消中，解码进程关闭后变为已取消，不保存结果",
-    "zh-Hant": "按任務版本和穩定請求鍵取消排隊或執行中的鏡頭拆解；執行中的任務先進入取消中，解碼行程關閉後變為已取消，不儲存結果",
-    "en": "Cancel a queued or running shot detection by task revision and a stable request key. A running task first becomes cancelling and is cancelled once its decoder has closed; no result is saved",
-    "ja": "タスクのリビジョンと安定したリクエストキーで、待機中または実行中のショット分割を取り消します。実行中のタスクはまず取り消し中となり、デコーダーが終了すると取り消し済みになります。結果は保存しません"
+    "zh-Hans": "按任务版本和稳定请求键取消排队或运行中的镜头拆解或建分镜；运行中的任务先进入取消中，解码进程关闭后变为已取消，不保存结果、不留下镜头",
+    "zh-Hant": "按任務版本和穩定請求鍵取消排隊或執行中的鏡頭拆解或建分鏡；執行中的任務先進入取消中，解碼行程關閉後變為已取消，不儲存結果、不留下鏡頭",
+    "en": "Cancel a queued or running shot detection or storyboard by task revision and a stable request key. A running task first becomes cancelling and is cancelled once its decoder has closed; no result is saved and no shots are left",
+    "ja": "タスクのリビジョンと安定したリクエストキーで、待機中または実行中のショット分割または絵コンテ作成を取り消します。実行中のタスクはまず取り消し中となり、デコーダーが終了すると取り消し済みになります。結果は保存せず、ショットも残しません"
   },
   "operation.scene.result.get": {
     "zh-Hans": "只读读取一段视频素材最新的切点结果（检测所得或手动保存）；素材哈希或打分规则不一致时标为失效",
@@ -271,6 +271,18 @@ export const operationMessages = {
     "zh-Hant": "把手動增刪或移動後的完整切點列表儲存為該素材的新結果；必須基於目前最新且有效的結果，其後又有新結果時衝突；不修改素材或時間軸；使用必填穩定requestId精確重放",
     "en": "Save the complete cut list after manual additions, removals or moves as the asset's new result. It must start from the current newest valid result and conflicts if a newer one exists. Does not modify the asset or timeline. A stable requestId is required for exact replay",
     "ja": "手動で追加、削除、移動した後のカット点リスト全体を、その素材の新しい結果として保存します。現在の最新かつ有効な結果を基にする必要があり、その後に新しい結果がある場合は競合します。素材やタイムラインは変更しません。正確な再実行には安定したrequestIdが必須です"
+  },
+  "operation.scene.shots.create": {
+    "zh-Hans": "按该视频当前最新且有效的切点结果排队本地建分镜：一次解码截出所选段落的中间帧并存为图片素材，再一次建出带首帧参考的镜头（标题按段号，时长取段长，比例跟随项目画幅）；最多100段；取消或失败不留下镜头；不生成或付费；使用必填稳定requestId精确重放",
+    "zh-Hant": "按該影片目前最新且有效的切點結果排隊本機建分鏡：一次解碼擷取所選段落的中間影格並存為圖片素材，再一次建出帶首幀參考的鏡頭（標題按段號，時長取段長，比例跟隨專案畫幅）；最多100段；取消或失敗不留下鏡頭；不生成或付費；使用必填穩定requestId精確重放",
+    "en": "Queue a local storyboard from the current newest valid cut result of a video: one decode captures the middle frame of each chosen segment as an image asset, then the shots are created at once with those keyframes as first-frame references (titles by segment number, durations from segment lengths, aspect ratio from the project format). At most 100 segments; cancelling or failing leaves no shots. Does not generate or charge. A stable requestId is required for exact replay",
+    "ja": "動画の現在最新かつ有効なカット点結果から、ローカルの絵コンテ作成を待機列に追加します。1回のデコードで選択した各区間の中間フレームを画像素材として取り込み、それを先頭フレーム参照にしたショットを一度に作成します（タイトルは区間番号、長さは区間の長さ、比率はプロジェクトの画面形式に従います）。最大100区間です。取り消しや失敗の場合はショットを残しません。生成や課金は行いません。正確な再実行には安定したrequestIdが必須です"
+  },
+  "operation.scene.shots.undo": {
+    "zh-Hans": "按任务版本撤销一次已完成的建分镜：这批镜头都未生成、未改内容、未连线、未绑定主体时删除这批镜头，关键帧图片保留在素材库；使用必填稳定requestId精确重放",
+    "zh-Hant": "按任務版本復原一次已完成的建分鏡：這批鏡頭都未生成、未改內容、未連線、未綁定主體時刪除這批鏡頭，關鍵影格圖片保留在素材庫；使用必填穩定requestId精確重放",
+    "en": "Undo one built storyboard by task revision: while none of its shots was generated, edited, connected or bound to a subject, the shots are deleted and the keyframe images stay in the library. A stable requestId is required for exact replay",
+    "ja": "タスクのリビジョンで、作成済みの絵コンテを1回分取り消します。そのショットがいずれも生成、内容の編集、接続、主体の割り当てをされていなければショットを削除し、キーフレーム画像は素材ライブラリに残します。正確な再実行には安定したrequestIdが必須です"
   },
   "operation.image.profile.list": {
     "zh-Hans": "读取图像预设；includeSettingsRevision:true 可发现对应槽的非秘密配置版本，默认响应不变；不探测网络、解密密钥或授予生成批准",

@@ -940,7 +940,7 @@ provider call, Blender dependency or built-in Agent catalog expansion is added.
 
 ## Reference-film scene detection
 
-The seven `scene` commands use the same backend and the strict
+The nine `scene` commands use the same backend and the strict
 [scene RPC contract](API.md#reference-film-scene-detection-2026-10-24). Detect,
 then read the newest result of the video:
 
@@ -964,6 +964,19 @@ mioon scene cuts save --input '{"projectId":"PROJECT_UUID","assetId":"VIDEO_UUID
 ```
 
 `expectedResultId` must be the current valid result from `scene result get`.
+
+`scene shots create` builds a storyboard: one shot per chosen segment (numbered
+from 1), each with the segment's middle keyframe as its first-frame reference:
+
+```sh
+mioon scene shots create --input '{"projectId":"PROJECT_UUID","sourceAssetId":"VIDEO_UUID","sourceHash":"VIDEO_SHA256","resultId":"RESULT_UUID","segments":[1,2,3],"requestId":"scene-shots-0001"}'
+mioon scene shots undo --input '{"projectId":"PROJECT_UUID","taskId":"TASK_UUID","expectedRevision":4,"requestId":"scene-shots-undo-0001"}'
+```
+
+`resultId` must be the current valid result. Poll `scene task get` until the
+storyboard is `succeeded`; its `undo` field says whether `scene shots undo` can
+still remove the batch (no shot generated, edited, connected or bound to a
+subject) and names each blocking shot. Undo keeps the keyframe images.
 Writes use caller-owned 8–200-character keys; keep the exact input until the
 outcome is known, and replay it unchanged after an uncertain response. Restart,
 reads and replay never decode.

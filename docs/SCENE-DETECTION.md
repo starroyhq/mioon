@@ -9,7 +9,10 @@ Since 2026-10-24 they run as a background task (`scene.detect`) that saves each
 cut list as a retained result, with manual edits (`scene.cuts.save`) and
 "按切点分割" (`timeline.clip.splitAtScenes`). Operations, storage (schema 58) and
 error codes are in [the API](API.md#reference-film-scene-detection-2026-10-24).
-"建分镜" and the panel come in later increments.
+Since 2026-10-25 "建分镜" (`scene.shots.create`, undo `scene.shots.undo`) turns
+chosen segments into shots, capturing every middle keyframe in one decode with
+frame capture's profile (`scene-keyframe-decoder.ts`). The panel comes in a later
+increment.
 
 ## Result
 

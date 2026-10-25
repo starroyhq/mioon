@@ -1319,6 +1319,12 @@ export const mioPanelMessages = {
     "en": "Read cuts",
     "ja": "カット点を確認"
   },
+  "agent.display.operation.scene.shots.create": {
+    "zh-Hans": "建分镜",
+    "zh-Hant": "建分鏡",
+    "en": "Build storyboard",
+    "ja": "絵コンテを作成"
+  },
   "agent.display.operation.image.profile.list": {
     "zh-Hans": "查看图像连接",
     "zh-Hant": "查看圖像連線",

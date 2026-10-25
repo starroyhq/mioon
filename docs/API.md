@@ -226,8 +226,9 @@ is expanded by these six external operations.
 
 ## Reference-film scene detection (2026-10-24)
 
-Seven strict RPCs on the same backend detect the cuts of one owned reference
-video and keep the resulting cut lists. Schemas and response validators are in
+Nine strict RPCs on the same backend detect the cuts of one owned reference
+video, keep the resulting cut lists and build canvas shots from chosen segments
+(storyboards, added 2026-10-25). Schemas and response validators are in
 `packages/contracts/src/scene-tasks.ts`; the detector itself is described in
 [reference scene detection](SCENE-DETECTION.md).
 
@@ -235,20 +236,22 @@ video and keep the resulting cut lists. Schemas and response validators are in
 | --- | --- | --- |
 | `scene.detect` | `{projectId,sourceAssetId,sourceHash,options?,requestId}` | Immutable queued task acknowledgement; accepts one local decode |
 | `scene.request.get` | `{projectId,requestId}` | `{projectId,requestId,operation,response}` or `null`; original acknowledgement only |
-| `scene.task.get` | `{projectId,taskId}` | Current task, with live `progress` while it runs |
+| `scene.task.get` | `{projectId,taskId}` | Current task, with live `progress` while it runs and, for a built storyboard, live `undo` |
 | `scene.task.list` | `{projectId,sourceAssetId?,limit?,cursor?}` | `{projectId,items,nextCursor}`; newest first, read-only |
 | `scene.task.cancel` | `{projectId,taskId,expectedRevision,requestId}` | Queued (or unstarted interrupted) task → `cancelled_before_start`; running task → `cancelling` |
 | `scene.result.get` | `{projectId,assetId}` | `{projectId,assetId,result,current,staleReason}` for the newest saved result |
 | `scene.cuts.save` | `{projectId,assetId,sourceHash,expectedResultId,cuts,requestId}` | Summary of a new manual result |
+| `scene.shots.create` | `{projectId,sourceAssetId,sourceHash,resultId,segments,titlePrefix?,position?,requestId}` | Immutable queued storyboard acknowledgement; accepts one local decode |
+| `scene.shots.undo` | `{projectId,taskId,expectedRevision,requestId}` | The storyboard task in state `undone`; its shots are deleted |
 
 Detection:
 - `options` may set `mode` (`adaptive`/`fixed`), `sensitivity` (0–100) and
   `minShotSeconds` (0.1–10); omitted fields use adaptive, 60 and 0.6. Task DTOs
   report the normalized options.
 - The source must be an owned managed MP4/WebM within frame capture's limits
-  (600 s, 512 MiB); its current hash must equal `sourceHash`. A second detection
-  of a video whose detection is still queued, running or cancelling is refused
-  with `SCENE_TASK_ACTIVE`.
+  (600 s, 512 MiB); its current hash must equal `sourceHash`. A detection or
+  storyboard of a video that already has a queued, running, cancelling or
+  persisting scene task is refused with `SCENE_TASK_ACTIVE`.
 - The acknowledgement is committed before any decode. One scene task decodes at
   a time, with at most two queued per project and eight per workspace; 256 tasks
   per project and 2048 per workspace are retained, without silent eviction.
@@ -256,14 +259,15 @@ Detection:
   becomes `succeeded` with `result:{id,frameCount,cutCount}`. More than 1500
   cuts fail the task with `SCENE_CUTS_LIMIT`.
 - States: `queued`, `running`, `cancelling`, `succeeded`,
-  `cancelled_before_start`, `cancelled`, `interrupted`, `failed` (the table also
-  reserves the storyboard states `persisting`, `local_result_error` and
-  `undone`). Only `interrupted` and `failed` carry an `errorCode`.
+  `cancelled_before_start`, `cancelled`, `interrupted`, `failed`; storyboards
+  also use `persisting`, `local_result_error` and `undone`. Only `interrupted`,
+  `failed` and `local_result_error` carry an `errorCode`.
 - Cancelling a running task stops its decoder; the task ends `cancelled` and saves
   nothing, even when the decoder had already finished.
-- Restart turns queued and running tasks into `interrupted`
+- Restart turns queued, running and persisting tasks into `interrupted`
   (`SCENE_INTERRUPTED`) and cancelling ones into `cancelled`. Reads, replay and
-  restart never decode; run a new detection instead.
+  restart never decode; run a new task instead. A storyboard Mio accepted stays
+  queued until its run resumes or stops.
 - `progress` (`{frames,frameCount,cuts}`) is advisory, reported at most once per
   source second, and never stored or replayed.
 
@@ -281,7 +285,48 @@ Results:
   `expectedResultId`, which must be the current valid result; otherwise it fails
   with `SCENE_RESULT_CONFLICT` or `SCENE_RESULT_STALE`. A kept cut keeps its
   score; an added or moved cut has `score:null`. The response is the result
-  summary (`cutCount` instead of `options` and `cuts`).
+  summary (`cutCount` instead of `options` and `cuts`). While a storyboard of the
+  video is in progress, `scene.cuts.save` is refused with `SCENE_TASK_ACTIVE`.
+
+Storyboards (2026-10-25):
+- `scene.shots.create` builds one canvas shot per chosen segment of `resultId`,
+  which must be the video's current valid result (`SCENE_RESULT_CONFLICT`,
+  `SCENE_RESULT_STALE`). `segments` are 1–100 strictly increasing segment
+  numbers from 1: segment n runs from cut n−1 (or frame 0) to cut n (or
+  `frameCount`); a number outside the result fails with `SCENE_SEGMENTS_INVALID`.
+- Each shot is titled `<titlePrefix> NN` by segment number (default prefix
+  `参考`), lasts the segment's length rounded to whole seconds within 1–20, has an
+  empty prompt and takes the project format's aspect ratio (`9:16`, `16:9` or
+  `1:1`; `9:16` before the project has a timeline). Its only reference is the
+  keyframe at the segment's middle frame. Shots are laid out in rows of six from
+  `position` (340 px apart, rows 300 px), or below the existing canvas content,
+  and continue the shot order.
+- One decode captures every keyframe with frame capture's profile and rule
+  (`local-png-1024-v1`, first frame at or after the mark): packet timestamps are
+  listed first, then exactly those frames are decoded. Marks between the same two
+  source frames share one image; each segment still gets its own asset.
+- A running storyboard reports `progress:{done,total}`. The keyframes are staged
+  privately (`persisting` holds their receipt), published as PNG assets with
+  `provenance:"scene-keyframe"`, and every image and shot is created in one
+  transaction; the task becomes `succeeded` with `shots:[{segment,shotId,assetId}]`.
+  Cancelling, failing (`failed` with `SCENE_KEYFRAME_UNAVAILABLE`,
+  `SCENE_SHOTS_FAILED` and the decoder codes, or `local_result_error` with
+  `SCENE_STORAGE_FAILED`) and restart leave no shots, images or staged files.
+- Keyframe assets belong to their task's receipt: the media graph accepts them as
+  shot references and generation inputs, and rejects one whose row no longer
+  matches. They are not yet accepted as image-edit or subject sources.
+- `scene.task.get` reports, for a `succeeded` storyboard, `undo:{available,blockers}`
+  computed live; pages and receipts report `undo:null`. A blocker is
+  `{segment,shotId,reason,fields?}` with reason `MISSING`, `GENERATED` (a job
+  exists), `CONNECTED` (an edge touches it), `SUBJECT_BOUND` (any binding row,
+  including a cleared one) or `EDITED` with the changed content fields
+  (`title`, `prompt`, `referenceAssetIds`, `lastFrameAssetId`, `aspectRatio`,
+  `duration`, `parameters`, `selectedVersionId`). Moving or reordering a shot
+  does not block undo.
+- `scene.shots.undo` deletes the batch's shots under task revision CAS; the task
+  becomes `undone` and keeps its `shots` record, and the keyframe images stay in
+  the library. A blocked undo fails with `SCENE_UNDO_BLOCKED` and
+  `details.blockers`.
 
 Writes need caller-owned 8–200-character request IDs in a workspace-wide scene
 namespace; exact replay returns the original acknowledgement, and changed reuse
@@ -291,11 +336,14 @@ with `inputHash` = SHA-256 of `canonicalSceneInput(input)`. Clients accept it on
 for HTTP 507 `SCENE_CAPACITY`, or HTTP 409 with `SCENE_QUEUE_FULL`,
 `SCENE_TASK_ACTIVE`, `SCENE_REVISION_CONFLICT`, `SCENE_STATE_CONFLICT`,
 `SCENE_SOURCE_INVALID`, `SCENE_SOURCE_CHANGED`, `SCENE_RESULT_CONFLICT`,
-`SCENE_RESULT_STALE` or `SCENE_CUTS_INVALID`. Restored workspaces read retained
-tasks and results; the three writes are unavailable there. Mio may run
-`scene.detect` and the four reads as read-only tools (detection changes no
-project content) and wait for a task with `task.wait` kind `scene`; cancelling
-and manual saves are user actions.
+`SCENE_RESULT_STALE`, `SCENE_CUTS_INVALID`, `SCENE_SEGMENTS_INVALID` or
+`SCENE_UNDO_BLOCKED`. Restored workspaces read retained tasks and results; the
+five writes are unavailable there. Mio may run `scene.detect` and the four reads
+as read-only tools (detection changes no project content) and wait for a task
+with `task.wait` kind `scene`. `scene.shots.create` is a local irreversible Mio
+tool: its images and shots appear after the call returns, so they are recorded
+as a late change that the run's undo keeps; a stopped run retires its unstarted
+storyboard. Cancelling, manual saves and storyboard undo are user actions.
 
 ## Local image generation and review preparation
 ### Single-PNG reference edits

@@ -41,15 +41,17 @@ const reversibleOperations=[
  'timeline.loudness.apply','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed',
  'timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes',
 ] as const;
+// A storyboard's images and shots are created by its background task after the
+// call returns, so a run's undo cannot compensate them; the user undoes the batch.
 const irreversibleOperations=[
- 'frame.extract','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render',
+ 'frame.extract','scene.shots.create','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render',
 ] as const;
 const paidOperations=['generation.submit','image.generate'] as const;
 const forbiddenOperations=[
  'export.cancel','export.output.get','task.disposition.markFailed','task.disposition.archiveCompleted',
  'workspace.settings.get','workspace.settings.set','workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage',
  'project.delete','project.summary.list','agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','lut.import','workspace.backup.inspect','workspace.restore.inspect','project.create','project.list','project.get','asset.import',
- 'job.retry','job.cancel','job.reconcile','frame.task.cancelQueued','frame.task.recoverResult','scene.task.cancel','scene.cuts.save','image.task.cancelQueued','image.task.recoverResult','image.task.observeRemote','image.review.prepare','image.review.get','image.review.list','timeline.get','timeline.undo','timeline.redo',
+ 'job.retry','job.cancel','job.reconcile','frame.task.cancelQueued','frame.task.recoverResult','scene.task.cancel','scene.cuts.save','scene.shots.undo','image.task.cancelQueued','image.task.recoverResult','image.task.observeRemote','image.review.prepare','image.review.get','image.review.list','timeline.get','timeline.undo','timeline.redo',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),
@@ -457,8 +459,9 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const value=services.handlers[operation]!(args as never);if(!object(value)||typeof value.then==='function')fail('AGENT_TASK_INVALID_TARGET','任务无法验证');
   if(value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
   const state=value.status??value.state;
-  // An interrupted detection saved nothing and can simply be run again.
-  if(input.kind==='scene')return ['succeeded','failed','cancelled','cancelled_before_start','interrupted'].includes(String(state))?projectResult(value):null;
+  // An interrupted scene task saved nothing and can simply be run again; a
+  // storyboard whose result could not be saved also left no shots.
+  if(input.kind==='scene')return ['succeeded','failed','cancelled','cancelled_before_start','interrupted','local_result_error','undone'].includes(String(state))?projectResult(value):null;
   if(['outcome_unknown','submission_unknown','interrupted_before_dispatch','interrupted','local_result_error'].includes(String(state)))fail('AGENT_TASK_UNKNOWN_RESULT','已有任务结果需要人工核对，不能重新提交');
   return ['succeeded','failed','cancelled','cancelled_before_dispatch','cancelled_before_start'].includes(String(state))?projectResult(value):null;
  }
