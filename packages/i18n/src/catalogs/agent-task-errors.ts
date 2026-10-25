@@ -73,6 +73,12 @@ export const agentTaskErrorMessages = {
     "en": "The previous result is unknown. Check the original request without resending it",
     "ja": "前の結果が不明です。再送せず、先に元のリクエストを確認してください"
   },
+  "agent.task.error.storageLimit": {
+    "zh-Hans": "Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断",
+    "zh-Hant": "Mio 工作歷史已達容量上限，既有紀錄保留，請先檢查容量診斷",
+    "en": "Mio task history reached its storage limit. Existing records are retained; check storage diagnostics",
+    "ja": "Mio のタスク履歴が保存上限に達しました。既存の記録は保持されています。容量診断を確認してください"
+  },
   "agent.task.error.storage": {
     "zh-Hans": "无法安全读取或保存执行记录，已停止后续操作",
     "zh-Hant": "無法安全讀取或儲存執行紀錄，已停止後續操作",

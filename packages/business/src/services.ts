@@ -569,7 +569,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     // Frozen restored profiles admit only their own colour generation: video
     // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&isRecord(parsed.patch)&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35,37,39,41,45,49,51,53,55,57,59].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(![31,33,35,37,39,41,45,49,51,53,55,57,59,61].includes(restored.schemaVersion))throw workspaceRestoreError();
      const patch=isRecord(parsed.patch)?parsed.patch:null;
      const colour=op==='timeline.clip.add'?parsed.colour:patch?.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();

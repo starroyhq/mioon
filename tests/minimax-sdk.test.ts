@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,realpath,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createMinimaxSdkClient} from '../packages/business/src/video/minimax-sdk.ts';
@@ -122,4 +122,19 @@ test('MiniMax legacy 768P task stays queryable while its frozen retry is rejecte
   const before=structuredClone(snapshot);assert.equal((await provider.poll(ID)).status,'succeeded');
   await assert.rejects(provider.submit(snapshot),{code:'UNSUPPORTED_PARAMETERS',beforeDispatch:true});assert.deepEqual(snapshot,before);assert.equal(f.calls.length,1);assert.equal(f.calls[0]!.init.method,'GET');
   assert.deepEqual(provider.capabilities.modelCapabilities[0]?.resolutions,['2K']);
+});
+
+for(const region of ['cn','global'])test(`MiniMax ${region} environment entry enforces the reviewed regional output bucket`,async t=>{
+  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-minimax-output-')));t.after(()=>rm(root,{recursive:true,force:true}));
+  const url='https://algeng-video-infer.oss-cn-shanghai.aliyuncs.com/result.mp4?signature=PRIVATE-SIGNATURE';
+  const bytes=Buffer.from([0,0,0,20,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109]);
+  const f=fixture([json({task:{id:ID,status:'succeeded',content:{url}}}),new Response(bytes)]);
+  const provider=createMinimaxProvider({root,env:{MINIMAX_API_KEY:SECRET,MINIMAX_REGION:region,MIOON_ENABLE_LIVE_PROVIDER:'1'},fetchImpl:f.fetchImpl});
+  const destination=path.join(root,'result.mp4');
+  if(region==='cn'){
+    await provider.download(ID,destination);assert.deepEqual(await readFile(destination),bytes);assert.equal(f.calls.length,2);
+    assert.equal(f.calls[1]!.url,url);assert.equal(new Headers(f.calls[1]!.init.headers).get('authorization'),null);assert.equal(f.calls[1]!.init.redirect,'error');
+  }else {await assert.rejects(provider.download(ID,destination),{code:'UNAPPROVED_OUTPUT_HOST'});assert.equal(f.calls.length,1);}
+  assert.equal(f.calls[0]!.url,`${region==='cn'?'https://api.minimax.cn':API}/v2/query/video_generation/${ID}`);
+  assert.equal(f.calls.filter(call=>call.init.method==='POST').length,0);
 });

@@ -1,4 +1,6 @@
+import {removeReviewedSchema60} from './helpers/current-schema60-delta.ts';
 import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
+import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
@@ -15,7 +17,7 @@ import { restoreWorkspaceBackup } from '../packages/business/src/workspace-resto
 import { classifyWorkspaceSchemaV52V53 } from '../packages/business/src/workspace-restore-schema-v53.ts';
 import { withoutReviewedConversationObjects } from './helpers/current-schema54-delta.ts';
 
-for (const sourceSchema of [52,54,56]) test(`project-owned Look survives removed source file, cold reopen, render and ordinary${sourceSchema}/restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
+for (const sourceSchema of [52,54,56,58,60]) test(`project-owned Look survives removed source file, cold reopen, render and ordinary${sourceSchema}/restored${sourceSchema + 1} backup`, { timeout: 120000 }, async t => {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-look-portable-')), root = path.join(base, 'workspace');
   (t as {after(callback: ()=>void): void}).after(() => rm(base, { recursive: true, force: true }));
   const localPack = path.join(base, 'selected.mioon-look.cube'), source = path.join(base, 'source.mp4');
@@ -53,10 +55,12 @@ for (const sourceSchema of [52,54,56]) test(`project-owned Look survives removed
     worker = startWorker(store, services, new Map()); await worker.tick();
     const result = await services.call('export.get', { exportId: accepted.id }) as {status: string; error?: unknown}; assert.equal(result.status, 'succeeded', JSON.stringify(result.error));
   } finally { await worker?.stop(); await services.drain(); store.close(); }
-  if(sourceSchema!==56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema56(db);}finally{db.close();}}
+  if(sourceSchema===58){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema60(db);}finally{db.close();}}
+ if(sourceSchema===56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema58(db);}finally{db.close();}}
+  if(sourceSchema<56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema56(db);}finally{db.close();}}
   if(sourceSchema===52){
     // Keep the historical backup case exact after all ordinary reopen/render
-    // work: opening it through current openStore again would migrate it to56.
+    // work: opening it through current openStore again would migrate it to58.
     const db=new DatabaseSync(path.join(root,'workbench.sqlite'));
     try{
       assert.equal(db.prepare('SELECT MAX(version) AS version FROM schema_version').get()!.version,54);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readFile, writeFile, rm, symlink, readdir } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm, symlink, readdir, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
@@ -47,7 +47,7 @@ function png(width = 360, height = 640): Buffer {
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(Buffer.alloc((width * 3 + 1) * height))), chunk('IEND', Buffer.alloc(0))]);
 }
 async function fixture(t: import('node:test').TestContext, kind: 'minimax' | 'vidu', responses: unknown[] = [], options: FixtureOptions = {}) {
-  const spec = specs[kind], root = await mkdtemp(path.join(tmpdir(), 'additional-provider-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const spec = specs[kind], root = await realpath(await mkdtemp(path.join(tmpdir(), 'additional-provider-'))); t.after(() => rm(root, { recursive: true, force: true }));
   const bytes = png(), file = path.join(root, 'reference.png'); await writeFile(file, bytes);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   const env: Record<string, string | undefined> = { [`${spec.prefix}_API_KEY`]: 'PRIVATE-KEY', MIOON_ENABLE_LIVE_PROVIDER: '1', [`${spec.prefix}_APPROVED_ASSET_SHA256`]: sha256, ...(kind === 'vidu' ? { VIDU_OUTPUT_HOSTS: spec.host } : {}), ...options.env };
