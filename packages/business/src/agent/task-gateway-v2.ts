@@ -1,6 +1,6 @@
 import {isDeepStrictEqual} from 'node:util';
 import {validateAgentGatewayConfiguration} from './agent-gateway.ts';
-import {AGENT_CHAT_PROFILES} from './chat-completions.ts';
+import {AGENT_CHAT_PROFILES,agentChatAllowsNaturalEof} from './chat-completions.ts';
 import {AGENT_RESPONSES_PROFILES} from './responses.ts';
 import {AGENT_READ_TOOL_PROFILES} from './tool-wire.ts';
 import {wasAgentTransportSubmissionPrevented} from './network-policy.ts';
@@ -8,7 +8,8 @@ import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
 import {taskToolWireSchema} from './task-tool-wire-schema.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
-import {agentChatError} from './chat-errors.ts';
+import {agentChatError,agentChatStreamError,annotateAgentChatStreamError} from './chat-errors.ts';
+import type {AgentStreamState} from './chat-errors.ts';
 import type {AgentConfiguration} from './config.ts';
 import {AGENT_TASK_LOCALES,AGENT_TASK_STEP_STATUSES,DEFAULT_AGENT_TASK_LOCALE} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskToolCall,AgentTaskLocale} from '@mioon/contracts/agent-tasks-v2';
@@ -173,17 +174,21 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
     const guarded={...options,beforeSubmit:()=>{try{options.beforeSubmit?.();}catch(error){blocked=error;if(error!==null&&typeof error==='object')preventedSubmissions.add(error);throw error;}}};
     let stream:Awaited<ReturnType<typeof open>>;
     try{stream=await open(guarded);}catch(error){if(blocked)throw blocked;if(wasAgentTransportSubmissionPrevented(error)&&error!==null&&typeof error==='object')preventedSubmissions.add(error);throw error;}
+    let streamState:AgentStreamState|undefined;
     try {
       if(options.configuration.protocol==='chat_completions') {
         let text='',finished:string|null=null,done=false,refused=false;
         const calls=new Map<number,{id:string;name:string;arguments:string}>();
+        streamState={finishReason:null,done:false,frameCount:0,toolCount:0,outputBytes:0};
         for await(const frame of parseAgentSse(stream.body,{signal:options.signal})) {
-          if(done)fail();if(frame.data==='[DONE]'){if(!finished)fail('AGENT_CHAT_TRUNCATED');done=true;continue;}
+          streamState.frameCount=(streamState.frameCount??0)+1;
+          if(frame.event==='error')fail('AGENT_CHAT_PROVIDER_ERROR');if(frame.event!=='message')fail();
+          if(done)fail();if(frame.data==='[DONE]'){streamState.done=true;if(!finished)throw agentChatStreamError('missing_finish');done=true;continue;}
           let raw:unknown;try{raw=JSON.parse(frame.data);}catch{fail();}if(!object(raw)||raw.error)fail('AGENT_CHAT_PROVIDER_ERROR');
           noReasoning(raw);if(!Array.isArray(raw.choices)||raw.choices.length>1)fail();if(!raw.choices.length)continue;
           const choice=raw.choices[0];if(!object(choice)||choice.index!==0||!object(choice.delta))fail();noReasoning(choice.delta);
           if(finished)fail();const delta=choice.delta;
-          if(delta.content!=null){const part=string(delta.content);text+=part;if(Buffer.byteLength(text)>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');if(part)yield {type:'delta',text:part};}
+          if(delta.content!=null){const part=string(delta.content);text+=part;streamState.outputBytes=Buffer.byteLength(text);if(streamState.outputBytes>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');if(part)yield {type:'delta',text:part};}
           if(delta.refusal!=null&&delta.refusal!=='')refused=true;
           if(delta.function_call!=null)fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
           if(delta.tool_calls!=null){if(!Array.isArray(delta.tool_calls))fail();for(const fragment of delta.tool_calls){
@@ -191,11 +196,13 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             const index=fragment.index as number,current=calls.get(index)??{id:'',name:'',arguments:''};
             if(fragment.type!==undefined&&fragment.type!=='function')fail();if(fragment.id!==undefined)current.id+=string(fragment.id,256);
             if(fragment.function!==undefined){if(!object(fragment.function))fail();if(fragment.function.name!==undefined)current.name+=string(fragment.function.name,256);if(fragment.function.arguments!==undefined)current.arguments+=string(fragment.function.arguments,TASK_MODEL_LIMITS.argumentBytes);}
-            if(Buffer.byteLength(current.arguments)>TASK_MODEL_LIMITS.argumentBytes)fail('AGENT_CHAT_LIMIT');calls.set(index,current);
+            if(Buffer.byteLength(current.arguments)>TASK_MODEL_LIMITS.argumentBytes)fail('AGENT_CHAT_LIMIT');calls.set(index,current);streamState.toolCount=calls.size;
           }}
-          if(choice.finish_reason!=null){if(!['stop','tool_calls','length','content_filter'].includes(String(choice.finish_reason)))fail();finished=String(choice.finish_reason);}
+          if(choice.finish_reason!=null){if(!['stop','tool_calls','length','content_filter'].includes(String(choice.finish_reason)))fail();finished=String(choice.finish_reason);streamState.finishReason=finished as AgentStreamState['finishReason'];}
         }
-        if(stream.error())throw stream.error();if(!done)fail('AGENT_CHAT_TRUNCATED');if(finished==='length')fail('AGENT_CHAT_TRUNCATED');if(finished==='content_filter'||refused)fail('AGENT_CHAT_PROVIDER_ERROR');
+        const streamFailure=stream.error();if(streamFailure)throw streamFailure.code==='AGENT_CHAT_TRUNCATED'?agentChatStreamError('read_failed'):streamFailure;if(options.signal?.aborted)fail('AGENT_CHAT_ABORTED');
+        const naturalEof=agentChatAllowsNaturalEof(options.configuration,parsed)&&(finished==='stop'||finished==='tool_calls');
+        if(!done&&!naturalEof)throw agentChatStreamError('missing_done');if(finished==='length')throw agentChatStreamError('output_limit');if(finished==='content_filter'||refused)fail('AGENT_CHAT_PROVIDER_ERROR');
         const ordered=[...calls.entries()].sort((a,b)=>a[0]-b[0]);if(ordered.some(([index],position)=>index!==position))fail();
         const toolCalls=ordered.map(([,item])=>call(item.id,item.name,item.arguments,definitions));
         if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length||(finished==='tool_calls')!==!!toolCalls.length)fail();
@@ -251,6 +258,6 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         if(toolCalls.length>TASK_MODEL_LIMITS.toolCalls||new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length)fail();
         yield {type:'done',output:{text,toolCalls,providerOutput:output as AgentTaskJson[]}};
       }
-    }catch(error){if(blocked)throw blocked;throw error;}finally{stream.close();}
+    }catch(error){if(blocked)throw blocked;if(streamState)annotateAgentChatStreamError(error,streamState);throw error;}finally{stream.close();}
   };
 }

@@ -16,7 +16,7 @@ const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
   AGENT_TASK_UNKNOWN_RESULT:'agent.task.error.unknown', REQUEST_UNCONFIRMED:'agent.task.error.unknown', OPERATION_PENDING:'agent.task.error.unknown',
   AGENT_TASK_REVISION_CONFLICT:'agent.task.error.changed', REVISION_CONFLICT:'agent.task.error.changed',
   AGENT_TASK_REQUEST_CONFLICT:'agent.task.error.changed', IDEMPOTENCY_CONFLICT:'agent.task.error.changed',
-  AGENT_TASK_STORAGE_UNAVAILABLE:'agent.task.error.storage', AGENT_CHAT_STORAGE_UNAVAILABLE:'agent.task.error.storage', LOCAL_RECEIPT_UNAVAILABLE:'agent.task.error.receipt',
+  AGENT_TASK_STORAGE_LIMIT:'agent.task.error.storageLimit', AGENT_TASK_STORAGE_UNAVAILABLE:'agent.task.error.storage', AGENT_CHAT_STORAGE_UNAVAILABLE:'agent.task.error.storage', LOCAL_RECEIPT_UNAVAILABLE:'agent.task.error.receipt',
   AGENT_TASK_APPROVAL_REQUIRED:'agent.task.error.approval', AGENT_TASK_PAUSED:'agent.task.error.paused',
   AGENT_CHAT_CONNECT_FAILED:'agent.task.error.connection', NETWORK:'agent.task.error.localConnection',
   AGENT_CHAT_NETWORK_DENIED:'agent.task.error.networkDenied', AGENT_CHAT_TIMEOUT:'agent.task.error.timeout',

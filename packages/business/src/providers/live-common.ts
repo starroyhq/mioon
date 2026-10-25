@@ -246,7 +246,12 @@ export const approvedOutputHosts = (value: unknown, defaults: readonly string[] 
 export function outputUrl(value: unknown, hosts: ReadonlySet<string>): URL {
   let url: URL;
   try { url = new URL(value as string | URL); } catch { throw providerError('INVALID_OUTPUT_URL', 'Provider did not return a valid output URL.'); }
-  if (url.protocol !== 'https:' || url.username || url.password || url.port || !hosts.has(url.hostname.toLowerCase())) throw providerError('UNAPPROVED_OUTPUT_HOST', 'Output host requires server-side verification before download.');
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || !hosts.has(url.hostname.toLowerCase())) {
+    // Download URLs can contain signed paths, query tokens and credentials.
+    // Persist only these allowlisted fields so a rejected host can be reviewed.
+    const diagnostic = { protocol: url.protocol, hostname: url.hostname, port: url.port, hasUserinfo: Boolean(url.username || url.password) };
+    throw providerError('UNAPPROVED_OUTPUT_HOST', `Output host requires server-side verification before download. ${JSON.stringify(diagnostic)}`);
+  }
   return url;
 }
 

@@ -55,17 +55,17 @@ function proposal(db,volumeEnvelope){
 }
 function unchanged(db,fn,code='RESTORE_SCHEMA_UNSUPPORTED'){const before=snapshot(db);assert.throws(fn,{code});assert.deepEqual(snapshot(db),before);assert.equal(db.isTransaction,false);}
 
-test('real dispatch migrates source38 marker-only to current ordinary58 and reopens idempotently',t=>{
+test('real dispatch migrates source38 marker-only to current ordinary60 and reopens idempotently',t=>{
  const f=database(t),db=f.db;seed(db);const before=snapshot(db);
  assert.deepEqual(dispatch.classify(db),{schemaVersion:38,profile:'ordinary'});
- assert.equal(dispatch.initialize(db),null);assert.equal(readCurrentWorkspaceRole(db),'ordinary-58');
+ assert.equal(dispatch.initialize(db),null);assert.equal(readCurrentWorkspaceRole(db),'ordinary-60');
  const after=snapshot(db);
  // Seeded historical rows survive byte-for-byte; schema_version keeps its
  // prefix and gains the reviewed current marker chain.
  for(const [name,value]of Object.entries(before.tables))if(name!=='schema_version')assert.deepEqual(after.tables[name],value,name);
  assert.deepEqual(after.tables.schema_version.rows.slice(0,before.tables.schema_version.rows.length),before.tables.schema_version.rows);
- assert.deepEqual(after.tables.schema_version.rows.map(row=>Number(row[0])),[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36,38,40,44,48,50,52,54,56,58]);
- assert.deepEqual(dispatch.classify(db),{schemaVersion:58,profile:'ordinary'});assert.equal(dispatch.detect(db),false);
+ assert.deepEqual(after.tables.schema_version.rows.map(row=>Number(row[0])),[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60]);
+ assert.deepEqual(dispatch.classify(db),{schemaVersion:60,profile:'ordinary'});assert.equal(dispatch.detect(db),false);
  assert.throws(()=>validateWorkspaceSchema38(db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  assert.equal(dispatch.initialize(f.reopen()),null);assert.deepEqual(snapshot(f.db),after);
 });
@@ -208,7 +208,7 @@ for(const kind of ['catalog','metadata','holds-receipt','holds-task','holds-prop
  assert.deepEqual(snapshot(db),before);assert.equal(db.isTransaction,false);
 });
 
-test('current ordinary58 backup verifies and restores59 with valid actual-service capability responses and exact retained envelope history',async t=>{
+test('current ordinary60 backup verifies and restores59 with valid actual-service capability responses and exact retained envelope history',async t=>{
  const root=privateRoot(t),source=join(root,'source'),backup=join(root,'backup'),destination=join(root,'restored');
  let store=openStore(source),services=createServices(store,new Map());
  try{
@@ -221,8 +221,8 @@ test('current ordinary58 backup verifies and restores59 with valid actual-servic
   insert(store.db,'timeline_history_cursors',{projectId:id(1),position:1});
   insert(store.db,'timeline_requests',{requestId:'retained-envelope',requestHash:'a'.repeat(64),response:JSON.stringify(value,null,2)});
   const before=snapshot(store.db);await services.drain();store.close();store=null;
-  const captured=await createWorkspaceBackup({source,destination:backup});assert.equal(captured.databaseSchemaVersion,58);assert.equal(captured.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),captured);
-  const result=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(result.sourceSchema,58);assert.equal(result.databaseSchemaVersion,59);assert.equal(result.profile,'restored-local-v18');
+  const captured=await createWorkspaceBackup({source,destination:backup});assert.equal(captured.databaseSchemaVersion,60);assert.equal(captured.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),captured);
+  const result=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(result.sourceSchema,60);assert.equal(result.databaseSchemaVersion,61);assert.equal(result.profile,'restored-local-v19');
   for(let reopen=0;reopen<2;reopen++){
    store=openStore(destination);services=createServices(store,new Map());
    const legacy=await services.call('workspace.restore.inspect',{}),optIn=await services.call('workspace.restore.inspect',{includeVolumeEnvelopeCapability:true});

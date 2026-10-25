@@ -12,7 +12,7 @@ import path from 'node:path';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {AGENT_PRESETS,DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
-import {agentChatHttpStatus,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
+import {agentChatHttpStatus,agentChatStreamError,agentChatStreamReason,annotateAgentChatStreamError,safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
 import {buildTaskModelRequest,createTaskGateway,parseTaskArguments,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskModelOutput,TaskToolDefinition} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -21,8 +21,21 @@ import {createServices} from '../packages/business/src/services.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {taskToolWireSchema} from '../packages/business/src/agent/task-tool-wire-schema.ts';
+import {agentChatAllowsNaturalEof,createChatCompletionGateway} from '../packages/business/src/agent/chat-completions.ts';
 
 const definitions=[{name:'mioon_shot_create',description:'Create a saved shot',parameters:{type:'object',properties:{title:{type:'string'}},required:['title'],additionalProperties:false}}];
+test('stream diagnostics retain only trusted closed reasons and bounded state, never copied properties or causes',()=>{
+  const failure=agentChatStreamError('missing_done',{finishReason:'tool_calls',done:false,frameCount:3,toolCount:2,outputBytes:6});
+  assert.equal(agentChatStreamReason(failure),'missing_done');
+  assert.match(safeAgentChatError(failure).message,/missing_done；结束原因 tool_calls；完成标记 未收到；帧数 3；工具数 2；输出字节 6/u);
+  const forged=Object.assign(new Error('PRIVATE_PROVIDER_BODY'),{code:'AGENT_CHAT_TRUNCATED',reason:'missing_done',streamEvidence:{reason:'missing_finish'},state:{finishReason:'PRIVATE_KEY'},cause:failure});
+  for(const value of [forged,{...failure},Object.assign(new Error('wrapped'),{code:failure.code,cause:failure})]){
+    annotateAgentChatStreamError(value,{done:true,frameCount:1});
+    assert.equal(agentChatStreamReason(value),undefined);assert.equal(safeAgentChatError(value).message,'模型连接提前结束，回复可能不完整；可手动重试。');
+  }
+  const invalid=agentChatStreamError('read_failed',JSON.parse('{"finishReason":"PRIVATE_KEY","done":"PRIVATE_KEY","frameCount":8193,"toolCount":31,"outputBytes":-1,"body":"PRIVATE_PROVIDER_BODY"}'));
+  assert.equal(safeAgentChatError(invalid).message,'模型连接提前结束，回复可能不完整；可手动重试。 流终止诊断：read_failed。');
+});
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: only the exact first host language marker selects equivalent response instructions`,()=>{
   const expected={'zh-Hans':'用简体中文','zh-Hant':'用繁體中文',en:'Use English',ja:'簡潔な日本語'};
   for(const locale of AGENT_TASK_LOCALES){
@@ -99,13 +112,15 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol'],fra
   }
   return {configuration,body,requests,output,stream};
 }
-function syntheticNetwork({peer='8.8.8.8',authorized=true,status=200,body='',connectionError,endError}: {peer?:string;authorized?:boolean;status?:number;body?:string;connectionError?:Error;endError?:Error}={}){
+function syntheticNetwork({peer='8.8.8.8',authorized=true,status=200,body='',connectionError,endError,readError=false,holdOpen=false}: {peer?:string;authorized?:boolean;status?:number;body?:string;connectionError?:Error;endError?:Error;readError?:boolean;holdOpen?:boolean}={}){
   const state={calls:0,ends:0,destroyed:false};
   const request=(_options:unknown,callback:(incoming:unknown)=>void)=>{
     state.calls++;
     const outgoing=Object.assign(new EventEmitter(),{setTimeout(){},destroy(){state.destroyed=true;},end(){
       state.ends++;if(endError)throw endError;
-      callback(Object.assign(Readable.from([Buffer.from(body)]),{statusCode:status,headers:{'content-type':'text/event-stream'}}));
+      const source=readError?(async function*(){yield Buffer.from(body);throw Error('PRIVATE_STREAM_READ_FAILURE');})():[Buffer.from(body)];let pushed=false;
+      const incoming=holdOpen?new Readable({read(){if(!pushed){pushed=true;this.push(Buffer.from(body));}}}):Readable.from(source);
+      callback(Object.assign(incoming,{statusCode:status,headers:{'content-type':'text/event-stream'}}));
     }});
     queueMicrotask(()=>{
       if(connectionError){outgoing.emit('error',connectionError);return;}
@@ -116,6 +131,61 @@ function syntheticNetwork({peer='8.8.8.8',authorized=true,status=200,body='',con
   };
   return {...state,get calls(){return state.calls;},get ends(){return state.ends;},get destroyed(){return state.destroyed;},request};
 }
+const miniMaxChina:AgentConfiguration={presetId:'minimax',platformId:'china',protocol:'chat_completions',model:'MiniMax-M3',baseUrl:'https://api.minimax.cn/v1'};
+test('natural EOF belongs only to the exact official MiniMax M3 non-thinking request profile',()=>{
+  const body=JSON.parse(buildTaskModelRequest(miniMaxChina,[],definitions)) as Record<string,unknown>;
+  assert.equal(agentChatAllowsNaturalEof(miniMaxChina,body),true);
+  assert.equal(agentChatAllowsNaturalEof({...miniMaxChina,platformId:'international',baseUrl:'https://api.minimax.io/v1'},body),true);
+  for(const configuration of [
+    {...miniMaxChina,presetId:'custom',platformId:'custom'}, {...miniMaxChina,model:'MiniMax-M3.1-Flash'},
+    {...miniMaxChina,baseUrl:'https://gateway.example.com/v1'}, {...miniMaxChina,baseUrl:'https://api.minimax.io/v1'},
+    {...miniMaxChina,protocol:'responses' as const}, {...miniMaxChina,platformId:'international'},
+  ])assert.equal(agentChatAllowsNaturalEof(configuration,body),false);
+  for(const changed of [{...body,model:'other'},{...body,stream:false},{...body,thinking:undefined},{...body,thinking:{type:'adaptive'}},{...body,thinking:{type:'disabled',extra:true}}])assert.equal(agentChatAllowsNaturalEof(miniMaxChina,changed),false);
+});
+test('official MiniMax natural EOF accepts complete text and tools through the actual SDK while retaining every rejection boundary',async()=>{
+  async function exchange(configuration:AgentConfiguration,frames:string,{readError=false,abortAfterDelta=false,timeout=false,bodyChange}:{readError?:boolean;abortAfterDelta?:boolean;timeout?:boolean;bodyChange?:(body:Record<string,unknown>)=>void}={}){
+    const network=syntheticNetwork({body:frames,readError,holdOpen:timeout}),dependencies={lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:network.request,...(timeout?{limits:{totalTimeoutMs:30}}:{})} as unknown as AgentTransportDependencies;
+    const parsed=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'synthetic EOF fixture'}],definitions)) as Record<string,unknown>;bodyChange?.(parsed);
+    const items:unknown[]=[],controller=new AbortController();let failure:unknown;
+    try{for await(const item of createTaskGateway(dependencies)({configuration,body:JSON.stringify(parsed),apiKey:'SYNTHETIC_ONLY',signal:controller.signal})){items.push(item);if(item.type==='delta'&&abortAfterDelta)controller.abort();}}catch(error){failure=error;}
+    assert.equal(network.calls,1);assert.equal(network.ends,1);return {items,failure};
+  }
+  const text=textFrames('chat_completions','complete').replace('data: [DONE]\n\n',''),tools=chatFrames().replace('data: [DONE]\n\n','');
+  for(const configuration of [miniMaxChina,{...miniMaxChina,platformId:'international',baseUrl:'https://api.minimax.io/v1'}]){
+    for(const frames of [text,tools]){const result=await exchange(configuration,frames);assert.equal(result.failure,undefined);const terminal=result.items.at(-1) as {type:string;output:TaskModelOutput};assert.equal(terminal.type,'done');assert.equal(terminal.output.toolCalls.length,frames===tools?2:0);}
+  }
+  for(const configuration of [{...DEFAULT_AGENT_CONFIGURATION},{...miniMaxChina,presetId:'custom',platformId:'custom'},{...miniMaxChina,baseUrl:'https://gateway.example.com/v1'},{...miniMaxChina,baseUrl:'https://api.minimax.io/v1'}]){
+    const result=await exchange(configuration,tools);assert.equal(safeAgentChatError(result.failure).code,'AGENT_CHAT_TRUNCATED');assert.equal(result.items.some(item=>(item as {type:string}).type==='done'),false);
+  }
+  for(const bodyChange of [(body:Record<string,unknown>)=>{body.model='other';},(body:Record<string,unknown>)=>{delete body.thinking;}]){
+    const result=await exchange(miniMaxChina,tools,{bodyChange});assert.equal(safeAgentChatError(result.failure).code,'AGENT_CHAT_TRUNCATED');
+  }
+  const prefix=tools.slice(0,tools.indexOf(json({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})));
+  for(const [frames,expected,options] of [
+    [prefix,'AGENT_CHAT_TRUNCATED',{}], [tools+'data: [DONE]','AGENT_CHAT_TRUNCATED',{}],
+    [text.replace('"stop"','"length"'),'AGENT_CHAT_TRUNCATED',{}], [text.replace('"stop"','"content_filter"'),'AGENT_CHAT_TRUNCATED',{}],
+    [tools.replace('"tool_calls"}]','"stop"}]'),'AGENT_CHAT_PROTOCOL_ERROR',{}],
+    [tools.replaceAll('mioon_shot_create','unlisted_tool'),'AGENT_CHAT_TOOLS_UNSUPPORTED',{}],
+    [tools.replaceAll('call|1','call|0'),'AGENT_CHAT_PROTOCOL_ERROR',{}],
+    [tools.replace('"index":1,"id":"call|1"','"index":2,"id":"call|1"'),'AGENT_CHAT_PROTOCOL_ERROR',{}],
+    [chatFrames({argumentsJson:'{"title":'}).replace('data: [DONE]\n\n',''),'AGENT_CHAT_PROTOCOL_ERROR',{}],
+    [text.replace('"content":"complete"','"content":"complete","refusal":"blocked"'),'AGENT_CHAT_PROVIDER_ERROR',{}],
+    [text+json({choices:[{index:0,delta:{},finish_reason:'stop'}]}),'AGENT_CHAT_PROTOCOL_ERROR',{}],
+    [text+'event: error\ndata: {"choices":[]}\n\n','AGENT_CHAT_PROVIDER_ERROR',{}],
+    [text+'event: unexpected\ndata: {"choices":[]}\n\n','AGENT_CHAT_PROTOCOL_ERROR',{}],
+    [text+json({error:{message:'PRIVATE_ERROR'}}),'AGENT_CHAT_PROVIDER_ERROR',{}],
+    [text,'AGENT_CHAT_TRUNCATED',{readError:true}], [text,'AGENT_CHAT_ABORTED',{abortAfterDelta:true}], [text,'AGENT_CHAT_TIMEOUT',{timeout:true}],
+  ] as const){const result=await exchange(miniMaxChina,frames,options);assert.equal(safeAgentChatError(result.failure).code,expected);assert.equal(result.items.some(item=>(item as {type:string}).type==='done'),false);}
+});
+test('legacy official MiniMax text gateway shares the exact natural EOF contract without changing other profiles',async()=>{
+  const frames=textFrames('chat_completions','complete').replace('data: [DONE]\n\n','');
+  for(const configuration of [miniMaxChina,{...miniMaxChina,presetId:'custom',platformId:'custom'}]){
+    const network=syntheticNetwork({body:frames}),dependencies={lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:network.request} as unknown as AgentTransportDependencies,items:unknown[]=[];let failure:unknown;
+    try{for await(const item of createChatCompletionGateway(dependencies)({configuration,apiKey:'SYNTHETIC_ONLY',messages:[{role:'user',content:'synthetic fixture'}]}))items.push(item);}catch(error){failure=error;}
+    assert.equal(network.ends,1);assert.equal(items.some(item=>(item as {type:string}).type==='done'),configuration.presetId==='minimax');if(configuration.presetId==='minimax')assert.equal(failure,undefined);else assert.equal(safeAgentChatError(failure).code,'AGENT_CHAT_TRUNCATED');
+  }
+});
 function syntheticOutput(protocol:AgentConfiguration['protocol'],network:ReturnType<typeof syntheticNetwork>,{answers=[{address:'8.8.8.8',family:4}],lookupError,beforeSubmit}: {answers?:Array<{address:string;family:number}>;lookupError?:Error;beforeSubmit?:()=>void}={}){
   const configuration={...DEFAULT_AGENT_CONFIGURATION,protocol},body=buildTaskModelRequest(configuration,[{role:'user',content:'synthetic local test'}],definitions,4318);
   const dependencies={lookup:async()=>{if(lookupError)throw lookupError;return answers;},httpsRequest:network.request} as unknown as AgentTransportDependencies;

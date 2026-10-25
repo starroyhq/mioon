@@ -8,8 +8,23 @@ import {agentTaskDisplaySchema} from '../packages/contracts/src/agent-tasks-v2.t
 import type {AgentTaskChange,AgentTaskJson,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from '../packages/business/src/agent/task-display-v2.ts';
 import {openStore} from '../packages/business/src/db.ts';
+import {taskOperationTitle} from '../apps/web/src/agent-task-presentation.ts';
 
 const now='2026-10-21T00:00:00.000Z';
+test('submission, lifecycle and result publication have distinct localized audit labels',()=>{
+ for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
+  const operations=['generation.submit','generation.status','generation.publish'];
+  const titles=operations.map(operation=>taskOperationTitle(projectAgentTaskChangeDisplay(change(operation,'job',null,{status:'succeeded'})).operation,locale));
+  assert.equal(new Set(titles).size,3);assert.ok(titles.every(title=>title.length>0&&!title.includes('agent.display.')));
+ }
+});
+test('legacy generation lifecycle labels are corrected without rewriting saved audit evidence',()=>{
+ const original=change('generation.submit','job',{status:'running',nextPollAt:1000},{status:'running',nextPollAt:2000}),saved=structuredClone(original);
+ assert.equal(projectAgentTaskChangeDisplay(original).operation,'generation.status');assert.deepEqual(original,saved);
+ const assetId=randomUUID(),published={...original,targets:[...original.targets,{kind:'asset',id:assetId,revision:1}],after:[...(original.after as AgentTaskJson[]),{kind:'asset',id:assetId,table:'assets',value:{name:'Result.mp4'},revision:1}]};
+ assert.equal(projectAgentTaskChangeDisplay(published).operation,'generation.publish');assert.equal(original.operation,'generation.submit');
+ assert.equal(projectAgentTaskChangeDisplay(change('generation.submit','job',null,{status:'queued'})).operation,'generation.submit');
+});
 function change(operation:string,kind:string,before:Record<string,AgentTaskJson>|null,after:Record<string,AgentTaskJson>|null):AgentTaskChange {
   const id=randomUUID();
   return {id:randomUUID(),projectId:randomUUID(),runId:randomUUID(),stepId:randomUUID(),operation,targets:[{kind,id,revision:2}],before:before?[{kind,id,table:'PRIVATE_TABLE',value:before,revision:1}]:[],after:after?[{kind,id,table:'PRIVATE_TABLE',value:after,revision:2}]:[],undo:{private:'UNDO_MUST_STAY_PRIVATE'},summary:'MODEL_SUMMARY_MUST_NOT_BE_USED',reversible:true,status:'applied',createdAt:now};

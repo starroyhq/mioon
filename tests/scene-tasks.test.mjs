@@ -55,9 +55,9 @@ const rows=db=>JSON.stringify(['scene_tasks','scene_requests','scene_results'].m
 
 test('schema58 gives ordinary workspaces the three scene tables', t=>{
  const f=fixture(t);
- assert.equal(readCurrentWorkspaceRole(f.store.db),'ordinary-58');
+ assert.equal(readCurrentWorkspaceRole(f.store.db),'ordinary-60');
  assert.deepEqual(f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name GLOB 'scene_*' ORDER BY name").all().map(row=>row.name),['scene_requests','scene_results','scene_tasks']);
- assert.equal(f.store.db.prepare('SELECT max(version) AS v FROM schema_version').get().v,58);
+ assert.equal(f.store.db.prepare('SELECT max(version) AS v FROM schema_version').get().v,60);
  // Rows outside the accepted shape cannot be written directly.
  assert.throws(()=>f.store.db.prepare("INSERT INTO scene_tasks(id,projectId,kind,sourceAssetId,requestId,inputHash,input,snapshot,state,revision,started,createdAt,updatedAt) VALUES(?,?,'detect',?,?,?,?,?,'running',1,1,'t','t')")
   .run(randomUUID(),f.project.id,f.asset.id,'direct-row-1','a'.repeat(64),'{}','{}'),/CHECK constraint failed|scene tasks must be accepted/);
@@ -245,7 +245,7 @@ test('scene records survive backup and restore; the restored copy only reads the
  await restoreWorkspaceBackup({directory:path.join(root,'backup'),destination:path.join(root,'restored')});
  const restoredStore=openStore(path.join(root,'restored')),restored=createServices(restoredStore,new Map());
  t.after(()=>restoredStore.close());
- assert.equal(readCurrentWorkspaceRole(restoredStore.db),'restored-59-evidence');
+ assert.equal(readCurrentWorkspaceRole(restoredStore.db),'restored-61-evidence');
  assert.deepEqual(await restored.call('scene.task.get',{projectId:project.id,taskId:ack.id}),done);
  assert.equal((await restored.call('scene.result.get',{projectId:project.id,assetId:asset.id})).result.id,done.result.id);
  await assert.rejects(restored.call('scene.detect',{...input,requestId:randomUUID()}),code('RESTORE_OPERATION_UNAVAILABLE'));

@@ -226,7 +226,7 @@ test('revision digit growth refuses the final complete record above 262144 bytes
   assert.equal(f.store.get('timelines',f.data.timeline.id).revision,9);assert.equal(f.store.db.isTransaction,false);
 });
 
-test('default54 still refuses opacity without opting into a candidate workspace',async t=>{
+test('default58 still refuses opacity without opting into a candidate workspace',async t=>{
   const root=mkdtempPortable('mioon-opacity-legacy40-'),store=openStore(root),services=createServices(store,new Map());
   const media=[],off=onMediaProcess(event=>media.push(event));
   t.after(async()=>{try{await services.drain();store.close();assert.equal(media.length,0);}finally{off();rmSync(root,{recursive:true,force:true});}});
@@ -236,5 +236,5 @@ test('default54 still refuses opacity without opting into a candidate workspace'
   assert.throws(()=>tasks.prepare({projectId:data.project.id,operation:'timeline.clip.update',input,origin:'new'}),{code:'EDIT_TASK_VALIDATION'});
   await assert.rejects(services.call('timeline.clip.update',input),{code:'VALIDATION_ERROR'});
   assert.equal(snapshot(store),before);assert.equal(store.db.prepare('SELECT total_changes() AS n').get().n,changes);
-  assert.equal(store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,58);
+  assert.equal(store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get().version,60);
 });
