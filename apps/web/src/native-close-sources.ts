@@ -77,6 +77,8 @@ export function agentTaskCloseState(state: AgentTaskCloseInput): Projection {
   const unknown = state.snapshot?.steps.filter(step => step.status === 'unknown').map(step => step.id).sort() ?? [];
   // Read-only failures retain drafts and durable evidence. Initial/retry reads
   // stay busy until their owner settles; receipt failures remain hard errors.
+  // A confirmed terminal conversation's refreshing phase is only a GET. Its
+  // draft, pending receipt and unknown-result fences still apply below.
   return { dirty: Boolean(state.draftDirty || state.draft.trim() || state.uploads?.length) && !state.pending, busy: state.phase === 'loading' || state.phase === 'submitting', blocked: Boolean(state.pending || unknown.length || state.unknownOutcome) || ['unknown', 'error'].includes(state.phase),
     identity: [state.draft, state.draftVersion, ...(state.uploads?.map(upload=>upload.id)??[]), state.pending?.requestId, state.pending?.runId, state.pending?.action, state.snapshot?.run.id, ...unknown] };
 }
