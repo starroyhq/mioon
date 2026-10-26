@@ -176,7 +176,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
   }
 
   return <div className="project-home" data-testid="project-home" data-phase={phase} data-page={page}>
-    <header className="project-home-header">
+    <header className="project-home-header" data-text-selectable={false}>
       <div className="project-home-brand" aria-label="Mioon">Mioon</div>
       {onQuery && totalProjects > 0 && <div className="project-home-search-field"><WorkbenchIcon name="search" size={15}/><Input ref={searchInput} className="project-home-search" data-testid="project-home-search" aria-label={t('redesign.projects.search')} value={query} placeholder={t('redesign.projects.search')} disabled={locked} onChange={event => { if (canAct()) onQuery(event.target.value); }} /><kbd aria-hidden="true">{t('redesign.projects.searchShortcut')}</kbd></div>}
       <div className="project-home-header-spacer" />

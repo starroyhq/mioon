@@ -164,7 +164,7 @@ componentTest('empty home is a standalone welcome without project controls or a 
   assert.match(html, /全部项目/);
   assert.match(html, /项目/);
   assert.match(html, /data-testid="project-home-create-toggle"/);
-  const header = html.match(/<header class="project-home-header">([\s\S]*?)<\/header>/)![1];
+  const header = html.match(/<header class="project-home-header" data-text-selectable="false">([\s\S]*?)<\/header>/)![1];
   assert.doesNotMatch(header, /project-home-create-toggle|project-home-search/);
   assert.equal((html.match(/data-testid="project-home-create-toggle"/g) || []).length, 1);
   assert.match(html, /data-testid="project-home-create-toggle"[^>]*data-variant="primary"[^>]*data-size="large"/);

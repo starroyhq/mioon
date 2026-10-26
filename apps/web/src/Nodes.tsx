@@ -121,7 +121,7 @@ const ShotNode = memo(function ShotNode({ data, selected }: { data: ShotNodeData
   const placed = data.timelineStatus;
   // The node itself selects the shot on click; these jump to the clip instead, so they must not bubble to it.
   const viewInEditing = (event: React.MouseEvent) => { event.stopPropagation(); data.onViewInEditing?.(record.id); };
-  return <article className={`canvas-node shot-node ${selected ? 'is-selected' : ''}`} data-testid={`shot-node-${record.id}`}>
+  return <article className={`canvas-node shot-node ${selected ? 'is-selected' : ''}`} data-testid={`shot-node-${record.id}`} data-text-selectable={false}>
     <Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.shotVisualInput')} title={t('shell.node.visualOnly')} />
     <Handle id={REFERENCE_TARGET_HANDLE} type="target" position={Position.Left} className="reference-handle" style={{ top: 66 }} aria-label={t('shell.node.referenceInput')} title={t('shell.node.referenceInputHint')} isConnectable={!data.referenceBusy && !data.referenceConnection && !record.referenceAssetIds?.length} />
     <span className="reference-port-label target-label">{t('shell.node.firstFrameInput')}</span>
@@ -136,7 +136,7 @@ const ShotNode = memo(function ShotNode({ data, selected }: { data: ShotNodeData
 const AssetNode = memo(function AssetNode({ data, selected }: { data: AssetNodeData; selected?: boolean }): ReactElement {
   const { t } = useI18n();
   const { record, asset } = data;
-  return <article className={`canvas-node asset-node ${selected ? 'is-selected' : ''}`} data-testid={`asset-node-${record.id}`}>
+  return <article className={`canvas-node asset-node ${selected ? 'is-selected' : ''}`} data-testid={`asset-node-${record.id}`} data-text-selectable={false}>
     <Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.assetVisualInput')} title={t('shell.node.visualOnly')} />
     <header className="node-header"><span className="type-icon"><Icon name={record.type === 'video' ? 'film' : record.type === 'audio' ? 'music' : 'image'} size={16} /></span><span className="node-title">{record.label || asset?.name || t('assets.reference')}</span><span className="tiny-label">{t(record.type === 'video' ? 'assets.video' : record.type === 'audio' ? 'assets.audio' : 'assets.image')}</span></header>
     <div className="asset-node-media"><Media asset={asset} controls={record.type !== 'image'} /></div>
@@ -147,6 +147,6 @@ const AssetNode = memo(function AssetNode({ data, selected }: { data: AssetNodeD
 });
 const TextNode = memo(function TextNode({ data, selected }: { data: TextNodeData; selected?: boolean }): ReactElement {
   const { t } = useI18n();
-  return <article className={`canvas-node text-node ${selected ? 'is-selected' : ''}`} data-testid={`text-node-${data.record.id}`}><Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.noteVisualInput')} title={t('shell.node.visualOnly')} /><header className="node-header"><span className="type-icon"><Icon name="text" size={16} /></span><span className="node-title">{data.record.label || t('projects.default.note')}</span><span className="tiny-label">{t('shell.node.textType')}</span></header><div className="text-node-content">{data.record.text || t('shell.node.notePlaceholder')}</div><Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label={t('shell.node.noteVisualOutput')} title={t('shell.node.visualOnly')} /></article>;
+  return <article className={`canvas-node text-node ${selected ? 'is-selected' : ''}`} data-testid={`text-node-${data.record.id}`} data-text-selectable={false}><Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.noteVisualInput')} title={t('shell.node.visualOnly')} /><header className="node-header"><span className="type-icon"><Icon name="text" size={16} /></span><span className="node-title">{data.record.label || t('projects.default.note')}</span><span className="tiny-label">{t('shell.node.textType')}</span></header><div className="text-node-content nodrag nopan nowheel" data-text-selectable>{data.record.text || t('shell.node.notePlaceholder')}</div><Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label={t('shell.node.noteVisualOutput')} title={t('shell.node.visualOnly')} /></article>;
 });
 export const nodeTypes = { shot: ShotNode, image: AssetNode, video: AssetNode, audio: AssetNode, text: TextNode };

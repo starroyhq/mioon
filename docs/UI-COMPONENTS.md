@@ -90,6 +90,38 @@ layout stylesheet. Package export mappings resolve component entries to
 to `./src/styles/globals.css`. Vite compiles the source package; there is no copied
 UI bundle and no separate UI build output to keep in sync.
 
+### Text selection
+
+`styles/text-selection.css` keeps selection behavior with component semantics.
+Buttons, menus, tabs, switches, badges and dedicated drag/resize surfaces do not
+select text accidentally. These application styles use existing slots and
+classes; the pinned registry sources and their hashes remain unchanged. Generic
+panels, dialogs and document bodies retain browser text selection.
+
+Use `data-text-selectable={false}` on a dedicated interaction surface and
+`data-text-selectable` on an authored or diagnostic content container inside it.
+The attribute applies to that boundary rather than every descendant: nested
+buttons retain their own nonselectable behavior, while text inputs (including
+read-only fields), textareas and contenteditable editors remain selectable.
+Mio messages and proposals, authorization targets, task errors and identifiers,
+paths and frozen request details are content, even when displayed read-only.
+Canvas note bodies also use React Flow's `nodrag` and `nopan` classes so selecting
+text moves neither the node nor the canvas; the header remains its drag surface.
+
+Do not add a blanket `body`/`*` selection ban, intercept copy or keyboard events,
+or disable the native Copy menu. This is an interaction rule, not a credential
+protection mechanism. Existing copy buttons continue through their original
+clipboard paths.
+
+The real-browser regression `tests/browser_text_selection.mjs` accepts a
+Playwright page and a synthetic text-node fixture. It verifies mouse selection
+without moving the node or canvas, native Copy and editor Select All/Copy, and
+continued header dragging. On 2026-10-26 it passed against the built renderer
+and an isolated local service; read-only workspace paths and their existing
+copy buttons also passed in Chromium. The related component, Mio, task,
+timeline and waveform tests passed 297/297, desktop package-entry checks 10/10,
+and type checking plus Web/desktop builds passed. No providers were called.
+
 `components.json` declares `base-nova`, React client-side rendering, TypeScript,
 Lucide icons, neutral semantic tokens, and monorepo aliases. `tsconfig.json`
 provides matching aliases for strict, no-emit source type checking.

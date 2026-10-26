@@ -1,0 +1,47 @@
+/* Interaction belongs to the component surface; ordinary panels, dialogs and
+ * document text keep browser selection instead of inheriting an app-wide ban.
+ * Stable slots preserve the pinned upstream component implementations. */
+@layer components {
+  :is(
+    button,
+    select,
+    [data-slot="button"],
+    [data-slot="label"],
+    [data-slot="tabs-list"],
+    [data-slot="tabs-trigger"],
+    [data-slot="switch"],
+    [data-slot="badge"],
+    [data-slot="select-trigger"],
+    [data-slot="select-content"],
+    [data-slot="select-item"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-checkbox-item"],
+    [data-slot="dropdown-menu-radio-item"],
+    [data-slot="dropdown-menu-sub-trigger"],
+    [data-slot="collapsible-trigger"],
+    .wb-badge,
+    .wb-group-trigger
+  ) {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* The boolean data attribute is an explicit boundary, never a copy-event or
+ * keyboard interceptor. Nested controls retain their component-level rules. */
+[data-text-selectable="false"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+[data-text-selectable="true"],
+input:not([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="image"], [type="color"]),
+textarea,
+[contenteditable="true"],
+[contenteditable=""],
+[contenteditable="plaintext-only"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
