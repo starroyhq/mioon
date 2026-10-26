@@ -135,7 +135,8 @@ test('native settings slot delegates before existing key clearing; Web fallback 
   assert.ok(image.indexOf('if (onRequestSelectSlot)') < image.indexOf("setKeyNotice(message('image.settings.keySwitched"));
   assert.match(image, /onRequestSelectSlot\(next\); return;/);
   assert.match(source('ComfyImageSettings.tsx'), /else leave\(\(\) => onSelectSlot\(slot\), undefined\)/);
-  assert.match(source('SettingsRoot.tsx'), /window\.close\(\); return false/);
+  assert.match(source('SettingsRoot.tsx'), /await requestClose\(\); return false/);
+  assert.match(source('SettingsRoot.tsx'), /bridge\.closeSettings\(\)/);
 });
 
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
@@ -232,12 +233,13 @@ test('a superseded initial context rejection cannot unmount an established nativ
     if (name === './LauncherRoot.tsx') return { __esModule: true, default: 'launcher' };
     if (name === './SettingsRoot.tsx') return { __esModule: true, default: 'settings' };
     if (name === './NativeEditorRoot.tsx') return { __esModule: true, default: 'editor' };
+    if (name === './NativeSettingsBackdrop.tsx') return { __esModule: true, default: 'settings-backdrop' };
     if (name === './desktop-window-client.ts') return { readDesktopWindowBridge: () => bridge };
     assert.fail(name);
   }, module, module.exports, {});
   const render = (): FakeNode => { cursor = 0; return (module.exports.default as (props: Record<string, unknown>) => FakeNode)({ rpc() {}, contractChecks: {}, renderWeb: () => (actual.createElement as (...args: unknown[]) => unknown)('web'), renderEditor: () => (actual.createElement as (...args: unknown[]) => unknown)('editor'), renderSettings: () => null }); };
   render(); effects.splice(0).forEach(effect => effect()); receive!({ contextId: 'current-owner', role: 'editor' });
-  assert.equal(render().type, 'editor'); pending.reject(new Error('superseded')); await tick(); assert.equal(render().type, 'editor');
+  assert.equal((render().props.children as FakeNode).type, 'editor'); pending.reject(new Error('superseded')); await tick(); assert.equal((render().props.children as FakeNode).type, 'editor');
 });
 
 test('scoped picker uses shared focus-managed controlled Dialog and retains hidden form owner', () => {

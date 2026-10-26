@@ -33,6 +33,7 @@ import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-proto
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import * as security from '../apps/desktop/src/security.ts';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
+import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
 import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
@@ -140,6 +141,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       r.windows.push(this);
     }
     isDestroyed() { return this.destroyed; }
+    getContentBounds() { return {x: 80, y: 60, width: Number(this.config.width), height: Number(this.config.height)}; }
     setBackgroundColor(value: string) { this.backgroundColor = value; }
     isMinimized() { return false; }
     restore() {}
@@ -208,7 +210,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
         this.diagnosticsAvailable = false;
       }
     },
-    BrowserWindow: Window, windowChromeOptions: () => windowChromeOptions('darwin'),
+    BrowserWindow: Window, windowChromeOptions: () => windowChromeOptions('darwin'), settingsWindowOptions,
     session: { fromPartition() {
       const index = r.sessions.length;
       const value: DesktopHarnessSession = Object.assign(new EventEmitter(), {
@@ -564,6 +566,60 @@ async function openOwnedEditor(f: Awaited<ReturnType<typeof harness>>) {
     { action: 'editor-status', contextId: host.contextFor(editor).contextId, projectId, phase: 'ready' }), true);
   return { launcher, editor };
 }
+
+test('actual main creates a parent-bound settings modal and blocks parent close/reload without spending admission', async t => {
+  const f = await harness(t, {dialog: () => ({response: 1})}); await f.initial();
+  const parent = f.r.windows[0], host = f.get('windowHost');
+  assert.equal(host.showSettings('agent', parent), true);
+  const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+  assert.equal(settings.config.parent, parent); assert.equal(settings.config.modal, true);
+  assert.ok(Number(settings.config.width) < Number(parent.config.width));
+  assert.ok(Number(settings.config.height) < Number(parent.config.height));
+  assert.equal(settings.config.minimizable, false); assert.equal(settings.config.maximizable, false);
+  assert.equal(settings.config.webPreferences.session, parent.config.webPreferences.session);
+  f.assertPolicies();
+  const checks = f.r.nativeChecks.length, loads = parent.urls.length;
+  parent.close(); await tick();
+  assert.equal(parent.destroyed, false); assert.equal(host.contextFor(parent).settingsModalOpen, true);
+  assert.equal(await f.get('windowAdmissions').get(parent).captureRecoveryDecision().reload(), false);
+  assert.equal(await f.get('requestApplicationQuit')(parent), false);
+  assert.equal(parent.urls.length, loads); assert.equal(f.r.nativeChecks.length, checks);
+  assert.equal(f.get('quitRouter.isPending'), false); assert.equal(f.r.drains, 0);
+  const closeSettings = () => f.r.bridge!({ sender: settings.webContents, senderFrame: settings.webContents.mainFrame },
+    { action: 'settings-close', contextId: host.contextFor(settings).contextId });
+  settings.disposition = 'dirty'; assert.equal(closeSettings(), true); await until(() => f.r.dialogs.some(item => item.title === '尚有未保存的修改'));
+  await tick(); assert.equal(settings.destroyed, false); assert.equal(host.contextFor(parent).settingsModalOpen, true);
+  settings.disposition = 'clean'; assert.equal(closeSettings(), true); await until(() => settings.destroyed);
+  assert.equal(host.contextFor(parent).settingsModalOpen, false); assert.equal(parent.destroyed, false);
+  parent.close(); await until(() => parent.destroyed);
+});
+
+test('actual Quit and Restart ask the dirty settings child before its parent and retain both on cancellation', async t => {
+  for (const action of ['quit', 'restart'] as const) {
+    const f = await harness(t, {disposition: index => index === 1 ? 'dirty' : 'clean', dialog: value => ({response: value.title === '尚有未保存的修改' ? 1 : 0})});
+    await f.initial(); const parent = f.r.windows[0], host = f.get('windowHost');
+    assert.equal(host.showSettings('agent', parent), true); const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+    if (action === 'quit') { f.app.quit(); assert.equal(await f.get('quitRouter.pending'), false); }
+    else { await f.restart(); assert.equal(f.get('restartCoordinator.state'), 'idle'); }
+    assert.deepEqual(f.r.nativeChecks, [settings]);
+    assert.equal(parent.destroyed, false); assert.equal(settings.destroyed, false);
+    assert.equal(host.contextFor(parent).settingsModalOpen, true);
+    assert.equal(f.r.drains, 0); assert.equal(f.r.children[0].messages.includes('stop'), false);
+  }
+});
+
+test('actual main retains the modal fence for a destroyed settings handle until its closed event', async t => {
+  const f = await harness(t, {holdClosed: index => index === 1}); await f.initial();
+  const parent = f.r.windows[0], host = f.get('windowHost');
+  assert.equal(host.showSettings('agent', parent), true); const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+  settings.destroy(); assert.equal(settings.closedDelivered, false);
+  assert.equal(host.contextFor(parent).settingsModalOpen, true);
+  parent.close(); await tick(); assert.equal(parent.destroyed, false);
+  assert.equal(await f.get('requestApplicationQuit')(parent), false);
+  assert.equal(f.r.nativeChecks.length, 0); assert.equal(f.r.drains, 0);
+  settings.deliverClosed(); assert.equal(host.contextFor(parent).settingsModalOpen, false);
+  parent.close(); await until(() => parent.destroyed);
+});
 
 for (const disposition of ['dirty', 'unknown']) {
   test(`actual before-quit inspects focused editor ${disposition} first and cancellation retains both owners and backend`, async t => {

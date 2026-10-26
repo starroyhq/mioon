@@ -16,7 +16,7 @@ export interface ProjectNativeWindow extends EventSource {
   restore(): void; show(): void; showInactive(): void; hide(): void; focus(): void; close(): void;
   loadURL(url: string): Promise<unknown>;
 }
-export interface ProjectWindowCreation {
+export interface ProjectWindowCreation<W extends ProjectNativeWindow = ProjectNativeWindow> {
   readonly role: ProjectWindowRole;
   readonly windowId: string;
   readonly contextId: string;
@@ -24,6 +24,8 @@ export interface ProjectWindowCreation {
   readonly projectId: string | null;
   readonly autoOpen: boolean;
   readonly url: string;
+  /** Main-owned modal parent only; never supplied through the renderer bridge. */
+  readonly parent?: W;
 }
 /** Stable native lifetime used by P0. contextId is its current document, not a
  * captured authority: use ownerForContents() for asynchronous document work. */
@@ -40,8 +42,11 @@ export interface ProjectWindowHostOptions<W extends ProjectNativeWindow> {
   readonly backendId: string; readonly launcherUrl: string; readonly settingsUrl?: string;
   editorUrl(projectId: string): string;
   isCurrent(): boolean; canInteract(): boolean;
-  createWindow(context: ProjectWindowCreation): W;
+  createWindow(context: ProjectWindowCreation<W>): W;
   prepareWindow?(window: W, owner: ProjectWindowOwner<W>): void;
+  /** Main may withhold explicit focus restoration after the user switches to
+   * another app while an asynchronous settings close is being admitted. */
+  canRestoreParentFocus?(parent: W): boolean;
   onLoadError?(error: unknown, window: W, owner: ProjectWindowOwner<W>): void;
   /** Resource invalidation is not renderer destruction or release evidence. */
   onDocumentInvalidated?(owner: ProjectWindowDocumentOwner<W>): void;
@@ -59,6 +64,7 @@ interface EntryAttempt {
 type EditorPhase = Exclude<ProjectWindowPhase, 'none'>;
 interface WindowRecord<W extends ProjectNativeWindow> {
   readonly window: W; readonly contents: ProjectWindowWebContents; readonly windowId: string; readonly role: ProjectWindowRole; readonly projectId: string | null; readonly url: string;
+  readonly parent: WindowRecord<W> | null;
   contextId: string; autoOpen: boolean; closed: boolean; committed: boolean; phase: EditorPhase;
   retainedPhase: Exclude<EditorPhase, 'closing'>; frame: ProjectWindowFrame | null;
   revealIntent: number; revealFence: number; readyToShow: boolean; focusOrder: number;
@@ -101,6 +107,10 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   }
   const ownsRecord = (record: WindowRecord<W>) => lifetime() && !record.closed && !record.window.isDestroyed() && records.get(record.window) === record &&
     (record.role === 'launcher' ? launcher === record : record.role === 'settings' ? settings === record : editors.get(record.projectId!) === record);
+  // Actual closed, rather than a close request or a renderer failure, releases
+  // the parent. A vetoed settings close must keep both native and DOM modality.
+  const modalFor = (record: WindowRecord<W>) => lifetime() && settings?.parent === record &&
+    !settings.closed && records.get(settings.window) === settings ? settings : null;
   function currentUrl(record: WindowRecord<W>): string | null { try { return record.contents.getURL(); } catch { return null; } }
   function trustedDocument(record: WindowRecord<W>): boolean {
     try { return ownsRecord(record) && record.committed && record.frame === record.contents.mainFrame &&
@@ -116,6 +126,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       editorPhase: record.role === 'editor' ? record.phase : 'none', editorCount: editorCount(),
       entryMode: record.entryMode, entryVersion: record.entryVersion, entryReceipt: record.entryReceipt,
       settingsSlot: record.settingsSlot, settingsVersion: record.settingsVersion,
+      settingsModalOpen: Boolean(modalFor(record)),
       selectionProjectId: record.role === 'launcher' ? selectedProject() : null,
       selectionVersion: record.role === 'launcher' ? selectionVersion : 0,
       locatorStatus: launcher && locatorContextId === launcher.contextId && trustedDocument(launcher) ? locatorStatus : null,
@@ -145,20 +156,37 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   }
   function reveal(record: WindowRecord<W>, focus = true): boolean {
     if (!permitted() || !ownsRecord(record) || record.revealFence !== fence || record.phase === 'closing' || record.role === 'launcher' && editorCount() !== 0) return false;
+    const modal = modalFor(record);
+    if (modal) return focus ? reveal(modal) : false;
+    if (record.role === 'settings' && record.parent && !ownsRecord(record.parent)) return false;
+    // A sheet attached to a minimized parent is not visible. Only an explicit
+    // settings reveal may restore that parent; late readiness must not bring it
+    // back over another project's newer foreground window.
+    if (focus && record.role === 'settings' && record.parent?.window.isMinimized()) record.parent.window.restore();
     if (focus && record.window.isMinimized()) record.window.restore();
     if (focus) { record.window.show(); record.window.focus(); record.focusOrder = ++focusOrder; }
+    // macOS attaches a modal sheet in show(), not showInactive(). A settings
+    // load that finishes after another editor gained focus still needs its
+    // native parent binding, without explicitly taking the newer focus.
+    else if (record.role === 'settings') record.window.show();
     else record.window.showInactive();
     return true;
   }
   function hideLauncher() { if (launcher && ownsRecord(launcher)) launcher.window.hide(); }
+  function canRestoreParentFocus(parent: W): boolean {
+    if (!options.canRestoreParentFocus) return true;
+    try { return options.canRestoreParentFocus(parent) === true; }
+    catch { return false; }
+  }
   function listen(record: WindowRecord<W>, target: EventSource, event: string, listener: Listener) {
     target.on(event, listener); record.listeners.push({ target, event, listener });
   }
   function revokeSelection(record: WindowRecord<W>) {
     if (selectionRecord === record) { selectionRecord = null; selectionContextId = null; }
   }
-  function create(role: ProjectWindowRole, projectId: string | null, revealIntent = intent): WindowRecord<W> | null {
+  function create(role: ProjectWindowRole, projectId: string | null, revealIntent = intent, parent: WindowRecord<W> | null = null): WindowRecord<W> | null {
     if (!permitted()) return null;
+    if (role === 'settings' && (!parent || parent.role === 'settings' || !trustedDocument(parent) || parent.phase === 'closing')) return null;
     if (role === 'editor') {
       if (!projectId || editors.has(projectId) || reservations.has(projectId)) return null;
       reservations.add(projectId); hideLauncher();
@@ -167,7 +195,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     const windowId = randomUUID(), contextId = randomUUID(), autoOpen = role === 'launcher' && !launcherCreated;
     let window: W, contents: ProjectWindowWebContents;
     try {
-      window = options.createWindow({ role, windowId, contextId, backendId: options.backendId, projectId, autoOpen, url });
+      window = options.createWindow({ role, windowId, contextId, backendId: options.backendId, projectId, autoOpen, url, ...(parent ? {parent: parent.window} : {}) });
       // BrowserWindow.webContents is a native getter and may throw at closed.
       contents = window.webContents;
     }
@@ -179,7 +207,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     let record!: WindowRecord<W>;
     const owner: ProjectWindowOwner<W> = { window, windowId, role, url, backendId: options.backendId, projectId,
       get contextId() { return record.contextId; }, isCurrent: () => ownsRecord(record) };
-    record = { window, contents, windowId, role, projectId, url, contextId, autoOpen, closed: false, committed: false, phase: 'opening', retainedPhase: 'opening',
+    record = { window, contents, windowId, role, projectId, url, parent, contextId, autoOpen, closed: false, committed: false, phase: 'opening', retainedPhase: 'opening',
       frame: null, revealIntent, revealFence: fence, readyToShow: false, focusOrder: ++focusOrder,
       entryMode: null, entryVersion: 0, entryReceipt: null, entryAttempt: null, settingsSlot: null, settingsVersion: 0,
       load: Promise.resolve(), owner, listeners: [] };
@@ -190,6 +218,9 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     const initialLoad: { contextId: string; started: boolean; frame: ProjectWindowFrame | null } = { contextId, started: false, frame: null };
     listen(record, window, 'closed', () => {
       if (record.closed) return;
+      const attached = modalFor(record);
+      const restoreParentFocus = role === 'settings' && parent &&
+        ![...records.values()].some(other => other !== record && !other.closed && other.focusOrder > record.focusOrder);
       record.closed = true; revokeSelection(record); retireLocator(record);
       records.delete(window); contentsRecords.delete(contents);
       for (const entry of record.listeners) entry.target.removeListener(entry.event, entry.listener);
@@ -200,7 +231,12 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
         // Retire only at actual closure; settings and minimizing are irrelevant.
         if (editorCount() === 0 && permitted()) revealLauncher();
       }
+      // Normal close/restart paths close the settings owner first. If a parent
+      // disappears unexpectedly, request its child's existing guarded closure;
+      // never destroy its document or transfer it to another project's parent.
+      if (attached && !attached.window.isDestroyed()) attached.window.close();
       refresh();
+      if (restoreParentFocus && parent && ownsRecord(parent) && canRestoreParentFocus(parent.window)) reveal(parent);
     });
     // Keep this one listener through BrowserWindow.closed and host disposal:
     // only actual contents destruction proves every old document is gone.
@@ -296,16 +332,22 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   }
   function requestProjectEntry(mode: ProjectWindowEntryMode, focused?: W | null): boolean {
     if (!isProjectWindowEntryMode(mode) || !permitted()) return false;
+    const source = focused ? records.get(focused) : undefined;
+    if (source?.role === 'settings' && ownsRecord(source)) { reveal(source); return false; }
     let record: WindowRecord<W> | null;
     if (editorCount() !== 0) record = preferredRecord(focused, 'editor');
     else { ensureLauncher(); record = launcher; }
     if (!record || !ownsRecord(record) || record.phase === 'closing' || record.entryAttempt && !record.entryAttempt.result) return false;
+    const modal = modalFor(record);
+    if (modal) { reveal(modal); return false; }
     record.autoOpen = false; record.entryMode = mode; record.entryVersion++; record.revealIntent = ++intent; record.revealFence = fence;
     if (record.readyToShow) reveal(record);
     refresh(); return true;
   }
   function activate(focused?: W | null): boolean {
     if (!permitted()) return false;
+    const front = preferredRecord(focused);
+    if (front?.role === 'settings') return reveal(front);
     if (editorCount() === 0) return revealLauncher();
     const record = preferredRecord(focused, 'editor');
     if (!record) return false;
@@ -313,10 +355,18 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (record.readyToShow || record.phase === 'ready' || record.phase === 'failed') reveal(record);
     refresh(); return true;
   }
-  function showSettings(slot: ProjectWindowSettingsSlot): boolean {
+  function showSettings(slot: ProjectWindowSettingsSlot, focused?: W | null): boolean {
     if (!isProjectWindowSettingsSlot(slot) || !permitted() || settings && !ownsRecord(settings)) return false;
+    const source = focused ? records.get(focused) : undefined;
+    if (focused && (!source || !ownsRecord(source) || source.phase === 'closing')) return false;
+    if (source?.role === 'launcher' && editorCount() !== 0 || settings?.parent && !ownsRecord(settings.parent)) return false;
+    let parent = settings?.parent ?? null;
+    if (!settings) {
+      parent = source?.role === 'settings' ? null : source ?? preferredRecord(undefined, editorCount() === 0 ? 'launcher' : 'editor');
+      if (!parent || !trustedDocument(parent) || parent.phase === 'closing') return false;
+    }
     intent++;
-    const record = settings ?? create('settings', null);
+    const record = settings ?? create('settings', null, intent, parent);
     if (!record || record.phase === 'closing') return false;
     record.settingsSlot = slot; record.settingsVersion++; record.revealIntent = intent; record.revealFence = fence;
     if (record.readyToShow) reveal(record);
@@ -342,6 +392,8 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       return previous.projectId === projectId && previous.remember === remember ? previous.promise : Promise.resolve(refused('unavailable'));
     }
     if (previous && !previous.result) return Promise.resolve(refused('busy'));
+    const modal = modalFor(record);
+    if (modal) { reveal(modal); return Promise.resolve(refused('busy')); }
     const owner = capture(record), capturedFence = fence;
     if (!owner || !permitted() || record.phase === 'closing') {
       const result = refused('busy'), promise = Promise.resolve(result);
@@ -365,7 +417,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       let result = refused('unavailable');
       try {
         const receipt = await options.consumeProjectEntry?.(owner, entryToken, projectId);
-        if (!owner.isCurrent() || record.entryAttempt !== attempt || !permitted() || fence !== capturedFence || record.phase === 'closing') result = refused('busy');
+        if (!owner.isCurrent() || record.entryAttempt !== attempt || !permitted() || fence !== capturedFence || record.phase === 'closing' || modalFor(record)) result = refused('busy');
         else if (consumed(receipt, entryToken, projectId)) {
           // A first editor may only depart the still-visible launcher whose
           // exact entry state supplied this one-use, synchronously sealed token.
@@ -421,7 +473,14 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (request.action === 'open') return openProject(record, request.projectId, request.remember, request.entryToken);
     if (request.action === 'projects' || request.action === 'project-entry') return record.role !== 'settings' &&
       requestProjectEntry(request.action === 'projects' ? 'open' : request.mode, record.window);
-    if (request.action === 'settings') return showSettings(request.slot);
+    if (request.action === 'settings') return showSettings(request.slot, record.window);
+    if (request.action === 'settings-close') {
+      if (record.role !== 'settings' || !permitted()) return false;
+      // Main's native close admission owns dirty inspection and any one-use
+      // unload permit. A repeated button click cannot bypass or restart it.
+      if (record.phase !== 'closing') record.window.close();
+      return true;
+    }
     if (record.role !== 'editor' || record.projectId !== request.projectId || record.phase === 'closing') return false;
     record.phase = request.phase;
     if (request.phase === 'failed') revokeSelection(record);
@@ -437,9 +496,14 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     refresh(); return true;
   }
   function windows(): W[] { return lifetime() ? [...records.values()].filter(record => !record.closed).map(record => record.window) : []; }
+  function closeOrder(): W[] {
+    const current = windows(), modal = settings;
+    return modal && current.includes(modal.window) ? [modal.window, ...current.filter(window => window !== modal.window)] : current;
+  }
   return {
     ensureLauncher, activate, requestProjectEntry, showProjects: (focused?: W | null) => requestProjectEntry('open', focused), showSettings,
-    dispatch, refresh, windows, getWindows: windows, closeStateChanged,
+    dispatch, refresh, windows, getWindows: windows, closeOrder, closeStateChanged,
+    settingsForParent(window: W): W | null { const record = records.get(window); return record ? modalFor(record)?.window ?? null : null; },
     preferredWindow(focused?: W | null): W | null { return preferredRecord(focused)?.window ?? null; },
     windowForContents(contents: ProjectWindowWebContents): W | null { const record = contentsRecords.get(contents); return record && trustedDocument(record) ? record.window : null; },
     ownerForContents(contents: ProjectWindowWebContents): ProjectWindowDocumentOwner<W> | null { const record = contentsRecords.get(contents); return record ? capture(record) : null; },

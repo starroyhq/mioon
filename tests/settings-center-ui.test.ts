@@ -210,7 +210,7 @@ test('shared native center receives page routing and visibility without replacin
   const native = source('SettingsRoot.tsx'), app = source('App.tsx');
   const main = app.slice(app.indexOf('export function SettingsConnectionForms('), app.indexOf('export default function App('));
   assert.match(native, /installNativeCloseAdmission/u); assert.match(native, /navigation\.selectPage/u);
-  assert.match(native, /page:\s*navigation\.page/u); assert.match(native, /window\.close\(\); return false/u);
+  assert.match(native, /page:\s*navigation\.page/u); assert.match(native, /await requestClose\(\); return false/u);
   assert.match(main, /<ProjectHomeConnections\b/u); assert.match(main, /selected=\{selected\} page=\{page\}/u); assert.match(main, /slot="home:video-tools"/u);
   for (const slot of slots) assert.ok(main.includes(`page === '${slot}'`));
   assert.equal((main.match(/onRequestSelectSlot=\{onSelect(?: as[^}]*)?\}/gu) || []).length, 3);
@@ -220,7 +220,9 @@ test('shared native center receives page routing and visibility without replacin
   assert.match(native, /<ProjectHomeConnections selected="agent" page="general" connectionsAvailable=\{false\}/u);
   assert.match(native, /panes=\{\{ agent: null, official: null, custom: null, comfy: null \}\}/u);
   assert.doesNotMatch(native, /general:\s*<details/u);
-  assert.match(native, /className="project-home-brand">Mioon<\/span>/u);
+  assert.doesNotMatch(native, /className="project-home-brand">Mioon<\/span>/u);
+  assert.match(native, /className="native-settings-panel-title">\{t\('settings\.title'\)\}/u);
+  assert.match(native, /data-testid="native-settings-panel-close"[^>]*onClick=\{\(\) => \{ void requestClose\(\); \}\}/u);
   assert.doesNotMatch(native, />mioon\.</u);
   assert.match(native, /className="native-settings-center-body"/u);
   const css = source('settings-center.css');

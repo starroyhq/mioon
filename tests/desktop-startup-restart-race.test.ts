@@ -32,6 +32,7 @@ import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-co
 import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
+import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tools = { ffmpeg: '/synthetic/ffmpeg', ffprobe: '/synthetic/ffprobe', versions: { ffmpeg: 'synthetic' } };
@@ -131,6 +132,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       records.windows.push(this);
     }
     isDestroyed() { return this.destroyed; }
+    getContentBounds() { return {x: 80, y: 60, width: Number(this.config.width), height: Number(this.config.height)}; }
     setBackgroundColor(value: string) { this.backgroundColor = value; }
     isMinimized() { return false; }
     restore() {}
@@ -184,7 +186,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
         this.diagnosticsAvailable = false;
       }
     },
-    BrowserWindow: Window,
+    BrowserWindow: Window, settingsWindowOptions,
     session: { fromPartition() {
       const index = records.sessions.length;
       const value: Pick<DesktopHarnessSession, 'clears' | 'cookies' | 'clearStorageData'> & {webRequest: {onBeforeSendHeaders(fn: DesktopHarnessSession['beforeSendHeaders']): void}; cookie?: DesktopHarnessSession['cookie']; beforeSendHeaders?: DesktopHarnessSession['beforeSendHeaders']} = { cookies: { set: async (cookie: DesktopHarnessSession['cookie']) => { value.cookie = cookie; await options.cookie?.(index); } }, clears: 0,

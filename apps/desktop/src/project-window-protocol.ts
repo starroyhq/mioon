@@ -50,6 +50,9 @@ export interface ProjectWindowContext {
   readonly entryReceipt: ProjectWindowEntryReceipt | null;
   readonly settingsSlot: ProjectWindowSettingsSlot | null;
   readonly settingsVersion: number;
+  /** Host-owned presentation state for this window's settings child. Legacy
+   * v2 contexts omit it; renderer requests cannot acquire modal ownership. */
+  readonly settingsModalOpen?: boolean;
   /** One launcher-owned locator queue consumes explicit successful selections. */
   readonly selectionProjectId: string | null;
   readonly selectionVersion: number;
@@ -65,6 +68,7 @@ export type ProjectWindowRequest =
   | { readonly action: 'locator-status'; readonly contextId: string; readonly status: ProjectWindowLocatorStatus }
   | { readonly action: 'locator-action'; readonly contextId: string; readonly locatorAction: ProjectWindowLocatorAction; readonly expectedStatusVersion: number }
   | { readonly action: 'settings'; readonly contextId: string; readonly slot: ProjectWindowSettingsSlot }
+  | { readonly action: 'settings-close'; readonly contextId: string }
   | { readonly action: 'editor-status'; readonly contextId: string; readonly projectId: string; readonly phase: 'ready' | 'failed' };
 export interface ProjectWindowBridge {
   context(): Promise<ProjectWindowContext>;
@@ -74,6 +78,8 @@ export interface ProjectWindowBridge {
   requestProjectEntry(mode: ProjectWindowEntryMode): Promise<boolean>;
   showProjects(): Promise<boolean>;
   showSettings(slot: ProjectWindowSettingsSlot): Promise<boolean>;
+  /** Requests this settings window's guarded native close; not proof of exit. */
+  closeSettings(): Promise<boolean>;
   editorStatus(projectId: string, phase: 'ready' | 'failed'): Promise<boolean>;
   subscribe(listener: (context: ProjectWindowContext) => void): () => void;
 }
@@ -100,6 +106,7 @@ export function isProjectWindowRequest(value: unknown): value is ProjectWindowRe
   if (value.action === 'projects') return keysAre(value, ['action', 'contextId']);
   if (value.action === 'project-entry') return keysAre(value, ['action', 'contextId', 'mode']) && isProjectWindowEntryMode(value.mode);
   if (value.action === 'settings') return keysAre(value, ['action', 'contextId', 'slot']) && isProjectWindowSettingsSlot(value.slot);
+  if (value.action === 'settings-close') return keysAre(value, ['action', 'contextId']);
   return value.action === 'editor-status' && keysAre(value, ['action', 'contextId', 'projectId', 'phase']) &&
     isProjectWindowId(value.projectId) && (value.phase === 'ready' || value.phase === 'failed');
 }
@@ -124,11 +131,12 @@ function isProjectWindowLocatorIntent(value: unknown): value is ProjectWindowLoc
 export function isProjectWindowContext(value: unknown): value is ProjectWindowContext {
   if (!record(value) || !keysAre(value, ['version', 'role', 'windowId', 'contextId', 'backendId', 'initialProjectId', 'autoOpen',
     'editorProjectId', 'editorPhase', 'editorCount', 'entryMode', 'entryVersion', 'entryReceipt', 'settingsSlot', 'settingsVersion',
-    'selectionProjectId', 'selectionVersion', 'locatorStatus', 'locatorIntent', 'quitting']) || value.version !== 2 ||
+    'selectionProjectId', 'selectionVersion', 'locatorStatus', 'locatorIntent', 'quitting', ...(Object.hasOwn(value, 'settingsModalOpen') ? ['settingsModalOpen'] : [])]) || value.version !== 2 ||
     (typeof value.role !== 'string' || !['launcher', 'editor', 'settings'].includes(value.role)) || !isProjectWindowId(value.windowId) ||
     !isProjectWindowId(value.contextId) || !isProjectWindowId(value.backendId) || typeof value.autoOpen !== 'boolean' ||
     typeof value.quitting !== 'boolean' || !ordinal(value.editorCount) || !ordinal(value.entryVersion) ||
     !ordinal(value.settingsVersion) || !ordinal(value.selectionVersion)) return false;
+  if (Object.hasOwn(value, 'settingsModalOpen') && (typeof value.settingsModalOpen !== 'boolean' || value.role === 'settings' && value.settingsModalOpen)) return false;
   if (value.role === 'editor' ? !isProjectWindowId(value.initialProjectId) || value.editorProjectId !== value.initialProjectId || !editorPhase(value.editorPhase) :
     value.initialProjectId !== null || value.editorProjectId !== null || value.editorPhase !== 'none') return false;
   if (value.entryMode !== null && !isProjectWindowEntryMode(value.entryMode)) return false;

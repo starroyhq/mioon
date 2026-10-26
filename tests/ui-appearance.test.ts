@@ -1,5 +1,6 @@
 import type {UiPreferencesResponse, UiPreferencesPut, UiPreferences} from '../packages/contracts/src/ui-preferences.ts';
 import type {RootHook} from './helpers/strict-root-ui-types.ts';
+import type {RootTree, RootNode} from './helpers/strict-root-ui-types.ts';
 type UiState = ReturnType<typeof import('../apps/web/src/UiPreferencesProvider.tsx').useUiPreferences>;
 type UiTree = {props: {value: UiState}};
 type MessageListener = (event: {data: unknown}) => void;
@@ -12,6 +13,9 @@ import * as contracts from '../packages/contracts/src/ui-preferences.ts';
 import * as appearance from '../apps/web/src/ui-appearance.ts';
 import * as preferenceSync from '../apps/web/src/ui-preferences-sync.ts';
 import { UiPreferencesRequestError } from '../apps/web/src/ui-preferences-client.ts';
+import * as navigation from '../apps/web/src/settings-navigation-state.ts';
+import { createNativeCloseAdmission, createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
+import { i18nTestModule } from './helpers/i18n.ts';
 
 const source = readFileSync(new URL('../apps/web/src/UiPreferencesProvider.tsx', import.meta.url), 'utf8');
 const code = transformSync(source, { loader: 'tsx', format: 'cjs' }).code;
@@ -110,6 +114,44 @@ function assertTheme(f: ReturnType<typeof fixture>, resolved: 'dark' | 'light', 
   assert.equal(f.root.dataset.appearance, preference);
   assert.equal(f.root.style.colorScheme, resolved);
   assert.equal(f.state.resolvedTheme, resolved);
+}
+
+/** Mount the actual appearance form alongside the actual Provider. A native
+ * dialog's focus return must preserve its hidden, registered settings owner. */
+function settingsCloseFixture(f: ReturnType<typeof fixture>, pause = true) {
+  const settings = navigation.createSettingsNavigationRegistry(), appearanceOwner = settings.register('home:appearance'), agentOwner = settings.register('home:agent');
+  agentOwner.update({ dirty: true, busy: false, blocked: false, version: 1 });
+  const hooks: RootHook[] = []; let cursor = 0, effects: number[] = [], tree: RootTree;
+  const react = {
+    createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }),
+    useRef(value: unknown) { return hooks[cursor++] ||= { current: value }; },
+    useState(initial: unknown) { const index = cursor++; hooks[index] ||= { value: typeof initial === 'function' ? (initial as () => unknown)() : initial }; return [hooks[index].value, (value: unknown) => { hooks[index].value = value; }]; },
+    useLayoutEffect(callback: () => void | (() => void), deps: readonly unknown[]) { const index = cursor++, previous = hooks[index]; if (previous && previous.deps?.length === deps.length && deps.every((value, i) => Object.is(value, previous.deps![i]))) return; hooks[index] = { callback, deps, cleanup: previous?.cleanup }; effects.push(index); },
+  }; (react as typeof react & { default?: unknown }).default = react;
+  const module = { exports: {} as { default(props: { active: boolean; onNavigationStateChange: typeof appearanceOwner.update }): RootTree } };
+  const appearanceCode = transformSync(readFileSync(new URL('../apps/web/src/SettingsAppearance.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
+  Function('require', 'module', 'exports', appearanceCode)((name: string) => {
+    if (name === 'react') return react;
+    if (name === './i18n/I18nProvider.tsx') return i18nTestModule();
+    if (name === './UiPreferencesProvider.tsx') return { useUiPreferences: () => f.state };
+    if (name === './settings-navigation-state.ts') return navigation;
+    if (name.startsWith('@mioon/ui/')) return new Proxy({}, { get: (_, key) => String(key) });
+    assert.fail(`Unexpected appearance import ${name}`);
+  }, module, module.exports);
+  let serial = 0;
+  const admission = createNativeCloseAdmission({ registry: createNativeCloseRegistry(), settings, readScope: () => 'settings-owner',
+    readDocumentURL: () => 'http://localhost/?settings=1', now: () => 1000, newToken: () => `settings-close-${++serial}`,
+    ...(pause ? { onObservationPause: (paused: boolean) => f.state.pauseObservation(paused) } : {}),
+  });
+  const nodes = (value: RootTree): RootNode[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props.children)] : [];
+  return {
+    admission, settings, agentOwner,
+    render(active = false) { cursor = 0; effects = []; tree = module.exports.default({ active, onNavigationStateChange: appearanceOwner.update }); for (const index of effects) { const hook = hooks[index]; hook.cleanup?.(); hook.cleanup = hook.callback!(); } },
+    chooseTheme(theme: string) { const select = nodes(tree).find(node => node.type === 'WorkbenchTabs' && node.props.value === f.state.preferences.theme); assert.ok(select); select.props.onValueChange(theme); },
+    commit(token: string) { return admission.commit(token, { discardDirty: true, allowDrainFailure: false, expiresAt: 2000 }); },
+    unload() { let prevented = false; const allowed = admission.beforeUnload({ preventDefault() { prevented = true; }, returnValue: '' }); return { allowed, prevented }; },
+    unmount() { admission.dispose(); f.state.pauseObservation(false); for (const hook of hooks) hook?.cleanup?.(); },
+  };
 }
 
 for (const theme of ['dark', 'light'] as const) test(`saved ${theme} applies mutually exclusive root classes without an OS subscription`, async () => {
@@ -334,4 +376,46 @@ test('a restricted BroadcastChannel constructor still permits a guarded focus re
   const f = fixture({ hub, read: (count: number) => snapshot(count === 1 ? 'dark' : 'light', { revision: count === 1 ? 4 : 5 }) });
   await f.ready(); f.focus(); await flush(); f.render(); f.render(); assertTheme(f, 'light', 'light');
   assert.equal(f.reads.length, 2); assert.deepEqual((f.writes as unknown), []); f.unmount(); assert.equal((f.listeners.get('focus'))!.size, 0);
+});
+
+test('native dialog focus invalidates a hidden appearance capture without the observation pause', async () => {
+  const f = fixture(); await f.ready(); const close = settingsCloseFixture(f, false); close.render();
+  const ticket = close.admission.inspect(), before = close.settings.capture(); assert.equal(ticket.disposition, 'dirty');
+  f.focus(); await flush(); f.render(); close.render();
+  assert.equal(f.reads.length, 2);
+  assert.ok(close.settings.capture().find(entry => entry.slot === 'home:appearance')!.version > before.find(entry => entry.slot === 'home:appearance')!.version);
+  assert.equal(close.commit(ticket.token), false); close.unmount(); f.unmount();
+});
+
+test('native inspect to discard survives dialog focus without refreshing or changing registered owners', async () => {
+  const f = fixture(); await f.ready(); const pause = f.state.pauseObservation, close = settingsCloseFixture(f); close.render();
+  const ticket = close.admission.inspect(), before = close.settings.capture(); assert.equal(ticket.disposition, 'dirty');
+  f.focus(); f.focus(); await flush(); f.render(); close.render();
+  assert.equal(f.state.pauseObservation, pause); assert.equal(f.reads.length, 1); assert.deepEqual(close.settings.capture(), before);
+  assert.equal(close.commit(ticket.token), true); assert.deepEqual(close.unload(), { allowed: true, prevented: false });
+  assert.deepEqual(f.writes, []); close.unmount(); f.unmount();
+});
+
+test('native cancellation resumes coalesced focus and revision hints once without changing drafts', async () => {
+  const hub = broadcastHub(), f = fixture({ hub, read: count => snapshot(count === 1 ? 'dark' : 'light', { revision: count === 1 ? 4 : 6 }) });
+  await f.ready(); const close = settingsCloseFixture(f); close.render(); const ticket = close.admission.inspect();
+  f.focus(); f.focus(); for (const revision of [5, 6, 6]) hub.emit({ type: 'ui-preferences-saved', version: 1, revision });
+  await flush(); f.render(); close.render(); assert.equal(f.reads.length, 1);
+  assert.equal(close.admission.cancel(ticket.token), true); await flush(); f.render(); close.render();
+  assert.equal(f.reads.length, 2); assert.equal(f.state.preferences.theme, 'light');
+  assert.equal(close.settings.capture().find(entry => entry.slot === 'home:agent')!.dirty, true);
+  f.state.pauseObservation(false); await flush(); assert.equal(f.reads.length, 2); assert.deepEqual(f.writes, []);
+  assert.equal(close.commit(ticket.token), false); close.unmount(); f.unmount();
+});
+
+test('observation pause preserves real input versions and explicit preference actions', async () => {
+  const f = fixture(); await f.ready(); const close = settingsCloseFixture(f); close.render(true);
+  const ticket = close.admission.inspect(), before = close.settings.capture();
+  close.chooseTheme('light'); f.render(); close.render(true);
+  assert.equal(f.state.dirty, true); assert.equal(f.state.preferences.theme, 'light');
+  assert.ok(close.settings.capture().find(entry => entry.slot === 'home:appearance')!.version > before.find(entry => entry.slot === 'home:appearance')!.version);
+  assert.equal(close.commit(ticket.token), false);
+  assert.equal(await f.state.save(), true); f.render(); close.render(true); assert.equal(f.writes.length, 1);
+  assert.equal(await f.state.reload(), true); f.render(); close.render(true); assert.equal(f.reads.length, 2);
+  close.admission.cancel(ticket.token); close.unmount(); f.unmount();
 });

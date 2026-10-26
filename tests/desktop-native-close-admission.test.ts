@@ -28,6 +28,7 @@ interface CloseFixtureOptions {
  execute?(kind: ScriptKind, execute: () => unknown, code: string): unknown;
  reload?(url: string, perform: () => void): unknown; beforeUnload?(): void; stop?(): unknown;
  beforeReload?(signal: AbortSignal): unknown; reloadPreparationTimeoutMs?: number; timeoutMs?: number;
+ canAct?(action: NativeCloseAction): boolean;
  confirmDiscard?(action: NativeCloseAction): unknown; confirmClose?(action: NativeCloseAction): unknown; requestQuit?(coordinator: QuitCoordinator): unknown;
 }
 type Gate = Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
@@ -126,6 +127,7 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
   const installed = installNativeCloseAdmission(win, {
     timeoutMs: options.timeoutMs ?? 200,
     isCurrent: () => owns && allowed,
+    canAct: options.canAct,
     beforeReload: options.beforeReload as NativeOptions['beforeReload'],
     reloadPreparationTimeoutMs: options.reloadPreparationTimeoutMs,
     confirmDiscard: async action => { discardCount++; events.push('confirm-discard'); return await (options.confirmDiscard?.(action) ?? true) as boolean; },
@@ -1175,4 +1177,71 @@ test('actual main pre-reload hook binds the original audio host and captured exa
   assert.equal(calls.length, 1); assert.equal(calls[0].window, window); assert.equal(calls[0].contents, contents);
   assert.equal(calls[0].contextId, 'document-a'); gate.resolve(true); assert.equal(await preparation, true);
   currentDocument = null; assert.equal(await callbacks.beforeReload!(signal), false); assert.equal(calls.length, 1);
+});
+
+test('a modal dependency rejects parent close and reload before renderer inspection, drains or tickets', async t => {
+  for (const action of ['close', 'reload'] as const) {
+    let available = false, preparations = 0;
+    const actions: NativeCloseAction[] = [];
+    const f = fixture(t, {dirty: true, canAct: requested => { actions.push(requested); return available; },
+      beforeReload: () => { preparations++; return true; }});
+    assert.equal(await (action === 'close' ? f.coordinator.request() : f.admission.requestReload()), false);
+    assert.equal(f.win.destroyed, false); assert.equal(f.stats().stopped, 0); assert.equal(f.stats().cancelCount, 1);
+    assert.deepEqual((f.scripts as unknown), []); assert.equal(f.commits.length, 0); assert.equal(preparations, 0);
+    assert.deepEqual(actions, [action]);
+    available = true;
+    assert.equal(await (action === 'close' ? f.coordinator.request() : f.admission.requestReload()), true);
+    assert.equal(f.commits.length, 1); assert.equal(f.stats().discardCount, 1);
+    assert.equal(f.reloads.length, action === 'reload' ? 1 : 0);
+  }
+});
+
+test('a modal dependency appearing during commit revokes the old ticket without closing or reloading its parent', async t => {
+  for (const action of ['close', 'reload'] as const) {
+    let available = true, committing = false;
+    const held = deferred();
+    const f = fixture(t, {canAct: () => available, execute: (kind, execute) => {
+      const result = execute();
+      if (kind === 'commit') { committing = true; return held.promise.then(() => result); }
+      return result;
+    }});
+    const pending = action === 'close' ? f.coordinator.request() : f.admission.requestReload();
+    await until(() => committing); assert.ok(f.armed);
+    available = false; held.resolve();
+    assert.equal(await pending, false); await tick();
+    assert.equal(f.win.destroyed, false); assert.equal(f.win.closeCalls, action === 'close' ? 1 : 0);
+    assert.equal(f.stats().stopped, 0); assert.equal(f.reloads.length, 0); assert.equal(f.armed, null);
+    assert.ok(f.events.includes('cancel')); assert.equal(f.stats().cancelCount, 1);
+  }
+});
+
+test('renderer-gone proof recorded behind a modal survives refused recovery until a new explicit action is allowed', async t => {
+  for (const action of ['close', 'reload'] as const) {
+    let available = false, quitCalls = 0;
+    const f = fixture(t, {dirty: true, blocked: true, canAct: () => available, allowsUnload: () => true,
+      execute: () => { throw Error('Dead parent renderer must not be queried'); },
+      requestQuit: coordinator => { quitCalls++; return coordinator.request(); }});
+    f.win.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 1 });
+    const refused = f.admission.captureRecoveryDecision();
+    assert.equal(refused.claimPrompt(), true);
+    assert.equal(await refused.reload(), false); assert.equal(await refused.exit(), false);
+    assert.equal(f.win.closeCalls, 0); assert.equal(f.reloads.length, 0); assert.equal(quitCalls, 0);
+    assert.deepEqual((f.scripts as unknown), []); assert.equal(f.stats().stopped, 0);
+    available = true;
+    const fresh = f.admission.captureRecoveryDecision();
+    assert.equal(await (action === 'close' ? fresh.exit() : fresh.reload()), true);
+    assert.deepEqual((f.scripts as unknown), []);
+    assert.equal(quitCalls, action === 'close' ? 1 : 0); assert.equal(f.reloads.length, action === 'reload' ? 1 : 0);
+    assert.equal(await refused.reload(), false); assert.equal(await refused.exit(), false);
+  }
+});
+
+test('a failed native dependency check cannot grant parent close or consume a renderer-gone Exit allowance', async t => {
+  const f = fixture(t, {canAct: () => { throw Error('Dependency owner unavailable'); },
+    execute: () => { throw Error('No parent renderer call is permitted'); }});
+  assert.equal(await f.coordinator.request(), false);
+  assert.equal(await f.admission.requestReload(), false);
+  f.win.webContents.emit('render-process-gone');
+  assert.equal(await f.admission.captureRecoveryDecision().exit(), false);
+  assert.deepEqual((f.scripts as unknown), []); assert.equal(f.stats().stopped, 0); assert.equal(f.win.destroyed, false);
 });

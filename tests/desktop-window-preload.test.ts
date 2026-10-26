@@ -11,7 +11,7 @@ test('fixed preload exposes only validated window actions and strips Electron ev
   type BridgeOptions = Parameters<typeof createProjectWindowBridge>[0];
   const bridge = createProjectWindowBridge({ invoke: async (channel: string, request: {action: string; [key: string]: unknown}) => { calls.push([channel, request]); return request.action === 'describe' ? context : request.action === 'open' ? {ok:true,reason:'accepted',targetWindowId:id,targetPhase:'opening'} : true; },
     on: (channel: string, listener: (...args: unknown[]) => void) => { assert.equal(channel, PROJECT_WINDOW_EVENT); receive=listener; }, removeListener: (_channel: string, listener: (...args: unknown[]) => void) => { removed=listener; } } as unknown as BridgeOptions);
-  assert.deepEqual(Object.keys(bridge).sort(), ['context','editorStatus','openProject','publishLocatorStatus','requestLocatorAction','requestProjectEntry','showProjects','showSettings','subscribe']);
+  assert.deepEqual(Object.keys(bridge).sort(), ['closeSettings','context','editorStatus','openProject','publishLocatorStatus','requestLocatorAction','requestProjectEntry','showProjects','showSettings','subscribe']);
   assert.equal(Object.isFrozen(bridge), true);
   await bridge.openProject(id, true, id); await bridge.requestProjectEntry('new'); await bridge.showProjects(); await bridge.showSettings('agent'); await bridge.editorStatus(id,'ready');
   assert.ok(calls.every(([channel, request]) => channel === PROJECT_WINDOW_CHANNEL && isProjectWindowRequest(request)));
@@ -19,9 +19,35 @@ test('fixed preload exposes only validated window actions and strips Electron ev
   receive!(secret,context); receive!(secret,{...context,token:'forbidden'}); assert.equal(events.length,1); assert.deepEqual(events[0],context); assert.notEqual(events[0],context);
   release(); release(); assert.equal(removed,receive); receive!(secret,context); assert.equal(events.length,1);
   const before=calls.length; await assert.rejects((bridge.openProject as (...args: unknown[]) => Promise<unknown>)('/tmp/private')); await assert.rejects(bridge.showSettings('decrypt' as Parameters<typeof bridge.showSettings>[0])); assert.equal(calls.length,before);
+  await assert.rejects(bridge.closeSettings()); assert.equal((calls.at(-1)![1] as {action:string}).action, 'describe');
+});
+
+test('settings preload emits only its fixed guarded-close action and validates acknowledgement and document identity', async () => {
+  const settings = {...context, role:'settings', autoOpen:false, settingsSlot:'agent', settingsVersion:1};
+  let current = settings, answer:unknown=true;
+  const calls: unknown[] = [];
+  const bridge = createProjectWindowBridge({invoke:async (channel, request) => {
+    assert.equal(channel, PROJECT_WINDOW_CHANNEL); calls.push(request); return request.action === 'describe' ? current : answer;
+  },on(){},removeListener(){}});
+  assert.equal(await bridge.closeSettings(), true);
+  assert.deepEqual(calls, [{action:'describe'}, {action:'settings-close',contextId:id}]);
+  answer = {closed:true}; await assert.rejects(bridge.closeSettings());
+  const before = calls.filter(value => (value as {action:string}).action === 'settings-close').length;
+  current = {...settings, contextId:'22222222-2222-4222-8222-222222222222'};
+  await assert.rejects(bridge.closeSettings());
+  assert.equal(calls.filter(value => (value as {action:string}).action === 'settings-close').length, before);
+  for (const role of ['launcher','editor']) {
+    const denied = createProjectWindowBridge({invoke:async (_channel, request) => {
+      assert.equal(request.action,'describe');
+      return role === 'launcher' ? context : {...context,role:'editor',autoOpen:false,initialProjectId:id,editorProjectId:id,editorPhase:'ready'};
+    },on(){},removeListener(){}});
+    await assert.rejects(denied.closeSettings());
+  }
 });
 test('preload rejects malformed output and protocol rejects extra authority fields', async () => {
   for(const extra of [{url:'https://evil.invalid'}, {path:'/tmp/x'}, {token:'x'}, {operation:'image.generate'}]) assert.equal(isProjectWindowRequest({action:'open',contextId:id,projectId:id,...extra}),false);
+  assert.equal(isProjectWindowRequest({action:'settings-close',contextId:id}), true);
+  for(const extra of [{force:true}, {targetWindowId:id}, {slot:'agent'}, {token:'x'}, {operation:'close'}]) assert.equal(isProjectWindowRequest({action:'settings-close',contextId:id,...extra}),false);
   for(const bad of [{...context,version:1}, {...context,role:{toString:()=> 'launcher'}}, {...context,role:'admin'}, {...context,editorPhase:{toString:()=> 'ready'}}, {...context,settingsVersion:-1}, {...context,secret:'x'}]) {
     const bridge=createProjectWindowBridge({invoke:async()=>bad,on(){},removeListener(){}} as unknown as Parameters<typeof createProjectWindowBridge>[0]); await assert.rejects(bridge.context());
   }

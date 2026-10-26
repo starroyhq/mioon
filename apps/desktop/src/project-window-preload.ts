@@ -55,6 +55,11 @@ export function createProjectWindowBridge(transport: WindowTransport): ProjectWi
       const owner = await context();
       return booleanResult(await transport.invoke(PROJECT_WINDOW_CHANNEL, { action: 'settings', contextId: owner.contextId, slot }));
     },
+    async closeSettings() {
+      const owner = await context();
+      if (owner.role !== 'settings') throw refused();
+      return booleanResult(await transport.invoke(PROJECT_WINDOW_CHANNEL, { action: 'settings-close', contextId: owner.contextId }));
+    },
     async editorStatus(projectId, phase) {
       if (!isProjectWindowId(projectId) || phase !== 'ready' && phase !== 'failed') throw refused();
       const owner = await context();

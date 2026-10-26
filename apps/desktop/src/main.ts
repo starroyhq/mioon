@@ -47,6 +47,7 @@ import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindo
 import { createRendererDiagnostics, installRendererHealthDiagnostics } from './renderer-diagnostics.ts';
 import type { RendererHealthContents } from './renderer-diagnostics.ts';
 import { windowChromeOptions } from './window-chrome.ts';
+import { settingsWindowOptions } from './settings-window.ts';
 import { createDesktopWindowAppearance } from './window-appearance.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
 
@@ -91,7 +92,13 @@ function storageRead(file: string, options: ReadPrivateFileOptions): Buffer | nu
   return typeof value === 'string' ? Buffer.from(value) : value;
 }
 /** The build-injected channel moves windows between launcher/editor projects only. */
-function requestApplicationQuit(source: BrowserWindow | undefined): Promise<boolean | void> { return quitRouter.request(source).catch(quitFailed); }
+function requestApplicationQuit(source: BrowserWindow | undefined): Promise<boolean | void> {
+  // A confirmed-gone recovery permit belongs to its exact source and current
+  // stack. Never move that permit to a settings child or wait and reuse it.
+  const settings = source ? windowHost?.settingsForParent(source) : null;
+  if (settings) { if (!settings.isDestroyed()) settings.focus(); return Promise.resolve(false); }
+  return quitRouter.request(source).catch(quitFailed);
+}
 
 // The renderer never receives privileged Electron APIs or native filesystem paths.
 app.enableSandbox();
@@ -253,10 +260,12 @@ async function start(): Promise<DesktopStartReport> {
       backendId, launcherUrl: `${started.url}/`, editorUrl: (projectId: string) => `${started.url}/?project=${projectId}`,
       isCurrent: () => ownsWindowContext(context),
       canInteract: () => quitRouter.allowsWindows && !context.incident.failed,
-      createWindow: () => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
+      canRestoreParentFocus: () => BrowserWindow.getFocusedWindow() !== null,
+      createWindow: creation => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
         icon: path.join(app.getAppPath(), 'icons/icon.png'),
         minWidth: 1050, minHeight: 680, backgroundColor: context.appearance.backgroundColor(), show: false,
         autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(),
+        ...(creation.role === 'settings' ? settingsWindowOptions(creation.parent) : {}),
         webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
       prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
       consumeProjectEntry: consumeNativeProjectEntry,
@@ -364,6 +373,12 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
   installWindowPolicy(window, context.ready.url, { url: owner.url, isCurrent: () => owner.isCurrent() });
   windowAdmissions.set(window, installNativeCloseAdmission(window, {
     isCurrent: () => ownsWindow(window, context) && window.webContents.getURL() === owner.url && isAllowedNavigation(window.webContents.getURL(), context.ready.url),
+    canAct: () => {
+      const settings = windowHost?.settingsForParent(window);
+      if (!settings) return true;
+      if (!settings.isDestroyed()) settings.focus();
+      return false;
+    },
     onCloseStateChange: state => windowHost?.closeStateChanged(window, state),
     consumeInitialEmptyClose: () => initialLoad.consumeClose(),
     beforeReload: signal => {
@@ -481,7 +496,7 @@ function installMenu(): void {
   template.push({ label: nt('native.application'), submenu: [
     { label: nt('native.newProject'), click: () => windowHost?.requestProjectEntry('new', BrowserWindow.getFocusedWindow()) },
     { label: nt('native.openProject'), click: () => windowHost?.requestProjectEntry('open', BrowserWindow.getFocusedWindow()) },
-    { label: nt('native.connections'), click: () => windowHost?.showSettings('agent') },
+    { label: nt('native.connections'), click: () => windowHost?.showSettings('agent', BrowserWindow.getFocusedWindow()) },
     { label: nt('native.reload'), accelerator: 'CmdOrCtrl+R', click: () => {
       const window = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
       if (ownsWindow(window, windowContext) && windowContext && !windowContext.incident.failed) {
@@ -509,7 +524,7 @@ function installMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWindowQuitCoordinator<BrowserWindow>({ getWindows: () => windowHost?.windows() || [],
+const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWindowQuitCoordinator<BrowserWindow>({ getWindows: () => windowHost?.closeOrder() || [],
   onStateChange: () => windowHost?.refresh(),
   stop: async () => {
     quitting = true;
@@ -534,7 +549,7 @@ const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWind
   }, finish: () => app.quit() });
 
 const restartCoordinator: MultiWindowRestartCoordinator<BrowserWindow> = new MultiWindowRestartCoordinator<BrowserWindow>({
-  getWindows: () => windowHost?.windows() || [],
+  getWindows: () => windowHost?.closeOrder() || [],
   canRequest: () => quitCoordinator.state === 'idle' && !quitting && !quitRouter.isPending,
   onStateChange: state => { restarting = state !== 'idle'; windowHost?.refresh(); },
   stop, start,

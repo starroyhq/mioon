@@ -326,7 +326,9 @@ test('native quit cleans only after confirmed failure and surfaces the failure w
   assert.equal(cleanups, 1);
   assert.equal(finishes, 0);
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  assert.match(main, /function requestApplicationQuit\(source[^)]*\)[^{]*\{ return quitRouter\.request\(source\)\.catch\(quitFailed\); \}/);
+  const quitEntry = main.slice(main.indexOf('function requestApplicationQuit('), main.indexOf('// The renderer never receives privileged Electron APIs'));
+  assert.match(quitEntry, /return quitRouter\.request\(source\)\.catch\(quitFailed\);/);
+  assert.match(quitEntry, /settingsForParent\(source\)/);
   assert.match(main, /const focused = BrowserWindow\.getFocusedWindow\(\);/);
   assert.match(main, /void requestApplicationQuit\(ownsWindow\(focused, windowContext\) && windowHost\.isTrustedDocument\(focused\) \? focused : undefined\);/);
   assert.doesNotMatch(main, /(?:quitCoordinator|quitRouter)\.request\([^)]*\)\.catch\(fatal\)/);
