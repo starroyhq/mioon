@@ -2,7 +2,7 @@
   "name": "mioon",
   "version": "0.4.1",
   "private": true,
-  "description": "本地优先的开源视频创作工作台，支持画板、时间线剪辑与 AI 视频、图片生成",
+  "description": "与 AI 共同创作的视频工作台，本地优先、开源，和 Mio 一起构思、编排镜头与剪辑",
   "license": "Apache-2.0",
   "homepage": "https://mioon.app",
   "repository": {

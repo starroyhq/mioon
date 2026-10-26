@@ -4,7 +4,9 @@
 
 <h1 align="center">Mioon</h1>
 
-<p align="center"><strong>从整理灵感到剪辑成片，在自己的电脑上完成</strong></p>
+<p align="center"><strong>与 AI 共同创作的视频工作台</strong></p>
+
+<p align="center">从构思、镜头到剪辑，和 Mio 一起把想法做成作品</p>
 
 <p align="center">
   <a href="https://mioon.app">官网</a> ·
@@ -22,7 +24,9 @@
 
 ## Mioon 是什么
 
-Mioon 是一个本地视频创作工作台：用画板整理灵感，在多轨时间线上编排素材，预览并导出成片。构思、剪辑和可选的 AI 辅助围绕同一个项目进行。
+Mioon 是面向个人创作者、本地优先的开源视频创作工作台。工作台承载项目、素材、画板、镜头和时间线；内置 Agent **Mio** 在你的授权下参与构思和执行，让人与 AI 围绕同一份可编辑的作品协作。
+
+你可以直接整理素材、编排镜头和剪辑，也可以把具体任务交给 Mio，检查结果后继续修改。创意与关键决定由你掌握，Mio 在已有工具和授权范围内推进工作。
 
 项目和素材默认保存在自己的电脑上。导入、剪辑、手动字幕、预览和导出已有素材，不需要 AI 账号或密钥。
 
@@ -42,9 +46,11 @@ Mioon 是一个本地视频创作工作台：用画板整理灵感，在多轨�
 
 [![Mioon 剪辑：视频与图片叠加、音轨和真实合成预览](docs/images/readme/timeline.webp)](docs/images/readme/timeline.webp)
 
-### 需要时，让 Mio 搭把手
+### 和 Mio 一起推进作品
 
-Mio 是可选的项目助手，在你的授权下查看、修改和生成当前项目内容。模型连接和执行方式由你配置，工具执行保留记录，待确认的操作可在原任务中继续处理。
+Mio 是工作台中的创作 Agent，能够读取已授权的项目内容，通过工具参与规划、镜头整理和剪辑。它的修改进入同一个项目，你可以在画板和时间线上查看、调整，再让 Mio 继续工作。遇到同一处的编辑占用或目标变化时，Mio 会暂停相关操作，等待处理。
+
+是否使用 Mio、使用哪个模型以及哪些操作需要确认，由你设置。工具执行保留记录，待确认的操作可在原任务中继续处理；可用范围见 [Mio 执行与恢复](docs/AGENT-TASKS-V2.md)。
 
 图片和视频生成需要自行配置供应商及凭据，按界面核对本次输入与费用确认。生成的镜头会作为新版本保留，已经放进剪辑区的片段不会因为新一轮生成而自动替换。
 
@@ -101,6 +107,7 @@ Mioon 原创代码与文档采用 [Apache License 2.0](LICENSE)，允许按许�
 - [GitHub 自动检查与发布](docs/GITHUB-ACTIONS.zh-CN.md) · [CI 状态](https://github.com/starroyhq/mioon/actions/workflows/ci.yml)
 - [CLI](docs/CLI.md) · [MCP](docs/MCP.md) · [mioon Skill](skills/mioon/SKILL.md) · [API](docs/API.md)
 - [架构说明](docs/ARCHITECTURE.md) · [组件来源](docs/UI-COMPONENTS.md) · [TypeScript 约定](docs/TYPESCRIPT.md)
+- [产品定义：创作工作台 + Agent](docs/PRODUCT-DEFINITION.md)
 - [详细验证结果](docs/verification/mioon-redesign/full-test-repairs/README.md)
 
 </details>
