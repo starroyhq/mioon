@@ -36,7 +36,7 @@ test('brand PNG dimensions and alpha intent match their fixed local consumers', 
   assert.match(await text('apps/web/index.html'), /<link rel="icon" type="image\/png" href="\/favicon\.png" \/>/);
 });
 
-test('shared desktop PNG has transparent padding and an opaque rounded backplate', async () => {
+test('shared desktop PNG retains Apple-compiled corners, opaque tile and soft outer shadow', async () => {
   const data = await bytes('apps/desktop/resources/icon.png');
   assert.equal(data[24], 8); assert.equal(data[25], 6); assert.equal(data[28], 0);
   const width = data.readUInt32BE(16), height = data.readUInt32BE(20), chunks = [];
@@ -63,13 +63,17 @@ test('shared desktop PNG has transparent padding and an opaque rounded backplate
   for (const row of alpha) { assert.equal(row[0], 0); assert.equal(row.at(-1), 0); }
   const middleX = Math.floor(width / 2), middleY = Math.floor(height / 2);
   assert.equal(alpha[middleY][middleX], 255);
-  assert.ok(alpha[Math.floor(height * 0.09)].every(value => value === 0), 'top padding stays transparent');
-  assert.ok(alpha[Math.floor(height * 0.91)].every(value => value === 0), 'bottom padding stays transparent');
-  for (const row of alpha) {
-    assert.equal(row[Math.floor(width * 0.09)], 0, 'left padding stays transparent');
-    assert.equal(row[Math.floor(width * 0.91)], 0, 'right padding stays transparent');
+  const opaqueColumns = [...alpha[middleY]].flatMap((value, x) => value === 255 ? [x] : []);
+  const opaqueRows = alpha.flatMap((row, y) => row[middleX] === 255 ? [y] : []);
+  assert.deepEqual([opaqueColumns[0], opaqueColumns.at(-1)], [100, 923], 'Apple export retains the standard opaque tile footprint');
+  assert.deepEqual([opaqueRows[0], opaqueRows.at(-1)], [100, 923], 'backplate remains centered and square');
+  assert.ok(alpha[middleY][80] > 0 && alpha[middleY][80] < 255, 'Apple supplies a soft shadow outside the opaque tile');
+  // These points are inside Apple's continuous corners, but outside the old
+  // hand-drawn fourth-order superellipse. Scaling alone cannot repair it.
+  for (const [y, x] of [[128, 200], [128, 823], [895, 200], [895, 823]]) {
+    assert.equal(alpha[y][x], 255, 'all four corners use the Apple-exported profile');
   }
-  assert.equal(alpha[Math.floor(height * 0.125)][Math.floor(width * 0.125)], 0, 'backplate corners are rounded');
+  assert.ok(alpha[128][128] < 255, 'backplate corners remain rounded');
   assert.equal(alpha[Math.floor(height * 0.125)][middleX], 255, 'backplate top remains opaque inside the padding');
 });
 
@@ -77,14 +81,19 @@ test('Mac ICNS remains structurally bounded and its largest PNG equals the share
   const data = await bytes('apps/desktop/resources/icon.icns');
   assert.equal(data.toString('ascii', 0, 4), 'icns'); assert.equal(data.readUInt32BE(4), data.length);
   let offset = 8, largest = null;
+  const representations = new Set<string>();
   while (offset < data.length) {
     assert.ok(offset + 8 <= data.length);
     const type = data.toString('ascii', offset, offset + 4), size = data.readUInt32BE(offset + 4);
     assert.ok(size >= 8 && offset + size <= data.length);
+    assert.equal(representations.has(type), false, 'ICNS representations are unique'); representations.add(type);
     if (type === 'ic10') { assert.equal(largest, null); largest = data.subarray(offset + 8, offset + size); }
     offset += size;
   }
   assert.equal(offset, data.length); assert.ok(largest);
+  for (const type of ['ic04', 'ic05', 'ic07', 'ic08', 'ic09', 'ic10', 'ic11', 'ic12', 'ic13', 'ic14']) {
+    assert.ok(representations.has(type), 'standalone ICNS must retain every legacy and Retina size, without relying on Assets.car');
+  }
   assert.deepEqual(largest, await bytes('apps/desktop/resources/icon.png'));
 });
 

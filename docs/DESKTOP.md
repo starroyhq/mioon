@@ -22,9 +22,11 @@ Electron 主进程
 
 macOS 通知保护钩子要求目标 framework/config 版本和尚未改写的 `Electron.app/Contents/Info.plist` 版本与根清单 Electron 固定版本一致；正常解包会在钩子前移除根目录 `version`，所以不依赖该文件。输入与输出拒绝符号链接、非普通文件、空文件和超限文件；Electron 通知上限 256 KiB、Chromium 通知上限 32 MiB、原始 plist 上限 1 MiB。版本证据是解包上下文和原始 bundle 元数据，不构成运行时签名认证。2026-10-11 留存的旧 arm64 development/production `.app` 验收仍缺少两份通知，development DMG 也没有重新生成或重新挂载检查；此处源码修复与云端契约测试不能替代新的 Mac 验收。
 
-界面品牌使用 `apps/web/src/assets/mioon-mark.png` 透明猫耳片带；浏览器 favicon 保持原样。macOS、Windows 和 Linux 桌面图标共用 `apps/desktop/resources/icon.png`（1024×1024 RGBA）：透明画布上的黑色圆角底板保留约 10% 留白，使图标与系统应用的视觉尺寸协调。原始黑底图另存为 `icon-source.png`（1024×1024 RGB），macOS 多尺寸 `icon.icns` 从新版共享 PNG 生成。构建复制 `icon.png` 为 `icons/icon.png`，由窗口和 macOS Dock 使用；正式版和开发版打包配置共用这些品牌资源；Linux 打包显式选用该 PNG，Windows 打包由 electron-builder 将其转换为 ICO。两个包检查入口均要求该 PNG 存在，并核对与暂存文件一致。图标共享不改变 Windows 的现有启动限制或桌面发布平台范围。
+界面品牌使用 `apps/web/src/assets/mioon-mark.png` 透明猫耳片带；浏览器 favicon 保持原样。macOS、Windows 和 Linux 桌面图标共用 `apps/desktop/resources/icon.png`（1024×1024 RGBA）。原始 `icon-source.png` 是未预裁切的 1024×1024 RGB 方形品牌图；通过 Icon Composer 文档交给 Apple `actool` 编译，由官方工具生成圆角轮廓、留白、边缘与阴影，不再手画超椭圆或按视觉猜测缩放比例。多尺寸 `icon.icns` 直接采用官方输出，共享 PNG 则提取其 1024px 原始字节。构建复制 `icon.png` 为 `icons/icon.png`，由窗口和 macOS Dock 使用；正式版和开发版打包配置共用这些品牌资源；Linux 打包显式选用该 PNG，Windows 打包由 electron-builder 将其转换为 ICO。两个包检查入口均要求该 PNG 存在，并核对与暂存文件一致。图标共享不改变 Windows 的现有启动限制或桌面发布平台范围。
 
-在 macOS 上运行 `swift apps/desktop/scripts/generate-desktop-icons.swift` 可从 `icon-source.png` 确定性生成共享桌面 PNG 和 macOS ICNS，重复运行不会反复缩进成品。脚本使用系统 CoreGraphics、ImageIO 与 `iconutil`，按比例缩进原图，不重绘彩色标志；各尺寸从同一张共享 PNG 下采样，ICNS 最大尺寸保留该 PNG 的原始字节，不需要新增依赖。
+在已选择包含 Icon Composer 的完整 Xcode 的 macOS 上运行 `swift apps/desktop/scripts/generate-desktop-icons.swift` 可重新生成图标；本次使用 Xcode 27.1。脚本以原图作为一个不添加玻璃材质的平面图层，在临时目录建立 `.icon` 文档，再使用 Apple `actool` 输出完整传统 ICNS。`--minimum-deployment-target 10.12` 只用于图标素材导出：官方工具对 10.13 及以上目标会把高分辨率放入 `Assets.car`，仅留下部分 ICNS；这里需要完整独立 ICNS，此参数不会改变 Electron 应用的最低系统版本。临时 `Assets.car` 不随包发布；常规构建使用已提交的 PNG／ICNS，不要求 Linux、Windows 或最终用户安装 Xcode。
+
+处理依据见 [Apple App icons 指南](https://developer.apple.com/design/human-interface-guidelines/app-icons)和[使用 Icon Composer 创建图标](https://developer.apple.com/documentation/xcode/creating-your-app-icon-using-icon-composer)。Apple 建议提供方形未遮罩图层，由平台处理最终边缘；现有 Electron 打包仍采用兼容的静态 PNG／ICNS，此修改不宣称接入动态 Liquid Glass 或外观变体。
 
 ## 从源码启动
 
