@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import {createHash,randomUUID} from 'node:crypto';
-import {mkdtemp,readFile,realpath,rm,writeFile} from 'node:fs/promises';
+import {mkdtemp,readFile,readdir,realpath,rm,stat,symlink,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32,deflateSync} from 'node:zlib';
@@ -106,10 +106,10 @@ async function runtimeFixture(t:{after(fn:()=>unknown):void}){
   const binding:VideoExecutionBinding={version:1,connectionId:randomUUID(),configurationRevision:1,providerId:'compatible',region:'custom',workspaceId:'',endpoint:BASE,credentialRef:randomUUID(),model,outputHosts:['cdn.example.com']};
   const bytes=png(),file=path.join(root,'frame.png');await writeFile(file,bytes);
   const asset={id:randomUUID(),path:file,mimeType:'image/png',sizeBytes:bytes.length,width:360,height:640,sha256:createHash('sha256').update(bytes).digest('hex'),role:'first_frame'};
-  const calls:Array<{url:string;init:RequestInit}>=[],queue:Array<Response|Error>=[];let time=Date.UTC(2026,9,23);
-  const provider=createConfiguredVideoProvider({root,binding,now:()=>time,acquireCredential:async()=>KEY,fetchImpl:async(input,init)=>{calls.push({url:String(input),init:init??{}});const next=queue.shift();if(next instanceof Error)throw next;if(!next)throw Error('Real HTTP forbidden');return next;}});
+  const calls:Array<{url:string;init:RequestInit}>=[],queue:Array<Response|Error>=[];let time=Date.UTC(2026,9,23),credentialAvailable=true,observe:((url:string)=>void)|undefined;
+  const provider=createConfiguredVideoProvider({root,binding,now:()=>time,acquireCredential:async()=>{if(!credentialAvailable)throw Error('Synthetic credential revoked');return KEY;},fetchImpl:async(input,init)=>{calls.push({url:String(input),init:init??{}});observe?.(String(input));const next=queue.shift();if(next instanceof Error)throw next;if(!next)throw Error('Real HTTP forbidden');return next;}});
   const snapshot={providerId:'compatible',model:model.modelId,prompt:'Synthetic shapes move slowly.',aspectRatio:'9:16',duration:4,parameters:{resolution:'720p'} as Record<string,unknown>,referenceAssets:[] as unknown[]};
-  return {root,binding,provider,asset,bytes,snapshot,calls,queue,advance:()=>{time+=20000;}};
+  return {root,binding,provider,asset,bytes,snapshot,calls,queue,advance:()=>{time+=20000;},revoke:()=>{credentialAvailable=false;},onFetch:(callback:(url:string)=>void)=>{observe=callback;}};
 }
 const headerOf=(init:RequestInit,name:string)=>new Headers(init.headers).get(name);
 
@@ -146,6 +146,62 @@ test('status mapping, authenticated /content download and redirect hosts follow 
   await assert.rejects(f.provider.download('video_123',path.join(f.root,'third.mp4'),{}),{code:'UNAPPROVED_OUTPUT_HOST'});
   f.advance();f.queue.push(json({id:'video_123',status:'failed'}));assert.equal((await f.provider.poll('video_123',{})).status,'failed');
   f.advance();f.queue.push(json({id:'video_999',status:'completed'}));await assert.rejects(f.provider.poll('video_123',{}),{code:'INVALID_PROVIDER_RESPONSE'});
+});
+
+test('SDK content download authenticates only its initial request, including a redirect back to the API',async t=>{
+  const f=await runtimeFixture(t),destination=path.join(f.root,'round-trip.mp4');
+  f.queue.push(json({id:'video_123',status:'completed'}),
+    new Response(null,{status:302,headers:{location:'https://cdn.example.com/signed.mp4'}}),
+    new Response(null,{status:307,headers:{location:`${BASE}/videos/video_123/content`}}),new Response(mp4));
+  await f.provider.download('video_123',destination,{});
+  assert.deepEqual(await readFile(destination),mp4);assert.equal((await stat(destination)).mode&0o777,0o600);
+  assert.deepEqual(f.calls.map(call=>call.url),[`${BASE}/videos/video_123`,`${BASE}/videos/video_123/content`,'https://cdn.example.com/signed.mp4',`${BASE}/videos/video_123/content`]);
+  assert.deepEqual(f.calls.map(call=>headerOf(call.init,'authorization')),[`Bearer ${KEY}`,`Bearer ${KEY}`,null,null]);
+  assert.ok(f.calls.every(call=>call.init.method==='GET'));assert.ok(f.calls.slice(1).every(call=>call.init.redirect==='manual'));
+  assert.ok(!(await readdir(f.root)).some(name=>name.endsWith('.partial.mp4')));
+});
+
+test('revoking the frozen credential after the SDK resource response prevents every later download hop',async t=>{
+  const f=await runtimeFixture(t),destination=path.join(f.root,'revoked.mp4');
+  f.onFetch(url=>{if(url.endsWith('/content'))f.revoke();});
+  f.queue.push(json({id:'video_123',status:'completed'}),new Response(null,{status:302,headers:{location:'https://cdn.example.com/signed.mp4'}}),new Response(mp4));
+  await assert.rejects(f.provider.download('video_123',destination,{}),{code:'VIDEO_CREDENTIAL_UNAVAILABLE'});
+  assert.equal(f.calls.length,2);assert.ok(f.calls.every(call=>call.init.method==='GET'));
+  await assert.rejects(readFile(destination),{code:'ENOENT'});assert.ok(!(await readdir(f.root)).some(name=>name.endsWith('.partial.mp4')));
+});
+
+test('unsafe output paths are rejected before any SDK content GET or file publication',async t=>{
+  for(const kind of ['outside','symlink'] as const){
+    const f=await runtimeFixture(t),outside=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-sdk-outside-')));
+    t.after(()=>rm(outside,{recursive:true,force:true}));
+    const link=path.join(f.root,'outside-link');if(kind==='symlink')await symlink(outside,link,'dir');
+    const destination=path.join(kind==='outside'?outside:link,'escaped.mp4');
+    f.queue.push(json({id:'video_123',status:'completed'}),new Response(mp4));
+    await assert.rejects(f.provider.download('video_123',destination,{}),{code:'UNSAFE_OUTPUT_PATH'});
+    assert.deepEqual(f.calls.map(call=>({url:call.url,method:call.init.method})),[{url:`${BASE}/videos/video_123`,method:'GET'}]);
+    assert.deepEqual(await readdir(outside),[]);assert.ok(!(await readdir(f.root)).some(name=>name.endsWith('.partial.mp4')));
+  }
+});
+
+test('SDK download error statuses, invalid media and oversized output never publish or replace a destination',async t=>{
+  for(const scenario of ['http','invalid','oversized'] as const){
+    const f=await runtimeFixture(t),destination=path.join(f.root,scenario+'.mp4'),previous=Buffer.from('original managed output');await writeFile(destination,previous);
+    let reads=0,cancels=0;
+    const body=new ReadableStream<Uint8Array>({pull(controller){reads++;controller.enqueue(scenario==='invalid'?Buffer.from('not a video'):mp4);controller.close();},cancel(){cancels++;}},{highWaterMark:0});
+    f.queue.push(json({id:'video_123',status:'completed'}),new Response(body,{status:scenario==='http'?401:200,headers:scenario==='oversized'?{'content-length':String(128*1024*1024+1)}:{}}));
+    await assert.rejects(f.provider.download('video_123',destination,{}),{code:scenario==='http'?'DOWNLOAD_FAILED':scenario==='invalid'?'INVALID_OUTPUT_MEDIA':'OUTPUT_TOO_LARGE'});
+    assert.deepEqual(await readFile(destination),previous);assert.equal(f.calls.length,2);assert.ok(f.calls.every(call=>call.init.method==='GET'));
+    if(scenario!=='invalid'){assert.equal(reads,0);assert.equal(cancels,1);}
+    assert.ok(!(await readdir(f.root)).some(name=>name.endsWith('.partial.mp4')));
+  }
+});
+
+test('aborting an SDK response while streaming removes the private partial file and cannot submit generation',async t=>{
+  const f=await runtimeFixture(t),destination=path.join(f.root,'cancelled.mp4'),controller=new AbortController();let chunks=0;
+  f.queue.push(json({id:'video_123',status:'completed'}),new Response(new ReadableStream<Uint8Array>({pull(stream){if(chunks++===0)stream.enqueue(mp4);else{controller.abort();stream.close();}}},{highWaterMark:0})));
+  await assert.rejects(f.provider.download('video_123',destination,{signal:controller.signal}),{code:'OPERATION_CANCELLED'});
+  await assert.rejects(readFile(destination),{code:'ENOENT'});assert.ok(!(await readdir(f.root)).some(name=>name.endsWith('.partial.mp4')));
+  assert.equal(f.calls.length,2);assert.ok(f.calls.every(call=>call.init.method==='GET'));
 });
 
 test('a provably unsent POST fails plainly; an ambiguous one stays unknown',async t=>{

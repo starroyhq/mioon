@@ -1,6 +1,8 @@
 import {normalizeCompatibleVideoBaseUrl} from '../../../contracts/src/video-providers.ts';
 import type {CompatibleVideoCheckResult} from '../../../contracts/src/video-providers.ts';
 import {createPinnedVideoFetch} from './network.ts';
+import OpenAI from 'openai';
+import {invokeVideoSdkResponse} from './sdk-response-transport.ts';
 
 /** Reads `GET {base}/models` with the key, through the pinned transport. It never
  * creates a video, never follows a redirect and never returns provider text. */
@@ -8,7 +10,10 @@ export async function checkCompatibleVideoService({baseUrl,apiKey,fetchImpl=crea
   const origin=normalizeCompatibleVideoBaseUrl(baseUrl);
   const bounded=signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs);
   let response:Response;
-  try{response=await fetchImpl(`${origin}/models`,{method:'GET',headers:{Authorization:`Bearer ${apiKey}`,Accept:'application/json'},redirect:'error',signal:bounded});}
+  try{response=await invokeVideoSdkResponse({expectedUrl:`${origin}/models`,signal:bounded,
+    send:(url,options)=>fetchImpl(url,{...options,headers:{Authorization:`Bearer ${apiKey}`,Accept:'application/json'},redirect:'error'})},fetch=>
+    new OpenAI({baseURL:origin,apiKey:'mioon-bound-transport',adminAPIKey:null,organization:null,project:null,maxRetries:0,timeout:timeoutMs,logLevel:'off',fetch})
+      .models.list({signal:bounded}).asResponse());}
   catch(error){
     const code=error!==null&&typeof error==='object'?(error as {code?:unknown}).code:undefined;
     return {result:code==='VIDEO_NETWORK_DENIED'?'denied':'unreachable'};

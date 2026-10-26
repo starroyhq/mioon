@@ -1,10 +1,13 @@
 import OpenAI from 'openai';
 import {providerError} from '../providers/live-common.ts';
 import type {ProviderContext} from '../providers/live-common.ts';
-import {compatibleVideoSize} from './adapters.ts';
+import {assertConfiguredTaskId,compatibleVideoSize} from './adapters.ts';
 import type {VideoAdapterInput} from './adapters.ts';
 import {invokeVideoSdk} from './sdk-transport.ts';
 import type {VideoSdkSend} from './sdk-transport.ts';
+import {invokeVideoSdkResponse} from './sdk-response-transport.ts';
+
+interface CompatibleVideoDownloadOptions {fetchImpl:typeof fetch;signal?:AbortSignal;headers?:HeadersInit}
 
 export function createCompatibleVideoSdkClient({api,model,send}:{api:string;model:string;send:VideoSdkSend}){
   function client(fetch:typeof globalThis.fetch){return new OpenAI({baseURL:api,apiKey:'mioon-bound-transport',adminAPIKey:null,organization:null,project:null,maxRetries:0,timeout:30000,logLevel:'off',fetch});}
@@ -20,6 +23,12 @@ export function createCompatibleVideoSdkClient({api,model,send}:{api:string;mode
     },
     retrieve(id:string,context:ProviderContext={}){
       return invokeVideoSdk({api,method:'GET',context,send},fetch=>client(fetch).videos.retrieve(id,{signal:context.signal}));
+    },
+    downloadContent(id:string,{fetchImpl,signal,headers}:CompatibleVideoDownloadOptions){
+      assertConfiguredTaskId({providerId:'compatible',model,resolution:'',audio:'default'},id);
+      return invokeVideoSdkResponse({expectedUrl:`${api}/videos/${encodeURIComponent(id)}/content`,signal,
+        send:(url,options)=>fetchImpl(url,{...options,headers,redirect:'manual'})},fetch=>
+        client(fetch).videos.downloadContent(id,{}, {signal,timeout:60_000}).asResponse());
     },
   };
 }

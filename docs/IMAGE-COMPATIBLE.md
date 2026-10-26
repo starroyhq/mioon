@@ -130,6 +130,14 @@ probe, model discovery or generation and grants no paid approval.
 
 ## Destination and wire profile
 
+Since 2026-10-26, the pinned official `openai@7.39.0` SDK's
+`images.generate()` assembles this existing JSON profile. The host still owns
+the reviewed destination, dedicated credential, DNS/TLS checks, bounded wire
+body and final synchronous dispatch fence. SDK retries and environment
+credential discovery are disabled, and the fetch boundary allows only one
+request to the exact generation URL. No probing, pagination, protocol fallback
+or image editing is added to this custom slot.
+
 The saved base URL must be canonical HTTPS on port 443 with a DNS hostname and
 optional ASCII path prefix. Canonical form has a lowercase hostname, no explicit
 `:443` and no trailing slash; UI normalization may remove those differences
