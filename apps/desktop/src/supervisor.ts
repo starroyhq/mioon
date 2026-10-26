@@ -77,6 +77,12 @@ function recordOf(value: unknown): Record<string, unknown> | null {
 function isPid(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) > 1 && (value as number) !== process.pid;
 }
+function isBackendLeaseProbe(value: unknown): value is {type: 'lease-probe'; probeId: number} {
+  const probe = recordOf(value);
+  return Boolean(probe && !Array.isArray(value) && Object.keys(probe).length === 2 &&
+    Object.hasOwn(probe, 'type') && Object.hasOwn(probe, 'probeId') && probe.type === 'lease-probe' &&
+    Number.isSafeInteger(probe.probeId) && Number(probe.probeId) > 0);
+}
 function stopError(code: 'BACKEND_STOP_UNCONFIRMED' | 'BACKEND_STOP_FAILED' | 'BACKEND_MEDIA_EXIT_UNCONFIRMED', exitConfirmed?: boolean): StopError {
   return Object.assign(new Error(code === 'BACKEND_STOP_UNCONFIRMED'
     ? '本地服务未确认退出。请稍后重试；在确认退出前不能重启服务'
@@ -226,6 +232,16 @@ export class BackendSupervisor extends EventEmitter {
         if (nativeAudioBroker?.handle(message)) return;
         if(workspaceNativeBroker.handle(message))return;
         if (this.child !== child) return;
+        if (isBackendLeaseProbe(message)) {
+          // A suspended utility must prove its parent is still this live
+          // owner. This acknowledgement cannot start work or revive a child
+          // whose shutdown has already begun.
+          if ((this.state === 'starting' || this.state === 'running') && this.termination === null) {
+            try { child.postMessage({type: 'lease-probe-ack', probeId: message.probeId}); }
+            catch { clearInterval(heartbeat); fail(new Error('本地服务启动通信失败')); kill('communication-lost'); }
+          }
+          return;
+        }
         const notice = recordOf(message);
         if (notice?.type === 'exit-diagnostic') {
           // Only fixed reason labels cross into diagnostics. Never persist a

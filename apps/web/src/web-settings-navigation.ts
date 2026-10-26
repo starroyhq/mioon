@@ -1,15 +1,14 @@
 import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { isSettingsConnectionPage } from './settings-window-state.ts';
-import type { SettingsPage } from './settings-window-state.ts';
-import type { ProjectWindowSettingsSlot } from './desktop-window-client.ts';
+import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
 /** Web presentation state only. No project ownership or native bridge is invented.
  * Every navigation permission is bound to the same retained form registry. */
 export function createWebSettingsNavigation({ registry, confirm, onChange = () => {} }: {
   registry: SettingsNavigationRegistry; confirm: (message: DisplayMessage) => Promise<boolean>; onChange?: () => void;
 }) {
-  let active = true, opened = false, page: SettingsPage = 'general', selected: ProjectWindowSettingsSlot = 'agent', intent = 0;
+  let active = true, opened = false, page: SettingsPage = 'general', selected: SettingsConnectionPage = 'agent', intent = 0;
   let notice: DisplayMessage | '' = '';
   async function navigate(next: SettingsPage, show: boolean) {
     const serial = ++intent;

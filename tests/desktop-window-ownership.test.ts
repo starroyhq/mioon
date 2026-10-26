@@ -1,4 +1,12 @@
-import type {DesktopHarnessOptions, DesktopHarnessRecords, DesktopHarnessWindow, DesktopHarnessWindowConfig, DesktopHarnessApp, DesktopHarnessMenu, DesktopHarnessChild, DesktopHarnessBackend, DesktopHarnessSession, DesktopHarnessDialog, DesktopHarnessConnection} from './helpers/strict-desktop-harness-types.ts';
+import type {DesktopHarnessOptions, DesktopHarnessRecords, DesktopHarnessWindow, DesktopHarnessWindowConfig, DesktopHarnessApp, DesktopHarnessMenuList, DesktopHarnessChild, DesktopHarnessBackend, DesktopHarnessSession, DesktopHarnessDialog, DesktopHarnessConnection, DesktopHarnessFrame} from './helpers/strict-desktop-harness-types.ts';
+import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
+import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
+import {createMenuCommandHost} from '../apps/desktop/src/menu-command-host.ts';
+import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
+import type {MenuCommandId, MenuCommandIntent, MenuCommandState} from '../apps/desktop/src/menu-command-protocol.ts';
+import type {MenuCommandGestureBridge} from '../apps/desktop/src/menu-command-protocol.ts';
+import {createMenuCommandBridge} from '../apps/desktop/src/menu-command-preload.ts';
+import {menuCommandGestureScript} from '../apps/desktop/src/menu-command-gesture.ts';
 import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
 import { createProjectFileOpener, uploadProjectFile, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
@@ -69,7 +77,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       return null;
     }]));
   }
-  let menu: DesktopHarnessMenu[], initial: Promise<void>;
+  let menu: DesktopHarnessMenuList, initial: Promise<void>;
   const app = new EventEmitter() as DesktopHarnessApp;
   Object.assign(app, {
     isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {},
@@ -101,12 +109,15 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     });
     r.children.push(child); return child;
   }
-  interface Window extends DesktopHarnessWindow {closedDelivered: boolean; visible: boolean; hides: number; shows: number; focuses: number; flushes: number; index: number; disposition: string; entryTickets: Map<string, string>; popupPolicy(): {action: string};}
+  const frameBridges = new WeakMap<DesktopHarnessFrame, MenuCommandGestureBridge>();
+  interface Window extends DesktopHarnessWindow {closedDelivered: boolean; visible: boolean; fullScreen: boolean; hides: number; shows: number; focuses: number; flushes: number; index: number; disposition: string; entryTickets: Map<string, string>; menuPackets: {channel: string; value: MenuCommandIntent}[]; gestureCalls: {frame: DesktopHarnessFrame; script: string; userGesture: boolean | undefined}[]; gestureInputs: MenuCommandIntent[]; nativeUndos: number; nativeRedos: number; newFrame(url: string): DesktopHarnessFrame; bindMenuGesture(): Promise<void>; popupPolicy(): {action: string};}
   class Window extends EventEmitter {
     static getFocusedWindow() { return options.focusedWindow ? options.focusedWindow(r.windows) : r.windows.findLast(window => !window.destroyed) ?? null; }
     constructor(config: DesktopHarnessWindowConfig) {
       super(); this.config = config; this.destroyed = false; this.closedDelivered = false;
       this.urls = []; this.shows = 0; this.focuses = 0; this.flushes = 0; this.visible = false; this.hides = 0;
+      this.fullScreen = false; this.menuPackets = []; this.nativeUndos = 0; this.nativeRedos = 0;
+      this.gestureCalls = []; this.gestureInputs = [];
       this.index = r.windows.length;
       this.disposition = options.disposition?.(this.index) ?? 'clean';
       let closeToken: string|null = null, closeSerial = 0, capturedDisposition: string|null = null;
@@ -133,10 +144,27 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
         },
         __mioonFlushWorkspacePreferences: async () => { this.flushes++; return await options.flush?.(this.index) ?? true; }
       });
+      this.newFrame = (url: string) => {
+        let gesturePage!: vm.Context;
+        const frame: DesktopHarnessFrame = {url, executeJavaScript: (script, userGesture) => {
+          this.gestureCalls.push({frame, script, userGesture});
+          const perform = () => vm.runInContext(script, gesturePage);
+          return Promise.resolve(options.menuFrameExecute ? options.menuFrameExecute(this.index, perform) : perform());
+        }};
+        const bridge = createMenuCommandBridge({
+          invoke: async (channel, request) => {
+            const handler = r.ipcHandlers?.get(channel); assert.ok(handler);
+            return handler({sender: this.webContents, senderFrame: frame}, request);
+          }, on(){}, removeListener(){},
+        });
+        gesturePage = vm.createContext({__mioonMenuCommands: bridge}); frameBridges.set(frame, bridge);
+        return frame;
+      };
       this.webContents = Object.assign(new EventEmitter(), {
-        mainFrame: { url: 'about:blank' },
+        mainFrame: this.newFrame('about:blank'),
         getURL: () => this.webContents.mainFrame.url,
-        send() {},
+        send: (channel: string, value: MenuCommandIntent) => { if (channel === MENU_COMMAND_EVENT) this.menuPackets.push({channel, value}); },
+        undo: () => { this.nativeUndos++; }, redo: () => { this.nativeRedos++; },
         loadURL: (url: string) => this.loadURL(url),
         executeJavaScript: async (script: string) => vm.runInContext(script, renderer),
         setWindowOpenHandler: (fn: Window['popupPolicy']) => { this.popupPolicy = fn; }
@@ -144,6 +172,14 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       r.windows.push(this);
     }
     isDestroyed() { return this.destroyed; }
+    async bindMenuGesture() {
+      const bridge = frameBridges.get(this.webContents.mainFrame); assert.ok(bridge);
+      await bridge.context(); bridge.subscribe(value => this.gestureInputs.push(value));
+    }
+    isVisible() { return this.visible; }
+    isFullScreen() { return this.fullScreen; }
+    setFullScreen(value: boolean) { this.fullScreen = value; }
+    getTitle() { return String(this.config.title ?? 'Synthetic'); }
     getContentBounds() { return {x: 80, y: 60, width: Number(this.config.width), height: Number(this.config.height)}; }
     setBackgroundColor(value: string) { this.backgroundColor = value; }
     isMinimized() { return false; }
@@ -167,12 +203,12 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     async loadURL(url: string) {
       this.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
       this.urls.push(url);
-      this.webContents.mainFrame = { url };
+      this.webContents.mainFrame = this.newFrame(url);
       this.webContents.emit('did-navigate', {}, url);
       await options.load?.(this.index, this.urls.length, url);
     }
   }
-  const context = vm.createContext({ app, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
@@ -233,7 +269,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {
-      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
+      assert.ok([APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL].includes(channel)); assert.equal(typeof handler, 'function');
       r.ipcHandlers ??= new Map(); assert.equal(r.ipcHandlers.has(channel), false); r.ipcHandlers.set(channel, handler);
       if (channel === PROJECT_WINDOW_CHANNEL) r.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) r.audioBridge = handler;
     } },
@@ -243,7 +279,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       r.connectionWrites.push(value); await options.connection?.(index); r.connections.push(value);
     },
     removeConnectionOnShutdown: async () => { r.removals++; await options.remove?.(r.removals); },
-    Menu: { buildFromTemplate: (value: DesktopHarnessMenu[]) => value, setApplicationMenu: (value: DesktopHarnessMenu[]) => { menu = value; } },
+    Menu: { buildFromTemplate: desktopMenuHarness, setApplicationMenu: (value: DesktopHarnessMenuList) => { menu = value; } },
     dialog: {
       showMessageBox: async (parentOrValue: Window | DesktopHarnessDialog, modalValue?: DesktopHarnessDialog) => {
         const value = (modalValue ?? parentOrValue) as DesktopHarnessDialog, parent = modalValue ? parentOrValue as Window : null;
@@ -255,7 +291,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   });
   vm.runInContext(source, context, { filename: 'actual-desktop-main.ts' });
   assert.deepEqual([...r.ipcHandlers!.keys()].sort(),
-    [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL].sort());
+    [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL].sort());
   const get = (text: string) => vm.runInContext(text, context);
   t.after(async () => {
     get('quitting = true; trayHost?.dispose()'); options.release?.();
@@ -266,10 +302,16 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   });
   await until(() => menu);
   return {
-    r, app, get, nativeTray, initial: () => initial,
-    restart: () => menu.find((item: { label: string; }) => item.label === '应用')!.submenu.find((item: { label: string; }) => item.label === '重启本地服务')!.click(),
-    newProject: () => menu.find(item => item.label === '应用')!.submenu.find(item => item.label === '新建项目')!.click(),
-    reload: () => menu.find((item: { label: string; }) => item.label === '应用')!.submenu.find((item: { label: string; }) => item.label === '重新载入界面')!.click(),
+    r, app, get, nativeTray, initial: () => initial, menu: (id: string) => menu.getMenuItemById(id)!,
+    restart: () => menu.getMenuItemById('app-restart')!.click!(),
+    newProject: () => menu.getMenuItemById('app-new-project')!.click!(),
+    reload: () => {
+      // A real user can invoke Reload only after native presentation. This VM
+      // otherwise leaves ready-to-show under individual test control.
+      const focused = Window.getFocusedWindow();
+      if (focused instanceof Window && !focused.visible) focused.emit('ready-to-show');
+      return menu.getMenuItemById('app-reload')!.click!();
+    },
     activate: () => app.emit('activate'),
     fatals: () => r.dialogs.filter(item => item.title === '无法启动 Mioon'),
     rendererDialogs: () => r.dialogs.filter(item => item.title === '界面需要重新载入'),
@@ -461,7 +503,10 @@ for (const response of [0, 1, 'reject']) {
     });
     await f.initial(); f.get('win').webContents.emit('unresponsive');
     await until(() => f.rendererDialogs().length === 1);
-    await f.restart(); const replacement = f.get('win');
+    // The menu now correctly denies restart behind a native dialog. Exercise
+    // replacement through the existing internal host operation to retain the
+    // independent old-dialog/epoch regression.
+    await f.get('restart')(); const replacement = f.get('win');
     if (response === 'reject') gate.reject(failure('OLD_RENDERER_DIALOG_FAILED')); else gate.resolve({ response });
     await tick(); await tick();
     assert.equal(replacement.urls.length, 1); f.assertCurrent(1); assert.equal(f.r.backends.length, 2);
@@ -485,7 +530,9 @@ for (const oldResponse of [0, 1, 'reject']) {
     await until(() => f.rendererDialogs().length === 1);
     const oldOwner = f.rendererDialogs().at(-1);
     assert.equal(f.r.dialogParents[f.r.dialogs.indexOf(oldOwner!)], oldWindow);
-    await f.restart(); const replacement = f.get('win');
+    // A trusted host replacement still must retire this old dialog even
+    // though the public menu cannot initiate it while the prompt is open.
+    await f.get('restart')(); const replacement = f.get('win');
     replacement.webContents.emit('unresponsive'); replacement.webContents.emit('render-process-gone');
     await until(() => f.rendererDialogs().length === 2);
     const currentOwner = f.rendererDialogs().at(-1);
@@ -571,6 +618,162 @@ async function openOwnedEditor(f: Awaited<ReturnType<typeof harness>>) {
     { action: 'editor-status', contextId: host.contextFor(editor).contextId, projectId, phase: 'ready' }), true);
   return { launcher, editor };
 }
+
+function publishMenuState(f: Awaited<ReturnType<typeof harness>>, window: (typeof f.r.windows)[number], patch: Partial<MenuCommandState> = {}) {
+  const state: MenuCommandState = {version: 1, reportVersion: 1, editingContext: 'timeline', workspaceMode: 'editing',
+    assetsVisible: true, inspectorVisible: true, timelineVisible: true,
+    commands: Object.fromEntries(MENU_COMMAND_IDS.map(command => [command, true])) as Record<MenuCommandId, boolean>, ...patch};
+  const document = f.get('windowHost').contextFor(window);
+  assert.equal(f.r.ipcHandlers!.get(MENU_COMMAND_CHANNEL)!({sender: window.webContents, senderFrame: window.webContents.mainFrame},
+    {action: 'publish', contextId: document.contextId, state}), true);
+  return state;
+}
+
+test('actual application menu sends business commands only to the focused exact reported document', async t => {
+  let focused: DesktopHarnessWindow | null = null;
+  const f = await harness(t, {focusedWindow: () => focused}); await f.initial();
+  const {launcher, editor} = await openOwnedEditor(f); focused = editor; editor.emit('focus');
+  publishMenuState(f, editor); assert.equal(f.menu('command-clip-split').enabled, true);
+  const callback = f.menu('command-clip-split').click!; callback();
+  assert.equal(editor.menuPackets.length, 1); assert.equal(editor.menuPackets[0].value.command, 'clip-split');
+  assert.equal(editor.menuPackets[0].value.contextId, f.get('windowHost').contextFor(editor).contextId);
+  assert.equal(launcher.menuPackets.length, 0);
+  focused = launcher; launcher.emit('focus'); callback();
+  assert.equal(editor.menuPackets.length, 1, 'An unreported focused document cannot borrow the other window\'s enabled state');
+  assert.equal(launcher.menuPackets.length, 0);
+  assert.throws(() => f.r.ipcHandlers!.get(MENU_COMMAND_CHANNEL)!({sender: editor.webContents, senderFrame: {}},
+    {action: 'publish', contextId: f.get('windowHost').contextFor(editor).contextId, state: {...publishMenuState(f, editor, {reportVersion: 2}), reportVersion: 3}}));
+});
+
+test('native import executes the fixed gesture script once on its captured frame without a second IPC dispatch', async t => {
+  const f = await harness(t); await f.initial(); const {launcher, editor} = await openOwnedEditor(f);
+  await editor.bindMenuGesture(); publishMenuState(f, editor);
+  const frame = editor.webContents.mainFrame;
+  f.menu('command-import-media').click!(); await tick();
+  assert.equal(editor.gestureCalls.length, 1); assert.equal(editor.gestureCalls[0].frame, frame);
+  assert.equal(editor.gestureCalls[0].userGesture, true);
+  assert.equal(editor.gestureInputs.length, 1); assert.equal(editor.gestureInputs[0].command, 'import-media');
+  assert.equal(editor.gestureInputs[0].contextId, f.get('windowHost').contextFor(editor).contextId);
+  assert.equal(editor.gestureInputs[0].reportVersion, 1);
+  assert.equal(editor.gestureCalls[0].script, menuCommandGestureScript(editor.gestureInputs[0]));
+  assert.equal(editor.menuPackets.length, 0, 'An import gesture must never also be sent through the ordinary IPC path');
+  assert.equal(launcher.gestureCalls.length, 0); assert.equal(launcher.menuPackets.length, 0);
+  // This uses the real restricted preload receiver, not a native chooser.
+  // Browser transient activation and the OS file picker require native QA.
+});
+
+test('uncertain import gesture execution and changed owners never fall back or retry', async t => {
+  for (const mode of ['reject', 'throw', 'owner', 'frame'] as const) {
+    const gate = deferred();
+    const f = await harness(t, {release: () => gate.resolve(), menuFrameExecute: () => {
+      if (mode === 'throw') throw Error('synthetic synchronous gesture failure');
+      if (mode === 'reject') return Promise.reject(Error('synthetic lost gesture acknowledgement'));
+      return gate.promise;
+    }});
+    await f.initial(); const {launcher, editor} = await openOwnedEditor(f); await editor.bindMenuGesture(); publishMenuState(f, editor);
+    const frame = editor.webContents.mainFrame, callback = f.menu('command-import-media').click!;
+    callback(); assert.equal(editor.gestureCalls.length, 1); assert.equal(editor.gestureCalls[0].frame, frame);
+    if (mode === 'owner') editor.destroy();
+    if (mode === 'frame') { await editor.loadURL(editor.urls.at(-1)!); assert.notEqual(editor.webContents.mainFrame, frame); }
+    if (mode === 'owner' || mode === 'frame') {
+      gate.reject(Error('synthetic original frame delivery lost')); callback();
+    }
+    await tick(); await tick();
+    assert.equal(editor.gestureCalls.length, 1, mode); assert.equal(editor.gestureInputs.length, 0, mode);
+    assert.equal(editor.menuPackets.length, 0, mode); assert.equal(launcher.menuPackets.length, 0, mode);
+    assert.equal(launcher.gestureCalls.length, 0, mode); assert.equal(f.fatals().length, 0, mode);
+  }
+});
+
+test('a retained application menu callback cannot borrow a report across a same-URL document replacement', async t => {
+  const f = await harness(t); await f.initial(); const {editor} = await openOwnedEditor(f);
+  publishMenuState(f, editor); const callback = f.menu('command-export').click!;
+  const contextId = f.get('windowHost').contextFor(editor).contextId, oldFrame = editor.webContents.mainFrame;
+  await editor.loadURL(editor.urls.at(-1)!);
+  assert.notEqual(f.get('windowHost').contextFor(editor).contextId, contextId);
+  assert.equal(f.get('menuCommands').stateFor(editor.webContents), null);
+  callback(); f.get('executeMenuCommand')('export'); assert.equal(editor.menuPackets.length, 0);
+  assert.throws(() => f.r.ipcHandlers!.get(MENU_COMMAND_CHANNEL)!({sender: editor.webContents, senderFrame: oldFrame},
+    {action: 'publish', contextId, state: {version: 1}}));
+});
+
+test('actual native dialog disables menu business actions and restart, including retained callbacks', async t => {
+  const gate = deferred(); const f = await harness(t, {dialog: () => gate.promise, release: () => gate.resolve({response: 1})});
+  await f.initial(); const {editor} = await openOwnedEditor(f); publishMenuState(f, editor);
+  const callback = f.menu('command-clip-split').click!, restart = f.menu('app-restart').click!, windows = f.r.windows.length;
+  const show = f.get('showOwnedDialog')(editor, f.get('windowContext'), {type: 'question', message: 'synthetic pending owner', cancelId: 1});
+  assert.equal(f.menu('command-clip-split').enabled, false); assert.equal(f.menu('app-restart').enabled, false);
+  assert.equal(f.menu('app-settings').enabled, false); assert.equal(f.menu('app-new-project').enabled, false);
+  callback(); restart(); f.get('executeMenuCommand')('clip-split'); await tick();
+  assert.equal(editor.menuPackets.length, 0); assert.equal(f.r.windows.length, windows); assert.equal(f.r.backends.length, 1);
+  assert.equal(f.get('restartCoordinator.state'), 'idle'); gate.resolve({response: 1}); await show;
+  assert.equal(f.menu('command-clip-split').enabled, true); callback(); assert.equal(editor.menuPackets.length, 1);
+});
+
+test('settings ownership, hidden native windows and pending reload cannot execute menu business actions', async t => {
+  let focused: DesktopHarnessWindow | null = null;
+  const drain = deferred(), f = await harness(t, {focusedWindow: () => focused, flush: index => index === 1 ? drain.promise : true, release: () => drain.resolve(true)});
+  await f.initial(); const {editor} = await openOwnedEditor(f); focused = editor; editor.emit('focus'); publishMenuState(f, editor);
+  const callback = f.menu('command-clip-split').click!, host = f.get('windowHost');
+  assert.equal(host.showSettings('general', editor), true); const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+  editor.emit('focus'); assert.equal(f.menu('command-clip-split').enabled, false); callback();
+  focused = settings; settings.emit('ready-to-show'); settings.emit('focus'); publishMenuState(f, settings);
+  assert.equal(f.menu('command-clip-split').enabled, false, 'A settings report is never a business command owner');
+  callback(); f.get('executeMenuCommand')('clip-split'); assert.equal(settings.menuPackets.length, 0);
+  settings.close(); await until(() => settings.destroyed); focused = editor; editor.emit('focus');
+  await f.get('performTrayAction')('hide'); assert.equal(editor.visible, false); assert.equal(f.menu('command-clip-split').enabled, false);
+  callback(); f.get('executeMenuCommand')('clip-split'); assert.equal(editor.menuPackets.length, 0);
+  await f.get('performTrayAction')('show'); editor.emit('focus');
+  const admission = f.get('windowAdmissions').get(editor); f.reload(); await until(() => editor.flushes === 1);
+  assert.equal(f.menu('command-clip-split').enabled, false); callback(); f.get('executeMenuCommand')('clip-split');
+  assert.equal(editor.menuPackets.length, 0); drain.resolve(true); await until(() => !admission.pending);
+});
+
+test('native undo and redo use text responders while timeline undo and redo dispatch exactly one command', async t => {
+  const f = await harness(t); await f.initial(); const {editor} = await openOwnedEditor(f);
+  publishMenuState(f, editor, {editingContext: 'text', commands: Object.fromEntries(MENU_COMMAND_IDS.map(command => [command, false])) as Record<MenuCommandId, boolean>});
+  f.menu('command-edit-undo').click!(); f.menu('command-edit-redo').click!();
+  assert.equal(editor.nativeUndos, 1); assert.equal(editor.nativeRedos, 1); assert.equal(editor.menuPackets.length, 0);
+  publishMenuState(f, editor, {reportVersion: 2});
+  f.menu('command-edit-undo').click!(); f.menu('command-edit-redo').click!();
+  assert.equal(editor.nativeUndos, 1); assert.equal(editor.nativeRedos, 1);
+  assert.deepEqual(editor.menuPackets.map(packet => packet.value.command), ['edit-undo', 'edit-redo']);
+  assert.notEqual(editor.menuPackets[0].value.sequence, editor.menuPackets[1].value.sequence);
+  publishMenuState(f, editor, {reportVersion: 3, editingContext: 'text'});
+  await f.get('performTrayAction')('hide'); f.get('executeMenuCommand')('edit-undo');
+  assert.equal(f.menu('command-edit-undo').enabled, false); assert.equal(editor.nativeUndos, 1, 'A stale focused handle cannot edit a hidden text responder');
+});
+
+test('the actual Settings menu opens general and the Shortcuts menu reuses its modal owner', async t => {
+  const f = await harness(t); await f.initial(); const parent = f.r.windows[0], host = f.get('windowHost');
+  await f.menu('app-settings').click!(); const settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+  assert.equal(settings.config.parent, parent); assert.equal(host.contextFor(settings).settingsSlot, 'general');
+  await f.menu('app-shortcuts').click!(); assert.equal(f.r.windows.length, 2);
+  assert.equal(host.contextFor(settings).settingsSlot, 'shortcuts'); assert.equal(settings.config.parent, parent);
+});
+
+test('a newer Shortcuts menu intent supersedes an unfinished General settings intent', async t => {
+  const load = deferred(), f = await harness(t, {load: index => index === 1 ? load.promise : undefined, release: () => load.resolve()});
+  await f.initial(); f.r.windows[0].close(); await until(() => f.r.windows[0].destroyed);
+  const general = f.menu('app-settings').click!(); await until(() => f.r.windows.length === 2);
+  const shortcuts = f.menu('app-shortcuts').click!(); assert.notEqual(general, shortcuts);
+  load.resolve(); await Promise.all([general, shortcuts]);
+  const host = f.get('windowHost'), settings = f.r.windows.at(-1)!; await host.loadFor(settings);
+  assert.equal(f.r.windows.length, 3); assert.equal(settings.config.parent, f.r.windows[1]);
+  assert.equal(host.contextFor(settings).settingsSlot, 'shortcuts');
+});
+
+test('the native window list follows committed titles and a closed window callback cannot revive its owner', async t => {
+  const f = await harness(t); await f.initial(); const {editor} = await openOwnedEditor(f), host = f.get('windowHost');
+  const id = `project-window-${host.contextFor(editor).windowId}`;
+  assert.equal(f.menu('window-projects').submenu!.filter(item => item.id?.startsWith('project-window-')).length, 1);
+  // Electron announces the page title before its default native title update.
+  editor.webContents.emit('page-title-updated'); editor.config.title = 'Updated\u0000 project'; await tick();
+  assert.equal(f.menu(id).label, 'Updated  project'); const callback = f.menu(id).click!, windows = f.r.windows.length;
+  editor.close(); await until(() => editor.destroyed); const focuses = editor.focuses;
+  callback(); await tick(); assert.equal(editor.focuses, focuses); assert.equal(f.r.windows.length, windows);
+  assert.equal(f.menu(id), null);
+});
 
 test('actual main retains one application tray across backend restart and destroys it only after successful Quit', async t => {
   const f = await harness(t); await f.initial();

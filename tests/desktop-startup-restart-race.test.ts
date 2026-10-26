@@ -1,4 +1,8 @@
-import type {DesktopHarnessOptions, DesktopHarnessRecords, DesktopHarnessWindow, DesktopHarnessWindowConfig, DesktopHarnessApp, DesktopHarnessMenu, DesktopHarnessChild, DesktopHarnessBackend, DesktopHarnessSession, DesktopHarnessDialog, DesktopHarnessConnection} from './helpers/strict-desktop-harness-types.ts';
+import type {DesktopHarnessOptions, DesktopHarnessRecords, DesktopHarnessWindow, DesktopHarnessWindowConfig, DesktopHarnessApp, DesktopHarnessMenuList, DesktopHarnessChild, DesktopHarnessBackend, DesktopHarnessSession, DesktopHarnessDialog, DesktopHarnessConnection} from './helpers/strict-desktop-harness-types.ts';
+import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
+import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
+import {createMenuCommandHost} from '../apps/desktop/src/menu-command-host.ts';
+import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
 import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-native.ts';
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
 import { createProjectFileOpener, uploadProjectFile, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
@@ -56,7 +60,7 @@ const failure = (code: string = 'SYNTHETIC_FAILURE') => Object.assign(new Error(
 // Only OS boundaries are fake: no Electron, utility, native vault or media runs.
 async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> = {}) {
   const records: Omit<DesktopHarnessRecords<Window>, 'connectionWrites' | 'dialogParents' | 'syncDialogs' | 'nativeChecks' | 'settingsCloses' | 'lutStoreCalls' | 'starts'> & {starts: {report?: unknown; error?: {code?: string}}[]} = { scopes: [], validations: [], settings: [], backends: [], children: [], sessions: [], windows: [], connections: [], dialogs: [], starts: [], drains: 0, removals: 0, quits: 0, finished: 0, exits: [] };
-  const expectedChannels = [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL];
+  const expectedChannels = [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, MENU_COMMAND_CHANNEL];
   const lutDirectory = Object.freeze({ dev: 1, ino: 2 });
   const lutDatabase = Object.freeze({ dev: 1, ino: 3 });
   const lutStoreCalls: unknown[] = [];
@@ -69,7 +73,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       return null;
     }]));
   }
-  let menu: DesktopHarnessMenu[], initial: Promise<void>;
+  let menu: DesktopHarnessMenuList, initial: Promise<void>;
   const app = new EventEmitter() as DesktopHarnessApp;
   Object.assign(app, {
     isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {},
@@ -107,11 +111,11 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     records.children.push(child);
     return child;
   }
-  interface Window extends DesktopHarnessWindow {}
+  interface Window extends DesktopHarnessWindow {visible: boolean}
   class Window extends EventEmitter {
     static getFocusedWindow() { return records.windows.findLast(window => !window.destroyed) ?? null; }
     constructor(config: DesktopHarnessWindowConfig) {
-      super(); this.config = config; this.destroyed = false; this.urls = [];
+      super(); this.config = config; this.destroyed = false; this.urls = []; this.visible = false;
       let closeToken: string|null = null, closeSerial = 0;
       const windowIndex = records.windows.length;
       // This synthetic renderer speaks the real v1 protocol. The preference
@@ -134,13 +138,15 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       records.windows.push(this);
     }
     isDestroyed() { return this.destroyed; }
+    isVisible() { return this.visible; }
+    getTitle() { return String(this.config.title ?? 'Synthetic'); }
     getContentBounds() { return {x: 80, y: 60, width: Number(this.config.width), height: Number(this.config.height)}; }
     setBackgroundColor(value: string) { this.backgroundColor = value; }
     isMinimized() { return false; }
     restore() {}
     destroy() { if (!this.destroyed) { this.destroyed = true; this.emit('closed'); } }
     close() { let prevented = false; this.emit('close', { preventDefault() { prevented = true; } }); if (!prevented) this.destroy(); }
-    show() {} showInactive() {} hide() {} focus() {}
+    show() { this.visible = true; this.emit('show'); } showInactive() { this.show(); } hide() { this.visible = false; this.emit('hide'); } focus() {}
     async loadURL(url: string) {
       this.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
       this.urls.push(url); this.webContents.mainFrame = { url };
@@ -148,7 +154,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(records.windows.indexOf(this));
     }
   }
-  const context = vm.createContext({ app, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
@@ -219,7 +225,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       if (channel === PROJECT_WINDOW_CHANNEL) records.bridge = handler; else if (channel === NATIVE_AUDIO_CHANNEL) records.audioBridge = handler;
     } },
     installNativeCloseAdmission, stopBackendForQuit,
-    Menu: { buildFromTemplate: (value: DesktopHarnessMenu[]) => value, setApplicationMenu: (value: DesktopHarnessMenu[]) => { menu = value; } },
+    Menu: { buildFromTemplate: desktopMenuHarness, setApplicationMenu: (value: DesktopHarnessMenuList) => { menu = value; } },
     dialog: { showMessageBox: async (parentOrValue: Window | DesktopHarnessDialog, modalValue?: DesktopHarnessDialog) => { const value = (modalValue ?? parentOrValue) as DesktopHarnessDialog; records.dialogs.push(value); return { response: 0 }; }, showMessageBoxSync: () => 0 },
     storageFailureDialog: (error: Error) => ({ title: 'Storage failure', detail: error.message }),
     observeStart: (result: {report?: unknown; error?: {code?: string}}) => records.starts.push(result)
@@ -239,7 +245,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   await until(() => menu);
   return { records, app, initial: () => initial,
     get: (expression: string) => vm.runInContext(expression, context),
-    restart: () => menu.find((item: { label: string; }) => item.label === '应用')!.submenu.find((item: { label: string; }) => item.label === '重启本地服务')!.click(),
+    restart: () => menu.getMenuItemById('app-restart')!.click!(),
     fatals: () => records.dialogs.filter(item => item.title === '无法启动 Mioon'),
     async success(index: number|undefined = records.backends.length - 1) {
       await until(() => records.windows.some(win => !win.destroyed && win.urls.length));

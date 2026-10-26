@@ -42,6 +42,7 @@ import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjec
 import type {ProjectWindowQuitRouter} from './project-window-quit.ts';
 import { confirmOwnedWindowRestart } from './project-window-confirmation.ts';
 import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from './project-window-protocol.ts';
+import type {ProjectWindowSettingsSlot} from './project-window-protocol.ts';
 import { installNativeCloseAdmission } from './native-close.ts';
 import { secureWebPreferences, sessionCookie, installSessionPolicy, installWindowPolicy, isAllowedNavigation } from './security.ts';
 import { createRendererDiagnostics, installRendererHealthDiagnostics } from './renderer-diagnostics.ts';
@@ -50,6 +51,13 @@ import { windowChromeOptions } from './window-chrome.ts';
 import { settingsWindowOptions } from './settings-window.ts';
 import { createDesktopTray } from './tray-host.ts';
 import type { TrayAction } from './tray-host.ts';
+import {applicationMenuTemplate} from './application-menu.ts';
+import type {ApplicationMenuAction, ApplicationMenuOptions, ApplicationMenuState} from './application-menu.ts';
+import {createMenuCommandHost} from './menu-command-host.ts';
+import type {MenuCommandDocument} from './menu-command-host.ts';
+import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from './menu-command-protocol.ts';
+import type {MenuCommandId} from './menu-command-protocol.ts';
+import {menuCommandGestureScript} from './menu-command-gesture.ts';
 import { createDesktopWindowAppearance } from './window-appearance.ts';
 import type {DesktopStartReport} from './smoke-checks.ts';
 
@@ -139,8 +147,11 @@ let windowContext: DesktopWindowContext | null | undefined, windowHost: ProjectW
 let workspaceToolsHost: WorkspaceToolsHost | null = null;
 let workspaceNativeHost:WorkspaceNativeHost|null=null;
 let trayHost: ReturnType<typeof createDesktopTray> | null = null;
-let trayOperation: {action: TrayAction; intent: number; promise: Promise<void>} | null = null, trayIntent = 0;
+let trayOperation: {action: TrayAction; settingsSlot: ProjectWindowSettingsSlot; intent: number; promise: Promise<void>} | null = null, trayIntent = 0;
 const nativeDialogs = new Set<{window: BrowserWindow}>();
+interface NativeMenuDocument extends MenuCommandDocument {readonly window: BrowserWindow}
+let menuCommands: ReturnType<typeof createMenuCommandHost<WebContents, NativeMenuDocument>> | null = null;
+let applicationMenu: Menu | null = null, applicationWindowList = '', applicationPresentation = '';
 
 function trayCanInteract(action?: TrayAction): boolean {
   const context = windowContext;
@@ -152,7 +163,7 @@ function trayCanHide(): boolean {
   return trayCanInteract() && nativeDialogs.size === 0 && Boolean(windowHost?.canHideToTray()) &&
     !windowHost!.windows().some(window => windowAdmissions.get(window)?.pending);
 }
-function performTrayAction(action: TrayAction): Promise<void> {
+function performTrayAction(action: TrayAction, settingsSlot: ProjectWindowSettingsSlot = 'general'): Promise<void> {
   if (action === 'quit') { trayIntent++; app.quit(); return Promise.resolve(); }
   if (!trayCanInteract(action)) return Promise.resolve();
   if (action === 'show' && nativeDialogs.size !== 0) {
@@ -166,9 +177,9 @@ function performTrayAction(action: TrayAction): Promise<void> {
   if (action === 'hide') {
     trayIntent++;
     if (trayHost?.available && trayCanHide()) windowHost?.hideToTray();
-    trayHost?.refresh(); return Promise.resolve();
+    trayHost?.refresh(); refreshApplicationMenu(); return Promise.resolve();
   }
-  if (trayOperation?.action === action && trayOperation.intent === trayIntent) return trayOperation.promise;
+  if (trayOperation?.action === action && trayOperation.settingsSlot === settingsSlot && trayOperation.intent === trayIntent) return trayOperation.promise;
   const intent = ++trayIntent;
   const host = windowHost!, context = windowContext!;
   const current = () => trayCanInteract(action) && trayIntent === intent && windowHost === host && windowContext === context;
@@ -179,10 +190,10 @@ function performTrayAction(action: TrayAction): Promise<void> {
     const document = await host.loadDocumentFor(target);
     if (!current() || !document?.isCurrent()) return;
     if (!host.activate(target)) return;
-    if (action === 'settings') host.showSettings('agent', target);
+    if (action === 'settings') host.showSettings(settingsSlot, target);
     else if (action === 'new-project' || action === 'open-project') host.requestProjectEntry(action === 'new-project' ? 'new' : 'open', target);
-  })().finally(() => { if (trayOperation?.promise === operation) trayOperation = null; trayHost?.refresh(); });
-  trayOperation = {action, intent, promise: operation};
+  })().finally(() => { if (trayOperation?.promise === operation) trayOperation = null; trayHost?.refresh(); refreshApplicationMenu(); });
+  trayOperation = {action, settingsSlot, intent, promise: operation};
   return operation;
 }
 
@@ -210,20 +221,20 @@ async function showOwnedDialog(window: BrowserWindow, context: DesktopWindowCont
   const host = windowHost, owner = host?.contextFor(window);
   const cancel = options.cancelId ?? 0;
   if (!host || !owner || !ownsWindow(window, context) || !host.prepareNativeDialog(window)) return cancel;
-  const token = {window}; nativeDialogs.add(token); trayIntent++; trayHost?.refresh();
+  const token = {window}; nativeDialogs.add(token); trayIntent++; trayHost?.refresh(); refreshApplicationMenu();
   try { return (await dialog.showMessageBox(window, options)).response; }
   finally {
     nativeDialogs.delete(token);
     if (ownsWindow(window, context)) finishNativePresentation(window, host, owner.contextId);
-    trayHost?.refresh();
+    trayHost?.refresh(); refreshApplicationMenu();
   }
 }
 
 async function presentForReload(window: BrowserWindow, context: DesktopWindowContext | null | undefined, reload: () => Promise<unknown>): Promise<unknown> {
   const host = windowHost, owner = host?.contextFor(window);
   if (!host || !owner || !ownsWindow(window, context) || !host.prepareNativeDialog(window)) return false;
-  try { return await reload(); }
-  finally { finishNativePresentation(window, host, owner.contextId); }
+  try { const operation = reload(); refreshApplicationMenu(); return await operation; }
+  finally { finishNativePresentation(window, host, owner.contextId); refreshApplicationMenu(); }
 }
 const projectFileFailureText={PROJECT_PACKAGE_NOT_MIOON:'native.openProjectFileNotMioon',PROJECT_PACKAGE_NEWER_FORMAT:'native.openProjectFileNewer',PROJECT_PACKAGE_CORRUPT:'native.openProjectFileDamaged',UNAVAILABLE:'native.openProjectFileUnavailable'} as const;
 // Project files opened from the OS wait here until a backend runs; a window then shows the staged preview.
@@ -353,12 +364,15 @@ async function start(): Promise<DesktopStartReport> {
       createWindow: creation => new BrowserWindow({ title: identity.productName, width: 1500, height: 960,
         icon: path.join(app.getAppPath(), 'icons/icon.png'),
         minWidth: 1050, minHeight: 680, backgroundColor: context.appearance.backgroundColor(), show: false,
-        autoHideMenuBar: process.platform !== 'darwin', ...windowChromeOptions(),
+        autoHideMenuBar: creation.role === 'settings', ...windowChromeOptions(),
         ...(creation.role === 'settings' ? settingsWindowOptions(creation.parent) : {}),
         webPreferences: { ...secureWebPreferences(context.session), preload: path.join(app.getAppPath(), 'preload.cjs') } }),
       prepareWindow: (window, owner) => prepareOwnedWindow(window, context, owner),
       consumeProjectEntry: consumeNativeProjectEntry,
-      onDocumentInvalidated: owner => ownedAudioHost?.revokeOwner({ ...owner, projectId: owner.projectId as string }, false),
+      onDocumentInvalidated: owner => {
+        menuCommands?.forget(owner.window.webContents);
+        ownedAudioHost?.revokeOwner({ ...owner, projectId: owner.projectId as string }, false);
+      },
       onWebContentsDestroyed: windowId => ownedAudioHost?.revokeWindowDestroyed(windowId),
       onLoadError: (error, window) => { if (ownsWindow(window, context) && !smokeOutput) void initialWindowFailed(window, context).catch(fatal); },
     });
@@ -457,6 +471,22 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
   const refreshAppearance = () => context.appearance.refresh();
   window.on('focus', refreshAppearance);
   window.once('closed', () => window.removeListener('focus', refreshAppearance));
+  const refreshMenu = () => refreshApplicationMenu();
+  window.on('focus', refreshMenu); window.on('blur', refreshMenu);
+  window.on('show', refreshMenu); window.on('hide', refreshMenu);
+  window.on('minimize', refreshMenu); window.on('restore', refreshMenu);
+  window.on('enter-full-screen', refreshMenu); window.on('leave-full-screen', refreshMenu);
+  const refreshTitle = () => { void Promise.resolve().then(refreshMenu); };
+  contents.on('page-title-updated', refreshTitle);
+  window.once('closed', () => {
+    menuCommands?.forget(contents);
+    window.removeListener('focus', refreshMenu); window.removeListener('blur', refreshMenu);
+    window.removeListener('show', refreshMenu); window.removeListener('hide', refreshMenu);
+    window.removeListener('minimize', refreshMenu); window.removeListener('restore', refreshMenu);
+    window.removeListener('enter-full-screen', refreshMenu); window.removeListener('leave-full-screen', refreshMenu);
+    contents.removeListener('page-title-updated', refreshTitle);
+    refreshApplicationMenu();
+  });
   const initialLoad = observeInitialProjectLoad(window, owner.url, () => ownsWindow(window, context));
   initialWindowLoads.set(window, initialLoad);
   installWindowPolicy(window, context.ready.url, { url: owner.url, isCurrent: () => owner.isCurrent() });
@@ -472,7 +502,7 @@ function prepareOwnedWindow(window: BrowserWindow, context: DesktopWindowContext
       // Restore a hidden owner before renderer inspection, rather than between
       // inspection and confirmation, when visibility can refresh its inputs.
       if (state === 'closing') windowHost?.prepareNativeDialog(window);
-      windowHost?.closeStateChanged(window, state); trayHost?.refresh();
+      windowHost?.closeStateChanged(window, state); trayHost?.refresh(); refreshApplicationMenu();
     },
     consumeInitialEmptyClose: () => initialLoad.consumeClose(),
     beforeReload: signal => {
@@ -588,49 +618,129 @@ async function fatal(error: unknown): Promise<void> {
   app.quit();
 }
 
-function installMenu(): void {
-  const template: MenuItemConstructorOptions[] = [];
-  if (process.platform === 'darwin') template.push({ label: identity.productName, submenu: [
-    { role: 'about', label: nt('native.about') }, { type: 'separator' }, { role: 'services', label: nt('native.services') },
-    { type: 'separator' }, { role: 'hide', label: nt('native.hide') }, { role: 'hideOthers', label: nt('native.hideOthers') },
-    { role: 'unhide', label: nt('native.showAll') }, { type: 'separator' }, { role: 'quit', label: nt('native.quit') },
-  ] });
-  template.push({ label: nt('native.application'), submenu: [
-    { label: nt('native.newProject'), click: () => { trayIntent++; windowHost?.requestProjectEntry('new', BrowserWindow.getFocusedWindow()); } },
-    { label: nt('native.openProject'), click: () => { trayIntent++; windowHost?.requestProjectEntry('open', BrowserWindow.getFocusedWindow()); } },
-    { label: nt('native.connections'), click: () => { trayIntent++; windowHost?.showSettings('agent', BrowserWindow.getFocusedWindow()); } },
-    { label: nt('native.reload'), accelerator: 'CmdOrCtrl+R', click: () => {
-      const window = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
-      if (ownsWindow(window, windowContext) && windowContext && !windowContext.incident.failed) {
-        if (initialWindowLoads.get(window!)?.failed) void initialWindowFailed(window!, windowContext).catch(fatal);
-        else {
-          const context = windowContext, decision = windowAdmissions.get(window!)?.captureRecoveryDecision();
-          if (decision) void presentForReload(window!, context, () => decision.reload()).catch(fatal);
-        }
+function focusedMenuWindow(): BrowserWindow | null {
+  const focused = BrowserWindow.getFocusedWindow();
+  return ownsWindow(focused, windowContext) ? focused : null;
+}
+function menuDocumentAllowed(document: NativeMenuDocument, command: MenuCommandId): boolean {
+  const window = document.window;
+  return (document.role === 'editor' || document.role === 'launcher' && command === 'show-help') &&
+    trayCanInteract('new-project') && document.isCurrent() && window === focusedMenuWindow() &&
+    window.isVisible() && !window.isMinimized() && !windowHost?.settingsForParent(window) &&
+    !windowAdmissions.get(window)?.pending;
+}
+function readApplicationMenuState(): ApplicationMenuState {
+  const window = focusedMenuWindow(), owner = window ? windowHost?.contextFor(window) : null;
+  const interactive = trayCanInteract('new-project');
+  const pending = window ? Boolean(windowAdmissions.get(window)?.pending) : false;
+  const covered = window ? Boolean(windowHost?.settingsForParent(window)) : false;
+  const available = interactive && Boolean(window && window.isVisible() && !window.isMinimized()) && !pending && !covered;
+  const trusted = Boolean(window && windowHost?.isTrustedDocument(window));
+  const report = window ? menuCommands?.stateFor(window.webContents) ?? null : null;
+  const business = report && window ? {...report, commands: Object.fromEntries(MENU_COMMAND_IDS.map(command =>
+    [command, report.commands[command] && (owner?.role === 'editor' || owner?.role === 'launcher' && command === 'show-help')])) as Record<MenuCommandId, boolean>} : null;
+  const preferred = windowHost?.preferredWindow(window), preferredOwner = preferred ? windowHost?.contextFor(preferred) : null;
+  const windows: {id: string; label: string}[] = [];
+  for (const candidate of windowHost?.windows() ?? []) {
+    const context = windowHost?.contextFor(candidate);
+    if (context?.role !== 'editor') continue;
+    let title = '';
+    try { title = candidate.getTitle().replace(/[\u0000-\u001f]/gu, ' ').trim().slice(0, 160); } catch { /* Native title unavailable during destruction. */ }
+    windows.push({id: context.windowId, label: title || `${nt('native.menuProjectWindow')} ${context.initialProjectId?.slice(0, 8)}`});
+  }
+  return {canProject: interactive && preferredOwner?.role !== 'settings' && !pending,
+    canSettings: interactive, canShow: trayCanInteract('show'), canFocusProjects: interactive,
+    canHide: Boolean(trayHost?.available && trayCanHide()),
+    canClose: available, canResize: available && owner?.role !== 'settings', canReload: available,
+    canRestart: quitRouter.allowsWindows && !restarting && !quitting && nativeDialogs.size === 0 && !pending,
+    canEditText: available && trusted, canCommand: available && trusted && owner?.role !== 'settings',
+    business, windows};
+}
+function executeMenuCommand(command: MenuCommandId): void {
+  const window = focusedMenuWindow();
+  if (!window) return;
+  const state = readApplicationMenuState();
+  if ((command === 'edit-undo' || command === 'edit-redo') && state.canEditText &&
+      (!state.business || state.business.editingContext === 'text')) {
+    // Chromium's native edit action applies to its current text responder.
+    // Timeline undo instead goes through the renderer's guarded command path.
+    if (command === 'edit-undo') window.webContents.undo(); else window.webContents.redo();
+    return;
+  }
+  if (state.canCommand) menuCommands?.send(window.webContents, command);
+}
+function performApplicationMenuAction(action: ApplicationMenuAction): unknown {
+  if (['new-project', 'open-project', 'show', 'hide', 'quit'].includes(action)) {
+    return performTrayAction(action as TrayAction).catch(fatal);
+  }
+  if (action === 'settings' || action === 'shortcuts') {
+    return performTrayAction('settings', action === 'shortcuts' ? 'shortcuts' : 'general').catch(fatal);
+  }
+  const window = focusedMenuWindow();
+  if (action === 'close-window') { if (readApplicationMenuState().canClose) window?.close(); return; }
+  if (action === 'full-screen') { if (window && readApplicationMenuState().canResize) window.setFullScreen(!window.isFullScreen()); return; }
+  if (action === 'reload') {
+    if (window && readApplicationMenuState().canReload && windowContext && !windowContext.incident.failed) {
+      if (initialWindowLoads.get(window)?.failed) void initialWindowFailed(window, windowContext).catch(fatal);
+      else {
+        const context = windowContext, decision = windowAdmissions.get(window)?.captureRecoveryDecision();
+        if (decision) void presentForReload(window, context, () => decision.reload()).catch(fatal);
       }
-    } },
-    { label: nt('native.restartService'), click: () => confirmOwnedWindowRestart({
-      getOwner: () => windowContext || startupOperation, canRequest: () => quitRouter.allowsWindows && !restarting,
-      confirm: () => dialog.showMessageBox({ type: 'question', message: nt('native.restartQuestion'),
-        detail: nt('native.restartDetail'),
-        buttons: [nt('native.restart'), nt('native.cancel')], defaultId: 1, cancelId: 1 }).then(({ response }) => response === 0),
-      restart,
-    }).catch(fatal) },
-    { type: 'separator' }, { role: 'quit', label: nt('native.quit') }
-  ] }, { label: nt('native.edit'), submenu: [
-    { role: 'undo', label: nt('native.undo') }, { role: 'redo', label: nt('native.redo') }, { type: 'separator' },
-    { role: 'cut', label: nt('native.cut') }, { role: 'copy', label: nt('native.copy') }, { role: 'paste', label: nt('native.paste') },
-    ...(process.platform === 'darwin' ? [{ role: 'pasteAndMatchStyle' as const, label: nt('native.pasteMatch') }] : []),
-    { role: 'delete', label: nt('native.delete') }, { role: 'selectAll', label: nt('native.selectAll') },
-  ] }, { label: nt('native.window'), submenu: [
-    { role: 'minimize', label: nt('native.minimize') }, { role: 'zoom', label: nt('native.zoom') },
-    ...(process.platform === 'darwin' ? [{ type: 'separator' as const }, { role: 'front' as const, label: nt('native.front') }] : [{ role: 'close' as const, label: nt('native.closeWindow') }]),
-  ] });
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    }
+    return;
+  }
+  if (action === 'restart') return confirmOwnedWindowRestart({
+    getOwner: () => windowContext || startupOperation, canRequest: () => readApplicationMenuState().canRestart,
+    confirm: async () => {
+      const options: MessageBoxOptions = {type: 'question', message: nt('native.restartQuestion'), detail: nt('native.restartDetail'),
+        buttons: [nt('native.restart'), nt('native.cancel')], defaultId: 1, cancelId: 1};
+      const parent = windowHost?.preferredWindow(BrowserWindow.getFocusedWindow());
+      return ownsWindow(parent, windowContext) ? await showOwnedDialog(parent, windowContext, options) === 0 : (await dialog.showMessageBox(options)).response === 0;
+    }, restart,
+  }).catch(fatal);
+}
+function applicationMenuOptions(): ApplicationMenuOptions {
+  return {platform: process.platform, productName: identity.productName, state: readApplicationMenuState,
+    action: performApplicationMenuAction, command: executeMenuCommand,
+    focusWindow: id => {
+      if (!readApplicationMenuState().canFocusProjects) return;
+      const window = windowHost?.windows().find(candidate => windowHost?.contextFor(candidate)?.windowId === id);
+      if (window) { trayIntent++; windowHost?.activate(window); }
+    }};
+}
+function installMenu(): void {
+  applicationMenu = Menu.buildFromTemplate(applicationMenuTemplate(applicationMenuOptions()));
+  applicationWindowList = JSON.stringify(readApplicationMenuState().windows);
+  applicationPresentation = menuPresentation(readApplicationMenuState());
+  Menu.setApplicationMenu(applicationMenu);
+}
+function menuPresentation(state: ApplicationMenuState): string {
+  // Selection/playhead changes revoke command versions without changing the
+  // menu's appearance. Keep an open native menu stable across those reports.
+  const business = state.business ? {...state.business, reportVersion: 0} : null;
+  return JSON.stringify({...state, business});
+}
+function refreshApplicationMenu(): void {
+  if (!applicationMenu) return;
+  const state = readApplicationMenuState(), presentation = menuPresentation(state);
+  if (presentation === applicationPresentation) return;
+  const template = applicationMenuTemplate(applicationMenuOptions()), list = JSON.stringify(state.windows);
+  const update = (items: readonly MenuItemConstructorOptions[]) => {
+    for (const item of items) {
+      const current = item.id ? applicationMenu?.getMenuItemById(item.id) : null;
+      if (current) {
+        if (typeof item.enabled === 'boolean' && current.enabled !== item.enabled) current.enabled = item.enabled;
+        if (typeof item.checked === 'boolean' && current.checked !== item.checked) current.checked = item.checked;
+        if (item.id === 'window-projects' && list !== applicationWindowList && Array.isArray(item.submenu)) current.submenu = Menu.buildFromTemplate(item.submenu);
+      }
+      if (Array.isArray(item.submenu) && item.id !== 'window-projects') update(item.submenu);
+    }
+  };
+  update(template); applicationWindowList = list; applicationPresentation = presentation;
 }
 
 const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWindowQuitCoordinator<BrowserWindow>({ getWindows: () => windowHost?.closeOrder() || [],
-  onStateChange: () => { windowHost?.refresh(); trayHost?.refresh(); },
+  onStateChange: () => { windowHost?.refresh(); trayHost?.refresh(); refreshApplicationMenu(); },
   stop: async () => {
     quitting = true;
     windowContext?.appearance?.dispose();
@@ -656,11 +766,35 @@ const quitCoordinator: MultiWindowQuitCoordinator<BrowserWindow> = new MultiWind
 const restartCoordinator: MultiWindowRestartCoordinator<BrowserWindow> = new MultiWindowRestartCoordinator<BrowserWindow>({
   getWindows: () => windowHost?.closeOrder() || [],
   canRequest: () => quitCoordinator.state === 'idle' && !quitting && !quitRouter.isPending,
-  onStateChange: state => { restarting = state !== 'idle'; trayIntent++; windowHost?.refresh(); trayHost?.refresh(); },
+  onStateChange: state => { restarting = state !== 'idle'; trayIntent++; windowHost?.refresh(); trayHost?.refresh(); refreshApplicationMenu(); },
   stop, start,
 });
 const quitRouter: ProjectWindowQuitRouter<BrowserWindow> = createProjectWindowQuitRouter<BrowserWindow>({ quit: quitCoordinator, restart: restartCoordinator,
-  onPendingChange: () => { trayIntent++; windowHost?.refresh(); trayHost?.refresh(); } });
+  onPendingChange: () => { trayIntent++; windowHost?.refresh(); trayHost?.refresh(); refreshApplicationMenu(); } });
+menuCommands = createMenuCommandHost<WebContents, NativeMenuDocument>({
+  getDocument: contents => {
+    const owner = windowHost?.ownerForContents(contents);
+    if (!owner || !ownsWindow(owner.window, windowContext)) return null;
+    return {...owner, version: 1};
+  },
+  isAllowed: menuDocumentAllowed,
+  send: (document, intent) => {
+    if (!menuDocumentAllowed(document, intent.command)) return;
+    if (intent.command === 'import-media') {
+      const frame = document.window.webContents.mainFrame;
+      if (frame !== document.frame) return;
+      // Chromium requires a transient user gesture to open the file picker.
+      // Only this fixed import intent enters the captured frame with a gesture;
+      // never also send IPC or retry an uncertain delivery.
+      void frame.executeJavaScript(menuCommandGestureScript(intent), true).catch(() => {});
+    } else document.window.webContents.send(MENU_COMMAND_EVENT, intent);
+  },
+  onChanged: refreshApplicationMenu,
+});
+ipcMain.handle(MENU_COMMAND_CHANNEL, (event, request) => {
+  if (!menuCommands) throw new Error('Native menu commands are unavailable.');
+  return menuCommands.dispatch(event, request);
+});
 ipcMain.handle(CLIP_LUT_RECOVERY_CHANNEL, (event, request) => lutRecoveryHost?.dispatch(event, request) ?? { ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' });
 ipcMain.handle(WORKSPACE_TOOLS_CHANNEL,(event,request)=>{
   if(!workspaceToolsHost)throw new Error('Workspace tools are unavailable.');
@@ -679,6 +813,7 @@ ipcMain.handle(PROJECT_WINDOW_CHANNEL, (event, request) => {
   if (!windowHost) throw new Error('Native windows are not available.');
   const result = windowHost.dispatch(event, request);
   if (result === true && isProjectWindowRequest(request) && ['settings', 'projects', 'project-entry'].includes(request.action)) trayIntent++;
+  refreshApplicationMenu();
   return result;
 });
 
@@ -711,7 +846,7 @@ else {
     if (!restarting && !quitting && quitCoordinator.state === 'idle' && ownsWindowContext(windowContext)) { trayIntent++; windowHost?.activate(BrowserWindow.getFocusedWindow()); }
   });
   app.on('window-all-closed', () => { if (!restarting && process.platform !== 'darwin') app.quit(); });
-  app.on('will-quit', () => trayHost?.dispose());
+  app.on('will-quit', () => { menuCommands?.dispose(); trayHost?.dispose(); });
   app.on('before-quit', event => {
     if (quitCoordinator.state === 'finished') return;
     event.preventDefault();
@@ -759,7 +894,7 @@ else {
     installMenu();
     installTray();
     const report = await start();
-    trayHost?.refresh();
+    trayHost?.refresh(); refreshApplicationMenu();
     if (smokeOutput) {
       const output = smokeOutput;
       const { runSmoke } = await import('./smoke-checks.ts');

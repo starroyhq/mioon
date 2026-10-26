@@ -10,6 +10,10 @@ import { createProjectRendererRecovery } from '../apps/desktop/src/project-windo
 import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } from '../apps/desktop/src/lifecycle.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry, type NativeCloseAction } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
+import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
+import {MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
+import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
+import type {DesktopHarnessMenuList} from './helpers/strict-desktop-harness-types.ts';
 
 interface DialogOptions {cancelId: number; defaultId: number; buttons: string[]; [key: string]: unknown}
 type NativeOptions = Parameters<typeof installNativeCloseAdmission>[1];
@@ -36,6 +40,7 @@ const executable = (source: string) => stripTypeScriptTypes(source, { mode: 'str
 function installNativePresentationHarness(context: vm.Context, main: string) {
   context.windowContext ??= context.ownerContext ?? {};
   context.nativeDialogs = new Set(); context.trayHost = null; context.trayIntent = 0;
+  context.refreshApplicationMenu ??= () => {};
   context.windowHost = {contextFor: () => ({contextId: 'synthetic-document'}), prepareNativeDialog: () => true,
     finishNativeDialog() {}, ...context.windowHost};
   const from = main.indexOf('function finishNativePresentation('), to = main.indexOf('\nconst projectFileFailureText', from);
@@ -593,7 +598,7 @@ test('real renderer binds reload to the exact current document URL and action', 
 test('main routes user reload through admission and only proved initial empty load failures remain recoverable', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   assert.match(main, /const context = windowContext, decision = windowAdmissions\.get\(window!?\)\?\.captureRecoveryDecision\(\)/);
-  assert.match(main, /presentForReload\(window!, context, \(\) => decision\.reload\(\)\)\.catch\(fatal\)/);
+  assert.match(main, /presentForReload\(window!?, context, \(\) => decision\.reload\(\)\)\.catch\(fatal\)/);
   assert.match(main, /const decision = windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
   assert.match(main, /const rendererFailed = createProjectRendererRecovery\(/);
   const start = main.indexOf('async function openWindow('), end = main.indexOf('\nfunction prepareOwnedWindow(', start);
@@ -978,15 +983,21 @@ test('a recovered live renderer can report a later hang without inheriting old d
 
 async function reloadMenuHarness(f: ReturnType<typeof fixture>, isCurrent: () => unknown = () => true) {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  const from = main.indexOf('function installMenu()'), to = main.indexOf('\nconst quitCoordinator', from);
-  let menu!: {label: string; submenu: {label: string; click(): unknown}[]}[];
+  const from = main.indexOf('function focusedMenuWindow()'), to = main.indexOf('\nconst quitCoordinator', from);
+  let menu!: DesktopHarnessMenuList;
   const errors: unknown[] = [];
-  const context = vm.createContext({ nt: nativeText, process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => f.win}, initialWindowLoads: new WeakMap(), win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
+  const nativeWindow = Object.assign(f.win, {isVisible: () => !f.win.destroyed, isMinimized: () => false});
+  const context = vm.createContext({ nt: nativeText, applicationMenuTemplate, MENU_COMMAND_IDS, identity: {productName: 'Synthetic'},
+    process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => nativeWindow,
+      windows: () => [nativeWindow], isTrustedDocument: () => true, settingsForParent: () => null},
+    menuCommands: null, applicationMenu: null, applicationWindowList: '', restarting: false, quitting: false,
+    trayCanInteract: () => Boolean(isCurrent()) && !f.win.destroyed, trayCanHide: () => false, quitRouter: {allowsWindows: true},
+    initialWindowLoads: new WeakMap(), win: nativeWindow, BrowserWindow: { getFocusedWindow: () => nativeWindow },
     windowAdmissions: new WeakMap([[f.win, f.admission]]), ownsWindow: () => isCurrent() && !f.win.destroyed,
-    Menu: { buildFromTemplate: (value: typeof menu) => value, setApplicationMenu: (value: typeof menu) => { menu = value; } }, fatal: (error: unknown) => errors.push(error) });
+    Menu: { buildFromTemplate: desktopMenuHarness, setApplicationMenu: (value: DesktopHarnessMenuList) => { menu = value; } }, fatal: (error: unknown) => errors.push(error) });
   installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)) + '\ninstallMenu();', context);
-  return { reload: () => menu.find((item: { label: string; }) => item.label === '应用')!.submenu.find((item: { label: string; }) => item.label === '重新载入界面')!.click(), errors };
+  return { reload: () => menu.getMenuItemById('app-reload')!.click!(), errors };
 }
 
 test('the explicit Reload menu can recover a kept confirmed-gone incident exactly once', async t => {

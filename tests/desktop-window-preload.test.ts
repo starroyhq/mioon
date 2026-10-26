@@ -2,10 +2,35 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { createProjectWindowBridge } from '../apps/desktop/src/project-window-preload.ts';
-import { isProjectWindowRequest, PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT } from '../apps/desktop/src/project-window-protocol.ts';
+import { isProjectWindowContext, isProjectWindowRequest, PROJECT_WINDOW_CHANNEL, PROJECT_WINDOW_EVENT } from '../apps/desktop/src/project-window-protocol.ts';
+import { readDesktopWindowBridge } from '../apps/web/src/desktop-window-client.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
 const id = '11111111-1111-4111-8111-111111111111';
 const context = { version:2, role:'launcher', windowId:id, contextId:id, backendId:id, initialProjectId:null, autoOpen:true, editorProjectId:null, editorPhase:'none', editorCount:0, entryMode:null, entryVersion:0, entryReceipt:null, settingsSlot:null, settingsVersion:0, selectionProjectId:null, selectionVersion:0, locatorStatus:null, locatorIntent:null, quitting:false };
+test('native settings pages cross both strict bridges as fixed intentions while old connection slots remain valid', async () => {
+  const pages = ['agent', 'official', 'custom', 'comfy', 'general', 'workspace', 'video-tools', 'models', 'extensions', 'shortcuts', 'about'] as const;
+  const calls: unknown[] = [];
+  const preload = createProjectWindowBridge({invoke: async (channel, request) => {
+    assert.equal(channel, PROJECT_WINDOW_CHANNEL);
+    if (request.action === 'describe') return context;
+    calls.push(request); return true;
+  }, on(){}, removeListener(){}});
+  const renderer = readDesktopWindowBridge({__mioonProjectWindow: preload}); assert.ok(renderer);
+  for (const page of pages) {
+    assert.equal(await renderer.showSettings(page), true);
+    assert.deepEqual(calls.at(-1), {action: 'settings', contextId: id, slot: page});
+    assert.equal(isProjectWindowRequest(calls.at(-1)), true);
+    assert.equal(isProjectWindowContext({...context, role: 'settings', autoOpen: false, settingsSlot: page, settingsVersion: 1}), true);
+  }
+  const before = calls.length;
+  for (const page of ['admin', '../general', 'javascript:reload()', {}, null]) {
+    await assert.rejects(renderer.showSettings(page as Parameters<typeof renderer.showSettings>[0]));
+    assert.equal(isProjectWindowRequest({action: 'settings', contextId: id, slot: page}), false);
+    assert.equal(isProjectWindowContext({...context, role: 'settings', autoOpen: false, settingsSlot: page, settingsVersion: 1}), page === null);
+  }
+  assert.equal(calls.length, before);
+  assert.equal(isProjectWindowRequest({action: 'settings', contextId: id, slot: 'general', force: true}), false);
+});
 test('fixed preload exposes only validated window actions and strips Electron event authority', async () => {
   const calls: Array<[string, unknown]> = []; let receive: ((...args: unknown[]) => void) | undefined, removed: unknown;
   type BridgeOptions = Parameters<typeof createProjectWindowBridge>[0];

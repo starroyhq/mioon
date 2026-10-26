@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtemp, mkdir, writeFile, readFile, readdir, rm, cp} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {finished} from 'node:stream/promises';
+import type {Writable} from 'node:stream';
 import {createRequire} from 'node:module';
 import {TRAY_RESOURCE_FILES, stageTrayResources, verifyPackagedTrayResources} from '../apps/desktop/tray-resources.ts';
 
@@ -10,7 +12,7 @@ const require = createRequire(import.meta.url);
 const builder = createRequire(require.resolve('electron-builder'));
 const libraries = createRequire(builder.resolve('app-builder-lib'));
 const asar = libraries('@electron/asar') as {
-  createPackage(source: string, destination: string): Promise<void>;
+  createPackage(source: string, destination: string): Promise<Writable>;
   listPackage(file: string): string[];
   statFile(file: string, entry: string, follow: false): {link?: string; files?: unknown};
   extractFile(file: string, entry: string): Buffer;
@@ -30,7 +32,13 @@ async function fixture(t: test.TestContext) {
   await cp(staging, input, {recursive: true});
   let serial = 0;
   return {source, staging, input,
-    async pack() { const archive = path.join(directory, `package-${++serial}.asar`); await asar.createPackage(input, archive); return archive; },
+    async pack() {
+      const archive = path.join(directory, `package-${++serial}.asar`);
+      // The pinned ASAR 3.x API resolves with out.end(), before the archive's
+      // final buffered writes finish. Inspection must wait for that real stream.
+      const output = await asar.createPackage(input, archive); await finished(output);
+      return archive;
+    },
   };
 }
 

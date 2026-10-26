@@ -3,7 +3,8 @@
 export const PROJECT_WINDOW_CHANNEL = 'mioon:project-window:v2';
 export const PROJECT_WINDOW_EVENT = 'mioon:project-window-state:v2';
 export type ProjectWindowRole = 'launcher' | 'editor' | 'settings';
-export type ProjectWindowSettingsSlot = 'agent' | 'official' | 'custom' | 'comfy';
+export type ProjectWindowSettingsSlot = 'agent' | 'official' | 'custom' | 'comfy' |
+  'general' | 'workspace' | 'video-tools' | 'models' | 'extensions' | 'shortcuts' | 'about';
 export type ProjectWindowEntryMode = 'open' | 'new';
 export type ProjectWindowPhase = 'none' | 'opening' | 'ready' | 'failed' | 'closing';
 export interface ProjectWindowOpenResult {
@@ -86,7 +87,9 @@ export interface ProjectWindowBridge {
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
 export const isProjectWindowId = (value: unknown): value is string => typeof value === 'string' && uuid.test(value);
 export const isProjectWindowSettingsSlot = (value: unknown): value is ProjectWindowSettingsSlot =>
-  value === 'agent' || value === 'official' || value === 'custom' || value === 'comfy';
+  value === 'agent' || value === 'official' || value === 'custom' || value === 'comfy' ||
+  value === 'general' || value === 'workspace' || value === 'video-tools' || value === 'models' ||
+  value === 'extensions' || value === 'shortcuts' || value === 'about';
 export const isProjectWindowEntryMode = (value: unknown): value is ProjectWindowEntryMode => value === 'open' || value === 'new';
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 const keysAre = (value: Record<string, unknown>, keys: readonly string[]): boolean =>

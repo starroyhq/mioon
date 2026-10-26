@@ -3,6 +3,7 @@ import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import type {MenuHelpControl} from './desktop-menu-client.ts';
 import { Button } from '@mioon/ui/components/button';
 import { Input } from '@mioon/ui/components/input';
 import { Label } from '@mioon/ui/components/label';
@@ -34,6 +35,8 @@ export interface ProjectHomeCreateState {
 }
 
 export interface ProjectHomeProps {
+  onRegisterMenuHelp?: (control: MenuHelpControl) => () => void;
+  onMenuHelpStateChange?: () => void;
   projects: readonly ProjectHomeProject[];
   phase: 'home' | 'opening' | 'error';
   openingName?: string;
@@ -95,7 +98,7 @@ function ProjectTime({ value }: { value: string }) {
 /** Presentation only. The parent owns project reads, creation, navigation scope,
  * and whether a successful creation may still be accepted by this page. */
 export default function ProjectHome({ projects, phase, openingName, error, notice, busy, listBusy, listError,
-  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, projectMenu, totalProjects = projects.length }: ProjectHomeProps) {
+  page, onPage, onOpen, onRetry, onRefresh, onCreate, settings, status, help, active = true, createDisabledReason = '', onCreateStateChange, canMutateEntry, createIntentVersion = 0, onImport, justImported = [], query = '', onQuery, toolbar, projectMenu, totalProjects = projects.length, onRegisterMenuHelp, onMenuHelpStateChange }: ProjectHomeProps) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const prefix = useId();
   const searchInput=useRef<HTMLInputElement>(null);
@@ -110,8 +113,8 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
   const [formError, setFormError] = useState<string | DisplayMessage>('');
   const [submitting, setSubmitting] = useState(false);
   const submissionPending = useRef(false);
-  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason });
-  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason };
+  const current = useRef({ active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason, canMutateEntry });
+  current.current = { active, page, phase, busy, listBusy, createOpen, helpOpen, createDisabledReason, canMutateEntry };
   const createMetadata = useRef({ name: '', description: '', preset: 'portrait_1080', busy: false, version: 0, callback: onCreateStateChange });
   const publishCreate = (patch: Partial<{ name: string; description: string; preset: string; busy: boolean }> = {}) => {
     Object.assign(createMetadata.current, patch);
@@ -127,7 +130,18 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
   const canAct = () => canMutateEntry?.() !== false && current.current.page === 'projects' && !current.current.busy && !submissionPending.current && current.current.phase !== 'opening';
   const canRefresh = () => current.current.active && current.current.page === 'projects' && current.current.phase !== 'opening' && !current.current.listBusy && !current.current.busy && !submissionPending.current;
   useEffect(()=>{if(typeof window==='undefined')return;const shortcut=(event:KeyboardEvent)=>{const state=current.current;if((event.metaKey||event.ctrlKey)&&!event.altKey&&event.key.toLowerCase()==='f'&&state.active&&state.page==='projects'&&!state.createOpen&&!state.helpOpen&&!state.busy&&state.phase!=='opening'&&onQuery&&totalProjects>0&&searchInput.current){event.preventDefault();searchInput.current.focus();searchInput.current.select();}};window.addEventListener('keydown',shortcut);return()=>window.removeEventListener('keydown',shortcut);},[onQuery,totalProjects]);
-  const changeHelp = (open: boolean) => { helpAuthority.current = null; setHelpOpen(open); };
+  const changeHelp = (open: boolean) => { helpAuthority.current = null; current.current.helpOpen = open; setHelpOpen(open); };
+  useEffect(() => {
+    let mounted = true;
+    const control: MenuHelpControl = {available: () => {
+      const state = current.current, form = createMetadata.current;
+      return mounted && state.active && state.page === 'projects' && !state.busy && !submissionPending.current && state.phase !== 'opening' && !state.createOpen && !state.helpOpen &&
+        !form.name && !form.description && form.preset === 'portrait_1080' && state.canMutateEntry?.() !== false;
+    }, open: () => { if (!control.available()) return false; changeHelp(true); onMenuHelpStateChange?.(); return true; }};
+    const release = onRegisterMenuHelp?.(control);
+    return () => {mounted = false; release?.();};
+  }, [onRegisterMenuHelp]);
+  useEffect(() => { onMenuHelpStateChange?.(); }, [active, page, phase, busy, listBusy, createOpen, helpOpen, name, description, timelinePresetId, submitting, onMenuHelpStateChange]);
 
   useEffect(() => { helpAuthority.current = helpScope; return () => { helpAuthority.current = null; }; }, [helpScope]);
   useEffect(() => { if (!active || page !== 'projects') changeHelp(false); }, [active, page]);

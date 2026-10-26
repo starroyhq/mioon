@@ -1,5 +1,7 @@
 import { i18nTestModule, renderMessage } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
+import * as desktopMenu from '../apps/web/src/desktop-menu-client.ts';
+import * as modalState from '../apps/web/src/workbench-modal-state.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -104,6 +106,8 @@ test('empty native home moves only a settled locator summary into Help and retai
       './native-project-entry.ts': {useNativeProjectEntry: () => controller},
       './ProjectEntry.tsx': {__esModule: true, default: 'entry'},
       './native-locator-state.ts': {createNativeLocatorOwner: () => ({})},
+      './desktop-menu-client.ts': desktopMenu,
+      './workbench-modal-state.ts': modalState,
     };
     Function('require', 'module', 'exports', transformSync(source('LauncherRoot.tsx'), {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {
       assert.ok(Object.hasOwn(dependencies, name), `Unexpected launcher dependency: ${name}`); return dependencies[name];

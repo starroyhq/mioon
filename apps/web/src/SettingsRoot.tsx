@@ -10,13 +10,13 @@ import type { LauncherContractChecks, LauncherRpc } from './launcher-state.ts';
 import type { ProjectWindowBridge, ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import ProjectHomeConnections from './ProjectHomeConnections.tsx';
 import NativeLocatorStatus from './NativeLocatorStatus.tsx';
-import type { SettingsPage } from './settings-window-state.ts';
+import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import { createSettingsWindowNavigation } from './settings-window-state.ts';
 import { Button } from '@mioon/ui/components/button';
 import { WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { useUiPreferences } from './UiPreferencesProvider.tsx';
 export interface SettingsRenderProps {
-  readonly selected: ProjectWindowSettingsSlot;
+  readonly selected: SettingsConnectionPage;
   readonly page: SettingsPage;
   readonly onPage: (page: SettingsPage) => void;
   readonly general: ReactNode;

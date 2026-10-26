@@ -42,9 +42,32 @@ test('General is a presentation page and preserves the last connection slot and 
   }
 });
 
-test('missing initial slot retains the existing agent default rather than creating an IPC General slot', () => {
+test('missing initial slot retains the existing agent default for legacy native contexts', () => {
   const f = fixture({ initial: { settingsSlot: null } });
   assert.equal(f.navigation.selected, 'agent'); assert.equal(f.navigation.page, 'agent');
+});
+
+for (const page of ['general', 'workspace', 'video-tools', 'models', 'extensions', 'shortcuts', 'about'] as const) test(`native ${page} entry opens its actual page without selecting or changing a connection`, async () => {
+  const f = fixture({ initial: { settingsSlot: page } }), captured = f.registry.capture();
+  assert.equal(f.navigation.page, page); assert.equal(f.navigation.selected, 'agent');
+  assert.deepEqual(f.registry.capture(), captured); assert.equal(f.confirmations.length, 0);
+  assert.equal(await f.navigation.select('custom'), true);
+  f.navigation.receive(context({ settingsSlot: page, settingsVersion: 2 })); await tick();
+  assert.equal(f.navigation.page, page); assert.equal(f.navigation.selected, 'custom');
+  assert.deepEqual(f.registry.capture(), captured); assert.equal(f.confirmations.length, 0);
+});
+
+test('native menu page requests retain dirty connection drafts when cancelled or changed during review', async () => {
+  for (const page of ['general', 'shortcuts', 'about'] as const) for (const transition of ['cancel', 'edit', 'busy']) {
+    const answer = Promise.withResolvers<boolean>(), f = fixture({ initial: { settingsSlot: 'custom' }, confirm: () => answer.promise });
+    f.owners.get('custom')!.update(state(2, { dirty: true }));
+    f.navigation.receive(context({ settingsSlot: page, settingsVersion: 2 }));
+    assert.equal(f.confirmations.length, 1);
+    if (transition !== 'cancel') f.owners.get('custom')!.update(state(3, { dirty: true, busy: transition === 'busy' }));
+    const captured = f.registry.capture(); answer.resolve(transition !== 'cancel'); await tick();
+    assert.equal(f.navigation.page, 'custom'); assert.equal(f.navigation.selected, 'custom');
+    assert.deepEqual(f.registry.capture(), captured);
+  }
 });
 
 test('cancelled dirty navigation into or out of General leaves page, connection and ownership unchanged', async () => {

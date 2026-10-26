@@ -31,6 +31,7 @@ import { timelineSplitState } from './timeline-split.ts';
 import type { AppAsset, AppTimeline, AppTimelineClip, AppTimelineTrack } from './App.tsx';
 import type { ComponentProps } from 'react';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
+import type {MenuRemovalControl} from './desktop-menu-client.ts';
 
 export const ASSET_DRAG = 'application/x-workbench-asset';
 export const CLIP_DRAG = 'application/x-workbench-clip';
@@ -65,6 +66,8 @@ type TimelineWaveformHookOptions = {
 type TimelineWaveformHookState = ReturnType<typeof useTimelineWaveforms> & {readOnly: boolean; autoLimitReached: boolean};
 const useTimelineWaveformsTyped = useTimelineWaveforms as unknown as (options: TimelineWaveformHookOptions) => TimelineWaveformHookState;
 export interface TimelineProps {
+  onRegisterMenuRemoval?: (control: MenuRemovalControl) => () => void;
+  onMenuStateChange?: () => void;
   basicEditingOnly?: boolean;
   lockedTrackIds?:ReadonlySet<string>;
   onToggleTrackLock?:(id:string)=>void;
@@ -117,7 +120,7 @@ export function dragAsset(event: DragEvent, assetId: string): void {
   event.dataTransfer.effectAllowed = 'copy'; event.dataTransfer.setData(ASSET_DRAG, assetId); event.dataTransfer.setData('text/plain', assetId);
 }
 
-export default function Timeline({ lockedTrackIds=new Set<string>(),onToggleTrackLock,basicEditingOnly = false, structureReadOnly = false, sessionViewOnly = false, staleClips = new Map<string, StaleClipSource>(), notice = null, waveformReadOnly = false, workspaceOrigin = null, timeline, historyState, onHistory, splitState, onSplit, assets, selectedClipId, selectedCueId, onSelectSubtitle, onAddSubtitle, subtitleBlocked = false, onSelectClip, onAddAsset, onMoveClip, onAdmitClipDrag, onRemove, onRippleRemove, removalBlocked = false, onTrackAdd, onTrackUpdate, onSeed, onRender, onSeek, playhead, collapsed, visible = true, presentationVisible = visible, onCollapse, busy, canSeed, renderJob, viewState, onViewStateChange }: TimelineProps) {
+export default function Timeline({ onRegisterMenuRemoval, onMenuStateChange, lockedTrackIds=new Set<string>(),onToggleTrackLock,basicEditingOnly = false, structureReadOnly = false, sessionViewOnly = false, staleClips = new Map<string, StaleClipSource>(), notice = null, waveformReadOnly = false, workspaceOrigin = null, timeline, historyState, onHistory, splitState, onSplit, assets, selectedClipId, selectedCueId, onSelectSubtitle, onAddSubtitle, subtitleBlocked = false, onSelectClip, onAddAsset, onMoveClip, onAdmitClipDrag, onRemove, onRippleRemove, removalBlocked = false, onTrackAdd, onTrackUpdate, onSeed, onRender, onSeek, playhead, collapsed, visible = true, presentationVisible = visible, onCollapse, busy, canSeed, renderJob, viewState, onViewStateChange }: TimelineProps) {
   const { t, renderMessage, locale, formatNumber } = useI18n();
   const {preferences} = useUiPreferences();
   const bodyActive = visible && !collapsed;
@@ -132,7 +135,16 @@ export default function Timeline({ lockedTrackIds=new Set<string>(),onToggleTrac
   const bodyAction = <A extends unknown[]>(callback?: Handler<A>): Handler<A> => (...args) => { if (bodyCurrent()) return callback?.(...args); };
   const toolbarAction = <A extends unknown[]>(callback?: Handler<A>): Handler<A> => (...args) => { if (toolbarCurrent()) return callback?.(...args); };
   const selectedClip = timeline?.clips?.find(clip => clip.id === selectedClipId);
-  const removal = useClipRemoval({clip: selectedClip, scope: `${timeline?.projectId}:${timeline?.id}:${timeline?.revision}:${selectedClipId}`, disabled: Boolean(removalBlocked || busy || structureReadOnly || collapsed || !visible), onRemove, onRippleRemove: basicEditingOnly ? undefined : onRippleRemove});
+  const removal = useClipRemoval({clip: selectedClip, scope: `${timeline?.projectId}:${timeline?.id}:${timeline?.revision}:${selectedClipId}`, disabled: Boolean(removalBlocked || busy || structureReadOnly || collapsed || !visible || selectedClip && lockedTrackIds.has(selectedClip.trackId)), onRemove, onRippleRemove: basicEditingOnly ? undefined : onRippleRemove});
+  const menuRemoval = useRef({removal, current: toolbarCurrent}); menuRemoval.current = {removal, current: toolbarCurrent};
+  useLayoutEffect(() => {
+    let active = true;
+    const control: MenuRemovalControl = {available: mode => active && menuRemoval.current.current() && menuRemoval.current.removal.available(mode),
+      request: mode => { if (control.available(mode)) menuRemoval.current.removal.request(mode); }};
+    const release = onRegisterMenuRemoval?.(control);
+    return () => { active = false; release?.(); };
+  }, [onRegisterMenuRemoval]);
+  useLayoutEffect(() => { onMenuStateChange?.(); });
   const [localViewState, setLocalViewState] = useState<TimelineLocalViewState>({ pixelsPerSecond: 76, scrollLeft: 0, scrollTop: 0, snappingEnabled: true });
   const currentView = viewState || localViewState;
   const pixelsPerSecond = Math.max(28, Math.min(220, Number(currentView.pixelsPerSecond) || 76));

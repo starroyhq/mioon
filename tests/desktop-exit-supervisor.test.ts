@@ -133,6 +133,109 @@ test('heartbeat IPC loss is distinct from a utility crash even after a superviso
   assert.equal(JSON.stringify(await f.records()).includes(sensitive), false);
 });
 
+test('lease probes acknowledge only the fixed challenge in starting and running states', async t => {
+  const f = await fixture(t, {ready: false});
+  const starting = f.supervisor.start(f.config), child = f.child!;
+  child.emit('message', {type: 'lease-probe', probeId: 1});
+  assert.equal(f.supervisor.state, 'starting');
+  assert.deepEqual(child.messages.filter(message => message.type === 'lease-probe-ack'), [{type: 'lease-probe-ack', probeId: 1}]);
+  child.emit('message', {type: 'ready', url: 'http://127.0.0.1:43210', runtime: {node: 'synthetic'}});
+  await starting;
+  child.emit('message', {type: 'lease-probe', probeId: Number.MAX_SAFE_INTEGER});
+  assert.deepEqual(child.messages.filter(message => message.type === 'lease-probe-ack'), [
+    {type: 'lease-probe-ack', probeId: 1}, {type: 'lease-probe-ack', probeId: Number.MAX_SAFE_INTEGER},
+  ]);
+  assert.equal(f.supervisor.state, 'running');
+  assert.equal(child.killCalls, 0);
+  assert.equal(child.messages.filter(message => message.type === 'start').length, 1);
+  assert.equal(f.children.length, 1);
+  await f.supervisor.stop();
+});
+
+test('malformed lease probes cannot receive an acknowledgement or change backend ownership', async t => {
+  const f = await fixture(t);
+  await f.supervisor.start(f.config);
+  const child = f.child!, malformed = [null, [], {type: 'lease-probe'}, {probeId: 1},
+    {type: 'lease-probe', probeId: 1, payload: sensitive}, {type: 'lease-probe-ack', probeId: 1},
+    ...[0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '1', null, undefined].map(probeId => ({type: 'lease-probe', probeId})),
+    Object.assign([], {type: 'lease-probe', probeId: 1}),
+    Object.assign(Object.create({type: 'lease-probe'}), {probeId: 1, extra: 1}),
+  ];
+  for (const message of malformed) child.emit('message', message);
+  assert.deepEqual(child.messages.filter(message => message.type === 'lease-probe-ack'), []);
+  assert.equal(child.killCalls, 0);
+  assert.equal(f.supervisor.child, child);
+  assert.equal(f.supervisor.state, 'running');
+  assert.equal(f.children.length, 1);
+  assert.equal(JSON.stringify(await f.records()).includes(sensitive), false);
+  await f.supervisor.stop();
+});
+
+test('lease probes cannot revive a stopping or exited child', async t => {
+  const f = await fixture(t, {graceful: false});
+  await f.supervisor.start(f.config);
+  const child = f.child!, stopping = f.supervisor.stop();
+  assert.equal(f.supervisor.state, 'stopping');
+  child.emit('message', {type: 'lease-probe', probeId: 1});
+  assert.deepEqual(child.messages.filter(message => message.type === 'lease-probe-ack'), []);
+  child.emit('exit', 0);
+  await stopping;
+  child.emit('message', {type: 'lease-probe', probeId: 2});
+  assert.deepEqual(child.messages.filter(message => message.type === 'lease-probe-ack'), []);
+  assert.equal(f.supervisor.state, 'stopped');
+  assert.equal(f.children.length, 1);
+});
+
+test('late probes from an old child never reach its replacement and repeated probes only acknowledge liveness', async t => {
+  const f = await fixture(t);
+  await f.supervisor.start(f.config);
+  const old = f.child!;
+  old.emit('exit', 9);
+  await f.supervisor.start(f.config);
+  const current = f.child!, oldMessages = [...old.messages], before = [...current.messages];
+  old.emit('message', {type: 'lease-probe', probeId: 1});
+  assert.deepEqual(old.messages, oldMessages);
+  assert.deepEqual(current.messages, before);
+  for (let i = 0; i < 3; i++) current.emit('message', {type: 'lease-probe', probeId: 1});
+  assert.deepEqual(current.messages.slice(before.length), Array.from({length: 3}, () => ({type: 'lease-probe-ack', probeId: 1})));
+  assert.equal(current.messages.filter(message => message.type === 'start').length, 1);
+  assert.equal(current.messages.some(message => message.type === 'stop'), false);
+  assert.equal(current.killCalls, 0);
+  assert.equal(f.children.length, 2, 'only the explicit second start created a replacement');
+  assert.equal(f.supervisor.child, current);
+  await f.supervisor.stop();
+});
+
+for (const ready of [false, true]) test(`lease acknowledgement communication failure retains the existing kill path (ready=${ready})`, async t => {
+  const f = await fixture(t, {ready});
+  const starting = f.supervisor.start(f.config);
+  const rejected = ready ? null : assert.rejects(starting, /启动通信失败/);
+  if (ready) await starting;
+  const child = f.child!;
+  let attempts = 0;
+  child.postMessage = () => {attempts++; throw new Error(sensitive);};
+  child.emit('message', {type: 'lease-probe', probeId: 1});
+  child.emit('message', {type: 'lease-probe', probeId: 1});
+  child.emit('message', {type: 'lease-probe', probeId: 2});
+  assert.equal(attempts, 1);
+  assert.equal(child.killCalls, 1);
+  assert.equal(f.children.length, 1);
+  if (!ready) {
+    child.emit('message', {type: 'ready', url: 'http://127.0.0.1:43210', runtime: {node: 'synthetic'}});
+    await rejected;
+    assert.equal(f.supervisor.state, 'failed', 'late readiness cannot recover a failed startup acknowledgement');
+    assert.equal(f.supervisor.origin, null);
+  }
+  child.emit('exit', 1);
+  if (rejected) await rejected;
+  const records = await f.records(), exit = records.at(-1);
+  assert.equal(exit.classification, 'connection-lost');
+  assert.equal(exit.reason, 'communication-lost');
+  assert.equal(exit.termination, 'utility-kill');
+  assert.equal(JSON.stringify(records).includes(sensitive), false);
+  assert.equal(f.supervisor.child, null);
+});
+
 for (const [reason, classification] of [['lease-expired', 'connection-lost'], ['signal-term', 'terminated'],
   ['signal-int', 'terminated'], ['uncaught-exception', 'abnormal'], ['unhandled-rejection', 'abnormal']]) {
   test(`backend notice ${reason} retains its cause through a later user stop`, async t => {

@@ -11,6 +11,7 @@ import { createNativeAudioPreviewAuthority } from '@mioon/business/native-audio-
 import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-preview';
 import {workspaceNativeUtilityRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
+import {createBackendLease, BACKEND_LEASE_TIMING} from './backend-lease.ts';
 
 /** Fixed diagnostic categories only; never a native error message or path. */
 type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
@@ -40,7 +41,7 @@ process.on('uncaughtExceptionMonitor', (_error, origin) => {
   reportExitDiagnostic(origin === 'unhandledRejection' ? 'unhandled-rejection' : 'uncaught-exception');
 });
 
-let server: BackendServer | undefined, starting = false, startFailed = false, closing = false, lastPing = Date.now();
+let server: BackendServer | undefined, starting = false, startFailed = false, closing = false;
 let initialization: Promise<void> | undefined;
 let nativeAudioPreview: NativeAudioPreviewAuthority | undefined;
 const agentSettings = createAgentSettingsClient({ port: process.parentPort });
@@ -51,6 +52,7 @@ async function shutdown(reason: ExitDiagnosticReason) {
   if (closing) return;
   closing = true;
   reportExitDiagnostic(reason);
+  parentLease.close();
   clearInterval(lease);
   let exitCode = 0;
   try { await initialization; await server?.close(); if (startFailed) exitCode = 1; }
@@ -68,9 +70,17 @@ async function shutdown(reason: ExitDiagnosticReason) {
   // Fixed messages only: the underlying error may contain paths or credentials.
   process.exit(exitCode);
 }
-const lease = setInterval(() => { if (Date.now() - lastPing > 30000) void shutdown('lease-expired'); }, 5000);
+const parentLease = createBackendLease({now: () => performance.now(),
+  probe: probeId => process.parentPort!.postMessage({type: 'lease-probe', probeId}),
+  expire: () => { void shutdown('lease-expired'); }});
+const lease = setInterval(() => parentLease.check(), BACKEND_LEASE_TIMING.checkIntervalMs);
 process.parentPort.on('message', ({ data }) => {
-  if (data?.type === 'ping') { lastPing = Date.now(); return; }
+  if (data?.type === 'ping') { parentLease.ping(); return; }
+  if (data?.type === 'lease-probe-ack') {
+    if (data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length === 2 &&
+        Object.hasOwn(data, 'type') && Object.hasOwn(data, 'probeId') && Number.isSafeInteger(data.probeId) && data.probeId > 0) parentLease.acknowledge(data.probeId);
+    return;
+  }
   if (data?.type === 'stop') { void shutdown('stop-requested'); return; }
   if(data?.type==='workspace-native:setBackupDirectory') {
     const parsed=workspaceNativeUtilityRequestSchema.safeParse(data);
@@ -108,6 +118,7 @@ process.parentPort.on('message', ({ data }) => {
       process.parentPort!.postMessage({ type: 'failed', code: 'BACKEND_START_FAILED',
         message: '本地服务启动失败。请检查数据目录是否被其他进程占用，以及应用文件是否完整。' });
       clearInterval(lease);
+      parentLease.close();
       agentSettings.close();
       imageSecretCodec.close();
       videoSecretCodec.close();

@@ -18,6 +18,7 @@ import { hasOpenWorkbenchModal } from '../apps/web/src/workbench-modal-state.ts'
 import { timelineSplitActionForKey, timelineHistoryActionForKey } from '../apps/web/src/timeline-keyboard.ts';
 import {stripSourceTypes} from './helpers/eval-source.ts';
 import type { ProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
+import { isProjectWindowSettingsSlot } from '../apps/desktop/src/project-window-protocol.ts';
 import type { SettingsPage } from '../apps/web/src/settings-window-state.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -60,7 +61,7 @@ function shellHarness() {
   return { calls, panes, render(patch: { page?: string|undefined; onPage?: undefined; selected?: string; active?: boolean; connectionsAvailable?: boolean; }|undefined = {}, nextLocale: import('../packages/i18n/src/index.ts').Locale|undefined = locale) { Object.assign(props, patch); locale = nextLocale; cursor = 0; return Component(props as unknown as Parameters<typeof Component>[0]); } };
 }
 
-test('settings shell has eight stable categories while connection owners retain four IPC slots', () => {
+test('settings shell has eight stable categories while connection owners retain four form identities', () => {
   const h = shellHarness(), categories = ['general','workspace','video-tools','models','agent','extensions','shortcuts','about'];
   for (const [page, category] of [['general','general'],['workspace','workspace'],['video-tools','video-tools'],['models','models'],['agent','agent'],['official','models'],['custom','extensions'],['comfy','extensions'],['shortcuts','shortcuts'],['about','about']]) {
     const tree = h.render({page});
@@ -194,14 +195,14 @@ test('actual shared controls render accessible four-language settings and one co
   for (const slot of slots) assert.ok(renderPresentation('en', slot).includes(`data-owner="${slot}"`));
 });
 
-test('new settings copy has complete locale coverage and category identity remains outside native IPC', () => {
+test('settings copy has complete locale coverage and native page intentions use a fixed allowlist', () => {
   const messages = Object.fromEntries(Object.entries(shellMessages).filter(([key]) => key.startsWith('settings.') || key === 'common.closeSettings'));
   assert.ok(Object.keys(messages).length >= 10); assert.deepEqual((validateCatalogs(messages) as unknown), []);
   assert.deepEqual((validateCatalogs(settingsRedesignMessages) as unknown), []);
-  const desktop = readFileSync(join(root, 'apps/desktop/src/project-window-protocol.ts'), 'utf8');
-  const slot = desktop.match(/export type ProjectWindowSettingsSlot\s*=\s*([^;]+);/u);
-  assert.ok(slot); assert.doesNotMatch(slot[1], /general|models|extensions/u);
-  for (const value of slots) assert.ok(slot[1].includes(`'${value}'`));
+  for (const value of [...slots, 'general', 'workspace', 'video-tools', 'models', 'extensions', 'shortcuts', 'about'])
+    assert.equal(isProjectWindowSettingsSlot(value), true);
+  for (const value of ['admin', 'reload', '../general', {page: 'general'}, undefined])
+    assert.equal(isProjectWindowSettingsSlot(value), false);
   for (const filename of ['ProjectHomeConnections.tsx', 'SettingsRoot.tsx', 'settings-window-state.ts'])
     assert.doesNotMatch(source(filename), /key=\{(?:locale|language|page|selected)\}/u, filename);
 });
@@ -376,7 +377,7 @@ test('actual App Ctrl+B and undo handlers work before settings opens and after c
   assert.ok(guards >= 0); const start = app.lastIndexOf('    const onKeyDown = (event: KeyboardEvent) => {', guards), end = app.indexOf("    window.addEventListener('keydown', onKeyDown);", guards);
   assert.ok(start >= 0 && end > start);
   const settings = modalElement({ role: 'dialog', hidden: '' }), confirmation = modalElement({ role: 'alertdialog', 'data-closed': '' });
-  const calls: unknown[] = [], env = { application:null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
+  const calls: unknown[] = [], env = { nativeMenuBridge: null as object | null, application:null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
     hasOpenWorkbenchModal, timelineSplitActionForKey, timelineHistoryActionForKey, splitState: { canSplit: true }, historyState: { canUndo: true, canRedo: true },
     splitTimelineClip: () => calls.push('split'), changeTimelineHistory: (direction: unknown) => calls.push(direction),
   };
@@ -390,6 +391,8 @@ test('actual App Ctrl+B and undo handlers work before settings opens and after c
   assert.equal(press('b'), false); assert.equal(press('z'), false);
   confirmation.attributes['aria-hidden'] = 'true'; assert.equal(press('b'), true); assert.equal(press('z'), true);
   assert.deepEqual(calls, ['split', 'undo', 'split', 'undo', 'split', 'undo']);
+  env.nativeMenuBridge = {}; assert.equal(press('b'), false); assert.equal(press('z'), false);
+  assert.deepEqual(calls, ['split', 'undo', 'split', 'undo', 'split', 'undo'], 'Desktop menu accelerators retain a single owner');
 });
 
 function composerSettingsHandler(kind: string, callback: { (): Promise<unknown>; (): Promise<unknown>; (): unknown; }) {
