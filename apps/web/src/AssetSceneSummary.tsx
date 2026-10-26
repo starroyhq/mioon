@@ -21,7 +21,8 @@ export default function AssetSceneSummary({ asset, state, controller, onOpen }: 
   // A result that cannot be read (for example a copy without scene records) leaves the section out.
   if (!task && !result && view?.phase === 'error') return null;
   const kind = task ? 'running' : result && !response?.current ? 'stale' : result ? 'result' : view?.phase === 'ready' ? 'none' : 'loading';
-  const text = task ? task.state === 'queued' ? t('scene.summary.queued') : t('scene.summary.running', { percent: sceneTaskPercent(task) })
+  const text = task ? task.state === 'queued' ? t('scene.summary.queued') : task.kind === 'shots' ? t('scene.summary.storyboard', { done: task.state === 'persisting' ? task.segments.length : task.progress?.done ?? 0, total: task.segments.length })
+    : t('scene.summary.running', { percent: sceneTaskPercent(task) })
     : kind === 'stale' ? t('scene.summary.stale')
     : result ? `${t('scene.summary.result', { count: sceneSegments(result.cuts.map(cut => cut.frame), result.frameCount).length })} · ${renderMessage(msg(result.origin === 'manual' ? 'scene.params.savedAt' : 'scene.params.detectedAt', { time: renderMessage(ago) }))}`
     : kind === 'none' ? t('scene.summary.none') : t('scene.summary.loading');

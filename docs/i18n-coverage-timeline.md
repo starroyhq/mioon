@@ -12,7 +12,7 @@ Every listed component uses the four-locale catalog for static and dynamic UI, a
 - `SourceRangeInspector.jsx`, `FrameExtractionPanel.jsx`, `Preview.jsx`, `VideoFrameControls.jsx`.
 - `SubtitleInspector.jsx`, `SubtitleLane.jsx`.
 - `TimelineSourceBanner.tsx` and the canvas ↔ timeline status on shot nodes, the storyboard strip, the shot inspector and the export content choice; their messages are in `packages/i18n/src/catalogs/canvas-timeline.ts`.
-- `SceneDetectionDialog.tsx`, `SceneCutBar.tsx`, `AssetSceneSummary.tsx`, `AssetContextMenu.tsx`, `SceneTaskCard.tsx` and the scene rows of the task popover and task center; their messages are in `packages/i18n/src/catalogs/scene-detection.ts`.
+- `SceneDetectionDialog.tsx`, `SceneCutBar.tsx`, `AssetSceneSummary.tsx`, `AssetContextMenu.tsx`, `SceneTaskCard.tsx`, the storyboard batch (`StoryboardBatchInspector.tsx`, `StoryboardBatchFrame.tsx`, `StoryboardToast.tsx`, the edited mark on shot nodes) and the scene rows of the task popover and task center; their messages are in `packages/i18n/src/catalogs/scene-detection.ts`.
 
 Core messages are in `packages/i18n/src/catalogs/timeline.ts`; every entry has exact `zh-Hans`, region-neutral `zh-Hant`, `en`, and `ja` fields. The core and delivery fragments are checked for duplicate keys before spreading, using `assertNoDuplicateMessageKeys`.
 

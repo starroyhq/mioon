@@ -34,7 +34,7 @@ const refusal = (code: string|undefined, operation: unknown, input: {projectId?:
   inputHash: createHash('sha256').update(canonicalSceneInput(input)).digest('hex'), ...patch } }, true, code === 'SCENE_CAPACITY' ? 507 : 409);
 
 function setup(handler: (operation: string, input: Record<string, unknown>) => unknown = () => page(), extra: Partial<scene.SceneDetectionOptions> = {}) {
-  const calls: { operation: string; input: unknown; }[] = [], settled: scene.SceneDetectTask[] = []; let serial = 0, clock = 0;
+  const calls: { operation: string; input: unknown; }[] = [], settled: scene.SceneTask[] = []; let serial = 0, clock = 0;
   const controller = scene.createSceneDetectionController({ rpc: async (operation, input) => { calls.push({ operation, input }); return handler(operation, input as Record<string, unknown>); },
     createRequestId: () => `request-${String(++serial).padStart(4, '0')}`, now: () => clock, onTaskSettled: value => settled.push(value), ...extra });
   controller.configure({ projectId: project, visible: true });
@@ -127,7 +127,7 @@ test('detect sends normalized options with a fresh request, validates the receip
   assert.equal((accepted)!.state, 'running', 'the current task replaces the queued receipt');
   assert.equal(h.controller.getState().pending, null); assert.equal(h.controller.getState().phase, 'idle');
   assert.equal(await h.controller.detect(asset), null); assert.equal(h.of('scene.detect').length, 1, 'a video with active detection is not queued again');
-  assert.equal(renderMessage('zh-Hans', (h.controller.getState().notice)!.descriptor), '这个视频已有拆解在进行');
+  assert.equal(renderMessage('zh-Hans', (h.controller.getState().notice)!.descriptor), '这个视频已有拆解或建分镜在进行');
 });
 
 test('a lost receipt keeps the exact request until the receipt read or an explicit resend settles it', async () => {
