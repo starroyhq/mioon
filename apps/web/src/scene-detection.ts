@@ -2,19 +2,19 @@ import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage, MessageKey } from '../../../packages/i18n/src/index.ts';
 import { sceneSchemas, canonicalSceneInput, isSceneTaskResponse, isSceneMutationResponse, isSceneRequestResponse, isSceneListResponse, isSceneResultResponse,
   normalizeSceneDetectionOptions, SCENE_LIMITS, SCENE_MUTATION_OPERATIONS } from '@mioon/contracts';
-import type { SceneDetectionOptionsInput, SceneResultResponse, SceneResultSummary } from '@mioon/contracts';
+import type { SceneDetectionOptionsInput, SceneResultResponse, SceneResultSummary, SceneShotsTaskResponse } from '@mioon/contracts';
 import { ApiError } from './api.ts';
 
-// Reference-film scene detection in the workbench: the project's detection
-// tasks, each video's latest result, and the user's detect, cancel and save
-// requests. Like frame capture, an unconfirmed request keeps its exact input
-// until a receipt read or an explicit resend of the same request settles it.
+// Reference-film scene detection in the workbench: the project's detection and
+// storyboard tasks, each video's latest result, and the user's detect, cancel,
+// save, storyboard and undo requests. Like frame capture, an unconfirmed request
+// keeps its exact input until a receipt read or an explicit resend settles it.
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const freeze = <T>(value: T): T => { if (value && typeof value === 'object' && !Object.isFrozen(value)) { Object.values(value as Record<string, unknown>).forEach(freeze); Object.freeze(value); } return value; };
 const copy = <T>(value: T): T => structuredClone(value);
 
 export type SceneTaskState = 'queued' | 'running' | 'cancelling' | 'persisting' | 'succeeded' | 'cancelled_before_start' | 'cancelled' | 'interrupted' | 'local_result_error' | 'failed' | 'undone';
-/** The detection task as the dialog reads it. Storyboard tasks are left to their own view. */
+/** The detection task as the dialog reads it. */
 export interface SceneDetectTask {
   id: string; projectId: string; kind: 'detect'; requestId: string; sourceAssetId: string; sourceHash: string;
   options: SceneDetectionOptionsInput; profileId: string; fps: number;
@@ -23,45 +23,60 @@ export interface SceneDetectTask {
   progress: { frames: number; frameCount: number; cuts: number } | null;
   errorCode: string | null; createdAt: string; updatedAt: string;
 }
+/** A storyboard task: keyframes for the chosen segments, then one shot per segment. */
+export type SceneShotsTask = SceneShotsTaskResponse;
+export type SceneTask = SceneDetectTask | SceneShotsTask;
 export type SceneMutation = typeof SCENE_MUTATION_OPERATIONS[number];
 export interface ScenePending { readonly operation: SceneMutation; readonly input: Readonly<Record<string, unknown>>; readonly assetId: string }
 export interface SceneResultView { readonly phase: 'loading' | 'ready' | 'error'; readonly response: SceneResultResponse | null }
 export interface SceneNotice { readonly assetId: string | null; readonly descriptor: DisplayMessage; readonly tone: 'neutral' | 'warning' | 'danger' }
 export interface SceneSourceAsset { id: string; projectId?: string; name?: string; sha256?: string; mimeType?: string; duration?: unknown; sizeBytes?: unknown }
+/** Whether a built storyboard can still be undone. Task pages leave this out, so it is read per task. */
+export interface SceneUndoView { readonly phase: 'loading' | 'ready' | 'error'; readonly revision: number | null; readonly undo: SceneShotsTask['undo'] }
 export interface SceneDetectionState {
   projectId: string | null;
   visible: boolean;
   /** Restored workspaces read results but cannot change them. */
   readOnly: boolean;
-  tasks: readonly SceneDetectTask[];
+  tasks: readonly SceneTask[];
   tasksLoaded: boolean;
   tasksError: boolean;
   results: Readonly<Record<string, SceneResultView>>;
   pending: ScenePending | null;
   phase: 'idle' | 'submitting' | 'unknown';
   notice: SceneNotice | null;
-  /** Seconds left for running tasks, from the observed decoding rate. */
+  /** Seconds left for running detections, from the observed decoding rate. */
   remaining: Readonly<Record<string, number>>;
+  /** Live undo availability of built storyboards, by task. */
+  undo: Readonly<Record<string, SceneUndoView>>;
 }
 export interface SceneDetectionOptions {
   rpc: (operation: string, input: unknown) => Promise<unknown>;
   createRequestId?: () => string;
   now?: () => number;
   onChange?: (state: SceneDetectionState) => void;
-  /** A known task left the active states: detection finished, failed or stopped. */
-  onTaskSettled?: (task: SceneDetectTask) => void;
+  /** A known task left the active states: it finished, failed or stopped, or a built storyboard was undone. */
+  onTaskSettled?: (task: SceneTask) => void;
 }
 
-const activeStates: ReadonlySet<string> = new Set(['queued', 'running', 'cancelling']);
-export const sceneTaskActive = (task: Pick<SceneDetectTask, 'state'> | null | undefined): boolean => Boolean(task && activeStates.has(task.state));
-export const sceneTaskCanCancel = (task: Pick<SceneDetectTask, 'state'> | null | undefined): boolean => task?.state === 'queued' || task?.state === 'running';
-/** 0–100. A queued task has not decoded anything yet. */
-export function sceneTaskPercent(task: Pick<SceneDetectTask, 'state' | 'progress'> | null | undefined): number {
+// A storyboard that is saving its shots finishes or fails on its own; it cannot be cancelled.
+const activeStates: ReadonlySet<string> = new Set(['queued', 'running', 'cancelling', 'persisting']);
+export const sceneTaskActive = (task: Pick<SceneTask, 'state'> | null | undefined): boolean => Boolean(task && activeStates.has(task.state));
+export const sceneTaskCanCancel = (task: Pick<SceneTask, 'state'> | null | undefined): boolean => task?.state === 'queued' || task?.state === 'running';
+export const sceneShotsTask = (task: SceneTask | null | undefined): task is SceneShotsTask => task?.kind === 'shots';
+/** 0–100. A queued task has not decoded anything yet; a storyboard counts captured keyframes. */
+export function sceneTaskPercent(task: SceneTask | null | undefined): number {
   if (!task) return 0;
   if (task.state === 'succeeded') return 100;
+  if (task.kind === 'shots') {
+    const progress = task.progress;
+    return task.state === 'persisting' ? 99 : progress && progress.total > 0 ? Math.max(0, Math.min(99, Math.floor(progress.done * 100 / progress.total))) : 0;
+  }
   const progress = task.progress;
   return progress && progress.frameCount > 0 ? Math.max(0, Math.min(99, Math.floor(progress.frames * 100 / progress.frameCount))) : 0;
 }
+/** Failed, interrupted or unsaved storyboards built nothing and can be retried. */
+export const sceneStoryboardFailed = (task: SceneTask | null | undefined): task is SceneShotsTask => task?.kind === 'shots' && ['failed', 'interrupted', 'local_result_error'].includes(task.state);
 /** Why a video cannot be detected; null when it can. Mirrors the frame capture limits the backend checks. */
 export function sceneSourceIssue(asset: SceneSourceAsset | null | undefined): 'type' | 'duration' | 'size' | null {
   if (!asset || !['video/mp4', 'video/webm'].includes(String(asset.mimeType)) || typeof asset.sha256 !== 'string') return 'type';
@@ -80,6 +95,7 @@ export const sceneSensitivityLevel = (value: number): 'low' | 'medium' | 'high' 
 
 const errorKeys: Readonly<Record<string, MessageKey>> = Object.freeze({
   SCENE_CAPACITY: 'scene.error.capacity', SCENE_QUEUE_FULL: 'scene.error.queueFull', SCENE_TASK_ACTIVE: 'scene.error.taskActive',
+  SCENE_SEGMENTS_INVALID: 'scene.error.segmentsInvalid', SCENE_UNDO_BLOCKED: 'scene.error.undoBlocked',
   SCENE_REVISION_CONFLICT: 'scene.error.changed', SCENE_STATE_CONFLICT: 'scene.error.changed', SCENE_SOURCE_INVALID: 'scene.error.sourceInvalid',
   SCENE_PROFILE_UNSUPPORTED: 'scene.error.sourceInvalid', SCENE_SOURCE_CHANGED: 'scene.error.sourceChanged', SCENE_RESULT_CONFLICT: 'scene.error.resultConflict',
   SCENE_RESULT_STALE: 'scene.error.resultStale', SCENE_CUTS_INVALID: 'scene.error.cutsInvalid', SCENE_CUTS_LIMIT: 'scene.error.cutsLimit',
@@ -89,10 +105,18 @@ const errorKeys: Readonly<Record<string, MessageKey>> = Object.freeze({
 });
 /** Refusals and task failures in the user's words; unknown codes fall back to the generic failure. */
 export const sceneErrorMessage = (code: string | null | undefined): DisplayMessage => msg(code && Object.hasOwn(errorKeys, code) ? errorKeys[code]! : 'scene.error.failed');
+const storyboardErrorKeys: Readonly<Record<string, MessageKey>> = Object.freeze({
+  SCENE_SOURCE_CHANGED: 'scene.storyboard.error.sourceChanged', SCENE_INTERRUPTED: 'scene.storyboard.error.interrupted', SCENE_ATTEMPT_TIMEOUT: 'scene.storyboard.error.timeout',
+  SCENE_SHOTS_FAILED: 'scene.storyboard.error.capture', SCENE_DECODE_INCOMPLETE: 'scene.storyboard.error.capture', SCENE_KEYFRAME_UNAVAILABLE: 'scene.storyboard.error.keyframe',
+  SCENE_STORAGE_FAILED: 'scene.storyboard.error.storage', SCENE_SERVICE_STOPPED: 'scene.error.serviceStopped', SCENE_OWNER_REQUIRED: 'scene.error.serviceStopped',
+});
+/** Why a storyboard built nothing. */
+export const sceneStoryboardErrorMessage = (code: string | null | undefined): DisplayMessage => msg(code && Object.hasOwn(storyboardErrorKeys, code) ? storyboardErrorKeys[code]! : 'scene.storyboard.error.failed');
 
 // Pre-write refusals the backend can prove under their own status, as in the client package.
 const refusalStatus: Readonly<Record<string, number>> = Object.freeze({ SCENE_CAPACITY: 507, SCENE_QUEUE_FULL: 409, SCENE_TASK_ACTIVE: 409, SCENE_REVISION_CONFLICT: 409,
-  SCENE_STATE_CONFLICT: 409, SCENE_SOURCE_INVALID: 409, SCENE_SOURCE_CHANGED: 409, SCENE_RESULT_CONFLICT: 409, SCENE_RESULT_STALE: 409, SCENE_CUTS_INVALID: 409 });
+  SCENE_STATE_CONFLICT: 409, SCENE_SOURCE_INVALID: 409, SCENE_SOURCE_CHANGED: 409, SCENE_RESULT_CONFLICT: 409, SCENE_RESULT_STALE: 409, SCENE_CUTS_INVALID: 409,
+  SCENE_SEGMENTS_INVALID: 409, SCENE_UNDO_BLOCKED: 409 });
 const schemaFor = (operation: string) => Object.hasOwn(sceneSchemas, operation) ? sceneSchemas[operation as keyof typeof sceneSchemas] : null;
 /** True only for a refusal whose proof binds this exact operation, project, request and canonical input. */
 export async function sceneRequestNotAccepted(error: unknown, operation: string, input: unknown): Promise<boolean> {
@@ -107,15 +131,15 @@ export async function sceneRequestNotAccepted(error: unknown, operation: string,
   } catch { return false; }
 }
 
-const detectTask = (value: unknown): value is SceneDetectTask => isSceneTaskResponse(value) && record(value) && value.kind === 'detect';
-const initial = (): SceneDetectionState => ({ projectId: null, visible: false, readOnly: false, tasks: [], tasksLoaded: false, tasksError: false, results: {}, pending: null, phase: 'idle', notice: null, remaining: {} });
+const sceneTask = (value: unknown): value is SceneTask => isSceneTaskResponse(value) && record(value) && (value.kind === 'detect' || value.kind === 'shots');
+const initial = (): SceneDetectionState => ({ projectId: null, visible: false, readOnly: false, tasks: [], tasksLoaded: false, tasksError: false, results: {}, pending: null, phase: 'idle', notice: null, remaining: {}, undo: {} });
 interface Owner { epoch: number; projectId: string | null }
 interface RateSample { time: number; frames: number }
 
 export function createSceneDetectionController({ rpc, createRequestId = () => globalThis.crypto.randomUUID(), now = () => Date.now(), onChange = () => {}, onTaskSettled = () => {} }: SceneDetectionOptions) {
   let state = freeze(initial()), epoch = 0, listSerial = 0, disposed = false;
-  const listeners = new Set<() => void>(), pendingByProject = new Map<string, ScenePending>(), known = new Map<string, SceneDetectTask>(), samples = new Map<string, RateSample>();
-  const resultSerial = new Map<string, number>();
+  const listeners = new Set<() => void>(), pendingByProject = new Map<string, ScenePending>(), known = new Map<string, SceneTask>(), samples = new Map<string, RateSample>();
+  const resultSerial = new Map<string, number>(), undoSerial = new Map<string, number>();
   const emit = (patch: Partial<SceneDetectionState>): SceneDetectionState => { state = freeze({ ...state, ...patch }); onChange(state); listeners.forEach(listener => listener()); return state; };
   const owner = (): Owner => ({ epoch, projectId: state.projectId });
   // Read through a call: the state is replaced by emit, so an earlier check must not narrow it.
@@ -125,8 +149,8 @@ export function createSceneDetectionController({ rpc, createRequestId = () => gl
   const writable = (): boolean => readable() && !state.readOnly && state.phase === 'idle' && !state.pending;
   const inputFor = (operation: string, input: unknown): Record<string, unknown> | null => { const parsed = schemaFor(operation)?.safeParse(input); return parsed?.success ? freeze(parsed.data as Record<string, unknown>) : null; };
 
-  function estimate(task: SceneDetectTask): number | undefined {
-    const progress = task.state === 'running' ? task.progress : null;
+  function estimate(task: SceneTask): number | undefined {
+    const progress = task.kind === 'detect' && task.state === 'running' ? task.progress : null;
     if (!progress) { samples.delete(task.id); return undefined; }
     const first = samples.get(task.id), time = now();
     if (!first) { samples.set(task.id, { time, frames: progress.frames }); return undefined; }
@@ -134,27 +158,31 @@ export function createSceneDetectionController({ rpc, createRequestId = () => gl
     return elapsed >= 2 && decoded > 0 ? Math.max(1, Math.ceil((progress.frameCount - progress.frames) * elapsed / decoded)) : undefined;
   }
   // Revisions only move forward; an older read never replaces a newer task.
-  function remember(value: SceneDetectTask): SceneDetectTask {
+  // Undo availability is live and kept apart in state.undo, so listed tasks never carry it.
+  function remember(value: SceneTask): SceneTask {
     const previous = known.get(value.id);
     if (previous && (previous.revision > value.revision || previous.revision === value.revision && previous.updatedAt > value.updatedAt)) return previous;
-    if (previous && (previous.requestId !== value.requestId || previous.sourceAssetId !== value.sourceAssetId)) return previous;
-    const task = freeze(copy(value));
+    if (previous && (previous.kind !== value.kind || previous.requestId !== value.requestId || previous.sourceAssetId !== value.sourceAssetId)) return previous;
+    const task = freeze(copy(value.kind === 'shots' ? { ...value, undo: null } : value));
     known.set(task.id, task);
-    if (previous && sceneTaskActive(previous) && !sceneTaskActive(task)) {
+    const undone = previous?.state === 'succeeded' && task.state === 'undone';
+    if (previous && (sceneTaskActive(previous) && !sceneTaskActive(task) || undone)) {
       samples.delete(task.id);
       // A shown result for this video is now older than the one just saved.
-      if (task.state === 'succeeded' && state.results[task.sourceAssetId]) void loadResult(task.sourceAssetId);
+      if (task.kind === 'detect' && task.state === 'succeeded' && state.results[task.sourceAssetId]) void loadResult(task.sourceAssetId);
       try { onTaskSettled(task); } catch {}
     }
     return task;
   }
-  function publish(tasks: SceneDetectTask[], patch: Partial<SceneDetectionState> = {}): void {
+  function publish(tasks: SceneTask[], patch: Partial<SceneDetectionState> = {}): void {
     const ordered = [...new Map(tasks.map(task => [task.id, task])).values()].sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id)).slice(0, SCENE_LIMITS.maxPageSize);
     const remaining: Record<string, number> = {};
     for (const task of ordered) { const seconds = estimate(task); if (seconds !== undefined) remaining[task.id] = seconds; }
-    emit({ tasks: ordered, remaining, ...patch });
+    // A storyboard that is no longer built has nothing left to undo.
+    const undo = Object.fromEntries(Object.entries(patch.undo ?? state.undo).filter(([id]) => known.get(id)?.state === 'succeeded' || !known.has(id)));
+    emit({ tasks: ordered, remaining, ...patch, undo });
   }
-  const merge = (task: SceneDetectTask): SceneDetectTask => { const current = remember(task); publish([current, ...state.tasks.filter(item => item.id !== current.id)]); return current; };
+  const merge = (task: SceneTask): SceneTask => { const current = remember(task); publish([current, ...state.tasks.filter(item => item.id !== current.id)]); return current; };
 
   async function refreshTasks(): Promise<boolean> {
     if (!readable()) return false;
@@ -164,23 +192,48 @@ export function createSceneDetectionController({ rpc, createRequestId = () => gl
       const page = await rpc('scene.task.list', copy(input));
       if (!owns(token) || serial !== listSerial) return false;
       if (!isSceneListResponse('scene.task.list', input, page) || !record(page) || !Array.isArray(page.items)) throw new Error('invalid');
-      const listed = (page.items as unknown[]).filter(detectTask).map(remember), ids = new Set(listed.map(task => task.id));
-      // A task that fell off the first page keeps its last read state until it is read again.
-      const kept = state.tasks.filter(task => !ids.has(task.id) && (sceneTaskActive(task) || task.id === state.pending?.input.taskId));
+      const listed = (page.items as unknown[]).filter(sceneTask).map(remember), ids = new Set(listed.map(task => task.id));
+      // A task that fell off the first page keeps its last read state until it is read again,
+      // and so does a built storyboard whose undo was read.
+      const kept = state.tasks.filter(task => !ids.has(task.id) && (sceneTaskActive(task) || task.id === state.pending?.input.taskId || Object.hasOwn(state.undo, task.id)));
       publish([...listed, ...kept], { tasksLoaded: true, tasksError: false });
       return true;
     } catch { if (owns(token) && serial === listSerial) emit({ tasksError: true }); return false; }
   }
-  async function readTask(taskId: string): Promise<SceneDetectTask | null> {
+  async function readTask(taskId: string): Promise<SceneTask | null> {
     if (!readable()) return null;
     const token = owner(), input = inputFor('scene.task.get', { projectId: token.projectId, taskId });
     if (!input) return null;
     try {
       const task = await rpc('scene.task.get', copy(input));
       if (!owns(token)) return null;
-      if (!detectTask(task) || task.id !== taskId || task.projectId !== token.projectId) throw new Error('invalid');
+      if (!sceneTask(task) || task.id !== taskId || task.projectId !== token.projectId) throw new Error('invalid');
       return merge(task);
     } catch { if (owns(token)) emit({ tasksError: true }); return null; }
+  }
+  /** Reads a built storyboard again for its live undo availability. */
+  async function checkUndo(taskId: string): Promise<SceneShotsTask | null> {
+    if (!readable()) return null;
+    const token = owner(), input = inputFor('scene.task.get', { projectId: token.projectId, taskId });
+    if (!input) return null;
+    const serial = (undoSerial.get(taskId) ?? 0) + 1; undoSerial.set(taskId, serial);
+    const previous = state.undo[taskId], keep = { revision: previous?.revision ?? null, undo: previous?.undo ?? null };
+    emit({ undo: { ...state.undo, [taskId]: { phase: 'loading', ...keep } } });
+    try {
+      const task = await rpc('scene.task.get', copy(input));
+      if (!owns(token) || undoSerial.get(taskId) !== serial) return null;
+      if (!sceneTask(task) || task.kind !== 'shots' || task.id !== taskId || task.projectId !== token.projectId) throw new Error('invalid');
+      // An older read than the task already known says nothing about undo now.
+      const current = remember(task);
+      if (current.kind !== 'shots') throw new Error('invalid');
+      const fresh = current.revision === task.revision && current.updatedAt === task.updatedAt, value = fresh ? task : current;
+      const view: SceneUndoView = { phase: 'ready', revision: value.revision, undo: fresh && task.undo ? freeze(copy(task.undo)) : null };
+      publish([current, ...state.tasks.filter(item => item.id !== current.id)], { undo: { ...state.undo, [taskId]: view } });
+      return value;
+    } catch {
+      if (owns(token) && undoSerial.get(taskId) === serial) emit({ undo: { ...state.undo, [taskId]: { phase: 'error', ...keep } } });
+      return null;
+    }
   }
   async function loadResult(assetId: string): Promise<SceneResultResponse | null> {
     if (!readable()) return null;
@@ -210,7 +263,7 @@ export function createSceneDetectionController({ rpc, createRequestId = () => gl
     if (!isSceneMutationResponse(pending.operation, pending.input, ack)) throw new Error('invalid');
     setPending(null); emit({ phase: 'idle', notice: null });
     if (pending.operation === 'scene.cuts.save') { await loadResult(pending.assetId); return ack; }
-    const task = merge(ack as SceneDetectTask);
+    const task = merge(ack as SceneTask);
     await readTask(task.id);
     return owns(token) ? known.get(task.id) ?? task : null;
   }
@@ -228,7 +281,7 @@ export function createSceneDetectionController({ rpc, createRequestId = () => gl
         const code = error instanceof ApiError ? error.code : undefined;
         emit({ phase: 'idle', notice: { assetId: pending.assetId, descriptor: sceneErrorMessage(code), tone: 'warning' } });
         // A refusal can mean the task or result moved on; read the current records.
-        if (code === 'SCENE_RESULT_CONFLICT' || code === 'SCENE_RESULT_STALE' || code === 'SCENE_SOURCE_CHANGED') void loadResult(pending.assetId);
+        if (code === 'SCENE_RESULT_CONFLICT' || code === 'SCENE_RESULT_STALE' || code === 'SCENE_SOURCE_CHANGED' || code === 'SCENE_SEGMENTS_INVALID') void loadResult(pending.assetId);
         if (code === 'SCENE_TASK_ACTIVE' || code === 'SCENE_REVISION_CONFLICT' || code === 'SCENE_STATE_CONFLICT') void refreshTasks();
       } else emit({ phase: 'unknown', notice: { assetId: pending.assetId, descriptor: msg('scene.request.unknown'), tone: 'warning' } });
       return null;
@@ -240,17 +293,49 @@ export function createSceneDetectionController({ rpc, createRequestId = () => gl
     return freeze({ operation, input: parsed, assetId });
   }
 
+  const busyWith = (assetId: string): boolean => {
+    if (!state.tasks.some(task => task.sourceAssetId === assetId && sceneTaskActive(task))) return false;
+    emit({ notice: { assetId, descriptor: sceneErrorMessage('SCENE_TASK_ACTIVE'), tone: 'warning' } });
+    return true;
+  };
   async function detect(asset: SceneSourceAsset, options: Partial<SceneDetectionOptionsInput> = {}): Promise<SceneDetectTask | null> {
-    if (!writable() || sceneSourceIssue(asset) || asset.projectId !== state.projectId) return null;
-    if (state.tasks.some(task => task.sourceAssetId === asset.id && sceneTaskActive(task))) { emit({ notice: { assetId: asset.id, descriptor: sceneErrorMessage('SCENE_TASK_ACTIVE'), tone: 'warning' } }); return null; }
+    if (!writable() || sceneSourceIssue(asset) || asset.projectId !== state.projectId || busyWith(asset.id)) return null;
     const pending = prepared('scene.detect', { projectId: state.projectId, sourceAssetId: asset.id, sourceHash: asset.sha256, options: normalizeSceneDetectionOptions(options), requestId: createRequestId() }, asset.id);
     return pending ? await submit(pending) as SceneDetectTask | null : null;
   }
-  async function cancel(candidate: SceneDetectTask): Promise<SceneDetectTask | null> {
+  async function cancel(candidate: SceneTask): Promise<SceneTask | null> {
     const task = state.tasks.find(item => item.id === candidate.id);
     if (!writable() || !task || !sceneTaskCanCancel(task)) return null;
     const pending = prepared('scene.task.cancel', { projectId: state.projectId, taskId: task.id, expectedRevision: task.revision, requestId: createRequestId() }, task.sourceAssetId);
-    return pending ? await submit(pending) as SceneDetectTask | null : null;
+    return pending ? await submit(pending) as SceneTask | null : null;
+  }
+  /** Queues a storyboard from the video's current result: one shot per chosen segment. */
+  async function createShots(asset: SceneSourceAsset, resultId: string, segments: readonly number[], titlePrefix?: string): Promise<SceneShotsTask | null> {
+    if (!writable() || sceneSourceIssue(asset) || asset.projectId !== state.projectId || busyWith(asset.id)) return null;
+    const pending = prepared('scene.shots.create', { projectId: state.projectId, sourceAssetId: asset.id, sourceHash: asset.sha256, resultId, segments: [...segments],
+      ...(titlePrefix === undefined ? {} : { titlePrefix }), requestId: createRequestId() }, asset.id);
+    return pending ? await submit(pending) as SceneShotsTask | null : null;
+  }
+  /** Builds a storyboard that built nothing again, with its result, segments and titles. */
+  const retryShots = (task: SceneShotsTask, asset: SceneSourceAsset): Promise<SceneShotsTask | null> =>
+    sceneStoryboardFailed(task) && task.sourceAssetId === asset.id ? createShots(asset, task.resultId, task.segments, task.titlePrefix) : Promise.resolve(null);
+  /** Undoes a built storyboard after reading that it is still untouched. */
+  async function undoShots(taskId: string): Promise<SceneShotsTask | null> {
+    if (!writable()) return null;
+    const token = owner();
+    emit({ phase: 'submitting', notice: null });
+    let task: SceneShotsTask | null = null;
+    try { task = await checkUndo(taskId); } finally { if (owns(token) && phase() === 'submitting' && !state.pending) emit({ phase: 'idle' }); }
+    if (!task || !owns(token) || !writable()) return null;
+    if (task.state !== 'succeeded' || !task.undo?.available) {
+      if (task.state === 'succeeded') emit({ notice: { assetId: task.sourceAssetId, descriptor: sceneErrorMessage('SCENE_UNDO_BLOCKED'), tone: 'warning' } });
+      return null;
+    }
+    const pending = prepared('scene.shots.undo', { projectId: state.projectId, taskId, expectedRevision: task.revision, requestId: createRequestId() }, task.sourceAssetId);
+    const undone = pending ? await submit(pending) as SceneShotsTask | null : null;
+    // A refused undo means a shot changed in between; show why.
+    if (!undone && owns(token) && !state.pending) void checkUndo(taskId);
+    return undone;
   }
   async function saveCuts(asset: SceneSourceAsset, resultId: string, cuts: readonly number[]): Promise<SceneResultSummary | null> {
     if (!writable() || asset.projectId !== state.projectId || typeof asset.sha256 !== 'string') return null;
@@ -281,16 +366,16 @@ export function createSceneDetectionController({ rpc, createRequestId = () => gl
       if (disposed) return;
       const changed = projectId !== state.projectId;
       if (!changed && visible === state.visible && readOnly === state.readOnly) return;
-      if (changed) { epoch++; listSerial++; known.clear(); samples.clear(); resultSerial.clear(); }
+      if (changed) { epoch++; listSerial++; known.clear(); samples.clear(); resultSerial.clear(); undoSerial.clear(); }
       const pending = projectId ? pendingByProject.get(projectId) ?? null : null;
       emit({ ...(changed ? { ...initial(), pending, phase: pending ? 'unknown' : 'idle' } : {}), projectId, visible, readOnly });
     },
-    refreshTasks, readTask, loadResult, detect, cancel, saveCuts, reconcileUnknown,
+    refreshTasks, readTask, checkUndo, loadResult, detect, cancel, saveCuts, createShots, retryShots, undoShots, reconcileUnknown,
     /** Sends the same unconfirmed request again; the backend replays it exactly once. */
     retryUnknown: (): Promise<unknown> => readable() && state.pending && state.phase === 'unknown' && !state.readOnly ? submit(state.pending) : Promise.resolve(null),
     clearNotice: (): void => { if (state.notice) emit({ notice: null }); },
-    activeTask: (assetId: string): SceneDetectTask | null => state.tasks.find(task => task.sourceAssetId === assetId && sceneTaskActive(task)) ?? null,
-    latestTask: (assetId: string): SceneDetectTask | null => state.tasks.find(task => task.sourceAssetId === assetId) ?? null,
+    activeTask: (assetId: string): SceneTask | null => state.tasks.find(task => task.sourceAssetId === assetId && sceneTaskActive(task)) ?? null,
+    latestTask: (assetId: string): SceneTask | null => state.tasks.find(task => task.sourceAssetId === assetId) ?? null,
     dispose(): void { epoch++; listSerial++; disposed = true; listeners.clear(); },
   };
 }
