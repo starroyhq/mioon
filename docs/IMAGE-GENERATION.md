@@ -1,5 +1,21 @@
 # Image generation: shared workflow and original local slice
 
+## Official SDK transport: 2026-10-26
+
+Official OpenAI and custom OpenAI-compatible generation now use the pinned
+`openai@7.39.0` `images.generate()` method. The existing model, fixed output
+options, custom URL prefix and JSON/PNG limits are unchanged. SDK serialization
+passes through the existing pinned DNS/TLS transport and synchronous dispatch
+fence; SDK retries, ambient credentials and protocol fallback are disabled.
+The SDK fetch boundary permits one target request, with no multipart capability
+probe request. [Single-PNG editing](IMAGE-EDITING.md) uses `images.edit()` and
+SDK-generated multipart instead of the former JSON/Base64 edit body.
+
+Public Web/CLI/MCP contracts, approval, historical snapshots/input hashes and
+local-result recovery are unchanged. ComfyUI and Mock retain their existing
+implementations. This migration is checked with offline transport fixtures and
+isolated SDK bundles; it does not establish live provider compatibility.
+
 ## Local ComfyUI increment: 2026-10-10
 
 The [first-party local ComfyUI connector](COMFY-CONNECTOR.md) adds a separate

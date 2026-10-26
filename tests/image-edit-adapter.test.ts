@@ -6,7 +6,7 @@ import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import {createMockImageAdapter, createOpenAIImageAdapter, createCompatibleImageAdapter} from '../packages/business/src/images/adapter.ts';
 import {createLiveImageGateway, createCompatibleImageGateway} from '../packages/business/src/images/gateway.ts';
-import {createImageEditBody, createImageGenerationBody, IMAGE_EDIT_NETWORK_LIMITS, IMAGE_NETWORK_LIMITS} from '../packages/business/src/images/profiles.ts';
+import {createImageEditParameters, createImageGenerationParameters, IMAGE_EDIT_NETWORK_LIMITS, IMAGE_NETWORK_LIMITS} from '../packages/business/src/images/profiles.ts';
 import {createImageSettings, createCustomImageSettings, IMAGE_CREDENTIAL_ACQUIRE, IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.ts';
 import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
 import {IMAGE_EDIT_LIMITS, IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS} from '../packages/contracts/src/images.ts';
@@ -21,7 +21,7 @@ interface MockHttpsOptions {hostname: string; servername: string; path: string; 
   autoSelectFamily: boolean; rejectUnauthorized: boolean; headers: Record<string, string>;
   checkServerIdentity(name: string, cert: unknown): Error | undefined;
   lookup(host: string, options: {all: boolean}, callback: (error: Error | null, value?: {address: string; family: number}[]) => void): void}
-interface NetworkState {calls: number; posts: number; lookups: number; options?: MockHttpsOptions; payload?: string; lookup?: (hostname: string) => Promise<{address: string; family: number}[]>; httpsRequest?: (options: MockHttpsOptions, callback: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void) => void}
+interface NetworkState {calls: number; posts: number; lookups: number; options?: MockHttpsOptions; payload?: Buffer; lookup?: (hostname: string) => Promise<{address: string; family: number}[]>; httpsRequest?: (options: MockHttpsOptions, callback: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void) => void}
 interface NetworkOptions {body?: Buffer; onEnd?: () => void; onConnect?: () => void}
 type Deferred = {promise: Promise<unknown>; resolve: (value?: unknown) => void};
 
@@ -53,8 +53,8 @@ function network({body = Buffer.from('{}'), onEnd, onConnect}: NetworkOptions = 
   const state = {calls: 0, posts: 0, lookups: 0} as unknown as NetworkState;
   state.lookup = async (hostname: string) => { state.lookups++; assert.equal(hostname, 'api.openai.com'); return answers; };
   state.httpsRequest = (options, callback) => {
-    state.calls++; state.options = options; const request = new EventEmitter() as EventEmitter & {destroy: () => void; end: (payload?: string) => void}; request.destroy = () => {};
-    request.end = (payload?: string) => { state.posts++; state.payload = payload; onEnd?.(); const response = Readable.from([body]) as Readable & {statusCode: number; headers: Record<string, string>; complete: boolean}; Object.assign(response, {statusCode: 200, headers: {'content-type': 'application/json'}, complete: true}); callback(response); };
+    state.calls++; state.options = options; const request = new EventEmitter() as EventEmitter & {destroy: () => void; end: (payload?: Buffer) => void}; request.destroy = () => {};
+    request.end = (payload?: Buffer) => { state.posts++; state.payload = payload; onEnd?.(); const response = Readable.from([body]) as Readable & {statusCode: number; headers: Record<string, string>; complete: boolean}; Object.assign(response, {statusCode: 200, headers: {'content-type': 'application/json'}, complete: true}); callback(response); };
     queueMicrotask(() => { const socket = new EventEmitter(); Object.assign(socket, {remoteAddress: '8.8.8.8', remotePort: 443, authorized: true, destroy() {}}); request.emit('socket', socket); onConnect?.(); socket.emit('secureConnect'); });
     return request;
   };
@@ -66,18 +66,19 @@ async function settingsFixture(t: import('node:test').TestContext) {
   return {settings, persisted: () => stored};
 }
 
-test('edit wire is one exact inline PNG with fixed model/options and no source metadata or unsupported parameters', async () => {
-  const bytes = sourcePng(), snapshot = input(bytes), body = await createImageEditBody(snapshot, bytes);
-  assert.deepEqual(JSON.parse(body), {model: IMAGE_MODELS.openai, prompt: snapshot.prompt, images: [{image_url: `data:image/png;base64,${bytes.toString('base64')}`}], n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
-  for (const value of [sourceId, 'Synthetic source.png', 'sourceImage', 'inputImage', 'input_fidelity', 'mask', 'response_format']) assert.equal(body.includes(value), false);
+test('edit SDK parameters contain one local PNG File and fixed options without unsupported moderation or metadata', async () => {
+  const bytes = sourcePng(), snapshot = input(bytes), parameters = await createImageEditParameters(snapshot, bytes);
+  assert.ok(parameters.image instanceof File); assert.equal(parameters.image.name, 'source.png'); assert.equal(parameters.image.type, 'image/png');
+  assert.deepEqual(Buffer.from(await parameters.image.arrayBuffer()), bytes);
+  assert.deepEqual({...parameters, image: undefined}, {model: IMAGE_MODELS.openai, prompt: snapshot.prompt, image: undefined, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque'});
+  for (const value of [sourceId, 'Synthetic source.png', 'sourceImage', 'inputImage', 'input_fidelity', 'mask', 'response_format', 'moderation']) assert.equal(JSON.stringify(parameters).includes(value), false);
   const original = generation('openai');
-  assert.equal(createImageGenerationBody(original), JSON.stringify({model: original.model, prompt: original.prompt, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'}));
-  assert.throws(() => createImageGenerationBody(snapshot), {code: 'IMAGE_INVALID_REQUEST'});
+  assert.deepEqual(createImageGenerationParameters(original), {model: original.model, prompt: original.prompt, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
+  assert.throws(() => createImageGenerationParameters(snapshot), {code: 'IMAGE_INVALID_REQUEST'});
   assert.equal(IMAGE_NETWORK_LIMITS.maxRequestBytes, 16384);
-  const emptyShape = JSON.stringify({model: IMAGE_MODELS.openai, prompt: '', images: [{image_url: 'data:image/png;base64,'}], n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
-  assert.equal(IMAGE_EDIT_NETWORK_LIMITS.maxRequestBytes, Buffer.byteLength(emptyShape) + 4 * Math.ceil(IMAGE_EDIT_LIMITS.sourceBytes / 3) + 6 * IMAGE_LIMITS.promptCharacters);
-  const escaped = await createImageEditBody({...snapshot, prompt: '\ud800'.repeat(IMAGE_LIMITS.promptCharacters)}, bytes);
-  assert.equal(Buffer.byteLength(escaped), Buffer.byteLength(emptyShape) + 4 * Math.ceil(bytes.length / 3) + 6 * IMAGE_LIMITS.promptCharacters);
+  assert.equal(IMAGE_EDIT_NETWORK_LIMITS.maxRequestBytes, IMAGE_EDIT_LIMITS.sourceBytes + 6 * IMAGE_LIMITS.promptCharacters + IMAGE_NETWORK_LIMITS.maxRequestBytes);
+  const escaped = await createImageEditParameters({...snapshot, prompt: '\ud800'.repeat(IMAGE_LIMITS.promptCharacters)}, bytes);
+  assert.equal(escaped.prompt, '\ud800'.repeat(IMAGE_LIMITS.promptCharacters));
 });
 
 test('malformed trusted source arguments fail before transport: exact Buffer, bounded bytes, paired hash/length and descriptor', async () => {
@@ -93,14 +94,14 @@ test('malformed trusted source arguments fail before transport: exact Buffer, bo
 
 test('source actual PNG content is independently checked, including corruption, dimension mismatch, animation and transparency', async () => {
   const damaged = sourcePng(); damaged[damaged.length - 1] ^= 1;
-  for (const [bytes, code] of [[damaged, 'IMAGE_PNG_INVALID'], [sourcePng({alpha: true}), 'IMAGE_PNG_UNSUPPORTED'], [sourcePng({before: [chunk('acTL', Buffer.alloc(8))]}), 'IMAGE_PNG_UNSUPPORTED']] as const) await assert.rejects(createImageEditBody(input(bytes), bytes), {code, dispatched: false});
-  const bytes = sourcePng(); await assert.rejects(createImageEditBody({...input(bytes), sourceImage: {...input(bytes).sourceImage, width: 3}}, bytes), {code: 'IMAGE_PNG_INVALID', dispatched: false});
+  for (const [bytes, code] of [[damaged, 'IMAGE_PNG_INVALID'], [sourcePng({alpha: true}), 'IMAGE_PNG_UNSUPPORTED'], [sourcePng({before: [chunk('acTL', Buffer.alloc(8))]}), 'IMAGE_PNG_UNSUPPORTED']] as const) await assert.rejects(createImageEditParameters(input(bytes), bytes), {code, dispatched: false});
+  const bytes = sourcePng(); await assert.rejects(createImageEditParameters({...input(bytes), sourceImage: {...input(bytes).sourceImage, width: 3}}, bytes), {code: 'IMAGE_PNG_INVALID', dispatched: false});
 });
 
 test('edit adapters take a private byte/snapshot copy before validation awaits', async () => {
   const bytes = sourcePng(), expected = Buffer.from(bytes), snapshot = input(bytes), prompt = snapshot.prompt;
-  const pending = createImageEditBody(snapshot, bytes); bytes.fill(0); snapshot.prompt = 'Mutated instruction'; snapshot.sourceImage.sha256 = 'a'.repeat(64);
-  const body = JSON.parse(await pending); assert.equal(body.images[0].image_url, `data:image/png;base64,${expected.toString('base64')}`); assert.equal(body.prompt, prompt);
+  const pending = createImageEditParameters(snapshot, bytes); bytes.fill(0); snapshot.prompt = 'Mutated instruction'; snapshot.sourceImage.sha256 = 'a'.repeat(64);
+  const parameters = await pending; assert.ok(parameters.image instanceof File); assert.deepEqual(Buffer.from(await parameters.image.arrayBuffer()), expected); assert.equal(parameters.prompt, prompt);
 });
 
 test('mock edit validates source, fences once and retains the clearly labeled prompt-independent synthetic test card', async () => {
@@ -134,7 +135,8 @@ test('official edit gateway uses dedicated settings key, immutable review, fixed
   const wrapped = {...settings, [IMAGE_SETTINGS_ASSERT_CURRENT]: (expected: unknown) => { order.push('settings'); queueMicrotask(() => order.push('later')); return settings[IMAGE_SETTINGS_ASSERT_CURRENT](expected); }};
   const result = await createLiveImageGateway({settings: wrapped, ...state, baseUrl: 'https://ignored.example'} as never).generate(snapshot, {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => order.push('source-and-durable')});
   assert.deepEqual(order, ['settings', 'source-and-durable', 'post', 'later']); assert.equal(state.posts, 1); assert.equal(state.options!.path, '/v1/images/edits'); assert.equal(state.options!.headers.Authorization, `Bearer ${key}`);
-  assert.equal(JSON.parse(state.payload!).images[0].image_url, `data:image/png;base64,${bytes.toString('base64')}`); assert.equal(result.metadata.isMock, false); assert.equal(JSON.stringify(persisted()).includes(key), false);
+  const body = await new Response(new Uint8Array(state.payload!), {headers: {'content-type': state.options!.headers['Content-Type']!}}).formData();
+  const image = body.get('image'); assert.ok(image instanceof File); assert.deepEqual(Buffer.from(await image.arrayBuffer()), bytes); assert.equal(body.has('images'), false); assert.equal(body.has('moderation'), false); assert.equal(result.metadata.isMock, false); assert.equal(JSON.stringify(persisted()).includes(key), false);
 });
 
 test('edit gateway snapshots source and public input before credential wait, then rejects changed settings at actual fence', async t => {
@@ -143,7 +145,8 @@ test('edit gateway snapshots source and public input before credential wait, the
   const wrapped = {...settings, [IMAGE_CREDENTIAL_ACQUIRE]: async (expected: unknown) => { entered.resolve(); await release.promise; return settings[IMAGE_CREDENTIAL_ACQUIRE](expected); }};
   const pending = createLiveImageGateway({settings: wrapped, ...state} as never).generate(snapshot, {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => {}});
   await entered.promise; bytes.fill(0); snapshot.purpose = undefined; snapshot.prompt = 'Changed after review'; snapshot.sourceImage.sha256 = 'a'.repeat(64); release.resolve(); await pending;
-  const body = JSON.parse(state.payload!); assert.equal(body.prompt, originalPrompt); assert.equal(body.images[0].image_url, `data:image/png;base64,${original.toString('base64')}`); assert.equal(state.options!.path, '/v1/images/edits');
+  const body = await new Response(new Uint8Array(state.payload!), {headers: {'content-type': state.options!.headers['Content-Type']!}}).formData();
+  assert.equal(body.get('prompt'), originalPrompt); const image = body.get('image'); assert.ok(image instanceof File); assert.deepEqual(Buffer.from(await image.arrayBuffer()), original); assert.equal(state.options!.path, '/v1/images/edits');
   const dnsEntered = deferred(), dnsRelease = deferred(), second = network(); let fences = 0;
   const waiting = createLiveImageGateway({settings, ...second, lookup: () => { dnsEntered.resolve(); return dnsRelease.promise; }} as never).generate(input(original), {sourceBytes: original, settingsRevision: 1, beforeDispatch: () => { fences++; }});
   await dnsEntered.promise; await settings.put({expectedRevision: 1, configuration: {...DEFAULT_IMAGE_CONFIGURATION, enabled: false}, secret: {action: 'keep'}}); dnsRelease.resolve(answers);

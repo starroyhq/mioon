@@ -4,7 +4,7 @@ import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
 import {createMockImageAdapter, createOpenAIImageAdapter, decodeImageBase64, decodeImageJsonResponse} from '../packages/business/src/images/adapter.ts';
 import {createImageJsonTransport, resolveImageDestination} from '../packages/business/src/images/network.ts';
-import {IMAGE_GENERATION_ENDPOINT, IMAGE_NETWORK_LIMITS, IMAGE_PROFILES, createImageGenerationBody, imageAdapterError} from '../packages/business/src/images/profiles.ts';
+import {IMAGE_GENERATION_ENDPOINT, IMAGE_NETWORK_LIMITS, IMAGE_PROFILES, createImageGenerationParameters, imageAdapterError} from '../packages/business/src/images/profiles.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 
@@ -52,8 +52,8 @@ test('production construction has no live fallback and fixed profile has no endp
 });
 
 test('wire body is exactly the verified pinned model/allowlist with no response_format or fallback',()=>{
-  assert.deepEqual(JSON.parse(createImageGenerationBody(snapshot())),{model:'gpt-image-2.5-flare-2026-09-08',prompt:'Synthetic offline adapter test',n:1,quality:'low',size:'1024x1024',output_format:'png',background:'opaque',moderation:'auto'});
-  for(const input of [{...snapshot(),model:'gpt-image-2.5-flare'},{...snapshot(),baseUrl:'https://other.example/v1'},{...snapshot(),options:{...IMAGE_FIXED_OPTIONS,size:'512x512'}},{...snapshot(),prompt:'x'.repeat(2001)},{...snapshot(),prompt:'\u0000'},{...snapshot(),apiKey:key}]) assert.throws(()=>createImageGenerationBody(input),{code:'IMAGE_INVALID_REQUEST'});
+  assert.deepEqual(createImageGenerationParameters(snapshot()),{model:'gpt-image-2.5-flare-2026-09-08',prompt:'Synthetic offline adapter test',n:1,quality:'low',size:'1024x1024',output_format:'png',background:'opaque',moderation:'auto'});
+  for(const input of [{...snapshot(),model:'gpt-image-2.5-flare'},{...snapshot(),baseUrl:'https://other.example/v1'},{...snapshot(),options:{...IMAGE_FIXED_OPTIONS,size:'512x512'}},{...snapshot(),prompt:'x'.repeat(2001)},{...snapshot(),prompt:'\u0000'},{...snapshot(),apiKey:key}]) assert.throws(()=>createImageGenerationParameters(input),{code:'IMAGE_INVALID_REQUEST'});
 });
 
 test('all DNS answers must be public and well-formed; no fallback around rejected answers',async()=>{
@@ -157,4 +157,11 @@ test('Mock errors after the host fence preserve dispatched state without remote 
 test('OpenAI malformed transport return after its fence stays conservatively dispatched',async()=>{
   const transport=async({beforeDispatch}: {beforeDispatch: () => void})=>{beforeDispatch();return {};};
   await assert.rejects(createOpenAIImageAdapter({transport}).generate(snapshot(),{beforeDispatch:()=>{}}),{code:'IMAGE_RESPONSE_INVALID',dispatched:true,outcomeUnknown:true});
+});
+
+test('SDK or transport validation failure cannot erase an already advanced durable fence',async()=>{
+  let attempts=0;
+  const transport=async({beforeDispatch}: {beforeDispatch: () => void})=>{attempts++;beforeDispatch();throw imageAdapterError('IMAGE_INVALID_REQUEST',{dispatched:false,outcomeUnknown:false});};
+  await assert.rejects(createOpenAIImageAdapter({transport}).generate(snapshot(),{beforeDispatch:()=>{}}),{code:'IMAGE_INVALID_REQUEST',dispatched:true,outcomeUnknown:true});
+  assert.equal(attempts,1);
 });

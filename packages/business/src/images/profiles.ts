@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import type {ImageEditParamsNonStreaming, ImageGenerateParamsNonStreaming} from 'openai/resources/images';
 import {validatePng} from './png.ts';
 import {CUSTOM_IMAGE_PROFILE_ID} from '../../../contracts/src/image-settings.ts';
 import {IMAGE_EDIT_LIMITS, IMAGE_FIXED_OPTIONS, IMAGE_LIMITS, IMAGE_MODELS, imageAdapterInputSchema} from '../../../contracts/src/images.ts';
@@ -13,14 +14,11 @@ export const IMAGE_EDIT_ENDPOINT = 'https://api.openai.com/v1/images/edits';
 export const IMAGE_NETWORK_LIMITS = Object.freeze({connectTimeoutMs: 10000, totalTimeoutMs: 180000, maxRequestBytes: 16384, maxResponseBytes: 42 * 1024 * 1024, maxDecodedBytes: 30 * 1024 * 1024, maxHeaderBytes: 16384, maxDnsAnswers: 64});
 export type ImageAdapterInput = ReturnType<typeof imageAdapterInputSchema.parse>;
 export interface ImageAdapterError extends Error {code: string; dispatched: boolean; outcomeUnknown: boolean}
-function editBody(input: {model: string; prompt: string}, base64: string): string {
-  return JSON.stringify({model: input.model, prompt: input.prompt, images: [{image_url: `data:image/png;base64,${base64}`}], n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
-}
-// Exact worst-case bound for this fixed JSON shape: canonical source base64,
-// fixed ASCII fields, and six JSON bytes per prompt UTF-16 code unit (including
-// escaped lone surrogates). No edit capacity leaks into generation/custom lanes.
+// Binary source plus bounded text fields and multipart headers/boundary. The
+// SDK/platform owns serialization; both the form and serialized bytes are bounded.
+// No edit capacity leaks into generation/custom lanes.
 export const IMAGE_EDIT_NETWORK_LIMITS = Object.freeze({...IMAGE_NETWORK_LIMITS,
-  maxRequestBytes: Buffer.byteLength(editBody({model: IMAGE_MODELS.openai, prompt: ''}, '')) + 4 * Math.ceil(IMAGE_EDIT_LIMITS.sourceBytes / 3) + 6 * IMAGE_LIMITS.promptCharacters,
+  maxRequestBytes: IMAGE_EDIT_LIMITS.sourceBytes + 6 * IMAGE_LIMITS.promptCharacters + IMAGE_NETWORK_LIMITS.maxRequestBytes,
 });
 export const IMAGE_LIVE_ENABLED = false;
 export const IMAGE_PROFILES = Object.freeze([
@@ -59,18 +57,16 @@ export function parseImageAdapterInput(snapshot: unknown, expectedProvider: stri
   if (!parsed.success || parsed.data.providerId !== expectedProvider) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   return parsed.data;
 }
-function generationBody(snapshot: unknown, providerId: string): string {
+function generationParameters(snapshot: unknown, providerId: string): ImageGenerateParamsNonStreaming {
   const input = parseImageAdapterInput(snapshot, providerId);
   if ('purpose' in input && input.purpose !== undefined) throw imageAdapterError('IMAGE_INVALID_REQUEST');
-  const body = JSON.stringify({model: input.model, prompt: input.prompt, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
-  if (Buffer.byteLength(body) > IMAGE_NETWORK_LIMITS.maxRequestBytes) throw imageAdapterError('IMAGE_INVALID_REQUEST');
-  return body;
+  return {model: input.model, prompt: input.prompt, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'};
 }
 
 // Both explicit slots use this bounded single-PNG JSON profile. Provider/model
 // validation remains distinct, and no response-format negotiation is attempted.
-export function createImageGenerationBody(snapshot: unknown): string { return generationBody(snapshot, 'openai'); }
-export function createCompatibleImageGenerationBody(snapshot: unknown): string { return generationBody(snapshot, 'openai-compatible'); }
+export function createImageGenerationParameters(snapshot: unknown): ImageGenerateParamsNonStreaming { return generationParameters(snapshot, 'openai'); }
+export function createCompatibleImageGenerationParameters(snapshot: unknown): ImageGenerateParamsNonStreaming { return generationParameters(snapshot, 'openai-compatible'); }
 
 /** sourceBytes is backend-only and never part of a JSON/RPC snapshot. Even a
  * malformed trusted caller must pass the complete source contract, exact hash,
@@ -81,7 +77,7 @@ export async function validateImageEditSource(snapshot: unknown, sourceBytes: un
   if (!['mock', 'openai'].includes(providerId) || !('purpose' in input) || input.purpose !== 'edit' || !input.sourceImage || !Buffer.isBuffer(sourceBytes) || !sourceBytes.length || sourceBytes.length > IMAGE_EDIT_LIMITS.sourceBytes || sourceBytes.length !== input.sourceImage.byteLength) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
   // Copy before the first await: caller mutations cannot change the authorized
-  // data URL during PNG validation, DNS or TLS waits. The gateway also copies
+  // upload during PNG validation, DNS or TLS waits. The gateway also copies
   // before acquiring its dedicated credential.
   const bytes = Buffer.from(sourceBytes);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
@@ -93,9 +89,9 @@ export async function validateImageEditSource(snapshot: unknown, sourceBytes: un
   if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
   return {input, bytes};
 }
-export async function createImageEditBody(snapshot: unknown, sourceBytes: unknown, {signal}: {signal?: AbortSignal} = {}): Promise<string> {
+export async function createImageEditParameters(snapshot: unknown, sourceBytes: unknown, {signal}: {signal?: AbortSignal} = {}): Promise<ImageEditParamsNonStreaming> {
   const {input, bytes} = await validateImageEditSource(snapshot, sourceBytes, {signal});
-  const body = editBody(input, bytes.toString('base64'));
-  if (Buffer.byteLength(body) > IMAGE_EDIT_NETWORK_LIMITS.maxRequestBytes) throw imageAdapterError('IMAGE_INVALID_REQUEST');
-  return body;
+  // The official SDK exposes multipart editing, without a moderation parameter.
+  // This is deliberately the native API, not a JSON edit fallback or Files upload.
+  return {model: input.model, prompt: input.prompt, image: new File([new Uint8Array(bytes)], 'source.png', {type: 'image/png'}), n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque'};
 }

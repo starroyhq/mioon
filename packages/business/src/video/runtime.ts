@@ -87,7 +87,8 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
     return run(endpoint,{method,body,raw,context});
   }
   const sdkOptions={api:frozen.endpoint,model:frozen.model.modelId,send:request};
-  const sdk=frozen.providerId==='compatible'?createCompatibleVideoSdkClient(sdkOptions):frozen.providerId==='runway'?createRunwaySdkClient(sdkOptions):frozen.providerId==='veo'?createVeoSdkClient(sdkOptions):frozen.providerId==='ark'?createArkSdkClient(sdkOptions):frozen.providerId==='minimax'?createMinimaxSdkClient(sdkOptions):null;
+  const compatibleSdk=compatible?createCompatibleVideoSdkClient(sdkOptions):null;
+  const sdk=compatibleSdk??(frozen.providerId==='runway'?createRunwaySdkClient(sdkOptions):frozen.providerId==='veo'?createVeoSdkClient(sdkOptions):frozen.providerId==='ark'?createArkSdkClient(sdkOptions):frozen.providerId==='minimax'?createMinimaxSdkClient(sdkOptions):null);
   const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,sdk?await sdk.retrieve(id,context):await request(configuredTaskPath(selection,id),{context}))}});
   const retrieve=async(id: string,context: ProviderContext):Promise<ConfiguredVideoTask>=>{
     assertConfiguredTaskId(selection,id);
@@ -145,7 +146,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
       }
       const allowRedirect=frozen.providerId==='veo'||compatible?(location:string|null,current:URL)=>{if(!location)throw providerError('INVALID_OUTPUT_URL','The output redirect has no destination.');let next:URL;try{next=new URL(location,current);}catch{throw providerError('INVALID_OUTPUT_URL','The output redirect is invalid.');}return outputUrl(next.href,hosts);}:undefined;
       let credentialFailure:unknown;
-      const downloadFetch:typeof fetch=async(input,init)=>{
+      const boundDownloadFetch:typeof fetch=async(input,init)=>{
         let secret:string;
         try{secret=await credential(context);}catch(error){credentialFailure=error;throw error;}
         // The shared downloader drops authentication on every redirect. Refresh
@@ -153,6 +154,18 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
         const currentHeaders=new Headers(init?.headers);
         if(compatible&&currentHeaders.has('authorization'))return transport(input,{...init,headers:{...Object.fromEntries(currentHeaders),authorization:`Bearer ${secret}`}});
         return transport(input,frozen.providerId==='veo'&&currentHeaders.has('x-goog-api-key')?{...init,headers:{...Object.fromEntries(currentHeaders),'x-goog-api-key':secret}}:init);
+      };
+      let initial=true;
+      const downloadFetch:typeof fetch=async(input,init)=>{
+        const first=initial;initial=false;
+        // Only the initial authenticated resource request uses the SDK. The
+        // managed downloader owns every redirect and has permanently removed
+        // authentication before a later hop, including a return to this API.
+        if(first&&compatibleSdk){
+          if(String(input)!==url.href||init?.method!=='GET')throw providerError('VIDEO_SDK_REQUEST_INVALID','The initial video download request changed.');
+          return compatibleSdk.downloadContent(id,{fetchImpl:boundDownloadFetch,signal:init.signal??undefined,headers:init.headers});
+        }
+        return boundDownloadFetch(input,init);
       };
       try{return await downloadMp4({root,destination,url,headers,fetchImpl:downloadFetch,context,allowRedirect,invalidate:()=>cache.invalidate(id)});}
       catch(error){
