@@ -267,10 +267,10 @@ The native exits are not forced-exit evidence. There was no subjective listening
 macOS/Windows validation or real-provider/model verification.
 
 Reproducible checked-in tests include
-[protocol/wire](../tests/agent-timeline-gain-wire.test.mjs),
-[preservation](../tests/agent-timeline-gain-preservation.test.mjs),
-[rendered media](../tests/agent-timeline-gain-media.test.mjs) and
-[renderer boundaries](../tests/agent-timeline-gain-renderer.test.mjs).
+[protocol/wire](../tests/agent-timeline-gain-wire.test.ts),
+[preservation](../tests/agent-timeline-gain-preservation.test.ts),
+[rendered media](../tests/agent-timeline-gain-media.test.ts) and
+[renderer boundaries](../tests/agent-timeline-gain-renderer.test.ts).
 Local evidence paths are `evidence/agent-gain/affected/`, `media/`,
 `native-summary.json`, `native-review.md`, `screenshots/`, build logs and the
 exact source/artifact manifest. Private runtime settings, connection material

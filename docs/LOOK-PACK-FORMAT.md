@@ -194,7 +194,7 @@ Their `example.invalid` provenance labels are deliberately non-resolving test
 data. They are repository fixtures and are not imported into the application's
 default bundle.
 
-Run `node --test tests/look-pack.test.mjs`. Tests cover exact bytes, plain Cube
+Run `node --test tests/look-pack.test.ts`. Tests cover exact bytes, plain Cube
 compatibility, duplicate/escaped JSON keys, malformed markers, forbidden fields
 and paths, unknown profiles, bounds, non-ASCII/control rejection, body mutation,
 LF/CRLF distinctions, complete Cube parsing, safe input snapshots, metadata-only

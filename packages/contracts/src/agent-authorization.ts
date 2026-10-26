@@ -18,7 +18,7 @@ const destination = z.string().min(1).max(2080).refine(value=>{
     return ['http:','https:'].includes(url.protocol)&&!url.username&&!url.password&&!url.search&&!url.hash&&
       `${url.origin}${url.pathname}`===value&&/^\/[A-Za-z0-9/_~.\-]*$/u.test(url.pathname)&&
       !/\/{2}|(?:^|\/)\.{1,2}(?:\/|$)/u.test(url.pathname)&&
-      /\/(?:responses|chat\/completions)$/u.test(url.pathname);
+      /\/(?:responses|chat\/completions|v1\/messages)$/u.test(url.pathname);
   }catch{return false;}
 });
 export const agentAuthorizationTargetSchema=z.object({destination,model,scope:agentAuthorizationScopeSchema}).strict();

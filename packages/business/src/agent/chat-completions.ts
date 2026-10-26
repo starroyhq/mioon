@@ -30,6 +30,12 @@ const profiles: Record<string, AgentChatProfile> = {
   ollama: Object.freeze({models: ['qwen3:8b'], tokenField: 'max_tokens', fields: {reasoning_effort: 'none'}}),
 };
 export const AGENT_CHAT_PROFILES: Readonly<Record<string, AgentChatProfile>> = freeze(profiles);
+/** Select request fields before dispatch. A preset without a dedicated profile
+ * uses this protocol's generic template; errors never trigger another attempt. */
+export function agentChatProfile(configuration: AgentConfiguration): AgentChatProfile {
+  if (configuration.protocol !== 'chat_completions') throw agentChatError('AGENT_CHAT_VALIDATION');
+  return Object.hasOwn(AGENT_CHAT_PROFILES, configuration.presetId) ? AGENT_CHAT_PROFILES[configuration.presetId] : AGENT_CHAT_PROFILES.custom;
+}
 /** MiniMax recommends the OpenAI SDK, whose SSE iterator accepts natural EOF.
  * Restrict that terminal contract to this exact official non-thinking profile;
  * an edited/custom endpoint or a journaled request for another model cannot opt in. */
@@ -68,7 +74,7 @@ export function validateAgentChatConfiguration(configuration: unknown, {selfPort
   let config: AgentConfiguration;
   try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return fail('AGENT_CHAT_VALIDATION'); }
   if (config.protocol !== 'chat_completions') fail('AGENT_CHAT_VALIDATION');
-  const profile = AGENT_CHAT_PROFILES[config.presetId];
+  const profile = agentChatProfile(config);
   if (!profile || (profile.models && !profile.models.includes(config.model))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   validateReadTools(config, readTools);
   return config;
@@ -89,7 +95,7 @@ export function buildAgentChatRequest({configuration, apiKey, messages, selfPort
 /** Pure key-free request compilation for acceptance/journaling. */
 export function buildAgentChatBody({configuration, messages, selfPort, readTools}: {configuration: unknown; messages: readonly WireMessage[]; selfPort?: number; readTools?: unknown}): {configuration: AgentConfiguration; body: string} {
   const config = validateAgentChatConfiguration(configuration, {selfPort, readTools});
-  const profile = AGENT_CHAT_PROFILES[config.presetId];
+  const profile = agentChatProfile(config);
   if (!Array.isArray(messages) || !messages.length || messages.length > AGENT_CHAT_LIMITS.maxMessages) fail('AGENT_CHAT_VALIDATION');
   if (readTools) messages = readToolMessages(messages, readTools);
   const readState = readTools as ReadToolState | undefined;

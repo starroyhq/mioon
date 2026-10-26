@@ -1,5 +1,7 @@
 # 源码启动、CLI 退出与外层测试时限
 
+下方命令、时限观测与计数均属 2026-10-15 的执行记录；当前 `.test.ts` 测试及 `scripts/tooling.ts` 入口见 [TYPESCRIPT.md](TYPESCRIPT.md#current-test-migration-2026-10-26)。
+
 日期：2026-10-15（Asia/Taipei）。基线：`75ad276034c5a2994fc368cc1b2c356e854cea47`。
 分支：`codex/issue1-source-timeouts`。对应 [Issue #1](https://github.com/starroyhq/mioon/issues/1)。
 

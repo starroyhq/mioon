@@ -137,17 +137,20 @@ export default function AgentSettings({ onNavigationStateChange, projectId = nul
                   </WorkbenchSelect>
                 </div></div>}
                 <div className="mio-settings-row"><Label htmlFor="agent-base-url">{t('mio.settings.label.baseUrl')}</Label><div className="mio-settings-control">
-                  <Input id="agent-base-url" data-testid="agent-settings-base-url" value={draft.baseUrl} onChange={(event: ChangeEvent<HTMLInputElement>) => changeBinding({ baseUrl: event.target.value })} disabled={!editable} maxLength={2048} placeholder={platform?.baseUrlTemplate || 'https://api.example.com/v1'} type="url" spellCheck={false} autoCapitalize="none" />
+                  <Input id="agent-base-url" data-testid="agent-settings-base-url" value={draft.baseUrl} onChange={(event: ChangeEvent<HTMLInputElement>) => changeBinding({ baseUrl: event.target.value })} disabled={!editable} maxLength={2048} placeholder={platform?.baseUrlTemplate || 'https://api.example.com/v1'} type="url" spellCheck={false} autoCapitalize="none" aria-describedby="agent-endpoint-help" />
+                  <p id="agent-endpoint-help" className="agent-settings-help">{t(draft.protocol === 'anthropic_messages' ? 'agent.settings.anthropicEndpointHelp' : 'agent.settings.endpointHelp')}</p>
                 </div></div>
                 <div className="mio-settings-row"><span className="mio-settings-label">{t('mio.settings.label.protocol')}</span><div className="mio-settings-control">
                   <WorkbenchTabs data-testid="agent-settings-protocol" value={draft.protocol} label={t('mio.settings.label.protocol')} onValueChange={(value: string) => { if (usable()) session.current?.edit({ protocol: value }); }}
-                    options={(platform?.availableProtocols || []).map(protocol => ({ value: protocol, label: AGENT_PROTOCOLS[protocol].label, disabled: !editable, testId: `agent-settings-protocol-${protocol}` }))} />
+                    options={Object.entries(AGENT_PROTOCOLS).map(([protocol, definition]) => ({ value: protocol, label: definition.label, disabled: !editable, testId: `agent-settings-protocol-${protocol}` }))} />
                   <p className="agent-settings-help" data-testid="agent-settings-endpoint">{t('agent.settings.endpointPreview', { protocol: AGENT_PROTOCOLS[draft.protocol as AgentProtocol]?.label || draft.protocol })} {endpoint || t('agent.settings.endpointEmpty')}</p>
+                  <p className="agent-settings-help" data-testid="agent-settings-protocol-help">{t('agent.settings.protocolHelp')}</p>
                 </div></div>
                 <div className="mio-settings-row"><Label htmlFor="agent-model">{t('mio.settings.label.model')}</Label><div className="mio-settings-control">
                   <div className="mio-settings-inline"><Input id="agent-model" data-testid="agent-settings-model" value={draft.model} onChange={(event: ChangeEvent<HTMLInputElement>) => { if (usable()) session.current?.edit({ model: event.target.value }); }} disabled={!editable} maxLength={200} placeholder={t('agent.settings.modelPlaceholder')} spellCheck={false} autoCapitalize="none" />
                     {defaultsChanged && <WorkbenchButton type="button" variant="ghost" size="compact" data-testid="agent-settings-reset" disabled={!editable} onClick={() => withClearKey(() => session.current?.edit({ baseUrl: platform!.baseUrl, model: platform!.model, protocol: platform!.defaultProtocol }))}><Icon name="refresh" size={12} />{t('agent.settings.restorePreset')}</WorkbenchButton>}</div>
                   {draft.protocol === 'responses' && <p className={`agent-settings-help ${modelNeedsReview ? 'agent-settings-model-warning' : ''}`} data-testid="agent-settings-model-guidance">{modelHints.length ? t(modelNeedsReview ? 'agent.settings.modelReview' : 'agent.settings.modelHints', { models: modelHints.join(', ') }) : t('agent.settings.responsesCustom')}{' '}{protocolNote || t('agent.task.protocolScope')}</p>}
+                  {draft.protocol === 'anthropic_messages' && <p className="agent-settings-help" data-testid="agent-settings-anthropic-guidance">{t('agent.settings.anthropicScope')}</p>}
                 </div></div>
                 <div className="mio-settings-row"><span className="mio-settings-label" id="agent-secret-heading">{t('mio.settings.label.key')}</span><div className="mio-settings-control" role="group" aria-labelledby="agent-secret-heading">
                   <div className="mio-settings-inline">

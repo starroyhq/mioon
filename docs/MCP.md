@@ -379,7 +379,7 @@ intent with a new key. Full errors and preservation rules:
 [Explicit clip source replacement](API.md#explicit-clip-source-replacement).
 
 Offline official SDK/CLI/HTTP acceptance:
-`node --test tests/timeline-replacement-transports.test.mjs`.
+`node --test tests/timeline-replacement-transports.test.ts`.
 
 ### Clip audio fades
 
@@ -407,9 +407,9 @@ behavior remains unchanged. See [Timeline audio fades](TIMELINE.md#audio-fades).
 ## Offline verification
 
 ```sh
-node --test tests/mcp-discovery.test.mjs tests/mcp-v4.test.mjs
-node --test tests/mcp.test.mjs tests/timeline-mcp.test.mjs
-node --test tests/timeline-fades-transports.test.mjs
+node --test tests/mcp-discovery.test.ts tests/mcp-v4.test.ts
+node --test tests/mcp.test.ts tests/timeline-mcp.test.ts
+node --test tests/timeline-fades-transports.test.ts
 pnpm test:cli
 ```
 
@@ -486,7 +486,7 @@ duration/sourceFrames retain the asset clock, without stretching or fabricated
 silent tails. No built-in Agent allowlist or inspection DTO expands.
 Full limits and response: [Source waveforms](API.md#opt-in-source-waveforms).
 
-Offline transport acceptance: `node --test tests/waveforms-transports.test.mjs`.
+Offline transport acceptance: `node --test tests/waveforms-transports.test.ts`.
 
 ### Local timeline export preflight
 
@@ -551,7 +551,7 @@ Worker validation still applies. An uncertain render remains its own exact
 request and must retain its original digest or omission on replay.
 
 Offline official SDK/CLI/HTTP acceptance:
-`node --test tests/timeline-preflight-transports.test.mjs`.
+`node --test tests/timeline-preflight-transports.test.ts`.
 
 ### Timeline recovery validation
 
@@ -694,10 +694,10 @@ backend-durable accepted work, not durable preparation of an unsent MCP request.
 
 ## Scene detection tools
 
-Seven strict tools share the runtime schemas of the
+Nine strict tools share the runtime schemas of the
 [scene RPCs](API.md#reference-film-scene-detection-2026-10-24): `scene_detect`,
 `scene_request_get`, `scene_task_get`, `scene_task_list`, `scene_task_cancel`,
-`scene_result_get` and `scene_cuts_save`.
+`scene_result_get`, `scene_cuts_save`, `scene_shots_create` and `scene_shots_undo`.
 
 - `scene_detect`: `{projectId,sourceAssetId,sourceHash,options?,requestId}`. Queues
   one local decode of an owned video; a finished run saves its cuts (first frames
@@ -708,6 +708,13 @@ Seven strict tools share the runtime schemas of the
   still current.
 - `scene_task_cancel` and `scene_cuts_save` are explicit user writes with their
   own keys; `scene_cuts_save` must start from the current result.
+- `scene_shots_create`: `{projectId,sourceAssetId,sourceHash,resultId,segments,titlePrefix?,position?,requestId}`.
+  Queues one local decode that captures each chosen segment's middle keyframe,
+  then creates a shot per segment with that image as its first-frame reference.
+  Cancelled or failed storyboards leave no shots.
+- `scene_shots_undo`: `{projectId,taskId,expectedRevision,requestId}`. Deletes a
+  built storyboard's shots while `scene_task_get` reports `undo.available`; the
+  keyframe images stay.
 
 Only a verified `sceneOutcome` proof for the exact operation, project, key and
 canonical input hash clears an uncertain write. No path, decoder argument,

@@ -19,7 +19,7 @@ test('unavailable Comfy module refuses new generation, preparation and pending a
     // Make settings otherwise ready: absence, not disabled/unverified config,
     // must be the reason fresh execution is refused.
     f.check();
-    const before = imageRows(f.store), setting = await f.settings.get(), total = changes(f);
+    const before = imageRows(f.store), setting = await (f.settings)!.get(), total = changes(f);
     const fresh = f.input();
     await assert.rejects(f.call('image.generate', fresh), missingModule);
     await assert.rejects(f.prepare(fresh), missingModule);
@@ -28,7 +28,7 @@ test('unavailable Comfy module refuses new generation, preparation and pending a
     await assert.rejects(f.prepare({...pendingInput, prompt: 'Changed payload'}), {code: 'IMAGE_REVIEW_CONFLICT'});
     assert.deepEqual(imageRows(f.store), before);
     assert.equal(changes(f), total, 'denial must precede even rolled-back SQL writes');
-    assert.deepEqual(await f.settings.get(), setting);
+    assert.deepEqual(await (f.settings)!.get(), setting);
     assert.deepEqual(f.calls, {post: 0, get: 0});
     const profiles = await f.call('image.profile.list', {});
     assert.equal(profiles.items.find((item: {providerId: string; enabled: boolean}) => item.providerId === 'comfy-local')?.enabled, false);
@@ -39,7 +39,7 @@ test('completed Comfy receipts, reviews, remote journals and PNG bytes survive u
   const f = await createModuleFixture(t), {input, review, ack} = await f.accepted();
   const observation = await f.observationInput(ack.id), observed = await f.call('image.task.observeRemote', observation);
   const finished = await until(() => f.task(ack.id), (task: {state: string}) => task.state === 'succeeded');
-  await until(() => f.remote(ack.id), (result: {observation?: {state?: string}}) => result.observation?.state === 'finished');
+  await until(() => f.remote(ack.id), (result) => result.observation?.state === 'finished');
   const prepared = await f.prepare(input), remote = await f.remote(ack.id);
   const versions = await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId});
   const group = await f.call('image.group.get', {projectId: f.project.id, groupId: ack.groupId});
@@ -79,7 +79,7 @@ test('unknown original task retains its identities and exact observation replay 
   }));
   const {input, review, ack} = await f.accepted();
   const observation = await f.observationInput(ack.id), observed = await f.call('image.task.observeRemote', observation);
-  await until(() => f.remote(ack.id), (result: {observation?: {state?: string}}) => result.observation?.state === 'finished');
+  await until(() => f.remote(ack.id), (result) => result.observation?.state === 'finished');
   const before = imageRows(f.store), remote = await f.remote(ack.id);
   for (const state of ['not_provided', 'not_loaded']) {
     await f.reopen(state);
@@ -105,7 +105,7 @@ test('local-result recovery remains explicitly usable without the Comfy network 
   const {ack} = await f.accepted();
   await f.call('image.task.observeRemote', await f.observationInput(ack.id));
   const failed = await until(() => f.task(ack.id), (task: {state: string}) => task.state === 'local_result_error');
-  await until(() => f.remote(ack.id), (result: {observation?: {state?: string}}) => result.observation?.state === 'finished');
+  await until(() => f.remote(ack.id), (result) => result.observation?.state === 'finished');
   const journal = imageRows(f.store, ['image_reviews', 'image_requests', 'image_remote_runs', 'image_remote_observations']);
   const manifest = readFileSync(path.join(f.root, 'image-staging', `${ack.id}.json`));
   await f.reopen('not_provided');
@@ -126,11 +126,11 @@ test('loaded connector still observes original frozen task when current settings
   const f = await createModuleFixture(t, moduleOptions({observe: (args: {config?: unknown; execution?: unknown}) => { seen = args; return {state: 'running' as const, contentVerified: false}; }}));
   const {ack, review} = await f.accepted();
   const changed = {...configuration, enabled: false, baseUrl: 'http://127.0.0.1:8190', model: 'different.safetensors'};
-  await f.settings.put({expectedRevision: 1, configuration: changed});
+  await (f.settings)!.put({expectedRevision: 1, configuration: changed});
   await f.reopen('available');
   await f.call('image.task.observeRemote', await f.observationInput(ack.id));
-  await until(() => f.remote(ack.id), (result: {observation?: {state?: string}}) => result.observation?.state === 'finished');
-  assert.equal((await f.settings.get()).configuration.enabled, false);
+  await until(() => f.remote(ack.id), (result) => result.observation?.state === 'finished');
+  assert.equal((await (f.settings)!.get()).configuration.enabled, false);
   assert.deepEqual(seen!.config, review.configuration);
   assert.deepEqual(seen!.execution, review.execution);
   assert.deepEqual(f.calls, {post: 1, get: 1});

@@ -5,6 +5,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
+import {crc32,deflateSync} from 'node:zlib';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {projectAgentTaskUndo,createAgentTaskTools,agentTaskExplicitTargets,AGENT_TASK_OPERATION_ADMISSION,assertAgentTaskOperationCoverage} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -728,4 +729,57 @@ test('undo preview uses timeline validation when restoring a clip would overlap 
  const changed=await f.execute('timeline.clip.update',{expectedRevision:2,clipId,patch:{startFrame:60}}),change=changed.changes[0]!;assert.equal(projectAgentTaskUndo(f.store,f.projectId,[change]).get(change.id)?.undoDisposition,'undo');
  await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),expectedRevision:3,assetId,trackId,startFrame:0,durationFrames:30});assert.deepEqual(projectAgentTaskUndo(f.store,f.projectId,[change]).get(change.id),{modifiedAfter:false,undoDisposition:'blocked'});assert.throws(()=>f.undo(change),{code:'AGENT_TASK_TARGET_CHANGED'});
  const retained=await f.services.call('timeline.inspect',{projectId:f.projectId});assert.ok(record(retained)&&Array.isArray(retained.clips));assert.equal(retained.clips.length,2);assert.equal(retained.clips.find(item=>record(item)&&item.id===clipId)?.startFrame,60);
+});
+// Storyboards: one detected cut at frame 45 of 90 over a 32x32 synthetic video.
+const storyboardDetection=async(input:{beforeSpawn:(signal:AbortSignal)=>void;signal:AbortSignal;options:unknown;asset:{sha256:string}})=>{input.beforeSpawn(input.signal);return {profileId:'scene-cuts-v1',fps:30,frameCount:90,options:input.options,cuts:[{frame:45,score:0.5}],segments:[],sourceHash:input.asset.sha256,analysis:{width:32,height:32,decodedFrames:90}};};
+const storyboardFrames=async(input:{beforeSpawn:(signal:AbortSignal)=>void;signal:AbortSignal;marks:number[];asset:{sha256:string};onFrame:(frame:{index:number;marks:number[];bytes:Buffer})=>void})=>{
+ input.beforeSpawn(input.signal);input.marks.forEach((_mark,index)=>input.onFrame({index,marks:[index],bytes:storyboardPng(index)}));
+ return {profileId:'local-png-1024-v1',selectionRule:'first-pts-at-or-after-v1',sourceHash:input.asset.sha256,width:32,height:32,probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:32,height:32,rotation:0,sarNumerator:1,sarDenominator:1},frameOf:input.marks.map((_mark,index)=>index)};
+};
+function storyboardPng(index:number):Buffer{
+ const chunk=(type:string,data:Buffer):Buffer=>{const value=Buffer.alloc(12+data.length);value.writeUInt32BE(data.length);value.write(type,4,'ascii');data.copy(value,8);value.writeUInt32BE(crc32(value.subarray(4,value.length-4)),value.length-4);return value;};
+ const header=Buffer.alloc(13);header.writeUInt32BE(32);header.writeUInt32BE(32,4);header[8]=8;header[9]=2;
+ const rows=Buffer.alloc((32*3+1)*32,index*40+20);for(let y=0;y<32;y++)rows[y*(32*3+1)]=0;
+ return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(rows)),chunk('IEND',Buffer.alloc(0))]);
+}
+async function storyboardSource(f:Awaited<ReturnType<typeof fixture>>){
+ const bytes=Buffer.from('Synthetic storyboard reference; decoder replaced'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;
+ await writeFile(path.join(f.root,relativePath),bytes,{mode:0o600});
+ f.store.put('assets',{id,projectId:f.projectId,name:'Reference.mp4',mimeType:'video/mp4',sha256,relativePath,sizeBytes:bytes.length,duration:3,width:32,height:32,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
+ const ack=await f.services.call('scene.detect',{projectId:f.projectId,sourceAssetId:id,sourceHash:sha256,requestId:randomUUID()});assert.ok(record(ack));
+ for(let i=0;i<500;i++){const value=f.services.handlers['scene.task.get']!({projectId:f.projectId,taskId:ack.id} as never);if(record(value)&&value.state==='succeeded'&&record(value.result))return {id,sha256,resultId:String(value.result.id)};await delay(5);}
+ throw Error('Synthetic detection did not finish');
+}
+const sceneState=(f:Awaited<ReturnType<typeof fixture>>,id:string):string=>String(f.store.db.prepare('SELECT state FROM scene_tasks WHERE id=?').get(id)!.state);
+test('storyboard acceptance binds its task to the step and a stopped run retires it before it starts',async t=>{
+ const f=await fixture(t,{sceneOptions:{detect:storyboardDetection as never,decodeKeyframes:(async()=>{throw Error('A held storyboard must not decode');}) as never}});
+ const remove=setAgentTaskEffectGate(f.store.db,()=>{throw Object.assign(Error('Paused'),{code:'AGENT_TASK_PAUSED'});});t.after(remove);
+ const source=await storyboardSource(f);
+ assert.deepEqual(AGENT_TASK_OPERATION_ADMISSION['scene.shots.create'],{allowed:true,tier:'local_irreversible'});assert.equal(AGENT_TASK_OPERATION_ADMISSION['scene.shots.undo'].allowed,false);
+ const accepted=await f.execute('scene.shots.create',{sourceAssetId:source.id,sourceHash:source.sha256,resultId:source.resultId,segments:[1,2]});
+ assert.ok(record(accepted.step.result));assert.deepEqual([accepted.step.result.kind,accepted.step.result.state,accepted.step.result.requestId],['shots','queued',accepted.step.id]);
+ const taskId=String(accepted.step.result.id);
+ assert.equal(f.store.db.prepare("SELECT count(*) AS n FROM agent_task_job_origins_v2 WHERE kind='scene' AND jobId=? AND runId=? AND stepId=?").get(taskId,f.run.id,accepted.step.id)!.n,1);
+ await delay(30);assert.equal(sceneState(f,taskId),'queued','the Assistant gate holds an unstarted storyboard');
+ assert.equal(f.journal.snapshot(f.run.id).backgroundPending,true);
+ f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');stopAgentTaskJobs(f.store.db,f.run.id);
+ assert.equal(sceneState(f,taskId),'cancelled_before_start');assert.equal(f.journal.snapshot(f.run.id).backgroundPending,false);
+ const recovered=f.tools.recoverWait(f.tools.prepare({projectId:f.projectId,operation:'task.wait',input:{kind:'scene',id:taskId}}));
+ assert.ok(record(recovered));assert.equal(recovered.state,'cancelled_before_start');
+ assert.equal(f.store.list('shots',f.projectId).length,0);
+});
+test('a storyboard built for the Assistant records its images and shots as one late irreversible change',async t=>{
+ const f=await fixture(t,{sceneOptions:{detect:storyboardDetection as never,decodeKeyframes:storyboardFrames as never}});
+ const remove=setAgentTaskEffectGate(f.store.db,()=>{});t.after(remove);
+ const source=await storyboardSource(f);
+ const accepted=await f.execute('scene.shots.create',{sourceAssetId:source.id,sourceHash:source.sha256,resultId:source.resultId,segments:[1,2]});assert.ok(record(accepted.step.result));
+ const taskId=String(accepted.step.result.id);
+ for(let i=0;i<500&&sceneState(f,taskId)!=='succeeded';i++)await delay(5);
+ assert.equal(sceneState(f,taskId),'succeeded');assert.equal(f.journal.snapshot(f.run.id).backgroundPending,false);
+ const late=f.journal.snapshot(f.run.id).changes.filter(change=>change.stepId===accepted.step.id);
+ assert.equal(late.length,1);assert.equal(late[0]!.operation,'scene.shots.create');assert.equal(late[0]!.reversible,false);
+ assert.deepEqual(late[0]!.targets.map(target=>target.kind).sort(),['asset','asset','shot','shot'],'a revision-only project touch is no change');
+ assert.equal(projectAgentTaskUndo(f.store,f.projectId,late).get(late[0]!.id)?.undoDisposition,'retain','the user undoes the batch, not the run');
+ const waited=await f.execute('task.wait',{kind:'scene',id:taskId});assert.ok(record(waited.step.result));assert.equal(waited.step.result.state,'succeeded');
+ assert.ok(record(waited.step.result.undo)&&waited.step.result.undo.available===true);
 });

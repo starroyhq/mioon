@@ -18,7 +18,7 @@ Use IDs from actual responses. All business operations are available as space-se
 - Generation reference: `reference attach/detach` (MCP `reference_attach` / `reference_detach`). Generic canvas edges are visual-only and do not send any image or prompt.
 - Generation: `provider list`, `generation submit`, `job get/list/retry/cancel/reconcile`.
 - Results: `version list/select`.
-- Reference-film scenes: `scene detect`, `scene task get/list/cancel`, `scene request get`, `scene result get`, `scene cuts save`.
+- Reference-film scenes: `scene detect`, `scene task get/list/cancel`, `scene request get`, `scene result get`, `scene cuts save`, `scene shots create/undo` (storyboard from chosen segments).
 - Timeline: `timeline get/inspect`, `timeline history get`, `timeline undo/redo`, `timeline track add/update`, `timeline clip add/update/remove/split`, `timeline clip refreshSources`, `timeline shots append`, `timeline clip splitAtScenes`, `timeline seed`, `timeline render`.
 - Export: `export create/get`; local convenience commands include `job watch`, `export watch` and `export download`.
 

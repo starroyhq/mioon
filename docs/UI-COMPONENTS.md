@@ -162,9 +162,9 @@ primitives use the same tokens. Native checkbox/radio controls can use
 All new labels, errors, tooltip text and actions remain the caller's four-language
 responsibility. No model/service or persistence behavior lives in these adapters.
 
-`node --test tests/design-tokens.test.mjs` checks token mappings, text/action/media
+`node --test tests/design-tokens.test.ts` checks token mappings, text/action/media
 contrast, renderer token references and Tooltip-safe selectors without installed
-dependencies. `node --test tests/workbench-controls.test.mjs` checks real React /
+dependencies. `node --test tests/workbench-controls.test.ts` checks real React /
 Base UI rendering, callback/test-ID forwarding, loading and progress bounds under
 the shipped classic JSX transform. These checks complement the official-source
 integrity suite; browser keyboard/focus and screenshot acceptance are still needed
@@ -221,7 +221,7 @@ warning intentionally remains in place to protect closing an unsaved page.
 
 ## Verification and maintenance
 
-Run `node --test tests/ui-components.test.mjs` after dependency installation for
+Run `node --test tests/ui-components.test.ts` after dependency installation for
 offline provenance, source composition, and server-rendered runtime checks.
 They validate all 15 registry/source/install hashes, exact
 installation transformations, real Base UI imports, portal/label composition,

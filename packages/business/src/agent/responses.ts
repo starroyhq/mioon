@@ -25,6 +25,12 @@ const responseProfiles: Record<string, AgentResponsesProfile> = {
   qwen: {models: ['qwen3.8-flash'], fields: {reasoning: {effort: 'none'}}},
 };
 export const AGENT_RESPONSES_PROFILES: Readonly<Record<string, AgentResponsesProfile>> = freeze(responseProfiles);
+/** Unlisted vendor/protocol combinations use the explicitly selected protocol's
+ * generic template from the first request, with no error-driven switching. */
+export function agentResponsesProfile(configuration: AgentConfiguration): AgentResponsesProfile {
+  if (configuration.protocol !== 'responses') throw agentChatError('AGENT_CHAT_VALIDATION');
+  return Object.hasOwn(AGENT_RESPONSES_PROFILES, configuration.presetId) ? AGENT_RESPONSES_PROFILES[configuration.presetId] : AGENT_RESPONSES_PROFILES.custom;
+}
 const wellFormed = (value: string): boolean => Buffer.from(value, 'utf8').toString('utf8') === value;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fail(code: string): never { throw agentChatError(code); }
@@ -54,7 +60,7 @@ export function validateAgentResponsesConfiguration(configuration: unknown, {sel
   let config: AgentConfiguration;
   try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return fail('AGENT_CHAT_VALIDATION'); }
   if (config.protocol !== 'responses') fail('AGENT_CHAT_VALIDATION');
-  const profile = AGENT_RESPONSES_PROFILES[config.presetId];
+  const profile = agentResponsesProfile(config);
   if (!profile || (profile.models && !profile.models.includes(config.model)) ||
     (config.presetId === 'deepseek' && config.baseUrl !== 'https://api.deepseek.com') ||
     (config.presetId === 'qwen' && !qwenEndpoint(config))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
@@ -103,7 +109,7 @@ export function buildAgentResponsesBody({configuration, messages, selfPort, read
     if (Buffer.byteLength(JSON.stringify(input)) + Buffer.byteLength(instructions) > (continuationScope ? (toolScope(readState).limits.maxContinuationBytes as number) : AGENT_RESPONSES_LIMITS.maxInputBytes)) fail('AGENT_CHAT_LIMIT');
   }
   const body = JSON.stringify({model: config.model, stream: true, store: false, max_output_tokens: AGENT_CHAT_LIMITS.maxOutputTokens,
-    instructions, input, ...AGENT_RESPONSES_PROFILES[config.presetId].fields, ...readToolRequestFields(config, readState)});
+    instructions, input, ...agentResponsesProfile(config).fields, ...readToolRequestFields(config, readState)});
   if (Buffer.byteLength(body) > AGENT_CHAT_LIMITS.maxRequestBytes) fail('AGENT_CHAT_LIMIT');
   assertAgentGainRequestBudget(body, readState);
   return {configuration: config, body};

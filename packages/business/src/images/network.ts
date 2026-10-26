@@ -11,7 +11,7 @@ export type ImageNetworkLimits = {-readonly [K in keyof typeof IMAGE_NETWORK_LIM
 export interface ImageDestination {hostname: string; port: 443; secure: true; address: string; family: number; path: string}
 export interface ImageLookupOptions {lookup?: unknown; signal?: AbortSignal; maxDnsAnswers?: number}
 export interface ImageTransportOptions {lookup?: unknown; httpsRequest?: unknown; apiKey?: unknown; limits?: Readonly<Record<string, unknown>>}
-export interface ImageTransportRequest {body?: unknown; signal?: AbortSignal; beforeDispatch?: unknown}
+export interface ImageTransportRequest {body?: unknown; contentType?: unknown; signal?: AbortSignal; beforeDispatch?: unknown}
 export interface ImageTransportResponse {body: Buffer; providerRequestId: string | null; dispatched: boolean}
 
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
@@ -67,14 +67,18 @@ export async function resolveCompatibleImageDestination({baseUrl, ...options}: I
  * synthetic tests supply inert dependencies and a fake sentinel.
  * No retries, redirects, proxy/environment handling or pooled agents. Endpoint
  * selection happens only in the explicit trusted factories below. */
-function createJsonTransport(endpoint: string, {lookup, httpsRequest, apiKey, limits: overrides}: ImageTransportOptions = {}, profileLimits: ImageNetworkLimits = IMAGE_NETWORK_LIMITS) {
+function createImageTransport(endpoint: string, {lookup, httpsRequest, apiKey, limits: overrides}: ImageTransportOptions = {}, profileLimits: ImageNetworkLimits = IMAGE_NETWORK_LIMITS, multipart = false) {
   if (typeof lookup !== 'function' || typeof httpsRequest !== 'function') throw imageAdapterError('IMAGE_LIVE_DISABLED');
   if (typeof apiKey !== 'string' || !/^[\x21-\x7e]{1,4096}$/.test(apiKey)) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   const limits = limitsFor(overrides, profileLimits);
   const requestHttps = httpsRequest as (options: RequestOptions & {autoSelectFamily: boolean}, callback: (incoming: IncomingMessage) => void) => ClientRequest;
-  return async function postImageJson({body, signal, beforeDispatch}: ImageTransportRequest = {}): Promise<ImageTransportResponse> {
-    if (typeof body !== 'string' || !body.length || Buffer.byteLength(body) > limits.maxRequestBytes || typeof beforeDispatch !== 'function') throw imageAdapterError('IMAGE_INVALID_REQUEST');
-    const payload = body, key = apiKey;
+  return async function postImage({body, contentType = 'application/json', signal, beforeDispatch}: ImageTransportRequest = {}): Promise<ImageTransportResponse> {
+    if (typeof contentType !== 'string' || (typeof body !== 'string' && !Buffer.isBuffer(body))) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+    if (multipart ? !Buffer.isBuffer(body) || !/^multipart\/form-data; boundary=[A-Za-z0-9-]{1,100}$/.test(contentType) : typeof body !== 'string' || contentType !== 'application/json') throw imageAdapterError('IMAGE_INVALID_REQUEST');
+    if (!body.length || Buffer.byteLength(body) > limits.maxRequestBytes || typeof beforeDispatch !== 'function') throw imageAdapterError('IMAGE_INVALID_REQUEST');
+    // Copy caller buffers before DNS/TLS waits so a reviewed upload cannot be
+    // changed after the SDK's form/hash checks but before the durable fence.
+    const payload = Buffer.isBuffer(body) ? Buffer.from(body) : body, key = apiKey;
     if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
     let request: ClientRequest | undefined, response: IncomingMessage | undefined, rejectPending: ((reason?: unknown) => void) | undefined;
     let failed: ImageAdapterError | undefined, closed = false, dispatched = false, received = false;
@@ -101,7 +105,7 @@ function createJsonTransport(endpoint: string, {lookup, httpsRequest, apiKey, li
       response = await new Promise<IncomingMessage>((resolve, reject) => {
         rejectPending = reject;
         const options: RequestOptions & {autoSelectFamily: boolean} = {protocol: 'https:', hostname: destination.hostname, port: 443, path: destination.path, method: 'POST', agent: false, family: destination.family, autoSelectFamily: false, maxHeaderSize: limits.maxHeaderBytes,
-          headers: {'Content-Type': 'application/json', Accept: 'application/json', 'Accept-Encoding': 'identity', 'Content-Length': String(Buffer.byteLength(payload)), Connection: 'close', Authorization: `Bearer ${key}`},
+          headers: {'Content-Type': contentType, Accept: 'application/json', 'Accept-Encoding': 'identity', 'Content-Length': String(Buffer.byteLength(payload)), Connection: 'close', Authorization: `Bearer ${key}`},
           rejectUnauthorized: true, servername: destination.hostname, checkServerIdentity: (_host, certificate) => checkServerIdentity(destination.hostname, certificate),
           lookup: (_host, lookupOptions, callback) => {
             const done = (typeof lookupOptions === 'function' ? lookupOptions : callback) as (...args: unknown[]) => void;
@@ -163,8 +167,8 @@ function createJsonTransport(endpoint: string, {lookup, httpsRequest, apiKey, li
 }
 
 // The official factory cannot be redirected by supplied URL/profile properties.
-export function createImageJsonTransport(options: ImageTransportOptions = {}) { return createJsonTransport(IMAGE_GENERATION_ENDPOINT, options); }
-export function createImageEditJsonTransport(options: ImageTransportOptions = {}) { return createJsonTransport(IMAGE_EDIT_ENDPOINT, options, IMAGE_EDIT_NETWORK_LIMITS); }
+export function createImageJsonTransport(options: ImageTransportOptions = {}) { return createImageTransport(IMAGE_GENERATION_ENDPOINT, options); }
+export function createImageEditTransport(options: ImageTransportOptions = {}) { return createImageTransport(IMAGE_EDIT_ENDPOINT, options, IMAGE_EDIT_NETWORK_LIMITS, true); }
 export function createCompatibleImageJsonTransport({baseUrl, ...options}: ImageTransportOptions & {baseUrl?: unknown} = {}) {
-  return createJsonTransport(compatibleEndpoint(baseUrl), options);
+  return createImageTransport(compatibleEndpoint(baseUrl), options);
 }

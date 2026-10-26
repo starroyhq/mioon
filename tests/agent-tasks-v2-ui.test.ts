@@ -69,6 +69,72 @@ test('read failures preserve draft confirmation and a retry invalidates the prev
   held.resolve(project());await retry;assert.equal(f.session.getState().phase,'ready');assert.equal(f.session.getState().draft,'keep this draft');assert.equal(f.admission.inspect().disposition,'dirty');assert.equal(f.sent.length,0);
 });
 
+for(const refreshRead of ['project','conversation'] as const)test(`showing a completed conversation can close or reload during its ${refreshRead} GET without posting`,async t=>{
+  const saved=snapshot(),view={...project(),runs:[saved.run]},held=deferred<AgentTaskSnapshot>(),heldProject=deferred<AgentTaskProjectSnapshot>();let lists=0,reads=0,grants=0,uploads=0;
+  const f=closeFixture(t,{
+    list:async()=>++lists===1||refreshRead==='conversation'?view:heldProject.promise,
+    read:async()=>++reads===1||refreshRead==='project'?saved:held.promise,
+    authorize:async()=>{grants++;throw Error('Must not authorize during refresh');},
+    upload:async()=>{uploads++;throw Error('Must not upload during refresh');},
+  });
+  await f.session.load();f.session.setVisible(false);f.session.setVisible(true);await flush();
+  assert.equal(lists,2);assert.equal(reads,refreshRead==='project'?1:2);assert.equal(f.session.getState().snapshot?.run.id,saved.run.id);
+  f.session.setVisible(false);f.session.setVisible(true);await flush();
+  assert.equal(f.session.getState().phase,'refreshing','repeated visibility changes retain read-only refresh ownership');
+  for(const action of ['close','reload'] as const){
+    const targetUrl=action==='reload'?f.documentURL:null,ticket=f.admission.inspect(action,targetUrl);
+    assert.equal(ticket.disposition,'clean','a cached completed conversation has only a GET in flight');
+    assert.equal(f.admission.commit(ticket.token,{action,targetUrl,discardDirty:false,allowDrainFailure:false,expiresAt:1500}),true);
+    assert.equal(f.admission.beforeUnload({returnValue:'',preventDefault(){assert.fail('read-only refresh must not veto unload');}}),true);
+  }
+  f.session.edit('retain this draft');
+  assert.equal(f.admission.inspect().disposition,'dirty');
+  assert.equal(await f.session.send(),false);assert.equal(await f.session.action('undo_all'),false);
+  assert.equal(await f.session.authorize(),false);
+  assert.equal(f.session.authorizationReview(),null);assert.equal(f.session.newConversation(),false);
+  assert.equal(await f.session.upload({name:'synthetic.txt',type:'text/plain',size:1,arrayBuffer:async()=>new Uint8Array([1]).buffer}),false);
+  heldProject.resolve(view);held.resolve(saved);await flush();assert.equal(f.session.getState().phase,'ready');assert.equal(f.session.getState().draft,'retain this draft');
+  assert.equal(f.sent.length,0);assert.equal(f.actions.length,0);assert.equal(grants,0);assert.equal(uploads,0);
+});
+
+for(const unknownResult of [false,true])test(`completed-conversation refresh ${unknownResult?'revokes':'retains'} a close ticket when it reads ${unknownResult?'unknown results':'safe metadata'}`,async t=>{
+  const saved=snapshot(),held=deferred<AgentTaskSnapshot>();let reads=0;
+  const f=closeFixture(t,{list:async()=>({...project(),runs:[saved.run]}),read:async()=>++reads===1?saved:held.promise});
+  await f.session.load();f.session.setVisible(false);f.session.setVisible(true);await flush();
+  const ticket=f.admission.inspect();assert.equal(ticket.disposition,'clean');
+  assert.equal(f.admission.commit(ticket.token,{discardDirty:false,allowDrainFailure:false,expiresAt:1500}),true);
+  const next={...saved,run:{...saved.run,revision:2}};
+  if(unknownResult){next.run.status='interrupted';next.steps=[{id:stepId,runId,position:1,kind:'model',status:'unknown',createdAt:time,updatedAt:time}];}
+  held.resolve(next);await flush();
+  assert.equal(f.admission.commit(ticket.token,{discardDirty:false,allowDrainFailure:false,expiresAt:1500}),!unknownResult,'validate the original ticket before inspecting again');
+  let prevented=false;assert.equal(f.admission.beforeUnload({returnValue:'',preventDefault(){prevented=true;}}),!unknownResult);assert.equal(prevented,unknownResult);
+  assert.equal(f.admission.inspect().disposition,unknownResult?'blocked':'clean');
+  assert.equal(f.sent.length,0);assert.equal(f.actions.length,0);
+});
+
+test('a failed completed-conversation refresh retains drafts and never becomes a blocking business error',async t=>{
+  const saved=snapshot(),held=deferred<AgentTaskSnapshot>();let reads=0;
+  const f=closeFixture(t,{list:async()=>({...project(),runs:[saved.run]}),read:async()=>++reads===1?saved:held.promise});
+  await f.session.load();f.session.edit('retained draft');f.session.setVisible(false);f.session.setVisible(true);await flush();
+  const ticket=f.admission.inspect();assert.equal(ticket.disposition,'dirty');
+  assert.equal(f.admission.commit(ticket.token,{discardDirty:false,allowDrainFailure:false,expiresAt:1500}),false);
+  held.reject(new Error('offline refresh'));await flush();
+  assert.equal(f.session.getState().phase,'read_error');assert.equal(f.session.getState().draft,'retained draft');
+  assert.equal(f.admission.inspect().disposition,'dirty');assert.equal(f.sent.length,0);assert.equal(f.actions.length,0);
+});
+
+for(const kind of ['running','unknown','background'] as const)test(`a ${kind} conversation retains its blocking load fence on visibility refresh`,async t=>{
+  const saved=snapshot(kind==='running'?'running':kind==='unknown'?'interrupted':'completed');
+  if(kind==='unknown')saved.steps=[{id:stepId,runId,position:1,kind:'model',status:'unknown',createdAt:time,updatedAt:time}];
+  if(kind==='background')saved.backgroundPending=true;
+  const held=deferred<AgentTaskProjectSnapshot>();let lists=0;
+  const f=closeFixture(t,{list:async()=>++lists===1?{...project(),runs:[saved.run]}:held.promise,read:async()=>saved});
+  await f.session.load();f.session.setVisible(false);f.session.setVisible(true);await flush();
+  assert.equal(f.session.getState().phase,'loading');assert.equal(f.admission.inspect().disposition,'blocked');
+  held.resolve({...project(),runs:[saved.run]});await flush();
+  assert.equal(f.sent.length,0);assert.equal(f.actions.length,0);
+});
+
 test('receipt storage failures and pending requests never become a safe read error',async t=>{
   let reads=0;const client={list:async()=>{reads++;throw new Error('offline');}};
   const unavailable=closeFixture(t,client,undefined,{read(){throw new Error('storage unavailable');},write(){throw new Error('must not write');}});

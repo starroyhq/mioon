@@ -1,0 +1,347 @@
+import { i18nTestModule, createI18nTestContext, message as msg, renderMessage as renderCoreMessage, translate } from './helpers/i18n.ts';
+import { rulerFrameForKey } from '../apps/web/src/timeline-keyboard.ts';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { transformSync } from 'esbuild';
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { lenientFunction } from './helpers/eval-source.ts';
+import type { BinaryLike } from 'crypto';
+const Function = lenientFunction;
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ui = resolve(root, 'packages/ui');
+const read = (path: string) => readFileSync(resolve(ui, path), 'utf8');
+const sha256 = (data: BinaryLike) => createHash('sha256').update(data).digest('hex');
+const manifest = JSON.parse(read('src/registry/base-nova/manifest.json'));
+const component = (name: string) => read(`src/components/${name}.tsx`);
+
+// Reproduce only the documented registry installation substitutions. This
+// protects against replacing official shadcn components with local lookalikes.
+function installRegistrySource(source: string) {
+  let result = source
+    .replaceAll('from "cn"', 'from "@mioon/ui/lib/utils"')
+    .replaceAll('@/registry/base-nova/ui/', '@mioon/ui/components/');
+  const icons = [...new Set([...result.matchAll(/lucide="([^"]+)"/g)].map(match => match[1]))].sort();
+  if (icons.length) {
+    result = result.replace(
+      'import { IconPlaceholder } from "@/app/(create)/components/icon-placeholder"',
+      `import { ${icons.join(', ')} } from "lucide-react"`,
+    );
+    result = result.replace(/<IconPlaceholder\b([\s\S]*?)\/>/g, (_, attributes) => {
+      const name = attributes.match(/lucide="([^"]+)"/)[1];
+      const rest = attributes.replace(/\s+(?:lucide|tabler|hugeicons|phosphor|remixicon)="[^"]+"/g, '');
+      return rest.trim() ? `<${name}${rest} />` : `<${name} />`;
+    });
+  }
+  return result;
+}
+
+// Undo only the documented portal-lifetime and localized close-label changes
+// before checking every remaining byte and the pinned upstream hash.
+function normalizeDialogKeepMounted(source: string) {
+  assert.equal(source.split('import { useUiLanguage } from "./ui-language.tsx"\n').length - 1, 1);
+  source = source.replace('import { useUiLanguage } from "./ui-language.tsx"\n', '');
+  assert.equal(source.split('  const language = useUiLanguage();\n').length - 1, 2);
+  source = source.replaceAll('  const language = useUiLanguage();\n', '');
+  assert.equal(source.split('{language.close}').length - 1, 2);
+  source = source.replaceAll('{language.close}', 'Close');
+  const substitutions = [
+    ['  showCloseButton = true,\n  keepMounted = false,\n  ...props', '  showCloseButton = true,\n  ...props'],
+    ['  showCloseButton?: boolean\n  keepMounted?: boolean\n})', '  showCloseButton?: boolean\n})'],
+    ['    <DialogPortal keepMounted={keepMounted}>', '    <DialogPortal>'],
+  ];
+  for (const [local, upstream] of substitutions) {
+    assert.equal(source.split(local).length - 1, 1, `Exactly one approved Dialog edit: ${local}`);
+    source = source.replace(local, upstream);
+  }
+  return source;
+}
+
+test('all fifteen shadcn base-nova components match the pinned official source', async t => {
+  assert.equal(manifest.style, 'base-nova');
+  assert.equal(manifest.installationNamespace, '@mioon/ui');
+  assert.equal(manifest.primitiveLibrary, '@base-ui/react');
+  assert.match(manifest.hashDefinitions.registrySha256, /local serialized registry JSON/);
+  assert.match(manifest.hashDefinitions.sourceSha256, /decoded embedded TSX/);
+  assert.equal(manifest.components.length, 15);
+  for (const item of manifest.components) {
+    await t.test(item.name, () => {
+      assert.equal(item.registryUrl, `https://ui.shadcn.com/r/styles/base-nova/${item.name}.json`);
+      const raw = read(`src/registry/base-nova/${item.name}.json`);
+      assert.equal(sha256(raw), item.registrySha256);
+      const registry = JSON.parse(raw);
+      const upstream = registry.files.find((file: {path: string; content: string}) => file.path === item.upstreamPath)?.content;
+      assert.ok(upstream, 'registry contains the original source file');
+      assert.equal(sha256(upstream), item.sourceSha256);
+      const installed = component(item.name);
+      const pinned = item.name === 'dialog' ? normalizeDialogKeepMounted(installed) : installed;
+      assert.equal(pinned, installRegistrySource(upstream));
+      assert.equal(sha256(pinned), item.vendoredSha256);
+      assert.doesNotMatch(installed, /IconPlaceholder|@\/registry\/|from "cn"|@radix-ui/);
+    });
+  }
+});
+
+test('DialogContent defaults to the upstream portal lifetime and forwards only explicit keepMounted to the real portal boundary', () => {
+  const require = createRequire(resolve(ui, 'package.json'));
+  const React = require('react');
+  const { Dialog: primitives } = require('@base-ui/react/dialog');
+  const module = { exports: {} };
+  Function('require', 'module', 'exports', transformSync(component('dialog'), { loader: 'tsx', format: 'cjs', jsx: 'transform' }).code)((name: string) => {
+    if (name === 'react') return React;
+    if (name === './ui-language.tsx') return { useUiLanguage: () => ({ close: translate('zh-Hans', 'common.close') }) };
+    if (name === '@base-ui/react/dialog') return { Dialog: primitives };
+    if (name === '@mioon/ui/lib/utils') return { cn: (...values: unknown[]) => values.filter(Boolean).join(' ') };
+    if (name === '@mioon/ui/components/button') return { Button: (props: Record<string, unknown>) => React.createElement('button', props) };
+    if (name === 'lucide-react') return { XIcon: () => null };
+    assert.fail(`Unexpected Dialog dependency: ${name}`);
+  }, module, module.exports);
+  type ElementProps = {children: unknown[]; [key: string]: unknown};
+  interface PortalProps {keepMounted: boolean; children: [{type(props: ElementProps): {type: unknown}; props: ElementProps}, {type: unknown; props: ElementProps}]}
+  type DialogPortal = (props: PortalProps) => {type: unknown; props: {keepMounted: boolean; 'data-slot': string}};
+  const { DialogContent, DialogPortal } = module.exports as {DialogContent(props: Record<string, unknown>): {type: DialogPortal; props: PortalProps}; DialogPortal: DialogPortal};
+  const child = React.createElement('input', { defaultValue: 'retained form draft' });
+  const onKeyDown = () => {}, ref = React.createRef();
+  for (const keepMounted of [undefined, false, true]) {
+    const tree = DialogContent({ children: child, showCloseButton: false, hidden: true, inert: true, onKeyDown, ref,
+      ...(keepMounted === undefined ? {} : { keepMounted }) });
+    assert.equal(tree.type, DialogPortal);
+    assert.equal(tree.props.keepMounted, keepMounted ?? false);
+    const portal = tree.type(tree.props);
+    assert.equal(portal.type, primitives.Portal);
+    assert.equal(portal.props.keepMounted, keepMounted ?? false);
+    assert.equal(portal.props['data-slot'], 'dialog-portal');
+    const [overlay, popup] = tree.props.children;
+    assert.equal(overlay.type(overlay.props).type, primitives.Backdrop);
+    assert.equal(popup.type, primitives.Popup);
+    assert.equal(Object.hasOwn(popup.props, 'keepMounted'), false, 'Portal-only lifetime prop must not leak onto the Popup DOM');
+    assert.equal(popup.props.children[0], child); assert.equal(popup.props.children[1], false);
+    assert.equal(popup.props.hidden, true); assert.equal(popup.props.inert, true);
+    assert.equal(popup.props.onKeyDown, onKeyDown); assert.equal(popup.props.ref, ref);
+  }
+  const ordinary = DialogContent({ children: child });
+  assert.equal(ordinary.props.keepMounted, false);
+  assert.equal((ordinary.props.children[1].props.children[1] as {type: unknown}).type, primitives.Close, 'Existing callers retain the upstream close control');
+});
+
+test('behavioral components use real Base UI primitives', () => {
+  const primitives = {
+    button: 'button', input: 'input', select: 'select', dialog: 'dialog',
+    'dropdown-menu': 'menu', tabs: 'tabs', switch: 'switch',
+    collapsible: 'collapsible', tooltip: 'tooltip',
+    'scroll-area': 'scroll-area', separator: 'separator', slider: 'slider',
+  };
+  for (const [name, primitive] of Object.entries(primitives)) {
+    assert.ok(component(name).includes(`from "@base-ui/react/${primitive}"`), name);
+  }
+  assert.match(component('badge'), /@base-ui\/react\/use-render/);
+  assert.match(component('badge'), /@base-ui\/react\/merge-props/);
+  assert.match(component('label'), /<label/);
+  assert.match(component('textarea'), /<textarea/);
+});
+
+test('dialog, select and menu preserve primitive portals and accessible composition', () => {
+  assert.match(component('dialog'), /<DialogPrimitive\.Portal/);
+  assert.match(component('dialog'), /<DialogPrimitive\.Title/);
+  assert.match(component('dialog'), /<DialogPrimitive\.Description/);
+  assert.match(component('dialog'), /<DialogPrimitive\.Close/);
+  assert.match(component('dialog'), /className="sr-only">\{language\.close\}/);
+  assert.match(component('select'), /<SelectPrimitive\.Portal/);
+  assert.match(component('select'), /<SelectPrimitive\.ItemIndicator/);
+  assert.match(component('dropdown-menu'), /<MenuPrimitive\.Portal/);
+  assert.match(component('dropdown-menu'), /<MenuPrimitive\.RadioItem/);
+  assert.match(component('tabs'), /<TabsPrimitive\.Tab/);
+  assert.match(component('tabs'), /<TabsPrimitive\.Panel/);
+  assert.match(component('switch'), /<SwitchPrimitive\.Thumb/);
+  assert.match(component('tooltip'), /<TooltipPrimitive\.Portal/);
+  assert.match(component('scroll-area'), /<ScrollAreaPrimitive\.Viewport/);
+});
+
+test('Tailwind scans both workspace components and renderer sources and maps Base UI state', () => {
+  const css = read('src/styles/globals.css');
+  assert.match(css, /@import "tailwindcss" source\(none\)/);
+  assert.match(css, /@import "tw-animate-css"/);
+  assert.match(css, /@source "\.\.\/components\/\*\*\/\*/);
+  assert.match(css, /@source "\.\.\/\.\.\/\.\.\/\.\.\/apps\/web\/src\/\*\*\/\*/);
+  assert.match(css, /@custom-variant data-horizontal .*data-orientation="horizontal"/);
+  assert.match(css, /@custom-variant data-vertical .*data-orientation="vertical"/);
+  for (const state of ['open', 'closed', 'checked', 'unchecked', 'disabled', 'active']) {
+    assert.ok(css.includes(`@custom-variant data-${state} `));
+  }
+  assert.match(css, /--primary: var\(--wb-accent\);/);
+  assert.match(css, /--primary-foreground: var\(--wb-accent-foreground\);/);
+  assert.match(css, /prefers-reduced-motion: reduce/);
+});
+
+test('shared package config supports official Base UI registry installation', () => {
+  const config = JSON.parse(read('components.json'));
+  assert.equal(config.style, 'base-nova');
+  assert.equal(config.rsc, false);
+  assert.equal(config.tsx, true);
+  assert.equal(config.iconLibrary, 'lucide');
+  assert.equal(config.aliases.ui, '@mioon/ui/components');
+  assert.equal(config.aliases.utils, '@mioon/ui/lib/utils');
+  assert.equal(config.tailwind.css, 'src/styles/globals.css');
+  assert.equal(config.tailwind.cssVariables, true);
+  assert.match(read('src/lib/utils.ts'), /twMerge\(clsx\(inputs\)\)/);
+  for (const file of readdirSync(resolve(ui, 'src/components'))) {
+    if (file.endsWith('.tsx')) assert.doesNotMatch(read(`src/components/${file}`), /@radix-ui/);
+  }
+});
+
+test('shadcn MIT copyright and permission notice travel with the vendored source', () => {
+  const license = read('src/LICENSE.shadcn.md');
+  assert.match(license, /MIT License/);
+  assert.match(license, /Copyright \(c\) 2023 shadcn/);
+  assert.match(license, /Permission is hereby granted, free of charge/);
+  assert.match(license, /THE SOFTWARE IS PROVIDED "AS IS"/);
+});
+
+test('installed Base UI components render semantic controls with real runtime dependencies', () => {
+  const fixture = `
+    import * as React from 'react';
+    import { renderToStaticMarkup } from 'react-dom/server.browser';
+    import { Button } from './src/components/button';
+    import { Input } from './src/components/input';
+    import { Label } from './src/components/label';
+    import { Switch } from './src/components/switch';
+    import { Tabs, TabsList, TabsTrigger, TabsContent } from './src/components/tabs';
+    import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './src/components/collapsible';
+    import { Slider } from './src/components/slider';
+    export const html = renderToStaticMarkup(<div>
+      <Button disabled aria-label="Save">Save</Button>
+      <Label htmlFor="title">Title</Label><Input id="title" defaultValue="Example" />
+      <Switch checked aria-label="Audio enabled" />
+      <Tabs defaultValue="shots"><TabsList><TabsTrigger value="shots">Shots</TabsTrigger><TabsTrigger value="assets">Assets</TabsTrigger></TabsList><TabsContent value="shots">Shot panel</TabsContent><TabsContent value="assets">Asset panel</TabsContent></Tabs>
+      <Collapsible defaultOpen><CollapsibleTrigger>Details</CollapsibleTrigger><CollapsibleContent>Open content</CollapsibleContent></Collapsible>
+      <Slider value={[20]} aria-label="Zoom" />
+    </div>);
+  `;
+  // A short-lived child avoids leaving React's browser-SSR scheduling handles
+  // alive in node:test. No fixtures or build products are written into the repo.
+  const script = `
+    import { build } from 'esbuild';
+    import assert from 'node:assert/strict';
+    const { outputFiles } = await build({
+      stdin: { contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(ui)} },
+      bundle: true, format: 'esm', platform: 'browser', write: false,
+      define: { 'process.env.NODE_ENV': '\"production\"' },
+    });
+    const { html } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
+    for (const expected of [
+      'aria-label="Save"', 'disabled=""', 'for="title"', 'id="title"',
+      'role="switch"', 'aria-checked="true"', 'role="tablist"',
+      'role="tab"', 'role="tabpanel"', 'aria-selected="true"',
+      'aria-expanded="true"', 'type="range"', 'value="20"',
+    ]) assert.ok(html.includes(expected), 'Missing primitive markup: ' + expected);
+    process.stdout.write('Base UI runtime markup verified');
+    process.exit(0);
+  `;
+  const output = execFileSync(process.execPath, ['--input-type=module'], {
+    cwd: root, input: script, encoding: 'utf8', timeout: 30_000,
+  });
+  assert.match(output, /Base UI runtime markup verified/);
+});
+
+// This scan historically covered renderer .jsx sources. These typed components
+// already existed at the migration baseline and are outside this extraction gate;
+// newly migrated renderer components remain covered below.
+const preExistingTypedRenderer = new Set(['ClipLutControls.tsx', 'ClipOpacityEnvelopeControls.tsx',
+  'ClipVolumeEnvelopeControls.tsx', 'CompactNodePlayer.tsx', 'ExportFileActions.tsx', 'ExportPreview.tsx',
+  'ExportWorkflow.tsx', 'InspectorGroup.tsx', 'LanguageControl.tsx', 'LookPackControls.tsx', 'ProjectHome.tsx',
+  'SettingsVideoTools.tsx', 'SettingsWorkspace.tsx', 'VersionComparison.tsx']);
+test('renderer uses shared components for ordinary controls and modal confirmations', () => {
+  const renderer = resolve(root, 'apps/web/src');
+  for (const name of readdirSync(renderer).filter(name => name.endsWith('.tsx') && !preExistingTypedRenderer.has(name))) {
+    const source = readFileSync(resolve(renderer, name), 'utf8');
+    assert.doesNotMatch(source, /<(?:button|textarea|select)\b/, `${name} must consume shared controls`);
+    // Bespoke checkboxes have no shared primitive yet; every other native input is rejected.
+    for (const input of source.matchAll(/<input\b[^>]*>/g)) {
+      assert.match(input[0], /\btype=["']checkbox["']/, `${name} must consume shared controls`);
+    }
+    assert.doesNotMatch(source, /window\.confirm\(/, `${name} must use the cancellable confirmation provider`);
+  }
+  const app = readFileSync(resolve(renderer, 'App.tsx'), 'utf8');
+  const main = readFileSync(resolve(renderer, 'main.tsx'), 'utf8');
+  assert.match(main, /<ConfirmationProvider labels=\{\{ title: t\('common.confirmTitle'\), cancel: t\('common.cancel'\), continue: t\('common.continue'\) \}\} renderMessage=\{renderMessage\}>/);
+  assert.match(app, /async function inspect\(/);
+  assert.match(app, /async function selectClip\(/);
+  assert.match(app, /if \(!await inspect\(shot\.id\)\) return;/);
+  const taskCenter = readFileSync(resolve(renderer, 'TaskCenter.tsx'), 'utf8');
+  assert.match(taskCenter, /onInspectJob\(job, stillCurrent\)/);
+  assert.match(taskCenter, /<TaskWorkspace activeCount=\{activeCount\}>/);
+  assert.doesNotMatch(taskCenter, /Dialog(?:Content|Title|Description)?|aria-modal/);
+  const taskWorkspace = readFileSync(resolve(renderer, 'TaskWorkspace.tsx'), 'utf8');
+  assert.match(taskWorkspace, /data-testid="task-workspace"/);
+  assert.match(taskWorkspace, /<h2 id="task-workspace-heading">\{t\('tasks.workspace.heading'\)\}<\/h2>/);
+  assert.equal(translate('zh-Hans', 'tasks.workspace.heading'), '任务中心');
+  assert.match(app, /<DropdownMenuContent/);
+  const shell = readFileSync(resolve(renderer, 'WorkbenchShell.tsx'), 'utf8');
+  assert.match(app + shell, /data-testid="workspace-canvas"/);
+  assert.match(app + shell, /data-testid="workspace-editing"/);
+  assert.match(app, /onValueChange=\{changeMode\}/);
+  assert.match(app, /workspaceMode === 'canvas'/);
+  assert.match(app, /workspaceMode === 'editing'/);
+  assert.doesNotMatch(app, /<TabsContent value="(?:canvas|preview|editing)" keepMounted/);
+  assert.match(app, /<CollapsibleContent keepMounted className="inspector-region-content"/);
+});
+
+test('confirmation dismissal and concurrent requests never imply approval', () => {
+  const source = component('workbench-confirm');
+  assert.match(source, /if \(pending\.current\) return Promise\.resolve\(false\)/);
+  assert.match(source, /pending\.current\?\.\(false\)/);
+  assert.match(source, /if \(!open\) settle\(false\)/);
+  assert.match(source, /initialFocus=\{cancel\}/);
+  assert.match(source, /ref=\{cancel\}[^>]+onClick=\{\(\) => settle\(false\)\}/);
+  assert.match(source, /onClick=\{\(\) => settle\(true\)\} data-testid="confirm-action"/);
+  assert.match(source, /pending\.current = null[\s\S]*resolve\?\.\(answer\)/);
+  assert.doesNotMatch(source, /setTimeout|window\.confirm/);
+});
+
+test('timeline retains specialized positioning and accessible Base UI controls', () => {
+  const source = readFileSync(resolve(root, 'apps/web/src/Timeline.tsx'), 'utf8');
+  const toolbar = readFileSync(resolve(root, 'apps/web/src/TimelineToolbar.tsx'), 'utf8');
+  assert.match(source, /<TimelineToolbar[\s\S]*?pixelsPerSecond=\{pixelsPerSecond\}/);
+  assert.match(toolbar, /<Slider[^>]*value=\{\[props\.pixelsPerSecond\]\}/);
+  assert.match(toolbar, /<Slider[^>]*aria-label=\{t\('timeline\.view\.zoom'\)\}/);
+  assert.match(source, /<Button[^>]+aria-pressed=\{!track\.hidden\}[^>]+onClick=\{[^}]*onTrackUpdate\(track\.id,\{hidden: !track\.hidden\}/);
+  assert.match(source, /<Button[^>]+aria-pressed=\{track\.muted\}[^>]+onClick=\{[^}]*onTrackUpdate\(track\.id,\{muted: !track\.muted\}/);
+  assert.match(source, /left: clip\.startFrame \* pxFrame/);
+  assert.match(source, /width: Math\.max\(8, clip\.durationFrames \* pxFrame\)/);
+  assert.match(source, /setData\(CLIP_DRAG, JSON\.stringify\(\{ id: clip\.id, grabFrame \}\)\)/);
+});
+
+
+test('timeline ruler keyboard navigation stays inside integer-frame bounds', () => {
+  for (const key of ['ArrowRight', 'ArrowUp']) assert.equal(rulerFrameForKey(key, 18000), 18000);
+  for (const key of ['ArrowLeft', 'ArrowDown']) assert.equal(rulerFrameForKey(key, 0), 0);
+  assert.equal(rulerFrameForKey('PageUp', 17990), 18000);
+  assert.equal(rulerFrameForKey('PageDown', 12), 0);
+  assert.equal(rulerFrameForKey('PageUp', 12), 42);
+  assert.equal(rulerFrameForKey('PageDown', 100), 70);
+  assert.equal(rulerFrameForKey('Home', 15000), 0);
+  assert.equal(rulerFrameForKey('End', 1), 18000);
+  assert.equal(rulerFrameForKey('ArrowRight', 11.7), 13);
+  assert.equal(rulerFrameForKey('ArrowLeft', Number.NaN), 0);
+  for (const key of ['Tab', 'Escape', 'Enter', 'a']) assert.equal(rulerFrameForKey(key, 100), null);
+});
+
+
+test('project menu labels are grouped for Base UI MenuGroupContext', () => {
+  const app = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
+  assert.match(app, /<DropdownMenuGroup><DropdownMenuLabel>\{t\('projects.yourProjects'\)\}<\/DropdownMenuLabel>/);
+  assert.equal(translate('zh-Hans', 'projects.yourProjects'), '你的项目');
+  assert.match(app, /<\/DropdownMenuGroup><DropdownMenuSeparator/);
+});
+
+
+test('legacy button reset does not override shared semantic foreground colors', () => {
+  const css = readFileSync(resolve(root, 'apps/web/src/styles.css'), 'utf8');
+  assert.match(css, /button:not\(\[data-slot\]\)\{color:inherit\}/);
+  assert.doesNotMatch(css, /(?:^|})button\{[^}]*color:inherit/);
+});

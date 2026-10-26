@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createCompatibleImageAdapter, createOpenAIImageAdapter} from '../packages/business/src/images/adapter.ts';
-import {createCompatibleImageGenerationBody, createImageGenerationBody, CUSTOM_IMAGE_JSON_PROFILE, IMAGE_GENERATION_ENDPOINT, IMAGE_PROFILES} from '../packages/business/src/images/profiles.ts';
+import {createCompatibleImageGenerationParameters, createImageGenerationParameters, CUSTOM_IMAGE_JSON_PROFILE, IMAGE_GENERATION_ENDPOINT, IMAGE_PROFILES} from '../packages/business/src/images/profiles.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {CUSTOM_IMAGE_PROFILE_ID} from '../packages/contracts/src/image-settings.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
@@ -10,9 +10,9 @@ const input = {providerId: 'openai-compatible', model: 'vendor/model-EXACT_v1:20
 let bytes: Buffer|undefined;
 async function png(): Promise<Buffer> { return bytes ??= await renderMockImagePng(); }
 async function validBody(): Promise<Buffer> { return Buffer.from(JSON.stringify({data: [{b64_json: (await png()).toString('base64')}]})); }
-interface TransportState {posts: number; body?: unknown; transport: (args: {body: unknown; beforeDispatch: ()=>void})=>Promise<{body: Buffer; dispatched: boolean; providerRequestId: string}>}
+interface TransportState {baseUrl: string; posts: number; body?: unknown; transport: (args: {body: unknown; beforeDispatch: ()=>void})=>Promise<{body: Buffer; dispatched: boolean; providerRequestId: string}>}
 function responseTransport(body: Buffer): TransportState {
-  const state: TransportState = {posts: 0, transport: async ({body: request, beforeDispatch}: {body: unknown; beforeDispatch: ()=>void}) => {
+  const state: TransportState = {baseUrl: 'https://custom.example/v1', posts: 0, transport: async ({body: request, beforeDispatch}: {body: unknown; beforeDispatch: ()=>void}) => {
     beforeDispatch(); state.posts++; state.body = request;
     return {body, dispatched: true, providerRequestId: 'req_synthetic-custom'};
   }};
@@ -21,7 +21,7 @@ function responseTransport(body: Buffer): TransportState {
 
 test('explicit custom profile sends exact model/prompt with fixed conservative JSON bytes', () => {
   const expected = JSON.stringify({model: input.model, prompt: input.prompt, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
-  assert.equal(createCompatibleImageGenerationBody(input), expected);
+  assert.deepEqual(createCompatibleImageGenerationParameters(input), JSON.parse(expected));
   assert.equal(CUSTOM_IMAGE_JSON_PROFILE.profileId, CUSTOM_IMAGE_PROFILE_ID);
   assert.equal(CUSTOM_IMAGE_JSON_PROFILE.providerId, 'openai-compatible');
   assert.equal(CUSTOM_IMAGE_JSON_PROFILE.request.moderation, 'auto');
@@ -32,15 +32,15 @@ test('explicit custom profile sends exact model/prompt with fixed conservative J
     {...input, options: {...IMAGE_FIXED_OPTIONS, n: 2}}, {...input, options: {...IMAGE_FIXED_OPTIONS, quality: 'high'}},
     {...input, options: {...IMAGE_FIXED_OPTIONS, outputFormat: 'jpeg'}}, {...input, options: {...IMAGE_FIXED_OPTIONS, size: '512x512'}},
     {...input, options: {...IMAGE_FIXED_OPTIONS, background: 'transparent'}}]) {
-    assert.throws(() => createCompatibleImageGenerationBody(value), {code: 'IMAGE_INVALID_REQUEST', dispatched: false, outcomeUnknown: false});
+    assert.throws(() => createCompatibleImageGenerationParameters(value), {code: 'IMAGE_INVALID_REQUEST', dispatched: false, outcomeUnknown: false});
   }
 });
 
 test('official body remains byte-identical and cannot inherit custom model or activation', () => {
   const official = {...input, providerId: 'openai', model: IMAGE_MODELS.openai};
-  assert.equal(createImageGenerationBody(official), '{"model":"gpt-image-2.5-flare-2026-09-08","prompt":"Original prompt: 蓝色 sky, with exact punctuation.","n":1,"quality":"low","size":"1024x1024","output_format":"png","background":"opaque","moderation":"auto"}');
-  assert.throws(() => createImageGenerationBody(input), {code: 'IMAGE_INVALID_REQUEST'});
-  assert.throws(() => createImageGenerationBody({...official, model: input.model}), {code: 'IMAGE_INVALID_REQUEST'});
+  assert.equal(JSON.stringify(createImageGenerationParameters(official)), '{"model":"gpt-image-2.5-flare-2026-09-08","prompt":"Original prompt: 蓝色 sky, with exact punctuation.","n":1,"quality":"low","size":"1024x1024","output_format":"png","background":"opaque","moderation":"auto"}');
+  assert.throws(() => createImageGenerationParameters(input), {code: 'IMAGE_INVALID_REQUEST'});
+  assert.throws(() => createImageGenerationParameters({...official, model: input.model}), {code: 'IMAGE_INVALID_REQUEST'});
   assert.equal(IMAGE_GENERATION_ENDPOINT, 'https://api.openai.com/v1/images/generations');
   assert.equal(IMAGE_PROFILES.find((profile: {providerId: string}) => profile.providerId === 'openai')!.enabled, false);
 });
@@ -54,7 +54,7 @@ test('custom adapter has no transport, environment or official fallback by defau
 test('custom adapter fences exactly once and uses the shared validated single-PNG response decoder', async () => {
   const state = responseTransport(await validBody()); let fences = 0;
   const result = await createCompatibleImageAdapter(state as never).generate(input as never, {beforeDispatch: () => { fences++; }});
-  assert.equal(state.posts, 1); assert.equal(fences, 1); assert.equal(state.body, createCompatibleImageGenerationBody(input));
+  assert.equal(state.posts, 1); assert.equal(fences, 1); assert.equal(state.body, JSON.stringify(createCompatibleImageGenerationParameters(input)));
   assert.deepEqual(result.bytes, await png()); assert.equal(result.metadata.isMock, false);
   assert.equal(result.metadata.providerRequestId, 'req_synthetic-custom'); assert.equal(result.metadata.width, 1024); assert.equal(result.metadata.height, 1024);
 });
@@ -94,7 +94,7 @@ test('custom unknown transport errors and malformed responses stay dispatched an
   for (const response of ['throw', 'malformed']) {
     let attempts = 0;
     const transport = async ({beforeDispatch}: {beforeDispatch: ()=>void}) => { attempts++; beforeDispatch(); if (response === 'throw') throw Error('synthetic private upstream message'); return {}; };
-    await assert.rejects(createCompatibleImageAdapter({transport} as never).generate(input as never, {beforeDispatch: () => {}}), {code: 'IMAGE_RESPONSE_INVALID', dispatched: true, outcomeUnknown: true});
+    await assert.rejects(createCompatibleImageAdapter({transport, baseUrl: 'https://custom.example/v1'} as never).generate(input as never, {beforeDispatch: () => {}}), {code: 'IMAGE_RESPONSE_INVALID', dispatched: true, outcomeUnknown: true});
     assert.equal(attempts, 1);
   }
 });

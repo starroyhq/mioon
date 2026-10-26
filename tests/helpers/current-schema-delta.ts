@@ -5,7 +5,7 @@
 // shared by migration tests that must distinguish retained historical SQL from
 // the reviewed current startup additions.
 import {readFileSync} from 'node:fs';
-interface CurrentOrdinary48Delta {readonly objectSql: Record<string, string>; readonly [key: string]: unknown}
+interface CurrentOrdinary48Delta {readonly objectSql: Record<string, string>; readonly lifecycleTables: Readonly<Record<string, {fields: readonly string[]; rows: 0}>>; readonly lifecycleObjects: readonly {type: string; name: string; tbl_name: string; sql: string | null}[]; readonly [key: string]: unknown}
 export const currentOrdinary48Delta: CurrentOrdinary48Delta = JSON.parse(readFileSync(
   new URL('../fixtures/workspace-schema-profiles/current-ordinary-48-delta.json', import.meta.url), 'utf8'));
 interface CurrentOrdinary50Delta {readonly schemaVersionRows:readonly (readonly string[])[];readonly objects:readonly {type:string;name:string;tbl_name:string;sql:string|null}[];readonly tables:Readonly<Record<string,{fields:readonly string[];rows:0}>>;readonly catalog:{count:number;sha256:string}}

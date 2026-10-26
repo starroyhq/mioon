@@ -7,6 +7,7 @@ import {EDIT_TOOL_DEFINITIONS, EDIT_TOOL_LIMITS, EDIT_TOOL_SYSTEM_INSTRUCTION, p
 import {TIMELINE_EDIT_TOOL_DEFINITIONS, TIMELINE_EDIT_TOOL_LIMITS, TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, parseTimelineEditToolArguments} from './timeline-edit-tool-policy.ts';
 import {AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT} from '@mioon/contracts';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_LIMITS, READ_TOOL_SYSTEM_INSTRUCTION, parseReadToolArguments} from './read-tool-policy.ts';
+import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
 
 function fail(code: 'AGENT_CHAT_VALIDATION' | 'AGENT_CHAT_PROTOCOL_ERROR' | 'AGENT_CHAT_LIMIT' | 'AGENT_CHAT_TOOLS_UNSUPPORTED' | 'AGENT_CHAT_REASONING_UNSUPPORTED' | 'AGENT_CHAT_PROFILE_UNSUPPORTED'): never {
   throw agentChatError(code);
@@ -44,7 +45,7 @@ export interface ResponseToolSnapshot {type: 'function_call'; id: string; callId
 // DeepSeek Responses documents parallel_tool_calls as ignored (always enabled).
 // Ollama marks CC tool_choice unsupported and omits it for Responses; Zhipu
 // documents only auto. tools:[] and the answer parser enforce the second-round cap.
-export const AGENT_READ_TOOL_PROFILES: Readonly<Record<'chat_completions' | 'responses', Readonly<Record<string, ToolProfile>>>> = freeze({
+export const AGENT_READ_TOOL_PROFILES: Readonly<Record<AgentProtocol, Readonly<Record<string, ToolProfile>>>> = freeze({
   chat_completions: {
     openai: {parallel: true, choice: true, strict: true},
     custom: {parallel: true, choice: true, strict: true},
@@ -63,7 +64,18 @@ export const AGENT_READ_TOOL_PROFILES: Readonly<Record<'chat_completions' | 'res
     deepseek: {parallel: false, choice: true, strict: false},
     ollama: {parallel: false, choice: false, strict: false},
   },
+  anthropic_messages: {
+    anthropic: {parallel: false, choice: true, strict: false},
+    custom: {parallel: false, choice: true, strict: false},
+  },
 });
+/** Presets supply defaults, while protocol selection determines the tool wire
+ * format. Dedicated profiles retain their existing field constraints. */
+export function agentReadToolProfile(configuration: AgentConfiguration): ToolProfile {
+  const profiles = AGENT_READ_TOOL_PROFILES[configuration.protocol];
+  if (!profiles) fail('AGENT_CHAT_VALIDATION');
+  return Object.hasOwn(profiles, configuration.presetId) ? profiles[configuration.presetId] : profiles.custom;
+}
 // This selector is internal and closed: callers cannot supply schemas or operations.
 export function toolScope(readTools: ToolScopeInput | undefined): ToolScope {
   if (readTools?.scope !== undefined && !['selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(readTools.scope)) fail('AGENT_CHAT_VALIDATION');
@@ -93,7 +105,7 @@ export function validateReadTools(configuration: AgentConfiguration, readTools: 
   if (!toolObject(readTools) || !['request', 'answer'].includes(readTools.phase as string)) fail('AGENT_CHAT_VALIDATION');
   const state = readTools as ReadToolState;
   const scope = toolScope(state), extra = state.scope === undefined ? [] : ['scope'];
-  const profile = AGENT_READ_TOOL_PROFILES[configuration.protocol]?.[configuration.presetId];
+  const profile = agentReadToolProfile(configuration);
   if (!profile) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   if (state.phase === 'request') {
     if (!exactObject(state, ['phase', ...extra])) fail('AGENT_CHAT_VALIDATION');
@@ -116,6 +128,12 @@ export function readToolRequestFields(configuration: AgentConfiguration, readToo
   const profile = validateReadTools(configuration, readTools);
   if (!profile) return {};
   const state = readTools as ReadToolState;
+  if (configuration.protocol === 'anthropic_messages') {
+    const tools = state.phase === 'answer' ? [] : toolScope(state).definitions.map(definition => ({
+      name: definition.name, description: definition.description, input_schema: definition.parameters,
+    }));
+    return {tools, tool_choice: state.phase === 'answer' ? {type: 'none'} : {type: 'auto', disable_parallel_tool_use: true}};
+  }
   const tools = state.phase === 'answer' ? [] : toolScope(state).definitions.map(definition => {
     const {type: _type, strict: _strict, ...fields} = definition as ToolDefinition & {type?: unknown};
     const spec = {...fields, ...(profile.strict ? {strict: true} : {})};

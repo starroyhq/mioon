@@ -1,8 +1,9 @@
-import {IMAGE_NETWORK_LIMITS, createImageGenerationBody, createImageEditBody, validateImageEditSource, createCompatibleImageGenerationBody, imageAdapterError, parseImageAdapterInput} from './profiles.ts';
+import {IMAGE_NETWORK_LIMITS, createImageGenerationParameters, createImageEditParameters, validateImageEditSource, createCompatibleImageGenerationParameters, imageAdapterError, parseImageAdapterInput} from './profiles.ts';
 import type {ImageAdapterInput} from './profiles.ts';
 import {renderMockImagePng, validatePng} from './png.ts';
 import type {PngMetadata} from './png.ts';
-import type {ImageTransportResponse} from './network.ts';
+import {requestImageWithSdk} from './sdk.ts';
+import type {ImageSdkParameters, ImageSdkPost} from './sdk.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const record = (value: unknown): Record<string, unknown> | null => object(value) ? value : null;
@@ -126,17 +127,16 @@ export function createMockImageAdapter() {
   });
 }
 // Shared lifecycle and decoder for the two explicitly constructed live slots.
-function createJsonImageAdapter({transport}: {transport?: unknown}, createBody: (snapshot: unknown, context: {signal?: AbortSignal; sourceBytes?: unknown}) => string | Promise<string>) {
-  const post = transport as ((input: {body: string; signal?: AbortSignal; beforeDispatch: () => void}) => Promise<ImageTransportResponse>) | undefined;
+function createSdkImageAdapter({transport, baseUrl}: {transport?: unknown; baseUrl?: unknown}, compatible: boolean, prepare: (snapshot: unknown, context: {signal?: AbortSignal; sourceBytes?: unknown}) => ImageSdkParameters | Promise<ImageSdkParameters>) {
+  const post = transport as ImageSdkPost | undefined;
   return Object.freeze({
     async generate(snapshot: unknown, {signal, beforeDispatch, sourceBytes}: ImageAdapterGenerateContext = {}): Promise<ImageAdapterResult> {
       if (typeof post !== 'function') throw imageAdapterError('IMAGE_LIVE_DISABLED');
-      const prepared = createBody(snapshot, {signal, sourceBytes});
-      const body = typeof prepared === 'string' ? prepared : await prepared; abortIfNeeded(signal);
+      const call = await prepare(snapshot, {signal, sourceBytes}); abortIfNeeded(signal);
       if (typeof beforeDispatch !== 'function') throw imageAdapterError('IMAGE_DISPATCH_BLOCKED');
       let fenced = false, received = false;
       try {
-        const response = await post({body, signal, beforeDispatch: () => {
+        const response = await requestImageWithSdk(call, {post, baseUrl, compatible, signal, beforeDispatch: () => {
           if (fenced) throw imageAdapterError('IMAGE_DISPATCH_BLOCKED');
           abortIfNeeded(signal); fence(beforeDispatch); fenced = true;
         }});
@@ -148,7 +148,7 @@ function createJsonImageAdapter({transport}: {transport?: unknown}, createBody: 
         // Decoder failures carry local flags. Once a response exists, never let
         // those flags erase the upstream dispatch or imply a safe automatic retry.
         const source = record(error), flag = source?.dispatched;
-        const dispatched = received || (typeof flag === 'boolean' ? flag : fenced);
+        const dispatched = received || fenced || flag === true;
         throw imageAdapterError(codeOf(error), {dispatched, outcomeUnknown: dispatched});
       }
     },
@@ -157,16 +157,16 @@ function createJsonImageAdapter({transport}: {transport?: unknown}, createBody: 
 
 /** No ambient credential/network discovery. Only a trusted reviewed Images
  * gateway supplies a transport pinned to that slot's reviewed destination. */
-function generationOnly(createBody: (snapshot: unknown) => string, snapshot: unknown, {sourceBytes}: {sourceBytes?: unknown} = {}): string {
+function generationOnly(createParameters: typeof createImageGenerationParameters, snapshot: unknown, {sourceBytes}: {sourceBytes?: unknown} = {}): ImageSdkParameters {
   if (sourceBytes !== undefined) throw imageAdapterError('IMAGE_INVALID_REQUEST');
-  return createBody(snapshot);
+  return {kind: 'generate', parameters: createParameters(snapshot)};
 }
 export function createOpenAIImageAdapter(options: {transport?: unknown} = {}) {
-  return createJsonImageAdapter(options, (snapshot, {signal, sourceBytes}) => isEdit(snapshot)
-    ? createImageEditBody(snapshot, sourceBytes, {signal}) : generationOnly(createImageGenerationBody, snapshot, {sourceBytes}));
+  return createSdkImageAdapter(options, false, async (snapshot, {signal, sourceBytes}) => isEdit(snapshot)
+    ? {kind: 'edit', parameters: await createImageEditParameters(snapshot, sourceBytes, {signal})} : generationOnly(createImageGenerationParameters, snapshot, {sourceBytes}));
 }
-export function createCompatibleImageAdapter(options: {transport?: unknown} = {}) {
-  return createJsonImageAdapter(options, (snapshot, context) => generationOnly(createCompatibleImageGenerationBody, snapshot, context));
+export function createCompatibleImageAdapter(options: {transport?: unknown; baseUrl?: unknown} = {}) {
+  return createSdkImageAdapter(options, true, (snapshot, context) => generationOnly(createCompatibleImageGenerationParameters, snapshot, context));
 }
 export type ImageAdapter = ReturnType<typeof createOpenAIImageAdapter>;
 export type MockImageAdapter = ReturnType<typeof createMockImageAdapter>;

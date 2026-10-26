@@ -25,7 +25,7 @@ const encodeUtf8: (value: string) => Buffer = Buffer.from;
 void [readUtf8File, joinPath, encodeUtf8];
 
 type ProtocolIsNotAny = Expect<Equal<IsAny<AgentProtocol>, false>>;
-type ProtocolIsExact = Expect<Equal<AgentProtocol, 'chat_completions' | 'responses'>>;
+type ProtocolIsExact = Expect<Equal<AgentProtocol, 'chat_completions' | 'responses' | 'anthropic_messages'>>;
 type ProtocolComesFromCatalog = Expect<Equal<AgentProtocol, keyof typeof AGENT_PROTOCOLS>>;
 type ConfigurationIsNotAny = Expect<Equal<IsAny<AgentEndpointConfiguration>, false>>;
 type ConfigurationProtocolIsNotAny = Expect<Equal<IsAny<AgentEndpointConfiguration['protocol']>, false>>;
@@ -44,12 +44,14 @@ const chat: AgentEndpointConfiguration = {protocol: 'chat_completions', baseUrl:
 const responses: AgentEndpointConfiguration = {protocol: 'responses', baseUrl: 'https://api.example.com/v1'};
 const chatEndpoint: string = deriveAgentEndpoint(chat);
 const responsesEndpoint: string = deriveAgentEndpoint(responses);
+const anthropic: AgentEndpointConfiguration = {protocol: 'anthropic_messages', baseUrl: 'https://api.anthropic.com'};
+const anthropicEndpoint: string = deriveAgentEndpoint(anthropic);
 const legacyChatEndpoint: string = legacyEndpoint(chat);
 const legacyResponsesEndpoint: string = legacyEndpoint(responses);
 const labels: readonly string[] = [AGENT_PROTOCOLS.chat_completions.label, legacyProtocols.responses.label];
-void [chatEndpoint, responsesEndpoint, legacyChatEndpoint, legacyResponsesEndpoint, labels];
+void [anthropicEndpoint, chatEndpoint, responsesEndpoint, legacyChatEndpoint, legacyResponsesEndpoint, labels];
 
-// @ts-expect-error Only the two catalog keys are supported protocols.
+// @ts-expect-error Only the three catalog keys are supported protocols.
 deriveAgentEndpoint({protocol: 'auto', baseUrl: 'https://api.example.com/v1'});
 // @ts-expect-error The compatibility entry must preserve the same closed protocol type.
 legacyEndpoint({protocol: 'unknown_protocol', baseUrl: 'https://api.example.com/v1'});

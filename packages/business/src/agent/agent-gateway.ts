@@ -1,5 +1,6 @@
 import {buildAgentChatBody, createChatCompletionGateway, validateAgentChatConfiguration} from './chat-completions.ts';
 import {buildAgentResponsesBody, createResponsesGateway, validateAgentResponsesConfiguration} from './responses.ts';
+import {buildAgentAnthropicBody, createAnthropicMessagesGateway, validateAnthropicMessagesConfiguration} from './anthropic-messages.ts';
 import {agentChatError} from './chat-errors.ts';
 import type {AgentConfiguration} from './config.ts';
 import type {ToolCall, WireMessage} from './tool-wire.ts';
@@ -32,19 +33,22 @@ export function validateAgentGatewayConfiguration(configuration: unknown, option
   const protocol = (configuration as {protocol?: unknown} | null | undefined)?.protocol;
   if (protocol === 'chat_completions') return validateAgentChatConfiguration(configuration, options);
   if (protocol === 'responses') return validateAgentResponsesConfiguration(configuration, options);
+  if (protocol === 'anthropic_messages') return validateAnthropicMessagesConfiguration(configuration, options);
   throw agentChatError('AGENT_CHAT_VALIDATION');
 }
 /** Build the exact key-free body for durable request journaling before dispatch. */
 export function buildAgentRequest(options: AgentDispatchOptions): {configuration: AgentConfiguration; body: string} {
   const configuration = validateAgentGatewayConfiguration(options.configuration, {selfPort: options.selfPort, readTools: options.readTools});
+  if (configuration.protocol === 'anthropic_messages') return buildAgentAnthropicBody({...options, configuration});
   return (configuration.protocol === 'responses' ? buildAgentResponsesBody : buildAgentChatBody)({...options, configuration});
 }
 /** Explicit, single dispatch. Never probe, retry or fall back to another API. */
 export function createAgentGateway(dependencies: AgentTransportDependencies = {}): AgentGateway {
-  const chat = createChatCompletionGateway(dependencies), responses = createResponsesGateway(dependencies);
+  const chat = createChatCompletionGateway(dependencies), responses = createResponsesGateway(dependencies), anthropic = createAnthropicMessagesGateway(dependencies);
   return async function* streamAgentResponse(options: AgentDispatchOptions): AsyncGenerator<AgentStreamItem, void, undefined> {
     if (options.signal?.aborted) throw agentChatError('AGENT_CHAT_ABORTED');
     const configuration = validateAgentGatewayConfiguration(options.configuration, {selfPort: options.selfPort, readTools: options.readTools});
+    if (configuration.protocol === 'anthropic_messages') {yield* anthropic({...options, configuration}); return;}
     yield* (configuration.protocol === 'responses' ? responses : chat)({...options, configuration});
   };
 }

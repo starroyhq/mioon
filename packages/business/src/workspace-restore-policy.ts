@@ -35,7 +35,7 @@ export const RESTORE_DENIED_OPERATIONS = Object.freeze([
  'asset.annotation.set', 'lut.import',
  'timeline.audioPreview.continuousPlan','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect',
  'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','video.connection.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
- 'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','scene.detect','scene.task.cancel','scene.cuts.save','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
+ 'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','scene.detect','scene.task.cancel','scene.cuts.save','scene.shots.create','scene.shots.undo','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
 ]);
 const messages: Readonly<Record<RestoreErrorCode, string>>=Object.freeze({
  RESTORE_OPERATION_UNAVAILABLE:'This operation is unavailable in this restored workspace.',

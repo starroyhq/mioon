@@ -14,6 +14,9 @@
 .task-overview-items article[data-tone="warning"] strong { color: var(--wb-warning); }
 .task-overview-items article[data-tone="warning"] > div:first-child { margin-bottom: 0; }
 .task-overview-items .task-overview-inspect { display: flex; margin-top: 8px; margin-left: auto; font-size: var(--wb-text-caption); }
+.task-overview-items article > div:first-child > .wb-badge { margin-left: auto; flex: none; }
+.task-overview-items .task-overview-cancel { flex: none; margin-left: -8px; }
+.task-overview-items .task-overview-detail { margin-top: 8px; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.5; }
 
 .task-overview-group>h3{display:flex;align-items:center;justify-content:space-between;margin:4px 0 0;color:var(--wb-muted);font-size:var(--wb-text-caption);font-weight:500}
 .task-overview-group+.task-overview-group{margin-top:14px}

@@ -1,3 +1,4 @@
+import type {TypedStore} from './helpers/strict-service-responses.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
 import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
@@ -81,7 +82,7 @@ interface Snapshot {objects: SchemaObject[]; rows: Record<string, Row[]>; foreig
 interface EditSourceImage {assetId: string; sha256: string; mimeType: string; byteLength: number; width: number; height: number;
   name: string; origin: Record<string, unknown>; path?: string; [key: string]: unknown}
 interface EditIntentView {schemaVersion: number; reviewId: string; settingsRevision: number; destination: string;
-  policy: {automaticRetry: boolean; [key: string]: unknown}; sourceImage: EditSourceImage; options: Record<string, unknown>;
+  policy: {automaticRetry: boolean; [key: string]: unknown}; sourceImage: EditSourceImage; options?: Record<string, unknown>;
   input: {providerId: string; model: string; requestId: string; projectId: string; purpose?: string;
     inputImage?: {assetId: string; sha256: string; mask?: unknown} | null; [key: string]: unknown}; [key: string]: unknown}
 const hash=(value: string)=>createHash('sha256').update(value).digest('hex');
@@ -106,7 +107,7 @@ function sameOld(db: DatabaseSync,before: Snapshot,{startupMigrations=false}: {s
   assert.deepEqual(v2Objects.map(value=>({...value})),currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
   assert.equal(v2Objects.length,currentOrdinary52Delta.v2Catalog.count);
   assert.equal(hash(JSON.stringify(v2Objects)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
-  assert.deepEqual(after.objects.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!v2Names.has(value.name)),[],'unknown task/target objects are not reviewed52 additions');
+  assert.deepEqual((after.objects.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!v2Names.has(value.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
   const revisions:Row[]=[];
   for(const[kind,table]of [['project','projects'],['job','jobs'],['asset','assets'],['image_task','image_tasks'],['image_group','image_groups'],['image_version','image_versions']]as const)
    for(const row of before.rows[table])revisions.push({retainedRowid:BigInt(revisions.length+1),projectId:kind==='project'?row.id:row.projectId,kind,targetId:row.id,revision:1n});
@@ -119,12 +120,12 @@ function sameOld(db: DatabaseSync,before: Snapshot,{startupMigrations=false}: {s
     assert.deepEqual(actual.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),revisions.map(row=>({retainedRowid:row.retainedRowid,kind:row.kind})),'initial target rowids and kind ranges');
     const targets=(values:Row[])=>values.map(row=>{const value={...row};delete value.retainedRowid;return value;}).sort((a,b)=>String(a.kind).localeCompare(String(b.kind))||String(a.targetId).localeCompare(String(b.targetId)));
     assert.deepEqual(targets(actual),targets(revisions),'original schema22 project/target identities and initial revision1');
-   }else assert.deepEqual(actual,[],`${name}: reviewed empty52 rows`);
+   }else assert.deepEqual((actual as unknown),[],`${name}: reviewed empty52 rows`);
   }
   after.objects=after.objects.filter(value=>!v2Names.has(value.name));
   const names=new Set(currentOrdinary50Delta.objects.map(value=>value.name));
   assert.deepEqual(after.objects.filter(value=>names.has(value.name)).map(value=>({...value})),currentOrdinary50Delta.objects,'schema50 matches its independent exact delta');
-  for(const table of Object.keys(currentOrdinary50Delta.tables))assert.deepEqual(after.rows[table],[],table);
+  for(const table of Object.keys(currentOrdinary50Delta.tables))assert.deepEqual((after.rows[table] as unknown),[],table);
   after.objects=after.objects.filter(value=>!names.has(value.name));
  }
  assert.equal(after.objects.length,before.objects.length+(startupMigrations?currentStartupAdditions.length:0));
@@ -141,12 +142,12 @@ function sameOld(db: DatabaseSync,before: Snapshot,{startupMigrations=false}: {s
  }
  for(const [name,foreignKeys] of Object.entries(before.foreignKeys))assert.deepEqual(after.foreignKeys[name],foreignKeys,`${name}: retained foreign keys`);
  for(const [name,rows] of Object.entries(before.rows)){
-  const actual=name==='schema_version'?after.rows[name].filter(row=>row.version<=22n):startupMigrations&&name==='agent_edit_proposals'?legacyAgentEditProposalRows(after.rows[name]):after.rows[name];
+  const actual=name==='schema_version'?after.rows[name].filter(row=>(row.version as bigint)<=22n):startupMigrations&&name==='agent_edit_proposals'?legacyAgentEditProposalRows(after.rows[name]):after.rows[name];
   assert.deepEqual(actual,rows,name);
  }
 }
 function migrate(db: DatabaseSync,adapter: DatabaseSync=db): void {db.exec('PRAGMA foreign_keys=OFF');try{db.exec('BEGIN IMMEDIATE');migrateImageEditReviewSchema(adapter);db.exec('INSERT OR IGNORE INTO schema_version VALUES(23);COMMIT');}catch(error){if(db.isTransaction)db.exec('ROLLBACK');throw error;}finally{db.exec('PRAGMA foreign_keys=ON');}}
-function seed(db){
+function seed(db: DatabaseSync){
  insert(db,'agent_chat_quota',{id:1,runs:0,bytes:0,reservedBytes:0});
  const projectId=randomUUID();insert(db,'projects',{id:projectId,data:`{ "id": "${projectId}", "name": "原始项目", "revision": 1 }`});
  insert(db,'timeline_requests',{requestId:randomUUID(),requestHash:'retained-hash',response:'{ "old": "exact bytes 原始" }'});
@@ -205,7 +206,7 @@ function localFixture(db: DatabaseSync) {
 function observe(db: DatabaseSync,f: {taskId: string; projectId: string}): Row {
  db.prepare('UPDATE image_remote_runs SET revision=revision+1 WHERE taskId=?').run(f.taskId);
  const remoteRevision=db.prepare('SELECT revision FROM image_remote_runs WHERE taskId=?').get(f.taskId)!.revision;
- const requestId=randomUUID(),id=randomUUID(),input={projectId:f.projectId,taskId:f.taskId,expectedRevision:remoteRevision-1,requestId};
+ const requestId=randomUUID(),id=randomUUID(),input={projectId:f.projectId,taskId:f.taskId,expectedRevision:(remoteRevision as number)-1,requestId};
  const acknowledgement={id,projectId:f.projectId,taskId:f.taskId,requestId,state:'queued',revision:1,remoteRevision,createdAt:at};
  const row={requestId,id,projectId:f.projectId,taskId:f.taskId,inputHash:hash(canonical(input)),canonicalInput:canonical(input),response:canonical(acknowledgement),state:'queued',revision:1,remoteRevision,errorCode:null,createdAt:at,updatedAt:at};
  insert(db,'image_remote_observations',row);return row;
@@ -216,15 +217,15 @@ function editIntent(projectId: string): EditIntentView {const sourceImage={asset
 function saveReview(db: DatabaseSync,intent: EditIntentView){const input=canonical(intent.input),raw=canonical(intent);return insert(db,'image_reviews',{id:intent.reviewId,projectId:intent.input.projectId,requestId:intent.input.requestId,inputHash:hash(input),canonicalInput:input,intentHash:hash(raw),canonicalIntent:raw,state:'pending',revision:1,taskId:null,postAttempts:0,createdAt:at,updatedAt:at,approvedAt:null,rejectedAt:null,dispatchedAt:null});}
 
 test('schema23 changes only image_reviews CHECKs and preserves every row, rowid, raw receipt, trigger, index, FK and sequence',()=>{
- const db=database();try{populate(db);const before=snapshot(db);migrate(db);sameOld(db,before);assert.equal(db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);assert.ok(db.prepare("SELECT sql FROM sqlite_schema WHERE name='image_reviews'").get()!.sql.includes('image_review_intent_v23'));
+ const db=database();try{populate(db);const before=snapshot(db);migrate(db);sameOld(db,before);assert.equal(db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);assert.deepEqual((db.prepare('PRAGMA foreign_key_check').all() as unknown),[]);assert.ok((db.prepare("SELECT sql FROM sqlite_schema WHERE name='image_reviews'").get()!.sql as string).includes('image_review_intent_v23'));
  const after=snapshot(db);db.exec('BEGIN');migrateImageEditReviewSchema(db);db.exec('COMMIT');assert.deepEqual(snapshot(db),after);
  for(const statement of ['DELETE FROM image_reviews','UPDATE image_reviews SET revision=revision+1','INSERT OR REPLACE INTO image_reviews SELECT * FROM image_reviews'])assert.throws(()=>db.exec(statement),/retained|transition|replaced|pending/);
  }finally{db.close();}
 });
 
 test('schema23 copy, external-trigger drop, parent drop, trigger restore, FK check and marker failures roll back byte-exact',()=>{
- for(const phase of ['create','copy','external-trigger','drop','restore','foreign-key','marker']){const db=database();try{populate(db);if(phase==='marker')db.exec("CREATE TRIGGER refuse_schema23 BEFORE INSERT ON schema_version WHEN NEW.version=23 BEGIN SELECT RAISE(ABORT,'synthetic-marker');END");const before=snapshot(db);const adapter={get isTransaction(){return db.isTransaction;},prepare(sql){if(phase==='foreign-key'&&sql==='PRAGMA foreign_key_check')throw new Error('synthetic-foreign-key');return db.prepare(sql);},exec(sql){db.exec(sql);if(phase==='create'&&sql.startsWith('CREATE TABLE image_reviews_v23')||phase==='copy'&&sql.startsWith('INSERT INTO image_reviews_v23')||phase==='external-trigger'&&sql.startsWith('DROP TRIGGER')||phase==='drop'&&sql.startsWith('DROP TABLE image_reviews;')||phase==='restore'&&sql.includes('CREATE TRIGGER')&&sql.includes('immutable_image_review_identity'))throw new Error('synthetic-interruption');}};
- assert.throws(()=>migrate(db,adapter),/synthetic/);assert.deepEqual(snapshot(db),before,phase);assert.equal(db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
+ for(const phase of ['create','copy','external-trigger','drop','restore','foreign-key','marker']){const db=database();try{populate(db);if(phase==='marker')db.exec("CREATE TRIGGER refuse_schema23 BEFORE INSERT ON schema_version WHEN NEW.version=23 BEGIN SELECT RAISE(ABORT,'synthetic-marker');END");const before=snapshot(db);const adapter={get isTransaction(){return db.isTransaction;},prepare(sql: string){if(phase==='foreign-key'&&sql==='PRAGMA foreign_key_check')throw new Error('synthetic-foreign-key');return db.prepare(sql);},exec(sql: string){db.exec(sql);if(phase==='create'&&sql.startsWith('CREATE TABLE image_reviews_v23')||phase==='copy'&&sql.startsWith('INSERT INTO image_reviews_v23')||phase==='external-trigger'&&sql.startsWith('DROP TRIGGER')||phase==='drop'&&sql.startsWith('DROP TABLE image_reviews;')||phase==='restore'&&sql.includes('CREATE TRIGGER')&&sql.includes('immutable_image_review_identity'))throw new Error('synthetic-interruption');}};
+ assert.throws(()=>migrate(db,adapter as unknown as DatabaseSync),/synthetic/);assert.deepEqual(snapshot(db),before,phase);assert.equal(db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);assert.deepEqual((db.prepare('PRAGMA foreign_key_check').all() as unknown),[]);
  }finally{db.close();}}
 });
 
@@ -232,18 +233,18 @@ test('schema23 admits only a bound official edit descriptor and rejects cross-br
  const db=database();try{const {old}=populate(db);migrate(db);const valid=editIntent(old.projectId);saveReview(db,valid);
  const imageSource={imageGroupId:randomUUID(),imageTaskId:randomUUID(),imageVersionId:randomUUID()},frameSource={frameTaskId:randomUUID(),sourceAssetId:randomUUID(),sourceHash:'b'.repeat(64),sourceFrame:30,fps:30,profileId:'local-png-1024-v1',selectionRule:'first-pts-at-or-after-v1'};
  for(const origin of [{kind:'generated',imageSource},{kind:'synthetic-mock',imageSource},{kind:'extracted-frame',frameSource}]){const v=editIntent(old.projectId);v.sourceImage.origin=origin;saveReview(db,v);}
- for(const mutate of [(v: EditIntentView)=>{v.schemaVersion=1;},(v: EditIntentView)=>{v.destination=destination;},(v: EditIntentView)=>{v.input.providerId='mock';},(v: EditIntentView)=>{v.input.model='other';},(v: EditIntentView)=>{delete v.input.purpose;},(v: EditIntentView)=>{delete v.input.inputImage;},(v: EditIntentView)=>{v.input.inputImage!.mask='unsupported';},(v: EditIntentView)=>{v.input.mask='unsupported';},(v: EditIntentView)=>{delete v.sourceImage;},(v: EditIntentView)=>{v.sourceImage.assetId=randomUUID();},(v: EditIntentView)=>{v.sourceImage.sha256='b'.repeat(64);},(v: EditIntentView)=>{v.sourceImage.byteLength=8388609;},(v: EditIntentView)=>{v.sourceImage.width=1025;},(v: EditIntentView)=>{v.sourceImage.height=1.5;},(v: EditIntentView)=>{v.sourceImage.name='x'.repeat(201);},(v: EditIntentView)=>{v.sourceImage.origin={};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'generated'};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'user-import',imageSource};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'extracted-frame',frameSource:{...frameSource,fps:60}};},(v: EditIntentView)=>{v.sourceImage.path='/private';},(v: EditIntentView)=>{v.policy.automaticRetry=true;},(v: EditIntentView)=>{v.options={};}]){const changed=structuredClone(editIntent(old.projectId));mutate(changed);assert.throws(()=>saveReview(db,changed),/CHECK/,JSON.stringify(changed));}
+ for(const mutate of [(v: EditIntentView)=>{v.schemaVersion=1;},(v: EditIntentView)=>{v.destination=destination;},(v: EditIntentView)=>{v.input.providerId='mock';},(v: EditIntentView)=>{v.input.model='other';},(v: EditIntentView)=>{delete v.input.purpose;},(v: EditIntentView)=>{delete v.input.inputImage;},(v: EditIntentView)=>{v.input.inputImage!.mask='unsupported';},(v: EditIntentView)=>{v.input.mask='unsupported';},(v: EditIntentView)=>{delete (v as {sourceImage?: unknown}).sourceImage;},(v: EditIntentView)=>{v.sourceImage.assetId=randomUUID();},(v: EditIntentView)=>{v.sourceImage.sha256='b'.repeat(64);},(v: EditIntentView)=>{v.sourceImage.byteLength=8388609;},(v: EditIntentView)=>{v.sourceImage.width=1025;},(v: EditIntentView)=>{v.sourceImage.height=1.5;},(v: EditIntentView)=>{v.sourceImage.name='x'.repeat(201);},(v: EditIntentView)=>{v.sourceImage.origin={};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'generated'};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'user-import',imageSource};},(v: EditIntentView)=>{v.sourceImage.origin={kind:'extracted-frame',frameSource:{...frameSource,fps:60}};},(v: EditIntentView)=>{v.sourceImage.path='/private';},(v: EditIntentView)=>{v.policy.automaticRetry=true;},(v: EditIntentView)=>{v.options={};}]){const changed=structuredClone(editIntent(old.projectId));mutate(changed);assert.throws(()=>saveReview(db,changed),/CHECK/,JSON.stringify(changed));}
  const changed=structuredClone(valid);changed.sourceImage.name='Changed.png';const raw=canonical(changed);assert.throws(()=>db.prepare('UPDATE image_reviews SET canonicalIntent=?,intentHash=?,revision=2 WHERE id=?').run(raw,hash(raw),valid.reviewId),/immutable/);
  }finally{db.close();}
 });
 
 test('fresh startup and frozen schema22 upgrade restore FK enforcement and restart without rewriting old bytes',()=>{
- for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=openStore(root);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);assert.equal(store.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=openStore(root);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
+ for(const mode of ['fresh','upgrade']){const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-migration-'));let db,store;try{let before;if(mode==='upgrade'){db=database(path.join(root,'workbench.sqlite'));populate(db);before=snapshot(db);db.close();db=null;}store=(openStore(root) as unknown as TypedStore);assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);assert.equal(store.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);if(before)sameOld(store.db,before,{startupMigrations:true});const after=snapshot(store.db);store.close();store=(openStore(root) as unknown as TypedStore);assert.deepEqual(snapshot(store.db),after);}finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}}
 });
 
 test('startup marker failure preserves frozen database and enables a later successful retry',()=>{
- const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-failed-migration-'));let db=database(path.join(root,'workbench.sqlite')),store;
- try{populate(db);db.exec("CREATE TRIGGER refuse_schema23 BEFORE INSERT ON schema_version WHEN NEW.version=23 BEGIN SELECT RAISE(ABORT,'synthetic-marker');END");const before=snapshot(db);db.close();db=null;assert.throws(()=>openStore(root),/synthetic-marker/);db=new DatabaseSync(path.join(root,'workbench.sqlite'));assert.deepEqual(snapshot(db),before);db.exec('DROP TRIGGER refuse_schema23');db.close();db=null;store=openStore(root);assert.equal(store.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);assert.ok(store.db.prepare('SELECT 1 FROM schema_version WHERE version=23').get());}
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-failed-migration-'));let db: DatabaseSync | null=database(path.join(root,'workbench.sqlite')),store;
+ try{populate(db);db.exec("CREATE TRIGGER refuse_schema23 BEFORE INSERT ON schema_version WHEN NEW.version=23 BEGIN SELECT RAISE(ABORT,'synthetic-marker');END");const before=snapshot(db);db.close();db=null;assert.throws(()=>(openStore(root) as unknown as TypedStore),/synthetic-marker/);db=new DatabaseSync(path.join(root,'workbench.sqlite'));assert.deepEqual(snapshot(db),before);db.exec('DROP TRIGGER refuse_schema23');db.close();db=null;store=(openStore(root) as unknown as TypedStore);assert.equal(store.db.prepare('PRAGMA foreign_keys').get()!.foreign_keys,1);assert.ok(store.db.prepare('SELECT 1 FROM schema_version WHERE version=23').get());}
  finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
 });
 

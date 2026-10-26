@@ -1,3 +1,4 @@
+import type {TypedStore, TypedServices, TypedCall} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
@@ -19,7 +20,7 @@ interface GroupView { id: string; revision: number; name: string; headVersionId:
 interface VersionView { id: string; number: number; assetId: string; sha256: string; byteLength: number }
 interface GeneratedAssetView { relativePath: string; provenance?: string }
 interface FixtureOptions { autoRun?: boolean; lock?: boolean; generate?: (input: Record<string, unknown>, options: {beforeDispatch: () => void}) => Promise<{bytes: Uint8Array}>; fault?: (point: string) => void }
-interface ImageFixture { root: string; store: ReturnType<typeof openStore>; services: ReturnType<typeof createServices>; project: ProjectView; other: ProjectView; projections: Record<string, unknown>[]; readonly calls: number; input(patch?: Record<string, unknown>): Record<string, unknown>; call(operation: string, input: Record<string, unknown>): Promise<unknown>; row(id: string): Record<string, unknown> | undefined }
+interface ImageFixture { root: string; store: TypedStore; services: TypedServices; project: ProjectView; other: ProjectView; projections: Record<string, unknown>[]; readonly calls: number; input(patch?: Record<string, unknown>): Record<string, unknown>; call(operation: string, input: Record<string, unknown>): Promise<unknown>; row(id: string): Record<string, unknown> | undefined }
 const failureOf = (value: unknown): ErrorView => value as ErrorView;
 const code = (expected: string) => (error: unknown) => failureOf(error).code === expected && !JSON.stringify(error).includes('PRIVATE_SENTINEL');
 const inputFor = (projectId: string, patch: Record<string, unknown> = {}) => ({projectId, name: 'Frozen image name', providerId: 'mock',
@@ -41,22 +42,22 @@ function privateFree(value: unknown): void {
 }
 async function fixture(t: import('node:test').TestContext, {autoRun = false, lock = true, generate, fault}: FixtureOptions = {}): Promise<ImageFixture> {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-business-'));
-  const store = openStore(root, {lock});
+  const store = (openStore(root, {lock}) as unknown as TypedStore);
   let calls = 0;
   const projections: Record<string, unknown>[] = [];
-  const services = createServices(store, new Map(), {env: {}, imageOptions: {autoRun, fault, generate: async (input: Record<string, unknown>, options: {beforeDispatch: () => void}) => {
+  const services = (createServices(store, new Map(), {env: {}, imageOptions: {autoRun, fault, generate: async (input: Record<string, unknown>, options: {beforeDispatch: () => void}) => {
     calls++; projections.push(structuredClone(input));
     if (generate) return generate(input, options);
     options.beforeDispatch(); return {bytes: await png()};
-  }}} as unknown as Parameters<typeof createServices>[2]);
+  }}} as unknown as Parameters<typeof createServices>[2]) as unknown as TypedServices);
   t.after(async () => {try {await services.drain();} finally {store.close(); rmSync(root, {recursive: true, force: true});}});
   const project = await services.call('project.create', {name: 'Synthetic image project'}) as ProjectView;
   const other = await services.call('project.create', {name: 'Foreign project'}) as ProjectView;
   return {root, store, services, project, other, projections, get calls() {return calls;},
-    input: (patch?: Record<string, unknown>) => inputFor(project.id, patch), call: (operation: string, input: Record<string, unknown>) => services.call(operation as never, input as never) as Promise<unknown>,
+    input: (patch?: Record<string, unknown>) => inputFor(project.id, patch), call: ((operation: string, input: Record<string, unknown>) => services.call(operation as never, input as never) as Promise<unknown>) as TypedCall,
     row: (id: string) => store.db.prepare('SELECT * FROM image_tasks WHERE id=?').get(id) as Record<string, unknown> | undefined};
 }
-async function settled(f: ImageFixture, id: string, expected = 'succeeded'): Promise<Record<string, unknown> & {state: string}> {
+async function settled(f: ImageFixture, id: string, expected: string|undefined = 'succeeded'): Promise<Record<string, unknown> & {state: string}> {
   const end = Date.now() + 10_000;
   while (Date.now() < end) {
     const value = await f.call('image.task.get', {projectId: f.project.id, taskId: id}) as Record<string, unknown> & {state: string};
@@ -68,11 +69,11 @@ async function settled(f: ImageFixture, id: string, expected = 'succeeded'): Pro
 }
 
 test('stable generation keys return the original ACK before CAS and reject changed operation, project and input', async t => {
-  const f = await fixture(t), input = f.input(), accepted = await f.call('image.generate', input) as TaskView;
+  const f = await fixture(t), input = f.input(), accepted = await f.call('image.generate', input) as unknown as TaskView;
   assert.ok(isImageTaskResponse(accepted)); assert.equal(accepted.state, 'queued'); assert.equal(accepted.revision, 1);
   assert.equal(f.calls, 0);
   const cancelInput = {projectId: f.project.id, taskId: accepted.id, expectedRevision: 1, requestId: randomUUID()};
-  const cancelled = await f.call('image.task.cancelQueued', cancelInput) as TaskView;
+  const cancelled = await f.call('image.task.cancelQueued', cancelInput) as unknown as TaskView;
   assert.equal(cancelled.state, 'cancelled_before_dispatch'); assert.equal(cancelled.revision, 2);
   const before = rows(f.store.db);
   assert.deepEqual(await f.call('image.generate', input), accepted);
@@ -101,12 +102,12 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   const unchangedNames = tables(f.store.db).filter(name => !name.startsWith('image_') && name !== 'assets' && name !== 'agent_task_target_revisions_v2');
   const ledgerBefore = f.store.db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY projectId,kind,targetId').all();
   const before = rows(f.store.db, unchangedNames), originalAsset = JSON.stringify(f.store.get('assets', asset.id));
-  const firstInput = f.input(), firstAck = await f.call('image.generate', firstInput) as TaskView, first = await settled(f, firstAck.id) as TaskView;
+  const firstInput = f.input(), firstAck = await f.call('image.generate', firstInput) as unknown as TaskView, first = await settled(f, firstAck.id) as unknown as TaskView;
   let group = await f.call('image.group.get', {projectId: f.project.id, groupId: first.groupId}) as GroupView;
   assert.equal(group.name, firstInput.name); assert.equal(group.headVersionId, first.versionId); assert.equal(group.activeTaskId, null);
   const secondInput = f.input({groupId: group.id, expectedRevision: group.revision, prompt: 'Another frozen prompt.'});
   await assert.rejects(f.call('image.generate', {...secondInput, name: 'Renamed group'}), code('IMAGE_STATE_CONFLICT'));
-  const secondAck = await f.call('image.generate', secondInput) as TaskView, second = await settled(f, secondAck.id) as unknown as TaskView;
+  const secondAck = await f.call('image.generate', secondInput) as unknown as TaskView, second = await settled(f, secondAck.id) as unknown as unknown as TaskView;
   assert.deepEqual(await f.call('image.generate', secondInput), secondAck, 'original ACK beats now-stale group CAS');
   assert.deepEqual(await f.call('image.generate', firstInput), firstAck);
   group = await f.call('image.group.get', {projectId: f.project.id, groupId: group.id}) as GroupView;
@@ -160,17 +161,17 @@ test('strict server parsing rejects request-supplied adapters, paths, options an
 });
 
 test('one unresolved task locks its group while different groups remain independently queued', async t => {
-  const f = await fixture(t), ack = await f.call('image.generate', f.input()) as TaskView;
+  const f = await fixture(t), ack = await f.call('image.generate', f.input()) as unknown as TaskView;
   const group = await f.call('image.group.get', {projectId: f.project.id, groupId: ack.groupId}) as GroupView;
   await assert.rejects(f.call('image.generate', f.input({groupId: group.id, expectedRevision: group.revision})), code('IMAGE_GROUP_BUSY'));
-  const other = await f.call('image.generate', f.input({name: 'Independent'})) as TaskView; assert.notEqual(other.groupId, group.id);
+  const other = await f.call('image.generate', f.input({name: 'Independent'})) as unknown as TaskView; assert.notEqual(other.groupId, group.id);
   assert.equal((f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get() as {n: number}).n, 2); assert.equal(f.calls, 0);
 });
 
 test('lock:false services cannot mutate or reconcile and image reads leave every row and total_changes untouched', async t => {
-  const f = await fixture(t), ack = await f.call('image.generate', f.input()) as TaskView;
-  const observer = openStore(f.root, {lock: false});
-  const services = createServices(observer, new Map(), {env: {}, imageOptions: {autoRun: true, generate: () => assert.fail('nonowner generator')}});
+  const f = await fixture(t), ack = await f.call('image.generate', f.input()) as unknown as TaskView;
+  const observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
+  const services = (createServices(observer, new Map(), {env: {}, imageOptions: {autoRun: true, generate: () => assert.fail('nonowner generator')}}) as unknown as TypedServices);
   t.after(async () => {await services.drain(); observer.close();});
   assert.equal(ownsStoreLock(f.store), true); assert.equal(ownsStoreLock(observer), false);
   const before = rows(observer.db), count = changes(observer.db);
@@ -192,7 +193,7 @@ test('lock:false services cannot mutate or reconcile and image reads leave every
 
 for (const variant of ['input-hash', 'snapshot-identity', 'revision', 'oversized-input', 'oversized-snapshot', 'request-response', 'oversized-response', 'request-operation'])
   test(`corrupt ${variant} fails closed without receipts, private disclosure or read-time repair`, async t => {
-    const f = await fixture(t), input = f.input(), ack = await f.call('image.generate', input) as TaskView, db = f.store.db;
+    const f = await fixture(t), input = f.input(), ack = await f.call('image.generate', input) as unknown as TaskView, db = f.store.db;
     db.exec('PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_image_task_identity; DROP TRIGGER image_task_state_transitions; DROP TRIGGER immutable_image_requests;');
     if (variant === 'input-hash') db.prepare('UPDATE image_tasks SET inputHash=?').run('b'.repeat(64));
     if (variant === 'snapshot-identity') db.prepare('UPDATE image_tasks SET snapshot=?').run(JSON.stringify({...JSON.parse(String(f.row(ack.id)?.snapshot)), taskId: randomUUID()}));
@@ -225,11 +226,11 @@ test('queue capacity is enforced per project and globally without dispatch or ev
   assert.equal(first.length, IMAGE_LIMITS.queuedGlobal);
   const before = rows(f.store.db);
   await assert.rejects(f.call('image.generate', inputFor(projects[4].id)), code('IMAGE_QUEUE_FULL'));
-  assert.equal(rows(f.store.db), before); assert.equal(f.calls, 0); assert.deepEqual(readdirSync(path.join(f.root, 'media')), []);
+  assert.equal(rows(f.store.db), before); assert.equal(f.calls, 0); assert.deepEqual((readdirSync(path.join(f.root, 'media')) as unknown), []);
 });
 
 test('retained request capacity rejects new mutations but exact historical replay remains readable', async t => {
-  const f = await fixture(t), input = f.input(), ack = await f.call('image.generate', input) as TaskView, db = f.store.db;
+  const f = await fixture(t), input = f.input(), ack = await f.call('image.generate', input) as unknown as TaskView, db = f.store.db;
   // Compact, synthetic SQL rows exercise the admission count, without media or thousands of actual operations.
   const insert = db.prepare('INSERT INTO image_requests(requestId,operation,projectId,inputHash,canonicalInput,response) VALUES(?,?,?,?,?,?)');
   f.store.tx(() => {for (let i = 1; i < IMAGE_LIMITS.requestsPerProject; i++) {
@@ -261,7 +262,7 @@ test('retained task capacity rejects admission without media allocation or delet
   await assert.rejects(f.call('image.generate', f.input()), code('IMAGE_CAPACITY'));
   assert.equal(rows(db), before); assert.equal(f.calls, 0);
   assert.equal((db.prepare('SELECT count(*) n FROM image_tasks').get() as {n: number}).n, IMAGE_LIMITS.tasksPerProject);
-  assert.deepEqual(readdirSync(path.join(f.root, 'media')), []);
+  assert.deepEqual((readdirSync(path.join(f.root, 'media')) as unknown), []);
 });
 
 test('task list paging is bounded, authenticated and scoped to project, group, operation and requested limit', async t => {

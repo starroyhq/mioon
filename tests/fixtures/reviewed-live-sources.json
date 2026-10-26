@@ -10,6 +10,14 @@
       "bytes": 12861,
       "sha256": "828ad0f57179b5090fd0a650780bf31765974f957c27bd41d8532b14be85d2cb"
     },
+    "packages/business/src/image-consumption.ts": {
+      "bytes": 2443,
+      "sha256": "80411c0b5580ba588cf43fd47cbc462a32dc96e6e6a66e4b40555b8e68aa6fa9"
+    },
+    "packages/business/src/inspection.ts": {
+      "bytes": 36438,
+      "sha256": "ce83accae66daa843b7e207e059c2cbec4bce186a03cc7272fcf0cbbf02d0941"
+    },
     "packages/business/src/local-drafts.ts": {
       "bytes": 16893,
       "sha256": "aa44cb73b9276fb0b0f47bd0c432f48ed316c9daff90a263791523d6cd844170"
@@ -31,8 +39,8 @@
       "sha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463"
     },
     "packages/business/src/workspace-restore-policy.ts": {
-      "bytes": 11699,
-      "sha256": "d2a4e6eb0347237ef16da5899fa379a29775a296343bf83a17a654e0ffa3d6c2"
+      "bytes": 11739,
+      "sha256": "581731f6fc305b05ed63b664e518a64ef17e789c3315726f2714ac04faaa95f8"
     },
     "packages/business/src/workspace-schema-dispatch.ts": {
       "bytes": 52185,
@@ -59,8 +67,8 @@
       "sha256": "f5d887e2703c64d498ca3ba6c44426ccb4bbed1c7a15d289ea7c28f48c47f549"
     },
     "packages/contracts/src/operation-effects.ts": {
-      "bytes": 35217,
-      "sha256": "edc2be794e875e529d261b1049e04195322932924221249482a29e9122f616a5"
+      "bytes": 36161,
+      "sha256": "d0fb0ab4559485a900de0ad5e1ec0a23953a418bbb731b026d0e22aa2f2d144f"
     },
     "packages/contracts/src/private-storage.ts": {
       "bytes": 23412,

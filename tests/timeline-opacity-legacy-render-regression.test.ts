@@ -1,0 +1,282 @@
+import type {FixtureSnapshot} from './helpers/strict-timeline-core-types.ts';
+import type {MediaRunOptions,MediaStreamingRunOptions} from '../packages/business/src/media-runtime.ts';
+import type {TimelineImageEvidence as ImageColourEvidence} from '../packages/contracts/src/timeline-colour.ts';
+type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
+import test, {mock} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import cp from 'node:child_process';
+import {registerHooks, syncBuiltinESMExports} from 'node:module';
+import {fileURLToPath} from 'node:url';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+
+// This is a command/graph regression, not a decoder or execution-authority test.
+// Its baseline is application-owned local Git source with a pinned pre-seam hash.
+// Media is never spawned: all subprocess entry points fail closed after Git read.
+const baselineCommit = '812d18a9d493f01f94235bd4f424b4e17e742ad8';
+const rendererPath = 'packages/business/src/timeline-media.ts';
+const baselineRendererPath = 'packages/business/src/timeline-media.mjs';
+const baselineHash = 'b89728d7508ea1ca0d2011c3fad710722411993bd8a0989553167733bf343dde';
+const repo = fileURLToPath(new URL('../', import.meta.url));
+const rendererUrl = new URL('../' + rendererPath, import.meta.url).href;
+const baselineUrl = rendererUrl + '?opacity-legacy-baseline=' + baselineCommit;
+const baselineSource = cp.execFileSync('git', ['show', baselineCommit + ':' + baselineRendererPath], {
+  cwd: repo, encoding: 'utf8', maxBuffer: 128 * 1024, timeout: 5000,
+});
+assert.equal(createHash('sha256').update(baselineSource).digest('hex'), baselineHash);
+let childAttempts = 0;
+const forbidChild = () => { childAttempts++; throw Error('A pure legacy renderer regression may not spawn a subprocess'); };
+for (const name of (['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'] as const)) mock.method(cp, name, forbidChild);
+syncBuiltinESMExports();
+
+const runtimeKey = Symbol.for('mioon.test.opacity-legacy-render-regression');
+const runtimeExpression = 'globalThis[Symbol.for("mioon.test.opacity-legacy-render-regression")]';
+const mediaUrl = new URL('../packages/business/src/media.ts', import.meta.url).href;
+const mediaRuntimeUrl = new URL('../packages/business/src/media-runtime.ts', import.meta.url).href;
+const imageStageUrl = new URL('../packages/business/src/timeline-image-staging.ts', import.meta.url).href;
+const actualRuntimeUrl = mediaRuntimeUrl + '?opacity-legacy-actual-runtime';
+const actualMediaUrl = mediaUrl + '?opacity-legacy-actual-media';
+let activeRuntime!:ReturnType<typeof fakeRuntime>;
+(globalThis as typeof globalThis & {[runtimeKey]?:unknown})[runtimeKey] = {
+  run: (...args: Parameters<ReturnType<typeof fakeRuntime>['run']>) => activeRuntime.run(...args),
+  runStreaming: (...args: Parameters<ReturnType<typeof fakeRuntime>['runStreaming']>) => activeRuntime.runStreaming(...args),
+  probe: (...args: Parameters<ReturnType<typeof fakeRuntime>['probe']>) => activeRuntime.probe(...args),
+  prepareImages: (...args: Parameters<ReturnType<typeof fakeRuntime>['prepareImages']>) => activeRuntime.prepareImages(...args),
+};
+const hooks = registerHooks({resolve(specifier,context,next){
+  // Read and hash the original bytes unchanged; only resolve their legacy
+  // relative module names to the current typed equivalents at execution.
+  if(context.parentURL===baselineUrl&&specifier.startsWith('./')&&specifier.endsWith('.mjs'))return next(specifier.slice(0,-4)+'.ts',context);
+  return next(specifier,context);
+},load(url, context, next) {
+  if (url === baselineUrl) return {format: 'module', shortCircuit: true, source: baselineSource};
+  if (url === mediaRuntimeUrl) return {format: 'module', shortCircuit: true,
+    source: `export * from ${JSON.stringify(actualRuntimeUrl)};export const run=(...args)=>${runtimeExpression}.run(...args);export const runStreaming=(...args)=>${runtimeExpression}.runStreaming(...args);`};
+  if (url === mediaUrl) return {format: 'module', shortCircuit: true,
+    source: `export * from ${JSON.stringify(actualMediaUrl)};export const run=(...args)=>${runtimeExpression}.run(...args);export const probe=(...args)=>${runtimeExpression}.probe(...args);`};
+  if (url === imageStageUrl) return {format: 'module', shortCircuit: true,
+    source: `export const prepareTimelineImageLayers=(...args)=>${runtimeExpression}.prepareImages(...args);`};
+  return next(url, context);
+}});
+
+// Dynamic imports occur only after interception; actual planners, frozen schema
+// constructors, source interpretation checks and filter builders remain in use.
+const [currentRenderer, oldRenderer, contracts, colour, inputs, dbModule, schemas,
+  schema26, schema28, schema30, schema32, schema34, schema36, schema38, schema40,
+  restore41, databaseHelpers, imageFixtures, imageAdmission] = await Promise.all([
+  import(rendererUrl), import(baselineUrl), import('@mioon/contracts'),
+  import('../packages/contracts/src/timeline-colour.ts'),
+  import('../packages/business/src/timeline-inputs.ts'),
+  import('../packages/business/src/db.ts'),
+  import('../packages/business/src/workspace-fixed-schema.ts'),
+  import('../packages/business/src/workspace-schema-v26.ts'),
+  import('../packages/business/src/workspace-schema-v28.ts'),
+  import('../packages/business/src/workspace-schema-v30.ts'),
+  import('../packages/business/src/workspace-schema-v32.ts'),
+  import('../packages/business/src/workspace-schema-v34.ts'),
+  import('../packages/business/src/workspace-schema-v36.ts'),
+  import('../packages/business/src/workspace-schema-v38.ts'),
+  import('../packages/business/src/workspace-schema-v40.ts'),
+  import('../packages/business/src/workspace-restore-schema-v41.ts'),
+  import('./workspace-schema26-fixtures.mjs'),
+  import('./helpers/timeline-image-fixtures.ts'),
+  import('../packages/business/src/timeline-image-admission.ts'),
+]);
+void dbModule; // Installs the unchanged fixed envelope runtime before schema use.
+const profile = restore41.createWorkspaceRestoreProfileV41(schemas.initializeWorkspaceSchemaThrough24);
+const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const stamp = '2026-10-16T00:00:00.000Z';
+const subtitleHelp = 'Filter drawtext\n  Synthetic drawtext filter\ndrawtext AVOptions:\n' +
+  ['fontfile', 'textfile', 'expansion', 'fontsize', 'borderw', 'line_spacing', 'fontcolor', 'bordercolor', 'x', 'y']
+    .map(name => `   ${name} <string> ..FV....... synthetic option\n`).join('') +
+  "\nThis filter has support for timeline through the 'enable' option.\n";
+
+async function fixture(root: string, managed: boolean) {
+  const bytes = imageFixtures.png({width: 8, height: 8});
+  const evidence = imageFixtures.evidenceOnly(await imageAdmission.inspectStaticSrgbPng(bytes));
+  const common = {projectId: id(1), duration: 1, width: 64, height: 48, hasVideo: true,
+    hasAudio: true, audioStreamIndex: 1, videoStreamIndex: 0};
+  const video = {...common, id: id(2), mimeType: 'video/mp4', sha256: 'a'.repeat(64),
+    relativePath: 'media/video.mp4', path: path.join(root, 'video.mp4'), sizeBytes: 128,
+    colourProbe: {streams: [{index: 0, codec_type: 'video', codec_name: 'h264',
+      width: 64, height: 48, pix_fmt: 'yuv420p', color_range: 'tv',
+      color_primaries: 'bt709', color_transfer: 'bt709', color_space: 'bt709'}]}};
+  const image = {...common, id: id(3), mimeType: 'image/png', sha256: evidence.sha256,
+    relativePath: 'media/image.png', path: path.join(root, 'image.png'), sizeBytes: bytes.length,
+    hasAudio: false, width: 8, height: 8, colourImageEvidence: evidence,
+    colourProbe: {streams: [{index: 0, codec_type: 'video', codec_name: 'png',
+      width: 8, height: 8, pix_fmt: 'rgba', sample_aspect_ratio: '1:1'}]}};
+  const sound = {...common, id: id(4), mimeType: 'audio/wav', sha256: 'b'.repeat(64),
+    relativePath: 'media/sound.wav', path: path.join(root, 'sound.wav'), sizeBytes: 128,
+    width: 0, height: 0, hasVideo: false, audioStreamIndex: 0};
+  const assets = new Map([video, image, sound].map(asset => [asset.id, asset]));
+  const tracks = [0, 1, 2].map(n => ({id: id(10 + n), name: `Track ${n}`,
+    kind: n === 2 ? 'audio' : 'video', orderIndex: n, hidden: false, muted: false}));
+  const clip = (n: number, asset: { id: unknown; mimeType?: string; sha256?: unknown; relativePath?: string; path?: string; sizeBytes?: number; colourProbe?: { streams: { index: number; codec_type: string; codec_name: string; width: number; height: number; pix_fmt: string; color_range: string; color_primaries: string; color_transfer: string; color_space: string; }[]; }|{ streams: { index: number; codec_type: string; codec_name: string; width: number; height: number; pix_fmt: string; sample_aspect_ratio: string; }[]; }; projectId?: string; duration?: number; width?: number; height?: number; hasVideo?: boolean; hasAudio?: boolean; audioStreamIndex?: number; videoStreamIndex?: number; colourImageEvidence?: Record<string,unknown>; }, patch: { fadeInFrames?: number; fadeOutFrames?: number; volumeEnvelope?: { profileId: string; points: { frame: number; multiplier: number; }[]; }; startFrame?: number; durationFrames?: number; sourceInFrame?: number; rect?: { x: number; y: number; width: number; height: number; }; gain?: number; }) => ({id: id(20 + n), name: `Clip ${n}`, trackId: tracks[n].id,
+    assetId: asset.id, startFrame: 0, durationFrames: 9, sourceInFrame: 2,
+    rect: {x: 0, y: 0, width: 720, height: 720}, gain: .75, ...patch});
+  const clips = [clip(0, video, {fadeInFrames: 2, fadeOutFrames: 2,
+    volumeEnvelope: {profileId: 'mioon-clip-linear-attenuation-v1', points: [{frame: 0, multiplier: .5}, {frame: 9, multiplier: 1}]}}),
+    clip(1, image, {startFrame: 3, durationFrames: 3, sourceInFrame: 0,
+      rect: {x: 180, y: 180, width: 360, height: 360}, gain: 1}),
+    clip(2, sound, {sourceInFrame: 4, fadeInFrames: 1, fadeOutFrames: 1})];
+  if (managed) {
+    (clips[0] as unknown as {colour:({ profileId: string; source: { assetSha256: string; streamIndex: number; profileId: string; range: string; declaredBy: string; declaredAt: string; }; look: null; })|({ profileId: string; source: { assetSha256: string; profileId: string; interpretation: string; declaredBy: string; declaredAt: string; evidence: ImageColourEvidence; }; look: unknown; })}).colour = {profileId: 'mioon-rec709-sdr-clip-v1', source: {
+      assetSha256: video.sha256, streamIndex: 0, profileId: 'rec709-yuv-sdr-v1',
+      range: 'limited', declaredBy: 'user', declaredAt: stamp}, look: null};
+    (clips[1] as unknown as {colour:({ profileId: string; source: { assetSha256: string; streamIndex: number; profileId: string; range: string; declaredBy: string; declaredAt: string; }; look: null; })|({ profileId: string; source: { assetSha256: string; profileId: string; interpretation: string; declaredBy: string; declaredAt: string; evidence: ImageColourEvidence; }; look: unknown; })}).colour = (imageFixtures.imageColour(((evidence) as unknown as Parameters<typeof imageFixtures.imageColour>[0])) as unknown as ({colour:({ profileId: string; source: { assetSha256: string; streamIndex: number; profileId: string; range: string; declaredBy: string; declaredAt: string; }; look: null; })|({ profileId: string; source: { assetSha256: string; profileId: string; interpretation: string; declaredBy: string; declaredAt: string; evidence: ImageColourEvidence; }; look: unknown; })})["colour"]);
+  }
+  const timeline = {id: id(5), projectId: id(1), revision: 1, fps: 30, width: 720,
+    height: 720, durationFrames: 9, tracks, clips, createdAt: stamp, updatedAt: stamp};
+  if (managed) (timeline as unknown as {subtitles:({ profileId: string; cues: { id: string; text: string; startFrame: number; durationFrames: number; }[]; })}).subtitles = {profileId: contracts.TIMELINE_SUBTITLE_PROFILE_ID,
+    cues: [{id: id(30), text: 'Legacy 字幕', startFrame: 2, durationFrames: 5}]};
+  const snapshot = (inputs.freezeTimelineSnapshot as (timeline?:unknown,assets?:unknown)=>FixtureSnapshot)(timeline,assets);
+  assert.equal(Object.hasOwn(snapshot, 'opacityPlan'), false);
+  assert.equal(snapshot.timeline.clips.some((c) => Object.hasOwn(c, 'opacityEnvelope')), false);
+  if (managed) assert.equal((snapshot.colourPlan)!.profileId, colour.TIMELINE_MIXED_COLOUR_RENDER_PROFILE);
+  return {snapshot, assets};
+}
+
+function retainedSnapshots(snapshot:FixtureSnapshot,assets:Map<string,{id:string;[key:string]:unknown}>):[number,FixtureSnapshot][] {
+  const db = databaseHelpers.open(':memory:');
+  try {
+    for (const initialize of ([schemas.initializeWorkspaceSchemaThrough24,
+      schema26.initializeWorkspaceSchema26, schema28.initializeWorkspaceSchema28,
+      schema30.initializeWorkspaceSchema30, schema32.initializeWorkspaceSchema32,
+      schema34.initializeWorkspaceSchema34, schema36.initializeWorkspaceSchema36,
+      schema38.initializeWorkspaceSchema38, schema40.initializeWorkspaceSchema40] as const)) initialize(db);
+    databaseHelpers.insert(db, 'projects', {id: id(1), data: JSON.stringify({id: id(1)})});
+    for (const asset of assets.values()) databaseHelpers.insert(db, 'assets', {
+      id: asset.id, projectId: id(1), data: JSON.stringify(asset),
+    });
+    const record = {id: id(40), projectId: id(1), requestId: 'legacy-render-regression',
+      mode: 'timeline', purpose: 'export', timelineRevision: snapshot.timeline.revision,
+      snapshot, status: 'queued', assetId: null, url: null, error: null, createdAt: stamp, updatedAt: stamp};
+    databaseHelpers.insert(db, 'exports', {id: record.id, projectId: id(1), data: JSON.stringify(record)});
+    schema40.validateWorkspaceSchema40(db);
+    assert.deepEqual(profile.classifyWorkspaceSchemaV40V41(db), {schemaVersion: 40, profile: 'ordinary'});
+    const ordinaryRaw = (db.prepare('SELECT data FROM exports WHERE id=?').get(record.id))!.data;
+    profile.installWorkspaceRestoreSchemaV41(db, {restorationId: id(101), workspaceOrigin: id(102),
+      sourceBackupId: id(103), manifestHash: 'c'.repeat(64), sourceDbHash: 'd'.repeat(64), createdAt: stamp});
+    profile.validateWorkspaceRestoreSchemaV41(db);
+    assert.deepEqual(profile.classifyWorkspaceSchemaV40V41(db), {schemaVersion: 41, profile: 'restored-local-v9'});
+    const restoredRaw = (db.prepare('SELECT data FROM exports WHERE id=?').get(record.id))!.data;
+    assert.equal(restoredRaw, ordinaryRaw, 'restoration keeps original receipt bytes');
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM workspace_restore_holds WHERE kind='exports'").get())!.count, 1);
+    // These held snapshots are inspected only by the inert graph harness. This
+    // deliberately grants no restored job permission and invokes no worker.
+    return [[40, JSON.parse(((ordinaryRaw) as unknown as Parameters<typeof JSON.parse>[0])).snapshot], [41, JSON.parse(((restoredRaw) as unknown as Parameters<typeof JSON.parse>[0])).snapshot]];
+  } finally { db.close(); }
+}
+
+function fakeRuntime(snapshot:FixtureSnapshot,root:string) {
+  const calls: {kind:string;command?:string;argv?:string[];files?:Record<string,string>;timeout?:number;maxStdoutBytes?:number;maxStderrBytes?:number;file?:unknown;inputs?:unknown}[] = [], frames = snapshot.exportRange ? snapshot.exportRange.endFrame - snapshot.exportRange.startFrame : snapshot.timeline.durationFrames;
+  const scriptOptions: (string)[] = [], rawArgv: unknown[][] = [], aliases:Record<string,string> = {'-/filter_complex': '-filter_complex_script', '-/filter:v': '-filter_script:v'};
+  const remember = (kind:string,command:string,args:string[],options:MediaRunOptions={}) => {
+    options.beforeEffect?.();
+    rawArgv.push([...args]);
+    for (const pair of ([['-filter_complex_script', '-/filter_complex'], ['-filter_script:v', '-/filter:v']] as const))
+      assert.ok(args.filter(((arg) => pair.includes(((arg) as unknown as StrictIntersection<Parameters<NonNullable<(typeof pair)["includes"]>>[0]>)))).length <= 1, 'file-option aliases cannot be duplicated or mixed');
+    const files:Record<string,string> = {};
+    for (const option of (['-filter_complex_script', '-filter_script:v', ...Object.keys(aliases)] as const)) {
+      const at = args.indexOf(option);
+      if (at >= 0) { files[aliases[option] ?? option] = fs.readFileSync(args[at + 1], 'utf8'); scriptOptions.push(option); }
+    }
+    if (args.includes('concat')) (files as unknown as {concat:(string)}).concat = fs.readFileSync(args[args.indexOf('-i') + 1], 'utf8');
+    calls.push({kind, command, argv: args.map(((arg) => aliases[arg] ?? arg)), files,
+      timeout: options.timeout, maxStdoutBytes: options.maxStdoutBytes, maxStderrBytes: options.maxStderrBytes});
+  };
+  return {calls, scriptOptions, rawArgv,
+    async run(command:string,args:string[],options:MediaRunOptions) {
+      remember('run', command, ((args) as unknown as Parameters<typeof remember>[2]), options);
+      if (args.includes('-h')) {
+        assert.equal(command, 'ffmpeg');
+        assert.deepEqual(args, ['-hide_banner', '-h', 'filter=drawtext']);
+        assert.deepEqual(Object.keys(((options) as unknown as Parameters<typeof Object.keys>[0])).sort(), ['beforeEffect', 'maxStderrBytes', 'maxStdoutBytes', 'signal', 'timeout']);
+        assert.equal((options)!.timeout, 15000);
+        assert.equal((options)!.maxStdoutBytes, 64 * 1024);
+        assert.equal((options)!.maxStderrBytes, 64 * 1024);
+        assert.equal(typeof (options)!.beforeEffect, 'function');
+        assert.equal((options)!.signal, undefined);
+        // An absent FriBidi option retains the baseline filter bytes exactly.
+        return subtitleHelp;
+      }
+      return '';
+    },
+    async runStreaming(command:string,args:string[],options:MediaStreamingRunOptions) {
+      remember('runStreaming', command, ((args) as unknown as Parameters<typeof remember>[2]), options);
+      assert.ok(args.includes('-/filter:v'), 'only subtitle ink measurement may stream, using the current file-argument syntax');
+      const count = Number(args[args.indexOf('-frames:v') + 1]), bytes = Buffer.alloc(4096 * 256 * count);
+      for (let n = 0; n < count; n++) { bytes[n * 4096 * 256 + 100 * 4096 + 100] = 255; bytes[n * 4096 * 256 + 140 * 4096 + 200] = 255; }
+      ((options)!.onStdout)!(bytes); return {stdoutBytes: bytes.length};
+    },
+    async probe(file: unknown, options: { beforeEffect: () => void; }) {
+      options?.beforeEffect?.(); calls.push({kind: 'probe', file});
+      return {width: 720, height: 720, duration: frames / 30, hasAudio: true, hasVideo: true,
+        probe: {streams: [{codec_type: 'video', codec_name: 'h264', r_frame_rate: '30/1', avg_frame_rate: '30/1',
+          nb_frames: String(frames), sample_aspect_ratio: '1:1', pix_fmt: 'yuv420p', has_b_frames: 0,
+          time_base: '1/30000', duration: String(frames / 30), start_pts: 0, start_time: '0',
+          color_primaries: 'bt709', color_transfer: 'bt709', color_space: 'bt709', color_range: 'tv'},
+        {codec_type: 'audio', codec_name: 'aac', sample_rate: '48000', channels: 2, time_base: '1/48000',
+          channel_layout: 'stereo', duration: String(frames / 30), start_pts: 0, start_time: '0'}],
+        format: {format_name: 'mov,mp4', start_time: '0'}}};
+    },
+    async prepareImages(inputs: unknown, _destination: unknown, options: { beforeEffect: () => unknown; }) {
+      calls.push({kind: 'managed-image-stage', inputs});
+      return {path: (clipId?: unknown) => path.join(root, `managed-${clipId}.png`),
+        effect: () => options.beforeEffect?.(), verifyBytes: () => options.beforeEffect?.(), cleanup: () => true};
+    },
+  };
+}
+
+test('old40/41 graphs and argv match pinned pre-seam renderer except equivalent file-option aliases', async t => {
+  const root = await fsp.realpath(await fsp.mkdtemp(path.join(tmpdir(), 'mioon-opacity-legacy-')));
+  // Only the two reviewed equivalent file-option names are canonicalized. Every
+  // path, remaining argument, filter byte and concat byte stays literal.
+  const fixedDirectory = (prefix: string) => { const target = prefix + 'legacy-regression'; fs.mkdirSync(target, {mode: 0o700}); return target; };
+  t.mock.method(fs, 'mkdtempSync', fixedDirectory);
+  t.mock.method(fsp, 'mkdtemp', async (prefix?: unknown) => fixedDirectory(((prefix) as unknown as Parameters<typeof fixedDirectory>[0])));
+  syncBuiltinESMExports();
+  t.after(async () => {
+    t.mock.restoreAll(); mock.restoreAll(); syncBuiltinESMExports(); hooks.deregister(); delete (globalThis as typeof globalThis & {[runtimeKey]?:unknown})[runtimeKey];
+    await fsp.rm(root, {recursive: true, force: true});
+  });
+  let compared = 0;
+  for (const managed of ([false, true] as const)) {
+    const source = await fixture(root, managed);
+    for (const [version, retained] of retainedSnapshots(source.snapshot, source.assets)) {
+      for (const range of ([null, {startFrame: 1, endFrame: 8}] as const)) {
+        const snapshot = structuredClone(retained); if (range) snapshot.exportRange = range;
+        const frozenRaw = JSON.stringify(snapshot), destination = path.join(root, 'result.mp4');
+        activeRuntime = fakeRuntime(snapshot, root);
+        await oldRenderer.renderTimeline(snapshot, source.assets, destination, {beforeEffect() {}});
+        const expected = activeRuntime.calls;
+        assert.equal(expected.filter((call) => call.argv?.includes('-h')).length, Number(managed), 'only nonempty subtitles inspect drawtext once');
+        activeRuntime = fakeRuntime(snapshot, root);
+        await currentRenderer.renderTimeline(snapshot, source.assets, destination, {beforeEffect() {}});
+        assert.deepEqual(activeRuntime.scriptOptions, managed ? ['-/filter:v', '-/filter_complex', '-/filter_complex', '-/filter_complex'] : [], 'current renderer always uses the supported file-option names');
+        assert.deepEqual(activeRuntime.calls, expected, `schema${version} managed=${managed} selected=${Boolean(range)}: equivalent file options; all remaining argv, filter, script and concat bytes exact; raw current argv=${JSON.stringify(activeRuntime.rawArgv)}`);
+        assert.equal(JSON.stringify(snapshot), frozenRaw, 'neither renderer mutates retained raw snapshot');
+        const graphs = expected.flatMap((call) => [call.files?.['-filter_complex_script'], call.argv?.[call.argv.indexOf('-filter_complex') + 1]]).filter((value) => typeof value === 'string' && value.includes('[outv]'));
+        assert.equal(graphs.length, 3, 'clip edges produce three genuinely compared visual segments');
+        assert.ok(graphs.some((graph) => (graph)!.includes('overlay=x=180:y=180:')));
+        assert.ok(graphs.every((graph) => (graph)!.includes('asetpts=N/SR/TB')));
+        assert.ok(graphs.some((graph) => (graph)!.includes('afade=t=in:')));
+        assert.ok(graphs.every((graph) => !(graph)!.includes('geq=')), 'old snapshot adds no opacity stage');
+        if (managed) {
+          assert.ok(graphs.some((graph) => (graph)!.includes(':alpha=premultiplied')));
+          assert.ok(graphs.some((graph) => (graph)!.includes('drawtext=')));
+          assert.equal(expected.filter((call) => call.kind === 'managed-image-stage').length, 1);
+        }
+        assert.deepEqual((await fsp.readdir(root) as unknown), [], 'each inert attempt removes its own temporary staging');
+        compared++;
+      }
+    }
+  }
+  assert.equal(childAttempts, 0);
+  assert.equal(compared, 8);
+  t.diagnostic('8 before/after comparisons with two explicit file-option aliases; all other argv and bytes exact; real in-memory40/41 receipt capture; all media mocked; zero child attempts; no encoded-file identity claim');
+});

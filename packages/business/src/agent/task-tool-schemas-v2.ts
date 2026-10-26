@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="7fccbd0124664c062d6c8d600e19f9a05f1637a677cfe7999295ba25b39df44d";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="a3a3d48c9c8dc8e84899117667b857990b9821a5b8d2034048961834f6211e11";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -889,6 +889,86 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "sourceHash",
    "expectedResultId",
    "cuts"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.shots.create": {
+  "type": "object",
+  "properties": {
+   "sourceAssetId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "sourceHash": {
+    "type": "string",
+    "pattern": "^[a-f0-9]{64}$"
+   },
+   "resultId": {
+    "type": "string",
+    "format": "uuid",
+    "description": "The newest current result of this video; a newer or stale result is refused."
+   },
+   "segments": {
+    "type": "array",
+    "items": {
+     "type": "integer",
+     "minimum": 1,
+     "maximum": 1501
+    },
+    "minItems": 1,
+    "maxItems": 100,
+    "description": "Segment numbers to build, from 1: segment n runs from cut n-1 (or the start) to cut n (or the end). Strictly increasing, at most 100."
+   },
+   "titlePrefix": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 40,
+    "description": "Shot titles are \"<prefix> NN\" by segment number. Default 参考."
+   },
+   "position": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     },
+     "y": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x",
+     "y"
+    ],
+    "additionalProperties": false,
+    "description": "Canvas position of the first new shot; the rest follow in rows of six. Omitted places the batch below the existing canvas content."
+   }
+  },
+  "required": [
+   "sourceAssetId",
+   "sourceHash",
+   "resultId",
+   "segments"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "scene.shots.undo": {
+  "type": "object",
+  "properties": {
+   "taskId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "expectedRevision": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 9007199254740991
+   }
+  },
+  "required": [
+   "taskId",
+   "expectedRevision"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

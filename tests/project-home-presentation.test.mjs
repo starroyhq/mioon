@@ -1,6 +1,0 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import {orderedHomeProjects} from '../apps/web/src/project-home-presentation.ts';
-const projects=[{id:'c',name:'Film 10',updatedAt:'2026-10-17T00:00:00Z',lastOpenedAt:null},{id:'b',name:'Film 2',updatedAt:'2026-10-18T00:00:00Z',lastOpenedAt:'2026-10-18T00:00:00Z'},{id:'a',name:'Ｆｉｌｍ 1',updatedAt:'2026-10-19T00:00:00Z',lastOpenedAt:'2026-10-17T00:00:00Z'}];
-test('project name search normalizes user text and leaves source order untouched',()=>{const before=structuredClone(projects);assert.deepEqual(orderedHomeProjects(projects,' film ','recent','en').map(row=>row.id),['b','a','c']);assert.deepEqual(orderedHomeProjects(projects,'missing','recent','en'),[]);assert.deepEqual(projects,before);});
-test('recent, updated and natural name order have deterministic ID tie breakers',()=>{assert.deepEqual(orderedHomeProjects(projects,'','updated','en').map(row=>row.id),['a','b','c']);assert.deepEqual(orderedHomeProjects(projects,'','name','en').map(row=>row.id),['a','b','c']);const same=[{id:'b',name:'Same',updatedAt:'2026-10-19'},{id:'a',name:'Same',updatedAt:'2026-10-19'}];assert.deepEqual(orderedHomeProjects(same,'','recent','en').map(row=>row.id),['a','b']);});

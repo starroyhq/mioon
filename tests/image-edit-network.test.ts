@@ -1,8 +1,9 @@
+import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {createImageEditJsonTransport, createImageJsonTransport, createCompatibleImageJsonTransport, resolveImageEditDestination} from '../packages/business/src/images/network.ts';
+import {createImageEditTransport, createImageJsonTransport, createCompatibleImageJsonTransport, resolveImageEditDestination} from '../packages/business/src/images/network.ts';
 import {IMAGE_EDIT_ENDPOINT, IMAGE_EDIT_NETWORK_LIMITS, IMAGE_NETWORK_LIMITS} from '../packages/business/src/images/profiles.ts';
 
 import {errorView} from './helpers/test-error.ts';
@@ -11,12 +12,12 @@ interface EditHttpsOptions {hostname: string; servername: string; path: string; 
   autoSelectFamily: boolean; rejectUnauthorized: boolean; headers: Record<string, string>;
   checkServerIdentity(name: string, cert: unknown): Error | undefined;
   lookup(host: string, options: {all: boolean}, callback: (error: Error | null, value?: {address: string; family: number}[]) => void): void}
-interface EditNetworkState {calls: number; posts: number; destroyed: number; options?: EditHttpsOptions; callback?: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void; request?: unknown; socket?: unknown; payload?: unknown; httpsRequest?: (options: EditHttpsOptions, callback: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void) => unknown}
-interface EditNetworkOptions {body?: Buffer; status?: number; headers?: Record<string, string>; complete?: boolean; peer?: string; port?: number;
+interface EditNetworkState {calls: number; posts: number; destroyed: number; options?: EditHttpsOptions; callback?: (response: Readable) => void; request?: EventEmitter; socket?: EventEmitter; payload?: unknown; httpsRequest?: (options: EditHttpsOptions, callback: (response: Readable) => void) => unknown}
+interface EditNetworkOptions {body?: Buffer; status?: number; headers?: Record<string, string | undefined>; complete?: boolean; peer?: string; port?: number;
   authorized?: boolean; onConnect?: (state: EditNetworkState) => void; onEnd?: (state: EditNetworkState) => void; noConnect?: boolean;
   noResponse?: boolean; chunks?: Buffer[]; duplicateSocket?: boolean; duplicateResponse?: boolean}
 type Deferred = {promise: Promise<unknown>; resolve: (value?: unknown) => void}
-const key = 'synthetic-edit-network-secret', answers = [{address: '8.8.8.8', family: 4}], args = {body: '{}', beforeDispatch: () => {}};
+const key = 'synthetic-edit-network-secret', answers = [{address: '8.8.8.8', family: 4}], args = {body: Buffer.from('{}'), contentType: 'multipart/form-data; boundary=offline-test', beforeDispatch: () => {}};
 const deferred = (): Deferred => { let resolve: Deferred['resolve'] = () => {}; const promise = new Promise<unknown>(done => { resolve = done; }); return {promise, resolve}; };
 function network({body = Buffer.from('{}'), status = 200, headers = {'content-type': 'application/json'}, complete = true,
   peer = '8.8.8.8', port = 443, authorized = true, onConnect, onEnd, noConnect = false, noResponse = false, chunks, duplicateSocket = false, duplicateResponse = false}: EditNetworkOptions = {}): EditNetworkState {
@@ -35,31 +36,44 @@ function network({body = Buffer.from('{}'), status = 200, headers = {'content-ty
   };
   return state;
 }
-const transport = (state: EditNetworkState, options: Record<string, unknown> = {}) => createImageEditJsonTransport({lookup: async () => answers, httpsRequest: state.httpsRequest, apiKey: key, ...options} as never);
+const transport = (state: EditNetworkState, options: Record<string, unknown> = {}) => createImageEditTransport({lookup: async () => answers, httpsRequest: state.httpsRequest, apiKey: key, ...options} as never);
 
 test('official edit factory pins endpoint, certificate, selected public address and dedicated headers; passed URLs cannot redirect it', async () => {
   const state = network(), order: string[] = []; let lookups = 0;
   const result = await transport(state, {baseUrl: 'https://attacker.invalid', endpoint: 'https://attacker.invalid/edits', path: '/override', lookup: async (hostname: string, options: {all: boolean; verbatim: boolean}) => { lookups++; assert.equal(hostname, 'api.openai.com'); assert.deepEqual(options, {all: true, verbatim: true}); return answers; }})({...args, beforeDispatch: () => { assert.equal(state.posts, 0); order.push('fence'); }});
   assert.equal(IMAGE_EDIT_ENDPOINT, 'https://api.openai.com/v1/images/edits'); assert.equal(result.dispatched, true); assert.equal(state.calls, 1); assert.equal(state.posts, 1); assert.equal(lookups, 1); assert.deepEqual(order, ['fence']);
   const options = state.options!; assert.equal(options.hostname, 'api.openai.com'); assert.equal(options.servername, 'api.openai.com'); assert.equal(options.path, '/v1/images/edits'); assert.equal(options.port, 443); assert.equal(options.method, 'POST');
-  assert.equal(options.agent, false); assert.equal(options.autoSelectFamily, false); assert.equal(options.rejectUnauthorized, true); assert.equal(options.headers.Authorization, `Bearer ${key}`); assert.equal(options.headers['Content-Type'], 'application/json'); assert.equal(options.headers['Content-Length'], '2'); assert.equal(options.headers.Cookie, undefined);
+  assert.equal(options.agent, false); assert.equal(options.autoSelectFamily, false); assert.equal(options.rejectUnauthorized, true); assert.equal(options.headers.Authorization, `Bearer ${key}`); assert.equal(options.headers['Content-Type'], args.contentType); assert.equal(options.headers['Content-Length'], '2'); assert.equal(options.headers.Cookie, undefined);
   assert.ok(options.checkServerIdentity('api.openai.com', {subjectaltname: 'DNS:attacker.invalid'}) instanceof Error);
   assert.equal(options.checkServerIdentity('ignored.invalid', {subjectaltname: 'DNS:api.openai.com'}), undefined);
-  assert.deepEqual(await new Promise((resolve, reject) => options.lookup('rebind.invalid', {all: true}, (error, result) => error ? reject(error) : resolve(result))), answers);
+  assert.deepEqual(await new Promise<({ address: string; family: number; }[] | undefined)>((resolve, reject) => options.lookup('rebind.invalid', {all: true}, (error, result) => error ? reject(error) : resolve(result))), answers);
   assert.equal(lookups, 1);
 });
 
 test('edit-only request cap admits exact derived maximum and rejects overflow without widening generation/custom bounds', async () => {
   const maximum = IMAGE_EDIT_NETWORK_LIMITS.maxRequestBytes; assert.ok(maximum > 8 * 1024 * 1024); assert.equal(IMAGE_NETWORK_LIMITS.maxRequestBytes, 16384);
-  const state = network(); await transport(state)({...args, body: 'x'.repeat(maximum)}); assert.equal(state.posts, 1); assert.equal(state.options!.headers['Content-Length'], String(maximum));
-  const blocked = network(); await assert.rejects(transport(blocked)({...args, body: 'x'.repeat(maximum + 1)}), {code: 'IMAGE_INVALID_REQUEST', dispatched: false}); assert.equal(blocked.calls, 0);
+  const state = network(); await transport(state)({...args, body: Buffer.alloc(maximum, 'x')}); assert.equal(state.posts, 1); assert.equal(state.options!.headers['Content-Length'], String(maximum));
+  const blocked = network(); await assert.rejects(transport(blocked)({...args, body: Buffer.alloc(maximum + 1, 'x')}), {code: 'IMAGE_INVALID_REQUEST', dispatched: false}); assert.equal(blocked.calls, 0);
   for (const factory of [createImageJsonTransport, createCompatibleImageJsonTransport]) {
     const legacy = network(), dependencies = {lookup: async () => answers, httpsRequest: legacy.httpsRequest, apiKey: key, baseUrl: 'https://custom.example/v1'};
-    await assert.rejects(factory(dependencies)({...args, body: 'x'.repeat(16385)}), {code: 'IMAGE_INVALID_REQUEST', dispatched: false}); assert.equal(legacy.calls, 0);
+    await assert.rejects(factory(dependencies)({...args, contentType: 'application/json', body: 'x'.repeat(16385)}), {code: 'IMAGE_INVALID_REQUEST', dispatched: false}); assert.equal(legacy.calls, 0);
     assert.throws(() => factory({...dependencies, limits: {maxRequestBytes: maximum}}), {code: 'IMAGE_INVALID_REQUEST'});
   }
   for (const value of [maximum + 1, 0, Infinity, NaN, -1]) assert.throws(() => transport(network(), {limits: {maxRequestBytes: value}}), {code: 'IMAGE_INVALID_REQUEST'});
   assert.equal(IMAGE_EDIT_NETWORK_LIMITS.maxResponseBytes, IMAGE_NETWORK_LIMITS.maxResponseBytes); assert.equal(IMAGE_EDIT_NETWORK_LIMITS.maxDecodedBytes, IMAGE_NETWORK_LIMITS.maxDecodedBytes);
+});
+
+test('edit only accepts bounded multipart buffers and snapshots bytes before DNS waits', async () => {
+  for (const invalid of [{body: '{}'}, {body: Buffer.from('{}'), contentType: 'application/json'}, {body: Buffer.from('{}'), contentType: 'multipart/form-data; boundary=bad\r\nAuthorization: private'}, {body: Buffer.from('{}'), contentType: 'multipart/form-data; boundary='}, {body: new Uint8Array([1]), contentType: args.contentType}]) {
+    const state = network(); await assert.rejects(transport(state)({...args, ...invalid}), {code: 'IMAGE_INVALID_REQUEST', dispatched: false}); assert.equal(state.calls, 0);
+  }
+  const entered = deferred(), release = deferred(), state = network(), body = Buffer.from('SDK-prepared-upload'), expected = Buffer.from(body);
+  const pending = transport(state, {lookup: () => { entered.resolve(); return release.promise; }})({...args, body});
+  await entered.promise; body.fill(0); release.resolve(answers); await pending;
+  assert.deepEqual(state.payload, expected); assert.equal(state.posts, 1);
+  for (const factory of [createImageJsonTransport, createCompatibleImageJsonTransport]) {
+    const blocked = network(); await assert.rejects(factory({lookup: async () => answers, httpsRequest: blocked.httpsRequest, apiKey: key, baseUrl: 'https://custom.example/v1'})(args), {code: 'IMAGE_INVALID_REQUEST', dispatched: false}); assert.equal(blocked.calls, 0);
+  }
 });
 
 test('all edit DNS answers and actual TLS peer must pass safety checks; no fallback to other addresses', async () => {
@@ -94,7 +108,7 @@ test('pre-dispatch aborts before DNS, during DNS, during TLS and inside fence ar
 test('redirect/error status never follows Location or retries and returned errors redact key, response and server messages', async () => {
   for (const status of [301, 302, 303, 307, 308, 401, 429, 500]) {
     const state = network({status, body: Buffer.from(`private body ${key}`), headers: {'content-type': 'application/json', location: `https://attacker.invalid/${key}`}});
-    await assert.rejects(transport(state)(args), error => { assert.equal(error.code, 'IMAGE_HTTP_ERROR'); assert.equal(error.dispatched, true); assert.equal(error.outcomeUnknown, true); assert.equal(error.message.includes(key), false); assert.equal(error.cause, undefined); return true; });
+    await assert.rejects(transport(state)(args), error => { assert.equal((error as RootFailure).code, 'IMAGE_HTTP_ERROR'); assert.equal((error as RootFailure).dispatched, true); assert.equal((error as RootFailure).outcomeUnknown, true); assert.equal((error as RootFailure).message.includes(key), false); assert.equal((error as RootFailure).cause, undefined); return true; });
     assert.equal(state.calls, 1); assert.equal(state.posts, 1); assert.equal(state.options!.hostname, 'api.openai.com');
   }
 });
@@ -110,8 +124,8 @@ test('edit streaming response bounds, headers, completeness and declared lengths
 
 test('deadlines and late callbacks never dispatch twice or resurrect completed/cancelled edit requests', async () => {
   const before = network({noConnect: true}); await assert.rejects(transport(before, {limits: {connectTimeoutMs: 5}})(args), {code: 'IMAGE_TIMEOUT', dispatched: false});
-  before.socket.emit('secureConnect'); before.request.emit('error', Error(`private ${key}`)); assert.equal(before.posts, 0);
+  before.socket!.emit('secureConnect'); before.request!.emit('error', Error(`private ${key}`)); assert.equal(before.posts, 0);
   const after = network({noResponse: true}); await assert.rejects(transport(after, {limits: {totalTimeoutMs: 10}})(args), {code: 'IMAGE_TIMEOUT', dispatched: true, outcomeUnknown: true});
-  const late = Readable.from([Buffer.from('{}')]); Object.assign(late, {statusCode: 200, headers: {'content-type': 'application/json'}, complete: true}); after.callback(late); after.socket.emit('secureConnect'); assert.equal(after.posts, 1); assert.equal(late.destroyed, true);
-  const complete = network(); await transport(complete)(args); const duplicate = Readable.from([Buffer.from('{}')]); complete.callback(duplicate); complete.request.emit('error', Error('late private failure')); complete.socket.emit('secureConnect'); assert.equal(complete.posts, 1); assert.equal(duplicate.destroyed, true);
+  const late = Readable.from([Buffer.from('{}')]); Object.assign(late, {statusCode: 200, headers: {'content-type': 'application/json'}, complete: true}); (after.callback)!(late); after.socket!.emit('secureConnect'); assert.equal(after.posts, 1); assert.equal(late.destroyed, true);
+  const complete = network(); await transport(complete)(args); const duplicate = Readable.from([Buffer.from('{}')]); (complete.callback)!(duplicate); complete.request!.emit('error', Error('late private failure')); complete.socket!.emit('secureConnect'); assert.equal(complete.posts, 1); assert.equal(duplicate.destroyed, true);
 });

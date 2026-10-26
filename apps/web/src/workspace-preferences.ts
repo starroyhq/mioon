@@ -18,7 +18,7 @@ export interface WorkspacePreferencesOptions {
   fetchImpl?: typeof fetch;
   storage?: WorkspaceStorage;
   getWorkspace?: ()=>WorkspacePreferencesWorkspace;
-  getStorageScope?: ()=>string|undefined;
+  getStorageScope?: ()=>string|null|undefined;
   onState?: (projectId: string,state: WorkspaceState)=>void;
   onStatus?: (projectId: string,status: WorkspacePreferencesStatus)=>void;
   delayMs?: number;

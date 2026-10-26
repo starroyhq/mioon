@@ -77,21 +77,29 @@ read/write tool allowlists are unchanged; there is no automatic context upload.
   at most 32 links, with cycle and mixed-owner rejection.
 - Output: one 1024×1024 opaque PNG, low quality, existing bounded result decoder.
 - Prompt: existing 2,000-character / 8,000-byte limit.
-- Official edit body: at most 11,197,021 bytes, derived from the source base64,
-  fixed JSON fields and worst-case escaped prompt. Existing generation/custom
-  body cap remains 16,384 bytes.
+- Official edit body: at most 8,416,992 bytes (8 MiB source, a conservative
+  12,000-byte prompt allowance and 16,384 bytes for multipart overhead).
+  Both the SDK form and the serialized multipart stream are bounded. Existing
+  generation/custom body cap remains 16,384 bytes.
 - Source verification admission: at most four active checks per shared database
   handle, at most two per project. Slots release when validation really settles;
   this is a process/owner-instance bound, not a multi-process global claim.
 - Existing task/page/receipt/retention limits remain; this is not a new generic
   task executor or request-key namespace.
 
-Official edits send JSON to `https://api.openai.com/v1/images/edits`, with
-`images:[{image_url:"data:image/png;base64,..."}]`. Fixed moderation is `auto`. No Files API upload,
-remote-image URL, redirect, protocol fallback or automatic POST retry is used.
-Private verified source bytes are passed only to the adapter, never stored as
-base64 in SQLite. `input_fidelity` is omitted because the cited pinned-model
-contract does not establish it for this profile.
+Since 2026-10-26, official edits use the pinned `openai@7.39.0` SDK's
+`images.edit()` to generate multipart for `https://api.openai.com/v1/images/edits`.
+The source is a single backend-created `image/png` File named `source.png`,
+constructed from the project-owned, hash-checked PNG bytes. The host retains
+DNS/TLS pinning, credential binding and the synchronous dispatch fence after
+serialization. No Files API upload, remote-image URL, redirect, capability-probe
+request, protocol fallback or automatic POST retry is used.
+
+The SDK edit contract does not expose `moderation`, so this implementation no
+longer explicitly sends the former JSON request's `moderation:auto`; native
+service handling applies. Multipart editing is not claimed to be wire-equivalent
+to the previous JSON/Base64 request. Private source bytes are never stored as
+Base64 in SQLite. `input_fidelity` remains omitted for this bounded profile.
 
 ## Recovery, ownership and privacy
 
