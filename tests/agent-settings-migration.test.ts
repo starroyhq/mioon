@@ -57,6 +57,24 @@ test('strict legacy metadata projects CC only in memory, with no read-time revis
   assert.deepEqual(await restarted.get(), saved);
 });
 
+test('legacy custom settings keep CC even when their URL and model look like Anthropic', async t => {
+  const legacy={presetId:'custom',platformId:'custom',baseUrl:'https://api.anthropic.com',model:'claude-haiku-4-5'};
+  const seed=envelope(legacy),persistence=memory(seed),settings=await createAgentSettings({persistence});t.after(()=>settings.close());
+  const snapshot=await settings.get();
+  assert.deepEqual(snapshot.configuration,{...legacy,protocol:'chat_completions'});
+  assert.equal(snapshot.revision,7);assert.equal(persistence.writes,0);assert.deepEqual(persistence.value,seed);
+});
+
+test('MiniMax v1 and v2 settings retain their original protocol and values without read-time migration', async t => {
+  const saved={presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/user-prefix',model:'MiniMax-M3'};
+  for(const version of [1,2]){
+    const seed=envelope(version===1?saved:{...saved,protocol:'chat_completions'},version),persistence=memory(seed);
+    const settings=await createAgentSettings({persistence});t.after(()=>settings.close());
+    assert.deepEqual((await settings.get()).configuration,{...saved,protocol:'chat_completions'});
+    assert.equal(persistence.writes,0);assert.deepEqual(persistence.value,seed);
+  }
+});
+
 test('actual v1 settings file stays byte-identical until first authorized atomic v2 save', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-agent-migration-'));
   t.after(() => rm(root, {recursive: true, force: true}));
@@ -151,6 +169,26 @@ test('protocol/model-only session edits keep the key, but full configuration and
   const newModel = await settings.put(update(2, {...responses(), model: 'gpt-4.1-mini-2025-04-14'}));
   assert.equal((await acquire(settings, newModel)).apiKey, KEY);
   assert.equal(persistence.value!.secret, null); assert.equal(JSON.stringify(persistence.value).includes(KEY), false);
+});
+
+test('explicit Messages protocol changes retain the bound ciphertext and v2 restart while stale acquisition fails', async t => {
+  for(const presetId of ['custom','minimax']){
+  const vault = codec(), persistence = memory(null), settings = await createAgentSettings({persistence, secretCodec: vault, storage: persistent});
+  t.after(() => settings.close());
+  const custom = {...cc(), presetId, platformId: presetId==='custom'?'custom':'china', baseUrl: 'https://compat.example.com/anthropic', model: 'explicit-model'};
+  const before = await settings.put(update(0, custom, {action: 'replace', storage: 'persistent', value: KEY}));
+  const ciphertext = persistence.value!.secret!.encrypted;
+  const changed = await settings.put(update(1, {...custom, protocol: 'anthropic_messages'}));
+  assert.equal(changed.configuration.protocol, 'anthropic_messages'); assert.equal(persistence.value!.version, 2);
+  assert.equal(persistence.value!.secret!.encrypted, ciphertext); assert.equal(vault.encryptions, 1);
+  assert.equal((await acquire(settings, changed)).apiKey, KEY);
+  await assert.rejects(acquire(settings, before), {code: 'AGENT_SETTINGS_CONFLICT'});
+  const restarted = await createAgentSettings({persistence, secretCodec: vault, storage: persistent}); t.after(() => restarted.close());
+  const restored = await restarted.get(); assert.deepEqual(restored.configuration, changed.configuration);
+  assert.equal((await acquire(restarted, restored)).apiKey, KEY); assert.equal(vault.encryptions, 1);
+  assert.equal(persistence.value!.secret!.encrypted, ciphertext);
+  assert.equal(JSON.stringify(persistence.value).includes(KEY), false);
+  }
 });
 
 test('preset/platform/base-path edits invalidate legacy stored keys even when a locked vault cannot decrypt', async t => {

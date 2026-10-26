@@ -7,6 +7,8 @@ import {randomUUID} from 'node:crypto';
 import {createAgentClient,AGENT_CONTROL_COMMANDS} from '../packages/client/src/agent.ts';
 import {sanitizeAgentSettingsResult, type AgentSettingsSnapshot} from '../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS,DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
+import {AGENT_PROTOCOLS} from '@mioon/contracts';
+import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
 const projectId=randomUUID(),runId=randomUUID(),stepId=randomUUID(),changeId=randomUUID(),requestId=randomUUID();
 const configuration={presetId:'custom',platformId:'custom',baseUrl:'https://synthetic.example',model:'synthetic-model',protocol:'chat_completions'};
 const policy={revision:0,stepLimit:30,modes:{read_only:'direct',local_reversible:'direct',local_irreversible:'direct',paid:'confirm'}};
@@ -16,7 +18,9 @@ const snapshot=(status: string|undefined='running',revision: number|undefined=1)
 const ok=(value: unknown)=>new Response(JSON.stringify({ok:true,data:value}),{headers:{'content-type':'application/json'}});
 
 test('settings, project and doctor accept the actual sanitized preset catalog without making optional metadata required',async()=>{
- const actual=sanitizeAgentSettingsResult({...settings,configuration:DEFAULT_AGENT_CONFIGURATION});
+ for(const protocol of Object.keys(AGENT_PROTOCOLS) as AgentProtocol[]){
+ const chosen=protocol==='chat_completions'?DEFAULT_AGENT_CONFIGURATION:{...configuration,protocol};
+ const actual=sanitizeAgentSettingsResult({...settings,configuration:chosen});
  assert.deepEqual(actual.presets,AGENT_PRESETS);
  const client=createAgentClient({env,fetchImpl:async url=>{
   if((url as string).endsWith('/settings'))return ok(actual);
@@ -26,6 +30,39 @@ test('settings, project and doctor accept the actual sanitized preset catalog wi
  assert.deepEqual((await client.settingsGet()).presets,AGENT_PRESETS);
  assert.deepEqual((await client.list({projectId})).settings.presets,AGENT_PRESETS);
  assert.deepEqual((await client.doctor()).settings.presets,AGENT_PRESETS);
+ assert.deepEqual((await client.settingsGet()).configuration,chosen);
+ }
+});
+
+test('settings accepts every explicit shared protocol without retry and rejects unknown protocols before dispatch',async()=>{
+ const calls: FetchCapture[]=[];
+ const client=createAgentClient({env,fetchImpl:async(url,options)=>{
+  calls.push({url,options} as FetchCapture);
+  const input=JSON.parse(options!.body as string) as {configuration:AgentSettingsSnapshot['configuration']};
+  return ok(sanitizeAgentSettingsResult({...settings,configuration:input.configuration}));
+ }});
+ for(const protocol of Object.keys(AGENT_PROTOCOLS) as AgentProtocol[]){
+  const selected={...configuration,protocol};
+  assert.deepEqual((await client.settingsPut({expectedRevision:4,configuration:selected})).configuration,selected);
+  const sent=JSON.parse(calls.at(-1)!.options.body!) as {configuration:unknown};
+  assert.deepEqual(sent.configuration,selected);
+ }
+ assert.equal(calls.length,3);
+ await assert.rejects(client.settingsPut({expectedRevision:4,configuration:{...configuration,protocol:'auto'}}),{code:'VALIDATION_ERROR'});
+ assert.equal(calls.length,3);
+});
+
+test('MiniMax Messages settings preserve the explicit provider, platform, URL and model through the management client',async()=>{
+ const selected={presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/anthropic',model:'MiniMax-M3',protocol:'anthropic_messages' as const};
+ const calls:FetchCapture[]=[];
+ const client=createAgentClient({env,fetchImpl:async(url,options)=>{
+  calls.push({url,options} as FetchCapture);
+  return ok(sanitizeAgentSettingsResult({...settings,configuration:selected}));
+ }});
+ assert.deepEqual((await client.settingsPut({expectedRevision:4,configuration:selected})).configuration,selected);
+ const sent=JSON.parse(calls[0]!.options.body!) as {expectedRevision:number;configuration:unknown;secret:unknown};
+ assert.equal(sent.expectedRevision,4);assert.deepEqual(sent.configuration,selected);assert.deepEqual(sent.secret,{action:'keep'});
+ assert.equal(calls.length,1);assert.equal(calls[0]!.options.method,'PUT');
 });
 
 test('Agent management is a separate local client, rejects extra authority and never invents request IDs',async()=>{

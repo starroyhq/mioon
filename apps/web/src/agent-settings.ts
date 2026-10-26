@@ -233,8 +233,7 @@ export function createAgentSettingsSession({ client = createAgentSettingsClient(
   function save(value = ''): Promise<boolean> {
     const snapshot = state.snapshot, draft = state.draft;
     if (!active || !visible || !agentSettingsCanSave(state) || !snapshot || !draft) return Promise.resolve(false);
-    const platform = snapshot.presets.find(item => item.id === draft.presetId)?.platforms.find(item => item.id === draft.platformId);
-    const issue = agentSettingsIssue(draft, value) || (platform && !platform.availableProtocols.includes(draft.protocol as AgentProtocol) ? '此平台尚未提供所选协议配置，请明确选择可用协议。' : ''), issueDisplayMessage = agentSettingsIssueDescriptor(draft, value) || (platform && !platform.availableProtocols.includes(draft.protocol as AgentProtocol) ? message('agent.settings.issue.platformProtocol') : null);
+    const issue = agentSettingsIssue(draft, value), issueDisplayMessage = agentSettingsIssueDescriptor(draft, value);
     if (issue) { publish({ phase: 'error', message: issue, displayMessages: issueDisplayMessage ? [issueDisplayMessage] : [] }); return Promise.resolve(false); }
     if (value && state.storage === 'persistent' && !snapshot.storage.persistentAvailable) {
       publish({ phase: 'error', message: errorText('AGENT_SETTINGS_STORAGE_UNAVAILABLE'), displayMessages: [errorDescriptor('AGENT_SETTINGS_STORAGE_UNAVAILABLE')] }); return Promise.resolve(false);
@@ -295,14 +294,14 @@ export function agentSettingsIssueDescriptor(draft: AgentConfiguration | null | 
   return null;
 }
 
-const presetNames: Record<string, string> = Object.freeze({ openai: 'OpenAI', deepseek: 'DeepSeek', qwen: 'Qwen / DashScope', zhipu: 'Zhipu / Z.ai', kimi: 'Kimi / Moonshot', minimax: 'MiniMax', openrouter: 'OpenRouter' });
+const presetNames: Record<string, string> = Object.freeze({ openai: 'OpenAI', anthropic: 'Anthropic', deepseek: 'DeepSeek', qwen: 'Qwen / DashScope', zhipu: 'Zhipu / Z.ai', kimi: 'Kimi / Moonshot', minimax: 'MiniMax', openrouter: 'OpenRouter' });
 export const agentPresetLabel = (preset: { id: string }, t: Translate): string => preset.id === 'custom' ? t('agent.settings.presets.custom') : preset.id === 'ollama' ? t('agent.settings.presets.ollama') : (Object.hasOwn(presetNames, preset.id) ? presetNames[preset.id] : preset.id);
 const platformKeys: Record<string, MessageKey> = Object.freeze({ beijing: 'agent.settings.platform.beijing', singapore: 'agent.settings.platform.singapore', 'workspace-cn-beijing': 'agent.settings.platform.workspaceBeijing', 'workspace-ap-southeast-1': 'agent.settings.platform.workspaceSingapore', 'workspace-us-east-1': 'agent.settings.platform.workspaceUs', 'workspace-cn-hongkong': 'agent.settings.platform.workspaceHongkong', 'workspace-ap-northeast-1': 'agent.settings.platform.workspaceTokyo', 'workspace-eu-central-1': 'agent.settings.platform.workspaceFrankfurt', custom: 'agent.settings.platform.custom', local: 'agent.settings.platform.local' });
 export function agentPlatformLabel(presetId: string, platform: { id: string }, t: Translate): string {
   if (Object.hasOwn(platformKeys, platform.id)) return t(platformKeys[platform.id]);
   const brand = presetId === 'zhipu' ? platform.id === 'china' ? 'BigModel' : 'Z.ai' : presetId === 'kimi' ? 'Moonshot' : presetId === 'minimax' ? 'MiniMax' : null;
   if (brand && ['china', 'international'].includes(platform.id)) return t(platform.id === 'china' ? 'agent.settings.platform.china' : 'agent.settings.platform.international', { brand });
-  return presetId === 'openai' ? 'OpenAI' : presetId === 'deepseek' ? 'DeepSeek API' : presetId === 'openrouter' ? 'OpenRouter' : platform.id;
+  return presetId === 'openai' ? 'OpenAI' : presetId === 'anthropic' ? 'Anthropic' : presetId === 'deepseek' ? 'DeepSeek API' : presetId === 'openrouter' ? 'OpenRouter' : platform.id;
 }
-const presetNoteKeys: Record<string, MessageKey> = Object.freeze({ openai: 'agent.settings.presets.openaiNote', deepseek: 'agent.settings.presets.deepseekNote', qwen: 'agent.settings.presets.qwenNote', zhipu: 'agent.settings.presets.zhipuNote', kimi: 'agent.settings.presets.kimiNote', minimax: 'agent.settings.presets.minimaxNote', openrouter: 'agent.settings.presets.openrouterNote', custom: 'agent.settings.presets.customNote', ollama: 'agent.settings.presets.ollamaNote' });
+const presetNoteKeys: Record<string, MessageKey> = Object.freeze({ openai: 'agent.settings.presets.openaiNote', anthropic: 'agent.settings.presets.anthropicNote', deepseek: 'agent.settings.presets.deepseekNote', qwen: 'agent.settings.presets.qwenNote', zhipu: 'agent.settings.presets.zhipuNote', kimi: 'agent.settings.presets.kimiNote', minimax: 'agent.settings.presets.minimaxNote', openrouter: 'agent.settings.presets.openrouterNote', custom: 'agent.settings.presets.customNote', ollama: 'agent.settings.presets.ollamaNote' });
 export const agentPresetNote = (preset: { id: string } | null | undefined, platform: { id?: string } | null | undefined, t: Translate): string => t(typeof preset?.id === 'string' && preset.id === 'qwen' && typeof platform?.id === 'string' && platform.id.startsWith('workspace-') ? 'agent.settings.presets.qwenWorkspace' : (typeof preset?.id === 'string' && Object.hasOwn(presetNoteKeys, preset.id) ? presetNoteKeys[preset.id] : 'agent.settings.presetFallback'));

@@ -3,6 +3,7 @@
 export const AGENT_PROTOCOLS = Object.freeze({
   chat_completions: Object.freeze({label: 'Chat Completions', path: '/chat/completions'}),
   responses: Object.freeze({label: 'Responses', path: '/responses'}),
+  anthropic_messages: Object.freeze({label: 'Anthropic Messages', path: '/v1/messages'}),
 });
 
 export type AgentProtocol = keyof typeof AGENT_PROTOCOLS;

@@ -55,7 +55,7 @@ function remoteHostAllowed(host: string): boolean {
 }
 /** Syntax-only gate. NO DNS/network is performed here. Future model gateway must
  * resolve, validate and pin the actual destination, and reject redirects. */
-export function normalizeAgentBaseUrl(value: unknown, {local = false, selfPort}: {local?: boolean; selfPort?: number} = {}): string {
+export function normalizeAgentBaseUrl(value: unknown, {local = false, selfPort, protocol}: {local?: boolean; selfPort?: number; protocol?: AgentProtocol} = {}): string {
   if (typeof value !== 'string' || !value || value.length > 2048 || /[\s\\%?#@]/u.test(value) || controls.test(value)) invalid();
   if (!/^https?:\/\//i.test(value)) invalid();
   // Reject dot-segment normalization rather than silently changing a destination.
@@ -66,7 +66,7 @@ export function normalizeAgentBaseUrl(value: unknown, {local = false, selfPort}:
   if (url.username || url.password || url.search || url.hash || (url.port && Number(url.port) === 0)) invalid();
   const pathname = url.pathname.replace(/\/+$/, '');
   if (local) {
-    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || pathname !== '/v1') invalid();
+    if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || pathname !== (protocol === 'anthropic_messages' ? '' : '/v1')) invalid();
     const port = Number(url.port || (url.protocol === 'https:' ? 443 : 80));
     if (port === selfPort) invalid();
   } else if (url.protocol !== 'https:' || !remoteHostAllowed(url.hostname)) invalid();
@@ -80,7 +80,7 @@ export function parseAgentConfiguration(value: unknown, options: {selfPort?: num
   if (!platform || typeof value.protocol !== 'string' || !Object.hasOwn(AGENT_PROTOCOLS, value.protocol) ||
     !(platform.availableProtocols as readonly string[]).includes(value.protocol)) invalid();
   if (typeof value.model !== 'string' || !value.model.trim() || value.model.length > 200 || controls.test(value.model)) invalid();
-  return {presetId: value.presetId as string, platformId: value.platformId as string, baseUrl: normalizeAgentBaseUrl(value.baseUrl, {local: value.presetId === 'ollama', selfPort: options.selfPort}), model: value.model.trim(), protocol: value.protocol as AgentProtocol};
+  return {presetId: value.presetId as string, platformId: value.platformId as string, baseUrl: normalizeAgentBaseUrl(value.baseUrl, {local: value.presetId === 'ollama', selfPort: options.selfPort, protocol: value.protocol as AgentProtocol}), model: value.model.trim(), protocol: value.protocol as AgentProtocol};
 }
 // Credential identity deliberately excludes model and protocol; authorization
 // checks still compare the full configuration and its revision before delivery.

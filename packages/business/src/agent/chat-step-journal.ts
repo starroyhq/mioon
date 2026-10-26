@@ -7,6 +7,7 @@ import {EDIT_TOOL_LIMITS, EDIT_CAPABILITY_FIELDS, editToolPolicy, validEditText,
 import {deriveAgentEndpoint, AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_MOVE_PROVENANCE, isAgentTimelineMoveTarget, AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_PROVENANCE, isAgentTimelineGainTarget, agentTimelineGainReviewTarget, agentTimelineGainModelContext} from '@mioon/contracts';
 import {TIMELINE_EDIT_TOOL_LIMITS, TIMELINE_EDIT_CAPABILITY_FIELDS, timelineEditToolPolicy, selectedTimelineClipMessage, parseTimelineEditToolArguments} from './timeline-edit-tool-policy.ts';
 import {buildAgentRequest} from './agent-gateway.ts';
+import {anthropicMessages} from './anthropic-wire.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_LIMITS, timelineGainEditToolPolicy, selectedTimelineGainMessage, parseTimelineGainEditToolArguments, parseTimelineGainConsent, timelineGainConsentMatches} from './timeline-gain-tool-policy.ts';
 import type {ChatRun, ChatStoredEvent, ChatProvenance, ChatActivityEntry} from './chat-journal.ts';
 import type {ToolCall, WireMessage} from './tool-wire.ts';
@@ -136,19 +137,24 @@ function provenance(value: unknown, projectId: string, observation = false): voi
 }
 function request(value: unknown, run: ChatRun, round: number): Record<string, unknown> {
   if (!exactObject(value, ['protocol', 'body', 'context', 'provenance']) || value.protocol !== run.configuration.protocol ||
-    !['chat_completions', 'responses'].includes(value.protocol as string)) bad();
+    !['chat_completions', 'responses', 'anthropic_messages'].includes(value.protocol as string)) bad();
   provenance(value.provenance, run.projectId);
   if (!same(value.provenance, run.provenance) || !Array.isArray(value.context) || value.context.length > 64) bad();
   json(value.context, MAX_BODY_BYTES);
   const body = parse(value.body, MAX_BODY_BYTES);
-  const allowed = ['model', 'messages', 'input', 'instructions', 'stream', 'store', 'max_tokens', 'max_completion_tokens', 'max_output_tokens',
+  const allowed = value.protocol === 'anthropic_messages' ? ['model', 'messages', 'system', 'stream', 'max_tokens', 'thinking', 'tools', 'tool_choice'] : ['model', 'messages', 'input', 'instructions', 'stream', 'store', 'max_tokens', 'max_completion_tokens', 'max_output_tokens',
     'thinking', 'enable_thinking', 'provider', 'reasoning_effort', 'reasoning', 'truncation', 'tools', 'tool_choice', 'parallel_tool_calls'];
   if (!object(body) || Object.keys(body).some(key => !allowed.includes(key)) || body.model !== run.configuration.model || body.stream !== true ||
     Object.hasOwn(body, 'store') && body.store !== false) bad();
-  if (value.protocol === 'chat_completions' ? !Array.isArray(body.messages) || Object.hasOwn(body, 'input') :
+  if (value.protocol === 'anthropic_messages') {
+    if (!Array.isArray(body.messages) || !text(body.system, 32768, 1) || !Number.isSafeInteger(body.max_tokens) || (body.max_tokens as number)<1 || (body.max_tokens as number)>2048 ||
+      !exactObject(body.thinking, ['type']) || body.thinking.type !== 'disabled') bad();
+  } else if (value.protocol === 'chat_completions' ? !Array.isArray(body.messages) || Object.hasOwn(body, 'input') :
     !Array.isArray(body.input) || !text(body.instructions, 32768) || Object.hasOwn(body, 'messages') || body.store !== false) bad();
   if (round === 2 && (Object.hasOwn(body, 'tools') && (!Array.isArray(body.tools) || body.tools.length) ||
-    Object.hasOwn(body, 'tool_choice') && body.tool_choice !== 'none')) bad();
+    Object.hasOwn(body, 'tool_choice') && (value.protocol === 'anthropic_messages'
+      ? !exactObject(body.tool_choice, ['type']) || body.tool_choice.type !== 'none'
+      : body.tool_choice !== 'none'))) bad();
   return body;
 }
 function toolCall(value: unknown, mode: string | undefined): void {
@@ -176,6 +182,19 @@ function output(value: unknown, protocol: string, mode: string | undefined): voi
       const call = message.tool_calls[0];
       if (!exactObject(call, ['id', 'type', 'function']) || call.id !== (value.toolCall as ToolCall).id || call.type !== 'function' ||
         !exactObject(call.function, ['name', 'arguments']) || call.function.name !== (value.toolCall as ToolCall).name || call.function.arguments !== (value.toolCall as ToolCall).argumentsJson) bad();
+    } else if (protocol === 'anthropic_messages') {
+      const message = value.providerOutput;
+      if (!exactObject(message, ['role', 'content']) || message.role !== 'assistant' || !Array.isArray(message.content) || !message.content.length || message.content.length > 128) bad();
+      let calls = 0;
+      for (const block of message.content) {
+        if (object(block) && block.type === 'text') {
+          if (!exactObject(block, ['type', 'text']) || !text(block.text, 256 * 1024)) bad();
+        } else {
+          const expected = value.toolCall as ToolCall;
+          if (!exactObject(block, ['type', 'id', 'name', 'input']) || block.type !== 'tool_use' || ++calls !== 1 || block.id !== expected.id || block.name !== expected.name || !isDeepStrictEqual(block.input, expected.arguments)) bad();
+        }
+      }
+      if (calls !== 1) bad();
     } else {
       if (!Array.isArray(value.providerOutput) || value.providerOutput.length > 64) bad();
       const providerOutput = value.providerOutput as unknown[];
@@ -220,16 +239,20 @@ function continuation(requestValue: unknown, run: ChatRun, steps: ChatStep[]): v
     const expected = [...(first.messages as unknown[]), (steps[0].output as ChatOutput).providerOutput,
       {role: 'tool', tool_call_id: (tool.intent as ChatToolIntent).toolCall.id, content: tool.observation.resultJson}];
     if (!same(body.messages, expected)) bad();
+  } else if ((requestValue as Record<string, unknown>).protocol === 'anthropic_messages') {
+    const expected = [...(first.messages as unknown[]), (steps[0].output as ChatOutput).providerOutput,
+      {role: 'user', content: [{type: 'tool_result', tool_use_id: (tool.intent as ChatToolIntent).toolCall.id, content: tool.observation.resultJson}]}];
+    if (!same(body.messages, expected)) bad();
   } else {
     const expected = [...(first.input as unknown[]), ...((steps[0].output as ChatOutput).providerOutput as unknown[]),
       {type: 'function_call_output', call_id: (tool.intent as ChatToolIntent).toolCall.id, output: tool.observation.resultJson}];
     if (!same(body.input, expected)) bad();
   }
   for (const key of Object.keys(first)) if (!['messages', 'input', 'tools', 'tool_choice', 'parallel_tool_calls'].includes(key) && !same(body[key], first[key])) bad();
-  if (run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT || run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT) {
+  if (run.contextMode === AGENT_TIMELINE_MOVE_CONTEXT || run.contextMode === AGENT_TIMELINE_GAIN_CONTEXT || run.configuration.protocol === 'anthropic_messages') {
     let expected: string;
     try {
-      expected = buildAgentRequest({configuration: run.configuration, messages: (requestValue as Record<string, unknown>).context as WireMessage[], readTools: {phase: 'answer', scope: run.contextMode,
+      expected = buildAgentRequest({configuration: run.configuration, messages: (requestValue as Record<string, unknown>).context as WireMessage[], readTools: {phase: 'answer', ...(run.contextMode === 'project_inspection' ? {} : {scope: run.contextMode}),
         toolCall: (tool.intent as ChatToolIntent).toolCall, providerOutput: (steps[0].output as ChatOutput).providerOutput, result: tool.observation.resultJson}}).body;
     } catch { bad(); }
     if ((requestValue as Record<string, unknown>).body !== expected) bad();
@@ -305,11 +328,15 @@ export function createChatStepJournal({store, readRun, row, account, saveRun, ap
       messages.some((message, index) => !exactObject(message, ['role', 'content']) || !text(message.content, 32768) ||
         message.role !== (index === 0 ? 'system' : index % 2 ? 'user' : 'assistant')) || (messages.at(-1) as {content?: unknown}).content !== (timelineGain ? selectedTimelineGainMessage(run.userText, run.editTarget, agentTimelineGainModelContext) : timelineEdit ? selectedTimelineClipMessage(run.userText, run.editTarget) : edit ? selectedShotMessage(run.userText, run.editTarget as {title: string; prompt: string}) : run.userText)) bad();
     const body = parse(execution.request.body, MAX_BODY_BYTES) as Record<string, unknown>;
-    if (execution.request.protocol === 'chat_completions' ? !same(body.messages, messages) :
+    if (execution.request.protocol === 'anthropic_messages') {
+      let native:ReturnType<typeof anthropicMessages>;
+      try {native = anthropicMessages(messages);} catch {bad();}
+      if (body.system !== native.system || !same(body.messages, native.messages)) bad();
+    } else if (execution.request.protocol === 'chat_completions' ? !same(body.messages, messages) :
       body.instructions !== messages[0].content || !same(body.input, messages.slice(1))) bad();
-    if (timelineEdit || timelineGain) {
+    if (timelineEdit || timelineGain || execution.request.protocol === 'anthropic_messages') {
       let expected: string;
-      try { expected = buildAgentRequest({configuration: run.configuration, messages: messages as WireMessage[], readTools: {phase: 'request', scope: run.contextMode}}).body; } catch { bad(); }
+      try { expected = buildAgentRequest({configuration: run.configuration, messages: messages as WireMessage[], readTools: {phase: 'request', ...(run.contextMode === 'project_inspection' ? {} : {scope: run.contextMode})}}).body; } catch { bad(); }
       if (execution.request.body !== expected) bad();
     }
   }

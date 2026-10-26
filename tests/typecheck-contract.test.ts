@@ -53,7 +53,13 @@ function executableSource(source: string, loader: 'ts' | 'js') {
 test('typed protocol preserves the frozen baseline executable contract', async () => {
   assert.equal(createHash('sha256').update(frozenBaselineSource).digest('hex'), 'd83f1f42d8a46c0740179a86a927e88a8288568942ae3dc10de44e3342e2e673');
   const source = await readFile(path.join(root, sourceName), 'utf8');
-  assert.equal(executableSource(source, 'ts'), executableSource(frozenBaselineSource, 'js'));
+  // The third catalog entry is the only authorized extension; every original
+  // executable statement, including endpoint validation, must still match.
+  const addition = "  anthropic_messages: Object.freeze({label: 'Anthropic Messages', path: '/v1/messages'}),\n";
+  assert.equal(source.split(addition).length, 2, 'the exact new protocol entry is present once');
+  assert.equal(executableSource(source.replace(addition, ''), 'ts'), executableSource(frozenBaselineSource, 'js'));
+  const {AGENT_PROTOCOLS} = await import('../packages/contracts/src/agent-protocol.ts');
+  assert.deepEqual(AGENT_PROTOCOLS.anthropic_messages, {label: 'Anthropic Messages', path: '/v1/messages'});
   assert.doesNotMatch(source, /@ts-(?:ignore|nocheck|expect-error)\b|\bany\b/);
   const barrel = await readFile(path.join(root, 'packages/contracts/src/index.ts'), 'utf8');
   assert.ok(barrel.includes("export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.ts';"));
@@ -70,7 +76,7 @@ test('native Node package barrel and real TS implementation share identity', asy
   assert.ok(Object.isFrozen(direct.AGENT_PROTOCOLS));
   for (const [protocol, definition] of Object.entries(direct.AGENT_PROTOCOLS)) {
     assert.ok(Object.isFrozen(definition));
-    assert.equal(direct.deriveAgentEndpoint({protocol: protocol as 'chat_completions' | 'responses', baseUrl: 'https://api.example.com/v1'}),
+    assert.equal(direct.deriveAgentEndpoint({protocol: protocol as keyof typeof direct.AGENT_PROTOCOLS, baseUrl: 'https://api.example.com/v1'}),
       `https://api.example.com/v1${definition.path}`);
   }
   for (const configuration of [undefined, null, {}, {protocol: 'auto', baseUrl: 'https://api.example.com/v1'},

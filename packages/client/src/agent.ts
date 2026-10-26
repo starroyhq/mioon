@@ -9,12 +9,14 @@ import type {ClientOptions} from './index.ts';
 import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
 import {agentTaskStorageSnapshotSchema} from '@mioon/contracts/agent-task-storage';
-import {agentAuthorizationSnapshotSchema} from '@mioon/contracts';
+import {agentAuthorizationSnapshotSchema,AGENT_PROTOCOLS} from '@mioon/contracts';
 
 const id=z.string().uuid(),revision=z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),requestId=z.string().min(8).max(200);
 const text=z.string().max(4096),code=z.string().regex(/^[A-Z][A-Z0-9_]{1,90}$/u);
-export const agentConfigurationSchema=z.object({presetId:z.string().min(1).max(100),platformId:z.string().min(1).max(100),baseUrl:z.string().url().max(2048).refine(value=>{try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&!u.search&&!u.hash;}catch{return false;}}),model:z.string().min(1).max(200),protocol:z.enum(['chat_completions','responses'])}).strict();
-const presetProtocols={defaultProtocol:z.enum(['chat_completions','responses']),availableProtocols:z.array(z.enum(['chat_completions','responses'])).max(2),supportedModelHints:z.record(z.array(text).max(20)).optional(),protocolNotes:z.record(text).optional()};
+type AgentProtocol=keyof typeof AGENT_PROTOCOLS;
+const agentProtocolSchema=z.enum(Object.keys(AGENT_PROTOCOLS) as [AgentProtocol,...AgentProtocol[]]);
+export const agentConfigurationSchema=z.object({presetId:z.string().min(1).max(100),platformId:z.string().min(1).max(100),baseUrl:z.string().url().max(2048).refine(value=>{try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)&&!u.username&&!u.password&&!u.search&&!u.hash;}catch{return false;}}),model:z.string().min(1).max(200),protocol:agentProtocolSchema}).strict();
+const presetProtocols={defaultProtocol:agentProtocolSchema,availableProtocols:z.array(agentProtocolSchema).max(agentProtocolSchema.options.length),supportedModelHints:z.record(z.array(text).max(20)).optional(),protocolNotes:z.record(text).optional()};
 const platformSchema=z.object({id:text,label:text,baseUrl:text,model:text,...presetProtocols,notes:text.optional(),baseUrlTemplate:text.optional(),sources:z.array(z.object({label:text,url:text})).max(20)});
 export const agentSettingsSnapshotSchema=z.object({revision,configuration:agentConfigurationSchema,secret:z.object({configured:z.boolean(),storage:z.enum(['none','session','persistent'])}),storage:z.object({persistentAvailable:z.boolean(),sessionScope:z.enum(['app','server']),reasonCode:code.nullable()}),presets:z.array(z.object({id:text,label:text,description:text,...presetProtocols,platforms:z.array(platformSchema).max(20)})).max(30),scope:z.literal('settings_only'),verification:z.literal('not_tested')}).refine(value=>value.secret.configured===(value.secret.storage!=='none'));
 export type AgentSettingsSnapshot=z.infer<typeof agentSettingsSnapshotSchema>;
