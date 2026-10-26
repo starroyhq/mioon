@@ -1,0 +1,23 @@
+name: 功能建议
+description: 描述创作目标、当前障碍和建议的行为
+title: "[Feature] "
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 想完成什么任务？
+      description: 描述具体使用场景和当前流程的障碍
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 希望如何改进？
+      description: 说明期望的行为与结果
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 已尝试的替代方法（可选）
+      description: 请勿包含密钥、私人素材或工作区数据

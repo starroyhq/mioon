@@ -2,6 +2,7 @@
   "name": "@mioon/desktop",
   "version": "0.4.1",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Mioon secure Electron desktop host",
   "main": "build/main.cjs",
