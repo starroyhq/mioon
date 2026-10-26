@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-26",
+  "environment": "macOS development Electron; host CLI against same owned backend",
+  "sdk": "@anthropic-ai/sdk@1.3.0",
+  "provider": "MiniMax China",
+  "protocol": "anthropic_messages",
+  "model": "MiniMax-M3",
+  "endpoint": "https://api.minimax.cn/anthropic/v1/messages",
+  "projectId": "688e88ef-24a9-49aa-bf9a-3ae3d9b0c2c6",
+  "settingsRevision": 1,
+  "keyStorage": "session; key never read or recorded by the test runner",
+  "textRunId": "d2ede3c3-a9db-446b-aecd-3cea131b3d95",
+  "readRunId": "d981b328-7661-40bf-bf7a-fc726dc2e9a0",
+  "approvalRunId": "f492bf2e-3a96-4e4d-a90f-82f71319e41d",
+  "results": {
+    "text": "completed",
+    "readOnlyTool": "one project.inspect, two completed model steps, no Change",
+    "approvalRecovery": "same run, tool step and frozen model body; resume returned to same approval without another planning request",
+    "localEdit": "one approved shot.update; revision 1 to 2",
+    "undo": "original prompt restored; revision 2 to 3; no additional model request"
+  },
+  "frozenModelRequest": {
+    "sha256": "67fa9bc9564e568dcfd22d27b94817d203cb3138b31881ea527dba73b52901c3",
+    "utf8Bytes": 119232,
+    "unchangedAfterRestartAndCompletion": true
+  },
+  "modelSteps": {
+    "total": 8,
+    "completed": 5,
+    "failedBeforeFix": 3,
+    "originalFailedRunsUnchanged": true,
+    "automaticResubmissions": 0
+  },
+  "mediaCounts": {
+    "jobs": 0,
+    "image_tasks": 0,
+    "assets": 0,
+    "versions": 0,
+    "exports": 0
+  },
+  "compatibilityFix": "Validate and strip MiniMax service_tier metadata on message_start.message and starting/final usage",
+  "temporaryDiagnosticsRemovedFromStagingAndLoadedBackend": true,
+  "backendBundleSha256": "315da7f36271c714ccc30952ec3ed89ebccb4cbefd020836ce0b5740db47aaed",
+  "limitations": [
+    "One China account and MiniMax-M3 only",
+    "No image/video generation, real billing reconciliation, full-app restart/keychain or forced live-network failure tests",
+    "Three pre-fix failed requests may have incurred provider charges; no provider billing claim"
+  ]
+}

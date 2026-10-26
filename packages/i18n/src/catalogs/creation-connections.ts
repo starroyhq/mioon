@@ -141,10 +141,10 @@ export const connectionMessages = {
     "ja": "API プロトコル"
   },
   "agent.settings.protocolHelp": {
-    "zh-Hans": "手动选择协议；不会自动探测、回退或更换模型。切换后需重新确认聊天发送",
-    "zh-Hant": "請手動選擇協定；不會自動偵測、回退或更換模型。切換後須重新確認聊天傳送",
-    "en": "Select a protocol manually. There is no automatic detection, fallback, or model switching. Confirm chat sends again after changing it",
-    "ja": "プロトコルは手動で選択します。自動検出、フォールバック、モデルの切り替えは行いません。変更後はチャット送信を再確認する必要があります"
+    "zh-Hans": "预设只提供默认值，三种协议均可独立选择。切换协议不会更改地址或模型；请按供应商文档核对完整请求地址并重新授权。不会自动探测、重试或回退",
+    "zh-Hant": "預設只提供預設值，三種協定均可獨立選擇。切換協定不會變更位址或模型；請依供應商文件核對完整請求位址並重新授權。不會自動偵測、重試或回退",
+    "en": "Presets supply defaults; all three protocols can be selected independently. Switching preserves the URL and model. Check the complete request URL against provider documentation and authorize it again. No automatic detection, retries, or fallback",
+    "ja": "プリセットは初期値を設定するだけで、3つのプロトコルを個別に選択できます。切り替えても URL とモデルは変わりません。プロバイダーの資料で完全な送信先 URL を確認し、再度認可してください。自動検出、再試行、フォールバックは行いません"
   },
   "agent.settings.baseUrl": {
     "zh-Hans": "服务地址",
@@ -157,6 +157,18 @@ export const connectionMessages = {
     "zh-Hant": "請填寫 API 基礎位址，不含 /chat/completions 或 /responses。遠端服務使用 HTTPS；本機服務請選 Ollama 預設",
     "en": "Enter the API base URL without /chat/completions or /responses. Use HTTPS for remote services; select the Ollama preset for local services",
     "ja": "/chat/completions や /responses を含めず、API のベース URL を入力してください。リモートサービスには HTTPS を使用し、ローカルサービスには Ollama プリセットを選択してください"
+  },
+  "agent.settings.anthropicEndpointHelp": {
+    "zh-Hans": "填写服务根地址，例如 https://api.anthropic.com；保留供应商要求的前缀，系统会追加 /v1/messages。不要填写完整 Messages 地址",
+    "zh-Hant": "請填寫服務根位址，例如 https://api.anthropic.com；保留供應商要求的前綴，系統會附加 /v1/messages。請勿填寫完整 Messages 位址",
+    "en": "Enter the service root, such as https://api.anthropic.com. Keep any provider-required prefix; /v1/messages is appended. Do not enter the complete Messages URL",
+    "ja": "https://api.anthropic.com などのサービスルートを入力してください。プロバイダー指定のプレフィックスは保持し、/v1/messages が追加されます。Messages の完全な URL は入力しないでください"
+  },
+  "agent.settings.anthropicScope": {
+    "zh-Hans": "支持文本和 Mio 宿主工具，关闭思考；不自动重试、切换协议或回退。切换后请核对下方完整请求地址并重新授权",
+    "zh-Hant": "支援文字與 Mio 宿主工具，停用思考；不會自動重試、切換協定或回退。切換後請核對下方完整請求位址並重新授權",
+    "en": "Supports text and Mio host tools with thinking disabled. No automatic retries, protocol switching, or fallback. Review the complete request URL below and authorize it after switching",
+    "ja": "思考を無効にしたテキストと Mio ホストツールに対応します。自動再試行、プロトコル切り替え、フォールバックは行いません。切り替え後は下の完全なリクエスト URL を確認し、再度認可してください"
   },
   "agent.settings.modelName": {
     "zh-Hans": "模型名称",
@@ -1418,6 +1430,12 @@ export const connectionMessages = {
     "en": "Non-reasoning text baseline. Explicitly select Chat Completions or Responses",
     "ja": "非推論テキストの基準設定です。Chat Completions または Responses を明示的に選択できます"
   },
+  "agent.settings.presets.anthropicNote": {
+    "zh-Hans": "Messages 文本与 Mio 宿主工具基线；关闭思考，账户及模型访问权限由供应商决定",
+    "zh-Hant": "Messages 文字與 Mio 宿主工具基準；停用思考，帳戶與模型存取權限由供應商決定",
+    "en": "Messages text and Mio host-tool baseline with thinking disabled. Account and model access depend on the provider",
+    "ja": "思考を無効にした Messages テキストと Mio ホストツールの基準設定です。アカウントとモデルへのアクセス権はプロバイダーに依存します"
+  },
   "agent.settings.presets.deepseekNote": {
     "zh-Hans": "非思考模式文本基线；可明确选择 Chat Completions 或 Responses",
     "zh-Hant": "非思考模式文字基準；可明確選擇 Chat Completions 或 Responses",
@@ -1467,10 +1485,10 @@ export const connectionMessages = {
     "ja": "リモート HTTPS のみです。接続先とモデルはご自身で入力してください。互換性は未検証です"
   },
   "agent.settings.presets.ollamaNote": {
-    "zh-Hans": "仅本机回环 /v1；通常无需密钥，不下载模型，不包含云端路由授权",
-    "zh-Hant": "僅限本機回環 /v1；通常不需密鑰，不會下載模型，也不包含雲端路由授權",
-    "en": "Local loopback /v1 only. Usually no key is required. It does not download models or authorize cloud routing",
-    "ja": "ローカルループバックの /v1 のみです。通常はキー不要です。モデルのダウンロードやクラウドルーティングの認可は行いません"
+    "zh-Hans": "仅本机回环；Chat Completions / Responses 基址使用 /v1，Messages 使用根地址。切换协议后请自行核对地址；不下载模型或授权云端路由",
+    "zh-Hant": "僅限本機回環；Chat Completions / Responses 基底位址使用 /v1，Messages 使用根位址。切換協定後請自行核對位址；不會下載模型或授權雲端路由",
+    "en": "Local loopback only. Use /v1 as the base path for Chat Completions / Responses and the service root for Messages. Check the URL after switching protocols. No model downloads or cloud routing authorization",
+    "ja": "ローカルループバックのみです。Chat Completions / Responses のベースパスは /v1、Messages はサービスルートです。切り替え後は URL を確認してください。モデルのダウンロードやクラウドルーティングの認可は行いません"
   },
   "agent.settings.presets.qwenResponses": {
     "zh-Hans": "仅 qwen3.8-flash 非思考文本配置；本应用限制上下文大小，但供应商自动截断无法禁用。区域、工作空间与账户权限须匹配，未经真实调用验证",

@@ -62,6 +62,8 @@ AI 视频服务可以在“设置 → 模型服务”中配置供应商连接、
 
 内置 AI 助手名为 Mio，可按授权查看、修改和生成当前项目内容。模型连接和执行方式在“设置 → Mio”中配置，模型调用可能计费
 
+Mio 支持 Chat Completions、Responses 和通过官方 SDK 接入的 [Anthropic Messages](docs/AGENT-ANTHROPIC.md)。协议需明确选择，工具执行仍由 Mioon 管理授权、审批和恢复，不自动重试或回退到其他协议
+
 ## 开始试用
 
 **Mioon 目前处于源码试用阶段，需要手动准备运行环境，还没有经过验证的现成安装包**。首次启动请按[试用指南](docs/CORE-TRIAL.zh-CN.md)操作；Mac 用户可查看 [Mac 启动说明](docs/MAC-SOURCE-TRIAL.zh-CN.md)

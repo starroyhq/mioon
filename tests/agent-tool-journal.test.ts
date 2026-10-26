@@ -7,27 +7,30 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {deriveAgentEndpoint} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/db.ts';
+import {buildAgentRequest} from '../packages/business/src/agent/agent-gateway.ts';
+import {READ_TOOL_SYSTEM_INSTRUCTION, readToolPolicy} from '../packages/business/src/agent/read-tool-policy.ts';
 import {createChatJournal, CHAT_JOURNAL_LIMITS, type ChatJournalResult} from '../packages/business/src/agent/chat-journal.ts';
 
 const unavailable = {code: 'AGENT_CHAT_STORAGE_UNAVAILABLE'};
 const catalog = ['project', 'asset', 'shot', 'timeline'].map(name => ({name: `${name}_inspect`, operation: `${name}.inspect`, parameters: {type: 'object', properties: {}, additionalProperties: false}}));
 const catalogHash = createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
-const config = (protocol: import('../packages/contracts/src/agent-protocol.ts').AgentProtocol) => ({presetId: 'ollama', platformId: 'local', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', protocol});
+const config = (protocol: import('../packages/contracts/src/agent-protocol.ts').AgentProtocol) => protocol==='anthropic_messages'?({presetId:'custom',platformId:'custom',baseUrl:'https://example.com',model:'synthetic-native',protocol}):({presetId: 'ollama', platformId: 'local', baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen3:8b', protocol});
 function fixture(t: test.TestContext, {protocol = 'chat_completions', limits}: {protocol?: import('../packages/contracts/src/agent-protocol.ts').AgentProtocol;limits?: Record<string,number>} = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-tool-journal-'));
   let store = (openStore(root) as unknown as FixtureStore), journal = createChatJournal({store, limits});
   store.put('projects', {id: 'p1'}); store.put('projects', {id: 'p2'});
   t.after(() => { store.close(); rmSync(root, {recursive: true, force: true}); });
   const provenance = {category: 'project_saved_text_metadata', projectId: 'p1', sourceRunIds: []};
-  const context = [{role: 'system' as const, content: 'Inspect saved project metadata.'}, {role: 'user' as const, content: 'What is here?'}];
-  const body = protocol === 'chat_completions' ? {model: 'qwen3:8b', messages: context, stream: true, max_tokens: 2048, tools: catalog, tool_choice: 'auto', parallel_tool_calls: false} :
+  const context = [{role: 'system' as const, content: protocol==='anthropic_messages'?READ_TOOL_SYSTEM_INSTRUCTION:'Inspect saved project metadata.'}, {role: 'user' as const, content: 'What is here?'}];
+  const body = protocol === 'anthropic_messages' ? JSON.parse(buildAgentRequest({configuration:config(protocol),messages:context,readTools:{phase:'request'}}).body) as Record<string,unknown> : protocol === 'chat_completions' ? {model: 'qwen3:8b', messages: context, stream: true, max_tokens: 2048, tools: catalog, tool_choice: 'auto', parallel_tool_calls: false} :
     {model: 'qwen3:8b', instructions: context[0].content, input: context.slice(1), stream: true, store: false, max_output_tokens: 2048, tools: catalog, tool_choice: 'auto', parallel_tool_calls: false};
   const request = {protocol, body: JSON.stringify(body), context, provenance};
-  const execution = {version: 1, policy: {schemaVersion: 1, projectId: 'p1', context: 'project_inspection', maxModelRequests: 2,
-    maxToolCalls: 1, maxResultBytes: 8192, catalog, catalogHash}, request};
-  const call = {id: 'call_1', name: 'project_inspect', arguments: {}, argumentsJson: '{}', ...(protocol === 'responses' ? {itemId: 'fc_1'} : {})};
+  const policy = protocol === 'anthropic_messages' ? readToolPolicy('p1') : {schemaVersion: 1, projectId: 'p1', context: 'project_inspection', maxModelRequests: 2,
+    maxToolCalls: 1, maxResultBytes: 8192, catalog, catalogHash};
+  const execution = {version: 1, policy, request};
+  const call = {id: 'call_1', name: protocol==='anthropic_messages'?'mioon_project_inspect':'project_inspect', arguments: {}, argumentsJson: '{}', ...(protocol === 'responses' ? {itemId: 'fc_1'} : {})};
   const output = {type: 'done', finishReason: 'tool_calls', toolCall: call,
-    providerOutput: protocol === 'chat_completions' ? {role: 'assistant' as const, content: '', tool_calls: [{id: call.id, type: 'function', function: {name: call.name, arguments: call.argumentsJson}}]} :
+    providerOutput: protocol === 'anthropic_messages' ? {role:'assistant',content:[{type:'tool_use',id:call.id,name:call.name,input:{}}]} : protocol === 'chat_completions' ? {role: 'assistant' as const, content: '', tool_calls: [{id: call.id, type: 'function', function: {name: call.name, arguments: call.argumentsJson}}]} :
       [{type: 'function_call', id: call.itemId, call_id: call.id, name: call.name, arguments: call.argumentsJson, status: 'completed'}]};
   const observedProvenance = {category: provenance.category, projectId: 'p1', operation: 'project.inspect'};
   const observation = {result: {id: 'p1', name: 'Saved project'}, resultJson: '{"id":"p1","name":"Saved project"}', provenance: observedProvenance};
@@ -37,7 +40,7 @@ function fixture(t: test.TestContext, {protocol = 'chat_completions', limits}: {
     accept(overrides = {}) {
       const input = {message: 'What is here?', expectedSettingsRevision: 0, expectedConversationRevision: 0};
       accepted = journal.accept({projectId: 'p1', requestId: randomUUID(), fingerprint: 'synthetic', instanceId: randomUUID(), configuration: config(protocol),
-        messages: context, consent: {destination: deriveAgentEndpoint(config(protocol)), protocol, model: config(protocol).model, context: 'project_inspection', projectId: 'p1', schemaVersion: 1, catalogHash, maxModelRequests: 2, maxToolCalls: 1, maxResultBytes: 8192}, input, execution, ...overrides});
+        messages: context, consent: {destination: deriveAgentEndpoint(config(protocol)), protocol, model: config(protocol).model, context: 'project_inspection', projectId: 'p1', schemaVersion: 1, catalogHash: policy.catalogHash, maxModelRequests: 2, maxToolCalls: 1, maxResultBytes: 8192}, input, execution, ...overrides});
       return accepted;
     },
     reopen() { store.close(); store = (openStore(root) as unknown as FixtureStore); journal = createChatJournal({store, limits}); },
@@ -47,6 +50,7 @@ function fixture(t: test.TestContext, {protocol = 'chat_completions', limits}: {
     intent() { return journal.toolIntent(f.id, f.first().id, {toolCall: call, provenance: observedProvenance}); },
     capture(callback: ()=>unknown = () => observation) { return journal.captureTool(f.id, journal.steps('p1', f.id)[1].id, callback); },
     next() {
+      if(protocol==='anthropic_messages')return {...request,body:buildAgentRequest({configuration:config(protocol),messages:context,readTools:{phase:'answer',toolCall:call,providerOutput:output.providerOutput,result:observation.resultJson}}).body};
       const initial = JSON.parse((request.body as string)), next = {...initial}; delete next.tools; delete next.parallel_tool_calls; next.tool_choice = 'none';
       if (protocol === 'chat_completions') next.messages = [...initial.messages, output.providerOutput, {role: 'tool' as const, tool_call_id: call.id, content: observation.resultJson}];
       else next.input = [...initial.input, ...(output.providerOutput as unknown as unknown[]), {type: 'function_call_output', call_id: call.id, output: observation.resultJson}];
@@ -59,7 +63,7 @@ function fixture(t: test.TestContext, {protocol = 'chat_completions', limits}: {
   return f;
 }
 
-for (const protocol of ['chat_completions', 'responses'] as const) {
+for (const protocol of ['chat_completions', 'responses', 'anthropic_messages'] as const) {
   test(`${protocol}: complete bounded workflow commits exact wire artifacts and immutable snapshot history`, t => {
     const f = fixture(t, {protocol}), accepted = f.accept();
     assert.equal(accepted.run.contextMode, 'project_inspection');
@@ -150,9 +154,9 @@ test('callback throws, asynchronous callback, thenable and mismatched exact resu
   }
 });
 
-for (const boundary of ['accepted', 'first-dispatch', 'first-complete', 'intent', 'capture-started', 'observed', 'prepared', 'second-dispatch'] as const) {
-  test(`reopen at ${boundary} interrupts without repeating model or read work`, t => {
-    const f = fixture(t); f.accept();
+for (const protocol of ['chat_completions', 'anthropic_messages'] as const) for (const boundary of ['accepted', 'first-dispatch', 'first-complete', 'intent', 'capture-started', 'observed', 'prepared', 'second-dispatch'] as const) {
+  test(`${protocol}: reopen at ${boundary} interrupts without repeating model or read work`, t => {
+    const f = fixture(t, {protocol}); f.accept();
     if (boundary !== 'accepted') f.dispatch();
     if (!['accepted', 'first-dispatch'].includes(boundary)) f.complete();
     if (!['accepted', 'first-dispatch', 'first-complete'].includes(boundary)) f.intent();
@@ -171,6 +175,45 @@ for (const boundary of ['accepted', 'first-dispatch', 'first-complete', 'intent'
     if (steps[1] && steps[1].status !== 'completed') assert.throws(() => f.capture(() => assert.fail('must not dispatch')), unavailable);
   });
 }
+
+test('Anthropic native journal rejects altered tools, retained input, result identities and compatibility versions', t => {
+  const f = fixture(t, {protocol: 'anthropic_messages'});
+  for (const mutate of [
+    (body: Record<string, unknown>) => { body.thinking = {type: 'enabled', budget_tokens: 1024}; },
+    (body: Record<string, unknown>) => { body.anthropic_version = '2099-01-01'; },
+    (body: Record<string, unknown>) => { (body.tools as Array<Record<string, unknown>>)[0]!.type = 'web_search_20250305'; },
+    (body: Record<string, unknown>) => { body.system = 'Provider-supplied authority'; },
+  ]) {
+    const execution = structuredClone(f.execution), body = JSON.parse(execution.request.body) as Record<string, unknown>;
+    mutate(body); execution.request.body = JSON.stringify(body);
+    assert.throws(() => f.accept({execution}), unavailable);
+    assert.equal(f.rows('agent_chat_requests').length, 0);
+  }
+  f.accept(); f.dispatch();
+  for (const mutate of [
+    (message: {role: string; content: Array<Record<string, unknown>>}) => { message.content[0]!.input = {approved: true}; },
+    (message: {role: string; content: Array<Record<string, unknown>>}) => { message.content[0]!.id = 'toolu_other'; },
+    (message: {role: string; content: Array<Record<string, unknown>>}) => { message.content.push({...message.content[0]!}); },
+    (message: {role: string; content: Array<Record<string, unknown>>}) => { message.content.push({type: 'thinking', thinking: 'hidden'}); },
+  ]) {
+    const output = structuredClone(f.output); mutate(output.providerOutput as {role: string; content: Array<Record<string, unknown>>});
+    assert.throws(() => f.journal.modelComplete(f.id, f.first().id, {output}), unavailable);
+  }
+  f.complete(); f.intent(); f.capture();
+  for (const mutate of [
+    (body: Record<string, unknown>) => { ((body.messages as Array<{content: Array<Record<string, unknown>>}>).at(-1)!.content)[0]!.tool_use_id = 'toolu_other'; },
+    (body: Record<string, unknown>) => { ((body.messages as Array<{content: Array<Record<string, unknown>>}>).at(-1)!.content)[0]!.content = '{}'; },
+    (body: Record<string, unknown>) => { body.tool_choice = {type: 'auto'}; },
+    (body: Record<string, unknown>) => { body.max_tokens = 4096; },
+  ]) {
+    const request = f.next(), body = JSON.parse(request.body) as Record<string, unknown>; mutate(body); request.body = JSON.stringify(body);
+    assert.throws(() => f.journal.prepareContinuation(f.id, request), unavailable);
+  }
+  const second = f.journal.prepareContinuation(f.id, f.next());
+  assert.equal(f.journal.prepareContinuation(f.id, f.next()).step.id, second.step.id);
+  const before = f.rows('agent_chat_steps'); f.reopen(); f.journal.recover();
+  assert.deepEqual(f.journal.steps('p1', f.id).map(step => step.request?.body), before.map(row => JSON.parse(String(row.data)).request?.body));
+});
 
 test('Stop revokes future reads and continuation; later callbacks cannot reopen terminal state', t => {
   const f = fixture(t); const intent = f.untilIntent();

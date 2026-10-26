@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
 import {setTimeout as delay} from 'node:timers/promises';
 import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
-import {AGENT_CHAT_PROFILES, AGENT_CHAT_LIMITS, buildAgentChatRequest, createChatCompletionGateway, streamChatCompletion} from '../packages/business/src/agent/chat-completions.ts';
+import {AGENT_CHAT_PROFILES, agentChatProfile, AGENT_CHAT_LIMITS, buildAgentChatRequest, createChatCompletionGateway, streamChatCompletion} from '../packages/business/src/agent/chat-completions.ts';
 import type { AgentStreamItem } from '@mioon/business/agent/agent-gateway';
 import type { AgentTransportDependencies } from '@mioon/business/agent/network-policy';
 import type { ServerResponse,IncomingMessage } from 'http';
@@ -29,14 +29,14 @@ async function fixture(t: test.TestContext, handler: (response: import('node:htt
 }
 
 test('named profiles use exact non-thinking controls, bounded token fields and no tool/continuation options', () => {
-  for (const preset of AGENT_PRESETS) {
+  for (const preset of AGENT_PRESETS.filter(item => item.availableProtocols.includes('chat_completions'))) {
     const platform=preset.platforms[0];
     const configuration={protocol:'chat_completions' as const,presetId:preset.id,platformId:platform.id,baseUrl:platform.baseUrl||'https://fixture.example.com/v1',model:platform.model||'custom-text-model'};
     const result=JSON.parse((buildAgentChatRequest({configuration,apiKey:'synthetic-key',messages,selfPort:4318}).body as string));
-    assert.equal(result.stream,true); assert.equal(result[AGENT_CHAT_PROFILES[preset.id].tokenField],2048);
+    assert.equal(result.stream,true); assert.equal(result[agentChatProfile(configuration).tokenField],2048);
     for (const field of ['tools','tool_choice','temperature','parallel_tool_calls','response_format','previous_response_id','extra_headers'] as const) assert.equal(result[field],undefined);
-    for (const [key,value] of Object.entries(AGENT_CHAT_PROFILES[preset.id].fields)) assert.deepEqual(result[key],value);
-    if (preset.id!=='custom') assert.throws(()=>buildAgentChatRequest({configuration:{...configuration,model:'unapproved-thinking-model'},apiKey:'synthetic-key',messages,selfPort:4318}),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
+    for (const [key,value] of Object.entries(agentChatProfile(configuration).fields)) assert.deepEqual(result[key],value);
+    if (agentChatProfile(configuration).models) assert.throws(()=>buildAgentChatRequest({configuration:{...configuration,model:'unapproved-thinking-model'},apiKey:'synthetic-key',messages,selfPort:4318}),{code:'AGENT_CHAT_PROFILE_UNSUPPORTED'});
   }
   assert.equal(AGENT_CHAT_PROFILES.openai.fields.store,false);
   assert.equal((AGENT_CHAT_PROFILES.openrouter.fields.provider as unknown as {allow_fallbacks: boolean}).allow_fallbacks,false);

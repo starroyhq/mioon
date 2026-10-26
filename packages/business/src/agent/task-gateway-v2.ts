@@ -1,10 +1,16 @@
 import {isDeepStrictEqual} from 'node:util';
 import {validateAgentGatewayConfiguration} from './agent-gateway.ts';
-import {AGENT_CHAT_PROFILES,agentChatAllowsNaturalEof} from './chat-completions.ts';
-import {AGENT_RESPONSES_PROFILES} from './responses.ts';
-import {AGENT_READ_TOOL_PROFILES} from './tool-wire.ts';
+import {agentChatProfile,agentChatAllowsNaturalEof} from './chat-completions.ts';
+import {agentResponsesProfile} from './responses.ts';
+import {agentReadToolProfile} from './tool-wire.ts';
 import {wasAgentTransportSubmissionPrevented} from './network-policy.ts';
 import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
+import {createAnthropicSdkTransport} from './anthropic-sdk-transport.ts';
+import {streamAnthropicMessages} from './anthropic-stream.ts';
+import type {AnthropicCompletion} from './anthropic-stream.ts';
+import {parseModelToolArguments} from './model-tool-arguments.ts';
+import {anthropicMessages} from './anthropic-wire.ts';
+import {ANTHROPIC_MESSAGES_FIELDS} from './anthropic-protocol.ts';
 import {taskToolWireSchema} from './task-tool-wire-schema.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
@@ -79,8 +85,9 @@ export function taskToolExplanation(output:TaskModelOutput,callId:string):string
   const call=calls[0]!;let candidates:unknown[]=[];
   if(Array.isArray(output.providerOutput))candidates=output.providerOutput.filter(item=>object(item)&&item.type==='function_call'&&item.call_id===callId);
   else if(object(output.providerOutput)&&output.providerOutput.role==='assistant'&&Array.isArray(output.providerOutput.tool_calls))candidates=output.providerOutput.tool_calls.filter(item=>object(item)&&item.id===callId&&item.type==='function');
+  else if(object(output.providerOutput)&&output.providerOutput.role==='assistant'&&Array.isArray(output.providerOutput.content))candidates=output.providerOutput.content.filter(item=>object(item)&&item.id===callId&&item.type==='tool_use');
   if(candidates.length!==1||!object(candidates[0]))return undefined;
-  const candidate=candidates[0],provider=Array.isArray(output.providerOutput)?candidate:candidate.function;
+  const candidate=candidates[0],provider=candidate.type==='tool_use'&&object(candidate.input)?{name:candidate.name,arguments:JSON.stringify(candidate.input)}:Array.isArray(output.providerOutput)?candidate:candidate.function;
   if(!object(provider))return undefined;
   if(provider.name!==call.name||typeof provider.arguments!=='string')return undefined;
   try{
@@ -110,23 +117,12 @@ function noReasoning(value:Record<string,unknown>):void {
   for(const key of ['reasoning_content','reasoning_details','encrypted_content','thinking','signature','phase'])
     if(value[key]!=null&&value[key]!==''&&!(Array.isArray(value[key])&&(value[key] as unknown[]).length===0))fail('AGENT_CHAT_REASONING_UNSUPPORTED');
 }
-/** JSON.parse silently accepts duplicate keys. Reject them at every nesting level. */
+/** Preserve the public task parser's original bounds and failure semantics. */
 export function parseTaskArguments(source:string):AgentTaskJson {
   string(source,TASK_MODEL_LIMITS.argumentBytes);
-  let offset=0;
-  const whitespace=()=>{while(/\s/u.test(source[offset]??'')&&offset<source.length)offset++;};
-  const token=():string=>{const start=offset++;while(offset<source.length){const c=source[offset++];if(c==='\\'){offset++;continue;}if(c==='"')return JSON.parse(source.slice(start,offset)) as string;}return fail();};
-  const value=(depth=0):void=>{
-    if(depth>32)fail();
-    whitespace();const c=source[offset];
-    if(c==='"'){token();return;}
-    if(c==='{'||c==='['){offset++;whitespace();const close=c==='{'?'}':']',keys=new Set<string>();if(source[offset]===close){offset++;return;}
-      for(;;){whitespace();if(c==='{'){if(source[offset]!=='"')fail();const key=token();if(keys.has(key))fail();keys.add(key);whitespace();if(source[offset++]!==':')fail();}value(depth+1);whitespace();const next=source[offset++];if(next===close)return;if(next!==',')fail();}
-    }
-    const start=offset;while(offset<source.length&&!/[\s,}\]]/u.test(source[offset]))offset++;if(start===offset)fail();
-  };
-  try{value();whitespace();if(offset!==source.length)fail();const parsed:unknown=JSON.parse(source);if(!object(parsed))fail();return parsed as AgentTaskJson;}catch{return fail();}
+  return parseModelToolArguments(source,TASK_MODEL_LIMITS.argumentBytes);
 }
+
 function call(id:unknown,name:unknown,argumentsJson:unknown,definitions:readonly TaskToolDefinition[]):AgentTaskToolCall {
   const selected=identifier(name),definition=definitions.find(tool=>tool.name===selected);if(!definition)fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
   const argumentsValue=parseTaskArguments(string(argumentsJson,TASK_MODEL_LIMITS.argumentBytes));
@@ -137,36 +133,60 @@ function call(id:unknown,name:unknown,argumentsJson:unknown,definitions:readonly
 export function buildTaskModelRequest(configuration:AgentConfiguration,history:AgentTaskJson[],definitions:readonly TaskToolDefinition[],selfPort?:number):string {
   validateAgentGatewayConfiguration(configuration,{selfPort});
   if(Buffer.byteLength(JSON.stringify(history))>TASK_MODEL_LIMITS.historyBytes)fail('AGENT_CHAT_LIMIT');
-  const profile=AGENT_READ_TOOL_PROFILES[configuration.protocol][configuration.presetId];
+  const profile=agentReadToolProfile(configuration);
   if(!profile)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   const controls=definitions.length?{...(profile.parallel?{parallel_tool_calls:false}:{}),...(profile.choice?{tool_choice:'auto'}:{})}:{};
   const locale=taskResponseLocale(history),instruction=`${instructions[locale]} ${explanationInstructions[locale]}`;
   const wireTools=definitions.map(tool=>({name:tool.name,description:tool.description,parameters:explainedToolParameters(taskToolWireSchema(configuration,tool.name,tool.parameters),locale)}));
   // The host marker is local journal metadata, not an extra model-facing system
-  // message. Both protocols receive the same authoritative root instruction.
+  // message. All protocols receive the same authoritative root instruction.
   const modelHistory=object(history[0])&&history[0].role==='system'&&history[0].content===languageContext[locale]&&Object.keys(history[0]).length===2?history.slice(1):history;
-  const body=configuration.protocol==='chat_completions'
-    ?{model:configuration.model,stream:true,messages:[{role:'system',content:instruction},...modelHistory],
-      [AGENT_CHAT_PROFILES[configuration.presetId].tokenField]:4096,...AGENT_CHAT_PROFILES[configuration.presetId].fields,
-      ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',function:{...tool,...(profile.strict?{strict:false}:{})}}))}:{}),...controls}
-    :{model:configuration.model,stream:true,store:false,instructions:instruction,input:modelHistory,max_output_tokens:4096,
-      ...AGENT_RESPONSES_PROFILES[configuration.presetId].fields,
-      ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})}))}:{}),...controls};
+  const native=configuration.protocol==='anthropic_messages'?anthropicMessages([{role:'system',content:instruction},...modelHistory]):undefined;
+  let body:Record<string,unknown>;
+  if(configuration.protocol==='chat_completions'){
+    const chat=agentChatProfile(configuration);
+    body={model:configuration.model,stream:true,messages:[{role:'system',content:instruction},...modelHistory],
+      [chat.tokenField]:4096,...chat.fields,
+      ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',function:{...tool,...(profile.strict?{strict:false}:{})}}))}:{}),...controls};
+  }else if(configuration.protocol==='anthropic_messages'){
+    body={model:configuration.model,stream:true,max_tokens:4096,...ANTHROPIC_MESSAGES_FIELDS,...native,
+      ...(wireTools.length?{tools:wireTools.map(tool=>({name:tool.name,description:tool.description,input_schema:tool.parameters})),tool_choice:{type:'auto',disable_parallel_tool_use:true}}:{})};
+  }else{
+    const responses=agentResponsesProfile(configuration);
+    body={model:configuration.model,stream:true,store:false,instructions:instruction,input:modelHistory,max_output_tokens:4096,
+      ...responses.fields,...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})}))}:{}),...controls};
+  }
   const serialized=JSON.stringify(body);if(Buffer.byteLength(serialized)>TASK_MODEL_LIMITS.requestBytes)fail('AGENT_CHAT_LIMIT');return serialized;
 }
 export function taskContinuation(protocol:AgentConfiguration['protocol'],output:TaskModelOutput,results:{callId:string;result:AgentTaskJson}[]):AgentTaskJson[] {
   if(results.length!==output.toolCalls.length||results.some((item,index)=>item.callId!==output.toolCalls[index].id))fail();
-  return protocol==='chat_completions'
-    ?[output.providerOutput,...results.map(item=>({role:'tool',tool_call_id:item.callId,content:JSON.stringify(item.result)}))]
-    :[...(output.providerOutput as AgentTaskJson[]),...results.map(item=>({type:'function_call_output',call_id:item.callId,output:JSON.stringify(item.result)}))];
+  if(protocol==='anthropic_messages'){
+    const retained=output.providerOutput;
+    if(!object(retained)||retained.role!=='assistant'||!Array.isArray(retained.content))fail();
+    const calls=retained.content.filter((block:unknown)=>object(block)&&block.type==='tool_use');
+    if(calls.length!==output.toolCalls.length)fail();
+    for(const [index,value]of calls.entries()){
+      if(!object(value)||!object(value.input))fail();
+      const expected=output.toolCalls[index]!;
+      if(value.id!==expected.id||value.name!==expected.name||
+        !isDeepStrictEqual(value.input,expected.arguments)&&!isDeepStrictEqual(withoutToolExplanation(value.input as AgentTaskJson),expected.arguments))fail();
+    }
+    const continuation=[retained,...(results.length?[{role:'user',content:results.map(item=>({type:'tool_result',tool_use_id:item.callId,content:JSON.stringify(item.result)}))}]:[])];
+    return anthropicMessages(continuation).messages as AgentTaskJson[];
+  }
+  if(protocol==='chat_completions')return [output.providerOutput,...results.map(item=>({role:'tool',tool_call_id:item.callId,content:JSON.stringify(item.result)}))];
+  if(protocol==='responses')return [...(output.providerOutput as AgentTaskJson[]),...results.map(item=>({type:'function_call_output',call_id:item.callId,output:JSON.stringify(item.result)}))];
+  return fail('AGENT_CHAT_VALIDATION');
 }
+
 export function createTaskGateway(dependencies:AgentTransportDependencies={}):TaskGateway {
-  const open=createOpenAiSdkTransport(dependencies);
+  const openAi=createOpenAiSdkTransport(dependencies),anthropic=createAnthropicSdkTransport(dependencies);
   return async function* request(options) {
+    const open=options.configuration.protocol==='anthropic_messages'?anthropic:openAi;
     const parsed:unknown=JSON.parse(options.body);if(!object(parsed)||parsed.tools!==undefined&&!Array.isArray(parsed.tools))fail('AGENT_CHAT_VALIDATION');
     const definitions:TaskToolDefinition[]=((parsed.tools??[]) as unknown[]).map(value=>{
       if(!object(value))return fail();const tool=options.configuration.protocol==='chat_completions'?value.function:value;
-      if(!object(tool))return fail();return {name:identifier(tool.name),description:string(tool.description),parameters:tool.parameters};
+      if(!object(tool))return fail();return {name:identifier(tool.name),description:string(tool.description),parameters:options.configuration.protocol==='anthropic_messages'?tool.input_schema:tool.parameters};
     });
     // The shared transport sanitizes guard errors for its legacy gain fence.
     // Keep the trusted task guard's original denial; provider data cannot set it.
@@ -208,6 +228,21 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length||(finished==='tool_calls')!==!!toolCalls.length)fail();
         const providerOutput:AgentTaskJson={role:'assistant',content:text||null,...(toolCalls.length?{tool_calls:ordered.map(([,item])=>({id:item.id,type:'function',function:{name:item.name,arguments:item.arguments}}))}:{})};
         yield {type:'done',output:{text,toolCalls,providerOutput}};
+      } else if(options.configuration.protocol==='anthropic_messages') {
+        let completion:AnthropicCompletion|undefined;
+        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls})){
+          if(item.type==='delta')yield item;
+          else completion=item.completion;
+        }
+        const streamFailure=stream.error();if(streamFailure)throw streamFailure;if(options.signal?.aborted)fail('AGENT_CHAT_ABORTED');
+        if(!completion)fail('AGENT_CHAT_TRUNCATED');
+        if(completion.stopReason==='max_tokens')throw agentChatStreamError('output_limit');
+        if(completion.stopReason==='refusal')fail('AGENT_CHAT_PROVIDER_ERROR');
+        if(!['end_turn','tool_use'].includes(completion.stopReason))fail();
+        const toolCalls=completion.toolCalls.map(item=>call(item.id,item.name,item.argumentsJson,definitions));
+        if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length||(completion.stopReason==='tool_use')!==!!toolCalls.length)fail();
+        const providerOutput:AgentTaskJson={role:'assistant',content:completion.content};
+        yield {type:'done',output:{text:completion.text,toolCalls,providerOutput}};
       } else {
         let responseId:string|null=null,completed=false,text='';const added=new Map<number,Record<string,unknown>>(),done=new Map<number,Record<string,unknown>>(),argumentsByIndex=new Map<number,string>(),parts=new Map<string,string>();
         let terminal:Record<string,unknown>|null=null;

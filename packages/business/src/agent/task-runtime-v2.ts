@@ -358,7 +358,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       // Persisted deltas are already known continuation content. Count the
       // protocol's smallest text message, without inventing later output or
       // treating an unknown reply that may be discarded as saved history.
-      history.push(configuration(run).protocol==='chat_completions'
+      history.push(configuration(run).protocol!=='responses'
         ?{role:'assistant',content:latest.text}
         :{type:'message',role:'assistant',content:[{type:'output_text',text:latest.text}]});
     }
