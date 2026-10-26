@@ -453,7 +453,7 @@ Remote cancellation is intentionally unavailable. Runway's task DELETE endpoint 
 
 ## Offline verification and next real check
 
-Run `node --test tests/providers.test.mjs tests/providers-v4.test.mjs tests/providers-additional.test.mjs`. Tests use Node's built-in test runner and injected fetch responses; no real network request is made. Coverage includes:
+Run `node --test tests/providers.test.ts tests/providers-v4.test.ts tests/providers-additional.test.ts`. Tests use Node's built-in test runner and injected fetch responses; no real network request is made. Coverage includes:
 
 - SQLite restart recovery after accepted-then-response-lost
 - Submission-attempt counts, duplicate detection and request-content conflict

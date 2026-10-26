@@ -31,21 +31,21 @@ export const TIMINGS_FILE = '.github/test-timings.json';
  * CI for another reason when sharing CPUs. Add a file only with such evidence.
  */
 export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
-  'tests/agent-edit-wire.test.mjs', // 100%
-  'tests/asset-disposition-transports.test.mjs', // 46%
+  'tests/agent-edit-wire.test.ts', // 100%
+  'tests/asset-disposition-transports.test.ts', // 46%
   'tests/desktop-async-secrets.test.ts', // 40%
   'tests/export-settings-capabilities.test.ts', // 70%
   'tests/export-settings-media.test.ts', // 66%; timed out while sharing CPUs
-  'tests/http-file-shutdown.test.mjs', // 83%; timed out while sharing CPUs
-  'tests/inspection-wire.test.mjs', // 35%
-  'tests/mock-renderer-capability-fences.test.mjs', // 61%
-  'tests/races.test.mjs', // 62%; timed out while sharing CPUs
+  'tests/http-file-shutdown.test.ts', // 83%; timed out while sharing CPUs
+  'tests/inspection-wire.test.ts', // 35%
+  'tests/mock-renderer-capability-fences.test.ts', // 61%
+  'tests/races.test.ts', // 62%; timed out while sharing CPUs
   'tests/server-worker-shutdown.test.ts', // 67%
   'tests/test-compile-cache.test.ts', // a self-sent SIGTERM must land while the cache handler is installed
-  'tests/timeline-history-transports.test.mjs', // 35%
-  'tests/timeline-mix-loudness-service-media.test.mjs', // 69%; fixed operation budget for a 600-second mix
-  'tests/typecheck-runtime.test.mjs', // 50%
-  'tests/worker-shutdown.test.mjs', // 83%; timed out while sharing CPUs
+  'tests/timeline-history-transports.test.ts', // 35%
+  'tests/timeline-mix-loudness-service-media.test.ts', // 69%; fixed operation budget for a 600-second mix
+  'tests/typecheck-runtime.test.ts', // 50%
+  'tests/worker-shutdown.test.ts', // 83%; timed out while sharing CPUs
 ]);
 const testPath = /^tests\/[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/;
 function fail(code: string): never {throw new Error(code);}

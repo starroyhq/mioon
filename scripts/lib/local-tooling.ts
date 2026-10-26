@@ -95,10 +95,10 @@ const localPackages: readonly {readonly name: string; readonly scope: string; re
   {name: 'electron', scope: '', entry: 'index.js'},
 ];
 export const PORTABLE_TEST_FILES: readonly string[] = Object.freeze([
-  'agent-protocol.test.mjs', 'mutation-contracts.test.mjs',
-  'workspace-layout.test.mjs', 'workspace-state.test.mjs', 'workspace-panel-intent.test.mjs',
-  'desktop-build-metadata.test.mjs', 'local-tooling.test.mjs',
-  'typecheck-contract.test.mjs', 'typecheck-tooling.test.mjs',
+  'agent-protocol.test.ts', 'mutation-contracts.test.ts',
+  'workspace-layout.test.ts', 'workspace-state.test.ts', 'workspace-panel-intent.test.ts',
+  'desktop-build-metadata.test.ts', 'local-tooling.test.ts',
+  'typecheck-contract.test.ts', 'typecheck-tooling.test.ts',
 ]);
 /** Per-file test timings may only be written under the repository's artifacts directory. */
 export const TIMINGS_PATH = /^artifacts(?:\/[a-zA-Z0-9][a-zA-Z0-9._-]*)+\.json$/;
@@ -215,8 +215,10 @@ export async function installedTypeScript(root: string): Promise<{readonly versi
 export async function typecheckCommands(root: string, execPath: string = process.execPath): Promise<CommandSpec[]> {
   await verifySourceLanguages(root);
   const compiler = await installedTypeScript(root);
+  // The complete strict tests project exceeds Node's default heap on Linux.
+  // Keep the compiler budget fixed and local rather than accepting NODE_OPTIONS.
   return ['tests/typecheck/tsconfig.foundation.json', 'tests/typecheck/tsconfig.browser.json', 'tests/tsconfig.tests.json'].map(project => ({
-    command: execPath, args: [compiler.entry, '--project', project, '--noEmit', '--pretty', 'false'], cwd: root,
+    command: execPath, args: ['--max-old-space-size=4096', compiler.entry, '--project', project, '--noEmit', '--pretty', 'false'], cwd: root,
   }));
 }
 
@@ -372,9 +374,8 @@ export async function preflight(root: string, {channel = 'development', media = 
 export async function discoverTests(root: string, {suite = 'portable', files = [], platform = process.platform}: DiscoverTestsOptions = {}): Promise<string[]> {
   if (!['portable', 'full'].includes(suite)) throw fail('TOOLING_USAGE', 'Unknown test suite.');
   if (suite === 'full' && platform !== 'linux') throw fail('NATIVE_TEST_LANE_BLOCKED', 'The full suite contains Linux/native storage assumptions. Run the reviewed portable lane; native platform validation remains required.');
-  // Transitional dual discovery: `.test.mjs` files are migrated to `.test.ts`
-  // wave by wave. A reviewed portable or explicit name is resolved to the file
-  // that currently exists; an unknown or duplicated selection still fails.
+  // Current suites use TypeScript. Retained explicit .mjs selections may name
+  // their .ts successor, without widening the reviewed portable allowlist.
   const available = (await readdir(path.join(root, 'tests'), {withFileTypes: true}))
     .filter(item => item.isFile() && /^[a-zA-Z0-9][a-zA-Z0-9._-]*\.test\.(?:mjs|ts)$/.test(item.name)).map(item => item.name).sort();
   const resolve = (file: string): string | null => {
@@ -386,7 +387,7 @@ export async function discoverTests(root: string, {suite = 'portable', files = [
   const selected = files.length ? files : allowed;
   const resolved = selected.map(resolve);
   if (!selected.length || selected.length > 2048 || new Set(resolved).size !== resolved.length ||
-      selected.some((file, index) => !allowed.includes(file) || resolved[index] === null)) throw fail('TEST_SELECTION_INVALID', 'Test selection is missing, duplicated, or outside the chosen reviewed suite.');
+      selected.some((_, index) => resolved[index] === null || !allowed.includes(resolved[index]!))) throw fail('TEST_SELECTION_INVALID', 'Test selection is missing, duplicated, or outside the chosen reviewed suite.');
   const result = (resolved as string[]).sort().map(file => `tests/${file}`);
   if (result.join(' ').length > 131072) throw fail('TEST_SELECTION_LIMIT', 'Test command exceeds the reviewed argument budget; select a smaller explicit file group.');
   return result;

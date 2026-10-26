@@ -1,5 +1,7 @@
 # CLI / MCP 客户端版本来源
 
+下方 Mac 与云端验收保留当时命令和结果；当前同名测试使用 `.test.ts`，执行入口见 [TYPESCRIPT.md](TYPESCRIPT.md#current-test-migration-2026-10-26)。
+
 日期：2026-10-10（UTC）。基线：`8c694d191e6c90379c32c9f8db0a778c35c31e14`。
 
 ## 修改与权威来源

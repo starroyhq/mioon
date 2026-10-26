@@ -1,3 +1,4 @@
+import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -11,8 +12,8 @@ interface EditHttpsOptions {hostname: string; servername: string; path: string; 
   autoSelectFamily: boolean; rejectUnauthorized: boolean; headers: Record<string, string>;
   checkServerIdentity(name: string, cert: unknown): Error | undefined;
   lookup(host: string, options: {all: boolean}, callback: (error: Error | null, value?: {address: string; family: number}[]) => void): void}
-interface EditNetworkState {calls: number; posts: number; destroyed: number; options?: EditHttpsOptions; callback?: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void; request?: unknown; socket?: unknown; payload?: unknown; httpsRequest?: (options: EditHttpsOptions, callback: (response: {statusCode: number; headers: Record<string, string>; complete: boolean}) => void) => unknown}
-interface EditNetworkOptions {body?: Buffer; status?: number; headers?: Record<string, string>; complete?: boolean; peer?: string; port?: number;
+interface EditNetworkState {calls: number; posts: number; destroyed: number; options?: EditHttpsOptions; callback?: (response: Readable) => void; request?: EventEmitter; socket?: EventEmitter; payload?: unknown; httpsRequest?: (options: EditHttpsOptions, callback: (response: Readable) => void) => unknown}
+interface EditNetworkOptions {body?: Buffer; status?: number; headers?: Record<string, string | undefined>; complete?: boolean; peer?: string; port?: number;
   authorized?: boolean; onConnect?: (state: EditNetworkState) => void; onEnd?: (state: EditNetworkState) => void; noConnect?: boolean;
   noResponse?: boolean; chunks?: Buffer[]; duplicateSocket?: boolean; duplicateResponse?: boolean}
 type Deferred = {promise: Promise<unknown>; resolve: (value?: unknown) => void}
@@ -45,7 +46,7 @@ test('official edit factory pins endpoint, certificate, selected public address 
   assert.equal(options.agent, false); assert.equal(options.autoSelectFamily, false); assert.equal(options.rejectUnauthorized, true); assert.equal(options.headers.Authorization, `Bearer ${key}`); assert.equal(options.headers['Content-Type'], 'application/json'); assert.equal(options.headers['Content-Length'], '2'); assert.equal(options.headers.Cookie, undefined);
   assert.ok(options.checkServerIdentity('api.openai.com', {subjectaltname: 'DNS:attacker.invalid'}) instanceof Error);
   assert.equal(options.checkServerIdentity('ignored.invalid', {subjectaltname: 'DNS:api.openai.com'}), undefined);
-  assert.deepEqual(await new Promise((resolve, reject) => options.lookup('rebind.invalid', {all: true}, (error, result) => error ? reject(error) : resolve(result))), answers);
+  assert.deepEqual(await new Promise<({ address: string; family: number; }[] | undefined)>((resolve, reject) => options.lookup('rebind.invalid', {all: true}, (error, result) => error ? reject(error) : resolve(result))), answers);
   assert.equal(lookups, 1);
 });
 
@@ -94,7 +95,7 @@ test('pre-dispatch aborts before DNS, during DNS, during TLS and inside fence ar
 test('redirect/error status never follows Location or retries and returned errors redact key, response and server messages', async () => {
   for (const status of [301, 302, 303, 307, 308, 401, 429, 500]) {
     const state = network({status, body: Buffer.from(`private body ${key}`), headers: {'content-type': 'application/json', location: `https://attacker.invalid/${key}`}});
-    await assert.rejects(transport(state)(args), error => { assert.equal(error.code, 'IMAGE_HTTP_ERROR'); assert.equal(error.dispatched, true); assert.equal(error.outcomeUnknown, true); assert.equal(error.message.includes(key), false); assert.equal(error.cause, undefined); return true; });
+    await assert.rejects(transport(state)(args), error => { assert.equal((error as RootFailure).code, 'IMAGE_HTTP_ERROR'); assert.equal((error as RootFailure).dispatched, true); assert.equal((error as RootFailure).outcomeUnknown, true); assert.equal((error as RootFailure).message.includes(key), false); assert.equal((error as RootFailure).cause, undefined); return true; });
     assert.equal(state.calls, 1); assert.equal(state.posts, 1); assert.equal(state.options!.hostname, 'api.openai.com');
   }
 });
@@ -110,8 +111,8 @@ test('edit streaming response bounds, headers, completeness and declared lengths
 
 test('deadlines and late callbacks never dispatch twice or resurrect completed/cancelled edit requests', async () => {
   const before = network({noConnect: true}); await assert.rejects(transport(before, {limits: {connectTimeoutMs: 5}})(args), {code: 'IMAGE_TIMEOUT', dispatched: false});
-  before.socket.emit('secureConnect'); before.request.emit('error', Error(`private ${key}`)); assert.equal(before.posts, 0);
+  before.socket!.emit('secureConnect'); before.request!.emit('error', Error(`private ${key}`)); assert.equal(before.posts, 0);
   const after = network({noResponse: true}); await assert.rejects(transport(after, {limits: {totalTimeoutMs: 10}})(args), {code: 'IMAGE_TIMEOUT', dispatched: true, outcomeUnknown: true});
-  const late = Readable.from([Buffer.from('{}')]); Object.assign(late, {statusCode: 200, headers: {'content-type': 'application/json'}, complete: true}); after.callback(late); after.socket.emit('secureConnect'); assert.equal(after.posts, 1); assert.equal(late.destroyed, true);
-  const complete = network(); await transport(complete)(args); const duplicate = Readable.from([Buffer.from('{}')]); complete.callback(duplicate); complete.request.emit('error', Error('late private failure')); complete.socket.emit('secureConnect'); assert.equal(complete.posts, 1); assert.equal(duplicate.destroyed, true);
+  const late = Readable.from([Buffer.from('{}')]); Object.assign(late, {statusCode: 200, headers: {'content-type': 'application/json'}, complete: true}); (after.callback)!(late); after.socket!.emit('secureConnect'); assert.equal(after.posts, 1); assert.equal(late.destroyed, true);
+  const complete = network(); await transport(complete)(args); const duplicate = Readable.from([Buffer.from('{}')]); (complete.callback)!(duplicate); complete.request!.emit('error', Error('late private failure')); complete.socket!.emit('secureConnect'); assert.equal(complete.posts, 1); assert.equal(duplicate.destroyed, true);
 });

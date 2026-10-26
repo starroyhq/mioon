@@ -1,3 +1,4 @@
+import type {TypedServices} from './strict-service-responses.ts';
 // Synthetic local-only fixture for optional-module lifecycle acceptance.
 // Never connects to ComfyUI, a model runtime, or a GPU.
 import assert from 'node:assert/strict';
@@ -42,7 +43,7 @@ type Settings = Awaited<ReturnType<typeof createComfySettings>>
 type Services = ReturnType<typeof createServices>
 export async function createModuleFixture(t: unknown, {fault = () => {}, submit, observe, moduleState, autoRun = true}: ComfyModuleOptions = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-comfy-module-'));
-  let saved: unknown = null, store: Store = openStore(root), settings: Settings|undefined, services: Services|undefined;
+  let saved: unknown = null, store: Store = openStore(root), settings: Settings|undefined, services: TypedServices|undefined;
   const calls = {post: 0, get: 0}, png = createComfyFixturePng();
   const persistence = {load: async () => structuredClone(saved), save: async (value: unknown) => { saved = structuredClone(value); }};
   const completed = (args: ComfyConnectorArgs) => ({state: 'completed', contentVerified: true, candidate: {bytes: png, mimeType: 'image/png',
@@ -56,7 +57,7 @@ export async function createModuleFixture(t: unknown, {fault = () => {}, submit,
     settings = await createComfySettings({persistence, reservedPorts: () => [4318]});
     services = createServices(store, new Map(), {env: {}, imageOptions: {autoRun, fault, comfySettings: settings,
       ...(state === undefined || state === 'available' ? {comfyConnector: connector} : {}),
-      ...(state === undefined ? {} : {comfyModuleAvailability: availability(state)})} as never});
+      ...(state === undefined ? {} : {comfyModuleAvailability: availability(state)})} as never}) as unknown as TypedServices;
   }
   (t as {after(callback: ()=>Promise<void>): void}).after(async () => { await services?.drain(); await settings?.close(); store.close(); rmSync(root, {recursive: true, force: true}); });
   await create(moduleState);
@@ -67,7 +68,7 @@ export async function createModuleFixture(t: unknown, {fault = () => {}, submit,
   const other = await services!.call('project.create', {name: 'Other project'}) as unknown as {id: string};
   const f = {root, project, other, calls, png, completed,
     get store() { return store; }, get settings() { return settings; }, get services() { return services; },
-    call: (operation: string, input: Record<string, unknown>) => services!.call(operation, input),
+    call: <O extends string>(operation: O, input: Record<string, unknown>) => services!.call(operation, input),
     input: (patch = {}) => ({projectId: project.id, requestId: randomUUID(), name: 'Synthetic retained image',
       providerId: 'comfy-local', model: configuration.model, prompt: 'Exact local fixture prompt.', options: COMFY_IMAGE_OPTIONS, ...patch}),
     prepare: (input: Record<string, unknown>) => services!.call('image.review.prepare', {input, settingsRevision: 1}),
@@ -78,7 +79,7 @@ export async function createModuleFixture(t: unknown, {fault = () => {}, submit,
     check() { const checked = {ok: true, baseUrl: configuration.baseUrl, comfyVersion: '0.39.0', checkpoints: [configuration.model],
       nodeClasses: ['CheckpointLoaderSimple', 'EmptyLatentImage', 'CLIPTextEncode', 'KSampler', 'VAEDecode', 'SaveImage'], selectedCheckpointAvailable: true};
       (settings as Settings).recordCheck(checked, (settings as Settings).clearCheck(checked.baseUrl)); },
-    async accepted() { const input = f.input(), review = await f.prepare(input) as {id: string}, ack = await f.approve(review) as {id: string};
+    async accepted() { const input = f.input(), review = await f.prepare(input), ack = await f.approve(review);
       await until(() => f.task(ack.id), (task: unknown) => !['queued', 'dispatching'].includes((task as {state: string}).state)); return {input, review, ack}; },
     async reopen(state: string) { await services!.drain(); await (settings as Settings).close(); store.close(); store = openStore(root); await create(state); },
   };

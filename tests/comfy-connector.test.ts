@@ -1,0 +1,156 @@
+import type {ComfyExecution,ComfyGraph} from '../packages/business/src/comfy/workflow.ts';
+interface BackendBody{prompt_id:string;prompt:ComfyGraph;client_id:string;extra_data:{mioon:{outputNonce:string}}}
+interface BackendCall{method:string;path:string;body:BackendBody}
+interface BackendReply{data?:unknown;status?:number;type?:string;headers?:Record<string,string>;complete?:boolean;chunks?:Buffer[]}
+interface BackendRequest extends EventEmitter{socket:EventEmitter;destroy():void;end(body?:string):void}
+import type {Failure} from './helpers/strict-timeline-audio-types.ts';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
+import {Readable} from 'node:stream';
+import {deflateSync} from 'node:zlib';
+import {createComfyConnector} from '../packages/business/src/comfy/connector.ts';
+import {buildComfyWorkflow, hashComfyWorkflow, comfyCorrelationMarker} from '../packages/business/src/comfy/workflow.ts';
+import {COMFY_NODE_CLASSES} from '../packages/business/src/comfy/profile.ts';
+import {COMFY_IMAGE_OPTIONS} from '../packages/contracts/src/comfy-images.ts';
+
+const baseUrl='http://127.0.0.1:8188', model='sd15/example.safetensors';
+const config={enabled:true,providerId:'comfy-local',connectionId:'comfy-local',profileId:'comfy-t2i-png-v1',baseUrl,model,options:COMFY_IMAGE_OPTIONS,comfyVersion:'0.39.0'};
+function execution(){
+  const e={workflowId:'comfy-t2i-png-v1',workflowVersion:1,comfyVersion:'0.39.0',seed:99,promptId:'11111111-1111-4111-8111-111111111111',clientId:'22222222-2222-4222-8222-222222222222',outputNonce:'33333333-3333-4333-8333-333333333333'} as unknown as ComfyExecution;
+  e.filenamePrefix=`mioon_${e.outputNonce}`;e.graph=buildComfyWorkflow({prompt:' The fox\n月亮 ',checkpoint:model,seed:e.seed,outputNonce:e.outputNonce});e.graphHash=hashComfyWorkflow(e.graph);return e;
+}
+function completeJob(e=execution()){
+  return {id:e.promptId,status:'completed',outputs_count:1,previewable_outputs_count:1,workflow:{prompt:structuredClone(e.graph),extra_data:{client_id:e.clientId,create_time:1000,mioon:comfyCorrelationMarker((e as unknown as Parameters<typeof comfyCorrelationMarker>[0]))}},execution_status:{status_str:'success',completed:true,messages:[['execution_start',{prompt_id:e.promptId,timestamp:1000}],['execution_success',{prompt_id:e.promptId,timestamp:1001}]]},outputs:({'7':{images:[{filename:`${e.filenamePrefix}_00001_.png`,subfolder:'',type:'output'}]}} as Record<string,{images:{filename:string;subfolder:string;type:string}[]}>)};
+}
+const fields={CheckpointLoaderSimple:{ckpt_name:[[model]]},EmptyLatentImage:{width:['INT'],height:['INT'],batch_size:['INT']},CLIPTextEncode:{text:['STRING'],clip:['CLIP']},KSampler:{model:['MODEL'],seed:['INT'],steps:['INT'],cfg:['FLOAT'],sampler_name:[['euler']],scheduler:[['normal']],positive:['CONDITIONING'],negative:['CONDITIONING'],latent_image:['LATENT'],denoise:['FLOAT']},VAEDecode:{samples:['LATENT'],vae:['VAE']},SaveImage:{images:['IMAGE'],filename_prefix:['STRING']}};
+const outputs={CheckpointLoaderSimple:['MODEL','CLIP','VAE'],EmptyLatentImage:['LATENT'],CLIPTextEncode:['CONDITIONING'],KSampler:['LATENT'],VAEDecode:['IMAGE'],SaveImage:['IMAGE']};
+function nodeInfo(name: string){return {[name]:{name,python_module:'nodes',output_node:name==='SaveImage',input:{required:structuredClone(fields[(name as keyof typeof fields)])},output:outputs[(name as keyof typeof outputs)]}};}
+function syntheticPng(edge=512){
+  const crc=(data: Buffer<ArrayBuffer>)=>{let c=0xffffffff;for(const b of data){c^=b;for(let i=0;i<8;i++)c=c&1?0xedb88320^(c>>>1):c>>>1;}return(c^0xffffffff)>>>0;};
+  const chunk=(name: string,data: Buffer<ArrayBuffer>)=>{const b=Buffer.alloc(data.length+12);b.writeUInt32BE(data.length);b.write(name,4);data.copy(b,8);b.writeUInt32BE(crc(b.subarray(4,b.length-4)),b.length-4);return b;};
+  const h=Buffer.alloc(13);h.writeUInt32BE(edge);h.writeUInt32BE(edge,4);h[8]=8;h[9]=2;
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',h),chunk('IDAT',deflateSync(Buffer.alloc((edge*3+1)*edge))),chunk('IEND',Buffer.alloc(0))]);
+}
+function backend(handler:(call:BackendCall,index:number)=>BackendReply|null,{limits}:{limits?:Record<string,number>}={}){
+  const calls:BackendCall[]=[];let destroyed=0;
+  const httpRequest=(options: { hostname:string;port:number;method:string;path:string; },callback: (arg0: Readable) => void)=>{
+    const req=new EventEmitter() as BackendRequest,socket=new EventEmitter();
+    Object.assign(socket,{remoteAddress:options.hostname,remotePort:options.port,destroy(){destroyed++;}});req.socket=socket;req.destroy=()=>{destroyed++;};
+    req.end=(body: string|undefined)=>{
+      const call={method:options.method,path:options.path,body:body===undefined?undefined:JSON.parse(body)};calls.push(call);
+      const result=handler(call,calls.length);
+      if(result===null)return;
+      const {data={},status=200,type='application/json',headers={},complete=true,chunks}=result??{};
+      const incoming=Readable.from(chunks??[Buffer.isBuffer(data)?data:Buffer.from(JSON.stringify(data))]);
+      Object.assign(incoming,{socket,statusCode:status,complete,headers:{'content-type':type,...headers}});callback(incoming);
+    };
+    queueMicrotask(()=>{req.emit('socket',socket);socket.emit('connect');});return req;
+  };
+  return {calls,get destroyed(){return destroyed;},connector:createComfyConnector(({networkDeps:{httpRequest},reservedPorts:()=>[4318],limits} as unknown as Parameters<typeof createComfyConnector>[0]))};
+}
+test('explicit check reads only version and six known classes, returns bounded checkpoint names without host details',async()=>{
+  const b=backend(({path})=>({data:path==='/system_stats'?{system:{comfyui_version:'0.39.0',argv:['--private-path'],ram_total:123}}:nodeInfo(path.split('/').at(-1)!)}));
+  const result=await b.connector.check({config:{baseUrl,model:''}});
+  assert.deepEqual(result,{ok:true,baseUrl,comfyVersion:'0.39.0',checkpoints:[model],selectedCheckpointAvailable:false,nodeClasses:[...COMFY_NODE_CLASSES]});
+  assert.deepEqual(b.calls.map(c=>c.path),['/system_stats',...COMFY_NODE_CLASSES.map(n=>`/object_info/${n}`)]);assert.ok(b.calls.every(c=>c.method==='GET'&&c.body===undefined));
+  assert.ok(!JSON.stringify(result).includes('private'));
+});
+test('check rejects wrong/missing version, missing/custom/partner nodes, unsafe checkpoints and unsupported sampler',async()=>{
+  for(const mutation of [
+    (path: string,data: { system: { comfyui_version: string; }; })=>{if(path==='/system_stats')data.system.comfyui_version='0.40.0';},
+    (path: string,data: { CheckpointLoaderSimple: { input: { required: { ckpt_name: string[][]; }; }; }; })=>{if(path.endsWith('CheckpointLoaderSimple'))data.CheckpointLoaderSimple.input.required.ckpt_name=[['../outside']];},
+    (path: string,data: { KSampler: { input: { required: { sampler_name: string[][]; }; }; }; })=>{if(path.endsWith('KSampler'))data.KSampler.input.required.sampler_name=[['unsupported']];},
+    (path: string,data: { SaveImage: { python_module: string; }; })=>{if(path.endsWith('SaveImage'))data.SaveImage.python_module='custom_nodes.package';},
+    (path: string,data: { SaveImage: { api_node: boolean; }; })=>{if(path.endsWith('SaveImage'))data.SaveImage.api_node=true;},
+    (path: string,data: { SaveImage: unknown; })=>{if(path.endsWith('SaveImage'))delete data.SaveImage;},
+  ]){
+    const b=backend(({path})=>{const data=path==='/system_stats'?{system:{comfyui_version:'0.39.0'}}:nodeInfo(path.split('/').at(-1)!);(mutation as unknown as (...args:[typeof path,typeof data])=>void)(path,data);return{data};});
+    await assert.rejects(b.connector.check({config:{baseUrl,model:''}}));assert.ok(b.calls.every(c=>c.method==='GET'));
+  }
+});
+test('node metadata aggregate and explicit check wall-clock are bounded',async()=>{
+  const b=backend(({path})=>({data:path==='/system_stats'?{system:{comfyui_version:'0.39.0'}}:nodeInfo(path.split('/').at(-1)!)}),{limits:{maxNodeInfoBytes:400}});
+  await assert.rejects(b.connector.check({config:{baseUrl,model:''}}),{code:'COMFY_RESPONSE_TOO_LARGE'});assert.ok(b.calls.length<7);
+  const c=backend(()=>null,{limits:{checkTimeoutMs:10}});await assert.rejects(c.connector.check({config:{baseUrl,model:''}}),{code:'COMFY_TIMEOUT'});assert.equal(c.calls.length,1);
+});
+test('submit sends exactly one fixed body after fence; acknowledgement is not proof of execution',async()=>{
+  const e=execution(),b=backend(({body})=>({data:{prompt_id:body.prompt_id,number:0,node_errors:{}}}));let fences=0;
+  const result=await b.connector.submit({execution:e,config,beforeSubmit:()=>{fences++;assert.equal(b.calls.length,0);}});
+  assert.equal(fences,1);assert.equal(b.calls.length,1);assert.equal(b.calls[0].path,'/prompt');assert.equal(result.state,'submitted');assert.equal(result.contentVerified,false);
+  assert.deepEqual(b.calls[0].body.prompt,e.graph);assert.equal(b.calls[0].body.extra_data.mioon.outputNonce,e.outputNonce);assert.equal(b.calls[0].body.client_id,e.clientId);
+  assert.equal(b.calls[0].body.prompt['3'].inputs.text,' The fox\n月亮 ');
+});
+test('lost, malformed, mismatched and node-error acknowledgements stay unknown and never repost or auto-observe',async()=>{
+  const e=execution();
+  for(const response of [null,{data:{prompt_id:e.promptId,number:0,node_errors:{'7':{error:'private detail'}}}},{data:{prompt_id:'different',number:0,node_errors:{}}},{data:Buffer.from('{bad')},{data:{prompt_id:e.promptId,number:'0',node_errors:{}}}]){
+    const b=backend(()=>response,{limits:{jsonTimeoutMs:10}});
+    await assert.rejects(b.connector.submit({execution:e,config,beforeSubmit:()=>{}}),error=>(error as Failure&{dispatched:boolean;outcomeUnknown:boolean}).dispatched===true&&(error as Failure&{outcomeUnknown:boolean}).outcomeUnknown===true&&!(error as Failure).message.includes('private detail'));
+    assert.equal(b.calls.length,1);assert.equal(b.calls[0].method,'POST');
+  }
+});
+test('disabled or mismatched config, arbitrary graph and missing/async fence cannot POST',async()=>{
+  for(const value of [{...config,enabled:false},{...config,model:'other.safetensors'},{...config,baseUrl:'http://localhost:8188'}]){
+    const b=backend(()=>assert.fail());await assert.rejects(b.connector.submit({execution:execution(),config:value,beforeSubmit:()=>{}}));assert.equal(b.calls.length,0);
+  }
+  const e=execution();e.graph['7'].class_type='ExternalPartner';e.graphHash=hashComfyWorkflow(e.graph);
+  const b=backend(()=>assert.fail());await assert.rejects(b.connector.submit({execution:e,config,beforeSubmit:()=>{}}));assert.equal(b.calls.length,0);
+  await assert.rejects(b.connector.submit({execution:execution(),config}));assert.equal(b.calls.length,0);
+});
+test('one-shot pending/running/not-found observations never attest content or retrieve an output',async()=>{
+  const e=execution();
+  for(const status of ['pending','in_progress']){
+    const b=backend(()=>({data:{id:e.promptId,status,outputs_count:0}}));
+    const result=await b.connector.observe({execution:e,config});assert.deepEqual(result,{state:status==='pending'?'pending':'running',contentVerified:false});assert.equal(b.calls.length,1);assert.equal(b.calls[0].path,`/api/jobs/${e.promptId}`);
+  }
+  const b=backend(()=>({status:404,data:{error:'Job not found'}}));assert.deepEqual(await b.connector.observe({execution:e,config}),{state:'not_found',contentVerified:false});assert.equal(b.calls.length,1);
+});
+test('success requires complete original graph, exact marker and affirmative execution status before view',async()=>{
+  for(const mutation of [
+(    j: { id: string; })=>{j.id='other';},(j: { workflow: unknown; })=>{delete j.workflow;},(j: { workflow: { prompt: { [x: string]: unknown; }; }; })=>{delete j.workflow.prompt['6'];},
+(    j: { workflow: { prompt: { [x: string]: { inputs: { text: string; }; }; }; }; })=>{j.workflow.prompt['3'].inputs.text='server optimized';},(j: { workflow: { prompt: { [x: string]: { inputs: { steps: number; }; }; }; }; })=>{j.workflow.prompt['5'].inputs.steps=21;},
+(    j: { workflow: { prompt: { [x: string]: { inputs: { ckpt_name: string; }; }; }; }; })=>{j.workflow.prompt['1'].inputs.ckpt_name='replaced.safetensors';},(j: { workflow: { extra_data: { mioon: { outputNonce: string; }; }; }; })=>{j.workflow.extra_data.mioon.outputNonce='different';},
+(    j: { workflow: { extra_data: { client_id: string; }; }; })=>{j.workflow.extra_data.client_id='other';},(j: { workflow: { extra_data: { secret: string; }; }; })=>{j.workflow.extra_data.secret='unexpected';},
+(    j: { workflow: { extra_data: { mioon: { graphHash: string; }; }; }; })=>{j.workflow.extra_data.mioon.graphHash='0'.repeat(64);},(j: { execution_status: unknown; })=>{delete j.execution_status;},
+(    j: { execution_status: { messages: never[]; }; })=>{j.execution_status={messages:[]};},(j: { execution_status: { status_str: string; }; })=>{j.execution_status.status_str='error';},(j: { execution_status: { completed: boolean; }; })=>{j.execution_status.completed=false;},
+(    j: { execution_status: { messages: (string|{ prompt_id: unknown; })[][]; }; id: unknown; })=>{j.execution_status.messages.push(['execution_error',{prompt_id:j.id}]);},(j: { execution_error: { exception_message: string; }; })=>{j.execution_error={exception_message:'private'};},
+  ]){
+    const job=completeJob();(mutation as unknown as (...args:[typeof job])=>void)(job);const b=backend(()=>({data:job}));
+    await assert.rejects(b.connector.observe({execution:execution(),config}),{code:'COMFY_CORRELATION_FAILED'});assert.equal(b.calls.length,1);
+  }
+});
+test('terminal success rejects all extra or path-authoritative descriptors without view',async()=>{
+  for(const mutation of [
+(    j: { outputs: { [x: string]: { images: unknown[]; }; }; })=>{j.outputs['7'].images.push(j.outputs['7'].images[0]);},(j: { outputs: { [x: string]: unknown; }; })=>{j.outputs['8']=j.outputs['7'];},
+(    j: { outputs: { [x: string]: { images: { subfolder: string; }[]; }; }; })=>{j.outputs['7'].images[0].subfolder='sub';},(j: { outputs: { [x: string]: { images: { filename: string; }[]; }; }; })=>{j.outputs['7'].images[0].filename='../escape.png';},
+(    j: { outputs: { [x: string]: { images: { type: string; }[]; }; }; })=>{j.outputs['7'].images[0].type='temp';},(j: { outputs: { [x: string]: { video: never[]; }; }; })=>{j.outputs['7'].video=[];},(j: { outputs_count: number; })=>{j.outputs_count=2;},
+(    j: { outputs: { [x: string]: { images: { url: string; }[]; }; }; })=>{j.outputs['7'].images[0].url='http://attacker.invalid';},(j: { outputs: { [x: string]: { images: { filename: string; }[]; }; }; })=>{j.outputs['7'].images[0].filename='other_00001_.png';},
+  ]){const job=completeJob();(mutation as unknown as (...args:[typeof job])=>void)(job);const b=backend(()=>({data:job}));await assert.rejects(b.connector.observe({execution:execution(),config}),{code:'COMFY_OUTPUT_INVALID'});assert.equal(b.calls.length,1);}
+});
+test('valid terminal result yields one staged 512 PNG and provenance after exactly one job GET and one view',async()=>{
+  const e=execution(),job=completeJob(e),png=syntheticPng();
+  const b=backend(({path})=>path.startsWith('/api/jobs/')?{data:job}:{data:png,type:'image/png'});
+  const result=await b.connector.observe({execution:e,config});
+  assert.equal(result.state,'completed');assert.equal(result.contentVerified,true);assert.deepEqual(result.candidate.bytes,png);assert.equal(result.candidate.width,512);assert.equal(result.candidate.height,512);assert.equal(result.candidate.mimeType,'image/png');assert.equal(result.candidate.byteLength,png.length);assert.match(result.candidate.sha256,/^[0-9a-f]{64}$/);
+  assert.equal(result.provenance.graphHash,e.graphHash);assert.equal(result.provenance.model,model);assert.equal(result.provenance.seed,e.seed);assert.equal(b.calls.length,2);assert.ok(b.calls.every(c=>c.method==='GET'));assert.equal(b.calls[1].path,`/view?filename=${job.outputs['7'].images[0].filename}&subfolder=&type=output`);
+});
+test('invalid, truncated or wrong-dimension PNG cannot produce a candidate',async()=>{
+  for(const png of [Buffer.from('not PNG'),syntheticPng(16),syntheticPng().subarray(0,-1)]){
+    const b=backend(({path})=>path.startsWith('/api/jobs/')?{data:completeJob()}:{data:png,type:'image/png'});await assert.rejects(b.connector.observe({execution:execution(),config}),{code:'COMFY_OUTPUT_INVALID'});assert.equal(b.calls.length,2);
+  }
+});
+test('failed/interrupted terminal evidence is correlated and never retrieves or retries work',async()=>{
+  for(const status of ['failed','cancelled']){
+    const job=completeJob();job.status=status;job.execution_status={status_str:'error',completed:false,messages:[]};job.outputs={};
+    const b=backend(()=>({data:job}));const result=await b.connector.observe({execution:execution(),config});assert.equal(result.state,'failed');assert.equal(result.contentVerified,true);assert.equal(b.calls.length,1);
+  }
+});
+test('connector snapshots caller-owned execution and config across the asynchronous observation',async()=>{
+  const e=execution(),saved=structuredClone(e),settings=structuredClone(config),job=completeJob(e);
+  const b=backend(({path})=>{if(path.startsWith('/api/jobs/')){e.graph['3'].inputs.text='mutated';e.promptId='different';settings.baseUrl='http://127.0.0.1:9999';settings.model='other';return{data:job};}return{data:syntheticPng(),type:'image/png'};});
+  const result=await b.connector.observe({execution:e,config:settings});assert.equal(result.provenance!.promptId,saved.promptId);assert.equal(result.provenance!.model,model);assert.equal(result.state,'completed');
+});
+test('stop-observing aborts local GET and never calls a remote interrupt or cancellation route',async()=>{
+  const controller=new AbortController(),b=backend(()=>{controller.abort();return null;});
+  await assert.rejects(b.connector.observe({execution:execution(),config,signal:controller.signal}),{code:'COMFY_ABORTED',dispatched:false});assert.equal(b.calls.length,1);assert.ok(b.destroyed>0);
+});

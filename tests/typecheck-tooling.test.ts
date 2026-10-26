@@ -53,7 +53,7 @@ test('typecheck accepts no channels, selections, duplicates, project overrides o
   assert.equal(parseArguments(['typecheck']).command, 'typecheck');
   for (const flags of [
     ['--channel=development'], ['--suite=portable'], ['--file=agent-protocol.test.mjs'], ['--concurrency=1'], ['--native-ready'],
-    ['--project=other.json'], ['--project', 'other.json'], ['--pretty=false'], ['--'], ['--', '--help'], ['--noEmit', '--noEmit'], ['exec'],
+    ['--project=other.json'], ['--project', 'other.json'], ['--pretty=false'], ['--max-old-space-size=8192'], ['--'], ['--', '--help'], ['--noEmit', '--noEmit'], ['exec'],
   ]) assert.throws(() => parseArguments(['typecheck', ...flags]), {code: 'TOOLING_USAGE'});
 });
 
@@ -61,7 +61,7 @@ test('local TypeScript requires the exact declared metadata and reviewed JavaScr
   const {directory} = await fixture(t);
   assert.deepEqual(await installedTypeScript(directory), {version, entry: path.join(directory, 'node_modules/typescript/lib/tsc.js')});
   assert.deepEqual(await typecheckCommands(directory), projects.map(project => ({command: process.execPath,
-    args: [path.join(directory, 'node_modules/typescript/lib/tsc.js'), '--project', project, '--noEmit', '--pretty', 'false'], cwd: directory})));
+    args: ['--max-old-space-size=4096', path.join(directory, 'node_modules/typescript/lib/tsc.js'), '--project', project, '--noEmit', '--pretty', 'false'], cwd: directory})));
 });
 
 test('normal pnpm package links remain within the repository and use the canonical compiler entry', async t => {
@@ -181,7 +181,7 @@ test('fixed compiler projects cover all runtime TypeScript without legacy browse
   assert.deepEqual(foundation.exclude, ['../../packages/ui/**', '../../apps/web/**']);
   assert.deepEqual(browser.include, ['../../packages/ui/src/**/*.ts', '../../packages/ui/src/**/*.tsx', '../../apps/web/src/**/*.ts', '../../apps/web/src/**/*.tsx', 'browser.consumer.tsx', 'export-sample-peak.consumer.tsx', 'desktop-launcher.consumer.tsx', 'timeline-audio-preview.consumer.tsx', 'export-loudness.consumer.tsx', 'timeline-mix-loudness.consumer.tsx', 'timeline-clip-loudness.consumer.tsx', 'timeline-loudness-apply.consumer.tsx']);
   assert.deepEqual(browser.exclude, []);
-  assert.deepEqual(testsProject.include, ['./**/*.ts', './**/*.tsx']);
+  assert.deepEqual(testsProject.include, ['./**/*.ts', './**/*.tsx', '../apps/web/src/style-modules.d.ts']);
   // Frozen historical evidence fixtures stay excluded; `.mjs`-sourced helper and
   // fixture modules are removed from this list as their owning test waves add
   // strict types.
@@ -192,7 +192,7 @@ test('fixed compiler projects cover all runtime TypeScript without legacy browse
     assert.equal(config.compilerOptions.strict, true); assert.equal(config.compilerOptions.noEmit, true);
     assert.equal(config.compilerOptions.erasableSyntaxOnly, true); assert.equal(config.compilerOptions.skipLibCheck, false);
   }
-  assert.deepEqual(testsProject.compilerOptions.lib, ['ES2022', 'ES2023.Array', 'ES2024.Promise', 'DOM', 'DOM.Iterable']);
+  assert.deepEqual(testsProject.compilerOptions.lib, ['ES2022', 'ES2023.Array', 'ES2024.Promise', 'ES2024.String', 'DOM', 'DOM.Iterable']);
   assert.equal(testsProject.compilerOptions.jsx, 'react-jsx');
   assert.deepEqual(testsProject.compilerOptions.types, ['node', 'react', 'react-dom']);
 });
@@ -205,13 +205,26 @@ test('source symlink directories cannot hide new JavaScript from the language gu
   await assert.rejects(verifySourceLanguages(local.directory), {code: 'TYPECHECK_SOURCE_POLICY_INVALID'});
 });
 
-test('actual standalone typecheck CLI runs both fixed checks without application/build/media prerequisites', async t => {
+test('actual standalone typecheck CLI runs three fixed checks without application/build/media prerequisites', async t => {
   const {directory} = await fixtureCli(t);
   const result = runCli(directory, ['typecheck']);
   assert.equal(result.status, 0);
   assert.equal(result.stderr, '');
   assert.deepEqual(result.stdout.trim().split('\n').map(line => JSON.parse(line)),
     projects.map(project => ['--project', project, '--noEmit', '--pretty', 'false']));
+});
+
+test('actual compiler children use a fixed bounded heap without caller-provided Node options', async t => {
+  const {directory} = await fixtureCli(t, "import {getHeapStatistics} from 'node:v8'; process.stdout.write(JSON.stringify({project:process.argv[3],execArgv:process.execArgv,heap:getHeapStatistics().heap_size_limit}) + '\\n');\n");
+  const result = runCli(directory, ['typecheck']);
+  assert.equal(result.status, 0, result.stderr);
+  const rows = result.stdout.trim().split('\n').map(line => JSON.parse(line) as {project: string; execArgv: string[]; heap: number});
+  assert.deepEqual(rows.map(row => row.project), projects);
+  for (const row of rows) {
+    assert.deepEqual(row.execArgv, ['--max-old-space-size=4096']);
+    // V8 adds platform-dependent young-generation headroom to the old-space cap.
+    assert.ok(row.heap >= 4096 * 1024 * 1024 && row.heap <= 4608 * 1024 * 1024, `compiler heap: ${row.heap}`);
+  }
 });
 
 test('actual CLI rejects flags and invalid metadata without running a compiler', async t => {

@@ -1,5 +1,7 @@
 # Four-language implementation checkpoint — 2026-10-15
 
+The frozen command and results below retain their historical filenames. For current `.test.ts` execution and type checking, see [TYPESCRIPT.md](TYPESCRIPT.md#current-test-migration-2026-10-26).
+
 This checkpoint implements Simplified Chinese, region-neutral Traditional Chinese, English and Japanese throughout the owned GUI, native application copy and display helpers. It is **not an unconditional cross-platform or full native-layout acceptance claim**.
 
 ## Covered modules

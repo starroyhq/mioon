@@ -18,7 +18,7 @@ const token = 'synthetic-v4-mcp-token-never-live';
 interface Bridge {client: Client; transport: StdioClientTransport; stderr: () => string; call: (name: string, args?: Record<string, unknown>, errorCode?: string) => Promise<unknown>}
 interface ErrorEnvelope {code?: string; message?: string; details: {currentRevision?: number} & Record<string, unknown>}
 interface CatalogOperation {operation: string; toolName: string; command: string; inputSchema: Record<string, unknown>; requiresRequestId?: boolean}
-interface CatalogFixture {inputSchema: {anyOf: Array<{additionalProperties?: boolean; properties: Record<string, unknown>; required: string[]}>}; requiresRequestId: boolean}
+interface CatalogFixture {operation: string; inputSchema: {anyOf: Array<{additionalProperties?: boolean; properties: Record<string, unknown>; required: string[]}>}; requiresRequestId: boolean}
 interface RpcService extends Awaited<ReturnType<typeof startServer>> {}
 interface RpcBody {ok?: boolean; data?: Record<string, unknown>; error?: {code?: string; details?: unknown}}
 function environment(extra: Record<string, string> = {}): Record<string, string> {

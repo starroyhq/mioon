@@ -1,5 +1,7 @@
 # Keychain async 受控候选
 
+下方候选及整合验收保留当时文件名、命令、哈希和计数；当前 `.test.ts` 测试入口见 [TYPESCRIPT.md](TYPESCRIPT.md#current-test-migration-2026-10-26)，冻结历史重放材料保持原样。
+
 日期：2026-10-10（UTC）。基线：`8c694d191e6c90379c32c9f8db0a778c35c31e14`。
 原 Mac 分支：`codex/keychain-async-candidate-93c86f1a`。下方原 Mac 35项结果归属于该候选。云端在 `9e9598d887b21b8e1b7dc742e5d15c66a3ff93d4` 上整合并保留 Linux 兼容路径；当前云端聚焦门、fresh build 与 Linux 原生重开回归已通过，父级独立 full 已通过（3099总/3097通过/0失败/2跳过）；分项证据见下文，不以旧 Mac 结果代替。未提交或发布。
 

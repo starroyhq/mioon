@@ -7,6 +7,7 @@
       "ES2022",
       "ES2023.Array",
       "ES2024.Promise",
+      "ES2024.String",
       "DOM",
       "DOM.Iterable"
     ],
@@ -30,25 +31,14 @@
   },
   "include": [
     "./**/*.ts",
-    "./**/*.tsx"
+    "./**/*.tsx",
+    "../apps/web/src/style-modules.d.ts"
   ],
   "exclude": [
-    "./comfy-module-business.test.ts",
-    "./export-preflight-http-observer.test.ts",
-    "./export-preview-state.test.ts",
     "./fixtures/workspace-restore-legacy/**",
     "./fixtures/workspace-restore-v27/legacy-contracts/**",
     "./helpers/legacy-workspace-store.ts",
     "./helpers/timeline-mix-loudness-ui-fixture.ts",
-    "./image-compatible-migration.test.ts",
-    "./image-edit-adapter.test.ts",
-    "./image-edit-migration.test.ts",
-    "./image-edit-network.test.ts",
-    "./image-generation-business.test.ts",
-    "./image-generation-recovery.test.ts",
-    "./image-generation-ui.test.ts",
-    "./image-review-business.test.ts",
-    "./mcp-v4.test.ts",
     "./typecheck/**",
     "./fixtures/local-drafts-v1-contracts.ts",
     "./fixtures/local-drafts-v1-reader.ts"

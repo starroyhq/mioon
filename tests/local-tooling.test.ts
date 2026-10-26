@@ -247,6 +247,11 @@ test('old Node and mismatched application versions fail preflight', async t => {
 test('portable manifest is explicit, sorted, present and not broadened by filename guesses', async t => {
   const {directory} = await fixture(t);
   assert.deepEqual(await discoverTests(directory, {platform: 'win32'}), [...PORTABLE_TEST_FILES].sort().map(name => `tests/${name}`));
+  const current = PORTABLE_TEST_FILES[0]!, legacy = current.replace(/\.ts$/, '.mjs');
+  assert.ok(current.endsWith('.test.ts'));
+  assert.deepEqual(await discoverTests(directory, {files: [current]}), [`tests/${current}`]);
+  assert.deepEqual(await discoverTests(directory, {files: [legacy]}), [`tests/${current}`]);
+  await assert.rejects(discoverTests(directory, {files: [legacy, current]}), {code: 'TEST_SELECTION_INVALID'});
   await assert.rejects(discoverTests(directory, {files: ['z-native.test.mjs']}), {code: 'TEST_SELECTION_INVALID'});
   assert.equal((await discoverTests(directory, {suite: 'full', platform: 'linux'})).at(-1), 'tests/z-native.test.mjs');
   await assert.rejects(discoverTests(directory, {suite: 'full', platform: 'win32'}), {code: 'NATIVE_TEST_LANE_BLOCKED'});

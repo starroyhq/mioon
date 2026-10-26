@@ -43,13 +43,13 @@ This is a deterministic CPU reference contract, not proof of GPU/FFmpeg parity o
 
 ## Tests and verification
 
-`tests/cube-lut.test.mjs` covers literal identity/channel-swap tables; grids of several sizes; all six tetrahedra with independently hand-calculated equal and unequal weights; an analytic min-channel oracle that differs from trilinear interpolation; cell/tie/top-face boundaries; exact strength zero, half and one; immutable handles; canonical round trips; malformed headers/rows/numbers/domains/encoding; every bound; maximum 65-edge tables; and the no-I/O module boundary. Numeric expectations do not call the production indexing or interpolation implementation to construct their expected values.
+`tests/cube-lut.test.ts` covers literal identity/channel-swap tables; grids of several sizes; all six tetrahedra with independently hand-calculated equal and unequal weights; an analytic min-channel oracle that differs from trilinear interpolation; cell/tie/top-face boundaries; exact strength zero, half and one; immutable handles; canonical round trips; malformed headers/rows/numbers/domains/encoding; every bound; maximum 65-edge tables; and the no-I/O module boundary. Numeric expectations do not call the production indexing or interpolation implementation to construct their expected values.
 
 `tests/typecheck/cube-lut.consumer.mts` checks exact/non-any types and intentional negative cases for opacity, readonly metadata/output, fixed interpolation and no path-loading API. Its isolated ES2022-only configuration requires no Node or browser globals. The repository's existing foundation include already admits the new runtime `.ts` file automatically. No new application JavaScript, gate allowlist change, package-barrel export or dependency is introduced.
 
 Focused verification commands (run serially in an available test lane):
 
-1. Run `node --test --test-concurrency=1 tests/cube-lut.test.mjs` with the repository's Node24 runtime.
+1. Run `node --test --test-concurrency=1 tests/cube-lut.test.ts` with the repository's Node24 runtime.
 2. Run the exact pinned TypeScript compiler against `tests/typecheck/tsconfig.cube-lut.json` with `--noEmit`; do not install, substitute or bypass dependency policy.
 3. Run the existing no-new-JavaScript source guard and the full standard typecheck when a dependency-equipped integration checkout is available.
 
