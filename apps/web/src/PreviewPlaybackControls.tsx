@@ -1,10 +1,13 @@
 import React from 'react';
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {Play, Pause, StepBack, StepForward, Maximize} from '@mioon/ui/components/workbench-icons';
 import {Button} from '@mioon/ui/components/button';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import {displayTimelineFrame} from './timeline-removal.ts';
+import type {MenuPlaybackControl} from './desktop-menu-client.ts';
 interface Props {
+  onRegisterMenuPlayback?: (control: MenuPlaybackControl) => () => void;
+  onMenuStateChange?: () => void;
   bindingKey: string; getMedia: () => HTMLMediaElement | null; isCurrent: (media: HTMLMediaElement) => boolean;
   position: number; duration: number; fps: number; format: 'timecode'|'seconds'; standaloneSource: boolean;
   onStep: (delta: number) => void; metadata: string;
@@ -14,12 +17,25 @@ interface Props {
 export default function PreviewPlaybackControls(props: Props) {
   const {t} = useI18n();
   const current = useRef(props);current.current = props;
+  const actionEpoch = useRef(0);
   const [state,setState] = useState({playing:false,ready:false}), [failed,setFailed] = useState(false);
+  useLayoutEffect(() => {
+    let active = true;
+    const control: MenuPlaybackControl = {scope: () => {
+      const value = current.current, media = value.getMedia();
+      return JSON.stringify([value.bindingKey, actionEpoch.current, media?.paused ?? null, media?.ended ?? null]);
+    }, available: () => {
+      const value = current.current, media = value.getMedia();
+      return Boolean(active && media && value.isCurrent(media) && media.readyState >= 1);
+    }, toggle: () => { if (control.available()) return toggle(); }};
+    const release = props.onRegisterMenuPlayback?.(control);
+    return () => { active = false; release?.(); };
+  }, [props.onRegisterMenuPlayback]);
   // Parent layout effects restore the binding/visibility before readiness is
   // sampled, including a retained player reopened after its metadata loaded.
   useEffect(() => {
     const media = props.getMedia();setFailed(false);
-    const update = () => setState({playing:Boolean(media && props.isCurrent(media) && !media.paused && !media.ended),ready:Boolean(media && props.isCurrent(media) && media.readyState >= 1)});
+    const update = () => {setState({playing:Boolean(media && props.isCurrent(media) && !media.paused && !media.ended),ready:Boolean(media && props.isCurrent(media) && media.readyState >= 1)});current.current.onMenuStateChange?.();};
     update();
     const events = ['play','playing','pause','ended','loadedmetadata','emptied','error'];
     for (const name of events) media?.addEventListener(name,update);
@@ -28,6 +44,9 @@ export default function PreviewPlaybackControls(props: Props) {
   async function toggle() {
     const value = current.current, media = value.getMedia();
     if (!media || !value.isCurrent(media) || media.readyState < 1) return;
+    // Revoke an older toggle before play() can resolve. A subsequent native
+    // pause must not become Play after another control already paused/ended.
+    actionEpoch.current++; value.onMenuStateChange?.();
     if (!media.paused) {media.pause();return;}
     setFailed(false);
     try {await media.play();} catch {if (current.current.bindingKey===value.bindingKey && value.isCurrent(media)) setFailed(true);}

@@ -35,9 +35,20 @@ export function agentEditingTargetActive(projectId: string, kind: string, id: st
 export function agentEditingProof(projectId:string,kind:string,id:string):AgentEditingProof|null {const entry=owners.get(`normal:${projectId}:${kind}:${id}`),state=entry?.controller.getState(),claim=state?.claims.find(value=>value.target.kind===kind&&value.target.id===id);return entry?.controller.canEdit()&&claim&&typeof state?.timelineRevision==='number'?{ownerId:claim.ownerId,kind,id,revision:state.targets?.find(target=>target.kind===kind&&target.id===id)?.revision??0,timelineRevision:state.timelineRevision}:null;}
 export async function refreshAgentEditingTargets(projectId:string):Promise<void>{await Promise.allSettled([...owners.entries()].filter(([key])=>key.startsWith('normal:'+projectId+':')).map(([,entry])=>entry.controller.refresh()));}
 export function subscribeAgentEditingChanges(listener:()=>void):()=>void{closeListeners.add(listener);return()=>{closeListeners.delete(listener);};}
+function editingCloseIdentity(id: string, state: AgentEditingState): readonly unknown[] {
+  const target = ({kind, id, revision}: AgentTaskTarget) => [kind, id, revision];
+  const ordered = (values: readonly unknown[][]) => values.map(value => JSON.stringify(value)).sort();
+  const pending = state.pending;
+  // Actual target/claim authority changes still revoke close consent. Fresh
+  // response objects, server timestamps and ledger ordering are observations,
+  // not new input; only this local signature sees the target identifiers.
+  return [id, state.phase, pending ? [pending.requestId, pending.projectId, pending.ownerId, pending.generation, pending.sequence, pending.action,
+    ordered(pending.targets.map(target))] : null, state.timelineRevision,
+    ordered((state.targets ?? []).map(target)), ordered(state.claims.map(claim => [claim.id, claim.projectId, claim.ownerId, ...target(claim.target), claim.state]))];
+}
 export function watchAgentEditingClose(registry: NativeCloseSourceRegistry): () => void {
   const source = registry.register('agent-editing-v2'); let version = 0, previous = '';
-  const update = () => { const states = [...owners.entries()].map(([id, entry]) => ({ id, ...entry.controller.getState() })), signature = JSON.stringify(states.map(state => [state.id, state.phase, state.pending?.requestId])); if (signature === previous) return; previous = signature; source.update({ dirty: false, busy: states.some(state => ['acquiring', 'releasing'].includes(state.phase)), blocked: states.some(state => Boolean(state.pending) || ['uncertain', 'retained'].includes(state.phase)), version: ++version }); };
+  const update = () => { const states = [...owners.entries()].map(([id, entry]) => ({ id, ...entry.controller.getState() })), signature = JSON.stringify(states.map(state => editingCloseIdentity(state.id, state))); if (signature === previous) return; previous = signature; source.update({ dirty: false, busy: states.some(state => ['acquiring', 'releasing'].includes(state.phase)), blocked: states.some(state => Boolean(state.pending) || ['uncertain', 'retained'].includes(state.phase)), version: ++version }); };
   closeListeners.add(update); update(); return () => { closeListeners.delete(update); source.release(); };
 }
 export async function acquireAgentEditingTarget(projectId: string, target: AgentTaskTarget): Promise<boolean> {

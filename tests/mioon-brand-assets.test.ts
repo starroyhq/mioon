@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { inflateSync } from 'node:zlib';
 import builderConfig from '../apps/desktop/builder-config.ts';
 import { secureWebPreferences } from '../apps/desktop/src/security.ts';
+import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const bytes = (name: string) => readFile(path.join(root, name));
@@ -114,14 +115,14 @@ test('both desktop channels package brand assets without dropping preload or iso
 
 test('actual shared window factory adds the local icon while retaining the secure preload and owned session', async () => {
   const source = await text('apps/desktop/src/main.ts');
-  const factory = source.match(/createWindow: (\(\) => new BrowserWindow\(\{[\s\S]+?\}\)),\n\s+prepareWindow:/)?.[1];
+  const factory = source.match(/createWindow: (creation => new BrowserWindow\(\{[\s\S]+?\}\)),\n\s+prepareWindow:/)?.[1];
   assert.ok(factory);
   for (const platform of ['darwin', 'linux', 'win32']) {
     const session = {}, appRoot = '/synthetic/mioon-stage';
-    const makeWindow: () => {config: {icon: string; backgroundColor: string; webPreferences: ReturnType<typeof secureWebPreferences>}} = Function('BrowserWindow', 'identity', 'path', 'app', 'process', 'windowChromeOptions', 'secureWebPreferences', 'context', `return (${factory});`)(
+    const makeWindow: (creation: {role: string}) => {config: {icon: string; backgroundColor: string; webPreferences: ReturnType<typeof secureWebPreferences>}} = Function('BrowserWindow', 'identity', 'path', 'app', 'process', 'windowChromeOptions', 'settingsWindowOptions', 'secureWebPreferences', 'context', `return (${factory});`)(
       class { declare config: unknown; constructor(config: unknown) { this.config = config; } }, { productName: 'Mioon' }, path,
-      { getAppPath: () => appRoot }, { platform }, () => ({}), secureWebPreferences, { session, appearance:{backgroundColor:()=>'#f6f6f6'} });
-    const { config } = makeWindow();
+      { getAppPath: () => appRoot }, { platform }, () => ({}), settingsWindowOptions, secureWebPreferences, { session, appearance:{backgroundColor:()=>'#f6f6f6'} });
+    const { config } = makeWindow({role: 'editor'});
     assert.equal(config.icon, path.join(appRoot, 'icons/icon.png'));
     assert.equal(config.backgroundColor, '#f6f6f6');
     assert.equal(config.webPreferences.preload, path.join(appRoot, 'preload.cjs'));

@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "./workbench.css";
 @import "./light.css";
+@import "./text-selection.css";
 
 /* Workspace packages are outside the web application's automatic scan root. */
 @source "../components/**/*.{ts,tsx}";

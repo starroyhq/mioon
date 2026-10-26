@@ -2,6 +2,16 @@
   "name": "mioon",
   "version": "0.4.1",
   "private": true,
+  "description": "与 AI 共同创作的视频工作台，本地优先、开源，和 Mio 一起构思、编排镜头与剪辑",
+  "license": "Apache-2.0",
+  "homepage": "https://mioon.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/starroyhq/mioon.git"
+  },
+  "bugs": {
+    "url": "https://github.com/starroyhq/mioon/issues"
+  },
   "type": "module",
   "packageManager": "pnpm@11.25.0",
   "engines": {

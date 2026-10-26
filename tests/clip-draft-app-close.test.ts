@@ -162,14 +162,20 @@ test('actual lifecycle cleanup retains a newer registered global close handler',
 
 test('desktop close warning describes unconfirmed local drafts and view without promising cancellation', async () => {
   const main = readFileSync(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  const at = main.indexOf("confirmClose: action => Boolean(smokeOutput) || dialog.showMessageBox");
+  const at = main.indexOf('    confirmClose:');
   const until = main.indexOf('confirmUnknown:', at);
   assert.ok(at >= 0 && until > at);
+  assert.equal(main.indexOf('    confirmClose:', at + 1), -1);
   const source = main.slice(at, until);
+  const window = Object.freeze({owner: 'fixture-window'}), context = Object.freeze({backendId: 'fixture-backend'});
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
     const nt = (key: MessageKey) => translate(locale, key), dialogs: DialogOptions[] = [];
     let response = 1;
-    const confirmClose = Function('smokeOutput', 'dialog', 'window', 'nt', `return ({${source}}).confirmClose;`)(false, { showMessageBox: async (_window: unknown, options: DialogOptions) => { dialogs.push(options); return { response }; } }, {}, nt) as (action: string) => Promise<boolean>;
+    const showOwnedDialog = async (owner: unknown, backend: unknown, options: DialogOptions) => {
+      assert.equal(owner, window); assert.equal(backend, context);
+      dialogs.push(options); return response;
+    };
+    const confirmClose = Function('smokeOutput', 'showOwnedDialog', 'window', 'context', 'nt', `return ({${source}}).confirmClose;`)(false, showOwnedDialog, window, context, nt) as (action: string) => Promise<boolean>;
     for (const action of ['reload', 'quit'] as const) {
       assert.equal(await confirmClose(action), false, 'Default keep-editing response cannot close');
       const warning = dialogs.at(-1);

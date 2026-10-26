@@ -27,7 +27,7 @@ const projects = [{ id: 'p1', name: 'UI 走查项目', updatedAt: '2026-10-21T06
 
 test('home header puts "导入项目…" left of the single create button and tags just-imported cards', () => {
   const html = ui().render({ ...base, projects, onImport: none, justImported: ['p2'] });
-  const header = html.match(/<header class="project-home-header">([\s\S]*?)<\/header>/)![1];
+  const header = html.match(/<header class="project-home-header" data-text-selectable="false">([\s\S]*?)<\/header>/)![1];
   assert.ok(header.indexOf('project-home-import') >= 0 && header.indexOf('project-home-import') < header.indexOf('project-home-create-toggle'));
   assert.match(header, /导入项目…/);
   assert.equal((html.match(/data-testid="project-home-create-toggle"/g) || []).length, 1);
@@ -38,7 +38,7 @@ test('home header puts "导入项目…" left of the single create button and ta
 
 test('empty home keeps a bare header and offers "或导入项目文件" under the primary button', () => {
   const html = ui().render({ ...base, projects: [], onImport: none });
-  const header = html.match(/<header class="project-home-header">([\s\S]*?)<\/header>/)![1];
+  const header = html.match(/<header class="project-home-header" data-text-selectable="false">([\s\S]*?)<\/header>/)![1];
   assert.doesNotMatch(header, /project-home-import|project-home-create-toggle/);
   const empty = html.slice(html.indexOf('data-testid="project-home-empty"'));
   assert.ok(empty.indexOf('project-home-create-toggle') < empty.indexOf('project-home-import-empty'));

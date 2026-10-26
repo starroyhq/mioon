@@ -9,6 +9,14 @@
 .scene-dialog-body { flex: 1; min-height: 0; overflow: auto; padding: var(--wb-space-4) var(--wb-space-5); }
 .scene-dialog-footer { display: flex; align-items: center; gap: var(--wb-space-2); min-height: var(--wb-action-bar); padding: var(--wb-space-2) var(--wb-space-5); border-top: 1px solid var(--wb-line-subtle); flex: none; }
 .scene-footer-note { margin-right: auto; display: inline-flex; align-items: center; gap: var(--wb-space-1); min-width: 0; color: var(--wb-soft); font-size: var(--wb-text-caption); }
+/* 09-08a: the split action stays beside its note; 建分镜 takes the right edge. */
+.scene-dialog-footer:has(.scene-storyboard-action) .scene-footer-note { margin-right: 0; }
+.scene-dialog-footer .scene-storyboard-action { margin-left: auto; }
+.scene-storyboard-progress { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; margin-right: var(--wb-space-3); }
+.scene-storyboard-progress > strong { display: flex; align-items: center; gap: var(--wb-space-2); font-size: var(--wb-text-label); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scene-storyboard-progress > span { display: flex; align-items: center; gap: var(--wb-space-1); min-width: 0; color: var(--wb-soft); font-size: var(--wb-text-caption); white-space: nowrap; }
+.scene-storyboard-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.scene-storyboard-progress > span em { margin-left: auto; padding-left: var(--wb-space-3); color: var(--wb-muted); font-style: normal; font-family: var(--wb-font-mono); }
 
 .scene-results { display: flex; flex-direction: column; gap: var(--wb-space-4); }
 .scene-top { display: grid; grid-template-columns: minmax(0, 1fr) 288px; gap: var(--wb-space-4); }
@@ -44,6 +52,7 @@
 
 .scene-cuts-section > header, .scene-keyframes > header, .scene-progress-strip, .scene-source > header { display: flex; align-items: baseline; gap: var(--wb-space-2); margin-bottom: var(--wb-space-2); font-size: var(--wb-text-caption); color: var(--wb-muted); }
 .scene-hints { margin-left: auto; display: flex; gap: var(--wb-space-3); }
+.scene-hints > span { display: inline-flex; align-items: center; gap: 4px; }
 .scene-progress-strip span, .scene-source > header span { margin-left: auto; }
 .scene-cutbar { position: relative; padding-top: var(--wb-space-1); }
 .scene-cutbar-track { position: relative; height: 44px; border-radius: var(--wb-radius-control); background: var(--wb-input); cursor: pointer; }
@@ -71,9 +80,19 @@ span.scene-cut { pointer-events: none; }
 .scene-cutbar-axis span:last-child { transform: translateX(-100%); }
 
 .scene-segments { display: flex; gap: var(--wb-space-2); overflow-x: auto; padding-bottom: var(--wb-space-1); }
-.scene-segments .scene-segment[data-slot="button"] { flex: none; width: 72px; height: auto; padding: 0; display: flex; flex-direction: column; align-items: stretch; gap: var(--wb-space-1); border: 0; border-radius: var(--wb-radius-control); background: transparent; }
-.scene-segment-thumb { display: block; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-control); background: var(--wb-card); }
-.scene-segment[aria-pressed="true"] .scene-segment-thumb { border: 2px solid var(--wb-accent); }
+.scene-segments .scene-segment { position: relative; flex: none; width: 72px; }
+.scene-segments .scene-segment-preview[data-slot="button"] { width: 100%; height: auto; padding: 0; display: flex; flex-direction: column; align-items: stretch; gap: var(--wb-space-1); border: 0; border-radius: var(--wb-radius-control); background: transparent; }
+.scene-segment-thumb { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-control); background: var(--wb-card); }
+.scene-segment-preview[aria-pressed="true"] .scene-segment-thumb { border: 2px solid var(--wb-accent); }
+/* Storyboard choices (09-08a) and keyframe capture (09-08c). */
+.scene-segment-check { position: absolute; top: 0; left: 0; z-index: 1; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; cursor: pointer; }
+.scene-segment-check input { width: 13px; height: 13px; margin: 0; accent-color: var(--wb-text); cursor: inherit; }
+.scene-segment-check:has(input:disabled) { cursor: default; }
+.scene-segment[data-chosen="false"] .scene-segment-thumb img, .scene-segment[data-keyframe="waiting"] .scene-segment-thumb img, .scene-segment[data-keyframe="skipped"] .scene-segment-thumb img { opacity: .4; }
+.scene-segment[data-keyframe="current"] .scene-segment-thumb { border-color: var(--wb-text); }
+.scene-segment-capturing { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 4px; background: var(--wb-media-overlay); color: var(--wb-media-text); font-size: var(--wb-text-min); }
+.scene-segment-capturing .spinner { width: 11px; height: 11px; color: inherit; }
+.scene-keyframes > header .scene-keyframes-toggle { margin-left: auto; }
 .scene-segment-meta { display: flex; justify-content: space-between; color: var(--wb-muted); font-family: var(--wb-font-mono); font-size: var(--wb-text-min); }
 .scene-segment-meta b { color: var(--wb-text); font-weight: 600; }
 

@@ -51,8 +51,8 @@
       "sha256": "cb5beeacd993cbfdbbbe121bd2d531000215e18cb282c35e5b5584e22014a650"
     },
     "packages/contracts/package.json": {
-      "bytes": 1574,
-      "sha256": "0ab5014c062db5f0b107a3a17a14a3c754e8a0da40c9a940993cb865600d2c52"
+      "bytes": 1601,
+      "sha256": "a9401556454b98b060582b16f2e86d6478bf1dc1d02edc9d6c0d0e288e329a8b"
     },
     "packages/contracts/src/edit-tasks.ts": {
       "bytes": 7303,

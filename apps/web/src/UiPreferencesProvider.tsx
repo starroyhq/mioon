@@ -21,10 +21,11 @@ interface UiPreferencesContextValue {
   readonly discard: () => void;
   readonly reload: () => Promise<boolean>;
   readonly markOpened: (projectId: string) => Promise<void>;
+  readonly pauseObservation: (paused: boolean) => void;
 }
 const unavailable = async () => false;
 const Context = createContext<UiPreferencesContextValue>({ preferences: DEFAULT_UI_PREFERENCES, resolvedTheme: 'dark', saved: null, phase: 'loading', dirty: false, pending: false, recentError: false,
-  edit: () => {}, save: unavailable, discard: () => {}, reload: unavailable, markOpened: async () => {} });
+  edit: () => {}, save: unavailable, discard: () => {}, reload: unavailable, markOpened: async () => {}, pauseObservation: () => {} });
 const same = (left: Readonly<UiPreferences>, right: Readonly<UiPreferences>) => Object.keys(DEFAULT_UI_PREFERENCES).every(key => left[key as keyof UiPreferences] === right[key as keyof UiPreferences]);
 
 /** Global display preferences are separate from project view state and language.
@@ -40,6 +41,7 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
   const live = useRef(true), serial = useRef(0), busy = useRef(false), reading = useRef(false), editVersion = useRef(0);
   const frozen = useRef<UiPreferencesPut | null>(null);
   const sync = useRef<ReturnType<typeof createUiPreferencesSync> | null>(null);
+  const observationPaused = useRef(false);
   const current = useRef({ saved, preferences }); current.current = { saved, preferences };
   const dirty = saved !== null && !same(preferences, saved.preferences);
   const publish = (next: UiPreferencesResponse) => {
@@ -65,6 +67,14 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
     } finally { if (request === serial.current) { reading.current = false; sync.current?.drain(); } }
   }, [client]);
 
+  const pauseObservation = useCallback((paused: boolean) => {
+    // A native confirmation returns focus to its document. Defer that automatic
+    // reread so it cannot invalidate the exact settings capture being approved.
+    // The sync owner retains focus/revision hints until cancellation resumes it.
+    observationPaused.current = paused;
+    if (!paused) sync.current?.drain();
+  }, []);
+
   useEffect(() => {
     live.current = true; void reload();
     return () => { live.current = false; serial.current++; };
@@ -73,7 +83,7 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
   useEffect(() => {
     const owner = createUiPreferencesSync(window, {
       revision: () => current.current.saved?.revision ?? null,
-      canRefresh: () => live.current && !busy.current && !reading.current && !frozen.current
+      canRefresh: () => live.current && !observationPaused.current && !busy.current && !reading.current && !frozen.current
         && !(current.current.saved && !same(current.current.preferences, current.current.saved.preferences)),
       refresh: () => { void reload(); },
     });
@@ -150,7 +160,7 @@ export function UiPreferencesProvider({ children, client: supplied }: { children
     return () => { if (target.__mioonUiPreferences === owner) delete target.__mioonUiPreferences; };
   }, [reload, markOpened]);
 
-  return <Context.Provider value={{ preferences, resolvedTheme, saved, phase, dirty, pending, recentError, edit, save, discard, reload, markOpened }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ preferences, resolvedTheme, saved, phase, dirty, pending, recentError, edit, save, discard, reload, markOpened, pauseObservation }}>{children}</Context.Provider>;
 }
 
 export const useUiPreferences = (): UiPreferencesContextValue => useContext(Context);

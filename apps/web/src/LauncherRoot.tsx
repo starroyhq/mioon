@@ -9,6 +9,9 @@ import { useNativeProjectEntry } from './native-project-entry.ts';
 import ProjectEntry from './ProjectEntry.tsx';
 import { createNativeLocatorOwner } from './native-locator-state.ts';
 import type { NativeLocatorOwner } from './native-locator-state.ts';
+import {createDesktopMenuController, readDesktopMenuBridge, launcherMenuView, nativeMenuTextFocus} from './desktop-menu-client.ts';
+import type {MenuHelpControl} from './desktop-menu-client.ts';
+import {hasOpenWorkbenchModal} from './workbench-modal-state.ts';
 export type { SettingsRenderProps as LauncherSettingsProps } from './SettingsRoot.tsx';
 export interface LauncherRootProps { readonly context: ProjectWindowContext; readonly bridge: ProjectWindowBridge; readonly rpc: LauncherRpc; readonly contractChecks: LauncherContractChecks }
 type LauncherWindow = Window & { __mioonFlushWorkspacePreferences?: () => Promise<boolean> };
@@ -17,6 +20,13 @@ type LauncherWindow = Window & { __mioonFlushWorkspacePreferences?: () => Promis
 export default function LauncherRoot({ context, bridge, rpc, contractChecks }: LauncherRootProps) {
   const [, rerender] = useState(0);
   const mounted = useRef(false);
+  const menuSession = useRef<ReturnType<typeof createDesktopMenuController> | null>(null), menuHelp = useRef<MenuHelpControl | null>(null), composing = useRef(false);
+  const [menuBridge] = useState(() => {try {return typeof window === 'undefined' ? null : readDesktopMenuBridge(window);} catch {return null;}});
+  const refreshMenu = useRef(() => menuSession.current?.refresh()).current;
+  const registerMenuHelp = useRef((control: MenuHelpControl) => {
+    menuHelp.current = control; refreshMenu();
+    return () => {if (menuHelp.current === control) {menuHelp.current = null; refreshMenu();}};
+  }).current;
   const locatorOwner = useRef<NativeLocatorOwner | null>(null);
   const [locator] = useState(() => createLastProjectController({ onChange: () => { locatorOwner.current?.publish(); if (mounted.current) rerender(value => value + 1); } }));
   if (!locatorOwner.current) locatorOwner.current = createNativeLocatorOwner({ context, bridge, locator });
@@ -35,10 +45,31 @@ export default function LauncherRoot({ context, bridge, rpc, contractChecks }: L
     return () => { mounted.current = false; releaseLocator(); owner.dispose(); cleanup(); if (win.__mioonFlushWorkspacePreferences === drain) delete win.__mioonFlushWorkspacePreferences; };
   }, [controller, locator, native, settings]);
   useEffect(() => locatorOwner.current?.receive(context), [context]);
+  useEffect(() => {
+    if (!menuBridge) return;
+    const read = () => {
+      const owner = controller.getContext(), state = controller.getState(), close = controller.readCloseSnapshot();
+      return launcherMenuView({ready: mounted.current && !owner.quitting && !owner.settingsModalOpen && owner.editorCount === 0 && state.shown && state.phase !== 'opening' && !state.creating && !state.sealed && !state.createUnknown && !state.openUnknown && !close.dirty && !close.busy && !close.unknown,
+        visible: document.visibilityState !== 'hidden', modalOpen: hasOpenWorkbenchModal(document), composing: composing.current,
+        textFocus: nativeMenuTextFocus(document.activeElement), canHelp: Boolean(menuHelp.current?.available())});
+    };
+    const session = createDesktopMenuController({bridge: menuBridge, identity: {...context, version: 1}, current: () => mounted.current,
+      scope: () => JSON.stringify([controller.getContext().entryVersion, controller.readCloseSnapshot()]),
+      read, execute: command => command === 'show-help' && read().commands['show-help'] && menuHelp.current?.open()});
+    menuSession.current = session;
+    const refresh = () => session.refresh(), start = () => {composing.current = true; refresh();}, end = () => {composing.current = false; refresh();};
+    document.addEventListener('focusin', refresh); document.addEventListener('focusout', refresh); document.addEventListener('visibilitychange', refresh);
+    document.addEventListener('compositionstart', start); document.addEventListener('compositionend', end);
+    const observer = new MutationObserver(refresh); observer.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'inert', 'aria-hidden', 'aria-modal', 'data-state']});
+    return () => {session.dispose(); if (menuSession.current === session) menuSession.current = null;
+      document.removeEventListener('focusin', refresh); document.removeEventListener('focusout', refresh); document.removeEventListener('visibilitychange', refresh);
+      document.removeEventListener('compositionstart', start); document.removeEventListener('compositionend', end); observer.disconnect();};
+  }, [menuBridge, controller, context.windowId, context.contextId]);
+  useEffect(() => {refreshMenu();});
   const entryState = controller.getState(), locatorState = locator.getState();
   const locatorStatus = <LastProjectStatus state={locatorState} controller={locator} restored={entryState.workspace?.restored} />;
   const quietEmpty = entryState.projects.length === 0 && !entryState.workspace?.restored && !entryState.listBusy && !entryState.listError && entryState.phase === 'home'
     && (locatorState.phase === 'idle' || locatorState.phase === 'saved') && !locatorState.uncertain && !locatorState.identityBlocked && locatorState.targetStatus !== 'missing';
-  return <ProjectEntry controller={controller} onSettings={slot => { void bridge.showSettings(slot); }}
+  return <ProjectEntry controller={controller} onSettings={slot => { void bridge.showSettings(slot); }} onRegisterMenuHelp={registerMenuHelp} onMenuHelpStateChange={refreshMenu}
     status={quietEmpty ? undefined : locatorStatus} help={locatorStatus} />;
 }

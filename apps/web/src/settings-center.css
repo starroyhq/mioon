@@ -239,3 +239,13 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .settings-center .mio-settings-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--wb-space-3); }
 .mio-settings-footer-buttons { display: flex; align-items: center; gap: var(--wb-space-2); }
 @media (max-width: 860px) { .mio-settings-row { grid-template-columns: minmax(0, 1fr); gap: var(--wb-space-1); } .mio-settings-row > label, .mio-settings-label { min-height: 0; } .mio-settings-tier-main { flex-wrap: wrap; } }
+
+/* Native settings are a parent-owned modal panel, not another workbench page. */
+.native-settings-parent-surface { width: 100%; height: var(--mioon-viewport-height); min-height: 0; }
+.native-settings-modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgb(0 0 0 / 32%); cursor: default; -webkit-app-region: no-drag; }
+.native-settings-panel > .native-settings-panel-header { position: relative; z-index: 5; display: flex; align-items: center; flex: none; gap: var(--wb-space-3); min-height: 44px; padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--wb-line-subtle); background: var(--wb-raised); }
+.native-settings-panel-title { font-size: var(--wb-text-body); font-weight: 600; }
+.native-settings-panel .native-settings-panel-close { flex: none; width: var(--wb-control); min-height: var(--wb-control); padding: 0; color: var(--wb-soft); }
+.native-settings-panel-header :is(button, summary) { -webkit-app-region: no-drag; }
+.native-settings-panel .settings-center { grid-template-columns: 188px minmax(0, 1fr); }
+@media (max-width: 820px) { .native-settings-panel .settings-center { grid-template-columns: 164px minmax(0, 1fr); } .native-settings-panel .settings-center-content { padding-inline: 18px; } }

@@ -120,7 +120,7 @@ export default function AgentSettings({ onNavigationStateChange, projectId = nul
   return <section className="agent-settings-page mio-settings" data-testid="agent-settings-page" data-phase={phase} aria-label={t('agent.settings.title')} hidden={!visible} inert={!visible}>
       <form noValidate autoComplete="off" onSubmit={submit} className="agent-settings-form">
         <div className="agent-settings-body">
-          {!snapshot || !draft ? <div className="agent-settings-loading" role="status">{phase === 'loading' ? <><span className="spinner" />{t('agent.settings.loading')}</> : <><Icon name="info" size={24} /><p data-testid="agent-settings-error" role="alert">{statusMessage}</p><WorkbenchButton type="button" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.load(); }}>{t('connections.reload')}</WorkbenchButton></>}</div> : <>
+          {!snapshot || !draft ? <div className="agent-settings-loading" role="status">{phase === 'loading' ? <><span className="spinner" />{t('agent.settings.loading')}</> : <><Icon name="info" size={24} /><p data-text-selectable data-testid="agent-settings-error" role="alert">{statusMessage}</p><WorkbenchButton type="button" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.load(); }}>{t('connections.reload')}</WorkbenchButton></>}</div> : <>
             <section className="mio-settings-section" aria-labelledby="agent-connection-heading">
               <header className="mio-settings-section-head"><h2 id="agent-connection-heading">{t('mio.settings.connection.title')}</h2><p>{t('agent.task.connectionIntro')}</p></header>
               <div className="mio-settings-rows">
@@ -128,7 +128,7 @@ export default function AgentSettings({ onNavigationStateChange, projectId = nul
                   <WorkbenchSelect id="agent-preset" data-testid="agent-settings-preset" value={draft.presetId} disabled={!editable} onChange={(event: {target: {value: string}}) => withClearKey(() => session.current?.selectPreset(event.target.value))}>
                     {snapshot.presets.map(item => <option key={item.id} value={item.id}>{agentPresetLabel(item, t)}</option>)}
                   </WorkbenchSelect>
-                  <p className="agent-settings-help" data-testid="agent-settings-preset-note">{agentPresetNote(preset, platform, t)}</p>
+                  <p className="agent-settings-help" data-text-selectable data-testid="agent-settings-preset-note">{agentPresetNote(preset, platform, t)}</p>
                   {Boolean(platform?.sources.length) && <div className="agent-settings-sources">{platform!.sources.map(source => snapshot.storage.sessionScope === 'app' ? <span className="agent-settings-source-reference" key={source.url}><span>{t('agent.settings.sourceCopy', { label: t('agent.settings.officialDocs') })}</span><span>{source.url}</span></span> : <a href={source.url} key={source.url} target="_blank" rel="noopener noreferrer">{t('agent.settings.officialDocs')}<Icon name="arrow" size={10} /></a>)}</div>}
                 </div></div>
                 {(preset?.platforms.length ?? 0) > 1 && <div className="mio-settings-row"><Label htmlFor="agent-platform">{t('agent.settings.platform')}</Label><div className="mio-settings-control">
@@ -143,7 +143,7 @@ export default function AgentSettings({ onNavigationStateChange, projectId = nul
                 <div className="mio-settings-row"><span className="mio-settings-label">{t('mio.settings.label.protocol')}</span><div className="mio-settings-control">
                   <WorkbenchTabs data-testid="agent-settings-protocol" value={draft.protocol} label={t('mio.settings.label.protocol')} onValueChange={(value: string) => { if (usable()) session.current?.edit({ protocol: value }); }}
                     options={Object.entries(AGENT_PROTOCOLS).map(([protocol, definition]) => ({ value: protocol, label: definition.label, disabled: !editable, testId: `agent-settings-protocol-${protocol}` }))} />
-                  <p className="agent-settings-help" data-testid="agent-settings-endpoint">{t('agent.settings.endpointPreview', { protocol: AGENT_PROTOCOLS[draft.protocol as AgentProtocol]?.label || draft.protocol })} {endpoint || t('agent.settings.endpointEmpty')}</p>
+                  <p className="agent-settings-help" data-text-selectable data-testid="agent-settings-endpoint">{t('agent.settings.endpointPreview', { protocol: AGENT_PROTOCOLS[draft.protocol as AgentProtocol]?.label || draft.protocol })} {endpoint || t('agent.settings.endpointEmpty')}</p>
                   <p className="agent-settings-help" data-testid="agent-settings-protocol-help">{t('agent.settings.protocolHelp')}</p>
                 </div></div>
                 <div className="mio-settings-row"><Label htmlFor="agent-model">{t('mio.settings.label.model')}</Label><div className="mio-settings-control">
@@ -166,15 +166,15 @@ export default function AgentSettings({ onNavigationStateChange, projectId = nul
                     </WorkbenchSelect>
                     <p id="agent-key-help" className="agent-settings-help">{t('agent.settings.keyHelp')} <span data-testid="agent-settings-storage-status">{storageReason(snapshot.storage, t)} {!hasKey && snapshot.secret.configured && !removesKey ? t('agent.settings.reenterStorage') : ''}</span></p>
                   </div>}
-                  {keyNotice && <p className="agent-settings-binding-warning" role="status" data-testid="agent-settings-key-cleared">{renderMessage(keyNotice)}</p>}
-                  {changedBinding && <p className="agent-settings-binding-warning" data-testid="agent-settings-binding-warning"><Icon name="info" size={14} /><span>{t('agent.settings.bindingWarning')}</span></p>}
+                  {keyNotice && <p className="agent-settings-binding-warning" role="status" data-text-selectable data-testid="agent-settings-key-cleared">{renderMessage(keyNotice)}</p>}
+                  {changedBinding && <p className="agent-settings-binding-warning" data-text-selectable data-testid="agent-settings-binding-warning"><Icon name="info" size={14} /><span>{t('agent.settings.bindingWarning')}</span></p>}
                   <p className="agent-settings-help" data-testid="agent-settings-key-intent">{hasKey ? t(snapshot.secret.configured ? 'connections.intentReplace' : 'connections.intentWrite', { storage: storageLabel(state.storage, t) }) : removesKey && snapshot.secret.configured ? t('connections.intentRemove') : snapshot.secret.configured ? t('agent.settings.serverKey', { storage: storageLabel(snapshot.secret.storage, t) }) : draft.presetId === 'ollama' ? t('agent.settings.intentOllama') : t('agent.settings.intentNoKey')}</p>
                 </div></div>
                 <div className="mio-settings-row"><span className="mio-settings-label">{t('mio.settings.label.test')}</span><div className="mio-settings-control">
                   <AgentConnectionTest visible={visible} configuration={snapshot.configuration} settingsRevision={snapshot.revision} blocked={connectionDirty || busy} projectId={projectId} />
                 </div></div>
               </div>
-              {state.message && <div className={`agent-settings-message ${error ? 'is-warning' : phase === 'saved' ? 'is-success' : ''}`} role={error ? 'alert' : 'status'} data-testid={error ? 'agent-settings-error' : 'agent-settings-status'} data-phase={phase}><Icon name={phase === 'saved' ? 'check' : 'info'} size={15} /><div><p>{statusMessage}</p>{recovery && <>
+              {state.message && <div className={`agent-settings-message ${error ? 'is-warning' : phase === 'saved' ? 'is-success' : ''}`} role={error ? 'alert' : 'status'} data-testid={error ? 'agent-settings-error' : 'agent-settings-status'} data-phase={phase}><Icon name={phase === 'saved' ? 'check' : 'info'} size={15} /><div><p data-text-selectable>{statusMessage}</p>{recovery && <>
                 <div className="agent-settings-current" data-testid="agent-settings-current"><span>{t('connections.serverSettings')}</span><strong>{snapshot.configuration.model}</strong><span>{AGENT_PROTOCOLS[snapshot.configuration.protocol].label}</span><span>{agentEndpointPreview(snapshot.configuration)}</span><span>{snapshot.secret.configured ? t('connections.savedKey', { storage: storageLabel(snapshot.secret.storage, t) }) : t('connections.storage.none')}</span></div>
                 <div className="agent-settings-recovery-actions">{phase === 'blocked' ? <WorkbenchButton type="button" size="compact" data-testid="agent-settings-reload" onClick={() => { if (usable()) void session.current?.reload(); }}>{t('agent.settings.reloadState')}</WorkbenchButton> : <><WorkbenchButton type="button" size="compact" data-testid="agent-settings-review" disabled={busy} onClick={() => { if (usable()) session.current?.acknowledge(); }}>{t('agent.settings.reviewDone')}</WorkbenchButton><WorkbenchButton type="button" variant="ghost" size="compact" data-testid="agent-settings-use-latest" disabled={busy} onClick={() => withClearKey(() => session.current?.useLatest())}>{t('agent.settings.useServer')}</WorkbenchButton></>}</div>
               </>}</div></div>}

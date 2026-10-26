@@ -10,9 +10,9 @@ const failure = () => new Error('桌面窗口身份尚未得到有效确认，�
 export function readDesktopWindowBridge(host: unknown = globalThis): ProjectWindowBridge | null {
   if (!record(host) || !Object.hasOwn(host, '__mioonProjectWindow')) return null;
   const source: unknown = host.__mioonProjectWindow;
-  if (!record(source) || !['context', 'openProject', 'publishLocatorStatus', 'requestLocatorAction', 'requestProjectEntry', 'showProjects', 'showSettings', 'editorStatus', 'subscribe'].every(key => typeof source[key] === 'function')) throw failure();
-  const { context, openProject, publishLocatorStatus, requestLocatorAction, requestProjectEntry, showProjects, showSettings, editorStatus, subscribe } = source;
-  if (typeof context !== 'function' || typeof openProject !== 'function' || typeof publishLocatorStatus !== 'function' || typeof requestLocatorAction !== 'function' || typeof requestProjectEntry !== 'function' || typeof showProjects !== 'function' || typeof showSettings !== 'function' || typeof editorStatus !== 'function' || typeof subscribe !== 'function') throw failure();
+  if (!record(source) || !['context', 'openProject', 'publishLocatorStatus', 'requestLocatorAction', 'requestProjectEntry', 'showProjects', 'showSettings', 'closeSettings', 'editorStatus', 'subscribe'].every(key => typeof source[key] === 'function')) throw failure();
+  const { context, openProject, publishLocatorStatus, requestLocatorAction, requestProjectEntry, showProjects, showSettings, closeSettings, editorStatus, subscribe } = source;
+  if (typeof context !== 'function' || typeof openProject !== 'function' || typeof publishLocatorStatus !== 'function' || typeof requestLocatorAction !== 'function' || typeof requestProjectEntry !== 'function' || typeof showProjects !== 'function' || typeof showSettings !== 'function' || typeof closeSettings !== 'function' || typeof editorStatus !== 'function' || typeof subscribe !== 'function') throw failure();
   let identity: ProjectWindowContext | null = null;
   const checked = (value: unknown): ProjectWindowContext => {
     if (!isProjectWindowContext(value) || value.role === 'editor' && value.initialProjectId === null ||
@@ -35,6 +35,7 @@ export function readDesktopWindowBridge(host: unknown = globalThis): ProjectWind
     async requestProjectEntry(mode: ProjectWindowEntryMode) { if (!isProjectWindowEntryMode(mode)) throw failure(); return boolean(await requestProjectEntry(mode)); },
     showProjects: async () => boolean(await showProjects()),
     async showSettings(slot: ProjectWindowSettingsSlot) { if (!isProjectWindowSettingsSlot(slot)) throw failure(); return boolean(await showSettings(slot)); },
+    closeSettings: async () => boolean(await closeSettings()),
     async editorStatus(projectId: string, phase: 'ready' | 'failed') {
       if (!isProjectWindowId(projectId) || phase !== 'ready' && phase !== 'failed') throw failure();
       return boolean(await editorStatus(projectId, phase));

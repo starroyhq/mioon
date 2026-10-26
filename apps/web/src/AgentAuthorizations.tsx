@@ -39,10 +39,10 @@ export default function AgentAuthorizations({visible=true}:{visible?:boolean}){
   }
   return <section className="mio-settings-section" data-testid="agent-authorizations" aria-busy={busy}>
     <header className="mio-settings-section-head"><h2>{t('agent.authorization.listTitle')}</h2><p>{t('mio.settings.authorizations.description')}</p></header>
-    {failed&&<div className="mio-settings-notice" role="alert" data-testid="agent-authorizations-error"><span>{t('agent.authorization.error')}</span><WorkbenchButton type="button" variant="ghost" size="compact" data-testid="agent-authorizations-refresh" disabled={!visible||busy} onClick={()=>{void load();}}>{t('agent.authorization.refresh')}</WorkbenchButton></div>}
+    {failed&&<div className="mio-settings-notice" role="alert" data-testid="agent-authorizations-error"><span data-text-selectable>{t('agent.authorization.error')}</span><WorkbenchButton type="button" variant="ghost" size="compact" data-testid="agent-authorizations-refresh" disabled={!visible||busy} onClick={()=>{void load();}}>{t('agent.authorization.refresh')}</WorkbenchButton></div>}
     {data&&<>{data.authorizations.length?<ul className="mio-settings-grants">{data.authorizations.map(grant=><li key={grant.id} className="mio-settings-grant" data-testid="agent-authorization-target">
       <Icon name="link" size={16} />
-      <div className="mio-settings-grant-copy"><strong>{grant.model}</strong><span className="agent-settings-help"><span>{grant.destination}</span>{' · '}<span>{t('mio.settings.authorizations.meta',{scope:t(`agent.authorization.scope.${grant.scope}`),date:formatDate(grant.createdAt,{month:'2-digit',day:'2-digit'})})}</span></span></div>
+      <div className="mio-settings-grant-copy" data-text-selectable><strong>{grant.model}</strong><span className="agent-settings-help"><span>{grant.destination}</span>{' · '}<span>{t('mio.settings.authorizations.meta',{scope:t(`agent.authorization.scope.${grant.scope}`),date:formatDate(grant.createdAt,{month:'2-digit',day:'2-digit'})})}</span></span></div>
       <WorkbenchButton type="button" variant="danger-ghost" size="compact" data-testid={`agent-authorization-revoke-${grant.id}`} disabled={!visible||busy} onClick={()=>{void revoke(grant);}}>{t('agent.authorization.revoke')}</WorkbenchButton>
     </li>)}</ul>:<p className="agent-settings-help" data-testid="agent-authorizations-empty">{t('agent.authorization.empty')}</p>}</>}
   </section>;

@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
+import {createBackendLease, BACKEND_LEASE_TIMING} from '../apps/desktop/src/backend-lease.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8'))
   .replace(/^import .*;\n/gm, ''), { mode: 'strip' });
@@ -23,6 +24,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
   };
   const sandbox = {
     comfyModuleModeFromEnvironment,
+    createBackendLease, BACKEND_LEASE_TIMING, performance: {now: () => now},
     process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
       pid: 23456, on: events.on.bind(events), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
@@ -45,6 +47,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
       dataDir: privateData, distDir: privateData, subtitleResourcesDir: privateData } }),
     stop: () => port.emit('message', { data: { type: 'stop', reason: privateData } }),
     ping: () => port.emit('message', { data: { type: 'ping' } }),
+    reply: (data: unknown) => port.emit('message', {data}),
     advance: (milliseconds: number) => { now += milliseconds; },
     checkLease: () => intervals[0]()
   };
@@ -68,14 +71,52 @@ test('backend lease distinguishes expiry from a recent ping without restarting w
   let starts = 0;
   const runtime = backendHarness({ start: async () => { starts++; return { close: async () => {} }; } });
   runtime.start(); await tick();
-  runtime.advance(30000); runtime.checkLease();
+  for (let count = 0; count < 6; count++) {runtime.advance(5000); runtime.checkLease();}
   assert.deepEqual(runtime.diagnostics(), []);
-  runtime.ping(); runtime.advance(30000); runtime.checkLease();
+  runtime.ping();
+  for (let count = 0; count < 6; count++) {runtime.advance(5000); runtime.checkLease();}
   assert.deepEqual(runtime.diagnostics(), []);
   runtime.advance(1); runtime.checkLease(); await tick();
   assert.deepEqual(runtime.diagnostics(), [notice('lease-expired')]);
   assert.deepEqual(runtime.exits, [0]);
   assert.equal(starts, 1);
+});
+
+for (const first of ['watchdog', 'ping']) {
+  test(`backend survives a 594-second sleep with ${first} first and requires a fresh parent proof`, async () => {
+    let starts = 0, closes = 0;
+    const runtime = backendHarness({start: async () => {starts++; return {close: async () => {closes++;}};}});
+    runtime.start(); await tick(); runtime.advance(594000);
+    if (first === 'watchdog') runtime.checkLease(); else runtime.ping();
+    assert.deepEqual(runtime.diagnostics(), []);
+    const probe = runtime.messages.find(message => message.type === 'lease-probe')!;
+    assert.deepEqual(probe, {type: 'lease-probe', probeId: 1});
+    runtime.ping(); runtime.checkLease();
+    assert.equal(runtime.messages.filter(message => message.type === 'lease-probe').length, 1);
+    runtime.reply({type: 'lease-probe-ack', probeId: probe.probeId});
+    for (let count = 0; count < 8; count++) {runtime.advance(5000); runtime.checkLease(); runtime.ping();}
+    assert.deepEqual(runtime.diagnostics(), []); assert.deepEqual(runtime.exits, []);
+    assert.equal(starts, 1); assert.equal(closes, 0);
+    runtime.stop(); await tick(); assert.deepEqual(runtime.exits, [0]); assert.equal(closes, 1);
+  });
+}
+
+test('backend rejects stale or malformed recovery acknowledgements and queued pings cannot keep an orphan alive', async () => {
+  let closes = 0;
+  const runtime = backendHarness({close: async () => {closes++;}});
+  runtime.start(); await tick(); runtime.advance(594000); runtime.checkLease();
+  for (const data of [
+    {type: 'lease-probe-ack', probeId: 2}, {type: 'lease-probe-ack', probeId: 1, extra: privateData},
+    {type: 'lease-probe-ack', probeId: '1'}, {type: 'lease-probe-ack', probeId: 0},
+    {type: 'lease-probe-ack', probeId: Number.MAX_SAFE_INTEGER + 1}, ['lease-probe-ack', 1],
+  ]) runtime.reply(data);
+  for (let count = 0; count < 6; count++) {runtime.advance(5000); runtime.ping(); runtime.checkLease();}
+  await tick();
+  assert.deepEqual(runtime.diagnostics(), [notice('lease-expired')]); assert.deepEqual(runtime.exits, [0]);
+  assert.equal(closes, 1);
+  runtime.reply({type: 'lease-probe-ack', probeId: 1}); runtime.ping(); runtime.checkLease(); await tick();
+  assert.equal(closes, 1); assert.deepEqual(runtime.exits, [0]);
+  assert.ok(!JSON.stringify(runtime.messages).includes(privateData));
 });
 
 for (const [signal, reason] of [['SIGTERM', 'signal-term'], ['SIGINT', 'signal-int']]) {
@@ -143,6 +184,7 @@ for (const [origin, trigger] of [
   test(`real Node ${origin} retains fatal exit behavior with the backend monitor`, { timeout: 5000 }, async t => {
     const script = `
       import vm from 'node:vm';
+      import {createBackendLease, BACKEND_LEASE_TIMING} from ${JSON.stringify(new URL('../apps/desktop/src/backend-lease.ts', import.meta.url).href)};
       const sandboxProcess = {
         parentPort: { on() {}, postMessage(message) {
           if (message.type === 'exit-diagnostic') process.stdout.write(JSON.stringify(message) + '\\n');
@@ -151,6 +193,7 @@ for (const [origin, trigger] of [
         pid: process.pid, on: process.on.bind(process), exit: process.exit.bind(process)
       };
       vm.runInNewContext(${JSON.stringify(source)}, {
+        createBackendLease, BACKEND_LEASE_TIMING, performance,
         process: sandboxProcess, DatabaseSync: function () {},
         createAgentSettingsClient: () => ({}), createImageSecretClient: () => ({}),
         createVideoSecretClient: () => ({}),

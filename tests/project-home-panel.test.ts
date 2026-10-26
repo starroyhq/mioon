@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync, transformSync } from 'esbuild';
+import type {MenuHelpControl} from '../apps/web/src/desktop-menu-client.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const sourceFile = join(root, 'apps/web/src/ProjectHome.tsx');
@@ -138,6 +139,21 @@ function fill(h:HomeHarness, name = '  新的故事  ', description = '  简短�
   find(tree, 'project-home-description').props.onChange({ target: { value: description } });
   return h.render();
 }
+
+componentTest('native Help uses the existing empty-home dialog and cannot take over a create draft, hidden page or disposed owner', () => {
+  let registered: MenuHelpControl | null = null, releases = 0;
+  const h = harness({projects: [], onRegisterMenuHelp: (control: MenuHelpControl) => {registered = control; return () => {releases++; registered = null;};}});
+  h.render(); assert.ok(registered); const control = registered as MenuHelpControl;
+  assert.equal(control.available(), true); assert.equal(control.open(), true);
+  const opened = h.render(); assert.ok(nodes(opened).some(node => node.props?.className === 'project-home-help-dialog'));
+  assert.equal(control.open(), false, 'An already open help dialog retains its owner');
+  h.render({active: false}); assert.equal(control.available(), false); assert.equal(control.open(), false);
+  h.render({active: true}); h.render(); assert.equal(control.available(), true);
+  showForm(h); assert.equal(control.available(), false); assert.equal(control.open(), false);
+  fill(h, 'Unsent local title', ''); assert.equal(control.open(), false);
+  h.unmount(); assert.equal(releases, 1); assert.equal(control.available(), false); assert.equal(control.open(), false);
+  assert.equal(registered, null); assert.deepEqual(h.calls, []);
+});
 function submit(h:HomeHarness) { const e = event(); const result = find(h.render(), 'project-home-create-form').props.onSubmit(e); assert.equal(e.prevented, true); return result; }
 
 componentTest('empty home is a standalone welcome without project controls or a modal', () => {
@@ -148,7 +164,7 @@ componentTest('empty home is a standalone welcome without project controls or a 
   assert.match(html, /全部项目/);
   assert.match(html, /项目/);
   assert.match(html, /data-testid="project-home-create-toggle"/);
-  const header = html.match(/<header class="project-home-header">([\s\S]*?)<\/header>/)![1];
+  const header = html.match(/<header class="project-home-header" data-text-selectable="false">([\s\S]*?)<\/header>/)![1];
   assert.doesNotMatch(header, /project-home-create-toggle|project-home-search/);
   assert.equal((html.match(/data-testid="project-home-create-toggle"/g) || []).length, 1);
   assert.match(html, /data-testid="project-home-create-toggle"[^>]*data-variant="primary"[^>]*data-size="large"/);

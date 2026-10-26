@@ -10,6 +10,10 @@ import { createProjectRendererRecovery } from '../apps/desktop/src/project-windo
 import { installPreferencesCloseDrain, installUnsavedGuard, QuitCoordinator } from '../apps/desktop/src/lifecycle.ts';
 import { createNativeCloseAdmission, createNativeCloseRegistry, type NativeCloseAction } from '../apps/web/src/native-close-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
+import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
+import {MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
+import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
+import type {DesktopHarnessMenuList} from './helpers/strict-desktop-harness-types.ts';
 
 interface DialogOptions {cancelId: number; defaultId: number; buttons: string[]; [key: string]: unknown}
 type NativeOptions = Parameters<typeof installNativeCloseAdmission>[1];
@@ -28,10 +32,21 @@ interface CloseFixtureOptions {
  execute?(kind: ScriptKind, execute: () => unknown, code: string): unknown;
  reload?(url: string, perform: () => void): unknown; beforeUnload?(): void; stop?(): unknown;
  beforeReload?(signal: AbortSignal): unknown; reloadPreparationTimeoutMs?: number; timeoutMs?: number;
+ canAct?(action: NativeCloseAction): boolean;
  confirmDiscard?(action: NativeCloseAction): unknown; confirmClose?(action: NativeCloseAction): unknown; requestQuit?(coordinator: QuitCoordinator): unknown;
 }
 type Gate = Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
 const executable = (source: string) => stripTypeScriptTypes(source, { mode: 'strip' });
+function installNativePresentationHarness(context: vm.Context, main: string) {
+  context.windowContext ??= context.ownerContext ?? {};
+  context.nativeDialogs = new Set(); context.trayHost = null; context.trayIntent = 0;
+  context.refreshApplicationMenu ??= () => {};
+  context.windowHost = {contextFor: () => ({contextId: 'synthetic-document'}), prepareNativeDialog: () => true,
+    finishNativeDialog() {}, ...context.windowHost};
+  const from = main.indexOf('function finishNativePresentation('), to = main.indexOf('\nconst projectFileFailureText', from);
+  assert.ok(from > 0 && to > from);
+  vm.runInContext(executable(main.slice(from, to)), context);
+}
 const deferred = () => Promise.withResolvers() as Gate;
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 const sleep = (ms?: number|undefined) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -126,6 +141,7 @@ function fixture(t: test.TestContext, options: CloseFixtureOptions = {}) {
   const installed = installNativeCloseAdmission(win, {
     timeoutMs: options.timeoutMs ?? 200,
     isCurrent: () => owns && allowed,
+    canAct: options.canAct,
     beforeReload: options.beforeReload as NativeOptions['beforeReload'],
     reloadPreparationTimeoutMs: options.reloadPreparationTimeoutMs,
     confirmDiscard: async action => { discardCount++; events.push('confirm-discard'); return await (options.confirmDiscard?.(action) ?? true) as boolean; },
@@ -581,8 +597,9 @@ test('real renderer binds reload to the exact current document URL and action', 
 
 test('main routes user reload through admission and only proved initial empty load failures remain recoverable', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  assert.match(main, /windowAdmissions\.get\(window!?\)\?\.captureRecoveryDecision\(\)\.reload\(\)\.catch\(fatal\)/);
-  assert.match(main, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
+  assert.match(main, /const context = windowContext, decision = windowAdmissions\.get\(window!?\)\?\.captureRecoveryDecision\(\)/);
+  assert.match(main, /presentForReload\(window!?, context, \(\) => decision\.reload\(\)\)\.catch\(fatal\)/);
+  assert.match(main, /const decision = windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
   assert.match(main, /const rendererFailed = createProjectRendererRecovery\(/);
   const start = main.indexOf('async function openWindow('), end = main.indexOf('\nfunction prepareOwnedWindow(', start);
   const source = stripTypeScriptTypes(main.slice(start, end), { mode: 'strip' });
@@ -776,7 +793,7 @@ test('main captures incident-bound recovery before asking and discloses possible
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   const recovery = main.slice(from, to);
-  assert.match(recovery, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
+  assert.match(recovery, /const decision = windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
   const coordinator = await readFile(new URL('../apps/desktop/src/project-window-recovery.ts', import.meta.url), 'utf8');
   assert.ok(coordinator.indexOf('options.capture(window)') < coordinator.indexOf('await options.prompt(window)'));
   assert.ok(coordinator.indexOf('recovery.claimPrompt()') < coordinator.indexOf('await options.prompt(window)'));
@@ -873,6 +890,7 @@ test('cancel/Escape in the actual recovery dialog retains window, backend and un
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async (parent: FixtureWindow, options: DialogOptions) => { assert.equal(parent, f.win); dialogOptions = options; return { response: options.cancelId }; } },
     app: { quit() { assert.fail('Cancel cannot quit'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   await vm.runInContext('rendererFailed(window, ownerContext)', context);
   assert.equal((dialogOptions)!.cancelId, 2);
@@ -889,6 +907,7 @@ test('the actual recovery dialog authorizes Exit only for explicit response one'
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async () => ({ response: 1 }) },
     app: { quit() { assert.fail('Explicit recovery must use its captured scoped decision'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   await vm.runInContext('rendererFailed(window, ownerContext)', context);
   assert.equal(f.win.destroyed, true); assert.equal(f.stats().stopped, 1); assert.equal(f.stats().finished, 1);
@@ -903,6 +922,7 @@ async function recoveryDialogHarness(t: test.TestContext, f: ReturnType<typeof f
     ownsWindow: () => isCurrent() && !f.win.destroyed,
     dialog: { showMessageBox: (parent: FixtureWindow, options: DialogOptions) => { assert.equal(parent, f.win); calls.push(options); return show(calls.length, options); } },
     window: f.win, ownerContext: {incident: {failed: false}} });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   const onFailure = () => pending.push(vm.runInContext('rendererFailed(window, ownerContext)', context).catch((error: unknown) => errors.push(error)));
   f.win.webContents.on('unresponsive', onFailure); f.win.webContents.on('render-process-gone', onFailure);
@@ -963,14 +983,21 @@ test('a recovered live renderer can report a later hang without inheriting old d
 
 async function reloadMenuHarness(f: ReturnType<typeof fixture>, isCurrent: () => unknown = () => true) {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  const from = main.indexOf('function installMenu()'), to = main.indexOf('\nconst quitCoordinator', from);
-  let menu!: {label: string; submenu: {label: string; click(): unknown}[]}[];
+  const from = main.indexOf('function focusedMenuWindow()'), to = main.indexOf('\nconst quitCoordinator', from);
+  let menu!: DesktopHarnessMenuList;
   const errors: unknown[] = [];
-  const context = vm.createContext({ nt: nativeText, process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => f.win}, initialWindowLoads: new WeakMap(), win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
+  const nativeWindow = Object.assign(f.win, {isVisible: () => !f.win.destroyed, isMinimized: () => false});
+  const context = vm.createContext({ nt: nativeText, applicationMenuTemplate, MENU_COMMAND_IDS, identity: {productName: 'Synthetic'},
+    process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => nativeWindow,
+      windows: () => [nativeWindow], isTrustedDocument: () => true, settingsForParent: () => null},
+    menuCommands: null, applicationMenu: null, applicationWindowList: '', restarting: false, quitting: false,
+    trayCanInteract: () => Boolean(isCurrent()) && !f.win.destroyed, trayCanHide: () => false, quitRouter: {allowsWindows: true},
+    initialWindowLoads: new WeakMap(), win: nativeWindow, BrowserWindow: { getFocusedWindow: () => nativeWindow },
     windowAdmissions: new WeakMap([[f.win, f.admission]]), ownsWindow: () => isCurrent() && !f.win.destroyed,
-    Menu: { buildFromTemplate: (value: typeof menu) => value, setApplicationMenu: (value: typeof menu) => { menu = value; } }, fatal: (error: unknown) => errors.push(error) });
+    Menu: { buildFromTemplate: desktopMenuHarness, setApplicationMenu: (value: DesktopHarnessMenuList) => { menu = value; } }, fatal: (error: unknown) => errors.push(error) });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)) + '\ninstallMenu();', context);
-  return { reload: () => menu.find((item: { label: string; }) => item.label === '应用')!.submenu.find((item: { label: string; }) => item.label === '重新载入界面')!.click(), errors };
+  return { reload: () => menu.getMenuItemById('app-reload')!.click!(), errors };
 }
 
 test('the explicit Reload menu can recover a kept confirmed-gone incident exactly once', async t => {
@@ -1010,6 +1037,7 @@ async function actualMainAdmissionCallbacks(dialog: {showMessageBox?(parent: obj
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window: object, value: NativeOptions) => { callbacks = value; return {}; },
     ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined,
     dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {}, ...bindings });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   return callbacks;
 }
@@ -1175,4 +1203,71 @@ test('actual main pre-reload hook binds the original audio host and captured exa
   assert.equal(calls.length, 1); assert.equal(calls[0].window, window); assert.equal(calls[0].contents, contents);
   assert.equal(calls[0].contextId, 'document-a'); gate.resolve(true); assert.equal(await preparation, true);
   currentDocument = null; assert.equal(await callbacks.beforeReload!(signal), false); assert.equal(calls.length, 1);
+});
+
+test('a modal dependency rejects parent close and reload before renderer inspection, drains or tickets', async t => {
+  for (const action of ['close', 'reload'] as const) {
+    let available = false, preparations = 0;
+    const actions: NativeCloseAction[] = [];
+    const f = fixture(t, {dirty: true, canAct: requested => { actions.push(requested); return available; },
+      beforeReload: () => { preparations++; return true; }});
+    assert.equal(await (action === 'close' ? f.coordinator.request() : f.admission.requestReload()), false);
+    assert.equal(f.win.destroyed, false); assert.equal(f.stats().stopped, 0); assert.equal(f.stats().cancelCount, 1);
+    assert.deepEqual((f.scripts as unknown), []); assert.equal(f.commits.length, 0); assert.equal(preparations, 0);
+    assert.deepEqual(actions, [action]);
+    available = true;
+    assert.equal(await (action === 'close' ? f.coordinator.request() : f.admission.requestReload()), true);
+    assert.equal(f.commits.length, 1); assert.equal(f.stats().discardCount, 1);
+    assert.equal(f.reloads.length, action === 'reload' ? 1 : 0);
+  }
+});
+
+test('a modal dependency appearing during commit revokes the old ticket without closing or reloading its parent', async t => {
+  for (const action of ['close', 'reload'] as const) {
+    let available = true, committing = false;
+    const held = deferred();
+    const f = fixture(t, {canAct: () => available, execute: (kind, execute) => {
+      const result = execute();
+      if (kind === 'commit') { committing = true; return held.promise.then(() => result); }
+      return result;
+    }});
+    const pending = action === 'close' ? f.coordinator.request() : f.admission.requestReload();
+    await until(() => committing); assert.ok(f.armed);
+    available = false; held.resolve();
+    assert.equal(await pending, false); await tick();
+    assert.equal(f.win.destroyed, false); assert.equal(f.win.closeCalls, action === 'close' ? 1 : 0);
+    assert.equal(f.stats().stopped, 0); assert.equal(f.reloads.length, 0); assert.equal(f.armed, null);
+    assert.ok(f.events.includes('cancel')); assert.equal(f.stats().cancelCount, 1);
+  }
+});
+
+test('renderer-gone proof recorded behind a modal survives refused recovery until a new explicit action is allowed', async t => {
+  for (const action of ['close', 'reload'] as const) {
+    let available = false, quitCalls = 0;
+    const f = fixture(t, {dirty: true, blocked: true, canAct: () => available, allowsUnload: () => true,
+      execute: () => { throw Error('Dead parent renderer must not be queried'); },
+      requestQuit: coordinator => { quitCalls++; return coordinator.request(); }});
+    f.win.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 1 });
+    const refused = f.admission.captureRecoveryDecision();
+    assert.equal(refused.claimPrompt(), true);
+    assert.equal(await refused.reload(), false); assert.equal(await refused.exit(), false);
+    assert.equal(f.win.closeCalls, 0); assert.equal(f.reloads.length, 0); assert.equal(quitCalls, 0);
+    assert.deepEqual((f.scripts as unknown), []); assert.equal(f.stats().stopped, 0);
+    available = true;
+    const fresh = f.admission.captureRecoveryDecision();
+    assert.equal(await (action === 'close' ? fresh.exit() : fresh.reload()), true);
+    assert.deepEqual((f.scripts as unknown), []);
+    assert.equal(quitCalls, action === 'close' ? 1 : 0); assert.equal(f.reloads.length, action === 'reload' ? 1 : 0);
+    assert.equal(await refused.reload(), false); assert.equal(await refused.exit(), false);
+  }
+});
+
+test('a failed native dependency check cannot grant parent close or consume a renderer-gone Exit allowance', async t => {
+  const f = fixture(t, {canAct: () => { throw Error('Dependency owner unavailable'); },
+    execute: () => { throw Error('No parent renderer call is permitted'); }});
+  assert.equal(await f.coordinator.request(), false);
+  assert.equal(await f.admission.requestReload(), false);
+  f.win.webContents.emit('render-process-gone');
+  assert.equal(await f.admission.captureRecoveryDecision().exit(), false);
+  assert.deepEqual((f.scripts as unknown), []); assert.equal(f.stats().stopped, 0); assert.equal(f.win.destroyed, false);
 });

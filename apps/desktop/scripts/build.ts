@@ -8,6 +8,8 @@ import desktopBuildMetadata from '../build-metadata.ts';
 import {main as checkTypes} from '../../../scripts/tooling.ts';
 import {prepareBuilderConfig} from './prepare-builder-config.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
+import {stageTrayResources} from '../tray-resources.ts';
+import {stageProjectNotices} from './stage-project-notices.ts';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
@@ -36,6 +38,7 @@ await build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
 await mkdir(path.join(output, 'icons'));
 await cp(path.join(desktop, 'resources/icon.png'), path.join(output, 'icons/icon.png'));
+await stageTrayResources(path.join(desktop, 'resources/tray'), path.join(output, 'icons/tray'));
 const subtitleSource=path.join(root,'packages/business/resources/subtitles');
 import {verifySubtitleResources,SUBTITLE_RESOURCE_FILES} from '../subtitle-resources.ts';
 await verifySubtitleResources(subtitleSource);
@@ -43,8 +46,9 @@ await mkdir(path.join(output,'subtitles'));
 for(const file of SUBTITLE_RESOURCE_FILES)await cp(path.join(subtitleSource,file),path.join(output,'subtitles',file));
 await verifySubtitleResources(path.join(output,'subtitles'));
 await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: appVersion,
-  private: true, desktopName: `${identity.appId}.desktop`, mioonDesktop: identity, description: pkg.description, author: 'Mioon', main: 'main.cjs', dependencies: {} }, null, 2));
+  private: true, license: pkg.license, desktopName: `${identity.appId}.desktop`, mioonDesktop: identity, description: pkg.description, author: 'Mioon', main: 'main.cjs', dependencies: {} }, null, 2));
 await mkdir(path.join(output, 'licenses'), { recursive: true });
+await stageProjectNotices(root, path.join(output, 'licenses'));
 const seen = new Set(), notices = ['# Third-party notices', '',
   'Packaged Electron and Chromium notices: LICENSE.electron.txt and LICENSES.chromium.html.',
   'On macOS they are in the application bundle at Contents/Resources/licenses; on Linux they are beside the executable.', ''];

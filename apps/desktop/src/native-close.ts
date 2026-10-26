@@ -24,6 +24,10 @@ interface NativeCloseWindow extends EventSource {
 interface NativeCloseOptions {
   /** The captured BrowserWindow, startup, backend, session and allowed origin. */
   isCurrent(): boolean;
+  /** Synchronous presentation dependency, separate from window ownership. A
+   * modal child may temporarily prevent this parent's close/reload while the
+   * parent still owns renderer incidents and confirmed-gone recovery proof. */
+  canAct?(action: NativeCloseAction): boolean;
   confirmDiscard(action: NativeCloseAction): boolean | Promise<boolean>;
   confirmClose(action: NativeCloseAction): boolean | Promise<boolean>;
   /** A separate, default-cancel risk decision. Never substitutes for ordinary
@@ -134,6 +138,10 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     try { return !disposed && !win.isDestroyed() && options.isCurrent(); }
     catch { return false; }
   };
+  const canAct = (action: NativeCloseAction) => {
+    try { return options.canAct ? options.canAct(action) === true : true; }
+    catch { return false; }
+  };
   const readUrl = (): string | null => {
     if (!ownsWindow()) return null;
     try {
@@ -143,7 +151,7 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
   };
   const ownsGeneration = (attempt: Attempt) => ownsWindow() && attempt.document === documentGeneration;
   const ownsDocument = (attempt: Attempt) => ownsGeneration(attempt) && readUrl() === attempt.sourceUrl;
-  const current = (attempt: Attempt) => active === attempt && attempt.id === serial && !attempt.abort.signal.aborted && ownsDocument(attempt);
+  const current = (attempt: Attempt) => active === attempt && attempt.id === serial && !attempt.abort.signal.aborted && ownsDocument(attempt) && canAct(attempt.action);
   const currentLoad = (attempt: Attempt) => loading.has(attempt) && ownsWindow() && attempt.id === serial &&
     attempt.committedDocument === documentGeneration && readUrl() === attempt.sourceUrl;
   const abortedNavigation = (error: unknown) => Boolean(error && typeof error === 'object' &&
@@ -293,6 +301,12 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     return attempt;
   }
   const onClose: Listener = event => {
+    if (!canAct('close')) {
+      (event as { preventDefault(): void }).preventDefault();
+      if (active) cancel(active);
+      else { try { options.onCancel(); } catch { /* A rejected parent close cannot keep Quit waiting. */ } }
+      return;
+    }
     if (!active && !allowOnce && options.consumeInitialEmptyClose?.() === true) return;
     if (goneExit) {
       const allowance = goneExit;
@@ -419,6 +433,11 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
   contents.on('unresponsive', onUnresponsive);
   contents.on('responsive', onResponsive);
   function requestReload(): Promise<boolean> {
+    if (!canAct('reload')) {
+      if (active) cancel(active);
+      else { try { options.onCancel(); } catch { /* Dependency rejection never authorizes another action. */ } }
+      return Promise.resolve(false);
+    }
     if (active) return active.action === 'reload' ? active.result : Promise.resolve(false);
     if (!ownsWindow()) return Promise.resolve(false);
     const sourceUrl = readUrl();
@@ -426,6 +445,9 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     return begin('reload', sourceUrl).result;
   }
   return {
+    /** Presentation only: hiding must not conceal an in-flight native close or
+     * reload. This state cannot grant or replace any admission ticket. */
+    get pending() { return active !== null || loading.size !== 0; },
     /** Only the captured, already-allowed current URL is reloadable. Callers
      * cannot supply a destination or repurpose a close approval. */
     requestReload,
@@ -439,11 +461,14 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
       let used = false, pendingChecked = false;
       const ownsCapture = () => ownsWindow() && Boolean(sourceUrl) && sourceUrl === readUrl() &&
         capturedRecoveryDocument === recoveryDocument && capturedSerial === serial && !active;
-      const claim = () => {
+      const claim = (action: NativeCloseAction) => {
         if (used) return false;
+        if (!ownsCapture() || document !== documentGeneration ||
+            proof && (proof !== goneProof || proof.document !== document || proof.sourceUrl !== sourceUrl)) { used = true; return false; }
+        // Reject before consuming the decision or confirmed-gone proof. Never
+        // carry an Exit allowance across waiting for a modal child's close.
+        if (!canAct(action)) { try { options.onCancel(); } catch { /* The parent remains owned and recoverable. */ } return false; }
         used = true;
-        if (!ownsCapture() || document !== documentGeneration) return false;
-        if (proof && (proof !== goneProof || proof.document !== document || proof.sourceUrl !== sourceUrl)) return false;
         return true;
       };
       return {
@@ -462,12 +487,12 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
             rendererIncident.document === documentGeneration && rendererIncident.serial === serial && rendererIncident.sourceUrl === sourceUrl);
         },
         reload() {
-          if (!claim() || !sourceUrl) return Promise.resolve(false);
+          if (!claim('reload') || !sourceUrl) return Promise.resolve(false);
           if (proof) { goneProof = null; return begin('reload', sourceUrl, 'gone-reload').result; }
           return requestReload();
         },
         exit() {
-          if (!claim()) return Promise.resolve(false);
+          if (!claim('close')) return Promise.resolve(false);
           if (!proof) return Promise.resolve(options.requestQuit()).then(result => result === true);
           goneProof = null;
           const allowance: GoneExitAllowance = { proof, serial: capturedSerial, consumed: false };

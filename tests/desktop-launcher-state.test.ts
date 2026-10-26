@@ -182,9 +182,23 @@ test('preload absence remains Web; malformed or changed native role never become
   assert.throws(() => readDesktopWindowBridge({ __mioonProjectWindow: {} }));
   let value = ctx(); let receive: ((value: LauncherContext) => void) | undefined;
   const source = { context: async () => value, openProject: async () => result(), publishLocatorStatus: async () => true, requestLocatorAction: async () => true, requestProjectEntry: async () => true,
-    showProjects: async () => true, showSettings: async () => true, editorStatus: async () => true, subscribe: (listener: (value: LauncherContext) => void) => { receive = listener; return () => {}; } };
+    showProjects: async () => true, showSettings: async () => true, closeSettings: async () => true, editorStatus: async () => true, subscribe: (listener: (value: LauncherContext) => void) => { receive = listener; return () => {}; } };
   const bridge = readDesktopWindowBridge({ __mioonProjectWindow: source }); if (!bridge) throw new Error('expected a project window bridge'); await bridge.context(); const seen: LauncherContext[] = []; bridge.subscribe(v => seen.push(v));
   value = { ...value, role: 'settings' }; receive?.(value); assert.equal(seen.length, 0); await assert.rejects(bridge.context());
+});
+
+test('settings close requires its explicit native bridge method and an exact boolean acknowledgement', async () => {
+  for (const receipt of [true, false, undefined, null, 'true', { closed: true }]) {
+    let calls = 0;
+    const source = { context: async () => ctx(), openProject: async () => result(), publishLocatorStatus: async () => true, requestLocatorAction: async () => true, requestProjectEntry: async () => true,
+      showProjects: async () => true, showSettings: async () => true, closeSettings: async () => { calls++; return receipt; }, editorStatus: async () => true, subscribe: () => () => {} };
+    const bridge = readDesktopWindowBridge({ __mioonProjectWindow: source }); assert.ok(bridge);
+    if (typeof receipt === 'boolean') assert.equal(await bridge.closeSettings(), receipt);
+    else await assert.rejects(bridge.closeSettings(), /桌面窗口身份/);
+    assert.equal(calls, 1);
+    const { closeSettings: _closeSettings, ...missingMethod } = source;
+    assert.throws(() => readDesktopWindowBridge({ __mioonProjectWindow: missingMethod }), /桌面窗口身份/);
+  }
 });
 
 test('scoped picker Escape/backdrop dismissal is guarded and retains draft metadata', async () => {

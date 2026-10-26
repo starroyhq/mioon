@@ -28,7 +28,7 @@ def copy(relative):
     dest.parent.mkdir(parents=True, exist_ok=True)
     if source.is_dir(): shutil.copytree(source, dest, ignore=ignored)
     else: shutil.copy2(source, dest)
-for relative in ['package.json','pnpm-lock.yaml','pnpm-workspace.yaml','vite.config.mjs','.gitignore','.env.example','README.md','PLAN.md','STATUS.md','apps','packages','server','docs','tests','skills','examples']:
+for relative in ['package.json','pnpm-lock.yaml','pnpm-workspace.yaml','vite.config.mjs','.gitignore','.env.example','README.md','LICENSE','NOTICE','THIRD_PARTY_NOTICES.md','CONTRIBUTING.md','SECURITY.md','PLAN.md','STATUS.md','apps','packages','server','docs','tests','skills','examples']:
     copy(relative)
 # Runnable helpers, no historical launch wrappers tied to a development path.
 for name in ['doctor.mjs','demo.mjs','create-demo-bundle.mjs','create-timeline-fixtures.py','create-timeline-demo.mjs','stress-timeline.mjs','verify-v4-relocation.mjs','package-v4.py']:

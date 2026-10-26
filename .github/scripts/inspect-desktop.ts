@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import desktopIdentity from '../../apps/desktop/identity.ts';
 import {verifySubtitleResources} from '../../apps/desktop/subtitle-resources.ts';
+import {verifyPackagedTrayResources} from '../../apps/desktop/tray-resources.ts';
 import {argumentsFor, CheckFailure, command, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {TargetArch, TargetPlatform} from './media-environment.ts';
 
@@ -95,6 +96,7 @@ async function inspectAsar(resources: string): Promise<void> {
   assert.equal(metadata.name, 'mioon-desktop'); assert.equal(metadata.version, rootMetadata.version);
   assert.deepEqual(metadata.dependencies, {}); assert.deepEqual(metadata.mioonDesktop, desktopIdentity.identityForChannel('production'));
   for (const name of ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) asar.extractFile(archive, name);
+  await verifyPackagedTrayResources(archive, asar, path.join(root, 'apps/desktop/build'));
   await verifySubtitleResources(path.join(resources, 'subtitles'));
 }
 async function inspectFuses(binary: string): Promise<void> {
