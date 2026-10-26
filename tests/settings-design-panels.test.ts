@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { i18nTestModule } from './helpers/i18n.ts';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
+import * as menuProtocol from '../apps/desktop/src/menu-command-protocol.ts';
 
 const nodes = (value: RootTree) : RootNode[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const text = (value: RootTree) : string => Array.isArray(value) ? value.map(text).join('') : value && typeof value === 'object' ? text(value.props?.children) : value == null || typeof value === 'boolean' ? '' : String(value);
@@ -26,6 +27,7 @@ function harness<File extends 'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|
     if (name === 'react') return react;
     if (name === './i18n/I18nProvider.tsx') return i18nTestModule('zh-Hans');
     if (name === './settings-navigation-state.ts') return navigation;
+    if (name === '../../desktop/src/menu-command-protocol.ts') return menuProtocol;
     if (Object.hasOwn(imports, name)) return imports[name];
     if (name.startsWith('@mioon/ui/') || name.endsWith('.css')) return primitive;
     assert.fail(`Unexpected setting dependency ${name}`);

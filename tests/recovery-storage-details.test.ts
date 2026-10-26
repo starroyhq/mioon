@@ -69,10 +69,13 @@ test('all four domains use one native, initially collapsed disclosure with an ac
   for (const [domain, id] of Object.entries(ids)) {
     const html = rendered.domains[domain];
     assert.equal((html.match(/<details\b/g) || []).length, 1, domain);
-    assert.equal((html.match(/<summary>/g) || []).length, 1, domain);
-    assert.match(html, new RegExp(`^<details[^>]*data-testid="${id}"[^>]*><summary>`));
+    assert.equal((html.match(/<summary\b/g) || []).length, 1, domain);
+    assert.match(html, new RegExp(`^<details[^>]*data-testid="${id}"[^>]*><summary\\b`));
     const summary = domain === 'task-center' ? '保存范围与容量说明' : '本地保存什么？';
-    assert.ok(html.includes(`<summary>${summary}</summary>`), domain);
+    const disclosure = html.match(/<summary\b([^>]*)>([^<]*)<\/summary>/);
+    assert.ok(disclosure, domain);
+    assert.match(disclosure[1]!, /\bdata-text-selectable="false"/);
+    assert.equal(disclosure[2], summary, domain);
     assert.doesNotMatch(html, /<details[^>]*\sopen(?:[\s=>])|tabindex=|role="(?:button|dialog)"/);
   }
 });

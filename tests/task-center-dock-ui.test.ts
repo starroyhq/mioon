@@ -69,7 +69,7 @@ test('actual TaskCenter renders an inline named dock with keyboard-scrollable bo
   assert.match(rendered.normal, /data-slot="button"/); assert.match(rendered.normal, /data-slot="input"/);
   assert.match(rendered.normal, /服务商可能已接受任务并计费/);
   assert.match(rendered.normal, /<details[^>]*data-testid="recovery-task-storage-disclosure"/);
-  assert.match(rendered.normal, /<summary>保存范围与容量说明<\/summary>/);
+  assert.match(rendered.normal, /<summary data-text-selectable="false">保存范围与容量说明<\/summary>/);
   assert.ok(rendered.normal.indexOf('recovery-task-storage-disclosure') > rendered.normal.indexOf('task-workspace-body'));
   assert.ok(rendered.normal.indexOf('recovery-task-storage-disclosure') < rendered.normal.indexOf('task-workspace-note'));
   assert.match(rendered.hidden, /id="right-dock-tasks"[^>]*hidden=""[^>]*inert=""[^>]*aria-hidden="true"/);
