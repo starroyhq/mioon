@@ -1,5 +1,7 @@
 # Agent settings increment: implementation and acceptance
 
+Acceptance results and original file ownership below retain their historical names. Current `.test.ts` execution is documented in [TYPESCRIPT.md](TYPESCRIPT.md#current-test-migration-2026-10-26) and the reproduction command below.
+
 Date: 2026-10-09 (UTC)
 Baseline: `ed23ef7` (panel release)
 Status: historical settings-only acceptance, committed as `66a0193` after independent parent regression passed. Current conversation/tool scope is tracked in [bounded read tools](AGENT-READ-TOOLS.md).
@@ -123,7 +125,7 @@ All images are original runtime JPEG captures, not generated or composited image
 - Automated tests: `tests/{agent-settings,agent-settings-file,agent-settings-http,agent-settings-ui,desktop-agent-secrets}.test.mjs`.
 - Runtime helpers: `tests/agent-settings-qa-{runtime,client,native,native-report}.mjs`, `tests/browser_agent_settings.mjs`. They only operate on disposable local fixture copies; browser actions use supported CUA, native actions use supported screenshots/mouse/keys.
 
-Run `node --test --test-concurrency=2 tests/*.test.mjs` when browser/native QA is idle. The established concurrency bound avoids unrelated CLI helper timeouts; existing test deadlines/security are unchanged. Run `pnpm build` and `pnpm desktop:build` for final bundles. Start fixture helpers from the same desktop namespace as the browser/Electron; this environment's shell and graphical sessions have separate process/network namespaces and share `/workspace/shared`, not `/tmp`.
+For the current checkout, run `node --test --test-concurrency=2 tests/*.test.ts` when browser/native QA is idle. The established concurrency bound avoids unrelated CLI helper timeouts; existing test deadlines/security are unchanged. Run `pnpm build` and `pnpm desktop:build` for final bundles. Start fixture helpers from the same desktop namespace as the browser/Electron; this environment's shell and graphical sessions have separate process/network namespaces and share `/workspace/shared`, not `/tmp`.
 
 No dependencies, schemas, installers, OAuth flows, provider manifests, CLI/MCP tool catalog or video-provider configuration changed.
 

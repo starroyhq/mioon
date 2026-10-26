@@ -1,3 +1,4 @@
+import type {RootTree, RootNode} from './helpers/strict-root-ui-types.ts';
 import { creationUiMessages } from '../packages/i18n/src/catalogs/creation-ui.ts';
 import { createLanguageStore } from '../apps/web/src/i18n/language-store.ts';
 import { createI18nTestContext } from './helpers/i18n.ts';
@@ -21,58 +22,61 @@ import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, createImageGenerationSession, imageC
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 type Obj = Record<string, unknown>;
+type SettingsFixture = imageLogic.ImageSettingsView & Obj;
+type ReviewFixture = imageLogic.ImageReviewView & {input: imageLogic.ImageMutationInput; settingsRevision: number; destination: string};
+type TaskFixture = Parameters<ReturnType<typeof createImageGenerationSession>['act']>[1] & imageLogic.ImageTaskView & Obj;
 const id = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), groupId = id(2), taskId = id(3), requestId = id(4), versionId = id(5), assetId = id(6);
 const at = '2026-10-10T10:00:00.000Z';
-const settings = (patch: Obj = {}): Obj => ({ revision: 1, configuration: { ...DEFAULT_IMAGE_CONFIGURATION, enabled: true }, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch });
-const paidInput = (patch: Obj = {}): Obj => ({ projectId, name: '原始图像', prompt: '  原始描述\n不要改写。  ', providerId: 'openai', model: IMAGE_MODELS.openai, options: { ...IMAGE_FIXED_OPTIONS }, requestId: id(60), ...patch });
-const review = (input: Obj = paidInput(), patch: Obj = {}): Obj => ({ id: id(70), projectId: input.projectId, requestId: input.requestId, input, inputHash: createHash('sha256').update(canonicalImageInput(input as never)).digest('hex'), settingsRevision: 1, destination: IMAGE_REVIEW_DESTINATION, policy: { ...IMAGE_REVIEW_POLICY }, state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null, ...patch });
-const task = (patch: Obj = {}): Obj => ({ id: taskId, projectId, groupId, requestId, name: '测试图像', prompt: '清晨的山间小屋', providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, state: 'queued', revision: 1, dispatched: false, versionId: null, errorCode: null, createdAt: at, updatedAt: at, ...patch });
+const settings = (patch: Obj = {}): SettingsFixture => ({ revision: 1, configuration: { ...DEFAULT_IMAGE_CONFIGURATION, enabled: true }, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, ...patch } as unknown as SettingsFixture);
+const paidInput = (patch: Obj = {}): imageLogic.ImageMutationInput => ({ projectId, name: '原始图像', prompt: '  原始描述\n不要改写。  ', providerId: 'openai', model: IMAGE_MODELS.openai, options: { ...IMAGE_FIXED_OPTIONS }, requestId: id(60), ...patch });
+const review = (input: Obj = paidInput(), patch: Obj = {}): ReviewFixture => ({ id: id(70), projectId: input.projectId, requestId: input.requestId, input, inputHash: createHash('sha256').update(canonicalImageInput(input as never)).digest('hex'), settingsRevision: 1, destination: IMAGE_REVIEW_DESTINATION, policy: { ...IMAGE_REVIEW_POLICY }, state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null, ...patch } as unknown as ReviewFixture);
+const task = (patch: Obj = {}): TaskFixture => ({ id: taskId, projectId, groupId, requestId, name: '测试图像', prompt: '清晨的山间小屋', providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, state: 'queued', revision: 1, dispatched: false, versionId: null, errorCode: null, createdAt: at, updatedAt: at, ...patch } as unknown as TaskFixture);
 const group = (patch: Obj = {}): Obj => ({ id: groupId, projectId, name: '测试图像', revision: 1, headVersionId: null, activeTaskId: taskId, createdAt: at, updatedAt: at, ...patch });
 const version = (patch: Obj = {}): Obj => ({ id: versionId, projectId, groupId, taskId, number: 1, assetId, sha256: 'a'.repeat(64), mimeType: 'image/png', width: 1024, height: 1024, byteLength: 3400, isMock: true, providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, createdAt: at, ...patch });
 const page = (items: unknown[], nextCursor: unknown = null): Obj => ({ projectId, items, nextCursor });
 interface Deferred<T> { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void }
 const deferred = <T = Obj>(): Deferred<T> => { let resolve: (value: T) => void = () => undefined, reject: (reason?: unknown) => void = () => undefined; const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async (): Promise<void> => { for (let n = 0; n < 120; n++) await Promise.resolve(); };
-const error = (code = 'NETWORK', details?: unknown): ApiError => new ApiError('NEVER SHOW private provider text', code, details, Boolean(details));
-interface MemoryStorage { data: Map<string, unknown>; getItem(key: string): unknown; setItem(key: string, value: unknown): void; removeItem(key: string): boolean }
-function memoryStorage(): MemoryStorage { const data = new Map<string, unknown>(); return { data, getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: unknown): void => {data.set(key, value);}, removeItem: (key: string): boolean => data.delete(key) }; }
+const error = (code: string|undefined = 'NETWORK', details?: unknown): ApiError => new ApiError('NEVER SHOW private provider text', code, details, Boolean(details));
+interface MemoryStorage { data: Map<string, string>; getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): unknown }
+function memoryStorage(): MemoryStorage { const data = new Map<string, string>(); return { data, getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string): void => {data.set(key, value);}, removeItem: (key: string): boolean => data.delete(key) }; }
 interface InputView extends Obj {
   projectId?: string; requestId?: string; groupId?: string; taskId?: string; reviewId?: string;
-  limit?: number; settingsRevision?: number; input?: Obj; expectedRevision?: number; state?: unknown;
-  name?: string; prompt?: string; providerId?: string; options?: Obj; id?: string; operation?: string;
+  limit?: number; settingsRevision?: number; input?: imageLogic.ImageMutationInput; expectedRevision?: number; state?: unknown;
+  cursor?: string; name?: string; prompt?: string; providerId?: string; options?: Obj; id?: string; operation?: string;
 }
 interface EntityView extends Obj {
-  id?: string; projectId?: string; groupId?: string; taskId?: string; requestId?: string; state?: string;
+  id?: string; projectId?: string; groupId?: string; taskId?: string | null; requestId?: string; state?: string;
   revision?: number; activeTaskId?: string | null; headVersionId?: string | null; versionId?: string | null;
-  name?: string; prompt?: string; providerId?: string; model?: string; options?: Obj; createdAt?: string; updatedAt?: string;
+  cursor?: string; name?: string; prompt?: string; providerId?: string; model?: string; options?: Obj; createdAt?: string; updatedAt?: string;
   assetId?: string; dispatched?: boolean; approvedAt?: string | null; rejectedAt?: string | null; settingsRevision?: number;
 }
 interface DataStore { groups: EntityView[]; tasks: EntityView[]; versions: EntityView[]; reviews: EntityView[]; receipts: Map<string, unknown> }
-type AcceptFn = (input: Obj) => Obj;
+type AcceptFn = (input: Obj | undefined) => TaskFixture;
 type ApiFn = (operation: string, input: InputView, data: DataStore) => unknown;
 type ApproveFn = (value: EntityView & {input?: Obj}, data: DataStore, accept: AcceptFn) => unknown;
 type RejectFn = (value: EntityView & {input?: Obj}, data: DataStore) => unknown;
 interface FixtureOptions {
-  storage?: MemoryStorage; groups?: Obj[]; tasks?: Obj[]; versions?: Obj[]; reviews?: Obj[];
+  storage?: Pick<MemoryStorage,'getItem'|'setItem'|'removeItem'>; groups?: Obj[]; tasks?: Obj[]; versions?: Obj[]; reviews?: Obj[];
   api?: ApiFn; approve?: ApproveFn; reject?: RejectFn; settings?: Obj; customSettings?: Obj; session?: Record<string, unknown>;
 }
 interface Fixture {
   session: ReturnType<typeof createImageGenerationSession>; api: ApiFn; reviewClient: Record<string, unknown>;
   settingsClient: Record<string, unknown>; customSettingsClient: Record<string, unknown>;
-  privateCalls: Obj[]; calls: Array<{operation: string; input: unknown}>; data: DataStore; storage: MemoryStorage;
+  privateCalls: {action: string; review: ReviewFixture}[]; calls: Array<{operation: string; input: InputView}>; data: DataStore; storage: MemoryStorage;
   changes: Obj[]; notifications: unknown[][]; timers: Map<number, () => void>;
   keyCount(): number; tick(): Promise<boolean>;
 }
 function fixture(options: FixtureOptions = {}): Fixture {
-  const calls: Array<{operation: string; input: unknown}> = [], privateCalls: Obj[] = [], changes: Obj[] = [], notifications: unknown[][] = [], timers = new Map<number, () => void>(), storage = options.storage || memoryStorage();
+  const calls: Array<{operation: string; input: InputView}> = [], privateCalls: {action: string; review: ReviewFixture}[] = [], changes: Obj[] = [], notifications: unknown[][] = [], timers = new Map<number, () => void>(), storage = (options.storage || memoryStorage()) as MemoryStorage;
   let sequence = 0, keys = 0;
   const data: DataStore = { groups: options.groups || [], tasks: options.tasks || [], versions: options.versions || [], reviews: options.reviews || [], receipts: new Map() };
-  function accept(input: Obj): Obj {
-    const result = task({ ...input, id: data.tasks.length ? id(30 + data.tasks.length) : taskId, groupId: input.groupId || groupId });
+  function accept(input: Obj | undefined): TaskFixture {
+    const result = task({ ...input, id: data.tasks.length ? id(30 + data.tasks.length) : taskId, groupId: input!.groupId || groupId });
     delete result.expectedRevision;
-    data.tasks = [result, ...data.tasks]; data.groups = [group({ id: result.groupId, name: result.name, revision: input.expectedRevision ? (input.expectedRevision as number) + 1 : 1, activeTaskId: result.id })];
-    data.receipts.set(String(input.requestId), { projectId, requestId: input.requestId, operation: 'image.generate', response: structuredClone(result) }); return result;
+    data.tasks = [result, ...data.tasks]; data.groups = [group({ id: result.groupId, name: result.name, revision: input!.expectedRevision ? (input!.expectedRevision as number) + 1 : 1, activeTaskId: result.id })];
+    data.receipts.set(String(input!.requestId), { projectId, requestId: input!.requestId, operation: 'image.generate', response: structuredClone(result) }); return result;
   }
   const api: ApiFn = async (operation: string, input: InputView): Promise<unknown> => {
     calls.push({ operation, input: structuredClone(input) });
@@ -81,7 +85,7 @@ function fixture(options: FixtureOptions = {}): Fixture {
     if (operation === 'image.group.get') return data.groups.find(item => item.id === input.groupId);
     if (operation === 'image.task.list') return page(data.tasks.filter(item => !input.groupId || item.groupId === input.groupId).slice(0, input.limit as number));
     if (operation === 'image.version.list') return page(data.versions.filter(item => item.groupId === input.groupId).slice(0, input.limit as number));
-    if (operation === 'image.request.get') return data.receipts.get(String(input.requestId)) || null;
+    if (operation === 'image.request.get') return data.receipts.get(String(input!.requestId)) || null;
     if (operation === 'image.task.get') return data.tasks.find(item => item.id === input.taskId);
     if (operation === 'image.review.prepare') { const result = review(input.input as Obj, { settingsRevision: input.settingsRevision }); data.reviews.unshift(result); return result; }
     if (operation === 'image.review.get') return data.reviews.find(item => item.id === input.reviewId);
@@ -90,13 +94,13 @@ function fixture(options: FixtureOptions = {}): Fixture {
     if (['image.task.cancelQueued', 'image.task.recoverResult'].includes(operation)) {
       const original = data.tasks.find(item => item.id === input.taskId)!, result = { ...original, state: operation.endsWith('cancelQueued') ? 'cancelled_before_dispatch' : 'persisting', revision: (original.revision as number) + 1 };
       data.tasks = [result]; data.groups = [group({ activeTaskId: operation.endsWith('cancelQueued') ? null : taskId })];
-      data.receipts.set(String(input.requestId), { projectId, requestId: input.requestId, operation, response: structuredClone(result) }); return result;
+      data.receipts.set(String(input!.requestId), { projectId, requestId: input.requestId, operation, response: structuredClone(result) }); return result;
     }
     throw error('UNSUPPORTED');
   };
-  const reviewClient = { async approve(value: EntityView & {input?: Obj}): Promise<unknown> { privateCalls.push({ action: 'approve', review: structuredClone(value) }); if (options.approve) return options.approve(value, data, accept); const result = accept(value.input as Obj); data.reviews = data.reviews.map(item => item.id === value.id ? { ...item, state: 'approved', revision: 2, taskId: result.id, approvedAt: at } : item); return result; }, async reject(value: EntityView & {input?: Obj}): Promise<unknown> { privateCalls.push({ action: 'reject', review: structuredClone(value) }); if (options.reject) return options.reject(value, data); const result = { ...value, state: 'rejected', revision: 2, rejectedAt: at }; data.reviews = data.reviews.map(item => item.id === value.id ? result : item); return result; } };
+  const reviewClient = { async approve(value: EntityView & {input?: Obj}): Promise<unknown> { privateCalls.push({ action: 'approve', review: structuredClone(value) as ReviewFixture }); if (options.approve) return options.approve(value, data, accept); const result = accept(value.input as Obj); data.reviews = data.reviews.map(item => item.id === value.id ? { ...item, state: 'approved', revision: 2, taskId: result.id, approvedAt: at } : item); return result; }, async reject(value: EntityView & {input?: Obj}): Promise<unknown> { privateCalls.push({ action: 'reject', review: structuredClone(value) as ReviewFixture }); if (options.reject) return options.reject(value, data); const result = { ...value, state: 'rejected', revision: 2, rejectedAt: at }; data.reviews = data.reviews.map(item => item.id === value.id ? result : item); return result; } };
   const settingsClient = { read: async () => options.settings || settings({ configuration: { ...DEFAULT_IMAGE_CONFIGURATION } }) }, customSettingsClient = { read: async () => options.customSettings || settings({ revision: 0, configuration: { ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION }, secret: { configured: false, storage: 'none' } }) };
-  const session = createImageGenerationSession({ projectId, api: api as never, storage: storage as never, reviewClient: reviewClient as never, settings: options.settings as never, customSettings: options.customSettings as never, requestId: () => { keys++; return keys === 1 && !data.tasks.some(item => item.requestId === requestId) ? requestId : id(40 + keys); }, onChange: (next: Obj) => {changes.push(next);}, onGenerated: (...args: unknown[]) => {notifications.push(args);}, setTimer: (fn: () => void) => {const key = ++sequence; timers.set(key, fn); return key;}, clearTimer: (key: number) => {timers.delete(key);}, ...(options.session as never) });
+  const session = createImageGenerationSession({ projectId, api: api as never, storage: storage as never, reviewClient: reviewClient as never, settings: options.settings as never, customSettings: options.customSettings as never, requestId: () => { keys++; return keys === 1 && !data.tasks.some(item => item.requestId === requestId) ? requestId : id(40 + keys); }, onChange: (next: imageLogic.ImageGenerationState) => {changes.push(next as unknown as Obj);}, onGenerated: (...args: unknown[]) => {notifications.push(args);}, setTimer: (fn: () => void) => {const key = ++sequence; timers.set(key, fn); return key;}, clearTimer: (key: number | undefined) => {timers.delete(key!);}, ...(options.session as Obj) });
   return { session, api, reviewClient, settingsClient, customSettingsClient, privateCalls, calls, data, storage, changes, notifications, timers, keyCount: () => keys, async tick(): Promise<boolean> { const [key, fn] = timers.entries().next().value || [undefined, undefined]; if (!fn) return false; timers.delete(key); fn(); await flush(); return true; } };
 }
 async function ready(f: Fixture): Promise<void> { await f.session.load(); f.session.edit('name', '测试图像'); f.session.edit('prompt', '清晨的山间小屋'); }
@@ -121,11 +125,11 @@ test('storage failure and silent storage discard fail before dispatch', async ()
 test('lost acknowledgement remains unknown across renderer recreation and null lookup never resends', async () => {
   const storage = memoryStorage(), f = fixture({ storage, api: operation => { if (operation === 'image.generate') throw error(); } });
   await ready(f); await f.session.generate(); assert.equal(f.session.getState().phase, 'unknown'); assert.equal(await f.session.generate(), false); f.session.dispose();
-  const g = fixture({ storage }); await g.session.load(); assert.equal(g.session.getState().pending.input.requestId, requestId); assert.equal(await g.session.generate(), false); assert.equal(g.keyCount(), 0); assert.equal(mutations(g).length, 0); assert.match(g.session.getState().message, /不能证明/); g.session.dispose();
+  const g = fixture({ storage }); await g.session.load(); assert.equal((g.session.getState().pending)!.input.requestId, requestId); assert.equal(await g.session.generate(), false); assert.equal(g.keyCount(), 0); assert.equal(mutations(g).length, 0); assert.match(g.session.getState().message, /不能证明/); g.session.dispose();
 });
 
 test('historical receipt is followed by authoritative task get and never downgrades current success', async () => {
-  const f = fixture({ api: (operation, input, data) => { if (operation === 'image.generate') { data.groups = [group({ activeTaskId: null, headVersionId: versionId })]; data.tasks = [task({ state: 'succeeded', dispatched: true, revision: 4, versionId })]; data.versions = [version()]; data.receipts.set(input.requestId, { projectId, requestId, operation, response: task() }); throw error(); } } });
+  const f = fixture({ api: (operation, input, data) => { if (operation === 'image.generate') { data.groups = [group({ activeTaskId: null, headVersionId: versionId })]; data.tasks = [task({ state: 'succeeded', dispatched: true, revision: 4, versionId })]; data.versions = [version()]; data.receipts.set(input.requestId!, { projectId, requestId, operation, response: task() }); throw error(); } } });
   await ready(f); await f.session.generate(); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().tasks[0].revision, 4); assert.equal(f.session.getState().versions[0].assetId, assetId); assert.equal(f.notifications.length, 1); assert.equal(mutations(f).length, 1);
   const requestIndex = f.calls.findIndex(call => call.operation === 'image.request.get'); assert.equal(f.calls[requestIndex + 1].operation, 'image.task.get'); await f.session.load(); assert.equal(f.notifications.length, 1); f.session.dispose();
 });
@@ -145,7 +149,7 @@ test('only an exact operation, project, request and input-hash rejection proof r
     const f = fixture({ api: (operation, input) => {
       if (operation !== 'image.generate') return;
       const proof = { status: 'not_accepted', projectId, operation, requestId: input.requestId, inputHash: createHash('sha256').update(canonicalImageInput(input)).digest('hex') };
-      if (mismatch) proof[mismatch] = mismatch === 'inputHash' ? '0'.repeat(64) : 'wrong-owner';
+      if (mismatch) (proof as Record<string, unknown>)[mismatch] = mismatch === 'inputHash' ? '0'.repeat(64) : 'wrong-owner';
       throw error('IMAGE_GROUP_BUSY', { imageOutcome: proof });
     } }); await ready(f); await f.session.generate(); assert.equal(Boolean(f.session.getState().pending), Boolean(mismatch), String(mismatch)); assert.equal(f.session.getState().draft.prompt, '清晨的山间小屋'); assert.equal(mutations(f).length, 1); assert.doesNotMatch(f.session.getState().message, /private provider/); f.session.dispose();
   }
@@ -153,7 +157,7 @@ test('only an exact operation, project, request and input-hash rejection proof r
 
 test('timed out submission retains exact request and never automatically retries', async () => {
   const held = deferred(), f = fixture({ api: operation => operation === 'image.generate' ? held.promise : undefined, session: { timeoutMs: 10 } }); await ready(f); await f.session.generate();
-  assert.equal(f.session.getState().pending.input.requestId, requestId); assert.equal(f.session.getState().phase, 'unknown'); assert.equal(mutations(f).length, 1); held.resolve(task()); await flush(); assert.equal(f.session.getState().phase, 'unknown'); f.session.dispose();
+  assert.equal((f.session.getState().pending)!.input.requestId, requestId); assert.equal(f.session.getState().phase, 'unknown'); assert.equal(mutations(f).length, 1); held.resolve(task()); await flush(); assert.equal(f.session.getState().phase, 'unknown'); f.session.dispose();
 });
 
 test('507 capacity proof clears a rejected intent while arbitrary server errors stay unknown', async () => {
@@ -180,10 +184,10 @@ test('double click dispatches once, hidden panels keep draft and only visible re
 
 test('interrupted and queued tasks cancel explicitly; local-result recovery never calls generate', async () => {
   for (const state of ['queued', 'interrupted_before_dispatch']) {
-    const f = fixture({ groups: [group()], tasks: [task({ state })] }); await f.session.load(); const saved = f.session.getState().tasks[0]; await f.session.act('cancelQueued', saved); assert.equal(f.session.getState().tasks[0].state, 'cancelled_before_dispatch'); assert.equal(mutations(f)[0].operation, 'image.task.cancelQueued'); assert.equal(await f.session.act('cancelQueued', saved), false); f.session.dispose();
+    const f = fixture({ groups: [group()], tasks: [task({ state })] }); await f.session.load(); const saved = f.session.getState().tasks[0]; await f.session.act('cancelQueued', saved as TaskFixture); assert.equal(f.session.getState().tasks[0].state, 'cancelled_before_dispatch'); assert.equal(mutations(f)[0].operation, 'image.task.cancelQueued'); assert.equal(await f.session.act('cancelQueued', saved as TaskFixture), false); f.session.dispose();
   }
-  const g = fixture({ groups: [group()], tasks: [task({ state: 'local_result_error', dispatched: true, revision: 3 })] }); await g.session.load(); await g.session.act('recoverResult', g.session.getState().tasks[0]); assert.equal(mutations(g)[0].operation, 'image.task.recoverResult'); assert.equal(g.session.getState().tasks[0].state, 'persisting'); assert.equal(mutations(g).length, 1); g.session.dispose();
-  const h = fixture({ groups: [group()], tasks: [task({ state: 'outcome_unknown', dispatched: true })] }); await h.session.load(); assert.equal(await h.session.act('cancelQueued', h.session.getState().tasks[0]), false); assert.equal(mutations(h).length, 0); await h.session.act('recoverResult', h.session.getState().tasks[0]); assert.equal(mutations(h).length, 1); assert.equal(mutations(h)[0].operation, 'image.task.recoverResult'); h.session.dispose();
+  const g = fixture({ groups: [group()], tasks: [task({ state: 'local_result_error', dispatched: true, revision: 3 })] }); await g.session.load(); await g.session.act('recoverResult', g.session.getState().tasks[0] as TaskFixture); assert.equal(mutations(g)[0].operation, 'image.task.recoverResult'); assert.equal(g.session.getState().tasks[0].state, 'persisting'); assert.equal(mutations(g).length, 1); g.session.dispose();
+  const h = fixture({ groups: [group()], tasks: [task({ state: 'outcome_unknown', dispatched: true })] }); await h.session.load(); assert.equal(await h.session.act('cancelQueued', h.session.getState().tasks[0] as TaskFixture), false); assert.equal(mutations(h).length, 0); await h.session.act('recoverResult', h.session.getState().tasks[0] as TaskFixture); assert.equal(mutations(h).length, 1); assert.equal(mutations(h)[0].operation, 'image.task.recoverResult'); h.session.dispose();
 });
 
 test('new-version target requires explicit draft discard, preserves immutable name and binds base revision', async () => {
@@ -215,11 +219,11 @@ test('actual library reveal respects newer project, navigation and panel choices
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   const start = app.indexOf('  async function revealImageAsset('), end = app.indexOf('  async function selectProject(', start);
   assert.ok(start > 0 && end > start); const source = app.slice(start, end).trim();
-  for (const changed of [null, 'projectEpoch', 'navigationEpoch', 'panelIntent', 'currentProject']) {
-    const held = deferred(), calls = [];
-    const env = { currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 1 }, panelIntent: { current: 1 }, dataRef: { current: { assets: [] } }, refresh: () => held.promise, updateView: (...args) => calls.push(['view', ...args]), setPanelOpen: (...args) => calls.push(['panel', ...args]), setMobilePanel: value => calls.push(['mobile', value]) };
-    const reveal = Function(...Object.keys(env), `return (${source});`)(...Object.values(env));
-    const reading = reveal(assetId, projectId); if (changed) env[changed].current = changed === 'currentProject' ? id(90) : 2;
+  for (const changed of [null, 'projectEpoch', 'navigationEpoch', 'panelIntent', 'currentProject'] as const) {
+    const held = deferred(), calls: unknown[] = [];
+    const env = { currentProject: { current: projectId }, projectEpoch: { current: 1 }, navigationEpoch: { current: 1 }, panelIntent: { current: 1 }, dataRef: { current: { assets: [] } }, refresh: () => held.promise, updateView: (...args: unknown[]) => calls.push(['view', ...args]), setPanelOpen: (...args: unknown[]) => calls.push(['panel', ...args]), setMobilePanel: (value: unknown) => calls.push(['mobile', value]) };
+    const reveal = Function(...Object.keys(env), `return (${source});`)(...Object.values(env)) as (assetId: string,projectId: string) => Promise<void>;
+    const reading = reveal(assetId, projectId); if (changed) (env[changed] as {current: string | number}).current = changed === 'currentProject' ? id(90) : 2;
     held.resolve({ assets: [{ id: assetId, name: 'Saved image' }] }); await reading;
     assert.equal(calls.length, changed ? 0 : 3, String(changed));
     if (!changed) assert.deepEqual(calls[0], ['view', 'shared', { assetSearch: 'Saved image', assetFilter: 'all' }]);
@@ -250,11 +254,11 @@ test('renderer remains an extracted dock with explicit providers, fixed paid dis
 
 const componentSource = readFileSync(new URL('../apps/web/src/ImageGeneration.tsx', import.meta.url), 'utf8');
 type EventHandler = (...args: unknown[]) => unknown;
-type UiNode = {type?: unknown; props: Obj & {children?: unknown; ref: {current: {value: string}}; onChange: EventHandler; onClick: EventHandler; onSubmit: EventHandler}};
+type UiNode = {type?: unknown; props: Obj & {children?: unknown; ref: {current: {value: string}}; onChange: EventHandler; onClick: EventHandler; onSubmit: EventHandler; onKeyDown: EventHandler; onClose: EventHandler; onSelectSlot: EventHandler; alt: string}};
 const element = (type: unknown, props: Obj | null = {}, ...children: unknown[]): UiNode => ({type, props: {...(props ?? {}), children: children.length === 1 ? children[0] : children} as UiNode['props']});
 const nodes = (tree: unknown): UiNode[] => Array.isArray(tree) ? tree.flatMap((item: unknown) => nodes(item)) : tree !== null && typeof tree === 'object' && 'props' in tree ? [tree as UiNode, ...nodes((tree as UiNode).props.children)] : [];
 const depsEqual = (left: unknown, right: unknown): boolean => Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value: unknown, index: number) => Object.is(value, right[index]));
-interface RenderOptions { languageStore?: unknown; projectAssets?: Obj[]; editIntent?: unknown; isEditIntentCurrent?: unknown; onRevealAsset?: unknown }
+interface RenderOptions { languageStore?: Parameters<typeof creationTestDependency>[1]; projectAssets?: Obj[]; editIntent?: unknown; isEditIntentCurrent?: unknown; onRevealAsset?: unknown }
 interface RenderSlot { [key: string]: unknown; value?: unknown; deps?: unknown; callback?: () => unknown; cleanup?: unknown }
 interface Harness {
   render(owner?: string): UiNode; find(id: string): UiNode; form(): UiNode;
@@ -326,7 +330,7 @@ function renderer(f: Fixture, options: RenderOptions = {}): Harness {
     form(): UiNode { const value = nodes(tree).find(node => node.type === 'form'); assert.ok(value, 'form'); return value; },
     change(idValue: string, value: unknown): void {(harness.find(idValue).props.onChange as EventHandler)({target: {value}}); harness.render();},
     click(idValue: string): void {(harness.find(idValue).props.onClick as EventHandler)(); harness.render();},
-    settings(slot = 'official'): UiNode | undefined { return nodes(tree).find(node => node.type === 'ImageSettings' && node.props.slot === slot); },
+    settings(slot: unknown = 'official'): UiNode | undefined { return nodes(tree).find(node => node.type === 'ImageSettings' && node.props.slot === slot); },
     show(value: boolean): void {visible = value; harness.render();},
     get dirty(): boolean {return dirty;},
     unmount(): void {for (const slot of slots) if (typeof slot.cleanup === 'function') (slot.cleanup as () => void)();},
@@ -356,18 +360,18 @@ test('paid generation saves the exact visible prompt before preparation and send
 });
 
 test('hide and reveal during preparation never auto-approves; explicit approval uses the original review', async () => {
-  const held = deferred(); let original;
+  const held = deferred(); let original: ReviewFixture | undefined;
   const f = fixture({ settings: settings(), api: (operation, input, data) => { if (operation === 'image.review.prepare') { original = review(input.input); data.reviews = [original]; return held.promise; } } });
-  await ready(f); f.session.selectProvider('openai'); const sending = f.session.generatePaid(); await flush(); f.session.setVisible(false); f.session.setVisible(true); held.resolve(original); await sending;
-  assert.equal(f.privateCalls.length, 0); assert.equal(f.session.getState().pending.approvalAttempted, false); assert.equal(f.session.edit('prompt', 'changed'), false);
-  await f.session.load(); assert.equal(f.privateCalls.length, 0); assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), true); assert.equal(f.privateCalls.length, 1); assert.deepEqual(f.privateCalls[0].review.input, original.input); f.session.dispose();
+  await ready(f); f.session.selectProvider('openai'); const sending = f.session.generatePaid(); await flush(); f.session.setVisible(false); f.session.setVisible(true); held.resolve(original!); await sending;
+  assert.equal(f.privateCalls.length, 0); assert.equal((f.session.getState().pending)!.approvalAttempted, false); assert.equal(f.session.edit('prompt', 'changed'), false);
+  await f.session.load(); assert.equal(f.privateCalls.length, 0); assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), true); assert.equal(f.privateCalls.length, 1); assert.deepEqual(f.privateCalls[0].review.input, (original)!.input); f.session.dispose();
 });
 
 test('configuration changes during preparation keep original review stale and cannot authorize a new configuration', async () => {
-  const held = deferred(); let original;
+  const held = deferred(); let original: ReviewFixture | undefined;
   const f = fixture({ settings: settings(), api: (operation, input, data) => { if (operation === 'image.review.prepare') { original = review(input.input); data.reviews = [original]; return held.promise; } } });
-  await ready(f); f.session.selectProvider('openai'); const sending = f.session.generatePaid(); await flush(); f.session.setSettings(settings({ revision: 2 })); held.resolve(original); await sending;
-  assert.equal(f.privateCalls.length, 0); assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), false); assert.equal(f.session.getState().pending.settingsRevision, 1);
+  await ready(f); f.session.selectProvider('openai'); const sending = f.session.generatePaid(); await flush(); f.session.setSettings(settings({ revision: 2 })); held.resolve(original!); await sending;
+  assert.equal(f.privateCalls.length, 0); assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), false); assert.equal((f.session.getState().pending)!.settingsRevision, 1);
   await f.session.rejectReview(f.session.getState().reviews[0]); assert.equal(f.privateCalls[0].action, 'reject'); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().draft.prompt, '清晨的山间小屋'); f.session.dispose();
 });
 
@@ -383,8 +387,8 @@ test('lost paid acknowledgement recovers original task receipt without another a
 });
 
 test('lost approval with no receipt is retained across restart and never repeated by reads', async () => {
-  const f = fixture({ settings: settings(), approve: () => { throw error(); } }); await ready(f); f.session.selectProvider('openai'); await f.session.generatePaid(); const pending = f.session.getState().pending, original = f.data.reviews[0]; assert.equal(pending.approvalAttempted, true); f.session.dispose();
-  const g = fixture({ settings: settings(), storage: f.storage, reviews: [original] }); await g.session.load(); g.session.setVisible(false); g.session.setVisible(true); await flush(); await g.session.load(); assert.equal(g.privateCalls.length, 0); assert.equal(g.calls.some(call => call.operation === 'image.review.prepare'), false); assert.equal(await g.session.generatePaid(), false); assert.equal(g.keyCount(), 0); assert.deepEqual(g.session.getState().pending.input, pending.input); g.session.dispose();
+  const f = fixture({ settings: settings(), approve: () => { throw error(); } }); await ready(f); f.session.selectProvider('openai'); await f.session.generatePaid(); const pending = f.session.getState().pending, original = f.data.reviews[0]; assert.equal((pending)!.approvalAttempted, true); f.session.dispose();
+  const g = fixture({ settings: settings(), storage: f.storage, reviews: [original] }); await g.session.load(); g.session.setVisible(false); g.session.setVisible(true); await flush(); await g.session.load(); assert.equal(g.privateCalls.length, 0); assert.equal(g.calls.some(call => call.operation === 'image.review.prepare'), false); assert.equal(await g.session.generatePaid(), false); assert.equal(g.keyCount(), 0); assert.deepEqual((g.session.getState().pending)!.input, (pending)!.input); g.session.dispose();
 });
 
 test('external review approval preserves separate composer draft and rejection never generates', async () => {
@@ -401,15 +405,15 @@ test('double approval, late project completion and settings-read outage remain s
 test('actual paid button is the only composer action authorizing payment; settings navigation retains draft', async () => {
   const f = fixture({ settings: settings() }), ui = renderer(f); ui.render(); await flush(); ui.render(); ui.change('image-generation-name', 'Visible title'); ui.change('image-generation-prompt', '  Exact visible prompt  '); ui.click('image-provider-openai');
   assert.equal(ui.find('image-generate').props.type, 'button'); ui.form().props.onSubmit({ preventDefault() {} }); ui.find('image-generation-prompt').props.onKeyDown({ ctrlKey: true, key: 'Enter', preventDefault() {} }); await flush(); assert.equal(f.privateCalls.length, 0);
-  const oldPaid = ui.find('image-generate').props.onClick; ui.click('image-settings-open'); oldPaid(); assert.equal(ui.settings().props.active, true); ui.settings().props.onClose(); ui.render(); await flush(); ui.render(); oldPaid(); assert.equal(f.privateCalls.length, 0); assert.equal(ui.find('image-generation-prompt').props.value, '  Exact visible prompt  ');
+  const oldPaid = ui.find('image-generate').props.onClick; ui.click('image-settings-open'); oldPaid(); assert.equal((ui.settings())!.props.active, true); (ui.settings())!.props.onClose(); ui.render(); await flush(); ui.render(); oldPaid(); assert.equal(f.privateCalls.length, 0); assert.equal(ui.find('image-generation-prompt').props.value, '  Exact visible prompt  ');
   ui.click('image-generate'); await flush(); ui.render(); assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.input.prompt, '  Exact visible prompt  '); ui.unmount(); f.session.dispose();
 });
 
 test('exact pending review stays visible when omitted from the current review page', async () => {
-  const held = deferred(); let original;
+  const held = deferred(); let original: ReviewFixture | undefined;
   const f = fixture({ settings: settings(), api: (operation, input, data) => { if (operation === 'image.review.prepare') { original = review(input.input); data.reviews = [original]; return held.promise; } if (operation === 'image.review.list') return page([]); } });
-  await ready(f); f.session.selectProvider('openai'); const preparing = f.session.generatePaid(); await flush(); f.session.setVisible(false); held.resolve(original); await preparing; f.session.setVisible(true); await flush(); await f.session.load();
-  assert.equal(f.session.getState().reviews.length, 1); assert.equal(f.session.getState().reviews[0].id, original.id); assert.equal(f.privateCalls.length, 0); f.session.dispose();
+  await ready(f); f.session.selectProvider('openai'); const preparing = f.session.generatePaid(); await flush(); f.session.setVisible(false); held.resolve(original!); await preparing; f.session.setVisible(true); await flush(); await f.session.load();
+  assert.equal(f.session.getState().reviews.length, 1); assert.equal(f.session.getState().reviews[0].id, (original)!.id); assert.equal(f.privateCalls.length, 0); f.session.dispose();
 });
 
 test('valid-shaped altered rejection acknowledgement cannot release an uncertain original request', async () => {
@@ -418,10 +422,10 @@ test('valid-shaped altered rejection acknowledgement cannot release an uncertain
   assert.equal(await f.session.rejectReview(f.session.getState().reviews[0]), false); assert.deepEqual(f.session.getState().pending, pending); assert.equal(f.storage.data.size, 1); assert.equal(f.session.getState().reviews[0].state, 'pending'); f.session.dispose();
 });
 
-const customConfig = (patch = {}) => ({ ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/tenant/v1', model: 'vendor-image-exact', ...patch });
-const customSettings = (patch = {}) => settings({ configuration: customConfig(), ...patch });
-const customReview = (input = paidInput({ providerId: 'openai-compatible', model: 'vendor-image-exact' }), patch = {}) => review(input, { configuration: customConfig(), destination: 'https://images.example.com/tenant/v1/images/generations', ...patch });
-function customFixture(options = {}) {
+const customConfig = (patch: { baseUrl?: string; }|undefined = {}) => ({ ...DEFAULT_CUSTOM_IMAGE_CONFIGURATION, enabled: true, baseUrl: 'https://images.example.com/tenant/v1', model: 'vendor-image-exact', ...patch });
+const customSettings = (patch: Obj|undefined = {}) => settings({ configuration: customConfig(), ...patch });
+const customReview = (input: Obj|undefined = paidInput({ providerId: 'openai-compatible', model: 'vendor-image-exact' }), patch: Obj|undefined = {}) => review(input, { configuration: customConfig(), destination: 'https://images.example.com/tenant/v1/images/generations', ...patch });
+function customFixture(options: FixtureOptions|undefined = {}) {
   return fixture({ ...options, customSettings: options.customSettings || customSettings(), api: async (operation, input, data) => {
     if (options.api) { const result = await options.api(operation, input, data); if (result !== undefined) return result; }
     if (operation === 'image.review.prepare') { const result = customReview(input.input, { settingsRevision: input.settingsRevision }); data.reviews.unshift(result); return result; }
@@ -429,25 +433,25 @@ function customFixture(options = {}) {
 }
 
 test('custom paid click binds full immutable configuration and resolved destination with no endpoint in typed input', async () => {
-  const f = customFixture({ api: (operation, input) => { if (operation === 'image.review.prepare') { const saved = JSON.parse([...f.storage.data.values()][0]); assert.equal(saved.version, 2); assert.deepEqual(saved.configuration, customConfig()); assert.equal(saved.destination, customReview().destination); assert.equal(saved.approvalAttempted, false); assert.deepEqual(Object.keys(input).sort(), ['input', 'settingsRevision']); assert.equal(input.input.baseUrl, undefined); assert.equal(input.input.configuration, undefined); } } });
+  const f = customFixture({ api: (operation, input) => { if (operation === 'image.review.prepare') { const saved = JSON.parse([...f.storage.data.values()][0]); assert.equal(saved.version, 2); assert.deepEqual(saved.configuration, customConfig()); assert.equal(saved.destination, customReview().destination); assert.equal(saved.approvalAttempted, false); assert.deepEqual(Object.keys(input).sort(), ['input', 'settingsRevision']); assert.equal((input.input)!.baseUrl, undefined); assert.equal((input.input)!.configuration, undefined); } } });
   await ready(f); f.session.selectProvider('openai-compatible'); f.session.edit('prompt', '  原始自定义描述\n保留。  '); assert.equal(imageCanGenerate(f.session.getState()), true); assert.equal(await f.session.generate(), false); assert.equal(await f.session.generatePaid(), true);
   assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.input.model, 'vendor-image-exact'); assert.equal(f.privateCalls[0].review.input.prompt, '  原始自定义描述\n保留。  '); assert.deepEqual(f.privateCalls[0].review.configuration, customConfig()); assert.equal(mutations(f).length, 0); assert.equal(f.storage.data.size, 0); f.session.dispose();
 });
 
 test('custom paid preparation refuses valid-shaped destination/configuration substitution and never normalizes receipts', async () => {
   for (const baseUrl of ['https://different.example.com/v1', 'https://IMAGES.example.com:443/tenant/v1/']) {
-    const f = customFixture({ api: (operation, input) => operation === 'image.review.prepare' ? customReview(input.input, { configuration: customConfig({ baseUrl }), destination: `${baseUrl}/images/generations` }) : undefined });
-    await ready(f); f.session.selectProvider('openai-compatible'); await f.session.generatePaid(); assert.equal(f.privateCalls.length, 0); assert.ok(f.session.getState().pending); assert.equal(f.session.getState().pending.configuration.baseUrl, customConfig().baseUrl); f.session.dispose();
+    const f = customFixture({ api: (operation: string, input: InputView) => operation === 'image.review.prepare' ? customReview(input.input, { configuration: customConfig({ baseUrl }), destination: `${baseUrl}/images/generations` }) : undefined });
+    await ready(f); f.session.selectProvider('openai-compatible'); await f.session.generatePaid(); assert.equal(f.privateCalls.length, 0); assert.ok(f.session.getState().pending); assert.equal(((f.session.getState().pending)!.configuration)!.baseUrl, customConfig().baseUrl); f.session.dispose();
   }
 });
 
 test('custom preparation hide, slot switch and changed configuration never auto-approve on return', async () => {
   for (const transition of ['hide', 'settings']) {
-    const held = deferred(); let original;
-    const f = customFixture({ api: (operation, input, data) => { if (operation === 'image.review.prepare') { original = customReview(input.input); data.reviews = [original]; return held.promise; } } });
+    const held = deferred(); let original: ReviewFixture | undefined;
+    const f = customFixture({ api: (operation: string, input: InputView, data: DataStore) => { if (operation === 'image.review.prepare') { original = customReview(input.input); data.reviews = [original]; return held.promise; } } });
     await ready(f); f.session.selectProvider('openai-compatible'); const sending = f.session.generatePaid(); await flush();
     if (transition === 'hide') { f.session.setVisible(false); f.session.setVisible(true); } else f.session.setCustomSettings(customSettings({ revision: 2, configuration: customConfig({ baseUrl: 'https://new.example.com/v1' }) }));
-    held.resolve(original); await sending; assert.equal(f.privateCalls.length, 0); assert.equal(f.session.getState().pending.approvalAttempted, false); await f.session.load(); assert.equal(f.privateCalls.length, 0);
+    held.resolve(original!); await sending; assert.equal(f.privateCalls.length, 0); assert.equal((f.session.getState().pending)!.approvalAttempted, false); await f.session.load(); assert.equal(f.privateCalls.length, 0);
     if (transition === 'settings') assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), false);
     else { assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), true); assert.equal(f.privateCalls.length, 1); }
     f.session.dispose();
@@ -455,7 +459,7 @@ test('custom preparation hide, slot switch and changed configuration never auto-
 });
 
 test('custom unknown approval survives restart as exact v2 intent and is not reapproved by reads', async () => {
-  const f = customFixture({ approve: () => { throw error(); } }); await ready(f); f.session.selectProvider('openai-compatible'); await f.session.generatePaid(); const pending = f.session.getState().pending, original = f.data.reviews[0]; assert.equal(pending.version, 2); assert.equal(pending.approvalAttempted, true); f.session.dispose();
+  const f = customFixture({ approve: () => { throw error(); } }); await ready(f); f.session.selectProvider('openai-compatible'); await f.session.generatePaid(); const pending = f.session.getState().pending, original = f.data.reviews[0]; assert.equal((pending)!.version, 2); assert.equal((pending)!.approvalAttempted, true); f.session.dispose();
   const g = customFixture({ storage: f.storage, reviews: [original] }); await g.session.load(); g.session.setVisible(false); g.session.setVisible(true); await flush(); await g.session.load(); assert.deepEqual(g.session.getState().pending, pending); assert.equal(g.privateCalls.length, 0); assert.equal(g.calls.some(call => call.operation === 'image.review.prepare'), false); assert.equal(await g.session.generatePaid(), false); g.session.dispose();
   const invalidStorage = memoryStorage(); invalidStorage.setItem(`mioon.image-intent.v1:${projectId}`, JSON.stringify({ ...pending, version: 1 })); const h = customFixture({ storage: invalidStorage }); await h.session.load(); assert.equal(h.session.getState().storageBlocked, true); assert.equal(h.privateCalls.length, 0); h.session.dispose();
 });
@@ -478,9 +482,9 @@ test('actual custom paid button is explicit, settings slots stay mounted and his
   const f = customFixture(), ui = renderer(f); ui.render(); await flush(); ui.render(); ui.change('image-generation-name', 'Custom visible'); ui.change('image-generation-prompt', 'Exact custom prompt'); ui.click('image-provider-custom');
   assert.equal(ui.find('image-generate').props.type, 'button'); assert.equal(ui.find('image-generate').props.disabled, false); assert.ok(JSON.stringify(ui.find('image-custom-profile')).includes(customReview().destination));
   ui.form().props.onSubmit({ preventDefault() {} }); ui.find('image-generation-prompt').props.onKeyDown({ ctrlKey: true, key: 'Enter', preventDefault() {} }); await flush(); assert.equal(f.privateCalls.length, 0);
-  const oldPaid = ui.find('image-generate').props.onClick; ui.click('image-settings-open'); assert.equal(ui.settings('custom').props.active, true); assert.equal(ui.settings('official').props.active, false); assert.notEqual(ui.settings('official').props.client, ui.settings('custom').props.client);
-  ui.settings('custom').props.onSelectSlot('official'); ui.render(); assert.equal(ui.settings('official').props.active, true); assert.equal(ui.settings('custom').props.active, false); oldPaid(); assert.equal(f.privateCalls.length, 0);
-  ui.settings('official').props.onClose(); ui.render(); await flush(); ui.render(); oldPaid(); assert.equal(f.privateCalls.length, 0); ui.click('image-generate'); await flush(); ui.render(); assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.destination, customReview().destination); ui.unmount(); f.session.dispose();
+  const oldPaid = ui.find('image-generate').props.onClick; ui.click('image-settings-open'); assert.equal((ui.settings('custom'))!.props.active, true); assert.equal((ui.settings('official'))!.props.active, false); assert.notEqual((ui.settings('official'))!.props.client, (ui.settings('custom'))!.props.client);
+  (ui.settings('custom'))!.props.onSelectSlot('official'); ui.render(); assert.equal((ui.settings('official'))!.props.active, true); assert.equal((ui.settings('custom'))!.props.active, false); oldPaid(); assert.equal(f.privateCalls.length, 0);
+  (ui.settings('official'))!.props.onClose(); ui.render(); await flush(); ui.render(); oldPaid(); assert.equal(f.privateCalls.length, 0); ui.click('image-generate'); await flush(); ui.render(); assert.equal(f.privateCalls.length, 1); assert.equal(f.privateCalls[0].review.destination, customReview().destination); ui.unmount(); f.session.dispose();
 });
 
 test('a paid button authorization snapshot cannot authorize later draft or same-revision custom destination changes', async () => {
@@ -512,7 +516,7 @@ test('actual custom failed task shows fixed pre-dispatch guidance without reflec
   }
 });
 
-function historyFixture(options = {}) {
+function historyFixture(options: FixtureOptions|undefined = {}) {
   const otherGroupId = id(90), otherVersionId = id(91), otherTaskId = id(92), otherAssetId = id(93), unknownTaskId = id(94);
   const f = fixture({
     groups: [group({ name: 'Group A', headVersionId: versionId, activeTaskId: unknownTaskId }), group({ id: otherGroupId, name: 'Group B', headVersionId: otherVersionId, activeTaskId: null })],
@@ -527,7 +531,7 @@ test('history selection clears wrong-group versions and cursors during delayed f
   const held = deferred(); let fail = true;
   const f = historyFixture({ api: (operation, input, data) => {
     if (operation === 'image.task.list' && input.groupId === id(90) && fail) return held.promise;
-    if (operation === 'image.version.list' && input.groupId === groupId) return page(data.versions.filter(item => item.groupId === groupId), 'older-A-versions');
+    if (operation === 'image.version.list' && input.groupId === groupId) return page(data.versions.filter((item: EntityView) => item.groupId === groupId), 'older-A-versions');
   } });
   let selecting;
   try {
@@ -536,12 +540,12 @@ test('history selection clears wrong-group versions and cursors during delayed f
     selecting = f.session.selectGroup(f.otherGroupId); await flush();
     let state = f.session.getState();
     assert.equal(state.selectedGroupId, f.otherGroupId);
-    assert.deepEqual(state.versions, [], 'Group A images must disappear as soon as B is selected');
-    assert.equal(state.nextVersionCursor, null); assert.equal(state.versionCursor, null); assert.deepEqual(state.versionTrail, []);
+    assert.deepEqual((state.versions as unknown), [], 'Group A images must disappear as soon as B is selected');
+    assert.equal(state.nextVersionCursor, null); assert.equal(state.versionCursor, null); assert.deepEqual((state.versionTrail as unknown), []);
     assert.equal(state.historyPhase, 'loading'); assert.deepEqual(state.draft, draft);
     assert.ok(state.tasks.some(item => item.id === f.unknownTaskId), 'Retain A’s recoverable task record');
     held.reject(error()); assert.equal(await selecting, false);
-    state = f.session.getState(); assert.equal(state.historyPhase, 'read_error'); assert.deepEqual(state.versions, []); assert.deepEqual(state.draft, draft);
+    state = f.session.getState(); assert.equal(state.historyPhase, 'read_error'); assert.deepEqual((state.versions as unknown), []); assert.deepEqual(state.draft, draft);
     fail = false; assert.equal(await f.session.load(), true);
     state = f.session.getState(); assert.equal(state.historyPhase, 'ready'); assert.equal(state.versions[0].id, f.otherVersionId); assert.deepEqual(state.draft, draft);
     await f.session.selectGroup(groupId);
@@ -554,7 +558,7 @@ test('history selection preserves the current group’s versions, page and draft
   const held = deferred(); let hold = false;
   const f = historyFixture({ api: (operation, input, data) => {
     if (operation === 'image.group.list' && hold) return held.promise;
-    if (operation === 'image.version.list' && input.groupId === groupId) return page(data.versions.filter(item => item.groupId === groupId), 'older-A-versions');
+    if (operation === 'image.version.list' && input.groupId === groupId) return page(data.versions.filter((item: EntityView) => item.groupId === groupId), 'older-A-versions');
   } });
   let reading;
   try {
@@ -571,14 +575,14 @@ test('history selection version pagination clears the prior page on failure and 
   const f = historyFixture({ api: (operation, input, data) => {
     if (operation !== 'image.version.list' || input.groupId !== groupId) return;
     if (input.cursor) return held.promise;
-    return page(data.versions.filter(item => item.groupId === groupId), 'older-A-versions');
+    return page(data.versions.filter((item: EntityView) => item.groupId === groupId), 'older-A-versions');
   } });
   let paging;
   try {
     await f.session.load(); paging = f.session.pageVersions(true); await flush();
-    let state = f.session.getState(); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null); assert.equal(state.versionCursor, 'older-A-versions'); assert.deepEqual(state.versionTrail, [null]);
+    let state = f.session.getState(); assert.deepEqual((state.versions as unknown), []); assert.equal(state.nextVersionCursor, null); assert.equal(state.versionCursor, 'older-A-versions'); assert.deepEqual(state.versionTrail, [null]);
     held.reject(error()); await paging; assert.equal(await f.session.pageVersions(true), false);
-    assert.equal(await f.session.pageVersions(false), true); state = f.session.getState(); assert.equal(state.versions[0].id, versionId); assert.equal(state.versionCursor, null); assert.deepEqual(state.versionTrail, []);
+    assert.equal(await f.session.pageVersions(false), true); state = f.session.getState(); assert.equal(state.versions[0].id, versionId); assert.equal(state.versionCursor, null); assert.deepEqual((state.versionTrail as unknown), []);
     assert.equal(mutations(f).length, 0);
   } finally { held.resolve(page([])); await paging; f.session.dispose(); }
 });
@@ -593,8 +597,8 @@ test('history selection group pagination removes old versions before its new gro
   let paging;
   try {
     await f.session.load(); paging = f.session.pageGroups(true); await flush();
-    let state = f.session.getState(); assert.equal(state.selectedGroupId, null); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null);
-    held.reject(error()); await paging; assert.deepEqual(f.session.getState().versions, []);
+    let state = f.session.getState(); assert.equal(state.selectedGroupId, null); assert.deepEqual((state.versions as unknown), []); assert.equal(state.nextVersionCursor, null);
+    held.reject(error()); await paging; assert.deepEqual((f.session.getState().versions as unknown), []);
     rejectPage = false; await f.session.load(); state = f.session.getState(); assert.equal(state.selectedGroupId, f.otherGroupId); assert.equal(state.versions[0].id, f.otherVersionId);
     assert.equal(mutations(f).length, 0);
   } finally { held.resolve(page([])); await paging; f.session.dispose(); }
@@ -613,9 +617,9 @@ test('history selection after explicit target confirmation reloads its own versi
 });
 
 test('actual history selection never labels or reveals A’s saved asset as B during a failed read', async () => {
-  const held = deferred(); let fail = true; const reveals = [];
-  const f = historyFixture({ api: (operation, input) => operation === 'image.task.list' && input.groupId === id(90) && fail ? held.promise : undefined });
-  const ui = renderer(f, { onRevealAsset: (...args) => reveals.push(args) });
+  const held = deferred(); let fail = true; const reveals: unknown[] = [];
+  const f = historyFixture({ api: (operation: string, input: InputView) => operation === 'image.task.list' && input.groupId === id(90) && fail ? held.promise : undefined });
+  const ui = renderer(f, { onRevealAsset: (...args: unknown[]) => reveals.push(args) });
   try {
     ui.render(); await flush(); ui.render(); assert.equal(ui.find('image-version-preview').props.src, `/media/${assetId}`);
     const oldReveal = ui.find('image-reveal-asset').props.onClick;
@@ -623,13 +627,13 @@ test('actual history selection never labels or reveals A’s saved asset as B du
     ui.change('image-history-group', f.otherGroupId); await flush(); ui.render();
     assert.equal(ui.find('image-history-group').props.value, f.otherGroupId);
     assert.equal(ui.find('image-version-preview'), undefined); assert.equal(ui.find('image-reveal-asset'), undefined);
-    oldReveal(); assert.deepEqual(reveals, [], 'Captured A callbacks cannot reveal its asset under selected B');
+    oldReveal(); assert.deepEqual((reveals as unknown), [], 'Captured A callbacks cannot reveal its asset under selected B');
     assert.match(JSON.stringify(ui.find('image-history-status')), /正在读取/);
     held.reject(error()); await flush(); ui.render();
     assert.equal(ui.find('image-version-preview'), undefined); assert.equal(ui.find('image-reveal-asset'), undefined); assert.match(JSON.stringify(ui.find('image-history-status')), /暂时无法读取/);
     fail = false; ui.click('image-refresh'); await flush(); ui.render();
     assert.equal(ui.find('image-version-preview').props.src, `/media/${f.otherAssetId}`); assert.match(ui.find('image-version-preview').props.alt, /Group B/);
-    oldReveal(); assert.deepEqual(reveals, []);
+    oldReveal(); assert.deepEqual((reveals as unknown), []);
     ui.click('image-reveal-asset'); assert.deepEqual(reveals, [[f.otherAssetId, projectId]]);
     assert.equal(ui.find('image-generation-prompt').props.value, 'Keep my current description'); assert.equal(mutations(f).length, 0);
   } finally { held.resolve(page([])); await flush(); ui.unmount(); f.session.dispose(); }
@@ -641,7 +645,7 @@ test('history selection from accepted or recovered generation clears another gro
     const f = historyFixture({ api: (operation, input, data) => {
       if (operation === 'image.generate') {
         const result = task({ ...input, id: id(98), groupId: id(90) });
-        data.tasks.unshift(result); data.receipts.set(input.requestId, { projectId, requestId: input.requestId, operation, response: result }); accepted = true;
+        data.tasks.unshift(result); data.receipts.set(input.requestId!, { projectId, requestId: input.requestId, operation, response: result }); accepted = true;
         if (lostAcknowledgement) throw error();
         return result;
       }
@@ -650,7 +654,7 @@ test('history selection from accepted or recovered generation clears another gro
     try {
       await ready(f); assert.equal(f.session.getState().versions[0].id, versionId);
       assert.equal(await f.session.generate(), true);
-      const state = f.session.getState(); assert.equal(state.pending, null); assert.equal(state.selectedGroupId, f.otherGroupId); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null);
+      const state = f.session.getState(); assert.equal(state.pending, null); assert.equal(state.selectedGroupId, f.otherGroupId); assert.deepEqual((state.versions as unknown), []); assert.equal(state.nextVersionCursor, null);
       assert.equal(state.historyPhase, 'read_error'); assert.ok(state.tasks.some(item => item.id === id(98))); assert.equal(mutations(f).length, 1);
       assert.equal(f.calls.some(call => call.operation === 'image.request.get'), lostAcknowledgement);
     } finally { f.session.dispose(); }
@@ -660,12 +664,12 @@ test('history selection from accepted or recovered generation clears another gro
 test('history selection from saved paid approval clears the old group while keeping the unrelated composer draft', async () => {
   const original = review(paidInput({ groupId: id(90), expectedRevision: 1 }));
   const f = historyFixture({ settings: settings(), reviews: [original], api: (operation, _input, data) => {
-    if (operation === 'image.group.list' && data.tasks.some(item => item.providerId === 'openai')) throw error();
+    if (operation === 'image.group.list' && data.tasks.some((item: EntityView) => item.providerId === 'openai')) throw error();
   } });
   try {
     await ready(f); const draft = f.session.getState().draft;
     assert.equal(await f.session.approveReview(f.session.getState().reviews[0]), true);
-    const state = f.session.getState(); assert.equal(state.selectedGroupId, f.otherGroupId); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null); assert.deepEqual(state.draft, draft);
+    const state = f.session.getState(); assert.equal(state.selectedGroupId, f.otherGroupId); assert.deepEqual((state.versions as unknown), []); assert.equal(state.nextVersionCursor, null); assert.deepEqual(state.draft, draft);
     assert.equal(state.historyPhase, 'read_error'); assert.equal(f.privateCalls.length, 1); assert.equal(mutations(f).length, 0);
   } finally { f.session.dispose(); }
 });
@@ -675,7 +679,7 @@ test('history selection same-group accepted generation or approval clears an old
     const first = version({ number: 2 }), older = version({ id: id(101), taskId: id(102), number: 1 }), original = review(paidInput({ groupId, expectedRevision: 1 }));
     let failRead = true;
     const f = historyFixture({ settings: settings(), reviews: paid ? [original] : [], api: (operation, input, data) => {
-      if (operation === 'image.group.list' && failRead && data.tasks.some(item => item.state === 'queued')) throw error();
+      if (operation === 'image.group.list' && failRead && data.tasks.some((item: EntityView) => item.state === 'queued')) throw error();
       if (operation === 'image.version.list' && input.groupId === groupId) return input.cursor ? page([older]) : page([first], 'older-A-versions');
     } });
     try {
@@ -685,7 +689,7 @@ test('history selection same-group accepted generation or approval clears an old
       await f.session.pageVersions(true);
       let state = f.session.getState(); assert.equal(state.selectedGroupId, groupId); assert.equal(state.versionCursor, 'older-A-versions'); assert.equal(state.versions[0].id, older.id);
       assert.equal(paid ? await f.session.approveReview(state.reviews[0]) : await f.session.generate(), true);
-      state = f.session.getState(); assert.equal(state.selectedGroupId, groupId); assert.equal(state.versionCursor, null); assert.deepEqual(state.versionTrail, []); assert.deepEqual(state.versions, []); assert.equal(state.nextVersionCursor, null); assert.equal(state.historyPhase, 'read_error');
+      state = f.session.getState(); assert.equal(state.selectedGroupId, groupId); assert.equal(state.versionCursor, null); assert.deepEqual((state.versionTrail as unknown), []); assert.deepEqual((state.versions as unknown), []); assert.equal(state.nextVersionCursor, null); assert.equal(state.historyPhase, 'read_error');
       failRead = false; await f.session.load(); state = f.session.getState(); assert.equal(state.versions[0].id, first.id); assert.equal(state.versionCursor, null); assert.equal(state.historyPhase, 'ready');
       assert.equal(mutations(f).length, paid ? 0 : 1); assert.equal(f.privateCalls.length, paid ? 1 : 0);
     } finally { f.session.dispose(); }
@@ -695,9 +699,9 @@ test('history selection same-group accepted generation or approval clears an old
 test('history selection accepted generation or approval invalidates an older group cursor before a failed first-page refresh', async () => {
   for (const paid of [false, true]) {
     const original = review(paidInput({ groupId: id(90), expectedRevision: 1 })); let failRead = true;
-    const f = historyFixture({ settings: settings(), reviews: paid ? [original] : [], api: (operation, input, data) => {
+    const f = historyFixture({ settings: settings(), reviews: paid ? [original] : [], api: (operation: string, input: InputView, data: DataStore) => {
       if (operation !== 'image.group.list') return;
-      if (failRead && data.tasks.some(item => item.state === 'queued')) throw error();
+      if (failRead && data.tasks.some((item: EntityView) => item.state === 'queued')) throw error();
       if (!input.cursor) return page([data.groups[0]], 'group-page-two');
       if (input.cursor === 'group-page-two') return page([data.groups[1]], 'group-page-three');
       return page([]);
@@ -707,7 +711,7 @@ test('history selection accepted generation or approval invalidates an older gro
       await f.session.pageGroups(true); let state = f.session.getState();
       assert.equal(state.groupCursor, 'group-page-two'); assert.equal(state.nextGroupCursor, 'group-page-three');
       assert.equal(paid ? await f.session.approveReview(state.reviews[0]) : await f.session.generate(), true);
-      state = f.session.getState(); assert.equal(state.groupCursor, null); assert.deepEqual(state.groupTrail, []);
+      state = f.session.getState(); assert.equal(state.groupCursor, null); assert.deepEqual((state.groupTrail as unknown), []);
       assert.equal(state.nextGroupCursor, null, 'A cursor from the former page cannot be used under first-page identity');
       assert.equal(state.historyPhase, 'read_error'); assert.equal(state.pending, null); assert.equal(f.data.receipts.size, 1);
       if (paid) assert.deepEqual(state.draft, draft);
@@ -720,22 +724,22 @@ test('history selection accepted generation or approval invalidates an older gro
 
 test('four-language changes preserve mounted image drafts and the same pending paid review without automatic approval', async () => {
   const languageStore = createLanguageStore({ systemLanguages: ['zh-Hans'] });
-  const held = deferred(); let original;
+  const held = deferred(); let original: ReviewFixture | undefined;
   const f = fixture({ settings: settings(), api: (operation, input, data) => { if (operation === 'image.review.prepare') { original = review(input.input); data.reviews = [original]; return held.promise; } } }), ui = renderer(f, { languageStore });
   ui.render(); await flush(); ui.render();
   const name = '保留名称 / Image / 画像', prompt = '  原文 <script>\nexact prompt  ';
   ui.change('image-generation-name', name); ui.change('image-generation-prompt', prompt); ui.click('image-provider-openai');
   const before = f.calls.length;
-  for (const locale of ['zh-Hant', 'en', 'ja', 'zh-Hans']) {
+  for (const locale of ['zh-Hant', 'en', 'ja', 'zh-Hans'] as const) {
     await languageStore.setPreference(locale); ui.render(); await flush(); ui.render();
     assert.equal(ui.find('image-generation-name').props.value, name);
     assert.equal(ui.find('image-generation-prompt').props.value, prompt);
     assert.equal(f.calls.length, before); assert.equal(f.privateCalls.length, 0);
   }
-  ui.click('image-generate'); await flush(); ui.show(false); held.resolve(original); await flush(); ui.show(true); await flush(); ui.render();
+  ui.click('image-generate'); await flush(); ui.show(false); held.resolve(original!); await flush(); ui.show(true); await flush(); ui.render();
   const approval = ui.find('image-review-approve'); assert.ok(approval);
   const pendingCalls = f.calls.length;
-  for (const locale of ['ja', 'en', 'zh-Hant']) {
+  for (const locale of ['ja', 'en', 'zh-Hant'] as const) {
     await languageStore.setPreference(locale); ui.render(); await flush(); ui.render();
     assert.ok(ui.find('image-review-approve')); assert.equal(f.calls.length, pendingCalls); assert.equal(f.privateCalls.length, 0);
   }
@@ -745,20 +749,20 @@ test('four-language changes preserve mounted image drafts and the same pending p
 });
 
 const editAsset = () => ({ id: assetId, projectId, name: 'Owned reference.png', sha256: 'a'.repeat(64), mimeType: 'image/png', provenance: 'user-import', sizeBytes: 120, width: 64, height: 64 });
-function editIntentFixture(f) {
-  const source = editAsset(), changes = [];
+function editIntentFixture(f: Fixture) {
+  const source = editAsset(), changes: imageEditIntents.ImageEditIntentState[] = [];
   let visible = true, sources = [source], current = true;
   const controller = imageEditIntents.createImageEditIntentController({
-    getContext: () => ({ visible, scope: 'project:epoch:panel', projectId, assets: sources, session: f.session, isCurrent: () => current }),
+    getContext: () => ({ visible, scope: 'project:epoch:panel', projectId, assets: sources, session: f.session as unknown as ReturnType<Parameters<typeof imageEditIntents.createImageEditIntentController>[0]['getContext']>['session'], isCurrent: () => current }),
     isDirty: imageDraftDirty, onChange: value => changes.push(value),
   });
   return { controller, changes, source,
-    intent: number => imageEditIntents.captureImageEditIntent({ id: id(number), scope: 'project:epoch:panel', projectId, asset: source }),
-    hide() { visible = false; f.session.setVisible(false); controller.retire(); }, show() { visible = true; f.session.setVisible(true); }, setSources(value) { sources = value; }, current(value) { current = value; } };
+    intent: (number: number) => imageEditIntents.captureImageEditIntent({ id: id(number), scope: 'project:epoch:panel', projectId, asset: source })!,
+    hide() { visible = false; f.session.setVisible(false); controller.retire(); }, show() { visible = true; f.session.setVisible(true); }, setSources(value: { id: string; projectId: string; name: string; sha256: string; mimeType: string; provenance: string; sizeBytes: number; width: number; height: number; }[]) { sources = value; }, current(value: boolean) { current = value; } };
 }
 test('external image edit intent prefills one exact source without generating or approving', async () => {
   const f = fixture(); await f.session.load(); const h = editIntentFixture(f), intent = h.intent(900);
-  await h.controller.receive(intent); assert.equal(h.changes.at(-1).phase, 'applied');
+  await h.controller.receive(intent); assert.equal((h.changes.at(-1))!.phase, 'applied');
   assert.equal(f.session.getState().mode, 'edit'); assert.deepEqual(f.session.getState().inputImage, { assetId, sha256: 'a'.repeat(64) });
   assert.equal(mutations(f).length, 0); assert.equal(f.privateCalls.length, 0);
   assert.equal(f.calls.some(call => call.operation === 'image.review.prepare'), false);
@@ -767,25 +771,25 @@ test('external image edit intent prefills one exact source without generating or
 });
 test('image edit intent uses the existing discard guard and stale form/source confirmations preserve the draft', async () => {
   const f = fixture(); await ready(f); const h = editIntentFixture(f);
-  await h.controller.receive(h.intent(901)); assert.equal(h.changes.at(-1).phase, 'confirm');
-  const stale = h.changes.at(-1).ticket; assert.equal(f.session.getState().draft.prompt, '清晨的山间小屋');
+  await h.controller.receive(h.intent(901)); assert.equal((h.changes.at(-1))!.phase, 'confirm');
+  const stale = (h.changes.at(-1) as Extract<imageEditIntents.ImageEditIntentState,{phase: 'confirm'}>).ticket; assert.equal(f.session.getState().draft.prompt, '清晨的山间小屋');
   f.session.edit('prompt', 'Newer form'); assert.equal(await h.controller.confirm(stale), false); assert.equal(f.session.getState().draft.prompt, 'Newer form');
-  await h.controller.receive(h.intent(902)); const changedSource = h.changes.at(-1).ticket;
+  await h.controller.receive(h.intent(902)); const changedSource = (h.changes.at(-1) as Extract<imageEditIntents.ImageEditIntentState,{phase: 'confirm'}>).ticket;
   h.setSources([{ ...editAsset(), sha256: 'b'.repeat(64) }]); assert.equal(await h.controller.confirm(changedSource), false); assert.equal(f.session.getState().draft.prompt, 'Newer form');
-  h.setSources([editAsset()]); await h.controller.receive(h.intent(903)); const confirmed = h.changes.at(-1).ticket;
+  h.setSources([editAsset()]); await h.controller.receive(h.intent(903)); const confirmed = (h.changes.at(-1) as Extract<imageEditIntents.ImageEditIntentState,{phase: 'confirm'}>).ticket;
   assert.equal(await h.controller.confirm(confirmed), true); assert.equal(f.session.getState().draft.prompt, ''); assert.equal(f.session.getState().mode, 'edit');
   assert.equal(mutations(f).length, 0); assert.equal(f.privateCalls.length, 0); f.session.dispose();
 });
 test('hiding or retiring an image edit intent rejects old confirmation even after showing the same project', async () => {
   const f = fixture(); await ready(f); const h = editIntentFixture(f);
-  await h.controller.receive(h.intent(904)); const ticket = h.changes.at(-1).ticket;
+  await h.controller.receive(h.intent(904)); const ticket = (h.changes.at(-1) as Extract<imageEditIntents.ImageEditIntentState,{phase: 'confirm'}>).ticket;
   h.hide(); h.show(); assert.equal(await h.controller.confirm(ticket), false);
   assert.equal(f.session.getState().draft.prompt, '清晨的山间小屋'); assert.equal(f.session.getState().mode, 'text');
   assert.equal(mutations(f).length, 0); f.session.dispose();
 });
 test('actual image composer waits for its reads before applying a fresh edit intent and never submits it', async () => {
   const f = fixture(), source = editAsset(), intent = imageEditIntents.captureImageEditIntent({ id: id(905), scope: 'project:epoch:panel', projectId, asset: source });
-  const options = { projectAssets: [source], editIntent: intent, isEditIntentCurrent: value => value === intent }, ui = renderer(f, options);
+  const options = { projectAssets: [source], editIntent: intent, isEditIntentCurrent: (value: imageEditIntents.ImageEditIntent|null) => value === intent }, ui = renderer(f, options);
   ui.render(); await flush(); ui.render(); await flush(); ui.render();
   assert.equal(ui.find('image-mode-edit').props['aria-pressed'], true);
   assert.equal(ui.find('image-source-asset').props.value, `${assetId}:${source.sha256}`);
@@ -793,11 +797,11 @@ test('actual image composer waits for its reads before applying a fresh edit int
 });
 
 test('image edit intent capture rejects foreign, duplicate and unsupported source identities', () => {
-  const source = editAsset(), capture = value => imageEditIntents.captureImageEditIntent({ id: id(906), scope: 'scope', projectId, asset: value });
+  const source = editAsset(), capture = (value: { projectId: string; id: string; name: string; sha256: string; mimeType: string; provenance: string; sizeBytes: number; width: number; height: number; }) => imageEditIntents.captureImageEditIntent({ id: id(906), scope: 'scope', projectId, asset: value });
   assert.equal(capture({ ...source, projectId: id(999) }), null);
   assert.equal(capture({ ...source, mimeType: 'image/jpeg' }), null);
   assert.equal(capture({ ...source, width: 2048 }), null);
   const intent = capture(source); assert.ok(Object.isFrozen(intent));
-  assert.equal(imageEditIntents.imageEditIntentSource(intent, { scope: 'scope', projectId, assets: [source, source] }), null);
-  assert.equal(imageEditIntents.imageEditIntentSource(intent, { scope: 'other', projectId, assets: [source] }), null);
+  assert.equal(imageEditIntents.imageEditIntentSource(intent!, { scope: 'scope', projectId, assets: [source, source] }), null);
+  assert.equal(imageEditIntents.imageEditIntentSource(intent!, { scope: 'other', projectId, assets: [source] }), null);
 });

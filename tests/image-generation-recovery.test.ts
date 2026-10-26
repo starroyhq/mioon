@@ -1,3 +1,4 @@
+import type {TypedStore, TypedServices, TypedCall} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -21,10 +22,10 @@ interface RecoveryTaskView {id: string; state: string; revision: number; [key: s
 interface Acknowledge {id: string; groupId: string; requestId: string; revision: number; state: string;
   response?: Acknowledge; items?: Acknowledge[]; taskId?: string; cancelled?: boolean; [key: string]: unknown}
 interface RecoveryFixture {readonly root: string; readonly project: {id: string}; readonly other: {id: string};
-  readonly store: ReturnType<typeof openStore>; readonly services: ReturnType<typeof createServices>; readonly calls: number;
+  readonly store: TypedStore; readonly services: TypedServices; readonly calls: number;
   setFault(fault: (label: string, context: unknown) => void): void;
   input(patch?: Record<string, unknown>): RecoveryInput;
-  call<T = Acknowledge>(operation: string, input: unknown, context?: unknown): Promise<T>;
+  call(operation: string, input: unknown, context?: unknown): Promise<Acknowledge>;
   row(id: string): Record<string, unknown> | undefined;
   restart(): Promise<void>;
   get(id: string): Promise<RecoveryTaskView>;
@@ -50,26 +51,26 @@ async function until<T>(check: () => T | false | Promise<T | false>, label: stri
 }
 async function fixture(t: import('node:test').TestContext, {autoRun = true, generate}: FixtureOptions = {}): Promise<RecoveryFixture> {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-recovery-'));
-  let store: ReturnType<typeof openStore> | undefined, services: ReturnType<typeof createServices> | undefined, calls = 0, fault: (label: string, context: unknown) => void = () => {};
+  let store: TypedStore | undefined, services: TypedServices | undefined, calls = 0, fault: (label: string, context: unknown) => void = () => {};
   const generator = async (input: RecoveryInput, options: {beforeDispatch: () => void}) => {
     calls++;
     if (generate) return generate(input, options);
     options.beforeDispatch(); return {bytes: await png()};
   };
   function start() {
-    store = openStore(root);
-    services = createServices(store!, new Map(), {env: {}, imageOptions: {autoRun, generate: generator, fault: (label: string, context: unknown) => fault(label, context)}} as never);
+    store = (openStore(root) as unknown as TypedStore);
+    services = (createServices(store!, new Map(), {env: {}, imageOptions: {autoRun, generate: generator, fault: (label: string, context: unknown) => fault(label, context)}} as never) as unknown as TypedServices);
   }
   start();
   t.after(async () => {try {await services!.drain();} finally {store!.close(); rmSync(root, {recursive: true, force: true});}});
   const project = await services!.call('project.create', {name: 'Image recovery project'}) as {id: string};
   const other = await services!.call('project.create', {name: 'Foreign project'}) as {id: string};
   const f: RecoveryFixture = {root, project, other, get store() {return store!;}, get services() {return services!;}, get calls() {return calls;},
-    setFault(fn) {fault = fn;}, input: patch => inputFor(project.id, patch), call: (op, input) => services.call(op, input),
+    setFault(fn) {fault = fn;}, input: patch => inputFor(project.id, patch), call: ((op: string, input: unknown) => (services)!.call(op, input)) as RecoveryFixture['call'],
     row: (id: string) => store!.db.prepare('SELECT * FROM image_tasks WHERE id=?').get(id) as Record<string, unknown> | undefined,
     async restart() {await services!.drain(); store!.close(); start();},
     get: (id: string) => services!.call('image.task.get', {projectId: project.id, taskId: id}) as Promise<RecoveryTaskView>,
-    recovery: (task, patch = {}) => ({projectId: project.id, taskId: task.id, expectedRevision: task.revision, requestId: randomUUID(), ...patch}),
+    recovery: (task: { id: unknown; revision: unknown; }, patch: Record<string,unknown> = {}) => ({projectId: project.id, taskId: task.id, expectedRevision: task.revision, requestId: randomUUID(), ...patch}),
   };
   return f;
 }
@@ -82,9 +83,9 @@ test('synthetic exception before request receipt rolls back all admission rows a
   await pause(0);
   assert.equal(snapshot(f.store.db), before); assert.equal(f.calls, 0);
   assert.equal(await f.call('image.request.get', {projectId: f.project.id, requestId: input.requestId}), null);
-  assert.deepEqual(readdirSync(path.join(f.root, 'media')), []);
+  assert.deepEqual((readdirSync(path.join(f.root, 'media')) as unknown), []);
   f.setFault(() => {}); await f.restart();
-  assert.equal((await f.call('image.task.list', {projectId: f.project.id})).items.length, 0); assert.equal(f.calls, 0);
+  assert.equal(((await f.call('image.task.list', {projectId: f.project.id})).items)!.length, 0); assert.equal(f.calls, 0);
 });
 
 test('unknown acceptance ACK is recovered by request lookup; exact replay never enqueues and restart requires explicit cancellation', async t => {
@@ -94,17 +95,17 @@ test('unknown acceptance ACK is recovered by request lookup; exact replay never 
   f.setFault(() => {});
   const before = snapshot(f.store.db), changes = f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
   const receipt = await f.call('image.request.get', {projectId: f.project.id, requestId: input.requestId});
-  assert.equal(receipt.response.state, 'queued'); assert.equal(f.calls, 0);
+  assert.equal((receipt.response)!.state, 'queued'); assert.equal(f.calls, 0);
   assert.deepEqual(await f.call('image.generate', input), receipt.response); await pause(0);
   assert.equal(snapshot(f.store.db), before); assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n, changes);
   assert.equal(f.calls, 0);
   await f.restart();
   // No renderer instance or original browser session is needed for discovery.
   const discovered = (await f.call('image.task.list', {projectId: f.project.id})).items;
-  assert.equal(discovered.length, 1); assert.equal(discovered[0].state, 'interrupted_before_dispatch');
+  assert.equal((discovered)!.length, 1); assert.equal((discovered)![0].state, 'interrupted_before_dispatch');
   assert.deepEqual((await f.call('image.request.get', {projectId: f.project.id, requestId: input.requestId})).response, receipt.response);
   assert.deepEqual(await f.call('image.generate', input), receipt.response); assert.equal(f.calls, 0);
-  const cancelled = await f.call('image.task.cancelQueued', f.recovery(discovered[0]));
+  const cancelled = await f.call('image.task.cancelQueued', f.recovery((discovered)![0]));
   assert.equal(cancelled.state, 'cancelled_before_dispatch'); assert.equal(f.calls, 0);
 });
 
@@ -134,7 +135,7 @@ for (const phase of ['after_dispatch_fence', 'after_result_manifest', 'after_res
     const result = await state(f, ack.id, 'succeeded');
     assert.equal(f.calls, 1); assert.equal(count(f.store.db, 'assets'), 1); assert.equal(count(f.store.db, 'image_versions'), 1);
     assert.deepEqual(await f.call('image.task.recoverResult', recoveryInput), recoveryAck, 'historical local-recovery response retained');
-    const version = (await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId})).items[0];
+    const version = ((await f.call('image.version.list', {projectId: f.project.id, groupId: ack.groupId})).items)![0];
     assert.equal(version.id, result.versionId); assert.equal(version.number, 1);
     assert.deepEqual(readFileSync(path.join(f.root, 'media', `${version.assetId}.png`)), await png());
     await f.restart(); assert.equal((await f.get(ack.id)).versionId, result.versionId); assert.equal(f.calls, 1);
@@ -154,7 +155,7 @@ for (const variant of ['lock-deleted', 'lock-replaced', 'task-deleted', 'task-re
       if (variant === 'task-deleted') db.prepare('DELETE FROM image_tasks WHERE id=?').run(ack.id);
       if (variant === 'task-reassigned') db.prepare('UPDATE image_tasks SET projectId=? WHERE id=?').run(f.other.id, ack.id);
       if (variant === 'group-reassigned') db.prepare('UPDATE image_groups SET projectId=? WHERE id=?').run(f.other.id, ack.groupId);
-      if (variant === 'input-changed') db.prepare('UPDATE image_tasks SET input=? WHERE id=?').run(JSON.stringify({...JSON.parse(f.row(ack.id).input), prompt: 'Foreign replacement'}), ack.id);
+      if (variant === 'input-changed') db.prepare('UPDATE image_tasks SET input=? WHERE id=?').run(JSON.stringify({...JSON.parse((f.row(ack.id))!.input as string), prompt: 'Foreign replacement'}), ack.id);
       if (variant === 'revision-advanced') db.prepare('UPDATE image_tasks SET revision=revision+1 WHERE id=?').run(ack.id);
     }
     const before = snapshot(db), changes = db.prepare('SELECT total_changes() AS n').get()!.n;
@@ -166,14 +167,14 @@ for (const variant of ['lock-deleted', 'lock-replaced', 'task-deleted', 'task-re
     // Joining the owned worker also rules out a later publication after return.
     await f.services.drain();
     assert.equal(snapshot(db), before); assert.equal(db.prepare('SELECT total_changes() AS n').get()!.n, changes);
-    assert.equal(f.calls, 1); assert.deepEqual(readdirSync(path.join(f.root, 'media')), []);
+    assert.equal(f.calls, 1); assert.deepEqual((readdirSync(path.join(f.root, 'media')) as unknown), []);
     assert.equal(existsSync(path.join(f.root, 'image-staging')), false);
     if (variant.startsWith('lock-')) assert.equal(ownsStoreLock(f.store), false);
     if (variant === 'lock-replaced') assert.equal(readFileSync(path.join(f.root, 'server.lock'), 'utf8'), '2147483000');
   });
 
 for (const dispatched of [false, true]) test(`bounded Stop joins a noncooperative generator and fences late callbacks (${dispatched ? 'after' : 'before'} dispatch)`, async t => {
-  const gate = deferred(), entered = deferred(); let callback;
+  const gate = deferred(), entered = deferred(); let callback: () => void;
   const f = await fixture(t, {generate: async (_input, {beforeDispatch}) => {
     callback = beforeDispatch; if (dispatched) beforeDispatch(); entered.resolve(); return gate.promise;
   }});
@@ -188,7 +189,7 @@ for (const dispatched of [false, true]) test(`bounded Stop joins a noncooperativ
   assert.throws(() => callback(), code('IMAGE_SERVICE_STOPPED'));
   gate.resolve({bytes: await png()}); await pause(20);
   assert.equal(snapshot(f.store.db), before); assert.equal(f.calls, 1);
-  assert.equal(count(f.store.db, 'assets'), 0); assert.deepEqual(readdirSync(path.join(f.root, 'media')), []);
+  assert.equal(count(f.store.db, 'assets'), 0); assert.deepEqual((readdirSync(path.join(f.root, 'media')) as unknown), []);
   await assert.rejects(f.call('image.generate', f.input()), code('IMAGE_SERVICE_STOPPED'));
   await f.restart(); assert.equal((await f.get(queued.id)).state, 'interrupted_before_dispatch'); assert.equal(f.calls, 1);
 });
@@ -209,7 +210,7 @@ for (const variant of ['staged-symlink', 'directory-symlink', 'final-conflict', 
     const f = await fixture(t);
     f.setFault(label => {if (label === 'after_result_receipt') throw Error('synthetic result pause');});
     const ack = await f.call('image.generate', f.input()), local = await state(f, ack.id, 'local_result_error'); f.setFault(() => {});
-    const row = f.row(ack.id), receipt = JSON.parse(row.stagedReceipt), directory = path.join(f.root, 'image-staging');
+    const row = f.row(ack.id), receipt = JSON.parse((row)!.stagedReceipt as string), directory = path.join(f.root, 'image-staging');
     const external = mkdtempSync(path.join(tmpdir(), 'mioon-image-foreign-')); t.after(() => rmSync(external, {recursive: true, force: true}));
     const foreign = path.join(external, `${ack.id}.png`), foreignBytes = Buffer.from('PRIVATE_SENTINEL retained foreign file');
     writeFileSync(foreign, foreignBytes, {mode: 0o600});
@@ -239,14 +240,14 @@ function childEnvironment() {
   for (const key of Object.keys(env)) if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GEMINI_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0'};
 }
-async function child(script, args, expectedCode = 0) {
+async function child(script: string, args: string[], expectedCode: number|undefined = 0) {
   const process = spawn(globalThis.process.execPath, ['--input-type=module', '-e', script, ...args],
     {cwd: repo, env: childEnvironment(), stdio: ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '';
   process.stdout.setEncoding('utf8').on('data', bytes => {stdout += bytes;}); process.stderr.setEncoding('utf8').on('data', bytes => {stderr = (stderr + bytes).slice(-10_000);});
   const timer = setTimeout(() => process.kill('SIGKILL'), 20_000);
   try {
-    const [exitCode, signal] = await new Promise((resolve, reject) => {process.once('error', reject); process.once('close', (...result) => resolve(result));});
+    const [exitCode, signal] = await new Promise<([code: number | null, signal: NodeJS.Signals | null])>((resolve, reject) => {process.once('error', reject); process.once('close', (...result) => resolve(result));});
     assert.equal(signal, null, stderr); assert.equal(exitCode, expectedCode, stdout + stderr); return stdout;
   } finally {clearTimeout(timer);}
 }
@@ -263,7 +264,7 @@ const childImports = `
 
 for (const phase of ['after_dispatch_fence', 'after_result_manifest']) test(`actual process exit at ${phase} restarts without automatic generation or invented result`, async t => {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-crash-')); t.after(() => rmSync(root, {recursive: true, force: true}));
-  const store = openStore(root), services = createServices(store, new Map(), {env: {}, imageOptions: {autoRun: false}});
+  const store = (openStore(root) as unknown as TypedStore), services = (createServices(store, new Map(), {env: {}, imageOptions: {autoRun: false}}) as unknown as TypedServices);
   const project = await services.call('project.create', {name: 'Actual process crash'}), input = inputFor(project.id);
   await services.drain(); store.close();
   const crash = childImports + `
@@ -278,9 +279,9 @@ for (const phase of ['after_dispatch_fence', 'after_result_manifest']) test(`act
   const evidence = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
   try {
     const raw = evidence.prepare('SELECT * FROM image_tasks WHERE requestId=?').get(input.requestId);
-    assert.equal(raw.state, 'dispatching'); assert.equal(raw.dispatched, 1); assert.equal(raw.stagedReceipt, null);
+    assert.equal((raw)!.state, 'dispatching'); assert.equal((raw)!.dispatched, 1); assert.equal((raw)!.stagedReceipt, null);
     assert.equal(count(evidence, 'assets'), 0); assert.equal(count(evidence, 'image_versions'), 0);
-    assert.equal(existsSync(path.join(root, 'image-staging', `${raw.id}.json`)), phase === 'after_result_manifest');
+    assert.equal(existsSync(path.join(root, 'image-staging', `${(raw)!.id}.json`)), phase === 'after_result_manifest');
   } finally {evidence.close();}
   // This is a new OS process and exclusive owner, not the original worker's catch path.
   const recover = childImports + `

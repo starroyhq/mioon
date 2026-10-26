@@ -1,3 +1,8 @@
+import type {AddressInfo} from 'node:net';
+type ObservedFixtureCall = <T>(req: EventEmitter, res: EventEmitter, services: {call(operation: string, input: unknown, context: {signal?: AbortSignal}): Promise<T>}, operation: string, input: unknown) => Promise<T>;
+interface ObserverCounts {request: number; response: number}
+interface Settlement {baseline: ObserverCounts; remaining: ObserverCounts}
+type ObserverResponse = EventEmitter & {destroyed?: boolean; writableFinished?: boolean};
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -9,31 +14,31 @@ import {schemas, operationEffect} from '@mioon/contracts';
 import {readFile} from 'node:fs/promises';
 import {evaluateModule} from './helpers/eval-source.ts';
 
-const deferred = () => { let resolve; const promise = new Promise(r => {resolve = r;}); return {promise, resolve}; };
-async function fixture(t, operation) {
-  const entered = deferred(), settled = deferred(), release = deferred();
-  const observations = []; let calls = 0;
+const deferred = <T = void>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(r => {resolve = r;}); return {promise, resolve}; };
+async function fixture(t: test.TestContext, operation: string) {
+  const entered = deferred(), settled = deferred<Settlement>(), release = deferred();
+  const observations: { op: string; input: unknown; signal: AbortSignal | undefined; }[] = []; let calls = 0;
   const server = http.createServer(async (req, res) => {
     if (req.url === '/health') return res.end('healthy');
     for await (const _ of req) { /* consume the synthetic request */ }
     const baseline = {request: req.listenerCount('aborted'), response: res.listenerCount('close')};
     try {
-      await callObservedRpc(req, res, {call: async (op, input, options) => {
+      await (callObservedRpc as ObservedFixtureCall)(req, res, {call: async (op, input, options) => {
         calls++;
         observations.push({op, input, signal: options?.signal});
-        entered.resolve();
-        if (options?.signal) await new Promise(resolve => options.signal.addEventListener('abort', resolve, {once: true}));
+        (entered.resolve)!();
+        if (options?.signal) await new Promise(resolve => options.signal!.addEventListener('abort', resolve, {once: true}));
         else await release.promise;
         return {observed: true};
       }}, operation, {synthetic: true});
       if (!res.destroyed) res.end('complete');
     } finally {
-      settled.resolve({baseline, remaining: {request: req.listenerCount('aborted'), response: res.listenerCount('close')}});
+      (settled.resolve)!({baseline, remaining: {request: req.listenerCount('aborted'), response: res.listenerCount('close')}});
     }
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(async () => {release.resolve(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));});
-  return {url: `http://127.0.0.1:${server.address().port}`, entered, settled, release, observations, calls: () => calls};
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => {(release.resolve)!(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));});
+  return {url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, entered, settled, release, observations, calls: () => calls};
 }
 
 for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`real HTTP ${operation} disconnect aborts only observation, detaches listeners and leaves a new connection healthy`, {timeout: 10000}, async t => {
@@ -41,10 +46,10 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
   const request = http.request(f.url, {method: 'POST'});
   request.on('error', () => {}); request.end('{}');
   await f.entered.promise;
-  assert.equal(f.observations[0].signal.aborted, false);
+  assert.equal(f.observations[0].signal!.aborted, false);
   request.destroy();
   const result = await f.settled.promise;
-  assert.equal(f.observations[0].signal.aborted, true);
+  assert.equal(f.observations[0].signal!.aborted, true);
   assert.deepEqual(result.remaining, result.baseline);
   assert.equal(f.calls(), 1, 'disconnect never retries a POST');
   assert.equal(await (await fetch(f.url + '/health')).text(), 'healthy');
@@ -57,7 +62,7 @@ test('real HTTP render disconnect does not cancel or retry its business operatio
   await f.entered.promise;
   request.destroy();
   assert.equal(f.observations[0].signal, undefined);
-  f.release.resolve();
+  (f.release.resolve)!();
   const result = await f.settled.promise;
   assert.deepEqual(result.remaining, result.baseline);
   assert.equal(f.calls(), 1);
@@ -74,7 +79,7 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
   });
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8').on('data', bytes => {stdout += bytes;}); child.stderr.setEncoding('utf8').on('data', bytes => {stderr += bytes;});
-  const done = new Promise((resolve, reject) => {child.once('error', reject); child.once('close', (code, signal) => resolve({code, signal}));});
+  const done = new Promise<({ code: number | null; signal: NodeJS.Signals | null; })>((resolve, reject) => {child.once('error', reject); child.once('close', (code, signal) => resolve({code, signal}));});
   t.after(async () => {if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); await done.catch(() => {});});
   await f.entered.promise;
   child.kill('SIGINT'); // Exact owned test handle, never a recovered numeric PID.
@@ -82,26 +87,26 @@ for (const operation of ['timeline.export.preflight', 'timeline.export.capabilit
   assert.equal(outcome.code, 130, stderr); assert.equal(outcome.signal, null);
   assert.equal(JSON.parse(stdout).error.code, 'INTERRUPTED');
   await f.settled.promise;
-  assert.equal(f.observations[0].signal.aborted, true); assert.equal(f.calls(), 1);
+  assert.equal(f.observations[0].signal!.aborted, true); assert.equal(f.calls(), 1);
   assert.equal(await (await fetch(f.url + '/health')).text(), 'healthy');
 });
 
 for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`already disconnected ${operation} enters with revoked observer and cleans up on rejection`, async () => {
-  const req = new EventEmitter(), res = new EventEmitter(); res.destroyed = true;
-  await assert.rejects(callObservedRpc(req, res, {call: async (_, __, {signal}) => {
-    assert.equal(signal.aborted, true); throw Error('synthetic abort');
+  const req = new EventEmitter(), res = new EventEmitter() as ObserverResponse; res.destroyed = true;
+  await assert.rejects((callObservedRpc as ObservedFixtureCall)(req, res, {call: async (_, __, {signal}) => {
+    assert.equal(signal!.aborted, true); throw Error('synthetic abort');
   }}, operation, {}), /synthetic abort/);
   assert.equal(req.listenerCount('aborted'), 0); assert.equal(res.listenerCount('close'), 0);
 });
 
 for (const operation of ['timeline.export.preflight', 'timeline.export.capabilities']) test(`finished response and later close cannot revoke settled ${operation} or retain listeners`, async () => {
-  const req = new EventEmitter(), res = new EventEmitter(); let signal;
-  const result = await callObservedRpc(req, res, {call: async (_, __, options) => {
-    signal = options.signal; res.writableFinished = true; res.emit('close'); return {ready: true};
+  const req = new EventEmitter(), res = new EventEmitter() as ObserverResponse; let signal: AbortSignal | undefined;
+  const result = await (callObservedRpc as ObservedFixtureCall)(req, res, {call: async (_, __, options) => {
+    signal = (options)!.signal; res.writableFinished = true; res.emit('close'); return {ready: true};
   }}, operation, {});
-  assert.deepEqual(result, {ready: true}); assert.equal(signal.aborted, false);
+  assert.deepEqual(result, {ready: true}); assert.equal((signal)!.aborted, false);
   res.writableFinished = false; res.emit('close'); req.emit('aborted');
-  assert.equal(signal.aborted, false);
+  assert.equal((signal)!.aborted, false);
   assert.equal(req.listenerCount('aborted'), 0); assert.equal(res.listenerCount('close'), 0);
 });
 
@@ -110,8 +115,8 @@ test('only six explicit advisory operations observe disconnect; private capabili
   const observed = new Set(['timeline.export.preflight', 'timeline.export.capabilities', 'timeline.export.samplePeak', 'timeline.export.loudness', 'timeline.loudness.prepare', 'timeline.clip.loudness']);
   assert.equal(operationEffect('timeline.export.capabilities').fileWrite, true, 'the real temporary-file effect must remain disclosed');
   for (const operation of Object.keys(schemas)) {
-    const req = new EventEmitter(), res = new EventEmitter(); let received;
-    await callObservedRpc(req, res, {call: async (_, __, options) => {received = options.signal; return null;}}, operation, {});
+    const req = new EventEmitter(), res = new EventEmitter() as ObserverResponse; let received: AbortSignal | undefined;
+    await (callObservedRpc as ObservedFixtureCall)(req, res, {call: async (_, __, options) => {received = (options)!.signal; return null;}}, operation, {});
     assert.equal(received instanceof AbortSignal, observed.has(operation), operation);
     assert.equal(req.listenerCount('aborted'), 0); assert.equal(res.listenerCount('close'), 0);
   }
@@ -133,8 +138,8 @@ test('observer policy rejects every other file writer and future business/networ
     // with the pinned local esbuild and keeps the module's real CommonJS exports.
     const module = evaluateModule<{callObservedRpc: (...args: unknown[]) => Promise<unknown>}>(
       source.replace(importLine, `const operationEffect = () => (${JSON.stringify(effects)});`), {loader: 'ts'});
-    const req = new EventEmitter(), res = new EventEmitter(); res.destroyed = true; let received;
-    await module.callObservedRpc(req, res, {call:async (_, __, options) => {received=options.signal; return null;}}, operation, {});
+    const req = new EventEmitter(), res = new EventEmitter() as ObserverResponse; res.destroyed = true; let received: AbortSignal | undefined;
+    await module.callObservedRpc(req, res, {call:async (_: string, __: unknown, options: {signal?: AbortSignal}) => {received=options.signal; return null;}}, operation, {});
     assert.equal(received, undefined, operation + JSON.stringify(patch));
     assert.equal(req.listenerCount('aborted'),0); assert.equal(res.listenerCount('close'),0);
   }

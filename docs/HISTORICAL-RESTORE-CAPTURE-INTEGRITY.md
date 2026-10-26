@@ -69,8 +69,8 @@ On Node 24.21.0, the exact final two-file run passes 1,275/1,275 with exit 0. Th
 Run the new bounded checks with:
 
 ```sh
-node --test tests/workspace-restore-capture-integrity.test.mjs tests/workspace-restore-capture-vectors.test.mjs
-node --test tests/workspace-restore-integrity-source-guard.test.mjs tests/workspace-restore-integrity-boundaries.test.mjs tests/workspace-restore-integrity-precedence.test.mjs
+node --test tests/workspace-restore-capture-integrity.test.ts tests/workspace-restore-capture-vectors.test.ts
+node --test tests/workspace-restore-integrity-source-guard.test.ts tests/workspace-restore-integrity-boundaries.test.ts tests/workspace-restore-integrity-precedence.test.ts
 ```
 
 Qualification used the pinned Node executable and canonical foundation/browser compiler commands, not an uninspected all-tests or production-build command.

@@ -6,7 +6,7 @@ import { taskWorkspaceBinding, taskListWorkspaceBindings, requireTaskWorkspace }
 import type { TaskWorkspace, TaskWorkspaceBinding, TaskEnvelope, TaskListEnvelope } from './workspace-task-origin.ts';
 import { EDIT_TASK_LIMITS, editTaskLane } from '@mioon/contracts';
 import { createEditTaskClient, editTaskClientValidation, isDurableEditOperation, taskInputKey, taskProtocolError } from './edit-task-client.ts';
-import type { EditTask, EditTaskClient, EditTaskEnvelope, EditTaskListEnvelope, EditTaskPrepareInput, EditTaskRequestOptions, TaskExpectation } from './edit-task-client.ts';
+import type { EditTask, EditTaskClient, EditTaskEnvelope, EditTaskListEnvelope, EditTaskRequestOptions, TaskExpectation } from './edit-task-client.ts';
 
 export interface EditTaskControllerOptions {
   client?: EditTaskClient;
@@ -34,7 +34,7 @@ export interface EditTaskProjectState {
 export interface EditTaskSubmitInput {
   projectId: string;
   operation: string;
-  input: EditTaskPrepareInput & {projectId?: unknown; [key: string]: unknown};
+  input: Record<string, unknown> & {projectId?: unknown};
   expectedWorkspaceOrigin?: unknown;
 }
 export interface EditTaskController {

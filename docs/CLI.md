@@ -655,7 +655,7 @@ Offline acceptance tests use actual CLI subprocesses, the official MCP SDK stdio
 
 ```sh
 pnpm test:cli
-node --test tests/mcp-v4.test.mjs tests/mcp-discovery.test.mjs
+node --test tests/mcp-v4.test.ts tests/mcp-discovery.test.ts
 ```
 
 ### Saved source ranges

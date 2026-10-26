@@ -379,7 +379,7 @@ intent with a new key. Full errors and preservation rules:
 [Explicit clip source replacement](API.md#explicit-clip-source-replacement).
 
 Offline official SDK/CLI/HTTP acceptance:
-`node --test tests/timeline-replacement-transports.test.mjs`.
+`node --test tests/timeline-replacement-transports.test.ts`.
 
 ### Clip audio fades
 
@@ -407,9 +407,9 @@ behavior remains unchanged. See [Timeline audio fades](TIMELINE.md#audio-fades).
 ## Offline verification
 
 ```sh
-node --test tests/mcp-discovery.test.mjs tests/mcp-v4.test.mjs
-node --test tests/mcp.test.mjs tests/timeline-mcp.test.mjs
-node --test tests/timeline-fades-transports.test.mjs
+node --test tests/mcp-discovery.test.ts tests/mcp-v4.test.ts
+node --test tests/mcp.test.ts tests/timeline-mcp.test.ts
+node --test tests/timeline-fades-transports.test.ts
 pnpm test:cli
 ```
 
@@ -486,7 +486,7 @@ duration/sourceFrames retain the asset clock, without stretching or fabricated
 silent tails. No built-in Agent allowlist or inspection DTO expands.
 Full limits and response: [Source waveforms](API.md#opt-in-source-waveforms).
 
-Offline transport acceptance: `node --test tests/waveforms-transports.test.mjs`.
+Offline transport acceptance: `node --test tests/waveforms-transports.test.ts`.
 
 ### Local timeline export preflight
 
@@ -551,7 +551,7 @@ Worker validation still applies. An uncertain render remains its own exact
 request and must retain its original digest or omission on replay.
 
 Offline official SDK/CLI/HTTP acceptance:
-`node --test tests/timeline-preflight-transports.test.mjs`.
+`node --test tests/timeline-preflight-transports.test.ts`.
 
 ### Timeline recovery validation
 

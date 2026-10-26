@@ -12,8 +12,8 @@ Windows SDK:
 
 ```sh
 pnpm --filter @mioon/node-host build:native
-node --test tests/windows-private-storage-native.test.mjs
-node --test tests/windows-private-storage-stream.test.mjs
+node --test tests/windows-private-storage-native.test.ts
+node --test tests/windows-private-storage-stream.test.ts
 ```
 
 The supported storage profile is a canonical drive-absolute path on fixed local

@@ -53,7 +53,7 @@ New isolated tests cover strict byte/transport bounds, maximum7MiB admitted sour
 Run only the relevant isolated lane:
 
 ```sh
-node --test --test-concurrency=1 tests/cube-lut.test.mjs tests/lut-import-file.test.mjs tests/lut-resources-business.test.mjs tests/lut-resources-contracts-client.test.mjs tests/lut-resources-backup.test.mjs tests/lut-resources-http.test.mjs tests/lut-resources-transports.test.mjs tests/workspace-schema28.test.mjs
+node --test --test-concurrency=1 tests/cube-lut.test.ts tests/lut-import-file.test.ts tests/lut-resources-business.test.ts tests/lut-resources-contracts-client.test.ts tests/lut-resources-backup.test.ts tests/lut-resources-http.test.ts tests/lut-resources-transports.test.ts tests/workspace-schema28.test.ts
 node node_modules/typescript/bin/tsc -p tests/typecheck/tsconfig.lut-resources.json --noEmit
 ```
 

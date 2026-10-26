@@ -1,3 +1,4 @@
+import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
@@ -5,15 +6,14 @@ import {mkdtempSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {openStore} from '../packages/business/src/db.ts';
-import {createImageReviewServices, validateImageTaskReview, safeImageReviewError} from '../packages/business/src/images/reviews.ts';
+import {createImageReviewServices, validateImageTaskReview, safeImageReviewError, type ImageGenerationInput} from '../packages/business/src/images/reviews.ts';
 import {migrateImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
 import {IMAGE_REVIEW_DESTINATION, IMAGE_REVIEW_LIMITS, isImageReviewResponse} from '../packages/contracts/src/image-reviews.ts';
 import {DatabaseSync} from 'node:sqlite';
 import {errorView} from './helpers/test-error.ts';
 
-interface ReviewInput {projectId: string; requestId: string; name: string; providerId: string; model: string; prompt: string;
-  options: Record<string, unknown>; [key: string]: unknown}
+type ReviewInput = ImageGenerationInput;
 interface ReviewRecord {id: string; revision: number; state: string; taskId: string | null; postAttempts: number; [key: string]: unknown}
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
@@ -22,7 +22,7 @@ const rows = (db: DatabaseSync) => JSON.stringify(db.prepare('SELECT * FROM imag
 const changes = (db: DatabaseSync) => (db.prepare('SELECT total_changes() AS n').get() as {n: number}).n;
 const generation = (projectId: string, patch: Record<string, unknown> = {}): ReviewInput => ({projectId, requestId: randomUUID(), name: 'Reviewed synthetic image',
   providerId: 'openai', model: IMAGE_MODELS.openai, prompt: 'Synthetic fixture, no network transmission.', options: {...IMAGE_FIXED_OPTIONS}, ...patch});
-type ReviewFixture = {root: string; projectId: string; otherProjectId: string; store: ReturnType<typeof openStore>;
+type ReviewFixture = {root: string; projectId: string; otherProjectId: string; store: TypedStore;
   reviews: ReturnType<typeof createImageReviewServices>;
   input(patch?: Record<string, unknown>): ReviewInput;
   configure(patch: Record<string, unknown>): void;
@@ -32,7 +32,7 @@ type ReviewFixture = {root: string; projectId: string; otherProjectId: string; s
   restart(): void};
 function fixture(t: import('node:test').TestContext, options: Record<string, unknown> = {}): ReviewFixture {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-review-'));
-  let store = openStore(root), settings = {revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION};
+  let store = (openStore(root) as unknown as TypedStore), settings = {revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION};
   store.tx(() => migrateImageReviewSchema(store.db));
   const projectId = randomUUID(), otherProjectId = randomUUID();
   for (const id of [projectId, otherProjectId]) store.put('projects', {id, name: 'Review fixture'});
@@ -44,7 +44,7 @@ function fixture(t: import('node:test').TestContext, options: Record<string, unk
     prepare(input) {return reviews.handlers['image.review.prepare']({input: input as never, settingsRevision: settings.revision}) as unknown as ReviewRecord;},
     get(value) {return reviews.handlers['image.review.get']({projectId, reviewId: value.id}) as unknown as ReviewRecord;},
     approval(value) {return {projectId, reviewId: value.id, expectedRevision: value.revision};},
-    restart() {store.close(); store = openStore(root); reviews = createImageReviewServices(store, {getSettings, ...options});},
+    restart() {store.close(); store = (openStore(root) as unknown as TypedStore); reviews = createImageReviewServices(store, {getSettings, ...options});},
   };
   return f;
 }
@@ -64,7 +64,7 @@ function approve(f: ReviewFixture, approval: {projectId: string; reviewId: strin
   const input = f.reviews.readForApproval(approval), db = f.store.db;
   const previous = db.prepare('SELECT response FROM image_requests WHERE requestId=?').get(input.requestId);
   if (previous) {
-    const response = JSON.parse(previous.response); f.reviews.verifyReplay(input, response.id, approval); return response;
+    const response = JSON.parse(previous.response as string); f.reviews.verifyReplay(input, response.id, approval); return response;
   }
   return f.store.tx(() => {
     const response = insertTask(f, input);
@@ -249,7 +249,7 @@ test('review identity, exact canonical intent and reservations cannot be replace
 });
 
 test('non-owner may inspect but cannot prepare, approve, reject or consume a POST fence', t => {
-  const f = fixture(t), input = f.input(), value = f.prepare(input), observer = openStore(f.root, {lock: false});
+  const f = fixture(t), input = f.input(), value = f.prepare(input), observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
   t.after(() => observer.close());
   const service = createImageReviewServices(observer, {getSettings: () => ({revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION})});
   assert.deepEqual(service.handlers['image.review.get']({projectId: f.projectId, reviewId: value.id}), value);

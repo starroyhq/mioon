@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isTimelineRenderRecord } from '@mioon/contracts';
 import { isExportPreviewRange, suggestedExportPreviewRange, exportPreviewContextKey, exportPreviewResult } from '../apps/web/src/export-preview-state.ts';
+import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
 import { row, id, projectId } from './helpers/export-sample-peak-ui-fixture.ts';
 
 function fixture() {
-  const record = row(10, { exportRange: { startFrame: 0, endFrame: 30 } });
+  const record = row(10, { exportRange: { startFrame: 0, endFrame: 30 } }) as unknown as FixtureExport;
   const input = { projectId, requestId: record.requestId, expectedRevision: 4, purpose: 'export', exportRange: { startFrame: 0, endFrame: 30 } };
   assert.ok(isTimelineRenderRecord(record, input));
   const attempt: {scope: string; timelineId: string; input: typeof input; exportId: string | null; contextKey: string; submitting: boolean; receipt: typeof record | null} =
