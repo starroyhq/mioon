@@ -33,7 +33,7 @@ function allowed(action: ApplicationMenuAction, state: ApplicationMenuState): bo
 function commandAllowed(command: MenuCommandId, state: ApplicationMenuState): boolean {
   if (command === 'edit-undo' || command === 'edit-redo') {
     return state.canEditText && (!state.business || state.business.editingContext === 'text') ||
-      state.canCommand && state.business?.editingContext === 'timeline' && state.business.commands[command] === true;
+      state.canCommand && state.business?.editingContext !== 'text' && state.business?.commands[command] === true;
   }
   return state.canCommand && state.business?.commands[command] === true;
 }

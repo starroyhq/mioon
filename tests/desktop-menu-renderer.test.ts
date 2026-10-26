@@ -24,7 +24,7 @@ function appFunction(name: string, next: string, bindings: Record<string, unknow
   return Function(...Object.keys(bindings), `${code}\nreturn ${name};`)(...Object.values(bindings)) as (...args: unknown[]) => unknown;
 }
 
-async function fixture(execute?: (command: MenuCommandId) => unknown, scopeFor?: (command: MenuCommandId) => string) {
+async function fixture(execute?: (command: MenuCommandId) => unknown, scopeFor?: (command: MenuCommandId) => string, readView?: () => ReturnType<typeof workbenchMenuView>) {
   const identity: MenuDocumentIdentity = {version: 1, windowId: crypto.randomUUID(), backendId: crypto.randomUUID(), contextId: crypto.randomUUID(), role: 'editor'};
   const frame = {}, contents = {}, listeners = new Set<(event: unknown, value: unknown) => void>(), actions: MenuCommandId[] = [], sent: MenuCommandIntent[] = [];
   let snapshot = availability(), current = true, allowed = true, held = false, scope = 'initial';
@@ -35,7 +35,7 @@ async function fixture(execute?: (command: MenuCommandId) => unknown, scopeFor?:
   const preload = createMenuCommandBridge({invoke: async (_channel, request) => host.dispatch({sender: contents, senderFrame: frame}, request),
     on: (_channel, listener) => {listeners.add(listener);}, removeListener: (_channel, listener) => {listeners.delete(listener);}});
   const bridge = readDesktopMenuBridge({__mioonMenuCommands: preload}); assert.ok(bridge);
-  const controller = createDesktopMenuController({bridge, identity, read: () => workbenchMenuView(snapshot), current: () => current, scope: command => scopeFor ? scopeFor(command) : scope,
+  const controller = createDesktopMenuController({bridge, identity, read: () => readView ? readView() : workbenchMenuView(snapshot), current: () => current, scope: command => scopeFor ? scopeFor(command) : scope,
     execute: command => {actions.push(command); return execute?.(command);}});
   assert.equal(await controller.start, true); await flush();
   return {host, controller, bridge, identity, contents, actions, sent,
@@ -85,6 +85,109 @@ test('text editing keeps timeline mutations and playback unavailable while conte
     assert.equal(f.host.send(f.contents, 'workspace-editing'), true);
     f.controller.dispose(); f.emit({...f.sent.at(-1)!, sequence: 1000}); assert.deepEqual(f.actions, ['show-help', 'workspace-editing']);
   } finally {f.dispose();}
+});
+
+test('canvas Undo is opt-in and never exposes timeline Redo or text-field mutations', () => {
+  assert.equal(workbenchMenuView(availability({mode: 'canvas'})).commands['edit-undo'], false);
+  const canvas = availability({mode: 'canvas', canUndoCanvas: true});
+  assert.equal(workbenchMenuView(canvas).editingContext, 'none');
+  assert.equal(workbenchMenuView(canvas).commands['edit-undo'], true);
+  assert.equal(workbenchMenuView(canvas).commands['edit-redo'], false);
+  for (const patch of [{textFocus: true}, {modalOpen: true}, {visible: false}, {composing: true}, {ready: false}, {canUndoCanvas: false}]) {
+    assert.equal(workbenchMenuView({...canvas, ...patch}).commands['edit-undo'], false);
+  }
+});
+
+function canvasStoryboardApp() {
+  const view = {current: {activeMode: 'canvas', editing: {selectedClipId: null, timelineCollapsed: false, playhead: 0, quickAssetId: null, previewKind: 'source'}}};
+  const toast = {current: {value: {projectId: 'project', taskId: 'batch-a', count: 1} as {projectId: string; taskId: string; count: number} | null, version: 1}};
+  const scene = {projectId: 'project', phase: 'idle', readOnly: false, pending: null as unknown,
+    tasks: ['batch-a', 'batch-b'].map(id => ({id, projectId: 'project', kind: 'shots', revision: 1, state: 'succeeded', shots: [{shotId: `shot-${id}`}]})),
+    undo: Object.fromEntries(['batch-a', 'batch-b'].map(id => [id, {phase: 'ready', revision: 1, undo: {available: true, blockers: [] as unknown[]}}]))};
+  const document = {visibilityState: 'visible', activeElement: null as unknown}, calls: string[] = [];
+  const bindings: Record<string, unknown> = {
+    viewRef: view, importSession: {current: {active: true}}, workbenchReady: true, currentProject: {current: 'project'},
+    dataRef: {current: {project: {id: 'project'}, timeline: {id: 'timeline', revision: 1, clips: []}}},
+    clipDraftRef: {current: null}, trackLocksRef: {current: {}}, document, webSettingsOpen: false, nativeWindow: {context: {settingsModalOpen: false}},
+    hasOpenWorkbenchModal: () => false, comparisonId: null, sceneTarget: null, nativeMenuComposing: {current: false}, nativeMenuTextFocus,
+    assetsCollapsed: false, inspectorCollapsed: false, application: null, opacityRestored: false, isBusy: () => false, online: true, auth: true,
+    canOpenExport: false, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: false},
+    menuRemoval: {current: null}, menuPlayback: {current: null}, workbenchMenuView,
+    storyboardToastLifetime: toast, toastBlocked: false, scenes: {controller: {getState: () => scene}},
+    projectEpoch: {current: 1}, navigationEpoch: {current: 1}, panelIntent: {current: 1},
+    propertiesPage: 'inspector', menuPlaybackEpoch: {current: 1}, menuRemovalEpoch: {current: 1},
+    audioPreview: {state: {plan: null, continuousPlan: null, phase: 'idle', positionFrame: null}}, timelineAudioPreviewPosition,
+  };
+  const read = () => appFunction('readNativeMenuView', '  function executeNativeMenuCommand(', bindings)() as ReturnType<typeof workbenchMenuView>;
+  const scope = (command: MenuCommandId) => appFunction('nativeMenuScope', '  function executeNativeMenuCommand(', bindings)(command) as string;
+  const execute = (command: MenuCommandId) => appFunction('executeNativeMenuCommand', '  nativeMenuActions.current', {...bindings,
+    readNativeMenuView: read, undoStoryboard: (taskId: string) => calls.push(taskId), changeTimelineHistory: () => assert.fail('Canvas must not mutate timeline history'),
+  })(command);
+  return {read, scope, execute, bindings, scene, toast, document, calls,
+    show(taskId: string | null) {toast.current = {value: taskId ? {projectId: 'project', taskId, count: 1} : null, version: toast.current.version + 1};}};
+}
+
+test('actual canvas App dispatches one batch undo through host/preload and never mutates timeline history', async () => {
+  const app = canvasStoryboardApp(), f = await fixture(app.execute, app.scope, app.read);
+  try {
+    assert.equal(f.state()?.editingContext, 'none'); assert.equal(f.host.send(f.contents, 'edit-redo'), false);
+    assert.equal(f.host.send(f.contents, 'edit-undo'), true); f.emit(f.sent[0]);
+    assert.deepEqual(app.calls, ['batch-a']); assert.deepEqual(f.actions, ['edit-undo']);
+    assert.doesNotMatch(JSON.stringify([f.state(), f.sent]), /batch-a|shot-batch-a|"timeline"/);
+    app.show('batch-b'); f.controller.refresh(); await flush();
+    assert.equal(f.host.send(f.contents, 'edit-undo'), true); assert.deepEqual(app.calls, ['batch-a', 'batch-b']);
+  } finally {f.dispose();}
+});
+
+for (const change of ['batch', 'revision', 'proof', 'lifetime', 'closed', 'terminal', 'pending', 'text', 'modal'] as const) test(`a delayed canvas undo cannot cross a ${change} change`, async () => {
+  const app = canvasStoryboardApp(), f = await fixture(app.execute, app.scope, app.read);
+  try {
+    f.holdMessages(); assert.equal(f.host.send(f.contents, 'edit-undo'), true);
+    if (change === 'batch') app.show('batch-b');
+    if (change === 'revision') app.scene.tasks[0].revision++;
+    if (change === 'proof') app.scene.undo['batch-a'].revision++;
+    if (change === 'lifetime') app.show('batch-a');
+    if (change === 'closed') app.show(null);
+    if (change === 'terminal') app.scene.tasks[0].state = 'undone';
+    if (change === 'pending') {app.scene.phase = 'submitting'; app.scene.pending = {};}
+    if (change === 'text') app.document.activeElement = {closest: () => ({})};
+    if (change === 'modal') app.bindings.webSettingsOpen = true;
+    // Simulate an intent arriving before the changed display report reaches main.
+    f.deliver(); assert.deepEqual(app.calls, []); assert.deepEqual(f.actions, []);
+  } finally {f.dispose();}
+});
+
+test('actual canvas availability requires the current project, live batch and unblocked undo proof', () => {
+  const app = canvasStoryboardApp(); assert.equal(app.read().commands['edit-undo'], true);
+  for (const key of ['toastBlocked', 'webSettingsOpen', 'application']) {
+    app.bindings[key] = true; assert.equal(app.read().commands['edit-undo'], false); app.bindings[key] = key === 'application' ? null : false;
+  }
+  app.bindings.online = false; assert.equal(app.read().commands['edit-undo'], false); app.bindings.online = true;
+  app.scene.readOnly = true; assert.equal(app.read().commands['edit-undo'], false); app.scene.readOnly = false;
+  app.scene.undo['batch-a'].undo.available = false; assert.equal(app.read().commands['edit-undo'], false); app.scene.undo['batch-a'].undo.available = true;
+  app.scene.projectId = 'other-project'; assert.equal(app.read().commands['edit-undo'], false); app.scene.projectId = 'project';
+  app.toast.current.value!.projectId = 'other-project'; assert.equal(app.read().commands['edit-undo'], false);
+});
+
+test('desktop canvas shortcuts have one native owner while Web retains the storyboard key handler', () => {
+  const start = appSource.indexOf('  useEffect(() => {', appSource.indexOf('  // ⌘Z / Ctrl+Z undoes the storyboard'));
+  const end = appSource.indexOf('  const storyboardPanel', start); assert.ok(start > 0 && end > start);
+  const code = transformSync(appSource.slice(start, end), {loader: 'ts', format: 'cjs'}).code;
+  const calls: string[] = [];
+  for (const desktop of [true, false]) {
+    const listeners = new Map<string, (event: unknown) => void>(); let cleanup: unknown;
+    Function('useEffect', 'storyboardToast', 'nativeMenuBridge', 'workspaceMode', 'toastBlocked', 'timelineHistoryActionForKey', 'hasOpenWorkbenchModal', 'document', 'undoStoryboard', 'window', code)(
+      (effect: () => unknown) => {cleanup = effect();}, {taskId: 'batch-a'}, desktop ? {} : null, 'canvas', false,
+      timelineHistoryActionForKey, () => false, {}, (id: string) => calls.push(id),
+      {addEventListener: (name: string, listener: (event: unknown) => void) => listeners.set(name, listener), removeEventListener: (name: string) => listeners.delete(name)},
+    );
+    assert.equal(listeners.size, desktop ? 0 : 1);
+    const event = {key: 'z', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, repeat: false, defaultPrevented: false, isComposing: false, keyCode: 0, target: null, preventDefault() {this.defaultPrevented = true;}};
+    listeners.get('keydown')?.(event);
+    if (typeof cleanup === 'function') cleanup();
+    assert.equal(listeners.size, 0);
+  }
+  assert.deepEqual(calls, ['batch-a']);
 });
 
 test('remounting a menu consumer in the same document publishes after its prior accepted state', async () => {

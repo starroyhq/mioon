@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { createSceneDetectionController, sceneTaskActive } from './scene-detection.ts';
-import type { SceneDetectionController, SceneDetectionState, SceneDetectTask } from './scene-detection.ts';
+import type { SceneDetectionController, SceneDetectionState, SceneTask } from './scene-detection.ts';
 
 export interface UseSceneDetectionOptions {
   projectId: string | null | undefined;
@@ -8,13 +8,14 @@ export interface UseSceneDetectionOptions {
   readOnly: boolean;
   rpc: (operation: string, input: unknown) => Promise<unknown>;
   createRequestId?: () => string;
-  onTaskSettled?: (task: SceneDetectTask) => void;
+  onTaskSettled?: (task: SceneTask) => void;
 }
 const activeDelay = 1000, idleDelay = 5000, failedDelay = 30_000;
 
 // Lists the project's scene tasks while the workbench is visible: every second
-// while one is active (its progress lives only in the backend's memory), and
-// every five seconds otherwise, so tasks Mio or another window starts show up.
+// while a detection or storyboard is active (its progress lives only in the
+// backend's memory), and every five seconds otherwise, so tasks Mio or another
+// window starts show up.
 export function useSceneDetection({ projectId, visible, readOnly, rpc, createRequestId, onTaskSettled }: UseSceneDetectionOptions): { state: SceneDetectionState; controller: SceneDetectionController } {
   const callbacks = useRef({ rpc, createRequestId, onTaskSettled });
   callbacks.current = { rpc, createRequestId, onTaskSettled };

@@ -89,6 +89,18 @@ test('text focus permits native Undo without granting a disabled timeline operat
   f.patch({canEditText: false}); click(find(menu, 'command-edit-undo')); assert.deepEqual(f.calls, ['edit-undo']);
 });
 
+test('canvas storyboard Undo uses the fixed command without granting Redo or stale callbacks', () => {
+  const f = fixture();
+  f.patch({canEditText: false, business: {...f.state.business!, editingContext: 'none', workspaceMode: 'canvas',
+    commands: {...f.state.business!.commands, 'edit-undo': true, 'edit-redo': false}}});
+  const menu = f.build();
+  assert.equal(find(menu, 'command-edit-undo').enabled, true);
+  assert.equal(find(menu, 'command-edit-redo').enabled, false);
+  click(find(menu, 'command-edit-undo')); assert.deepEqual(f.calls, ['edit-undo']);
+  f.patch({business: {...f.state.business!, commands: {...f.state.business!.commands, 'edit-undo': false}}});
+  click(find(menu, 'command-edit-undo')); assert.deepEqual(f.calls, ['edit-undo']);
+});
+
 test('showing a pending native dialog cannot also focus a different project through the window list', () => {
   const f = fixture(), old = f.build(); f.patch({canShow: true, canFocusProjects: false});
   click(find(old, 'project-window-synthetic-B')); assert.deepEqual(f.calls, []);

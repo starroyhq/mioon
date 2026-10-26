@@ -5,6 +5,7 @@ import { useI18n } from './i18n/I18nProvider.tsx';
 import Icon from './icons.tsx';
 import { sceneClock, sceneCutAdjusted, sceneSegmentNumber, sceneSeconds, sceneTime } from './scene-cuts.ts';
 import type { SceneDraftCut, SceneSegment } from './scene-cuts.ts';
+import type { StoryboardKeyframe } from './scene-storyboard.ts';
 
 export interface SceneTile { readonly frame: number; readonly url?: string }
 export interface SceneCutBarProps {
@@ -73,16 +74,29 @@ export interface SceneSegmentStripProps {
   readonly selected: number | null;
   readonly thumbnail: (frame: number) => string | undefined;
   readonly onSelect: (segment: SceneSegment) => void;
+  /** Segments chosen for a storyboard; absent hides the checkboxes. */
+  readonly chosen?: ReadonlySet<number>;
+  /** Absent while the choice is locked. */
+  readonly onChoose?: (index: number, chosen: boolean) => void;
+  /** While a storyboard is built: each segment's keyframe, by segment index from 1. */
+  readonly keyframes?: readonly StoryboardKeyframe[] | null;
 }
-/** One card per segment with its middle frame, the keyframe a storyboard would use. */
-export function SceneSegmentStrip({ segments, selected, thumbnail, onSelect }: SceneSegmentStripProps) {
+/** One card per segment with its middle frame, the keyframe a storyboard uses.
+ * A checkbox chooses the segment for the storyboard. */
+export function SceneSegmentStrip({ segments, selected, thumbnail, onSelect, chosen, onChoose, keyframes }: SceneSegmentStripProps) {
   const { t, formatNumber } = useI18n();
   return <div className="scene-segments" data-testid="scene-segments">{segments.map(segment => {
     const seconds = formatNumber(sceneSeconds(segment.end - segment.start), { minimumFractionDigits: 1, maximumFractionDigits: 1 }), url = thumbnail(segment.middle);
-    return <Button key={segment.index} type="button" variant="ghost" className="scene-segment" data-testid={`scene-segment-${segment.index}`} aria-pressed={selected === segment.index}
-      aria-label={t('scene.segment.label', { index: segment.index, seconds })} onClick={() => onSelect(segment)}>
-      <span className="scene-segment-thumb">{url && <img src={url} alt="" draggable={false} />}</span>
-      <span className="scene-segment-meta"><b>{sceneSegmentNumber(segment.index)}</b><span>{t('scene.seconds', { seconds })}</span></span>
-    </Button>;
+    const state = keyframes?.[segment.index - 1], checked = chosen?.has(segment.index) ?? false;
+    return <div key={segment.index} className="scene-segment" data-keyframe={state} data-chosen={chosen ? String(checked) : undefined}>
+      <Button type="button" variant="ghost" className="scene-segment-preview" data-testid={`scene-segment-${segment.index}`} aria-pressed={selected === segment.index}
+        aria-label={t('scene.segment.label', { index: segment.index, seconds })} onClick={() => onSelect(segment)}>
+        <span className="scene-segment-thumb">{url && <img src={url} alt="" draggable={false} />}
+          {state === 'current' && <span className="scene-segment-capturing"><span className="spinner" aria-hidden="true" />{t('scene.keyframes.capturing')}</span>}</span>
+        <span className="scene-segment-meta"><b>{sceneSegmentNumber(segment.index)}</b><span>{state === 'waiting' ? t('scene.keyframes.waiting') : t('scene.seconds', { seconds })}</span></span>
+      </Button>
+      {chosen && <label className="scene-segment-check" title={t('scene.keyframes.choose', { index: segment.index })}><input type="checkbox" data-testid={`scene-segment-check-${segment.index}`}
+        checked={checked} disabled={!onChoose} aria-label={t('scene.keyframes.choose', { index: segment.index })} onChange={event => onChoose?.(segment.index, event.target.checked)} /></label>}
+    </div>;
   })}</div>;
 }
