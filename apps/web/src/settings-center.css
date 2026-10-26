@@ -128,16 +128,6 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 :is(.web-settings-dialog, .project-home-settings-window) .settings-appearance-actions { flex: none; position: static; margin-top: 0; min-height: var(--wb-action-bar); }
 .settings-center-content > .settings-connection-panes { flex: 1; min-height: 0; overflow: hidden; }
 .settings-center .agent-settings-page { border: 0; border-radius: 0; background: transparent; overflow: hidden; }
-.settings-center .agent-settings-header { display: none; }
-.settings-center .agent-settings-form { flex: 1; min-height: 0; }
-.settings-center .agent-settings-body { flex: 1; padding: 0 0 var(--wb-space-5); }
-.settings-center .agent-settings-disclosure { display: none; }
-.settings-center .agent-settings-footer { min-height: var(--wb-action-bar); padding: var(--wb-space-2) 0; border-top: 1px solid var(--wb-line-subtle); background: transparent; }
-.settings-center .agent-settings-footer .button { height: var(--wb-control); min-width: 0; }
-.settings-center .agent-settings-section-title h3 { font-size: var(--wb-text-body); }
-.settings-center [data-testid="agent-authorizations"] { margin: 0 0 var(--wb-space-6); padding-bottom: var(--wb-space-5); border-bottom: 1px solid var(--wb-line-subtle); }
-.settings-center [data-testid="agent-authorizations"] ul { margin-top: var(--wb-space-3); }
-.settings-center [data-testid="agent-authorization-target"] { padding: var(--wb-space-3) 0; border-top: 1px solid var(--wb-line-subtle); }
 .settings-live-generation { display: flex; align-items: center; gap: var(--wb-space-3); padding: var(--wb-space-3); margin-bottom: var(--wb-space-5); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); }
 .settings-live-generation > div { flex: 1; min-width: 0; }
 .settings-live-generation p { margin-top: var(--wb-space-1); color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.5; }
@@ -195,3 +185,57 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .project-home-settings-window .settings-workspace-status-global > summary::after { content: '\2304'; }
 .project-home-settings-window .settings-workspace-status-global > div { position: absolute; right: 0; top: calc(100% + var(--wb-space-2)); width: min(360px, calc(var(--mioon-viewport-width) - 24px)); max-height: calc(var(--mioon-viewport-height) - 80px); overflow: auto; margin-top: 0; padding: var(--wb-space-4); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-raised); box-shadow: var(--wb-shadow); }
 .project-home-settings-window .settings-workspace-status-global .project-home-notice { padding: 0; margin: 0; border: 0; background: none; }
+
+/* Settings › Mio (07-09, 07-10): labelled rows, per-tier segmented choices and one shared footer. */
+.settings-center .mio-settings { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.settings-center .mio-settings .agent-settings-form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.settings-center .mio-settings .agent-settings-body { display: flex; flex-direction: column; gap: var(--wb-space-6); flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--wb-space-3) var(--wb-space-5) 0; }
+.mio-settings-section { display: flex; flex-direction: column; gap: var(--wb-space-3); flex: none; }
+.mio-settings-section-head h2 { color: var(--wb-text); font-size: var(--wb-text-section); font-weight: 600; }
+.mio-settings-section-head h2 label { font: inherit; color: inherit; }
+.mio-settings-section-head p { margin-top: var(--wb-space-1); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
+.mio-settings-rows { display: flex; flex-direction: column; gap: var(--wb-space-3); padding-inline-start: var(--wb-space-3); }
+.mio-settings-row { display: grid; grid-template-columns: minmax(96px, 132px) minmax(0, 1fr); align-items: start; gap: var(--wb-space-3); }
+.mio-settings-row > label, .mio-settings-label { display: flex; align-items: center; min-height: var(--wb-control); color: var(--wb-soft); font-size: var(--wb-text-label); font-weight: 400; }
+.mio-settings-control { display: flex; flex-direction: column; gap: var(--wb-space-1); min-width: 0; max-width: 420px; }
+.mio-settings-control > input, .mio-settings-control > .workbench-select, .mio-settings-inline > input, .mio-settings-key-entry > input { height: var(--wb-control); min-height: var(--wb-control); width: 100%; font-size: var(--wb-text-label); }
+.mio-settings-inline { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-2); min-width: 0; }
+.mio-settings-inline > input { flex: 1; min-width: 160px; width: auto; }
+.mio-settings-key-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--wb-space-2); align-items: center; }
+.mio-settings-key-entry > .agent-settings-help { grid-column: 1 / -1; }
+.mio-settings .agent-settings-help { font-size: var(--wb-text-caption); line-height: 1.6; color: var(--wb-muted); overflow-wrap: anywhere; }
+.mio-settings .agent-settings-binding-warning { margin-top: 0; font-size: var(--wb-text-caption); }
+.mio-settings .wb-tabs { min-width: 0; align-self: flex-start; }
+.mio-settings [data-slot="tabs-list"] { height: var(--wb-control); padding: calc(var(--wb-space-1) / 2); background: var(--wb-input); border-radius: var(--wb-radius-control); }
+.mio-settings [data-slot="tabs-trigger"] { flex: 0 0 auto; width: max-content; min-width: max-content; height: var(--wb-control-compact); min-height: var(--wb-control-compact); padding: 0 var(--wb-space-3); font-size: var(--wb-text-label); white-space: nowrap; }
+.mio-settings [data-slot="tabs-trigger"][data-active] { background: var(--wb-raised); color: var(--wb-text); box-shadow: 0 1px 3px color-mix(in srgb, var(--wb-shadow-color) 45%, transparent); }
+.mio-settings-test { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-3); min-height: var(--wb-control); }
+.mio-settings-test-result { color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; min-width: 0; overflow-wrap: anywhere; }
+.mio-settings-test-result.is-success { color: var(--wb-soft); }
+.mio-settings-test-result.is-warning { color: var(--wb-warning); }
+.mio-settings-tiers { display: flex; flex-direction: column; gap: var(--wb-space-1); }
+.mio-settings-tier { display: flex; flex-direction: column; gap: var(--wb-space-2); padding: var(--wb-space-2) var(--wb-space-3); border-radius: var(--wb-radius-card); }
+.mio-settings-tier.is-paid { background: color-mix(in srgb, var(--wb-warning) 6%, transparent); }
+.mio-settings-tier-main { display: flex; align-items: center; justify-content: space-between; gap: var(--wb-space-4); }
+.mio-settings-tier-copy { display: flex; flex-direction: column; gap: var(--wb-space-1); min-width: 0; }
+.mio-settings-tier-title { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-2); color: var(--wb-text); font-size: var(--wb-text-label); font-weight: 500; }
+.mio-settings-tier-main > .wb-tabs { flex: none; }
+.mio-settings-locked { display: flex; align-items: center; gap: var(--wb-space-2); padding: var(--wb-space-1) var(--wb-space-3); color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; }
+.mio-settings-locked > svg { flex: none; }
+.mio-settings-notice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-2); color: var(--wb-warning); font-size: var(--wb-text-caption); line-height: 1.6; }
+.mio-settings-notice[role="status"] { color: var(--wb-soft); }
+.mio-settings-steps { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--wb-space-4); }
+.mio-settings-number { display: flex; align-items: center; flex: none; width: 112px; height: var(--wb-control); padding-inline-end: var(--wb-space-2); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-control); background: var(--wb-input); }
+.mio-settings-number > input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; box-shadow: none; font-size: var(--wb-text-label); font-family: var(--wb-font-mono); }
+.mio-settings-number > span { color: var(--wb-muted); font-size: var(--wb-text-caption); }
+.mio-settings-grants { display: flex; flex-direction: column; }
+.mio-settings-grant { display: flex; align-items: center; gap: var(--wb-space-3); padding: var(--wb-space-2) var(--wb-space-3); }
+.mio-settings-grant + .mio-settings-grant { border-top: 1px solid var(--wb-line-subtle); }
+.mio-settings-grant > svg { flex: none; color: var(--wb-muted); }
+.mio-settings-grant-copy { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.mio-settings-grant-copy > strong { color: var(--wb-text); font-size: var(--wb-text-label); font-weight: 500; overflow-wrap: anywhere; }
+.mio-settings-grant-copy > .agent-settings-help > span:last-child { white-space: nowrap; }
+.mio-settings-grant > [data-slot="button"], .mio-settings-grant > button { flex: none; }
+.settings-center .mio-settings-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--wb-space-3); }
+.mio-settings-footer-buttons { display: flex; align-items: center; gap: var(--wb-space-2); }
+@media (max-width: 860px) { .mio-settings-row { grid-template-columns: minmax(0, 1fr); gap: var(--wb-space-1); } .mio-settings-row > label, .mio-settings-label { min-height: 0; } .mio-settings-tier-main { flex-wrap: wrap; } }

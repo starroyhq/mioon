@@ -923,3 +923,28 @@ test('whole undo confirmation cannot expand after a draft is released and replay
  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...request,undoChangeIds:done.changes.map(change=>change.id)}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
  const fresh=f.runtime.get(f.projectId,sent.run.id),accepted={requestId:randomUUID(),expectedRevision:fresh.run.revision,action:'undo_all',undoChangeIds:fresh.changes.filter(change=>change.undoDisposition==='undo').map(change=>change.id)};const undone=await f.runtime.action(f.projectId,sent.run.id,accepted);assert.equal(undone.run.status,'reverted');assert.ok(undone.changes.every(change=>change.status==='reverted'));f.restart();await f.runtime.action(f.projectId,sent.run.id,accepted);assert.ok(f.runtime.journal.snapshot(sent.run.id).changes.every(change=>change.status==='reverted'));
 });
+test('a text diagnostic cut off by a restart stops instead of blocking the project, and stays the latest connection test',async t=>{
+  const f=await fixture(t),settings=await f.settings.get();assert.deepEqual(f.runtime.latestConnectionTest(),{test:null});
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'PRIVATE_CONNECTION_TEST_TEXT',configuration:{...settings.configuration},settingsRevision:settings.revision,diagnostic:{profile:'text'}});
+  const step=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body:'{}',history:[]},data:{baseline:[]}});f.runtime.journal.updateStep(created.run.id,step.id,{status:'dispatch_started'});
+  f.restart();const stopped=f.runtime.get(f.projectId,created.run.id);
+  assert.equal(stopped.run.status,'stopped');assert.equal(stopped.run.pauseReason,'restart');assert.equal(stopped.steps[0]!.status,'unknown');
+  const latest=f.runtime.latestConnectionTest().test!;
+  assert.deepEqual({...latest,createdAt:undefined,updatedAt:undefined},{runId:created.run.id,projectId:f.projectId,status:'stopped',protocol:settings.configuration.protocol,baseUrl:settings.configuration.baseUrl,model:settings.configuration.model,createdAt:undefined,updatedAt:undefined});
+  assert.doesNotMatch(JSON.stringify(latest),/PRIVATE_CONNECTION_TEST_TEXT/u);
+  const sent=await f.send();assert.equal((await f.settle(sent.run.id)).run.status,'completed','A stopped diagnostic leaves the project free for the next send');
+});
+test('the latest connection test is the newest text diagnostic and reports only a failed run\'s code',async t=>{
+  const f=await fixture(t,'chat_completions'),revision=(await f.settings.get()).revision;
+  const diagnose=(profile:'text'|'read_only')=>f.runtime.send(f.projectId,{requestId:randomUUID(),text:'检查连接',expectedSettingsRevision:revision,diagnostic:{profile}});
+  const passed=await diagnose('text');await f.settle(passed.run.id);
+  assert.equal(f.runtime.latestConnectionTest().test?.runId,passed.run.id);assert.equal(f.runtime.latestConnectionTest().test?.status,'completed');assert.equal(Object.hasOwn(f.runtime.latestConnectionTest().test!,'failureCode'),false);
+  f.setScript(async function*(){throw Object.assign(new Error('PRIVATE_PROVIDER_BODY'),{code:'AGENT_CHAT_HTTP_ERROR',httpStatus:401});});
+  const failed=await diagnose('text');await f.settle(failed.run.id);
+  assert.deepEqual([f.runtime.latestConnectionTest().test?.runId,f.runtime.latestConnectionTest().test?.status,f.runtime.latestConnectionTest().test?.failureCode],[failed.run.id,'failed','AGENT_CHAT_HTTP_ERROR']);
+  assert.doesNotMatch(JSON.stringify(f.runtime.latestConnectionTest()),/PRIVATE_PROVIDER_BODY|HTTP 401/u);
+  f.setScript(async function*(){yield {type:'done',output:output('chat_completions',[])};});
+  const readOnly=await diagnose('read_only');await f.settle(readOnly.run.id);
+  assert.equal(f.runtime.latestConnectionTest().test?.runId,failed.run.id,'Other diagnostic profiles are not connection tests');
+  const ordinary=await f.send();await f.settle(ordinary.run.id);assert.equal(f.runtime.latestConnectionTest().test?.runId,failed.run.id);
+});

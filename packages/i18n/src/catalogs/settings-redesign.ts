@@ -18,7 +18,7 @@ export const settingsRedesignMessages = {
   'redesign.settings.workspaceHint': { 'zh-Hans': '本机数据与离线备份', 'zh-Hant': '本機資料與離線備份', en: 'Local data and offline backups', ja: 'ローカルデータとオフラインバックアップ' },
   'redesign.settings.videoHint': { 'zh-Hans': '本地编码工具与能力', 'zh-Hant': '本機編碼工具與能力', en: 'Local encoding tools and capabilities', ja: 'ローカルエンコードツールと機能' },
   'redesign.settings.modelsHint': { 'zh-Hans': '服务状态与服务端配置', 'zh-Hant': '服務狀態與伺服器設定', en: 'Service status and server configuration', ja: 'サービス状態とサーバー設定' },
-  'redesign.settings.agentHint': { 'zh-Hans': '连接设置与已授权目标', 'zh-Hant': '連線設定與已授權目標', en: 'Connection and authorized targets', ja: '接続設定と許可済みの送信先' },
+  'redesign.settings.agentHint': { 'zh-Hans': 'Mio 是项目里的 AI 助手，可以直接查看、修改和生成内容', 'zh-Hant': 'Mio 是專案裡的 AI 助手，可以直接檢視、修改與生成內容', en: 'Mio is the AI assistant in your project. It can view, change and generate content directly', ja: 'Mio はプロジェクト内の AI アシスタントです。内容の閲覧、変更、生成を直接行えます' },
   'redesign.settings.extensionsHint': { 'zh-Hans': '图像服务与本地工作流', 'zh-Hant': '影像服務與本機工作流程', en: 'Image services and local workflows', ja: '画像サービスとローカルワークフロー' },
   'redesign.settings.shortcutsHint': { 'zh-Hans': '以下快捷键仅在对应工作区和可编辑状态生效', 'zh-Hant': '以下快速鍵僅在對應工作區和可編輯狀態生效', en: 'Shortcuts apply in the corresponding editable workspace', ja: '対応する編集可能なワークスペースで使用できます' },
   'redesign.settings.aboutHint': { 'zh-Hans': '版本与开源依赖', 'zh-Hant': '版本與開放原始碼相依項目', en: 'Version and open source dependencies', ja: 'バージョンとオープンソース依存関係' },

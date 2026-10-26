@@ -208,6 +208,7 @@ function uiHarness(client) {
     if (id === './settings-navigation-state.ts') return navigation;
     if (id === './AgentTaskPolicy.tsx') return {__esModule:true,default:'AgentTaskPolicy'};
     if (id === './AgentAuthorizations.tsx') return {__esModule:true,default:'AgentAuthorizations'};
+    if (id === './AgentConnectionTest.tsx') return {__esModule:true,default:'AgentConnectionTest'};
     if (id === './agent-settings.ts') return { ...logic, createAgentSettingsSession: options => logic.createAgentSettingsSession({ ...options, client }) };
     if (id === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
     if (id === './icons.tsx') return { default: 'Icon' };
@@ -219,7 +220,8 @@ function uiHarness(client) {
     find(id) { return nodes(tree).find(node => node.props['data-testid'] === id); },
     form() { return nodes(tree).find(node => node.type === 'form'); },
     key(value) { const input = h.find('agent-settings-key'); input.props.ref.current.value = value; input.props.onChange({ target: { value } }); h.render(); },
-    change(id, value) { h.find(id).props.onChange({ target: { value } }); h.render(); },
+    // Selects use onChange; segmented controls (the protocol) use onValueChange.
+    change(id, value) { const node = h.find(id); if (node.props.onValueChange) node.props.onValueChange(value); else node.props.onChange({ target: { value } }); h.render(); },
     setVisible(value) { visible = value; h.render(); },
     setLocale(value) { locale = value; return h.render(); },
     get closes() { return closes; },
@@ -234,32 +236,39 @@ test('actual UI callback clears masked DOM key synchronously before request ackn
   h.key('dummy-entered'); h.form().props.onSubmit({ preventDefault() {} }); assert.equal(input.props.ref.current.value, ''); assert.equal(f.calls.length, 1);
   h.render(); assert.equal(h.find('agent-settings-page').props['data-phase'], 'saving'); assert.equal(h.find('agent-settings-save').props.disabled, true);
   held.resolve(snapshot({ revision: 1, secret: { configured: true, storage: 'session' } })); await flush(); h.render();
+  assert.equal(input.props.ref.current.value, ''); assert.equal(h.find('agent-settings-key'), undefined, 'A saved key stays behind its status');
+  assert.equal(h.find('agent-settings-secret-status').props['data-configured'], true);
+  h.find('agent-settings-replace-key').props.onClick(); h.render();
   assert.equal(h.find('agent-settings-key').props.ref.current.value, ''); assert.match(h.find('agent-settings-key').props.placeholder, /留空保留/); h.unmount();
 });
 
-test('actual UI clears entered keys on endpoint/platform/preset edits, reset and dismiss', async () => {
+test('actual UI clears entered keys on endpoint/platform/preset edits, reset and discard', async () => {
   const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render();
   for (const [id, value] of [['agent-settings-base-url', 'https://edited.example.com/v1'], ['agent-settings-platform', 'other'], ['agent-settings-preset', 'custom']]) {
     h.key('dummy-entered'); h.change(id, value); assert.equal(h.find('agent-settings-key').props.ref.current.value, '', id);
   }
-  h.change('agent-settings-base-url', 'https://edited.example.com/v1'); h.key('dummy-entered'); h.find('agent-settings-reset').props.onClick(); h.render(); assert.equal(h.find('agent-settings-key').props.ref.current.value, '');
-  h.key('dummy-entered'); const oldSubmit = h.form().props.onSubmit, input = h.find('agent-settings-key'); h.find('agent-settings-back').props.onClick(); assert.equal(input.props.ref.current.value, ''); assert.equal(h.closes, 1);
-  oldSubmit({ preventDefault() {} }); assert.equal(f.calls.length, 0); h.find('agent-settings-cancel').props.onClick(); assert.equal(h.closes, 1); h.unmount();
+  assert.equal(h.find('agent-settings-platform'), undefined, 'A single-platform preset has no platform row');
+  h.change('agent-settings-preset', 'openai'); h.change('agent-settings-base-url', 'https://edited.example.com/v1'); h.key('dummy-entered'); h.find('agent-settings-reset').props.onClick(); h.render(); assert.equal(h.find('agent-settings-key').props.ref.current.value, '');
+  h.change('agent-settings-base-url', 'https://edited.example.com/v1'); h.key('dummy-entered'); const oldSubmit = h.form().props.onSubmit, input = h.find('agent-settings-key'); h.find('agent-settings-cancel').props.onClick(); h.render();
+  assert.equal(input.props.ref.current.value, ''); assert.equal(h.closes, 0, 'Discard reverts the draft; closing belongs to the settings center');
+  assert.equal(h.find('agent-settings-base-url').props.value, configuration.baseUrl); assert.equal(h.find('agent-settings-preset').props.value, configuration.presetId);
+  oldSubmit({ preventDefault() {} }); assert.equal(f.calls.length, 0); h.unmount();
 });
 
-test('actual UI leaves the settings page during a pending save and old callbacks remain inert', async () => {
+test('actual UI hides the settings page during a pending save and old callbacks remain inert', async () => {
   const held = deferred(), f = fixture({ write: () => held.promise }), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.key('dummy-only');
-  const oldSubmit = h.form().props.onSubmit; oldSubmit({ preventDefault() {} }); h.render(); const oldDialog = h.find('agent-settings-page'); h.find('agent-settings-cancel').props.onClick();
-  assert.equal(h.closes, 1); held.resolve(snapshot({ revision: 1, secret: { configured: true, storage: 'session' } })); await flush(); oldSubmit({ preventDefault() {} });
-  assert.equal(f.calls.length, 1); assert.equal(h.closes, 1); assert.equal(oldDialog.props['data-phase'], 'saving'); h.unmount();
+  const oldSubmit = h.form().props.onSubmit; oldSubmit({ preventDefault() {} }); h.render(); const oldDialog = h.find('agent-settings-page');
+  assert.equal(h.find('agent-settings-cancel').props.disabled, true, 'Discard is unavailable while the save is outstanding');
+  h.setVisible(false); held.resolve(snapshot({ revision: 1, secret: { configured: true, storage: 'session' } })); await flush(); oldSubmit({ preventDefault() {} });
+  assert.equal(f.calls.length, 1); assert.equal(h.closes, 0); assert.equal(oldDialog.props['data-phase'], 'saving'); h.unmount();
 });
 
-test('settings integration stays in the shared dock, uses local controls and has no modal or provider probe', () => {
+test('settings page uses local controls; the connection test is a separate diagnostic component, not a provider probe', () => {
   const app = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /<AgentWorkspace/); assert.match(app, /data-testid="agent-settings-open"/);
   assert.match(source, /from '\.\/WorkspaceControls\.tsx'/); assert.doesNotMatch(source, /DialogContent|<Dialog/);
   assert.match(localizedSource(source), /Mio 通过这里的模型理解你的要求并决定下一步/);
-  assert.doesNotMatch(source, /尚无工具执行/); assert.match(localizedSource(source), /尚未验证连接/);
+  assert.doesNotMatch(source, /尚无工具执行/); assert.match(localizedSource(source), /模型连接/); assert.match(source, /<AgentConnectionTest /);
   assert.doesNotMatch(source, /localStorage|sessionStorage|rpc\(|fetch\(|测试连接|立即连接|type="text"[^\n]*agent-settings-key/);
   assert.doesNotMatch(app, /showAgentSettings|showAgentChat/);
   assert.match(source, /useWorkspaceVisibility/);
@@ -304,8 +313,8 @@ test('wrong protocol acknowledgement and protocol-only two-window conflict recon
 
 test('shared protocol selector exposes fixed endpoint, preserves arbitrary model, and explicit reset returns CC', async () => {
   const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render();
-  assert.equal(h.find('agent-settings-protocol').type, 'WorkbenchSelect');
-  assert.deepEqual(nodes(h.find('agent-settings-protocol')).filter(node => node.type === 'option').map(node => node.props.value), ['chat_completions', 'responses']);
+  assert.equal(h.find('agent-settings-protocol').type, 'WorkbenchTabs');
+  assert.deepEqual(h.find('agent-settings-protocol').props.options.map(option => option.value), ['chat_completions', 'responses']);
   h.change('agent-settings-model', 'my-explicit-model'); h.change('agent-settings-protocol', 'responses');
   assert.equal(h.find('agent-settings-model').props.value, 'my-explicit-model');
   assert.match(JSON.stringify(h.find('agent-settings-endpoint')), /https:\/\/api.example.com\/v1\/responses/);
@@ -342,11 +351,11 @@ test('actual selected Responses guidance describes multi-step tasks constrained 
 
 test('hidden settings retain nonsecret draft, clear transient key immediately, and reject all old actions after reveal', async () => {
   const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render(); h.change('agent-settings-model', 'retained-draft'); h.change('agent-settings-protocol', 'responses'); h.key('dummy-transient');
-  const oldSubmit = h.form().props.onSubmit, oldEdit = h.find('agent-settings-model').props.onChange, oldBack = h.find('agent-settings-back').props.onClick;
+  const oldSubmit = h.form().props.onSubmit, oldEdit = h.find('agent-settings-model').props.onChange;
   h.setVisible(false); assert.equal(h.find('agent-settings-key').props.ref.current.value, ''); h.render();
   assert.equal(h.find('agent-settings-page').props.inert, true); assert.equal(h.find('agent-settings-save').props.disabled, true);
-  oldSubmit({ preventDefault() {} }); oldEdit({ target: { value: 'stale' } }); oldBack();
-  h.setVisible(true); h.render(); oldSubmit({ preventDefault() {} }); oldEdit({ target: { value: 'still stale' } }); oldBack(); h.render();
+  oldSubmit({ preventDefault() {} }); oldEdit({ target: { value: 'stale' } });
+  h.setVisible(true); h.render(); oldSubmit({ preventDefault() {} }); oldEdit({ target: { value: 'still stale' } }); h.render();
   assert.equal(h.find('agent-settings-model').props.value, 'retained-draft'); assert.equal(h.find('agent-settings-protocol').props.value, 'responses');
   assert.match(JSON.stringify(h.find('agent-settings-key-cleared')), /已清空/); assert.equal(f.calls.length, 0); assert.equal(h.closes, 0); h.unmount();
 });
