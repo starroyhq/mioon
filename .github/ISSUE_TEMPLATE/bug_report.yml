@@ -1,0 +1,41 @@
+name: 错误反馈
+description: 提供最小复现，帮助定位使用或运行错误
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先查找已有 Issue。不要提交 API Key、访问令牌、完整工作区或私人素材；安全问题请按[安全政策](https://github.com/starroyhq/mioon/security/policy)私下报告。
+  - type: input
+    id: version
+    attributes:
+      label: 版本或提交 SHA
+      placeholder: "例如 0.4.1 / 提交 SHA；请注明源码开发版或安装包"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 系统与架构
+      placeholder: "例如 macOS 版本、Apple Silicon；或 Linux 发行版、x64"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 最少复现步骤
+      description: 使用合成数据描述步骤；无需上传原工作区
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 预期与实际结果
+      description: 包括界面提示、发生频率，以及是否在新工作区出现
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 脱敏日志或截图（可选）
+      description: 删除凭据、个人路径、提示词和私人素材后再提交；不要粘贴整个数据库或连接描述文件
