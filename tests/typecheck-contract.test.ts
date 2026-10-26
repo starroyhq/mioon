@@ -50,19 +50,44 @@ function executableSource(source: string, loader: 'ts' | 'js') {
     legalComments: 'none', minify: false, sourcemap: false, treeShaking: false}).code;
 }
 
+const anthropicProtocolAddition = "  anthropic_messages: Object.freeze({label: 'Anthropic Messages', path: '/v1/messages'}),\n";
+
+function assertFrozenProtocolContract(source: string) {
+  // Git may check out CRLF on Windows. Normalize only physical line endings;
+  // the frozen baseline bytes and all executable statements remain checked.
+  const normalized = source.replaceAll('\r\n', '\n');
+  // The third catalog entry is the only authorized extension; every original
+  // executable statement, including endpoint validation, must still match.
+  assert.equal(normalized.split(anthropicProtocolAddition).length, 2, 'the exact new protocol entry is present once');
+  assert.equal(executableSource(normalized.replace(anthropicProtocolAddition, ''), 'ts'), executableSource(frozenBaselineSource, 'js'));
+}
+
 test('typed protocol preserves the frozen baseline executable contract', async () => {
   assert.equal(createHash('sha256').update(frozenBaselineSource).digest('hex'), 'd83f1f42d8a46c0740179a86a927e88a8288568942ae3dc10de44e3342e2e673');
   const source = await readFile(path.join(root, sourceName), 'utf8');
-  // The third catalog entry is the only authorized extension; every original
-  // executable statement, including endpoint validation, must still match.
-  const addition = "  anthropic_messages: Object.freeze({label: 'Anthropic Messages', path: '/v1/messages'}),\n";
-  assert.equal(source.split(addition).length, 2, 'the exact new protocol entry is present once');
-  assert.equal(executableSource(source.replace(addition, ''), 'ts'), executableSource(frozenBaselineSource, 'js'));
+  assertFrozenProtocolContract(source);
   const {AGENT_PROTOCOLS} = await import('../packages/contracts/src/agent-protocol.ts');
   assert.deepEqual(AGENT_PROTOCOLS.anthropic_messages, {label: 'Anthropic Messages', path: '/v1/messages'});
   assert.doesNotMatch(source, /@ts-(?:ignore|nocheck|expect-error)\b|\bany\b/);
   const barrel = await readFile(path.join(root, 'packages/contracts/src/index.ts'), 'utf8');
   assert.ok(barrel.includes("export {AGENT_PROTOCOLS, deriveAgentEndpoint} from './agent-protocol.ts';"));
+});
+
+test('frozen protocol validation accepts LF and CRLF while rejecting contract mutations', async () => {
+  const source = (await readFile(path.join(root, sourceName), 'utf8')).replaceAll('\r\n', '\n');
+  for (const ending of ['\n', '\r\n']) {
+    const withEnding = (candidate: string) => candidate.replaceAll('\n', ending);
+    assert.doesNotThrow(() => assertFrozenProtocolContract(withEnding(source)));
+    for (const mutation of [
+      source.replace(anthropicProtocolAddition, ''),
+      source.replace(anthropicProtocolAddition, anthropicProtocolAddition.repeat(2)),
+      source.replace("path: '/v1/messages'", "path: '/messages'"),
+      source.replace('baseUrl.length > 2048', 'baseUrl.length > 2047'),
+    ]) {
+      assert.notEqual(mutation, source, 'each negative sample must mutate the real source');
+      assert.throws(() => assertFrozenProtocolContract(withEnding(mutation)), assert.AssertionError);
+    }
+  }
 });
 
 test('native Node package barrel and real TS implementation share identity', async () => {
