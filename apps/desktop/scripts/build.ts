@@ -8,6 +8,7 @@ import desktopBuildMetadata from '../build-metadata.ts';
 import {main as checkTypes} from '../../../scripts/tooling.ts';
 import {prepareBuilderConfig} from './prepare-builder-config.ts';
 import {localRequireBundlePlugin} from './bundle-local-require.ts';
+import {stageTrayResources} from '../tray-resources.ts';
 const identity = desktopIdentity.identityForChannel(desktopIdentity.buildChannel(process.argv.slice(2)));
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { appVersion, desktopPackage: pkg } = desktopBuildMetadata.readBuildMetadata(root);
@@ -36,6 +37,7 @@ await build({ entryPoints: [path.join(desktop, 'src/preload.ts')], outfile: path
 await cp(web, path.join(output, 'web'), { recursive: true, dereference: true });
 await mkdir(path.join(output, 'icons'));
 await cp(path.join(desktop, 'resources/icon.png'), path.join(output, 'icons/icon.png'));
+await stageTrayResources(path.join(desktop, 'resources/tray'), path.join(output, 'icons/tray'));
 const subtitleSource=path.join(root,'packages/business/resources/subtitles');
 import {verifySubtitleResources,SUBTITLE_RESOURCE_FILES} from '../subtitle-resources.ts';
 await verifySubtitleResources(subtitleSource);

@@ -33,6 +33,15 @@ interface CloseFixtureOptions {
 }
 type Gate = Omit<PromiseWithResolvers<unknown>, 'resolve'> & {resolve(value?: unknown): void};
 const executable = (source: string) => stripTypeScriptTypes(source, { mode: 'strip' });
+function installNativePresentationHarness(context: vm.Context, main: string) {
+  context.windowContext ??= context.ownerContext ?? {};
+  context.nativeDialogs = new Set(); context.trayHost = null; context.trayIntent = 0;
+  context.windowHost = {contextFor: () => ({contextId: 'synthetic-document'}), prepareNativeDialog: () => true,
+    finishNativeDialog() {}, ...context.windowHost};
+  const from = main.indexOf('function finishNativePresentation('), to = main.indexOf('\nconst projectFileFailureText', from);
+  assert.ok(from > 0 && to > from);
+  vm.runInContext(executable(main.slice(from, to)), context);
+}
 const deferred = () => Promise.withResolvers() as Gate;
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 const sleep = (ms?: number|undefined) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -583,8 +592,9 @@ test('real renderer binds reload to the exact current document URL and action', 
 
 test('main routes user reload through admission and only proved initial empty load failures remain recoverable', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  assert.match(main, /windowAdmissions\.get\(window!?\)\?\.captureRecoveryDecision\(\)\.reload\(\)\.catch\(fatal\)/);
-  assert.match(main, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
+  assert.match(main, /const context = windowContext, decision = windowAdmissions\.get\(window!?\)\?\.captureRecoveryDecision\(\)/);
+  assert.match(main, /presentForReload\(window!, context, \(\) => decision\.reload\(\)\)\.catch\(fatal\)/);
+  assert.match(main, /const decision = windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
   assert.match(main, /const rendererFailed = createProjectRendererRecovery\(/);
   const start = main.indexOf('async function openWindow('), end = main.indexOf('\nfunction prepareOwnedWindow(', start);
   const source = stripTypeScriptTypes(main.slice(start, end), { mode: 'strip' });
@@ -778,7 +788,7 @@ test('main captures incident-bound recovery before asking and discloses possible
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
   const from = main.indexOf('const rendererFailed = createProjectRendererRecovery('), to = main.indexOf('\nasync function fatal(', from);
   const recovery = main.slice(from, to);
-  assert.match(recovery, /capture: window => windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
+  assert.match(recovery, /const decision = windowAdmissions\.get\(window\)\?\.captureRecoveryDecision\(\)/);
   const coordinator = await readFile(new URL('../apps/desktop/src/project-window-recovery.ts', import.meta.url), 'utf8');
   assert.ok(coordinator.indexOf('options.capture(window)') < coordinator.indexOf('await options.prompt(window)'));
   assert.ok(coordinator.indexOf('recovery.claimPrompt()') < coordinator.indexOf('await options.prompt(window)'));
@@ -875,6 +885,7 @@ test('cancel/Escape in the actual recovery dialog retains window, backend and un
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async (parent: FixtureWindow, options: DialogOptions) => { assert.equal(parent, f.win); dialogOptions = options; return { response: options.cancelId }; } },
     app: { quit() { assert.fail('Cancel cannot quit'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   await vm.runInContext('rendererFailed(window, ownerContext)', context);
   assert.equal((dialogOptions)!.cancelId, 2);
@@ -891,6 +902,7 @@ test('the actual recovery dialog authorizes Exit only for explicit response one'
   const context = vm.createContext({ nt: nativeText, createProjectRendererRecovery, quitRouter: {allowsWindows: true}, windowAdmissions: new WeakMap([[f.win, f.admission]]),
     ownsWindow: () => true, dialog: { showMessageBox: async () => ({ response: 1 }) },
     app: { quit() { assert.fail('Explicit recovery must use its captured scoped decision'); } }, window: f.win, ownerContext: {incident: {failed: false}} });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   await vm.runInContext('rendererFailed(window, ownerContext)', context);
   assert.equal(f.win.destroyed, true); assert.equal(f.stats().stopped, 1); assert.equal(f.stats().finished, 1);
@@ -905,6 +917,7 @@ async function recoveryDialogHarness(t: test.TestContext, f: ReturnType<typeof f
     ownsWindow: () => isCurrent() && !f.win.destroyed,
     dialog: { showMessageBox: (parent: FixtureWindow, options: DialogOptions) => { assert.equal(parent, f.win); calls.push(options); return show(calls.length, options); } },
     window: f.win, ownerContext: {incident: {failed: false}} });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   const onFailure = () => pending.push(vm.runInContext('rendererFailed(window, ownerContext)', context).catch((error: unknown) => errors.push(error)));
   f.win.webContents.on('unresponsive', onFailure); f.win.webContents.on('render-process-gone', onFailure);
@@ -971,6 +984,7 @@ async function reloadMenuHarness(f: ReturnType<typeof fixture>, isCurrent: () =>
   const context = vm.createContext({ nt: nativeText, process: { platform: 'linux' }, windowContext: {incident: {failed: false}}, windowHost: {preferredWindow: () => f.win}, initialWindowLoads: new WeakMap(), win: f.win, BrowserWindow: { getFocusedWindow: () => f.win },
     windowAdmissions: new WeakMap([[f.win, f.admission]]), ownsWindow: () => isCurrent() && !f.win.destroyed,
     Menu: { buildFromTemplate: (value: typeof menu) => value, setApplicationMenu: (value: typeof menu) => { menu = value; } }, fatal: (error: unknown) => errors.push(error) });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)) + '\ninstallMenu();', context);
   return { reload: () => menu.find((item: { label: string; }) => item.label === '应用')!.submenu.find((item: { label: string; }) => item.label === '重新载入界面')!.click(), errors };
 }
@@ -1012,6 +1026,7 @@ async function actualMainAdmissionCallbacks(dialog: {showMessageBox?(parent: obj
     windowAdmissions: new WeakMap(), installNativeCloseAdmission: (_window: object, value: NativeOptions) => { callbacks = value; return {}; },
     ownsWindow: owner, isAllowedNavigation: () => true, smokeOutput: false, smokeDiscardDecision: undefined,
     dialog, quitCoordinator: { cancel() {}, request: () => Promise.resolve(false) }, quitFailed() {}, ...bindings });
+  installNativePresentationHarness(context, main);
   vm.runInContext(executable(main.slice(from, to)), context);
   return callbacks;
 }

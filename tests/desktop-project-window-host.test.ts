@@ -238,6 +238,220 @@ test('settings keeps one modal owner and its parent cannot open project entry un
   (a)!.finishClose(); assert.equal((launcher)!.visible, true);
 });
 
+test('tray hiding retains every document and only an explicit target reveal restores it', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
+  f.ready(a); f.ready(b, projectB);
+  const contexts = f.created.map(window => f.host.contextFor(window));
+  const owners = f.created.map(window => f.host.ownerForContents(window.webContents));
+  assert.equal(f.host.canHideToTray(), true); assert.equal(f.host.hideToTray(), true);
+  assert.equal(f.host.canHideToTray(), false); assert.equal(f.host.hideToTray(), false);
+  assert.ok(f.created.every(window => !window.visible && window.closeCalls === 0 && !window.destroyed));
+  assert.deepEqual(f.created.map(window => f.host.contextFor(window)), contexts);
+  assert.ok(owners.every(owner => owner?.isCurrent()));
+  a.emit('ready-to-show'); b.emit('ready-to-show'); f.ready(a); f.ready(b, projectB);
+  assert.ok(f.created.every(window => !window.visible));
+  assert.equal(f.host.activate(a), true); assert.equal(a.visible, true);
+  assert.equal(b.visible, false); assert.equal(launcher.visible, false); assert.equal(f.created.length, 3);
+  b.emit('ready-to-show'); f.ready(b, projectB); assert.equal(b.visible, false, 'another hidden owner needs its own explicit reveal');
+  assert.equal(f.host.activate(b), true); assert.equal(b.visible, true); assert.equal(f.created.length, 3);
+  assert.equal(f.host.canHideToTray(), true);
+});
+
+test('a visible editor explicitly selecting an already-open hidden project restores that exact target', async t => {
+  const f = fixture(t); await f.launcher(); const a = await f.editor(), b = await f.editor(projectB);
+  f.ready(a); f.ready(b, projectB); assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(b), true);
+  const focused = a.focuses;
+  assert.equal((await f.open(projectA, b)).reason, 'already-open');
+  assert.equal(a.visible, true); assert.equal(a.focuses, focused + 1); assert.equal(f.created.length, 3);
+});
+
+for (const hiddenAtStart of [true, false]) test(`a project entry ${hiddenAtStart ? 'from a still-hidden source' : 'crossing hide and restore'} cannot reveal its late new editor`, async t => {
+  const projectC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', hold = Promise.withResolvers<void>();
+  const f = fixture(t, {consume: async (_owner, entryToken, projectId) => {
+    if (projectId === projectC) await hold.promise;
+    return {version: 1, entryToken, projectId, accepted: true};
+  }});
+  await f.launcher(); const a = await f.editor(), b = await f.editor(projectB); f.ready(a); f.ready(b, projectB);
+  if (hiddenAtStart) { assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(b), true); }
+  const token = randomUUID(), pending = f.open(projectC, a, token);
+  if (!hiddenAtStart) { assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(a), true); }
+  const focusA = a.focuses, focusB = b.focuses;
+  hold.resolve(); const result = await pending; assert.equal(result.reason, 'accepted');
+  const c = f.created.at(-1)!; await f.host.loadFor(c); assert.equal(f.ready(c, projectC), true);
+  assert.equal(c.visible, false); assert.equal(a.focuses, focusA); assert.equal(b.focuses, focusB);
+  assert.equal((await f.open(projectC, a, token)).targetWindowId, result.targetWindowId, 'lost ACK replay retains the original receipt');
+  assert.equal(c.visible, false);
+  assert.equal(f.host.activate(c), true); assert.equal(c.visible, true); assert.equal(f.created.length, 4);
+});
+
+test('tray hiding suppresses a late editor load and queued renderer presentation without invalidating background status', async t => {
+  const hold = Promise.withResolvers<void>();
+  const f = fixture(t, {create(window) { if (window.creation.role === 'editor') window.loading = hold; }});
+  const launcher = await f.launcher(); assert.equal((await f.open(projectA)).reason, 'accepted');
+  const editor = f.created.at(-1)!; assert.equal(f.host.hideToTray(), true);
+  hold.resolve(); await f.host.loadFor(editor);
+  assert.equal(editor.visible, false); assert.equal(launcher.visible, false);
+  assert.equal(f.ready(editor), true); assert.equal(editor.visible, false);
+  for (const request of [{action: 'settings', slot: 'agent'}, {action: 'projects'}, {action: 'project-entry', mode: 'new'}]) {
+    assert.equal(f.invoke(editor, request), false);
+  }
+  assert.equal(f.created.length, 2); assert.equal(editor.visible, false);
+  assert.equal(f.host.activate(editor), true); assert.equal(editor.visible, true); assert.equal(f.created.length, 2);
+});
+
+test('explicit launcher activation reveals a trusted completed load without waiting for ready-to-show', async t => {
+  const load = Promise.withResolvers<void>();
+  const f = fixture(t, {create(window) {
+    window.loadURL = async url => { await load.promise; window.navigate(url); };
+  }});
+  const launcher = f.host.ensureLauncher()!; await tick();
+  assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(launcher), true);
+  assert.equal(launcher.visible, false); assert.equal(f.host.isTrustedDocument(launcher), false, 'an uncommitted window stays hidden');
+  load.resolve(); await f.host.loadFor(launcher);
+  assert.equal(f.host.isTrustedDocument(launcher), true); assert.equal(launcher.visible, false);
+  assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(launcher), true);
+  assert.equal(launcher.visible, true, 'an explicit reveal can use the trusted completed load before native ready-to-show');
+  assert.equal(f.created.length, 1);
+  assert.equal(f.host.hideToTray(), true); launcher.emit('ready-to-show'); assert.equal(launcher.visible, false);
+  assert.equal(f.host.activate(launcher), true); assert.equal(launcher.visible, true);
+});
+
+test('closing the last tray-hidden editor never revives a retained or newly created launcher', async t => {
+  for (const retainLauncher of [true, false]) {
+    const f = fixture(t), launcher = await f.launcher(), editor = await f.editor(); f.ready(editor);
+    if (!retainLauncher) launcher.finishClose();
+    assert.equal(f.host.hideToTray(), true); editor.finishClose();
+    const next = f.host.ensureLauncher()!; await f.host.loadFor(next);
+    assert.equal(next.visible, false); next.emit('ready-to-show'); assert.equal(next.visible, false);
+    assert.equal(next === launcher, retainLauncher); assert.equal(f.host.activate(), true); assert.equal(next.visible, true);
+    assert.equal(f.created.filter(window => !window.destroyed).length, 1);
+  }
+});
+
+test('closing the last explicitly restored editor returns to its retained launcher after tray hiding', async t => {
+  const f = fixture(t), launcher = await f.launcher(), editor = await f.editor(); f.ready(editor);
+  assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(editor), true);
+  assert.equal(editor.visible, true); assert.equal(launcher.visible, false);
+  editor.finishClose();
+  assert.equal(launcher.visible, true, 'normal closure of the last visible editor restores its original list');
+  assert.equal(f.host.ensureLauncher(), launcher); assert.equal(f.created.length, 2);
+});
+
+test('a new launcher inherits the last hidden owner after another owner was shown for a native dialog', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
+  f.ready(a); f.ready(b, projectB); launcher.finishClose(); assert.equal(f.host.hideToTray(), true);
+  assert.equal(f.host.prepareNativeDialog(a), true); a.finishClose(); b.finishClose();
+  const replacement = f.host.ensureLauncher()!; await f.host.loadFor(replacement);
+  assert.notEqual(replacement, launcher); assert.equal(replacement.visible, false);
+  replacement.emit('ready-to-show'); assert.equal(replacement.visible, false);
+  assert.equal(f.host.activate(), true); assert.equal(replacement.visible, true);
+});
+
+test('native project entry and settings requests explicitly restore the selected tray-hidden owner', async t => {
+  const f = fixture(t); await f.launcher(); const editor = await f.editor(); f.ready(editor);
+  assert.equal(f.host.hideToTray(), true); assert.equal(f.host.requestProjectEntry('new', editor), true);
+  assert.equal(editor.visible, true); assert.equal(f.host.contextFor(editor)!.entryMode, 'new');
+  assert.equal(f.host.hideToTray(), true);
+  assert.equal(f.host.requestProjectEntry('invalid' as never, editor), false); assert.equal(editor.visible, false);
+  const foreign = new NativeWindow({role: 'editor'}, []);
+  assert.equal(f.host.showSettings('agent', foreign), false); assert.equal(editor.visible, false);
+  assert.equal(f.host.activate(editor), true); assert.equal(f.host.showSettings('agent', editor), true);
+  const settings = f.created.at(-1)!; await f.host.loadFor(settings);
+  assert.equal(settings.visible, true); assert.equal(settings.creation.parent, editor);
+});
+
+test('settings and its destroyed-awaiting-closed owner prevent tray hiding and retain the modal lock', async t => {
+  const f = fixture(t); await f.launcher(); const editor = await f.editor(); f.ready(editor);
+  f.host.showSettings('agent', editor); const settings = f.created.at(-1)!; await f.host.loadFor(settings);
+  const before = f.host.contextFor(editor), focused = settings.focuses;
+  assert.equal(f.host.canHideToTray(), false); assert.equal(f.host.hideToTray(), false);
+  assert.equal(settings.focuses, focused + 1); assert.equal(editor.visible, true); assert.equal(settings.visible, true);
+  assert.deepEqual(f.host.contextFor(editor), before); assert.equal(settings.closeCalls, 0);
+  settings.destroyed = true;
+  assert.equal(f.host.canHideToTray(), false); assert.equal(f.host.hideToTray(), false);
+  assert.equal(settings.focuses, focused + 1); assert.equal(f.host.contextFor(editor)!.settingsModalOpen, true);
+});
+
+test('close admission and backend lifecycle fences prevent tray hiding until a fresh accepted action', async t => {
+  const f = fixture(t), launcher = await f.launcher();
+  f.host.closeStateChanged(launcher, 'closing');
+  assert.equal(f.host.canHideToTray(), false); assert.equal(f.host.hideToTray(), false); assert.equal(launcher.visible, true);
+  f.host.closeStateChanged(launcher, 'retained'); assert.equal(f.host.hideToTray(), true);
+  f.setInteractive(false);
+  assert.equal(f.host.canHideToTray(), false); assert.equal(f.host.hideToTray(), false); assert.equal(f.host.activate(), false);
+  launcher.emit('ready-to-show'); assert.equal(launcher.visible, false);
+  f.setInteractive(true); assert.equal(launcher.visible, false); assert.equal(f.host.activate(), true); assert.equal(launcher.visible, true);
+  assert.equal(f.host.hideToTray(), true);
+});
+
+test('an exact hidden native dialog owner can be revealed while ordinary quit admission stays fenced', async t => {
+  const f = fixture(t), launcher = await f.launcher(), editor = await f.editor(); f.ready(editor);
+  const owner = f.host.ownerForContents(editor.webContents), contextId = f.host.contextFor(editor)!.contextId;
+  assert.equal(f.host.hideToTray(), true); f.host.closeStateChanged(editor, 'closing'); f.setInteractive(false);
+  let minimized = true; editor.isMinimized = () => minimized; editor.restore = () => { minimized = false; };
+  assert.equal(f.host.prepareNativeDialog(editor), true);
+  assert.equal(editor.visible, true); assert.equal(minimized, false); assert.equal(launcher.visible, false);
+  assert.equal(f.host.contextFor(editor)!.contextId, contextId); assert.equal(owner?.isCurrent(), true);
+  assert.equal(f.host.activate(editor), false); assert.equal(editor.closeCalls, 0); assert.equal(f.created.length, 2);
+  f.host.closeStateChanged(editor, 'retained'); f.setInteractive(true);
+  launcher.emit('ready-to-show'); assert.equal(launcher.visible, false);
+  assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(editor), true); assert.equal(editor.visible, true);
+});
+
+test('preparing one hidden dialog never revives another owner after its scoped presentation finishes', async t => {
+  const f = fixture(t), launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
+  f.ready(a); f.ready(b, projectB); assert.equal(f.host.hideToTray(), true);
+  assert.equal(f.host.prepareNativeDialog(launcher), true); assert.equal(launcher.visible, true);
+  f.host.finishNativeDialog(launcher); assert.equal(launcher.visible, false);
+  assert.equal(f.host.prepareNativeDialog(a), true); assert.equal(a.visible, true); assert.equal(b.visible, false);
+  b.emit('ready-to-show'); assert.equal(f.ready(b, projectB), true); assert.equal(b.visible, false);
+  assert.equal(f.invoke(b, {action: 'settings', slot: 'agent'}), false);
+  assert.equal(f.invoke(b, {action: 'project-entry', mode: 'new'}), false); assert.equal(b.visible, false);
+  const shows = a.shows, focuses = a.focuses;
+  assert.equal(f.host.prepareNativeDialog(a), true); assert.equal(a.shows, shows); assert.equal(a.focuses, focuses);
+  assert.equal(f.host.hideToTray(), true); assert.equal(f.host.activate(b), true); assert.equal(b.visible, true);
+});
+
+test('an exact launcher native-sheet presentation survives real show events and releases to normal visibility', async t => {
+  const f = fixture(t), launcher = await f.launcher(), editor = await f.editor(); f.ready(editor);
+  const originalShow = launcher.show.bind(launcher);
+  launcher.show = () => { originalShow(); launcher.emit('show'); };
+  launcher.show(); assert.equal(launcher.visible, false, 'ordinary OS showing still cannot expose the launcher beside an editor');
+  const contextId = f.host.contextFor(launcher)!.contextId;
+  f.host.closeStateChanged(launcher, 'closing'); f.setInteractive(false);
+  assert.equal(f.host.prepareNativeDialog(launcher), true); assert.equal(launcher.visible, true);
+  f.host.closeStateChanged(launcher, 'retained'); assert.equal(launcher.visible, true, 'retained status cannot hide a sheet still being presented');
+  f.host.finishNativeDialog(launcher, contextId); assert.equal(launcher.visible, false);
+  launcher.show(); assert.equal(launcher.visible, false);
+  f.setInteractive(true); assert.equal(f.host.prepareNativeDialog(launcher), true); editor.finishClose();
+  f.host.finishNativeDialog(launcher, contextId); assert.equal(launcher.visible, true, 'the last editor has actually closed, so the list stays visible');
+});
+
+test('a native-sheet completion cannot hide a foreign, destroyed or replacement launcher document', async t => {
+  const f = fixture(t), launcher = await f.launcher(), editor = await f.editor(); f.ready(editor);
+  const foreign = new NativeWindow({role: 'launcher'}, []), oldContextId = f.host.contextFor(launcher)!.contextId;
+  assert.equal(f.host.prepareNativeDialog(launcher), true);
+  f.host.finishNativeDialog(foreign, oldContextId); assert.equal(launcher.visible, true);
+  launcher.navigate(`${origin}/`); const currentContextId = f.host.contextFor(launcher)!.contextId;
+  assert.notEqual(currentContextId, oldContextId); assert.equal(launcher.visible, false);
+  assert.equal(f.host.prepareNativeDialog(launcher), true);
+  f.host.finishNativeDialog(launcher, oldContextId); assert.equal(launcher.visible, true);
+  f.host.finishNativeDialog(launcher, currentContextId); assert.equal(launcher.visible, false);
+  assert.equal(f.host.prepareNativeDialog(launcher), true); launcher.destroyed = true;
+  f.host.finishNativeDialog(launcher, currentContextId); assert.equal(launcher.visible, true, 'destroyed native handles receive no more presentation calls');
+});
+
+test('native dialog preparation rejects foreign, destroyed and settings-covered parents without creating a replacement', async t => {
+  const f = fixture(t), launcher = await f.launcher(), foreign = new NativeWindow({role: 'launcher'}, []);
+  assert.equal(f.host.prepareNativeDialog(foreign), false);
+  f.host.showSettings('agent', launcher); const settings = f.created.at(-1)!; await f.host.loadFor(settings);
+  const focused = settings.focuses; assert.equal(f.host.prepareNativeDialog(launcher), false);
+  assert.equal(settings.focuses, focused + 1); assert.equal(f.host.prepareNativeDialog(settings), true);
+  settings.destroyed = true; assert.equal(f.host.prepareNativeDialog(settings), false);
+  assert.equal(f.host.prepareNativeDialog(launcher), false); assert.equal(f.created.length, 2);
+  f.setCurrent(false); assert.equal(f.host.prepareNativeDialog(launcher), false);
+});
+
 test('settings binds its exact IPC opener and another editor never reparents or replaces the live forms', async t => {
   const f = fixture(t), launcher = await f.launcher(), a = await f.editor(), b = await f.editor(projectB);
   assert.equal(f.invoke(a, {action: 'settings', slot: 'agent'}), true);

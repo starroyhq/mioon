@@ -70,6 +70,7 @@ interface WindowRecord<W extends ProjectNativeWindow> {
   revealIntent: number; revealFence: number; readyToShow: boolean; focusOrder: number;
   entryMode: ProjectWindowEntryMode | null; entryVersion: number; entryReceipt: ProjectWindowEntryReceipt | null; entryAttempt: EntryAttempt | null;
   settingsSlot: ProjectWindowSettingsSlot | null; settingsVersion: number;
+  initialLoad: { contextId: string; started: boolean; frame: ProjectWindowFrame | null };
   load: Promise<void>; owner: ProjectWindowOwner<W>;
   listeners: Array<{ target: EventSource; event: string; listener: Listener }>;
 }
@@ -89,7 +90,9 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   let launcher: WindowRecord<W> | null = null, settings: WindowRecord<W> | null = null;
   const editors = new Map<string, WindowRecord<W>>(), reservations = new Set<string>();
   const records = new Map<W, WindowRecord<W>>(), contentsRecords = new Map<ProjectWindowWebContents, WindowRecord<W>>();
-  let disposed = false, launcherCreated = false, intent = 0, focusOrder = 0, fence = 0, wasPermitted = options.canInteract();
+  const hiddenForTray = new WeakSet<WindowRecord<W>>();
+  const nativeDialogPresentation = new WeakSet<WindowRecord<W>>();
+  let disposed = false, launcherCreated = false, trayHidden = false, trayHideEpoch = 0, intent = 0, focusOrder = 0, fence = 0, wasPermitted = options.canInteract();
   let locatorStatus: ProjectWindowLocatorStatus | null = null, locatorIntent: ProjectWindowLocatorIntent | null = null;
   let locatorContextId: string | null = null, locatorIntentVersion = 0;
   let selectionVersion = 0, selectionRecord: WindowRecord<W> | null = null, selectionContextId: string | null = null;
@@ -155,7 +158,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     selectionRecord = null; selectionContextId = null;
   }
   function reveal(record: WindowRecord<W>, focus = true): boolean {
-    if (!permitted() || !ownsRecord(record) || record.revealFence !== fence || record.phase === 'closing' || record.role === 'launcher' && editorCount() !== 0) return false;
+    if (!permitted() || trayHidden || hiddenForTray.has(record) || !ownsRecord(record) || record.revealFence !== fence || record.phase === 'closing' || record.role === 'launcher' && editorCount() !== 0) return false;
     const modal = modalFor(record);
     if (modal) return focus ? reveal(modal) : false;
     if (record.role === 'settings' && record.parent && !ownsRecord(record.parent)) return false;
@@ -173,6 +176,13 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     return true;
   }
   function hideLauncher() { if (launcher && ownsRecord(launcher)) launcher.window.hide(); }
+  function allowExplicitReveal(record: WindowRecord<W>) {
+    trayHidden = false;
+    hiddenForTray.delete(record);
+    const modal = modalFor(record);
+    if (modal) hiddenForTray.delete(modal);
+    if (record.role === 'settings' && record.parent) hiddenForTray.delete(record.parent);
+  }
   function canRestoreParentFocus(parent: W): boolean {
     if (!options.canRestoreParentFocus) return true;
     try { return options.canRestoreParentFocus(parent) === true; }
@@ -184,7 +194,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   function revokeSelection(record: WindowRecord<W>) {
     if (selectionRecord === record) { selectionRecord = null; selectionContextId = null; }
   }
-  function create(role: ProjectWindowRole, projectId: string | null, revealIntent = intent, parent: WindowRecord<W> | null = null): WindowRecord<W> | null {
+  function create(role: ProjectWindowRole, projectId: string | null, revealIntent = intent, parent: WindowRecord<W> | null = null, keepHidden = false): WindowRecord<W> | null {
     if (!permitted()) return null;
     if (role === 'settings' && (!parent || parent.role === 'settings' || !trustedDocument(parent) || parent.phase === 'closing')) return null;
     if (role === 'editor') {
@@ -207,21 +217,23 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     let record!: WindowRecord<W>;
     const owner: ProjectWindowOwner<W> = { window, windowId, role, url, backendId: options.backendId, projectId,
       get contextId() { return record.contextId; }, isCurrent: () => ownsRecord(record) };
+    const initialLoad: WindowRecord<W>['initialLoad'] = { contextId, started: false, frame: null };
     record = { window, contents, windowId, role, projectId, url, parent, contextId, autoOpen, closed: false, committed: false, phase: 'opening', retainedPhase: 'opening',
       frame: null, revealIntent, revealFence: fence, readyToShow: false, focusOrder: ++focusOrder,
       entryMode: null, entryVersion: 0, entryReceipt: null, entryAttempt: null, settingsSlot: null, settingsVersion: 0,
-      load: Promise.resolve(), owner, listeners: [] };
+      initialLoad, load: Promise.resolve(), owner, listeners: [] };
     records.set(window, record); contentsRecords.set(contents, record);
+    if (trayHidden || keepHidden) hiddenForTray.add(record);
     if (role === 'launcher') { launcher = record; launcherCreated = true; }
     else if (role === 'settings') settings = record;
     else { editors.set(projectId!, record); reservations.delete(projectId!); }
-    const initialLoad: { contextId: string; started: boolean; frame: ProjectWindowFrame | null } = { contextId, started: false, frame: null };
     listen(record, window, 'closed', () => {
       if (record.closed) return;
       const attached = modalFor(record);
       const restoreParentFocus = role === 'settings' && parent &&
         ![...records.values()].some(other => other !== record && !other.closed && other.focusOrder > record.focusOrder);
       record.closed = true; revokeSelection(record); retireLocator(record);
+      nativeDialogPresentation.delete(record);
       records.delete(window); contentsRecords.delete(contents);
       for (const entry of record.listeners) entry.target.removeListener(entry.event, entry.listener);
       if (launcher === record) launcher = null;
@@ -229,7 +241,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       if (role === 'editor' && editors.get(projectId!) === record) {
         editors.delete(projectId!);
         // Retire only at actual closure; settings and minimizing are irrelevant.
-        if (editorCount() === 0 && permitted()) revealLauncher();
+        if (editorCount() === 0 && permitted()) revealLauncher(hiddenForTray.has(record));
       }
       // Normal close/restart paths close the settings owner first. If a parent
       // disappears unexpectedly, request its child's existing guarded closure;
@@ -247,7 +259,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     contents.on('destroyed', destroyed);
     listen(record, window, 'show', () => {
       // OS Window menus cannot make the launcher coexist visibly with an editor.
-      if (role === 'launcher' && editorCount() !== 0 && ownsRecord(record)) window.hide();
+      if (role === 'launcher' && editorCount() !== 0 && ownsRecord(record) && !nativeDialogPresentation.has(record)) window.hide();
     });
     listen(record, window, 'focus', () => { if (ownsRecord(record)) record.focusOrder = ++focusOrder; });
     listen(record, window, 'ready-to-show', () => {
@@ -267,6 +279,7 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       // here would strand its renderer and close guard. A foreign commit remains
       // untrusted through the exact URL and main-frame checks below.
       if (target !== record.url) return;
+      finishNativeDialog(window, record.contextId);
       const previousContext = record.contextId;
       const firstAssignedLoad = !initialLoad.started && initialLoad.contextId === previousContext && target === url;
       invalidateDocument(record); retireLocator(record);
@@ -316,12 +329,16 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     if (!permitted() || launcher && !ownsRecord(launcher)) return null;
     return (launcher ?? create('launcher', null))?.window ?? null;
   }
-  function revealLauncher(): boolean {
+  function revealLauncher(preserveTrayHidden = false): boolean {
     if (!permitted() || editorCount() !== 0) return false;
     const window = ensureLauncher();
     if (!window || !launcher) return false;
+    if (preserveTrayHidden) hiddenForTray.add(launcher);
+    // Closing the last explicitly restored editor returns to the retained list.
+    // Only a still-hidden editor's closure carries its suppression forward.
+    else hiddenForTray.delete(launcher);
     launcher.autoOpen = false; launcher.revealIntent = ++intent; launcher.revealFence = fence;
-    if (launcher.readyToShow) reveal(launcher);
+    if (launcher.readyToShow || trustedDocument(launcher)) reveal(launcher);
     refresh(); return true;
   }
   function preferredRecord(focused?: W | null, role?: ProjectWindowRole): WindowRecord<W> | null {
@@ -333,13 +350,14 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   function requestProjectEntry(mode: ProjectWindowEntryMode, focused?: W | null): boolean {
     if (!isProjectWindowEntryMode(mode) || !permitted()) return false;
     const source = focused ? records.get(focused) : undefined;
-    if (source?.role === 'settings' && ownsRecord(source)) { reveal(source); return false; }
+    if (source?.role === 'settings' && ownsRecord(source)) { allowExplicitReveal(source); reveal(source); return false; }
     let record: WindowRecord<W> | null;
     if (editorCount() !== 0) record = preferredRecord(focused, 'editor');
     else { ensureLauncher(); record = launcher; }
     if (!record || !ownsRecord(record) || record.phase === 'closing' || record.entryAttempt && !record.entryAttempt.result) return false;
     const modal = modalFor(record);
-    if (modal) { reveal(modal); return false; }
+    if (modal) { allowExplicitReveal(modal); reveal(modal); return false; }
+    allowExplicitReveal(record);
     record.autoOpen = false; record.entryMode = mode; record.entryVersion++; record.revealIntent = ++intent; record.revealFence = fence;
     if (record.readyToShow) reveal(record);
     refresh(); return true;
@@ -347,10 +365,15 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
   function activate(focused?: W | null): boolean {
     if (!permitted()) return false;
     const front = preferredRecord(focused);
-    if (front?.role === 'settings') return reveal(front);
-    if (editorCount() === 0) return revealLauncher();
+    if (front?.role === 'settings') { allowExplicitReveal(front); return reveal(front); }
+    if (editorCount() === 0) {
+      if (!ensureLauncher() || !launcher) return false;
+      allowExplicitReveal(launcher);
+      return revealLauncher();
+    }
     const record = preferredRecord(focused, 'editor');
     if (!record) return false;
+    allowExplicitReveal(record);
     record.revealIntent = ++intent; record.revealFence = fence;
     if (record.readyToShow || record.phase === 'ready' || record.phase === 'failed') reveal(record);
     refresh(); return true;
@@ -368,21 +391,25 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     intent++;
     const record = settings ?? create('settings', null, intent, parent);
     if (!record || record.phase === 'closing') return false;
+    allowExplicitReveal(record);
     record.settingsSlot = slot; record.settingsVersion++; record.revealIntent = intent; record.revealFence = fence;
     if (record.readyToShow) reveal(record);
     refresh(); return true;
   }
-  function reserveProject(projectId: string, revealIntent: number): ProjectWindowOpenResult {
+  function reserveProject(projectId: string, revealIntent: number, mayReveal: boolean): ProjectWindowOpenResult {
     if (!permitted()) return refused('busy');
     const existing = editors.get(projectId);
     if (existing) {
       if (!ownsRecord(existing) || existing.phase === 'closing') return refused('busy');
-      existing.revealIntent = revealIntent; existing.revealFence = fence;
-      if (existing.readyToShow || existing.phase === 'ready' || existing.phase === 'failed') reveal(existing, revealIntent === intent);
+      if (mayReveal) {
+        allowExplicitReveal(existing);
+        existing.revealIntent = revealIntent; existing.revealFence = fence;
+        if (existing.readyToShow || existing.phase === 'ready' || existing.phase === 'failed') reveal(existing, revealIntent === intent);
+      }
       return Object.freeze({ ok: true, reason: 'already-open', targetWindowId: existing.windowId, targetPhase: existing.phase });
     }
     if (reservations.has(projectId)) return refused('busy');
-    const record = create('editor', projectId, revealIntent);
+    const record = create('editor', projectId, revealIntent, null, !mayReveal);
     return record ? Object.freeze({ ok: true, reason: 'accepted', targetWindowId: record.windowId, targetPhase: record.phase }) : refused('unavailable');
   }
   function openProject(record: WindowRecord<W>, projectId: string, remember: boolean, entryToken: string): Promise<ProjectWindowOpenResult> {
@@ -406,6 +433,10 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     // Only the latest explicit selection may become a locator write. A denied
     // newer choice still revokes an older callback's selection authority.
     const revealIntent = ++intent;
+    // Tray presentation is separate from the sealed business entry. An old
+    // entry may still receive its original receipt, but hiding during its ACK
+    // wait must not lend a later foreground window to that old selection.
+    const presentationEpoch = trayHideEpoch, sourceMayReveal = !trayHidden && !hiddenForTray.has(record);
     const selectedVersion = remember ? ++selectionVersion : 0;
     if (remember) { selectionRecord = null; selectionContextId = null; }
     let complete!: EntryAttempt['complete'];
@@ -424,7 +455,8 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
           if (editorCount() === 0 && record !== launcher) result = refused('busy');
           else {
             if (launcher) launcher.autoOpen = false;
-            result = reserveProject(projectId.toLowerCase(), revealIntent);
+            const mayReveal = sourceMayReveal && presentationEpoch === trayHideEpoch && !trayHidden && !hiddenForTray.has(record);
+            result = reserveProject(projectId.toLowerCase(), revealIntent, mayReveal);
             const target = editors.get(projectId.toLowerCase());
             if (result.ok && target && remember && selectedVersion === selectionVersion) {
               selectionRecord = target; selectionContextId = target.contextId;
@@ -468,6 +500,9 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
       throw new Error('Rejected project-window sender');
     if (request.action === 'describe') return context(record);
     if (request.contextId !== record.contextId) throw new Error('Stale project-window context');
+    // A presentation request queued before native hiding cannot bring the
+    // document back. The tray and native menu use the host methods directly.
+    if ((trayHidden || hiddenForTray.has(record)) && ['settings', 'projects', 'project-entry'].includes(request.action)) return false;
     if (request.action === 'locator-status') return publishLocatorStatus(record, request.status);
     if (request.action === 'locator-action') return requestLocatorAction(record, request.locatorAction, request.expectedStatusVersion);
     if (request.action === 'open') return openProject(record, request.projectId, request.remember, request.entryToken);
@@ -496,13 +531,72 @@ export function createProjectWindowHost<W extends ProjectNativeWindow>(options: 
     refresh(); return true;
   }
   function windows(): W[] { return lifetime() ? [...records.values()].filter(record => !record.closed).map(record => record.window) : []; }
+  function canHideToTray(): boolean {
+    // Native alerts and the settings sheet must remain reachable. A destroyed
+    // handle still reserves its slot until its actual closed event arrives.
+    return lifetime() && options.canInteract() && !trayHidden && settings === null && records.size > 0 &&
+      [...records.values()].every(record => ownsRecord(record) && record.phase !== 'closing' && !nativeDialogPresentation.has(record));
+  }
+  function hideToTray(): boolean {
+    if (!permitted()) return false;
+    if (!canHideToTray()) {
+      if (settings && !settings.closed && !settings.window.isDestroyed()) settings.window.focus();
+      return false;
+    }
+    // Retain document owners and all business work. Late load/ready/status or
+    // last-editor-closed callbacks cannot undo an explicit request to hide.
+    trayHidden = true; trayHideEpoch++;
+    for (const record of records.values()) if (ownsRecord(record)) { hiddenForTray.add(record); record.window.hide(); }
+    return true;
+  }
+  function prepareNativeDialog(window: W): boolean {
+    const record = records.get(window);
+    if (!record || !ownsRecord(record)) return false;
+    const modal = modalFor(record);
+    if (modal) {
+      if (!modal.window.isDestroyed()) modal.window.focus();
+      return false;
+    }
+    // P0 may be waiting on this exact owner while ordinary UI admission is
+    // fenced. Reveal only it, without creating a window or changing any close
+    // permission; the alert still owns its independent snapshot checks.
+    const launcherDialog = record.role === 'launcher' && editorCount() !== 0;
+    if (launcherDialog) nativeDialogPresentation.add(record);
+    const minimized = window.isMinimized(), hidden = trayHidden || hiddenForTray.has(record) || launcherDialog;
+    trayHidden = false; hiddenForTray.delete(record);
+    if (!hidden && !minimized) return true;
+    if (minimized) window.restore();
+    window.show(); window.focus(); record.focusOrder = ++focusOrder;
+    return true;
+  }
+  function finishNativeDialog(window: W, expectedContextId?: string): void {
+    const record = records.get(window);
+    if (!record || !ownsRecord(record) || expectedContextId !== undefined && record.contextId !== expectedContextId ||
+      !nativeDialogPresentation.delete(record)) return;
+    // Only the exact launcher shown for an owned native sheet is exempt from
+    // normal project-window visibility. Cancellation releases that exemption;
+    // a stale completion cannot hide a replacement document's new alert.
+    if (record.role === 'launcher' && editorCount() !== 0) window.hide();
+  }
   function closeOrder(): W[] {
     const current = windows(), modal = settings;
     return modal && current.includes(modal.window) ? [modal.window, ...current.filter(window => window !== modal.window)] : current;
   }
+  async function loadDocumentFor(window: W): Promise<ProjectWindowDocumentOwner<W> | null> {
+    const record = records.get(window);
+    if (!record || !ownsRecord(record)) return null;
+    const expectedContext = record.contextId, initial = record.initialLoad;
+    const awaitingInitial = !record.committed && record.phase === 'opening' && initial.contextId === expectedContext;
+    await record.load;
+    // Creation schedules its first assigned load in a microtask. That one
+    // navigation rotates contextId legitimately; an intervening reload must
+    // not lend its new document to the old presentation intent.
+    if (record.contextId !== expectedContext && (!awaitingInitial || initial.contextId !== record.contextId)) return null;
+    return capture(record);
+  }
   return {
     ensureLauncher, activate, requestProjectEntry, showProjects: (focused?: W | null) => requestProjectEntry('open', focused), showSettings,
-    dispatch, refresh, windows, getWindows: windows, closeOrder, closeStateChanged,
+    dispatch, refresh, windows, getWindows: windows, closeOrder, closeStateChanged, canHideToTray, hideToTray, prepareNativeDialog, finishNativeDialog, loadDocumentFor,
     settingsForParent(window: W): W | null { const record = records.get(window); return record ? modalFor(record)?.window ?? null : null; },
     preferredWindow(focused?: W | null): W | null { return preferredRecord(focused)?.window ?? null; },
     windowForContents(contents: ProjectWindowWebContents): W | null { const record = contentsRecords.get(contents); return record && trustedDocument(record) ? record.window : null; },

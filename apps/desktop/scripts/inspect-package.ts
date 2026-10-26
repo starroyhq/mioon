@@ -10,6 +10,7 @@ import desktopIdentity from '../identity.ts';
 import type {DesktopIdentity} from '../identity.ts';
 import subtitleResources from '../subtitle-resources.ts';
 import {verifySubtitleResourceTarball} from '../subtitle-package.ts';
+import {verifyPackagedTrayResources} from '../tray-resources.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const require = createRequire(import.meta.url);
@@ -41,6 +42,7 @@ for (const file of files) {
 for (const file of historicalV3 ? [] : ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) {
   assert.deepEqual(asar.extractFile(archive, file), await readFile(path.join(root, 'apps/desktop/build', file)), `Packaged ${file} must equal verified staging`);
 }
+if (!historicalV3) await verifyPackagedTrayResources(archive, asar, path.join(root, 'apps/desktop/build'));
 const metadata = JSON.parse(asar.extractFile(archive, 'package.json').toString());
 assert.deepEqual(metadata.dependencies, {});
 if (!historicalV3) { assert.equal(metadata.name, 'mioon-desktop'); assert.deepEqual(metadata.mioonDesktop, requireIdentity()); }

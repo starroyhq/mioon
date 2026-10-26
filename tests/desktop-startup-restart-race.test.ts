@@ -23,13 +23,15 @@ import { createDesktopStartup } from '../apps/desktop/src/startup.ts';
 import { BackendSupervisor, type BackendSupervisorOptions } from '../apps/desktop/src/supervisor.ts';
 import { stopBackendForQuit } from '../apps/desktop/src/shutdown.ts';
 import { createProjectWindowHost } from '../apps/desktop/src/project-window-host.ts';
+import { createDesktopTray } from '../apps/desktop/src/tray-host.ts';
+import { desktopTrayHarness } from './helpers/desktop-tray-harness.ts';
 import { createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity } from '../apps/desktop/src/native-audio-preview-host.ts';
 import { NATIVE_AUDIO_CHANNEL } from '../apps/desktop/src/native-audio-preview-protocol.ts';
 import { consumeNativeProjectEntry } from '../apps/desktop/src/project-entry-admission.ts';
 import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from '../apps/desktop/src/project-window-recovery.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter, type ProjectQuitWindow, type ProjectWindowRestartOptions } from '../apps/desktop/src/project-window-quit.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
-import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
+import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
@@ -146,7 +148,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(records.windows.indexOf(this));
     }
   }
-  const context = vm.createContext({ app, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ app, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
@@ -208,7 +210,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
           (error: {code?: string}) => { records.starts.push({ error }); throw error; }) });
       }
     },
-    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL,
+    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, isProjectWindowRequest, NATIVE_AUDIO_CHANNEL,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {

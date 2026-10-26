@@ -1,5 +1,29 @@
 import type { MessageCatalog } from '../types.ts';
 export const nativeMessages = {
+  "native.trayShow": {
+    "zh-Hans": "显示 {name}",
+    "zh-Hant": "顯示 {name}",
+    "en": "Show {name}",
+    "ja": "{name} を表示"
+  },
+  "native.trayHide": {
+    "zh-Hans": "隐藏到托盘",
+    "zh-Hant": "隱藏至系統匣",
+    "en": "Hide to tray",
+    "ja": "トレイに隠す"
+  },
+  "native.traySettings": {
+    "zh-Hans": "设置…",
+    "zh-Hant": "設定…",
+    "en": "Settings…",
+    "ja": "設定…"
+  },
+  "native.trayQuit": {
+    "zh-Hans": "退出 {name}",
+    "zh-Hant": "結束 {name}",
+    "en": "Quit {name}",
+    "ja": "{name} を終了"
+  },
   "native.application": {
     "zh-Hans": "应用",
     "zh-Hant": "應用程式",

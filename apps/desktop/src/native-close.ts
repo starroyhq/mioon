@@ -445,6 +445,9 @@ export function installNativeCloseAdmission(win: NativeCloseWindow, options: Nat
     return begin('reload', sourceUrl).result;
   }
   return {
+    /** Presentation only: hiding must not conceal an in-flight native close or
+     * reload. This state cannot grant or replace any admission ticket. */
+    get pending() { return active !== null || loading.size !== 0; },
     /** Only the captured, already-allowed current URL is reloadable. Callers
      * cannot supply a destination or repurpose a close approval. */
     requestReload,

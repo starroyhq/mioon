@@ -29,11 +29,13 @@ import { consumeNativeProjectEntry } from '../apps/desktop/src/project-entry-adm
 import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from '../apps/desktop/src/project-window-recovery.ts';
 import { MultiWindowQuitCoordinator, MultiWindowRestartCoordinator, createProjectWindowQuitRouter } from '../apps/desktop/src/project-window-quit.ts';
 import { confirmOwnedWindowRestart } from '../apps/desktop/src/project-window-confirmation.ts';
-import { PROJECT_WINDOW_CHANNEL } from '../apps/desktop/src/project-window-protocol.ts';
+import { PROJECT_WINDOW_CHANNEL, isProjectWindowRequest } from '../apps/desktop/src/project-window-protocol.ts';
 import { installNativeCloseAdmission } from '../apps/desktop/src/native-close.ts';
 import * as security from '../apps/desktop/src/security.ts';
 import { windowChromeOptions, MAC_TRAFFIC_LIGHT_POSITION } from '../apps/desktop/src/window-chrome.ts';
 import { settingsWindowOptions } from '../apps/desktop/src/settings-window.ts';
+import { createDesktopTray } from '../apps/desktop/src/tray-host.ts';
+import { desktopTrayHarness } from './helpers/desktop-tray-harness.ts';
 import { createDesktopWindowAppearance } from '../apps/desktop/src/window-appearance.ts';
 
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
@@ -51,6 +53,7 @@ async function until(predicate: () => unknown) {
 // Only OS boundaries are fake. No Electron, native vault, utility or media runs.
 // Deferred gates expose causality; they do not claim native event timing.
 async function harness(t: test.TestContext, options: DesktopHarnessOptions<DesktopHarnessWindow> = {}) {
+  const nativeTray = desktopTrayHarness();
   const r: Omit<DesktopHarnessRecords<Window, string>, 'settings' | 'starts'> = { scopes: [], validations: [], backends: [], children: [], sessions: [], windows: [],
     connections: [], connectionWrites: [], dialogs: [], dialogParents: [], syncDialogs: [], nativeChecks: [], drains: 0, removals: 0,
     quits: 0, finished: 0, exits: [], settingsCloses: 0, lutStoreCalls: [] };
@@ -98,12 +101,12 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     });
     r.children.push(child); return child;
   }
-  interface Window extends DesktopHarnessWindow {closedDelivered: boolean; shows: number; focuses: number; flushes: number; index: number; disposition: string; entryTickets: Map<string, string>; popupPolicy(): {action: string};}
+  interface Window extends DesktopHarnessWindow {closedDelivered: boolean; visible: boolean; hides: number; shows: number; focuses: number; flushes: number; index: number; disposition: string; entryTickets: Map<string, string>; popupPolicy(): {action: string};}
   class Window extends EventEmitter {
     static getFocusedWindow() { return options.focusedWindow ? options.focusedWindow(r.windows) : r.windows.findLast(window => !window.destroyed) ?? null; }
     constructor(config: DesktopHarnessWindowConfig) {
       super(); this.config = config; this.destroyed = false; this.closedDelivered = false;
-      this.urls = []; this.shows = 0; this.focuses = 0; this.flushes = 0;
+      this.urls = []; this.shows = 0; this.focuses = 0; this.flushes = 0; this.visible = false; this.hides = 0;
       this.index = r.windows.length;
       this.disposition = options.disposition?.(this.index) ?? 'clean';
       let closeToken: string|null = null, closeSerial = 0, capturedDisposition: string|null = null;
@@ -157,9 +160,9 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       this.emit('close', { preventDefault() { prevented = true; } });
       if (!prevented) this.destroy();
     }
-    show() { this.shows++; }
-    showInactive() { this.shows++; }
-    hide() {}
+    show() { this.shows++; this.visible = true; this.emit('show'); }
+    showInactive() { this.shows++; this.visible = true; this.emit('show'); }
+    hide() { this.hides++; this.visible = false; }
     focus() { this.focuses++; }
     async loadURL(url: string) {
       this.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url });
@@ -169,7 +172,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(this.index, this.urls.length, url);
     }
   }
-  const context = vm.createContext({ app, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ app, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
@@ -226,7 +229,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       r.sessions.push(value); return value;
     } },
     ...security, createProjectWindowHost, MultiWindowQuitCoordinator, MultiWindowRestartCoordinator,
-    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL,
+    createProjectWindowQuitRouter, confirmOwnedWindowRestart, PROJECT_WINDOW_CHANNEL, isProjectWindowRequest, NATIVE_AUDIO_CHANNEL,
     createNativeAudioPreviewHost, createNativeAudioPreviewSigningIdentity, consumeNativeProjectEntry,
     observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident,
     ipcMain: { handle(channel: string, handler: (...values: unknown[]) => unknown) {
@@ -255,7 +258,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
     [APP_LANGUAGE_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, NATIVE_AUDIO_CHANNEL, PROJECT_WINDOW_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL].sort());
   const get = (text: string) => vm.runInContext(text, context);
   t.after(async () => {
-    get('quitting = true'); options.release?.();
+    get('quitting = true; trayHost?.dispose()'); options.release?.();
     for (const child of r.children) child.emit('exit', 0);
     for (const window of r.windows) { window.destroy(); window.deliverClosed(); }
     await tick();
@@ -263,8 +266,9 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   });
   await until(() => menu);
   return {
-    r, app, get, initial: () => initial,
+    r, app, get, nativeTray, initial: () => initial,
     restart: () => menu.find((item: { label: string; }) => item.label === '应用')!.submenu.find((item: { label: string; }) => item.label === '重启本地服务')!.click(),
+    newProject: () => menu.find(item => item.label === '应用')!.submenu.find(item => item.label === '新建项目')!.click(),
     reload: () => menu.find((item: { label: string; }) => item.label === '应用')!.submenu.find((item: { label: string; }) => item.label === '重新载入界面')!.click(),
     activate: () => app.emit('activate'),
     fatals: () => r.dialogs.filter(item => item.title === '无法启动 Mioon'),
@@ -418,7 +422,8 @@ test('old closed, ready-to-show and renderer events cannot affect a replacement'
   assert.equal(replacement.shows, 0); assert.equal(old.shows, 0); assert.equal(f.rendererDialogs().length, 0);
   assert.equal(f.get('win'), replacement);
   f.activate(); await tick(); f.assertCurrent(1); assert.equal(f.r.windows.length, 2);
-  replacement.emit('ready-to-show'); assert.equal(replacement.shows, 1);
+  assert.equal(replacement.shows, 1, 'explicit activation can show the already committed replacement before ready-to-show');
+  replacement.emit('ready-to-show'); assert.equal(replacement.shows, 2);
 });
 
 test('activate cannot navigate to the old origin while its session is clearing', async t => {
@@ -566,6 +571,167 @@ async function openOwnedEditor(f: Awaited<ReturnType<typeof harness>>) {
     { action: 'editor-status', contextId: host.contextFor(editor).contextId, projectId, phase: 'ready' }), true);
   return { launcher, editor };
 }
+
+test('actual main retains one application tray across backend restart and destroys it only after successful Quit', async t => {
+  const f = await harness(t); await f.initial();
+  const tray = f.nativeTray.trays[0];
+  assert.equal(f.nativeTray.trays.length, 1); assert.equal(tray.image.template, true);
+  assert.deepEqual(f.nativeTray.paths, ['/synthetic/app/icons/tray/trayTemplate.png']);
+  await f.restart();
+  assert.equal(f.r.backends.length, 2); assert.equal(f.nativeTray.trays.length, 1); assert.equal(tray.destroys, 0);
+  tray.menu.at(-1)!.click!(); await until(() => f.r.finished === 1);
+  assert.equal(tray.destroys, 1); assert.equal(f.get('windowHost'), null);
+});
+
+for (const disposition of ['dirty', 'unknown']) test(`actual hidden ${disposition} editor is presented before native inspection and cancelling Quit retains tray and backend`, async t => {
+  const f = await harness(t, {disposition: index => index === 1 ? disposition : 'clean', dialog: () => ({response: 1})}); await f.initial();
+  const {editor} = await openOwnedEditor(f), tray = f.nativeTray.trays[0];
+  await f.get('performTrayAction')('hide'); assert.equal(editor.visible, false);
+  tray.menu.at(-1)!.click!(); await until(() => f.r.dialogParents.includes(editor)); await tick();
+  assert.equal(editor.visible, true); assert.equal(editor.destroyed, false);
+  assert.equal(tray.destroys, 0); assert.equal(f.r.children[0].messages.includes('stop'), false);
+  assert.equal(f.get('quitRouter.isPending'), false);
+  await f.get('performTrayAction')('hide'); assert.equal(editor.visible, false);
+  await f.get('performTrayAction')('show'); assert.equal(editor.visible, true);
+  assert.equal(f.r.windows.length, 2); assert.equal(f.r.drains, 0);
+});
+
+test('actual tray settings restores a trusted parent, remains a singleton and forbids hiding a modal', async t => {
+  const f = await harness(t); await f.initial(); const parent = f.r.windows[0];
+  await f.get('performTrayAction')('hide'); assert.equal(parent.visible, false);
+  const first = f.get('performTrayAction')('settings'), duplicate = f.get('performTrayAction')('settings');
+  assert.equal(first, duplicate); await first;
+  const settings = f.r.windows.at(-1)!; await f.get('windowHost').loadFor(settings);
+  assert.equal(parent.visible, true); assert.equal(settings.config.parent, parent);
+  const windows = f.r.windows.length; await f.get('performTrayAction')('settings');
+  assert.equal(f.r.windows.length, windows); assert.equal(f.get('trayCanHide')(), false);
+  const hides = parent.hides; await f.get('performTrayAction')('hide'); assert.equal(parent.hides, hides);
+});
+
+for (const action of ['settings', 'new-project', 'open-project']) test(`the first zero-window tray ${action} completes after its exact assigned parent load`, async t => {
+  const load = deferred();
+  const f = await harness(t, {load: index => index === 1 ? load.promise : undefined, release: () => load.resolve()}); await f.initial();
+  f.r.windows[0].close(); await until(() => f.r.windows[0].destroyed);
+  const opening = f.get('performTrayAction')(action), parent = f.r.windows[1], host = f.get('windowHost');
+  assert.ok(parent); const beforeLoad = host.contextFor(parent).contextId;
+  await until(() => parent.urls.length === 1);
+  assert.notEqual(host.contextFor(parent).contextId, beforeLoad, 'the initial assigned navigation rotates the empty document identity');
+  assert.equal(parent.visible, false); load.resolve(); await opening;
+  assert.equal(parent.visible, true);
+  if (action === 'settings') {
+    assert.equal(f.r.windows.length, 3, 'one initial click must attach settings after its own parent is trusted');
+    const settings = f.r.windows[2]; await host.loadFor(settings);
+    assert.equal(settings.config.parent, parent); assert.equal(host.contextFor(parent).settingsModalOpen, true);
+  } else {
+    assert.equal(f.r.windows.length, 2);
+    assert.equal(host.contextFor(parent).entryMode, action === 'new-project' ? 'new' : 'open');
+    assert.equal(host.contextFor(parent).entryVersion, 1);
+  }
+});
+
+test('a second same-URL navigation cannot borrow the first zero-window tray Settings intent', async t => {
+  const load = deferred();
+  const f = await harness(t, {load: index => index === 1 ? load.promise : undefined, release: () => load.resolve()}); await f.initial();
+  f.r.windows[0].close(); await until(() => f.r.windows[0].destroyed);
+  const opening = f.get('performTrayAction')('settings'), parent = f.r.windows[1], host = f.get('windowHost');
+  await until(() => parent.urls.length === 1);
+  const initial = host.contextFor(parent).contextId, replacement = parent.loadURL(parent.urls[0]);
+  assert.notEqual(host.contextFor(parent).contextId, initial); load.resolve(); await Promise.all([opening, replacement]);
+  assert.equal(f.r.windows.length, 2); assert.equal(host.contextFor(parent).settingsModalOpen, false);
+});
+
+test('a fresh Settings after Hide supersedes the cancelled loading intent without duplicating windows', async t => {
+  const load = deferred(); const f = await harness(t, {load: index => index === 1 ? load.promise : undefined, release: () => load.resolve()}); await f.initial();
+  f.r.windows[0].close(); await until(() => f.r.windows[0].destroyed);
+  const old = f.get('performTrayAction')('settings'); await until(() => f.r.windows.length === 2);
+  await f.get('performTrayAction')('hide');
+  const fresh = f.get('performTrayAction')('settings'); assert.notEqual(fresh, old);
+  load.resolve(); await Promise.all([old, fresh]);
+  assert.equal(f.r.windows.length, 3); assert.equal(f.r.windows[2].config.parent, f.r.windows[1]);
+});
+
+test('a newer native project-entry intent prevents a late tray Settings sheet', async t => {
+  const load = deferred(); const f = await harness(t, {load: index => index === 1 ? load.promise : undefined, release: () => load.resolve()}); await f.initial();
+  f.r.windows[0].close(); await until(() => f.r.windows[0].destroyed);
+  const opening = f.get('performTrayAction')('settings'); await until(() => f.r.windows.length === 2);
+  f.newProject(); load.resolve(); await opening;
+  assert.equal(f.r.windows.length, 2); assert.equal(f.get('windowHost').contextFor(f.r.windows[1]).entryMode, 'new');
+});
+
+test('Quit during a tray parent load cannot revive its window or attach a settings sheet on late completion', async t => {
+  const load = deferred(); const f = await harness(t, {load: index => index === 1 ? load.promise : undefined, release: () => load.resolve()}); await f.initial();
+  f.r.windows[0].close(); await until(() => f.r.windows[0].destroyed);
+  const opening = f.get('performTrayAction')('settings'); await until(() => f.r.windows.length === 2);
+  f.nativeTray.trays[0].menu.at(-1)!.click!(); await until(() => f.r.finished === 1);
+  load.resolve(); await opening; assert.equal(f.r.windows.length, 2); assert.equal(f.r.windows[1].destroyed, true);
+  assert.equal(f.nativeTray.trays[0].destroys, 1); assert.deepEqual(f.fatals(), []);
+});
+
+test('overlapping native dialogs retain the hide guard until both exact tokens settle', async t => {
+  const first = deferred(), second = deferred(); let calls = 0;
+  const f = await harness(t, {dialog: () => (++calls === 1 ? first : second).promise}); await f.initial();
+  const parent = f.r.windows[0], context = f.get('windowContext'), show = f.get('showOwnedDialog');
+  const one = show(parent, context, {title: 'synthetic one', cancelId: 1}), two = show(parent, context, {title: 'synthetic two', cancelId: 1});
+  assert.equal(f.get('trayCanHide')(), false); first.resolve({response: 1}); await one;
+  assert.equal(f.get('trayCanHide')(), false); second.resolve({response: 1}); await two;
+  assert.equal(f.get('trayCanHide')(), true);
+});
+
+for (const kind of ['renderer-recovery', 'blocked-leave'] as const) test(`an active ${kind} native dialog denies tray entry actions and Show restores its exact owner`, async t => {
+  const response = deferred(), title = kind === 'renderer-recovery' ? '界面需要重新载入' : '暂时无法安全离开';
+  const f = await harness(t, {disposition: index => kind === 'blocked-leave' && index === 1 ? 'blocked' : 'clean',
+    dialog: value => value.title === title ? response.promise : {response: 0}, release: () => response.resolve({response: 2})});
+  await f.initial(); const {editor} = await openOwnedEditor(f), host = f.get('windowHost');
+  const projectB = '79000000-0000-4000-8000-000000000002', token = randomUUID(); editor.entryTickets.set(token, projectB);
+  await f.r.bridge!({sender: editor.webContents, senderFrame: editor.webContents.mainFrame},
+    {action: 'open', contextId: host.contextFor(editor).contextId, projectId: projectB, entryToken: token, remember: true});
+  const other = f.r.windows.at(-1)!; await host.loadFor(other);
+  const tray = f.nativeTray.trays[0], staleMenu = tray.menu;
+  if (kind === 'renderer-recovery') editor.webContents.emit('unresponsive'); else editor.close();
+  await until(() => f.r.dialogs.some(item => item.title === title));
+  assert.equal(tray.menu[0].enabled, true);
+  for (const index of [3, 4, 5]) assert.equal(tray.menu[index].enabled, false);
+  const windows = f.r.windows.length, before = f.r.windows.map(window => host.contextFor(window).entryVersion);
+  for (const index of [3, 4, 5]) staleMenu[index].click!();
+  for (const action of ['new-project', 'open-project', 'settings']) await f.get('performTrayAction')(action);
+  assert.equal(f.r.windows.length, windows); assert.deepEqual(f.r.windows.map(window => host.contextFor(window).entryVersion), before);
+  const focused = editor.focuses, otherFocused = other.focuses;
+  await f.get('performTrayAction')('show');
+  assert.equal(editor.focuses > focused, true); assert.equal(other.focuses, otherFocused);
+  assert.equal(f.r.windows.length, windows); assert.equal(f.get('nativeDialogs').size, 1);
+  response.resolve({response: kind === 'renderer-recovery' ? 2 : 0});
+  await until(() => f.get('nativeDialogs').size === 0);
+});
+
+test('a native dialog beginning and ending during parent load revokes an older tray Settings intent', async t => {
+  const load = deferred(), response = deferred();
+  const f = await harness(t, {load: index => index === 1 ? load.promise : undefined,
+    dialog: value => value.title === 'synthetic native recovery' ? response.promise : {response: 0},
+    release: () => {load.resolve(); response.resolve({response: 1});}}); await f.initial();
+  f.r.windows[0].close(); await until(() => f.r.windows[0].destroyed);
+  const opening = f.get('performTrayAction')('settings'), parent = f.r.windows[1], host = f.get('windowHost');
+  await until(() => parent.urls.length === 1);
+  const notice = f.get('showOwnedDialog')(parent, f.get('windowContext'), {title: 'synthetic native recovery', cancelId: 1});
+  assert.equal(f.get('nativeDialogs').size, 1); response.resolve({response: 1}); await notice;
+  assert.equal(f.get('nativeDialogs').size, 0); load.resolve(); await opening;
+  assert.equal(f.r.windows.length, 2); assert.equal(host.contextFor(parent).settingsModalOpen, false);
+});
+
+test('native reload inspection cannot be hidden while its original preference drain is pending', async t => {
+  const drain = deferred(); const f = await harness(t, {flush: () => drain.promise, release: () => drain.resolve(true)}); await f.initial();
+  f.reload(); await until(() => f.r.windows[0].flushes === 1);
+  assert.equal(f.get('trayCanHide')(), false); const hides = f.r.windows[0].hides;
+  await f.get('performTrayAction')('hide'); assert.equal(f.r.windows[0].hides, hides);
+  drain.resolve(true); await until(() => !f.get('windowAdmissions').get(f.r.windows[0]).pending);
+  assert.equal(f.get('trayCanHide')(), true);
+});
+
+test('loss of the actual tray restores the retained UI and cannot hide it again', async t => {
+  const f = await harness(t); await f.initial(); const parent = f.r.windows[0];
+  await f.get('performTrayAction')('hide'); assert.equal(parent.visible, false);
+  f.nativeTray.trays[0].destroy(); f.get('trayHost').refresh(); assert.equal(parent.visible, true);
+  const hides = parent.hides; await f.get('performTrayAction')('hide'); assert.equal(parent.hides, hides);
+});
 
 test('actual main creates a parent-bound settings modal and blocks parent close/reload without spending admission', async t => {
   const f = await harness(t, {dialog: () => ({response: 1})}); await f.initial();

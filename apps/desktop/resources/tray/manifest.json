@@ -1,0 +1,35 @@
+{
+  "antialiasFringePixels" : 1,
+  "bodyBounds" : [
+    194,
+    277,
+    866,
+    642
+  ],
+  "componentAlphaGreaterThan" : 4,
+  "connectivity" : 8,
+  "corePixels" : 254318,
+  "icoSizes" : [
+    16,
+    20,
+    24,
+    32,
+    48,
+    64
+  ],
+  "logicalSize" : 18,
+  "macDpi" : [
+    72,
+    144
+  ],
+  "macPixels" : [
+    18,
+    36
+  ],
+  "removedDetachedPixels" : 16176,
+  "sourceHeight" : 1254,
+  "sourcePath" : "apps/web/src/assets/mioon-mark.png",
+  "sourceSHA256" : "6a752832ac662ed71dc6b4e5871dc8490b38435fb18667b4e6f71162a38d8191",
+  "sourceWidth" : 1254,
+  "version" : 1
+}

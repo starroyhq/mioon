@@ -28,13 +28,20 @@ export function createAgentEditingProtection({ projectId, ownerId, targets, gene
   // Captured target IDs never follow a selection change. Disposal leaves the
   // durable claim intact, including when the window loses its connection.
   const pinned = targets.map(target => ({ ...target }));
-  let state: AgentEditingState = { phase: 'idle', claims: [], pending: null }, active = true, busy = false, sequence = 0, admissionEpoch = 0, invalidated = false;
+  let state: AgentEditingState = { phase: 'idle', claims: [], pending: null }, active = true, busy = false, sequence = 0, admissionEpoch = 0, invalidated = false, hasObservation = false;
   const publish = (patch: Partial<AgentEditingState>) => { state = { ...state, ...patch }; if (active) onChange(state); };
   const owned = (claims: AgentTaskClaim[]) => claims.filter(claim => claim.projectId === projectId && claim.ownerId === ownerId);
   const matches = (claims: AgentTaskClaim[]) => pinned.every(target => claims.some(claim => claim.target.kind === target.kind && claim.target.id === target.id && claim.state === 'active'));
   async function refresh() {
-    if (!active || busy) return false; busy = true; const epoch = admissionEpoch, wasActive=state.phase==='active'; if(!wasActive)publish({ phase: 'loading' });
+    if (!active || busy) return false;
+    const knownIdle = hasObservation && state.phase === 'idle' && !state.pending;
+    busy = true; const epoch = admissionEpoch, wasActive=state.phase==='active';
+    // A verified empty ledger remains noneditable during a GET. Its display
+    // phase must not invalidate unrelated close consent on every background
+    // poll; the internal busy latch still prevents any new mutation.
+    if(!wasActive && !knownIdle)publish({ phase: 'loading' });
     try { const observed = state.pending && client.lookup ? await client.lookup(projectId,ownerId,state.pending.requestId) : await client.read(projectId, ownerId), claims = owned(observed.claims); if (!active || epoch !== admissionEpoch) return false;
+      hasObservation = true;
       for (const target of pinned) target.revision = observed.targets.find(value => value.kind === target.kind && value.id === target.id)?.revision ?? 0;
       if (state.pending) {
         const receiptMatches=!client.lookup||observed.receipt?.requestId===state.pending.requestId&&observed.receipt.ownerId===ownerId&&observed.receipt.projectId===projectId&&observed.receipt.generation===state.pending.generation&&observed.receipt.sequence===state.pending.sequence;
