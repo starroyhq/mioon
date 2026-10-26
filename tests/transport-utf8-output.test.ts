@@ -75,6 +75,8 @@ const textSites = {
   // The v2 HTTP test exercises real CLI snapshots and controls. Each helper's
   // stdout JSON and stderr diagnostics decode continuously before collection.
   'tests/agent-task-http-v2.test.ts': 6,
+  // Native Anthropic transport checks collect CLI JSON and diagnostics as UTF-8.
+  'tests/agent-anthropic-transports.test.ts': 2,
   'tests/headless-agent-secret-public-native.test.mjs': 2,
   // Native CLI smoke parses stdout; stderr is counted as raw bytes below.
   'tests/windows-node-host-smoke.test.mjs': 1,

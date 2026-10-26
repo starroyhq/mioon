@@ -71,8 +71,8 @@ and never trigger a hidden generation retry.
 
 The application retains the final submit fence, credential acquisition, bounded
 timeouts, cancellation, sanitized errors, redirect restrictions, polling,
-recovery and safe output download/publication. SDK blocking wait, automatic
-download and remote-cancel helpers are not used. Cancellation retains each
+recovery and safe output download/publication. SDK blocking wait, SDK-managed
+file writes and remote-cancel helpers are not used. Cancellation retains each
 provider's existing local-only behavior. Only injected offline transport tests
 have been performed; no paid generation or live-service verification is implied.
 
@@ -80,6 +80,24 @@ Desktop notices collect the SDK packages' supplied licenses. `mmx-cli@1.0.28`
 declares MIT in its published README but omits the LICENSE text and manifest
 license field; the desktop package records that upstream declaration and
 omission in a provenance notice, without fabricating a license text.
+
+#### Compatible auxiliary requests (2026-10-26)
+
+Compatible connection checks now use the same pinned OpenAI SDK's
+`models.list().asResponse()`. They inspect only the original HTTP status, without
+parsing model metadata or following pagination. The application's existing
+reachable/authentication/rate-limit status mapping is preserved.
+
+The first authenticated compatible video content request is assembled by
+`videos.downloadContent()`. A separate single-request bridge retains the real
+HTTP response for the host downloader; the SDK sees only a synthetic successful
+response and cannot interpret errors, consume media or follow redirects. The
+destination is checked before the request, and all later redirects are handled
+by the host with authentication permanently removed, including a return to the
+original host. Size/MP4 validation, partial-file cleanup, fsync and atomic
+publication remain host responsibilities. Veo file downloads and CDN downloads
+continue to use the host transport. No video submission/query behavior,
+historical task binding, public contract or stored snapshot changes here.
 
 MiniMax uses its official TypeScript SDK without a REST fallback. The reviewed
 SDK rejects H3 resolutions other than `2K`, and that validator remains active.

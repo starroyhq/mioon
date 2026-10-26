@@ -6,7 +6,7 @@ import type {AcquiredImageCredential} from './settings.ts';
 import {IMAGE_EDIT_LIMITS} from '../../../contracts/src/images.ts';
 import {createOpenAIImageAdapter, createCompatibleImageAdapter} from './adapter.ts';
 import type {ImageAdapterResult} from './adapter.ts';
-import {createImageJsonTransport, createImageEditJsonTransport, createCompatibleImageJsonTransport} from './network.ts';
+import {createImageJsonTransport, createImageEditTransport, createCompatibleImageJsonTransport} from './network.ts';
 import {imageAdapterError, parseImageAdapterInput} from './profiles.ts';
 
 type ImageSettingsService = Awaited<ReturnType<typeof createImageSettings>>;
@@ -20,7 +20,7 @@ interface GatewaySlot {
   configuration: (configuration: unknown, snapshot: unknown) => Record<string, unknown>;
   credential?: (value: unknown, expected: unknown) => AcquiredImageCredential;
   transport: (options: GatewayTransportOptions, snapshot: unknown) => unknown;
-  adapter: (options: {transport?: unknown}) => GatewayAdapter;
+  adapter: (options: {transport?: unknown; baseUrl?: unknown}) => GatewayAdapter;
 }
 export interface Gateways {generate(input: unknown, options?: {signal?: AbortSignal; beforeDispatch?: unknown; settingsRevision?: unknown; configuration?: unknown; sourceBytes?: unknown}): Promise<ImageAdapterResult>}
 const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -60,7 +60,7 @@ function createReviewedImageGateway({settings, lookup = lookupDns, httpsRequest 
       const credential = slot.credential ? slot.credential(acquired, expected) : acquired;
       if (!credential.apiKey) throw imageSettingsError('IMAGE_SETTINGS_NOT_CONFIGURED');
       const transport = slot.transport({lookup, httpsRequest, apiKey: credential.apiKey, baseUrl: expected.configuration.baseUrl}, snapshot);
-      return slot.adapter({transport}).generate(snapshot, {signal, ...(privateSource === undefined ? {} : {sourceBytes: privateSource}), beforeDispatch: () => {
+      return slot.adapter({transport, baseUrl: expected.configuration.baseUrl}).generate(snapshot, {signal, ...(privateSource === undefined ? {} : {sourceBytes: privateSource}), beforeDispatch: () => {
         // No await after this current-config assertion. The caller immediately
         // commits its review/task dispatch fence, then transport calls end().
         const confirmed = service[IMAGE_SETTINGS_ASSERT_CURRENT](expected);
@@ -83,7 +83,7 @@ export function createLiveImageGateway(options: ReviewedImageGatewayOptions = {}
     },
     configuration: () => Object.freeze({...DEFAULT_IMAGE_CONFIGURATION, enabled: true}),
     credential: sanitizeImageCredentialResult,
-    transport: (options, snapshot) => isEdit(snapshot) ? createImageEditJsonTransport(options) : createImageJsonTransport(options),
+    transport: (options, snapshot) => isEdit(snapshot) ? createImageEditTransport(options) : createImageJsonTransport(options),
     adapter: createOpenAIImageAdapter,
   });
 }

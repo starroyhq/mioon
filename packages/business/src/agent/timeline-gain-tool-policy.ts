@@ -2,6 +2,8 @@ import {createHash} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import {AGENT_TIMELINE_GAIN_CONTEXT, AGENT_TIMELINE_GAIN_TOOL, isAgentTimelineGainArguments, isAgentTimelineGainReviewTarget} from '@mioon/contracts/agent-timeline-gain';
 import type {AgentTimelineGainModelContext, AgentTimelineGainReviewTarget} from '@mioon/contracts/agent-timeline-gain';
+import {AGENT_PROTOCOLS} from '../../../contracts/src/agent-protocol.ts';
+import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
 
 export const TIMELINE_GAIN_EDIT_TOOL_LIMITS = Object.freeze({maxModelRequests: 2, maxToolCalls: 1, maxArgumentsBytes: 1024,
   maxResultBytes: 8192, maxContextBytes: 30 * 1024, maxContinuationBytes: 64 * 1024, minGain: 0, maxGain: 2});
@@ -56,13 +58,13 @@ export function selectedTimelineGainMessage(message: unknown, target: unknown, m
   if (Buffer.byteLength(result) > TIMELINE_GAIN_EDIT_TOOL_LIMITS.maxContextBytes) fail('AGENT_CHAT_LIMIT');
   return result;
 }
-export type TimelineGainConsent = {destination: string; protocol: 'chat_completions' | 'responses'; model: string;
+export type TimelineGainConsent = {destination: string; protocol: AgentProtocol; model: string;
   context: typeof AGENT_TIMELINE_GAIN_CONTEXT; projectId: string; schemaVersion: number; catalogHash: string;
   maxModelRequests: number; maxToolCalls: number; maxResultBytes: number; minGain: number; maxGain: number;
   timelineId: string; clipId: string; expectedRevision: number; reviewTarget: AgentTimelineGainReviewTarget};
 export function parseTimelineGainConsent(value: unknown): TimelineGainConsent {
   if (!exact(value, GAIN_CONSENT_FIELDS) || value.context !== AGENT_TIMELINE_GAIN_CONTEXT || !wellFormed(value.destination) || value.destination.length > 2080 ||
-    (value.protocol !== 'chat_completions' && value.protocol !== 'responses') || !wellFormed(value.model) || value.model.length > 200 || !uuid(value.projectId) || !uuid(value.timelineId) || !uuid(value.clipId) ||
+    (typeof value.protocol !== 'string' || !Object.hasOwn(AGENT_PROTOCOLS, value.protocol)) || !wellFormed(value.model) || value.model.length > 200 || !uuid(value.projectId) || !uuid(value.timelineId) || !uuid(value.clipId) ||
     !Number.isSafeInteger(value.expectedRevision) || Number(value.expectedRevision) < 1 || Number(value.expectedRevision) >= Number.MAX_SAFE_INTEGER || !Number.isSafeInteger(value.schemaVersion) ||
     typeof value.catalogHash !== 'string' || !/^[a-f0-9]{64}$/u.test(value.catalogHash) || !['maxModelRequests', 'maxToolCalls', 'maxResultBytes'].every(key => Number.isSafeInteger(value[key]) && Number(value[key]) > 0) ||
     typeof value.minGain !== 'number' || !Number.isFinite(value.minGain) || typeof value.maxGain !== 'number' || !Number.isFinite(value.maxGain) ||

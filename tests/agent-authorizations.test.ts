@@ -48,6 +48,26 @@ test('first send is denied; grants persist by exact endpoint/model/scope across 
   assert.equal((await stat(f.file)).mode&0o777,0o600);
 });
 
+test('Messages authorization binds its complete endpoint and protocol changes cannot reuse a CC grant',async t=>{
+  for(const presetId of ['custom','minimax']){
+  const f=await fixture(t), initial=await f.settings.get();
+  const custom={presetId,platformId:presetId==='custom'?'custom':'china',baseUrl:'https://compat.example.com/anthropic',model:'explicit-model',protocol:'chat_completions' as const};
+  await f.settings.put({expectedRevision:initial.revision,configuration:custom,secret:{action:'keep'}});
+  const cc=await f.input();await f.authorizations.grant(cc);f.authorizations.assertAuthorized(target(cc));
+  const current=await f.settings.get();
+  await f.settings.put({expectedRevision:current.revision,configuration:{...custom,protocol:'anthropic_messages'},secret:{action:'keep'}});
+  const messages=await f.input();assert.equal(messages.destination,'https://compat.example.com/anthropic/v1/messages');
+  assert.deepEqual(f.authorizations.snapshot((await f.settings.get()).configuration).scopes,[]);
+  assert.throws(()=>f.authorizations.assertAuthorized(target(messages)),{code:'AGENT_AUTHORIZATION_REQUIRED'});
+  await assert.rejects(f.authorizations.grant({...cc,expectedRevision:messages.expectedRevision,requestId:randomUUID()}),{code:'AGENT_AUTHORIZATION_SETTINGS_CONFLICT'});
+  for(const scope of AGENT_AUTHORIZATION_SCOPES)assert.equal(agentAuthorizationSchemas['agent.authorization.grant'].safeParse({...messages,scope}).success,true);
+  await f.authorizations.grant(messages);f.reopen();f.authorizations.assertAuthorized(target(messages));
+  assert.throws(()=>f.authorizations.assertAuthorized({...target(messages),destination:'https://compat.example.com/other/v1/messages'}),{code:'AGENT_AUTHORIZATION_REQUIRED'});
+  assert.equal(agentAuthorizationSchemas['agent.authorization.grant'].safeParse({...messages,destination:'https://compat.example.com/anthropic/messages'}).success,false);
+  assert.equal(agentAuthorizationSchemas['agent.authorization.grant'].safeParse({...messages,destination:'https://compat.example.com/anthropic/v1/messages?key=never'}).success,false);
+  }
+});
+
 test('CAS, exact receipts and revocation cannot revive an old grant',async t=>{
   const f=await fixture(t),input=await f.input(),receipt=await f.authorizations.grant(input);
   assert.deepEqual(await f.authorizations.grant(input),receipt);

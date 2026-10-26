@@ -25,6 +25,7 @@ import {createArkSdkClient} from './packages/business/src/video/ark-sdk.ts';
 import {createVeoSdkClient} from './packages/business/src/video/veo-sdk.ts';
 import {createRunwaySdkClient} from './packages/business/src/video/runway-sdk.ts';
 import {createCompatibleVideoSdkClient} from './packages/business/src/video/compatible-sdk.ts';
+import {checkCompatibleVideoService} from './packages/business/src/video/compatible-check.ts';
 import {createMinimaxSdkClient} from './packages/business/src/video/minimax-sdk.ts';
 
 function capture(receipt,task){
@@ -98,6 +99,16 @@ export async function runBundleChecks(){
     assert.equal(form.get('model'),model);assert.equal(form.get('prompt'),input.prompt);assert.equal(form.get('seconds'),'8');assert.equal(form.get('size'),'1280x720');
     const image=form.get('input_reference');assert.ok(image instanceof File);assert.equal(image.name,'reference.png');assert.equal(image.type,'image/png');assert.deepEqual(Buffer.from(await image.arrayBuffer()),Buffer.from('first'));
     summary.compatible=f.calls.length;
+    let observations=0,bodyReads=0;
+    const content=await sdk.downloadContent(id,{headers:{authorization:'Bearer synthetic-bound-key'},fetchImpl:async(url,options)=>{
+      observations++;assert.equal(url,'https://compatible.example/v1/videos/'+id+'/content');assert.equal(options.method,'GET');assert.equal(options.redirect,'manual');assert.equal(new Headers(options.headers).get('authorization'),'Bearer synthetic-bound-key');
+      return new Response(new ReadableStream({pull(controller){bodyReads++;controller.enqueue(new Uint8Array([1]));controller.close();}},{highWaterMark:0}),{status:302,headers:{location:'https://cdn.invalid/output.mp4'}});
+    }});
+    assert.equal(content.status,302);assert.equal(bodyReads,0);await content.body.cancel();
+    assert.deepEqual(await checkCompatibleVideoService({baseUrl:'https://compatible.example/v1',apiKey:'synthetic-probe-key',fetchImpl:async(url,options)=>{
+      observations++;assert.equal(url,'https://compatible.example/v1/models');assert.equal(options.method,'GET');assert.equal(options.redirect,'error');assert.equal(new Headers(options.headers).get('authorization'),'Bearer synthetic-probe-key');return new Response('not JSON');
+    }}),{result:'ok'});
+    summary.compatibleObservations=observations;
   }
   {
     const id='bundled-minimax-task',model='MiniMax-H3';
@@ -130,5 +141,5 @@ globalThis.fetch=async()=>{throw Error('Real HTTP is forbidden before bundle loa
 require(bundle).runBundleChecks().then(result=>{process.stdout.write(JSON.stringify(result));},error=>{console.error(error);process.exitCode=1;});`;
   const env={...cleanEnvironment(),TMPDIR:root,TMP:root,TEMP:root};
   const result=await run(process.execPath,['-e',bootstrap,outfile],{cwd,env,timeout:45000,killSignal:'SIGKILL',maxBuffer:1024*1024});
-  assert.deepEqual(JSON.parse(result.stdout),{ark:2,veo:2,runway:2,compatible:2,minimax:2,forbiddenFetches:0});
+  assert.deepEqual(JSON.parse(result.stdout),{ark:2,veo:2,runway:2,compatible:2,compatibleObservations:2,minimax:2,forbiddenFetches:0});
 });

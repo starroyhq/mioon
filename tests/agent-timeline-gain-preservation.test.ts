@@ -42,6 +42,7 @@ const compatibility: FrozenClosure=JSON.parse((fs.readFileSync(new URL('./fixtur
 // type-erased hashes so later edits are still detected.
 const migrationMap: Record<string,{currentPath: string;legacySha256: string;currentSha256: string;typeErasedSha256: string}>=JSON.parse((fs.readFileSync(new URL('./fixtures/agent-gain-ts-migration-map.json',import.meta.url),'utf8') as string)).mapping;
 const subjectClosure: FrozenClosure=JSON.parse((fs.readFileSync(new URL('./fixtures/agent-gain-origin-main-subject-closure.json',import.meta.url),'utf8') as string));
+const protocolClosure: FrozenClosure=JSON.parse(fs.readFileSync(new URL('./fixtures/agent-gain-c3a0a57-protocol-closure.json',import.meta.url),'utf8'));
 const currentPath=(file: string)=>migrationMap[file]?.currentPath??file;
 // Deterministic drift detection for the current sources this harness loads.
 // Sources that keep changing on main are pinned to their reviewed current bytes
@@ -174,7 +175,7 @@ function historicalStore(t: test.TestContext,source: Pick<import('../packages/bu
 // Other live helpers still load their own transitive imports; this is not a
 // fully frozen application dependency graph or an application downgrade test.
 let frozen;
-async function loadFrozenValidators(fixture=baseline,readDependency=(file: string)=>fs.readFileSync(path.join(repo,currentPath(file)))){
+async function loadFrozenValidators(fixture=baseline,readDependency=(file: string)=>fs.readFileSync(path.join(repo,currentPath(file))),protocolDependencyClosure=protocolClosure){
  assert.equal(compatibility.sourceCommit,baseline.sourceCommit);
  assert.deepEqual(Object.keys(compatibility.sources).sort(),['packages/business/src/timeline-recovery.mjs','packages/contracts/src/edit-tasks.mjs','packages/contracts/src/workspace-backup.mjs','packages/contracts/src/workspace-restore-offline.mjs','packages/contracts/src/workspace-restore.mjs']);
  for(const [file,saved]of Object.entries(compatibility.sources)){assert.equal(Object.hasOwn(fixture.sources,file),false);assert.equal(saved.sha256,baseline.dependencyHashes[file]);}
@@ -184,7 +185,32 @@ async function loadFrozenValidators(fixture=baseline,readDependency=(file: strin
   'packages/business/src/timeline-inputs.mjs':'ec83abd83d7477d20db55a140d8197e0931403ad27686c8bb660a3a3a871cd7e',
  });
  assert.equal(subjectClosure.sourceCommit,baseline.sourceCommit);assert.deepEqual(Object.keys(subjectClosure.sources),['packages/contracts/src/subject-generation.mjs']);for(const[file,saved]of Object.entries(subjectClosure.sources)){assert.equal(saved.sha256,baseline.dependencyHashes[file]);assert.equal(sha(saved.text),saved.sha256);}
- fixture={...fixture,sources:{...fixture.sources,...compatibility.sources,...subjectClosure.sources},dependencyHashes:{...fixture.dependencyHashes,...compatibility.dependencyHashes}};
+ // These exact historical modules must not import the newly expanded live
+ // protocol enum into the old validator. Both protocol files are original git
+ // objects pinned by the existing baseline; presets/config were already frozen
+ // there. The new live config's local Messages root must also stay outside the
+ // old validator. Only these four verified keys omit a current-source migration
+ // hash. Every other direct dependency keeps the original drift checks below.
+ const protocolFiles=['packages/contracts/src/agent-protocol.mjs','packages/contracts/src/agent-protocol.ts'];
+ const existingProtocolFiles=['packages/business/src/agent/presets.mjs','packages/business/src/agent/config.mjs'];
+ assert.equal(protocolDependencyClosure.sourceCommit,baseline.sourceCommit);
+ assert.deepEqual(Object.keys(protocolDependencyClosure.sources).sort(),protocolFiles);
+ assert.deepEqual(protocolDependencyClosure.dependencyHashes,Object.fromEntries(protocolFiles.map(file=>[file,baseline.dependencyHashes[file]])));
+ for(const file of protocolFiles){
+  const saved=protocolDependencyClosure.sources[file],hash=baseline.dependencyHashes[file];
+  assert.equal(Object.hasOwn(fixture.sources,file),false,`${file}: protocol closure cannot override retained sources`);
+  assert.equal(saved.sha256,hash,`${file}: historical dependency pin must not be re-baselined`);
+  assert.equal(sha(saved.text),hash,`Frozen source changed: ${file}`);
+  assert.equal(migrationMap[file]?.legacySha256,hash,`${file}: historical migration pin must not be re-baselined`);
+ }
+ for(const file of existingProtocolFiles){
+  const saved=fixture.sources[file],hash=baseline.sources[file].sha256;
+  assert.equal(saved.sha256,hash,`${file}: historical source pin must not be re-baselined`);
+  assert.equal(sha(saved.text),hash,`Frozen source changed: ${file}`);
+  assert.equal(migrationMap[file]?.legacySha256,hash,`${file}: historical migration pin must not be re-baselined`);
+ }
+ const isolatedProtocolSources=new Set([...protocolFiles,...existingProtocolFiles]);
+ fixture={...fixture,sources:{...fixture.sources,...compatibility.sources,...subjectClosure.sources,...protocolDependencyClosure.sources},dependencyHashes:{...fixture.dependencyHashes,...compatibility.dependencyHashes}};
  for(const [file,hash]of Object.entries(fixture.dependencyHashes)){
   const frozenSource=fixture.sources[file];
   if(frozenSource){assert.equal(sha(frozenSource.text),hash,`Baseline dependency changed: ${file}; explicitly freeze and review it before using this harness.`);continue;}
@@ -197,7 +223,7 @@ async function loadFrozenValidators(fixture=baseline,readDependency=(file: strin
   assert.equal(path.posix.normalize(file),file);assert.ok(!file.split('/').includes('..'));
   assert.equal(sha(saved.text),saved.sha256,`Frozen source changed: ${file}`);
   const mapping=migrationMap[file];
-  if(mapping)assertPinnedCurrent(file);
+  if(mapping&&!isolatedProtocolSources.has(file))assertPinnedCurrent(file);
  }
  const directory=fs.mkdtempSync(path.join(fs.realpathSync(tmpdir()),'mioon-old-agent-modules-'));
  const absolute=(file: string)=>pathToFileURL(path.join(repo,file)).href;
@@ -224,7 +250,7 @@ async function loadFrozenValidators(fixture=baseline,readDependency=(file: strin
    fs.mkdirSync(path.dirname(local(file)),{recursive:true,mode:0o700});fs.writeFileSync(local(file),source,{mode:0o600});
   }
   const edit=await import(url('packages/business/src/agent/edit-proposals.mjs')),context=await import(url('packages/business/src/agent/chat-context.mjs'));
-  return {...edit,...context,contracts:await import(url('packages/contracts/src/index.mjs')),restorePolicy:await import(url('packages/business/src/workspace-restore-policy.mjs'))};
+  return {...edit,...context,configuration:await import(url('packages/business/src/agent/config.mjs')),contracts:await import(url('packages/contracts/src/index.mjs')),restorePolicy:await import(url('packages/business/src/workspace-restore-policy.mjs'))};
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 }
 async function frozenValidators(){return frozen??=await loadFrozenValidators();}
@@ -293,6 +319,44 @@ test('frozen validator loader refuses unpinned imports instead of broadening its
  changed.sources[file].text='import unknown from "./not-a-pinned-module.mjs";\n'+changed.sources[file].text;
  changed.sources[file].sha256=sha(changed.sources[file].text);
  await assert.rejects(loadFrozenValidators(changed),/Unpinned frozen-validator import: .*not-a-pinned-module\.mjs/u);
+});
+
+test('frozen protocol closure rejects modified original bytes, pins and keys before import',async()=>{
+ for(const file of Object.keys(protocolClosure.sources)){
+  const changed=plain(protocolClosure);changed.sources[file].text+='\n// deliberate protocol drift';
+  await assert.rejects(loadFrozenValidators(baseline,undefined,changed),/Frozen source changed/u);
+  changed.sources[file].sha256=sha(changed.sources[file].text);
+  await assert.rejects(loadFrozenValidators(baseline,undefined,changed),/historical dependency pin must not be re-baselined/u);
+  changed.dependencyHashes[file]=changed.sources[file].sha256;
+  await assert.rejects(loadFrozenValidators(baseline,undefined,changed),{code:'ERR_ASSERTION'});
+ }
+ const wrongCommit=plain(protocolClosure);wrongCommit.sourceCommit='0'.repeat(40);
+ await assert.rejects(loadFrozenValidators(baseline,undefined,wrongCommit),{code:'ERR_ASSERTION'});
+ const extra=plain(protocolClosure);extra.sources['packages/contracts/src/unreviewed-protocol.ts']=extra.sources['packages/contracts/src/agent-protocol.ts'];
+ await assert.rejects(loadFrozenValidators(baseline,undefined,extra),{code:'ERR_ASSERTION'});
+ for(const file of ['packages/business/src/agent/presets.mjs','packages/business/src/agent/config.mjs']){
+  const changed=plain(baseline);changed.sources[file].text+='\n// deliberate protocol configuration drift';
+  await assert.rejects(loadFrozenValidators(changed),/Frozen source changed/u);
+  changed.sources[file].sha256=sha(changed.sources[file].text);
+  await assert.rejects(loadFrozenValidators(changed),/historical source pin must not be re-baselined/u);
+ }
+});
+
+test('frozen c3a0a57 validators retain exactly two protocols and reject Anthropic or unknown consent',async()=>{
+ const old=await frozenValidators();
+ assert.deepEqual(Object.keys(old.contracts.AGENT_PROTOCOLS),['chat_completions','responses']);
+ assert.equal(Object.isFrozen(old.contracts.AGENT_PROTOCOLS),true);
+ for(const protocol of ['chat_completions','responses'])assert.doesNotThrow(()=>old.parseChatConsent({context:'typed_chat_only',destination:'https://example.com/v1',protocol,model:'synthetic'}));
+ for(const protocol of ['anthropic_messages','unreviewed_protocol']){
+  assert.throws(()=>old.parseChatConsent({context:'typed_chat_only',destination:'https://example.com/v1/messages',protocol,model:'synthetic'}),code('AGENT_CHAT_VALIDATION'));
+  assert.throws(()=>old.contracts.deriveAgentEndpoint({protocol,baseUrl:'https://example.com'}),/Invalid Agent endpoint configuration/u);
+ }
+ const local={presetId:'ollama',platformId:'local',model:'qwen3:8b',baseUrl:'http://127.0.0.1:11434/v1'};
+ for(const protocol of ['chat_completions','responses']){
+  assert.doesNotThrow(()=>old.configuration.parseAgentConfiguration({...local,protocol},{selfPort:4318}));
+  assert.throws(()=>old.configuration.parseAgentConfiguration({...local,protocol,baseUrl:'http://127.0.0.1:11434'},{selfPort:4318}),code('AGENT_SETTINGS_VALIDATION'));
+ }
+ assert.throws(()=>old.configuration.parseAgentConfiguration({...local,protocol:'anthropic_messages',baseUrl:'http://127.0.0.1:11434'},{selfPort:4318}),code('AGENT_SETTINGS_VALIDATION'));
 });
 
 test('frozen c3a0a57 restore policy and effects use the exact old catalog despite current operation additions',async()=>{

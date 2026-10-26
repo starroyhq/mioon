@@ -22,6 +22,7 @@ import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2
 import {schemas} from '../packages/contracts/src/index.ts';
 import {taskToolWireSchema} from '../packages/business/src/agent/task-tool-wire-schema.ts';
 import {agentChatAllowsNaturalEof,createChatCompletionGateway} from '../packages/business/src/agent/chat-completions.ts';
+import {nativeAnthropicEvents,nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
 
 const definitions=[{name:'mioon_shot_create',description:'Create a saved shot',parameters:{type:'object',properties:{title:{type:'string'}},required:['title'],additionalProperties:false}}];
 test('stream diagnostics retain only trusted closed reasons and bounded state, never copied properties or causes',()=>{
@@ -78,6 +79,7 @@ function chatFrames(options:{incomplete?:boolean;duplicate?:boolean;filtered?:bo
 }
 function textFrames(protocol:AgentConfiguration['protocol'],text='已完成只读往返'):string {
   if(protocol==='chat_completions')return json({choices:[{index:0,delta:{role:'assistant',content:text},finish_reason:null}]})+json({choices:[{index:0,delta:{},finish_reason:'stop'}]})+'data: [DONE]\n\n';
+  if(protocol==='anthropic_messages')return nativeAnthropicSse(nativeAnthropicEvents({text}));
   const id='resp_text',part={type:'output_text',text,annotations:[]},item={id:'message_text',type:'message',role:'assistant',status:'completed',content:[part]};
   return [
     {type:'response.created',response:{id,status:'in_progress',output:[]}},
@@ -91,10 +93,10 @@ function textFrames(protocol:AgentConfiguration['protocol'],text='已完成只�
   ].map(json).join('');
 }
 async function fixture(t:TestContext,protocol:AgentConfiguration['protocol'],frames:string|Buffer|((response:http.ServerResponse,index:number)=>void),toolDefinitions:readonly TaskToolDefinition[]=definitions){
-  const requests:{body:Record<string,unknown>;rawBody:string;authorization:string|undefined;method:string|undefined;path:string|undefined}[]=[];
+  const requests:{body:Record<string,unknown>;rawBody:string;authorization:string|undefined;apiKeyHeader:string|string[]|undefined;versionHeader:string|string[]|undefined;method:string|undefined;path:string|undefined}[]=[];
   const server=http.createServer(async(req,res)=>{
     const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk as Uint8Array));
-    const rawBody=Buffer.concat(chunks).toString();requests.push({body:JSON.parse(rawBody) as Record<string,unknown>,rawBody,authorization:req.headers.authorization,method:req.method,path:req.url});
+    const rawBody=Buffer.concat(chunks).toString();requests.push({body:JSON.parse(rawBody) as Record<string,unknown>,rawBody,authorization:req.headers.authorization,apiKeyHeader:req.headers['x-api-key'],versionHeader:req.headers['anthropic-version'],method:req.method,path:req.url});
     res.writeHead(200,{'Content-Type':'text/event-stream'});
     if(typeof frames==='function'){frames(res,requests.length);return;}
     // Deliberately split framing and multibyte UTF-8 across transport chunks.
@@ -103,7 +105,7 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol'],fra
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>new Promise<void>((resolve,reject)=>{server.close(error=>error?reject(error):resolve());server.closeAllConnections();}));
   const address=server.address();assert.ok(address&&typeof address!=='string');
-  const configuration:AgentConfiguration={presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:${address.port}/v1`};
+  const configuration:AgentConfiguration={presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:${address.port}${protocol==='anthropic_messages'?'':'/v1'}`};
   const body=buildTaskModelRequest(configuration,[{role:'user',content:'创建两个镜头'}],toolDefinitions,4318);
   const stream=({requestBody=body,beforeSubmit,signal}:{requestBody?:string;beforeSubmit?:()=>void;signal?:AbortSignal}={})=>createTaskGateway()({configuration,body:requestBody,apiKey:null,selfPort:4318,beforeSubmit,signal});
   async function output(beforeSubmit?:()=>void,requestBody=body):Promise<TaskModelOutput>{let result:TaskModelOutput|undefined;
@@ -114,9 +116,12 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol'],fra
 }
 function syntheticNetwork({peer='8.8.8.8',authorized=true,status=200,body='',connectionError,endError,readError=false,holdOpen=false}: {peer?:string;authorized?:boolean;status?:number;body?:string;connectionError?:Error;endError?:Error;readError?:boolean;holdOpen?:boolean}={}){
   const state={calls:0,ends:0,destroyed:false};
-  const request=(_options:unknown,callback:(incoming:unknown)=>void)=>{
+  const requests:Array<{options:unknown;body?:string}>=[];
+  const request=(options:unknown,callback:(incoming:unknown)=>void)=>{
+    const selected:{options:unknown;body?:string}={options};requests.push(selected);
     state.calls++;
-    const outgoing=Object.assign(new EventEmitter(),{setTimeout(){},destroy(){state.destroyed=true;},end(){
+    const outgoing=Object.assign(new EventEmitter(),{setTimeout(){},destroy(){state.destroyed=true;},end(payload?:string){
+      selected.body=payload;
       state.ends++;if(endError)throw endError;
       const source=readError?(async function*(){yield Buffer.from(body);throw Error('PRIVATE_STREAM_READ_FAILURE');})():[Buffer.from(body)];let pushed=false;
       const incoming=holdOpen?new Readable({read(){if(!pushed){pushed=true;this.push(Buffer.from(body));}}}):Readable.from(source);
@@ -129,8 +134,55 @@ function syntheticNetwork({peer='8.8.8.8',authorized=true,status=200,body='',con
     });
     return outgoing;
   };
-  return {...state,get calls(){return state.calls;},get ends(){return state.ends;},get destroyed(){return state.destroyed;},request};
+  return {...state,get calls(){return state.calls;},get ends(){return state.ends;},get destroyed(){return state.destroyed;},requests,request};
 }
+
+const crossPresetConfigurations:AgentConfiguration[]=[
+  {presetId:'minimax',platformId:'china',protocol:'responses',model:'MiniMax-M3',baseUrl:'https://api.minimax.cn/v1'},
+  {presetId:'anthropic',platformId:'global',protocol:'chat_completions',model:'claude-haiku-4-5',baseUrl:'https://api.anthropic.com/v1'},
+  {presetId:'zhipu',platformId:'china',protocol:'responses',model:'glm-4.7',baseUrl:'https://open.bigmodel.cn/api/paas/v4'},
+  {presetId:'minimax',platformId:'china',protocol:'anthropic_messages',model:'MiniMax-M3',baseUrl:'https://minimax-compatible.example.com/anthropic'},
+];
+for(const configuration of crossPresetConfigurations)test(`${configuration.presetId}/${configuration.protocol}: selected protocol compiles once and survives exact SDK tool continuation`,async()=>{
+  const argumentsJson=JSON.stringify({title:'Cross-protocol shot',_mio_step:'Create a saved test shot'}),body=buildTaskModelRequest(configuration,[{role:'user',content:'Only an offline protocol test'}],definitions),parsed=JSON.parse(body) as Record<string,unknown>;
+  assert.equal(parsed.model,configuration.model);
+  if(configuration.protocol==='anthropic_messages'){
+    assert.equal(parsed.max_tokens,4096);assert.deepEqual(parsed.thinking,{type:'disabled'});assert.equal(Object.hasOwn(parsed,'parallel_tool_calls'),false);assert.equal(Object.hasOwn(parsed,'max_completion_tokens'),false);
+  }else if(configuration.protocol==='responses'){
+    assert.equal(parsed.max_output_tokens,4096);assert.equal(parsed.truncation,'disabled');assert.equal(Object.hasOwn(parsed,'thinking'),false);assert.equal(parsed.parallel_tool_calls,false);
+  }else{
+    assert.equal(parsed.max_tokens,4096);assert.equal(Object.hasOwn(parsed,'max_completion_tokens'),false);assert.equal(Object.hasOwn(parsed,'thinking'),false);assert.equal(parsed.parallel_tool_calls,false);
+  }
+  const frames=configuration.protocol==='anthropic_messages'?nativeAnthropicSse(nativeAnthropicEvents({model:configuration.model,toolName:'mioon_shot_create',argumentsJson})):configuration.protocol==='responses'?responseFrames({argumentsJson}):chatFrames({argumentsJson});
+  const records:Array<{options:unknown;body?:string}>=[];
+  async function send(body:string,frames:string,status=200){
+    const network=syntheticNetwork({body:frames,status});let output:TaskModelOutput|undefined;
+    try{for await(const item of createTaskGateway({lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:network.request} as unknown as AgentTransportDependencies)({configuration,body,apiKey:'SYNTHETIC_CROSS_PROTOCOL_ONLY'}))if(item.type==='done')output=item.output;}
+    finally{assert.equal(network.calls,1);assert.equal(network.ends,1);records.push(...network.requests);assert.equal(network.requests[0]!.body,body);}
+    assert.ok(output);return output;
+  }
+  const first=await send(body,frames);assert.equal(first.toolCalls.length,configuration.protocol==='anthropic_messages'?1:2);
+  for(const call of first.toolCalls){assert.deepEqual(call.arguments,{title:'Cross-protocol shot'});assert.equal(taskToolExplanation(first,call.id),'Create a saved test shot');}
+  const next=buildTaskModelRequest(configuration,[{role:'user',content:'Only an offline protocol test'},...taskContinuation(configuration.protocol,first,first.toolCalls.map(call=>({callId:call.id,result:{saved:true}})))],definitions),last=await send(next,textFrames(configuration.protocol,'Cross-protocol complete'));
+  assert.equal(last.text,'Cross-protocol complete');assert.equal(records.length,2);
+  const suffix=configuration.protocol==='anthropic_messages'?'/v1/messages':configuration.protocol==='responses'?'/responses':'/chat/completions';
+  for(const record of records){const options=record.options as {path:string;headers:Record<string,string>};assert.equal(options.path,new URL(configuration.baseUrl).pathname.replace(/\/$/u,'')+suffix);assert.equal(options.headers['x-api-key'],configuration.protocol==='anthropic_messages'?'SYNTHETIC_CROSS_PROTOCOL_ONLY':undefined);assert.equal(options.headers.Authorization,configuration.protocol==='anthropic_messages'?undefined:'Bearer SYNTHETIC_CROSS_PROTOCOL_ONLY');}
+  await assert.rejects(send(body,'',503),{code:'AGENT_CHAT_HTTP_ERROR'});assert.equal(records.length,3,'HTTP failure never switches protocol, model or template and never retries');
+  const historical=JSON.parse(body) as Record<string,unknown>;
+  if(configuration.protocol==='responses'){historical.instructions='Frozen original task instruction';historical.max_output_tokens=3072;}
+  else if(configuration.protocol==='anthropic_messages'){historical.system='Frozen original task instruction';historical.max_tokens=3072;}
+  else{(historical.messages as {content:string}[])[0]!.content='Frozen original task instruction';historical.max_tokens=3072;}
+  const frozenBody=JSON.stringify(historical);await send(frozenBody,frames);assert.equal(records.at(-1)!.body,frozenBody,'reading an old intent never recompiles it with the current template');
+});
+test('Ollama Messages uses its explicitly selected loopback root and keyless SDK tools without leaking a placeholder',async t=>{
+  const first=nativeAnthropicSse(nativeAnthropicEvents({model:'qwen3:8b',toolName:'mioon_shot_create',argumentsJson:'{"title":"Local native shot","_mio_step":"Create a local test shot"}'}));
+  const f=await fixture(t,'anthropic_messages',(response,index)=>response.end(index===1?first:textFrames('anthropic_messages','Local Messages complete'))),planned=await f.output();
+  assert.equal(planned.toolCalls.length,1);assert.deepEqual(planned.toolCalls[0]!.arguments,{title:'Local native shot'});assert.equal(taskToolExplanation(planned,planned.toolCalls[0]!.id),'Create a local test shot');
+  const next=buildTaskModelRequest(f.configuration,[{role:'user',content:'创建两个镜头'},...taskContinuation('anthropic_messages',planned,[{callId:planned.toolCalls[0]!.id,result:{saved:true}}])],definitions,4318),done=await f.output(undefined,next);
+  assert.equal(done.text,'Local Messages complete');assert.equal(f.requests.length,2);assert.equal(new URL(f.configuration.baseUrl).pathname,'/');
+  for(const request of f.requests){assert.equal(request.path,'/v1/messages');assert.equal(request.authorization,undefined);assert.equal(request.apiKeyHeader,undefined);assert.equal(request.versionHeader,'2023-06-01');assert.equal(request.method,'POST');}
+  assert.equal(f.requests[0]!.rawBody,f.body);assert.equal(f.requests[1]!.rawBody,next);
+});
 const miniMaxChina:AgentConfiguration={presetId:'minimax',platformId:'china',protocol:'chat_completions',model:'MiniMax-M3',baseUrl:'https://api.minimax.cn/v1'};
 test('natural EOF belongs only to the exact official MiniMax M3 non-thinking request profile',()=>{
   const body=JSON.parse(buildTaskModelRequest(miniMaxChina,[],definitions)) as Record<string,unknown>;
@@ -427,17 +479,18 @@ test('the complete production tool catalog builds in every supported preset/prot
   const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-mio-complete-wire-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services});
   t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
   const catalog=tools.list(),original=structuredClone(catalog);assert.ok(catalog.some(tool=>tool.operation==='image.generate'));assert.ok(catalog.length>80);
-  let combinations=0;
+  let combinations=0;const compiled=new Set<string>();
   for(const preset of AGENT_PRESETS)for(const protocol of preset.availableProtocols){
-    const platform=preset.platforms.find(item=>item.baseUrl)||preset.platforms[0]!,configuration:AgentConfiguration={presetId:preset.id as AgentConfiguration['presetId'],platformId:platform.id,baseUrl:platform.baseUrl||'https://example.com/v1',model:(protocol==='responses'?preset.supportedModelHints?.responses[0]:undefined)||platform.model||'synthetic-mio',protocol};
-    const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Complete production catalog only'}],catalog,4318)) as {tools:{name?:string;parameters?:unknown;function?:{name:string;parameters:unknown}}[]};
-    assert.equal(body.tools.length,catalog.length);combinations++;
+    const platform=preset.platforms.find(item=>item.baseUrl)||preset.platforms[0]!,configuration:AgentConfiguration={presetId:preset.id as AgentConfiguration['presetId'],platformId:platform.id,baseUrl:protocol==='anthropic_messages'&&preset.id==='ollama'?new URL(platform.baseUrl).origin:platform.baseUrl||'https://example.com/v1',model:(protocol==='responses'?preset.supportedModelHints?.responses?.[0]:undefined)||platform.model||'synthetic-mio',protocol};
+    const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Complete production catalog only'}],catalog,4318)) as {tools:{name?:string;parameters?:unknown;input_schema?:unknown;function?:{name:string;parameters:unknown}}[]};
+    assert.equal(body.tools.length,catalog.length);combinations++;compiled.add(`${preset.id}/${protocol}`);
     for(const [index,item] of body.tools.entries()){
-      const definition=protocol==='responses'?item:item.function!,tool=catalog[index]!;
-      assert.equal(definition.name,tool.name);assert.deepEqual(removeCaptionSchema(definition.parameters),taskToolWireSchema(configuration,tool.name,tool.parameters),`${preset.id}/${protocol}/${tool.operation}`);
+      const definition=protocol==='chat_completions'?item.function!:item,tool=catalog[index]!;
+      assert.equal(definition.name,tool.name);assert.deepEqual(removeCaptionSchema(protocol==='anthropic_messages'?item.input_schema:definition.parameters),taskToolWireSchema(configuration,tool.name,tool.parameters),`${preset.id}/${protocol}/${tool.operation}`);
     }
   }
-  assert.ok(combinations>=14);assert.deepEqual(catalog,original,'no public/domain tool schema is changed, including image.generate anyOf');
+  for(const combination of ['minimax/anthropic_messages','minimax/responses','anthropic/chat_completions','ollama/anthropic_messages'])assert.ok(compiled.has(combination),combination);
+  assert.ok(combinations>=30);assert.deepEqual(catalog,original,'no public/domain tool schema is changed, including image.generate anyOf');
 });
 for(const protocol of ['chat_completions','responses'] as const){
   test(`${protocol}: complete catalog image.generate union captions survive a real local two-round tool exchange`,async t=>{

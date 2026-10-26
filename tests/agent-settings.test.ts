@@ -25,8 +25,8 @@ function syntheticCodec() {
 }
 const persistent = {persistentAvailable: true, sessionScope: 'app', reasonCode: null};
 
-test('all nine researched preset families have explicit platform defaults and no executable network work', () => {
-  assert.deepEqual(AGENT_PRESETS.map(item => item.id), ['openai', 'deepseek', 'qwen', 'zhipu', 'kimi', 'minimax', 'openrouter', 'custom', 'ollama']);
+test('all researched preset families have explicit platform defaults and no executable network work', () => {
+  assert.deepEqual(AGENT_PRESETS.map(item => item.id), ['openai', 'anthropic', 'deepseek', 'qwen', 'zhipu', 'kimi', 'minimax', 'openrouter', 'custom', 'ollama']);
   assert.equal(AGENT_PRESETS.find(p => p.id === 'qwen')!.platforms.length, 8);
   for (const preset of AGENT_PRESETS) for (const platform of preset.platforms) {
     assert.ok(platform.id && platform.label);

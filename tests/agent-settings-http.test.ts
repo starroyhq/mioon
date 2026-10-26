@@ -57,7 +57,7 @@ test('web settings store metadata only, survive restart, expire keys, preserve b
   const before = (await f.request('/api/rpc', {method: 'POST', payload: {operation: 'project.get', input: {projectId: project.id}}})).body;
   const initial = await f.request();
   assert.equal(initial.headers.get('cache-control'), 'no-store');
-  assert.equal(initial.body.data.presets.length, 9);
+  assert.equal(initial.body.data.presets.length, 10);
   const saved = await f.request(undefined, {method: 'PUT', payload: input(0, {action: 'replace', storage: 'session', value: marker})});
   assert.equal(saved.status, 200); assert.equal(saved.body.data.secret.storage, 'session');
   assert.equal(JSON.stringify(saved.body).includes(marker), false);
@@ -85,6 +85,18 @@ test('real concurrent HTTP CAS accepts one save and rejects stale deletion or lo
   assert.equal((await f.request()).body.data.revision, 1);
   assert.equal((await f.request(undefined, {method: 'PUT', payload: input(0, {action: 'remove'})})).status, 409);
   assert.equal((await f.request()).body.data.secret.configured, true);
+});
+
+test('MiniMax can save Messages directly while retaining its exact binding and restarting without protocol migration', async t => {
+  const f = await fixture(t), configuration = {presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/anthropic',model:'MiniMax-M3',protocol:'chat_completions'};
+  const first = await f.request(undefined,{method:'PUT',payload:{expectedRevision:0,configuration,secret:{action:'replace',storage:'session',value:'synthetic-minimax-only'}}});
+  assert.equal(first.status,200);assert.deepEqual(first.body.data.configuration,configuration);
+  const selected = {...configuration,protocol:'anthropic_messages'};
+  const changed = await f.request(undefined,{method:'PUT',payload:{expectedRevision:1,configuration:selected,secret:{action:'keep'}}});
+  assert.equal(changed.status,200);assert.deepEqual(changed.body.data.configuration,selected);assert.equal(changed.body.data.secret.configured,true);
+  await f.restart();
+  const restored = (await f.request()).body.data;
+  assert.equal(restored.revision,2);assert.deepEqual(restored.configuration,selected);assert.equal(restored.secret.configured,false);
 });
 
 test('setting a local endpoint performs no provider probe and self-service endpoint remains forbidden', async t => {

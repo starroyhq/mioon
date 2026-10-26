@@ -704,13 +704,6 @@
     {
       "file": "apps/web/src/agent-settings.ts",
       "category": "cjk-source",
-      "hash": "6758a03dc81887933afafeac16d18a605f4e4ecc250788615715cab52488a10d",
-      "owner": "creation",
-      "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. AgentSettings renders state.displayMessages and agentSettingsIssueDescriptor; preset documentation labels render through agent.settings.officialDocs instead of the retained metadata label. Four-locale counterpart: agent.settings.issue.platformProtocol."
-    },
-    {
-      "file": "apps/web/src/agent-settings.ts",
-      "category": "cjk-source",
       "hash": "2cc02a7429f1bc54018f6d4e5bcf83d6daca94aa80e07cfa894fcd8075aa187c",
       "owner": "creation",
       "reason": "The original diagnostic is retained for existing controller/error compatibility and is not a display lookup key or persisted translation. AgentSettings renders state.displayMessages and agentSettingsIssueDescriptor; preset documentation labels render through agent.settings.officialDocs instead of the retained metadata label. Four-locale counterpart: agent.settings.notice.saving."

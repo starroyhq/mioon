@@ -9,6 +9,7 @@ import {parseAgentConfiguration} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
 import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatError, agentChatHttpError, errorCode} from './chat-errors.ts';
 import type {AgentChatFailure} from './chat-errors.ts';
+import {ANTHROPIC_MESSAGES_API_VERSION} from './anthropic-protocol.ts';
 
 export const AGENT_NETWORK_LIMITS = Object.freeze({connectTimeoutMs: 10000, readTimeoutMs: 20000, totalTimeoutMs: 120000, maxHeaderBytes: 16384, maxDnsAnswers: 64});
 type NetworkLimits = Record<'connectTimeoutMs' | 'readTimeoutMs' | 'totalTimeoutMs' | 'maxHeaderBytes' | 'maxDnsAnswers', number>;
@@ -113,7 +114,8 @@ export async function resolveAgentDestination(configuration: unknown, {selfPort,
     if (typeof selfPort !== 'number' || !Number.isInteger(selfPort) || selfPort < 1 || selfPort > 65535 || port === selfPort) denied();
     // localhost means this exact loopback destination, never a host-file/DNS alias.
     const address = hostname === 'localhost' ? '127.0.0.1' : hostname;
-    if (!['127.0.0.1', '::1'].includes(address) || url.pathname !== `/v1${AGENT_PROTOCOLS[config.protocol].path}`) denied();
+    const prefix = config.protocol === 'anthropic_messages' ? '' : '/v1';
+    if (!['127.0.0.1', '::1'].includes(address) || url.pathname !== `${prefix}${AGENT_PROTOCOLS[config.protocol].path}`) denied();
     return {hostname, address, family: isIP(address), port, secure: url.protocol === 'https:', path: url.pathname, local: true};
   }
   let addresses: Array<{address: string; family: number}>;
@@ -179,14 +181,19 @@ export function createAgentTransport({lookup = dnsLookup, httpsRequest = httpsRe
     };
     try {
       invokeAgentSubmissionFence(beforeSubmit);
-      const destination = await resolveAgentDestination(configuration, {selfPort, lookup, signal: controller.signal, maxDnsAnswers: limits.maxDnsAnswers});
+      let config: AgentConfiguration;
+      try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return denied(); }
+      const destination = await resolveAgentDestination(config, {selfPort, lookup, signal: controller.signal, maxDnsAnswers: limits.maxDnsAnswers});
       if (failed || controller.signal.aborted) throw failed || abortError(controller.signal);
       invokeAgentSubmissionFence(beforeSubmit);
       const headers: Record<string, string> = {'Content-Type': 'application/json', Accept: 'text/event-stream', 'Accept-Encoding': 'identity', 'Content-Length': String(Buffer.byteLength(body)), Connection: 'close'};
       // apiKey must be acquired by the host for this exact configuration binding.
       // Local Ollama needs no key by default, but an explicitly bound local key
       // is honored rather than silently changing an authenticated configuration.
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      if (config.protocol === 'anthropic_messages') {
+        if (apiKey) headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = ANTHROPIC_MESSAGES_API_VERSION;
+      } else if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
       const pinnedLookup: NodeLookup = (_hostname, lookupOptions, callback) => {
         let options: unknown = lookupOptions;
         let done = callback;

@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import * as logic from '../apps/web/src/agent-settings.ts';
+import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
 
 const { agentBindingChanged, agentSettingsCanSave, agentSettingsIssue, createAgentSettingsClient, createAgentSettingsSession, safeAgentSettings } = logic;
 const configuration = { presetId: 'openai', platformId: 'global', baseUrl: 'https://api.example.com/v1', model: 'example-model', protocol: 'chat_completions' as const };
@@ -309,7 +310,7 @@ test('wrong protocol acknowledgement and protocol-only two-window conflict recon
 test('shared protocol selector exposes fixed endpoint, preserves arbitrary model, and explicit reset returns CC', async () => {
   const f = fixture(), h = uiHarness(f.client); h.render(); await flush(); h.render();
   assert.equal(h.find('agent-settings-protocol')!.type, 'WorkbenchSelect');
-  assert.deepEqual(nodes(h.find('agent-settings-protocol')).filter((node) => node.type === 'option').map((node) => node.props.value), ['chat_completions', 'responses']);
+  assert.deepEqual(nodes(h.find('agent-settings-protocol')).filter((node) => node.type === 'option').map((node) => node.props.value), ['chat_completions', 'responses', 'anthropic_messages']);
   h.change('agent-settings-model', 'my-explicit-model'); h.change('agent-settings-protocol', 'responses');
   assert.equal(h.find('agent-settings-model')!.props.value, 'my-explicit-model');
   assert.match(JSON.stringify(h.find('agent-settings-endpoint')), /https:\/\/api.example.com\/v1\/responses/);
@@ -317,6 +318,74 @@ test('shared protocol selector exposes fixed endpoint, preserves arbitrary model
   assert.equal(f.calls.length, 0);
   h.find('agent-settings-reset')!.props.onClick(); h.render();
   assert.equal(h.find('agent-settings-protocol')!.props.value, 'chat_completions'); assert.equal(h.find('agent-settings-model')!.props.value, configuration.model); h.unmount();
+});
+
+test('Anthropic selection uses its root endpoint and custom Messages selection preserves explicit edits in all locales', async () => {
+  const f = fixture({initial: snapshot({presets: AGENT_PRESETS})}), h = uiHarness(f.client);
+  h.render(); await flush(); h.render(); h.change('agent-settings-preset', 'anthropic');
+  assert.deepEqual(nodes(h.find('agent-settings-protocol')).filter(node => node.type === 'option').map(node => node.props.value), ['chat_completions', 'responses', 'anthropic_messages']);
+  assert.equal(h.find('agent-settings-base-url')!.props.value, 'https://api.anthropic.com');
+  assert.equal(h.find('agent-settings-model')!.props.value, 'claude-haiku-4-5');
+  assert.match(JSON.stringify(h.find('agent-settings-endpoint')), /https:\/\/api.anthropic.com\/v1\/messages/);
+  for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) {
+    const rendered = JSON.stringify(h.setLocale(locale));
+    assert.match(rendered, /https:\/\/api.anthropic.com/);
+    assert.match(rendered, /\/v1\/messages/);
+    assert.ok(h.find('agent-settings-anthropic-guidance'));
+    assert.doesNotMatch(rendered, /agent\.settings\.anthropic(?:EndpointHelp|Scope|Note)/);
+  }
+  h.change('agent-settings-preset', 'custom');
+  assert.deepEqual(nodes(h.find('agent-settings-protocol')).filter(node => node.type === 'option').map(node => node.props.value), ['chat_completions', 'responses', 'anthropic_messages']);
+  h.change('agent-settings-base-url', 'https://compat.example.com/anthropic'); h.change('agent-settings-model', 'my-explicit-model');
+  h.change('agent-settings-protocol', 'anthropic_messages');
+  assert.equal(h.find('agent-settings-base-url')!.props.value, 'https://compat.example.com/anthropic');
+  assert.equal(h.find('agent-settings-model')!.props.value, 'my-explicit-model');
+  assert.match(JSON.stringify(h.find('agent-settings-endpoint')), /https:\/\/compat.example.com\/anthropic\/v1\/messages/);
+  h.change('agent-settings-preset', 'openai');
+  assert.equal(h.find('agent-settings-protocol')!.props.value, 'chat_completions');
+  assert.equal(h.find('agent-settings-anthropic-guidance'), undefined);
+  assert.equal(f.calls.length, 0, 'selection never probes, retries, saves or sends inference'); h.unmount();
+});
+
+test('MiniMax selects Messages directly without replacing its preset, platform, typed URL or model', async () => {
+  for (const platformId of ['china', 'international']) {
+    const saved = {presetId: 'minimax', platformId, baseUrl: 'https://compat.example.com/user-prefix', model: 'user-selected-minimax-model', protocol: 'chat_completions'};
+    const f = fixture({initial: snapshot({presets: AGENT_PRESETS, configuration: saved, secret: {configured: true, storage: 'session'}})}), h = uiHarness(f.client);
+    h.render(); await flush(); h.render();
+    assert.equal(h.find('agent-settings-preset')!.props.value, saved.presetId);
+    assert.equal(h.find('agent-settings-platform')!.props.value, platformId);
+    assert.equal(h.find('agent-settings-protocol')!.props.value, 'chat_completions');
+    h.change('agent-settings-protocol', 'anthropic_messages');
+    assert.equal(h.find('agent-settings-preset')!.props.value, saved.presetId);
+    assert.equal(h.find('agent-settings-platform')!.props.value, platformId);
+    assert.equal(h.find('agent-settings-base-url')!.props.value, saved.baseUrl);
+    assert.equal(h.find('agent-settings-model')!.props.value, saved.model);
+    assert.match(JSON.stringify(h.find('agent-settings-endpoint')), /https:\/\/compat.example.com\/user-prefix\/v1\/messages/);
+    for (const locale of i18n.LOCALES) {
+      h.setLocale(locale);
+      assert.ok(JSON.stringify(h.find('agent-settings-protocol-help')).includes(i18n.translate(locale, 'agent.settings.protocolHelp')));
+      assert.ok(JSON.stringify(h.find('agent-settings-anthropic-guidance')).includes(i18n.translate(locale, 'agent.settings.anthropicScope')));
+    }
+    assert.equal(f.calls.length, 0);
+    h.form()!.props.onSubmit({preventDefault() {}}); await flush(); h.render();
+    assert.equal(f.calls.length, 1);
+    assert.deepEqual(f.calls[0].configuration, {...saved, protocol: 'anthropic_messages'});
+    assert.deepEqual(f.calls[0].secret, {action: 'keep'});
+    h.unmount();
+  }
+});
+
+test('Ollama protocol switching preserves its draft base until the user explicitly enters the Messages root', async () => {
+  const f = fixture({initial: snapshot({presets: AGENT_PRESETS})}), h = uiHarness(f.client);
+  h.render(); await flush(); h.render(); h.change('agent-settings-preset', 'ollama');
+  h.change('agent-settings-protocol', 'anthropic_messages');
+  assert.equal(h.find('agent-settings-base-url')!.props.value, 'http://127.0.0.1:11434/v1');
+  assert.equal(h.find('agent-settings-model')!.props.value, 'qwen3:8b');
+  assert.match(JSON.stringify(h.find('agent-settings-endpoint')), /http:\/\/127.0.0.1:11434\/v1\/v1\/messages/);
+  h.change('agent-settings-base-url', 'http://127.0.0.1:11434');
+  assert.match(JSON.stringify(h.find('agent-settings-endpoint')), /http:\/\/127.0.0.1:11434\/v1\/messages/);
+  assert.equal(h.find('agent-settings-preset')!.props.value, 'ollama');
+  assert.equal(f.calls.length, 0); h.unmount();
 });
 
 test('Qwen Responses guidance keeps qwen-plus until the user types the documented exact model', async () => {

@@ -9,6 +9,7 @@ test('shared protocol labels and fixed suffixes are pure, closed and deeply froz
   assert.deepEqual(AGENT_PROTOCOLS, {
     chat_completions: {label: 'Chat Completions', path: '/chat/completions'},
     responses: {label: 'Responses', path: '/responses'},
+    anthropic_messages: {label: 'Anthropic Messages', path: '/v1/messages'},
   });
   assert.ok(Object.isFrozen(AGENT_PROTOCOLS));
   for (const entry of Object.values(AGENT_PROTOCOLS)) assert.ok(Object.isFrozen(entry));
@@ -19,9 +20,9 @@ test('shared protocol labels and fixed suffixes are pure, closed and deeply froz
   }
 });
 
-test('endpoint derivation preserves complete canonical base path and accepts only two fixed protocol suffixes', () => {
+test('endpoint derivation preserves complete canonical base path and accepts only the three fixed protocol suffixes', () => {
   for (const baseUrl of ['https://api.openai.com/v1', 'https://api.deepseek.com', 'https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1', 'http://127.0.0.1:11434/v1', 'http://[::1]:11434/v1']) {
-    for (const protocol of ['chat_completions', 'responses'] as const) {
+    for (const protocol of ['chat_completions', 'responses', 'anthropic_messages'] as const) {
       const path = AGENT_PROTOCOLS[protocol].path;
       assert.equal(deriveAgentEndpoint({baseUrl, protocol}), baseUrl + path);
       assert.equal(deriveAgentEndpoint({baseUrl, protocol, path: '/attacker', requestPath: '/attacker'} as unknown as Parameters<typeof deriveAgentEndpoint>[0]), baseUrl + path);
@@ -35,22 +36,26 @@ test('endpoint derivation preserves complete canonical base path and accepts onl
   }
 });
 
-test('every catalog default stays CC and only explicitly fixture-supported profiles offer Responses', () => {
+test('presets retain their original defaults while protocol selection is independent for every platform', () => {
   const candidates = ['openai', 'deepseek', 'qwen', 'custom', 'ollama'];
   assert.equal(DEFAULT_AGENT_CONFIGURATION.protocol, 'chat_completions');
   for (const preset of AGENT_PRESETS) {
-    assert.equal(preset.defaultProtocol, 'chat_completions');
-    assert.deepEqual(preset.availableProtocols, candidates.includes(preset.id) ? ['chat_completions', 'responses'] : ['chat_completions']);
+    const expectedDefault = preset.id === 'anthropic' ? 'anthropic_messages' : 'chat_completions';
+    assert.equal(preset.defaultProtocol, expectedDefault);
+    assert.deepEqual(preset.availableProtocols, Object.keys(AGENT_PROTOCOLS));
     for (const platform of preset.platforms) {
-      assert.equal(platform.defaultProtocol, 'chat_completions');
+      assert.equal(platform.defaultProtocol, expectedDefault);
       assert.deepEqual(platform.availableProtocols, preset.availableProtocols);
       assert.ok(Object.isFrozen(platform.availableProtocols));
-      const configuration = {presetId: preset.id, platformId: platform.id, baseUrl: platform.baseUrl || 'https://api.example.com/v1', model: platform.model || 'user-model', protocol: 'chat_completions'};
+      const configuration = {presetId: preset.id, platformId: platform.id, baseUrl: platform.baseUrl || 'https://api.example.com/v1', model: platform.model || 'user-model', protocol: expectedDefault};
       assert.deepEqual(parseAgentConfiguration(configuration), configuration);
+      for (const protocol of Object.keys(AGENT_PROTOCOLS)) {
+        const selected = {...configuration, protocol, ...(preset.id === 'ollama' && protocol === 'anthropic_messages' ? {baseUrl: new URL(configuration.baseUrl).origin} : {})};
+        assert.deepEqual(parseAgentConfiguration(selected), selected, `${preset.id}/${platform.id}/${protocol}`);
+      }
       if (candidates.includes(preset.id)) {
-        assert.deepEqual(parseAgentConfiguration({...configuration, protocol: 'responses'}), {...configuration, protocol: 'responses'});
         const hints = (preset as {supportedModelHints?: {responses: string[]}}).supportedModelHints; assert.ok(hints); assert.ok(Object.isFrozen(hints.responses));
-      } else assert.throws(() => parseAgentConfiguration({...configuration, protocol: 'responses'}), {code: 'AGENT_SETTINGS_VALIDATION'});
+      }
     }
   }
   const qwen = AGENT_PRESETS.find(preset => preset.id === 'qwen'); assert.ok(qwen);
@@ -58,6 +63,12 @@ test('every catalog default stays CC and only explicitly fixture-supported profi
     assert.equal(platform.model, 'qwen-plus');
     assert.deepEqual((qwen as {supportedModelHints: {responses: string[]}}).supportedModelHints.responses, ['qwen3.8-flash']);
     assert.match((qwen as {protocolNotes: {responses: string}}).protocolNotes.responses, /截断无法禁用/);
+  }
+  const minimax = AGENT_PRESETS.find(preset => preset.id === 'minimax'); assert.ok(minimax);
+  for (const platform of minimax.platforms) {
+    const domain = platform.id === 'china' ? 'cn' : 'io';
+    assert.equal(platform.baseUrl, `https://api.minimax.${domain}/v1`);
+    assert.ok(platform.sources.some(source => source.url === `https://platform.minimax.${domain}/docs/api-reference/text-anthropic-api`));
   }
 });
 
