@@ -2,16 +2,25 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import ts from 'typescript';
 import {opacityInspectorImeFixture as fixture} from './helpers/opacity-inspector-ime-fixture.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const source = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
-const start = source.indexOf('  const guardRetainedInputInteraction = (event: React.SyntheticEvent) => {');
-const end = source.indexOf('  if (auth === false', start);
-assert.ok(start >= 0 && end > start, 'Extract the actual App ancestor capture guard');
-assert.equal(source.indexOf('  const guardRetainedInputInteraction = (event: React.SyntheticEvent) => {', start + 1), -1);
-const guardSource = source.slice(start, end);
+const ast = ts.createSourceFile('App.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const apps = ast.statements.filter((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) && statement.name?.text === 'App');
+assert.equal(apps.length, 1, 'Extract the capture guard from the actual App component');
+assert.ok(apps[0]!.body);
+const guards = apps[0]!.body.statements.filter(ts.isVariableStatement).filter(statement => statement.declarationList.declarations.some(declaration =>
+  ts.isIdentifier(declaration.name) && declaration.name.text === 'guardRetainedInputInteraction'));
+assert.equal(guards.length, 1, 'The App component has one retained-input capture guard');
+assert.equal(guards[0]!.declarationList.declarations.length, 1);
+const declaration = guards[0]!.declarationList.declarations[0]!;
+assert.ok(declaration.initializer && ts.isArrowFunction(declaration.initializer) && ts.isBlock(declaration.initializer.body));
+// Only execute this declaration: neighboring hooks and native-menu setup are
+// independent owners and must not become dependencies of the guard fixture.
+const guardSource = guards[0]!.getText(ast);
 interface GuardObservation {type: string; key?: string; target: ElementDouble | null; keyCode?: number; isComposing?: boolean; defaultPrevented: boolean; propagationStopped: boolean; preventDefault(): void; stopPropagation(): void; nativeEvent?: {keyCode: number; isComposing: boolean}}
 interface ElementDouble {getAttribute(name: string): string | null; closest(selector: string): Record<string, unknown> | null}
 type Guard = (observation: GuardObservation) => void;

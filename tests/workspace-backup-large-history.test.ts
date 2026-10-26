@@ -1,9 +1,10 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {mkdtempSync, realpathSync, rmSync, renameSync, writeFileSync, unlinkSync, readFileSync} from 'node:fs';
+import {mkdtempSync, realpathSync, rmSync, renameSync, writeFileSync, unlinkSync, readFileSync, readdirSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
+import {registerHooks} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore} from '../packages/business/src/db.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
@@ -14,7 +15,7 @@ import {verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.t
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import type {AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 
-function fixture(t: TestContext, {models = 1, bodyBytes = 1024}: {models?: number; bodyBytes?: number} = {}) {
+function fixture(t: TestContext, {models = 1, bodyBytes = 1024}: {models?: number; bodyBytes?: number} = {}, createRuntime = createWorkspaceBackupRuntime) {
   const base = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-online-backup-fence-')), root = join(base, 'workspace'), store = openStore(root);
   const projectId = randomUUID();store.put('projects', {id: projectId, name: 'Synthetic stable project', revision: 1});
   const journal = createAgentTaskJournal(store), run = journal.create({projectId, requestId: randomUUID(), text: 'Retained synthetic history', configuration: {}}).run;
@@ -24,7 +25,7 @@ function fixture(t: TestContext, {models = 1, bodyBytes = 1024}: {models?: numbe
     store.db.prepare('INSERT INTO agent_task_steps_v2(id,runId,projectId,position,status,data) VALUES(?,?,?,?,?,?)').run(step.id, run.id, projectId, position, step.status, JSON.stringify(step));
   }
   journal.transition(run.id, journal.run(run.id).revision, 'completed');
-  const configuration = createWorkspaceConfiguration({root, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}}), runtime = createWorkspaceBackupRuntime({store, configuration});
+  const configuration = createWorkspaceConfiguration({root, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}}), runtime = createRuntime({store, configuration});
   let fullScans = 0, cheapChecks = 0;
   const prepare = store.db.prepare.bind(store.db);
   store.db.prepare = (sql: string) => {
@@ -45,6 +46,65 @@ function retainedDigest(db: DatabaseSync) {
   for (const table of AGENT_TASK_TABLES) for (const row of db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).iterate()) hash.update(JSON.stringify([table, row]));
   return hash.digest('hex');
 }
+
+async function withNativeBackup(backup: typeof import('node:sqlite').backup): Promise<typeof createWorkspaceBackupRuntime> {
+  const runtimeUrl = new URL('../packages/business/src/workspace-backup-runtime.ts', import.meta.url);
+  runtimeUrl.searchParams.set('native-backup-rejection', randomUUID());
+  const sqliteUrl = 'data:text/javascript,' + encodeURIComponent(`
+    export {DatabaseSync} from 'node:sqlite';
+    export let backup;
+    export const setBackup = callback => {backup = callback;};
+    // Each isolated runtime receives only its own callback: ${randomUUID()}
+  `);
+  const hook = registerHooks({resolve(specifier, context, next) {
+    if (context.parentURL === runtimeUrl.href && specifier === 'node:sqlite') return {url: sqliteUrl, shortCircuit: true};
+    return next(specifier, context);
+  }});
+  try {
+    const boundary = await import(sqliteUrl) as {setBackup(value: typeof backup): void};
+    boundary.setBackup(backup);
+    const runtime = await import(runtimeUrl.href) as typeof import('../packages/business/src/workspace-backup-runtime.ts');
+    return runtime.createWorkspaceBackupRuntime;
+  } finally {hook.deregister();}
+}
+
+for (const scenario of ['rollback', 'cancel', 'lock-loss', 'unchanged'] as const) test(`native backup rejection before progress preserves the ${scenario} failure boundary`, async t => {
+  const nativeError = Object.assign(new Error('not an error; synthetic private native diagnostic'), {code: 'ERR_SQLITE_ERROR', errcode: 0});
+  const expectedCode = scenario === 'rollback' ? 'WORKSPACE_BACKUP_CHANGED' : scenario === 'cancel' ? 'WORKSPACE_BACKUP_IO' : scenario === 'lock-loss' ? 'WORKSPACE_BACKUP_BUSY' : 'ERR_SQLITE_ERROR';
+  let calls = 0, f!: ReturnType<typeof fixture>;
+  const createRuntime = await withNativeBackup(async (source, _destination, options) => {
+    calls++;assert.equal(source, f.store.db);assert.equal(options?.rate, 128);assert.equal(typeof options?.progress, 'function');
+    // Native backup can reject before it ever invokes its progress callback.
+    // All admission, source/database access and filesystem cleanup stay real.
+    if (scenario === 'rollback') {
+      f.store.db.exec('BEGIN IMMEDIATE');
+      f.store.db.prepare("UPDATE projects SET data=json_set(data,'$.name','Rolled-back synthetic edit') WHERE id=?").run(f.projectId);
+      f.store.db.exec('ROLLBACK');
+    } else if (scenario === 'cancel') f.runtime.stop();
+    else if (scenario === 'lock-loss') unlinkSync(f.lock);
+    throw nativeError;
+  });
+  f = fixture(t, {}, createRuntime);
+  const beforeProject = f.store.get('projects', f.projectId), beforeHistory = retainedDigest(f.store.db), changes = totalChanges(f.store.db);
+  const pending = f.runtime.create({requestId: randomUUID()});
+  if (scenario === 'unchanged') await assert.rejects(pending, error => error === nativeError);
+  else if (scenario === 'cancel') await assert.rejects(pending, (error: unknown) => !!error && typeof error === 'object' && ('name' in error && error.name === 'AbortError' || 'code' in error && error.code === 'WORKSPACE_BACKUP_CANCELLED'));
+  else await assert.rejects(pending, code(expectedCode));
+  assert.equal(calls, 1, 'a rejected native backup is never retried');
+  assert.deepEqual(f.store.get('projects', f.projectId), beforeProject);
+  assert.equal(retainedDigest(f.store.db), beforeHistory);
+  if (scenario === 'rollback') assert.notEqual(totalChanges(f.store.db), changes, 'rolled-back writes really invalidate the frozen source');
+  else assert.equal(totalChanges(f.store.db), changes);
+  const status = f.runtime.getStatus();
+  assert.equal(status.phase, 'idle');assert.equal(f.runtime.isBusy(), false);assert.deepEqual(status.backups, []);assert.equal(status.lastBackupAt, null);
+  assert.equal(status.lastError, expectedCode);
+  assert.equal(readFileSync(join(f.root, 'workspace-backups-index-v1.json'), 'utf8').includes(nativeError.message), false);
+  const directory = f.configuration.get().backupDirectory;
+  for (const entry of readdirSync(directory, {withFileTypes: true})) {
+    assert.ok(entry.isDirectory() && /^\.snapshot-[\da-f-]{36}$/.test(entry.name), 'only unpublished snapshot candidates may remain');
+    assert.equal(existsSync(join(directory, entry.name, 'COMPLETE.json')), false, 'failed native capture never publishes a completion marker');
+  }
+});
 
 for (const rollback of [false, true]) test(`same-connection ${rollback ? 'rolled-back' : 'committed'} data writes invalidate admission without rewriting the user edit`, async t => {
   const f = fixture(t), pending = f.runtime.create({requestId: randomUUID()});

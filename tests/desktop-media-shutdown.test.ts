@@ -9,6 +9,7 @@ import { WORKSPACE_NATIVE_CHANNEL } from '../packages/contracts/src/workspace-na
 import { createWorkspaceNativeHost } from '../apps/desktop/src/workspace-native-host.ts';
 import { createProjectFileOpener, uploadProjectFile, projectFileArguments } from '../apps/desktop/src/project-file-open.ts';
 import { comfyModuleModeFromEnvironment } from '../apps/server/src/comfy-module.ts';
+import {createBackendLease, BACKEND_LEASE_TIMING} from '../apps/desktop/src/backend-lease.ts';
 import { createAppLanguageHost } from '../apps/desktop/src/app-language-host.ts';
 import { nativeText, setNativeLanguageReader } from '../apps/desktop/src/app-language-text.ts';
 import { resolveLocale } from '../packages/i18n/src/locale.ts';
@@ -35,6 +36,10 @@ import { NATIVE_AUDIO_CHANNEL } from '../apps/desktop/src/native-audio-preview-p
 import { consumeNativeProjectEntry } from '../apps/desktop/src/project-entry-admission.ts';
 import { observeInitialProjectLoad, createProjectRendererRecovery, createProjectBackendIncident } from '../apps/desktop/src/project-window-recovery.ts';
 import { validateTools } from '../apps/desktop/src/config.ts';
+import {createMenuCommandHost} from '../apps/desktop/src/menu-command-host.ts';
+import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
+import {MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS} from '../apps/desktop/src/menu-command-protocol.ts';
+import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const syntheticFailure = 'synthetic-private-body-/never-show-this-path';
@@ -326,7 +331,9 @@ test('native quit cleans only after confirmed failure and surfaces the failure w
   assert.equal(cleanups, 1);
   assert.equal(finishes, 0);
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  assert.match(main, /function requestApplicationQuit\(source[^)]*\)[^{]*\{ return quitRouter\.request\(source\)\.catch\(quitFailed\); \}/);
+  const quitEntry = main.slice(main.indexOf('function requestApplicationQuit('), main.indexOf('// The renderer never receives privileged Electron APIs'));
+  assert.match(quitEntry, /return quitRouter\.request\(source\)\.catch\(quitFailed\);/);
+  assert.match(quitEntry, /settingsForParent\(source\)/);
   assert.match(main, /const focused = BrowserWindow\.getFocusedWindow\(\);/);
   assert.match(main, /void requestApplicationQuit\(ownsWindow\(focused, windowContext\) && windowHost\.isTrustedDocument\(focused\) \? focused : undefined\);/);
   assert.doesNotMatch(main, /(?:quitCoordinator|quitRouter)\.request\([^)]*\)\.catch\(fatal\)/);
@@ -463,12 +470,14 @@ async function mainStartupHarness({ validate, settings }: {validate?(tools: unkn
   const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, ''), { mode: 'strip' });
   const app = new EventEmitter();
   const counts = { forks: 0, settings: 0, quits: 0, cleanup: 0, exits: [] as number[], notices: [] as DesktopHarnessDialog[] };
-  const expectedChannels = [APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL];
+  const expectedChannels = [APP_LANGUAGE_CHANNEL, PROJECT_WINDOW_CHANNEL, NATIVE_AUDIO_CHANNEL, CLIP_LUT_RECOVERY_CHANNEL, WORKSPACE_TOOLS_CHANNEL, WORKSPACE_NATIVE_CHANNEL, MENU_COMMAND_CHANNEL];
   const registeredChannels = new Set();
   Object.assign(app, { isPackaged: false, enableSandbox() {}, setName() {}, setAppUserModelId() {}, setDesktopName() {},
     commandLine: { appendSwitch() {} }, getPath: () => '/synthetic', requestSingleInstanceLock: () => true,
     whenReady: () => new Promise(() => {}), quit: () => { counts.quits++; }, exit: (code: number) => counts.exits.push(code) });
-  const context = vm.createContext({ app, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'linux', env: {}, on() {} }, path,
+  const context = vm.createContext({ app, createMenuCommandHost, applicationMenuTemplate, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS,
+    Menu: {buildFromTemplate: desktopMenuHarness, setApplicationMenu() {}},
+    createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'linux', env: {}, on() {} }, path,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
     createDesktopStartup: () => createDesktopStartup({ terminate: async () => [] }),
@@ -566,7 +575,7 @@ async function backendHarness({ close = async () => {}, start, settingsClose = (
   const nativeAuthority = {command:async () => {throw Error('No audition command is expected in this lifecycle fixture');}};
   let enterStart!: (value: LaunchView) => void; const started = new Promise<LaunchView>(resolve => { enterStart = resolve; });
   port.postMessage = (message: DesktopHarnessMessage) => { messages.push(message); };
-  const sandbox = { comfyModuleModeFromEnvironment, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
+  const sandbox = { comfyModuleModeFromEnvironment, createBackendLease, BACKEND_LEASE_TIMING, performance, process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
     pid: 23456, on: processEvents.on.bind(processEvents), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {}, startServer: (options: LaunchView) => { assert.equal(options.localDraftChannel,'development'); assert.equal(options.nativeAudioPreview,nativeAuthority); enterStart(options); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },

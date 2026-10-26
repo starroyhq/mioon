@@ -11,7 +11,7 @@ export interface WorkbenchTopbarProps {
 
 /** Passive shell: App retains navigation, drafts, authority and request identity. */
 export function WorkbenchTopbar({ brand, projectMenu, modeSwitch, status, actions }: WorkbenchTopbarProps) {
-  return <header className="topbar workbench-topbar">
+  return <header className="topbar workbench-topbar" data-text-selectable={false}>
     <div className="workbench-topbar-project">{brand}{projectMenu}</div>
     <div className="workbench-topbar-mode">{modeSwitch}</div>
     <div className="topbar-actions">{status}{actions}</div>

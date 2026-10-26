@@ -1,12 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import ts from 'typescript';
 import {captureImageEditIntent,imageEditIntentSource} from '../apps/web/src/image-edit-intent.ts';
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
 const app=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8');
-const begin=app.indexOf('  function imageEditScope()'),end=app.indexOf('  if (auth === false && !retainWorkbenchForClip)',begin);
-assert.ok(begin>=0&&end>begin);const source=app.slice(begin,end);
+const ast=ts.createSourceFile('App.tsx',app,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+const components=ast.statements.filter(ts.isFunctionDeclaration).filter(statement=>statement.name?.text==='App');
+assert.equal(components.length,1);assert.ok(components[0]!.body);
+// Execute only the three real image-entry functions. Their neighboring menu
+// hooks and command assignments belong to a different owner.
+const source=['imageEditScope','isImageEditIntentCurrent','openImageEdit'].map(name=>{
+ const declarations=components[0]!.body!.statements.filter(ts.isFunctionDeclaration).filter(statement=>statement.name?.text===name);
+ assert.equal(declarations.length,1,`The actual App contains one ${name} entry function`);assert.ok(declarations[0]!.body);
+ return declarations[0]!.getText(ast);
+}).join('\n');
 const id=(n: number)=>`f1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const asset=()=>({id:id(2),projectId:id(1),name:'original.png',mimeType:'image/png',sha256:'a'.repeat(64),provenance:'user-import',sizeBytes:100,width:512,height:512});
 interface EntryIntent {projectId: string; epoch: number; [key: string]: unknown}

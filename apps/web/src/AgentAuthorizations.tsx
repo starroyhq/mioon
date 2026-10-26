@@ -39,7 +39,7 @@ export default function AgentAuthorizations({visible=true}:{visible?:boolean}){
   return <section className="agent-settings-section" data-testid="agent-authorizations" aria-busy={busy}>
     <div className="agent-settings-section-title"><h3>{t('agent.authorization.listTitle')}</h3><Button type="button" variant="ghost" data-testid="agent-authorizations-refresh" disabled={!visible||busy} onClick={()=>{void load();}}>{t('agent.authorization.refresh')}</Button></div>
     <p className="agent-settings-help">{t('agent.authorization.explanation')}</p>
-    {failed&&<p role="alert" data-testid="agent-authorizations-error">{t('agent.authorization.error')}</p>}
-    {data&&<>{data.authorizations.length?<ul>{data.authorizations.map(grant=><li key={grant.id} data-testid="agent-authorization-target"><p>{grant.model} · {t(`agent.authorization.scope.${grant.scope}`)}</p><p className="agent-chat-context">{grant.destination}</p><Button type="button" variant="ghost" data-testid={`agent-authorization-revoke-${grant.id}`} disabled={!visible||busy} onClick={()=>{void revoke(grant);}}>{t('agent.authorization.revoke')}</Button></li>)}</ul>:<p data-testid="agent-authorizations-empty">{t('agent.authorization.empty')}</p>}</>}
+    {failed&&<p role="alert" data-text-selectable data-testid="agent-authorizations-error">{t('agent.authorization.error')}</p>}
+    {data&&<>{data.authorizations.length?<ul>{data.authorizations.map(grant=><li key={grant.id} data-testid="agent-authorization-target"><p data-text-selectable>{grant.model} · {t(`agent.authorization.scope.${grant.scope}`)}</p><p className="agent-chat-context" data-text-selectable>{grant.destination}</p><Button type="button" variant="ghost" data-testid={`agent-authorization-revoke-${grant.id}`} disabled={!visible||busy} onClick={()=>{void revoke(grant);}}>{t('agent.authorization.revoke')}</Button></li>)}</ul>:<p data-testid="agent-authorizations-empty">{t('agent.authorization.empty')}</p>}</>}
   </section>;
 }

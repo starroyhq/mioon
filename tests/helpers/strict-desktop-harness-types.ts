@@ -16,9 +16,19 @@ export type DesktopHarnessBackend<M = DesktopHarnessMessage> = BackendSupervisor
 };
 export interface DesktopHarnessConnection {url: string; token: string; pid: number; tokenFile?: string}
 export interface DesktopHarnessDialog {title: string; detail?: string; message?: string; buttons?: string[]; [key: string]: unknown}
-export interface DesktopHarnessMenu {label: string; submenu: {label: string; click(): unknown}[]}
+export interface DesktopHarnessMenu {
+  id?: string; label?: string; role?: string; type?: string; enabled?: boolean; checked?: boolean;
+  accelerator?: string; click?(): unknown; submenu?: DesktopHarnessMenuList;
+}
+export interface DesktopHarnessMenuList extends Array<DesktopHarnessMenu> {
+  getMenuItemById(id: string): DesktopHarnessMenu | null;
+}
+export interface DesktopHarnessFrame {
+  url: string;
+  executeJavaScript?(script: string, userGesture?: boolean): Promise<unknown>;
+}
 export interface DesktopHarnessContents extends EventEmitter {
-  mainFrame: {url: string}; send(...values: unknown[]): void; getURL(): string;
+  mainFrame: DesktopHarnessFrame; send(...values: unknown[]): void; getURL(): string;
   loadURL(url: string): Promise<void>; executeJavaScript(script: string): Promise<unknown>;
 }
 export interface DesktopHarnessSession extends EventEmitter {
@@ -51,6 +61,7 @@ export interface DesktopHarnessOptions<W extends DesktopHarnessWindow> {
   flush?(index: number): unknown; drain?(index: number): unknown; validate?(index: number): unknown;
   remove?(count: number): unknown; clear?(index: number): unknown; cookie?(index: number): unknown;
   connection?(index: number): unknown; load?(index: number, count?: number, url?: string): unknown;
+  menuFrameExecute?(index: number, perform: () => unknown): unknown;
   dialog?(value: DesktopHarnessDialog, parent: W | null): unknown;
   syncDialog?(window: W, value: DesktopHarnessDialog): number;
   release?(): void; settings?(index: number, value: DesktopHarnessSettings): unknown;

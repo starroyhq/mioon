@@ -131,7 +131,7 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.ok(!main.includes('shell.openExternal'));
   assert.match(main, /ipcMain\.handle\(PROJECT_WINDOW_CHANNEL,/);
   assert.deepEqual([...main.matchAll(/ipcMain\s*\.\s*handle\s*\(\s*([^,]+),/g)].map(match => match[1].trim()).sort(),
-    ['APP_LANGUAGE_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
+    ['APP_LANGUAGE_CHANNEL', 'CLIP_LUT_RECOVERY_CHANNEL', 'MENU_COMMAND_CHANNEL', 'NATIVE_AUDIO_CHANNEL', 'PROJECT_WINDOW_CHANNEL', 'WORKSPACE_NATIVE_CHANNEL', 'WORKSPACE_TOOLS_CHANNEL']);
   assert.match(main, /^import \{ CLIP_LUT_RECOVERY_CHANNEL \} from '\.\.\/\.\.\/\.\.\/packages\/contracts\/src\/clip-lut-recovery\.ts';$/m);
   assert.match(main, /^ipcMain\.handle\(CLIP_LUT_RECOVERY_CHANNEL, \(event, request\) => lutRecoveryHost\?\.dispatch\(event, request\) \?\? \{ ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' \}\);$/m);
   // Restrict these checks to LUT wiring so another host cannot satisfy its authority guards.
@@ -161,6 +161,8 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.match(main, /event\.senderFrame\?\.url === owner\.url/);
   assert.match(main, /ownsWindow\(window, windowContext\) && owner\.isCurrent\(\)/);
   assert.doesNotMatch(main, /ipcMain\s*\[|ipcMain\s*\.\s*(?:on|once|handleOnce)\s*\(/);
-  assert.match(main, /return windowHost\.dispatch\(event, request\)/);
+  const projectHandler = main.slice(main.indexOf('ipcMain.handle(PROJECT_WINDOW_CHANNEL,'), main.indexOf('\nasync function quitFailed'));
+  assert.match(projectHandler, /const result = windowHost\.dispatch\(event, request\);/);
+  assert.match(projectHandler, /return result;/);
   assert.match(main, /preload: path\.join\(app\.getAppPath\(\), 'preload\.cjs'\)/);
 });

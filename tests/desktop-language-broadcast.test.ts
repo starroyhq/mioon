@@ -20,7 +20,7 @@ interface FakeLanguageHost {dispatch(event: unknown, request: {action: string; p
 type LanguageWindow = {name: string; webContents: {mainFrame: {url: string}; send(channel: string, snapshot: unknown): void}};
 for (const failure of ['send', 'webContents']) test(`language broadcasts isolate a destroyed window's ${failure} failure`, async () => {
   const deliveries: Delivery[] = [], listeners = new Set<(snapshot: LanguageSnapshot) => void>();
-  let persisted: string | null = null, writes = 0, menuUpdates = 0, failedAttempts = 0, untrustedDeliveries = 0;
+  let persisted: string | null = null, writes = 0, menuUpdates = 0, trayUpdates = 0, failedAttempts = 0, untrustedDeliveries = 0;
   const makeWindow = (name: string): LanguageWindow => ({ name, webContents: { mainFrame: { url: `http://127.0.0.1:49152/?window=${name}` },
     send(channel, snapshot) {
       deliveries.push({ name, channel, snapshot });
@@ -45,6 +45,7 @@ for (const failure of ['send', 'webContents']) test(`language broadcasts isolate
       isTrustedDocument: (window: unknown): boolean => window !== untrusted,
     },
     installMenu: (): void => { menuUpdates++; },
+    trayHost: {refresh: (): void => { trayUpdates++; }},
   });
   const host = vm.runInContext(`let languageHost; ${wiring}\nlanguageHost;`, context) as FakeLanguageHost;
   const event = { sender: initiator.webContents, senderFrame: owner.frame };
@@ -56,7 +57,7 @@ for (const failure of ['send', 'webContents']) test(`language broadcasts isolate
   await store.initialize();
   const saved = host.dispatch(event, { action: 'set', preference: 'ja' });
   assert.equal(saved.preference, 'ja'); assert.equal(saved.persistence, 'saved'); assert.equal(saved.revision, 1);
-  assert.equal(failedAttempts, 1); assert.equal(writes, 1); assert.equal(menuUpdates, 1); assert.equal(untrustedDeliveries, 0);
+  assert.equal(failedAttempts, 1); assert.equal(writes, 1); assert.equal(menuUpdates, 1); assert.equal(trayUpdates, 1); assert.equal(untrustedDeliveries, 0);
   assert.deepEqual(JSON.parse(persisted!), { version: 1, preference: 'ja' });
   assert.deepEqual(deliveries.map(({ name }) => name), ['observer', 'initiator']);
   for (const delivery of deliveries) { assert.equal(delivery.channel, APP_LANGUAGE_EVENT); assert.equal(delivery.snapshot, saved); }
@@ -65,6 +66,7 @@ for (const failure of ['send', 'webContents']) test(`language broadcasts isolate
   await store.setPreference('zh-Hant');
   assert.equal(store.getSnapshot().locale, 'zh-Hant'); assert.equal(store.getSnapshot().persistence, 'saved');
   assert.equal(store.getSnapshot().saving, false); assert.equal(writes, 2); assert.equal(failedAttempts, 2); assert.equal(untrustedDeliveries, 0);
+  assert.equal(menuUpdates, 2); assert.equal(trayUpdates, 2);
   assert.equal(host.snapshot().revision, 2); assert.equal(JSON.parse(persisted!).preference, 'zh-Hant');
   store.dispose(); assert.equal(listeners.size, 0);
 });

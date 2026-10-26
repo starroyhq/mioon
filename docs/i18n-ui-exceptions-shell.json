@@ -51,13 +51,6 @@
       "reason": "Technical SI seconds unit in compact duration notation; the duration value remains display-only and its numeric protocol value is unchanged."
     },
     {
-      "file": "apps/web/src/SettingsRoot.tsx",
-      "category": "visible-jsx",
-      "hash": "7a46cf2292a4ae656546bfaaf227049188aa7afe5b12953101345c8916893762",
-      "owner": "shell",
-      "reason": "Exact Mioon application brand; product identity must not be translated."
-    },
-    {
       "file": "apps/web/src/ShotSubjectBindings.tsx",
       "category": "visible-jsx",
       "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",

@@ -6,10 +6,10 @@ import Icon from './icons.tsx';
 import LanguageControl from './LanguageControl.tsx';
 import { WorkspaceVisibilityProvider } from './workspace-visibility.tsx';
 import { isSettingsConnectionPage } from './settings-window-state.ts';
-import type { SettingsPage } from './settings-window-state.ts';
+import type { SettingsConnectionPage, SettingsPage } from './settings-window-state.ts';
 import { SettingsAbout, SettingsModelServices, SettingsShortcuts } from './SettingsExtraPages.tsx';
 
-export type HomeConnectionSlot = 'agent' | 'official' | 'custom' | 'comfy';
+export type HomeConnectionSlot = SettingsConnectionPage;
 const slots: readonly { id: HomeConnectionSlot; label: 'shell.agentLabel' | 'shell.openaiImage' | 'shell.compatibleImage' | 'shell.localComfy' }[] = [
   { id: 'agent', label: 'shell.agentLabel' }, { id: 'official', label: 'shell.openaiImage' },
   { id: 'custom', label: 'shell.compatibleImage' }, { id: 'comfy', label: 'shell.localComfy' },
@@ -29,8 +29,8 @@ function SettingsCategoryIcon({ category }: { category: Category }) {
 const categoryFor = (page: SettingsPage): Category => page === 'official' ? 'models' : page === 'custom' || page === 'comfy' ? 'extensions' : page;
 const connectionCategory = (page: SettingsPage) => ['agent', 'models', 'extensions', 'official', 'custom', 'comfy'].includes(page);
 
-/** Retained form owners keep their original identity and admission. Categories
- * are local presentation; native connection-slot messages remain unchanged. */
+/** Retained form owners keep their original identity and admission. Fixed
+ * native page intentions never grant a category its own connection identity. */
 export default function ProjectHomeConnections({ selected, page = selected, onSelect, onPage, panes, general, connectionsAvailable = true, active = true, workspace, videoTools, videoModels }: {
   selected: HomeConnectionSlot; page?: SettingsPage; onSelect: (slot: HomeConnectionSlot) => void; onPage?: (page: SettingsPage) => void;
   panes: Readonly<Record<HomeConnectionSlot, ReactNode>>; general?: ReactNode; connectionsAvailable?: boolean; active?: boolean;

@@ -309,6 +309,24 @@ test('actual Timeline renders decorative bounded SVG inside existing clip button
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8'); assert.match(css, /\.timeline-waveform\{[^}]*pointer-events:none/); h.unmount();
 });
 
+test('waveform failure explanations remain selectable inside the nonselectable timeline toolbar', () => {
+  for (const status of ['error', 'interrupted', 'unsupported', 'missing'] as const) {
+    const currentRange = range()!, entry = {...currentRange, status, phase: 'idle' as const, nextAt: 0, retry: false};
+    let toggled: boolean | undefined;
+    const h = componentHarness({waveformState: {enabled: true, windows: [currentRange], entries: new Map([[currentRange.key, entry]]),
+      retryable: false, setEnabled(value: boolean) {toggled = value;}, retry() {}}});
+    const toolbar = h.all().find(node => node.props?.className === 'timeline-toolbar edit-timeline-toolbar');
+    assert.equal(toolbar!.props['data-text-selectable'], false);
+    const explanation = h.find('timeline-waveform-status')!;
+    assert.equal(explanation.props['data-text-selectable'], true);
+    assert.equal(content(explanation), waveform.waveformStatusText(entry));
+    const toggle = h.find('timeline-waveform-toggle')!;
+    assert.notEqual(toggle.props['data-text-selectable'], true);
+    toggle.props.onClick(); assert.equal(toggled, false);
+    h.unmount();
+  }
+});
+
 test('actual overlay clips the decoder tail while the inner SVG retains full requested time spacing', () => {
   const currentRange = waveform.waveformWindow(clip({ durationFrames: 30 }), 10, 0, 30);
   const state = { enabled: true, windows: [currentRange], entries: new Map([[currentRange!.key, { ...currentRange, status: 'ready', peaks: [0.25, 0.5, 1], resultEndFrame: 30, decodedSampleFrames: 44650 }]]), retryable: false, setEnabled() {}, retry() {} };

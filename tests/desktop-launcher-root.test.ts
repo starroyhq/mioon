@@ -1,5 +1,7 @@
 import { i18nTestModule, renderMessage } from './helpers/i18n.ts';
 import * as i18nCore from '../packages/i18n/src/index.ts';
+import * as desktopMenu from '../apps/web/src/desktop-menu-client.ts';
+import * as modalState from '../apps/web/src/workbench-modal-state.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -104,6 +106,8 @@ test('empty native home moves only a settled locator summary into Help and retai
       './native-project-entry.ts': {useNativeProjectEntry: () => controller},
       './ProjectEntry.tsx': {__esModule: true, default: 'entry'},
       './native-locator-state.ts': {createNativeLocatorOwner: () => ({})},
+      './desktop-menu-client.ts': desktopMenu,
+      './workbench-modal-state.ts': modalState,
     };
     Function('require', 'module', 'exports', transformSync(source('LauncherRoot.tsx'), {loader: 'tsx', format: 'cjs', jsx: 'transform'}).code)((name: string) => {
       assert.ok(Object.hasOwn(dependencies, name), `Unexpected launcher dependency: ${name}`); return dependencies[name];
@@ -135,7 +139,8 @@ test('native settings slot delegates before existing key clearing; Web fallback 
   assert.ok(image.indexOf('if (onRequestSelectSlot)') < image.indexOf("setKeyNotice(message('image.settings.keySwitched"));
   assert.match(image, /onRequestSelectSlot\(next\); return;/);
   assert.match(source('ComfyImageSettings.tsx'), /else leave\(\(\) => onSelectSlot\(slot\), undefined\)/);
-  assert.match(source('SettingsRoot.tsx'), /window\.close\(\); return false/);
+  assert.match(source('SettingsRoot.tsx'), /await requestClose\(\); return false/);
+  assert.match(source('SettingsRoot.tsx'), /bridge\.closeSettings\(\)/);
 });
 
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
@@ -232,12 +237,13 @@ test('a superseded initial context rejection cannot unmount an established nativ
     if (name === './LauncherRoot.tsx') return { __esModule: true, default: 'launcher' };
     if (name === './SettingsRoot.tsx') return { __esModule: true, default: 'settings' };
     if (name === './NativeEditorRoot.tsx') return { __esModule: true, default: 'editor' };
+    if (name === './NativeSettingsBackdrop.tsx') return { __esModule: true, default: 'settings-backdrop' };
     if (name === './desktop-window-client.ts') return { readDesktopWindowBridge: () => bridge };
     assert.fail(name);
   }, module, module.exports, {});
   const render = (): FakeNode => { cursor = 0; return (module.exports.default as (props: Record<string, unknown>) => FakeNode)({ rpc() {}, contractChecks: {}, renderWeb: () => (actual.createElement as (...args: unknown[]) => unknown)('web'), renderEditor: () => (actual.createElement as (...args: unknown[]) => unknown)('editor'), renderSettings: () => null }); };
   render(); effects.splice(0).forEach(effect => effect()); receive!({ contextId: 'current-owner', role: 'editor' });
-  assert.equal(render().type, 'editor'); pending.reject(new Error('superseded')); await tick(); assert.equal(render().type, 'editor');
+  assert.equal((render().props.children as FakeNode).type, 'editor'); pending.reject(new Error('superseded')); await tick(); assert.equal((render().props.children as FakeNode).type, 'editor');
 });
 
 test('scoped picker uses shared focus-managed controlled Dialog and retains hidden form owner', () => {

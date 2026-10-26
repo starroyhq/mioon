@@ -12,7 +12,7 @@ interface RenderedNode {type?: unknown; props?: Record<string, unknown>; [key: s
 type Nodes = RenderedNode[];
 const nodes = (tree: unknown): Nodes => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [{...(tree as RenderedNode)}, ...nodes((tree as RenderedNode).props?.children)] : [];
 interface Slot {deps?: readonly unknown[]; cleanup?: () => void; current?: unknown; [key: string]: unknown}
-interface HarnessView {dialog: RenderedNode; request: (mode: string) => void}
+interface HarnessView {dialog: RenderedNode; request: (mode: string) => void; available: (mode: string) => boolean}
 interface Harness {render: (options: unknown) => HarnessView; shortcuts: (options: unknown) => void; dispose: () => void}
 interface MockMedia {readyState: number; currentTime: number; paused?: boolean; pause: () => void}
 function harness(): Harness {
@@ -59,6 +59,16 @@ test('both removal modes wait for confirmation and recheck dirty state, selected
 test('ripple uses its own localized history label',()=>{
  const state=timelineHistoryState({projectId:'p',timeline:{id:'t',revision:2},history:{projectId:'p',timelineId:'t',revision:2,cursor:1,length:1,canUndo:true,canRedo:false,undoEntry:{id:'entry',operation:'timeline.clip.rippleRemove'},redoEntry:null}});
  assert.equal(state.undoLabel,'波纹删除片段');assert.equal(state.canUndo,true);
+});
+
+test('native removal availability follows the same live confirmation owner, locks and component lifetime', () => {
+ const h=harness(), calls: string[]=[];
+ const options={clip:{id:'clip1',name:'One',durationFrames:30},scope:'p:t:1:clip1',disabled:false,onRemove:(id:string)=>calls.push(id)};
+ let view=h.render(options); assert.equal(view.available('remove'),true); assert.equal(view.available('ripple'),false);
+ view.request('remove'); view=h.render(options); assert.equal(view.dialog.props?.open,true); assert.deepEqual(calls,[]);
+ const retained=view.available; h.render({...options,disabled:true}); assert.equal(retained('remove'),false,'old native callback must re-read a newly locked or dirty owner');
+ h.render(options); assert.equal(retained('remove'),true); h.dispose(); assert.equal(retained('remove'),false);
+ assert.deepEqual(calls,[],'availability and requesting confirmation never remove media themselves');
 });
 
 test('frame controls reject hidden/unready bindings and keep source clocks independent from timeline playhead',()=>{

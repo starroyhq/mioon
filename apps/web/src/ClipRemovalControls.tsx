@@ -45,7 +45,7 @@ export function useClipRemoval(options: Options) {
       <div className="clip-remove-actions"><Button variant="outline" disabled={submitting} onClick={() => setPending(null)}>{t('edit.remove.cancel')}</Button><Button className="clip-remove-confirm" data-testid="confirm-clip-removal" disabled={!valid || submitting} onClick={() => {void submit();}}>{t(mode === 'ripple' ? 'edit.remove.ripple' : 'edit.remove.action')}</Button></div>
     </DialogContent>
   </Dialog>;
-  return {request, dialog};
+  return {request, dialog, available: (mode: ClipRemovalMode) => mounted.current && !inFlight.current && available(current.current, mode)};
 }
 
 export function TimelineRemovalShortcuts({disabled, request}: {disabled: boolean; request: (mode: ClipRemovalMode) => void}) {

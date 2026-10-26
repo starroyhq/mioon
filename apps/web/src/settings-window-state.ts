@@ -2,16 +2,19 @@ import { message as msg } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import type { ProjectWindowContext, ProjectWindowSettingsSlot } from './desktop-window-client.ts';
 import type { SettingsNavigationRegistry } from './settings-navigation-state.ts';
-export type SettingsPage = ProjectWindowSettingsSlot | 'general' | 'workspace' | 'video-tools' | 'models' | 'extensions' | 'shortcuts' | 'about';
-export const isSettingsConnectionPage = (page: SettingsPage): page is ProjectWindowSettingsSlot => page === 'agent' || page === 'official' || page === 'custom' || page === 'comfy';
+export type SettingsPage = ProjectWindowSettingsSlot;
+export type SettingsConnectionPage = 'agent' | 'official' | 'custom' | 'comfy';
+export const isSettingsConnectionPage = (page: SettingsPage): page is SettingsConnectionPage => page === 'agent' || page === 'official' || page === 'custom' || page === 'comfy';
 /** Slot requests own no form data. All form owners stay mounted and a later
  * intent or input invalidates consent before the selected pane can change. */
 export function createSettingsWindowNavigation({ context: initial, registry, confirm, onChange = () => {} }: {
   context: ProjectWindowContext; registry: SettingsNavigationRegistry; confirm: (message: string | DisplayMessage) => Promise<boolean>; onChange?: () => void;
 }) {
   let active = true, context = initial, intent = 0, seenVersion = initial.settingsVersion;
-  let selected: ProjectWindowSettingsSlot = initial.settingsSlot ?? 'agent';
-  let page: SettingsPage = selected;
+  let page: SettingsPage = initial.settingsSlot ?? 'agent';
+  // A menu can request any fixed settings page. Only connection pages may
+  // select a retained provider form; General must not mount or read one.
+  let selected: SettingsConnectionPage = isSettingsConnectionPage(page) ? page : 'agent';
   let notice: string | DisplayMessage = '';
   async function selectPage(next: SettingsPage): Promise<boolean> {
     const serial = ++intent;

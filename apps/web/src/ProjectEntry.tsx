@@ -6,12 +6,14 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@mioon/ui
 import ProjectHome from './ProjectHomeScreen.tsx';
 import type { ProjectEntryController } from './project-entry-state.ts';
 import type { ProjectWindowSettingsSlot } from './desktop-window-client.ts';
+import type {MenuHelpControl} from './desktop-menu-client.ts';
 
 /** A scoped workspace catalog and new-project form. It remains mounted when
  * hidden so its inputs and unknown request always retain their exact owner. */
-export default function ProjectEntry({ controller, status, help, onSettings, editor = false }: {
+export default function ProjectEntry({ controller, status, help, onSettings, editor = false, onRegisterMenuHelp, onMenuHelpStateChange }: {
   readonly controller: ProjectEntryController; readonly status?: ReactNode; readonly help?: ReactNode; readonly editor?: boolean;
   readonly onSettings: (slot: ProjectWindowSettingsSlot) => void;
+  readonly onRegisterMenuHelp?: (control: MenuHelpControl) => () => void; readonly onMenuHelpStateChange?: () => void;
 }) {
   const { t, renderMessage, formatDate, formatNumber } = useI18n();
   const state = controller.getState(), context = controller.getContext();
@@ -25,7 +27,7 @@ export default function ProjectEntry({ controller, status, help, onSettings, edi
       <DialogDescription>{t('projects.separateWindow')}</DialogDescription>
       <Button type="button" variant="ghost" disabled={state.creating || state.sealed || state.createUnknown || state.openUnknown} onClick={() => { void controller.dismiss(); }}>{t('projects.closeSelection')}</Button></div>}
     {state.openUnknown && <div className="project-home-notice" role="status"><p>{t('projects.checkOriginalOpen')}</p><Button type="button" variant="outline" onClick={() => { void controller.reconcileOpen(); }}>{t('projects.checkWindow')}</Button></div>}
-    <ProjectHome presentation={editor ? 'embedded' : 'page'} summaryEnabled={Boolean(state.workspace && !state.workspace.restored)} active={state.shown && !context.quitting} summaryScope={context.backendId} projects={state.projects} phase={state.phase} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
+    <ProjectHome onRegisterMenuHelp={onRegisterMenuHelp} onMenuHelpStateChange={onMenuHelpStateChange} presentation={editor ? 'embedded' : 'page'} summaryEnabled={Boolean(state.workspace && !state.workspace.restored)} active={state.shown && !context.quitting} summaryScope={context.backendId} projects={state.projects} phase={state.phase} openingName={state.projects.find(project => project.id === state.openingProjectId)?.name}
       error={state.error} notice={state.notice} busy={state.creating || state.sealed || context.quitting} listBusy={state.listBusy} listError={state.listError}
       page="projects" onPage={page => { if (page === 'settings') onSettings('agent'); }} onOpen={id => { void controller.open(id); }}
       onRetry={() => { if (state.openUnknown) void controller.reconcileOpen(); else if (state.openingProjectId) void controller.open(state.openingProjectId); }}

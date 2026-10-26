@@ -93,7 +93,13 @@ export function createWorkspaceBackupRuntime({store,configuration,isQuiescent=()
       const database=path.join(snapshot,'workbench.sqlite');
       try{
         writeBoundedFile(database,snapshot,Buffer.alloc(0),WORKSPACE_BACKUP_LIMITS.databaseBytes);
-        await sqliteBackup(store.db,database,{rate:128,progress:()=>assertCurrent(stamp,signal)});
+        try{await sqliteBackup(store.db,database,{rate:128,progress:()=>assertCurrent(stamp,signal)});}
+        catch(error){
+          // SQLite can reject before its next JS progress callback. Recheck the
+          // frozen source on failure too; an unchanged source keeps its native
+          // error, and neither path retries the backup.
+          assertCurrent(stamp,signal);throw error;
+        }
         assertValidatedCurrent(stamp,signal);
         const databaseIdentity=inspectFile(database,snapshot,{private:true,maxBytes:WORKSPACE_BACKUP_LIMITS.databaseBytes})!;ownedFiles.set(database,databaseIdentity);
         // Normalize only our newly created snapshot, never the active WAL.

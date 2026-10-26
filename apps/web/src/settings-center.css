@@ -195,3 +195,13 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .project-home-settings-window .settings-workspace-status-global > summary::after { content: '\2304'; }
 .project-home-settings-window .settings-workspace-status-global > div { position: absolute; right: 0; top: calc(100% + var(--wb-space-2)); width: min(360px, calc(var(--mioon-viewport-width) - 24px)); max-height: calc(var(--mioon-viewport-height) - 80px); overflow: auto; margin-top: 0; padding: var(--wb-space-4); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-raised); box-shadow: var(--wb-shadow); }
 .project-home-settings-window .settings-workspace-status-global .project-home-notice { padding: 0; margin: 0; border: 0; background: none; }
+
+/* Native settings are a parent-owned modal panel, not another workbench page. */
+.native-settings-parent-surface { width: 100%; height: var(--mioon-viewport-height); min-height: 0; }
+.native-settings-modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgb(0 0 0 / 32%); cursor: default; -webkit-app-region: no-drag; }
+.native-settings-panel > .native-settings-panel-header { position: relative; z-index: 5; display: flex; align-items: center; flex: none; gap: var(--wb-space-3); min-height: 44px; padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--wb-line-subtle); background: var(--wb-raised); }
+.native-settings-panel-title { font-size: var(--wb-text-body); font-weight: 600; }
+.native-settings-panel .native-settings-panel-close { flex: none; width: var(--wb-control); min-height: var(--wb-control); padding: 0; color: var(--wb-soft); }
+.native-settings-panel-header :is(button, summary) { -webkit-app-region: no-drag; }
+.native-settings-panel .settings-center { grid-template-columns: 188px minmax(0, 1fr); }
+@media (max-width: 820px) { .native-settings-panel .settings-center { grid-template-columns: 164px minmax(0, 1fr); } .native-settings-panel .settings-center-content { padding-inline: 18px; } }
