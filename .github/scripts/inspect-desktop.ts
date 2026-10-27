@@ -150,7 +150,9 @@ export async function inspectDesktop(platform: TargetPlatform, arch: TargetArch,
     const details = await command('tar', ['--list', '--verbose', '--numeric-owner', '--full-time', '--gzip', '--quoting-style=literal', '--file', tarball], 'TARBALL_METADATA_FAILED');
     validateTarListing(names, details, artifactBase);
     const extractRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-ci-extract-')); result.extractRoot = extractRoot;
-    await command('tar', ['--extract', '--gzip', '--no-same-owner', '--same-permissions', '--delay-directory-restore', '--no-overwrite-dir', '--keep-old-files', '--file', tarball, '--directory', extractRoot], 'TARBALL_EXTRACTION_FAILED', {timeout: 180000});
+    // GNU tar rejects combining --keep-old-files with --no-overwrite-dir. This
+    // owned empty root follows listing validation; keep-old-files still forbids replacement.
+    await command('tar', ['--extract', '--gzip', '--no-same-owner', '--same-permissions', '--delay-directory-restore', '--keep-old-files', '--file', tarball, '--directory', extractRoot], 'TARBALL_EXTRACTION_FAILED', {timeout: 180000});
     if (createHash('sha256').update(await readFile(tarball)).digest('hex') !== beforeHash) fail('TARBALL_CHANGED_DURING_INSPECTION');
     const delivered = path.join(extractRoot, artifactBase);
     if (await treeDigest(path.join(expected, 'linux-unpacked')) !== await treeDigest(delivered)) fail('DELIVERED_LINUX_TREE_MISMATCH');

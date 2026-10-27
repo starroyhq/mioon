@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp, readFile, readdir, realpath, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {argumentsFor, cleanEnvironment, command, mediaCapabilities, probeMediaCli, safeFailure, targetArch, targetPlatform, CheckFailure, report} from '../.github/scripts/media-environment.ts';
+import {argumentsFor, cleanEnvironment, command, mediaCapabilities, mediaFailureReport, MediaCapabilityFailure, probeMediaCli, safeFailure, targetArch, targetPlatform, CheckFailure, report} from '../.github/scripts/media-environment.ts';
 import {boundedPoll, extractedTarFor, mountedDmgFor, smokeEnvironment, smokeTimeouts, validateDiscovery} from '../.github/scripts/desktop-smoke.ts';
 import {validateArchitecture, validateTarListing, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
 
@@ -16,9 +16,9 @@ test('desktop helper CLI rejects missing, duplicate, unknown and multiline optio
 
 test('Linux and macOS media admission require every application filter and encoder', () => {
   const filterNames = ['drawtext', 'subtitles', 'zscale', 'loudnorm', 'ebur128'], encoderNames = ['libx264', 'aac', 'libwebp', 'libwebp_anim'];
-  const filters = filterNames.map(name => ` ... ${name} V->V fixture`).join('\n');
   const encoders = encoderNames.map(name => ` V....D ${name} fixture`).join('\n');
-  for (const platform of ['linux', 'darwin'] as const) {
+  for (const platform of ['linux', 'darwin'] as const) for (const flags of ['...', '..']) {
+    const filters = filterNames.map(name => ` ${flags} ${name} V->V fixture`).join('\n');
     assert.deepEqual(mediaCapabilities(platform, filters, encoders), {
       filters: Object.fromEntries(filterNames.map(name => [name, true])), encoders: Object.fromEntries(encoderNames.map(name => [name, true])),
     });
@@ -28,6 +28,19 @@ test('Linux and macOS media admission require every application filter and encod
     assert.ok(Object.values(basic.filters).every(value => value === false));
     assert.deepEqual(basic.encoders, {libx264: true, aac: true, libwebp: false, libwebp_anim: false});
   }
+});
+
+test('media parsing accepts FFmpeg 7.1 and 9 filter rows while retaining exact names and encoder columns', () => {
+  const ffmpeg9 = ' .. ebur128           A->N       EBU R128 scanner.\n .. loudnorm          A->A       EBU R128 loudness normalization\n';
+  const ffmpeg71 = ' ... ebur128           A->N       EBU R128 scanner.\n ... loudnorm          A->A       EBU R128 loudness normalization\n';
+  for (const filters of [ffmpeg71, ffmpeg9]) {
+    assert.deepEqual(mediaCapabilities('darwin', filters, ' V....D libx264 fixture\n A..... aac fixture'), {
+      filters: {drawtext: false, subtitles: false, zscale: false, loudnorm: true, ebur128: true},
+      encoders: {libx264: true, aac: true, libwebp: false, libwebp_anim: false},
+    });
+  }
+  for (const filters of [' . loudnorm A->A', ' .... loudnorm A->A', ' ...... loudnorm A->A', ' .. loudnorm_fake A->A', ' prefix .. loudnorm A->A', ' ..\nloudnorm A->A']) assert.equal(mediaCapabilities('darwin', filters, '').filters.loudnorm, false);
+  for (const encoders of [' .. libx264 fixture', ' ... libx264 fixture', ' V.... libx264 fixture', ' V.....D libx264 fixture', ' V....D libx264_fake fixture', ' prefix V....D libx264 fixture']) assert.equal(mediaCapabilities('darwin', '', encoders).encoders.libx264, false);
 });
 
 test('CLI capability probes keep scripts private and clean them after success and parser failure', async () => {
@@ -133,5 +146,9 @@ test('machine-readable diagnostics retain fixed error code only', async () => {
     await report(output, {ok: false, error: safeFailure(new Error('Bearer private-token'))});
     assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), {ok: false, error: 'UNEXPECTED_CHECK_FAILURE'});
     assert.ok(!(await readFile(output, 'utf8')).includes('private-token'));
+    const capabilities = mediaCapabilities('darwin', ' .. loudnorm A->A fixture', ' A..... aac fixture');
+    await report(output, mediaFailureReport(new MediaCapabilityFailure(capabilities)));
+    assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), {ok: false, error: 'REQUIRED_MEDIA_CAPABILITY_MISSING', capabilities});
+    assert.deepEqual(mediaFailureReport(Object.assign(new Error('Bearer private-token'), {capabilities: {secret: 'private-token'}})), {ok: false, error: 'UNEXPECTED_CHECK_FAILURE'});
   } finally { await rm(directory, {recursive: true, force: true}); }
 });
