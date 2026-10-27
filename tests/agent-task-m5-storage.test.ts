@@ -1,5 +1,5 @@
-import {removeReviewedSchema60} from './helpers/current-schema60-delta.ts';
-import {removeReviewedSchema62} from './helpers/current-schema62-delta.ts';
+import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
+import {AGENT_TASK_ORDINARY_SCHEMAS,CURRENT_ORDINARY_SCHEMA} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,10 +14,8 @@ import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {agentTaskChangeSchema,agentTaskSnapshotSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
-import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 
-type SourceVersion=52|54|56|58|60|62;
+type SourceVersion=number;
 function fixture(t:TestContext){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-m5-storage-')),store=openStore(root),projectId=randomUUID(),journal=createAgentTaskJournal(store);let closed=false;
  const close=()=>{if(!closed){closed=true;store.close();}};
@@ -40,10 +38,7 @@ function fixture(t:TestContext){
  return {root,store,projectId,journal,run,model,change:superseded,request,close};
 }
 function sourceProfile(f:ReturnType<typeof fixture>,version:SourceVersion):void {
- if(version===60)removeReviewedSchema62(f.store.db);
- if(version===58)removeReviewedSchema60(f.store.db);
- if(version===56)removeReviewedSchema58(f.store.db);
- if(version<56)removeReviewedSchema56(f.store.db);
+ downgradeReviewedWorkspace(f.store.db,Math.max(version,54));
  if(version===52)f.store.db.exec("DROP INDEX agent_task_conversation_v2;DROP TRIGGER agent_task_conversation_identity_v2;DROP TRIGGER agent_task_conversation_required_v2;UPDATE agent_task_runs_v2 SET data=json_remove(data,'$.conversationId');DELETE FROM schema_version WHERE version=54");
  assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:version,profile:'ordinary'});
  assert.equal(readWorkspaceBackupSchemaVersion(f.store.db),version);
@@ -54,7 +49,7 @@ function retained(f:Pick<ReturnType<typeof fixture>,'store'>){
 }
 function restorationMetadata(){return {restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};}
 
-for(const version of [52,54,56,58,60,62] as const)test(`existing schema${version} stores retry receipts and superseded evidence without adding schema objects`,async t=>{
+for(const version of AGENT_TASK_ORDINARY_SCHEMAS)test(`existing schema${version} stores retry receipts and superseded evidence without adding schema objects`,async t=>{
  const f=fixture(t);sourceProfile(f,version);
  assert.equal(agentTaskChangeSchema.parse(f.change).status,'superseded');
  assert.equal(f.journal.lookupControl(f.request.requestId)?.action,'retry');
@@ -80,7 +75,7 @@ for(const version of [52,54,56,58,60,62] as const)test(`existing schema${version
 });
 
 const projections=[['modifiedAfter',false],['modifiedAfter',true],['undoDisposition','undo'],['undoDisposition','retain'],['undoDisposition','blocked']] as const;
-for(const version of [52,54,56,58,60,62] as const)for(const [field,value] of projections)test(`schema${version} refuses persisted ${field}=${value} without altering its original evidence`,t=>{
+for(const version of AGENT_TASK_ORDINARY_SCHEMAS)for(const [field,value] of projections)test(`schema${version} refuses persisted ${field}=${value} without altering its original evidence`,t=>{
  const f=fixture(t);sourceProfile(f,version);
  const original=retained(f),markers=f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all();
  f.store.db.prepare('UPDATE agent_task_changes_v2 SET data=json_set(data,?,json(?)) WHERE id=?').run(`$.${field}`,JSON.stringify(value),f.change.id);
@@ -101,5 +96,5 @@ test('public M5 undo projections are optional and never need persisted fields',t
   const change={...saved.changes[0]!,modifiedAfter,undoDisposition},response=agentTaskSnapshotSchema.parse({...saved,changes:[change]});
   assert.deepEqual(response.changes,[change]);assert.deepEqual(retained(f),before);
  }
- assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,62);
+ assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,CURRENT_ORDINARY_SCHEMA);
 });

@@ -2,6 +2,7 @@
  * Reopens the established offline fixture through the current runtime; no hand-made restoration
  * marker, fake database, server, media worker or external provider is involved.
  */
+import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -66,7 +67,7 @@ test('actual cold backup excludes delivery draft, immutable intent and atomic te
  assert.deepEqual(tree(f.source),sourceBefore,'Backup and verify must preserve all source bytes and modes, including excluded files');
  assert.deepEqual(tree(f.backup),originalBackupBefore);
  const backupBefore=tree(backup),restored=await restoreWorkspaceBackup({directory:backup,destination:f.destination});
- assert.equal(restored.publication,'confirmed');assert.equal(restored.sourceSchema,62);assert.equal(restored.databaseSchemaVersion,63);assert.equal(restored.profile,'restored-local-v20');
+ assert.equal(restored.publication,'confirmed');assert.equal(restored.sourceSchema,CURRENT_ORDINARY_SCHEMA);assert.equal(restored.databaseSchemaVersion,CURRENT_RESTORED_SCHEMA);assert.equal(restored.profile,CURRENT_RESTORE_PROFILE);
  assert.equal(fs.existsSync(path.join(f.destination,LOCAL_DELIVERY_FILENAME)),false);assert.equal(fs.existsSync(path.join(f.destination,temporary)),false);
  assert.deepEqual(tree(f.source),sourceBefore);assert.deepEqual(tree(backup),backupBefore);
  const restoredStore=openStore(f.destination),restoredServices=createServices(restoredStore,new Map());

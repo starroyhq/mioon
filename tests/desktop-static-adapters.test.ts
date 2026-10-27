@@ -1,3 +1,4 @@
+import {CURRENT_ORDINARY_SCHEMA} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -24,7 +25,7 @@ import {createServices} from './packages/business/src/services.ts';
 import {openNewRippleOpacityCandidateApplicationStore,openRippleOpacityCandidateStore,openOpacityCandidateStore,getOpacityCandidateAssembly} from './packages/business/src/opacity-candidate-store.ts';
 import {createOpacityCandidateServices} from './packages/business/src/opacity-candidate-services.ts';
 import {createRippleOpacityCandidateWorkspaceBackup,restoreRippleOpacityCandidateWorkspaceBackup} from './packages/business/src/opacity-ripple-candidate-backup.ts';
-(async()=>{const base=process.argv[2];let ordinary=openStore(path.join(base,'ordinary')),services=createServices(ordinary,new Map());assert.equal(classifyCurrentWorkspaceSchema(ordinary.db).schemaVersion,62);await services.call('project.create',{name:'Bundled ordinary'});await services.drain();ordinary.close();
+(async()=>{const base=process.argv[2];let ordinary=openStore(path.join(base,'ordinary')),services=createServices(ordinary,new Map());assert.equal(classifyCurrentWorkspaceSchema(ordinary.db).schemaVersion,${CURRENT_ORDINARY_SCHEMA});await services.call('project.create',{name:'Bundled ordinary'});await services.drain();ordinary.close();
 let candidate=openNewRippleOpacityCandidateApplicationStore(path.join(base,'candidate')),domain=createOpacityCandidateServices(candidate);await domain.call('project.create',{name:'Bundled explicit candidate'});assert.equal(getOpacityCandidateAssembly(candidate).rippleRemove,true);await domain.drain();candidate.close();
 assert.throws(()=>openStore(path.join(base,'candidate')),{code:'RESTORE_SCHEMA_UNSUPPORTED'});assert.throws(()=>openOpacityCandidateStore(path.join(base,'candidate')),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
 const backup=await createRippleOpacityCandidateWorkspaceBackup({source:path.join(base,'candidate'),destination:path.join(base,'backup')});assert.equal(backup.databaseSchemaVersion,46);const restored=await restoreRippleOpacityCandidateWorkspaceBackup({directory:path.join(base,'backup'),destination:path.join(base,'restored')});assert.equal(restored.databaseSchemaVersion,47);candidate=openRippleOpacityCandidateStore(path.join(base,'restored'));assert.equal(getOpacityCandidateAssembly(candidate).getRestoreContext().schemaVersion,47);candidate.close();console.log(JSON.stringify({ordinary:62,candidate:46,restored:47}));})().catch(error=>{console.error(error);process.exitCode=1;});`;

@@ -68,8 +68,3 @@ export function withReviewedSubjectVariantObjects(objects:readonly SchemaObject[
  for(const object of objects)if(replaced.has(object.name))assert.equal(object.sql,replaced.get(object.name)!.before,`unchanged historical ${object.name} SQL`);
  return [...objects.filter(object=>!removed.has(object.name)).map(object=>replaced.has(object.name)?{...object,sql:replaced.get(object.name)!.after}:object),...currentOrdinary62Delta.objects].sort(order);
 }
-/** Catalog capture for tests that compare against historical fixtures: a
- * schema62 workspace is read as its reviewed60 catalog; older ones unchanged. */
-export function reviewed60Catalog<T extends SchemaObject>(db:DatabaseSync,objects:readonly T[]):T[] {
- return db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_version'").get()&&db.prepare('SELECT 1 FROM schema_version WHERE version=62').get()?withoutReviewedSubjectVariantObjects(objects):[...objects];
-}

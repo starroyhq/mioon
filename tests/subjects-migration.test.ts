@@ -1,4 +1,4 @@
-import {withoutReviewedSubjectVariantObjects,currentOrdinary62Delta} from './helpers/current-schema62-delta.ts';
+import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
 import type {SQLInputValue,SQLOutputValue} from 'node:sqlite';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -9,10 +9,7 @@ type RetainedRow=ReturnType<typeof retainedTask> & {position:number;id:string;pr
 type TypedEditTasks=Omit<ReturnType<typeof createEditTasks>,'prepare'|'execute'|'reconcile'> & {prepare(input:unknown):{task:EditTask;instanceId:string};execute(input:unknown):Promise<{task:EditTask;result:unknown}>;reconcile(input:unknown):{task:EditTask;result:unknown}};
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-import {withoutReviewedSceneObjects,currentOrdinary58Delta} from './helpers/current-schema58-delta.ts';
-import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedStorageObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
-import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
 import test from 'node:test';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
 import {currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
@@ -256,8 +253,7 @@ function assertLegacyPreserved(db: DatabaseSync,before: ReturnType<typeof snapsh
  assertReviewed52(db,before.records);
  const after=snapshotSchema14(db);
  for(const name of Object.keys(currentOrdinary52Delta.tables))delete after.records[name];
- for(const name of Object.keys(currentOrdinary58Delta.tables)){assert.deepEqual((after.records[name] as unknown),[],`${name}: reviewed empty58 table`);delete after.records[name];}
- for(const name of Object.keys(currentOrdinary62Delta.tables)){assert.deepEqual((after.records[name] as unknown),[],`${name}: reviewed empty62 table`);delete after.records[name];}
+ for(const [name] of reviewedTablesAfter(52)){assert.deepEqual((after.records[name] as unknown),[],`${name}: reviewed empty layer table`);delete after.records[name];}
  assertAgentEditTargetTrigger(after.schema);
  after.records.agent_edit_proposals=legacyAgentEditProposalRows(after.records.agent_edit_proposals);
  assert.deepEqual(after.records,before.records,'all preexisting table records, including sequence rows, remain byte-for-byte equivalent');

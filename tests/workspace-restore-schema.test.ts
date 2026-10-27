@@ -1,3 +1,4 @@
+import {CURRENT_ORDINARY_ROLE} from './helpers/workspace-schema-current.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -120,7 +121,7 @@ test('ordinary current-schema reopen keeps raw schema/rows/receipts and source p
  try{
   const receipt=' \n'+JSON.stringify({name:'界',retained:true},null,'\t')+'\n ';
   seedOrdinary(store.db,receipt);
-  const before=snapshot(store.db),profile=readCurrentWorkspaceRole(store.db);assert.equal(profile,'ordinary-62');
+  const before=snapshot(store.db),profile=readCurrentWorkspaceRole(store.db);assert.equal(profile,CURRENT_ORDINARY_ROLE);
   store.close();store=(openStore(root) as unknown as FixtureStore);
   assert.deepEqual(snapshot(store.db),before);assert.deepEqual(readCurrentWorkspaceRole(store.db),profile);
   assert.deepEqual({...store.db.prepare('SELECT typeof(response) AS type,response FROM timeline_requests').get()},{type:'text',response:receipt});

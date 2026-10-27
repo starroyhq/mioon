@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import type {DatabaseSync} from 'node:sqlite';
-import {removeReviewedSchema58} from './current-schema58-delta.ts';
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
 /** Independently reviewed A2/A3 additions. Fixed52/54 catalogs remain unchanged;
  * exclude these exact definitions only after checking their retained SQL. */
@@ -27,9 +26,10 @@ export function withoutReviewedInteractionObjects<T extends SchemaObject>(object
  return objects.filter(object=>!names.has(object.name));
 }
 /** Build genuine54 fixture bytes only when no interaction evidence exists.
- * A current workspace first drops the reviewed schema58 scene layer. */
+ * Newer layers go first; use downgradeReviewedWorkspace from reviewed-schema-layers.ts. */
 export function removeReviewedSchema56(db:DatabaseSync):void {
- if(db.prepare('SELECT 1 FROM schema_version WHERE version=58').get())removeReviewedSchema58(db);
+ if(!db.prepare('SELECT 1 FROM schema_version WHERE version=56').get())return;
+ assert.equal(db.prepare('SELECT 1 FROM schema_version WHERE version>56').get(),undefined,'newer reviewed layers are removed first');
  const objects=db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name GLOB 'agent_task_interaction_*' ORDER BY type,name").all() as unknown as SchemaObject[];
  assert.deepEqual(withoutReviewedInteractionObjects(objects),[]);
  assert.equal(db.prepare("SELECT count(*) AS n FROM agent_task_runs_v2 WHERE json_array_length(data,'$.notes')!=0 OR json_array_length(data,'$.skippedTargets')!=0").get()!.n,0);

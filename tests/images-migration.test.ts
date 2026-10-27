@@ -1,4 +1,4 @@
-import {reviewed60Catalog} from './helpers/current-schema62-delta.ts';
+import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 interface ImageSchemaObject {type: string; name: string; tbl_name: string; sql: string}
 interface ImageSnapshot {objects: ImageSchemaObject[]; tables: string[]; rows: Record<string, Record<string, unknown>[]>; hashes: Record<string, string[]>}
 import type {TypedStore} from './helpers/strict-service-responses.ts';
@@ -15,7 +15,7 @@ import {legacyDatabase,migrate,insert,imageFixture} from './images-fixture.mjs';
 import {migrateImageSchema} from '../packages/business/src/image-schema.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite';
-const schema=(db: DatabaseSync)=>reviewed60Catalog(db,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').all() as unknown as ImageSchemaObject[]);
+const schema=(db: DatabaseSync)=>reviewedCatalogAt(60,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name').all() as unknown as ImageSchemaObject[]);
 const rows=(db: DatabaseSync,table: SQLOutputValue)=>db.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all();
 const digest=(value: unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 function capture(db: DatabaseSync){const objects=schema(db),tables=objects.filter((r)=>r.type==='table').map(r=>r.name);return {objects,tables,rows:Object.fromEntries(tables.map(t=>[t,rows(db,t)])),hashes:Object.fromEntries(tables.map(t=>[t,rows(db,t).map(digest)]))};}

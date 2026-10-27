@@ -1,4 +1,4 @@
-import {reviewed60Catalog} from './helpers/current-schema62-delta.ts';
+import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {SQLInputValue} from 'node:sqlite';
 interface SchemaObject {type:string;name:string;tbl_name:string;sql:string|null}
 import type {TypedStore} from './helpers/strict-service-responses.ts';
@@ -30,7 +30,7 @@ function database(t: test.TestContext|null,filename=':memory:'){
 }
 function migrate(db: DatabaseSync){transaction(db,()=>{migrateFrameSchema(db);db.exec('INSERT OR IGNORE INTO schema_version VALUES(20)');});}
 function capture(db: DatabaseSync){
- const objects=reviewed60Catalog(db,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as SchemaObject[]),rows:Record<string,Record<string,SQLOutputValue>[]>={};
+ const objects=reviewedCatalogAt(60,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as SchemaObject[]),rows:Record<string,Record<string,SQLOutputValue>[]>={};
  for(const {name} of objects.filter((value)=>value.type==='table'))rows[name as string]=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`).all();
  return {objects,rows,hashes:Object.fromEntries(Object.entries(rows).map(([name,values])=>[name,values.map(hash)]))};
 }

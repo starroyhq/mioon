@@ -1,8 +1,8 @@
+import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
 import {currentOrdinary48Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
-import {reviewed60Catalog} from './helpers/current-schema62-delta.ts';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {DatabaseSync, type SQLOutputValue, type SQLInputValue} from 'node:sqlite';
@@ -66,7 +66,7 @@ function preserved(db: DatabaseSync,before: ReturnType<typeof snapshot>){
  const after=snapshot(db),agentTargets=Boolean(db.prepare('SELECT 1 FROM schema_version WHERE version=24').get());
  if(agentTargets)assertAgentEditTargetTrigger(after.objects);
  // Schema62 replaces the subject identity guard; its reviewed delta is undone first.
- const objects=reviewed60Catalog(db,after.objects);
+ const objects=reviewedCatalogAt(60,after.objects);
  for(const [table,rows] of Object.entries(before.records)){
   const actual=table==='schema_version'?after.records[table].filter((row: Record<string,SQLOutputValue>)=>(row.version as number)<=21):agentTargets&&table==='agent_edit_proposals'?legacyAgentEditProposalRows(after.records[table]):after.records[table];
   assert.deepEqual(actual,rows,`${table}: raw columns and historical rowids remain unchanged`);

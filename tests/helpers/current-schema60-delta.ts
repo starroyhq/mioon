@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import type {DatabaseSync} from 'node:sqlite';
-import {removeReviewedSchema62} from './current-schema62-delta.ts';
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
 // These twenty historical definitions are frozen in the independent52 fixture.
 // The only reviewed quota edit is 67108864 -> 268435456; all remaining bytes,
@@ -55,9 +54,9 @@ export function withReviewedStorageObjects(objects:readonly SchemaObject[]):Sche
 /** A test-only downgrade requires genuine58 evidence: no reference events and
  * no excess data. It never rewrites, drops or compacts retained history. */
 export function removeReviewedSchema60(db:DatabaseSync):void {
- removeReviewedSchema62(db);
  if(!db.prepare('SELECT 1 FROM schema_version WHERE version=60').get())return;
- assert.equal(db.prepare('SELECT 1 FROM schema_version WHERE version=61').get(),undefined);
+ // Newer layers go first; use downgradeReviewedWorkspace from reviewed-schema-layers.ts.
+ assert.equal(db.prepare('SELECT 1 FROM schema_version WHERE version>60').get(),undefined,'newer reviewed layers are removed first');
  const objects=db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name GLOB 'agent_task_model_request_*_v60' OR name GLOB 'agent_quota_*' ORDER BY type,name").all() as unknown as SchemaObject[];
  assert.deepEqual(withoutReviewedStorageObjects(objects),oldQuotaObjects);
  assert.equal(db.prepare("SELECT 1 FROM agent_task_events_v2 WHERE type='step' AND json_extract(data,'$.data.kind')='model' AND json_extract(data,'$.data.request.format') LIKE 'mioon-model-request-ref/%' LIMIT 1").get(),undefined,'new request references cannot be disguised as historical58');

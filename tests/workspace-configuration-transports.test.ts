@@ -1,3 +1,4 @@
+import {CURRENT_RESTORED_SCHEMA} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -27,5 +28,5 @@ test('workspace settings, online backup bundles and guarded restore work through
  const imported=await request(`/api/workspace-backups/import?requestId=${randomUUID()}`,{method:'POST',headers:{'Content-Type':'application/vnd.mioon.workspace-backup'},body:bytes}),importBody=await imported.json();assert.equal(imported.status,200,JSON.stringify(importBody));assert.equal(importBody.data.trigger,'import');
  const bad=await request('/api/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'workspace.backup.restore.stage',input:{requestId:randomUUID(),backupId:backup.id}})});assert.equal(bad.status,400);
  const pending=await (mcp as (operation:string,input:unknown)=>Promise<{restartRequired:boolean}>)('workspace.backup.restore.stage',{requestId:randomUUID(),backupId:backup.id,confirmation:'RESTORE_BACKUP'});assert.equal(pending.restartRequired,true);
- await client.close();await server.close();server=await startServer({dataDir:root,port:0,token});const restored=await rpc('workspace.restore.inspect');assert.equal(restored.restored,true);assert.equal(restored.schemaVersion,63);assert.notEqual(server.dataDir,root);assert.equal((await rpc('project.list'))[0].id,project.id);
+ await client.close();await server.close();server=await startServer({dataDir:root,port:0,token});const restored=await rpc('workspace.restore.inspect');assert.equal(restored.restored,true);assert.equal(restored.schemaVersion,CURRENT_RESTORED_SCHEMA);assert.notEqual(server.dataDir,root);assert.equal((await rpc('project.list'))[0].id,project.id);
 });

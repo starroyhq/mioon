@@ -1,4 +1,4 @@
-import {withoutReviewedSubjectVariantObjects} from './helpers/current-schema62-delta.ts';
+import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
@@ -12,10 +12,7 @@ type WorkerExecution={envelope:WorkerEnvelope;response:MediaShot|null};
 type WorkerReply<M extends string>=M extends 'get'|'put'|'prepare'?WorkerEnvelope:M extends 'execute'|'recover'?WorkerExecution:M extends 'executeBoth'?[WorkerExecution,WorkerExecution]:M extends 'observe'?{dispatches:unknown[]}:M extends 'identity'?{instanceId:string}:unknown;
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
-import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
-import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
 /** Real owned-process death around the shared shot.update service. These tests
  * prove Node business-receipt recovery, never native GUI lost-ACK coverage. */
 import test from 'node:test';
