@@ -11,6 +11,7 @@ import {randomUUID} from 'node:crypto';
 import {withTimelineFormatTaskDispatch} from './timeline-format-task-context.ts';
 import {isProxy} from 'node:util/types';
 import {AppError, schemas, publicValue, DURABLE_EDIT_OPERATIONS, EDIT_TASK_LIMITS, editTaskLane, isEditTask, hasRequestNotAppliedProof} from '@mioon/contracts';
+import {isRestoredWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 import {hash} from './services.ts';
 import {ownsStoreLock} from './db.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
@@ -280,7 +281,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    let args: {projectId: string;operation: string;input: Record<string,unknown>;origin: string};
    if(domain){try{args=domain.capturePrepare(input) as unknown as typeof args;}catch{invalid();}}else args=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
-   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:![45,49,51,53,55,57,59,61,63].includes(restored.schemaVersion)))refuseRestoredTask(store);
+   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:!isRestoredWorkspaceSchemaSince(44,restored.schemaVersion)))refuseRestoredTask(store);
    const intent=parseIntent(args.operation,args.input,args.projectId);
    if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}
    const result=store.tx(()=>{

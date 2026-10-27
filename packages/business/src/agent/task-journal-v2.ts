@@ -1,7 +1,7 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {WorkspaceStore} from '../db.ts';
-import {readCurrentWorkspaceRole} from '../workspace-schema-dispatch.ts';
+import {readCurrentWorkspaceRole,isWorkspaceRoleSince,isPrivateStorageWorkspaceRole} from '../workspace-schema-dispatch.ts';
 import {referenceAgentTaskEventRequest,hydrateAgentTaskEventRequest,AGENT_TASK_EVENT_PAGE_BYTES} from './task-model-requests-v2.ts';
 import type {AgentTaskRequestCache} from './task-model-requests-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY,agentTaskPolicySchema} from '../../../contracts/src/agent-tasks-v2.ts';
@@ -17,7 +17,8 @@ export interface AgentTaskStepInput extends Pick<AgentTaskStep,'kind'> {request?
 export interface AgentTaskControlRecord {requestId:string;runId:string;expectedRevision:number;action:string;stepId?:string;changeId?:string;resolution?:string;text?:string;undoChangeIds?:string[]}
 export function createAgentTaskJournal(store:WorkspaceStore){
  const {db}=store;
- const role=readCurrentWorkspaceRole(db),requestReferences=role==='ordinary-62'||role==='restored-63-evidence'||role==='ordinary-60'||role==='restored-61-evidence'||role==='storage-private-58'||role==='storage-private-59-evidence';
+ // Model request references exist from schema60 on and in private storage.
+ const role=readCurrentWorkspaceRole(db),requestReferences=isWorkspaceRoleSince(role,60)||isPrivateStorageWorkspaceRole(role);
  const transact=<T>(fn:()=>T):T=>db.isTransaction?fn():store.tx(fn);
  const inside=():void=>{if(!db.isTransaction)fail('AGENT_TASK_TRANSACTION_REQUIRED');};
  const run=(id:string):AgentTaskRun=>{const row=db.prepare('SELECT data FROM agent_task_runs_v2 WHERE id=?').get(id);if(!row)fail('AGENT_TASK_NOT_FOUND');return decode<AgentTaskRun>(row.data);};

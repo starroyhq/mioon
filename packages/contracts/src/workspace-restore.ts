@@ -2,6 +2,7 @@ import {timelineVolumeEnvelopeCapabilitySchema} from './timeline-volume-envelope
 import {timelineAudioRoleCapabilitySchema} from './timeline-audio-role.ts';
 import {z} from 'zod';
 import {workspaceRestoreProfile,workspaceRestoreSourceVersion,workspaceRestoreDatabaseVersion,validateWorkspaceRestorationPair} from './workspace-schema-profiles.ts';
+import {isRestoredWorkspaceSchemaSince} from './workspace-schema-lineage.ts';
 
 // This is an invocation mismatch guard, never a credential or a model-tool
 // grant. It stays outside immutable domain input, request hashes and receipts.
@@ -34,8 +35,9 @@ const restoredInspection=z.object({
   operationPolicy:z.array(policy).max(WORKSPACE_RESTORE_LIMITS.operations),
   backupCreate:z.object({available:z.literal(false),reason:z.literal('RESTORE_BACKUP_UNAVAILABLE')}).strict(),
 }).strict().superRefine((value,ctx)=>{
-  if(value.audioRoleCapability&&value.audioRoleCapability.editable!==([39,41,45,49,51,53,55,57,59,61,63].includes(value.schemaVersion)))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Audio role capability does not match the exact restored profile.'});
-  if(value.volumeEnvelopeCapability&&value.volumeEnvelopeCapability.editable&&![41,45,49,51,53,55,57,59,61,63].includes(value.schemaVersion))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Volume envelope capability requires a supported exact restored profile.'});
+  // Audio roles exist from ordinary schema38 on, volume envelopes from schema40.
+  if(value.audioRoleCapability&&value.audioRoleCapability.editable!==isRestoredWorkspaceSchemaSince(38,value.schemaVersion))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Audio role capability does not match the exact restored profile.'});
+  if(value.volumeEnvelopeCapability&&value.volumeEnvelopeCapability.editable&&!isRestoredWorkspaceSchemaSince(40,value.schemaVersion))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Volume envelope capability requires a supported exact restored profile.'});
   validateWorkspaceRestorationPair({profile:value.profile,sourceSchema:value.source.schemaVersion,databaseSchemaVersion:value.schemaVersion},ctx);
   for(const [field,key] of [['heldCounts','kind'],['operationPolicy','operation']] as const) {
     const items = value[field] as {kind?: unknown; operation?: unknown}[];
