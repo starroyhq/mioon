@@ -1,4 +1,5 @@
 import {OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE} from './opacity-ripple-candidate-backup-profile.ts';
+import {isWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 // Local/offline only. Never starts a store, backend, worker or provider; never
 // opens the backup's SQLite. The original DB includes private, unredacted text.
 import path from 'node:path';
@@ -89,7 +90,8 @@ function checkDestinationAncestors(destination: string): void{
 }
 function requireSupportedOriginalSource(db: DatabaseSync): void{
  const profile=classifyWorkspaceSchema(db);
- if(![24,26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60,62].includes(profile.schemaVersion)||profile.profile!=='ordinary')fail('SOURCE_SCHEMA_UNSUPPORTED');
+ // Every ordinary lineage schema from 24 on has an exact fixed restore pair.
+ if(!isWorkspaceSchemaSince(24,profile.schemaVersion)||profile.profile!=='ordinary')fail('SOURCE_SCHEMA_UNSUPPORTED');
 }
 function sameBinding(info: Record<string,unknown>,expected: Record<string,unknown>): boolean{return ['sourceBackupId','manifestHash','sourceDbHash',...(Object.hasOwn(expected,'restorationId')?['restorationId']:[])].every(key=>info[key]===expected[key]);}
 function binding(info: Record<string,unknown>): Record<string,unknown>{return Object.fromEntries(['restorationId','workspaceOrigin','sourceBackupId','manifestHash','sourceDbHash'].map(key=>[key,info[key]]));}
@@ -181,7 +183,7 @@ export async function restoreWorkspaceBackup({directory,destination,signal}: Res
   if(validatePrivateDirectory(destination,{allowMissing:true}))fail('DESTINATION_EXISTS');
   checkDestinationAncestors(destination);
   return (await withVerifiedWorkspaceBackup<Record<string,unknown>>({directory,signal,inspectDatabaseCopy:requireSource},async source=>{
-   if(candidateProfile?source.manifest.databaseSchemaVersion!==fixedProfile!.sourceVersion:![24,26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60,62].includes(source.manifest.databaseSchemaVersion))fail('SOURCE_SCHEMA_UNSUPPORTED');
+   if(candidateProfile?source.manifest.databaseSchemaVersion!==fixedProfile!.sourceVersion:!isWorkspaceSchemaSince(24,source.manifest.databaseSchemaVersion))fail('SOURCE_SCHEMA_UNSUPPORTED');
    const sourceDatabase=source.files.find(value=>value.entry.role==='database')!;
    info={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:source.manifest.backupId,
     manifestHash:source.manifestHash,sourceDbHash:sourceDatabase.entry.sha256,createdAt:new Date().toISOString()};

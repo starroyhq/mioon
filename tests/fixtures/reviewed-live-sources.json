@@ -31,20 +31,20 @@
       "sha256": "3fcfac61cf4420155d6e61d11182610abb32cd450801677d4e28f18f0e7be0e1"
     },
     "packages/business/src/workspace-backup-schema-versions.ts": {
-      "bytes": 9423,
-      "sha256": "c3363e690372bd0795df9f45bb2081b5dd56b0375d0709a650dbc70fa7bf1a6e"
+      "bytes": 9436,
+      "sha256": "bc55bf7e6ac1b6bf065a07093c06dedb48a1e4d2736de5ea38afa655989e1d9c"
     },
     "packages/business/src/workspace-lock.ts": {
       "bytes": 2717,
       "sha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463"
     },
     "packages/business/src/workspace-restore-policy.ts": {
-      "bytes": 11866,
-      "sha256": "4fce45bc79ff05d66069035e8c1d1902fc355f3cd74c4d23259a635d1b2d4b1c"
+      "bytes": 12009,
+      "sha256": "ac060ab9a42d711543fc375da56b2f77d54c7c8751a6a24a2fa664a5f73e59a5"
     },
     "packages/business/src/workspace-schema-dispatch.ts": {
-      "bytes": 55473,
-      "sha256": "3fa1c45e80a6b11759a8c094022f569d48190e6f5a9fc2973b1d039814222161"
+      "bytes": 45386,
+      "sha256": "65a91199f7df356bc50cdabd1fb64469f8bff818f4b1dba42d5b44073c65de84"
     },
     "packages/business/src/workspace-volume-envelope-validation.ts": {
       "bytes": 16939,
@@ -99,16 +99,16 @@
       "sha256": "4374d1d1d5c0a9bcab4b015b90677053eaeb6357790236ef8fbcf4c762115370"
     },
     "packages/contracts/src/workspace-backup.ts": {
-      "bytes": 7527,
-      "sha256": "0bef04c332878da3c1cc17f7fb0a13fac1ae750651346a68efaf543499faa11d"
+      "bytes": 7831,
+      "sha256": "35d9e9baa4383c8a6889a7c69081883ff81a01ac770d994dbdba6d09374cf886"
     },
     "packages/contracts/src/workspace-restore.ts": {
-      "bytes": 5809,
-      "sha256": "d5f4c8f250c399de0f201f55e806e41c849a573727f222a54946d7c8203e3ca6"
+      "bytes": 5950,
+      "sha256": "0132ed331df92494cb73036c4a84b6984da78becd63c989071ea0c422a32c7d5"
     },
     "packages/contracts/src/workspace-schema-profiles.ts": {
-      "bytes": 4735,
-      "sha256": "43d91081648ff00b7730994b6e7655e6aabad5de9a20635fadb4140ce62aa7d3"
+      "bytes": 2372,
+      "sha256": "fb5e4817c39375a4c7f261a0911ea4edb5fadfdbb9d6e5e62940963876117b21"
     }
   }
 }

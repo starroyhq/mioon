@@ -1,5 +1,6 @@
 import {z} from 'zod';
 import {workspaceBackupSourceSchemaVersion} from './workspace-schema-profiles.ts';
+import {isWorkspaceSchemaSince,workspaceSchemasSince} from './workspace-schema-lineage.ts';
 
 export const WORKSPACE_BACKUP_FORMAT='mioon-workspace-backup';
 export const WORKSPACE_BACKUP_FORMAT_VERSION=1;
@@ -41,13 +42,16 @@ export const workspaceBackupEntrySchema=z.object({
  value.role==='receipt_media'?new RegExp(`^payload/media/${uuid}\\.png$`,'i').test(value.path):media.test(value.path);
  if(!valid)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Payload role does not match its path or size.'});
 });
+// Managed Agent inputs exist from ordinary schema52 on.
+const agentImportSources=workspaceSchemasSince(52).map(version=>`schema${version}`);
+const agentImportSourceMessage=`Managed Agent inputs require an exact ${agentImportSources.slice(0,-1).join(', ')} or ${agentImportSources.at(-1)} backup source.`;
 export const workspaceBackupManifestSchema=z.object({
  format:z.literal(WORKSPACE_BACKUP_FORMAT),formatVersion:z.literal(1),backupId:z.string().uuid(),
  createdAt:z.string().datetime(),applicationVersion:z.string().min(1).max(64).regex(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/),
  databaseSchemaVersion:workspaceBackupSourceSchemaVersion,scope:z.literal('whole_workspace'),
  entries:z.array(workspaceBackupEntrySchema).min(1).max(WORKSPACE_BACKUP_LIMITS.fileCount),inventory:workspaceBackupInventorySchema,
 }).strict().superRefine((value,ctx)=>{
- if(![52,54,56,58,60,62].includes(value.databaseSchemaVersion)&&value.entries.some(entry=>entry.role==='agent_import'))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Managed Agent inputs require an exact schema52, schema54, schema56, schema58, schema60 or schema62 backup source.'});
+ if(!isWorkspaceSchemaSince(52,value.databaseSchemaVersion)&&value.entries.some(entry=>entry.role==='agent_import'))ctx.addIssue({code:z.ZodIssueCode.custom,message:agentImportSourceMessage});
  let bytes=0;const paths=new Set();let databases=0,previous='';
  for(const entry of value.entries){bytes+=entry.bytes;if(paths.has(entry.path)||entry.path<=previous)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Entries must have unique, lexically sorted paths.'});paths.add(entry.path);previous=entry.path;if(entry.role==='database')databases++;}
  if(databases!==1||bytes>WORKSPACE_BACKUP_LIMITS.totalBytes)ctx.addIssue({code:z.ZodIssueCode.custom,message:'Exactly one database and a bounded total payload are required.'});

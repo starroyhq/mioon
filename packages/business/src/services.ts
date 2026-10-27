@@ -17,6 +17,7 @@ import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {readTimelineAudioRoleCapability} from './timeline-audio-role-business.ts';
 import {createMutationReplay} from './mutation-replay.ts';
 import {nullableTimelineClipColourSchema,timelineImageClipColourSchema} from '../../contracts/src/timeline-colour.ts';
+import {isRestoredWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 import {createTimelineImageSourceServices} from './timeline-image-source.ts';
 import {createLookPackInspectionServices,assertLookPackInspectInput} from './look-pack-inspection.ts';
 import {createLutResourceServices} from './lut-resources.ts';
@@ -573,10 +574,11 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
     if(op==='asset.annotation.set'||op==='timeline.export.samplePeak'||op==='timeline.export.loudness'||op==='timeline.loudness.prepare'||op==='timeline.clip.loudness'||op==='timeline.audioPreview.plan'||op==='timeline.audioPreview.continuousPlan'||op==='timeline.colour.source.inspect'||op==='timeline.colour.image.inspect'||op==='timeline.colour.jpeg.inspect')throw workspaceRestoreError();
     const parsed=freezeRestoreInput(parse(op as OperationName,input)) as ServiceRow;
     assertTimelineAudioRoleWorkspace(db,parsed);
-    // Frozen restored profiles admit only their own colour generation: video
-    // in 31, video/PNG in 33, and video/PNG/JFIF in 35. No numeric widening.
+    // Colour exists from source schema30 on. Frozen restored profiles admit
+    // only their own colour generation: video in 31, video/PNG in 33, and
+    // video/PNG/JFIF in 35. No numeric widening: lineage membership is exact.
     if(op==='timeline.clip.add'&&Object.hasOwn(parsed,'colour')||op==='timeline.clip.update'&&isRecord(parsed.patch)&&Object.hasOwn(parsed.patch,'colour')){
-     if(![31,33,35,37,39,41,45,49,51,53,55,57,59,61,63].includes(restored.schemaVersion))throw workspaceRestoreError();
+     if(!isRestoredWorkspaceSchemaSince(30,restored.schemaVersion))throw workspaceRestoreError();
      const patch=isRecord(parsed.patch)?parsed.patch:null;
      const colour=op==='timeline.clip.add'?parsed.colour:patch?.colour;
      if(restored.schemaVersion===31&&!nullableTimelineClipColourSchema.safeParse(colour).success)throw workspaceRestoreError();

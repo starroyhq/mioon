@@ -1,14 +1,9 @@
-import {validateWorkspaceSchema62} from './workspace-schema-v62.ts';
-import {validateWorkspaceSchema60} from './workspace-schema-v60.ts';
-import {validateWorkspaceSchema58} from './workspace-schema-v58.ts';
-import {validateWorkspaceSchema56} from './workspace-schema-v56.ts';
-import {validateWorkspaceSchema54} from './workspace-schema-v54.ts';
 import {createHash} from 'node:crypto';
 import {isProxy} from 'node:util/types';
 import type {DatabaseSync, SQLInputValue} from 'node:sqlite';
 import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
-import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
-import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
+import {readCurrentWorkspaceRole,isWorkspaceRoleSince} from './workspace-schema-dispatch.ts';
+import {validateFixedWorkspaceRole} from './workspace-role-validation.ts';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {taskDispositionSchemas, taskDispositionSchema, isTaskDispositionUnicode, isTaskDispositionMutationResponse} from '../../contracts/src/task-dispositions.ts';
 import type {TaskDisposition, TaskDispositionKind, TaskDispositionTarget, TaskDispositionCheckedTarget, TaskDispositionListInput, TaskDispositionMarkFailedInput, TaskDispositionArchiveInput, TaskDispositionMutationResponse} from '../../contracts/src/task-dispositions.ts';
@@ -57,7 +52,8 @@ export function createTaskDispositionServices(store:Store,{ownsLock,isReadOnly,s
     if(signal?.aborted || write && (isReadOnly() || !ownsLock()))fail('TASK_DISPOSITION_UNAVAILABLE');
     const tables=db.prepare("SELECT name FROM main.sqlite_schema WHERE type='table' AND name IN ('task_dispositions','task_disposition_requests')").all();
     if(tables.length!==2)fail('TASK_DISPOSITION_UNAVAILABLE');
-    if(write){try{if(readCurrentWorkspaceRole(db)==='ordinary-62')validateWorkspaceSchema62(db);else if(readCurrentWorkspaceRole(db)==='ordinary-60')validateWorkspaceSchema60(db);else if(readCurrentWorkspaceRole(db)==='ordinary-58')validateWorkspaceSchema58(db);else if(readCurrentWorkspaceRole(db)==='ordinary-56')validateWorkspaceSchema56(db);else if(readCurrentWorkspaceRole(db)==='ordinary-54')validateWorkspaceSchema54(db);else if(readCurrentWorkspaceRole(db)==='ordinary-52')validateWorkspaceSchema52(db);else validateWorkspaceSchema50(db);}catch{fail('TASK_DISPOSITION_UNAVAILABLE');}}
+    // Writes require the complete ordinary profile: schema52 on by role, else ordinary50.
+    if(write){try{const role=readCurrentWorkspaceRole(db);if(isWorkspaceRoleSince(role,52,'ordinary'))validateFixedWorkspaceRole(db,role);else validateWorkspaceSchema50(db);}catch{fail('TASK_DISPOSITION_UNAVAILABLE');}}
   }
   function project(projectId:string):void {
     const row=db.prepare(`SELECT id,CASE WHEN length(CAST(data AS BLOB))<=1048576 AND json_valid(data) THEN json_extract(data,'$.id') END AS bodyId FROM projects WHERE id=?`).get(projectId);

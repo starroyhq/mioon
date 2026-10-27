@@ -9,6 +9,7 @@ import { createSubtitleController, subtitleCanSave } from '../apps/web/src/subti
 import type { SubtitleContext, SubtitleIntent } from '../apps/web/src/subtitle-state.ts';
 import type { AgentEditingProof } from '../apps/web/src/agent-editing-proof.ts';
 import { retainClipInspector } from '../apps/web/src/clip-inspector-retention.ts';
+import { isRestoredWorkspaceSchemaSince } from '../packages/contracts/src/workspace-schema-lineage.ts';
 
 const projectId=crypto.randomUUID(),timelineId=crypto.randomUUID(),clipId=crypto.randomUUID(),assetId=crypto.randomUUID(),trackId=crypto.randomUUID(),ownerId=crypto.randomUUID(),stamp='2026-10-20T00:00:00.000Z';
 const raw={name:'saved A',trackId,startFrame:0,durationFrames:60,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1};
@@ -69,6 +70,7 @@ test('the actual App refresh rechecks workspace origin after an asynchronous edi
 
 test('the actual App agent-dock gate opens only exact schema53, schema55, schema57 and schema59 restored task histories',()=>{
   const source=readFileSync(new URL('../apps/web/src/App.tsx',import.meta.url),'utf8'),start=source.indexOf('<AgentDockPane id="right-dock-agent"'),segment=source.slice(start),expression=segment.slice(segment.indexOf('>{')+2,segment.indexOf(' ? <RestoredUnavailable'));
-  for(const schemaVersion of [undefined,49,51,52,53,54,55,56,57,58,59,60,61])assert.equal(evaluateExpression('', '('+expression+')',['restored','workspace'],[true,{restored:true,schemaVersion}]),![53,55,57,59,61].includes(schemaVersion??0));
-  assert.equal(evaluateExpression('', '('+expression+')',['restored','workspace'],[false,{restored:false}]),false);
+  const scope=['restored','workspace','isRestoredWorkspaceSchemaSince'];
+  for(const schemaVersion of [undefined,49,51,52,53,54,55,56,57,58,59,60,61,62,63])assert.equal(evaluateExpression('', '('+expression+')',scope,[true,{restored:true,schemaVersion},isRestoredWorkspaceSchemaSince]),![53,55,57,59,61,63].includes(schemaVersion??0));
+  assert.equal(evaluateExpression('', '('+expression+')',scope,[false,{restored:false},isRestoredWorkspaceSchemaSince]),false);
 });

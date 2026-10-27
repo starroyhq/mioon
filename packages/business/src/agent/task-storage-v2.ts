@@ -1,12 +1,13 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {AGENT_TASK_STORAGE_TABLES,agentTaskStorageSnapshotSchema} from '@mioon/contracts/agent-task-storage';
 import type {AgentTaskStorageSnapshot} from '@mioon/contracts/agent-task-storage';
-import {readCurrentWorkspaceRole} from '../workspace-schema-dispatch.ts';
+import {readCurrentWorkspaceRole,isWorkspaceRoleSince,isPrivateStorageWorkspaceRole} from '../workspace-schema-dispatch.ts';
 
 /** Read only aggregate counts from fixed local table names. No request, prompt,
  * credential, path or provider data crosses this management diagnostic. */
 export function readAgentTaskStorage(db:DatabaseSync):AgentTaskStorageSnapshot {
- const role=readCurrentWorkspaceRole(db),references=role==='ordinary-62'||role==='restored-63-evidence'||role==='ordinary-60'||role==='restored-61-evidence'||role==='storage-private-58'||role==='storage-private-59-evidence';
+ // Model request references exist from schema60 on and in private storage.
+ const role=readCurrentWorkspaceRole(db),references=isWorkspaceRoleSince(role,60)||isPrivateStorageWorkspaceRole(role);
  const limits={bytes:references?268435456:67108864,rows:20000,rowBytes:2097152,eventPageBytes:8388608} as const;
  const available=!!db.prepare("SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='agent_task_runs_v2'").get();
  const tables=available?AGENT_TASK_STORAGE_TABLES.map(name=>{

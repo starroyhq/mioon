@@ -1,28 +1,10 @@
-import {validateWorkspaceSchema62} from './workspace-schema-v62.ts';
-import {validateWorkspaceRestoreSchemaV63} from './workspace-restore-schema-v63.ts';
-import {validateWorkspaceSchema60} from './workspace-schema-v60.ts';
-import {validateWorkspaceRestoreSchemaV61} from './workspace-restore-schema-v61.ts';
-import {validateWorkspaceStorageRestoreSchemaV59} from './workspace-storage-restore-schema-v59.ts';
-import {validateWorkspaceSchema58} from './workspace-schema-v58.ts';
-import {validateWorkspaceRestoreSchemaV59} from './workspace-restore-schema-v59.ts';
-import {validateWorkspaceSchema56} from './workspace-schema-v56.ts';
-import {validateWorkspaceRestoreSchemaV57} from './workspace-restore-schema-v57.ts';
-import {validateWorkspaceSchema54} from './workspace-schema-v54.ts';
-import {validateWorkspaceRestoreSchemaV55} from './workspace-restore-schema-v55.ts';
-import {validateWorkspaceSchema50} from './workspace-schema-v50.ts';
-import {validateWorkspaceRestoreSchemaV51} from './workspace-restore-schema-v51.ts';
-import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
-import {validateWorkspaceRestoreSchemaV53} from './workspace-restore-schema-v53.ts';
-import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
-import {validateWorkspaceRestoreSchemaV49} from './workspace-restore-schema-v49.ts';
 import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
-import {readCurrentWorkspaceRole} from './workspace-schema-dispatch.ts';
+import {readCurrentWorkspaceRole,isWorkspaceRoleSince} from './workspace-schema-dispatch.ts';
+import {validateFixedWorkspaceRole} from './workspace-role-validation.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {isProxy} from 'node:util/types';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {validateWorkspaceSchema40} from './workspace-schema-v40.ts';
-import {validateWorkspaceSchema44} from './workspace-schema-v44.ts';
-import {validateWorkspaceRestoreSchemaV45} from './workspace-restore-schema-v45.ts';
 import {validateVolumeEnvelope} from '../../contracts/src/timeline-volume-envelope.ts';
 
 export const TIMELINE_VOLUME_ENVELOPE_REJECTION_CODES=Object.freeze([
@@ -51,25 +33,9 @@ export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unkn
  try{
   const runtime=requireWorkspaceEnvelopeRuntime();
   const role=readCurrentWorkspaceRole(db);
-  if(role==='ordinary-62')validateWorkspaceSchema62(db);
- else if(role==='restored-63-evidence')validateWorkspaceRestoreSchemaV63(db);
- else if(role==='ordinary-60')validateWorkspaceSchema60(db);
- else if(role==='restored-61-evidence')validateWorkspaceRestoreSchemaV61(db);
- else if(role==='storage-private-59-evidence')validateWorkspaceStorageRestoreSchemaV59(db);
- else if(role==='ordinary-58')validateWorkspaceSchema58(db);
- else if(role==='restored-59-evidence')validateWorkspaceRestoreSchemaV59(db);
- else if(role==='ordinary-56')validateWorkspaceSchema56(db);
- else if(role==='restored-57-evidence')validateWorkspaceRestoreSchemaV57(db);
- else if(role==='ordinary-54')validateWorkspaceSchema54(db);
- else if(role==='restored-55-evidence')validateWorkspaceRestoreSchemaV55(db);
- else if(role==='ordinary-52')validateWorkspaceSchema52(db);
-  else if(role==='restored-53-evidence')validateWorkspaceRestoreSchemaV53(db);
-  else if(role==='ordinary-50')validateWorkspaceSchema50(db);
-  else if(role==='restored-51-evidence')validateWorkspaceRestoreSchemaV51(db);
-  else if(role==='ordinary-48')validateWorkspaceSchema48(db);
-  else if(role==='restored-49-evidence')validateWorkspaceRestoreSchemaV49(db);
-  else if(role==='ordinary-44')validateWorkspaceSchema44(db);
-  else if(role==='restored-45-evidence')validateWorkspaceRestoreSchemaV45(db);
+  // Roles from schema44 on and the private restore59 evidence validate their
+  // complete fixed profile; restored41 uses the envelope runtime.
+  if(isWorkspaceRoleSince(role,44)||role==='storage-private-59-evidence')validateFixedWorkspaceRole(db,role);
   else if(role==='restored-41-evidence')runtime.validateRestored41(db);
   else validateWorkspaceSchema40(db,{verifyBytes:false});
  }
