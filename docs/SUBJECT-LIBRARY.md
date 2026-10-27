@@ -15,6 +15,10 @@ Each immutable subject version freezes the metadata of one existing, owned,
 managed PNG/JPEG/WebP image. Creating a subject also creates version 1. Adding a
 version advances the subject head and its independent revision once; supplying
 the current head's asset rejects with `SUBJECT_NO_CHANGE` without a write.
+Since schema 62, angle and lighting variant versions of characters and products
+advance the revision without becoming the head, and undoing their batch hides
+them instead of deleting them; see
+[API.md](API.md#angle-and-lighting-variants-schema-62).
 
 This is local planning metadata. Binding a subject does not supply provider
 inputs, promise identity locking or regenerate footage. There are no new media
@@ -71,14 +75,19 @@ Create and version-add each return a subject directly:
 {id, projectId, kind, name, revision, headVersionId, headVersion, createdAt, updatedAt}
 ```
 
-`headVersion` is a subject-version DTO. Its `id`, `subjectId`, `projectId` and
-`number` agree with the subject's `headVersionId`, `id`, `projectId` and
-`revision`. A version-list item has the same complete DTO:
+`headVersion` is a subject-version DTO. Its `id`, `subjectId` and `projectId`
+agree with the subject's `headVersionId`, `id` and `projectId`; its `number`
+equals the subject's `revision` unless newer variant versions exist, in which
+case it is lower. The head never carries a `variant`. A version-list item has
+the same complete DTO:
 
 ```text
 {id, projectId, subjectId, number, assetId, sha256, mimeType, width, height,
- provenance: {kind, versionId, shotId, jobId}, createdAt}
+ provenance: {kind, versionId, shotId, jobId}, variant?, createdAt}
 ```
+
+`variant` (schema 62) is present only on angle and lighting results: the item's
+spec plus `batchId` and `sourceVersionId`.
 
 `sha256` freezes the existing asset record's lowercase 64-character image hash;
 subject operations do not independently rehash or probe the file. `mimeType` is

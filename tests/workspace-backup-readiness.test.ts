@@ -17,7 +17,7 @@ test('shared inspection reads empty workspace without constructing data, filesys
  const store=fixture(t),forbidden=new Proxy({},{get(){throw Error('provider access forbidden');}}),services=createServices(store,new Map([['mock',forbidden]]) as never);
  t.after(()=>services.drain());t.mock.method(globalThis,'fetch',()=>{throw Error('network forbidden');});
  const before=changes(store),result=inspectionView(await services.call('workspace.backup.inspect',{}));
- assert.equal(result.captureReady,false);assert.equal(result.inspectionComplete,true);assert.equal(result.databaseSchemaVersion,60);assert.equal(Object.values(result.counts).every(x=>x===0),true);assert.equal(Object.values(result.unresolved).every(x=>x===0),true);assert.equal(changes(store),before);
+ assert.equal(result.captureReady,false);assert.equal(result.inspectionComplete,true);assert.equal(result.databaseSchemaVersion,62);assert.equal(Object.values(result.counts).every(x=>x===0),true);assert.equal(Object.values(result.unresolved).every(x=>x===0),true);assert.equal(changes(store),before);
  assert.throws(()=>services.inspection.dispatch({},'workspace.backup.inspect',{}));
  for(const input of [{source:'/tmp/private'},{projectId:randomUUID()}])await assert.rejects(services.call('workspace.backup.inspect',input));
 });

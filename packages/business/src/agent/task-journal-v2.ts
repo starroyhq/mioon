@@ -17,7 +17,7 @@ export interface AgentTaskStepInput extends Pick<AgentTaskStep,'kind'> {request?
 export interface AgentTaskControlRecord {requestId:string;runId:string;expectedRevision:number;action:string;stepId?:string;changeId?:string;resolution?:string;text?:string;undoChangeIds?:string[]}
 export function createAgentTaskJournal(store:WorkspaceStore){
  const {db}=store;
- const role=readCurrentWorkspaceRole(db),requestReferences=role==='ordinary-60'||role==='restored-61-evidence'||role==='storage-private-58'||role==='storage-private-59-evidence';
+ const role=readCurrentWorkspaceRole(db),requestReferences=role==='ordinary-62'||role==='restored-63-evidence'||role==='ordinary-60'||role==='restored-61-evidence'||role==='storage-private-58'||role==='storage-private-59-evidence';
  const transact=<T>(fn:()=>T):T=>db.isTransaction?fn():store.tx(fn);
  const inside=():void=>{if(!db.isTransaction)fail('AGENT_TASK_TRANSACTION_REQUIRED');};
  const run=(id:string):AgentTaskRun=>{const row=db.prepare('SELECT data FROM agent_task_runs_v2 WHERE id=?').get(id);if(!row)fail('AGENT_TASK_NOT_FOUND');return decode<AgentTaskRun>(row.data);};

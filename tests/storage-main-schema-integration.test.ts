@@ -52,7 +52,7 @@ test('main scene58 keeps its64MiB inline profile, then migrates to60 without cha
 test('precisely classified private storage58 migrates request references unchanged and adds scene definitions',t=>{
  const f=fixture(t,true);assert.equal(readCurrentWorkspaceRole(f.store.db),'storage-private-58');
  const before=evidence(f.store);assert.ok(String(before.find(value=>value.table==='agent_task_events_v2')!.rows.at(-1)!.data).includes('mioon-model-request-ref/1'));
- f.reopen();assert.equal(readCurrentWorkspaceRole(f.store.db),'ordinary-60');assert.deepEqual(evidence(f.store),before);
+ f.reopen();assert.equal(readCurrentWorkspaceRole(f.store.db),'ordinary-62');assert.deepEqual(evidence(f.store),before);
  assert.deepEqual(f.store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name GLOB 'scene_*' ORDER BY name").all().map(row=>row.name),['scene_requests','scene_results','scene_tasks']);
  const hydrated=createAgentTaskJournal(f.store).events(f.run.id).filter(value=>value.type==='step');
  assert.deepEqual((hydrated.at(-1)!.data as {request:unknown}).request,f.step.request);

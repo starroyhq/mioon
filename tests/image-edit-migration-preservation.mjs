@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 
 // Independently pinned hashes of the reviewed schema23 CHECK additions. This
 // helper removes only those exact bytes, never a wildcard future schema change.
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const EDIT_BRANCH_SHA256='3fcd8d1772be6cf3c92e282114d497ce45c7c0985941969f08c8c095e35d7ed6';
 const SEPARATION_SHA256='85175b5a5cf8143e0d0348cc057f232aae09bcb14ab8ddc166cd80e47614d1cf';
-export function legacyImageReviewSql(sql){
+// Schema62 rebuilt the table for edit intent v5. Its exact before/after SQL is
+// frozen in the reviewed62 delta, so only that whole definition is undone first.
+const reviewed62=JSON.parse(readFileSync(new URL('./fixtures/workspace-schema-profiles/current-ordinary-62-delta.json',import.meta.url),'utf8')).replaced.find(object=>object.name==='image_reviews');
+export function legacyImageReviewSql(current){
+ let sql=current;
+ if(sql.includes('CONSTRAINT image_review_intent_v62')){assert.equal(sql,reviewed62.after,'only the reviewed62 image review SQL can be normalized');sql=reviewed62.before;}
  const marker='CONSTRAINT image_review_intent_v23';
  assert.equal(sql.split(marker).length,2,'exactly one schema23 intent CHECK');
  const branchStart=sql.indexOf("\n        OR\n        (json_extract(canonicalIntent,'$.schemaVersion') IS 4");

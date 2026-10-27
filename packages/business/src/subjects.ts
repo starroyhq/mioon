@@ -3,6 +3,7 @@ import {AppError,subjectSchemas,isSubjectResponse,isSubjectVersionResponse,isSub
 import {createMutationReplay} from './mutation-replay.ts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
+import {HIDDEN_SUBJECT_VERSION_SQL,isSubjectVersionHidden,subjectVariantSchemaPresent} from './subject-variant-visibility.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {OwnedMediaGraphReader} from './inspection.ts';
 
@@ -100,9 +101,11 @@ export function createSubjectRecoveryBoundary(db: DatabaseSync,input: SubjectRec
      (current.revision===record.revision&&!equal(current,record)))invalid();
   }else{
    const record=response as SubjectRow;
+   // Variant versions (schema62) advance the revision without replacing the head,
+   // so the recorded head may be older than the recorded subject revision.
    const current=binding(record.id),owner=subject(record.subjectId),head=version(record.headVersionId,owner.id),reviewed=version(record.reviewedHeadVersionId,owner.id);
    if(record.subjectVersionId!==null)version(record.subjectVersionId,owner.id);
-   if(!current||current.shotId!==record.shotId||current.subjectId!==record.subjectId||current.role!==record.role||(current.revision as number)<(record.revision as number)||current.createdAt!==record.createdAt||head.number!==record.subjectRevision||(reviewed.number as number)>(head.number as number)||(owner.revision as number)<(record.subjectRevision as number))invalid();
+   if(!current||current.shotId!==record.shotId||current.subjectId!==record.subjectId||current.role!==record.role||(current.revision as number)<(record.revision as number)||current.createdAt!==record.createdAt||(head.number as number)>(record.subjectRevision as number)||(reviewed.number as number)>(head.number as number)||(owner.revision as number)<(record.subjectRevision as number))invalid();
    if(current.revision===record.revision&&['subjectVersionId','reviewedHeadVersionId','updatedAt'].some(key=>current[key]!==record[key]))invalid();
   }
   return response;
@@ -131,7 +134,9 @@ export function createSubjectServices(store: SubjectStore,{canonical,now,readOnl
     items=rows.slice(0,limit).map(row=>boundary.subject(row.id));
    }else if(operation==='subject.version.list'){
     boundary.subjectRow(input.subjectId);
-    rows=db.prepare(`SELECT ${columns('id,number')} FROM subject_versions WHERE projectId=? AND subjectId=? AND number>? ORDER BY number LIMIT ?`).all(input.projectId,input.subjectId as string,start as number,limit+1) as SubjectRow[];
+    // Versions of an undone angle or lighting batch are hidden (schema62).
+    const visible=subjectVariantSchemaPresent(db)?` AND NOT ${HIDDEN_SUBJECT_VERSION_SQL}`:'';
+    rows=db.prepare(`SELECT ${columns('id,number')} FROM subject_versions WHERE projectId=? AND subjectId=? AND number>?${visible} ORDER BY number LIMIT ?`).all(input.projectId,input.subjectId as string,start as number,limit+1) as SubjectRow[];
     items=rows.slice(0,limit).map(row=>boundary.version(row.id,input.subjectId));
    }else{
     const filter=input.shotId?'shotId':'subjectId',filterId=input[filter];if(input.shotId)boundary.shot(filterId);else boundary.subject(filterId);
@@ -162,6 +167,7 @@ export function createSubjectServices(store: SubjectStore,{canonical,now,readOnl
     const owner=context.subject as SubjectRow,current=context.current as SubjectRow|null,revision=(current?.revision as number|undefined)??0;
     conflict(owner as {revision: number;id: string},input.expectedSubjectRevision);conflict((current??{id:input.subjectId as string,revision:0}) as {revision: number;id: string},input.expectedRevision);advance(revision);
     if(input.role!==(owner.kind==='look'?'style':'subject'))throw new AppError('SUBJECT_ROLE_MISMATCH','look 只能绑定为 style，其他主体类型只能绑定为 subject',409);
+    if(input.subjectVersionId!==null&&isSubjectVersionHidden(db,input.subjectVersionId))throw new AppError('SUBJECT_VERSION_HIDDEN','这个版本属于已撤销的补角度批次，已隐藏',409);
     if(input.subjectVersionId!==null&&(!current||current.subjectVersionId===null)){
      const count=db.prepare('SELECT 1 FROM subject_bindings WHERE shotId=? AND subjectVersionId IS NOT NULL LIMIT 8').all(input.shotId as string).length;
      if(count>=SUBJECT_LIMITS.bindingsPerShot)throw new AppError('SUBJECT_BINDING_LIMIT','每个镜头最多绑定 8 个主体或风格',409);

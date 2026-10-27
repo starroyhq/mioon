@@ -456,7 +456,7 @@ async function composeServer({
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
     agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:()=>readAgentTaskStorage(store.db)});
     }
-    if((restored?.schemaVersion===53||restored?.schemaVersion===55||restored?.schemaVersion===57||restored?.schemaVersion===59||restored?.schemaVersion===61)&&!candidate){
+    if((restored?.schemaVersion===53||restored?.schemaVersion===55||restored?.schemaVersion===57||restored?.schemaVersion===59||restored?.schemaVersion===61||restored?.schemaVersion===63)&&!candidate){
       if(!agentSettings)agentSettings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{throw workspaceRestoreError();}}});
       taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:agentSettings as unknown as AgentSettingsService,
         authorizations:{assertAuthorized(){throw workspaceRestoreError();},snapshot(){return {revision:0,scopes:[]};}},selfPort:()=>listeningPort(),readOnly:true});
@@ -489,7 +489,7 @@ async function composeServer({
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
           deletionGate.track(res);
         }
-        const restoredTaskHistory=(restored?.schemaVersion===53||restored?.schemaVersion===55||restored?.schemaVersion===57||restored?.schemaVersion===59||restored?.schemaVersion===61)&&!candidate&&(url.pathname==='/api/agent/tasks/v2'||url.pathname.startsWith('/api/agent/tasks/v2/'));
+        const restoredTaskHistory=(restored?.schemaVersion===53||restored?.schemaVersion===55||restored?.schemaVersion===57||restored?.schemaVersion===59||restored?.schemaVersion===61||restored?.schemaVersion===63)&&!candidate&&(url.pathname==='/api/agent/tasks/v2'||url.pathname.startsWith('/api/agent/tasks/v2/'));
         if(restored&&(!restoredTaskHistory&&isUnavailableRestoredRoute(url.pathname,req.method ?? '')||/^\/api\/video-providers(?:\/|$)/u.test(url.pathname)))throw workspaceRestoreError();
         if(candidate && /^\/api\/(?:agent|images|comfy|video-providers|timeline-audio-preview)(?:\/|$)/u.test(url.pathname))throw workspaceRestoreError();
         if(!candidate&&!restored&&req.method!=='GET'&&url.pathname.startsWith('/api/')&&url.pathname!=='/api/rpc'&&!url.pathname.startsWith('/api/workspace-backups/'))(services as OrdinaryServices).backups.assertMutationAllowed();

@@ -1,8 +1,9 @@
 import {createHash} from 'node:crypto';
 import type {ImageEditParamsNonStreaming, ImageGenerateParamsNonStreaming} from 'openai/resources/images';
-import {validatePng} from './png.ts';
+import {validateImageEditSourceBytes} from './edit-source-bytes.ts';
 import {CUSTOM_IMAGE_PROFILE_ID} from '../../../contracts/src/image-settings.ts';
 import {IMAGE_EDIT_LIMITS, IMAGE_FIXED_OPTIONS, IMAGE_LIMITS, IMAGE_MODELS, imageAdapterInputSchema} from '../../../contracts/src/images.ts';
+import {imageEditProfile, imageEditSourceIssue} from '../../../contracts/src/image-edit-profiles.ts';
 
 // Official documentation checked 2026-10-10; no account/model/live evidence.
 // https://developers.openai.com/api/reference/resources/images/methods/generate
@@ -47,6 +48,7 @@ const messages: Readonly<Record<string, string>> = Object.freeze({
   IMAGE_PNG_INVALID: 'Image bytes are not a valid supported PNG.',
   IMAGE_PNG_UNSUPPORTED: 'Image bytes use an unsupported PNG feature.',
   IMAGE_PNG_TOO_LARGE: 'Image pixels or metadata exceeded the local limit.',
+  IMAGE_SOURCE_INVALID: 'Image source bytes do not match the supported edit source profile.',
 });
 export function imageAdapterError(code: unknown, {dispatched = false, outcomeUnknown = dispatched}: {dispatched?: boolean; outcomeUnknown?: boolean} = {}): ImageAdapterError {
   const selected = typeof code === 'string' && Object.hasOwn(messages, code) ? code : 'IMAGE_RESPONSE_INVALID';
@@ -70,11 +72,13 @@ export function createCompatibleImageGenerationParameters(snapshot: unknown): Im
 
 /** sourceBytes is backend-only and never part of a JSON/RPC snapshot. Even a
  * malformed trusted caller must pass the complete source contract, exact hash,
- * byte count, and bounded PNG validation before any transport can be invoked. */
+ * byte count, the model's source limits and bounded format validation before
+ * any transport can be invoked. */
 export interface ImageEditSourceVerification {input: ImageAdapterInput; bytes: Buffer}
 export async function validateImageEditSource(snapshot: unknown, sourceBytes: unknown, {signal, providerId = 'openai'}: {signal?: AbortSignal; providerId?: string} = {}): Promise<ImageEditSourceVerification> {
   const input = parseImageAdapterInput(snapshot, providerId);
-  if (!['mock', 'openai'].includes(providerId) || !('purpose' in input) || input.purpose !== 'edit' || !input.sourceImage || !Buffer.isBuffer(sourceBytes) || !sourceBytes.length || sourceBytes.length > IMAGE_EDIT_LIMITS.sourceBytes || sourceBytes.length !== input.sourceImage.byteLength) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+  const profile = imageEditProfile(input.providerId, input.model);
+  if (!['mock', 'openai'].includes(providerId) || !('purpose' in input) || input.purpose !== 'edit' || !input.sourceImage || !profile || imageEditSourceIssue(profile, input.sourceImage) || !Buffer.isBuffer(sourceBytes) || !sourceBytes.length || sourceBytes.length > IMAGE_EDIT_LIMITS.sourceBytes || sourceBytes.length !== input.sourceImage.byteLength) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
   // Copy before the first await: caller mutations cannot change the authorized
   // upload during PNG validation, DNS or TLS waits. The gateway also copies
@@ -83,8 +87,7 @@ export async function validateImageEditSource(snapshot: unknown, sourceBytes: un
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   if (sha256 !== input.sourceImage.sha256 || sha256 !== input.inputImage.sha256 || input.sourceImage.assetId !== input.inputImage.assetId) throw imageAdapterError('IMAGE_INVALID_REQUEST');
   try {
-    const metadata = await validatePng(bytes, {width: input.sourceImage.width, height: input.sourceImage.height, signal, opaque: true});
-    if (metadata.sha256 !== sha256 || metadata.byteLength !== input.sourceImage.byteLength) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+    await validateImageEditSourceBytes(bytes, {mimeType: input.sourceImage.mimeType, width: input.sourceImage.width, height: input.sourceImage.height, signal});
   } catch (error) { throw imageAdapterError(typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined); }
   if (signal?.aborted) throw imageAdapterError('IMAGE_CANCELLED');
   return {input, bytes};
@@ -93,5 +96,7 @@ export async function createImageEditParameters(snapshot: unknown, sourceBytes: 
   const {input, bytes} = await validateImageEditSource(snapshot, sourceBytes, {signal});
   // The official SDK exposes multipart editing, without a moderation parameter.
   // This is deliberately the native API, not a JSON edit fallback or Files upload.
-  return {model: input.model, prompt: input.prompt, image: new File([new Uint8Array(bytes)], 'source.png', {type: 'image/png'}), n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque'};
+  if (!('sourceImage' in input)) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+  const {mimeType} = input.sourceImage, extension = ({'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp'} as const)[mimeType];
+  return {model: input.model, prompt: input.prompt, image: new File([new Uint8Array(bytes)], `source.${extension}`, {type: mimeType}), n: 1, quality: 'low', size: input.options.size, output_format: 'png', background: 'opaque'};
 }

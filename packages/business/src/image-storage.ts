@@ -3,7 +3,7 @@ import type {ImageGenerationInput} from './images/reviews.ts';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {constants,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
-import {IMAGE_LIMITS,imageReceiptSchema} from '@mioon/contracts';
+import {IMAGE_LIMITS,imageReceiptSchema,imageResultGeometry} from '@mioon/contracts';
 import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {validatePng as validatePngBytes} from './images/png.ts';
 import type {PngMetadata} from './images/png.ts';
@@ -21,7 +21,7 @@ export interface ImageStorageTask {
  readonly snapshot: ImageStorageSnapshot;
 }
 export interface ImageReceipt {
- readonly schemaVersion: 1 | 2;
+ readonly schemaVersion: 1 | 2 | 3;
  readonly providerId?: string;
  readonly taskId: string;
  readonly projectId: string;
@@ -48,7 +48,7 @@ export interface ImageStorage {
 
 const failure=(): Error=>Object.assign(new Error('The local image result cannot be verified.'),{code:'IMAGE_RESULT_INVALID'});
 const digest=(bytes: Buffer): string=>createHash('sha256').update(bytes).digest('hex');
-const dimensions=(task: ImageStorageTask): {width: number; height: number}=>task.snapshot.providerId==='comfy-local'?{width:512,height:512}:{width:1024,height:1024};
+const dimensions=(task: ImageStorageTask): {width: number; height: number}=>{const {width,height}=imageResultGeometry(task.snapshot);return {width,height};};
 const uuid=(value: unknown): boolean=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 
 /** Bounded, task-derived private files. A complete manifest is the durable
@@ -74,7 +74,7 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
   if(!imageReceiptSchema.safeParse(value).success)throw failure();
   const receipt=value as ImageReceipt;
   if(receipt.taskId!==task.id||receipt.projectId!==task.projectId||receipt.groupId!==task.groupId||receipt.inputHash!==task.inputHash||receipt.isMock!==(task.snapshot.providerId==='mock')||
-   (task.snapshot.providerId==='comfy-local'?(receipt.schemaVersion!==2||receipt.providerId!=='comfy-local'||receipt.width!==512||receipt.height!==512):(receipt.schemaVersion!==1||receipt.width!==1024||receipt.height!==1024)))throw failure();
+   receipt.schemaVersion!==imageResultGeometry(task.snapshot).schemaVersion||(receipt.schemaVersion===2)!==(receipt.providerId==='comfy-local')||receipt.width!==dimensions(task).width||receipt.height!==dimensions(task).height)throw failure();
   if(task.snapshot.providerId==='comfy-local'){let input: unknown;try{input=JSON.parse(task.input);}catch{throw failure();}validateComfyReceiptOwnership(store.db,task,input as unknown as ImageGenerationInput,receipt);}
   return receipt;
  }
@@ -99,7 +99,7 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
   check();
   if(!Buffer.isBuffer(result?.bytes)||!result.bytes.length||result.bytes.length>IMAGE_LIMITS.resultBytes)throw failure();
   await validatePng(result.bytes,{...dimensions(task),opaque:true});check();
-  const receipt: ImageReceipt={schemaVersion:task.snapshot.providerId==='comfy-local'?2:1,...(task.snapshot.providerId==='comfy-local'?{providerId:'comfy-local'}:{}),taskId:task.id,projectId:task.projectId,groupId:task.groupId,inputHash:task.inputHash,
+  const receipt: ImageReceipt={schemaVersion:imageResultGeometry(task.snapshot).schemaVersion,...(task.snapshot.providerId==='comfy-local'?{providerId:'comfy-local'}:{}),taskId:task.id,projectId:task.projectId,groupId:task.groupId,inputHash:task.inputHash,
    assetId:randomUUID(),versionId:randomUUID(),sha256:digest(result.bytes),mimeType:'image/png',...dimensions(task),
    byteLength:result.bytes.length,isMock:task.snapshot.providerId==='mock'};
   validateReceipt(task,receipt);

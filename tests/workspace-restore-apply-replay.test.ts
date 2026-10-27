@@ -87,13 +87,13 @@ async function restored(t: TestContext,{alterReceipt}: {alterReceipt?: (value: L
  const sourceRows=rows(sourceStore.db);
  await sourceTasks.drain();sourceTasks=undefined as unknown as Tasks;await sourceServices.drain();sourceServices=undefined as unknown as Services;sourceStore.close();sourceStore=undefined as unknown as Store;
  const sourceBefore=tree(source),created=await createWorkspaceBackup({source,destination:backup}),backupBefore=tree(backup);
- assert.equal(created.databaseSchemaVersion,60);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
- const result=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(result.databaseSchemaVersion,61);
+ assert.equal(created.databaseSchemaVersion,62);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
+ const result=await restoreWorkspaceBackup({directory:backup,destination});assert.equal(result.databaseSchemaVersion,63);
  assert.deepEqual(tree(source),sourceBefore);assert.deepEqual(tree(backup),backupBefore);
  store=openStore(destination);services=createServices(store,new Map());tasks=createEditTasks({store,services});
  const retained=rows(store.db);
  for(const [table,original] of Object.entries(sourceRows)){
-  const captured=retained[table]!.filter((row: Loose)=>table!=='schema_version'||row['version']!==61).map((row: Loose)=>{
+  const captured=retained[table]!.filter((row: Loose)=>table!=='schema_version'||row['version']!==63).map((row: Loose)=>{
    const copy={...row};if(table==='edit_tasks')delete copy['executionEpoch'];return copy;
   });
   assert.deepEqual(captured.map((row: Loose)=>({...row})),original.map((row: Loose)=>({...row})),table);

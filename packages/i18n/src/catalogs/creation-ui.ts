@@ -2265,11 +2265,11 @@ export const creationUiMessages = {
     "en": "Source image from this project",
     "ja": "現在のプロジェクトの元画像"
   },
-  "image.studio.selectPng": {
-    "zh-Hans": "选择一张 PNG…",
-    "zh-Hant": "選擇一張 PNG…",
-    "en": "Select a PNG…",
-    "ja": "PNG を 1 枚選択…"
+  "image.studio.selectSource": {
+    "zh-Hans": "选择一张源图…",
+    "zh-Hant": "選擇一張來源圖片…",
+    "en": "Select a source image…",
+    "ja": "ソース画像を 1 枚選択…"
   },
   "image.studio.originalIdentityKept": {
     "zh-Hans": "{value}（保留原始身份）",
@@ -2302,10 +2302,10 @@ export const creationUiMessages = {
     "ja": "対応範囲と編集の効果"
   },
   "image.studio.editingLimits": {
-    "zh-Hans": "仅支持当前项目的单张受管理 PNG，最多 8 MiB，每边最多 1024 像素，总计最多 1,048,576 像素；必须不透明、8 位、非交错。不支持 JPEG、WebP、透明 PNG、蒙版或裁剪，也不支持自定义及 ComfyUI 编辑",
-    "zh-Hant": "僅支援目前專案中單張受管理的 PNG，最多 8 MiB，每邊最多 1024 像素，總計最多 1,048,576 像素；必須不透明、8 位元、非交錯。不支援 JPEG、WebP、透明 PNG、遮罩或裁切，也不支援自訂連線及 ComfyUI 編輯",
-    "en": "Only one managed PNG from the current project is supported: up to 8 MiB, 1024 pixels per side, and 1,048,576 pixels in total. It must be opaque, 8-bit, and non-interlaced. JPEG, WebP, transparent PNG, masks, and cropping are unsupported, as are custom-connection and ComfyUI editing",
-    "ja": "現在のプロジェクトで管理されている PNG 1 枚のみ対応しています。上限は 8 MiB、各辺 1024 ピクセル、合計 1,048,576 ピクセルで、不透明、8 ビット、非インターレースである必要があります。JPEG、WebP、透明 PNG、マスク、トリミングには対応していません。カスタム接続と ComfyUI による編集にも対応していません"
+    "zh-Hans": "支持当前项目的单张受管理 PNG、JPEG 或 WebP，小于 50 MB，每边最多 4096 像素；PNG 须不透明、8 位、非交错，WebP 不能带透明或动画。输出跟随源图比例，尺寸按模型能力决定。不支持蒙版或裁剪，也不支持自定义及 ComfyUI 编辑",
+    "zh-Hant": "支援目前專案的單張受管理 PNG、JPEG 或 WebP，小於 50 MB，每邊最多 4096 像素；PNG 須不透明、8 位元、非交錯，WebP 不能帶透明或動畫。輸出跟隨來源圖片比例，尺寸依模型能力決定。不支援遮罩或裁切，也不支援自訂及 ComfyUI 編輯",
+    "en": "One managed PNG, JPEG or WebP from this project, smaller than 50 MB and at most 4096 pixels per edge; a PNG must be opaque, 8-bit and non-interlaced, and a WebP must have no transparency or animation. The output follows the source's aspect ratio at a size the model supports. Masks, crops, custom and ComfyUI editing are not supported",
+    "ja": "現在のプロジェクトの管理対象 PNG、JPEG、WebP 1枚（50 MB未満、各辺4096ピクセル以下）に対応します。PNG は不透明・8ビット・非インターレース、WebP は透過やアニメーションなしである必要があります。出力はソースの縦横比に合わせ、モデルが対応するサイズになります。マスク、切り抜き、カスタムおよび ComfyUI での編集には対応しません"
   },
   "image.studio.editingEffects": {
     "zh-Hans": "AI 会重新绘制图像，其他部位也可能改变；不保证人物身份或像素精确保持。源图不会被覆盖，结果保存为新素材和版本",
@@ -2494,10 +2494,10 @@ export const creationUiMessages = {
     "ja": "現在の設定 r{revision}。{value}"
   },
   "image.studio.editPreparationScope": {
-    "zh-Hans": "准备时在本地核验源图，单独批准后才发送完整 PNG 与原始编辑要求",
-    "zh-Hant": "準備時會在本機核驗來源圖像，單獨批准後才會傳送完整 PNG 與原始編輯要求",
-    "en": "Preparation verifies the source image locally. The complete PNG and original edit instructions are sent only after separate approval",
-    "ja": "準備時にローカルで元画像を検証します。完全な PNG と元の編集指示を送信するのは、別途承認した後だけです"
+    "zh-Hans": "准备时在本地核验源图，单独批准后才发送完整源图与原始编辑要求",
+    "zh-Hant": "準備時會在本機核驗來源圖像，單獨批准後才會傳送完整來源圖像與原始編輯要求",
+    "en": "Preparation verifies the source image locally. The complete source image and original edit instructions are sent only after separate approval",
+    "ja": "準備時にローカルで元画像を検証します。完全な元画像と元の編集指示を送信するのは、別途承認した後だけです"
   },
   "image.studio.originalPromptOnly": {
     "zh-Hans": "只发送上方原始描述，不会改写或优化",
@@ -2554,10 +2554,10 @@ export const creationUiMessages = {
     "ja": "上記の完全なカスタム接続先"
   },
   "image.studio.editApprovalDisclosure": {
-    "zh-Hans": "先在本地准备审批。批准时会向 OpenAI 官方发送所选源图的完整 PNG 字节（包括文件内元数据）和原始编辑要求。按用量计费，金额未知；最多发送 1 次，不会自动重试",
-    "zh-Hant": "先在本機準備批准請求。批准時會向 OpenAI 官方傳送所選來源圖像的完整 PNG 位元組（包含檔案內的中繼資料）與原始編輯要求。按用量計費，金額未知；最多傳送 1 次，不會自動重試",
-    "en": "First prepare approval locally. Approval sends the selected source image’s complete PNG bytes, including file metadata, and the original edit instructions to official OpenAI. Billing is usage-based and the amount is unknown. It sends at most once, with no automatic retry",
-    "ja": "まずローカルで承認用のリクエストを準備します。承認すると、選択した元画像の完全な PNG バイト列（ファイル内のメタデータを含む）と元の編集指示を OpenAI 公式サービスに送信します。従量課金で金額は不明です。送信は最大 1 回で、自動再試行は行いません"
+    "zh-Hans": "先在本地准备审批。批准时会向 OpenAI 官方发送所选源图的完整文件字节（包括文件内元数据）和原始编辑要求。按用量计费，金额未知；最多发送 1 次，不会自动重试",
+    "zh-Hant": "先在本機準備批准請求。批准時會向 OpenAI 官方傳送所選來源圖像的完整檔案位元組（包含檔案內的中繼資料）與原始編輯要求。按用量計費，金額未知；最多傳送 1 次，不會自動重試",
+    "en": "First prepare approval locally. Approval sends the selected source image's complete file bytes, including file metadata, and the original edit instructions to official OpenAI. Billing is usage-based and the amount is unknown. It sends at most once, with no automatic retry",
+    "ja": "まずローカルで承認用のリクエストを準備します。承認すると、選択した元画像の完全なファイルのバイト列（ファイル内のメタデータを含む）と元の編集指示を OpenAI 公式サービスに送信します。従量課金で金額は不明です。送信は最大 1 回で、自動再試行は行いません"
   },
   "image.studio.confirmingRequest": {
     "zh-Hans": "正在确认请求…",
@@ -2703,6 +2703,24 @@ export const creationUiMessages = {
     "en": "1024 × 1024 · low · PNG · opaque · 1 image",
     "ja": "1024 × 1024 · low · PNG · 不透明 · 1 枚"
   },
+  "image.studio.editOutput": {
+    "zh-Hans": "{width} × {height} · PNG · 不透明 · low · 1 张 · 跟随源图比例",
+    "zh-Hant": "{width} × {height} · PNG · 不透明 · low · 1 張 · 跟隨來源圖片比例",
+    "en": "{width} × {height} · PNG · opaque · low · 1 image · follows the source's aspect ratio",
+    "ja": "{width} × {height} · PNG · 不透明 · low · 1 枚 · ソースの縦横比に合わせる"
+  },
+  "image.studio.editOutputPending": {
+    "zh-Hans": "选好源图后，按模型能力决定输出尺寸",
+    "zh-Hant": "選好來源圖片後，依模型能力決定輸出尺寸",
+    "en": "The output size follows the model once a source image is chosen",
+    "ja": "ソース画像を選ぶと、モデルの能力に合わせて出力サイズが決まります"
+  },
+  "image.studio.approvalEditOutput": {
+    "zh-Hans": "{width} × {height} · low · PNG · 不透明 · 1 张",
+    "zh-Hant": "{width} × {height} · low · PNG · 不透明 · 1 張",
+    "en": "{width} × {height} · low · PNG · opaque · 1 image",
+    "ja": "{width} × {height} · low · PNG · 不透明 · 1 枚"
+  },
   "image.studio.approvalConfiguration": {
     "zh-Hans": "配置 r{settingsRevision} · {value}",
     "zh-Hant": "設定 r{settingsRevision} · {value}",
@@ -2728,10 +2746,10 @@ export const creationUiMessages = {
     "ja": "送信内容の全体と編集の制限"
   },
   "image.studio.editPayloadDisclosure": {
-    "zh-Hans": "发送到 {destination}：完整 PNG 字节，包括 PNG 文件内元数据、原始编辑要求、上列模型和固定输出选项。素材名称、来源和哈希用于本地审批核验；不会把它们当作额外指令",
-    "zh-Hant": "傳送至 {destination}：完整 PNG 位元組，包含 PNG 檔案內的中繼資料、原始編輯要求、上列模型與固定輸出選項。素材名稱、來源與雜湊值用於本機批准核驗；不會將其視為額外指令",
-    "en": "Sent to {destination}: complete PNG bytes including PNG file metadata, the original edit instructions, the model above, and fixed output options. Asset names, provenance, and hashes are used for local approval verification, not as additional instructions",
-    "ja": "{destination} に送信する内容：PNG ファイル内のメタデータを含む完全な PNG バイト列、元の編集指示、上記のモデル、固定の出力オプション。素材名、出所、ハッシュはローカルで承認を検証するために使用し、追加の指示としては扱いません"
+    "zh-Hans": "发送到 {destination}：完整源图字节，包括文件内元数据、原始编辑要求、上列模型和输出选项。素材名称、来源和哈希用于本地审批核验；不会把它们当作额外指令",
+    "zh-Hant": "傳送至 {destination}：完整來源圖像位元組，包含檔案內的中繼資料、原始編輯要求、上列模型與輸出選項。素材名稱、來源與雜湊值用於本機批准核驗；不會將其視為額外指令",
+    "en": "Sent to {destination}: the complete source image bytes including file metadata, the original edit instructions, the model above, and the output options. Asset names, provenance, and hashes are used for local approval verification, not as additional instructions",
+    "ja": "{destination} に送信する内容：ファイル内のメタデータを含む完全な元画像のバイト列、元の編集指示、上記のモデル、出力オプション。素材名、出所、ハッシュはローカルで承認を検証するために使用し、追加の指示としては扱いません"
   },
   "image.studio.editRiskDisclosure": {
     "zh-Hans": "AI 会重新绘制，未要求修改的部分也可能改变；不保证人物身份或像素精确保持。结果保存为新素材，不覆盖源图。断开连接后可能已产生费用；结果未知时只核对原请求，绝不自动重发",

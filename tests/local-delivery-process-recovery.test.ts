@@ -1,3 +1,4 @@
+import {withoutReviewedSubjectVariantObjects} from './helpers/current-schema62-delta.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
@@ -13,7 +14,7 @@ import type {TypedStore, TypedServices} from './helpers/strict-service-responses
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
 import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
+function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 /** Real Node process death around real shared business services and the private
  * delivery sidecar. This does not claim native GUI lost-ACK coverage or media

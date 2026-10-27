@@ -1,4 +1,5 @@
 import {removeReviewedSchema60} from './helpers/current-schema60-delta.ts';
+import {removeReviewedSchema62} from './helpers/current-schema62-delta.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,7 +17,7 @@ import type {AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
 import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 
-type SourceVersion=52|54|56|58|60;
+type SourceVersion=52|54|56|58|60|62;
 function fixture(t:TestContext){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-m5-storage-')),store=openStore(root),projectId=randomUUID(),journal=createAgentTaskJournal(store);let closed=false;
  const close=()=>{if(!closed){closed=true;store.close();}};
@@ -39,6 +40,7 @@ function fixture(t:TestContext){
  return {root,store,projectId,journal,run,model,change:superseded,request,close};
 }
 function sourceProfile(f:ReturnType<typeof fixture>,version:SourceVersion):void {
+ if(version===60)removeReviewedSchema62(f.store.db);
  if(version===58)removeReviewedSchema60(f.store.db);
  if(version===56)removeReviewedSchema58(f.store.db);
  if(version<56)removeReviewedSchema56(f.store.db);
@@ -52,7 +54,7 @@ function retained(f:Pick<ReturnType<typeof fixture>,'store'>){
 }
 function restorationMetadata(){return {restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()};}
 
-for(const version of [52,54,56,58,60] as const)test(`existing schema${version} stores retry receipts and superseded evidence without adding schema objects`,async t=>{
+for(const version of [52,54,56,58,60,62] as const)test(`existing schema${version} stores retry receipts and superseded evidence without adding schema objects`,async t=>{
  const f=fixture(t);sourceProfile(f,version);
  assert.equal(agentTaskChangeSchema.parse(f.change).status,'superseded');
  assert.equal(f.journal.lookupControl(f.request.requestId)?.action,'retry');
@@ -66,7 +68,7 @@ for(const version of [52,54,56,58,60] as const)test(`existing schema${version} s
  assert.equal(restored.sourceSchema,version);assert.equal(restored.databaseSchemaVersion,version+1);
  const copy=openStore(f.root+'-restored');
  try{
-  assert.deepEqual(classifyCurrentWorkspaceSchema(copy.db),{schemaVersion:version+1,profile:`restored-local-v${version===52?15:version===54?16:version===56?17:version===58?18:19}`});
+  assert.deepEqual(classifyCurrentWorkspaceSchema(copy.db),{schemaVersion:version+1,profile:`restored-local-v${version===52?15:version===54?16:version===56?17:version===58?18:version===60?19:20}`});
   assert.deepEqual(retained({store:copy}),original);
   const journal=createAgentTaskJournal(copy),snapshot=journal.snapshot(f.run.id);
   assert.equal(snapshot.changes[0]?.status,'superseded');assert.equal(journal.lookupControl(f.request.requestId)?.action,'retry');
@@ -78,7 +80,7 @@ for(const version of [52,54,56,58,60] as const)test(`existing schema${version} s
 });
 
 const projections=[['modifiedAfter',false],['modifiedAfter',true],['undoDisposition','undo'],['undoDisposition','retain'],['undoDisposition','blocked']] as const;
-for(const version of [52,54,56,58,60] as const)for(const [field,value] of projections)test(`schema${version} refuses persisted ${field}=${value} without altering its original evidence`,t=>{
+for(const version of [52,54,56,58,60,62] as const)for(const [field,value] of projections)test(`schema${version} refuses persisted ${field}=${value} without altering its original evidence`,t=>{
  const f=fixture(t);sourceProfile(f,version);
  const original=retained(f),markers=f.store.db.prepare('SELECT version FROM schema_version ORDER BY version').all();
  f.store.db.prepare('UPDATE agent_task_changes_v2 SET data=json_set(data,?,json(?)) WHERE id=?').run(`$.${field}`,JSON.stringify(value),f.change.id);
@@ -99,5 +101,5 @@ test('public M5 undo projections are optional and never need persisted fields',t
   const change={...saved.changes[0]!,modifiedAfter,undoDisposition},response=agentTaskSnapshotSchema.parse({...saved,changes:[change]});
   assert.deepEqual(response.changes,[change]);assert.deepEqual(retained(f),before);
  }
- assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,60);
+ assert.equal(classifyCurrentWorkspaceSchema(f.store.db).schemaVersion,62);
 });

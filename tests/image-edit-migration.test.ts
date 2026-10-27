@@ -1,9 +1,11 @@
+import {reviewed60Catalog,removeReviewedSchema62} from './helpers/current-schema62-delta.ts';
+import {withoutReviewedSubjectVariantObjects} from './helpers/current-schema62-delta.ts';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
 import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
 import type {currentOrdinary56Delta as schema56DeltaType} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
+function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {errorView} from './helpers/test-error.ts';
@@ -19,6 +21,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {migrateImageEditReviewSchema} from '../packages/business/src/images/review-schema.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
+import {imageReviewIntentSchema} from '../packages/contracts/src/image-reviews.ts';
 import {COMFY_IMAGE_OPTIONS,COMFY_IMAGE_POLICY,DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 import {buildComfyWorkflow,hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';
 const fixtureSql=readFileSync(new URL('./fixtures/image-edit-legacy-schema22.sql',import.meta.url),'utf8');
@@ -91,7 +94,7 @@ const model='gpt-image-2.5-flare-2026-09-08',destination='https://api.openai.com
 const policy={maxPostAttempts:1,automaticRetry:false,price:'usage-based-unknown',promptStorage:'local-plaintext'};
 const insert=(db: DatabaseSync,table: string,value: Row)=>{const keys=Object.keys(value);const statement=db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`);statement.setReadBigInts(true);return statement.run(...Object.values(value) as never[]);};
 function database(file: string=':memory:'): DatabaseSync {const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(fixtureSql);return db;}
-function snapshot(db: DatabaseSync): Snapshot {const objects=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as SchemaObject[],rows: Record<string, Row[]>={},foreignKeys: Record<string, Row[]>={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();foreignKeys[name]=db.prepare(`PRAGMA foreign_key_list("${name}")`).all();}return {objects,rows,foreignKeys};}
+function snapshot(db: DatabaseSync): Snapshot {const objects=reviewed60Catalog(db,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as SchemaObject[]),rows: Record<string, Row[]>={},foreignKeys: Record<string, Row[]>={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();foreignKeys[name]=db.prepare(`PRAGMA foreign_key_list("${name}")`).all();}return {objects,rows,foreignKeys};}
 function normalizeStartupTaskObject(row: SchemaObject): SchemaObject {
  const token=",'timeline.loudness.apply'";
  assert.equal(row.sql.split(token).length,2,'startup adds exactly one explicit loudness operation token');
@@ -248,6 +251,40 @@ test('startup marker failure preserves frozen database and enables a later succe
  finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
 });
 
+
+test('ordinary60 v4 edit reviews keep exact rows, rowids and bytes through the schema62 rebuild',()=>{
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-schema62-'));let db: DatabaseSync|undefined,store: TypedStore|undefined;
+ const raw=(value: DatabaseSync)=>{const query=value.prepare('SELECT rowid AS retainedRowid,id,hex(CAST(canonicalInput AS BLOB)) AS input,hex(CAST(canonicalIntent AS BLOB)) AS intent,inputHash,intentHash,state,revision FROM image_reviews ORDER BY rowid');query.setReadBigInts(true);return query.all();};
+ try{
+  // A genuine ordinary60: the fresh current catalog with its reviewed62 layer removed.
+  openStore(root).close();db=new DatabaseSync(path.join(root,'workbench.sqlite'));removeReviewedSchema62(db);
+  assert.equal(db.prepare('SELECT max(version) AS v FROM schema_version').get()!.v,60);
+  const projectId=randomUUID();insert(db,'projects',{id:projectId,data:JSON.stringify({id:projectId,name:'Edit reviews 原始'})});
+  const pending=editIntent(projectId),rejected=editIntent(projectId),generated=editIntent(projectId);
+  generated.sourceImage.origin={kind:'synthetic-mock',imageSource:{imageGroupId:randomUUID(),imageTaskId:randomUUID(),imageVersionId:randomUUID()}};
+  saveReview(db,pending);
+  const input=canonical(rejected.input),intent=canonical(rejected);
+  insert(db,'image_reviews',{rowid:9007199254741111n,id:rejected.reviewId,projectId,requestId:rejected.input.requestId,inputHash:hash(input),canonicalInput:input,intentHash:hash(intent),canonicalIntent:intent,state:'pending',revision:1,taskId:null,postAttempts:0,createdAt:at,updatedAt:at,approvedAt:null,rejectedAt:null,dispatchedAt:null});
+  // Rowids beyond 2^53 are read as BigInt.
+  const reject=db.prepare("UPDATE image_reviews SET state='rejected',revision=2,rejectedAt=? WHERE id=?");reject.setReadBigInts(true);reject.run(at,rejected.reviewId);
+  saveReview(db,generated);
+  const before=snapshot(db),bytes=raw(db);db.close();db=undefined;
+  store=openStore(root) as unknown as TypedStore;
+  assert.deepEqual(store.db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row=>row.version),[...currentMarkerChain]);
+  // The catalog differs only by the independently reviewed62 delta, and every
+  // retained row, rowid and raw byte is unchanged.
+  const after=snapshot(store.db);
+  assert.deepEqual(after.objects,before.objects);
+  for(const [name,rows] of Object.entries(before.rows))assert.deepEqual(name==='schema_version'?after.rows[name].filter(row=>(row.version as bigint)<=60n):after.rows[name],rows,name);
+  assert.deepEqual(raw(store.db),bytes);assert.equal(bytes.length,3);
+  for(const row of store.db.prepare('SELECT canonicalIntent FROM image_reviews').all())assert.equal(imageReviewIntentSchema.safeParse(JSON.parse(row.canonicalIntent as string)).success,true,'retained v4 intents stay valid');
+  // The v4 branch keeps its original limits; larger sources need intent v5.
+  const large=editIntent(projectId);Object.assign(large.sourceImage,{width:2048,height:1536,byteLength:9000000});
+  assert.throws(()=>saveReview(store!.db,large),/CHECK/);
+  saveReview(store.db,{...large,schemaVersion:5,input:{...large.input,options:{...options,size:'1536x1152'}}});
+  store.close();store=openStore(root) as unknown as TypedStore;assert.deepEqual(raw(store.db).slice(0,3),bytes);
+ }finally{db?.close();store?.close();rmSync(root,{recursive:true,force:true});}
+});
 
 test('schema23 rejects missing transaction, an unguarded rebuild and an actual broken foreign-key graph',()=>{
  const db=database();try{populate(db);assert.throws(()=>migrateImageEditReviewSchema(db),/transaction/);db.exec('BEGIN');assert.throws(()=>migrateImageEditReviewSchema(db),/isolated startup/);db.exec('ROLLBACK');

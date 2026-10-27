@@ -1,8 +1,9 @@
+import {withoutReviewedSubjectVariantObjects,currentOrdinary62Delta} from './helpers/current-schema62-delta.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
 import {withoutReviewedStorageObjects,withReviewedStorageObjects,currentOrdinary60Delta} from './helpers/current-schema60-delta.ts';
 import {withoutReviewedSceneObjects,currentOrdinary58Delta} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects,currentOrdinary56Delta} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedConversationObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
+function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedConversationObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -70,7 +71,7 @@ function currentOrdinaryProfile(name = 'ordinary-24') {
     const reviewed = currentOrdinaryDelta.objectSql[object.name];
     if (typeof reviewed === 'string') object.sql = reviewed;
   }
-  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332'], ['34', 'integer', '3334'], ['36', 'integer', '3336'], ['38', 'integer', '3338'], ['40', 'integer', '3430'], ...currentOrdinaryDelta.schemaVersionRows,...currentOrdinary50Delta.schemaVersionRows,...currentOrdinary52Delta.schemaVersionRows,...currentOrdinary54Delta.schemaVersionRows,...currentOrdinary56Delta.schemaVersionRows,...currentOrdinary58Delta.schemaVersionRows,...currentOrdinary60Delta.schemaVersionRows);
+  expected.tables.schema_version.rows.push(['26', 'integer', '3236'], ['28', 'integer', '3238'], ['30', 'integer', '3330'], ['32', 'integer', '3332'], ['34', 'integer', '3334'], ['36', 'integer', '3336'], ['38', 'integer', '3338'], ['40', 'integer', '3430'], ...currentOrdinaryDelta.schemaVersionRows,...currentOrdinary50Delta.schemaVersionRows,...currentOrdinary52Delta.schemaVersionRows,...currentOrdinary54Delta.schemaVersionRows,...currentOrdinary56Delta.schemaVersionRows,...currentOrdinary58Delta.schemaVersionRows,...currentOrdinary60Delta.schemaVersionRows,...currentOrdinary62Delta.schemaVersionRows);
   return expected;
 }
 
@@ -104,6 +105,9 @@ function snapshot(db: DatabaseSync): import('./helpers/strict-workspace-boundary
 function currentOrdinarySnapshot(db: DatabaseSync) {
   const actual = snapshot(db), lutTables = new Set(['project_lut_resources', 'lut_import_requests']);
   actual.objects=withoutReviewedCurrentAgentObjects(actual.objects);
+  for(const[name,value]of Object.entries(currentOrdinary62Delta.tables)){
+    assert.deepEqual(actual.tables[name],{fields:value.fields,rows:[]},`${name}: reviewed empty62 table`);delete (actual.tables as unknown as Record<PropertyKey,unknown>)[name];
+  }
   for(const[name,value]of Object.entries(currentOrdinary58Delta.tables)){
     assert.deepEqual(actual.tables[name],{fields:value.fields,rows:[]},`${name}: reviewed empty58 table`);delete (actual.tables as unknown as Record<PropertyKey,unknown>)[name];
   }
@@ -404,7 +408,7 @@ for (let version = 1; version <= 24; version++) {
   });
 }
 
-test('fresh runtime construction has only the independent reviewed through48 and additive50/52/54/56/58/60 deltas and no restoration authority', t => {
+test('fresh runtime construction has only the independent reviewed through48 and additive50/52/54/56/58/60/62 deltas and no restoration authority', t => {
   const store = (openStore(onDisk(t)) as unknown as FixtureStore);
   try {
     assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile());
@@ -412,12 +416,12 @@ test('fresh runtime construction has only the independent reviewed through48 and
   } finally { store.close(); }
 });
 
-test('current60 snapshot rejects missing or changed conversation SQL and never hides unknown additions', t => {
+test('current62 snapshot rejects missing or changed conversation SQL and never hides unknown additions', t => {
   const store=(openStore(onDisk(t)) as unknown as FixtureStore);
   try {
     const before=snapshot(store.db);
     const raw=store.db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all();
-    const retained=withoutReviewedCurrentAgentObjects(((raw) as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]));assert.ok(retained.every(object=>raw.includes((object as unknown as Parameters<typeof raw.includes>[0]))||object.name.startsWith('agent_quota_')),'only reviewed quota SQL is reconstructed');
+    const retained=withoutReviewedCurrentAgentObjects(((raw) as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]));assert.ok(retained.every(object=>raw.includes((object as unknown as Parameters<typeof raw.includes>[0]))||object.name.startsWith('agent_quota_')||[...currentOrdinary62Delta.removed,...currentOrdinary62Delta.replaced].some(reviewed=>reviewed.name===object.name)),'only reviewed quota and schema62 SQL is reconstructed');
     for(const object of currentOrdinary54Delta.objects){
       store.db.exec('BEGIN');
       try {
@@ -466,7 +470,7 @@ for (const mock of [false, true] as const) for (const seeded of [false, true] as
     try {
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
       assertPreserved(store.db, profile(name));
-      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 60, profile: 'ordinary'});
+      assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 62, profile: 'ordinary'});
       assert.deepEqual(currentOrdinarySnapshot(store.db), currentOrdinaryProfile(name));
     } finally { store.close(); }
   });

@@ -6,7 +6,6 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
-import {migrateSubjectSchema} from '../packages/business/src/subject-schema.ts';
 import {schemas,LOCAL_MUTATION_OPERATIONS,isSubjectMutationResponse,isSubjectListResponse} from '@mioon/contracts';
 import {type TestContext} from 'node:test';
 import {errorView} from './helpers/test-error.ts';
@@ -24,7 +23,9 @@ interface SubjectFixture {root: string; store: ReturnType<typeof openStore>; pro
 
 async function fixture(t: TestContext): Promise<SubjectFixture> {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-subjects-'));let store: ReturnType<typeof openStore> | undefined,services: ReturnType<typeof createServices> | undefined;
- const start=()=>{const opened=openStore(root);store=opened;opened.tx(()=>migrateSubjectSchema(opened.db));services=createServices(opened,new Map());};start();
+ // openStore installs the current subject schema. The historical installer is
+ // not rerun: since schema62 it would recreate the replaced identity guard.
+ const start=()=>{const opened=openStore(root);store=opened;services=createServices(opened,new Map());};start();
  const f: SubjectFixture = {project: undefined as unknown as SubjectRecord, other: undefined as unknown as SubjectRecord, root,get store(){return store!;},call:<T = SubjectRecord>(op: string,input: unknown)=>services!.call(op,input) as Promise<T>,restart(){store!.close();start();},
   asset(projectId?: string,patch: Record<string, unknown>={}){return store!.put('assets',{id:randomUUID(),projectId:projectId ?? f.project.id,name:'Owned reference',mimeType:'image/png',sha256:'a'.repeat(64),width:640,height:480,relativePath:'media/fixture',provenance:'user-import',...patch});},
   create(asset: Record<string, unknown>,patch: Record<string, unknown>={}){return {projectId:String(asset.projectId),kind:'character',name:'Subject',assetId:String(asset.id),requestId:randomUUID(),...patch};},

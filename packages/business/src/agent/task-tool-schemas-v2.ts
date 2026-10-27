@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="a3a3d48c9c8dc8e84899117667b857990b9821a5b8d2034048961834f6211e11";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="79b00c07a9f8146aab187dd3cade4ea9e5e85bceb15cd4944c149995dd2bd3de";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -1179,7 +1179,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       "properties": {
        "size": {
         "type": "string",
-        "const": "1024x1024"
+        "pattern": "^[1-9][0-9]{0,4}x[1-9][0-9]{0,4}$"
        },
        "quality": {
         "type": "string",
@@ -1592,7 +1592,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
         "properties": {
          "size": {
           "type": "string",
-          "const": "1024x1024"
+          "pattern": "^[1-9][0-9]{0,4}x[1-9][0-9]{0,4}$"
          },
          "quality": {
           "type": "string",
@@ -1965,6 +1965,219 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    }
   },
   "required": [],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "subject.variants.create": {
+  "type": "object",
+  "properties": {
+   "subjectId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "sourceVersionId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "kind": {
+    "type": "string",
+    "enum": [
+     "angle",
+     "light"
+    ]
+   },
+   "items": {
+    "type": "array",
+    "items": {
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "angle"
+        },
+        "position": {
+         "type": "string",
+         "enum": [
+          "front",
+          "front-left",
+          "left",
+          "back-left",
+          "back",
+          "back-right",
+          "right",
+          "front-right",
+          "high",
+          "low"
+         ]
+        },
+        "focal": {
+         "type": "string",
+         "enum": [
+          "standard",
+          "wide"
+         ]
+        }
+       },
+       "required": [
+        "kind",
+        "position",
+        "focal"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "object",
+       "properties": {
+        "kind": {
+         "type": "string",
+         "const": "light"
+        },
+        "azimuth": {
+         "type": "integer",
+         "minimum": -180,
+         "maximum": 180
+        },
+        "elevation": {
+         "type": "integer",
+         "minimum": -90,
+         "maximum": 90
+        },
+        "quality": {
+         "type": "string",
+         "enum": [
+          "soft",
+          "hard",
+          "back"
+         ]
+        },
+        "kelvin": {
+         "type": "integer",
+         "minimum": 2000,
+         "maximum": 10000,
+         "multipleOf": 100
+        }
+       },
+       "required": [
+        "kind",
+        "azimuth",
+        "elevation",
+        "quality",
+        "kelvin"
+       ],
+       "additionalProperties": false
+      }
+     ]
+    },
+    "minItems": 1,
+    "maxItems": 8
+   },
+   "providerId": {
+    "type": "string",
+    "enum": [
+     "mock",
+     "openai"
+    ]
+   },
+   "model": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 100
+   }
+  },
+  "required": [
+   "subjectId",
+   "sourceVersionId",
+   "kind",
+   "items",
+   "providerId",
+   "model"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "subject.variants.retry": {
+  "type": "object",
+  "properties": {
+   "batchId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "position": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 8
+   },
+   "expectedRevision": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 9007199254740991
+   }
+  },
+  "required": [
+   "batchId",
+   "position",
+   "expectedRevision"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "subject.variants.undo": {
+  "type": "object",
+  "properties": {
+   "batchId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "expectedRevision": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 9007199254740991
+   }
+  },
+  "required": [
+   "batchId",
+   "expectedRevision"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "subject.variants.get": {
+  "type": "object",
+  "properties": {
+   "batchId": {
+    "type": "string",
+    "format": "uuid"
+   }
+  },
+  "required": [
+   "batchId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "subject.variants.list": {
+  "type": "object",
+  "properties": {
+   "subjectId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 50
+   },
+   "cursor": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 768
+   }
+  },
+  "required": [
+   "subjectId"
+  ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
  },

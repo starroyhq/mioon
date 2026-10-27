@@ -17,7 +17,10 @@ const projectId = id(1), groupId = id(2), assetId = id(3), taskId = id(4), reque
 const hash = (value: unknown): string => createHash('sha256').update(canonical(value as never)).digest('hex');
 const sourceAsset = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({ id: assetId, projectId, name: 'Imported source.png', mimeType: 'image/png', sha256: 'a'.repeat(64), width: 640, height: 480, sizeBytes: 2400, provenance: 'user-import', ...patch });
 const descriptor = (asset: Record<string, unknown>): Record<string, unknown> => ({ assetId: asset.id, sha256: asset.sha256, name: asset.name, mimeType: asset.mimeType, width: asset.width, height: asset.height, byteLength: asset.sizeBytes, origin: { kind: 'user-import' } });
-const input = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({ projectId, name: 'Edit result', prompt: '  Change only the backdrop.\nKeep the framing.  ', providerId: 'openai', model: models.openai, options, requestId, purpose: 'edit', inputImage: { assetId, sha256: 'a'.repeat(64) }, ...patch });
+// Edits follow the source's ratio within the model's edit profile: the 640x480
+// source below has a 1536 long edge and a 1152 short edge (a multiple of 16).
+const editOptions = { ...options, size: '1536x1152' };
+const input = (patch: Record<string, unknown> = {}): Record<string, unknown> => ({ projectId, name: 'Edit result', prompt: '  Change only the backdrop.\nKeep the framing.  ', providerId: 'openai', model: models.openai, options: editOptions, requestId, purpose: 'edit', inputImage: { assetId, sha256: 'a'.repeat(64) }, ...patch });
 const review = (value: Record<string, unknown> = input(), patch: Record<string, unknown> = {}): Record<string, unknown> => ({ id: id(6), projectId: value.projectId, requestId: value.requestId, input: value, inputHash: hash(value), settingsRevision: 1, destination: value.purpose === 'edit' ? IMAGE_EDIT_REVIEW_DESTINATION : contracts.IMAGE_REVIEW_DESTINATION, policy: { ...IMAGE_REVIEW_POLICY }, ...(value.purpose === 'edit' ? { sourceImage: descriptor(sourceAsset({ id: (value.inputImage as Record<string, unknown>).assetId, sha256: (value.inputImage as Record<string, unknown>).sha256 })) } : {}), state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null, ...patch });
 const task = (value: Record<string, unknown> = input(), patch: Record<string, unknown> = {}): Record<string, unknown> => { const result: Record<string, unknown> = { ...value, id: taskId, groupId: value.groupId || groupId, state: 'queued', revision: 1, dispatched: false, versionId: null, errorCode: null, createdAt: at, updatedAt: at, ...(value.purpose === 'edit' ? { sourceImage: descriptor(sourceAsset({ id: (value.inputImage as Record<string, unknown>).assetId, sha256: (value.inputImage as Record<string, unknown>).sha256 })) } : {}), ...patch }; delete result.expectedRevision; return result; };
 const settings = (): Record<string, unknown> => ({ revision: 1, configuration: { ...DEFAULT_IMAGE_CONFIGURATION, enabled: true }, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' } });
@@ -71,7 +74,9 @@ async function compose(f: Fixture, provider = 'openai'): Promise<void> { await f
 
 test('edit chooser uses metadata only and rejects unsupported formats, size, geometry, ownership and identity', () => {
   assert.equal(logic.imageEditSourceIssue(sourceAsset(), projectId), '');
-  for (const patch of [{ mimeType: 'image/jpeg' }, { projectId: id(50) }, { sha256: 'bad' }, { sizeBytes: 8388609 }, { width: 1025 }, { height: 0 }, { provenance: 'export' }]) assert.notEqual(logic.imageEditSourceIssue(sourceAsset(patch), projectId), '');
+  // PNG, JPEG and WebP sources under 50 MB with edges up to 4096 pixels are offered.
+  for (const patch of [{ mimeType: 'image/jpeg' }, { mimeType: 'image/webp' }, { sizeBytes: contracts.IMAGE_EDIT_LIMITS.sourceBytes }, { width: 4096, height: 4096 }]) assert.equal(logic.imageEditSourceIssue(sourceAsset(patch), projectId), '', JSON.stringify(patch));
+  for (const patch of [{ mimeType: 'image/gif' }, { projectId: id(50) }, { sha256: 'bad' }, { sizeBytes: contracts.IMAGE_EDIT_LIMITS.sourceBytes + 1 }, { width: 4097 }, { height: 0 }, { provenance: 'export' }]) assert.notEqual(logic.imageEditSourceIssue(sourceAsset(patch), projectId), '');
   const f = fixture(); f.session.selectMode('edit'); assert.equal(logic.imageDraftDirty(f.session.getState()), true); assert.equal(f.session.selectSource(sourceAsset()), true); assert.equal(f.calls.length, 0); assert.equal(f.approvals.length, 0); assert.deepEqual(f.session.getState().inputImage, input().inputImage); f.session.dispose();
 });
 
@@ -128,7 +133,7 @@ test('paid approval and recovered receipts reject changed source metadata even w
 });
 
 test('old text-only pending receipts remain readable and never acquire edit fields', async () => {
-  const storage = memory(), textInput = input(); delete textInput.purpose; delete textInput.inputImage;
+  const storage = memory(), textInput: Record<string, unknown> = { ...input(), options }; delete textInput.purpose; delete textInput.inputImage;
   storage.setItem(`mioon.image-intent.v1:${projectId}`, JSON.stringify({ version: 1, operation: 'image.generate', input: textInput, settingsRevision: 1, reviewId: null, approvalAttempted: true }));
   const f = fixture({ storage, api: (operation, value, data, accept) => { if (operation === 'image.request.get') { const result = accept(textInput); return { projectId, requestId, operation: 'image.generate', response: result }; } } }); await f.session.load(); assert.equal(f.session.getState().pending, null); assert.equal(f.session.getState().mode, 'text'); assert.equal(f.session.getState().tasks[0].purpose, undefined); assert.equal(f.approvals.length, 0); f.session.dispose();
 });
@@ -267,5 +272,5 @@ test('unsupported edit providers cannot prepare and chosen group revision is nev
 test('invalid Mock PNG keeps an actionable unknown record across remount, never claims rejection or releases the key', async () => {
   const f = fixture({ api: (operation, value) => { if (operation === 'image.generate') throw new ApiError('Source problem', 'IMAGE_SOURCE_INVALID', { imageOutcome: { status: 'not_accepted', projectId, operation, requestId, inputHash: hash(value) } }); } }); await compose(f, 'mock'); await f.session.generate();
   assert.equal(f.session.getState().phase, 'unknown'); assert.equal(f.session.getState().pending!.input.requestId, requestId); assert.match(f.session.getState().message, /源图核验.*结果仍未知/); assert.doesNotMatch(f.session.getState().message, /未被接受|生成失败/); assert.equal(f.session.selectSource(sourceAsset({ id: id(21) })), false); f.session.dispose();
-  const g = fixture({ storage: f.storage }); await g.session.load(); assert.equal(g.session.getState().pending!.sourceIssue, 'IMAGE_SOURCE_INVALID'); assert.match(g.session.getState().message, /8 MiB/); assert.deepEqual(g.session.getState().pending!.input, input({ providerId: 'mock', model: models.mock })); assert.equal(await g.session.generate(), false); assert.equal(g.calls.some(call => call.operation === 'image.generate'), false); g.session.dispose();
+  const g = fixture({ storage: f.storage }); await g.session.load(); assert.equal(g.session.getState().pending!.sourceIssue, 'IMAGE_SOURCE_INVALID'); assert.match(g.session.getState().message, /50 MB.*4096/); assert.deepEqual(g.session.getState().pending!.input, input({ providerId: 'mock', model: models.mock })); assert.equal(await g.session.generate(), false); assert.equal(g.calls.some(call => call.operation === 'image.generate'), false); g.session.dispose();
 });

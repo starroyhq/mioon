@@ -649,10 +649,10 @@ export const creationStateMessages = {
     "ja": "{value} 生成 POST は送信していません。新しいリクエストには改めて明示的な承認が必要で、自動再試行はしません"
   },
   "image.state.sourceRejected": {
-    "zh-Hans": "源图未通过后端核验，本次未被接受。仅支持当前项目的完整、不透明、8 位非交错 PNG；最多 8 MiB，每边最多 1024 像素",
-    "zh-Hant": "來源圖片未通過後端核驗，此次未被接受。僅支援目前專案的完整、不透明、8 位元、非交錯 PNG；最多 8 MiB，每邊最多 1024 像素",
-    "en": "The source image failed backend verification and this request was not accepted. Only complete, opaque, 8-bit, non-interlaced PNGs in this project are supported, up to 8 MiB and 1024 pixels per edge",
-    "ja": "ソース画像がバックエンド検証を通過せず、今回のリクエストは受け付けられませんでした。現在のプロジェクトの完全な不透明・8ビット・非インターレース PNG のみ対応し、最大8 MiB、各辺最大1024ピクセルです"
+    "zh-Hans": "源图未通过后端核验，本次未被接受。支持当前项目的完整 PNG、JPEG 或 WebP，小于 50 MB，每边最多 4096 像素；PNG 须不透明、8 位、非交错",
+    "zh-Hant": "來源圖片未通過後端核驗，本次未被接受。支援目前專案的完整 PNG、JPEG 或 WebP，小於 50 MB，每邊最多 4096 像素；PNG 須不透明、8 位元、非交錯",
+    "en": "The source image failed backend verification, so this request was not accepted. Use a complete PNG, JPEG or WebP from this project, smaller than 50 MB and at most 4096 pixels per edge; a PNG must be opaque, 8-bit and non-interlaced",
+    "ja": "ソース画像がバックエンドの検証に通らなかったため、今回のリクエストは受け付けられていません。現在のプロジェクトの完全な PNG、JPEG、WebP（50 MB未満、各辺4096ピクセル以下）を使ってください。PNG は不透明・8ビット・非インターレースである必要があります"
   },
   "image.state.liveDisabled": {
     "zh-Hans": "真实图像调用尚未启用，本次未被接受",
@@ -738,11 +738,11 @@ export const creationStateMessages = {
     "en": "The asset identity or project ownership is invalid",
     "ja": "素材の識別情報または所属プロジェクトが無効です"
   },
-  "image.state.pngOnly": {
-    "zh-Hans": "仅支持 PNG",
-    "zh-Hant": "僅支援 PNG",
-    "en": "Only PNG is supported",
-    "ja": "PNG のみに対応します"
+  "image.state.sourceFormat": {
+    "zh-Hans": "仅支持 PNG、JPEG 或 WebP",
+    "zh-Hant": "僅支援 PNG、JPEG 或 WebP",
+    "en": "Only PNG, JPEG or WebP is supported",
+    "ja": "PNG、JPEG、WebP のみに対応します"
   },
   "image.state.unsupportedSourceOrigin": {
     "zh-Hans": "此素材来源不支持图像编辑",
@@ -751,16 +751,16 @@ export const creationStateMessages = {
     "ja": "この素材の由来は画像編集に対応していません"
   },
   "image.state.sourceByteLimit": {
-    "zh-Hans": "PNG 必须不超过 8 MiB",
-    "zh-Hant": "PNG 不得超過 8 MiB",
-    "en": "PNG files must not exceed 8 MiB",
-    "ja": "PNG は8 MiB以下である必要があります"
+    "zh-Hans": "源图必须小于 50 MB",
+    "zh-Hant": "來源圖片必須小於 50 MB",
+    "en": "The source image must be smaller than 50 MB",
+    "ja": "ソース画像は50 MB未満である必要があります"
   },
   "image.state.sourceDimensions": {
-    "zh-Hans": "每边最多 1024 像素，总计最多 1,048,576 像素",
-    "zh-Hant": "每邊最多 1024 像素，總計最多 1,048,576 像素",
-    "en": "At most 1024 pixels per edge and 1,048,576 pixels total",
-    "ja": "各辺は最大1024ピクセル、合計は最大1,048,576ピクセルです"
+    "zh-Hans": "每边最多 4096 像素",
+    "zh-Hant": "每邊最多 4096 像素",
+    "en": "At most 4096 pixels per edge",
+    "ja": "各辺は最大4096ピクセルです"
   },
   "image.state.editProvidersOnly": {
     "zh-Hans": "图像编辑仅支持 Mock 和 OpenAI 官方连接",
@@ -769,10 +769,10 @@ export const creationStateMessages = {
     "ja": "画像編集は Mock と OpenAI 公式接続のみに対応します"
   },
   "image.state.sourceRequired": {
-    "zh-Hans": "请选择当前项目的一张 PNG 源图",
-    "zh-Hant": "請選擇目前專案的一張 PNG 來源圖片",
-    "en": "Select a PNG source image from this project",
-    "ja": "現在のプロジェクトから PNG ソース画像を1枚選択してください"
+    "zh-Hans": "请选择当前项目的一张源图",
+    "zh-Hant": "請選擇目前專案的一張來源圖片",
+    "en": "Select a source image from this project",
+    "ja": "現在のプロジェクトからソース画像を1枚選択してください"
   },
   "image.state.reviewRecordUnverifiable": {
     "zh-Hans": "无法核验本地审批记录，本次不会继续发送。请重新打开面板后核对",
@@ -805,10 +805,10 @@ export const creationStateMessages = {
     "ja": "元の説明は承認待ちです。明示的に承認した場合だけ送信し、自動では続行しません"
   },
   "image.state.sourceUnknownHeld": {
-    "zh-Hans": "源图核验报告问题。请核对 PNG 是否不透明、8 位、非交错、最多 8 MiB 且每边不超过 1024 像素，并重新读取原请求。原请求结果仍未知，原始标识已保留；为避免重复任务，本项目暂不能提交新图像请求，不会自动重发",
-    "zh-Hant": "來源圖片核驗發現問題。請確認 PNG 為不透明、8 位元、非交錯、最多 8 MiB 且每邊不超過 1024 像素，再重新讀取原請求。原請求結果仍未知，原標識已保留；為避免重複工作，此專案目前不能提交新圖像請求，不會自動重送",
-    "en": "Source verification reported a problem. Check that the PNG is opaque, 8-bit, non-interlaced, at most 8 MiB and 1024 pixels per edge, then reload the original request. Its outcome remains unknown and its original identity is retained. New image submissions are blocked for this project to avoid duplicates; there is no automatic resend",
-    "ja": "ソース画像の検証で問題が報告されました。PNG が不透明、8ビット、非インターレース、8 MiB以下、各辺1024ピクセル以下であることを確認し、元のリクエストを再読み込みしてください。元の結果は不明のままで、識別情報を保持しています。重複タスクを避けるため、このプロジェクトでは新しい画像リクエストを送信できません。自動再送はしません"
+    "zh-Hans": "源图核验报告问题。请核对源图是否为完整的 PNG、JPEG 或 WebP，小于 50 MB 且每边不超过 4096 像素（PNG 须不透明、8 位、非交错），并重新读取原请求。原请求结果仍未知，原始标识已保留；为避免重复任务，本项目暂不能提交新图像请求，不会自动重发",
+    "zh-Hant": "來源圖片核驗發現問題。請確認來源圖片為完整的 PNG、JPEG 或 WebP，小於 50 MB 且每邊不超過 4096 像素（PNG 須不透明、8 位元、非交錯），再重新讀取原請求。原請求結果仍未知，原標識已保留；為避免重複工作，此專案目前不能提交新圖像請求，不會自動重送",
+    "en": "Source verification reported a problem. Check that the source is a complete PNG, JPEG or WebP, smaller than 50 MB and at most 4096 pixels per edge (a PNG must be opaque, 8-bit and non-interlaced), then reload the original request. Its outcome remains unknown and its original identity is retained. New image submissions are blocked for this project to avoid duplicates; there is no automatic resend",
+    "ja": "ソース画像の検証で問題が報告されました。ソースが完全な PNG、JPEG、WebP で、50 MB未満、各辺4096ピクセル以下であること（PNG は不透明・8ビット・非インターレース）を確認し、元のリクエストを再読み込みしてください。元の結果は不明のままで、識別情報を保持しています。重複タスクを避けるため、このプロジェクトでは新しい画像リクエストを送信できません。自動再送はしません"
   },
   "image.state.comfyPreparationUnknown": {
     "zh-Hans": "尚未确认本地运行准备结果；没有批准运行。请重新读取，或明确放弃此未批准请求",

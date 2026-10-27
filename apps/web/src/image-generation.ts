@@ -2,7 +2,7 @@ import { message as localizedMessage, renderMessage } from '../../../packages/i1
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { ApiError, rpc, requestId as newRequestId } from './api.ts';
 import { createImageRejectionCloseLatch } from './native-close-sources.ts';
-import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, IMAGE_REVIEW_LIMITS, IMAGE_EDIT_LIMITS, imageEditInputImageSchema, imageEditSourceSchema, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
+import { IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, IMAGE_REVIEW_LIMITS, IMAGE_EDIT_LIMITS, IMAGE_EDIT_SOURCE_MIME_TYPES, imageEditOutputSize, imageEditProfile, parseImageSize, imageEditInputImageSchema, imageEditSourceSchema, canonicalImageInput, imageSchemas, isImageTaskResponse, isImageGroupResponse, isImageMutationResponse, isImageRequestResponse, isImageListResponse, isImageReviewResponse, isImageReviewListResponse, isImageReviewPreparationResponse, isCompleteCustomImageConfiguration, getCustomImageDestination, COMFY_IMAGE_OPTIONS, comfyImageExecutionSchema, isCompleteComfyImageConfiguration, getComfyImageDestination } from '@mioon/contracts';
 import type { ImageTaskResponse, ImageGroupResponse, ImageVersionResponse, ImageReviewResponse } from '@mioon/contracts';
 import { safeImageSettings } from './image-settings.ts';
 import { safeComfyImageSettings, safeComfyConnectorAvailability, comfyConnectorAvailable } from './comfy-image-settings.ts';
@@ -186,7 +186,7 @@ export function imageTaskConnectionMessage(task: ImageTaskView | null | undefine
   if (task?.providerId !== 'openai-compatible' || task.state !== 'failed' || task.dispatched !== false || !Object.hasOwn(customPreDispatchMessages, task.errorCode ?? '')) return '';
   return `${customPreDispatchMessages[task.errorCode ?? '']}本次未发送生成 POST；任何新请求都需要重新明确批准，不会自动重试。`;
 }
-const rejectionMessages: Record<string, string> = { IMAGE_SOURCE_INVALID: '源图未通过后端核验，本次未被接受。仅支持当前项目的完整、不透明、8 位非交错 PNG；最多 8 MiB，每边最多 1024 像素。', IMAGE_LIVE_DISABLED: '真实图像调用尚未启用，本次未被接受。', IMAGE_GROUP_BUSY: '此组有未结束或结果未知的任务，本次未被接受。请查看原任务。', IMAGE_REVISION_CONFLICT: '图像组或任务的状态已变化，本次未被接受。请重新读取并明确选择目标。', IMAGE_QUEUE_FULL: '本地图像队列已满，本次未被接受。草稿保留，可稍后明确提交。', IMAGE_CAPACITY: '本地图像记录容量已满，本次未被接受。草稿保留。', IMAGE_STATE_CONFLICT: '当前任务或图像组不允许此操作，本次未被接受。请重新读取。', IMAGE_RESULT_INVALID: '未找到可完整核验的本地结果，本次恢复未被接受。原任务保留，不会重新生成。' };
+const rejectionMessages: Record<string, string> = { IMAGE_SOURCE_INVALID: '源图未通过后端核验，本次未被接受。支持当前项目的完整 PNG、JPEG 或 WebP，小于 50 MB，每边最多 4096 像素；PNG 须不透明、8 位、非交错。', IMAGE_LIVE_DISABLED: '真实图像调用尚未启用，本次未被接受。', IMAGE_GROUP_BUSY: '此组有未结束或结果未知的任务，本次未被接受。请查看原任务。', IMAGE_REVISION_CONFLICT: '图像组或任务的状态已变化，本次未被接受。请重新读取并明确选择目标。', IMAGE_QUEUE_FULL: '本地图像队列已满，本次未被接受。草稿保留，可稍后明确提交。', IMAGE_CAPACITY: '本地图像记录容量已满，本次未被接受。草稿保留。', IMAGE_STATE_CONFLICT: '当前任务或图像组不允许此操作，本次未被接受。请重新读取。', IMAGE_RESULT_INVALID: '未找到可完整核验的本地结果，本次恢复未被接受。原任务保留，不会重新生成。' };
 const rejectionMessage = (code: string): string => Object.hasOwn(rejectionMessages, code) ? rejectionMessages[code] : '请求未被接受，草稿保留。请重新读取并核对后再提交。';
 export function imageInputIssue(draft: ImageDraft): string {
   if (!draft.name.trim()) return '请填写图像名称。';
@@ -201,17 +201,28 @@ export function initialImageGenerationState(): ImageGenerationState {
 }
 export const imageDraftDirty = (state: ImageGenerationState): boolean => Boolean(state.draft.name || state.draft.prompt || state.target || state.mode === 'edit' || state.inputImage);
 // Metadata only: eligibility here is a chooser hint. The backend alone verifies
-// project ownership, immutable PNG bytes, opacity, bit depth and interlacing.
+// project ownership, immutable source bytes and format (PNG opacity, bit depth and interlacing).
 export function imageEditSourceIssue(asset: ImageEditAsset | null | undefined, projectId: string): string {
   if (!asset || asset.projectId !== projectId || !imageEditInputImageSchema.safeParse({ assetId: asset.id, sha256: asset.sha256 }).success) return '素材身份或所属项目无效。';
-  if (asset.mimeType !== 'image/png') return '仅支持 PNG。';
+  if (!(IMAGE_EDIT_SOURCE_MIME_TYPES as readonly unknown[]).includes(asset.mimeType)) return '仅支持 PNG、JPEG 或 WebP。';
   if (!['user-import', 'generated', 'synthetic-mock', 'extracted-frame'].includes(asset.provenance as string)) return '此素材来源不支持图像编辑。';
-  if (typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 || asset.sizeBytes > IMAGE_EDIT_LIMITS.sourceBytes) return 'PNG 必须不超过 8 MiB。';
-  if (typeof asset.width !== 'number' || typeof asset.height !== 'number' || ![asset.width, asset.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= IMAGE_EDIT_LIMITS.sourceMaxEdge) || asset.width * asset.height > IMAGE_EDIT_LIMITS.sourceMaxPixels) return '每边最多 1024 像素，总计最多 1,048,576 像素。';
+  if (typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 || asset.sizeBytes > IMAGE_EDIT_LIMITS.sourceBytes) return '源图必须小于 50 MB。';
+  if (typeof asset.width !== 'number' || typeof asset.height !== 'number' || ![asset.width, asset.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= IMAGE_EDIT_LIMITS.sourceMaxEdge) || asset.width * asset.height > IMAGE_EDIT_LIMITS.sourceMaxPixels) return '每边最多 4096 像素。';
   return '';
 }
-export const imageEditDraftIssue = (state: ImageGenerationState): string => state.mode !== 'edit' ? '' : !['mock', 'openai'].includes(state.providerId) ? '图像编辑仅支持 Mock 和 OpenAI 官方连接。' : !imageEditInputImageSchema.safeParse(state.inputImage).success ? '请选择当前项目的一张 PNG 源图。' : '';
+export const imageEditDraftIssue = (state: ImageGenerationState): string => state.mode !== 'edit' ? '' : !['mock', 'openai'].includes(state.providerId) ? '图像编辑仅支持 Mock 和 OpenAI 官方连接。' : !imageEditInputImageSchema.safeParse(state.inputImage).success ? '请选择当前项目的一张源图。' : '';
 const editInput = (state: ImageGenerationState): Record<string, unknown> => state.mode === 'edit' ? { purpose: 'edit', inputImage: copy(state.inputImage) } : {};
+/** An edit's output follows its source's ratio within the model's edit profile;
+ * null until a source with known dimensions is chosen. Text-to-image stays fixed. */
+export function imageEditOutputDimensions(state: Pick<ImageGenerationState, 'mode' | 'providerId' | 'sourcePreview'>, model: string = state.providerId === 'mock' ? IMAGE_MODELS.mock : IMAGE_MODELS.openai): { width: number; height: number } | null {
+  const profile = imageEditProfile(state.providerId, model), source = state.sourcePreview;
+  if (state.mode !== 'edit' || !profile || typeof source?.width !== 'number' || typeof source.height !== 'number') return null;
+  return parseImageSize(imageEditOutputSize(profile, source.width, source.height));
+}
+const requestOptions = (state: ImageGenerationState, model: string): Record<string, unknown> => {
+  const size = imageEditOutputDimensions(state, model);
+  return size ? { ...IMAGE_FIXED_OPTIONS, size: `${size.width}x${size.height}` } : { ...IMAGE_FIXED_OPTIONS };
+};
 const clearedDraft = (): Partial<ImageGenerationState> => ({ draft: { name: '', prompt: '' }, target: null, mode: 'text', inputImage: null, sourcePreview: null });
 const reviewRecord = (review: unknown): Record<string, unknown> | null => record(review) ? review : null;
 export function imageEditReviewMatchesDraft(state: ImageGenerationState, review: unknown): boolean {
@@ -385,7 +396,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
         if (review.state === 'rejected' && clearPending(pending)) { emit({ phase: 'ready', message: '原请求已被拒绝，没有重新生成。', displayMessage: localizedMessage('image.state.originalRejected') }); return; }
         if (review.state === 'pending') { emit({ phase: 'unknown', message: '原始描述仍在等待审批。只有明确点击批准才会发送，不会自动继续。', displayMessage: localizedMessage('image.state.waitingForApproval') }); return; }
       }
-      if (pending.sourceIssue === 'IMAGE_SOURCE_INVALID') { emit({ phase: 'unknown', message: '源图核验报告问题。请核对 PNG 是否不透明、8 位、非交错、最多 8 MiB 且每边不超过 1024 像素，并重新读取原请求。原请求结果仍未知，原始标识已保留；为避免重复任务，本项目暂不能提交新图像请求，不会自动重发。', displayMessage: localizedMessage('image.state.sourceUnknownHeld') }); return; }
+      if (pending.sourceIssue === 'IMAGE_SOURCE_INVALID') { emit({ phase: 'unknown', message: '源图核验报告问题。请核对源图是否为完整的 PNG、JPEG 或 WebP，小于 50 MB 且每边不超过 4096 像素（PNG 须不透明、8 位、非交错），并重新读取原请求。原请求结果仍未知，原始标识已保留；为避免重复任务，本项目暂不能提交新图像请求，不会自动重发。', displayMessage: localizedMessage('image.state.sourceUnknownHeld') }); return; }
       emit({ phase: 'unknown', message: reviewedProvider(pending.input.providerId) && !pending.approvalAttempted ? pending.input.providerId === 'comfy-local' ? '尚未确认本地运行准备结果；没有批准运行。请重新读取，或明确放弃此未批准请求。' : '尚未确认审批准备结果；没有发起付费审批。请重新读取，或明确放弃此未批准请求。' : '尚未找到原请求的确认记录。这不能证明请求未被接受；请继续核对，不要重复生成。', displayMessage: reviewedProvider(pending.input.providerId) && !pending.approvalAttempted ? pending.input.providerId === 'comfy-local' ? localizedMessage('image.state.comfyPreparationUnknown') : localizedMessage('image.state.paidPreparationUnknown') : localizedMessage('image.state.originalNotFoundUnknown') }); return;
     }
     const response = receipt.response;
@@ -569,7 +580,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
     if (authorization !== undefined && canonicalImageInput(authorization) !== canonicalImageInput(imagePaidAuthorization(state))) { emit({ message: '描述或连接配置已变化。请核对当前完整地址、模型与配置版本后重新点击付费生成。', displayMessage: localizedMessage('image.state.paidAuthorizationChanged') }); return false; }
     const selected = imageSelectedSettings(state), custom = state.providerId === 'openai-compatible';
     if (!selected) return false;
-    const input: ImageMutationInput = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: state.providerId, model: selected.configuration.model, options: { ...IMAGE_FIXED_OPTIONS }, requestId: requestId(), ...editInput(state), ...(state.target || {}) };
+    const input: ImageMutationInput = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: state.providerId, model: selected.configuration.model, options: requestOptions(state, selected.configuration.model ?? ''), requestId: requestId(), ...editInput(state), ...(state.target || {}) };
     if (!imageOperationSchema('image.generate')?.safeParse(input).success) return false;
     const pending: ImagePending = { version: custom ? 2 : 1, operation: 'image.generate', input, settingsRevision: selected.revision, reviewId: null, approvalAttempted: false, ...(custom ? { configuration: copy(selected.configuration) as unknown as Record<string, unknown>, destination: getCustomImageDestination(selected.configuration.baseUrl) } : {}) }, interaction = interactionEpoch;
     try { savePending(pending); } catch { emit({ message: '无法保存原始付费请求，本次尚未发送。', displayMessage: localizedMessage('image.state.paidRequestSaveFailed') }); return false; }
@@ -700,7 +711,7 @@ export function createImageGenerationSession({ projectId, api = rpc as unknown a
     edit(field: string, value: string): boolean { if (!disposed && visible && !state.pending && !state.remotePending && !state.remoteActionTaskId && !state.actionTaskId && !state.reviewActionId && state.phase !== 'targeting' && ['name', 'prompt'].includes(field) && !(field === 'name' && state.target)) { interactionEpoch++; emit({ draft: { ...state.draft, [field]: value } as ImageDraft, targetRequest: null }); return true; } return false; },
     async generate(): Promise<boolean> {
       if (!visible || state.providerId !== 'mock' || !imageCanGenerate(state)) return false;
-      const input: ImageMutationInput = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: 'mock', model: IMAGE_MODELS.mock, options: { ...IMAGE_FIXED_OPTIONS }, requestId: requestId(), ...editInput(state), ...(state.target || {}) };
+      const input: ImageMutationInput = { projectId, name: state.draft.name, prompt: state.draft.prompt, providerId: 'mock', model: IMAGE_MODELS.mock, options: requestOptions(state, IMAGE_MODELS.mock), requestId: requestId(), ...editInput(state), ...(state.target || {}) };
       if (!imageOperationSchema('image.generate')?.safeParse(input).success) return false;
       return dispatch('image.generate', input);
     },
@@ -777,7 +788,7 @@ export function imageInputIssueDescriptor(draft: ImageDraft): DisplayMessage | n
 
 export function imageEditSourceIssueDescriptor(asset: ImageEditAsset | null | undefined, projectId: string): DisplayMessage | null {
   if (!asset || asset.projectId !== projectId || !imageEditInputImageSchema.safeParse({ assetId: asset.id, sha256: asset.sha256 }).success) return localizedMessage('image.state.invalidAssetIdentity');
-  if (asset.mimeType !== 'image/png') return localizedMessage('image.state.pngOnly');
+  if (!(IMAGE_EDIT_SOURCE_MIME_TYPES as readonly unknown[]).includes(asset.mimeType)) return localizedMessage('image.state.sourceFormat');
   if (!['user-import', 'generated', 'synthetic-mock', 'extracted-frame'].includes(asset.provenance as string)) return localizedMessage('image.state.unsupportedSourceOrigin');
   if (typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 || asset.sizeBytes > IMAGE_EDIT_LIMITS.sourceBytes) return localizedMessage('image.state.sourceByteLimit');
   if (typeof asset.width !== 'number' || typeof asset.height !== 'number' || ![asset.width, asset.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= IMAGE_EDIT_LIMITS.sourceMaxEdge) || asset.width * asset.height > IMAGE_EDIT_LIMITS.sourceMaxPixels) return localizedMessage('image.state.sourceDimensions');

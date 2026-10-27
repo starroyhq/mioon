@@ -428,6 +428,36 @@ export const operationMessages = {
     "en": "List all immutable reference versions of a subject in read-only pages; an older version can be explicitly reselected",
     "ja": "主体のすべての不変な参照バージョンを読み取り専用でページごとに一覧表示します。以前のバージョンを明示的に再選択できます"
   },
+  "operation.subject.variants.create": {
+    "zh-Hans": "为角色或产品主体的一个版本记录一批补角度或打光，并返回每张图要提交的图片编辑请求；本身不提交请求、不生成图片、不付费，也不改变默认版本；使用必填稳定requestId精确重放",
+    "zh-Hant": "為角色或產品主體的一個版本記錄一批補角度或打光，並傳回每張圖要提交的圖片編輯請求；本身不提交請求、不生成圖片、不付費，也不改變預設版本；使用必填穩定requestId精確重放",
+    "en": "Record one angle or lighting batch for a version of a character or product subject and return the image edit request to submit for each image. Submits no request itself, generates no image, charges nothing and does not change the default version. A stable requestId is required for exact replay",
+    "ja": "キャラクターまたはプロダクトの主体のバージョン1つに対し、角度追加またはライティングのバッチを記録し、画像ごとに送信する画像編集リクエストを返します。リクエストの送信、画像の生成、課金は行わず、既定のバージョンも変更しません。正確な再実行には安定したrequestIdが必須です"
+  },
+  "operation.subject.variants.retry": {
+    "zh-Hans": "为一批补角度或打光中被服务商拒绝或未发出就取消的单张换一个新的图片请求；生成中或结果未知时不能重试；使用必填稳定requestId精确重放",
+    "zh-Hant": "為一批補角度或打光中被服務商拒絕或未送出就取消的單張換一個新的圖片請求；生成中或結果未知時不能重試；使用必填穩定requestId精確重放",
+    "en": "Give one image of an angle or lighting batch a new image request when the provider rejected it or it was cancelled before being sent. An image that is still generating or has an unknown result cannot be retried. A stable requestId is required for exact replay",
+    "ja": "角度追加またはライティングのバッチのうち、サービス提供者に拒否された画像、または送信前に取り消された画像1枚に新しい画像リクエストを割り当てます。生成中または結果が不明な画像は再試行できません。正確な再実行には安定したrequestIdが必須です"
+  },
+  "operation.subject.variants.undo": {
+    "zh-Hans": "撤销一批补角度或打光：隐藏这批版本，图片留在素材库；还有图片在生成或结果未知，或者其中一张已被镜头、生成或其他批次用到时不能撤销；使用必填稳定requestId精确重放",
+    "zh-Hant": "復原一批補角度或打光：隱藏這批版本，圖片留在素材庫；還有圖片在生成或結果未知，或者其中一張已被鏡頭、生成或其他批次用到時不能復原；使用必填穩定requestId精確重放",
+    "en": "Undo an angle or lighting batch by hiding its versions; the images stay in the library. Refused while an image is still generating or has an unknown result, or once one of its versions is used by a shot, a generation or another batch. A stable requestId is required for exact replay",
+    "ja": "角度追加またはライティングのバッチを取り消し、そのバージョンを非表示にします。画像は素材ライブラリに残ります。生成中または結果が不明な画像がある場合や、いずれかのバージョンがショット、生成、別のバッチで使われている場合は取り消せません。正確な再実行には安定したrequestIdが必須です"
+  },
+  "operation.subject.variants.get": {
+    "zh-Hans": "只读获取一批补角度或打光的进度、每张的状态和能否撤销；不读取媒体，不提交请求",
+    "zh-Hant": "唯讀取得一批補角度或打光的進度、每張的狀態和能否復原；不讀取媒體，不提交請求",
+    "en": "Read one angle or lighting batch with its progress, the state of each image and whether it can still be undone, read-only. No media reads or request submission",
+    "ja": "角度追加またはライティングのバッチ1件の進行状況、画像ごとの状態、取り消せるかどうかを読み取り専用で取得します。メディアの読み取りやリクエストの送信は行いません"
+  },
+  "operation.subject.variants.list": {
+    "zh-Hans": "分页只读列出一个主体的补角度和打光批次；能否撤销需逐批读取",
+    "zh-Hant": "分頁唯讀列出一個主體的補角度和打光批次；能否復原需逐批讀取",
+    "en": "List one subject's angle and lighting batches in read-only pages; read each batch to see whether it can be undone",
+    "ja": "主体1件の角度追加とライティングのバッチを読み取り専用でページごとに一覧表示します。取り消せるかどうかはバッチごとに読み取って確認します"
+  },
   "operation.subject.binding.list": {
     "zh-Hans": "按唯一镜头或主体过滤器分页只读列出绑定及保留的解绑版本，标记是否需复核",
     "zh-Hant": "按唯一鏡頭或主體篩選器分頁唯讀列出綁定及保留的解綁版本，標記是否需複核",

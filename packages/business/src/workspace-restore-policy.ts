@@ -36,6 +36,7 @@ export const RESTORE_DENIED_OPERATIONS = Object.freeze([
  'timeline.audioPreview.continuousPlan','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect',
  'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','video.connection.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',
  'frame.extract','frame.task.cancelQueued','frame.task.recoverResult','scene.detect','scene.task.cancel','scene.cuts.save','scene.shots.create','scene.shots.undo','image.profile.list','image.review.prepare','image.review.get','image.review.list','image.generate','image.task.cancelQueued','image.task.recoverResult','image.task.remote.get','image.task.observeRemote',
+ 'subject.variants.create','subject.variants.retry','subject.variants.undo','subject.variants.get','subject.variants.list',
 ]);
 const messages: Readonly<Record<RestoreErrorCode, string>>=Object.freeze({
  RESTORE_OPERATION_UNAVAILABLE:'This operation is unavailable in this restored workspace.',
@@ -73,7 +74,7 @@ export function refuseRestoredOperation(store: RestoreStore,operation: string,in
  // The pre-release storage-59 profile shares a number with scene restore-59,
  // but preserves captured evidence only; the role must never grant new effects.
  if(readCurrentWorkspaceRole(store.db)==='storage-private-59-evidence')throw workspaceRestoreError();
- if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57,59,61].includes(context.schemaVersion))throw workspaceRestoreError();
+ if(operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57,59,61,63].includes(context.schemaVersion))throw workspaceRestoreError();
  if(RESTORE_LOCAL_OPERATIONS.includes(operation)||operation==='timeline.get'||operation==='workspace.preferences.put'){
   assertRestoreInvocation(store,operation,input);
   assertRestoreRequestVacant(store,operation,input);

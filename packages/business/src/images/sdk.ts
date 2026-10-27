@@ -30,7 +30,7 @@ async function multipartPayload(body: unknown, parameters: ImageEditParamsNonStr
       if (value !== original) throw imageAdapterError('IMAGE_INVALID_REQUEST');
       size += Buffer.byteLength(value);
     } else {
-      if (!(original instanceof File) || value.name !== 'source.png' || value.type !== 'image/png' || value.size !== original.size) throw imageAdapterError('IMAGE_INVALID_REQUEST');
+      if (!(original instanceof File) || !/^source\.(png|jpg|webp)$/.test(original.name) || value.name !== original.name || value.type !== original.type || value.size !== original.size) throw imageAdapterError('IMAGE_INVALID_REQUEST');
       size += value.size;
       if (size > IMAGE_EDIT_NETWORK_LIMITS.maxRequestBytes) throw imageAdapterError('IMAGE_INVALID_REQUEST');
       const hash = (bytes: ArrayBuffer): string => createHash('sha256').update(new Uint8Array(bytes)).digest('hex');
