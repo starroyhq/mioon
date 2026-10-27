@@ -9,6 +9,7 @@ import {PROJECT_PACKAGE_FORMAT,PROJECT_PACKAGE_FORMAT_VERSION,projectPackageMedi
 import type {ProjectPackageManifest,ProjectPackageOptions,ProjectPackageCounts,ProjectPackageMediaExtension} from '../../../contracts/src/project-package.ts';
 import {projectPackageError} from './container.ts';
 import type {ProjectPackageMediaSource} from './container.ts';
+import {isSubjectVersionHidden} from '../subject-variant-visibility.ts';
 
 type Row=Record<string,any>;
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu;
@@ -53,7 +54,9 @@ export function collectProject(store:WorkspaceStore,projectId:string,options:Pro
   if(!projectRow)throw projectPackageError('PROJECT_PACKAGE_NOT_FOUND');
   const list=(table:string):Row[]=>store.list(table,projectId).map(parse);
   const assets=list('assets'),shots=list('shots'),nodes=list('nodes'),edges=list('edges'),jobs=list('jobs'),versions=list('versions'),timeline=list('timelines')[0]??null;
-  const subjects=relational(store.db,'subjects',projectId),subjectVersions=relational(store.db,'subject_versions',projectId).map(row=>({...row,data:parse(row.data)}) as Row),subjectBindings=relational(store.db,'subject_bindings',projectId);
+  // Versions of an undone angle or lighting batch stay behind; nothing can
+  // reference them, and in another workspace they would no longer be hidden.
+  const subjects=relational(store.db,'subjects',projectId),subjectVersions=relational(store.db,'subject_versions',projectId).filter(row=>!isSubjectVersionHidden(store.db,String(row.id))).map(row=>({...row,data:parse(row.data)}) as Row),subjectBindings=relational(store.db,'subject_bindings',projectId);
   const luts=relational(store.db,'project_lut_resources',projectId);
   const jobById=new Map(jobs.map(job=>[job.id,job]));
   const generations=versions.filter(version=>jobById.has(version.jobId)).map(version=>({job:jobById.get(version.jobId)!,version}));

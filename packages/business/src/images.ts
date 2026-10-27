@@ -90,6 +90,15 @@ interface ImageOwnerRecord {
  readonly service: ImageService;
 }
 const owners=new WeakMap<DatabaseSync,ImageOwnerRecord>();
+// Runs inside the transaction that publishes a result, so an owner of the
+// request (subject variants) records its link atomically with the image. A
+// listener failure rolls the publication back to a recoverable local result.
+export interface ImageResultPublication {readonly projectId: string; readonly requestId: string; readonly taskId: string; readonly versionId: string; readonly assetId: string}
+const resultListeners=new WeakMap<DatabaseSync,(result: ImageResultPublication)=>void>();
+export function setImageResultListener(db: DatabaseSync,listener: (result: ImageResultPublication)=>void): ()=>void {
+ resultListeners.set(db,listener);
+ return ()=>{if(resultListeners.get(db)===listener)resultListeners.delete(db);};
+}
 const noop: ImageFault=()=>{};
 const canonical=(value: unknown): string=>JSON.stringify(value,(_key: string,v: unknown)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v) as string;
 const hash=(value: unknown): string=>createHash('sha256').update(canonical(value)).digest('hex');
@@ -249,7 +258,9 @@ export function createImageServices(store: ImageStore,{signal:ownerSignal,genera
    db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(asset.id,asset.projectId,JSON.stringify(asset));
    db.prepare('INSERT INTO image_versions(id,projectId,groupId,taskId,number,assetId,data) VALUES(?,?,?,?,?,?,?)').run(version.id,g.projectId,g.id,latest.row.id,version.number,asset.id,JSON.stringify(version));
    const completed=change(latest,{state:'succeeded',versionId:version.id,errorCode:null},{release:true,headVersionId:version.id});
-   (createOwnedMediaGraphReader(db,g.projectId) as unknown as {asset(id: string): unknown}).asset(asset.id);fault('before_result_commit',{taskId:latest.row.id});return completed;
+   (createOwnedMediaGraphReader(db,g.projectId) as unknown as {asset(id: string): unknown}).asset(asset.id);
+   resultListeners.get(db)?.({projectId:g.projectId,requestId:latest.row.requestId,taskId:latest.row.id,versionId:version.id,assetId:asset.id});
+   fault('before_result_commit',{taskId:latest.row.id});return completed;
   });
   try{storage.discardStagedPng(stageTask(result),()=>{current(result);});}catch{/* A retained private stage is safe; never undo a committed result. */}
  }

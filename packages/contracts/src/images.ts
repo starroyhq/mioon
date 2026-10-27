@@ -4,12 +4,15 @@ import {customImageModelSchema} from './image-compatible.ts';
 import {comfyCheckpointSchema,comfyImageOptionsSchema} from './comfy-images.ts';
 import {frameSchemas,FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from './frame-extraction.ts';
 import {SOURCE_RANGE_FPS} from './source-range.ts';
+import {IMAGE_EDIT_SOURCE_BOUNDS,IMAGE_EDIT_SOURCE_MIME_TYPES,IMAGE_EDIT_OUTPUT_BOUNDS,imageEditProfile,imageEditSourceIssue,isImageEditOutputSize,parseImageSize} from './image-edit-profiles.ts';
 
 // Fixed image profiles; a provider label or local enable flag is never approval
 // to send. Live acceptance additionally requires an immutable user review.
 export const IMAGE_PROVIDER_IDS=Object.freeze(['mock','openai','openai-compatible','comfy-local']);
 export const IMAGE_MODELS=Object.freeze({mock:'mock-image-v1',openai:'gpt-image-2.5-flare-2026-09-08'});
-export const IMAGE_EDIT_LIMITS=Object.freeze({sourceBytes:8*1024*1024,sourceMaxEdge:1024,sourceMaxPixels:1024*1024,sourceNameCharacters:200,sourceNameBytes:800,sourceChainDepth:32});
+// Source bounds are the union of every edit profile; each model's own limits
+// are checked against its profile (image-edit-profiles.ts).
+export const IMAGE_EDIT_LIMITS=Object.freeze({sourceBytes:IMAGE_EDIT_SOURCE_BOUNDS.maxBytes,sourceMaxEdge:IMAGE_EDIT_SOURCE_BOUNDS.maxEdge,sourceMaxPixels:IMAGE_EDIT_SOURCE_BOUNDS.maxPixels,sourceNameCharacters:200,sourceNameBytes:800,sourceChainDepth:32});
 export const IMAGE_FIXED_OPTIONS=Object.freeze({size:'1024x1024',quality:'low',outputFormat:'png',background:'opaque',n:1});
 export const IMAGE_STATES=Object.freeze(['queued','interrupted_before_dispatch','dispatching','receiving','persisting','succeeded','cancelled_before_dispatch','failed','outcome_unknown','local_result_error'] as const);
 export const IMAGE_UNRESOLVED_STATES=Object.freeze(['queued','interrupted_before_dispatch','dispatching','receiving','persisting','outcome_unknown','local_result_error']);
@@ -31,7 +34,7 @@ const editOrigin=z.union([z.object({kind:z.literal('user-import')}).strict(),
  z.object({kind:z.literal('extracted-frame'),frameSource:editFrameSource}).strict()]);
 // Backend-derived, safe provenance. Paths, bytes, URLs and credentials never
 // enter model/user arguments or retained public records.
-export const imageEditSourceSchema=z.object({assetId:id,sha256:hash,mimeType:z.literal('image/png'),
+export const imageEditSourceSchema=z.object({assetId:id,sha256:hash,mimeType:z.enum(IMAGE_EDIT_SOURCE_MIME_TYPES),
  byteLength:z.number().int().min(1).max(IMAGE_EDIT_LIMITS.sourceBytes),
  width:z.number().int().min(1).max(IMAGE_EDIT_LIMITS.sourceMaxEdge),height:z.number().int().min(1).max(IMAGE_EDIT_LIMITS.sourceMaxEdge),
  name:z.string().min(1).max(IMAGE_EDIT_LIMITS.sourceNameCharacters).refine(value=>Boolean(value.trim())&&encoder.encode(value).length<=IMAGE_EDIT_LIMITS.sourceNameBytes,'Invalid source name'),origin:editOrigin}).strict()
@@ -42,17 +45,22 @@ interface EditSourceValues {inputImage?: {assetId?: unknown; sha256?: unknown}; 
 const matchesEditSource=(value: EditSourceValues): boolean=>typeof value?.inputImage?.assetId==='string'&&value.inputImage.assetId===value.sourceImage?.assetId&&value.inputImage.sha256===value.sourceImage?.sha256;
 
 export const imageOptionsSchema=z.object({size:z.literal('1024x1024'),quality:z.literal('low'),outputFormat:z.literal('png'),background:z.literal('opaque'),n:z.literal(1)}).strict();
+// Text-to-image stays 1024x1024. An edit's size must satisfy its model's edit
+// profile; legacy 1024x1024 edits remain valid under every profile.
+export const imageEditOptionsSchema=z.object({size:z.string().regex(/^[1-9][0-9]{0,4}x[1-9][0-9]{0,4}$/),quality:z.literal('low'),outputFormat:z.literal('png'),background:z.literal('opaque'),n:z.literal(1)}).strict();
 const generation={providerId,model,prompt,options:imageOptionsSchema};
 const providerMatches=(v: {providerId?: unknown; model?: unknown}): boolean=>v.providerId==='openai-compatible'||(IMAGE_MODELS as Record<string, string>)[v.providerId as string]===v.model;
+interface EditCapabilityValues {providerId?: unknown; model?: unknown; options?: {size?: unknown}; sourceImage?: Record<string, unknown>}
+const editCapable=(v: EditCapabilityValues): boolean=>{const profile=imageEditProfile(v.providerId,v.model);return isImageEditOutputSize(profile,v.options?.size)&&(v.sourceImage===undefined||imageEditSourceIssue(profile!,v.sourceImage)===null);};
 const comfyGeneration={providerId:z.literal('comfy-local'),model:comfyCheckpointSchema,prompt,options:comfyImageOptionsSchema};
-const editGeneration={...generation,providerId:z.enum(['mock','openai'])};
+const editGeneration={...generation,providerId:z.enum(['mock','openai']),options:imageEditOptionsSchema};
 export const imageAdapterInputSchema=z.union([z.object(generation).strict().refine(providerMatches,'Model does not belong to provider'),z.object(comfyGeneration).strict(),
- z.object({...editGeneration,...editSourceFields}).strict().refine(providerMatches,'Model does not belong to provider').refine(matchesEditSource,'Edit source identity mismatch')]);
+ z.object({...editGeneration,...editSourceFields}).strict().refine(providerMatches,'Model does not belong to provider').refine(matchesEditSource,'Edit source identity mismatch').refine(editCapable,'Model cannot produce this edit')]);
 const legacyGenerate=z.object({projectId:id,name,...generation,requestId:key,groupId:id.optional(),expectedRevision:revision.optional()}).strict()
  .refine(v=>(v.groupId===undefined)===(v.expectedRevision===undefined),'groupId and expectedRevision must be provided together').refine(providerMatches,'Model does not belong to provider');
 const comfyGenerate=z.object({projectId:id,name,...comfyGeneration,requestId:key,groupId:id.optional(),expectedRevision:revision.optional()}).strict().refine(v=>(v.groupId===undefined)===(v.expectedRevision===undefined),'groupId and expectedRevision must be provided together');
 const editGenerate=z.object({projectId:id,name,...editGeneration,...editFields,requestId:key,groupId:id.optional(),expectedRevision:revision.optional()}).strict()
- .refine(v=>(v.groupId===undefined)===(v.expectedRevision===undefined),'groupId and expectedRevision must be provided together').refine(providerMatches,'Model does not belong to provider');
+ .refine(v=>(v.groupId===undefined)===(v.expectedRevision===undefined),'groupId and expectedRevision must be provided together').refine(providerMatches,'Model does not belong to provider').refine(editCapable,'Model cannot produce this edit');
 const generate=z.union([legacyGenerate,comfyGenerate,editGenerate]);
 const page={projectId:id,limit:z.number().int().min(1).max(IMAGE_LIMITS.maxPageSize).optional(),cursor:z.string().min(1).max(768).optional()};
 export const imageSchemas=Object.freeze({
@@ -68,9 +76,19 @@ export const imageSchemas=Object.freeze({
  'image.task.recoverResult':z.object({projectId:id,taskId:id,expectedRevision:revision,requestId:key}).strict(),
 });
 export const imageSnapshotSchema=z.union([z.object({schemaVersion:z.literal(1),projectId:id,groupId:id,taskId:id,name,...generation}).strict().refine(providerMatches,'Model does not belong to provider'),z.object({schemaVersion:z.literal(1),projectId:id,groupId:id,taskId:id,name,...comfyGeneration}).strict(),
- z.object({schemaVersion:z.literal(1),projectId:id,groupId:id,taskId:id,name,...editGeneration,...editSourceFields}).strict().refine(providerMatches,'Model does not belong to provider').refine(matchesEditSource,'Edit source identity mismatch')]);
+ z.object({schemaVersion:z.literal(1),projectId:id,groupId:id,taskId:id,name,...editGeneration,...editSourceFields}).strict().refine(providerMatches,'Model does not belong to provider').refine(matchesEditSource,'Edit source identity mismatch').refine(editCapable,'Model cannot produce this edit')]);
 const legacyReceiptSchema=z.object({schemaVersion:z.literal(1),taskId:id,projectId:id,groupId:id,inputHash:hash,assetId:id,versionId:id,sha256:hash,mimeType:z.literal('image/png'),width:z.literal(1024),height:z.literal(1024),byteLength:z.number().int().min(1).max(IMAGE_LIMITS.resultBytes),isMock:z.boolean()}).strict();
-export const imageReceiptSchema=z.union([legacyReceiptSchema,legacyReceiptSchema.extend({schemaVersion:z.literal(2),providerId:z.literal('comfy-local'),width:z.literal(512),height:z.literal(512),isMock:z.literal(false)}).strict()]);
+const outputEdge=z.number().int().min(IMAGE_EDIT_OUTPUT_BOUNDS.minEdge).max(IMAGE_EDIT_OUTPUT_BOUNDS.maxEdge);
+// v3 is a sized edit result; a 1024x1024 result keeps the v1 receipt shape.
+export const imageReceiptSchema=z.union([legacyReceiptSchema,legacyReceiptSchema.extend({schemaVersion:z.literal(2),providerId:z.literal('comfy-local'),width:z.literal(512),height:z.literal(512),isMock:z.literal(false)}).strict(),
+ legacyReceiptSchema.extend({schemaVersion:z.literal(3),width:outputEdge,height:outputEdge}).strict().refine(v=>v.width!==1024||v.height!==1024,'A 1024x1024 result uses the v1 receipt')]);
+/** The receipt shape a task's result must have: Comfy is 512x512 (v2), a
+ * sized edit is its requested size (v3), everything else 1024x1024 (v1). */
+export function imageResultGeometry(snapshot: {providerId?: unknown; purpose?: unknown; options?: unknown}): {schemaVersion: 1 | 2 | 3; width: number; height: number} {
+ if(snapshot.providerId==='comfy-local')return {schemaVersion:2,width:512,height:512};
+ const options=snapshot.options,size=snapshot.purpose==='edit'&&options!==null&&typeof options==='object'?parseImageSize((options as {size?: unknown}).size):null;
+ return size&&(size.width!==1024||size.height!==1024)?{schemaVersion:3,...size}:{schemaVersion:1,width:1024,height:1024};
+}
 const legacyTaskResponseSchema=z.object({id,projectId:id,groupId:id,requestId:key,name,...generation,state:z.enum(IMAGE_STATES),revision,dispatched:z.boolean(),versionId:id.nullable(),errorCode:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/).nullable(),createdAt:timestamp,updatedAt:timestamp}).strict()
  .refine(providerMatches,'Model does not belong to provider')
  .refine(v=>(v.state==='succeeded')===(v.versionId!==null),'Only succeeded tasks have a version')
@@ -81,7 +99,7 @@ const comfyTaskResponseSchema=z.object({id,projectId:id,groupId:id,requestId:key
  .refine(v=>!['queued','interrupted_before_dispatch','cancelled_before_dispatch'].includes(v.state)||!v.dispatched,'Queued/cancelled tasks cannot have dispatched')
  .refine(v=>!['dispatching','receiving','persisting','succeeded','outcome_unknown','local_result_error'].includes(v.state)||v.dispatched,'Active/result tasks require dispatch fence');
 const editTaskResponseSchema=z.object({id,projectId:id,groupId:id,requestId:key,name,...editGeneration,...editSourceFields,state:z.enum(IMAGE_STATES),revision,dispatched:z.boolean(),versionId:id.nullable(),errorCode:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/).nullable(),createdAt:timestamp,updatedAt:timestamp}).strict()
- .refine(providerMatches,'Model does not belong to provider').refine(matchesEditSource,'Edit source identity mismatch')
+ .refine(providerMatches,'Model does not belong to provider').refine(matchesEditSource,'Edit source identity mismatch').refine(editCapable,'Model cannot produce this edit')
  .refine(v=>(v.state==='succeeded')===(v.versionId!==null),'Only succeeded tasks have a version')
  .refine(v=>!['queued','interrupted_before_dispatch','cancelled_before_dispatch'].includes(v.state)||!v.dispatched,'Queued/cancelled tasks cannot have dispatched')
  .refine(v=>!['dispatching','receiving','persisting','succeeded','outcome_unknown','local_result_error'].includes(v.state)||v.dispatched,'Active/result tasks require dispatch fence');
@@ -89,8 +107,9 @@ export const imageTaskResponseSchema=z.union([legacyTaskResponseSchema,comfyTask
 export const imageGroupResponseSchema=z.object({id,projectId:id,name,revision,headVersionId:id.nullable(),activeTaskId:id.nullable(),createdAt:timestamp,updatedAt:timestamp}).strict();
 const legacyVersionResponseSchema=z.object({id,projectId:id,groupId:id,taskId:id,number:revision,assetId:id,sha256:hash,mimeType:z.literal('image/png'),width:z.literal(1024),height:z.literal(1024),byteLength:z.number().int().min(1).max(IMAGE_LIMITS.resultBytes),isMock:z.boolean(),providerId,model,options:imageOptionsSchema,createdAt:timestamp}).strict()
  .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock'),'Mock identity mismatch');
-const editVersionResponseSchema=z.object({id,projectId:id,groupId:id,taskId:id,number:revision,assetId:id,sha256:hash,mimeType:z.literal('image/png'),width:z.literal(1024),height:z.literal(1024),byteLength:z.number().int().min(1).max(IMAGE_LIMITS.resultBytes),isMock:z.boolean(),providerId:z.enum(['mock','openai']),model,options:imageOptionsSchema,createdAt:timestamp,...editSourceFields}).strict()
- .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock'),'Mock identity mismatch').refine(matchesEditSource,'Edit source identity mismatch')
+const editVersionResponseSchema=z.object({id,projectId:id,groupId:id,taskId:id,number:revision,assetId:id,sha256:hash,mimeType:z.literal('image/png'),width:outputEdge,height:outputEdge,byteLength:z.number().int().min(1).max(IMAGE_LIMITS.resultBytes),isMock:z.boolean(),providerId:z.enum(['mock','openai']),model,options:imageEditOptionsSchema,createdAt:timestamp,...editSourceFields}).strict()
+ .refine(providerMatches,'Model does not belong to provider').refine(v=>v.isMock===(v.providerId==='mock'),'Mock identity mismatch').refine(matchesEditSource,'Edit source identity mismatch').refine(editCapable,'Model cannot produce this edit')
+ .refine(v=>{const size=parseImageSize(v.options.size);return size?.width===v.width&&size.height===v.height;},'Edit result must match the requested size')
  .refine(value=>value.assetId!==value.inputImage?.assetId,'An edit must publish a new asset');
 export const imageVersionResponseSchema=z.union([legacyVersionResponseSchema,editVersionResponseSchema,z.object({id,projectId:id,groupId:id,taskId:id,number:revision,assetId:id,sha256:hash,mimeType:z.literal('image/png'),width:z.literal(512),height:z.literal(512),byteLength:z.number().int().min(1).max(IMAGE_LIMITS.resultBytes),isMock:z.literal(false),providerId:z.literal('comfy-local'),model:comfyCheckpointSchema,options:comfyImageOptionsSchema,createdAt:timestamp}).strict()]);
 const legacyProfileResponseSchema=z.object({providerId,model,name:z.string().min(1).max(120),enabled:z.boolean(),isMock:z.boolean(),evidence:z.enum(['deterministic-mock','offline-tested-not-live']),options:imageOptionsSchema,settingsRevision:revision.optional()}).strict()

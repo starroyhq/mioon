@@ -67,9 +67,19 @@ const customIntent = z.object({schemaVersion: z.literal(2), reviewId: id,
   policy: imageReviewPolicySchema, configuration: reviewedConfiguration}).strict().refine(matchesConfiguration, 'Custom review configuration mismatch');
 const comfyIntent=z.object({schemaVersion:z.literal(3),reviewId:id,input:comfyGeneration,settingsRevision:revision,destination:z.string().max(80),
   policy:comfyImagePolicySchema,configuration:reviewedComfyConfiguration,execution:comfyImageExecutionSchema}).strict().refine(matchesComfyConfiguration,'Local review configuration mismatch');
+// v4 is the original edit intent: a PNG of at most 1024x1024 pixels and a
+// 1024x1024 result. New edits use v5, sized by the model's edit profile.
+interface LegacyEditValues {input?: {options?: {size?: unknown}}; sourceImage?: {mimeType?: unknown; byteLength?: unknown; width?: unknown; height?: unknown}}
+const legacyEdit = (value: LegacyEditValues): boolean => {
+  const source = value.sourceImage, edge = (item: unknown): boolean => typeof item === 'number' && item <= 1024;
+  return value.input?.options?.size === '1024x1024' && source?.mimeType === 'image/png' && typeof source.byteLength === 'number' && source.byteLength <= 8 * 1024 * 1024 &&
+    edge(source.width) && edge(source.height) && (source.width as number) * (source.height as number) <= 1024 * 1024;
+};
 const editIntent = z.object({schemaVersion:z.literal(4),reviewId:id,input:officialEdit,settingsRevision:revision,
+ destination:z.literal(IMAGE_EDIT_REVIEW_DESTINATION),policy:imageReviewPolicySchema,sourceImage:imageEditSourceSchema}).strict().refine(matchesEditSource,'Edit source identity mismatch').refine(legacyEdit,'Version 4 edits are limited to the original profile');
+const sizedEditIntent = z.object({schemaVersion:z.literal(5),reviewId:id,input:officialEdit,settingsRevision:revision,
  destination:z.literal(IMAGE_EDIT_REVIEW_DESTINATION),policy:imageReviewPolicySchema,sourceImage:imageEditSourceSchema}).strict().refine(matchesEditSource,'Edit source identity mismatch');
-export const imageReviewIntentSchema = z.union([officialIntent, customIntent, comfyIntent, editIntent]);
+export const imageReviewIntentSchema = z.union([officialIntent, customIntent, comfyIntent, editIntent, sizedEditIntent]);
 const responseFields = {id, projectId: id, requestId: key, input: officialGeneration,
   inputHash: hash, settingsRevision: revision, destination: z.literal(IMAGE_REVIEW_DESTINATION), policy: imageReviewPolicySchema,
   state: z.enum(IMAGE_REVIEW_STATES), revision, taskId: id.nullable(), postAttempts: z.number().int().min(0).max(1),

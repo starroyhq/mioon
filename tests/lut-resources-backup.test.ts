@@ -1,3 +1,4 @@
+import {removeReviewedSchema62} from './helpers/current-schema62-delta.ts';
 import {removeReviewedSchema60} from './helpers/current-schema60-delta.ts';
 import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
 import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
@@ -16,12 +17,13 @@ interface LutImportInput { projectId: string; requestId: string; name: string; d
 interface BackupCreated { databaseSchemaVersion: number; inventory: { complete: boolean } }
 interface BackupVerified { integrity: string }
 interface RestoreInfo { operationPolicy: { operation: string; available: boolean }[] }
-async function source(t: import('node:test').TestContext,sourceSchema:52|54|56|58|60=60) {
+async function source(t: import('node:test').TestContext,sourceSchema:52|54|56|58|60|62=62) {
  const base=mkdtempSync(path.join(os.tmpdir(),'mioon-lut-backup-'));t.after(()=>rmSync(base,{recursive:true,force:true}));
  const root=path.join(base,'source'),store=openStore(root),s=createServices(store,new Map());
  const project=await s.call('project.create',{name:'Portable LUT'}) as ProjectView;
  const input: LutImportInput={projectId:project.id,requestId:'portable-resource-request',name:'look.cube',dataBase64:Buffer.from(text).toString('base64')};
  const response=await s.call('lut.import',input) as LutImportResponse;await s.drain();store.close();
+ if(sourceSchema===60){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema62(db);}finally{db.close();}}
  if(sourceSchema===58){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema60(db);}finally{db.close();}}
  if(sourceSchema===56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema58(db);}finally{db.close();}}
  if(sourceSchema<56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema56(db);}finally{db.close();}}
@@ -36,7 +38,7 @@ async function source(t: import('node:test').TestContext,sourceSchema:52|54|56|5
  }
  return {base,root,input,response,backup:path.join(base,'backup'),restored:path.join(base,'restored')};
 }
-for(const sourceSchema of [52,54,56,58,60] as const)test(`offline cold capture and restore${sourceSchema+1} preserve exact bytes/hash/receipt without .cube media path`,async t=>{
+for(const sourceSchema of [52,54,56,58,60,62] as const)test(`offline cold capture and restore${sourceSchema+1} preserve exact bytes/hash/receipt without .cube media path`,async t=>{
  const f=await source(t,sourceSchema),created=await createWorkspaceBackup({source:f.root,destination:f.backup}) as BackupCreated;assert.equal(created.databaseSchemaVersion,sourceSchema);assert.equal(created.inventory.complete,true);
  const verified=await verifyWorkspaceBackup({directory:f.backup}) as BackupVerified;assert.equal(verified.integrity,'verified');
  const manifest=JSON.parse(readFileSync(path.join(f.backup,'manifest.json'),'utf8'));assert.deepEqual((manifest as {entries: {path: string}[]}).entries.map((e: {path: string})=>e.path),['payload/workbench.sqlite']);

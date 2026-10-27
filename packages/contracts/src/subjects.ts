@@ -2,6 +2,7 @@ import {z} from 'zod';
 import {imageSourceSchema} from './images.ts';
 import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from './frame-extraction.ts';
 import {SOURCE_RANGE_FPS} from './source-range.ts';
+import {subjectVersionVariantSchema} from './subject-variants.ts';
 
 export const SUBJECT_KINDS=Object.freeze(['character','product','location','look'] as const);
 export const SUBJECT_MUTATION_OPERATIONS=Object.freeze(['subject.create','subject.version.add','subject.binding.set'] as const);
@@ -19,8 +20,12 @@ export const subjectSchemas=Object.freeze({
 });
 const timestamp=z.string().min(1).max(40);
 const frameSourceSchema=z.object({frameTaskId:id,sourceAssetId:id,sourceHash:z.string().regex(/^[a-f0-9]{64}$/),sourceFrame:z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),fps:z.literal(SOURCE_RANGE_FPS),profileId:z.literal(FRAME_PROFILE_ID),selectionRule:z.literal(FRAME_SELECTION_RULE)}).strict();
-export const subjectVersionResponseSchema=z.object({id,projectId:id,subjectId:id,number:revision,assetId:id,sha256:z.string().regex(/^[a-f0-9]{64}$/),mimeType:z.enum(['image/png','image/jpeg','image/webp']),width:z.number().int().min(1).max(100000),height:z.number().int().min(1).max(100000),provenance:z.object({kind:z.enum(['user-import','generated','synthetic-mock','export','extracted-frame']),versionId:id.nullable(),shotId:id.nullable(),jobId:id.nullable(),imageSource:imageSourceSchema.optional(),frameSource:frameSourceSchema.optional()}).strict().refine(v=>v.frameSource!==undefined?v.kind==='extracted-frame'&&v.imageSource===undefined&&[v.versionId,v.shotId,v.jobId].every(x=>x===null):v.kind==='extracted-frame'?false:v.imageSource!==undefined?['generated','synthetic-mock'].includes(v.kind)&&[v.versionId,v.shotId,v.jobId].every(x=>x===null):[v.versionId,v.shotId,v.jobId].every(x=>x===null)||[v.versionId,v.shotId,v.jobId].every(x=>x!==null)),createdAt:timestamp}).strict();
-export const subjectResponseSchema=z.object({id,projectId:id,kind:z.enum(SUBJECT_KINDS),name:z.string().min(1).max(120),revision,headVersionId:id,headVersion:subjectVersionResponseSchema,createdAt:timestamp,updatedAt:timestamp}).strict().refine(v=>v.headVersion.id===v.headVersionId&&v.headVersion.subjectId===v.id&&v.headVersion.projectId===v.projectId&&v.headVersion.number===v.revision);
+export const subjectVersionResponseSchema=z.object({id,projectId:id,subjectId:id,number:revision,assetId:id,sha256:z.string().regex(/^[a-f0-9]{64}$/),mimeType:z.enum(['image/png','image/jpeg','image/webp']),width:z.number().int().min(1).max(100000),height:z.number().int().min(1).max(100000),provenance:z.object({kind:z.enum(['user-import','generated','synthetic-mock','export','extracted-frame']),versionId:id.nullable(),shotId:id.nullable(),jobId:id.nullable(),imageSource:imageSourceSchema.optional(),frameSource:frameSourceSchema.optional()}).strict().refine(v=>v.frameSource!==undefined?v.kind==='extracted-frame'&&v.imageSource===undefined&&[v.versionId,v.shotId,v.jobId].every(x=>x===null):v.kind==='extracted-frame'?false:v.imageSource!==undefined?['generated','synthetic-mock'].includes(v.kind)&&[v.versionId,v.shotId,v.jobId].every(x=>x===null):[v.versionId,v.shotId,v.jobId].every(x=>x===null)||[v.versionId,v.shotId,v.jobId].every(x=>x!==null)),createdAt:timestamp,
+ // Angle and lighting results (schema62) record their batch; they are never a head.
+ variant:subjectVersionVariantSchema.optional()}).strict();
+// The head is the newest version without a variant. Variant versions advance
+// the revision without replacing the head, so the head may be older than it.
+export const subjectResponseSchema=z.object({id,projectId:id,kind:z.enum(SUBJECT_KINDS),name:z.string().min(1).max(120),revision,headVersionId:id,headVersion:subjectVersionResponseSchema,createdAt:timestamp,updatedAt:timestamp}).strict().refine(v=>v.headVersion.id===v.headVersionId&&v.headVersion.subjectId===v.id&&v.headVersion.projectId===v.projectId&&v.headVersion.number<=v.revision&&v.headVersion.variant===undefined);
 export const subjectBindingResponseSchema=z.object({id,projectId:id,shotId:id,subjectId:id,role:z.enum(['subject','style']),revision,subjectVersionId:id.nullable(),reviewedHeadVersionId:id,headVersionId:id,subjectRevision:revision,needsReview:z.boolean(),createdAt:timestamp,updatedAt:timestamp}).strict().refine(v=>v.needsReview===(v.subjectVersionId!==null&&v.reviewedHeadVersionId!==v.headVersionId));
 export type SubjectVersionResponse = z.infer<typeof subjectVersionResponseSchema>;
 export type SubjectResponse = z.infer<typeof subjectResponseSchema>;

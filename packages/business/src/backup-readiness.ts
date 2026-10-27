@@ -49,7 +49,7 @@ export function inspectWorkspaceBackup(store: {readonly db: DatabaseSync}) {
    if(rows.some(row=>typeof row.state!=='string'||!d.states.includes(row.state))){add('INVALID_ROW');unresolved[key]=null;continue;}
    unresolved[key]=rows.reduce((total,row)=>total+(typeof row.state==='string'&&d.terminal.includes(row.state)?0:1),0);
   }
-  if([52,54,56,58,60].includes(databaseSchemaVersion??0)&&unresolved.agentRuns!==null){
+  if([52,54,56,58,60,62].includes(databaseSchemaVersion??0)&&unresolved.agentRuns!==null){
    if(count('agent_task_runs_v2')===null)unresolved.agentRuns=null;
    else unresolved.agentRuns=(unresolved.agentRuns??0)+finite(db.prepare("SELECT count(*) AS n FROM agent_task_runs_v2 r WHERE r.status NOT IN ('completed','failed','stopped','reverted') OR EXISTS(SELECT 1 FROM agent_task_steps_v2 s WHERE s.runId=r.id AND s.status IN ('dispatch_started','unknown'))").get()?.n);
   }

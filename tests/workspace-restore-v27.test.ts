@@ -176,13 +176,13 @@ for(const sourceVersion of [24,26] as const)test(`offline create→verify→rest
  const reopened=(openStore(destination) as unknown as FixtureStore);try{assert.equal((getWorkspaceRestoreContext(reopened) as unknown as import('./helpers/strict-workspace-boundary-types.ts').RestoreMetadata|null)!.schemaVersion,result.databaseSchemaVersion);}finally{reopened.close();}
 });
 
-test('current ordinary60 live backup inspection is read-only and current contract pairs never accept a cross-product',t=>{
+test('current ordinary62 live backup inspection is read-only and current contract pairs never accept a cross-product',t=>{
  const base=temporary(t),store=(openStore(path.join(base,'ordinary')) as unknown as FixtureStore);t.after(()=>store.close());
  const before=snapshot(store.db),inspection=inspectWorkspaceBackup(store);
- assert.equal(inspection.databaseSchemaVersion,60);assert.equal(inspection.inspectionComplete,true);assert.equal(workspaceBackupInspectionSchema.safeParse(inspection).success,true);assert.deepEqual(snapshot(store.db),before);
- for(const version of [1,23,24,26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60] as const)assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
- for(const version of [0,25,27,29,31,33,35,37,39,41,45,49,51,53,55,57,59,61,62,26.5] as const)assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
- const pairs=[['restored-local-v1',24,25],['restored-local-v2',26,27],['restored-local-v3',28,29],['restored-local-v4',30,31],['restored-local-v5',32,33],['restored-local-v6',34,35],['restored-local-v7',36,37],['restored-local-v8',38,39],['restored-local-v9',40,41],['restored-local-v11',44,45],['restored-local-v13',48,49],['restored-local-v14',50,51],['restored-local-v15',52,53],['restored-local-v16',54,55],['restored-local-v17',56,57],['restored-local-v18',58,59],['restored-local-v19',60,61]];
+ assert.equal(inspection.databaseSchemaVersion,62);assert.equal(inspection.inspectionComplete,true);assert.equal(workspaceBackupInspectionSchema.safeParse(inspection).success,true);assert.deepEqual(snapshot(store.db),before);
+ for(const version of [1,23,24,26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60,62] as const)assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,true);
+ for(const version of [0,25,27,29,31,33,35,37,39,41,45,49,51,53,55,57,59,61,63,64,26.5] as const)assert.equal(workspaceBackupSourceSchemaVersion.safeParse(version).success,false);
+ const pairs=[['restored-local-v1',24,25],['restored-local-v2',26,27],['restored-local-v3',28,29],['restored-local-v4',30,31],['restored-local-v5',32,33],['restored-local-v6',34,35],['restored-local-v7',36,37],['restored-local-v8',38,39],['restored-local-v9',40,41],['restored-local-v11',44,45],['restored-local-v13',48,49],['restored-local-v14',50,51],['restored-local-v15',52,53],['restored-local-v16',54,55],['restored-local-v17',56,57],['restored-local-v18',58,59],['restored-local-v19',60,61],['restored-local-v20',62,63]];
  for(const [profile,sourceSchema,databaseSchemaVersion]of pairs)assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema,databaseSchemaVersion}).success,true);
  for(const [profile,sourceSchema,databaseSchemaVersion]of pairs)assert.equal(workspaceRestorationPairSchema.safeParse({profile,sourceSchema:(sourceSchema as number)+1,databaseSchemaVersion}).success,false);
 });

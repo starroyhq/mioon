@@ -3,6 +3,7 @@ import type {ImageAdapterInput} from './profiles.ts';
 import {renderMockImagePng, validatePng} from './png.ts';
 import type {PngMetadata} from './png.ts';
 import {requestImageWithSdk} from './sdk.ts';
+import {imageResultGeometry} from '../../../contracts/src/images.ts';
 import type {ImageSdkParameters, ImageSdkPost} from './sdk.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -84,7 +85,8 @@ function usageMetadata(value: unknown): Record<string, unknown> | null {
 }
 export interface ImageAdapterResult {bytes: Buffer; metadata: PngMetadata & {isMock: boolean; providerRequestId: string | null; usage: Record<string, unknown> | null}}
 export interface ImageAdapterGenerateContext {signal?: AbortSignal; beforeDispatch?: unknown; sourceBytes?: unknown}
-export async function decodeImageJsonResponse(body: unknown, {signal, providerRequestId = null}: {signal?: AbortSignal; providerRequestId?: unknown} = {}): Promise<ImageAdapterResult> {
+// A sized edit returns its requested size; every other OpenAI-shaped result is 1024x1024.
+export async function decodeImageJsonResponse(body: unknown, {signal, providerRequestId = null, width = 1024, height = 1024}: {signal?: AbortSignal; providerRequestId?: unknown; width?: number; height?: number} = {}): Promise<ImageAdapterResult> {
   abortIfNeeded(signal);
   if (!Buffer.isBuffer(body) || !body.length || body.length > IMAGE_NETWORK_LIMITS.maxResponseBytes) throw imageAdapterError('IMAGE_RESPONSE_TOO_LARGE');
   let json: Record<string, unknown>;
@@ -98,9 +100,9 @@ export async function decodeImageJsonResponse(body: unknown, {signal, providerRe
   if (!Array.isArray(json.data) || json.data.length !== 1) throw imageAdapterError('IMAGE_RESPONSE_INVALID');
   const data: readonly unknown[] = json.data, entry = data[0];
   if (!allowedKeys(entry, ['b64_json']) || !Object.hasOwn(entry, 'b64_json')) throw imageAdapterError('IMAGE_RESPONSE_INVALID');
-  if ((json.created !== undefined && (typeof json.created !== 'number' || !Number.isSafeInteger(json.created) || json.created < 0)) || (json.background !== undefined && json.background !== 'opaque') || (json.output_format !== undefined && json.output_format !== 'png') || (json.quality !== undefined && json.quality !== 'low') || (json.size !== undefined && json.size !== '1024x1024')) throw imageAdapterError('IMAGE_RESPONSE_INVALID');
+  if ((json.created !== undefined && (typeof json.created !== 'number' || !Number.isSafeInteger(json.created) || json.created < 0)) || (json.background !== undefined && json.background !== 'opaque') || (json.output_format !== undefined && json.output_format !== 'png') || (json.quality !== undefined && json.quality !== 'low') || (json.size !== undefined && json.size !== `${width}x${height}`)) throw imageAdapterError('IMAGE_RESPONSE_INVALID');
   const usage = usageMetadata(json.usage), bytes = decodeImageBase64(entry.b64_json);
-  const metadata = await validatePng(bytes, {signal});
+  const metadata = await validatePng(bytes, {signal, width, height});
   abortIfNeeded(signal);
   const requestId = typeof providerRequestId === 'string' && /^[A-Za-z0-9_.:-]{1,200}$/.test(providerRequestId) ? providerRequestId : null;
   return {bytes, metadata: {...metadata, isMock: false, providerRequestId: requestId, usage}};
@@ -115,8 +117,9 @@ export function createMockImageAdapter() {
       abortIfNeeded(signal); fence(beforeDispatch);
       try {
         abortIfNeeded(signal, true);
-        const bytes = await renderMockImagePng({signal});
-        const metadata = await validatePng(bytes, {signal});
+        const {width, height} = imageResultGeometry(input);
+        const bytes = await renderMockImagePng({signal, width, height});
+        const metadata = await validatePng(bytes, {signal, width, height});
         abortIfNeeded(signal, true);
         return {bytes, metadata: {...metadata, isMock: true, providerRequestId: null, usage: null}};
       } catch (error) {
@@ -143,7 +146,8 @@ function createSdkImageAdapter({transport, baseUrl}: {transport?: unknown; baseU
         received = fenced;
         if (!fenced || response?.dispatched !== true) throw imageAdapterError('IMAGE_RESPONSE_INVALID');
         abortIfNeeded(signal, true);
-        return await decodeImageJsonResponse(response.body, {signal, providerRequestId: response.providerRequestId});
+        const {width, height} = imageResultGeometry(record(snapshot) ?? {});
+        return await decodeImageJsonResponse(response.body, {signal, providerRequestId: response.providerRequestId, width, height});
       } catch (error) {
         // Decoder failures carry local flags. Once a response exists, never let
         // those flags erase the upstream dispatch or imply a safe automatic retry.

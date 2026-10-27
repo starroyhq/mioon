@@ -2,6 +2,7 @@ import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import {currentMarkerChain} from './helpers/current-schema-delta.ts';
 import {currentOrdinary48Delta,reviewedObjectSql} from './helpers/current-schema-delta.ts';
+import {reviewed60Catalog} from './helpers/current-schema62-delta.ts';
 import assert from 'node:assert/strict';
 import {normalizeAgentEditProposalObject,legacyAgentEditProposalRows,assertAgentEditTargetTrigger} from './agent-edit-migration-preservation.mjs';
 import {DatabaseSync, type SQLOutputValue, type SQLInputValue} from 'node:sqlite';
@@ -64,6 +65,8 @@ function snapshot(db: DatabaseSync){
 function preserved(db: DatabaseSync,before: ReturnType<typeof snapshot>){
  const after=snapshot(db),agentTargets=Boolean(db.prepare('SELECT 1 FROM schema_version WHERE version=24').get());
  if(agentTargets)assertAgentEditTargetTrigger(after.objects);
+ // Schema62 replaces the subject identity guard; its reviewed delta is undone first.
+ const objects=reviewed60Catalog(db,after.objects);
  for(const [table,rows] of Object.entries(before.records)){
   const actual=table==='schema_version'?after.records[table].filter((row: Record<string,SQLOutputValue>)=>(row.version as number)<=21):agentTargets&&table==='agent_edit_proposals'?legacyAgentEditProposalRows(after.records[table]):after.records[table];
   assert.deepEqual(actual,rows,`${table}: raw columns and historical rowids remain unchanged`);
@@ -73,7 +76,7 @@ function preserved(db: DatabaseSync,before: ReturnType<typeof snapshot>){
  assert.deepEqual(after.columns,before.columns,'no task columns, affinities, nullability or defaults change');
  assert.deepEqual(after.foreignKeys,before.foreignKeys,'legacy task foreign keys remain unchanged');
  for(const object of before.objects.filter((row: { type: string; name: string; })=>!(row.type==='table'&&row.name==='edit_tasks'))){
-  const current=after.objects.find(row=>row.type===object.type&&row.name===object.name);
+  const current=objects.find(row=>row.type===object.type&&row.name===object.name);
   const normalized=object.type==='table'&&object.name==='image_reviews'&&db.prepare('SELECT 1 FROM schema_version WHERE version=23').get()?normalizeImageReviewObject(current):agentTargets&&object.type==='table'&&object.name==='agent_edit_proposals'?normalizeAgentEditProposalObject(current):current;
   const reviewed=!db.prepare('SELECT 1 FROM schema_version WHERE version=48').get()||currentOrdinary48Delta.objectSql[object.name]===undefined?object:Object.assign(Object.create(Object.getPrototypeOf(object)),object,{sql:reviewedObjectSql(object.name,object.sql!)});
   assert.deepEqual(normalized,reviewed,`${object.type} ${object.name}: exact SQL retained outside the pinned schema23/24 additions`);

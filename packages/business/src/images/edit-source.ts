@@ -4,7 +4,8 @@ import {readPrivateFile} from '@mioon/contracts/private-storage';
 import {canonicalImageInput as canonical, IMAGE_EDIT_LIMITS, imageEditSourceSchema} from '../../../contracts/src/images.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
 import {validateManagedSource} from '../managed-media.ts';
-import {validatePng} from './png.ts';
+import {validateImageEditSourceBytes} from './edit-source-bytes.ts';
+import {imageEditProfile, imageEditSourceIssue} from '../../../contracts/src/image-edit-profiles.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 export type ImageEditSource = ReturnType<typeof imageEditSourceSchema.parse>;
@@ -26,7 +27,7 @@ export interface ImageEditSourceResolver {
   assertCurrent(input: unknown, verified: VerifiedEditSource): true;
 }
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
-function fail(): never { throw new AppError('IMAGE_SOURCE_INVALID', 'The managed PNG source could not be verified.', 409); }
+function fail(): never { throw new AppError('IMAGE_SOURCE_INVALID', 'The managed source image could not be verified.', 409); }
 // Resource admission only, shared by resolver/review/service wrappers using the
 // same DB handle. This is not durable acceptance or cross-process authority.
 export const IMAGE_EDIT_VERIFICATION_LIMITS = Object.freeze({perDatabase: 4, perProject: 2});
@@ -62,7 +63,8 @@ export function createImageEditSourceResolver(store: EditSourceStore, {signal}: 
       // Legacy generated image/video owners cannot masquerade as an import.
       if (graph.legacySource(asset.id)) fail();
       const descriptor = describeImageEditSource(asset, graph.imageSource(asset.id), graph.frameSource(asset.id));
-      if (descriptor.assetId !== inputImage.assetId || descriptor.sha256 !== inputImage.sha256 || expected && canonical(descriptor) !== canonical(expected)) fail();
+      const profile = imageEditProfile(value.providerId, value.model);
+      if (!profile || imageEditSourceIssue(profile, descriptor) || descriptor.assetId !== inputImage.assetId || descriptor.sha256 !== inputImage.sha256 || expected && canonical(descriptor) !== canonical(expected)) fail();
       return {asset, descriptor};
     } catch { fail(); }
   }
@@ -82,15 +84,15 @@ export function createImageEditSourceResolver(store: EditSourceStore, {signal}: 
     return true;
   }
   async function verify(input: unknown, expected?: unknown): Promise<VerifiedEditSource> {
-    if (store.db.isTransaction) throw new TypeError('PNG source verification must run outside SQLite transactions');
+    if (store.db.isTransaction) throw new TypeError('Source image verification must run outside SQLite transactions');
     let admission = verifications.get(store.db);
     if (!admission) {admission = {count: 0, projects: new Map()}; verifications.set(store.db, admission);}
     const projectId = object(input)?.projectId, count = admission.projects.get(projectId) ?? 0;
-    if (admission.count >= IMAGE_EDIT_VERIFICATION_LIMITS.perDatabase || count >= IMAGE_EDIT_VERIFICATION_LIMITS.perProject) throw new AppError('IMAGE_QUEUE_FULL', 'Too many PNG sources are being verified. Retain this request and try again explicitly.', 409);
+    if (admission.count >= IMAGE_EDIT_VERIFICATION_LIMITS.perDatabase || count >= IMAGE_EDIT_VERIFICATION_LIMITS.perProject) throw new AppError('IMAGE_QUEUE_FULL', 'Too many source images are being verified. Retain this request and try again explicitly.', 409);
     admission.count++; admission.projects.set(projectId, count + 1);
     try {
       const current = owned(input, expected), bytes = bytesFor(current.asset, current.descriptor);
-      try {await validatePng(bytes, {width: current.descriptor.width, height: current.descriptor.height, opaque: true, signal});} catch {fail();}
+      try {await validateImageEditSourceBytes(bytes, {mimeType: current.descriptor.mimeType, width: current.descriptor.width, height: current.descriptor.height, signal});} catch {fail();}
       const verified: VerifiedEditSource = {descriptor: structuredClone(current.descriptor), bytes};
       assertCurrent(input, verified); return verified;
     } finally {admission.count--; const remaining = (admission.projects.get(projectId) ?? 1) - 1; if (remaining) admission.projects.set(projectId, remaining); else admission.projects.delete(projectId);}

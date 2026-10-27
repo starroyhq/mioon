@@ -598,6 +598,18 @@ The external catalog adds these shared tools:
 - `subject_list({projectId,limit?,cursor?})`
 - `subject_version_list({projectId,subjectId,limit?,cursor?})`
 - `subject_binding_list({projectId,shotId?,subjectId?,limit?,cursor?})`, exactly one filter
+- `subject_variants_create({projectId,subjectId,sourceVersionId,kind,items,providerId,model,requestId})`
+- `subject_variants_retry({projectId,batchId,position,expectedRevision,requestId})`
+- `subject_variants_undo({projectId,batchId,expectedRevision,requestId})`
+- `subject_variants_get({projectId,batchId})`
+- `subject_variants_list({projectId,subjectId,limit?,cursor?})`
+
+The five `subject_variants_*` tools (schema 62) record angle and lighting
+batches for character and product subjects. `create` returns each item's exact
+image edit input and submits nothing; submit those inputs with the image tools,
+and official ones still need in-app approval. Finished images become variant
+versions that never replace the default version; `undo` hides them. Rules and
+error codes are in [API.md](API.md#angle-and-lighting-variants-schema-62).
 
 All IDs are project-owned UUIDs except stable `requestId` (8–200 characters).
 `kind` is `character|product|location|look`; name is nonblank and at most 120

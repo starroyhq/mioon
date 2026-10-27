@@ -55,6 +55,9 @@ const forbiddenOperations=[
  'workspace.settings.get','workspace.settings.set','workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage',
  'project.delete','project.summary.list','agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','lut.import','workspace.backup.inspect','workspace.restore.inspect','project.create','project.list','project.get','asset.import',
  'job.retry','job.cancel','job.reconcile','frame.task.cancelQueued','frame.task.recoverResult','scene.task.cancel','scene.cuts.save','scene.shots.undo','image.task.cancelQueued','image.task.recoverResult','image.task.observeRemote','image.review.prepare','image.review.get','image.review.list','timeline.get','timeline.undo','timeline.redo',
+ // Angle and lighting batches are user-driven for now; Mio can still read the
+ // resulting subject versions. Tools for them belong to the harness tool groups.
+ 'subject.variants.create','subject.variants.retry','subject.variants.undo','subject.variants.get','subject.variants.list',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),

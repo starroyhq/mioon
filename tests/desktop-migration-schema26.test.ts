@@ -65,15 +65,15 @@ test('desktop migration accepts current ordinary workspace from current openStor
 for(const [label,change,code] of ([
  ['complete restored59',db=>{
   const restored=installCurrentWorkspaceRestoreSchema(db,metadata());
-  assert.equal(restored.schemaVersion,61);assert.equal(restored.sourceSchema,60);
-  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),[...ordinaryVersions,61]);
+  assert.equal(restored.schemaVersion,63);assert.equal(restored.sourceSchema,62);
+  assert.deepEqual(db.prepare('SELECT version FROM schema_version ORDER BY version').all().map(row => Number(row.version)),[...ordinaryVersions,63]);
  },'RESTORE_MIGRATION_UNAVAILABLE'],
  ['partial restoration metadata on ordinary58',db=>db.exec('CREATE TABLE workspace_restoration(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['partial restoration evidence on ordinary58',db=>db.exec('CREATE TABLE workspace_restore_evidence(id TEXT)'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['execution epoch without restore marker on ordinary58',db=>db.exec('ALTER TABLE edit_tasks ADD COLUMN executionEpoch TEXT'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['orphan restored marker on ordinary',db=>db.exec('INSERT INTO schema_version VALUES(35)'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['mixed historical restore25 and ordinary58 markers',db=>db.exec('INSERT INTO schema_version VALUES(25)'),'RESTORE_SCHEMA_UNSUPPORTED'],
- ['future62 marker on ordinary60',db=>db.exec('INSERT INTO schema_version VALUES(62)'),'RESTORE_SCHEMA_UNSUPPORTED'],
+ ['future64 marker on ordinary62',db=>db.exec('INSERT INTO schema_version VALUES(64)'),'RESTORE_SCHEMA_UNSUPPORTED'],
  ['mixed historical restore27 and ordinary58 markers',db=>db.exec('INSERT INTO schema_version VALUES(27)'),'RESTORE_SCHEMA_UNSUPPORTED'],
 ] as Array<[string, (db: DatabaseSync) => void, string]>))test(`desktop migration rejects ${label} before destination creation without changing source`,async t=>{
  const f=fixture(t);mutate(f.file,change);

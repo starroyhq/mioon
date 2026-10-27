@@ -31,14 +31,14 @@ test('orphan annotation evidence and extra schema markers fail closed',t=>{
  db.exec('INSERT INTO schema_version VALUES(36),(37),(999)');assert.throws(()=>readCurrentWorkspaceRole(db));
 });
 
-test('current backup60 restore61 retains exact annotation rows and receipts and denies new writes',async t=>{
+test('current backup62 restore63 retains exact annotation rows and receipts and denies new writes',async t=>{
  const dir=base(t),source=path.join(dir,'source'),backup=path.join(dir,'backup'),destination=path.join(dir,'restored');let store=(openStore(source) as unknown as FixtureStore),services=(createServices(store,new Map()) as unknown as FixtureServices);
  const project=await services.call('project.create',{name:'annotation backup'}),asset=store.put('assets',{id:randomUUID(),projectId:project.id,name:'no file source',mimeType:'image/png'}),input={projectId:project.id,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),tags:['保留'],note:'exact\nbytes'};
  const saved=await services.call('asset.annotation.set',input);const before=(snapshot(store.db) as unknown as import("./helpers/strict-workspace-boundary-types.ts").SchemaSnapshot);await services.drain();store.close();
- const created=await (createWorkspaceBackup({source,destination:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>);assert.equal(created.databaseSchemaVersion,60);assert.deepEqual(await (verifyWorkspaceBackup({directory:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>),created);
- const restored=await (restoreWorkspaceBackup({directory:backup,destination}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceRestoreResult>);assert.equal(restored.sourceSchema,60);assert.equal(restored.databaseSchemaVersion,61);assert.equal(restored.profile,'restored-local-v19');
+ const created=await (createWorkspaceBackup({source,destination:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>);assert.equal(created.databaseSchemaVersion,62);assert.deepEqual(await (verifyWorkspaceBackup({directory:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>),created);
+ const restored=await (restoreWorkspaceBackup({directory:backup,destination}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceRestoreResult>);assert.equal(restored.sourceSchema,62);assert.equal(restored.databaseSchemaVersion,63);assert.equal(restored.profile,'restored-local-v20');
  store=(openStore(destination) as unknown as FixtureStore);services=(createServices(store,new Map()) as unknown as FixtureServices);try{
-  assert.equal((getWorkspaceRestoreContext(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').RestoreMetadata|null)!.schemaVersion,61);
+  assert.equal((getWorkspaceRestoreContext(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').RestoreMetadata|null)!.schemaVersion,63);
   for(const table of ['asset_annotations','asset_annotation_requests'] as const)assert.deepEqual((snapshot(store.db) as unknown as import("./helpers/strict-workspace-boundary-types.ts").SchemaSnapshot).tables[table],before.tables[table]);
   assert.deepEqual((await services.call('asset.annotation.list',{projectId:project.id,assetIds:[asset.id]})).items,[saved]);
   for(const candidate of [input,{...input,requestId:randomUUID(),expectedRevision:1,note:'new'}] as const)await assert.rejects(services.call('asset.annotation.set',candidate,{expectedWorkspaceOrigin:restored.workspaceOrigin}),{code:'RESTORE_OPERATION_UNAVAILABLE'});
@@ -46,7 +46,7 @@ test('current backup60 restore61 retains exact annotation rows and receipts and 
   assert.throws(()=>store.db.exec("UPDATE asset_annotations SET note='changed',revision=2"),/RESTORED_RECORD_HELD/);
   assert.deepEqual(await services.call('lut.list',{projectId:project.id}),{projectId:project.id,items:[],nextAfter:null});
  }finally{await services.drain();store.close();}
- store=(openStore(destination) as unknown as FixtureStore);assert.equal((getWorkspaceRestoreContext(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').RestoreMetadata|null)!.schemaVersion,61);store.close();
+ store=(openStore(destination) as unknown as FixtureStore);assert.equal((getWorkspaceRestoreContext(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').RestoreMetadata|null)!.schemaVersion,63);store.close();
 });
 
 for(const sourceVersion of [24,26,28,30,32,34] as const)test(`historical restored${sourceVersion+1} remains frozen and confirms empty only for owned assets`,async t=>{

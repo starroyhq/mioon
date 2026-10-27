@@ -1,3 +1,4 @@
+import {withoutReviewedSubjectVariantObjects,currentOrdinary62Delta} from './helpers/current-schema62-delta.ts';
 import type {FixtureProject} from './helpers/strict-timeline-core-types.ts';
 import type {SQLInputValue, SQLOutputValue} from 'node:sqlite';
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
@@ -5,7 +6,7 @@ import type {TypedServices, TypedCall, TypedStore} from './helpers/strict-servic
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
 import {withoutReviewedSceneObjects,currentOrdinary58Delta} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedStorageObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
+function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedStorageObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
@@ -238,7 +239,7 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  f.store.db.exec('DROP TRIGGER reject_mutation_cross_range_request; DROP TABLE asset_range_requests; DROP TABLE asset_ranges; DELETE FROM schema_version WHERE version=11;');
  const before=snapshot(f,['schema_version']),rawBefore=rawSnapshot(f.store.db);f.restart();
  assertReviewed52Migration(f,before,rawBefore,3);
- assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables),...Object.keys(currentOrdinary50Delta.tables),...Object.keys(currentOrdinary52Delta.tables),...Object.keys(currentOrdinary58Delta.tables)]),before);
+ assert.deepEqual(snapshot(f,['schema_version','asset_ranges','asset_range_requests','asset_dispositions','asset_disposition_requests','timeline_format_requests','project_lut_resources','lut_import_requests','asset_annotations','asset_annotation_requests',...Object.keys(currentOrdinary48Delta.lifecycleTables),...Object.keys(currentOrdinary50Delta.tables),...Object.keys(currentOrdinary52Delta.tables),...Object.keys(currentOrdinary58Delta.tables),...Object.keys(currentOrdinary62Delta.tables)]),before);
  for(const table of Object.keys(currentOrdinary50Delta.tables))assert.equal(f.store.db.prepare(`SELECT count(*) n FROM ${table}`).get()!.n,0);
  assert.deepEqual(f.store.db.prepare('SELECT * FROM mutation_requests').get(),old);
  assert.deepEqual(f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all(),fresh);

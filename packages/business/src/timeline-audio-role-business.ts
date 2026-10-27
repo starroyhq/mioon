@@ -1,3 +1,5 @@
+import {validateWorkspaceSchema62} from './workspace-schema-v62.ts';
+import {validateWorkspaceRestoreSchemaV63} from './workspace-restore-schema-v63.ts';
 import {validateWorkspaceSchema60} from './workspace-schema-v60.ts';
 import {validateWorkspaceRestoreSchemaV61} from './workspace-restore-schema-v61.ts';
 import {validateWorkspaceStorageRestoreSchemaV59} from './workspace-storage-restore-schema-v59.ts';
@@ -15,7 +17,9 @@ import {TIMELINE_AUDIO_ROLE_PROFILE,type TimelineAudioRoleCapability} from '../.
 /** A current read-only capability, not a persisted permission or an Agent grant. */
 export function readTimelineAudioRoleCapability(db:DatabaseSync):TimelineAudioRoleCapability {
  const role=readCurrentWorkspaceRole(db);
- if(role==='ordinary-60')validateWorkspaceSchema60(db);
+ if(role==='ordinary-62')validateWorkspaceSchema62(db);
+ else if(role==='restored-63-evidence')validateWorkspaceRestoreSchemaV63(db);
+ else if(role==='ordinary-60')validateWorkspaceSchema60(db);
  else if(role==='restored-61-evidence')validateWorkspaceRestoreSchemaV61(db);
  else if(role==='storage-private-59-evidence')validateWorkspaceStorageRestoreSchemaV59(db);
  else if(role==='ordinary-58')validateWorkspaceSchema58(db);
@@ -26,5 +30,5 @@ export function readTimelineAudioRoleCapability(db:DatabaseSync):TimelineAudioRo
  else if(role==='restored-55-evidence')validateWorkspaceRestoreSchemaV55(db);
  else if(role==='ordinary-52')validateWorkspaceSchema52(db);
  else if(role==='restored-53-evidence')validateWorkspaceRestoreSchemaV53(db);
- return {profileId:TIMELINE_AUDIO_ROLE_PROFILE,editable:role==='ordinary-60'||role==='restored-61-evidence'||role==='ordinary-38'||role==='restored-39-evidence'||role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'||role==='ordinary-50'||role==='restored-51-evidence'||role==='ordinary-58'||role==='restored-59-evidence'||role==='ordinary-56'||role==='restored-57-evidence'||role==='ordinary-54'||role==='restored-55-evidence'||role==='ordinary-52'||role==='restored-53-evidence'};
+ return {profileId:TIMELINE_AUDIO_ROLE_PROFILE,editable:role==='ordinary-62'||role==='restored-63-evidence'||role==='ordinary-60'||role==='restored-61-evidence'||role==='ordinary-38'||role==='restored-39-evidence'||role==='ordinary-40'||role==='restored-41-evidence'||role==='ordinary-44'||role==='restored-45-evidence'||role==='ordinary-48'||role==='restored-49-evidence'||role==='ordinary-50'||role==='restored-51-evidence'||role==='ordinary-58'||role==='restored-59-evidence'||role==='ordinary-56'||role==='restored-57-evidence'||role==='ordinary-54'||role==='restored-55-evidence'||role==='ordinary-52'||role==='restored-53-evidence'};
 }

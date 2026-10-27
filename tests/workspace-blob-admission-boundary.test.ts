@@ -1,8 +1,9 @@
+import {withoutReviewedSubjectVariantObjects} from './helpers/current-schema62-delta.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
 import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedConversationObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
+function withoutReviewedCurrentAgentObjects(objects: Parameters<typeof withoutReviewedConversationObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
 // Causal boundary tests only. Existing independent goldens and their six
 // current-open expectations remain untouched. TEXT is a separate initial input
 // dataset; its before snapshot is a preservation oracle, not an independent
@@ -140,7 +141,7 @@ function positiveOrdinary(t: test.TestContext, {mockLedger = false, repair}: {mo
   if (repair) breakMarkers(db, repair);
   db.close(); let store;
   try {
-    store = (openStore(root) as unknown as FixtureStore); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 60, profile: 'ordinary'});
+    store = (openStore(root) as unknown as FixtureStore); assert.deepEqual(classifyCurrentWorkspaceSchema(store.db), {schemaVersion: 62, profile: 'ordinary'});
     const currentObjects = withoutReviewedCurrentAgentObjects(snapshot(store.db).objects), current52Names = new Set(currentOrdinary52Delta.objectNames);
     assert.deepEqual(currentObjects.filter(object => current52Names.has(object.name)), currentOrdinary52Delta.objects, 'exact reviewed schema52 catalog additions');
     preserveOriginalRows(store.db, input); assertText(store.db); assert.equal((getWorkspaceRestoreContext(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').RestoreMetadata|null), null);

@@ -47,7 +47,7 @@ const digest = (value: string): string => createHash('sha256').update(value).dig
 const now = (): string => new Date().toISOString();
 const object = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === 'object' ? value as Record<string, unknown> : null;
 const messages: Readonly<Record<string, string>> = Object.freeze({
-  IMAGE_SOURCE_INVALID: 'The managed PNG source could not be verified.',
+  IMAGE_SOURCE_INVALID: 'The managed source image could not be verified.',
   IMAGE_REVIEW_INVALID: 'The retained image review could not be verified.',
   IMAGE_REVIEW_NOT_FOUND: 'This project has no matching image review.',
   IMAGE_REVIEW_CONFLICT: 'This image request already has a different immutable review.',
@@ -92,7 +92,7 @@ function decodeReviewRow(row: ImageReviewRow | undefined) {
     state: row!.state, revision: row!.revision, taskId: row!.taskId, postAttempts: row!.postAttempts, createdAt: row!.createdAt, updatedAt: row!.updatedAt,
     approvedAt: row!.approvedAt, rejectedAt: row!.rejectedAt, dispatchedAt: row!.dispatchedAt,
     ...(frozenIntent.schemaVersion === 2 || frozenIntent.schemaVersion === 3 ? {configuration: frozenIntent.configuration} : {}),
-    ...(frozenIntent.schemaVersion === 4 ? {sourceImage: frozenIntent.sourceImage} : {}),
+    ...(frozenIntent.schemaVersion === 4 || frozenIntent.schemaVersion === 5 ? {sourceImage: frozenIntent.sourceImage} : {}),
     ...(frozenIntent.schemaVersion === 3 ? {execution: frozenIntent.execution} : {})};
   const parsed = imageReviewResponseSchema.safeParse(dto);
   if (!parsed.success) invalid();
@@ -184,7 +184,7 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
       if (current.destination !== destination || frozenIntent && (frozenIntent.schemaVersion !== 3 || frozenIntent.destination !== destination || canonical(frozenIntent.configuration) !== canonical(configuration))) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
       expected = {revision: settingsRevision, destination, configuration};
     } else if (generation.providerId !== 'openai' || current.destination !== IMAGE_REVIEW_DESTINATION ||
-        frozenIntent && (frozenIntent.schemaVersion !== (purposeOf(generation) === 'edit' ? 4 : 1) || frozenIntent.destination !== expected.destination)) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
+        frozenIntent && (!(purposeOf(generation) === 'edit' ? [4, 5] : [1]).includes(frozenIntent.schemaVersion) || frozenIntent.destination !== expected.destination)) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
     if (assertSettings && synchronous(assertSettings, expected, generation.providerId) !== true) fail('IMAGE_REVIEW_SETTINGS_CHANGED');
     return expected;
   }
@@ -200,7 +200,7 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
   }
   function decode(row: ImageReviewRow, {verifyTask = true, verifySource = true}: {verifyTask?: boolean; verifySource?: boolean} = {}) {
     const value = decodeReviewRow(row);
-    if (verifySource && value.intent.schemaVersion === 4) editSources.assertOwned(value.intent.input, value.intent.sourceImage);
+    if (verifySource && (value.intent.schemaVersion === 4 || value.intent.schemaVersion === 5)) editSources.assertOwned(value.intent.input, value.intent.sourceImage);
     if (row.taskId && verifyTask) {
       const task = boundTask(value);
       if ((row.postAttempts === 1) !== task.dto.dispatched) invalid();
@@ -259,7 +259,8 @@ export function createImageReviewServices(store: ImageStore, {getSettings, asser
       const id = randomUUID(), timestamp = now();
       let execution;
       if (generation.providerId === 'comfy-local') {const seed = randomInt(0, 2 ** 48 - 1), promptId = randomUUID(), clientId = randomUUID(), outputNonce = randomUUID(); const graph = buildComfyWorkflow({prompt: generation.prompt, checkpoint: generation.model, seed, outputNonce}); execution = {workflowId: COMFY_IMAGE_PROFILE_ID, workflowVersion: 1 as const, comfyVersion: COMFY_IMAGE_VERSION, seed, promptId, clientId, outputNonce, filenamePrefix: `mioon_${outputNonce}`, graphHash: hashComfyWorkflow(graph), graph};}
-      const intent: Record<string, unknown> = {schemaVersion: purposeOf(generation) === 'edit' ? 4 : generation.providerId === 'comfy-local' ? 3 : generation.providerId === 'openai-compatible' ? 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
+      // Since schema62 every new edit intent is v5; retained v4 rows stay readable.
+      const intent: Record<string, unknown> = {schemaVersion: purposeOf(generation) === 'edit' ? 5 : generation.providerId === 'comfy-local' ? 3 : generation.providerId === 'openai-compatible' ? 2 : 1, reviewId: id, input: generation, settingsRevision: input.settingsRevision,
         ...(verified ? {sourceImage: verified.descriptor} : {}), destination: selected.destination, policy: generation.providerId === 'comfy-local' ? COMFY_IMAGE_POLICY : IMAGE_REVIEW_POLICY,
         ...(['openai-compatible', 'comfy-local'].includes(generation.providerId) ? {configuration: selected.configuration} : {}), ...(execution ? {execution} : {})};
       if (!imageReviewIntentSchema.safeParse(intent).success) invalid();

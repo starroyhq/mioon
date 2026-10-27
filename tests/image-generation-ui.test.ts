@@ -799,8 +799,10 @@ test('actual image composer waits for its reads before applying a fresh edit int
 test('image edit intent capture rejects foreign, duplicate and unsupported source identities', () => {
   const source = editAsset(), capture = (value: { projectId: string; id: string; name: string; sha256: string; mimeType: string; provenance: string; sizeBytes: number; width: number; height: number; }) => imageEditIntents.captureImageEditIntent({ id: id(906), scope: 'scope', projectId, asset: value });
   assert.equal(capture({ ...source, projectId: id(999) }), null);
-  assert.equal(capture({ ...source, mimeType: 'image/jpeg' }), null);
-  assert.equal(capture({ ...source, width: 2048 }), null);
+  assert.equal(capture({ ...source, mimeType: 'image/gif' }), null);
+  assert.equal(capture({ ...source, width: 4097 }), null);
+  // Since schema62, JPEG and WebP sources up to 4096 pixels per edge can be edited.
+  for (const patch of [{ mimeType: 'image/jpeg' }, { mimeType: 'image/webp' }, { width: 4096, height: 4096 }]) assert.notEqual(capture({ ...source, ...patch }), null, JSON.stringify(patch));
   const intent = capture(source); assert.ok(Object.isFrozen(intent));
   assert.equal(imageEditIntents.imageEditIntentSource(intent!, { scope: 'scope', projectId, assets: [source, source] }), null);
   assert.equal(imageEditIntents.imageEditIntentSource(intent!, { scope: 'other', projectId, assets: [source] }), null);

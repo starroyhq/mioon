@@ -1,9 +1,11 @@
+import {reviewed60Catalog} from './helpers/current-schema62-delta.ts';
+import {withoutReviewedSubjectVariantObjects} from './helpers/current-schema62-delta.ts';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
 import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
 import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
 import type {currentOrdinary56Delta as schema56DeltaType} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(objects))));}
+function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import {errorView} from './helpers/test-error.ts';
@@ -32,7 +34,7 @@ const model='gpt-image-2.5-flare-2026-09-08',destination='https://api.openai.com
 const policy={maxPostAttempts:1,automaticRetry:false,price:'usage-based-unknown',promptStorage:'local-plaintext'};
 const insert=(db: DatabaseSync,table: string,value: CompatRow)=>{const keys=Object.keys(value);db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(value) as import('node:sqlite').SQLInputValue[]);};
 function database(file: string=':memory:'): DatabaseSync {const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(fixtureSql);return db;}
-function snapshot(db: DatabaseSync): CompatSnapshot {const objects=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as CompatSchemaObject[];const rows: Record<string, CompatRow[]>={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();}return {objects,rows};}
+function snapshot(db: DatabaseSync): CompatSnapshot {const objects=reviewed60Catalog(db,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as CompatSchemaObject[]);const rows: Record<string, CompatRow[]>={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();}return {objects,rows};}
 // Only the independently frozen52 catalog may be projected out of the legacy
 // comparison. Check exact SQL, fields and initial rows before stripping it.
 function stripReviewed52(db: DatabaseSync,after: CompatSnapshot,before: CompatSnapshot): void {

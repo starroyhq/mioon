@@ -84,7 +84,7 @@ test('fresh real through24 constructor still boots ordinary26 with all fixed rec
 nodeTest('current default dispatcher independently boots ordinary58 with the same receipt protections',t=>{
  const db=open(':memory:');t.after(()=>db.close());let legacyCalls=0,realCalls=0;
  assert.equal(currentDispatch((((target: DatabaseSync)=>{legacyCalls++;if(target===db)realCalls++;}) as unknown as Parameters<typeof currentDispatch>[0])).initialize(db),null);assert.equal(realCalls,1);
- assert.equal(readCurrentWorkspaceRole(db),'ordinary-60');assert.deepEqual(protections(db),currentFixed.toSorted((a,b)=>a.name.localeCompare(b.name)));
+ assert.equal(readCurrentWorkspaceRole(db),'ordinary-62');assert.deepEqual(protections(db),currentFixed.toSorted((a,b)=>a.name.localeCompare(b.name)));
 });
 
 nodeTest('current feature admission refuses the intentionally raw historical receipt fixture without changing it',t=>{

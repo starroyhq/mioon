@@ -16,7 +16,8 @@ for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','sh
  if(drift==='asset-dimensions')f.store.put('assets',{...a,width:600});
  if(drift==='shot-sql')f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id);
  if(drift==='job-sql')f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,job.id);
- if(drift==='subject-owner'){f.store.db.exec('PRAGMA foreign_keys=OFF; DROP TRIGGER immutable_subject_identity');f.store.db.prepare('UPDATE subjects SET projectId=? WHERE id=?').run(f.other.id,subject.id);}
+ // Schema62 renamed the subject identity guard; drop whichever this workspace carries.
+ if(drift==='subject-owner'){f.store.db.exec('PRAGMA foreign_keys=OFF; DROP TRIGGER IF EXISTS immutable_subject_identity; DROP TRIGGER IF EXISTS immutable_subject_identity_v62');f.store.db.prepare('UPDATE subjects SET projectId=? WHERE id=?').run(f.other.id,subject.id);}
  if(drift==='version-owner'){f.store.db.exec('PRAGMA foreign_keys=OFF; PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_subject_versions');f.store.db.prepare('UPDATE subject_versions SET projectId=? WHERE id=?').run(f.other.id,subject.headVersionId);}
  const before=rowBytes(f,'jobs',job.id);await assert.rejects(f.call('generation.submit',input));await assert.rejects(f.call('job.get',{jobId:job.id}));await assert.rejects(f.call('job.retry',{jobId:job.id,requestId:randomUUID()}));assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.posts(),0);
 });

@@ -1,3 +1,4 @@
+import { IMAGE_EDIT_LIMITS, IMAGE_EDIT_SOURCE_MIME_TYPES } from '@mioon/contracts';
 export interface ImageEditIntentAsset {
   readonly id: string; readonly projectId: string; readonly sha256: string; readonly name: string;
   readonly mimeType: string; readonly provenance: string; readonly sizeBytes: number; readonly width: number; readonly height: number;
@@ -7,9 +8,10 @@ const uuid = (value: unknown): value is string => typeof value === 'string' && /
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function asset(value: unknown): value is ImageEditIntentAsset {
   return object(value) && uuid(value.id) && uuid(value.projectId) && typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(value.sha256) && typeof value.name === 'string' &&
-    value.mimeType === 'image/png' && typeof value.provenance === 'string' && ['user-import', 'generated', 'synthetic-mock', 'extracted-frame'].includes(value.provenance) &&
-    typeof value.sizeBytes === 'number' && Number.isSafeInteger(value.sizeBytes) && value.sizeBytes > 0 && value.sizeBytes <= 8 * 1024 ** 2 &&
-    [value.width, value.height].every(edge => typeof edge === 'number' && Number.isSafeInteger(edge) && edge > 0 && edge <= 1024);
+    (IMAGE_EDIT_SOURCE_MIME_TYPES as readonly unknown[]).includes(value.mimeType) && typeof value.provenance === 'string' && ['user-import', 'generated', 'synthetic-mock', 'extracted-frame'].includes(value.provenance) &&
+    typeof value.sizeBytes === 'number' && Number.isSafeInteger(value.sizeBytes) && value.sizeBytes > 0 && value.sizeBytes <= IMAGE_EDIT_LIMITS.sourceBytes &&
+    [value.width, value.height].every(edge => typeof edge === 'number' && Number.isSafeInteger(edge) && edge > 0 && edge <= IMAGE_EDIT_LIMITS.sourceMaxEdge) &&
+    (value.width as number) * (value.height as number) <= IMAGE_EDIT_LIMITS.sourceMaxPixels;
 }
 const sourceKey = (value: ImageEditIntentAsset) => JSON.stringify([value.id, value.projectId, value.sha256, value.name, value.mimeType, value.provenance, value.sizeBytes, value.width, value.height]);
 export function captureImageEditIntent({ id, scope, projectId, asset: source }: { id: string; scope: string; projectId: string; asset: unknown }): ImageEditIntent | null {

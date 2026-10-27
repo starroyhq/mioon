@@ -26,6 +26,7 @@ import {IMAGE_MUTATION_OPERATIONS,isImageMutationResponse,isImageTaskResponse,is
 import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '@mioon/contracts';
 import {FRAME_MUTATION_OPERATIONS,frameSchemas,canonicalFrameInput,isFrameMutationResponse,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '@mioon/contracts';
 import {SCENE_MUTATION_OPERATIONS,sceneSchemas,canonicalSceneInput,isSceneMutationResponse,isSceneTaskResponse,isSceneRequestResponse,isSceneListResponse,isSceneResultResponse} from '@mioon/contracts';
+import {SUBJECT_VARIANT_MUTATION_OPERATIONS,subjectVariantSchemas,canonicalSubjectVariantInput,isSubjectVariantMutationResponse,isSubjectVariantBatch,isSubjectVariantListResponse} from '@mioon/contracts';
 import {isTimelineExportCapabilitiesResponse} from '@mioon/contracts';
 import {isExportSamplePeakResponse, EXPORT_SAMPLE_PEAK_LIMITS} from '@mioon/contracts/export-sample-peak';
 import {isExportLoudnessResponse, EXPORT_LOUDNESS_LIMITS} from '@mioon/contracts/export-loudness';
@@ -199,6 +200,22 @@ function frameNotAccepted(error: unknown, status: number, operation: string, inp
 const sceneRefusalStatuses: Record<string, number> = Object.freeze({SCENE_CAPACITY:507,SCENE_QUEUE_FULL:409,SCENE_TASK_ACTIVE:409,SCENE_REVISION_CONFLICT:409,
   SCENE_STATE_CONFLICT:409,SCENE_SOURCE_INVALID:409,SCENE_SOURCE_CHANGED:409,SCENE_RESULT_CONFLICT:409,SCENE_RESULT_STALE:409,SCENE_CUTS_INVALID:409,
   SCENE_SEGMENTS_INVALID:409,SCENE_UNDO_BLOCKED:409});
+const subjectVariantRefusalStatuses: Record<string, number> = Object.freeze({SUBJECT_VARIANT_CAPACITY:507,SUBJECT_VARIANT_REVISION_CONFLICT:409,SUBJECT_VARIANT_STATE_CONFLICT:409,
+  SUBJECT_VARIANT_KIND_UNSUPPORTED:409,SUBJECT_VARIANT_SOURCE_UNSUPPORTED:409,SUBJECT_VARIANT_QUEUE_FULL:409,SUBJECT_VARIANT_RETRY_UNAVAILABLE:409,SUBJECT_VARIANT_UNDO_BLOCKED:409,SUBJECT_VERSION_HIDDEN:409});
+/** Subject variant refusals carry the scene proof's shape under subjectVariantOutcome. */
+function subjectVariantNotAccepted(error: unknown, status: number, operation: string, input: unknown): boolean {
+  const failure = error as {code?: unknown; details?: {subjectVariantOutcome?: Record<string, unknown>}};
+  const proof = failure?.details?.subjectVariantOutcome;
+  const request = input as {projectId?: unknown; requestId?: unknown};
+  const code = failure?.code;
+  return (SUBJECT_VARIANT_MUTATION_OPERATIONS as readonly string[]).includes(operation) && typeof code === 'string' && Object.hasOwn(subjectVariantRefusalStatuses, code) &&
+    status === subjectVariantRefusalStatuses[code] && (subjectVariantSchemas as Record<string, z.ZodTypeAny>)[operation].safeParse(input).success &&
+    Boolean(proof) && typeof proof === 'object' && !Array.isArray(proof) &&
+    Object.keys(proof).sort().join(',') === 'inputHash,operation,projectId,requestId,status' &&
+    proof.status === 'not_accepted' && proof.operation === operation && proof.projectId === request.projectId &&
+    proof.requestId === request.requestId && typeof proof.inputHash === 'string' && /^[a-f0-9]{64}$/.test(proof.inputHash) &&
+    proof.inputHash === createHash('sha256').update(canonicalSubjectVariantInput(input)).digest('hex');
+}
 /** The scene proof has the frame proof's shape: exact operation, project,
  * request and canonical input hash, under the code's own status. */
 function sceneNotAccepted(error: unknown, status: number, operation: string, input: unknown): boolean {
@@ -288,6 +305,14 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
           if (!proven) delete (details as Record<string, unknown>).sceneOutcome;
           else delete (details as Record<string, unknown>).recovery;
         }
+        if (body && Object.hasOwn(subjectVariantSchemas, body.operation)) {
+          const mutation = (SUBJECT_VARIANT_MUTATION_OPERATIONS as readonly string[]).includes(body.operation);
+          const proven = mutation && subjectVariantNotAccepted(failure, response.status, body.operation, body.input);
+          details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}),
+            ...(mutation ? proven ? {operation:body.operation,requestId:body.input.requestId,submissionMayHaveSucceeded:false} : recoveryDetails : {})};
+          if (!proven) delete (details as Record<string, unknown>).subjectVariantOutcome;
+          else delete (details as Record<string, unknown>).recovery;
+        }
         if(body?.operation==='image.task.observeRemote'){
           const proven=comfyObservationNotAccepted(failure,response.status,body.input);
           details={...(details&&typeof details==='object'&&!Array.isArray(details)?details:{}),
@@ -297,7 +322,7 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
         if (body?.operation==='lut.import') details={...(details&&typeof details==='object'&&!Array.isArray(details)?details:{}),...recoveryDetails};
         if (body && ['RESTORE_OPERATION_UNAVAILABLE', 'RESTORED_RECORD_HELD', 'RESTORE_WORKSPACE_ORIGIN_REQUIRED', 'RESTORE_WORKSPACE_ORIGIN_MISMATCH', 'RESTORE_BACKUP_UNAVAILABLE'].includes(failure.code as string)) {
           details = {...(details && typeof details === 'object' && !Array.isArray(details) ? details : {}), ...recoveryDetails};
-          delete (details as Record<string, unknown>).mutationOutcome; delete (details as Record<string, unknown>).frameOutcome; delete (details as Record<string, unknown>).sceneOutcome; delete (details as Record<string, unknown>).observation;
+          delete (details as Record<string, unknown>).mutationOutcome; delete (details as Record<string, unknown>).frameOutcome; delete (details as Record<string, unknown>).sceneOutcome; delete (details as Record<string, unknown>).subjectVariantOutcome; delete (details as Record<string, unknown>).observation;
         }
         throw new ClientError(typeof failure.code === 'string' ? safeValue(failure.code, [token]) : 'BACKEND_UNAVAILABLE', typeof failure.message === 'string' ? safeValue(failure.message, [token]) : 'The backend rejected the request.', {status: response.status, details});
       }
@@ -350,6 +375,11 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
       : operation === 'scene.task.list' ? isSceneListResponse(operation, parsed, result)
       : operation === 'scene.result.get' ? isSceneResultResponse(result) && resultRecord?.projectId === parsed.projectId && resultRecord?.assetId === parsed.assetId : true;
     if (!sceneReadValid) throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid scene record.');
+    if ((SUBJECT_VARIANT_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isSubjectVariantMutationResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject variant acknowledgement.', {details: uncertainRequestDetails(body)});
+    const variantReadValid = operation === 'subject.variants.get' ? isSubjectVariantBatch(result) && resultRecord?.projectId === parsed.projectId && resultRecord?.id === parsed.batchId && resultRecord?.undo !== null
+      : operation === 'subject.variants.list' ? isSubjectVariantListResponse(parsed, result) : true;
+    if (!variantReadValid) throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject variant record.');
     if(operation==='image.task.observeRemote'&&!isComfyObserveResponse(parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid ComfyUI observation acknowledgement.',{details:{...uncertainRequestDetails(body),submissionMayHaveSucceeded:true}});
     if(operation==='image.task.remote.get'&&(!isComfyRemoteResponse(result)||resultRecord?.projectId!==parsed.projectId||resultRecord?.taskId!==parsed.taskId))

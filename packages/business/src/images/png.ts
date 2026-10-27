@@ -6,7 +6,8 @@ import {setImmediate as yieldTurn} from 'node:timers/promises';
 
 // This is a bounded, deliberately narrow PNG profile, not a general media decoder.
 // PNG structure/filter rules: https://www.w3.org/TR/png-3/ (reviewed 2026-10-10).
-export const IMAGE_PNG_LIMITS = Object.freeze({maxBytes: 30 * 1024 * 1024, maxPixels: 1024 * 1024, maxEdge: 1024, maxChunks: 4096, maxMetadataBytes: 1024 * 1024});
+// Edges/pixels cover the widest edit source (4096x4096); callers pass exact dimensions.
+export const IMAGE_PNG_LIMITS = Object.freeze({maxBytes: 50 * 1024 * 1024 - 1, maxPixels: 4096 * 4096, maxEdge: 4096, maxChunks: 4096, maxMetadataBytes: 1024 * 1024});
 const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const crcTable = Uint32Array.from({length: 256}, (_, value) => {
   for (let bit = 0; bit < 8; bit++) value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
@@ -162,13 +163,17 @@ export async function validatePng(bytes: unknown, {width = 1024, height = 1024, 
 const deflateAsync = promisify(deflate);
 const letters: Readonly<Record<string, readonly string[]>> = {M: ['10001','11011','10101','10101','10001','10001','10001'], O: ['01110','10001','10001','10001','10001','10001','01110'], C: ['01111','10000','10000','10000','10000','10000','01111'], K: ['10001','10010','10100','11000','10100','10010','10001']};
 /** An unmistakable, static synthetic test card. No prompt or provider data is
- * used to draw it; this is never described as a model depiction of the prompt. */
-export async function renderMockImagePng({signal}: {signal?: AbortSignal} = {}): Promise<Buffer> {
+ * used to draw it; this is never described as a model depiction of the prompt.
+ * Other sizes stretch the same 1024x1024 card; 1024x1024 bytes are unchanged. */
+export async function renderMockImagePng({signal, width = 1024, height = 1024}: {signal?: AbortSignal; width?: number; height?: number} = {}): Promise<Buffer> {
   checkAbort(signal);
-  const width = 1024, height = 1024, stride = width * 3 + 1, raw = Buffer.alloc(stride * height);
-  for (let y = 0; y < height; y++) {
-    if (y % 32 === 0) { await yieldTurn(); checkAbort(signal); }
-    for (let x = 0; x < width; x++) {
+  if (!validDimensions(width, height)) throw invalid();
+  const stride = width * 3 + 1, raw = Buffer.alloc(stride * height);
+  for (let row = 0; row < height; row++) {
+    if (row % 32 === 0) { await yieldTurn(); checkAbort(signal); }
+    const y = Math.floor(row * 1024 / height);
+    for (let column = 0; column < width; column++) {
+      const x = Math.floor(column * 1024 / width);
       let color: readonly [number, number, number] = [20, 29, 48];
       if (x % 64 < 2 || y % 64 < 2) color = [32, 44, 66];
       if (x >= 112 && x < 912 && y >= 112 && y < 912) color = [35, 54, 81];
@@ -178,10 +183,10 @@ export async function renderMockImagePng({signal}: {signal?: AbortSignal} = {}):
       if (x >= 144 && x < 880 && y < 552 && y > 417 + Math.abs(x - 666) * 0.31) color = [23, 64, 86];
       const tx = Math.floor((x - 236) / 24), ty = Math.floor((y - 656) / 24);
       if (tx >= 0 && tx < 23 && ty >= 0 && ty < 7) {
-        const letter = 'MOCK'[Math.floor(tx / 6)], column = tx % 6;
-        if (column < 5 && letters[letter]?.[ty][column] === '1') color = [242, 202, 118];
+        const letter = 'MOCK'[Math.floor(tx / 6)], bit = tx % 6;
+        if (bit < 5 && letters[letter]?.[ty][bit] === '1') color = [242, 202, 118];
       }
-      const at = y * stride + 1 + x * 3; raw[at] = color[0]!; raw[at + 1] = color[1]!; raw[at + 2] = color[2]!;
+      const at = row * stride + 1 + column * 3; raw[at] = color[0]!; raw[at + 1] = color[1]!; raw[at + 2] = color[2]!;
     }
   }
   const compressed = await deflateAsync(raw, {level: 6}); checkAbort(signal);

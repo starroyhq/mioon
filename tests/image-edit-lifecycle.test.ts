@@ -97,7 +97,9 @@ test('same-group older version is a valid edit source for multiple later version
 test('private review freezes edit endpoint/source and approval binds exactly the retained descriptor',async t=>{
  const f=await fixture(t,{autoRun:false}),input=liveInput(f),review=await f.prepare(input);
  assert.equal(review.destination,'https://api.openai.com/v1/images/edits');assert.equal(review.sourceImage!.assetId,f.asset.id);assert.equal(review.state,'pending');assert.equal(f.calls,0);noPrivate(review);
- const intent=JSON.parse((f.store.db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(review.id)!.canonicalIntent as string));assert.equal(intent.schemaVersion,4);assert.deepEqual(intent.sourceImage,review.sourceImage);
+ const intent=JSON.parse((f.store.db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(review.id)!.canonicalIntent as string));
+ // Since schema62 every new edit intent is v5; its output size is the reviewed input's own.
+ assert.equal(intent.schemaVersion,5);assert.equal(intent.input.options.size,input.options.size);assert.deepEqual(intent.sourceImage,review.sourceImage);
  f.alter();await assert.rejects(Promise.resolve().then(()=>f.approve(review)),code('IMAGE_SOURCE_INVALID'));assert.equal(f.store.db.prepare('SELECT count(*) n FROM image_tasks').get()!.n,0);
  assert.deepEqual(await f.prepare(input),review,'historical review replay does not read changed file');f.restore();
  const ack=await f.approve(review);assert.deepEqual(ack.sourceImage,review.sourceImage);f.alter();f.configure({revision:2,enabled:false});

@@ -844,6 +844,25 @@ mioon subject binding list --input '{"projectId":"PROJECT_UUID","subjectId":"SUB
 mioon subject binding set --input '{"projectId":"PROJECT_UUID","shotId":"SHOT_UUID","subjectId":"SUBJECT_UUID","role":"subject","subjectVersionId":"CHOSEN_SUBJECT_VERSION_UUID","expectedRevision":0,"expectedSubjectRevision":2,"requestId":"subject-binding-0001"}'
 ```
 
+Angle and lighting variants (schema 62) add five more commands for character
+and product subjects; the rules are in
+[API.md](API.md#angle-and-lighting-variants-schema-62):
+
+```sh
+mioon schema subject.variants.create
+mioon subject variants create --input '{"projectId":"PROJECT_UUID","subjectId":"SUBJECT_UUID","sourceVersionId":"SUBJECT_VERSION_UUID","kind":"angle","items":[{"kind":"angle","position":"front-left","focal":"standard"},{"kind":"angle","position":"back","focal":"wide"}],"providerId":"mock","model":"mock-image-v1","requestId":"subject-variants-0001"}'
+mioon subject variants get --input '{"projectId":"PROJECT_UUID","batchId":"BATCH_UUID"}'
+mioon subject variants list --input '{"projectId":"PROJECT_UUID","subjectId":"SUBJECT_UUID","limit":20}'
+mioon subject variants retry --input '{"projectId":"PROJECT_UUID","batchId":"BATCH_UUID","position":2,"expectedRevision":1,"requestId":"subject-variants-retry-0001"}'
+mioon subject variants undo --input '{"projectId":"PROJECT_UUID","batchId":"BATCH_UUID","expectedRevision":1,"requestId":"subject-variants-undo-0001"}'
+```
+
+`create` only records the batch. Submit each returned item's `imageInput` with
+`mioon image generate` (Mock) or `mioon image review prepare` (official, then
+approve in the app); the finished image becomes a variant version without
+changing the subject's default version. `undo` hides the batch's versions and
+keeps the images. Retain each full input and key, as for other writes.
+
 These are templates, not a blind replay script. Replace IDs, revisions and keys
 with the intended project's current state. `kind` is `character`, `product`,
 `location` or `look`; name is nonblank and 1–120 characters. Use an existing owned

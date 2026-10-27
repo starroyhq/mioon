@@ -5,7 +5,7 @@ import {validateImageTaskReview} from './images/reviews.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
-import {canonicalImageInput as canonical,IMAGE_LIMITS,IMAGE_UNRESOLVED_STATES,imageSchemas,imageSnapshotSchema,imageReceiptSchema,imageTaskResponseSchema,imageGroupResponseSchema,imageVersionResponseSchema} from '../../contracts/src/images.ts';
+import {canonicalImageInput as canonical,IMAGE_LIMITS,IMAGE_UNRESOLVED_STATES,imageSchemas,imageSnapshotSchema,imageReceiptSchema,imageResultGeometry,imageTaskResponseSchema,imageGroupResponseSchema,imageVersionResponseSchema} from '../../contracts/src/images.ts';
 
 type ImageGroup=ReturnType<typeof imageGroupResponseSchema.parse>;
 type ImageTaskResponse=ReturnType<typeof imageTaskResponseSchema.parse>;
@@ -95,7 +95,8 @@ export function createImageOwnershipReader(db: DatabaseSync,projectId: string,{c
   const row=raw as unknown as ImageTaskRow;
   const input=decodeWith(imageSchemas['image.generate'],row.input),snapshot=decodeWith(imageSnapshotSchema,row.snapshot),
    receipt=row.stagedReceipt===null?null:decodeWith(imageReceiptSchema,row.stagedReceipt);
-  if(receipt&&(snapshot.providerId==='comfy-local'?(receipt.schemaVersion!==2||property(receipt,'providerId')!=='comfy-local'||receipt.width!==512||receipt.height!==512):(receipt.schemaVersion!==1||receipt.width!==1024||receipt.height!==1024)))reject();
+  const geometry=imageResultGeometry(snapshot);
+  if(receipt&&(receipt.schemaVersion!==geometry.schemaVersion||receipt.width!==geometry.width||receipt.height!==geometry.height||(geometry.schemaVersion===2)!==(property(receipt,'providerId')==='comfy-local')))reject();
   if(createHash('sha256').update(canonical(input)).digest('hex')!==row.inputHash||input.requestId!==row.requestId||input.projectId!==projectId||snapshot.projectId!==projectId||snapshot.taskId!==id||snapshot.groupId!==row.groupId||input.groupId!==undefined&&input.groupId!==row.groupId)reject();
   if(!same({...snapshot,schemaVersion:undefined,projectId:undefined,groupId:undefined,taskId:undefined,sourceImage:undefined},{...imageEditFields(input),name:input.name,prompt:input.prompt,providerId:input.providerId,model:input.model,options:input.options}))reject();
   const dto: ImageTaskResponse={id:row.id,projectId,groupId:row.groupId,requestId:row.requestId,name:snapshot.name,prompt:snapshot.prompt,providerId:snapshot.providerId,model:snapshot.model,options:snapshot.options,...imageEditFields(snapshot),state:row.state,revision:row.revision,dispatched:row.dispatched===1,versionId:row.versionId,errorCode:row.errorCode,createdAt:row.createdAt,updatedAt:row.updatedAt} as ImageTaskResponse;

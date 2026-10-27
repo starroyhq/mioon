@@ -27,6 +27,7 @@ import {initializeWorkspaceSchema56} from '../packages/business/src/workspace-sc
 import {initializeWorkspaceSchema58} from '../packages/business/src/workspace-schema-v58.ts';
 import {classifyWorkspaceSchemaV58V59} from '../packages/business/src/workspace-restore-schema-v59.ts';
 import {initializeWorkspaceSchema60, validateWorkspaceSchema60} from '../packages/business/src/workspace-schema-v60.ts';
+import {validateWorkspaceSchema62} from '../packages/business/src/workspace-schema-v62.ts';
 import {classifyWorkspaceSchemaV56V57} from '../packages/business/src/workspace-restore-schema-v57.ts';
 import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
@@ -111,7 +112,7 @@ test('schema60 freezes model request originals against update, deletion and repl
   assert.deepEqual(evidence(db), before);
   db.prepare('UPDATE agent_task_steps_v2 SET data=data WHERE id=?').run(model.id);
   f.journal.markDispatch(f.run.id, model.id);f.journal.completeStep(f.run.id, model.id, {result: {text: 'Normal finish'}});
-  assert.deepEqual(f.journal.step(model.id).request, model.request);validateWorkspaceSchema60(db);
+  assert.deepEqual(f.journal.step(model.id).request, model.request);validateWorkspaceSchema62(db);
 });
 
 test('old56 rejects a new reference representation even when its source, hash and old catalogue are valid', t => {
@@ -159,8 +160,8 @@ test('schema60 admits history above64MiB, atomically rejects above256MiB and ret
     ownerId, generation: 1, sequence, action: sequence === 1 ? 'claim' : 'heartbeat', targets});
   const manualBytes = Number(db.prepare('SELECT sum(length(CAST(data AS BLOB))) AS bytes FROM agent_task_edit_receipts_v2').get()!.bytes);
   assert.ok(rowBytes + manualBytes > AGENT_TASK_STORAGE_BYTES_V60);
-  validateWorkspaceSchema60(db);f.store.close();
-  const reopened = openStore(f.root);try {validateWorkspaceSchema60(reopened.db);} finally {reopened.close();}
+  validateWorkspaceSchema62(db);f.store.close();
+  const reopened = openStore(f.root);try {validateWorkspaceSchema62(reopened.db);} finally {reopened.close();}
 });
 
 test('schema60 cold backup restores61 with exact event requests, immutable source rows and disabled execution', async t => {
@@ -170,12 +171,12 @@ test('schema60 cold backup restores61 with exact event requests, immutable sourc
   const before = evidence(f.store.db), events = f.journal.events(f.run.id), snapshot = f.journal.snapshot(f.run.id);
   f.store.close();
   const backup = await createWorkspaceBackup({source: f.root, destination: f.root + '-backup'});
-  assert.equal(backup.databaseSchemaVersion, 60);assert.deepEqual(await verifyWorkspaceBackup({directory: f.root + '-backup'}), backup);
+  assert.equal(backup.databaseSchemaVersion, 62);assert.deepEqual(await verifyWorkspaceBackup({directory: f.root + '-backup'}), backup);
   const restored = await restoreWorkspaceBackup({directory: f.root + '-backup', destination: f.root + '-restored'});
-  assert.equal(restored.sourceSchema, 60);assert.equal(restored.databaseSchemaVersion, 61);assert.equal(restored.profile, 'restored-local-v19');
+  assert.equal(restored.sourceSchema, 62);assert.equal(restored.databaseSchemaVersion, 63);assert.equal(restored.profile, 'restored-local-v20');
   const copy = openStore(f.root + '-restored');
   try {
-    assert.deepEqual(evidence(copy.db), before);assert.deepEqual(classifyCurrentWorkspaceSchema(copy.db), {schemaVersion: 61, profile: 'restored-local-v19'});
+    assert.deepEqual(evidence(copy.db), before);assert.deepEqual(classifyCurrentWorkspaceSchema(copy.db), {schemaVersion: 63, profile: 'restored-local-v20'});
     const journal = createAgentTaskJournal(copy);assert.deepEqual(journal.events(f.run.id), events);assert.deepEqual(journal.snapshot(f.run.id), snapshot);
     assert.deepEqual(journal.step(model.id).request, original);
     assert.throws(() => journal.beginStep(f.run.id, {kind: 'model', request: original}), /AGENT_TASK_STATE_CONFLICT|RESTORE_OPERATION_UNAVAILABLE|RESTORED_RECORD_HELD/u);
@@ -203,13 +204,13 @@ test('more than64MiB of complete originals survives cold backup, restore and the
   for (let position = 1; position <= 65; position++) insertCompleteModel(f.store.db, f.run.id, f.projectId, position, body);
   assert.ok(Number(f.store.db.prepare('SELECT sum(length(CAST(data AS BLOB))) AS bytes FROM agent_task_steps_v2').get()!.bytes) > 64 * 1024 * 1024);
   f.journal.transition(f.run.id, f.journal.run(f.run.id).revision, 'completed');
-  validateWorkspaceSchema60(f.store.db);f.store.close();
+  validateWorkspaceSchema62(f.store.db);f.store.close();
   const backup = await createWorkspaceBackup({source: f.root, destination: f.root + '-backup'});
-  assert.equal(backup.databaseSchemaVersion, 60);
+  assert.equal(backup.databaseSchemaVersion, 62);
   const result = await restoreWorkspaceBackup({directory: f.root + '-backup', destination: f.root + '-restored'});
-  assert.equal(result.databaseSchemaVersion, 61);
+  assert.equal(result.databaseSchemaVersion, 63);
   const copy = openStore(f.root + '-restored');
-  try {assert.equal(copy.db.prepare('SELECT count(*) AS n FROM agent_task_steps_v2').get()!.n, 65);assert.equal(classifyCurrentWorkspaceSchema(copy.db).schemaVersion, 61);} finally {copy.close();}
+  try {assert.equal(copy.db.prepare('SELECT count(*) AS n FROM agent_task_steps_v2').get()!.n, 65);assert.equal(classifyCurrentWorkspaceSchema(copy.db).schemaVersion, 63);} finally {copy.close();}
   const source = openStore(f.root), services = createServices(source, new Map());
   try {
     services.setProjectDeletionCompanions({assertDeletable() {}, removeProject() {}});

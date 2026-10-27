@@ -239,5 +239,5 @@ test('default58 still refuses opacity without opting into a candidate workspace'
   assert.throws(()=>tasks.prepare({projectId:data.project.id,operation:'timeline.clip.update',input,origin:'new'}),{code:'EDIT_TASK_VALIDATION'});
   await assert.rejects(services.call('timeline.clip.update',input),{code:'VALIDATION_ERROR'});
   assert.equal(snapshot(store),before);assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n,changes);
-  assert.equal(store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get()!.version,60);
+  assert.equal(store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get()!.version,62);
 });

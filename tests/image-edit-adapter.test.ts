@@ -36,6 +36,13 @@ function sourcePng({alpha = false, before = []}: {alpha?: boolean; before?: Buff
   const header = Buffer.alloc(13); header.writeUInt32BE(2); header.writeUInt32BE(2, 4); header[8] = 8; header[9] = alpha ? 6 : 2;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), ...before, chunk('IDAT', deflateSync(Buffer.alloc(alpha ? 18 : 14))), chunk('IEND')]);
 }
+// A minimal baseline JPEG container: SOI, an 8-bit three-component SOF0 frame,
+// a scan header, one entropy byte and EOI. Its bytes are sent unchanged.
+function sourceJpeg(width: number, height: number): Buffer {
+  const frame = Buffer.from([0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 255, width >> 8, width & 255, 0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01]);
+  const scan = Buffer.from([0xff, 0xda, 0x00, 0x0c, 0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3f, 0x00]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), frame, scan, Buffer.from([0x00, 0xff, 0xd9])]);
+}
 const generation = (providerId: string) => ({providerId, model: (IMAGE_MODELS as Record<string, string>)[providerId], prompt: 'Synthetic exact edit instruction: 蓝色 sky.', options: {...IMAGE_FIXED_OPTIONS}});
 function input(bytes: Buffer = sourcePng(), providerId: string|undefined = 'openai'): EditAdapterInput {
   return {...generation(providerId), purpose: 'edit', inputImage: {assetId: sourceId, sha256: hash(bytes)},
@@ -84,10 +91,12 @@ test('edit SDK parameters contain one local PNG File and fixed options without u
 test('malformed trusted source arguments fail before transport: exact Buffer, bounded bytes, paired hash/length and descriptor', async () => {
   const bytes = sourcePng(), snapshot = input(bytes), state = transport(await responseBody()), adapter = createOpenAIImageAdapter(state);
   const badInputs = [{...snapshot, inputImage: {...snapshot.inputImage, sha256: 'f'.repeat(64)}}, {...snapshot, sourceImage: {...snapshot.sourceImage, byteLength: bytes.length + 1}},
-    {...snapshot, sourceImage: {...snapshot.sourceImage, width: 1025}}, {...snapshot, sourceImage: {...snapshot.sourceImage, mimeType: 'image/jpeg'}},
+    {...snapshot, sourceImage: {...snapshot.sourceImage, width: IMAGE_EDIT_LIMITS.sourceMaxEdge + 1}}, {...snapshot, sourceImage: {...snapshot.sourceImage, mimeType: 'image/gif'}},
     {...snapshot, sourceImage: {...snapshot.sourceImage, path: '/private/source.png'}}, {...snapshot, sourceBytes: bytes.toString('base64')},
     {...snapshot, images: [{image_url: 'https://example.invalid/private.png'}]}, {...snapshot, purpose: undefined}, {...snapshot, inputImage: undefined}, {...snapshot, sourceImage: undefined}];
   for (const value of badInputs) await assert.rejects(adapter.generate(value, {sourceBytes: bytes, beforeDispatch: () => assert.fail('No fence')}), {code: 'IMAGE_INVALID_REQUEST', dispatched: false, outcomeUnknown: false});
+  // A declared format that the bytes do not match is refused by the format check.
+  for (const [mimeType, code] of [['image/jpeg', 'IMAGE_SOURCE_INVALID'], ['image/webp', 'IMAGE_SOURCE_INVALID']] as const) await assert.rejects(adapter.generate({...snapshot, sourceImage: {...snapshot.sourceImage, mimeType}}, {sourceBytes: bytes, beforeDispatch: () => assert.fail('No fence')}), {code, dispatched: false, outcomeUnknown: false});
   for (const value of [undefined, new Uint8Array(bytes), bytes.toString('base64'), Buffer.alloc(0), Buffer.alloc(IMAGE_EDIT_LIMITS.sourceBytes + 1), Buffer.from(bytes).fill(1)]) await assert.rejects(adapter.generate(snapshot, {sourceBytes: value, beforeDispatch: () => assert.fail('No fence')}), {code: 'IMAGE_INVALID_REQUEST', dispatched: false});
   assert.equal(state.calls, 0);
 });
@@ -137,6 +146,26 @@ test('official edit gateway uses dedicated settings key, immutable review, fixed
   assert.deepEqual(order, ['settings', 'source-and-durable', 'post', 'later']); assert.equal(state.posts, 1); assert.equal(state.options!.path, '/v1/images/edits'); assert.equal(state.options!.headers.Authorization, `Bearer ${key}`);
   const body = await new Response(new Uint8Array(state.payload!), {headers: {'content-type': state.options!.headers['Content-Type']!}}).formData();
   const image = body.get('image'); assert.ok(image instanceof File); assert.deepEqual(Buffer.from(await image.arrayBuffer()), bytes); assert.equal(body.has('images'), false); assert.equal(body.has('moderation'), false); assert.equal(result.metadata.isMock, false); assert.equal(JSON.stringify(persisted()).includes(key), false);
+});
+
+test('a sized JPEG edit posts one unchanged image/jpeg file with its requested size and accepts only that result size', async t => {
+  const {settings} = await settingsFixture(t), bytes = sourceJpeg(4, 3), size = '1536x1152', base = input(bytes);
+  const snapshot = {...base, options: {...IMAGE_FIXED_OPTIONS, size}, sourceImage: {...base.sourceImage, mimeType: 'image/jpeg', name: 'Synthetic source.jpg', width: 4, height: 3}};
+  const parameters = await createImageEditParameters(snapshot, bytes);
+  assert.ok(parameters.image instanceof File); assert.deepEqual([parameters.image.name, parameters.image.type, parameters.size], ['source.jpg', 'image/jpeg', size]);
+  // A size outside the model's edit profile, or JPEG bytes labelled as PNG, never reach transport.
+  await assert.rejects(createImageEditParameters({...snapshot, options: {...IMAGE_FIXED_OPTIONS, size: '1500x1100'}}, bytes), {code: 'IMAGE_INVALID_REQUEST'});
+  await assert.rejects(createImageEditParameters({...snapshot, sourceImage: {...snapshot.sourceImage, mimeType: 'image/png'}}, bytes), {dispatched: false});
+  const sized = await renderMockImagePng({width: 1536, height: 1152}), state = network({body: Buffer.from(JSON.stringify({data: [{b64_json: sized.toString('base64')}]}))});
+  const result = await createLiveImageGateway({settings, ...state, baseUrl: 'https://ignored.example'} as never).generate(snapshot, {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => {}});
+  assert.equal(state.posts, 1); assert.equal(state.options!.path, '/v1/images/edits');
+  const body = await new Response(new Uint8Array(state.payload!), {headers: {'content-type': state.options!.headers['Content-Type']!}}).formData();
+  const image = body.get('image'); assert.ok(image instanceof File); assert.deepEqual([image.name, image.type], ['source.jpg', 'image/jpeg']); assert.deepEqual(Buffer.from(await image.arrayBuffer()), bytes);
+  assert.equal(body.get('size'), size); assert.deepEqual([result.metadata.width, result.metadata.height], [1536, 1152]);
+  // A square result after the POST is refused and stays an uncertain outcome.
+  const square = network({body: await responseBody()});
+  await assert.rejects(createLiveImageGateway({settings, ...square, baseUrl: 'https://ignored.example'} as never).generate(snapshot, {sourceBytes: bytes, settingsRevision: 1, beforeDispatch: () => {}}), {dispatched: true});
+  assert.equal(square.posts, 1);
 });
 
 test('edit gateway snapshots source and public input before credential wait, then rejects changed settings at actual fence', async t => {

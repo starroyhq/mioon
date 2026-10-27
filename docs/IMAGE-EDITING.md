@@ -1,14 +1,19 @@
-# Single-PNG reference image editing
+# Single-source reference image editing
 
 Date: 2026-10-11. Baseline: `07ee1910f00822607a739df6b543bb92a3f7d7b5`.
 Status: implementation, focused checks, fresh production build/package and
 Linux native acceptance complete. Final independent aggregate passed:3960 total,
 3958 passed,0 failed,2 skipped (1000449.189933ms).
 
+Updated 2026-10-27 (schema 62): sources may be PNG, JPEG or WebP within each
+model's edit profile, and the output size follows the source's aspect ratio.
+See [Model-sized edits](#model-sized-edits-schema-62). The native acceptance
+record at the end describes the original PNG-only, 1024×1024 profile.
+
 ## Bounded workflow
 
 The right Properties image page offers text generation or editing one existing,
-project-owned managed PNG. Pick the source explicitly, inspect its thumbnail,
+project-owned managed PNG, JPEG or WebP image. Pick the source explicitly, inspect its thumbnail,
 name, dimensions and fixed source identity, then enter the desired change.
 OpenAI first prepares an immutable local review; the user confirms that exact
 source, prompt, model, output options and destination in the application.
@@ -39,7 +44,7 @@ Use existing `image.generate` with two paired fields:
   "providerId": "mock",
   "model": "mock-image-v1",
   "prompt": "Make the background blue",
-  "options": {"size":"1024x1024","quality":"low","outputFormat":"png","background":"opaque","n":1},
+  "options": {"size":"1536x1152","quality":"low","outputFormat":"png","background":"opaque","n":1},
   "purpose": "edit",
   "inputImage": {"assetId":"SOURCE_ASSET_UUID","sha256":"EXACT_SOURCE_SHA256"},
   "requestId": "retained-image-edit-request-0001"
@@ -68,17 +73,24 @@ read/write tool allowlists are unchanged; there is no automatic context upload.
 
 ## Limits and wire
 
-- Source: one managed PNG, at most 8 MiB, each edge 1–1024 pixels and at most
-  1,048,576 pixels. RGB or fully opaque RGBA, 8-bit, noninterlaced, nonanimated.
-  Unsupported sources, including compressed ICC/text and unsupported ancillary
-  chunks in the existing strict PNG decoder, are rejected rather than silently
-  converted or truncated.
+- Source: one managed PNG, JPEG or WebP image under 50 MB (at most 52,428,799
+  bytes), each edge 1–4096 pixels and at most 16,777,216 pixels, fully opaque.
+  PNG keeps the strict decoder: RGB or fully opaque RGBA, 8-bit, noninterlaced,
+  nonanimated; compressed ICC/text and unsupported ancillary chunks are
+  rejected. JPEG and WebP bytes are sent unchanged, so only their container is
+  checked: one baseline, extended or progressive Huffman JPEG frame (8-bit, one
+  or three components) or one VP8/VP8L/VP8X WebP image without alpha or
+  animation, whose size matches the managed asset, with an intact end.
+  Unsupported sources are rejected rather than silently converted or truncated.
 - Source names: at most 200 characters / 800 UTF-8 bytes. Typed source chains:
   at most 32 links, with cycle and mixed-owner rejection.
-- Output: one 1024×1024 opaque PNG, low quality, existing bounded result decoder.
+- Output: one opaque low-quality PNG of the request's `options.size` (see
+  [Model-sized edits](#model-sized-edits-schema-62)); the bounded result decoder
+  rejects any other size.
 - Prompt: existing 2,000-character / 8,000-byte limit.
-- Official edit body: at most 8,416,992 bytes (8 MiB source, a conservative
-  12,000-byte prompt allowance and 16,384 bytes for multipart overhead).
+- Official edit body: at most 52,457,183 bytes (the 52,428,799-byte source
+  bound, a conservative 12,000-byte prompt allowance and 16,384 bytes for
+  multipart overhead).
   Both the SDK form and the serialized multipart stream are bounded. Existing
   generation/custom body cap remains 16,384 bytes.
 - Source verification admission: at most four active checks per shared database
@@ -89,8 +101,9 @@ read/write tool allowlists are unchanged; there is no automatic context upload.
 
 Since 2026-10-26, official edits use the pinned `openai@7.39.0` SDK's
 `images.edit()` to generate multipart for `https://api.openai.com/v1/images/edits`.
-The source is a single backend-created `image/png` File named `source.png`,
-constructed from the project-owned, hash-checked PNG bytes. The host retains
+The source is a single backend-created File named `source.png`, `source.jpg`
+or `source.webp` with the asset's MIME type, constructed from the project-owned,
+hash-checked bytes; the form also carries the request's `size`. The host retains
 DNS/TLS pinning, credential binding and the synchronous dispatch fence after
 serialization. No Files API upload, remote-image URL, redirect, capability-probe
 request, protocol fallback or automatic POST retry is used.
@@ -100,6 +113,29 @@ longer explicitly sends the former JSON request's `moderation:auto`; native
 service handling applies. Multipart editing is not claimed to be wire-equivalent
 to the previous JSON/Base64 request. Private source bytes are never stored as
 Base64 in SQLite. `input_fidelity` remains omitted for this bounded profile.
+
+## Model-sized edits (schema 62)
+
+Each editable model has a fixed edit profile in
+`packages/contracts/src/image-edit-profiles.ts`. GPT Image 2.5 Flare follows the
+pinned `openai@7.39.0` `images.edit` documentation (checked 2026-10-27): PNG,
+JPEG or WebP sources under 50 MB, and `WIDTHxHEIGHT` outputs whose edges are
+multiples of 16 with an aspect ratio between 1:3 and 3:1. Sizes above
+2560×1440 are documented as experimental and are not offered. The 4096-pixel
+edge, pixel and opacity bounds are application limits, not model claims. Mock
+uses the same profile, so every size path runs offline.
+
+- An edit's output keeps the source's aspect ratio: the long edge is 1536 and
+  the short edge is rounded to a multiple of 16, with the ratio clamped to
+  1:3–3:1. A 640×480 source gives `1536x1152`; a 3:4 portrait gives
+  `1152x1536`. The image page shows this size before submitting.
+- `options.size` must be a size the model can produce; `1024x1024` stays valid
+  for every source. Text-to-image is unchanged at `1024x1024`.
+- New official edit reviews are intent version 5, which allows the wider
+  sources and sizes. Version 4 rows keep the original PNG-only, 1024×1024
+  profile and stay readable; they are never rewritten as version 5.
+- A result whose size is not 1024×1024 is recorded with result receipt
+  version 3; 1024×1024 results keep the version 1 receipt.
 
 ## Recovery, ownership and privacy
 
@@ -140,6 +176,12 @@ before exposing the store. The transaction preserves rowids, raw column strings,
 indexes, triggers, child FK references and sequence state; a failed verification
 rolls back. Populated ComfyUI remote-run references are included in the frozen
 schema-22 migration fixture. Unsupported downgrade is not promised.
+
+Schema 62 rebuilds `image_reviews` once more to add the version 5 branch. The
+version 4 branch and its limits are kept exactly; the rebuild uses the same
+isolated foreign-key guard and preserves every row, rowid and raw byte, which
+`tests/image-edit-migration.test.ts` checks on a genuine ordinary60 workspace
+with version 4 rows. Restored 63 copies keep these rows read-only.
 
 Old snapshots keep schemaVersion 1 through strict legacy/edit branches. Original
 T2I requests are not decorated with defaults or new fields. Existing public

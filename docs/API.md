@@ -1301,6 +1301,69 @@ provider input, built-in Agent catalog/context or paid generation changes.
 choices; they do not automatically consume planning bindings. Motion remains
 future work. See [subject scope and recovery](SUBJECT-LIBRARY.md).
 
+### Angle and lighting variants (schema 62)
+
+Status: backend implemented (C7a); the subject inspector and the angle and
+lighting dialogs are not built yet. Contracts:
+`packages/contracts/src/subject-variants.ts`.
+
+| Operation | Strict RPC input |
+| --- | --- |
+| `subject.variants.create` | `{projectId,subjectId,sourceVersionId,kind,items,providerId,model,requestId}` |
+| `subject.variants.retry` | `{projectId,batchId,position,expectedRevision,requestId}` |
+| `subject.variants.undo` | `{projectId,batchId,expectedRevision,requestId}` |
+| `subject.variants.get` | `{projectId,batchId}` |
+| `subject.variants.list` | `{projectId,subjectId,limit?,cursor?}` |
+
+A batch edits one version of a `character` or `product` subject into up to
+eight new versions. `kind` is `angle` or `light` and every item must match it.
+An angle item is `{kind:"angle",position,focal}` with `position` one of
+`front,front-left,left,back-left,back,back-right,right,front-right,high,low`
+and `focal` `standard|wide`; items must be distinct. A lighting batch has one
+item `{kind:"light",azimuth,elevation,quality,kelvin}`: integer azimuth
+−180–180 (0 faces the camera, positive to the subject's right), elevation
+−90–90, `quality` `soft|hard|back`, and 2000–10000 K in steps of 100.
+`providerId`/`model` must be an edit-capable pair (`mock` or `openai`).
+
+`create` records the batch and returns it with each item's exact
+`image.generate` edit input: the source version as `inputImage`, a server-built
+prompt and name, and `options.size` from the model's edit profile (see
+[IMAGE-EDITING.md](IMAGE-EDITING.md)). It submits nothing and charges nothing.
+The caller submits each item's input as given; official items go through the
+usual `image.review.prepare` and in-app approval. Each item's image request ID
+is `subject-variant:<batchId>:<position>:<attempt>`. Sources must pass the
+model's edit profile and come from an import, an image result or a captured
+frame; otherwise create fails with `SUBJECT_VARIANT_SOURCE_UNSUPPORTED` and
+`details.reason` `origin|format|bytes|dimensions`. A batch that would not fit
+the project's eight-task image queue fails with `SUBJECT_VARIANT_QUEUE_FULL`.
+
+When an item's image is published, the same transaction adds a subject version
+with `variant:{...spec,batchId,sourceVersionId}`. The subject `revision`
+advances but `headVersionId` does not move, so shot bindings are not flagged
+for review; the head is always the newest version without a variant. On start,
+a finished image that was not yet linked is linked from its task receipt.
+
+`get` returns the batch with each item's `status`
+(`pending|running|succeeded|failed|cancelled|interrupted|unknown|recoverable|undone`),
+image task state and `undo:{available,blockers}`; `list` pages batches newest
+first with `undo:null`. `retry` gives one item a new request ID only after its
+image failed or was cancelled before dispatch (`SUBJECT_VARIANT_RETRY_UNAVAILABLE`
+otherwise); an unknown outcome is never retried. `undo` hides every version of
+the batch: they leave `subject.version.list` and project packages, and binding
+one, generating video from one or using one as a batch source fails with
+`SUBJECT_VERSION_HIDDEN`. Versions, images and receipts are retained. Undo is refused with
+`SUBJECT_VARIANT_UNDO_BLOCKED` and `details.blockers`, in this order:
+`IN_PROGRESS`, `UNKNOWN`, `BOUND` (with `shotId`), `GENERATED`, `SOURCE` (with
+the derived `batchId`).
+
+The three writes require a stable `requestId` and replay their original
+acknowledgement exactly; `retry` and `undo` check the batch `revision`. A
+refusal carries `details.subjectVariantOutcome` with a `not_accepted` proof
+only when a fresh transaction finds no receipt for that key. Restored copies
+(schema 63, `restored-local-v20`) keep every batch, item and receipt read-only
+and refuse all five operations with `RESTORE_OPERATION_UNAVAILABLE`. These
+operations are not built-in Mio tools.
+
 
 ## Timeline output presets (schema 21)
 

@@ -101,8 +101,8 @@ export function createRestoredReadServices(store: RestoreReadStore,{signal}: Res
    profile:restored.profile,createdAt:restored.createdAt,
    source:{backupId:restored.sourceBackupId,schemaVersion:restored.sourceSchema,manifestHash:restored.manifestHash,dbHash:restored.sourceDbHash},
    heldCounts:Object.entries(restored.heldCounts as Record<string,unknown>).map(([kind,count])=>({kind,count})),
-   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>(privateStorageEvidence&&((RESTORE_LOCAL_OPERATIONS as readonly string[]).includes(operation)||operation.startsWith('scene.')))||operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57,59,61].includes(restored.schemaVersion)
-    ?{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}:lutRestorePolicy(operation,[53,55,57,59,61].includes(restored.schemaVersion)?51:restored.schemaVersion)),
+   operationPolicy:[...[...RESTORE_READ_OPERATIONS,...RESTORE_LOCAL_OPERATIONS].map(operation=>(privateStorageEvidence&&((RESTORE_LOCAL_OPERATIONS as readonly string[]).includes(operation)||operation.startsWith('scene.')))||operation==='timeline.clip.rippleRemove'&&![45,49,51,53,55,57,59,61,63].includes(restored.schemaVersion)
+    ?{operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}:lutRestorePolicy(operation,[53,55,57,59,61,63].includes(restored.schemaVersion)?51:restored.schemaVersion)),
     ...RESTORE_DENIED_OPERATIONS.map(operation=>({operation,available:false,reason:'RESTORE_OPERATION_UNAVAILABLE'}))],
    backupCreate:{available:false,reason:'RESTORE_BACKUP_UNAVAILABLE'}}),
   ...inspection.handlers,
