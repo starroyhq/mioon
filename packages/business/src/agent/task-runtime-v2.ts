@@ -485,6 +485,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   return {journal,instanceId,readOnly,snapshot,send,action,
     isBusy:()=>active.size>0||hasTables&&!!store.db.prepare("SELECT 1 FROM agent_task_runs_v2 WHERE status IN ('accepted','running') LIMIT 1").get(),
     history:(projectId:string,cursor?:string)=>{checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return hasTables?journal.history(projectId,{cursor}):{conversations:[],nextCursor:null};},
+    /** The settings page's connection test: the newest text diagnostic in the workspace, without its text or reply. */
+    latestConnectionTest:()=>{checkOpen();const found=hasTables?journal.latestDiagnostic('text'):null;if(!found)return {test:null};
+      const {run}=found,configuration=record(run.configuration)?run.configuration:{},text=(value:unknown):string=>typeof value==='string'?value:'';
+      const failureCode=run.status==='failed'&&typeof run.pauseReason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(run.pauseReason)?run.pauseReason:undefined;
+      return {test:{runId:run.id,projectId:run.projectId,status:run.status,createdAt:run.createdAt,updatedAt:run.updatedAt,protocol:text(configuration.protocol),baseUrl:text(configuration.baseUrl),model:text(configuration.model),...(failureCode?{failureCode}:{})}};},
     conversation:(projectId:string,conversationId:string,cursor?:string)=>{checkOpen();if(!hasTables||!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const page=journal.conversation(projectId,conversationId,{cursor});return {...page,runs:page.runs.map(run=>{const {context,...summary}=run;return summary;})};},
     timelineRevision:(projectId:string)=>{checkOpen();const row=store.db.prepare("SELECT json_extract(data,'$.revision') AS revision FROM timelines WHERE projectId=?").get(projectId);return row?Number(row.revision):null;},
     get:(projectId:string,id:string)=>{owned(projectId,id);return safeSnapshot(journal.snapshot(id),store);},

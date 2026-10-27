@@ -9,20 +9,6 @@
       "reason": "Product role name Agent, intentionally preserved as the same branded assistant name in all four languages; surrounding run state and controls are localized."
     },
     {
-      "file": "apps/web/src/AgentSettings.tsx",
-      "category": "visible-jsx",
-      "hash": "5e39afafa3b58cfd148d219ccdf49d4ec16a0847af86ca57ce8f59321970dabe",
-      "owner": "creation",
-      "reason": "API field notation Base URL is retained beside the localized agent.settings.baseUrl primary label, not used as an untranslated instruction."
-    },
-    {
-      "file": "apps/web/src/AgentSettings.tsx",
-      "category": "visible-jsx",
-      "hash": "a398ac923d2332949a5afaa92964ecb0a981ac9298669fdce6f6da041339c7aa",
-      "owner": "creation",
-      "reason": "API field notation Model ID is retained beside the localized agent.settings.modelName primary label; exact model identifiers must not be translated."
-    },
-    {
       "file": "apps/web/src/ComfyImageDetails.tsx",
       "category": "visible-jsx",
       "hash": "e4e22041a192d9703fd58876aeb55b8b5ae40ec1770a044947e2ce8e24a0a151",

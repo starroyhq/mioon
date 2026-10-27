@@ -73,6 +73,8 @@ function renderer(slot: string, f: {client: unknown}, callback?: (value: navigat
     // Execution policy owns a separate session; these cases exercise the
     // credential form's existing dirty, busy and recovery navigation state.
     if (name === './AgentTaskPolicy.tsx') return { default: 'AgentTaskPolicy', __esModule: true };
+    // The connection test owns its own diagnostic session (agent-connection-test.ts).
+    if (name === './AgentConnectionTest.tsx') return { default: 'AgentConnectionTest', __esModule: true };
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitives;
     if (name === './icons.tsx') return { default: 'Icon' };
     if (name.endsWith('.css')) return {};
@@ -203,7 +205,18 @@ test('registry binds all four slots, rejects stale reports and invalidates membe
   owners[3].release(); assert.equal(registry.canLeave(captured), false); assert.equal(registry.canLeave([]), false);
 });
 
-for (const slot of ['agent', 'official', 'custom', 'comfy']) {
+// Settings › Mio (07-09) has no form-level Back: the settings center's close control and its navigation guard
+// close it, and hiding the page clears an entered key. The image forms keep their own Back.
+test('agent: the page has no form-level Back; Discard reverts the draft without closing', async () => {
+  const f = fixture('agent'), ui = renderer('agent', f, undefined, { beforeClose: () => true }); await ready(ui);
+  assert.equal(ui.find('back'), undefined);
+  ui.edit(changedValue('agent')); ui.render(); assert.equal(ui.latest().dirty, true); assert.equal(ui.find('cancel')!.props.disabled, false);
+  ui.find('cancel')!.props.onClick(); ui.render();
+  assert.equal(ui.closes, 0); assert.equal(ui.latest().dirty, false); assert.equal(ui.find('model')!.props.value, f.saved().configuration.model); assert.equal(f.writes.length, 0);
+  ui.key('synthetic-key-before-hide'); ui.hide(); assert.equal((ui.find('key')!.props.ref as {current: {value: string}}).current.value, ''); ui.unmount();
+});
+
+for (const slot of ['official', 'custom', 'comfy']) {
   test(`${slot}: Back cancellation leaves the visible form editable and saveable`, async () => {
     for (const beforeClose of [() => false, () => Promise.resolve(false), () => Promise.reject(Error('cancelled')), () => { throw Error('cancelled'); }, () => 'yes']) {
       const f = fixture(slot), ui = renderer(slot, f, undefined, { beforeClose }); await ready(ui);
@@ -256,7 +269,7 @@ for (const slot of ['agent', 'official', 'custom', 'comfy']) {
 }
 
 const textContent = (tree: RootTree): string => Array.isArray(tree) ? tree.map(textContent).join('') : typeof tree === 'string' || typeof tree === 'number' ? String(tree) : tree && typeof tree === 'object' ? textContent(tree.props?.children) : '';
-for (const slot of ['agent', 'official', 'custom', 'comfy']) test(`${slot}: optional closeLabel changes only return text and accessibility labels`, async () => {
+for (const slot of ['official', 'custom', 'comfy']) test(`${slot}: optional closeLabel changes only return text and accessibility labels`, async () => {
   for (const closeLabel of [undefined, '返回项目列表']) {
     const f = fixture(slot), ui = renderer(slot, f, undefined, { closeLabel }); await ready(ui);
     const back = ui.find('back');

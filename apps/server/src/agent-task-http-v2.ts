@@ -31,6 +31,10 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
         if(url.pathname.startsWith(prefix+'/policy/requests/')&&req.method==='GET'){
           query(url,[]);json(res,200,{...runtime.lookupPolicy(decodeURIComponent(url.pathname.slice((prefix+'/policy/requests/').length))),readOnly:runtime.readOnly});return true;
         }
+        if(url.pathname===prefix+'/diagnostics/latest'){
+          query(url,[]);if(req.method==='GET')json(res,200,runtime.latestConnectionTest());
+          else {res.setHeader('Allow','GET');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET。'});}return true;
+        }
         if(url.pathname===prefix+'/editing'){
           if(runtime.readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');
           if(req.method==='GET'){

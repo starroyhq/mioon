@@ -6,7 +6,7 @@ import {resolveConnection} from './connection.ts';
 import type {LocalConnection} from './connection.ts';
 import {ClientError,EXIT_CODES,safeValue} from './index.ts';
 import type {ClientOptions} from './index.ts';
-import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema,agentTaskConnectionTestResponseSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
 import {agentTaskStorageSnapshotSchema} from '@mioon/contracts/agent-task-storage';
 import {agentAuthorizationSnapshotSchema,AGENT_PROTOCOLS} from '@mioon/contracts';
@@ -29,7 +29,7 @@ const uploadInput=z.object({projectId:id,requestId,name:z.string().min(1).max(20
 const watchInput=location.extend({after:revision.optional()});
 export const AGENT_COMMAND_SCHEMAS=Object.freeze({
  'agent.settings.get':z.object({}).strict(),'agent.settings.set':settingInput,'agent.settings.secret.set':settingInput,'agent.settings.secret.remove':settingInput,
- 'agent.doctor':z.object({projectId:id.optional()}).strict(),'agent.diagnose':sendSchema.extend({diagnostic:agentDiagnosticSchema}),
+ 'agent.doctor':z.object({projectId:id.optional()}).strict(),'agent.diagnose':sendSchema.extend({diagnostic:agentDiagnosticSchema}),'agent.diagnose.latest':z.object({}).strict(),
  'agent.policy.get':z.object({}).strict(),'agent.policy.set':policyInput,'agent.policy.lookup':z.object({requestId}).strict(),
  'agent.task.conversation':z.object({projectId:id,conversationId:id,cursor:z.string().max(512).optional()}).strict(),
  'agent.task.list':z.object({projectId:id}).strict(),'agent.task.history':z.object({projectId:id,cursor:z.string().max(512).optional()}).strict(),
@@ -128,6 +128,7 @@ export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeou
    }
   },
   async doctor(value:unknown={},options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.doctor'],value);const result=parsed(doctorSchema,await request(`/api/agent/diagnostics${input.projectId?`?projectId=${encodeURIComponent(input.projectId)}`:''}`,options));if(result.projectId!==input.projectId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent diagnostic project mismatch.');return result;},
+  async diagnoseLatest(options:AgentRequestOptions={}){return parsed(agentTaskConnectionTestResponseSchema,await request(`${api}/diagnostics/latest`,options));},
   async policyGet(options:AgentRequestOptions={}){return parsed(policyView,await request(`${api}/policy`,options));},
   async policySet(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(policyInput,value);return parsed(policyView,await request(`${api}/policy`,{...options,method:'PUT',body:input,validate:value=>parsed(policyView,value),recovery:{operation:'policy.set',requestId:input.requestId,lookup:'agent policy lookup'}}));},
   async policyLookup(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.policy.lookup'],value);return parsed(z.object({found:z.boolean(),policy:agentTaskPolicySchema.optional(),readOnly:z.boolean()}).refine(value=>value.found===(value.policy!==undefined)),await request(`${api}/policy/requests/${encodeURIComponent(input.requestId)}`,options));},

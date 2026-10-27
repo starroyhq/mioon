@@ -11,7 +11,7 @@ const codes: Readonly<Record<string, ErrorKey>> = Object.freeze({
   AGENT_TASK_INVALID:'agent.task.error.validation', AGENT_CHAT_VALIDATION:'agent.task.error.validation',
   AGENT_TASK_BUSY:'agent.task.error.busy', AGENT_CHAT_BUSY:'agent.task.error.busy',
   AGENT_TASK_CONSENT_REQUIRED:'agent.task.error.consent', AGENT_AUTHORIZATION_REQUIRED:'agent.task.error.consent',
-  AGENT_TASK_SETTINGS_CHANGED:'agent.task.error.changed', AGENT_TASK_TARGET_CHANGED:'agent.task.error.changed',
+  AGENT_TASK_SETTINGS_CHANGED:'agent.task.error.changed', AGENT_SETTINGS_CONFLICT:'agent.task.error.changed', AGENT_TASK_TARGET_CHANGED:'agent.task.error.changed',
   AGENT_CHAT_CONTEXT_CHANGED:'agent.task.error.changed', AGENT_TASK_TARGET_CLAIMED:'agent.task.error.editing',
   AGENT_TASK_UNKNOWN_RESULT:'agent.task.error.unknown', REQUEST_UNCONFIRMED:'agent.task.error.unknown', OPERATION_PENDING:'agent.task.error.unknown',
   AGENT_TASK_REVISION_CONFLICT:'agent.task.error.changed', REVISION_CONFLICT:'agent.task.error.changed',

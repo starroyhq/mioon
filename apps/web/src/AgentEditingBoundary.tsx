@@ -2,6 +2,8 @@ import React, { createContext, useContext, useLayoutEffect, useRef, useState } f
 import type { ReactNode } from 'react';
 import { Button } from '@mioon/ui/components/button';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
+import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
+import Icon from './icons.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { message } from '../../../packages/i18n/src/index.ts';
 import type { AgentTaskTarget } from '../../../packages/contracts/src/agent-tasks-v2.ts';
@@ -70,10 +72,13 @@ function OwnedEditingBoundary({ projectId, workspaceScope = 'normal', targets, c
   const allowed = state.phase === 'active', busy = ['loading', 'acquiring', 'releasing'].includes(state.phase);
   const admission = () => controller.current?.canEdit() ?? false;
   const reject = (event: React.SyntheticEvent) => { if (!admission()) { event.preventDefault(); event.stopPropagation(); } };
+  // Starting and finishing an edit is one compact control; its hint and the announced status keep the full
+  // explanation. Recovery states need a decision, so they keep the explanatory card.
+  const recovery = state.phase === 'uncertain' || state.phase === 'retained';
   return <EditingContext.Provider value={admission}><div className={`agent-editing-owner${controlsOnly ? ' agent-editing-canvas' : ''}`} data-editing-targets={targets.map(target => `${target.kind}:${target.id}`).join(',')} data-editing-phase={state.phase}>
-    <div className="agent-editing-protection" data-testid="agent-editing-protection"><p role="status">{t(allowed ? 'agent.task.editingActive' : state.phase === 'uncertain' || state.phase === 'retained' ? 'agent.task.editingUnknown' : 'agent.task.editingHint')}</p>
-      {state.phase === 'idle' && <Button type="button" size="sm" data-testid="agent-editing-start" onClick={() => { void controller.current?.acquire(); }}>{t('agent.task.editingStart')}</Button>}
-      {allowed && <Button type="button" size="sm" variant="outline" data-testid="agent-editing-release" disabled={!canRelease()} onClick={() => { if (release.current()) void controller.current?.release(); }}>{t('agent.task.editingRelease')}</Button>}
+    <div className={`agent-editing-protection${recovery ? '' : ' is-compact'}`} data-testid="agent-editing-protection"><p role="status" className={recovery ? undefined : 'sr-only'}>{t(allowed ? 'agent.task.editingActive' : recovery ? 'agent.task.editingUnknown' : 'agent.task.editingHint')}</p>
+      {state.phase === 'idle' && <WorkbenchTooltip content={t('agent.task.editingHint')}><Button type="button" size="sm" variant="outline" data-testid="agent-editing-start" aria-label={t('agent.task.editingStart')} onClick={() => { void controller.current?.acquire(); }}><Icon name="pencil" size={12} />{t('agent.task.editingStartShort')}</Button></WorkbenchTooltip>}
+      {allowed && <WorkbenchTooltip content={t('agent.task.editingActive')}><Button type="button" size="sm" variant="outline" data-testid="agent-editing-release" disabled={!canRelease()} onClick={() => { if (release.current()) void controller.current?.release(); }}>{t('agent.task.editingRelease')}</Button></WorkbenchTooltip>}
       {state.phase === 'retained' && <Button type="button" size="sm" variant="outline" data-testid="agent-editing-restore" onClick={()=>{void controller.current?.restore();}}>{t('agent.task.editingRestore')}</Button>}
       {state.phase === 'retained' && onDiscard && !canRelease() && <Button type="button" size="sm" variant="outline" data-testid="agent-editing-discard" onClick={()=>{void(async()=>{const action=discard.current,owner=controller.current;if(action&&await confirm(message('agent.task.editingDiscardConfirm'))&&owner===controller.current)await action();})();}}>{t('agent.task.editingDiscard')}</Button>}
       {state.phase === 'retained' && <Button type="button" size="sm" variant="outline" data-testid="agent-editing-resolve" onClick={() => { void (async () => { if (release.current() && await confirm(message('agent.task.editingResolve')) && release.current()) await controller.current?.resolve(); })(); }}>{t('agent.task.editingResolve')}</Button>}

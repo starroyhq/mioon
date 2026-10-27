@@ -44,6 +44,8 @@ async function fixture({initialReadFailure = false}: {initialReadFailure?: boole
     if (id.includes('I18nProvider')) return {useI18n: () => ({t: (key: string) => key})};
     if (id.includes('workbench-confirm')) return {useConfirmation: () => async () => false};
     if (id.includes('/button')) return {Button: 'button'};
+    if (id.includes('workbench-tooltip')) return {WorkbenchTooltip: 'tooltip'};
+    if (id === './icons.tsx') return {__esModule: true, default: 'Icon'};
     if (id.includes('packages/i18n')) return {message: (key: string) => ({key})};
     if (id.endsWith('.css')) return {};
     assert.fail(`Unexpected boundary dependency ${id}`);

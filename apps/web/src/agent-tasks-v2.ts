@@ -1,5 +1,5 @@
 import { agentTaskPolicySchema, agentTaskSnapshotSchema, agentTaskRunSchema, agentTaskEventSchema, agentTaskReceiptSchema, agentTaskLocaleSchema, agentTaskHistoryPageSchema, agentTaskConversationPageSchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
-import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt, AgentTaskLocale, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskDiagnostic, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt, AgentTaskLocale, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { agentAuthorizationReceiptSchema, safeAgentAuthorizationSnapshot } from './agent-authorization-state.ts';
 import type { AgentAuthorizationSnapshot } from '../../../packages/contracts/src/agent-authorization.ts';
 import { deriveAgentEndpoint, safeAgentSettings } from './agent-settings.ts';
@@ -18,7 +18,7 @@ export interface AgentTaskClient {
   history(projectId:string,cursor?:string|null):Promise<AgentTaskHistoryPage>;
   conversation(projectId:string,conversationId:string,cursor?:string|null):Promise<AgentTaskConversationPage>;
   read(projectId: string, runId: string): Promise<AgentTaskSnapshot>;
-  send(projectId: string, input: { requestId: string; text: string; expectedSettingsRevision: number; locale?: AgentTaskLocale; uploads?: string[]; conversationId?:string }): Promise<AgentTaskSnapshot>;
+  send(projectId: string, input: { requestId: string; text: string; expectedSettingsRevision: number; locale?: AgentTaskLocale; uploads?: string[]; conversationId?:string; diagnostic?: AgentTaskDiagnostic }): Promise<AgentTaskSnapshot>;
   upload(projectId: string, input: {requestId: string; name: string; mimeType: string; dataBase64: string}): Promise<AgentTaskUpload>;
   action(projectId: string, input: AgentTaskControlInput): Promise<AgentTaskSnapshot>;
   lookup(projectId: string, pending: AgentTaskPending): Promise<AgentTaskLookup>;

@@ -17,6 +17,7 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent settings secret set/remove` | `{expectedRevision, configuration}`；set 使用下面的安全输入，remove 显式移除 |
 | `agent doctor` | `{projectId?}`；连接本地后端，读取公开设置、策略、授权和目录检查摘要，不发送模型请求 |
 | `agent diagnose --live` | 与 send 相同，必须包含 `diagnostic`；显式允许诊断模型请求 |
+| `agent diagnose latest` | `{}`；只读返回全工作区最近一次文本诊断（设置页的测试连接）的状态、时间、协议、地址、模型和失败代码；不发送模型请求，不返回测试文字、回复或密钥 |
 | `agent policy get/set/lookup` | get 为 `{}`；set 为 `{requestId, expectedRevision, stepLimit, modes, acknowledgePaid?}`；lookup 为 `{requestId}` |
 | `agent task list/history` | `{projectId}`；history 按对话返回 `conversations`，另接受原样返回的 `cursor`，不含诊断运行 |
 | `agent task conversation` | `{projectId, conversationId, cursor?}`；升序分页读取本对话轮次摘要，逐轮详情使用 status |

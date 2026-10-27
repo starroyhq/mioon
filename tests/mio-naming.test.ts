@@ -28,7 +28,7 @@ test('all existing run states have localized labels, including preparation befor
 });
 
 test('Mio wording distinguishes execution from the background task center and retains safety notices', () => {
-  const taskCenterKeys = new Set(['agent.task.waitReconcile', 'agent.task.existingRequests']);
+  const taskCenterKeys = new Set(['agent.task.waitReconcile', 'agent.task.paidReconcile', 'agent.task.existingRequests']);
   for (const [key, entry] of Object.entries(agentTaskMessages)) {
     if (taskCenterKeys.has(key)) continue;
     for (const locale of LOCALES) {
@@ -41,6 +41,7 @@ test('Mio wording distinguishes execution from the background task center and re
     assert.ok(translate(locale, 'agent.task.editingDiscardConfirm').includes('Mio'));
   }
   assert.match(translate('zh-Hans', 'agent.task.waitReconcile'), /任务中心/);
+  assert.match(translate('zh-Hans', 'agent.task.paidReconcile'), /任务中心/);
   assert.match(translate('en', 'redesign.tasks.search'), /tasks/);
   assert.deepEqual(validateCatalogs(agentTaskMessages), []);
 });

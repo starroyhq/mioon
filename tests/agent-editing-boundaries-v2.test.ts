@@ -7,7 +7,7 @@ import {transformSync} from 'esbuild';
 import * as protection from '../apps/web/src/agent-editing-protection.ts';
 import {AGENT_TASK_DISPLAY_TARGET_KINDS,agentTaskEditingSchema, type AgentTaskTarget} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {taskDisplayTargets} from '../apps/web/src/agent-task-presentation.ts';
-import {i18nTestModule} from './helpers/i18n.ts';
+import {i18nTestModule,translate} from './helpers/i18n.ts';
 
 const nodes=(value: UiTree): UiElement[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
 const text=(value: UiTree): string=>Array.isArray(value)?value.map(text).join(' '):value&&typeof value==='object'?text(value.props?.children):String(value??'');
@@ -33,6 +33,8 @@ function harness(){
     if(id.includes('workbench-confirm'))return{useConfirmation:()=>(value: unknown)=>{confirmations.push(value);return confirm(value);}};
     if(id.includes('workbench-controls'))return{WorkbenchButton:'button'};
     if(id.includes('/button'))return{Button:'button'};
+    if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};
+    if(id==='./icons.tsx')return{__esModule:true,default:'Icon'};
     if(id.includes('packages/i18n'))return{message:(key: unknown)=>({key})};
     if(id.includes('agent-tasks-v2'))return{agentTaskEditingSchema,AGENT_TASK_DISPLAY_TARGET_KINDS};
     if(id.endsWith('.css'))return{};
@@ -42,8 +44,9 @@ function harness(){
   const previous=globalThis.sessionStorage;globalThis.sessionStorage=({getItem:(key:string)=>storage.get(key)??null,setItem:(key:string,value:string)=>{if(storageWriteFailure)throw Error('Local receipt unavailable');storage.set(key,value);},removeItem:(key:string)=>storage.delete(key)} as unknown as Storage);
   const nativeCloseRegistry={register:(slot: string)=>{const registration: CloseRegistration={slot,states:[],released:false};registrations.push(registration);return{update:(state: import('../apps/web/src/native-close-sources.ts').NativeCloseSourceState)=>registration.states.push({...state}),release:()=>{registration.released=true;}};}};
   const render=()=>{cursor=0;effects=[];const tree=retained.default!({projectId,visible,readOnly,nativeCloseRegistry,recovery,targetName:()=> 'Opening scene'});for(const at of effects){slots[at].cleanup?.();slots[at].cleanup=slots[at].fn!();}return tree;};
+  const renderBoundary=(props: Record<string,unknown>)=>{cursor=0;effects=[];const outer=boundary.default!(props as never) as unknown as UiElement;const tree=(outer.type as unknown as (props: UiProps)=>UiTree)(outer.props);for(const at of effects){slots[at].cleanup?.();slots[at].cleanup=slots[at].fn!();}return tree;};
   const pending=<Patch extends object = {}>(patch: Patch={} as Patch)=>({requestId:crypto.randomUUID(),projectId:initialProjectId,ownerId:foreignOwner,generation:123,sequence:1,action:'resolve',targets:[target],...patch});
-  return{initialProjectId,target,client,updates,reads,lookups,confirmations,registrations,boundary,render,storage,foreignOwner,pending,
+  return{initialProjectId,target,client,updates,reads,lookups,confirmations,registrations,boundary,render,renderBoundary,storage,foreignOwner,pending,
     key:()=> 'mioon.agent-editing-recovery.'+initialProjectId,
     closeState:()=>registrations.at(-1)?.states.at(-1),
     setVisible:(value: boolean)=>{visible=value;},setReadOnly:(value: boolean)=>{readOnly=value;},setProject:(value: string)=>{projectId=value;},setRecovery:(value: unknown)=>{recovery=value;},setConfirm:(value: ()=>Promise<unknown>)=>{confirm=value;},setRead:(value: (...args:unknown[])=>unknown)=>{readHandler=value;},setLookup:(value: (...args:unknown[])=>unknown)=>{lookupHandler=value;},setUpdate:(value: (...args:unknown[])=>unknown)=>{updateHandler=value;},setStorageWriteFailure:(value: boolean)=>{storageWriteFailure=value;},
@@ -54,6 +57,25 @@ function harness(){
 const resolveButton=(tree: UiTree)=>nodes(nodes(tree).find((node)=>node.type==='article')).find((node)=>node.type==='button');
 const reloadButton=(tree: UiTree)=>nodes(tree).filter((node)=>node.type==='button').at(-1);
 
+test('the editing boundary is one compact Edit control whose name, hint and announced status keep the explanation',async()=>{
+  const h=harness();try{
+    const props={projectId:h.initialProjectId,targets:[h.target],canRelease:()=>true,children:'Protected fields'},find=(tree: UiTree,id: string)=>nodes(tree).find((node)=>node.props?.['data-testid']===id);
+    h.renderBoundary(props);await flush();let tree=h.renderBoundary(props);
+    const card=find(tree,'agent-editing-protection')!,status=nodes(card).find((node)=>node.props?.role==='status')!;
+    assert.match(String(card.props.className),/is-compact/);assert.equal(status.props.className,'sr-only');assert.equal(text(status),translate('zh-Hans','agent.task.editingHint'));
+    const start=find(tree,'agent-editing-start')!;
+    assert.equal(start.props['aria-label'],translate('zh-Hans','agent.task.editingStart'));assert.match(text(start),new RegExp(translate('zh-Hans','agent.task.editingStartShort')));
+    assert.equal(nodes(tree).find((node)=>node.type==='tooltip')!.props.content,translate('zh-Hans','agent.task.editingHint'));
+    assert.equal(nodes(tree).find((node)=>node.type==='fieldset')!.props.disabled,true,'fields stay locked until the edit starts');
+    await start.props.onClick();await flush();tree=h.renderBoundary(props);
+    assert.ok(find(tree,'agent-editing-release'));assert.equal(nodes(tree).find((node)=>node.type==='fieldset')!.props.disabled,false);
+    assert.equal(nodes(tree).find((node)=>node.type==='tooltip')!.props.content,translate('zh-Hans','agent.task.editingActive'));
+    // A state that needs a decision keeps the explanatory card.
+    h.controller().invalidate();tree=h.renderBoundary(props);
+    const full=find(tree,'agent-editing-protection')!;
+    assert.doesNotMatch(String(full.props.className),/is-compact/);assert.equal(nodes(full).find((node)=>node.props?.role==='status')!.props.className,undefined);assert.ok(find(tree,'agent-editing-query'));
+  }finally{h.cleanup();}
+});
 test('automatic read leaves no empty recovery card and never dispatches a write',async()=>{
   const h=harness();try{assert.equal(h.render(),null);await flush();assert.equal(h.render(),null);assert.equal(h.reads.length,1);assert.equal(h.updates.length,0);assert.equal(h.closeState()!.blocked,false);}finally{h.cleanup();}
 });

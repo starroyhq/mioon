@@ -10,7 +10,7 @@ import {startServer} from '../apps/server/src/index.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskConnectionTestResponseSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 
@@ -213,4 +213,20 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const single=await f.request(`${f.prefix}/${failed.run.id}/actions`,'POST',{requestId:randomUUID(),expectedRevision:fresh.run.revision,action:'undo_change',changeId:kept.id});assert.equal(single.status,409);assert.ok(object(single.error));assert.equal(single.error.code,'AGENT_TASK_TARGET_CHANGED');
  const undo={projectId:f.projectId,runId:failed.run.id,requestId:randomUUID(),expectedRevision:fresh.run.revision,undoChangeIds:fresh.changes.filter(change=>change.undoDisposition==='undo').map(change=>change.id)};const reverted=await cliControl(f.server.url,f.server.token,'undo-all',undo);assert.equal(reverted.run.status,'reverted');assert.deepEqual(reverted.changes.map(change=>change.status),['superseded','reverted']);assert.deepEqual((await cliSnapshot(f.server.url,f.server.token,f.projectId,failed.run.id)).changes,reverted.changes);assert.equal(models,3);
  const inspect=await f.request('/api/rpc','POST',{operation:'shot.inspect',input:{projectId:f.projectId}});assert.equal(inspect.status,200);assert.ok(object(inspect.data)&&Array.isArray(inspect.data.items));const retained=inspect.data.items.find(item=>object(item)&&item.id===shotId);assert.ok(object(retained));assert.equal(retained.prompt,'User keeps this content');assert.equal(inspect.data.items.some(item=>object(item)&&item.id===removed.targets[0]!.id),false);
+});
+test('the latest connection test reads the same newest text diagnostic over HTTP and the CLI, without its text or key',async t=>{
+ const textOnly:TaskGateway=async function*(){yield {type:'done',output:{text:'OK',toolCalls:[],providerOutput:{role:'assistant',content:'OK'} as AgentTaskJson}};};
+ const f=await fixture(t,'chat_completions',textOnly),route='/api/agent/tasks/v2/diagnostics/latest';
+ const empty=await f.request(route);assert.equal(empty.status,200);assert.deepEqual(empty.data,{test:null});
+ assert.equal((await f.request(route,'POST',{})).status,405);assert.equal((await f.request(`${route}?projectId=${f.projectId}`)).status,400);assert.equal((await f.request(route,'GET',undefined,false)).status,401);
+ await f.authorize();
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'PRIVATE_CONNECTION_TEST_TEXT',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'text'}});assert.equal(sent.status,200);
+ const done=await f.settle((sent.data as AgentTaskSnapshot).run.id,['completed','failed','stopped']);assert.equal(done.run.status,'completed');
+ const latest=agentTaskConnectionTestResponseSchema.parse((await f.request(route)).data);
+ assert.equal(latest.test?.runId,done.run.id);assert.equal(latest.test?.projectId,f.projectId);assert.equal(latest.test?.status,'completed');
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','diagnose','latest','--input','{}'],{env:{...process.env,MIOON_BASE_URL:f.server.url,MIOON_TOKEN:f.server.token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
+ let stdout='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});
+ const code=await new Promise<number|null>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI read timed out'));},15000);child.once('error',reject);child.once('close',value=>{clearTimeout(timer);resolve(value);});});
+ assert.equal(code,0);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);assert.deepEqual(agentTaskConnectionTestResponseSchema.parse(value.data),latest);
+ for(const text of [JSON.stringify(latest),stdout])assert.doesNotMatch(text,/PRIVATE_CONNECTION_TEST_TEXT|SYNTHETIC_TASK_HTTP_KEY/u);
 });

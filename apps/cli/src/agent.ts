@@ -63,6 +63,7 @@ export async function runAgentCommand(operation:string,input:Record<string,unkno
   case 'agent.settings.secret.remove':return client.settingsPut(input,{action:'remove'},request);
   case 'agent.doctor':return client.doctor(input,request);
   case 'agent.diagnose':parseAgentInput(AGENT_COMMAND_SCHEMAS[operation],input);return client.send(input,request);
+  case 'agent.diagnose.latest':parseAgentInput(AGENT_COMMAND_SCHEMAS[operation],input);return client.diagnoseLatest(request);
   case 'agent.policy.get':parseAgentInput(AGENT_COMMAND_SCHEMAS[operation],input);return client.policyGet(request);
   case 'agent.policy.set':return client.policySet(input,request);
   case 'agent.policy.lookup':return client.policyLookup(input,request);

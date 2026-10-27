@@ -72,9 +72,9 @@ test('actual full shared catalog survives the reproduced version-list descriptio
 const textSites = {
   // Agent CLI JSON/progress and public secret-test diagnostics are UTF-8 text.
   'tests/cli-agent.test.mjs': 2,
-  // The v2 HTTP test exercises real CLI snapshots and controls. Each helper's
-  // stdout JSON and stderr diagnostics decode continuously before collection.
-  'tests/agent-task-http-v2.test.ts': 6,
+  // The v2 HTTP test exercises real CLI snapshots, controls and the latest connection
+  // test. Each helper's stdout JSON and stderr diagnostics decode continuously before collection.
+  'tests/agent-task-http-v2.test.ts': 7,
   // Native Anthropic transport checks collect CLI JSON and diagnostics as UTF-8.
   'tests/agent-anthropic-transports.test.ts': 2,
   'tests/headless-agent-secret-public-native.test.mjs': 2,

@@ -513,6 +513,15 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(input.requestId!==step.id||run.projectId!==prepared.projectId||step.runId!==run.id||step.status!=='unknown'||step.result!==undefined||step.toolCall?.name!==list().find(tool=>tool.operation===prepared.operation)?.name)return null;
   if(journal.snapshot(run.id).changes.some(change=>change.stepId===step.id))return null;
   if(prepared.risk==='read_only'&&prepared.operation!=='task.wait')return {outcome:'not_applied',reason:'read_only'};
+  if(prepared.risk==='paid'){
+   // Only a worker dispatching a queued job or image task reaches a provider, and dispatch records the step's cost.
+   // Acceptance commits that record, its request receipt and the v2 job origin in one transaction; with none of
+   // them nothing was accepted, sent or billed. Any present record keeps the step for provider reconciliation.
+   const receipts=prepared.operation==='generation.submit'?["SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?"]:prepared.operation==='image.generate'?['SELECT 1 FROM image_requests WHERE requestId=?','SELECT 1 FROM image_tasks WHERE requestId=?']:null;
+   if(!receipts||step.cost!==undefined&&step.cost!=='pending')return null;
+   if(receipts.some(sql=>db.prepare(sql).get(input.requestId))||db.prepare('SELECT 1 FROM agent_task_job_origins_v2 WHERE runId=? AND stepId=?').get(input.runId,input.stepId))return null;
+   return {outcome:'not_applied',reason:'atomic_receipt_absent'};
+  }
   if(prepared.risk!=='local_reversible'||!reversibleOperations.includes(prepared.operation as typeof reversibleOperations[number]))return null;
   // These operations have no effects outside their domain transaction. The
   // immutable domain receipt and v2 completion either both committed or neither
