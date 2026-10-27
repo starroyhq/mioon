@@ -68,7 +68,7 @@ export async function collectReleaseBundle(directory: string, expectedSha: strin
     expectedNames.add(asset.name);
     expectedNames.add(manifestName(asset));
   }
-  if (assets.length !== 3 || !version) throw new Error('Exactly three release targets are required');
+  if (assets.length !== 2 || !version) throw new Error('Exactly two macOS release targets are required');
   for (const name of byName.keys()) if (!expectedNames.has(name)) throw new Error(`Unexpected release input: ${name}`);
   assets.sort((a, b) => a.name.localeCompare(b.name, 'en'));
   const manifest = {schema: 1 as const, sourceSha: sha, version, assets};

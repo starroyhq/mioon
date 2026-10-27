@@ -97,5 +97,16 @@ test('both current package inspectors use delivered tray validation while the fr
   await run(true, verify, '/synthetic/historical.asar', asar, path, '/synthetic/root'); assert.equal(calls.length, 0);
   await run(false, verify, '/synthetic/current.asar', asar, path, '/synthetic/root');
   assert.deepEqual(calls, [['/synthetic/current.asar', asar, '/synthetic/root/apps/desktop/build']]);
-  assert.match(await readSource('../.github/scripts/inspect-desktop.ts'), /await verifyPackagedTrayResources\(archive, asar, path\.join\(root, 'apps\/desktop\/build'\)\)/u);
+  const ci = await readSource('../.github/scripts/inspect-desktop.ts');
+  const phaseGuard = ci.match(/^  await run\('tray-resources', \(\) => verifyPackagedTrayResources\(archive, asar, path\.join\(root, 'apps\/desktop\/build'\)\)\);$/mu)?.[0];
+  assert.ok(phaseGuard);
+  const runCI = Function('run', 'verifyPackagedTrayResources', 'archive', 'asar', 'path', 'root', `return (async () => { ${phaseGuard} })();`) as
+    (phase: (name: string, action: () => Promise<void>) => Promise<void>, verify: (...args: unknown[]) => Promise<void>, archive: string, archiveAPI: unknown, paths: typeof path, root: string) => Promise<void>;
+  const phases: string[] = []; calls.length = 0;
+  const phase = async (name: string, action: () => Promise<void>) => { phases.push(name); await action(); };
+  await runCI(phase, verify, '/synthetic/current.asar', asar, path, '/synthetic/root');
+  assert.deepEqual(phases, ['tray-resources']);
+  assert.deepEqual(calls, [['/synthetic/current.asar', asar, '/synthetic/root/apps/desktop/build']]);
+  const failure = new Error('synthetic tray verification failure');
+  await assert.rejects(runCI(phase, async () => { throw failure; }, '/synthetic/current.asar', asar, path, '/synthetic/root'), failure);
 });

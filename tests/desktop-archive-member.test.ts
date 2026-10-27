@@ -8,6 +8,7 @@ import {createRequire} from 'node:module';
 import {execFile, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {finished} from 'node:stream/promises';
+import {gzipSync} from 'node:zlib';
 import type {Writable} from 'node:stream';
 import {hashPackageFile, verifyArchiveMember, PACKAGE_FILE_LIMIT} from '../apps/desktop/archive-member.ts';
 
@@ -48,7 +49,15 @@ test('same-sized changed member, shorter member and longer member remain rejecte
 test('corrupted gzip, missing member and duplicate member never validate as the delivered file', async t => {
   const f = await fixture(t);
   await assert.rejects(verifyArchiveMember(f.tarball, `${base}/missing.asar`, f.native), /ARCHIVE_EXTRACTION_FAILED/);
-  await f.pack([member, member]);
+  // GNU tar turns repeated filesystem inputs in one invocation into a hardlink.
+  // Separate create/append processes guarantee two regular payloads on both tar implementations.
+  const duplicate = path.join(f.directory, 'duplicate.tar');
+  await exec('tar', ['-cf', duplicate, '-C', f.input, member], {timeout:30000,maxBuffer:64*1024});
+  await exec('tar', ['-rf', duplicate, '-C', f.input, member], {timeout:30000,maxBuffer:64*1024});
+  const {stdout: listing} = await exec('tar', ['-tvf', duplicate], {timeout:30000,maxBuffer:64*1024});
+  const entries = listing.trim().split('\n');
+  assert.equal(entries.length,2); assert.ok(entries.every(line => line.startsWith('-')), 'duplicate fixture contains two regular members');
+  await writeFile(f.tarball, gzipSync(await readFile(duplicate)));
   await assert.rejects(verifyArchiveMember(f.tarball, member, f.native), /ARCHIVE_MEMBER_LIMIT_EXCEEDED/);
   await writeFile(f.tarball, Buffer.from('not a gzip archive'));
   await assert.rejects(verifyArchiveMember(f.tarball, member, f.native), /ARCHIVE_EXTRACTION_FAILED/);

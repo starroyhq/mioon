@@ -56,11 +56,18 @@ export async function report(file: string, value: unknown): Promise<void> {
   await writeFile(file, JSON.stringify(value, null, 2) + '\n', {mode: 0o600});
 }
 export function isMain(moduleUrl: string): boolean { return Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(moduleUrl); }
-export function mediaCapabilities(platform: TargetPlatform, filters: string, encoders: string): {filters: Record<string, boolean>; encoders: Record<string, boolean>} {
-  const requiredFilters = platform === 'linux' ? ['drawtext', 'subtitles', 'zscale', 'loudnorm', 'ebur128'] : [];
-  const requiredEncoders = platform === 'linux' ? ['libx264', 'aac', 'libwebp', 'libwebp_anim'] : ['libx264', 'aac'];
-  const has = (text: string, name: string): boolean => new RegExp(`^\\s*[A-Z.]{3,6}\\s+${name}\\s`, 'm').test(text);
-  return {filters: Object.fromEntries(requiredFilters.map(name => [name, has(filters, name)])), encoders: Object.fromEntries(requiredEncoders.map(name => [name, has(encoders, name)]))};
+export function mediaCapabilities(_platform: TargetPlatform, filters: string, encoders: string): {filters: Record<string, boolean>; encoders: Record<string, boolean>} {
+  const requiredFilters = ['drawtext', 'subtitles', 'zscale', 'loudnorm', 'ebur128'];
+  const requiredEncoders = ['libx264', 'aac', 'libwebp', 'libwebp_anim'];
+  const has = (text: string, name: string, columns: '2,3' | '6'): boolean => new RegExp(`^[\\t ]*[A-Z.]{${columns}}[\\t ]+${name}[\\t ]`, 'm').test(text);
+  return {filters: Object.fromEntries(requiredFilters.map(name => [name, has(filters, name, '2,3')])), encoders: Object.fromEntries(requiredEncoders.map(name => [name, has(encoders, name, '6')]))};
+}
+export class MediaCapabilityFailure extends CheckFailure {
+  readonly capabilities: ReturnType<typeof mediaCapabilities>;
+  constructor(capabilities: ReturnType<typeof mediaCapabilities>) { super('REQUIRED_MEDIA_CAPABILITY_MISSING'); this.capabilities = capabilities; }
+}
+export function mediaFailureReport(error: unknown): {ok: false; error: string; capabilities?: ReturnType<typeof mediaCapabilities>} {
+  return {ok: false, error: safeFailure(error), ...(error instanceof MediaCapabilityFailure ? {capabilities: error.capabilities} : {})};
 }
 export interface MediaCliCapabilities {filterArgumentFromFile: true; complexFilterArgumentFromFile: true; fpsModePassthrough: true; pngEncode: true; pngDecode: true}
 export async function probeMediaCli(ffmpeg: string, {env = cleanEnvironment(), temporaryRoot = tmpdir(), execute = command}: {
@@ -92,7 +99,7 @@ export async function inspectMedia(platform: TargetPlatform): Promise<Record<str
   const filters = await command(ffmpeg, ['-hide_banner', '-filters'], 'FFMPEG_FILTER_PROBE_FAILED');
   const encoders = await command(ffmpeg, ['-hide_banner', '-encoders'], 'FFMPEG_ENCODER_PROBE_FAILED');
   const capabilities = mediaCapabilities(platform, filters, encoders);
-  if (Object.values(capabilities.filters).includes(false) || Object.values(capabilities.encoders).includes(false)) fail('REQUIRED_MEDIA_CAPABILITY_MISSING');
+  if (Object.values(capabilities.filters).includes(false) || Object.values(capabilities.encoders).includes(false)) throw new MediaCapabilityFailure(capabilities);
   const cliCapabilities = await probeMediaCli(ffmpeg);
   if (platform === 'linux' && !(await command('tar', ['--version'], 'GNU_TAR_PROBE_FAILED')).startsWith('tar (GNU tar)')) fail('GNU_TAR_REQUIRED');
   return {ok: true, platform, tools: {ffmpeg, ffprobe}, versions: {ffmpeg: version.split('\n')[0], ffprobe: probeVersion.split('\n')[0]}, capabilities, cliCapabilities, gnuTar: platform === 'linux'};
@@ -103,7 +110,7 @@ if (isMain(import.meta.url)) {
     const args = argumentsFor(process.argv.slice(2), ['platform', 'output']); output = args.output;
     await report(output, await inspectMedia(targetPlatform(args.platform)));
   } catch (error) {
-    if (output) await report(output, {ok: false, error: safeFailure(error)});
+    if (output) await report(output, mediaFailureReport(error));
     console.error(safeFailure(error)); process.exitCode = 1;
   }
 }

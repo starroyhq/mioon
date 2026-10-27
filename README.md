@@ -69,7 +69,7 @@ Mio 是工作台中的创作 Agent，能够读取已授权的项目内容，通�
 
 ## 开始试用
 
-桌面版请从 [v0.1.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.1.0)选择适合电脑的安装包，按[安装与首次运行指南](docs/INSTALL.zh-CN.md)开始。目标平台为 **macOS Apple Silicon、macOS Intel 和 Linux x64**，Windows 桌面版暂不支持。**以发布页实际公开的安装附件为准；若尚未公开，说明本轮发布仍在准备中**
+桌面版请从 [v0.1.0 发布页](https://github.com/starroyhq/mioon/releases/tag/v0.1.0)选择适合电脑的安装包，按[安装与首次运行指南](docs/INSTALL.zh-CN.md)开始。本次提供 **macOS Apple Silicon 和 macOS Intel** 安装包，Linux 与 Windows 桌面包暂不发布。**以发布页实际公开的安装附件为准；若尚未公开，说明本轮发布仍在准备中**
 
 安装包不需要 Node.js 或 pnpm，但仍需自己安装 **FFmpeg 和 ffprobe**，并在首次运行时选择它们。Mioon 目前没有自动更新，更新时需重新下载。功能与验证范围见 [v0.1.0 说明](docs/releases/v0.1.0.zh-CN.md)
 

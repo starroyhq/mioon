@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 import desktopIdentity from '../../apps/desktop/identity.ts';
 import {verifySubtitleResources} from '../../apps/desktop/subtitle-resources.ts';
 import {verifyPackagedTrayResources} from '../../apps/desktop/tray-resources.ts';
+import {readBuildMetadata} from '../../apps/desktop/build-metadata.ts';
+import {readMacRuntimeNoticeProvenance, verifyMacRuntimeNoticeFiles} from '../../apps/desktop/runtime-notices.ts';
 import {argumentsFor, CheckFailure, command, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {TargetArch, TargetPlatform} from './media-environment.ts';
 
@@ -15,6 +17,24 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 interface Asar {listPackage(file: string): string[]; statFile(file: string, entry: string, follow: false): {link?: string; files?: unknown}; extractFile(file: string, entry: string): Buffer}
 interface Fuses {getCurrentFuseWire(file: string): Promise<Record<number, number>>; FuseV1Options: Record<string, number>}
 interface Inspection {ok: boolean; platform: TargetPlatform; arch: TargetArch; checks: Array<{name: string; ok: boolean}>; phase: string; executable?: string; packagePath?: string; mountPoint?: string; extractRoot?: string; error?: string; cleanupError?: string}
+const MAC_CHECK_ERRORS = {
+  'bundle-executable': 'MAC_BUNDLE_EXECUTABLE_FAILED', 'bundle-architecture': 'MAC_BUNDLE_ARCHITECTURE_FAILED',
+  'bundle-identity': 'MAC_BUNDLE_IDENTITY_FAILED', 'asar-content': 'ASAR_STAGING_MISMATCH',
+  'asar-metadata': 'ASAR_METADATA_MISMATCH', 'asar-required-files': 'ASAR_REQUIRED_FILES_MISSING',
+  'tray-resources': 'TRAY_RESOURCES_INVALID', 'subtitle-resources': 'SUBTITLE_RESOURCES_INVALID',
+  fuses: 'FUSE_INSPECTION_FAILED', 'runtime-notice-source': 'RUNTIME_NOTICE_PROVENANCE_INVALID',
+  'runtime-notice-bytes': 'ELECTRON_NOTICE_MISMATCH', codesign: 'CODESIGN_VERIFICATION_FAILED',
+  'signing-identity': 'SIGNING_IDENTITY_MISMATCH', 'app-staple': 'APP_STAPLE_INVALID', 'app-gatekeeper': 'GATEKEEPER_REJECTED'
+} as const;
+type MacScope = 'staged-mac-app' | 'mounted-dmg-app';
+type MacCheck = keyof typeof MAC_CHECK_ERRORS;
+type MacPhase = `${MacScope}:${MacCheck}`;
+type MacCheckRunner = <T>(name: MacCheck, action: () => Promise<T>) => Promise<T>;
+export async function runMacInspectionCheck<T>(scope: MacScope, name: MacCheck, action: () => Promise<T>, onPhase?: (phase: MacPhase) => void): Promise<T> {
+  onPhase?.(`${scope}:${name}`);
+  try { return await action(); }
+  catch (error) { if (error instanceof CheckFailure) throw error; fail(MAC_CHECK_ERRORS[name]); }
+}
 class DesktopInspectionFailure extends CheckFailure {
   readonly inspection: Inspection;
   constructor(inspection: Inspection) { super(inspection.error ?? 'PACKAGE_INSPECTION_FAILED'); this.inspection = inspection; }
@@ -80,51 +100,68 @@ async function treeDigest(directory: string): Promise<string> {
   }
   await visit(''); return hash.digest('hex');
 }
-async function inspectAsar(resources: string): Promise<void> {
-  const {asar} = dependencies(), archive = path.join(resources, 'app.asar'), files = asar.listPackage(archive);
-  if (files.length < 10) fail('ASAR_CONTENT_MISSING');
-  const allowed = new Set(['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web', 'licenses', 'icons']);
-  for (const raw of files) {
-    const entry = raw.replace(/^\//, '');
-    if (!allowed.has(entry.split('/')[0]) || entry.split('/').some(part => part === '..' || part === '.') || /(?:^|\/)(?:data|workspace|media|\.env|access-token|mcp-token|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(entry)) fail('ASAR_UNEXPECTED_CONTENT');
-    const stat = asar.statFile(archive, entry, false);
-    if (stat.link) fail('ASAR_SYMLINK_REJECTED');
-    if (!stat.files) assert.deepEqual(asar.extractFile(archive, entry), await readFile(path.join(root, 'apps/desktop/build', entry)), 'ASAR_STAGING_MISMATCH');
-  }
-  const metadata = JSON.parse(asar.extractFile(archive, 'package.json').toString()) as {name?: unknown; version?: unknown; dependencies?: unknown; mioonDesktop?: unknown};
-  const rootMetadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as {version: string};
-  assert.equal(metadata.name, 'mioon-desktop'); assert.equal(metadata.version, rootMetadata.version);
-  assert.deepEqual(metadata.dependencies, {}); assert.deepEqual(metadata.mioonDesktop, desktopIdentity.identityForChannel('production'));
-  for (const name of ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) asar.extractFile(archive, name);
-  await verifyPackagedTrayResources(archive, asar, path.join(root, 'apps/desktop/build'));
-  await verifySubtitleResources(path.join(resources, 'subtitles'));
+async function inspectAsar(resources: string, run: MacCheckRunner = async (_name, action) => action()): Promise<void> {
+  const asar = await run('asar-content', async () => dependencies().asar), archive = path.join(resources, 'app.asar');
+  await run('asar-content', async () => {
+    const files = asar.listPackage(archive);
+    if (files.length < 10) fail('ASAR_CONTENT_MISSING');
+    const allowed = new Set(['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web', 'licenses', 'icons']);
+    for (const raw of files) {
+      const entry = raw.replace(/^\//, '');
+      if (!allowed.has(entry.split('/')[0]) || entry.split('/').some(part => part === '..' || part === '.') || /(?:^|\/)(?:data|workspace|media|\.env|access-token|mcp-token|mcp-connection\.json|workbench\.sqlite)(?:\/|$)/.test(entry)) fail('ASAR_UNEXPECTED_CONTENT');
+      const stat = asar.statFile(archive, entry, false);
+      if (stat.link) fail('ASAR_SYMLINK_REJECTED');
+      if (!stat.files) assert.deepEqual(asar.extractFile(archive, entry), await readFile(path.join(root, 'apps/desktop/build', entry)), 'ASAR_STAGING_MISMATCH');
+    }
+  });
+  await run('asar-metadata', async () => {
+    const metadata = JSON.parse(asar.extractFile(archive, 'package.json').toString()) as {name?: unknown; version?: unknown; dependencies?: unknown; mioonDesktop?: unknown};
+    const rootMetadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as {version: string};
+    assert.equal(metadata.name, 'mioon-desktop'); assert.equal(metadata.version, rootMetadata.version);
+    assert.deepEqual(metadata.dependencies, {}); assert.deepEqual(metadata.mioonDesktop, desktopIdentity.identityForChannel('production'));
+  });
+  await run('asar-required-files', async () => {
+    for (const name of ['main.cjs', 'backend.cjs', 'preload.cjs', 'package.json', 'web/index.html', 'icons/icon.png', 'licenses/shadcn-ui-LICENSE.md']) asar.extractFile(archive, name);
+  });
+  await run('tray-resources', () => verifyPackagedTrayResources(archive, asar, path.join(root, 'apps/desktop/build')));
+  await run('subtitle-resources', () => verifySubtitleResources(path.join(resources, 'subtitles')));
 }
 async function inspectFuses(binary: string): Promise<void> {
   const {fuses} = dependencies(), wire = await fuses.getCurrentFuseWire(binary);
   for (const name of ['RunAsNode', 'EnableNodeOptionsEnvironmentVariable', 'EnableNodeCliInspectArguments', 'GrantFileProtocolExtraPrivileges']) if (wire[fuses.FuseV1Options[name]] !== 48) fail('FUSE_MUST_BE_DISABLED');
   for (const name of ['EnableCookieEncryption', 'EnableEmbeddedAsarIntegrityValidation', 'OnlyLoadAppFromAsar']) if (wire[fuses.FuseV1Options[name]] !== 49) fail('FUSE_MUST_BE_ENABLED');
 }
-async function macApp(app: string, arch: TargetArch): Promise<string> {
+async function macApp(app: string, arch: TargetArch, appOutDir: string, scope: MacScope, onPhase: (phase: MacPhase) => void): Promise<string> {
+  const run: MacCheckRunner = (name, action) => runMacInspectionCheck(scope, name, action, onPhase);
   const executable = path.join(app, 'Contents/MacOS/Mioon');
   // CFBundleExecutable is generated by electron-builder and must be checked,
   // rather than relying on product name/executable-name casing conventions.
   const plist = path.join(app, 'Contents/Info.plist');
-  const actualName = (await command('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', plist], 'PLIST_EXECUTABLE_FAILED')).trim();
-  if (!actualName || /[\/\\\0]/.test(actualName)) fail('INVALID_BUNDLE_EXECUTABLE');
+  const actualName = await run('bundle-executable', async () => {
+    const name = (await command('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', plist], 'PLIST_EXECUTABLE_FAILED')).trim();
+    if (!name || /[\/\\\0]/.test(name)) fail('INVALID_BUNDLE_EXECUTABLE');
+    return name;
+  });
   const binary = path.join(path.dirname(executable), actualName);
-  validateArchitecture(await command('lipo', ['-archs', binary], 'MACHO_PROBE_FAILED'), 'darwin', arch);
-  const version = (JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as {version: string}).version;
-  if ((await command('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', plist], 'PLIST_VERSION_FAILED')).trim() !== version ||
-      (await command('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', plist], 'PLIST_ID_FAILED')).trim() !== desktopIdentity.identityForChannel('production').appId) fail('BUNDLE_IDENTITY_MISMATCH');
-  await inspectAsar(path.join(app, 'Contents/Resources')); await inspectFuses(binary);
-  const electronRoot = path.dirname(createRequire(import.meta.url).resolve('electron/package.json'));
-  for (const [name, source] of [['LICENSE.electron.txt', 'LICENSE'], ['LICENSES.chromium.html', 'LICENSES.chromium.html']]) {
-    assert.deepEqual(await readFile(path.join(app, 'Contents/Resources/licenses', name)), await readFile(path.join(electronRoot, 'dist', source)), 'ELECTRON_NOTICE_MISMATCH');
-  }
-  await command('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app], 'CODESIGN_VERIFICATION_FAILED');
-  verifySigningIdentity(await command('codesign', ['--display', '--verbose=4', app], 'CODESIGN_IDENTITY_FAILED'), process.env.APPLE_SIGNING_IDENTITY, process.env.APPLE_TEAM_ID);
-  await command('xcrun', ['stapler', 'validate', app], 'APP_STAPLE_INVALID');
-  await command('spctl', ['--assess', '--type', 'execute', '--verbose=4', app], 'GATEKEEPER_REJECTED');
+  await run('bundle-architecture', async () => validateArchitecture(await command('lipo', ['-archs', binary], 'MACHO_PROBE_FAILED'), 'darwin', arch));
+  await run('bundle-identity', async () => {
+    const {appVersion} = readBuildMetadata(root);
+    if ((await command('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleShortVersionString', plist], 'PLIST_VERSION_FAILED')).trim() !== appVersion ||
+        (await command('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', plist], 'PLIST_ID_FAILED')).trim() !== desktopIdentity.identityForChannel('production').appId) fail('BUNDLE_IDENTITY_MISMATCH');
+  });
+  await inspectAsar(path.join(app, 'Contents/Resources'), run);
+  await run('fuses', () => inspectFuses(binary));
+  const provenance = await run('runtime-notice-source', async () => {
+    const {appVersion, electronVersion} = readBuildMetadata(root);
+    return readMacRuntimeNoticeProvenance({electronPlatformName: 'darwin', arch: arch === 'arm64' ? 3 : 1, appOutDir,
+      packager: {config: {electronVersion}, info: {framework: {version: electronVersion, distMacOsAppName: 'Electron.app'}},
+        appInfo: {productFilename: desktopIdentity.identityForChannel('production').executableName}}}, electronVersion, appVersion);
+  });
+  await run('runtime-notice-bytes', () => verifyMacRuntimeNoticeFiles(app, provenance));
+  await run('codesign', () => command('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app], 'CODESIGN_VERIFICATION_FAILED'));
+  await run('signing-identity', async () => verifySigningIdentity(await command('codesign', ['--display', '--verbose=4', app], 'CODESIGN_IDENTITY_FAILED'), process.env.APPLE_SIGNING_IDENTITY, process.env.APPLE_TEAM_ID));
+  await run('app-staple', () => command('xcrun', ['stapler', 'validate', app], 'APP_STAPLE_INVALID'));
+  await run('app-gatekeeper', () => command('spctl', ['--assess', '--type', 'execute', '--verbose=4', app], 'GATEKEEPER_REJECTED'));
   return binary;
 }
 export async function inspectDesktop(platform: TargetPlatform, arch: TargetArch, packageDir: string): Promise<Inspection> {
@@ -150,7 +187,9 @@ export async function inspectDesktop(platform: TargetPlatform, arch: TargetArch,
     const details = await command('tar', ['--list', '--verbose', '--numeric-owner', '--full-time', '--gzip', '--quoting-style=literal', '--file', tarball], 'TARBALL_METADATA_FAILED');
     validateTarListing(names, details, artifactBase);
     const extractRoot = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-ci-extract-')); result.extractRoot = extractRoot;
-    await command('tar', ['--extract', '--gzip', '--no-same-owner', '--same-permissions', '--delay-directory-restore', '--no-overwrite-dir', '--keep-old-files', '--file', tarball, '--directory', extractRoot], 'TARBALL_EXTRACTION_FAILED', {timeout: 180000});
+    // GNU tar rejects combining --keep-old-files with --no-overwrite-dir. This
+    // owned empty root follows listing validation; keep-old-files still forbids replacement.
+    await command('tar', ['--extract', '--gzip', '--no-same-owner', '--same-permissions', '--delay-directory-restore', '--keep-old-files', '--file', tarball, '--directory', extractRoot], 'TARBALL_EXTRACTION_FAILED', {timeout: 180000});
     if (createHash('sha256').update(await readFile(tarball)).digest('hex') !== beforeHash) fail('TARBALL_CHANGED_DURING_INSPECTION');
     const delivered = path.join(extractRoot, artifactBase);
     if (await treeDigest(path.join(expected, 'linux-unpacked')) !== await treeDigest(delivered)) fail('DELIVERED_LINUX_TREE_MISMATCH');
@@ -163,7 +202,7 @@ export async function inspectDesktop(platform: TargetPlatform, arch: TargetArch,
     const candidates = (await readdir(path.join(expected, suffix))).filter(name => name.endsWith('.app'));
     if (candidates.length !== 1) fail('UNIQUE_APP_REQUIRED');
     const app = path.join(expected, suffix, candidates[0]);
-    await macApp(app, arch); check('staged-signed-app-identity-architecture-asar-licenses-subtitles-fuses');
+    await macApp(app, arch, path.join(expected, suffix), 'staged-mac-app', phase => { result.phase = phase; }); check('staged-signed-app-identity-architecture-asar-licenses-subtitles-fuses');
     const dmgs = (await readdir(expected)).filter(name => name.endsWith(`-mac-${arch}.dmg`));
     if (dmgs.length !== 1) fail('UNIQUE_DMG_REQUIRED');
     result.phase = 'signed-dmg';
@@ -179,7 +218,7 @@ export async function inspectDesktop(platform: TargetPlatform, arch: TargetArch,
       if (mountedApps.length !== 1) fail('UNIQUE_MOUNTED_APP_REQUIRED');
       const delivered = path.join(mount, mountedApps[0]);
       if (await treeDigest(app) !== await treeDigest(delivered)) fail('DMG_APP_MISMATCH');
-      result.executable = await macApp(delivered, arch); result.packagePath = dmg; result.mountPoint = mount;
+      result.executable = await macApp(delivered, arch, path.join(expected, suffix), 'mounted-dmg-app', phase => { result.phase = phase; }); result.packagePath = dmg; result.mountPoint = mount;
       check('read-only-dmg-app-exactly-matches-staged-app'); check('dmg-and-delivered-app-signature-notarization-gatekeeper');
     } catch (error) {
       if (mounted) {
