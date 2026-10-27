@@ -31,6 +31,13 @@ The separate saved last-frame workflow is described in
 [subject-video candidate](SUBJECT-VIDEO-INPUTS.md) selects one immutable version;
 it does not make these planning bindings automatic provider inputs. Motion and
 style-generation roles remain future work.
+In the workbench, the library's subject tab lists subjects (kind filter and
+search over the loaded page) and creates them. Choosing one shows it in the
+properties pane until something else is selected; leaving an unsaved shot, clip
+or source edit asks first. The pane shows the read-only name and type, every
+visible version with the default (head) version marked and variants tagged by
+angle or light, and the shots whose planning binding pins each version.
+Appending an image version there makes it the new default.
 Built-in Agent tools, context, inspection DTOs and approval scope do not expand.
 
 Existing image assets and result lineage stay authoritative. Original media,

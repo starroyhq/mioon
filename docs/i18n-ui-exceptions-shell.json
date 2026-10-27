@@ -72,18 +72,18 @@
       "reason": "Technical version prefix in V${head.number} and V${pinned.number}, passed to localized review/use/keep messages. It identifies the existing pinned/candidate version; no title, user text, subject binding or version identity is translated."
     },
     {
-      "file": "apps/web/src/SubjectLibrary.tsx",
+      "file": "apps/web/src/SubjectInspector.tsx",
       "category": "visible-jsx",
       "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
       "owner": "shell",
       "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
     },
     {
-      "file": "apps/web/src/SubjectLibrary.tsx",
+      "file": "apps/web/src/SubjectInspector.tsx",
       "category": "visible-jsx",
-      "hash": "42f41f732c0f6e4d420f4ee1e990ec1d0b57eea2f02f53b467023d259a8861b7",
+      "hash": "fac2308f9842a83e682a3bfc6f2dcb465706a6771c79b23b0a791999ec2c89c8",
       "owner": "shell",
-      "reason": "Technical version prefix beside an existing version number, not prose or user content; version identity/number is unchanged."
+      "reason": "Technical version prefix in V${pinned.number}, followed by the localized variant tag. It identifies the pinned version; no title, user text or version identity is translated."
     },
     {
       "file": "apps/web/src/SubjectVideoSelection.tsx",
