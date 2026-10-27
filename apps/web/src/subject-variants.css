@@ -37,7 +37,7 @@
 .subject-variant-number{position:relative;display:flex;align-items:center}.subject-variant-number small{position:absolute;right:30px;font-size:10px;color:var(--wb-muted);pointer-events:none}
 .subject-variant-light-row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:center}
 .subject-variant-kelvin{display:flex;align-items:center;gap:8px}.subject-variant-kelvin small{font-size:10px;color:var(--wb-muted)}
-.subject-variant-kelvin-slider{flex:1;min-width:0}.subject-variant-kelvin-slider [data-slot="slider-track"]{height:4px;background:linear-gradient(90deg,#f0a35a,#f4efe6 50%,#7fb2ff)}.subject-variant-kelvin-slider [data-slot="slider-range"]{background:transparent}
+.subject-variant-kelvin-slider{flex:1;min-width:0}.subject-variant-kelvin-slider [data-slot="slider-track"]{height:4px;background:linear-gradient(90deg,var(--wb-orange),var(--wb-media-text) 50%,var(--wb-video-edge))}.subject-variant-kelvin-slider [data-slot="slider-range"]{background:transparent}
 .subject-variant-kelvin output{min-width:58px;padding:3px 8px;border:1px solid var(--wb-line);border-radius:6px;font-family:var(--wb-font-mono);font-size:11px;text-align:center}
 .subject-variant-footer{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:center;margin:var(--wb-space-4) calc(var(--wb-space-5)*-1) 0;padding:12px var(--wb-space-5);border-top:1px solid var(--wb-line-subtle);position:sticky;bottom:0;background:var(--wb-card)}
 .subject-variant-summary{display:flex;flex-direction:column;gap:2px;font-size:12px}.subject-variant-summary small{font-size:11px;color:var(--wb-muted)}
