@@ -54,7 +54,7 @@
 收口命令（媒体回归使用本机已验证的完整 FFmpeg）：
 
 ```sh
-node --test --test-concurrency=2 tests/agent-task-{runtime,tools,journal,crash,boundaries}-v2.test.ts tests/worker-shutdown.test.mjs tests/server-worker-shutdown.test.ts tests/export-controls.test.ts
+node --test --test-concurrency=2 tests/agent-task-{runtime,tools,journal,crash,boundaries}-v2.test.ts tests/worker-shutdown.test.ts tests/server-worker-shutdown.test.ts tests/export-controls.test.ts
 node node_modules/typescript/bin/tsc -p tests/tsconfig.tests.json
 node scripts/tooling.ts build --channel=development
 git diff --check

@@ -10,9 +10,9 @@
 | --- | --- |
 | 11 屏和组件区截图：简中、英、日，浅色，1440×900 和 1050×680 | 已完成，10-27 在合入 main 后的最终构建上全部重截；另加深色，繁中 1440 浅色抽查。组件区的三种暂停（冲突、步数用完、手动暂停）、失败、付费确认、撤销确认、中断恢复、建议和历史条目都有对应截图。共 193 张，状态全部正确，自动检查无问题。和设计的差异见第 3 节。 |
 | 已授权的 A 项有测试；新 schema 有迁移和备份恢复测试；HTTP 与 CLI 一致 | M3–M5 已交付（A1–A6）。本次全量对比没有新增失败，见第 5 节。M7 新增的只读接口有 HTTP 与 CLI 一致性测试。 |
-| harness v2 现有测试全部通过，类型检查和构建通过 | 见第 5 节。 |
+| harness v2 现有测试全部通过，类型检查和构建通过 | 10-27 完整 FFmpeg 环境下收口补验 338/338 通过；类型检查与构建的既有结果见第 5 节。 |
 | 合成网关走完一轮完整流程 | 已完成，8 项全部覆盖，见第 4 节。 |
-| 用你配置的真实模型跑一次 | **进行中**：需要你在独立实例里配置自己的连接和密钥，见第 7 节。 |
+| 用你配置的真实模型跑一次 | **部分完成**：用户已确认真实模型连接正常；只读查看和可撤销修改两轮尚未完成，见第 7 节。 |
 | 文档：`docs/CLI.md` 的新动作和对话参数、面向用户的 Mio 说明 | CLI 文档在 M3–M7 各阶段已补齐；新增用户说明 [MIO-GUIDE.zh-CN.md](../../MIO-GUIDE.zh-CN.md)，README 和核心试用指南加了链接。 |
 
 ## 2. 收尾中的修改
@@ -95,7 +95,7 @@
 | `git diff --check 2bb498f HEAD` | 无问题 |
 | 相关界面测试：`agent-settings-ui` 35、`settings-navigation-state` 43、`agent-connection-test` 7、`mio-errors` 4、`agent-task-panel-v2-components` 35、`agent-chat-ui` 78、`mio-change-marks-ui` 6、`transport-utf8-output` 4、`agent-editing-boundaries-v2` 12、`agent-editing-close-refresh` 10 | 全部通过 |
 
-acceptance README 里这条命令仍写 `tests/worker-shutdown.test.mjs`；该文件已在 #33 改为 `.ts`，上表按现有文件名执行。
+原验收时 acceptance README 里这条命令仍写 `tests/worker-shutdown.test.mjs`；该文件已在 #33 改为 `.ts`，上表按现有文件名执行。本次文档收尾已将 README 中的命令同步为 `.ts`。
 
 两项失败都在 `agent-task-runtime-v2.test.ts`："whole undo retains the generated shot owner…"和"retained shot keeps a late product…"。它们用真实的 Mock 渲染器和时间线渲染，本机 FFmpeg 缺 drawtext 滤镜，这一轮以 failed 结束（期望 completed）。基线 main `2bb498f` 在同一台机器上同样失败，属于本机环境；acceptance README 也注明媒体回归要用完整的 FFmpeg。
 
@@ -110,6 +110,12 @@ acceptance README 里这条命令仍写 `tests/worker-shutdown.test.mjs`；该�
 多出的 1 个文件是新增的 `agent-connection-test.test.ts`。最终代码的 73 个失败与基线逐条相同（新增 0，修复 0），结论：相对 main 没有新增失败。`0fef88a` 上多出的 10 个失败都在 #39 新增的 `agent-editing-close-refresh.test.ts`：它用白名单加载 `AgentEditingBoundary.tsx`，拒绝了紧凑编辑按钮新引入的提示和图标两项依赖。`f158016` 在白名单里补上这两项后，该文件 10 项全部通过。
 
 基线的 73 个失败里，72 个与上一轮基线 `cfc5e8f` 相同（媒体渲染缺 drawtext 滤镜等本机环境问题；#33 把其中多数文件从 `.mjs` 改成了 `.ts`）。另 1 个是 `dev-proxy.test.ts`："Vite dev proxy validates incoming origins…"按 Vite 配置固定使用 5173 端口，而本机另一个项目 `mioon-website` 的开发服务器占用了该端口。本分支没有改动这个测试、Vite 配置或开发代理。
+
+**10-27 收口补验。** 本次文档收尾基于远端 main `1eff56e`，没有修改产品源码或依赖声明。使用已有 Node.js 24.21.0、pnpm 11.25.0，以及 `/Applications/data/ffmpeg/darwin-arm64/` 下的 FFmpeg / FFprobe 6.0；能力探针确认包含 `drawtext`、`ass` 和 `subtitles`。依赖以 `pnpm install --offline --frozen-lockfile` 安装，全部复用本机缓存，没有下载或升级。
+
+按 acceptance README 的同一条 8 文件收口命令执行（`.ts` 文件名），并发 2，`TMPDIR=/private/tmp`，显式指定完整媒体工具路径并设置 `MIOON_ENABLE_LIVE_PROVIDER=0`。结果为 **338 项全部通过，失败、取消、跳过均为 0，退出 0**。此前失败的 "whole undo retains the generated shot owner…" 与 "retained shot keeps a late product…" 均通过；PR #43 已加入付费未知结果恢复用例，因此本轮总数为 338，原 335 项结果保留为历史记录。
+
+本轮只补验上述收口范围，全量的 73 项基线共有失败仍按原记录保留，未重跑全量。未调用真实模型或付费生成，也未干预占用 5173 的现有服务。补验证据根为 `/Users/kouzen/Library/Caches/mioon-mio-wrap-up-20261027/evidence/`，下文简称 E2；准确命令、环境、能力探针、原始 TAP 和摘要均保留。
 
 ## 6. 问题、合入与观察项
 
@@ -135,17 +141,18 @@ acceptance README 里这条命令仍写 `tests/worker-shutdown.test.mjs`；该�
 - 02：英文的"Confirm generation"按钮文字折成两行（合入前相同）。
 - 面板之外：英文、日文下分镜条标题折成两行、镜头数被截断；日文左下角"読み込んだ素材は…"折行后被裁。合入 #38 后仍是这样。
 - 设置页：同一预设的两个文档链接都叫"官方文档"（见 M7 报告）。
-- acceptance README 的收口命令仍写 `worker-shutdown.test.mjs`（见第 5 节）。
 
 ## 7. 真实模型验收
 
-**做法。** 用最终构建在单独的数据目录起一个浏览器版实例（`E/real-model/`），建一个合成测试项目"Mio 真实模型验收"：scene-a（4 秒）、scene-b（5 秒）两个片段和两个镜头，媒体由 ffmpeg 生成，不含你的内容（`E/real-model/seed.mjs`）。你在 设置 › Mio 里填自己的连接和密钥；密钥用默认的"仅本次运行"，只在该实例的内存里。然后跑两轮：
+**验收方案。** 用最终构建在单独的数据目录起一个浏览器版实例（`E/real-model/`），建一个合成测试项目"Mio 真实模型验收"：scene-a（4 秒）、scene-b（5 秒）两个片段和两个镜头，媒体由 ffmpeg 生成，不含你的内容（`E/real-model/seed.mjs`）。你在 设置 › Mio 里填自己的连接和密钥；密钥用默认的"仅本次运行"，只在该实例的内存里。计划执行以下两轮：
 1. 只读：问时间线里有哪些片段、总时长多少，不做修改；
 2. 可撤销的小改动：把 scene-b 剪短 1 秒，核对时间线后整体撤销。
 
 不调用付费生成，出现付费确认时拒绝，不自动重发。
 
-**结果。** 待补。
+**结果（2026-10-27 用户确认）。** 用户已手动实测真实模型连接，连接正常。本次只确认连通性；上述只读查看、剪短片段并整体撤销两轮尚未完成，不计为完整真实模型验收通过。后续补验时需记录实际结果和构建版本。
+
+**实例清理。** 原测试实例（端口 4419）已停止。据此前清理记录，该实例的数据目录未保存连接或密钥；本次复核确认端口无监听。证据目录继续保留。
 
 ## 8. 证据
 
@@ -155,3 +162,14 @@ acceptance README 里这条命令仍写 `tests/worker-shutdown.test.mjs`；该�
 - 构建：`E/web-dist`，在第二次合入 main（`0fef88a`）后构建，晚于所有前端源码改动；之后的 `f158016` 只改测试。
 - 收口命令日志：`E/closing/`。全量对比：`E/suite/`。
 - 设计导出：`E/design/`。
+- 本次收口补验与清理：`E2/run-acceptance.sh`、`environment.txt`、`media-capabilities.log`、`acceptance.log`、`summary.txt`、`cleanup.json`。
+
+## 9. 后续清理（2026-10-27）
+
+本次文档收尾基于远端 main `1eff56e`，在独立工作树进行。清理回执保存在 `E2/cleanup.json`，包含删除前的分支 SHA、main 祖先校验及工作树列表。
+
+- 删除此前列出的 14 个本地 `claude/*` 旧分支；删除前逐个确认已包含在 `1eff56e` 中，且没有工作树正在使用。新出现、仍有工作树使用的 `claude/subject-angles` 保留。
+- 清除 `/private/tmp/mioon-blob-baselines-ni_dc4sm/` 下 a7、current、ff85、pre-a7 对应的 4 条失效 Git 工作树记录；先用 `git worktree prune --dry-run --verbose` 核对范围，再执行清理。
+- 原有 Codex 工作树、证据缓存及主检出保持不变；主检出仍在 `codex/mio-storage-backup`，未跟踪的 `.idea/`、`docs/MIO-HARNESS.md`、`docs/MIOON-详细待办-2026-10-16.md` 均保留。
+
+证据缓存仍被各阶段验收记录引用，继续保留。清理 Git 工作树或分支不代表删除验收证据，也不改变第 7 节尚未完成的真实模型功能验收状态。
