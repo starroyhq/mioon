@@ -194,6 +194,7 @@ jobs:
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
         run: |
           umask 077
@@ -202,6 +203,7 @@ jobs:
           export MIOON_APPLE_CREDENTIALS_DIR="$credentials_dir"
           node --input-type=module -e 'import {writeFileSync} from "node:fs"; import path from "node:path"; const dir=process.env.MIOON_APPLE_CREDENTIALS_DIR; writeFileSync(path.join(dir,"signing.p12"),Buffer.from(process.env.APPLE_CERTIFICATE,"base64"),{mode:0o600}); writeFileSync(path.join(dir,"notarization.p8"),process.env.APPLE_API_PRIVATE_KEY,{mode:0o600});'
           keychain="$credentials_dir/signing.keychain-db"
+          node .github/scripts/apple-keychain.ts capture --state="$credentials_dir/keychain-search-list.json"
           keychain_password=$(uuidgen)
           echo "::add-mask::$keychain_password"
           security create-keychain -p "$keychain_password" "$keychain"
@@ -209,6 +211,11 @@ jobs:
           security unlock-keychain -p "$keychain_password" "$keychain"
           security import "$credentials_dir/signing.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          node .github/scripts/apple-keychain.ts activate --state="$credentials_dir/keychain-search-list.json" --keychain="$keychain"
+          printf 'int main(void) { return 0; }\n' > "$credentials_dir/signing-probe.c"
+          xcrun clang "$credentials_dir/signing-probe.c" -o "$credentials_dir/signing-probe"
+          codesign --sign "$APPLE_SIGNING_IDENTITY" --force --keychain "$keychain" --timestamp --options runtime "$credentials_dir/signing-probe"
+          codesign --verify --strict --verbose=2 "$credentials_dir/signing-probe"
           rm "$credentials_dir/signing.p12"
           printf 'CSC_KEYCHAIN=%s\nAPPLE_API_KEY_PATH=%s\n' "$keychain" "$credentials_dir/notarization.p8" >> "$GITHUB_ENV"
 
@@ -310,7 +317,10 @@ jobs:
         run: |
           credentials_dir="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           trap 'rm -rf "$credentials_dir"' EXIT
-          if [[ -f "$credentials_dir/signing.keychain-db" ]]; then security delete-keychain "$credentials_dir/signing.keychain-db"; fi
+          mioon_cleanup_status=0
+          node .github/scripts/apple-keychain.ts restore --state="$credentials_dir/keychain-search-list.json" || mioon_cleanup_status=1
+          if [[ -f "$credentials_dir/signing.keychain-db" ]]; then security delete-keychain "$credentials_dir/signing.keychain-db" || mioon_cleanup_status=1; fi
+          exit "$mioon_cleanup_status"
 
       - name: Clean owned DMG mount after interruption
         if: always() && runner.os == 'macOS'
