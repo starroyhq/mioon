@@ -14,14 +14,20 @@ test('desktop helper CLI rejects missing, duplicate, unknown and multiline optio
   assert.throws(() => targetPlatform('win32')); assert.throws(() => targetArch('universal'));
 });
 
-test('strict Linux media admission requires every named filter and encoder', () => {
-  const filters = ['drawtext', 'subtitles', 'zscale', 'loudnorm', 'ebur128'].map(name => ` ... ${name} V->V fixture`).join('\n');
-  const encoders = ['libx264', 'aac', 'libwebp', 'libwebp_anim'].map(name => ` V....D ${name} fixture`).join('\n');
-  const complete = mediaCapabilities('linux', filters, encoders);
-  assert.ok(Object.values(complete.filters).every(Boolean)); assert.ok(Object.values(complete.encoders).every(Boolean));
-  assert.equal(mediaCapabilities('linux', filters.replace(' subtitles ', ' unavailable '), encoders).filters.subtitles, false);
-  assert.equal(mediaCapabilities('linux', filters, encoders.replace(' libwebp_anim ', ' libwebp_anim_fake ')).encoders.libwebp_anim, false);
-  assert.deepEqual(mediaCapabilities('darwin', '', ' V....D libx264 fixture\n A..... aac fixture'), {filters: {}, encoders: {libx264: true, aac: true}});
+test('Linux and macOS media admission require every application filter and encoder', () => {
+  const filterNames = ['drawtext', 'subtitles', 'zscale', 'loudnorm', 'ebur128'], encoderNames = ['libx264', 'aac', 'libwebp', 'libwebp_anim'];
+  const filters = filterNames.map(name => ` ... ${name} V->V fixture`).join('\n');
+  const encoders = encoderNames.map(name => ` V....D ${name} fixture`).join('\n');
+  for (const platform of ['linux', 'darwin'] as const) {
+    assert.deepEqual(mediaCapabilities(platform, filters, encoders), {
+      filters: Object.fromEntries(filterNames.map(name => [name, true])), encoders: Object.fromEntries(encoderNames.map(name => [name, true])),
+    });
+    for (const name of filterNames) assert.equal(mediaCapabilities(platform, filters.replace(` ${name} `, ` ${name}_fake `), encoders).filters[name], false);
+    for (const name of encoderNames) assert.equal(mediaCapabilities(platform, filters, encoders.replace(` ${name} `, ` ${name}_fake `)).encoders[name], false);
+    const basic = mediaCapabilities(platform, '', ' V....D libx264 fixture\n A..... aac fixture');
+    assert.ok(Object.values(basic.filters).every(value => value === false));
+    assert.deepEqual(basic.encoders, {libx264: true, aac: true, libwebp: false, libwebp_anim: false});
+  }
 });
 
 test('CLI capability probes keep scripts private and clean them after success and parser failure', async () => {

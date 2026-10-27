@@ -146,7 +146,9 @@ jobs:
       - name: Install macOS media tools
         if: runner.os == 'macOS'
         run: |
-          if ! brew list --versions ffmpeg >/dev/null 2>&1; then brew install ffmpeg; fi
+          if ! brew list --versions ffmpeg-full >/dev/null 2>&1; then brew install ffmpeg-full; fi
+          mioon_media_prefix="$(brew --prefix ffmpeg-full)"
+          printf 'MIOON_FFMPEG_PATH=%s/bin/ffmpeg\nMIOON_FFPROBE_PATH=%s/bin/ffprobe\n' "$mioon_media_prefix" "$mioon_media_prefix" >> "$GITHUB_ENV"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6

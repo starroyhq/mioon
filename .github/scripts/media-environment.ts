@@ -56,9 +56,9 @@ export async function report(file: string, value: unknown): Promise<void> {
   await writeFile(file, JSON.stringify(value, null, 2) + '\n', {mode: 0o600});
 }
 export function isMain(moduleUrl: string): boolean { return Boolean(process.argv[1]) && path.resolve(process.argv[1]) === fileURLToPath(moduleUrl); }
-export function mediaCapabilities(platform: TargetPlatform, filters: string, encoders: string): {filters: Record<string, boolean>; encoders: Record<string, boolean>} {
-  const requiredFilters = platform === 'linux' ? ['drawtext', 'subtitles', 'zscale', 'loudnorm', 'ebur128'] : [];
-  const requiredEncoders = platform === 'linux' ? ['libx264', 'aac', 'libwebp', 'libwebp_anim'] : ['libx264', 'aac'];
+export function mediaCapabilities(_platform: TargetPlatform, filters: string, encoders: string): {filters: Record<string, boolean>; encoders: Record<string, boolean>} {
+  const requiredFilters = ['drawtext', 'subtitles', 'zscale', 'loudnorm', 'ebur128'];
+  const requiredEncoders = ['libx264', 'aac', 'libwebp', 'libwebp_anim'];
   const has = (text: string, name: string): boolean => new RegExp(`^\\s*[A-Z.]{3,6}\\s+${name}\\s`, 'm').test(text);
   return {filters: Object.fromEntries(requiredFilters.map(name => [name, has(filters, name)])), encoders: Object.fromEntries(requiredEncoders.map(name => [name, has(encoders, name)]))};
 }
