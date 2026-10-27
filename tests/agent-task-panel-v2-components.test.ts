@@ -65,6 +65,18 @@ test('a saved step failure is localized by code beside its unknown-result contro
   const h=harness();try{const step=h.state.snapshot!.steps[0];step.kind='model';step.status='unknown';step.error={code:'AGENT_CHAT_HTTP_ERROR',message:'模型服务拒绝了请求（HTTP 401）。'};h.render();const error=h.find(`agent-task-step-error-${stepId}`);assert.ok(error);assert.equal(error.props.role,'alert');assert.deepEqual(error.props.children,[translate('zh-Hans','agent.panel.failureReason',{reason:translate('zh-Hans',agentTaskErrorKey(step.error.code))})]);assert.notEqual(error.props.children[0],step.error.message);assert.equal(error.props.dangerouslySetInnerHTML,undefined);}finally{h.unmount();}
 });
 
+test('an unknown paid step can be marked failed after checking the task center; other irreversible steps only check',()=>{
+  const h=harness({status:'interrupted'});try{
+    const step=h.state.snapshot!.steps[0];step.status='unknown';h.render();
+    const card=renderedText(h.find(`agent-task-unknown-${stepId}`)!),mark=h.find(`agent-task-mark-failed-${stepId}`);
+    assert.ok(card.includes(translate('zh-Hans','agent.task.paidReconcile')));assert.ok(mark);assert.equal(mark.props.disabled,false);
+    assert.equal(renderedText(mark),translate('zh-Hans','agent.panel.markFailed'));
+    (mark.props.onClick as ()=>void)();assert.deepEqual(h.calls.at(-1),['resolve_unknown',{stepId,resolution:'discard'},'run']);
+    step.tier='local_irreversible';h.render();
+    assert.equal(h.find(`agent-task-mark-failed-${stepId}`),undefined);assert.ok(renderedText(h.find(`agent-task-unknown-${stepId}`)!).includes(translate('zh-Hans','agent.task.waitReconcile')));
+  }finally{h.unmount();}
+});
+
 test('Mio localizes step, run and transport errors without rendering diagnostic messages',()=>{
   for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
     const h=harness({locale,status:'failed'});

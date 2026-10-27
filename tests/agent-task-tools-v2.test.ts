@@ -266,6 +266,23 @@ test('journal write failure rolls back the domain mutation and no result receipt
  assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
  assert.equal(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:randomUUID()}),null);assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,before);
 });
+for(const operation of ['generation.submit','image.generate'] as const)test(`${operation}: an unknown paid step is provably not applied only while no acceptance, job origin or dispatch cost exists`,async t=>{
+ const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},async submit(){throw Error('No synthetic worker was started');},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No synthetic output requested');}};
+ const f=await fixture(t,{imageOptions:{autoRun:false}},new Map([['mock',provider]]));let input:Record<string,unknown>;
+ if(operation==='generation.submit'){const created=await f.execute('shot.create',{title:'Paid unknown',duration:2});assert.ok(record(created.outcome.result));input={shotId:String(created.outcome.result.id),expectedRevision:1,providerId:'mock',model:'mock-motion-v1'};}
+ else input={name:'Paid unknown',prompt:'Synthetic',providerId:'mock',model:'mock-image-v1',options:{...IMAGE_FIXED_OPTIONS}};
+ const prepared=f.tools.prepare({projectId:f.projectId,operation,input}),accepted=()=>f.store.db.prepare(operation==='generation.submit'?'SELECT COUNT(*) AS n FROM jobs':'SELECT COUNT(*) AS n FROM image_tasks').get()!.n;
+ for(const evidence of ['none','cost','origin','receipt'] as const){
+  // A lost journal write rolls the whole acceptance back, as a crash before its commit would.
+  await assert.rejects(f.execute(operation,input,{failRecord:true}),{code:'SQLITE_FULL'},evidence);assert.equal(accepted(),0,evidence);
+  const step=f.journal.snapshot(f.run.id).steps.at(-1)!;f.journal.updateStep(f.run.id,step.id,{status:'unknown'});
+  if(evidence==='cost')f.journal.updateStep(f.run.id,step.id,{cost:'submitted'});
+  if(evidence==='origin')f.store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run(operation==='generation.submit'?'job':'image',randomUUID(),f.run.id,step.id,f.projectId,step.id,operation);
+  // An acceptance without its v2 completion, as after a crash between the two commits.
+  if(evidence==='receipt'){await f.services.call(operation,{...input,...(operation==='image.generate'?{projectId:f.projectId}:{}),requestId:step.id});assert.equal(accepted(),1);}
+  assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),evidence==='none'?{outcome:'not_applied',reason:'atomic_receipt_absent'}:null,evidence);
+ }
+});
 test('same-value mutations complete the v2 receipt in the domain transaction even with no Change',async t=>{
  const f=await fixture(t),shot=await f.shot('Before'),done=await f.execute('shot.update',{shotId:shot.id,expectedRevision:1,patch:{title:'Before'}});
  assert.equal(done.outcome.recorded,true);assert.equal(done.step.status,'completed');assert.equal(done.changes.length,0);assert.equal((f.store.get('shots',shot.id) as Record<string,unknown>).revision,2);

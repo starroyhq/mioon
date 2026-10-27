@@ -38,7 +38,7 @@
 .mio-change-title{font-size:var(--wb-text-label);overflow-wrap:anywhere}
 .mio-change[data-status=reverted] .mio-change-title{color:var(--wb-soft)}
 .mio-card,.mio-error-card{padding:var(--wb-space-3);border:1px solid var(--wb-line);border-radius:var(--wb-radius-card);background:var(--wb-card);display:flex;flex-direction:column;gap:var(--wb-space-2);line-height:1.5;min-width:0}
-.mio-card>.wb-button,.mio-unknown-step>.wb-button,.mio-retained-items .wb-button{height:auto;max-width:100%;min-width:0;padding-block:var(--wb-space-1);white-space:normal;overflow-wrap:anywhere;line-height:1.5}
+.mio-card>.wb-button,.mio-unknown-step>.wb-button,.mio-unknown-actions>.wb-button,.mio-retained-items .wb-button{height:auto;max-width:100%;min-width:0;padding-block:var(--wb-space-1);white-space:normal;overflow-wrap:anywhere;line-height:1.5}
 .mio-card>header{display:flex;align-items:center;gap:var(--wb-space-2)}
 .mio-card>header strong{font-size:var(--wb-text-label);font-weight:500}
 .mio-conflict-values{display:flex;flex-direction:column;gap:var(--wb-space-1);margin:0;padding:var(--wb-space-2);background:var(--wb-input);border-radius:var(--wb-radius-control);min-width:0;font-size:var(--wb-text-caption);line-height:1.6}
@@ -58,6 +58,10 @@
 .mio-error-card{margin-left:var(--wb-space-6)}
 .mio-safe-details>p{font-size:var(--wb-text-caption);line-height:1.5}
 .mio-unknown-step{padding:var(--wb-space-2);border:1px solid var(--wb-warning);border-radius:var(--wb-radius-control);display:flex;flex-direction:column;gap:var(--wb-space-2)}
+/* Check and mark-failed share a row when both labels fit; longer labels wrap onto their own full-width rows. */
+.mio-unknown-actions{display:flex;flex-wrap:wrap;gap:var(--wb-space-2)}
+.mio-unknown-actions:empty{display:none}
+.mio-unknown-actions>.wb-button{flex:1 1 auto}
 .mio-panel .agent-task-history{margin-top:var(--wb-space-2)}
 .mio-panel .agent-task-history .wb-button{width:100%;height:auto;justify-content:flex-start;white-space:normal;text-align:left;line-height:1.5}
 .mio-panel .mio-composer{display:flex;flex:none;flex-direction:column;gap:var(--wb-space-1);margin:var(--wb-space-2) var(--wb-space-3) var(--wb-space-3);padding:var(--wb-space-2);border:1px solid var(--wb-line);border-radius:var(--wb-radius-card);background:var(--wb-input);min-width:0}

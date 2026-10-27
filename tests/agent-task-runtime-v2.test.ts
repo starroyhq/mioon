@@ -442,6 +442,18 @@ for(const action of ['pause','stop','finish_result'] as const)test(`completed mo
   const worker=startWorker(f.store,f.services,providers);try{await worker.tick();await worker.tick();assert.equal(posts,0);assert.equal(f.requests.length,2);}finally{await worker.stop();}
  }
 });
+test('an unknown paid submission that was never accepted can be marked failed and replanned without resubmitting',async t=>{
+ // With no provider registered the acceptance transaction rejects the submission and rolls back, but the error
+ // carries no not-applied proof, so the dispatched step is recorded as unknown.
+ const f=await fixture(t);f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_generation_submit',{shotId:f.first.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'})]:[])};});
+ const sent=await f.send(),paused=await f.settle(sent.run.id),step=paused.steps.find(item=>item.toolCall?.name==='mioon_generation_submit');assert.ok(step);
+ assert.equal(paused.run.pauseReason,'unknown_outcome');assert.equal(step.status,'unknown');assert.equal(f.store.list('jobs',f.projectId).length,0);
+ await assert.rejects(f.action(paused,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});
+ const marked=await f.action(paused,'resolve_unknown',{stepId:step.id,resolution:'discard'});assert.equal(marked.steps.find(item=>item.id===step.id)?.status,'failed');
+ await f.action(marked,'resume');const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.match(f.requests[1]!.body,/UNKNOWN_NOT_APPLIED/);assert.equal(f.store.list('jobs',f.projectId).length,0);assert.equal(f.effects.size,1);
+});
 for(const stepLimit of [3,30])for(const action of ['approve','deny'] as const)test(`paid direct disabled after acceptance supports one-time ${action} of the original queued job at budget ${stepLimit}`,async t=>{
  let posts=0;const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},
   async submit(_snapshot,context){context.beforeSubmit?.();posts++;return {providerJobId:'synthetic-approved-once'};},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No output requested');}};
