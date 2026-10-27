@@ -141,6 +141,9 @@ import { captureImageEditIntent, imageEditIntentSource } from './image-edit-inte
 import AssetLibrary from './AssetLibrary.tsx';
 import CompactPanelRail from './CompactPanelRail.tsx';
 import { useSubjects } from './use-subjects.ts';
+import { useSubjectVariants } from './use-subject-variants.ts';
+import { createImageReviewClient } from './image-review.ts';
+import { createImageSettingsClient } from './image-settings.ts';
 import { useAssetAnnotations } from './use-asset-annotations.ts';
 import { annotationKey, annotationError } from './asset-annotation-state.ts';
 import { useAssetDispositions } from './use-asset-dispositions.ts';
@@ -2467,8 +2470,17 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     hasPending: ((projectId: string) => (tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId, 'subject:mutation')) as never, blocked: subjectBlocked,
     pendingState: taskState, refreshGeneration: subjectRefresh[data.project?.id as string] || 0, onDirtyChange: setSubjectDirty });
   subjectsRef.current = subjects as unknown as SubjectsRuntime;
+  // Angle and lighting batches (C7c). A batch and its retries and undo are
+  // exact-replay writes resolved by reading the batch again, not durable edit
+  // tasks; each image is an ordinary image edit, paid ones approved here. A
+  // restored workspace has no batches.
+  const variantReviews = useMemo(() => createImageReviewClient(), []), variantSettings = useMemo(() => createImageSettingsClient(), []);
+  const subjectVariants = useSubjectVariants({ scope: subjectScope, projectId: !application && !restored && workbenchReady ? (data.project?.id ?? null) : null,
+    read: (operation, input) => rpc(operation, input), write: (operation, input) => rpc(operation, input), image: (operation, input) => rpc(operation, input),
+    approve: review => variantReviews.approve(review), settings: () => variantSettings.read(),
+    onVersions: (subjectId, hidden) => { if (hidden.length) subjects.controller.forgetVersions(subjectId, hidden); void subjects.controller.read(); } });
   const subjectFocusActive = Boolean(subjectFocus && !application && libraryTab === 'subjects' && subjects.state?.scope === subjectFocus.scope && subjects.state.subjects[subjectFocus.subjectId] && subjectFocus.basis === subjectFocusBasis(storyboardBatch?.taskId ?? null));
-  const subjectPanel = subjectFocusActive && subjectFocus ? <SubjectInspector subjects={subjects as never} subjectId={subjectFocus.subjectId} assets={data.assets as never} shots={data.shots as never} blocked={subjectBlocked} restored={restored} onShowTasks={() => openTasks()} onInspectShot={id => { void inspect(id, 'settings', null, { reveal: true }); }} /> : null;
+  const subjectPanel = subjectFocusActive && subjectFocus ? <SubjectInspector subjects={subjects as never} variants={subjectVariants} subjectId={subjectFocus.subjectId} assets={data.assets as never} shots={data.shots as never} blocked={subjectBlocked} restored={restored} onShowTasks={() => openTasks()} onInspectShot={id => { void inspect(id, 'settings', null, { reveal: true }); }} /> : null;
   const selectedCanvasAsset = chosenNode?.assetId || chosenVersion?.assetId || chosenShot?.referenceAssetIds?.[0] || (!chosenNode && !chosenShot && canvasAssetSelectionRef.current?.projectId === currentProject.current && canvasAssetSelectionRef.current?.epoch === projectEpoch.current ? canvasAssetSelectionRef.current.id : null);
   const librarySource = workspaceMode === 'editing' ? sourceAsset : previewAsset || data.assets.find(asset => asset.id === selectedCanvasAsset);
   const inUseAssetIds = new Set([...(timeline?.clips || []).map(clip => clip.assetId), ...data.nodes.map(node => node.assetId), ...data.shots.flatMap(shot => generationReferences(shot).references.map(reference => reference.assetId)), ...data.shots.map(shot => data.versions.find(version => version.id === shot.selectedVersionId)?.assetId)].filter(Boolean));

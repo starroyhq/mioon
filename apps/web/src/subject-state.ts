@@ -77,6 +77,19 @@ export function subjectVariantTagParts(variant: SubjectVersionVariant | null | u
   if (variant.kind === 'angle') return variant.focal === 'wide' ? [subjectAngleDescriptor(variant.position), message('subjects.angle.wide')] : [subjectAngleDescriptor(variant.position)];
   return [subjectLightDescriptor(variant.quality)];
 }
+/** What a shot's version filter groups variants by: the camera position and focal length, or the light quality. */
+export const subjectVariantKey = (variant: SubjectVersionVariant | null | undefined): string | null => !variant ? null : variant.kind === 'angle' ? `angle:${variant.position}:${variant.focal}` : `light:${variant.quality}`;
+// Filters read from the front around to the back, then the heights, standard
+// before wide; lighting comes after the angles.
+const angleOrder: readonly string[] = ['front', 'front-left', 'front-right', 'left', 'right', 'back-left', 'back-right', 'back', 'high', 'low'];
+const lightOrder: readonly string[] = ['soft', 'hard', 'back'];
+/** The distinct variant tags among versions, each with one variant that labels it. */
+export function subjectVariantFilters(versions: readonly Pick<SubjectVersionResponse, 'variant'>[]): { key: string; variant: SubjectVersionVariant }[] {
+  const found = new Map<string, SubjectVersionVariant>();
+  for (const version of versions) { const key = subjectVariantKey(version.variant); if (key && version.variant && !found.has(key)) found.set(key, version.variant); }
+  const rank = (variant: SubjectVersionVariant): number => variant.kind === 'angle' ? angleOrder.indexOf(variant.position) * 2 + (variant.focal === 'wide' ? 1 : 0) : angleOrder.length * 2 + lightOrder.indexOf(variant.quality);
+  return [...found].map(([key, variant]) => ({ key, variant })).sort((a, b) => rank(a.variant) - rank(b.variant));
+}
 const originKeys = Object.freeze({ 'user-import': 'subjects.origin.import', generated: 'subjects.origin.generated', 'synthetic-mock': 'subjects.origin.mock', export: 'subjects.origin.export', 'extracted-frame': 'subjects.origin.frame' } as const);
 /** Where a version's image came from. Variants are made only by GPT Image or
  * the mock service, so a generated or mock variant names its model instead. */
@@ -280,6 +293,15 @@ export function createSubjectController({ read, save, hasPending = () => false, 
       if (direction === 'first') return readPage('subject.list');
     },
     readVersions(subjectId: string, scope: string | null = state.scope): Promise<SubjectPageEntry | null> | void { if (validScope(scope) && (state.subjects[subjectId] || Object.values(state.bindings).some(entry => entry.items.some(row => row.subjectId === subjectId)))) return readPage('subject.version.list', subjectId); },
+    /** Drops versions an undone variant batch hid: a hidden version can no
+     * longer be chosen for a shot, so neither it nor a draft choosing it is kept. */
+    forgetVersions(subjectId: string, versionIds: readonly string[]): void {
+      const entry = state.versions[subjectId], hidden = new Set(versionIds);
+      const drafts = Object.entries(state.bindingDrafts).filter(([, draft]) => draft?.subjectId === subjectId && hidden.has(draft.subjectVersionId ?? ''));
+      if (!hidden.size || !entry?.items.some(item => hidden.has(item.id)) && !Object.keys(entry?.known || {}).some(id => hidden.has(id)) && !drafts.length) return;
+      emit({ ...(entry ? { versions: { ...state.versions, [subjectId]: { ...entry, items: entry.items.filter(item => !hidden.has(item.id)), known: Object.fromEntries(Object.entries(entry.known || {}).filter(([id]) => !hidden.has(id))) } } } : {}),
+        ...(drafts.length ? { bindingDrafts: { ...state.bindingDrafts, ...Object.fromEntries(drafts.map(([shotId]) => [shotId, null])) } } : {}) });
+    },
     versionPage(subjectId: string, direction: string, scope: string | null = state.scope): Promise<SubjectPageEntry | null> | void {
       if (!validScope(scope)) return;
       const entry = state.versions[subjectId];

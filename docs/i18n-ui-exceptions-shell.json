@@ -441,6 +441,27 @@
       "hash": "83d6e86209a5b7d486da38558a8baddc3737d3fcb2deab1db100da0f1b9575cb",
       "owner": "shell",
       "reason": "Technical SI seconds symbol after synchronized playback times; the media time values and playback controls are unchanged."
+    },
+    {
+      "file": "apps/web/src/SubjectVariantDialog.tsx",
+      "category": "visible-jsx",
+      "hash": "1c73ed523adee3e8abd10cdf89ec61019009e97ffebb2c8f49abbca692c9a071",
+      "owner": "shell",
+      "reason": "Technical version prefix beside an existing version number on the source image and source picker, not prose or user content; version identity/number is unchanged."
+    },
+    {
+      "file": "apps/web/src/SubjectVariantDialog.tsx",
+      "category": "visible-jsx",
+      "hash": "42f41f732c0f6e4d420f4ee1e990ec1d0b57eea2f02f53b467023d259a8861b7",
+      "owner": "shell",
+      "reason": "Separator and technical version prefix between the user-entered subject name and the source version number; the localized variant tag follows separately."
+    },
+    {
+      "file": "apps/web/src/SubjectVariantDialog.tsx",
+      "category": "visible-jsx",
+      "hash": "b7f276b402f81398495ce7e29285ba5f88b6dba63bb93aa46d98dffffaa25246",
+      "owner": "shell",
+      "reason": "SI kelvin unit symbol after the numeric colour temperature; the field label and warm/cool ends use subjects catalog keys."
     }
   ]
 }
