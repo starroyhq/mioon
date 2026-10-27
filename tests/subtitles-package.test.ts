@@ -75,9 +75,10 @@ test('gzip verifier streams >10MiB font, detects corruption/missing files, and r
  const pax=path.join(root,'pax.tar.gz');await exec('tar',['--format=pax','-czf',pax,'-C',root,base],{timeout:30000,maxBuffer:64*1024});assert.deepEqual(await verifySubtitleResourceTarball(pax,base),expected);
 });
 
-test('package inspector retains legacy ASAR ceiling and validates external delivered resources',async()=>{
+test('package inspector streams exact native ASAR and binary bytes and validates external delivered resources',async()=>{
  const source=await readFile(new URL('../apps/desktop/scripts/inspect-package.ts',import.meta.url),'utf8');
- assert.match(source,/maxBuffer: 10 \* 1024 \* 1024/);assert.match(source,/new Set\(\['main\.cjs', 'backend\.cjs', \.\.\.\(!historicalV3 \? \['preload\.cjs'\] : \[\]\), 'package\.json', 'web', 'licenses'\]\)/);
+ assert.match(source,/await verifyArchiveMember\(tarball, `\$\{artifactBase\}\/resources\/app\.asar`, archive\)/);assert.match(source,/await verifyArchiveMember\(tarball, `\$\{artifactBase\}\/\$\{path\.basename\(binary\)\}`, binary\)/);
+ assert.match(source,/new Set\(\['main\.cjs', 'backend\.cjs', \.\.\.\(!historicalV3 \? \['preload\.cjs'\] : \[\]\), 'package\.json', 'web', 'licenses'\]\)/);
  assert.match(source,/historicalV3\?null:await verifySubtitleResourceTarball\(tarball,artifactBase\)/);assert.match(source,/archivedSubtitleResourcesMatchNativePackage:true/);
 });
 

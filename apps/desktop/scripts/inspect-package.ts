@@ -1,7 +1,6 @@
 import { createRequire } from 'node:module';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +10,7 @@ import type {DesktopIdentity} from '../identity.ts';
 import subtitleResources from '../subtitle-resources.ts';
 import {verifySubtitleResourceTarball} from '../subtitle-package.ts';
 import {verifyPackagedTrayResources} from '../tray-resources.ts';
+import {hashPackageFile,verifyArchiveMember} from '../archive-member.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const require = createRequire(import.meta.url);
@@ -53,33 +53,22 @@ for (const name of disabled) assert.equal(wire[FuseV1Options[name]], 48, `${name
 for (const name of enabled) assert.equal(wire[FuseV1Options[name]], 49, `${name} must be enabled`);
 await readFile(path.join(directory, 'LICENSE.electron.txt'));
 await readFile(path.join(directory, 'LICENSES.chromium.html'));
-const sha256 = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 const artifactBase = historicalV3 ? 'video-workbench-0.3.0-linux-x64' : `${requireIdentity().executableName}-${metadata.version}-linux-x64`;
 const tarball = path.join(root, 'release/desktop', ...(historicalV3 ? [] : [requireIdentity().channel]), `${artifactBase}.tar.gz`);
 const exec = promisify(execFile);
-await exec('gzip', ['-t', tarball]);
-const { stdout: archivedAsar } = await exec('tar', ['-xOzf', tarball, `${artifactBase}/resources/app.asar`], { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 });
-assert.deepEqual(archivedAsar, await readFile(archive), 'Delivered tarball ASAR must match the native-tested app');
-const tarBytes = await readFile(tarball);
+await exec('gzip', ['-t', tarball], {timeout:120000,maxBuffer:64*1024});
+const archivedAsar = await verifyArchiveMember(tarball, `${artifactBase}/resources/app.asar`, archive);
+const tarDigest = await hashPackageFile(tarball);
 const subtitleResourceManifest=historicalV3?null:await subtitleResources.verifySubtitleResources(path.join(directory,'resources/subtitles'));
 const archivedSubtitleResources=historicalV3?null:await verifySubtitleResourceTarball(tarball,artifactBase);
 if(!historicalV3)assert.deepEqual(archivedSubtitleResources,subtitleResourceManifest,'Delivered subtitle font and notices must exactly match the verified external bundle');
-const binarySha256 = sha256(await readFile(binary));
-const archivedBinarySha256 = await new Promise<string>((resolve, reject) => {
-  const child = spawn('tar', ['-xOzf', tarball, `${artifactBase}/${path.basename(binary)}`], { stdio: ['ignore', 'pipe', 'pipe'] });
-  const hash = createHash('sha256');
-  child.stdout.on('data', (bytes: Buffer) => hash.update(bytes));
-  child.stderr.resume();
-  child.once('error', reject);
-  child.once('close', code => code === 0 ? resolve(hash.digest('hex')) : reject(new Error(`Archive binary extraction failed (${code})`)));
-});
-assert.equal(archivedBinarySha256, binarySha256, 'Delivered tarball executable must match the native-tested app');
+const {sha256:binarySha256} = await verifyArchiveMember(tarball, `${artifactBase}/${path.basename(binary)}`, binary);
 const report = { ok: true, historicalV3, identity, platform: 'linux-x64', asarEntries: files.length, noNodeModules: true, noSymlinks: true,
   noProjectDataOrCredentials: true, bundledDependencies: true, packagedFilesMatchVerifiedStaging: !historicalV3,
   fuses: { disabled, enabled, integrityPlatformNote: 'Embedded ASAR integrity validation is supported on macOS/Windows; Linux is not a signed/tamper-proof release.' },
   electronNoticesPresent: true, shadcnLicensePresent: true,
-  asarSha256: sha256(await readFile(archive)), binarySha256,
-  tarballSha256: sha256(tarBytes), tarballBytes: tarBytes.length, gzipVerified: true, archivedAsarMatchesNativePackage: true,
+  asarSha256: archivedAsar.sha256, binarySha256,
+  tarballSha256: tarDigest.sha256, tarballBytes: tarDigest.bytes, gzipVerified: true, archivedAsarMatchesNativePackage: true,
   archivedBinaryMatchesNativePackage: true,
   ...(!historicalV3?{subtitleResourcesExternalToAsar:true,archivedSubtitleResourcesMatchNativePackage:true,subtitleResourceManifest}:{}),
   rendererFiles: files.filter((file: string) => file.startsWith('/web/assets/')), files };
