@@ -1497,6 +1497,12 @@ const shellCoreMessages = {
     "en": "This panel has unsaved changes. Discard them and view another source asset?",
     "ja": "現在のパネルに未保存の変更があります。変更を破棄して別のソース素材を表示しますか？"
   },
+  "shell.confirm.viewSubject": {
+    "zh-Hans": "当前面板有未保存的修改。放弃修改并查看主体？",
+    "zh-Hant": "目前面板有尚未儲存的修改。放棄修改並檢視主體？",
+    "en": "This panel has unsaved changes. Discard them and view the subject?",
+    "ja": "現在のパネルに未保存の変更があります。変更を破棄してサブジェクトを表示しますか？"
+  },
   "shell.savedRangeAdded": {
     "zh-Hans": "已保存范围已作为固定素材片段加入时间线",
     "zh-Hant": "已儲存範圍已作為固定素材片段加入時間軸",

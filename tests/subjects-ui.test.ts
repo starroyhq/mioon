@@ -359,8 +359,9 @@ test('library composition retains both panes and never changes source/range sele
   const library = readFileSync(new URL('../apps/web/src/AssetLibrary.tsx', import.meta.url), 'utf8');
   assert.match(library, /library-subjects-pane/); assert.match(library, /WorkspaceVisibilityProvider visible=\{libraryView === 'assets'\}/); assert.match(library, /hidden=\{libraryView !== 'subjects'\} inert=\{libraryView !== 'subjects'\}/);
   assert.doesNotMatch(library, /setQuickAssetId|setSelectedClipId|sourceRangeScope/);
-  const componentSources = ['SubjectLibrary.tsx', 'ShotSubjectBindings.tsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));
-  for (const component of componentSources) {
+  // The subject's shot usage moved from the library list to the properties pane (C7b).
+  const componentSources = ['SubjectInspector.tsx', 'ShotSubjectBindings.tsx', 'SubjectLibrary.tsx'].map(file => readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'));
+  for (const component of componentSources.slice(0, 2)) {
     assert.match(component, /subjects.library.planningNote/);
     assert.equal(subjectsMessages['subjects.library.planningNote']['zh-Hans'], '策划关联不会自动用于生成；生成输入需另行选择版本');
     assert.doesNotMatch(component, /尚不作为生成输入/);
@@ -468,6 +469,88 @@ test('subject library renders its loading state before the project controller is
   assert.ok(byId(h.render({ subjects: { state: f.controller.getState(), controller: f.controller }, assets: [image()] }), 'subject-library'));
 });
 
+// Group actions are a prop, not children; the pane's tests look inside both.
+const deep = (value: ElementTree): ElementNode[] => nodes(value).flatMap((node: ElementNode) => [node, ...(node.props?.actions ? deep(node.props.actions as ElementTree) : [])]);
+const deepId = (tree: ElementTree, testId: string) => deep(tree).find((node: ElementNode) => node.props?.['data-testid'] === testId);
+// Visible text of a subtree, in order, so assertions read like the rendered label.
+const text = (value: unknown): string => Array.isArray(value) ? value.map(text).join('') : value && typeof value === 'object' ? text((value as ElementNode).props?.children) : value === null || value === undefined || typeof value === 'boolean' ? '' : String(value);
+
 test('existing subject version drafts are protected by their own server target and cannot release while dirty or unknown',async()=>{
-  const f=await fixture();await f.controller.selectSubject(subjectId);const h=harness('SubjectLibrary.tsx');const render=()=>h.render({subjects:{controller:f.controller,state:f.controller.getState()},assets:[image(),image(2)]});const tree=render(),boundary=tree.find((node: ElementNode)=>node.type==='AgentEditingBoundary');assert.ok(boundary);assert.deepEqual(boundary.props.targets,[{kind:'subject',id:subjectId,revision:1}]);assert.equal((boundary.props.canRelease as ()=>boolean)(),true);f.controller.updateVersion(subjectId,id(4,2));assert.equal((boundary.props.canRelease as ()=>boolean)(),false);(boundary.props.onDiscard as ()=>unknown)();assert.equal(f.controller.getState().versionDrafts[subjectId].assetId,'');assert.equal((boundary.props.canRelease as ()=>boolean)(),true);h.unmount();
+  const f=await fixture();await f.controller.selectSubject(subjectId);const h=harness('SubjectInspector.tsx');const render=()=>h.render({subjects:{controller:f.controller,state:f.controller.getState()},subjectId,assets:[image(),image(2)]});
+  assert.equal(render().some((node: ElementNode)=>node.type==='AgentEditingBoundary'),false);
+  (deepId(render(),'subject-version-add-open')!.props.onClick as ()=>unknown)();
+  const tree=render(),boundary=tree.find((node: ElementNode)=>node.type==='AgentEditingBoundary');assert.ok(boundary);assert.deepEqual(boundary.props.targets,[{kind:'subject',id:subjectId,revision:1}]);assert.equal((boundary.props.canRelease as ()=>boolean)(),true);f.controller.updateVersion(subjectId,id(4,2));assert.equal((boundary.props.canRelease as ()=>boolean)(),false);(boundary.props.onDiscard as ()=>unknown)();assert.equal(f.controller.getState().versionDrafts[subjectId].assetId,'');assert.equal((boundary.props.canRelease as ()=>boolean)(),true);h.unmount();
+});
+
+test('library cards hand the subject to the properties pane and follow its highlight, without reading versions themselves', async () => {
+  const f = await fixture(); const h = harness('SubjectLibrary.tsx'), inspected: string[] = [];
+  const props = (patch = {}) => ({ subjects: { state: f.controller.getState(), controller: f.controller }, assets: [image()], onInspectSubject: (subjectId: string) => { inspected.push(subjectId); }, ...patch });
+  let tree = h.render(props({ inspectedSubjectId: null }));
+  const card = byId(tree, `subject-card-${subjectId}`)!;
+  assert.equal(card.props['aria-pressed'], false);
+  (card.props.onClick as () => unknown)();
+  assert.deepEqual(inspected, [subjectId]);
+  assert.equal(f.controller.getState().selectedSubjectId, '', 'the host selects after its own navigation guard');
+  tree = h.render(props({ inspectedSubjectId: subjectId }));
+  assert.equal(byId(tree, `subject-card-${subjectId}`)!.props['aria-pressed'], true);
+  assert.match(text(byId(tree, `subject-card-${subjectId}`)), new RegExp(subjectsMessages['subjects.library.defaultVersion']['zh-Hans'].replace('{number}', '1')));
+  // Kind chips filter this page only and leave the controller untouched.
+  (byId(tree, 'subject-kind-product')!.props.onClick as () => unknown)();
+  tree = h.render(props({ inspectedSubjectId: subjectId }));
+  assert.equal(byId(tree, `subject-card-${subjectId}`), undefined);
+  assert.equal(byId(tree, 'subject-kind-product')!.props['aria-pressed'], true);
+  (byId(tree, 'subject-kind-all')!.props.onClick as () => unknown)();
+  assert.ok(byId(h.render(props()), `subject-card-${subjectId}`));
+  assert.equal(f.writes.length, 0); h.unmount();
+});
+
+test('the properties pane shows read-only basics, default and variant labels, and which version each shot uses', async () => {
+  const f = await fixture();
+  const angle = { kind: 'angle', position: 'front-left', focal: 'wide', batchId: id(7), sourceVersionId: versionId(1) };
+  const light = { kind: 'light', azimuth: 45, elevation: 30, quality: 'soft', kelvin: 4800, batchId: id(7, 2), sourceVersionId: versionId(1) };
+  const generated = { kind: 'generated', versionId: null, shotId: null, jobId: null, imageSource: { imageGroupId: id(8), imageTaskId: id(8, 2), imageVersionId: id(8, 3) } };
+  f.remote.subject = subject(4, { headVersionId: versionId(2), headVersion: version(2) });
+  f.remote.versions = [version(1), version(2), version(3, { variant: angle, provenance: generated }), version(4, { variant: light, provenance: { ...generated, kind: 'synthetic-mock' } })];
+  f.remote.bindings = [binding({ subjectVersionId: versionId(3), reviewedHeadVersionId: versionId(2), headVersionId: versionId(2), subjectRevision: 4 })];
+  await f.controller.read(); f.controller.selectSubject(subjectId); await flush();
+  const shots = [{ id: id(2, 9), title: 'Other', orderIndex: 0 }, { id: shotId, title: 'Neon close-up', orderIndex: 1 }];
+  const h = harness('SubjectInspector.tsx'), inspectedShots: string[] = [];
+  const props = () => ({ subjects: { state: f.controller.getState(), controller: f.controller }, subjectId, assets: [image(), image(2), image(3), image(4)], shots, onInspectShot: (shot: string) => { inspectedShots.push(shot); } });
+  let tree = h.render(props());
+  assert.ok(byId(tree, 'subject-inspector'));
+  assert.equal(tree.some((node: ElementNode) => ['Input', 'WorkbenchSelect', 'Textarea'].includes(String(node.type))), false, 'name and type are read-only');
+  assert.match(text(tree), new RegExp(subjectsMessages['subjects.inspector.readOnly']['zh-Hans']));
+  const label = (n: number) => text(tree.find((node: ElementNode) => node.props?.role === 'listitem' && node.props?.key === versionId(n)));
+  assert.match(label(1), new RegExp(subjectsMessages['subjects.origin.import']['zh-Hans']), 'an ordinary version shows its origin, never an angle');
+  assert.match(label(2), new RegExp(subjectsMessages['subjects.inspector.defaultVersion']['zh-Hans']));
+  assert.match(label(3), /左前 · 广角/);
+  assert.match(label(4), new RegExp(subjectsMessages['subjects.light.soft']['zh-Hans']));
+  // The default version is selected first; choosing a variant explains it never becomes the default.
+  assert.match(text(byId(tree, 'subject-version-detail')), /V2/);
+  (byId(tree, `subject-version-${versionId(3)}`)!.props.onClick as () => unknown)();
+  tree = h.render(props());
+  const detail = text(byId(tree, 'subject-version-detail'));
+  assert.match(detail, /V3 · 左前 · 广角/); assert.match(detail, /GPT Image/);
+  assert.match(detail, /不会成为默认版本。默认版本仍是 V2，用到Hero的镜头不需要复核。/);
+  (byId(tree, `subject-version-${versionId(4)}`)!.props.onClick as () => unknown)();
+  assert.match(text(byId(h.render(props()), 'subject-version-detail')), /模拟服务[\s\S]*方位 45° · 俯仰 30° · 4800K/);
+  // Usage names the shot by its order and the exact pinned variant.
+  tree = h.render(props());
+  const use = byId(tree, `subject-use-${id(6)}`)!;
+  assert.equal(text(use), '02Neon close-upV3 · 左前 · 广角');
+  (use.props.onClick as () => unknown)(); assert.deepEqual(inspectedShots, [shotId]);
+  assert.match(text(tree), new RegExp(subjectsMessages['subjects.library.planningNote']['zh-Hans']));
+  // Hidden panes reject retained callbacks.
+  h.visible = false; h.render(props()); (use.props.onClick as () => unknown)(); assert.deepEqual(inspectedShots, [shotId]);
+  assert.equal(f.writes.length, 0); h.unmount();
+});
+
+test('the properties pane withholds a subject the project has not loaded', () => {
+  const h = harness('SubjectInspector.tsx');
+  const controller = createSubjectController({ read: async () => assert.fail('No read'), save: async () => assert.fail('No save') });
+  for (const props of [{ subjectId }, { subjectId, subjects: { state: null, controller } }]) {
+    const tree = h.render(props);
+    assert.ok(byId(tree, 'subject-inspector')); assert.ok(tree.some((node: ElementNode) => node.props?.role === 'status'));
+    assert.equal(tree.some((node: ElementNode) => typeof node.props?.onClick === 'function'), false);
+  }
 });

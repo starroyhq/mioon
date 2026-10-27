@@ -882,5 +882,245 @@ export const subjectsMessages = {
     "zh-Hant": "已記錄圖片來源",
     "en": "Image source recorded",
     "ja": "画像のソースを記録済み"
+  },
+  "subjects.library.allChip": {
+    "zh-Hans": "全部",
+    "zh-Hant": "全部",
+    "en": "All",
+    "ja": "すべて"
+  },
+  "subjects.library.count": {
+    "zh-Hans": "{count} 个主体",
+    "zh-Hant": "{count} 個主體",
+    "en": "Subjects: {count}",
+    "ja": "サブジェクト {count} 件"
+  },
+  "subjects.library.defaultVersion": {
+    "zh-Hans": "默认 V{number}",
+    "zh-Hant": "預設 V{number}",
+    "en": "Default V{number}",
+    "ja": "既定 V{number}"
+  },
+  "subjects.inspector.label": {
+    "zh-Hans": "主体属性",
+    "zh-Hant": "主體屬性",
+    "en": "Subject properties",
+    "ja": "サブジェクトのプロパティ"
+  },
+  "subjects.inspector.title": {
+    "zh-Hans": "主体 · {name}",
+    "zh-Hant": "主體 · {name}",
+    "en": "Subject · {name}",
+    "ja": "サブジェクト · {name}"
+  },
+  "subjects.inspector.unavailable": {
+    "zh-Hans": "主体尚未读取，或已不在当前项目中",
+    "zh-Hant": "主體尚未讀取，或已不在目前專案中",
+    "en": "This subject hasn't loaded or is no longer in this project",
+    "ja": "このサブジェクトは未読み込みか、現在のプロジェクトにありません"
+  },
+  "subjects.inspector.versionCount": {
+    "zh-Hans": "{count} 个版本",
+    "zh-Hant": "{count} 個版本",
+    "en": "Versions: {count}",
+    "ja": "バージョン {count} 件"
+  },
+  "subjects.inspector.basics": {
+    "zh-Hans": "基本信息",
+    "zh-Hant": "基本資訊",
+    "en": "Basics",
+    "ja": "基本情報"
+  },
+  "subjects.inspector.readOnly": {
+    "zh-Hans": "名称和类型创建后不能修改",
+    "zh-Hant": "名稱和類型建立後不能修改",
+    "en": "The name and type can't be changed after creation",
+    "ja": "名前と種類は作成後に変更できません"
+  },
+  "subjects.inspector.versions": {
+    "zh-Hans": "版本",
+    "zh-Hant": "版本",
+    "en": "Versions",
+    "ja": "バージョン"
+  },
+  "subjects.inspector.usage": {
+    "zh-Hans": "使用情况",
+    "zh-Hant": "使用情況",
+    "en": "Usage",
+    "ja": "使用状況"
+  },
+  "subjects.inspector.defaultVersion": {
+    "zh-Hans": "默认版本",
+    "zh-Hant": "預設版本",
+    "en": "Default version",
+    "ja": "既定のバージョン"
+  },
+  "subjects.inspector.variantAngle": {
+    "zh-Hans": "补角度",
+    "zh-Hant": "補角度",
+    "en": "New angle",
+    "ja": "別アングル"
+  },
+  "subjects.inspector.variantLight": {
+    "zh-Hans": "打光",
+    "zh-Hant": "打光",
+    "en": "Relight",
+    "ja": "ライティング"
+  },
+  "subjects.inspector.variantNote": {
+    "zh-Hans": "不会成为默认版本。默认版本仍是 V{number}，用到{name}的镜头不需要复核。",
+    "zh-Hant": "不會成為預設版本。預設版本仍是 V{number}，用到{name}的鏡頭不需要複核。",
+    "en": "This doesn't become the default version. The default is still V{number}, so shots that use {name} don't need review.",
+    "ja": "既定のバージョンにはなりません。既定は引き続き V{number} なので、{name} を使うショットの再確認は不要です。"
+  },
+  "subjects.inspector.viewVersion": {
+    "zh-Hans": "查看 V{number}",
+    "zh-Hant": "查看 V{number}",
+    "en": "View V{number}",
+    "ja": "V{number} を表示"
+  },
+  "subjects.inspector.today": {
+    "zh-Hans": "今天 {time}",
+    "zh-Hant": "今天 {time}",
+    "en": "Today {time}",
+    "ja": "今日 {time}"
+  },
+  "subjects.inspector.needsReview": {
+    "zh-Hans": "待复核",
+    "zh-Hant": "待複核",
+    "en": "Needs review",
+    "ja": "要確認"
+  },
+  "subjects.origin.import": {
+    "zh-Hans": "上传",
+    "zh-Hant": "上傳",
+    "en": "Upload",
+    "ja": "アップロード"
+  },
+  "subjects.origin.generated": {
+    "zh-Hans": "生成",
+    "zh-Hant": "生成",
+    "en": "Generated",
+    "ja": "生成"
+  },
+  "subjects.origin.mock": {
+    "zh-Hans": "模拟",
+    "zh-Hant": "模擬",
+    "en": "Mock",
+    "ja": "モック"
+  },
+  "subjects.origin.export": {
+    "zh-Hans": "导出",
+    "zh-Hant": "匯出",
+    "en": "Export",
+    "ja": "書き出し"
+  },
+  "subjects.origin.frame": {
+    "zh-Hans": "截帧",
+    "zh-Hant": "擷取影格",
+    "en": "Video frame",
+    "ja": "動画フレーム"
+  },
+  "subjects.variant.modelOpenAI": {
+    "zh-Hans": "GPT Image",
+    "zh-Hant": "GPT Image",
+    "en": "GPT Image",
+    "ja": "GPT Image"
+  },
+  "subjects.variant.modelMock": {
+    "zh-Hans": "模拟服务",
+    "zh-Hant": "模擬服務",
+    "en": "Mock service",
+    "ja": "モックサービス"
+  },
+  "subjects.angle.front": {
+    "zh-Hans": "正面",
+    "zh-Hant": "正面",
+    "en": "Front",
+    "ja": "正面"
+  },
+  "subjects.angle.frontLeft": {
+    "zh-Hans": "左前",
+    "zh-Hant": "左前",
+    "en": "Front left",
+    "ja": "左斜め前"
+  },
+  "subjects.angle.left": {
+    "zh-Hans": "左",
+    "zh-Hant": "左",
+    "en": "Left",
+    "ja": "左側"
+  },
+  "subjects.angle.backLeft": {
+    "zh-Hans": "左后",
+    "zh-Hant": "左後",
+    "en": "Back left",
+    "ja": "左斜め後ろ"
+  },
+  "subjects.angle.back": {
+    "zh-Hans": "背",
+    "zh-Hant": "背",
+    "en": "Back",
+    "ja": "背面"
+  },
+  "subjects.angle.backRight": {
+    "zh-Hans": "右后",
+    "zh-Hant": "右後",
+    "en": "Back right",
+    "ja": "右斜め後ろ"
+  },
+  "subjects.angle.right": {
+    "zh-Hans": "右",
+    "zh-Hant": "右",
+    "en": "Right",
+    "ja": "右側"
+  },
+  "subjects.angle.frontRight": {
+    "zh-Hans": "右前",
+    "zh-Hant": "右前",
+    "en": "Front right",
+    "ja": "右斜め前"
+  },
+  "subjects.angle.high": {
+    "zh-Hans": "俯拍",
+    "zh-Hant": "俯拍",
+    "en": "High angle",
+    "ja": "ハイアングル"
+  },
+  "subjects.angle.low": {
+    "zh-Hans": "仰拍",
+    "zh-Hant": "仰拍",
+    "en": "Low angle",
+    "ja": "ローアングル"
+  },
+  "subjects.angle.wide": {
+    "zh-Hans": "广角",
+    "zh-Hant": "廣角",
+    "en": "Wide",
+    "ja": "広角"
+  },
+  "subjects.light.soft": {
+    "zh-Hans": "柔光",
+    "zh-Hant": "柔光",
+    "en": "Soft light",
+    "ja": "ソフトライト"
+  },
+  "subjects.light.hard": {
+    "zh-Hans": "硬光",
+    "zh-Hant": "硬光",
+    "en": "Hard light",
+    "ja": "ハードライト"
+  },
+  "subjects.light.back": {
+    "zh-Hans": "逆光",
+    "zh-Hant": "逆光",
+    "en": "Backlight",
+    "ja": "逆光"
+  },
+  "subjects.light.detail": {
+    "zh-Hans": "方位 {azimuth}° · 俯仰 {elevation}° · {kelvin}K",
+    "zh-Hant": "方位 {azimuth}° · 俯仰 {elevation}° · {kelvin}K",
+    "en": "Azimuth {azimuth}° · elevation {elevation}° · {kelvin}K",
+    "ja": "方位 {azimuth}° · 仰角 {elevation}° · {kelvin}K"
   }
 } as const satisfies MessageCatalog;

@@ -2,6 +2,7 @@ import { message } from '../../../packages/i18n/src/index.ts';
 import type { DisplayMessage } from '../../../packages/i18n/src/index.ts';
 import { isSubjectListResponse, isSubjectMutationResponse } from '@mioon/contracts';
 import type { SubjectBindingResponse, SubjectResponse, SubjectVersionResponse } from '../../../packages/contracts/src/subjects.ts';
+import type { SubjectVersionVariant } from '../../../packages/contracts/src/subject-variants.ts';
 
 export type SubjectKind = 'character' | 'product' | 'location' | 'look';
 export interface SubjectAsset {
@@ -64,6 +65,27 @@ export const subjectKindLabel = (kind: string): string => subjectKinds.find(([va
 const subjectKindKeys = Object.freeze({ character: 'subjects.kind.character', product: 'subjects.kind.product', location: 'subjects.kind.location', look: 'subjects.kind.look' });
 export const subjectKindDescriptor = (kind: string): DisplayMessage | string => Object.hasOwn(subjectKindKeys, kind) ? message(subjectKindKeys[kind as keyof typeof subjectKindKeys]) : kind;
 export const subjectRole = (kind: string): 'style' | 'subject' => kind === 'look' ? 'style' : 'subject';
+// Version labels. Ordinary versions carry no angle tag; a variant shows what it
+// re-shot: the camera position and focal length, or the light quality.
+const angleKeys = Object.freeze({ front: 'subjects.angle.front', 'front-left': 'subjects.angle.frontLeft', left: 'subjects.angle.left', 'back-left': 'subjects.angle.backLeft', back: 'subjects.angle.back', 'back-right': 'subjects.angle.backRight', right: 'subjects.angle.right', 'front-right': 'subjects.angle.frontRight', high: 'subjects.angle.high', low: 'subjects.angle.low' } as const);
+const lightKeys = Object.freeze({ soft: 'subjects.light.soft', hard: 'subjects.light.hard', back: 'subjects.light.back' } as const);
+export const subjectAngleDescriptor = (position: string): DisplayMessage | string => Object.hasOwn(angleKeys, position) ? message(angleKeys[position as keyof typeof angleKeys]) : position;
+export const subjectLightDescriptor = (quality: string): DisplayMessage | string => Object.hasOwn(lightKeys, quality) ? message(lightKeys[quality as keyof typeof lightKeys]) : quality;
+/** The parts of a variant's tag, shown joined by " · "; null for an ordinary version. */
+export function subjectVariantTagParts(variant: SubjectVersionVariant | null | undefined): (DisplayMessage | string)[] | null {
+  if (!variant) return null;
+  if (variant.kind === 'angle') return variant.focal === 'wide' ? [subjectAngleDescriptor(variant.position), message('subjects.angle.wide')] : [subjectAngleDescriptor(variant.position)];
+  return [subjectLightDescriptor(variant.quality)];
+}
+const originKeys = Object.freeze({ 'user-import': 'subjects.origin.import', generated: 'subjects.origin.generated', 'synthetic-mock': 'subjects.origin.mock', export: 'subjects.origin.export', 'extracted-frame': 'subjects.origin.frame' } as const);
+/** Where a version's image came from. Variants are made only by GPT Image or
+ * the mock service, so a generated or mock variant names its model instead. */
+export function subjectVersionOriginDescriptor(version: Pick<SubjectVersionResponse, 'provenance' | 'variant'>): DisplayMessage | string {
+  const kind = version.provenance.kind;
+  if (version.variant && kind === 'generated') return message('subjects.variant.modelOpenAI');
+  if (version.variant && kind === 'synthetic-mock') return message('subjects.variant.modelMock');
+  return Object.hasOwn(originKeys, kind) ? message(originKeys[kind]) : kind;
+}
 export const subjectPageSize = 20;
 export const subjectImage = (asset: SubjectAsset | null | undefined, projectId: string | null): boolean => Boolean(asset?.id && asset.projectId === projectId && ['image/png', 'image/jpeg', 'image/webp'].includes(asset.mimeType ?? ''));
 export const filterSubjects = (items: readonly SubjectResponse[], { kind = 'all', search = '' }: { kind?: string; search?: string } = {}): SubjectResponse[] => items.filter(item => (kind === 'all' || item.kind === kind) && item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
