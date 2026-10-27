@@ -1,3 +1,4 @@
+import {CURRENT_ORDINARY_SCHEMA} from './helpers/workspace-schema-current.ts';
 import test, {after, mock} from 'node:test';
 import assert from 'node:assert/strict';
 import cp from 'node:child_process';
@@ -82,7 +83,7 @@ test('a pre-aborted application call cannot create a project or initialize a mis
 });
 test('shared ordinary58 importer retains successful bytes/type rejection and cleanup without candidate grant', async t => {
   const f=fixture(t,{ordinary:true}), project=await f.services.call('project.create',{name:'Ordinary unchanged default'});
-  assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get()!.version,62);
+  assert.equal(f.store.db.prepare('SELECT MAX(version) AS version FROM schema_version').get()!.version,CURRENT_ORDINARY_SCHEMA);
   assert.equal(isOpacityCandidateApplicationStore(f.store),false);
   const imported=await f.services.call('asset.import',importInput(project.id));assert.equal(imported.mimeType,'video/mp4');assert.equal(imported.provenance,'user-import');
   const before=probeCount;

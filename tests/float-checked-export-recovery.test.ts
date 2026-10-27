@@ -1,12 +1,10 @@
-import {withoutReviewedSubjectVariantObjects} from './helpers/current-schema62-delta.ts';
+import {ORDINARY_SCHEMA_LINEAGE} from './helpers/workspace-schema-current.ts';
+import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {FixtureStoryboardExport,FixtureExport, FixtureProject, FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
 import type {TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import type {SQLInputValue} from 'node:sqlite';
-import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
-import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedConversationObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
+function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedConversationObjects>[0]){return reviewedCatalogAt(52,objects);}
 import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -287,7 +285,7 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
       return template ? Object.fromEntries(Object.keys(template).map(key => [key, row[key]])) : row;
     })]));
     assert.deepEqual(projected, Object.fromEntries(frozenTables.map(table => [table, before[table]])), 'frozen legacy rows stay byte-exact');
-    assert.deepEqual(actual.schema_version.map((row: { version: unknown; }) => row.version), [...frozenVersions, 26, 28, 30, 32, 34, 36, 38, 40, 44, 48, 50, 52, 54, 56, 58, 60, 62], 'startup adds only the documented additive lineage');
+    assert.deepEqual(actual.schema_version.map((row: { version: unknown; }) => row.version), [...frozenVersions, ...ORDINARY_SCHEMA_LINEAGE.slice(1)], 'startup adds only the documented additive lineage');
     for (const [table, values] of Object.entries(actual)) {
       if (table === 'schema_version' || Object.hasOwn(before, table) || Object.hasOwn(currentOrdinary52Delta.tables,table)) continue;
       assert.deepEqual((values as unknown), [], `additive table ${table} must stay empty`);

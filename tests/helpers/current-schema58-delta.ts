@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {removeReviewedSchema60} from './current-schema60-delta.ts';
 import type {DatabaseSync} from 'node:sqlite';
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
 interface CurrentOrdinary58Delta {
@@ -17,9 +16,11 @@ export function withoutReviewedSceneObjects<T extends SchemaObject>(objects:read
  assert.deepEqual(objects.filter(object=>names.has(object.name)).map(object=>({type:object.type,name:object.name,tbl_name:object.tbl_name,sql:object.sql})),currentOrdinary58Delta.objects,'independent reviewed58 scene SQL');
  return objects.filter(object=>!names.has(object.name));
 }
-/** Build genuine56 fixture bytes only when no scene rows exist. */
+/** Build genuine56 fixture bytes only when no scene rows exist. Newer layers
+ * go first; use downgradeReviewedWorkspace from reviewed-schema-layers.ts. */
 export function removeReviewedSchema58(db:DatabaseSync):void {
- if(db.prepare('SELECT 1 FROM schema_version WHERE version=60').get())removeReviewedSchema60(db);
+ if(!db.prepare('SELECT 1 FROM schema_version WHERE version=58').get())return;
+ assert.equal(db.prepare('SELECT 1 FROM schema_version WHERE version>58').get(),undefined,'newer reviewed layers are removed first');
  const tables=Object.keys(currentOrdinary58Delta.tables);
  const objects=db.prepare(`SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE tbl_name IN (${tables.map(()=>'?').join(',')}) ORDER BY type,name`).all(...tables) as unknown as SchemaObject[];
  assert.deepEqual(withoutReviewedSceneObjects(objects),[]);

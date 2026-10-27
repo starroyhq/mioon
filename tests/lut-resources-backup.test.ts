@@ -1,14 +1,11 @@
-import {removeReviewedSchema62} from './helpers/current-schema62-delta.ts';
-import {removeReviewedSchema60} from './helpers/current-schema60-delta.ts';
-import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
-import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
+import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
+import {AGENT_TASK_ORDINARY_SCHEMAS,CURRENT_ORDINARY_SCHEMA} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,readFileSync,readdirSync,lstatSync,writeFileSync} from 'node:fs';import path from 'node:path';import os from 'node:os';import {createHash} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';
 import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';import {createServices} from '../packages/business/src/services.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {isWorkspaceBackupPayloadPath} from '../packages/contracts/src/workspace-backup.ts';
 import {classifyWorkspaceSchemaV52V53} from '../packages/business/src/workspace-restore-schema-v53.ts';
-import {currentOrdinary54Delta,withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
 const text='# retained lexical original\r\nTITLE "Resource portable"\r\nLUT_3D_SIZE 2\r\n0 0 0\r\n1 0 0\r\n0 1 0\r\n1 1 0\r\n0 0 1\r\n1 0 1\r\n0 1 1\r\n1 1 1';
 const sha=(bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex');
 interface ProjectView { id: string }
@@ -17,28 +14,17 @@ interface LutImportInput { projectId: string; requestId: string; name: string; d
 interface BackupCreated { databaseSchemaVersion: number; inventory: { complete: boolean } }
 interface BackupVerified { integrity: string }
 interface RestoreInfo { operationPolicy: { operation: string; available: boolean }[] }
-async function source(t: import('node:test').TestContext,sourceSchema:52|54|56|58|60|62=62) {
+async function source(t: import('node:test').TestContext,sourceSchema:number=CURRENT_ORDINARY_SCHEMA) {
  const base=mkdtempSync(path.join(os.tmpdir(),'mioon-lut-backup-'));t.after(()=>rmSync(base,{recursive:true,force:true}));
  const root=path.join(base,'source'),store=openStore(root),s=createServices(store,new Map());
  const project=await s.call('project.create',{name:'Portable LUT'}) as ProjectView;
  const input: LutImportInput={projectId:project.id,requestId:'portable-resource-request',name:'look.cube',dataBase64:Buffer.from(text).toString('base64')};
  const response=await s.call('lut.import',input) as LutImportResponse;await s.drain();store.close();
- if(sourceSchema===60){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema62(db);}finally{db.close();}}
- if(sourceSchema===58){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema60(db);}finally{db.close();}}
- if(sourceSchema===56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema58(db);}finally{db.close();}}
- if(sourceSchema<56){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{removeReviewedSchema56(db);}finally{db.close();}}
- if(sourceSchema===52){
-  // Keep a real historical52 backup, rather than relabelling current58 bytes.
-  const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{
-   const objects=db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name GLOB 'agent_task_conversation_*' ORDER BY type,name,tbl_name").all() as {type:string;name:string;tbl_name:string;sql:string|null}[];
-   assert.deepEqual(withoutReviewedConversationObjects(objects),[]);assert.equal(db.prepare('SELECT count(*) AS n FROM agent_task_runs_v2').get()!.n,0);
-   for(const object of currentOrdinary54Delta.objects)db.exec(`DROP ${object.type} "${object.name}"`);
-   db.exec('DELETE FROM schema_version WHERE version=54');assert.deepEqual(classifyWorkspaceSchemaV52V53(db),{schemaVersion:52,profile:'ordinary'});
-  }finally{db.close();}
- }
+ // Keep a real historical backup, rather than relabelling current bytes.
+ if(sourceSchema<CURRENT_ORDINARY_SCHEMA){const db=new DatabaseSync(path.join(root,'workbench.sqlite'));try{downgradeReviewedWorkspace(db,sourceSchema);if(sourceSchema===52)assert.deepEqual(classifyWorkspaceSchemaV52V53(db),{schemaVersion:52,profile:'ordinary'});}finally{db.close();}}
  return {base,root,input,response,backup:path.join(base,'backup'),restored:path.join(base,'restored')};
 }
-for(const sourceSchema of [52,54,56,58,60,62] as const)test(`offline cold capture and restore${sourceSchema+1} preserve exact bytes/hash/receipt without .cube media path`,async t=>{
+for(const sourceSchema of AGENT_TASK_ORDINARY_SCHEMAS)test(`offline cold capture and restore${sourceSchema+1} preserve exact bytes/hash/receipt without .cube media path`,async t=>{
  const f=await source(t,sourceSchema),created=await createWorkspaceBackup({source:f.root,destination:f.backup}) as BackupCreated;assert.equal(created.databaseSchemaVersion,sourceSchema);assert.equal(created.inventory.complete,true);
  const verified=await verifyWorkspaceBackup({directory:f.backup}) as BackupVerified;assert.equal(verified.integrity,'verified');
  const manifest=JSON.parse(readFileSync(path.join(f.backup,'manifest.json'),'utf8'));assert.deepEqual((manifest as {entries: {path: string}[]}).entries.map((e: {path: string})=>e.path),['payload/workbench.sqlite']);

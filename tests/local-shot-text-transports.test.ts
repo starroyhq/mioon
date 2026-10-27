@@ -1,4 +1,4 @@
-import {withoutReviewedSubjectVariantObjects} from './helpers/current-schema62-delta.ts';
+import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
@@ -10,10 +10,7 @@ type WireResponse<T=WireEnvelope>={status:number;body:RpcEnvelope<T>};
 interface WireOptions{method?:string;input?:unknown;headers?:Record<string,string>;authenticated?:boolean}
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
-import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
-import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
+function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';

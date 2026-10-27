@@ -1,10 +1,8 @@
+import {AGENT_TASK_ORDINARY_SCHEMAS} from './helpers/workspace-schema-current.ts';
+import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
 import type {WorkspaceInspection} from './helpers/strict-workspace-boundary-types.ts';
 import type {WorkspaceServices as FixtureServices} from './helpers/strict-workspace-boundary-types.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
-import {removeReviewedSchema62} from './helpers/current-schema62-delta.ts';
-import {removeReviewedSchema60} from './helpers/current-schema60-delta.ts';
-import {removeReviewedSchema56} from './helpers/current-schema56-delta.ts';
-import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
@@ -135,7 +133,7 @@ test('restored catalogue reports exact disabled media and redesign operations an
 });
 
 test('restored summary reads saved metadata in current59 and historical25/41/53/55/57 without writes or recent-opened access',async t=>{
- for(const version of [24,40,52,54,56,58,60,62] as const)await t.test(`source${version} restored${version+1}`,async t=>{
+ for(const version of [24,40,...AGENT_TASK_ORDINARY_SCHEMAS])await t.test(`source${version} restored${version+1}`,async t=>{
   const root=mkdtempSync(path.join(tmpdir(),'mioon-restored-summary-')),filename=path.join(root,'workbench.sqlite');
   let store: FixtureStore|null|undefined,services: import("./helpers/strict-workspace-boundary-types.ts").WorkspaceServices;
   t.after(async()=>{await services?.drain();store?.close();rmSync(root,{recursive:true,force:true});});
@@ -146,15 +144,10 @@ test('restored summary reads saved metadata in current59 and historical25/41/53/
   const width=version>=52?1080:720,height=version>=52?1920:1280;
   try{
    db.exec('PRAGMA trusted_schema=OFF;PRAGMA foreign_keys=ON;');
-   if(version===52||version===54)removeReviewedSchema56(db);
-   if(version===60)removeReviewedSchema62(db);
-   if(version===58)removeReviewedSchema60(db);
-   if(version===56)removeReviewedSchema58(db);
-   if(version===52){
-    // Keep the historical52 case exact instead of silently turning it into a
-    // current58 test when openStore's ordinary startup version advances.
-    db.exec('DROP INDEX agent_task_conversation_v2;DROP TRIGGER agent_task_conversation_identity_v2;DROP TRIGGER agent_task_conversation_required_v2;DELETE FROM schema_version WHERE version=54');assert.deepEqual(classifyWorkspaceSchemaV52V53(db),{schemaVersion:52,profile:'ordinary'});
-   }
+   // Keep each historical case exact instead of silently turning it into a
+   // current test when openStore's ordinary startup version advances.
+   if(version>=52)downgradeReviewedWorkspace(db,version);
+   if(version===52)assert.deepEqual(classifyWorkspaceSchemaV52V53(db),{schemaVersion:52,profile:'ordinary'});
    if(version<52){
     initializeWorkspaceSchemaThrough24(db);
     if(version===40)for(const initialize of [initializeWorkspaceSchema26,initializeWorkspaceSchema28,initializeWorkspaceSchema30,initializeWorkspaceSchema32,initializeWorkspaceSchema34,initializeWorkspaceSchema36,initializeWorkspaceSchema38,initializeWorkspaceSchema40] as const)initialize(db);

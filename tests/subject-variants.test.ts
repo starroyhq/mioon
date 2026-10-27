@@ -1,3 +1,4 @@
+import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_ROLE,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -194,7 +195,7 @@ test('storage guards keep variants out of the head and bound to an active batch'
  assert.throws(()=>f.store.db.prepare('DELETE FROM subject_variant_items WHERE batchId=?').run(batch.id),/must be retained/);
 });
 
-test('a schema62 backup restores as restored63 that holds every variant row and refuses variant operations',async t=>{
+test('a current backup restores as a copy that holds every variant row and refuses variant operations',async t=>{
  const f=await fixture(t),kept=await f.create([angle('front'),angle('left')]);await f.submit(kept);await f.settled(kept);
  const hidden=await f.create([angle('right')]);await f.submit(hidden);const done=await f.settled(hidden);
  await f.call('subject.variants.undo',{projectId:f.projectId,batchId:hidden.id,expectedRevision:done.revision,requestId:randomUUID()});
@@ -204,12 +205,12 @@ test('a schema62 backup restores as restored63 that holds every variant row and 
  const before=rows(f.store.db);await f.stop();
  const base=mkdtempSync(path.join(tmpdir(),'mioon-subject-variant-backup-')),backup=path.join(base,'backup'),restored=path.join(base,'restored');
  t.after(()=>rmSync(base,{recursive:true,force:true}));
- assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).databaseSchemaVersion,62);
+ assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).databaseSchemaVersion,CURRENT_ORDINARY_SCHEMA);
  const result=await restoreWorkspaceBackup({directory:backup,destination:restored});
- assert.deepEqual([result.sourceSchema,result.databaseSchemaVersion,result.profile],[62,63,'restored-local-v20']);
+ assert.deepEqual([result.sourceSchema,result.databaseSchemaVersion,result.profile],[CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE]);
  const store=openStore(restored),services=createServices(store,new Map());
  t.after(async()=>{await services.drain?.();store.close();});
- assert.equal(readCurrentWorkspaceRole(store.db),'restored-63-evidence');
+ assert.equal(readCurrentWorkspaceRole(store.db),CURRENT_RESTORED_ROLE);
  assert.deepEqual(rows(store.db),before,'every subject, version, batch, item and receipt is kept byte for byte');
  assert.deepEqual(store.db.prepare("SELECT kind,count(*) AS n FROM workspace_restore_holds WHERE kind LIKE 'subject_variant_%' GROUP BY kind ORDER BY kind").all().map(row=>[row.kind,row.n]),
   [['subject_variant_batches',2],['subject_variant_items',3],['subject_variant_requests',3]]);

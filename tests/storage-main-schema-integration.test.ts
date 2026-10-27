@@ -1,3 +1,5 @@
+import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
+import {CURRENT_ORDINARY_ROLE} from './helpers/workspace-schema-current.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -19,15 +21,13 @@ import {createRestoredReadServices} from '../packages/business/src/workspace-res
 import {refuseRestoredOperation} from '../packages/business/src/workspace-restore-policy.ts';
 import {readTimelineAudioRoleCapability} from '../packages/business/src/timeline-audio-role-business.ts';
 import {workspaceRestoreInspectionSchema} from '../packages/contracts/src/workspace-restore.ts';
-import {removeReviewedSchema60} from './helpers/current-schema60-delta.ts';
-import {removeReviewedSchema58} from './helpers/current-schema58-delta.ts';
 
 const historyTables=['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2','agent_task_job_origins_v2','agent_task_imports_v2'];
 function evidence(store:WorkspaceStore,tables=historyTables){return tables.map(table=>({table,rows:store.db.prepare(`SELECT rowid,* FROM ${table} ORDER BY rowid`).all()}));}
 function fixture(t:TestContext,privateStorage=false){
  const root=realpathSync(mkdtempSync(join(tmpdir(),'mioon-storage-main-integration-')));let store=openStore(root);
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
- if(privateStorage){removeReviewedSchema58(store.db);initializePrivateStorage58(store.db,initializeWorkspaceSchemaThrough24);}else removeReviewedSchema60(store.db);
+ if(privateStorage){downgradeReviewedWorkspace(store.db,56);initializePrivateStorage58(store.db,initializeWorkspaceSchemaThrough24);}else downgradeReviewedWorkspace(store.db,58);
  const projectId=randomUUID(),date=new Date().toISOString();store.put('projects',{id:projectId,name:'Storage integration',revision:1,createdAt:date,updatedAt:date});
  const journal=createAgentTaskJournal(store),run=journal.create({requestId:randomUUID(),projectId,text:'Preserve exact evidence',configuration:{protocol:'chat_completions'}}).run;
  const step=journal.beginStep(run.id,{kind:'model',request:{body:'{"messages":[{"role":"user","content":"synthetic"}]}',history:[{role:'user',content:'synthetic'}]}});
@@ -52,7 +52,7 @@ test('main scene58 keeps its64MiB inline profile, then migrates to60 without cha
 test('precisely classified private storage58 migrates request references unchanged and adds scene definitions',t=>{
  const f=fixture(t,true);assert.equal(readCurrentWorkspaceRole(f.store.db),'storage-private-58');
  const before=evidence(f.store);assert.ok(String(before.find(value=>value.table==='agent_task_events_v2')!.rows.at(-1)!.data).includes('mioon-model-request-ref/1'));
- f.reopen();assert.equal(readCurrentWorkspaceRole(f.store.db),'ordinary-62');assert.deepEqual(evidence(f.store),before);
+ f.reopen();assert.equal(readCurrentWorkspaceRole(f.store.db),CURRENT_ORDINARY_ROLE);assert.deepEqual(evidence(f.store),before);
  assert.deepEqual(f.store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name GLOB 'scene_*' ORDER BY name").all().map(row=>row.name),['scene_requests','scene_results','scene_tasks']);
  const hydrated=createAgentTaskJournal(f.store).events(f.run.id).filter(value=>value.type==='step');
  assert.deepEqual((hydrated.at(-1)!.data as {request:unknown}).request,f.step.request);

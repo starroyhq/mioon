@@ -1,3 +1,4 @@
+import {CURRENT_MARKER_CHAIN,CURRENT_ORDINARY_ROLE,CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE} from './helpers/workspace-schema-current.ts';
 import type {WorkspaceInspection} from './helpers/strict-workspace-boundary-types.ts';
 import type {WorkspaceServices as FixtureServices} from './helpers/strict-workspace-boundary-types.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
@@ -59,17 +60,17 @@ function proposal(db: DatabaseSync,volumeEnvelope?: { profileId: string; points:
 }
 function unchanged(db: DatabaseSync,fn:()=>unknown,code='RESTORE_SCHEMA_UNSUPPORTED'){const before=snapshot(db);assert.throws(fn,{code});assert.deepEqual(snapshot(db),before);assert.equal(db.isTransaction,false);}
 
-test('real dispatch migrates source38 marker-only to current ordinary62 and reopens idempotently',t=>{
+test('real dispatch migrates source38 marker-only to current ordinary and reopens idempotently',t=>{
  const f=database(t),db=f.db;seed(db);const before=snapshot(db);
  assert.deepEqual(dispatch.classify(db),{schemaVersion:38,profile:'ordinary'});
- assert.equal(dispatch.initialize(db),null);assert.equal(readCurrentWorkspaceRole(db),'ordinary-62');
+ assert.equal(dispatch.initialize(db),null);assert.equal(readCurrentWorkspaceRole(db),CURRENT_ORDINARY_ROLE);
  const after=snapshot(db);
  // Seeded historical rows survive byte-for-byte; schema_version keeps its
  // prefix and gains the reviewed current marker chain.
  for(const [name,value]of Object.entries(before.tables))if(name!=='schema_version')assert.deepEqual(after.tables[name],value,name);
  assert.deepEqual(after.tables.schema_version.rows.slice(0,before.tables.schema_version.rows.length),before.tables.schema_version.rows);
- assert.deepEqual(after.tables.schema_version.rows.map((row: unknown[])=>Number(row[0])),[...Array.from({length:24},(_,index)=>index+1),26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60,62]);
- assert.deepEqual(dispatch.classify(db),{schemaVersion:62,profile:'ordinary'});assert.equal(dispatch.detect(db),false);
+ assert.deepEqual(after.tables.schema_version.rows.map((row: unknown[])=>Number(row[0])),[...CURRENT_MARKER_CHAIN]);
+ assert.deepEqual(dispatch.classify(db),{schemaVersion:CURRENT_ORDINARY_SCHEMA,profile:'ordinary'});assert.equal(dispatch.detect(db),false);
  assert.throws(()=>validateWorkspaceSchema38(db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  assert.equal(dispatch.initialize(f.reopen()),null);assert.deepEqual(snapshot(f.db),after);
 });
@@ -227,8 +228,8 @@ test('current ordinary60 backup verifies and restores59 with valid actual-servic
   insert(store.db,'timeline_history_cursors',{projectId:id(1),position:1});
   insert(store.db,'timeline_requests',{requestId:'retained-envelope',requestHash:'a'.repeat(64),response:JSON.stringify(value,null,2)});
   const before=snapshot(store.db);await services.drain();store.close();store=null;
-  const captured=await (createWorkspaceBackup({source,destination:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>);assert.equal(captured.databaseSchemaVersion,62);assert.equal(captured.integrity,'verified');assert.deepEqual(await (verifyWorkspaceBackup({directory:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>),captured);
-  const result=await (restoreWorkspaceBackup({directory:backup,destination}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceRestoreResult>);assert.equal(result.sourceSchema,62);assert.equal(result.databaseSchemaVersion,63);assert.equal(result.profile,'restored-local-v20');
+  const captured=await (createWorkspaceBackup({source,destination:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>);assert.equal(captured.databaseSchemaVersion,CURRENT_ORDINARY_SCHEMA);assert.equal(captured.integrity,'verified');assert.deepEqual(await (verifyWorkspaceBackup({directory:backup}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceBackupResult>),captured);
+  const result=await (restoreWorkspaceBackup({directory:backup,destination}) as Promise<import('./helpers/strict-workspace-boundary-types.ts').WorkspaceRestoreResult>);assert.equal(result.sourceSchema,CURRENT_ORDINARY_SCHEMA);assert.equal(result.databaseSchemaVersion,CURRENT_RESTORED_SCHEMA);assert.equal(result.profile,CURRENT_RESTORE_PROFILE);
   for(let reopen=0;reopen<2;reopen++){
    store=(openStore(destination) as unknown as FixtureStore);services=(createServices(store,new Map()) as unknown as FixtureServices);
    const legacy=await services.call('workspace.restore.inspect',{}),optIn=await services.call('workspace.restore.inspect',{includeVolumeEnvelopeCapability:true});

@@ -1,3 +1,4 @@
+import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,realpathSync,rmSync,mkdirSync,writeFileSync,readFileSync} from 'node:fs';
@@ -118,9 +119,9 @@ test('explicit same-owner restore retains claim identity, checks original target
  assert.throws(()=>f.journal.edit({...input,requestId:randomUUID(),generation:3,action:'restore',targets:[{...target,revision:f.journal.targetRevision(f.projectId,'shot',id)}]}),{code:'AGENT_TASK_TARGET_CHANGED'});assert.equal(f.journal.claims(f.projectId,ownerId)[0]?.state,'uncertain');
  f.journal.edit({...input,requestId:randomUUID(),generation:3,action:'resolve'});assert.equal(f.journal.claims(f.projectId,ownerId).length,0);
 }finally{f.close();}});
-test('schema62 is an exact new profile and restored63 retains immutable v2 evidence',()=>{const f=fixture();try{const run=start(f).run;assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:62,profile:'ordinary'});assert.throws(()=>classifyWorkspaceSchemaV48V49(f.store.db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});const info=installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});assert.equal(info.schemaVersion,63);assert.equal(info.sourceSchema,62);assert.throws(()=>f.store.db.prepare("UPDATE agent_task_runs_v2 SET status='running' WHERE id=?").run(run.id),/RESTORED_RECORD_HELD/);assert.equal(f.journal.run(run.id).text,'测试');}finally{f.close();}});
+test('the current schema is an exact new profile and its restored copy retains immutable v2 evidence',()=>{const f=fixture();try{const run=start(f).run;assert.deepEqual(classifyCurrentWorkspaceSchema(f.store.db),{schemaVersion:CURRENT_ORDINARY_SCHEMA,profile:'ordinary'});assert.throws(()=>classifyWorkspaceSchemaV48V49(f.store.db),{code:'RESTORE_SCHEMA_UNSUPPORTED'});const info=installCurrentWorkspaceRestoreSchema(f.store.db,{restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:randomUUID(),manifestHash:'a'.repeat(64),sourceDbHash:'b'.repeat(64),createdAt:new Date().toISOString()});assert.equal(info.schemaVersion,CURRENT_RESTORED_SCHEMA);assert.equal(info.sourceSchema,CURRENT_ORDINARY_SCHEMA);assert.throws(()=>f.store.db.prepare("UPDATE agent_task_runs_v2 SET status='running' WHERE id=?").run(run.id),/RESTORED_RECORD_HELD/);assert.equal(f.journal.run(run.id).text,'测试');}finally{f.close();}});
 
-test('schema58 backup restores policy receipts and selected import bytes into fixed63',async()=>{
+test('schema58 backup restores policy receipts and selected import bytes into the current restored profile',async()=>{
  const f=fixture(),backup=`${f.root}-backup`,restored=`${f.root}-restored`;try{
   const requestId=randomUUID(),selected=randomUUID(),bytes=Buffer.from('selected local file'),sha256=createHash('sha256').update(bytes).digest('hex');
   const policy=f.journal.updatePolicy({...structuredClone(DEFAULT_AGENT_TASK_POLICY),modes:{...DEFAULT_AGENT_TASK_POLICY.modes,paid:'direct'}},requestId);
@@ -128,8 +129,8 @@ test('schema58 backup restores policy receipts and selected import bytes into fi
   mkdirSync(join(f.root,'agent-imports'),{mode:0o700});writeFileSync(join(f.root,'agent-imports',`${selected}.bin`),bytes,{mode:0o600});
   f.store.db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,createdAt) VALUES(?,?,?,?,?,?,?,'selected',?)").run(selected,f.projectId,randomUUID(),'chosen.png','image/png',`agent-imports/${selected}.bin`,sha256,new Date().toISOString());
   const original=f.store.db.prepare('SELECT * FROM agent_task_imports_v2').all();f.store.close();
-  const created=await createWorkspaceBackup({source:f.root,destination:backup});assert.equal(created.databaseSchemaVersion,62);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
-  const result=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(result.databaseSchemaVersion,63);
+  const created=await createWorkspaceBackup({source:f.root,destination:backup});assert.equal(created.databaseSchemaVersion,CURRENT_ORDINARY_SCHEMA);assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
+  const result=await restoreWorkspaceBackup({directory:backup,destination:restored});assert.equal(result.databaseSchemaVersion,CURRENT_RESTORED_SCHEMA);
   const copy=openStore(restored);try{assert.deepEqual(copy.db.prepare('SELECT * FROM agent_task_imports_v2').all(),original);assert.deepEqual(readFileSync(join(restored,'agent-imports',`${selected}.bin`)),bytes);assert.deepEqual(createAgentTaskJournal(copy).lookupPolicy(requestId),policy);}finally{copy.close();}
  }finally{f.close();rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});}
 });
@@ -145,7 +146,7 @@ test('history keyset pages discover every run without overlap and reject a forei
 
 test('stale control rejection has a retained receipt and exact replay never performs the action',()=>{const f=fixture();try{const run=start(f).run;f.journal.transition(run.id,run.revision,'paused');const input={requestId:randomUUID(),runId:run.id,expectedRevision:run.revision,action:'resume'};let calls=0;assert.throws(()=>f.journal.performControl(input,()=>{calls++;return null;}),{code:'AGENT_TASK_REVISION_CONFLICT'});const rejected=f.journal.rejectControl(input,'AGENT_TASK_REVISION_CONFLICT');assert.equal(rejected.revision,f.journal.run(run.id).revision);assert.deepEqual(rejected.result,{state:'rejected',code:'AGENT_TASK_REVISION_CONFLICT'});assert.deepEqual(f.journal.lookupControl(input.requestId),rejected);assert.deepEqual(f.journal.performControl(input,()=>{calls++;return null;}),rejected);assert.equal(calls,0);assert.throws(()=>f.journal.rejectControl({...input,action:'stop'},'AGENT_TASK_REVISION_CONFLICT'),{code:'AGENT_TASK_REQUEST_CONFLICT'});}finally{f.close();}});
 
-test('restored63 server reads v2 history without credentials or recovery and rejects every mutation without database changes',async()=>{
+test('the current restored server reads v2 history without credentials or recovery and rejects every mutation without database changes',async()=>{
  const f=fixture(),backup=`${f.root}-http-backup`,restored=`${f.root}-http-restored`;let server:Awaited<ReturnType<typeof import('../apps/server/src/index.ts')['startServer']>>|undefined;
  const dump=(root:string)=>{const db=new DatabaseSync(join(root,'workbench.sqlite'),{readOnly:true});try{return db.prepare("SELECT name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row=>({name:row.name,sql:row.sql,...(String(row.sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${String(row.name)}"`).all().map(item=>JSON.stringify(item)).sort()}: {})}));}finally{db.close();}};
  try{

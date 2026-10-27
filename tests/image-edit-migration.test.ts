@@ -1,12 +1,7 @@
-import {reviewed60Catalog,removeReviewedSchema62} from './helpers/current-schema62-delta.ts';
-import {withoutReviewedSubjectVariantObjects} from './helpers/current-schema62-delta.ts';
+import {downgradeReviewedWorkspace,reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
-import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-import {withoutReviewedSceneObjects} from './helpers/current-schema58-delta.ts';
-import {withoutReviewedInteractionObjects} from './helpers/current-schema56-delta.ts';
 import type {currentOrdinary56Delta as schema56DeltaType} from './helpers/current-schema56-delta.ts';
-function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return withoutReviewedConversationObjects(withoutReviewedInteractionObjects(withoutReviewedSceneObjects(withoutReviewedStorageObjects(withoutReviewedSubjectVariantObjects(objects)))));}
-import {withoutReviewedConversationObjects} from './helpers/current-schema54-delta.ts';
+function withoutReviewedCurrentAgentObjects<T extends typeof schema56DeltaType.objects[number]>(objects:readonly T[]):T[]{return reviewedCatalogAt(52,objects);}
 import test from 'node:test';
 import {errorView} from './helpers/test-error.ts';
 import {currentMarkerChain,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
@@ -94,7 +89,7 @@ const model='gpt-image-2.5-flare-2026-09-08',destination='https://api.openai.com
 const policy={maxPostAttempts:1,automaticRetry:false,price:'usage-based-unknown',promptStorage:'local-plaintext'};
 const insert=(db: DatabaseSync,table: string,value: Row)=>{const keys=Object.keys(value);const statement=db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`);statement.setReadBigInts(true);return statement.run(...Object.values(value) as never[]);};
 function database(file: string=':memory:'): DatabaseSync {const db=new DatabaseSync(file);db.exec('PRAGMA foreign_keys=ON');db.exec(fixtureSql);return db;}
-function snapshot(db: DatabaseSync): Snapshot {const objects=reviewed60Catalog(db,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as SchemaObject[]),rows: Record<string, Row[]>={},foreignKeys: Record<string, Row[]>={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();foreignKeys[name]=db.prepare(`PRAGMA foreign_key_list("${name}")`).all();}return {objects,rows,foreignKeys};}
+function snapshot(db: DatabaseSync): Snapshot {const objects=reviewedCatalogAt(60,db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as SchemaObject[]),rows: Record<string, Row[]>={},foreignKeys: Record<string, Row[]>={};for(const {name} of objects.filter(value=>value.type==='table')){const query=db.prepare(`SELECT rowid AS retainedRowid,* FROM "${name}" ORDER BY rowid`);query.setReadBigInts(true);rows[name]=query.all();foreignKeys[name]=db.prepare(`PRAGMA foreign_key_list("${name}")`).all();}return {objects,rows,foreignKeys};}
 function normalizeStartupTaskObject(row: SchemaObject): SchemaObject {
  const token=",'timeline.loudness.apply'";
  assert.equal(row.sql.split(token).length,2,'startup adds exactly one explicit loudness operation token');
@@ -257,7 +252,7 @@ test('ordinary60 v4 edit reviews keep exact rows, rowids and bytes through the s
  const raw=(value: DatabaseSync)=>{const query=value.prepare('SELECT rowid AS retainedRowid,id,hex(CAST(canonicalInput AS BLOB)) AS input,hex(CAST(canonicalIntent AS BLOB)) AS intent,inputHash,intentHash,state,revision FROM image_reviews ORDER BY rowid');query.setReadBigInts(true);return query.all();};
  try{
   // A genuine ordinary60: the fresh current catalog with its reviewed62 layer removed.
-  openStore(root).close();db=new DatabaseSync(path.join(root,'workbench.sqlite'));removeReviewedSchema62(db);
+  openStore(root).close();db=new DatabaseSync(path.join(root,'workbench.sqlite'));downgradeReviewedWorkspace(db,60);
   assert.equal(db.prepare('SELECT max(version) AS v FROM schema_version').get()!.v,60);
   const projectId=randomUUID();insert(db,'projects',{id:projectId,data:JSON.stringify({id:projectId,name:'Edit reviews 原始'})});
   const pending=editIntent(projectId),rejected=editIntent(projectId),generated=editIntent(projectId);
