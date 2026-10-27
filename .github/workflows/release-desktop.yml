@@ -94,10 +94,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: linux-x64
-            platform: linux
-            arch: x64
-            os: ubuntu-22.04
           - target: macos-arm64
             platform: darwin
             arch: arm64

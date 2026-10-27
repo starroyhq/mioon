@@ -6,6 +6,8 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, writeFile, rm, rename, symlink, link, truncate, realpath, lstat, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import {readMacRuntimeNoticeProvenance, verifyMacRuntimeNoticeFiles, RUNTIME_NOTICE_PROVENANCE_FILE} from '../apps/desktop/runtime-notices.ts';
+import {readBuildMetadata} from '../apps/desktop/build-metadata.ts';
 
 const require = createRequire(import.meta.url);
 const { builderConfig } = require('../apps/desktop/builder-config.ts');
@@ -69,6 +71,12 @@ test('both channels preserve each Mac target notice byte-for-byte through cleanu
         }
         const destination = await packageRename(item);
         await config.afterPack(item.context);
+        const provenance = await readMacRuntimeNoticeProvenance(item.context, config.electronVersion, readBuildMetadata().appVersion);
+        assert.equal(provenance.root, item.root);
+        assert.equal(provenance.arch, arch);
+        assert.equal(provenance.packagedApp, path.basename(item.packaged));
+        await verifyMacRuntimeNoticeFiles(item.packaged, provenance);
+        await assertMissing(path.join(item.packaged, RUNTIME_NOTICE_PROVENANCE_FILE));
         for (const file of NOTICE_FILES) {
           assert.equal(hash(await readFile(path.join(destination, file.output))), hash(item.originals.get(file.output)!));
         }
@@ -183,8 +191,68 @@ test('post-package inspector independently detects either missing or changed not
       if (kind === 'symlink') { await rename(output, `${output}.original`); await symlink(`${output}.original`, output); }
       if (kind === 'oversized') await truncate(output, file.maxBytes + 1);
       await assert.rejects(item.config.afterPack(item.context), `${file.output}/${kind} must fail`);
+      await assertMissing(path.join(item.root, RUNTIME_NOTICE_PROVENANCE_FILE));
     }
   }
+});
+
+test('target provenance sidecar rejects missing, changed, redirected and mismatched evidence', async t => {
+  for (const kind of ['missing', 'arch', 'electron-version', 'app-version', 'root', 'bundle', 'hash', 'length', 'duplicate-file',
+    'unknown-field', 'symlink', 'hardlink', 'root-symlink']) {
+    const item = await fixture(t);
+    await item.config.afterExtract(item.context);
+    await packageRename(item);
+    await item.config.afterPack(item.context);
+    const sidecar = path.join(item.root, RUNTIME_NOTICE_PROVENANCE_FILE);
+    const value = JSON.parse(await readFile(sidecar, 'utf8'));
+    if (kind === 'missing') await rm(sidecar);
+    else if (kind === 'symlink' || kind === 'hardlink') {
+      const original = `${sidecar}.original`;
+      await rename(sidecar, original);
+      if (kind === 'symlink') await symlink(original, sidecar);
+      else await link(original, sidecar);
+    } else if (kind === 'root-symlink') {
+      const alias = `${item.root}-alias`;
+      await symlink(item.root, alias, 'dir');
+      t.after(() => rm(alias, {force: true}));
+      item.context.appOutDir = alias;
+    } else {
+      if (kind === 'arch') value.manifest.arch = 3;
+      if (kind === 'electron-version') value.manifest.electronVersion = '0.0.1';
+      if (kind === 'app-version') value.appVersion = '0.0.1';
+      if (kind === 'root') value.manifest.root = path.dirname(item.root);
+      if (kind === 'bundle') value.manifest.packagedApp = 'other.app';
+      if (kind === 'hash') value.manifest.files[0].sha256 = '0'.repeat(64);
+      if (kind === 'length') value.manifest.files[0].bytes += 1;
+      if (kind === 'duplicate-file') value.manifest.files[1] = value.manifest.files[0];
+      if (kind === 'unknown-field') value.token = 'must-never-be-accepted';
+      await writeFile(sidecar, JSON.stringify(value));
+    }
+    await assert.rejects(async () => {
+      const evidence = await readMacRuntimeNoticeProvenance(item.context, item.config.electronVersion, readBuildMetadata().appVersion);
+      await verifyMacRuntimeNoticeFiles(item.packaged, evidence);
+    }, kind);
+  }
+});
+
+test('provenance remains outside the app and permits checking the delivered bundle against the extracted target', async t => {
+  const item = await fixture(t, {arch: 3});
+  await item.config.afterExtract(item.context);
+  await packageRename(item);
+  const subtitles = path.join(item.packaged, 'Contents/Resources/subtitles');
+  await rm(subtitles, {recursive: true});
+  await assert.rejects(item.config.afterPack(item.context));
+  await assertMissing(path.join(item.root, RUNTIME_NOTICE_PROVENANCE_FILE));
+  await cp(new URL('../packages/business/resources/subtitles/', import.meta.url), subtitles, {recursive: true});
+  await item.config.afterPack(item.context);
+  const evidence = await readMacRuntimeNoticeProvenance(item.context, item.config.electronVersion, readBuildMetadata().appVersion);
+  const mounted = path.join(item.root, 'mounted');
+  await mkdir(mounted);
+  const delivered = path.join(mounted, path.basename(item.packaged));
+  await cp(item.packaged, delivered, {recursive: true});
+  await verifyMacRuntimeNoticeFiles(delivered, evidence);
+  await writeFile(path.join(delivered, 'Contents/Resources/licenses', NOTICE_FILES[0].output), 'different target bytes');
+  await assert.rejects(verifyMacRuntimeNoticeFiles(delivered, evidence), /differs from extracted target/);
 });
 
 test('post-package inspector requires provenance from the same target extraction', async t => {

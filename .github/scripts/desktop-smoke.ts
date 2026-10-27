@@ -1,19 +1,123 @@
 import {spawn} from 'node:child_process';
-import {access, chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile} from 'node:fs/promises';
+import {access, chmod, lstat, mkdir, mkdtemp, open, readFile, realpath, rm, writeFile} from 'node:fs/promises';
+import {constants} from 'node:fs';
+import type {Stats} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {argumentsFor, CheckFailure, cleanEnvironment, command, executable, fail, isMain, report, safeFailure, targetArch, targetPlatform} from './media-environment.ts';
 import type {Check, TargetArch, TargetPlatform} from './media-environment.ts';
+import {EXIT_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/exit-diagnostics.ts';
+import type {ExitDiagnosticRecord} from '../../apps/desktop/src/exit-diagnostics.ts';
+import {classifyRendererEvent,RENDERER_DIAGNOSTIC_LIMITS} from '../../apps/desktop/src/renderer-diagnostics.ts';
+import type {RendererDiagnosticRecord} from '../../apps/desktop/src/renderer-diagnostics.ts';
 
 interface Discovery {appId: string; channel: string; url: string; pid: number; tokenFile: string}
 interface Timeline {revision: number; tracks: Array<{id: string; kind: string}>; clips: unknown[]}
 interface Job {id: string; status: string; url?: string}
 interface Outcome {code: number | null; signal: NodeJS.Signals | null}
-interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome}
+interface SmokeReport {ok: boolean; platform: TargetPlatform; arch: TargetArch; checks: Check[]; phase: string; error?: string; render?: {bytes: number; width: number; height: number}; exit?: Outcome; sigtermSent?: boolean; shutdownDiagnostics?: SmokeShutdownDiagnostics}
 export const smokeTimeouts = Object.freeze({startup: 90000, render: 120000, exit: 30000});
 export function smokeEnvironment(source: NodeJS.ProcessEnv, userData: string, ffmpeg: string, ffprobe: string): NodeJS.ProcessEnv {
   return {...cleanEnvironment(source), MIOON_DESKTOP_USER_DATA: userData, MIOON_ENABLE_LIVE_PROVIDER: '0', MIOON_FFMPEG_PATH: ffmpeg, MIOON_FFPROBE_PATH: ffprobe};
+}
+type DiagnosticStatus = 'ok' | 'missing' | 'unsafe' | 'oversized' | 'invalid' | 'changed' | 'unavailable';
+type SafeBackendDiagnostic = Pick<ExitDiagnosticRecord,'event'|'classification'|'reason'|'state'|'expected'|'forced'|'exitConfirmed'|'shutdownFailed'|'mediaExitConfirmed'|'code'|'termination'>;
+type SafeRendererDiagnostic = Pick<RendererDiagnosticRecord,'event'|'classification'|'reason'|'exitCode'>;
+interface DiagnosticSnapshot<T> {status: DiagnosticStatus; records: T[]}
+export interface SmokeShutdownDiagnostics {
+  scope: DiagnosticStatus;
+  transientFiles: {connectionPresent: boolean | null; tokenPresent: boolean | null; workspaceLockPresent: boolean | null};
+  backend: DiagnosticSnapshot<SafeBackendDiagnostic>;
+  renderer: DiagnosticSnapshot<SafeRendererDiagnostic>;
+}
+class DiagnosticReadFailure extends Error {
+  readonly status: DiagnosticStatus;
+  constructor(status: DiagnosticStatus) {super(status);this.status=status;}
+}
+function diagnosticFailure(status: DiagnosticStatus): never {throw new DiagnosticReadFailure(status);}
+const diagnosticStatus = (error: unknown): DiagnosticStatus => error instanceof DiagnosticReadFailure ? error.status :
+  error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT' ? 'missing' : 'unavailable';
+const enumField = <T extends string>(value: unknown, allowed: readonly T[]): T | null => allowed.find(item => item === value) ?? null;
+const booleanField = (value: unknown): boolean | null => typeof value === 'boolean' ? value : null;
+const numericField = (value: unknown): number | null => typeof value === 'number' && Number.isSafeInteger(value) ? value : null;
+function diagnosticObject(value: unknown): Record<string,unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) diagnosticFailure('invalid');
+  return value as Record<string,unknown>;
+}
+function safeBackendDiagnostic(value: unknown): SafeBackendDiagnostic {
+  const data = diagnosticObject(value);
+  return {
+    event:enumField(data.event,['start','ready','stop-requested','termination-requested','backend-notice','exit','stop-unconfirmed','spawn-failed']),
+    classification:enumField(data.classification,['normal','terminated','abnormal','connection-lost']),
+    reason:enumField(data.reason,['stop-requested','startup-timeout','startup-error','startup-failed','startup-communication-failed','invalid-origin','runtime-error','communication-lost','lease-expired','signal-term','signal-int','uncaught-exception','unhandled-rejection','shutdown-failed','utility-exit']),
+    state:enumField(data.state,['idle','starting','running','stopping','stopped','failed','stop-unconfirmed','media-unconfirmed']),
+    expected:booleanField(data.expected),forced:booleanField(data.forced),exitConfirmed:booleanField(data.exitConfirmed),
+    shutdownFailed:booleanField(data.shutdownFailed),mediaExitConfirmed:booleanField(data.mediaExitConfirmed),code:numericField(data.code),
+    termination:enumField(data.termination,['utility-kill','owned-sigkill'])
+  };
+}
+function safeRendererDiagnostic(value: unknown): SafeRendererDiagnostic {
+  const data = diagnosticObject(value), event = enumField(data.event,['unresponsive','responsive','render-process-gone']),
+    reason = enumField(data.reason,['clean-exit','abnormal-exit','killed','crashed','oom','launch-failed','integrity-failure']);
+  return {event,reason,classification:classifyRendererEvent(event,{reason}),exitCode:numericField(data.exitCode)};
+}
+async function ownedDiagnosticDirectory(directory: string): Promise<void> {
+  const info = await lstat(directory);
+  if (!info.isDirectory() || info.isSymbolicLink() || await realpath(directory) !== directory ||
+      (process.platform !== 'win32' && (info.uid !== process.getuid?.() || (info.mode & 0o077) !== 0))) diagnosticFailure('unsafe');
+}
+const sameDiagnosticFile = (a: Stats,b: Stats): boolean => a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+async function readDiagnosticFile<T>(file: string,maxBytes: number,sanitize: (value: unknown) => T): Promise<DiagnosticSnapshot<T>> {
+  try {
+    const before = await lstat(file);
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || (process.getuid && before.uid !== process.getuid())) diagnosticFailure('unsafe');
+    if (before.size > maxBytes) diagnosticFailure('oversized');
+    const handle = await open(file,constants.O_RDONLY|(constants.O_NOFOLLOW??0)|(constants.O_NONBLOCK??0));
+    try {
+      if (!sameDiagnosticFile(before,await handle.stat())) diagnosticFailure('changed');
+      const buffer = Buffer.alloc(maxBytes+1); let bytes = 0;
+      while (bytes < buffer.length) {const part = await handle.read(buffer,bytes,buffer.length-bytes,bytes); if (!part.bytesRead) break; bytes+=part.bytesRead;}
+      if (bytes > maxBytes) diagnosticFailure('oversized');
+      if (bytes !== before.size || !sameDiagnosticFile(before,await handle.stat()) || !sameDiagnosticFile(before,await lstat(file))) diagnosticFailure('changed');
+      let records: T[];
+      try {
+        const lines = new TextDecoder('utf-8',{fatal:true}).decode(buffer.subarray(0,bytes)).split('\n').filter(line=>line.trim());
+        if (lines.length > 256) diagnosticFailure('oversized');
+        records=lines.map(line=>sanitize(JSON.parse(line) as unknown));
+      } catch (error) {if (error instanceof DiagnosticReadFailure) throw error; diagnosticFailure('invalid');}
+      return {status:'ok',records};
+    } finally {await handle.close();}
+  } catch (error) {return {status:diagnosticStatus(error),records:[]};}
+}
+async function transientPresence(file: string): Promise<boolean | null> {
+  try {const info = await lstat(file); return info.isSymbolicLink() ? null : true;}
+  catch (error) {return diagnosticStatus(error) === 'missing' ? false : null;}
+}
+/** Only this invocation's canonical synthetic root is eligible. No discovery,
+ * arbitrary log paths or user data are read; diagnostic text is never copied. */
+export async function captureSmokeShutdownDiagnostics(ownedRoot: string): Promise<SmokeShutdownDiagnostics> {
+  const result: SmokeShutdownDiagnostics = {scope:'unavailable',transientFiles:{connectionPresent:null,tokenPresent:null,workspaceLockPresent:null},backend:{status:'unavailable',records:[]},renderer:{status:'unavailable',records:[]}};
+  try {
+    if (!path.isAbsolute(ownedRoot) || path.dirname(ownedRoot) !== await realpath(tmpdir()) || !/^mioon-ci-native-[A-Za-z0-9]{6}$/.test(path.basename(ownedRoot))) diagnosticFailure('unsafe');
+    await ownedDiagnosticDirectory(ownedRoot);
+    const userData = path.join(ownedRoot,'user-data'); await ownedDiagnosticDirectory(userData); result.scope='ok';
+    result.transientFiles.connectionPresent=await transientPresence(path.join(userData,'mcp-connection.json'));
+    result.transientFiles.tokenPresent=await transientPresence(path.join(userData,'mcp-token'));
+    const workspace = path.join(userData,'workspace');
+    try {await ownedDiagnosticDirectory(workspace);}
+    catch (error) {
+      const status=diagnosticStatus(error); result.transientFiles.workspaceLockPresent=status==='missing'?false:null;
+      result.backend={status,records:[]}; result.renderer={status,records:[]}; return result;
+    }
+    result.transientFiles.workspaceLockPresent=await transientPresence(path.join(workspace,'server.lock'));
+    const directory = path.join(workspace,'diagnostics');
+    try {await ownedDiagnosticDirectory(directory);}
+    catch (error) {const status=diagnosticStatus(error); result.backend={status,records:[]};result.renderer={status,records:[]};return result;}
+    result.backend=await readDiagnosticFile(path.join(directory,'backend-exit.jsonl'),EXIT_DIAGNOSTIC_LIMITS.maxBytes,safeBackendDiagnostic);
+    result.renderer=await readDiagnosticFile(path.join(directory,'renderer-health.jsonl'),RENDERER_DIAGNOSTIC_LIMITS.maxBytes,safeRendererDiagnostic);
+  } catch (error) {const status=diagnosticStatus(error);result.scope=status;result.backend={status,records:[]};result.renderer={status,records:[]};}
+  return result;
 }
 export function validateDiscovery(value: unknown, userData: string): Discovery {
   if (!value || typeof value !== 'object') fail('INVALID_DISCOVERY');
@@ -159,7 +263,7 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, binar
     await boundedPoll(remaining => windowVisible(platform, app.pid!, remaining), Math.max(1, deadline - Date.now()), 'NATIVE_WINDOW_TIMEOUT', () => ended);
     check('actual-final-package-native-window-and-backend-ready');
     result.render = await exerciseComposition({origin, token, video, audio, ffprobe, directory: ownedRoot, env, onPhase: phase => { result.phase = phase; }, onCheck: check, exited: () => ended});
-    result.phase = 'shutdown'; app.kill('SIGTERM');
+    result.phase = 'shutdown'; result.sigtermSent = app.kill('SIGTERM');
     let timer: NodeJS.Timeout | undefined;
     try { result.exit = await Promise.race([outcome, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new CheckFailure('EXIT_TIMEOUT')), smokeTimeouts.exit); })]); }
     finally { clearTimeout(timer); }
@@ -168,6 +272,8 @@ export async function runSmoke(platform: TargetPlatform, arch: TargetArch, binar
     check('sigterm-normal-exit-removes-discovery-token-and-workspace-lock'); result.ok = true; result.phase = 'complete';
   } catch (error) { result.error = safeFailure(error); }
   finally {
+    // Snapshot before any forced kill or fixture deletion can erase the cause.
+    if (ownedRoot) result.shutdownDiagnostics = await captureSmokeShutdownDiagnostics(ownedRoot);
     if (child?.pid && (!ended || !result.ok)) {
       try { process.kill(-child.pid, 'SIGKILL'); } catch { /* The owned process group may already be gone. */ }
       await Promise.race([outcome?.catch(() => {}), new Promise(resolve => setTimeout(resolve, 5000))]);

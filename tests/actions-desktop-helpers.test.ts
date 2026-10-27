@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {argumentsFor, cleanEnvironment, command, mediaCapabilities, mediaFailureReport, MediaCapabilityFailure, probeMediaCli, safeFailure, targetArch, targetPlatform, CheckFailure, report} from '../.github/scripts/media-environment.ts';
 import {boundedPoll, extractedTarFor, mountedDmgFor, smokeEnvironment, smokeTimeouts, validateDiscovery} from '../.github/scripts/desktop-smoke.ts';
-import {validateArchitecture, validateTarListing, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
+import {runMacInspectionCheck, validateArchitecture, validateTarListing, verifySigningIdentity} from '../.github/scripts/inspect-desktop.ts';
 
 test('desktop helper CLI rejects missing, duplicate, unknown and multiline options', () => {
   assert.deepEqual(argumentsFor(['--platform=linux', '--output=result.json'], ['platform', 'output']), {platform: 'linux', output: 'result.json'});
@@ -151,4 +151,26 @@ test('machine-readable diagnostics retain fixed error code only', async () => {
     assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), {ok: false, error: 'REQUIRED_MEDIA_CAPABILITY_MISSING', capabilities});
     assert.deepEqual(mediaFailureReport(Object.assign(new Error('Bearer private-token'), {capabilities: {secret: 'private-token'}})), {ok: false, error: 'UNEXPECTED_CHECK_FAILURE'});
   } finally { await rm(directory, {recursive: true, force: true}); }
+});
+
+test('Mac package subchecks expose only fixed phases and error codes', async () => {
+  const cases = [
+    ['asar-content', 'ASAR_STAGING_MISMATCH'], ['asar-metadata', 'ASAR_METADATA_MISMATCH'],
+    ['asar-required-files', 'ASAR_REQUIRED_FILES_MISSING'], ['tray-resources', 'TRAY_RESOURCES_INVALID'],
+    ['subtitle-resources', 'SUBTITLE_RESOURCES_INVALID'], ['fuses', 'FUSE_INSPECTION_FAILED'],
+    ['runtime-notice-source', 'RUNTIME_NOTICE_PROVENANCE_INVALID'], ['runtime-notice-bytes', 'ELECTRON_NOTICE_MISMATCH'],
+    ['codesign', 'CODESIGN_VERIFICATION_FAILED'], ['signing-identity', 'SIGNING_IDENTITY_MISMATCH'],
+    ['app-staple', 'APP_STAPLE_INVALID'], ['app-gatekeeper', 'GATEKEEPER_REJECTED']
+  ] as const;
+  for (const scope of ['staged-mac-app', 'mounted-dmg-app'] as const) for (const [name, code] of cases) {
+    const phases: string[] = [];
+    const failure = await runMacInspectionCheck(scope, name, async () => { throw new Error('private source bytes/token'); }, phase => phases.push(phase)).catch(error => error as unknown);
+    assert.ok(failure instanceof CheckFailure);
+    assert.equal(safeFailure(failure), code);
+    assert.deepEqual(phases, [`${scope}:${name}`]);
+    assert.doesNotMatch(String(failure), /private|token/);
+  }
+  const fixed = new CheckFailure('FUSE_MUST_BE_DISABLED');
+  await assert.rejects(runMacInspectionCheck('staged-mac-app', 'fuses', async () => { throw fixed; }), error => error === fixed);
+  assert.equal(await runMacInspectionCheck('mounted-dmg-app', 'runtime-notice-source', async () => 'verified'), 'verified');
 });

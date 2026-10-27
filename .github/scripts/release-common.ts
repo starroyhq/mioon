@@ -3,7 +3,7 @@ import {createReadStream} from 'node:fs';
 import {lstat, readFile} from 'node:fs/promises';
 import path from 'node:path';
 
-export type ReleasePlatform = 'darwin' | 'linux';
+export type ReleasePlatform = 'darwin';
 export type ReleaseArch = 'arm64' | 'x64';
 export interface ReleaseAsset {
   sourceSha: string;
@@ -14,7 +14,7 @@ export interface ReleaseAsset {
   bytes: number;
   sha256: string;
 }
-export const RELEASE_TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-x64'] as const;
+export const RELEASE_TARGETS = ['darwin-arm64', 'darwin-x64'] as const;
 const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 export function releaseVersion(value: unknown): string {
@@ -39,11 +39,10 @@ export function validateAsset(value: unknown): ReleaseAsset {
   const data = object(value);
   const sha = sourceSha(data.sourceSha), version = releaseVersion(data.version);
   const platform = data.platform, arch = data.arch;
-  if (platform !== 'darwin' && platform !== 'linux') throw new Error('Invalid package platform');
+  if (platform !== 'darwin') throw new Error('Only macOS release packages are supported');
   if (arch !== 'arm64' && arch !== 'x64') throw new Error('Invalid package architecture');
-  if (platform === 'linux' && arch !== 'x64') throw new Error('Linux release only supports x64');
   const name = data.name;
-  const suffix = `-${version}-${platform === 'darwin' ? 'mac' : 'linux'}-${arch}.${platform === 'darwin' ? 'dmg' : 'tar.gz'}`;
+  const suffix = `-${version}-mac-${arch}.dmg`;
   if (typeof name !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9.+_-]*$/.test(name) || path.basename(name) !== name || !name.endsWith(suffix)) throw new Error('Invalid package asset name');
   if (typeof data.bytes !== 'number' || !Number.isSafeInteger(data.bytes) || data.bytes <= 0) throw new Error('Invalid package byte count');
   if (typeof data.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(data.sha256)) throw new Error('Invalid package SHA256');

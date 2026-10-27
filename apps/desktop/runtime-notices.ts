@@ -12,6 +12,10 @@ export const NOTICE_FILES: readonly RuntimeNoticeFile[] = Object.freeze([
   Object.freeze({ source: 'LICENSES.chromium.html', output: 'LICENSES.chromium.html', maxBytes: 32 * 1024 * 1024 })
 ]);
 export const PLIST_MAX_BYTES = 1024 * 1024;
+// Build evidence remains beside the target bundle, never inside the app or a
+// release attachment. It records the bytes captured before builder cleanup.
+export const RUNTIME_NOTICE_PROVENANCE_FILE = 'mioon-runtime-notices.json';
+const PROVENANCE_MAX_BYTES = 16 * 1024;
 /** The electron-builder context fields these helpers consume. */
 export interface RuntimeNoticeFramework {
   readonly version?: unknown;
@@ -118,6 +122,70 @@ function targetPlistVersion(bytes: Uint8Array, expected: string): void {
   }
 }
 
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+function exactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
+}
+function validateManifest(value: unknown, target: RuntimeNoticeTarget): RuntimeNoticeManifest {
+  const keys = ['root', 'platform', 'arch', 'electronVersion', 'extractedApp', 'packagedApp'] as const;
+  if (!record(value) || !exactKeys(value, [...keys, 'files']) || keys.some(key => value[key] !== target[key]) ||
+      !Array.isArray(value.files) || value.files.length !== NOTICE_FILES.length) fail('missing or mismatched target notice provenance');
+  for (const [index, file] of NOTICE_FILES.entries()) {
+    const entry: unknown = value.files[index];
+    if (!record(entry) || !exactKeys(entry, ['name', 'bytes', 'sha256']) || entry.name !== file.output ||
+        typeof entry.bytes !== 'number' || !Number.isSafeInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > file.maxBytes ||
+        typeof entry.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(entry.sha256)) fail('invalid target notice file provenance');
+  }
+  return value as unknown as RuntimeNoticeManifest;
+}
+
+export async function verifyMacRuntimeNoticeFiles(app: string, manifest: RuntimeNoticeManifest): Promise<void> {
+  if (path.basename(app) !== manifest.packagedApp) fail('packaged bundle does not match target notice provenance');
+  const destination = await directory(path.dirname(app), [path.basename(app), 'Contents', 'Resources', 'licenses']);
+  for (const file of NOTICE_FILES) {
+    const original = manifest.files.find(entry => entry.name === file.output);
+    const bytes = await boundedRead(path.join(destination, file.output), file.maxBytes);
+    if (!original || bytes.length !== original.bytes || sha256(bytes) !== original.sha256) fail(`packaged notice differs from extracted target: ${file.output}`);
+  }
+}
+
+export async function writeMacRuntimeNoticeProvenance(context: RuntimeNoticeContext, electronVersion: string, appVersion: string,
+  manifest: RuntimeNoticeManifest | null): Promise<void> {
+  const target = macTarget(context, electronVersion);
+  if (!target) return;
+  requireExactVersion(appVersion, 'Application runtime notice provenance version');
+  const verified = validateManifest(manifest, target);
+  await directory(target.root);
+  if (await fs.realpath(target.root) !== target.root) fail('target provenance directory must be canonical');
+  const bytes = Buffer.from(`${JSON.stringify({schemaVersion: 1, appVersion, manifest: verified})}\n`);
+  const file = path.join(target.root, RUNTIME_NOTICE_PROVENANCE_FILE);
+  // A fresh runner has no evidence file. Repeated identical writes are safe;
+  // stale or redirected evidence is never silently replaced.
+  try {
+    const handle = await fs.open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    try { await handle.writeFile(bytes); }
+    finally { await handle.close(); }
+  } catch (error) {
+    if (errorCode(error) !== 'EEXIST') throw error;
+    if (!bytes.equals(await boundedRead(file, PROVENANCE_MAX_BYTES))) fail('existing target notice provenance differs');
+  }
+}
+
+export async function readMacRuntimeNoticeProvenance(context: RuntimeNoticeContext, electronVersion: string, appVersion: string): Promise<RuntimeNoticeManifest> {
+  const target = macTarget(context, electronVersion);
+  if (!target) fail('Mac target notice provenance required');
+  requireExactVersion(appVersion, 'Application runtime notice provenance version');
+  await directory(target.root);
+  if (await fs.realpath(target.root) !== target.root) fail('target provenance directory must be canonical');
+  const value: unknown = JSON.parse((await boundedRead(path.join(target.root, RUNTIME_NOTICE_PROVENANCE_FILE), PROVENANCE_MAX_BYTES)).toString('utf8'));
+  if (!record(value) || !exactKeys(value, ['schemaVersion', 'appVersion', 'manifest']) || value.schemaVersion !== 1 || value.appVersion !== appVersion) {
+    fail('invalid target notice provenance envelope');
+  }
+  return validateManifest(value.manifest, target);
+}
+
 export async function preserveMacRuntimeNotices(context: RuntimeNoticeContext, electronVersion: string): Promise<RuntimeNoticeManifest | null> {
   const target = macTarget(context, electronVersion);
   if (!target) return null;
@@ -151,8 +219,7 @@ export async function preserveMacRuntimeNotices(context: RuntimeNoticeContext, e
 export async function inspectMacRuntimeNotices(context: RuntimeNoticeContext, electronVersion: string, manifest: RuntimeNoticeManifest | null | undefined, bundleName?: string): Promise<RuntimeNoticeManifest | null> {
   const target = macTarget(context, electronVersion);
   if (!target) return null;
-  if (!manifest || (['root', 'platform', 'arch', 'electronVersion', 'extractedApp', 'packagedApp'] as const).some(key => manifest[key] !== target[key]) ||
-      !Array.isArray(manifest.files) || manifest.files.length !== NOTICE_FILES.length) fail('missing or mismatched target notice provenance');
+  manifest = validateManifest(manifest, target);
   const destination = await directory(target.root, [bundleName || target.packagedApp, 'Contents', 'Resources', 'licenses']);
   for (const file of NOTICE_FILES) {
     const original = manifest.files.find(entry => entry.name === file.output);
@@ -162,5 +229,6 @@ export async function inspectMacRuntimeNotices(context: RuntimeNoticeContext, el
   return manifest;
 }
 
-const runtimeNotices = Object.freeze({preserveMacRuntimeNotices, inspectMacRuntimeNotices, NOTICE_FILES, PLIST_MAX_BYTES});
+const runtimeNotices = Object.freeze({preserveMacRuntimeNotices, inspectMacRuntimeNotices, writeMacRuntimeNoticeProvenance,
+  readMacRuntimeNoticeProvenance, verifyMacRuntimeNoticeFiles, RUNTIME_NOTICE_PROVENANCE_FILE, NOTICE_FILES, PLIST_MAX_BYTES});
 export default runtimeNotices;

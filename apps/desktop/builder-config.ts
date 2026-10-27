@@ -9,7 +9,7 @@ import {identityForChannel} from './identity.ts';
 import type {DesktopIdentity} from './identity.ts';
 import {readBuildMetadata, validateStagedMetadata} from './build-metadata.ts';
 import {verifySubtitleResources,packagedSubtitleDirectory,SUBTITLE_RESOURCE_FILES} from './subtitle-resources.ts';
-import {preserveMacRuntimeNotices,inspectMacRuntimeNotices} from './runtime-notices.ts';
+import {preserveMacRuntimeNotices,inspectMacRuntimeNotices,writeMacRuntimeNoticeProvenance} from './runtime-notices.ts';
 import type {RuntimeNoticeContext,RuntimeNoticeManifest} from './runtime-notices.ts';
 
 /** The electron-builder beforePack context fields this module consumes. */
@@ -87,9 +87,10 @@ export function builderConfig(channel: string): BuilderConfig {
     },
     afterPack: async (context: RuntimeNoticeContext): Promise<void> => {
       const appOutDir = typeof context.appOutDir === 'string' ? context.appOutDir : null;
-      await inspectMacRuntimeNotices(context, electronVersion, appOutDir === null ? undefined : runtimeNotices.get(appOutDir));
-      if (appOutDir !== null) runtimeNotices.delete(appOutDir);
+      const manifest = await inspectMacRuntimeNotices(context, electronVersion, appOutDir === null ? undefined : runtimeNotices.get(appOutDir));
       await verifySubtitleResources(packagedSubtitleDirectory(context));
+      await writeMacRuntimeNoticeProvenance(context, electronVersion, appVersion, manifest);
+      if (appOutDir !== null) runtimeNotices.delete(appOutDir);
     },
     // Double-clicking a .mioon file stages an import; see src/project-file-open.ts.
     fileAssociations: [{ ext: 'mioon', name: 'Mioon Project', description: 'Mioon Project File', mimeType: 'application/vnd.mioon.project', role: 'Editor' }],
