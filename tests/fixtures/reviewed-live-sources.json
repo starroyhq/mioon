@@ -7,8 +7,8 @@
       "sha256": "f702ba73dadb32a3d08c43d9512f379b1884c3fbceadd23b0bd7db5838f8480b"
     },
     "packages/business/src/db.ts": {
-      "bytes": 12861,
-      "sha256": "828ad0f57179b5090fd0a650780bf31765974f957c27bd41d8532b14be85d2cb"
+      "bytes": 13029,
+      "sha256": "62cdf57e6a03cd7dffd98c36138b34100baef80dd1e1a6cfb8a9a2d776e0adf9"
     },
     "packages/business/src/image-consumption.ts": {
       "bytes": 2443,

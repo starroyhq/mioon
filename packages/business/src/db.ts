@@ -143,7 +143,9 @@ export function openStore(root: string,{lock=true}: {lock?: boolean} = {}): Work
   db=database;
   database.exec('PRAGMA trusted_schema=OFF;');
   if(database.prepare('PRAGMA trusted_schema').get()?.trusted_schema!==0)throw new Error('Trusted schema must be disabled');
-  database.exec('PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; PRAGMA synchronous=FULL;');
+  // Install the busy handler before journal_mode, the first statement that takes a
+  // lock: a peer connection that closes last holds EXCLUSIVE while it checkpoints.
+  database.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;');
  // The typed dispatcher retains old through24 repair and fixed restored25;
  // explicit ordinary26/restored27 roles never fall through to legacy bootstrap.
  const restoreContext=workspaceSchemas.initialize(database);
