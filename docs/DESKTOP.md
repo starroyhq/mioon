@@ -87,7 +87,7 @@ MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm deskt
 - 渠道在构建时写入主进程和 `build/package.json` 的 `mioonDesktop`，启动时不读取 `NODE_ENV`、`MIOON_DESKTOP_CHANNEL` 等环境变量，也不把 `app.isPackaged` 当作渠道。因此开发版打包后仍是 `.dev`。
 - `app.setAppUserModelId`（Windows）、Linux desktop name / WM_CLASS 与打包 ID 保持一致；macOS bundle ID 来自 builder 配置，尚未实机验证。
 - 开发版系统应用名称/可执行文件增加 Dev / `-dev` 以便并存；界面统一为 Mioon，npm workspace 为 `@mioon/*`，CLI 为 `mioon`，不提供旧命令别名。
-- 打包前检查暂存渠道，拒绝把开发版暂存目录当成正式版，或反过来。源码版本为 `0.4.1`。
+- 打包前检查暂存渠道，拒绝把开发版暂存目录当成正式版，或反过来。源码版本为 `0.1.0`。
 
 ## 数据位置与单实例
 
@@ -221,7 +221,7 @@ Q3 当前媒体环境/退出验收与原生限制见 [MEDIA-RUNTIME.md](MEDIA-RU
 
 V4 最初桌面源码版本为 0.4.0；V4.1 身份补丁为 0.4.1。utility 的显式环境白名单新增 ARK、GEMINI/VEO、MINIMAX 和 VIDU 配置；名单由 provider registry 维护，仍不继承任意环境或将密钥发送到 renderer。MiniMax/Vidu 的区域只接受 `global` / `cn`，不会跨区切换；Vidu 还必须配置经核实的精确输出主机。
 
-CLI 与 MCP 都可使用同一 `MIOON_CONNECTION_FILE`，每次请求重新读取，跟随桌面端口/令牌轮换。Web 模式还支持 `MIOON_BASE_URL` + `MIOON_TOKEN_FILE`。连接与命令见 CLI.md / MCP.md。应用的 Node 来自 Electron；源代码 CLI/MCP 仍需客户端电脑安装 Node ≥24 和工作区依赖。当前应用/CLI/MCP 实现元数据为0.4.1；后端 `/health` 兼容版本仍为0.4.0，MCP协议日期和descriptor版本独立，不能混用。
+CLI 与 MCP 都可使用同一 `MIOON_CONNECTION_FILE`，每次请求重新读取，跟随桌面端口/令牌轮换。Web 模式还支持 `MIOON_BASE_URL` + `MIOON_TOKEN_FILE`。连接与命令见 CLI.md / MCP.md。应用的 Node 来自 Electron；源代码 CLI/MCP 仍需客户端电脑安装 Node ≥24 和工作区依赖。当前应用、CLI/MCP 实现元数据与后端 `/health` 同为根应用版本0.1.0；MCP协议日期和descriptor版本独立，不能混用。
 
 上文 V3 的 19 项/6 项及 `0.3.0` Linux 归档是历史证据，不含新适配器。本轮 V4 的 fresh development-runtime smoke 与实际源码验收以 ACCEPTANCE-V4.md 为准。旧包保持原样，未声称其已更新；没有重建/发布安装包或做 macOS 实机验证。
 

@@ -5,12 +5,12 @@
 ## 记录这次环境
 
 - 实际源码 commit／快照标识和清单哈希：待填写，不把说明核对基线当作运行快照
-- 应用版本与渠道：源码声明 0.4.1，development；实际构建待核对
+- 应用版本与渠道：源码声明 0.1.0，development；实际构建待核对
 - macOS 版本：待填写
 - 芯片与架构：待填写
 - Node 和 pnpm 版本：要求 Node ≥24、固定 pnpm 11.25.0；实际版本待填写
 - 实际 Electron 版本：源码固定 44.7.0；实际运行及 utilityProcess Node/SQLite 版本待填写，不用终端 Node 代替
-- CLI/MCP 实现元数据：0.4.1；后端 `/health` 兼容版本仍为0.4.0，MCP协议日期另记
+- CLI/MCP 实现元数据与后端 `/health`：同根应用版本，当前为0.1.0；MCP协议日期另记
 - FFmpeg 与 ffprobe 版本和安装来源：待填写，不必公开个人目录路径
 - 数据位置：默认开发版或本次新建覆盖目录；只记录用途，不必公开个人路径
 - 构建证据：命令、退出码、日志、main.cjs/backend.cjs/package.json/全部 staged Web 文件 SHA-256；与本次 Web dist 对照

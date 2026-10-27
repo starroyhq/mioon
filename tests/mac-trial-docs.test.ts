@@ -40,9 +40,10 @@ test('documented Node, pnpm, Electron and application versions match current man
     assert.match(document, /Node(?:\.js)? ≥24/);
     assert.ok(document.includes(application.devDependencies.electron));
     assert.ok(document.includes(application.version));
-    assert.match(document, /\/health.*0\.4\.0/);
+    const healthLine = document.split('\n').find(line => line.includes('/health'));
+    assert.ok(healthLine?.includes(application.version), 'health documents the current application version');
   }
-  assert.match(read('apps/server/src/index.ts'), /version:\s*'0\.4\.0'/);
+  assert.match(read('apps/server/src/index.ts'), /version:\s*packageMetadata\.version/);
   assert.match(read('packages/client/src/index.ts'), /export const VERSION = applicationPackage\.version;/);
 });
 

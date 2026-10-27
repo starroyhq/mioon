@@ -4,7 +4,7 @@ import {spawn, spawnSync} from 'node:child_process';
 import {createServer} from 'node:http';
 import {fileURLToPath} from 'node:url';
 import {readFileSync} from 'node:fs';
-import {schemas, operationDefinition, discoverSchema} from '@mioon/client';
+import {schemas, operationDefinition, discoverSchema, VERSION} from '@mioon/client';
 import {LOCALES, catalogs, validateCatalogs, translate} from '../packages/i18n/src/index.ts';
 import type {Locale, MessageKey} from '../packages/i18n/src/index.ts';
 import {presentationLocale, localizeHelp, localizeToolDescription} from '../packages/i18n/src/presentation.ts';
@@ -68,8 +68,8 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   const original=cli(['--help']);
   assert.equal(original.status,0);
   const snapshot=JSON.parse(readFileSync(new URL('./fixtures/cli-help-legacy.json',import.meta.url),'utf8'));
-  // Keep the frozen help fixture: only explicit discovery additions may differ,
-  // not legacy prose, schemas or the relative ordering of existing operations.
+  // Keep the frozen help fixture: application version and explicit discovery
+  // additions may differ, but prose, schemas and operation ordering stay exact.
   const expectedOperations = [...snapshot.data.operations];
   expectedOperations.unshift('project.rename', 'project.delete', 'project.summary.list', 'agent.authorization.list', 'agent.authorization.grant', 'agent.authorization.revoke');
   expectedOperations.unshift(...round2Operations);
@@ -83,7 +83,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');
   expectedUsage.splice(expectedUsage.indexOf('mioon export download --input <JSON> --output <new-local-file>') + 1, 0, 'mioon project export --input <JSON> --output <new-local-file.mioon>', 'mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]', 'mioon project duplicate --request-id <id> --input <JSON>');
-  assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, usage:expectedUsage, operations:expectedOperations}});
+  assert.deepEqual(original.json,{...snapshot, data:{...snapshot.data, version:VERSION, usage:expectedUsage, operations:expectedOperations}});
   const schema=cli(['schema','project.create']).stdout;
   const version=cli(['--version']).stdout;
   const bad=cli(['--unknown']).stdout;

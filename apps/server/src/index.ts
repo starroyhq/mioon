@@ -477,7 +477,7 @@ async function composeServer({
         res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'");
         if (!hosts.has(req.headers.host ?? '') || (req.headers.origin && !origins.has(req.headers.origin))) return json(res, 403, {ok: false, error: {code: 'ORIGIN_REJECTED', message: '本地来源校验失败'}});
         const url = new URL(String(req.url), `http://127.0.0.1:${actualPort}`);
-        if (url.pathname === '/health') return json(res, 200, {ok: true, service: 'mioon', version: '0.4.0', sqlite: field(store.db.prepare('select sqlite_version() v').get(), 'v')});
+        if (url.pathname === '/health') return json(res, 200, {ok: true, service: 'mioon', version: packageMetadata.version, sqlite: field(store.db.prepare('select sqlite_version() v').get(), 'v')});
         if (url.pathname === '/api/login' && req.method === 'POST') {
           const input = jsonObject(await body(req, 4096));
           checkpoint(shutdown.signal);

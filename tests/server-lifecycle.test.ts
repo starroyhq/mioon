@@ -5,6 +5,7 @@ import {mkdtemp,readFile,writeFile,mkdir,stat, realpath} from 'node:fs/promises'
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {startServer} from '@mioon/server';
+import applicationPackage from '../package.json' with {type: 'json'};
 
 const token = 'synthetic-server-lifecycle-test-token';
 interface RpcBody { ok?: boolean; data?: Array<{id: string}>; version?: string; [key: string]: unknown }
@@ -22,7 +23,7 @@ test('exported server supports ephemeral loopback port, independent lifecycle an
     assert.match(service.url,/^http:\/\/127\.0\.0\.1:\d+$/);
     assert.notEqual(service.port,0);
     const health = await fetch(service.url+'/health');
-    assert.equal((await health.json() as {version?: string}).version,'0.4.0');
+    assert.equal((await health.json() as {version?: string}).version,applicationPackage.version);
     assert.match(health.headers.get('content-security-policy') ?? '',/object-src 'none'/);
     const page = await fetch(service.url);assert.equal(await page.text(),'<html>isolated renderer fixture</html>');
     const project = await rpc(service,'project.create',{name:'Persistent workspace'});

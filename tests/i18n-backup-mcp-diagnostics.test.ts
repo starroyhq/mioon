@@ -8,6 +8,7 @@ import type {Locale} from '../packages/i18n/src/index.ts';
 import {parseBackupArguments} from '../apps/cli/src/backup.ts';
 import {backupDiagnostic} from '../apps/cli/src/backup-presentation.ts';
 import {errorView} from './helpers/test-error.ts';
+import applicationPackage from '../package.json' with {type: 'json'};
 const root = fileURLToPath(new URL('../', import.meta.url));
 const secret = 'synthetic-PRIVATE-path-token-error-must-not-appear';
 function run(entry: string, args: string[], hook?: string) {
@@ -25,10 +26,10 @@ test('backup explicit locale translates only help prose and preserves legacy hel
   const original = backup(['--help']);
   const frozen = JSON.parse(readFileSync(new URL('./fixtures/backup-help-legacy.json',import.meta.url),'utf8'));
   const requirements = [...frozen.data.requirements];
-  // Keep the historical snapshot intact; only the approved Windows readiness
-  // requirement is inserted, without rewriting any existing help prose.
+  // Keep the historical snapshot intact; update only the application version
+  // and approved Windows readiness requirement, preserving existing help prose.
   requirements.splice(1,0,'Windows requires the complete Node-API private-storage backend on supported local NTFS, including bounded owned handles and durable directory publication. Missing native support refuses before capture; no POSIX or permission-only fallback is used.');
-  assert.equal(original.stdout,JSON.stringify({...frozen,data:{...frozen.data,requirements}})+'\n');
+  assert.equal(original.stdout,JSON.stringify({...frozen,data:{...frozen.data,version:applicationPackage.version,requirements}})+'\n');
   const localizedRequirements = JSON.parse(readFileSync(new URL('./fixtures/backup-help-requirements-locales.json',import.meta.url),'utf8')) as {legacy:Record<Locale,string[]>;windows:Record<Locale,string>};
   const base = JSON.parse(original.stdout).data;
   for (const locale of LOCALES) {
