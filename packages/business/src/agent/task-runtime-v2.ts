@@ -15,8 +15,10 @@ import type {ChatAuthorizations} from './chat-runtime.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
-import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLanguageContext,taskResponseLocale,taskToolExplanation,TASK_MODEL_LIMITS,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
+import {createTaskGateway,buildTaskModelRequest,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskModelOutput} from './task-gateway-v2.ts';
+import {assembleRunContext,assembleModelInput,replayModelContext,selectTaskModelTools} from './task-context-v2.ts';
+import type {TaskContextPreviousRun} from './task-context-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -30,12 +32,6 @@ const terminal=(run:AgentTaskRun):boolean=>['completed','failed','stopped','reve
 // explicitly retry. Interrupted dispatches (no recorded outcome), storage
 // faults and explicit unknown results keep the unknown rule.
 const observedModelFailures=new Set(['AGENT_CHAT_CONNECT_FAILED','AGENT_CHAT_TIMEOUT','AGENT_CHAT_HTTP_ERROR','AGENT_CHAT_PROTOCOL_ERROR','AGENT_CHAT_TRUNCATED','AGENT_CHAT_PROVIDER_ERROR','AGENT_CHAT_LIMIT','AGENT_CHAT_TOOLS_UNSUPPORTED','AGENT_CHAT_REASONING_UNSUPPORTED']);
-const attachmentInstructions:Record<AgentTaskLocale,string>={
-  'zh-Hans':'用户为本轮选择的附件（仅可使用这些托管句柄）：',
-  'zh-Hant':'使用者為本輪選取的附件（僅可使用這些代管代碼）：',
-  en:'Attachments selected by the user for this run (use only these managed handles):',
-  ja:'ユーザーがこのラウンドで選択した添付ファイル（これらの管理済みハンドルのみ使用可）：',
-};
 const skippedInstructions:Record<AgentTaskLocale,string>={
   'zh-Hans':'这一处由用户保留，本轮不要再改。请继续处理其他未跳过的目标。',
   'zh-Hant':'這一處由使用者保留，本輪不要再修改。請繼續處理其他未略過的目標。',
@@ -74,11 +70,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   function mutable():void {checkOpen();if(readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');if(storageFaulted)throw agentTaskFailure(storageFailureCode);assertMutationAllowed?.();}
   function toolset():AgentTaskTools {mutable();if(!tools)throw agentTaskFailure('AGENT_TASK_CLOSED');return tools;}
   function runTools(run:AgentTaskRun){
-    const definitions=toolset().list(),diagnostic=run.diagnostic;
-    if(!diagnostic)return definitions;
-    if(diagnostic.profile==='text')return [];
-    if(diagnostic.profile==='read_only')return definitions.filter(tool=>tool.risk==='read_only');
-    return diagnostic.toolNames?definitions.filter(tool=>diagnostic.toolNames!.includes(tool.name)):definitions;
+    return selectTaskModelTools(toolset().list(),run.diagnostic);
   }
   const configuration=(run:AgentTaskRun):AgentConfiguration=>parseAgentConfiguration(run.configuration,{selfPort:selfPort()});
   const owned=(projectId:string,id:string):AgentTaskRun=>{checkOpen();if(!hasTables)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const run=journal.run(id);if(run.projectId!==projectId)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return run;};
@@ -251,21 +243,21 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       });
       const acquired=sanitizeAgentCredentialResult(credential,expected);if(!acquired)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');const key=acquired.apiKey;fence(runId);
       for(;;){
-        run=fence(runId);const snapshot=journal.snapshot(runId),history:AgentTaskJson[]=structuredClone(run.context??[{role:'user',content:run.text}]);
+        run=fence(runId);const snapshot=journal.snapshot(runId),context=assembleModelInput({context:run.context,text:run.text}).history,fragments:AgentTaskJson[][]=[];
         let resumeModel:AgentTaskStep|undefined,pendingModel:AgentTaskStep|undefined;
         for(const model of snapshot.steps.filter(item=>item.kind==='model')){
-          history.push(...(run.notes??[]).filter(note=>note.modelStepId===model.id).map(note=>({role:'user',content:note.text})));
-          if(model.status==='failed'&&record(model.result)&&model.result.discarded===true){history.push({role:'user',content:'上一次模型请求结果未知，用户已将其标记为失败。请重新读取当前保存状态后继续，不要假定此前有工具执行。'});continue;}
+          fragments.push(replayModelContext(config.protocol,{kind:'notes',notes:run.notes??[],modelStepId:model.id}));
+          if(model.status==='failed'&&record(model.result)&&model.result.discarded===true){fragments.push(replayModelContext(config.protocol,{kind:'discarded'}));continue;}
           if(model.status==='failed'&&record(model.data)&&model.data.retryRequested===true)continue;
           if(model.status==='intent'){pendingModel=model;break;}
           if(model.status!=='completed')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
           const output=modelOutput(model.result);
           if(!output.toolCalls.length||run.diagnostic?.profile==='catalog'){
-            if(record(model.data)&&model.data.replanRequested===true){history.push(...taskContinuation(config.protocol,output,[]),{role:'user',content:'原排队操作因目标冲突已取消。请重新读取当前保存状态后规划，不要重放旧参数或假定生成已提交。'});continue;}
+            if(record(model.data)&&model.data.replanRequested===true){fragments.push(replayModelContext(config.protocol,{kind:'continuation',output,results:[],replan:true}));continue;}
             if(record(model.data)&&model.data.noteContinuationRequested===true||(journal.run(runId).notes??[]).some(note=>note.modelStepId===undefined)){
               if(!record(model.data)||model.data.noteContinuationRequested!==true)journal.updateStep(runId,model.id,{data:{...(record(model.data)?model.data:{}),noteContinuationRequested:true}});
               const diagnosticResults=output.toolCalls.map(call=>({callId:call.id,result:{error:{code:'DIAGNOSTIC_NOT_EXECUTED'}}}));
-              history.push(...taskContinuation(config.protocol,output,diagnosticResults));resumeModel=model;continue;
+              fragments.push(replayModelContext(config.protocol,{kind:'continuation',output,results:diagnosticResults}));resumeModel=model;continue;
             }
             changeStatus(runId,'completed');return;
           }
@@ -277,11 +269,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
             }
             results.push({callId:call.id,result:finished.result??{error:{code:finished.status}}});
           }
-          history.push(...taskContinuation(config.protocol,output,results));resumeModel=model;
+          fragments.push(replayModelContext(config.protocol,{kind:'continuation',output,results}));resumeModel=model;
         }
-        run=fence(runId);const pendingNotes=pendingModel?[]:(run.notes??[]).filter(note=>note.modelStepId===undefined);
-        history.push(...pendingNotes.map(note=>({role:'user',content:note.text})));
-        const body=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:buildTaskModelRequest(config,history,runTools(run),selfPort()),model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}},pendingNotes.map(note=>note.requestId));
+        run=fence(runId);const originalBody=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:undefined;
+        const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,fragments,notes:pendingModel?[]:run.notes,tools:originalBody===undefined?runTools(run):[]});
+        const body=originalBody??buildTaskModelRequest(config,history,definitions,selfPort()),model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}},pendingNotes.map(note=>note.requestId));
         journal.markDispatch(runId,model.id);inflight=model.id;let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
         const flush=()=>{if(pending&&!closed){journal.appendText(runId,model.id,pending);pending='';lastFlush=Date.now();}};
         for await(const item of gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),beforeSubmit:()=>{fence(runId);}})){
@@ -333,13 +325,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||taskResponseLocale(previous.run.context)!==locale||!isDeepStrictEqual(previous.run.attachments??[],uploads)||!isDeepStrictEqual(previous.run.diagnostic,diagnostic))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');if(journal.requestConversationId(previous.run.id)!==conversationId)throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous,store);}
     const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));if(settings.revision!==input.expectedSettingsRevision)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
     const dummy={configuration:json(settings.configuration)} as AgentTaskRun;authorize(dummy);
-    const groups:AgentTaskJson[][]=[];for(const old of (diagnostic||!conversationId?[]:journal.contextRuns(projectId,conversationId)).reverse()){
-      const final=journal.snapshot(old.id).steps.filter(step=>step.kind==='model'&&step.status==='completed').at(-1);if(final&&record(final.result)&&typeof final.result.text==='string')groups.push([{role:'user',content:old.text},...(old.notes??[]).map(note=>({role:'user',content:note.text})),{role:'assistant',content:final.result.text}]);
+    const previousRuns:TaskContextPreviousRun[]=[];for(const old of (diagnostic||!conversationId?[]:journal.contextRuns(projectId,conversationId)).reverse()){
+      previousRuns.push({text:old.text,notes:old.notes,steps:journal.snapshot(old.id).steps});
     }
     const attachments=uploads.map(id=>{const row=store.db.prepare('SELECT id,name,mimeType FROM agent_task_imports_v2 WHERE id=? AND projectId=?').get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
-    const currentMessage:AgentTaskJson={role:'user',content:input.text+(attachments.length?`\n${attachmentInstructions[locale]}${JSON.stringify(attachments)}`:'')};
-    let context:AgentTaskJson[]=[taskResponseLanguageContext(locale),...groups.flat(),currentMessage];
-    while(groups.length&&Buffer.byteLength(JSON.stringify(context))>TASK_MODEL_LIMITS.historyBytes){groups.shift();context=[taskResponseLanguageContext(locale),...groups.flat(),currentMessage];}
+    const {context}=assembleRunContext({locale,text:input.text,previousRuns,attachments});
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
     const created=journal.create({projectId,...(conversationId?{conversationId}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
@@ -347,26 +337,23 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   function assertNoteCapacity(runId:string):void {
     const snapshot=journal.snapshot(runId),run=snapshot.run,latest=snapshot.steps.filter(step=>step.kind==='model').at(-1);
     const saved=latest&&record(latest.request)&&Array.isArray(latest.request.history)?latest.request.history:undefined;
-    const history:AgentTaskJson[]=structuredClone(saved??run.context??[{role:'user',content:run.text}]);
+    const context=assembleModelInput({context:saved??run.context,text:run.text}).history,fragments:AgentTaskJson[][]=[];
     if(latest?.status==='completed'){
       const output=modelOutput(latest.result),results=output.toolCalls.map(call=>{
         const tool=snapshot.steps.find(step=>step.toolCall?.id===call.id&&record(step.data)&&step.data.sourceModelStepId===latest.id);
         return {callId:call.id,result:tool?.result??null};
       });
-      history.push(...taskContinuation(configuration(run).protocol,output,results));
+      fragments.push(replayModelContext(configuration(run).protocol,{kind:'continuation',output,results}));
     }else if(latest?.status==='dispatch_started'&&latest.text){
       // Persisted deltas are already known continuation content. Count the
       // protocol's smallest text message, without inventing later output or
       // treating an unknown reply that may be discarded as saved history.
-      history.push(configuration(run).protocol!=='responses'
-        ?{role:'assistant',content:latest.text}
-        :{type:'message',role:'assistant',content:[{type:'output_text',text:latest.text}]});
+      fragments.push(replayModelContext(configuration(run).protocol,{kind:'partial',text:latest.text}));
     }
-    history.push(...(run.notes??[]).filter(note=>note.modelStepId===undefined).map(note=>({role:'user',content:note.text})));
     // Reject known overflow in the control transaction, before acknowledging
     // the note. Future model/tool output remains subject to the original caps.
     // This is only a capacity probe: it never submits or changes a saved intent.
-    try{buildTaskModelRequest(configuration(run),history,runTools(run),selfPort());}
+    try{const config=configuration(run),{history,tools:definitions}=assembleModelInput({context,text:run.text,fragments,notes:run.notes,tools:runTools(run)});buildTaskModelRequest(config,history,definitions,selfPort());}
     catch(error){if(code(error)==='AGENT_CHAT_LIMIT')throw agentTaskFailure('AGENT_TASK_NOTE_CAPACITY');throw error;}
   }
   async function action(projectId:string,runId:string,input:unknown):Promise<AgentTaskSnapshot>{
