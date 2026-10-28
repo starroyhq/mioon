@@ -824,7 +824,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  };
  f.setScript(async function*(index){
   const text=`Reply ${index}: `+'m'.repeat(30*1024),calls=index===15?[]:Array.from({length:index===1?2:1},()=>call('mioon_project_inspect'));
-  if(index===6){yield {type:'delta',text:text.slice(0,8192)};entered.resolve();await release.promise;yield {type:'delta',text:text.slice(8192)};}
+  if(index===6){yield {type:'delta',text:text.slice(0,8193)};entered.resolve();await release.promise;yield {type:'delta',text:text.slice(8193)};}
   else yield {type:'delta',text};
   yield {type:'done',output:longReadOutput(protocol,text,calls)};
  });
@@ -874,7 +874,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.notes,[]);assert.equal(f.requests.length,1);assert.equal(done.steps.filter(step=>step.kind==='model').length,1);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity compacts earlier conversation rounds while preserving persisted output and its intent`,async t=>{
- const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(8192),note='ADDITIONAL_COLOUR_CONSTRAINT_'+'n'.repeat(1024);let count=0;
+ const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(8193),note='ADDITIONAL_COLOUR_CONSTRAINT_'+'n'.repeat(1024);let count=0;
  f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};}else yield {type:'done',output:replyOutput(protocol,'Compacted follow-up complete')};});
  const sent=await f.sendNext();await entered.promise;
  const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.ok(model);assert.equal(model.text,reply);
@@ -893,7 +893,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  assert.deepEqual(f.runtime.journal.step(model.id).request,frozen);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity accepts a persisted streamed reply below the limit without rewriting its intent`,async t=>{
- const f=await noteHistoryFixture(t,protocol,28000),entered=gate(),release=gate(),reply='r'.repeat(8192),note='n'.repeat(1024);let count=0;
+ const f=await noteHistoryFixture(t,protocol,28000),entered=gate(),release=gate(),reply='r'.repeat(8193),note='n'.repeat(1024);let count=0;
  f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};}else yield {type:'done',output:replyOutput(protocol,'Follow-up complete')};});
  const sent=await f.sendNext();await entered.promise;
  try{
@@ -905,8 +905,8 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity does not invent unpersisted delta bytes`,async t=>{
  // Freeze the flush clock so this small delta is deterministically still in
- // the executor buffer, rather than relying on the test finishing within 50ms.
- t.mock.method(Date,'now',()=>Date.parse('2026-10-23T00:00:00.000Z'));
+ // the executor buffer, rather than relying on the test finishing within 250ms.
+ t.mock.timers.enable({apis:['Date','setTimeout'],now:Date.parse('2026-10-23T00:00:00.000Z')});
  const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(1024);let count=0;
  f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};}else yield {type:'done',output:replyOutput(protocol,'Short response')};});
  const sent=await f.sendNext();await entered.promise;
@@ -915,7 +915,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,5);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity excludes an unknown reply that is explicitly discarded before continuing`,async t=>{
- const f=await noteHistoryFixture(t,protocol),reply='r'.repeat(8192);let count=0;
+ const f=await noteHistoryFixture(t,protocol),reply='r'.repeat(8193);let count=0;
  f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};throw Object.assign(Error('Synthetic unknown reply'),{code:'AGENT_TASK_UNKNOWN_RESULT'});}yield {type:'done',output:replyOutput(protocol,'Known replacement')};});
  const sent=await f.sendNext(),paused=await f.settle(sent.run.id),unknown=paused.steps.find(step=>step.kind==='model');assert.ok(unknown);assert.equal(unknown.status,'unknown');assert.equal(unknown.text,reply);
  const noted=await f.action(paused,'note',{text:'n'.repeat(1024)});await assert.rejects(f.action(noted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,4);
@@ -968,7 +968,7 @@ for(const protocol of ['chat_completions','responses'] as const)for(const status
  assert.equal(done.run.status,'completed');assert.equal(done.run.budget,failed.run.budget);assert.equal(done.run.stepsUsed,2);assert.equal(f.requests.length,2);assert.equal(done.steps[0]!.status,'failed');assert.equal(done.steps[0]!.error?.code,'AGENT_CHAT_HTTP_ERROR');assert.equal(done.steps[1]!.status,'completed');assert.equal(f.effects.size,0);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a timeout after partial text records a failure and the retry does not feed that text back`,async t=>{
- // Long enough to pass the 2 KiB flush threshold, so the partial reply is saved.
+ // Below 8 KiB: a failure must flush received text before recording its status.
  const partial='PARTIAL_REPLY_BEFORE_TIMEOUT '.repeat(100);
  const f=await fixture(t,protocol);f.setScript(async function*(index){if(index===1){yield {type:'delta',text:partial};throw Object.assign(new Error('timeout'),{code:'AGENT_CHAT_TIMEOUT'});}yield {type:'done',output:output(protocol,[],'Retry completed')};});
  const sent=await f.send(),failed=await f.settle(sent.run.id),step=failed.steps.at(-1)!;
