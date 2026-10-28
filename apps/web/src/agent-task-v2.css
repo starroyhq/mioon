@@ -12,6 +12,8 @@
 .mio-suggestions .wb-button{justify-content:flex-start;height:auto;white-space:normal;text-align:left;line-height:1.5;padding:var(--wb-space-1) var(--wb-space-2)}
 .mio-secondary,.mio-step-time{color:var(--wb-soft);font-size:var(--wb-text-caption);line-height:1.5}
 .mio-panel .mio-run-status{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--wb-space-1);position:static;background:transparent;padding:0;border:0}
+/* A long status tag can push Stop onto its own line; it stays on the right. */
+.mio-panel .mio-run-status .mio-run-stop{margin-left:auto}
 .mio-run-tag{display:inline-flex;align-items:center;gap:var(--wb-space-1);border-radius:var(--wb-radius-panel);background:var(--wb-card);color:var(--wb-soft);padding:var(--wb-space-1) var(--wb-space-2);font-size:var(--wb-text-caption);line-height:1.3;max-width:100%;flex-wrap:wrap}
 .mio-run-tag strong{font-weight:500}
 .mio-run-tag[data-status=completed]{color:var(--wb-success);background:var(--wb-success-subtle)}
@@ -176,3 +178,44 @@
 .mio-panel .mio-model-trigger.wb-button{justify-content:flex-end}
 /* Narrow composers keep the send button: the model loses its scope first, then the mode its name. */
 .mio-composer-tools:is([data-compact="1"],[data-compact="2"]) .mio-model-scope,.mio-composer-tools[data-compact="2"] .mio-policy-name{display:none}
+/* Mio's questions (09-05a, 09-05b). */
+.mio-run-tag[data-status=awaiting_answer]{color:var(--wb-text);background:var(--wb-accent-subtle)}
+.mio-question-head{display:flex;align-items:flex-start;gap:var(--wb-space-2)}
+.mio-panel .mio-question-head>svg{color:var(--wb-soft);margin-top:1px}
+.mio-question-head>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mio-question-head strong{font-size:13px;font-weight:600;color:var(--wb-text);overflow-wrap:anywhere}
+.mio-question-kind{font-size:var(--wb-text-caption);color:var(--wb-muted)}
+.mio-question-stopped{align-self:flex-start;margin-top:var(--wb-space-1);padding:2px var(--wb-space-2);border-radius:var(--wb-radius-panel);background:var(--wb-hover);color:var(--wb-soft);font-size:var(--wb-text-caption)}
+.mio-question-options{display:flex;flex-direction:column;gap:6px}
+.mio-question-option{position:relative;display:flex;align-items:flex-start;gap:var(--wb-space-2);padding:8px 10px;border:1px solid var(--wb-line);border-radius:var(--wb-radius-control);cursor:pointer;color:var(--wb-text)}
+.mio-question-option:hover:not(:has(input:disabled)){background:var(--wb-hover)}
+.mio-question-option[data-selected]{background:var(--wb-selected);border-color:var(--wb-line-strong)}
+.mio-question-option>input[type=radio],.mio-question-option>input[type=checkbox]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.mio-question-mark{position:relative;flex:none;width:14px;height:14px;margin-top:2px;border:1.5px solid var(--wb-muted);border-radius:50%}
+.mio-question-option:has(input[type=checkbox]) .mio-question-mark{border-radius:3px}
+.mio-question-option[data-selected] .mio-question-mark{border-color:var(--wb-text);background:var(--wb-text)}
+.mio-question-option[data-selected]:has(input[type=radio]) .mio-question-mark{box-shadow:inset 0 0 0 3px var(--wb-selected)}
+.mio-question-option[data-selected]:has(input[type=checkbox]) .mio-question-mark::after{content:'';position:absolute;left:3.5px;top:0.5px;width:4px;height:8px;border:solid var(--wb-selected);border-width:0 1.5px 1.5px 0;transform:rotate(45deg)}
+.mio-question-option input:focus-visible+.mio-question-mark{outline:2px solid var(--wb-text);outline-offset:2px}
+.mio-question-copy{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:13px;font-weight:500;line-height:1.4;overflow-wrap:anywhere}
+.mio-question-copy .mio-secondary{font-size:var(--wb-text-caption);font-weight:400}
+.mio-question-other{align-items:center;background:var(--wb-input)}
+.mio-question-other .mio-question-mark{margin-top:0}
+.mio-question-other-input{flex:1;min-width:0;padding:0;border:0;outline:none;background:transparent;color:var(--wb-text);font:inherit;font-size:13px}
+.mio-question-other-input::placeholder{color:var(--wb-muted)}
+.mio-question-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--wb-space-2)}
+.mio-question-foot .mio-secondary{min-width:0;font-size:var(--wb-text-caption)}
+.mio-question-foot>.wb-button{flex:none}
+.mio-question-option:has(input:disabled){cursor:default}
+.mio-question[data-state=stopped]{border-color:var(--wb-line-subtle)}
+.mio-question[data-state=stopped] .mio-question-option{border-color:var(--wb-line-subtle);color:var(--wb-muted)}
+.mio-question[data-state=stopped] .mio-question-copy .mio-secondary{color:var(--wb-disabled)}
+.mio-question[data-state=stopped] .mio-question-mark{border-color:var(--wb-disabled)}
+.mio-answer{display:flex;align-items:center;gap:var(--wb-space-2);min-width:0;min-height:36px;padding:0 var(--wb-space-1) 0 var(--wb-space-3);border:1px solid var(--wb-line-subtle);border-radius:var(--wb-radius-card);background:var(--wb-card);color:var(--wb-text);font-size:12px}
+.mio-panel .mio-answer>svg{flex:none;width:14px;height:14px;color:var(--wb-muted)}
+.mio-answer-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mio-answer-text>.mio-secondary{margin-right:var(--wb-space-1)}
+.mio-answer-edit.wb-button{flex:none;color:var(--wb-disabled);cursor:default}
+.mio-answer-edit.wb-button:hover{background:transparent;color:var(--wb-disabled)}
+.mio-answer-not-approval{display:flex;align-items:center;gap:var(--wb-space-1);margin:0;color:var(--wb-muted);font-size:var(--wb-text-caption)}
+.mio-panel .mio-answer-not-approval svg{width:12px;height:12px}

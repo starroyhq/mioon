@@ -1678,5 +1678,149 @@ export const mioPanelMessages = {
     "zh-Hant": "之後的新對話中，Mio 呼叫付費生成時都不再逐次確認，每次呼叫仍會記錄在變更裡。",
     "en": "In new conversations Mio no longer asks before each paid generation. Each call is still recorded in the changes.",
     "ja": "今後の新しい会話では、Mio が有料の生成を行うたびに確認しなくなります。呼び出しはそれぞれ変更履歴に記録されます。"
+  },
+  "agent.display.operation.ask": {
+    "zh-Hans": "提问",
+    "zh-Hant": "提問",
+    "en": "Ask you",
+    "ja": "質問"
+  },
+  "agent.panel.question.single": {
+    "zh-Hans": "单选",
+    "zh-Hant": "單選",
+    "en": "Pick one",
+    "ja": "1 つ選択"
+  },
+  "agent.panel.question.singleOther": {
+    "zh-Hans": "单选 · 也可以填写其他",
+    "zh-Hant": "單選 · 也可以填寫其他",
+    "en": "Pick one, or write your own",
+    "ja": "1 つ選択 · 自由回答も可"
+  },
+  "agent.panel.question.multiple": {
+    "zh-Hans": "多选 · 可选多项",
+    "zh-Hant": "多選 · 可選多項",
+    "en": "Pick any",
+    "ja": "複数選択可"
+  },
+  "agent.panel.question.multipleOther": {
+    "zh-Hans": "多选 · 也可以填写其他",
+    "zh-Hant": "多選 · 也可以填寫其他",
+    "en": "Pick any, or write your own",
+    "ja": "複数選択可 · 自由回答も可"
+  },
+  "agent.panel.question.other": {
+    "zh-Hans": "其他…",
+    "zh-Hant": "其他…",
+    "en": "Other…",
+    "ja": "その他…"
+  },
+  "agent.panel.question.otherInput": {
+    "zh-Hans": "填写其他回答",
+    "zh-Hant": "填寫其他回答",
+    "en": "Write another answer",
+    "ja": "その他の回答を入力"
+  },
+  "agent.panel.question.answer": {
+    "zh-Hans": "回答",
+    "zh-Hant": "回答",
+    "en": "Answer",
+    "ja": "回答"
+  },
+  "agent.panel.question.pickOne": {
+    "zh-Hans": "选一项，或在下方输入框直接回答",
+    "zh-Hant": "選一項，或在下方輸入框直接回答",
+    "en": "Pick one, or reply in the box below",
+    "ja": "1 つ選ぶか、下の入力欄で直接回答"
+  },
+  "agent.panel.question.pickSome": {
+    "zh-Hans": "选一项或多项，或在下方输入框直接回答",
+    "zh-Hant": "選一項或多項，或在下方輸入框直接回答",
+    "en": "Pick one or more, or reply in the box below",
+    "ja": "1 つ以上選ぶか、下の入力欄で直接回答"
+  },
+  "agent.panel.question.continue": {
+    "zh-Hans": "回答后 Mio 继续这一轮",
+    "zh-Hant": "回答後 Mio 繼續這一輪",
+    "en": "Mio continues after you answer",
+    "ja": "回答すると Mio が続行します"
+  },
+  "agent.panel.question.selected": {
+    "zh-Hans": "已选 {count} 项",
+    "zh-Hant": "已選 {count} 項",
+    "en": "{count} selected",
+    "ja": "{count} 件選択"
+  },
+  "agent.panel.question.chose": {
+    "zh-Hans": "你选了：",
+    "zh-Hant": "你選了：",
+    "en": "You chose:",
+    "ja": "選んだ回答："
+  },
+  "agent.panel.question.replied": {
+    "zh-Hans": "你回答了：",
+    "zh-Hant": "你回答了：",
+    "en": "You answered:",
+    "ja": "回答："
+  },
+  "agent.panel.question.separator": {
+    "zh-Hans": "、",
+    "zh-Hant": "、",
+    "en": ", ",
+    "ja": "、"
+  },
+  "agent.panel.question.edit": {
+    "zh-Hans": "修改",
+    "zh-Hant": "修改",
+    "en": "Change",
+    "ja": "変更"
+  },
+  "agent.panel.question.editLocked": {
+    "zh-Hans": "已继续执行，不能再修改回答",
+    "zh-Hant": "已繼續執行，不能再修改回答",
+    "en": "Mio has continued, so this answer can no longer change",
+    "ja": "続行済みのため、回答は変更できません"
+  },
+  "agent.panel.question.stoppedTag": {
+    "zh-Hans": "未回答 · 已停止",
+    "zh-Hant": "未回答 · 已停止",
+    "en": "Not answered · Stopped",
+    "ja": "未回答 · 停止済み"
+  },
+  "agent.panel.question.stoppedBody": {
+    "zh-Hans": "这一轮已停止，提问不再接收回答。需要时重新发送请求。",
+    "zh-Hant": "這一輪已停止，提問不再接收回答。需要時重新傳送請求。",
+    "en": "This round has stopped and no longer takes an answer. Send the request again if you still need it.",
+    "ja": "このラウンドは停止したため、回答を受け付けません。必要なら依頼を送り直してください。"
+  },
+  "agent.panel.question.answerDraft": {
+    "zh-Hans": "也可以直接输入你的回答",
+    "zh-Hant": "也可以直接輸入你的回答",
+    "en": "Or type your answer here",
+    "ja": "ここに直接回答を入力することもできます"
+  },
+  "agent.panel.question.sendAnswer": {
+    "zh-Hans": "发送回答",
+    "zh-Hant": "傳送回答",
+    "en": "Send answer",
+    "ja": "回答を送信"
+  },
+  "agent.panel.question.tooLong": {
+    "zh-Hans": "回答最多 2000 字",
+    "zh-Hant": "回答最多 2000 字",
+    "en": "Answers can be up to 2000 characters",
+    "ja": "回答は 2000 文字までです"
+  },
+  "agent.panel.question.notApproval": {
+    "zh-Hans": "回答问题不等于同意付费",
+    "zh-Hant": "回答問題不等於同意付費",
+    "en": "Answering a question does not approve paid work",
+    "ja": "質問への回答は有料操作の承認ではありません"
+  },
+  "agent.panel.question.answered": {
+    "zh-Hans": "已回答",
+    "zh-Hant": "已回答",
+    "en": "Answered",
+    "ja": "回答済み"
   }
 } as const satisfies MessageCatalog;
