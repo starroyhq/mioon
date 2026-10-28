@@ -22,6 +22,7 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent task list/history` | `{projectId}`；history 按对话返回 `conversations`，另接受原样返回的 `cursor`，不含诊断运行 |
 | `agent task conversation` | `{projectId, conversationId, cursor?}`；升序分页读取本对话轮次摘要，逐轮详情使用 status |
 | `agent task status` | `{projectId, runId}`；读取持久快照 |
+| `agent task checks` | `{projectId, runId, preflight?}`；`preflight` 为可选布尔值，默认不跑完整预检，`true` 才运行；只读计算本轮检查，恢复副本可用，不调用模型或查询供应商 |
 | `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?}`；lookup 为 `{projectId, requestId}` |
 | `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
 | `agent task pause/resume/retry/stop/approve/deny/skip` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId；retry 可携带最后失败步骤的 stepId |
@@ -32,6 +33,15 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent task watch/events` | `{projectId, runId, after?}`；有界观察，默认 60 秒，可设 `--timeout-ms` 和 `--interval-ms` |
 
 `status`、`lookup` 和控制回执返回的公开快照可包含 Step / Change 的 `display` 安全投影；原始 before/after 与补偿数据不因此开放。新版 CLI 与 HTTP 共用 contracts，独立旧版严格客户端需同步升级。内置 Mio 的 `_mio_step` 说明仅存在于模型工具包装，不是 CLI/MCP 业务参数。
+
+`checks` 使用独立 GET 接口，不把检查加入快照。结果固定分为 `export_render`、`generation`、`timeline`、`decomposition_frames`，每项包含机器类型／原因码、状态、可定位目标、依据修订及安全的期望／当前值，可用时返回进度。没有相关工作时为 `not_applicable`。本轮修改过时间线时，每次照常计算引用检查；默认完整预检项为 `pending`／`PREFLIGHT_NOT_REQUESTED`。只有 JSON 输入的 `preflight:true` 才发送 `GET .../checks?preflight=1` 并执行完整本地预检，`false` 或省略均不发送该查询参数。不缓存或沿用上次的完整预检结果。读取不落库，不改变执行状态，重复读取可观察后台完成或人工改动，不触发生成、重试或补做。
+
+显式完整预检使用至少 60 秒的 client 请求超时，为服务端 30 秒预检预算留出响应余量；更长的全局超时保留，client 的显式 `options.timeoutMs` 仍优先。默认轻量检查沿用普通请求超时。
+
+```sh
+mioon agent task checks --input '{"projectId":"PROJECT_UUID","runId":"RUN_UUID"}'
+mioon agent task checks --input '{"projectId":"PROJECT_UUID","runId":"RUN_UUID","preflight":true}'
+```
 
 终态快照的可选 `executionEndedAt` 是执行结束时间的只读投影；后续撤销的 `run.updatedAt` 仍表示最后更新时间，不能当作执行用时的终点。旧记录没有可靠终态证据时省略该字段；CLI 不推算或补写它。
 
