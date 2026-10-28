@@ -179,7 +179,7 @@ test('new TS/TSX owns no persistence, durable work, decoder shortcut or autoplay
   const hook = readFileSync(new URL('../apps/web/src/use-timeline-audio-preview.ts', import.meta.url), 'utf8');
   assert.match(hook, /addEventListener\('visibilitychange'/); assert.match(hook, /addEventListener\('pagehide'/);
   const ui = readFileSync(new URL('../apps/web/src/TimelineAudioPreview.tsx', import.meta.url), 'utf8');
-  assert.match(ui, /import React from 'react'/); assert.doesNotMatch(ui, /autoPlay|autoFocus/);
+  assert.doesNotMatch(ui, /autoPlay|autoFocus/);
 });
 
 

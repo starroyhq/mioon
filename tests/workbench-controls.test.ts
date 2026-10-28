@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../packages/ui/', import.meta.url));
 
-test('application compositions render with real React/Base UI under the shipped classic JSX transform', () => {
+test('application compositions render with real React/Base UI under the shipped automatic JSX runtime', () => {
   const fixture = `
     import React from 'react';
     import { renderToStaticMarkup } from 'react-dom/server.browser';
@@ -61,7 +61,7 @@ test('application compositions render with real React/Base UI under the shipped 
     console.log('Workbench controls verified');
     process.exit(0);
   `;
-  const bundle = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: root }, absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', jsx: 'transform', write: false, logLevel: 'silent' }).outputFiles[0].text;
+  const bundle = buildSync({ stdin: { contents: fixture, loader: 'tsx', resolveDir: root }, absWorkingDir: root, bundle: true, platform: 'node', format: 'cjs', jsx: 'automatic', write: false, logLevel: 'silent' }).outputFiles[0].text;
   const output = execFileSync(process.execPath, ['--input-type=commonjs', '-'], { input: bundle, encoding: 'utf8', timeout: 30_000 });
   assert.match(output, /Workbench controls verified/);
 });
