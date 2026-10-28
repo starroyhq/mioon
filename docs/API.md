@@ -1417,7 +1417,8 @@ position. Both writes require a stable `requestId`; only the newest four scene
 saves of a node keep receipts, and an older retry fails the revision check
 instead of applying again. Thumbnails are a bounded JPEG cache per card or
 keyframe, outside receipts and packages. Restored copies (schema 65,
-`restored-local-v21`) allow only `previs.thumbnail.get`. These operations are
+`restored-local-v21`, and schema 67, `restored-local-v22`) allow only
+`previs.thumbnail.get`. These operations are
 not built-in Mio tools. There is no separate export operation: the editor
 imports a keyframe image with `asset.import`, records its asset ID in the
 keyframe's `exports` with `scene.set`, and sets a shot's first or last frame

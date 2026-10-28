@@ -33,7 +33,7 @@ export function installAgentInteractionDefinitionsV2(db:DatabaseSync):void {
 /** Preserve the old generic receipt.action format. Only actual new metadata is
  * interpreted here, including its links to the exact originating model/tool
  * steps; an old receipt merely named note/skip does not manufacture metadata. */
-export function validateAgentInteractionRowsV2(db:DatabaseSync,options:Pick<AgentTaskRowValidationOptions,'allowRequestReferences'|'maxBytes'>={}):void {
+export function validateAgentInteractionRowsV2(db:DatabaseSync,options:Pick<AgentTaskRowValidationOptions,'allowRequestReferences'|'allowAnswers'|'maxBytes'>={}):void {
  validateAgentTaskRowsV2(db,{...options,allowConversations:true,allowInteractions:true});
  const getStep=db.prepare('SELECT data FROM agent_task_steps_v2 WHERE id=? AND runId=?');
  const step=(id:string,runId:string):AgentTaskStep=>{const row=getStep.get(id,runId);if(!row)invalid();return JSON.parse(String(row.data)) as AgentTaskStep;};

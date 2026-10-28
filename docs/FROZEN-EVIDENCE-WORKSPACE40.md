@@ -94,7 +94,7 @@ role and colour scanners reject the whole workspace. That blocked capability
 reads, envelope edits and restore.
 
 The frozen scanners and this adapter are unchanged. For schema56-on roles, the
-dispatcher and the restore57–65 classifiers give both scanners
+dispatcher and the restore57–67 classifiers give both scanners
 `wrappedTimelineReceiptView` (`workspace-wrapped-timeline-receipts.ts`). That
 read-only view shows a wrapped receipt as its bare timeline only when all of the
 following hold:

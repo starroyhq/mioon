@@ -1,7 +1,7 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {deriveAgentEndpoint} from '@mioon/contracts';
-import {agentTaskControlSchema,agentTaskDiagnosticSchema,agentTaskLocaleSchema,agentTaskTargetSchema,DEFAULT_AGENT_TASK_LOCALE,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskControlSchema,agentTaskConversationPolicySetSchema,agentTaskDiagnosticSchema,agentTaskLocaleSchema,agentTaskQuestionSchema,agentTaskSendSchema,agentTaskTargetSchema,DEFAULT_AGENT_TASK_LOCALE,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
@@ -19,7 +19,7 @@ import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLoc
 import type {TaskGateway,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
 import type {TaskContextPreviousRun,TaskModelContextFragment} from './task-context-v2.ts';
-import {agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 import {readAgentTaskChecks} from './task-checks-v2.ts';
 import type {AgentTaskChecksPreflight} from './task-checks-v2.ts';
@@ -103,7 +103,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     mutable();const run=journal.run(runId);
     if(allowBackground&&['stopped','reverted','failed'].includes(run.status))throw agentTaskFailure('AGENT_TASK_STOPPED');
     authorize(run);
-    if(allowBackground?!['running','awaiting_approval','completed'].includes(run.status):run.status!=='running')throw agentTaskFailure('AGENT_TASK_PAUSED');return run;
+    if(allowBackground?!['running','awaiting_approval','awaiting_answer','completed'].includes(run.status):run.status!=='running')throw agentTaskFailure('AGENT_TASK_PAUSED');return run;
   }
   function acceptedTargets(step:AgentTaskStep):AgentTaskTarget[]{
     // Queue admission can itself change a bound target. Advance only through
@@ -123,6 +123,15 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   }
   const approvalDigest=(step:AgentTaskStep):string=>createHash('sha256').update(JSON.stringify({call:step.toolCall,targets:step.targets,tier:step.tier,...(record(step.data)&&Array.isArray(step.data.dispatchApprovalTargets)?{dispatchTargets:step.data.dispatchApprovalTargets}:{})})).digest('hex');
   const approved=(step:AgentTaskStep):boolean=>record(step.data)&&step.data.approvalDigest===approvalDigest(step);
+  /** The user's answer becomes the question's tool result. It is input, never an approval. */
+  function answerResult(step:AgentTaskStep,request:{choices:number[];text?:string}):AgentTaskJson{
+    const parsed=agentTaskQuestionSchema.safeParse(step.toolCall?.arguments);if(!parsed.success)throw agentTaskFailure('AGENT_TASK_INVALID');
+    const question=parsed.data,choices=[...request.choices].sort((a,b)=>a-b),text=request.text?.trim();
+    if(choices.some(index=>index>=question.options.length)||!question.multiple&&choices.length>1)throw agentTaskFailure('AGENT_TASK_INVALID');
+    // Free text alone answers any question; beside a choice it needs "other".
+    if(text!==undefined&&choices.length>0&&!question.allowOther||!choices.length&&!text)throw agentTaskFailure('AGENT_TASK_INVALID');
+    return {answer:{choices,...(text?{text}:{})},selected:choices.map(index=>question.options[index]!.label),...(text?{text}:{})};
+  }
   const skippedMessage=(run:AgentTaskRun):string=>skippedInstructions[taskResponseLocale(run.context)];
   function assertNotSkipped(run:AgentTaskRun,targets:AgentTaskTarget[]):void {
     if(targets.some(target=>run.skippedTargets?.some(item=>item.target.kind===target.kind&&item.target.id===target.id)))throw agentTaskFailure('AGENT_TASK_TARGET_SKIPPED');
@@ -147,7 +156,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         if(store.db.isTransaction)invalidate();else store.tx(invalidate);
       }throw error;
     }
-    if(step.tier&&journal.policy().modes[step.tier]==='confirm'&&!approved(step)){
+    if(step.tier&&(journal.effectiveModes(run.projectId,run.conversationId)[step.tier]==='confirm'||record(step.data)&&step.data.backgroundApprovalRequired===true)&&!approved(step)){
       const requestApproval=()=>{const current=journal.step(step.id);if(!record(current.data)||current.data.backgroundApprovalRequired!==true)journal.updateStep(run.id,step.id,{data:{...(record(current.data)?current.data:{}),backgroundApprovalRequired:true,dispatchApprovalTargets:json(dispatchTargets(current))}});if(journal.run(run.id).status!=='awaiting_approval')changeStatus(run.id,'awaiting_approval');};
       if(store.db.isTransaction)requestApproval();else store.tx(requestApproval);
       throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
@@ -157,7 +166,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const run=fence(runId),step=journal.step(stepId);
     if(step.runId!==run.id||step.status==='rejected'||step.status==='denied')throw agentTaskFailure('AGENT_TASK_PAUSED');
     assertNotSkipped(run,prepared.referencedTargets??prepared.targets);
-    if(journal.policy().modes[prepared.risk]==='confirm'&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
+    if((journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step))throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     journal.assertTargets(run.projectId,prepared.targets);
   }
   function pause(runId:string,reason:string):void {const run=journal.run(runId);if(!terminal(run)||run.status==='completed'&&journal.hasPendingBackground(runId))changeStatus(runId,'paused',reason);}
@@ -210,7 +219,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       step=journal.updateStep(runId,step.id,{targets:prepared.targets,tier:prepared.risk,data:{...(record(step.data)?step.data:{}),referencedTargets:json(prepared.referencedTargets??prepared.targets)}});
       conflicts=modelConflictingTargets(prepared,source);if(conflicts.length)throw agentTaskFailure('AGENT_TASK_TARGET_CHANGED');
       journal.assertTargets(run.projectId,prepared.targets);
-      if(journal.policy().modes[prepared.risk]==='confirm'&&!approved(step)){
+      // C3: a question waits for the user's answer; nothing is dispatched.
+      if(prepared.operation===AGENT_TASK_ASK_OPERATION){journal.updateStep(runId,step.id,{status:'awaiting_answer'});changeStatus(runId,'awaiting_answer');return null;}
+      // Loosening the modes later never approves a confirmation already shown.
+      if((journal.effectiveModes(run.projectId,run.conversationId)[prepared.risk]==='confirm'||step.status==='awaiting_approval')&&!approved(step)){
         journal.updateStep(runId,step.id,{status:'awaiting_approval'});changeStatus(runId,'awaiting_approval');return null;
       }
       toolFence(runId,step.id,prepared);journal.markDispatch(runId,step.id);
@@ -368,7 +380,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(closed)return;
       const prevented=wasTaskSubmissionPrevented(error);
       if(prevented)for(const step of journal.snapshot(runId).steps)if(step.kind==='model'&&step.status==='dispatch_started')journal.dispatchPrevented(runId,step.id,'intent');
-      const run=journal.run(runId);if(terminal(run)||run.status==='paused'||run.status==='awaiting_approval')return;
+      const run=journal.run(runId);if(terminal(run)||run.status==='paused'||run.status==='awaiting_approval'||run.status==='awaiting_answer')return;
       const failure=code(error);
       if(failure==='AGENT_TASK_BUDGET_EXHAUSTED'){pause(runId,'budget');return;}
       const message=agentChatHttpStatus(error)===undefined&&agentChatStreamReason(error)===undefined?agentTaskFailure(failure).message:safeAgentChatError(error).message;
@@ -391,7 +403,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   }
   async function snapshot(projectId:string){checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));return {version:2 as const,instanceId,projectId,readOnly,runs:(hasTables?journal.list(projectId,{excludeDiagnostics:true}):[]).map(run=>{const {context,...summary}=run;return summary;}),policy:hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),settings,authorization:authorizations.snapshot(settings.configuration)};}
   async function send(projectId:string,input:unknown):Promise<AgentTaskSnapshot>{
-    mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','text','expectedSettingsRevision','expectedRevision','locale','uploads','diagnostic','conversationId'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200||typeof input.text!=='string'||!input.text.trim()||Buffer.byteLength(input.text)>32*1024||!Number.isSafeInteger(input.expectedSettingsRevision)||input.uploads!==undefined&&(!Array.isArray(input.uploads)||input.uploads.length>20||input.uploads.some(id=>typeof id!=='string'||!/^[-a-f0-9]{36}$/u.test(id))))throw agentTaskFailure('AGENT_TASK_INVALID');
+    mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','text','expectedSettingsRevision','expectedRevision','locale','uploads','diagnostic','conversationId','policy'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200||typeof input.text!=='string'||!input.text.trim()||Buffer.byteLength(input.text)>32*1024||!Number.isSafeInteger(input.expectedSettingsRevision)||input.uploads!==undefined&&(!Array.isArray(input.uploads)||input.uploads.length>20||input.uploads.some(id=>typeof id!=='string'||!/^[-a-f0-9]{36}$/u.test(id))))throw agentTaskFailure('AGENT_TASK_INVALID');
     const parsedLocale=agentTaskLocaleSchema.safeParse(input.locale===undefined?DEFAULT_AGENT_TASK_LOCALE:input.locale);if(!parsedLocale.success)throw agentTaskFailure('AGENT_TASK_INVALID');const locale=parsedLocale.data;
     const parsedDiagnostic=input.diagnostic===undefined?undefined:agentTaskDiagnosticSchema.safeParse(input.diagnostic);
     if(parsedDiagnostic&&!parsedDiagnostic.success)throw agentTaskFailure('AGENT_TASK_INVALID');
@@ -400,9 +412,14 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const uploads=(input.uploads??[]) as string[];
     if(input.conversationId!==undefined&&(typeof input.conversationId!=='string'||!/^[-a-f0-9]{36}$/iu.test(input.conversationId)||diagnostic))throw agentTaskFailure('AGENT_TASK_INVALID');
     const conversationId=input.conversationId as string|undefined;
-    const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||taskResponseLocale(previous.run.context)!==locale||!isDeepStrictEqual(previous.run.attachments??[],uploads)||!isDeepStrictEqual(previous.run.diagnostic,diagnostic))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');if(journal.requestConversationId(previous.run.id)!==conversationId)throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous,store);}
+    // A new conversation may start with its own modes (C1); later changes use the conversation policy.
+    const parsedPolicy=input.policy===undefined?undefined:agentTaskSendSchema.shape.policy.safeParse(input.policy);
+    if(parsedPolicy&&(!parsedPolicy.success||!parsedPolicy.data||conversationId!==undefined||diagnostic||!journal.conversationPolicies()))throw agentTaskFailure('AGENT_TASK_INVALID');
+    const conversationModes=parsedPolicy?.success?parsedPolicy.data?.modes:undefined;
+    const previous=journal.lookupRequest(projectId,input.requestId);if(previous){if(previous.run.text!==input.text||taskResponseLocale(previous.run.context)!==locale||!isDeepStrictEqual(previous.run.attachments??[],uploads)||!isDeepStrictEqual(previous.run.diagnostic,diagnostic))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');if(journal.requestConversationId(previous.run.id)!==conversationId)throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');if(!journal.sentConversationModesMatch(input.requestId,conversationModes))throw agentTaskFailure('AGENT_TASK_REQUEST_CONFLICT');return safeSnapshot(previous,store);}
     const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));if(settings.revision!==input.expectedSettingsRevision)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');
     const dummy={configuration:json(settings.configuration)} as AgentTaskRun;authorize(dummy);
+    if(conversationModes?.paid==='direct'&&journal.policy().modes.paid!=='direct'&&parsedPolicy?.success&&parsedPolicy.data?.acknowledgePaid!==true)throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     const previousRuns:TaskContextPreviousRun[]=[];for(const old of (diagnostic||!conversationId?[]:journal.contextRuns(projectId,conversationId)).reverse()){
       previousRuns.push({text:old.text,notes:old.notes,steps:journal.snapshot(old.id).steps});
     }
@@ -410,7 +427,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const {context}=assembleRunContext({locale,text:input.text,previousRuns,attachments});
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
-    const created=journal.create({projectId,...(conversationId?{conversationId}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
+    const created=journal.create({projectId,...(conversationId?{conversationId}:{}),...(conversationModes?{conversationModes}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
   }
   function assertNoteCapacity(runId:string):void {
     const snapshot=journal.snapshot(runId),run=snapshot.run,latest=snapshot.steps.filter(step=>step.kind==='model').at(-1);
@@ -470,11 +487,19 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     }else journal.performControl(request,():AgentTaskJson=>{
       run=owned(projectId,runId);if(run.revision!==request.expectedRevision)throw agentTaskFailure('AGENT_TASK_REVISION_CONFLICT');
       if(request.action==='note'){journal.appendNoteInside(runId,request.requestId,request.text);assertNoteCapacity(runId);return {state:'completed',noteRequestId:request.requestId};}
+      if(request.action==='answer'){
+        if(run.status!=='awaiting_answer')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');
+        const step=journal.step(request.stepId);
+        if(step.runId!==runId||step.kind!=='tool'||step.status!=='awaiting_answer'||step.toolCall?.name!==AGENT_TASK_ASK_TOOL)throw agentTaskFailure('AGENT_TASK_INVALID');
+        journal.updateStep(runId,step.id,{status:'completed',result:answerResult(step,request)});
+        journal.resume(runId,journal.run(runId).revision,{extendBudget:false});
+        return {state:'completed',stepId:step.id};
+      }
       if(request.action==='retry'){
         const steps=journal.snapshot(runId).steps,last=steps.at(-1);
         if(steps.some(step=>step.status==='unknown'||step.status==='dispatch_started'))throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
         if(run.status!=='failed'||!last||last.status!=='failed'||request.stepId!==undefined&&request.stepId!==last.id)throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');
-        if(store.db.prepare("SELECT 1 FROM agent_task_runs_v2 WHERE projectId=? AND id<>? AND status IN ('accepted','running','paused','awaiting_approval','interrupted') LIMIT 1").get(projectId,runId))throw agentTaskFailure('AGENT_TASK_BUSY');
+        if(store.db.prepare("SELECT 1 FROM agent_task_runs_v2 WHERE projectId=? AND id<>? AND status IN ('accepted','running','paused','awaiting_approval','awaiting_answer','interrupted') LIMIT 1").get(projectId,runId))throw agentTaskFailure('AGENT_TASK_BUSY');
         authorize(run);
         if(last.kind==='model')journal.updateStep(runId,last.id,{data:{...(record(last.data)?last.data:{}),retryRequested:true}});
         else {
@@ -507,6 +532,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           if(sourceId){const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model'||source.status!=='completed')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});}
         }else throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
       }else if(request.action==='resume'||request.action==='skip'){
+        // A question is answered, not resumed past.
+        if(run.status==='awaiting_answer')throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');
         authorize(run);const conflict=run.pauseReason==='conflict'||run.pauseReason==='editing';
         // Recovery acknowledges interruption, never the old conflict's plan.
         // Older runtimes saved only restart, so also inspect unresolved evidence.
@@ -570,6 +597,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     lookupAction:(projectId:string,id:string,requestId:string)=>{owned(projectId,id);const found=journal.lookupControl(requestId);if(found&&found.runId!==id)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {found:!!found,...(found?{snapshot:safeSnapshot(journal.snapshot(id),store),receipt:found}:{})};},
     lookupImport:(projectId:string,requestId:string)=>{mutable();const row=store.db.prepare('SELECT id,name,mimeType,status FROM agent_task_imports_v2 WHERE projectId=? AND requestId=?').get(projectId,requestId);return row?{id:String(row.id),name:String(row.name),mimeType:String(row.mimeType),status:String(row.status)}:null;},
     events:(projectId:string,id:string,after=0)=>{owned(projectId,id);return {sequence:journal.eventSequence(id,after),snapshot:safeSnapshot(journal.snapshot(id),store)};},
+    conversationPolicy:(projectId:string,conversationId:string)=>{checkOpen();if(!hasTables)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return journal.conversationPolicy(projectId,conversationId);},
+    setConversationPolicy:(projectId:string,conversationId:string,input:unknown)=>{
+      mutable();const parsed=agentTaskConversationPolicySetSchema.safeParse(input);if(!parsed.success||!/^[-a-f0-9]{36}$/iu.test(conversationId))throw agentTaskFailure('AGENT_TASK_INVALID');
+      if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
+      return journal.setConversationPolicy(projectId,conversationId,parsed.data);
+    },
     policy:()=>hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),lookupPolicy:(id:string)=>({found:hasTables&&!!journal.lookupPolicy(id),...(hasTables&&journal.lookupPolicy(id)?{policy:journal.lookupPolicy(id)}:{})}),updatePolicy:(input:unknown)=>{
       mutable();if(!record(input)||Object.keys(input).some(key=>!['requestId','expectedRevision','revision','stepLimit','modes','acknowledgePaid'].includes(key))||typeof input.requestId!=='string'||input.requestId.length<8||!record(input.modes))throw agentTaskFailure('AGENT_TASK_INVALID');
       const old=journal.policy();if(old.modes.paid!=='direct'&&input.modes.paid==='direct'&&input.acknowledgePaid!==true)throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');

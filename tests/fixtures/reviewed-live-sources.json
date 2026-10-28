@@ -31,8 +31,8 @@
       "sha256": "4c3eb1149230250fc6f5f39f69caf64d4eeec9b72e1338392a6063a542057810"
     },
     "packages/business/src/workspace-backup-schema-versions.ts": {
-      "bytes": 9874,
-      "sha256": "57c3aea0c1f7d405f5c7c4e5fd2b03062449452e122661fdfd2552fccc23d4bf"
+      "bytes": 10312,
+      "sha256": "f0d28bf893c2261c262d107821433b51eb8105b3e31ea5088d57fa35c5bdbffb"
     },
     "packages/business/src/workspace-lock.ts": {
       "bytes": 2717,
@@ -43,8 +43,8 @@
       "sha256": "0d3e894ba7ab76aee9f48952fde1ad373f70890ab663a73c8b1a267a8e997295"
     },
     "packages/business/src/workspace-schema-dispatch.ts": {
-      "bytes": 47982,
-      "sha256": "c71931f5fdb1aa6653fdb3b5c90361fa2e5d6276bba96c336f98c7fb9e5887cc"
+      "bytes": 50139,
+      "sha256": "6d4d6be50151cf97f48a7db09e0bdecd23eec338aac9b236bb3beaab45dfc017"
     },
     "packages/business/src/workspace-volume-envelope-validation.ts": {
       "bytes": 18329,

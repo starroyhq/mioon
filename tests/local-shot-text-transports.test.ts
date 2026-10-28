@@ -1,4 +1,4 @@
-import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
+import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
@@ -25,6 +25,8 @@ import {createServices,canonical} from '../packages/business/src/services.ts';
 import {schemas} from '@mioon/contracts';
 import {createLocalShotTextSchemas,isLocalShotTextMutationResponse} from '@mioon/contracts/local-shot-text';
 import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
+// Exact table names of the independently reviewed layers after schema52.
+const reviewedLayerTables=new Set(reviewedTablesAfter(52).map(([table])=>table));
 const token='synthetic-local-shot-text-http-token',route='/api/local-shot-text';
 const sha=(value: import("node:crypto").BinaryLike)=>createHash('sha256').update(value).digest('hex');
 const contract=createLocalShotTextSchemas(value=>schemas['shot.update'].safeParse(value).success);
@@ -49,7 +51,7 @@ async function fixture(t: test.TestContext){const parent=await realpath(await mk
    assert.equal(sha(JSON.stringify(objects)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
    assert.deepEqual((schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
    return {shots:db.prepare('SELECT * FROM shots ORDER BY rowid').all(),receipts:db.prepare('SELECT * FROM mutation_requests ORDER BY rowid').all(),tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{
-    assert.ok(/^[a-z_]+$/.test((name as string))||Object.hasOwn(currentOrdinary52Delta.tables,name as string),'only safe legacy or independently frozen52 table names');
+    assert.ok(/^[a-z_]+$/.test((name as string))||Object.hasOwn(currentOrdinary52Delta.tables,name as string)||reviewedLayerTables.has(name as string),'only safe legacy, independently frozen52 or reviewed later-layer table names');
     return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];
    }))};
   }finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}

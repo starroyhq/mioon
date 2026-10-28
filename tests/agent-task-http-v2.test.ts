@@ -10,7 +10,7 @@ import {startServer} from '../apps/server/src/index.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskSnapshot,AgentTaskPolicy,AgentTaskJson,AgentTaskHistoryPage,AgentTaskConversationPage} from '../packages/contracts/src/agent-tasks-v2.ts';
-import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskConnectionTestResponseSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
+import {agentTaskSnapshotSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskConnectionTestResponseSchema,agentTaskConversationPolicySchema,AGENT_TASK_POLICY_PRESETS} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
@@ -242,3 +242,39 @@ test('the latest connection test reads the same newest text diagnostic over HTTP
  assert.equal(code,0);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);assert.deepEqual(agentTaskConnectionTestResponseSchema.parse(value.data),latest);
  for(const text of [JSON.stringify(latest),stdout])assert.doesNotMatch(text,/PRIVATE_CONNECTION_TEST_TEXT|SYNTHETIC_TASK_HTTP_KEY/u);
 });
+async function cliJson(url:string,token:string,words:string[],input:Record<string,unknown>):Promise<unknown>{
+ const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,...words,'--input',JSON.stringify(input)],{env:{...process.env,MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});let stdout='',stderr='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});child.stderr.setEncoding('utf8').on('data',(chunk:string)=>{stderr+=chunk;});
+ await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI command timed out'));},15000);child.once('error',error=>{clearTimeout(timer);reject(error);});child.once('close',code=>{clearTimeout(timer);if(code===0)resolve();else reject(Error(`Synthetic CLI command failed: ${stdout}`));});});
+ assert.equal(stdout.includes(token),false);assert.equal(stderr.includes(token),false);const value:unknown=JSON.parse(stdout);assert.ok(object(value)&&value.ok===true);return value.data;
+}
+test('HTTP and CLI read and set a conversation policy and answer a waiting question with durable receipts',async t=>{
+ let models=0;const bodies:string[]=[];
+ const gateway:TaskGateway=async function*(request){
+  bodies.push(request.body);models++;request.beforeSubmit?.();
+  if(models===1){const call={id:'call_ask',name:'mioon_ask',arguments:{question:'Which opening should Mio use?',options:[{label:'Wide street'},{label:'Close-up'}]} as AgentTaskJson};yield {type:'done',output:{text:'',toolCalls:[call],providerOutput:{role:'assistant',content:null,tool_calls:[{id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}]} as AgentTaskJson}};return;}
+  yield {type:'done',output:{text:'Answered locally',toolCalls:[],providerOutput:{role:'assistant',content:'Answered locally'} as AgentTaskJson}};
+ };
+ const f=await fixture(t,'chat_completions',gateway);await f.authorize();
+ const {step:STEP,default:DEFAULT}=AGENT_TASK_POLICY_PRESETS;
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Ask before planning',expectedSettingsRevision:(await f.settings.get()).revision,policy:{modes:STEP}});assert.equal(sent.status,200);
+ const waiting=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id,['awaiting_answer','failed']);assert.equal(waiting.run.status,'awaiting_answer');assert.equal(models,1);
+ const conversationId=waiting.run.conversationId!,route=`${f.prefix}/conversations/${conversationId}/policy`;
+ const read=await f.request(route);assert.equal(read.status,200);assert.ok(object(read.data));
+ const saved=agentTaskConversationPolicySchema.parse(read.data.policy);assert.equal(saved.revision,1);assert.deepEqual(saved.override,STEP);assert.deepEqual(saved.effective,STEP);
+ assert.equal((await f.request(`${f.prefix}/conversations/${randomUUID()}/policy`)).status,404);
+ const stale=await f.request(route,'PUT',{requestId:randomUUID(),expectedRevision:0,modes:DEFAULT});assert.equal(stale.status,409);assert.ok(object(stale.error));assert.equal(stale.error.code,'AGENT_TASK_REVISION_CONFLICT');
+ assert.equal((await f.request(route,'PUT',{requestId:randomUUID(),expectedRevision:1,modes:{...DEFAULT,paid:'sometimes'}})).status,400);
+ assert.equal((await f.request(route,'POST',{requestId:randomUUID(),expectedRevision:1,modes:null})).status,405);
+ const change={requestId:randomUUID(),expectedRevision:1,modes:DEFAULT},changed=await f.request(route,'PUT',change);assert.equal(changed.status,200);assert.ok(object(changed.data));assert.equal(agentTaskConversationPolicySchema.parse(changed.data.policy).revision,2);
+ assert.deepEqual((await f.request(route,'PUT',change)).data,changed.data);
+ const cleared=await cliJson(f.server.url,f.server.token,['agent','conversation','policy','set'],{projectId:f.projectId,conversationId,requestId:randomUUID(),expectedRevision:2,modes:null});assert.ok(object(cleared));
+ const policy=agentTaskConversationPolicySchema.parse(cleared.policy);assert.equal(policy.revision,3);assert.equal(policy.override,null);
+ assert.deepEqual(await cliJson(f.server.url,f.server.token,['agent','conversation','policy','get'],{projectId:f.projectId,conversationId}),(await f.request(route)).data);
+ const step=waiting.steps.find(item=>item.toolCall?.name==='mioon_ask');assert.ok(step);assert.equal(step.status,'awaiting_answer');
+ const answerId=randomUUID(),answered=agentTaskSnapshotSchema.parse(await cliJson(f.server.url,f.server.token,['agent','task','answer'],{projectId:f.projectId,runId:waiting.run.id,requestId:answerId,expectedRevision:waiting.run.revision,stepId:step.id,choices:[1]}));
+ assert.equal(answered.steps.find(item=>item.id===step.id)?.status,'completed');
+ const done=await f.settle(waiting.run.id);assert.equal(done.run.status,'completed');assert.equal(models,2);assert.match(bodies[1]!,/Close-up/u);
+ assert.deepEqual(done.steps.find(item=>item.id===step.id)?.result,{answer:{choices:[1]},selected:['Close-up']});
+ const lookup=await f.request(`${f.prefix}/${waiting.run.id}/actions/${answerId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.equal(lookup.data.receipt.action,'answer');
+});
+

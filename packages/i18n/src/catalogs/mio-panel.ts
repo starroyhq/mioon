@@ -401,6 +401,12 @@ export const mioPanelMessages = {
     "en": "Waiting for your approval",
     "ja": "確認待ち"
   },
+  "agent.panel.stepStatus.awaiting_answer": {
+    "zh-Hans": "等待你回答",
+    "zh-Hant": "等待你回答",
+    "en": "Waiting for your answer",
+    "ja": "回答待ち"
+  },
   "agent.panel.stepStatus.dispatch_started": {
     "zh-Hans": "正在执行",
     "zh-Hant": "正在執行",

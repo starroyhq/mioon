@@ -6,7 +6,7 @@ import {resolveConnection} from './connection.ts';
 import type {LocalConnection} from './connection.ts';
 import {ClientError,EXIT_CODES,safeValue} from './index.ts';
 import type {ClientOptions} from './index.ts';
-import {agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema,agentTaskConnectionTestResponseSchema} from '@mioon/contracts/agent-tasks-v2';
+import {agentTaskAnswerControlObjectSchema,agentTaskConversationPolicySchema,agentTaskConversationPolicySetSchema,agentTaskSendSchema,agentTaskDiagnosticSchema,agentTaskControlSchema,agentTaskControlBaseSchema,agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskPolicySchema,agentTaskSnapshotSchema,agentTaskRunSchema,agentTaskHistoryPageSchema,agentTaskConversationPageSchema,agentTaskReceiptSchema,agentTaskConnectionTestResponseSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot} from '@mioon/contracts/agent-tasks-v2';
 import {agentTaskStorageSnapshotSchema} from '@mioon/contracts/agent-task-storage';
 import {agentTaskChecksSchema,agentTaskChecksInputSchema} from '@mioon/contracts/agent-tasks-v2';
@@ -26,28 +26,33 @@ const sendSchema=agentTaskSendSchema;
 const location=z.object({projectId:id,runId:id}).strict();
 const settingInput=z.object({expectedRevision:revision,configuration:agentConfigurationSchema}).strict();
 const policyInput=agentTaskPolicySchema.omit({revision:true}).extend({requestId,expectedRevision:revision,acknowledgePaid:z.boolean().optional()}).strict();
+const conversationPolicyLocation=z.object({projectId:id,conversationId:id}).strict();
+const conversationPolicyInput=agentTaskConversationPolicySetSchema.extend({projectId:id,conversationId:id}).strict();
 const uploadInput=z.object({projectId:id,requestId,name:z.string().min(1).max(200),mimeType:z.string().min(1).max(100),dataBase64:z.string().max(40*1024*1024)}).strict();
 const watchInput=location.extend({after:revision.optional()});
 export const AGENT_COMMAND_SCHEMAS=Object.freeze({
  'agent.settings.get':z.object({}).strict(),'agent.settings.set':settingInput,'agent.settings.secret.set':settingInput,'agent.settings.secret.remove':settingInput,
  'agent.doctor':z.object({projectId:id.optional()}).strict(),'agent.diagnose':sendSchema.extend({diagnostic:agentDiagnosticSchema}),'agent.diagnose.latest':z.object({}).strict(),
  'agent.policy.get':z.object({}).strict(),'agent.policy.set':policyInput,'agent.policy.lookup':z.object({requestId}).strict(),
+ 'agent.conversation.policy.get':conversationPolicyLocation,'agent.conversation.policy.set':conversationPolicyInput,
  'agent.task.conversation':z.object({projectId:id,conversationId:id,cursor:z.string().max(512).optional()}).strict(),
  'agent.task.list':z.object({projectId:id}).strict(),'agent.task.history':z.object({projectId:id,cursor:z.string().max(512).optional()}).strict(),
  'agent.task.status':location,'agent.task.checks':agentTaskChecksInputSchema,'agent.task.send':sendSchema,'agent.task.lookup':z.object({projectId:id,requestId}).strict(),
  'agent.task.upload':uploadInput.omit({dataBase64:true}).partial({name:true,mimeType:true}),'agent.task.upload-lookup':z.object({projectId:id,requestId}).strict(),
  'agent.task.action-lookup':location.extend({requestId}),'agent.task.watch':watchInput,'agent.task.events':watchInput,
 });
-export const AGENT_CONTROL_COMMANDS=Object.freeze({'pause':'pause','resume':'resume','retry':'retry','stop':'stop','approve':'approve','deny':'deny','skip':'skip','note':'note','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown'} as const);
+export const AGENT_CONTROL_COMMANDS=Object.freeze({'pause':'pause','resume':'resume','retry':'retry','stop':'stop','approve':'approve','deny':'deny','skip':'skip','note':'note','undo-change':'undo_change','undo-all':'undo_all','resolve-unknown':'resolve_unknown','answer':'answer'} as const);
 export type AgentControlCommand=keyof typeof AGENT_CONTROL_COMMANDS;
 export const agentControlInputSchema=agentTaskControlBaseSchema.extend({projectId:id}).strict();
 export const agentNoteInputSchema=agentTaskNoteControlSchema.omit({action:true}).extend({projectId:id}).strict();
 export const agentUndoAllInputSchema=agentTaskUndoAllControlSchema.omit({action:true}).extend({projectId:id}).strict();
-export const agentControlCommandInputSchema=(command:AgentControlCommand)=>command==='note'?agentNoteInputSchema:command==='undo-all'?agentUndoAllInputSchema:agentControlInputSchema;
+export const agentAnswerInputSchema=agentTaskAnswerControlObjectSchema.omit({action:true}).extend({projectId:id}).strict();
+export const agentControlCommandInputSchema=(command:AgentControlCommand)=>command==='note'?agentNoteInputSchema:command==='undo-all'?agentUndoAllInputSchema:command==='answer'?agentAnswerInputSchema:agentControlInputSchema;
 export const agentInputSchema=(schema:z.ZodTypeAny):unknown=>zodToJsonSchema(schema,{$refStrategy:'none'});
 const uploadSchema=z.object({id,name:text,mimeType:text,status:z.string().max(80),handle:id.optional()});
 const projectSchema=z.object({version:z.literal(2),instanceId:z.string().min(1).max(200),projectId:id,runs:z.array(agentTaskRunSchema).max(100),policy:agentTaskPolicySchema,settings:agentSettingsSnapshotSchema,authorization:agentAuthorizationSnapshotSchema,readOnly:z.boolean().optional()});
 const policyView=z.object({policy:agentTaskPolicySchema,readOnly:z.boolean()});
+const conversationPolicyView=z.object({policy:agentTaskConversationPolicySchema,readOnly:z.boolean()});
 const doctorSchema=z.object({version:z.literal(1),settings:agentSettingsSnapshotSchema,policy:agentTaskPolicySchema,authorization:agentAuthorizationSnapshotSchema,catalog:z.object({count:revision,valid:z.boolean(),issues:z.array(z.object({code,tool:z.string().max(100).optional(),path:z.string().max(512).optional()})).max(500)}),storage:agentTaskStorageSnapshotSchema.optional(),projectId:id.optional(),verification:z.literal('not_tested')});
 type Json=Record<string,unknown>;
 type Recovery={operation:string;projectId?:string;runId?:string;requestId?:string;lookup:string};
@@ -66,7 +71,7 @@ const actionLookupSchema=z.object({found:z.boolean(),snapshot:agentTaskSnapshotS
 const validateSnapshot=(value:unknown,projectId:string,runId?:string):AgentTaskSnapshot=>{const parsed=agentTaskSnapshotSchema.safeParse(value);if(!parsed.success||parsed.data.run.projectId!==projectId||runId!==undefined&&parsed.data.run.id!==runId||parsed.data.steps.some(step=>step.runId!==parsed.data.run.id)||parsed.data.changes.some(change=>change.runId!==parsed.data.run.id||change.projectId!==projectId))throw new ClientError('BACKEND_PROTOCOL_ERROR','Invalid Agent task response.');return parsed.data;};
 function outcome(snapshot:AgentTaskSnapshot):AgentWatchResult['outcome']|null {
  if(snapshot.run.status==='stopped')return 'stopped';
- if(snapshot.steps.some(step=>step.status==='unknown')||['paused','awaiting_approval','interrupted'].includes(snapshot.run.status))return 'action_needed';
+ if(snapshot.steps.some(step=>step.status==='unknown')||['paused','awaiting_approval','awaiting_answer','interrupted'].includes(snapshot.run.status))return 'action_needed';
  if(snapshot.run.status==='failed')return 'failed';
  if(['completed','reverted'].includes(snapshot.run.status)&&!snapshot.backgroundPending)return 'completed';
  return null;
@@ -133,6 +138,8 @@ export function createAgentClient({env=process.env,fetchImpl=fetch,requestTimeou
   async policyGet(options:AgentRequestOptions={}){return parsed(policyView,await request(`${api}/policy`,options));},
   async policySet(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(policyInput,value);return parsed(policyView,await request(`${api}/policy`,{...options,method:'PUT',body:input,validate:value=>parsed(policyView,value),recovery:{operation:'policy.set',requestId:input.requestId,lookup:'agent policy lookup'}}));},
   async policyLookup(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.policy.lookup'],value);return parsed(z.object({found:z.boolean(),policy:agentTaskPolicySchema.optional(),readOnly:z.boolean()}).refine(value=>value.found===(value.policy!==undefined)),await request(`${api}/policy/requests/${encodeURIComponent(input.requestId)}`,options));},
+  async conversationPolicyGet(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(conversationPolicyLocation,value);const result=parsed(conversationPolicyView,await request(`${projectPath(input.projectId)}/conversations/${encodeURIComponent(input.conversationId)}/policy`,options));if(result.policy.projectId!==input.projectId||result.policy.conversationId!==input.conversationId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent conversation policy mismatch.');return result;},
+  async conversationPolicySet(value:unknown,options:AgentRequestOptions={}){const {projectId,conversationId,...body}=parseAgentInput(conversationPolicyInput,value);const validate=(value:unknown)=>{const result=parsed(conversationPolicyView,value);if(result.policy.projectId!==projectId||result.policy.conversationId!==conversationId)throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent conversation policy mismatch.');return result;};return validate(await request(`${projectPath(projectId)}/conversations/${encodeURIComponent(conversationId)}/policy`,{...options,method:'PUT',body,validate}));},
   async list(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.task.list'],value);const result=parsed(projectSchema,await request(projectPath(input.projectId),options));if(result.projectId!==input.projectId||result.runs.some(run=>run.projectId!==input.projectId))throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent project mismatch.');return result;},
   async history(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.task.history'],value);const result=parsed(agentTaskHistoryPageSchema,await request(`${projectPath(input.projectId)}/history${input.cursor?`?cursor=${encodeURIComponent(input.cursor)}`:''}`,options));if(result.conversations.some(conversation=>conversation.projectId!==input.projectId))throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent history project mismatch.');return result;},
   async conversation(value:unknown,options:AgentRequestOptions={}){const input=parseAgentInput(AGENT_COMMAND_SCHEMAS['agent.task.conversation'],value);const result=parsed(agentTaskConversationPageSchema,await request(`${projectPath(input.projectId)}/conversations/${encodeURIComponent(input.conversationId)}${input.cursor?`?cursor=${encodeURIComponent(input.cursor)}`:''}`,options));if(result.conversation.projectId!==input.projectId||result.conversation.id!==input.conversationId||result.runs.some(run=>run.projectId!==input.projectId||(run.conversationId??run.id)!==input.conversationId||run.diagnostic!==undefined))throw new ClientError('BACKEND_PROTOCOL_ERROR','Agent conversation mismatch.');return result;},

@@ -90,7 +90,7 @@ test('send forwards diagnostic modes and exact identities to REST without host I
 test('all controls preserve caller CAS and request ID and action lookups are GET only',async()=>{
  const calls: FetchCapture[]=[];const client=createAgentClient({env,fetchImpl:async(url,options)=>{calls.push({url,options} as FetchCapture);return ok((options)!.method==='POST'?snapshot('paused',9):{found:true,snapshot:snapshot('paused',9),receipt:{requestId,runId,action:'pause',revision:9,result:{}}});}});
  for(const [command,action] of Object.entries(AGENT_CONTROL_COMMANDS)){
-  await client.action(command as keyof typeof AGENT_CONTROL_COMMANDS,{projectId,runId,requestId,expectedRevision:8,...(command==='note'?{text:'Additional local instruction'}:{stepId,changeId}),...(command==='resolve-unknown'?{resolution:'discard'}:{})});
+  await client.action(command as keyof typeof AGENT_CONTROL_COMMANDS,{projectId,runId,requestId,expectedRevision:8,...(command==='note'?{text:'Additional local instruction'}:command==='answer'?{stepId,choices:[0]}:{stepId,changeId}),...(command==='resolve-unknown'?{resolution:'discard'}:{})});
   const body=JSON.parse((calls.at(-1)!.options.body)!);assert.equal(body.action,action);assert.equal(body.expectedRevision,8);assert.equal(body.requestId,requestId);assert.equal(body.projectId,undefined);
  }
  await client.actionLookup({projectId,runId,requestId});assert.equal(calls.at(-1)!.options.method,'GET');assert.ok(calls.at(-1)!.url.endsWith(`/actions/${requestId}`));
