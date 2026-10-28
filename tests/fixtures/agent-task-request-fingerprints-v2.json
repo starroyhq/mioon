@@ -160,15 +160,15 @@
       "scenario": "diagnostic_read_only",
       "protocol": "chat_completions",
       "index": 1,
-      "bytes": 55399,
-      "sha256": "ad6d39f62dcda6120c5d781c11a72066bcdfe32eec55c90f491baf1d8ce567d1"
+      "bytes": 54083,
+      "sha256": "6f1aae79dd41111c77d5e7c35c17c86679c77211d9d9a8f7d844a93719215e8c"
     },
     {
       "scenario": "diagnostic_read_only",
       "protocol": "chat_completions",
       "index": 2,
-      "bytes": 55869,
-      "sha256": "00f3437ff2e2d83d870af1feee1665c7c2136d05fa7263b185ee5c59288ada95"
+      "bytes": 54553,
+      "sha256": "72b24bb52799fec91b32b210e867d85eb9a5d6137fa3775d98ce8982689ff406"
     },
     {
       "scenario": "diagnostic_catalog",
@@ -356,15 +356,15 @@
       "scenario": "diagnostic_read_only",
       "protocol": "responses",
       "index": 1,
-      "bytes": 54680,
-      "sha256": "e49dd3edcd9ae0f4f980e2b7f70e3975cd1a60b230ca66a96c54f9537cae628b"
+      "bytes": 53377,
+      "sha256": "a8f96a6129042b2277c51c7025c987840c33c4f1e0f0e57caae69f813fc38d76"
     },
     {
       "scenario": "diagnostic_read_only",
       "protocol": "responses",
       "index": 2,
-      "bytes": 55233,
-      "sha256": "7bc6b253c3163cb86284993aba2a52330ef6c50f20f37a0fbb59dffbeae7c1e5"
+      "bytes": 53930,
+      "sha256": "1d8bd5b1d9069d2343ac086eba3dcb14e90a142ee10bc0a7f68eb414ad499ccf"
     },
     {
       "scenario": "diagnostic_catalog",
@@ -552,15 +552,15 @@
       "scenario": "diagnostic_read_only",
       "protocol": "anthropic_messages",
       "index": 1,
-      "bytes": 53824,
-      "sha256": "ae5d735601b3bd5db497f17dd92e1471d00604254afeda3406a386208720a205"
+      "bytes": 52537,
+      "sha256": "d946e9e7fa98c6c375b6ef1fb438b72b2cc4ed28f13565099111f81cdcf7a037"
     },
     {
       "scenario": "diagnostic_read_only",
       "protocol": "anthropic_messages",
       "index": 2,
-      "bytes": 54319,
-      "sha256": "630c9ff9dd203b67c86a62f60e9562eb24c4738c6a773d58d672267e2902ed09"
+      "bytes": 53032,
+      "sha256": "a2420087ff56adec3dad2e7452a163d5b29a115e93e2980b2060acff578269c2"
     },
     {
       "scenario": "diagnostic_catalog",
