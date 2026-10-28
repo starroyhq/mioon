@@ -1582,5 +1582,101 @@ export const mioPanelMessages = {
     "zh-Hant": "查看原請求",
     "en": "View original request",
     "ja": "元のリクエストを表示"
+  },
+  "agent.panel.policy.title": {
+    "zh-Hans": "Mio 执行时如何确认？",
+    "zh-Hant": "Mio 執行時如何確認？",
+    "en": "How should Mio check with you?",
+    "ja": "Mio の実行時にどう確認しますか？"
+  },
+  "agent.panel.policy.tooltip": {
+    "zh-Hans": "执行确认 · {name}（本对话）",
+    "zh-Hant": "執行確認 · {name}（本對話）",
+    "en": "Confirmation · {name} (this conversation)",
+    "ja": "実行の確認 · {name}（この会話）"
+  },
+  "agent.panel.policy.preset.step": {
+    "zh-Hans": "每步确认",
+    "zh-Hant": "每步確認",
+    "en": "Confirm each step",
+    "ja": "毎回確認"
+  },
+  "agent.panel.policy.preset.step.hint": {
+    "zh-Hans": "所有修改和付费操作都先问你",
+    "zh-Hant": "所有修改和付費操作都先問你",
+    "en": "Asks you before every change and paid action",
+    "ja": "すべての変更と有料の操作を先に確認します"
+  },
+  "agent.panel.policy.preset.default": {
+    "zh-Hans": "默认",
+    "zh-Hant": "預設",
+    "en": "Default",
+    "ja": "標準"
+  },
+  "agent.panel.policy.preset.default.hint": {
+    "zh-Hans": "可撤销的修改直接执行，不可撤销和付费的操作先问你",
+    "zh-Hant": "可復原的修改直接執行，不可復原和付費的操作先問你",
+    "en": "Runs undoable changes directly and asks before irreversible or paid actions",
+    "ja": "元に戻せる変更はそのまま実行し、元に戻せない操作と有料の操作は先に確認します"
+  },
+  "agent.panel.policy.preset.full": {
+    "zh-Hans": "完全放行",
+    "zh-Hant": "完全放行",
+    "en": "Allow all",
+    "ja": "すべて許可"
+  },
+  "agent.panel.policy.preset.full.hint": {
+    "zh-Hans": "所有操作直接执行，包括付费生成",
+    "zh-Hant": "所有操作直接執行，包括付費生成",
+    "en": "Runs everything directly, including paid generation",
+    "ja": "有料の生成を含め、すべての操作をそのまま実行します"
+  },
+  "agent.panel.policy.preset.custom": {
+    "zh-Hans": "自定义",
+    "zh-Hant": "自訂",
+    "en": "Custom",
+    "ja": "カスタム"
+  },
+  "agent.panel.policy.preset.custom.hint": {
+    "zh-Hans": "当前设置不属于以上三档，可在设置中按类别调整",
+    "zh-Hant": "目前設定不屬於以上三檔，可在設定中依類別調整",
+    "en": "The current setting matches none of these. Adjust each category in Settings.",
+    "ja": "現在の設定はどれにも当てはまりません。設定でカテゴリごとに調整できます。"
+  },
+  "agent.panel.policy.same": {
+    "zh-Hans": "与全局相同",
+    "zh-Hant": "與全域相同",
+    "en": "Same as global",
+    "ja": "全体の設定と同じ"
+  },
+  "agent.panel.policy.own": {
+    "zh-Hans": "本对话单独设置 · 全局为 {name}",
+    "zh-Hant": "本對話單獨設定 · 全域為 {name}",
+    "en": "Set for this conversation · Global: {name}",
+    "ja": "この会話だけの設定 · 全体: {name}"
+  },
+  "agent.panel.policy.setGlobal": {
+    "zh-Hans": "设为全局默认",
+    "zh-Hant": "設為全域預設",
+    "en": "Make global default",
+    "ja": "全体の既定にする"
+  },
+  "agent.panel.policy.fullTitle": {
+    "zh-Hans": "允许 Mio 直接付费生成？",
+    "zh-Hant": "允許 Mio 直接付費生成？",
+    "en": "Let Mio run paid generation directly?",
+    "ja": "Mio に有料の生成をそのまま実行させますか？"
+  },
+  "agent.panel.policy.fullBody": {
+    "zh-Hans": "本对话中 Mio 调用付费生成时不再逐次确认，每次调用仍会记录在变化里。新对话会回到全局档位。",
+    "zh-Hant": "本對話中 Mio 呼叫付費生成時不再逐次確認，每次呼叫仍會記錄在變更裡。新對話會回到全域檔位。",
+    "en": "In this conversation Mio no longer asks before each paid generation. Each call is still recorded in the changes. New conversations go back to the global setting.",
+    "ja": "この会話では、Mio が有料の生成を行うたびに確認しなくなります。呼び出しはそれぞれ変更履歴に記録されます。新しい会話は全体の設定に戻ります。"
+  },
+  "agent.panel.policy.fullGlobalBody": {
+    "zh-Hans": "之后的新对话中，Mio 调用付费生成时都不再逐次确认，每次调用仍会记录在变化里。",
+    "zh-Hant": "之後的新對話中，Mio 呼叫付費生成時都不再逐次確認，每次呼叫仍會記錄在變更裡。",
+    "en": "In new conversations Mio no longer asks before each paid generation. Each call is still recorded in the changes.",
+    "ja": "今後の新しい会話では、Mio が有料の生成を行うたびに確認しなくなります。呼び出しはそれぞれ変更履歴に記録されます。"
   }
 } as const satisfies MessageCatalog;

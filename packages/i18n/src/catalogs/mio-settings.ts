@@ -36,6 +36,8 @@ export const mioSettingsMessages = {
   "mio.settings.policy.paidBadge": {"zh-Hans": "会产生费用", "zh-Hant": "會產生費用", "en": "Charges apply", "ja": "料金が発生"},
   "mio.settings.policy.paidWarning": {"zh-Hans": "默认需要确认。改为直接执行后，Mio 会自行提交生成并产生费用。", "zh-Hant": "預設需要確認。改為直接執行後，Mio 會自行提交生成並產生費用。", "en": "Confirmation is required by default. With direct execution, Mio submits generations on its own and charges apply.", "ja": "既定では確認が必要です。直接実行にすると、Mio が自ら生成を送信し、料金が発生します。"},
   "mio.settings.policy.locked": {"zh-Hans": "查看类操作始终直接执行；设置、备份恢复、任务处置和授权不开放给 Mio。", "zh-Hant": "檢視類操作一律直接執行；設定、備份還原、任務處置與授權不開放給 Mio。", "en": "Viewing always runs directly. Settings, backup and restore, task handling and permissions are never available to Mio.", "ja": "閲覧は常に直接実行されます。設定、バックアップと復元、タスクの処理、許可は Mio には開放されません。"},
+  "mio.settings.policy.preset": {"zh-Hans": "档位", "zh-Hant": "檔位", "en": "Preset", "ja": "プリセット"},
+  "mio.settings.policy.details": {"zh-Hans": "按类别调整", "zh-Hant": "依類別調整", "en": "Adjust by category", "ja": "カテゴリ別に調整"},
   "mio.settings.steps.title": {"zh-Hans": "每轮步数上限", "zh-Hant": "每輪步數上限", "en": "Step limit per round", "ja": "1 ラウンドのステップ上限"},
   "mio.settings.steps.description": {"zh-Hans": "防止 Mio 陷入循环。达到上限时这一轮暂停，你可以选择继续执行一轮。修改从下一轮生效。", "zh-Hant": "防止 Mio 陷入循環。達到上限時這一輪會暫停，你可以選擇繼續執行一輪。修改從下一輪生效。", "en": "Keeps Mio from looping. A round pauses at the limit, and you can choose to run another round. Changes apply from the next round.", "ja": "Mio がループし続けないようにします。上限に達するとそのラウンドは一時停止し、もう 1 ラウンド続けるかを選べます。変更は次のラウンドから適用されます。"},
   "mio.settings.steps.unit": {"zh-Hans": "步", "zh-Hant": "步", "en": "steps", "ja": "ステップ"},
