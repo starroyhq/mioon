@@ -246,6 +246,12 @@ export const nativeMessages = {
     "en": "The download did not finish. Check your network connection and try again",
     "ja": "ダウンロードが完了しませんでした。ネットワーク接続を確認してから再試行してください"
   },
+  "native.mediaToolsServer": {
+    "zh-Hans": "下载服务器没有返回文件，请稍后重试。也可以先选择已安装的工具",
+    "zh-Hant": "下載伺服器沒有回傳檔案，請稍後重試。也可以先選擇已安裝的工具",
+    "en": "The download server did not return the files. Try again later, or choose tools you have installed",
+    "ja": "ダウンロードサーバーからファイルを取得できませんでした。しばらくしてから再試行するか、インストール済みのツールを選択してください"
+  },
   "native.mediaToolsCorrupt": {
     "zh-Hans": "下载的文件没有通过校验，已删除。请重试",
     "zh-Hant": "下載的檔案沒有通過校驗，已刪除。請重試",

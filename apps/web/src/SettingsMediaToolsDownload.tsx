@@ -12,6 +12,7 @@ export function mediaToolsFailureKey(code:string){
  if(['MEDIA_TOOLS_CHECKSUM_MISMATCH','MEDIA_TOOLS_SIZE_MISMATCH','MEDIA_TOOLS_ARCHIVE_INVALID'].includes(code))return 'workspace.tools.download.corrupt' as const;
  if(code==='MEDIA_TOOLS_CHECK_FAILED')return 'workspace.tools.download.checkFailed' as const;
  if(['MEDIA_TOOLS_STORAGE_UNAVAILABLE','MEDIA_TOOLS_INSTALL_FAILED'].includes(code))return 'workspace.tools.download.storage' as const;
+ if(code.startsWith('MEDIA_TOOLS_DOWNLOAD_HTTP_'))return 'workspace.tools.download.server' as const;
  return 'workspace.tools.download.network' as const;
 }
 /** Mioon's pinned FFmpeg build: download, verify, install and save its paths through the fixed native bridge. */

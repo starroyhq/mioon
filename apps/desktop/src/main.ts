@@ -284,7 +284,8 @@ function mediaToolsFailureText(code: string): string {
   const key = code === 'MEDIA_TOOLS_CANCELLED' ? 'native.mediaToolsCancelled'
     : ['MEDIA_TOOLS_CHECKSUM_MISMATCH', 'MEDIA_TOOLS_SIZE_MISMATCH', 'MEDIA_TOOLS_ARCHIVE_INVALID'].includes(code) ? 'native.mediaToolsCorrupt'
       : code === 'MEDIA_TOOLS_CHECK_FAILED' ? 'native.mediaToolsCheckFailed'
-        : ['MEDIA_TOOLS_STORAGE_UNAVAILABLE', 'MEDIA_TOOLS_INSTALL_FAILED'].includes(code) ? 'native.mediaToolsStorage' : 'native.mediaToolsNetwork';
+        : ['MEDIA_TOOLS_STORAGE_UNAVAILABLE', 'MEDIA_TOOLS_INSTALL_FAILED'].includes(code) ? 'native.mediaToolsStorage'
+          : code.startsWith('MEDIA_TOOLS_DOWNLOAD_HTTP_') ? 'native.mediaToolsServer' : 'native.mediaToolsNetwork';
   return `${nt(key)} (${code})`;
 }
 /** First-run progress before the local service exists; closing the window cancels. */
@@ -324,7 +325,7 @@ async function installMediaToolsWithProgress(installer: MediaToolsInstaller, sta
 }
 
 async function toolsFromUser(startup: DesktopStartup): Promise<ToolValidation> {
-  let stored: ToolPaths;
+  let stored: ToolPaths | undefined;
   let diagnostic: string;
   try {
     stored = await readToolConfig(paths.configFile);
@@ -335,7 +336,8 @@ async function toolsFromUser(startup: DesktopStartup): Promise<ToolValidation> {
     startup.checkpoint();
     if (errorCode(error)?.startsWith('STORAGE_')) throw error;
     if (smokeOutput) throw error;
-    diagnostic = nt('native.originalDiagnostic', { detail: errorMessage(error) });
+    // A first start has nothing configured; the raw validation message adds nothing there.
+    diagnostic = stored && !stored.ffmpeg && !stored.ffprobe ? '' : nt('native.originalDiagnostic', { detail: errorMessage(error) });
   }
   // Where Mioon offers its own build, downloading it is the first choice; an
   // installed pair can still be selected. Failed downloads return to this choice.
@@ -345,7 +347,7 @@ async function toolsFromUser(startup: DesktopStartup): Promise<ToolValidation> {
     const result = await dialog.showMessageBox({ type: 'warning', title: nt('native.toolsTitle'),
       message: offer ? nt('native.toolsDownloadMessage') : nt('native.toolsMessage'),
       detail: (offer ? nt('native.toolsDownloadDetail', { version: offer.ffmpegVersion, size: megabytes(offer.downloadBytes), source: offer.sourceUrl })
-        : nt('native.toolsDetail')) + '\n\n' + diagnostic,
+        : nt('native.toolsDetail')) + (diagnostic ? '\n\n' + diagnostic : ''),
       buttons, defaultId: 0, cancelId: buttons.length - 1 });
     startup.checkpoint();
     if (result.response === buttons.length - 1) throw new Error('未配置 FFmpeg');

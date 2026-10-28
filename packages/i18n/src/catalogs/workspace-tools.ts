@@ -41,6 +41,7 @@ export const workspaceToolsMessages={
  'workspace.tools.download.done':{'zh-Hans':'已安装并保存路径，重启本地服务后生效','zh-Hant':'已安裝並儲存路徑，重新啟動本機服務後生效',en:'Installed and saved. Restart the local service to use it',ja:'インストールしてパスを保存しました。ローカルサービスの再起動後に適用されます'},
  'workspace.tools.download.restart':{'zh-Hans':'重启本地服务','zh-Hant':'重新啟動本機服務',en:'Restart local service',ja:'ローカルサービスを再起動'},
  'workspace.tools.download.network':{'zh-Hans':'下载没有完成。请检查网络连接后重试','zh-Hant':'下載沒有完成。請檢查網路連線後重試',en:'The download did not finish. Check your network connection and try again',ja:'ダウンロードが完了しませんでした。ネットワーク接続を確認してから再試行してください'},
+ 'workspace.tools.download.server':{'zh-Hans':'下载服务器没有返回文件，请稍后重试','zh-Hant':'下載伺服器沒有回傳檔案，請稍後重試',en:'The download server did not return the files. Try again later',ja:'ダウンロードサーバーからファイルを取得できませんでした。しばらくしてから再試行してください'},
  'workspace.tools.download.corrupt':{'zh-Hans':'下载的文件没有通过校验，已删除。请重试','zh-Hant':'下載的檔案沒有通過校驗，已刪除。請重試',en:'The downloaded files failed verification and were deleted. Try again',ja:'ダウンロードしたファイルが検証に失敗したため削除しました。再試行してください'},
  'workspace.tools.download.checkFailed':{'zh-Hans':'下载的工具没有通过检测，没有安装','zh-Hant':'下載的工具沒有通過偵測，沒有安裝',en:'The downloaded tools did not pass the check and were not installed',ja:'ダウンロードしたツールが確認に通らなかったため、インストールしませんでした'},
  'workspace.tools.download.storage':{'zh-Hans':'无法写入本应用的数据目录。检查文件权限后重试','zh-Hant':'無法寫入本應用程式的資料目錄。檢查檔案權限後重試',en:'The app’s data folder could not be written. Check file permissions and try again',ja:'アプリのデータフォルダーに書き込めませんでした。ファイルの権限を確認してから再試行してください'},
