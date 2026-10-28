@@ -141,7 +141,7 @@ jobs:
           if [[ -f "$RUNNER_TEMP/media-tools/out/notarization-$MIOON_TARGET.json" ]]; then cp "$RUNNER_TEMP/media-tools/out/notarization-$MIOON_TARGET.json" "$dist/"; fi
           # The source bundle is identical for both architectures.
           if [[ "$MIOON_ARCH" == arm64 ]]; then node .github/scripts/build-media-tools.ts sources --work="$RUNNER_TEMP/media-tools" --output="$dist"; fi
-          (cd "$dist" && shasum -a 256 * | tee -a "$GITHUB_STEP_SUMMARY")
+          (cd "$dist" && shasum -a 256 -- * | tee -a "$GITHUB_STEP_SUMMARY")
 
       - name: Upload media tools
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

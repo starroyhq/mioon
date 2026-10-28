@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {FFMPEG_LIBRARIES as CI_LIBRARIES} from '../.github/scripts/install-ffmpeg.ts';
-import {FFMPEG_LIBRARIES, FFMPEG_VERSION, FONTCONFIG_RUNTIME_OPTIONS, MACOS_DEPLOYMENT_TARGET, MEDIA_TOOLS_VERSION, SOURCES, assetName, buildEnvironment, ffmpegConfigureArguments,
+import {FFMPEG_LIBRARIES, FFMPEG_VERSION, FONTCONFIG_RUNTIME_OPTIONS, MACOS_DEPLOYMENT_TARGET, MEDIA_TOOLS_VERSION, SOURCES, assetName, buildEnvironment, curlArguments, ffmpegConfigureArguments,
   listedNames, manifestName, minimumMacOS, sourcesBundleName, unexpectedLinks} from '../.github/scripts/build-media-tools.ts';
 import {FFMPEG_SOURCE} from '../.github/scripts/install-ffmpeg.ts';
 
@@ -20,6 +20,11 @@ test('every source is pinned to an HTTPS archive with a SHA-256 and the CI FFmpe
   assert.deepEqual(SOURCES.filter(entry => entry.role === 'shipped').map(entry => entry.name).sort(),
     ['expat', 'ffmpeg', 'fontconfig', 'freetype', 'fribidi', 'harfbuzz', 'libass', 'x264', 'zimg']);
   assert.ok(MEDIA_TOOLS_VERSION.startsWith(`${FFMPEG_VERSION}-`));
+  // Downloads ignore ~/.curlrc (`-q` must come first), fail on HTTP errors and never leave HTTPS.
+  const curl = curlArguments('https://example.test/a.tar.xz', '/work/a.tar.xz.download');
+  assert.equal(curl[0], '-q');
+  for (const [flag, value] of [['--proto', '=https'], ['--proto-redir', '=https'], ['--output', '/work/a.tar.xz.download']]) assert.equal(curl[curl.indexOf(flag) + 1], value, flag);
+  assert.ok(curl.includes('--fail') && curl.at(-1) === 'https://example.test/a.tar.xz');
 });
 
 test('FFmpeg is configured statically, without network protocols, with the libraries the application uses', () => {

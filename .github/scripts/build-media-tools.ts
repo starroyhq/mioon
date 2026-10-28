@@ -1,7 +1,7 @@
 import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createReadStream, createWriteStream} from 'node:fs';
-import {chmod, copyFile, lstat, mkdir, readdir, readFile, realpath, rm, stat, writeFile} from 'node:fs/promises';
+import {chmod, copyFile, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile} from 'node:fs/promises';
 import {availableParallelism} from 'node:os';
 import path from 'node:path';
 import {pipeline} from 'node:stream/promises';
@@ -149,18 +149,39 @@ export async function fileSha256(file: string): Promise<string> {
   return hash.digest('hex');
 }
 
-async function fetchSource(entry: PinnedSource, directory: string): Promise<string> {
+/**
+ * Sources are downloaded with the system curl, not Node's fetch: fetch always sends
+ * `Sec-Fetch-Mode: cors`, which code.videolan.org answers with HTTP 406. `-q` keeps
+ * ~/.curlrc out of the build, and redirects may only lead to other HTTPS URLs.
+ */
+export function curlArguments(url: string, output: string): string[] {
+  return ['-q', '--fail', '--silent', '--show-error', '--location', '--proto', '=https', '--proto-redir', '=https', '--tlsv1.2',
+    '--connect-timeout', '30', '--max-time', '300', '--retry', '3', '--retry-delay', '5', '--max-filesize', String(MAXIMUM_SOURCE_BYTES),
+    '--output', output, url];
+}
+async function fetchSource(entry: PinnedSource, directory: string, log: string): Promise<string> {
   const file = path.join(directory, entry.file);
   const existing = await lstat(file).catch(() => null);
   if (existing?.isFile() && await fileSha256(file) === entry.sha256) return file;
-  await rm(file, {force: true});
-  const response = await fetch(entry.url, {redirect: 'follow', signal: AbortSignal.timeout(300000)});
-  if (!response.ok || !response.body) fail('MEDIA_TOOLS_SOURCE_DOWNLOAD_FAILED', `${entry.name} HTTP ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length === 0 || bytes.length > MAXIMUM_SOURCE_BYTES) fail('MEDIA_TOOLS_SOURCE_SIZE_INVALID', entry.name);
-  if (createHash('sha256').update(bytes).digest('hex') !== entry.sha256) fail('MEDIA_TOOLS_SOURCE_SHA256_MISMATCH', entry.name);
-  await writeFile(file, bytes, {flag: 'wx', mode: 0o644});
+  const partial = `${file}.download`;
+  await rm(file, {force: true}); await rm(partial, {force: true});
+  try {
+    await run('/usr/bin/curl', curlArguments(entry.url, partial), {cwd: directory, env: {PATH: '/usr/bin:/bin', LANG: 'C', LC_ALL: 'C'}, log});
+  } catch (error) {
+    await rm(partial, {force: true});
+    fail('MEDIA_TOOLS_SOURCE_DOWNLOAD_FAILED', `${entry.name}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const info = await lstat(partial).catch(() => null);
+  if (!info?.isFile() || info.size === 0 || info.size > MAXIMUM_SOURCE_BYTES) fail('MEDIA_TOOLS_SOURCE_SIZE_INVALID', entry.name);
+  if (await fileSha256(partial) !== entry.sha256) {await rm(partial, {force: true}); fail('MEDIA_TOOLS_SOURCE_SHA256_MISMATCH', entry.name);}
+  await chmod(partial, 0o644);
+  await rename(partial, file);
   return file;
+}
+/** Download every pinned source into `directory`, reusing files whose checksum already matches. */
+export async function fetchSources(directory: string, log: string): Promise<void> {
+  await mkdir(directory, {recursive: true});
+  for (const entry of SOURCES) await fetchSource(entry, directory, log);
 }
 
 async function extract(archive: string, destination: string, env: Record<string, string>, log: string): Promise<string> {
@@ -367,7 +388,7 @@ export async function build(options: {arch: MediaToolsArch; work: string; output
   const sdk = (await capture('/usr/bin/xcrun', ['--sdk', 'macosx', '--show-sdk-path'], hostEnv, log)).trim();
   const env = buildEnvironment({arch: options.arch, sdk, prefix, toolBin, home: hostEnv.HOME, temp});
   const context: BuildContext = {arch: options.arch, work, prefix, tools, sources, buildRoot, sdk, jobs: Math.max(1, availableParallelism()), log, env, hostEnv};
-  for (const entry of SOURCES) await fetchSource(entry, sources);
+  await fetchSources(sources, log);
   if (!(await stat(path.join(tools, 'venv/bin/meson')).catch(() => null)) || !(await stat(path.join(tools, 'bin/autoreconf')).catch(() => null)) ||
     (options.arch === 'x64' && !(await stat(path.join(tools, 'bin/nasm')).catch(() => null)))) await bootstrapTools(context, python);
   await buildLibraries(context);
