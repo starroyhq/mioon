@@ -69,13 +69,13 @@ MIOON_ENABLE_LIVE_PROVIDER=0 pnpm desktop
 
 Electron 44 的 npm 分发会在需要时下载官方运行时。构建主机需要能访问 npm registry 及 Electron 官方下载，缓存目录需要可写。Electron npm 安装器实际读取 `electron_config_cache`；electron-builder 可使用自己的 `ELECTRON_CACHE`。受限 CI 还可明确设置 `XDG_CACHE_HOME`、`XDG_DATA_HOME` 和 pnpm store；不要因此关闭 Chromium 沙箱。
 
-未提供或无法验证已保存/环境指定的视频工具路径时，启动会用原生文件对话框要求选择已安装的 `ffmpeg` 与 `ffprobe`。不会自动下载或运行来源不明的二进制。也可由启动者明确给出绝对路径：
+未提供或无法验证已保存/环境指定的视频工具路径时，启动提示框让用户选择已安装的 `ffmpeg` 与 `ffprobe`。在 macOS 上还可以选择“下载并安装”Mioon 构建的 FFmpeg 7.1.5：主进程只下载 `apps/desktop/src/media-tools.ts` 固定了 SHA-256 的文件，校验并通过同样的工具检查后才安装到桌面数据目录的 `media-tools/`，细节见 [视频工具说明](MEDIA-TOOLS.md)。用户不选择就不会下载，也不会运行来源不明的二进制。也可由启动者明确给出绝对路径：
 
 ```sh
 MIOON_FFMPEG_PATH=/usr/bin/ffmpeg MIOON_FFPROBE_PATH=/usr/bin/ffprobe pnpm desktop
 ```
 
-这两个路径必须指向可执行文件，并通过 `-version` 检查；FFmpeg 还必须提供 `libx264` 和 `aac` 编码器。只有路径会写入 `desktop-config.json`。FFmpeg 是明确的外部依赖，没有捆绑；安装来源、GPL/LGPL 组合及其许可义务由实际采用的 FFmpeg 构建决定。Electron 自带的 `libffmpeg` 仅服务于 Chromium 媒体播放，不代替这里的 FFmpeg CLI。
+这两个路径必须指向可执行文件，并通过 `-version` 检查；FFmpeg 还必须提供 `libx264` 和 `aac` 编码器。只有路径会写入 `desktop-config.json`。FFmpeg 是明确的外部依赖，没有捆绑进安装包；自行安装时，安装来源、GPL/LGPL 组合及其许可义务由实际采用的 FFmpeg 构建决定，Mioon 提供的下载版按 GPL-2.0-or-later 分发。Electron 自带的 `libffmpeg` 仅服务于 Chromium 媒体播放，不代替这里的 FFmpeg CLI。
 
 媒体子进程的最小环境、输出和探测限制、退出时限与恢复语义，见 [MEDIA-RUNTIME.md](MEDIA-RUNTIME.md)。停止本地等待不表示供应商已取消或费用已退还；退出未获确认时不会自动启动第二个本地服务。
 

@@ -95,7 +95,7 @@ Mac app menu、Dock activate、最后窗口关闭后保持运行、正常退出�
 
 `builder-config.ts:14` 和 `apps/desktop/scripts/build.ts:17–28` 未携带 FFmpeg/ffprobe CLI，且未配置额外媒体二进制资源。Electron 自带播放库不能视为导出所需 CLI，参见 [桌面说明](DESKTOP.md)。实际预览、解码、导出、取消与退出仍须在各目标架构验收；仅 `-version` 或编码器列表通过不够。模拟视频使用 `drawtext`（`packages/business/src/providers/mock.ts:153`），其滤镜/字体能力也需真实本地验证。
 
-最小方案继续维持外部依赖，记录来源、版本、架构、构建选项与所需编码器。若后续另行决定捆绑，则必须独立处理可信来源/哈希、各平台布局、动态库依赖、签名、更新及许可证材料。现有 `apps/desktop/scripts/build.ts:28–59` 收集 JS 依赖 notices，不能证明未来携带的 FFmpeg 已获分发许可或材料齐全。FFmpeg 官方说明许可证取决于构建选项，并特别列出 libx264 的 GPL 相关性；不能把当前编码器要求简化为所有构建都仅 LGPL，也不在此推断 Mioon 的整体许可归属。[FFmpeg 许可说明](https://ffmpeg.org/legal.html)
+安装包仍不携带 FFmpeg。macOS 另提供用户明确选择的下载：`.github/scripts/build-media-tools.ts` 从固定哈希的源码静态构建，`.github/workflows/media-tools.yml` 签名公证，应用只接受 `apps/desktop/src/media-tools.ts` 固定的文件，来源、哈希、布局、动态库、签名、更新与许可材料的处理见 [视频工具说明](MEDIA-TOOLS.md)。其余平台继续维持外部依赖，记录来源、版本、架构、构建选项与所需编码器。若后续另行决定捆绑，则必须独立处理可信来源/哈希、各平台布局、动态库依赖、签名、更新及许可证材料。现有 `apps/desktop/scripts/build.ts:28–59` 收集 JS 依赖 notices，不能证明未来携带的 FFmpeg 已获分发许可或材料齐全。FFmpeg 官方说明许可证取决于构建选项，并特别列出 libx264 的 GPL 相关性；不能把当前编码器要求简化为所有构建都仅 LGPL，也不在此推断 Mioon 的整体许可归属。[FFmpeg 许可说明](https://ffmpeg.org/legal.html)
 
 ## 4. 开发试用验收表
 
