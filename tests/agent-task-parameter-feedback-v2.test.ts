@@ -92,12 +92,12 @@ async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'respons
   const authorizations=createTestAuthorizations(()=>({...store}),settings);await authorizeTestScope(authorizations,'project_agent');
   const sourceTools=createAgentTaskTools({store,services}),requests:string[]=[];let script:TaskGateway=async function*(){throw Error('A synthetic model script is required');},executeFailure:unknown;
   const tools={...sourceTools,async execute(...args:Parameters<typeof sourceTools.execute>){if(executeFailure)throw executeFailure;return sourceTools.execute(...args);}};
-  const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,selfPort:()=>4318,gateway:async function*(request){requests.push(request.body);yield*script(request);}});
+  const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,selfPort:()=>4318,gateway:async function*(request){requests.push(request.body);if(requests.length===1){yield {type:'done',output:output({groups:['video']},'mioon_tools_load')};return;}yield*script(request);}});
   let worker:ReturnType<typeof startWorker>|undefined;
   t.after(async()=>{await worker?.stop();runtime.close();await runtime.drain();tools.dispose();await services.drain();await settings.close();await videoSettings.close();store.close();await rm(root,{recursive:true,force:true});});
   const base={shotId:shot.id,expectedRevision:shot.revision,providerId:'minimax',model:'MiniMax-H3',connectionId:configuration.id,configurationRevision:1,modelEntryId:configuration.models[0]!.id};
-  function output(args?:Record<string,unknown>):TaskModelOutput{
-    const calls=args?[{id:`call-${requests.length}`,name:'mioon_generation_submit',arguments:json(args)}]:[];
+  function output(args?:Record<string,unknown>,name='mioon_generation_submit'):TaskModelOutput{
+    const calls=args?[{id:`call-${requests.length}`,name,arguments:json(args)}]:[];
     return {text:'',toolCalls:calls,providerOutput:protocol==='responses'?calls.map(call=>({type:'function_call',call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'})):{role:'assistant',content:null,tool_calls:calls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))}};
   }
   return {root,store,services,settings,authorizations,tools,runtime,posts,requests,base,projectId,shot,setScript(value:TaskGateway){script=value;},failExecute(error:unknown){executeFailure=error;},output,
@@ -110,8 +110,8 @@ async function runtimeFixture(t:TestContext,protocol:'chat_completions'|'respons
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: local feedback lets Mio correct parameters before one approval and one real-SDK video POST`,async t=>{
   const f=await runtimeFixture(t,protocol);let corrected=false;
   f.setScript(async function*(request){
-    if(f.requests.length===1){yield {type:'done',output:f.output({...f.base,parameters:{...mixed}})};return;}
-    if(f.requests.length===2){
+    if(f.requests.length===2){yield {type:'done',output:f.output({...f.base,parameters:{...mixed}})};return;}
+    if(f.requests.length===3){
       const body:unknown=JSON.parse(request.body);assert.ok(object(body));const history=protocol==='responses'?body.input:body.messages;assert.ok(Array.isArray(history));
       const results=history.flatMap(item=>{if(!object(item))return [];const text=protocol==='responses'?item.output:item.role==='tool'?item.content:undefined;if(typeof text!=='string')return [];try{return [JSON.parse(text) as unknown];}catch{return [];}}),feedback=findFeedback(results);assert.ok(feedback&&object(feedback.supported));
       assert.doesNotMatch(JSON.stringify(feedback),/SYNTHETIC_.*KEY|https?:\/\/|credentialRef/u);const allowed=feedback.supported.parameters;assert.ok(Array.isArray(allowed));
@@ -119,11 +119,11 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
     }
     yield {type:'done',output:f.output()};
   });
-  const sent=await f.send(),waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');assert.equal(corrected,true);assert.equal(f.requests.length,2);assert.equal(f.posts.length,0);assert.equal(f.store.list('jobs',f.projectId).length,0);
+  const sent=await f.send(),waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');assert.equal(corrected,true);assert.equal(f.requests.length,3);assert.equal(f.posts.length,0);assert.equal(f.store.list('jobs',f.projectId).length,0);
   assert.equal(waiting.steps.filter(step=>step.kind==='tool'&&step.status==='rejected').length,1);assert.equal(waiting.steps.filter(step=>step.status==='awaiting_approval').length,1);
   await f.approve(waiting);const completed=await f.settle(sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(f.store.list('jobs',f.projectId).length,1);
   await f.tick();await f.tick();assert.equal(f.posts.length,1);assert.equal(f.posts[0]!.url,'https://api.minimax.cn/v2/video_generation');assert.deepEqual(f.posts[0]!.body,{model:'MiniMax-H3',content:[{type:'text',text:'A synthetic blue cube rotates.'}],duration:4,resolution:'2K',ratio:'9:16'});
-  const job=f.store.list('jobs',f.projectId)[0] as JobRecord;assert.equal(job.submissionCount,1);assert.equal(job.providerJobId,'one-original-video-task');assert.equal(f.requests.length,3);
+  const job=f.store.list('jobs',f.projectId)[0] as JobRecord;assert.equal(job.submissionCount,1);assert.equal(job.providerJobId,'one-original-video-task');assert.equal(f.requests.length,4);
 });
 for(const protocol of ['chat_completions','responses'] as const){
   test(`${protocol}: parameter correction never reveals feedback for a foreign shot or host authority fields`,async t=>{
@@ -133,7 +133,7 @@ for(const protocol of ['chat_completions','responses'] as const){
         const project=await f.services.call('project.create',{name:'PRIVATE_OTHER_PROJECT'});assert.ok(object(project));const shot=await f.services.call('shot.create',{projectId:project.id,title:'PRIVATE_OTHER_SHOT'});assert.ok(object(shot));args={...args,shotId:shot.id};
       }else args={...args,apiKey:'PRIVATE_FORBIDDEN_KEY'};
       f.setScript(async function*(){yield {type:'done',output:f.output(args)};});
-      const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(f.requests.length,1);assert.equal(f.posts.length,0);assert.equal(f.store.list('jobs',f.projectId).length,0);assert.equal(done.steps.some(step=>step.status==='awaiting_approval'),false);
+      const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(f.requests.length,2);assert.equal(f.posts.length,0);assert.equal(f.store.list('jobs',f.projectId).length,0);assert.equal(done.steps.some(step=>step.status==='awaiting_approval'),false);
       const toolResults=done.steps.filter(step=>step.kind==='tool').map(step=>({result:step.result,error:step.error}));
       assert.equal(findFeedback(toolResults),null);assert.doesNotMatch(JSON.stringify(toolResults),/PRIVATE_OTHER_PROJECT|PRIVATE_OTHER_SHOT|PRIVATE_FORBIDDEN_KEY/u);
     });
@@ -141,6 +141,6 @@ for(const protocol of ['chat_completions','responses'] as const){
   test(`${protocol}: a validation-shaped error after dispatch remains unknown and cannot trigger parameter correction`,async t=>{
     const f=await runtimeFixture(t,protocol);f.setScript(async function*(){yield {type:'done',output:f.output({...f.base,parameters:{resolution:'2K'}})};});
     const sent=await f.send(),waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');f.failExecute(new AppError('VALIDATION_ERROR','PRIVATE_PROVIDER_BODY',400,{message:'PRIVATE_PROVIDER_KEY',mutationOutcome:'uncertain'}));
-    await f.approve(waiting);const done=await f.settle(sent.run.id);assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'unknown_outcome');assert.equal(done.steps.some(step=>step.status==='unknown'),true);assert.equal(f.requests.length,1);assert.equal(f.posts.length,0);assert.equal(findFeedback(done.steps.map(step=>step.result)),null);assert.doesNotMatch(JSON.stringify(done),/PRIVATE_PROVIDER_BODY|PRIVATE_PROVIDER_KEY/u);
+    await f.approve(waiting);const done=await f.settle(sent.run.id);assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'unknown_outcome');assert.equal(done.steps.some(step=>step.status==='unknown'),true);assert.equal(f.requests.length,2);assert.equal(f.posts.length,0);assert.equal(findFeedback(done.steps.map(step=>step.result)),null);assert.doesNotMatch(JSON.stringify(done),/PRIVATE_PROVIDER_BODY|PRIVATE_PROVIDER_KEY/u);
   });
 }

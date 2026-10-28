@@ -11,6 +11,7 @@ import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
+import {AGENT_TASK_TOOLS_LOAD_NAME} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import {TASK_MODEL_LIMITS} from '../../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskGateway, TaskModelItem, TaskModelOutput, TaskModelRequest} from '../../packages/business/src/agent/task-gateway-v2.ts';
@@ -28,6 +29,7 @@ export const FINGERPRINT_SCENARIOS = [
   'single_reply_ja', 'single_reply_en', 'single_reply_zh_hant',
 ] as const;
 export const OFFICIAL_FINGERPRINT_SCENARIOS = ['official_single_reply', 'official_read_edit_roundtrip'] as const;
+export const FINGERPRINT_PRELOAD_SCENARIOS = ['read_edit_roundtrip', 'conflict_skip_replan', 'tool_failure_retry', 'official_read_edit_roundtrip'] as const;
 export type FingerprintScenario = typeof FINGERPRINT_SCENARIOS[number] | typeof OFFICIAL_FINGERPRINT_SCENARIOS[number];
 export interface TaskRequestFingerprint {
   scenario: FingerprintScenario;
@@ -112,6 +114,21 @@ function assertRequest(body: string, protocol: AgentProtocol): void {
 }
 
 type Script = (index: number, request: TaskModelRequest) => AsyncGenerator<TaskModelItem, void, undefined>;
+/** Keep each original scripted response at its old relative index. The extra
+ * first model turn loads canvas through the same durable path as a real model. */
+function withCanvasLoad(protocol: AgentProtocol, script: Script): Script {
+  return async function* (index, request) {
+    if (index === 1) yield {type: 'done', output: output(protocol,
+      [call(AGENT_TASK_TOOLS_LOAD_NAME, {groups: ['canvas']}, 'call_load_canvas')], 'Load the canvas tools.')};
+    else yield* script(index - 1, request);
+  };
+}
+function assertCanvasLoaded(snapshot: AgentTaskSnapshot): void {
+  const loads = snapshot.steps.filter(step => step.kind === 'tool' && step.toolCall?.name === AGENT_TASK_TOOLS_LOAD_NAME);
+  assert.equal(loads.length, 1);
+  assert.equal(loads[0]!.status, 'completed');
+  assert.deepEqual(object(loads[0]!.result).groups, ['canvas']);
+}
 async function fixture(protocol: AgentProtocol, official = false) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-request-fingerprint-'));
   const store = openStore(root), services = createServices(store, new Map());
@@ -213,11 +230,12 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
     const locales: Partial<Record<FingerprintScenario, AgentTaskLocale>> = {single_reply_ja: 'ja', single_reply_en: 'en', single_reply_zh_hant: 'zh-Hant'};
     await finish(f, undefined, {locale: locales[scenario] ?? 'zh-Hans'});
   } else if (scenario === 'read_edit_roundtrip') {
-    f.setScript(async function* (index) {yield {type: 'done', output: output(protocol,
+    f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol,
       index === 1 ? [call('mioon_project_inspect')] : index === 2 ? [call('mioon_shot_update', {
         shotId, expectedRevision: 1, patch: {prompt: 'Updated prompt'},
-      }, 'call_edit')] : [], index < 3 ? 'Inspect then edit.' : 'Edit complete.')};});
+      }, 'call_edit')] : [], index < 3 ? 'Inspect then edit.' : 'Edit complete.')};}));
     const done = await finish(f, 'Read the project, then update the first shot prompt.');
+    assertCanvasLoaded(done);
     assert.equal(done.changes.length, 1);
     assert.equal(object(f.store.get('shots', shotId)).prompt, 'Updated prompt');
   } else if (scenario === 'note_during_reply') {
@@ -240,34 +258,36 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
     const target = {kind: 'shot', id: shotId, revision: f.runtime.journal.targetRevision(projectId, 'shot', shotId)};
     f.runtime.journal.edit({requestId: randomUUID(), projectId, ownerId: '00000000-0000-4000-8000-000000000004',
       generation: 1, sequence: 1, action: 'claim', targets: [target]});
-    f.setScript(async function* (index) {yield {type: 'done', output: output(protocol, index < 3 ? [call('mioon_shot_update', {
+    f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol, index < 3 ? [call('mioon_shot_update', {
       shotId, expectedRevision: 1, patch: {prompt: 'Must stay untouched'},
-    }, `call_edit_${index}`)] : [])};});
+    }, `call_edit_${index}`)] : [])};}));
     const sent = await f.send(), paused = await f.settle(sent.run.id);
     assert.equal(paused.run.pauseReason, 'editing');
     await assert.rejects(f.action(paused, 'resume'), {code: 'AGENT_TASK_SKIP_REQUIRED'});
     await f.action(paused, 'skip');
     const done = await f.settle(sent.run.id);
+    assertCanvasLoaded(done);
     assert.equal(done.run.status, 'completed');
     assert.equal(done.run.skippedTargets?.length, 1);
     assert.equal(done.steps.filter(value => value.error?.code === 'TARGET_SKIPPED').length, 1);
-    assert.match(f.requests[1]!, /TARGET_SKIPPED/u);
-    assert.match(f.requests[2]!, /这一处由用户保留/u);
+    assert.match(f.requests[2]!, /TARGET_SKIPPED/u);
+    assert.match(f.requests[3]!, /这一处由用户保留/u);
     assert.equal(done.changes.length, 0);
     assert.equal(object(f.store.get('shots', shotId)).prompt, 'Original prompt');
   } else if (scenario === 'tool_failure_retry') {
-    f.setScript(async function* (index) {yield {type: 'done', output: output(protocol, index === 1 ? [call('mioon_shot_update', {
+    f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol, index === 1 ? [call('mioon_shot_update', {
       shotId, expectedRevision: 1, patch: {duration: -1},
     }, 'call_invalid_edit')] : index === 2 ? [call('mioon_shot_update', {
       shotId, expectedRevision: 1, patch: {prompt: 'Retry edit'},
-    }, 'call_retry_edit')] : [])};});
+    }, 'call_retry_edit')] : [])};}));
     const sent = await f.send(), failed = await f.settle(sent.run.id);
     assert.equal(failed.run.status, 'failed');
     assert.equal(failed.steps.at(-1)?.error?.code, 'VALIDATION_ERROR');
     await f.action(failed, 'retry', {stepId: failed.steps.at(-1)!.id});
     const done = await f.settle(sent.run.id);
+    assertCanvasLoaded(done);
     assert.equal(done.run.status, 'completed');
-    assert.match(f.requests[1]!, /VALIDATION_ERROR/u);
+    assert.match(f.requests[2]!, /VALIDATION_ERROR/u);
     assert.equal(done.changes.length, 1);
   } else if (scenario === 'unknown_discard_resume') {
     const entered = gate(), release = gate();
@@ -314,7 +334,11 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
     assert.equal(done.changes.length, 0);
     const tools = object(JSON.parse(f.requests[0]!)).tools;
     assert.ok(Array.isArray(tools));
-    assert.equal(tools.length, f.tools.list().filter(value => value.risk === 'read_only').length);
+    assert.equal(tools.length, f.tools.list().filter(value => value.risk === 'read_only' && value.name !== AGENT_TASK_TOOLS_LOAD_NAME).length);
+    assert.ok(tools.every(value => {
+      const tool = object(value);
+      return object(protocol === 'chat_completions' ? tool.function : tool).name !== AGENT_TASK_TOOLS_LOAD_NAME;
+    }));
   } else if (scenario === 'diagnostic_catalog') {
     f.setScript(async function* () {yield {type: 'done', output: output(protocol, [call('mioon_shot_update', {
       shotId, expectedRevision: 1, patch: {prompt: 'Diagnostic must never execute'},
@@ -349,8 +373,8 @@ export async function collectTaskRequestFingerprints(): Promise<TaskRequestFinge
       } finally {await f.close();}
     }
     for (const protocol of FINGERPRINT_PROTOCOLS) for (const scenario of FINGERPRINT_SCENARIOS) await capture(protocol, scenario);
-    // Append official coverage after all existing records, preserving the
-    // original 75 fingerprints and their order as the fixture prefix.
+    // Keep scenario order stable. H1b adds one real loading request before each
+    // canvas workflow; diagnostic scenarios retain their original requests.
     for (const protocol of FINGERPRINT_PROTOCOLS) for (const scenario of OFFICIAL_FINGERPRINT_SCENARIOS) await capture(protocol, scenario, true);
     return fingerprints;
   } finally {mock.timers.reset();}

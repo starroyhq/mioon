@@ -34,6 +34,9 @@ for(const protocol of ['chat_completions','responses'] as const)for(const bounda
  t.after(async()=>{runtime.close();await runtime.drain();tools.dispose();await services.drain();await settings.close();store.close();});
  const found=runtime.lookup(f.projectId,f.requestId);assert.ok(found.snapshot);let snapshot=found.snapshot;
  assert.equal(snapshot.run.status,'interrupted');assert.equal(modelRequests,0);
+ const loads=snapshot.steps.filter(step=>step.toolCall?.name==='mioon_tools_load');
+ assert.equal(loads.length,['model_intent','model_send'].includes(boundary)?0:1);
+ if(loads.length){assert.equal(loads[0]!.status,'completed');assert.ok(snapshot.run.stepsUsed>=4,'the real loading model/tool steps consume the same run budget');}
  const expectedTitle=boundary==='tool_after_commit'?'After atomic AI edit':'Before';assert.equal(store.db.prepare("SELECT json_extract(data,'$.title') AS title FROM shots WHERE id=?").get(f.shotId)?.title,expectedTitle);
  assert.equal(store.db.prepare('SELECT count(*) AS n FROM image_tasks').get()!.n,['generation_accept','result_commit'].includes(boundary)?1:0);
  assert.equal(store.db.prepare('SELECT count(*) AS n FROM image_versions').get()!.n,boundary==='result_commit'?1:0);

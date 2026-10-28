@@ -17,8 +17,9 @@ import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
 import {createTaskGateway,buildTaskModelRequest,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskModelOutput} from './task-gateway-v2.ts';
-import {assembleRunContext,assembleModelInput,replayModelContext,selectTaskModelTools} from './task-context-v2.ts';
+import {assembleRunContext,assembleModelInput,replayModelContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
 import type {TaskContextPreviousRun} from './task-context-v2.ts';
+import {agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -37,6 +38,12 @@ const skippedInstructions:Record<AgentTaskLocale,string>={
   'zh-Hant':'這一處由使用者保留，本輪不要再修改。請繼續處理其他未略過的目標。',
   en:'The user kept this target. Do not modify it again in this run. Continue with other targets that have not been skipped.',
   ja:'この対象はユーザーが保持しました。この実行では再び変更しないでください。スキップしていない他の対象を続けて処理してください。',
+};
+const unloadedToolMessages:Record<AgentTaskLocale,string>={
+  'zh-Hans':'此工具未包含在产生该回复的模型请求中。请先加载对应工具组，再在下一次模型请求中调用。',
+  'zh-Hant':'此工具未包含在產生該回覆的模型請求中。請先載入對應工具組，再於下一次模型請求中呼叫。',
+  en:'This tool was not included in the model request that produced this response. Load its group, then call it in the next model request.',
+  ja:'この応答を生成したモデルリクエストに、このツールは含まれていません。対応するグループを読み込み、次のモデルリクエストで呼び出してください。',
 };
 export function agentTaskFailure(value:string):Error&{code:string;status:number}{
   const messages:Record<string,string>={AGENT_TASK_NOT_FOUND:'任务不存在。',AGENT_TASK_CLOSED:'任务服务已关闭。',AGENT_TASK_READ_ONLY:'恢复副本中的智能助理任务仅供查看。',AGENT_TASK_STOPPED:'任务已停止，尚未发出的工作已阻断。',AGENT_TASK_INVALID:'任务参数无效。',AGENT_TASK_BUSY:'本项目已有未结束任务，请继续或停止原任务。',AGENT_TASK_CONSENT_REQUIRED:'当前目标、模型和项目任务范围尚未授权，或授权已撤销。',AGENT_TASK_SETTINGS_CHANGED:'连接设置已变化，请重新确认目标和模型。',AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，任务已暂停。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，任务已暂停。',AGENT_TASK_UNKNOWN_RESULT:'上一步结果未知，请先核对原请求。',AGENT_TASK_REVISION_CONFLICT:'任务已被其他窗口更新，请重新读取。',AGENT_TASK_REQUEST_CONFLICT:'此请求标识已用于其他内容。',AGENT_TASK_STORAGE_LIMIT:'Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断。',AGENT_TASK_STORAGE_UNAVAILABLE:'无法安全读取或保存任务记录。',AGENT_TASK_FAILED:'任务未完成，请检查已保存记录。',AGENT_TASK_PAUSED:'任务已暂停。',AGENT_TASK_APPROVAL_REQUIRED:'此操作需要确认。'};
@@ -70,7 +77,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   function mutable():void {checkOpen();if(readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');if(storageFaulted)throw agentTaskFailure(storageFailureCode);assertMutationAllowed?.();}
   function toolset():AgentTaskTools {mutable();if(!tools)throw agentTaskFailure('AGENT_TASK_CLOSED');return tools;}
   function runTools(run:AgentTaskRun){
-    return selectTaskModelTools(toolset().list(),run.diagnostic);
+    return selectTaskModelTools(toolset().list(),run.diagnostic,run.diagnostic?{}:{steps:journal.snapshot(run.id).steps,attachments:run.attachments});
   }
   const configuration=(run:AgentTaskRun):AgentConfiguration=>parseAgentConfiguration(run.configuration,{selfPort:selfPort()});
   const owned=(projectId:string,id:string):AgentTaskRun=>{checkOpen();if(!hasTables)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const run=journal.run(id);if(run.projectId!==projectId)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return run;};
@@ -158,13 +165,23 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     let step=journal.snapshot(runId).steps.find(item=>record(item.data)&&item.data.sourceModelStepId===source.id&&item.toolCall?.id===call.id);
     if(step&&['completed','rejected','denied','failed'].includes(step.status))return step;
     if(step&&['unknown','dispatch_started'].includes(step.status))throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
+    const run=fence(runId);
+    if(!run.diagnostic){
+      let visible:string[];try{visible=sourceTaskModelToolNames(configuration(run).protocol,source.request);}catch(error){if(storageError(error))failStorage(error);throw error;}
+      if(!visible.includes(call.name)){
+        const group=agentTaskToolGroupForName(call.name);if(group===undefined)throw agentTaskFailure('AGENT_CHAT_TOOLS_UNSUPPORTED');
+        if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id}});}
+        const message=unloadedToolMessages[taskResponseLocale(run.context)];
+        return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'TOOL_NOT_LOADED',message,group}},error:{code:'TOOL_NOT_LOADED',message}});
+      }
+    }
     if(!step&&record(source.data)&&source.data.toolsInvalidated===true){
-      const current=fence(runId);let kept=false;
+      const current=run;let kept=false;
       try{const pending=toolset().prepare({projectId:current.projectId,operation:call.name,input:call.arguments,beforeTargetRead:target=>assertNotSkipped(current,[{...target,revision:0}])});kept=(pending.referencedTargets??pending.targets).some(target=>current.skippedTargets?.some(item=>item.target.kind===target.kind&&item.target.id===target.id));}
       catch(error){if(storageError(error))throw error;if(code(error)==='AGENT_TASK_TARGET_SKIPPED')kept=true;}
       return {...source,kind:'tool',status:kept?'denied':'rejected',toolCall:call,result:{error:{code:kept?'TARGET_SKIPPED':'TARGET_CHANGED',message:kept?skippedMessage(current):'此批旧工具参数已失效，请按当前保存状态重新规划。'}}};
     }
-    const run=fence(runId);let prepared:PreparedAgentTaskTool|undefined,conflicts:AgentTaskTarget[]=[];
+    let prepared:PreparedAgentTaskTool|undefined,conflicts:AgentTaskTarget[]=[];
     // Diagnostic selection is a host-only restriction, never an authority. In
     // particular, catalog probes describe write tools without executing them.
     if(run.diagnostic&&(run.diagnostic.profile!=='read_only'||!runTools(run).some(tool=>tool.name===call.name)))throw agentTaskFailure('AGENT_TASK_DIAGNOSTIC_TOOL_FORBIDDEN');
@@ -273,10 +290,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         }
         run=fence(runId);const originalBody=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:undefined;
         const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,fragments,notes:pendingModel?[]:run.notes,tools:originalBody===undefined?runTools(run):[]});
-        const body=originalBody??buildTaskModelRequest(config,history,definitions,selfPort()),model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}},pendingNotes.map(note=>note.requestId));
+        const body=originalBody??buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic}),model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}},pendingNotes.map(note=>note.requestId));
+        const knownTools=run.diagnostic?undefined:toolset().list();
         journal.markDispatch(runId,model.id);inflight=model.id;let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
         const flush=()=>{if(pending&&!closed){journal.appendText(runId,model.id,pending);pending='';lastFlush=Date.now();}};
-        for await(const item of gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),beforeSubmit:()=>{fence(runId);}})){
+        for await(const item of gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),knownTools,beforeSubmit:()=>{fence(runId);}})){
           if(closed||journal.run(runId).status==='stopped')return;
           if(output)throw agentTaskFailure('AGENT_TASK_FAILED');
           if(item.type==='delta'){pending+=item.text;if(Buffer.byteLength(pending)>2048||Date.now()-lastFlush>50)flush();}
@@ -318,7 +336,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const parsedDiagnostic=input.diagnostic===undefined?undefined:agentTaskDiagnosticSchema.safeParse(input.diagnostic);
     if(parsedDiagnostic&&!parsedDiagnostic.success)throw agentTaskFailure('AGENT_TASK_INVALID');
     const diagnostic=parsedDiagnostic?.success?parsedDiagnostic.data:undefined;
-    if(diagnostic?.toolNames?.some(name=>!toolset().list().some(tool=>tool.name===name)))throw agentTaskFailure('AGENT_TASK_INVALID');
+    if(diagnostic?.toolNames?.some(name=>!selectTaskModelTools(toolset().list(),{profile:'catalog'}).some(tool=>tool.name===name)))throw agentTaskFailure('AGENT_TASK_INVALID');
     const uploads=(input.uploads??[]) as string[];
     if(input.conversationId!==undefined&&(typeof input.conversationId!=='string'||!/^[-a-f0-9]{36}$/iu.test(input.conversationId)||diagnostic))throw agentTaskFailure('AGENT_TASK_INVALID');
     const conversationId=input.conversationId as string|undefined;
@@ -353,7 +371,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     // Reject known overflow in the control transaction, before acknowledging
     // the note. Future model/tool output remains subject to the original caps.
     // This is only a capacity probe: it never submits or changes a saved intent.
-    try{const config=configuration(run),{history,tools:definitions}=assembleModelInput({context,text:run.text,fragments,notes:run.notes,tools:runTools(run)});buildTaskModelRequest(config,history,definitions,selfPort());}
+    try{const config=configuration(run),{history,tools:definitions}=assembleModelInput({context,text:run.text,fragments,notes:run.notes,tools:runTools(run)});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});}
     catch(error){if(code(error)==='AGENT_CHAT_LIMIT')throw agentTaskFailure('AGENT_TASK_NOTE_CAPACITY');throw error;}
   }
   async function action(projectId:string,runId:string,input:unknown):Promise<AgentTaskSnapshot>{

@@ -2,6 +2,7 @@ import type {AgentTaskDiagnostic,AgentTaskJson,AgentTaskLocale,AgentTaskNote,Age
 import type {AgentConfiguration} from './config.ts';
 import {TASK_MODEL_LIMITS,taskContinuation,taskResponseLanguageContext} from './task-gateway-v2.ts';
 import type {TaskModelOutput,TaskToolDefinition} from './task-gateway-v2.ts';
+import {AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,loadedAgentTaskToolGroups} from './task-tool-groups-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const bytes=(value:unknown):number=>Buffer.byteLength(JSON.stringify(value));
@@ -49,11 +50,36 @@ export function assembleRunContext({locale,text,previousRuns=[],attachments=[]}:
   return {context,metrics:{historyBytes:bytes(context),retainedRuns:groups.length,trimmedRuns:previousCount-groups.length}};
 }
 
-export function selectTaskModelTools<T extends TaskToolDefinition&{risk:AgentTaskTier}>(definitions:readonly T[],diagnostic?:AgentTaskDiagnostic):T[]{
-  if(!diagnostic)return [...definitions];
-  if(diagnostic.profile==='text')return [];
-  if(diagnostic.profile==='read_only')return definitions.filter(tool=>tool.risk==='read_only');
-  return diagnostic.toolNames?definitions.filter(tool=>diagnostic.toolNames!.includes(tool.name)):[...definitions];
+export interface TaskModelToolSelection {steps?:readonly AgentTaskStep[];attachments?:readonly string[]}
+export function selectTaskModelTools<T extends TaskToolDefinition&{risk:AgentTaskTier}>(definitions:readonly T[],diagnostic?:AgentTaskDiagnostic,{steps=[],attachments=[]}:TaskModelToolSelection={}):T[]{
+  if(diagnostic){
+    const original=definitions.filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME);
+    if(diagnostic.profile==='text')return [];
+    if(diagnostic.profile==='read_only')return original.filter(tool=>tool.risk==='read_only');
+    return diagnostic.toolNames?original.filter(tool=>diagnostic.toolNames!.includes(tool.name)):original;
+  }
+  const groups=new Set<string>(['core',...loadedAgentTaskToolGroups(steps)]);
+  return definitions.filter(tool=>groups.has(agentTaskToolGroupForName(tool.name)??'')||attachments.length>0&&['mioon_asset_import_selected','mioon_lut_import_selected'].includes(tool.name));
+}
+
+/** Visibility belongs to the exact request that produced the response. A load
+ * earlier in the same batch cannot authorize another call from that batch. */
+export function sourceTaskModelToolNames(protocol:AgentConfiguration['protocol'],request:AgentTaskJson|undefined):string[]{
+  const invalid=():never=>{throw Object.assign(new Error('Invalid frozen model tool catalog.'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});};
+  if(!record(request)||typeof request.body!=='string')return invalid();
+  let body:unknown;try{body=JSON.parse(request.body);}catch{return invalid();}
+  if(!record(body))return invalid();
+  if(body.tools===undefined)return [];
+  if(!Array.isArray(body.tools))return invalid();
+  const names:string[]=[];
+  for(const entry of body.tools){
+    if(!record(entry))return invalid();
+    const definition=protocol==='chat_completions'?entry.function:entry;
+    if(!record(definition)||typeof definition.name!=='string'||!/^[-A-Za-z0-9_]{1,64}$/u.test(definition.name)||names.includes(definition.name))return invalid();
+    if(protocol!=='anthropic_messages'&&entry.type!=='function')return invalid();
+    names.push(definition.name);
+  }
+  return names;
 }
 
 export interface TaskModelToolResult {callId:string;result:AgentTaskJson}

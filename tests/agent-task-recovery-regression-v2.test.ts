@@ -87,10 +87,14 @@ async function fixture(t: TestContext, {lostSubmission = false, finalModelFailur
       const outgoing = Object.assign(new EventEmitter(), {
         setTimeout() {}, destroy() {}, end() {
           counters.modelPosts++;
-          if (counters.modelPosts === 3 && failFinal) { failFinal = false; outgoing.emit('error', new Error('Synthetic model connection loss')); return; }
+          // The first real exchange loads video tools; the original recovery
+          // script starts only after that completed model/tool round trip.
+          const recoveryPost = counters.modelPosts - 1;
+          if (recoveryPost === 3 && failFinal) { failFinal = false; outgoing.emit('error', new Error('Synthetic model connection loss')); return; }
           let calls: Array<{name: string; arguments: unknown}> = [];
-          if (counters.modelPosts === 1 || counters.modelPosts === 3 && secondProposal) calls = [{name: 'mioon_generation_submit', arguments: generationInput}];
-          else if (counters.modelPosts === 2) calls = [{name: 'mioon_task_wait', arguments: {kind: 'job', id: job().id}}];
+          if (counters.modelPosts === 1) calls = [{name: 'mioon_tools_load', arguments: {groups: ['video']}}];
+          else if (recoveryPost === 1 || recoveryPost === 3 && secondProposal) calls = [{name: 'mioon_generation_submit', arguments: generationInput}];
+          else if (recoveryPost === 2) calls = [{name: 'mioon_task_wait', arguments: {kind: 'job', id: job().id}}];
           respond(Object.assign(Readable.from([Buffer.from(response(calls))]), {statusCode: 200, headers: {'content-type': 'text/event-stream'}}));
         },
       });
@@ -131,6 +135,8 @@ async function fixture(t: TestContext, {lostSubmission = false, finalModelFailur
       const sent = await runtime.send(projectId, {requestId: randomUUID(), text: 'Generate once, then wait on that exact job. Do not retry generation.', expectedSettingsRevision: (await settings.get()).revision});
       const pending = await stable(sent.run.id); await runtime.drain();
       assert.equal(pending.run.status, 'awaiting_approval'); assert.equal(store.list('jobs', projectId).length, 0); assert.equal(counters.submit, 0); assert.equal(counters.generationTools, 0);
+      assert.equal(counters.modelPosts, 2); assert.equal(pending.run.stepsUsed, 4);
+      assert.equal(pending.steps.filter(step => step.toolCall?.name === 'mioon_tools_load' && step.status === 'completed').length, 1);
       const step = pending.steps.find(step => step.status === 'awaiting_approval'); assert.ok(step); assert.equal(step.tier, 'paid');
       const control = {requestId: randomUUID(), runId: sent.run.id, expectedRevision: pending.run.revision, action: 'approve', stepId: step.id};
       await runtime.action(projectId, sent.run.id, control);
@@ -219,11 +225,11 @@ test('model connection failure after receiving the original job result retries i
   const f = await fixture(t, {finalModelFailure: true}), original = await f.accepted();
   await f.pollNow({finish: true}); await f.runtime.drain();
   const failed = f.read(original.runId), last = failed.steps.at(-1)!;
-  assert.equal(failed.run.status, 'failed'); assert.equal(last.kind, 'model'); assert.equal(last.error?.code, 'AGENT_CHAT_CONNECT_FAILED'); assert.equal(f.counters.modelPosts, 3);
+  assert.equal(failed.run.status, 'failed'); assert.equal(last.kind, 'model'); assert.equal(last.error?.code, 'AGENT_CHAT_CONNECT_FAILED'); assert.equal(f.counters.modelPosts, 4);
   const control = {requestId: randomUUID(), runId: original.runId, expectedRevision: failed.run.revision, action: 'retry', stepId: last.id};
   await f.runtime.action(f.projectId, original.runId, control); await f.runtime.drain();
-  const done = f.read(original.runId); assert.equal(done.run.status, 'completed'); assert.equal(f.counters.modelPosts, 4);
-  await f.runtime.action(f.projectId, original.runId, control); await f.runtime.drain(); assert.equal(f.counters.modelPosts, 4);
+  const done = f.read(original.runId); assert.equal(done.run.status, 'completed'); assert.equal(f.counters.modelPosts, 5);
+  await f.runtime.action(f.projectId, original.runId, control); await f.runtime.drain(); assert.equal(f.counters.modelPosts, 5);
   assert.equal(done.steps.filter(step => step.toolCall?.name === 'mioon_generation_submit').length, 1);
   f.assertOriginal(original.jobId, original.requestId, original.snapshot);
 });
