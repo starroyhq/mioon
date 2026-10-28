@@ -22,13 +22,13 @@ import {startWorker} from '../packages/business/src/jobs.ts';
 import {withAgentTaskJobOrigin,allowAgentTaskJobTargetMutation,setAgentTaskEffectGate,setAgentTaskJobResumer,assertAgentTaskJobEffect,isAgentTaskEffectBlocked} from '../packages/business/src/agent/task-effects-v2.ts';
 import type {Provider,ProviderContext} from '../packages/business/src/provider-registry.ts';
 import type {TaskModelItem,TaskModelRequest,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
-import {createTaskGateway,buildTaskModelRequest,taskResponseLanguageContext,taskResponseLocale,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
+import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLanguageContext,taskResponseLocale,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {sourceTaskModelToolNames,selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
-import type {AgentTaskToolCall,AgentTaskStatus,AgentTaskSnapshot,AgentTaskControlAction} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskJson,AgentTaskToolCall,AgentTaskStatus,AgentTaskSnapshot,AgentTaskControlAction} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
 import {png} from './helpers/timeline-image-fixtures.ts';
 import {createMockProvider} from '../packages/business/src/providers/mock.ts';
@@ -188,6 +188,28 @@ test('resuming a legacy model intent sends its original journaled body without r
   const step=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body:original,history:context},data:{baseline:[]}});
   f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.run.status,'interrupted');assert.equal(interrupted.steps[0]!.status,'intent');
   await f.action(interrupted,'resume');const done=await f.settle(created.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,1);assert.equal(f.requests[0]!.body,original);assert.equal(object(f.runtime.journal.step(step.id).request).body,original);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: an unsent intent bypasses reassembly even when retained base context cannot fit`,async t=>{
+  const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Retained request before the assembler upgrade.'}];
+  const original=buildTaskModelRequest(settings.configuration,history,[],4318),context=[taskResponseLanguageContext('en'),{role:'user',content:'x'.repeat(TASK_MODEL_LIMITS.historyBytes+1)}];
+  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Retained request before the assembler upgrade.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+  const model=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body:original,history},data:{baseline:[]}}),frozen=structuredClone(model.request);
+  f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const done=await f.settle(created.run.id);
+  assert.equal(done.run.status,'completed');assert.equal(f.requests.length,1);assert.equal(f.requests[0]!.body,original);
+  assert.deepEqual(f.runtime.journal.step(model.id).request,frozen);assert.deepEqual(f.runtime.journal.run(created.run.id).context,context);
+  assert.equal(done.run.stepsUsed,1);assert.deepEqual(done.run.notes,[]);assert.equal(f.effects.size,0);
+});
+test('retained continuation is validated before a later historical model can execute its tool batch',async t=>{
+ const f=await fixture(t),settings=await f.settings.get(),context=[taskResponseLanguageContext('en'),{role:'user',content:'Resume recorded work.'}],body=buildTaskModelRequest(settings.configuration,context,f.tools.list(),4318);
+ const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Resume recorded work.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
+ const first=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history:context},data:{baseline:[],noteContinuationRequested:true}});
+ f.runtime.journal.completeStep(created.run.id,first.id,{result:{text:'Earlier observed output',toolCalls:[],providerOutput:{invalidRetainedResponse:true}}});
+ const baseline=f.runtime.journal.revisionSnapshot(f.projectId).map(({kind,id,revision})=>({kind,id,revision}));
+ const second=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history:context},data:{baseline}}),edit=call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Must not execute after invalid history'}});
+ f.runtime.journal.completeStep(created.run.id,second.id,{result:output('responses',[edit]) as unknown as AgentTaskJson});
+ f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const done=await f.settle(created.run.id);
+ assert.equal(done.run.status,'failed');assert.equal(f.requests.length,0);assert.equal(f.effects.size,0);assert.equal(done.changes.length,0);
+ assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');assert.equal(done.steps.filter(step=>step.kind==='tool').length,0);
 });
 for(const protocol of ['chat_completions','responses'] as const){
  test(`${protocol}: a trusted DNS denial records prevented dispatch and never becomes an unknown model result`,async t=>{
@@ -770,6 +792,60 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
 function replyOutput(protocol:'chat_completions'|'responses',text:string):TaskModelOutput {
  return {text,toolCalls:[],providerOutput:protocol==='chat_completions'?{role:'assistant',content:text}:[{type:'message',id:'synthetic-output-message',status:'completed',role:'assistant',content:[{type:'output_text',text,annotations:[]}]}]};
 }
+function longReadOutput(protocol:'chat_completions'|'responses',text:string,calls:AgentTaskToolCall[]):TaskModelOutput {
+ const reply=replyOutput(protocol,text);reply.toolCalls=calls;
+ reply.providerOutput=protocol==='chat_completions'
+  ?{role:'assistant',content:text,...(calls.length?{tool_calls:calls.map(item=>({id:item.id,type:'function',function:{name:item.name,arguments:JSON.stringify(item.arguments)}}))}:{})}
+  :[...(reply.providerOutput as AgentTaskJson[]),...calls.map(item=>({type:'function_call',call_id:item.id,name:item.name,arguments:JSON.stringify(item.arguments),status:'completed'}))];
+ return reply;
+}
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity counts the execution fallback for a retained terminal null result`,async t=>{
+ const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
+ const execute=f.tools.execute;f.tools.execute=async(prepared,context)=>({...await execute(prepared,context),result:null});
+ const prepare=f.tools.prepare;let preparations=0;f.tools.prepare=input=>{preparations++;return prepare(input);};
+ f.setScript(async function*(index){yield {type:'done',output:longReadOutput(protocol,index===1?'r'.repeat(97000):'Complete.',index===1?[call('mioon_project_inspect')]:[])};});
+ const sent=await f.send('u'.repeat(32000)),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(preparations,1);
+ const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model'),tool=before.steps.find(step=>step.kind==='tool');assert.ok(model&&tool?.toolCall);assert.equal(tool.status,'completed');assert.equal(tool.result,null);
+ const retained=object(model.result) as unknown as TaskModelOutput,history=before.run.context??[],withoutFallback=taskContinuation(protocol,retained,[{callId:tool.toolCall.id,result:null}]);
+ const emptyNote={role:'user',content:''},length=TASK_MODEL_LIMITS.historyBytes-Buffer.byteLength(JSON.stringify([...history,...withoutFallback,emptyNote]));assert.ok(length>0&&length<=32*1024);
+ const note='n'.repeat(length),withNote=[...history,...withoutFallback,{...emptyNote,content:note}];assert.equal(Buffer.byteLength(JSON.stringify(withNote)),TASK_MODEL_LIMITS.historyBytes);
+ const executionRound=taskContinuation(protocol,retained,[{callId:tool.toolCall.id,result:{error:{code:'completed'}}}]);assert.ok(Buffer.byteLength(JSON.stringify([...history,...executionRound,{...emptyNote,content:note}]))>TASK_MODEL_LIMITS.historyBytes);
+ const request={requestId:randomUUID(),expectedRevision:paused.run.revision,action:'note',text:note};
+ await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:'AGENT_TASK_NOTE_CAPACITY'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.equal(preparations,1);assert.equal(f.effects.size,1);
+ assert.deepEqual(f.runtime.journal.lookupControl(request.requestId)?.result,{state:'rejected',code:'AGENT_TASK_NOTE_CAPACITY'});
+ await f.runtime.action(f.projectId,sent.run.id,request);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.equal(preparations,1);
+ await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.notes,[]);assert.equal(f.requests.length,2);assert.equal(preparations,1);assert.equal(f.effects.size,1);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: a thirty-step run retains full large results while compacting model views and accepting a later note`,{timeout:30000},async t=>{
+ const f=await fixture(t,protocol),entered=gate(),release=gate(),current='Preserve this current production request.',note='KEEP_THE_ORIGINAL_COLOURS_AFTER_COMPACTION',candidateDigest='SYNTHETIC_BINDING_REQUIRES_REPREPARATION';
+ const execute=f.tools.execute;f.tools.execute=async(prepared,context)=>{
+  const outcome=await execute(prepared,context);
+  return {...outcome,result:{payload:'result '.repeat(3000),candidateDigest}};
+ };
+ f.setScript(async function*(index){
+  const text=`Reply ${index}: `+'m'.repeat(30*1024),calls=index===15?[]:Array.from({length:index===1?2:1},()=>call('mioon_project_inspect'));
+  if(index===6){yield {type:'delta',text:text.slice(0,8192)};entered.resolve();await release.promise;yield {type:'delta',text:text.slice(8192)};}
+  else yield {type:'delta',text};
+  yield {type:'done',output:longReadOutput(protocol,text,calls)};
+ });
+ const sent=await f.send(current);await entered.promise;
+ const before=f.runtime.journal.snapshot(sent.run.id),inflight=before.steps.filter(step=>step.kind==='model').at(-1);assert.ok(inflight);assert.equal(inflight.status,'dispatch_started');
+ const frozen=structuredClone(inflight.request),frozenBody=f.requests[5]!.body;
+ try{const accepted=await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:note});assert.equal(accepted.run.notes?.[0]?.text,note);assert.deepEqual(f.runtime.journal.step(inflight.id).request,frozen);assert.equal(f.requests[5]!.body,frozenBody);}
+ finally{release.resolve();await f.runtime.drain();}
+ const done=f.runtime.get(f.projectId,sent.run.id),saved=f.runtime.journal.snapshot(sent.run.id),models=saved.steps.filter(step=>step.kind==='model'),toolSteps=saved.steps.filter(step=>step.kind==='tool');
+ assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,30);assert.equal(done.run.budget,30);assert.equal(models.length,15);assert.equal(toolSteps.length,15);assert.equal(f.requests.length,15);assert.equal(f.effects.size,15);assert.equal(done.changes.length,0);
+ for(const step of toolSteps){const result=object(step.result);assert.equal(result.payload,'result '.repeat(3000));assert.equal(result.candidateDigest,candidateDigest);}
+ const histories=models.map(step=>{const value=object(step.request).history;assert.ok(Array.isArray(value));return value;});
+ for(const [index,history]of histories.entries()){
+  assert.ok(Buffer.byteLength(JSON.stringify(history))<=TASK_MODEL_LIMITS.historyBytes);assert.ok(history.some(value=>object(value).role==='user'&&object(value).content===current));
+  assert.ok(!f.requests[index]!.body.includes(candidateDigest));
+  if(index>=6)assert.equal(history.filter(value=>object(value).role==='user'&&object(value).content===note).length,1);
+ }
+ const firstCompaction=histories.findIndex((history,index)=>index>0&&Buffer.byteLength(JSON.stringify(history))<Buffer.byteLength(JSON.stringify(histories[index-1])));
+ assert.ok(firstCompaction>0&&firstCompaction+1<models.length);assert.deepEqual(histories[firstCompaction+1]!.slice(0,histories[firstCompaction]!.length),histories[firstCompaction]);
+ assert.deepEqual(f.runtime.journal.step(inflight.id).request,frozen);assert.equal(done.run.notes?.[0]?.modelStepId,models[6]?.id);
+});
 async function noteHistoryFixture(t:TestContext,protocol:'chat_completions'|'responses',messageLength=30000){
  const f=await fixture(t,protocol);let conversationId:string|undefined;
  f.setScript(async function*(){yield {type:'done',output:replyOutput(protocol,'a'.repeat(2000))};});
@@ -780,9 +856,11 @@ async function noteHistoryFixture(t:TestContext,protocol:'chat_completions'|'res
  return {...f,sendNext:async()=>f.runtime.send(f.projectId,{requestId:randomUUID(),text:'u'.repeat(messageLength),expectedSettingsRevision:(await f.settings.get()).revision,conversationId})};
 }
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity rejects an already persisted streamed reply atomically and replays its rejection`,async t=>{
- const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(8192),note='n'.repeat(1024);
+ // No earlier conversation is available to drop: the current user message,
+ // persisted latest reply and new note are all protected content.
+ const f=await fixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(98500),note='n'.repeat(1024);
  f.setScript(async function*(){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};});
- const sent=await f.sendNext();await entered.promise;
+ const sent=await f.send('u'.repeat(32000));await entered.promise;
  try{
   const before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.ok(model);assert.equal(model.status,'dispatch_started');assert.equal(model.text,reply);
   const historyBytes=Buffer.byteLength(JSON.stringify(before.run.context));assert.ok(historyBytes+Buffer.byteLength(note)+200<TASK_MODEL_LIMITS.historyBytes);assert.ok(historyBytes+Buffer.byteLength(model.text)+Buffer.byteLength(note)>TASK_MODEL_LIMITS.historyBytes);
@@ -793,7 +871,26 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   await assert.rejects(f.runtime.action(f.projectId,sent.run.id,{...request,text:'changed text'}),{code:'AGENT_TASK_REQUEST_CONFLICT'});
   assert.equal(f.requests.at(-1)!.body,body);
  }finally{release.resolve();await f.runtime.drain();}
- const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.notes,[]);assert.equal(f.requests.length,4);assert.equal(done.steps.filter(step=>step.kind==='model').length,1);
+ const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.notes,[]);assert.equal(f.requests.length,1);assert.equal(done.steps.filter(step=>step.kind==='model').length,1);
+});
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity compacts earlier conversation rounds while preserving persisted output and its intent`,async t=>{
+ const f=await noteHistoryFixture(t,protocol),entered=gate(),release=gate(),reply='r'.repeat(8192),note='ADDITIONAL_COLOUR_CONSTRAINT_'+'n'.repeat(1024);let count=0;
+ f.setScript(async function*(){if(++count===1){yield {type:'delta',text:reply};entered.resolve();await release.promise;yield {type:'done',output:replyOutput(protocol,reply)};}else yield {type:'done',output:replyOutput(protocol,'Compacted follow-up complete')};});
+ const sent=await f.sendNext();await entered.promise;
+ const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.ok(model);assert.equal(model.text,reply);
+ const frozen=model.request,initialBody=f.requests.at(-1)!.body,context=structuredClone(before.run.context);
+ assert.ok(Buffer.byteLength(JSON.stringify(before.run.context))+Buffer.byteLength(reply)+Buffer.byteLength(note)>TASK_MODEL_LIMITS.historyBytes);
+ try{
+  const accepted=await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:note});assert.equal(accepted.run.notes?.[0]?.text,note);
+  assert.deepEqual(f.runtime.journal.step(model.id).request,frozen);assert.equal(f.requests.at(-1)!.body,initialBody);assert.deepEqual(f.runtime.journal.run(sent.run.id).context,context);
+ }finally{release.resolve();await f.runtime.drain();}
+ const done=f.runtime.get(f.projectId,sent.run.id),latest=f.runtime.journal.snapshot(sent.run.id).steps.filter(step=>step.kind==='model').at(-1);assert.ok(latest);
+ assert.equal(done.run.status,'completed');assert.equal(f.requests.length,5);assert.ok(done.run.notes?.[0]?.modelStepId);
+ const history=object(latest.request).history;assert.ok(Array.isArray(history));assert.ok(Buffer.byteLength(JSON.stringify(history))<=TASK_MODEL_LIMITS.historyBytes);
+ assert.ok(f.requests.at(-1)!.body.includes(reply));assert.ok(f.requests.at(-1)!.body.includes(note));
+ const oldReply='a'.repeat(2000),remaining=history.filter(value=>object(value).role==='assistant'&&object(value).content===oldReply).length;
+ assert.ok(remaining<(context??[]).filter(value=>object(value).role==='assistant'&&object(value).content===oldReply).length);
+ assert.deepEqual(f.runtime.journal.step(model.id).request,frozen);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity accepts a persisted streamed reply below the limit without rewriting its intent`,async t=>{
  const f=await noteHistoryFixture(t,protocol,28000),entered=gate(),release=gate(),reply='r'.repeat(8192),note='n'.repeat(1024);let count=0;

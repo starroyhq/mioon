@@ -15,10 +15,10 @@ import type {ChatAuthorizations} from './chat-runtime.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
-import {createTaskGateway,buildTaskModelRequest,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
+import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskModelOutput} from './task-gateway-v2.ts';
-import {assembleRunContext,assembleModelInput,replayModelContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
-import type {TaskContextPreviousRun} from './task-context-v2.ts';
+import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
+import type {TaskContextPreviousRun,TaskModelContextFragment} from './task-context-v2.ts';
 import {agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 
@@ -52,6 +52,17 @@ export function agentTaskFailure(value:string):Error&{code:string;status:number}
 function modelOutput(value:unknown):TaskModelOutput {
   if(!record(value)||typeof value.text!=='string'||!Array.isArray(value.toolCalls)||!Object.hasOwn(value,'providerOutput'))throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
   return value as unknown as TaskModelOutput;
+}
+function retainModelContinuation(protocol:AgentConfiguration['protocol'],fragments:TaskModelContextFragment[],fragment:Extract<TaskModelContextFragment,{kind:'continuation'}>):void {
+  // Validate the retained provider output before any later batch may execute.
+  // Null result probes preserve pairing checks without projecting or compacting
+  // a context that has not reached its request boundary yet.
+  taskContinuation(protocol,fragment.output,fragment.results.map(({callId})=>({callId,result:null})));
+  fragments.push(fragment);
+}
+function retainedToolContextResult(step:AgentTaskStep|undefined):AgentTaskJson {
+  if(!step||!['completed','rejected','denied','failed'].includes(step.status))return null;
+  return step.result??{error:{code:step.status}};
 }
 function safeSnapshot(value:AgentTaskSnapshot,store:WorkspaceStore):AgentTaskSnapshot {
   const copy=structuredClone(value),readTarget=agentTaskDisplayTargetReader(store,value.run.projectId);delete copy.run.context;
@@ -260,21 +271,21 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       });
       const acquired=sanitizeAgentCredentialResult(credential,expected);if(!acquired)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');const key=acquired.apiKey;fence(runId);
       for(;;){
-        run=fence(runId);const snapshot=journal.snapshot(runId),context=assembleModelInput({context:run.context,text:run.text}).history,fragments:AgentTaskJson[][]=[];
+        run=fence(runId);const snapshot=journal.snapshot(runId),context=cloneTaskBaseContext(run.context,run.text),fragments:TaskModelContextFragment[]=[];
         let resumeModel:AgentTaskStep|undefined,pendingModel:AgentTaskStep|undefined;
         for(const model of snapshot.steps.filter(item=>item.kind==='model')){
-          fragments.push(replayModelContext(config.protocol,{kind:'notes',notes:run.notes??[],modelStepId:model.id}));
-          if(model.status==='failed'&&record(model.result)&&model.result.discarded===true){fragments.push(replayModelContext(config.protocol,{kind:'discarded'}));continue;}
+          fragments.push({kind:'notes',notes:run.notes??[],modelStepId:model.id});
+          if(model.status==='failed'&&record(model.result)&&model.result.discarded===true){fragments.push({kind:'discarded',modelStepId:model.id});continue;}
           if(model.status==='failed'&&record(model.data)&&model.data.retryRequested===true)continue;
           if(model.status==='intent'){pendingModel=model;break;}
           if(model.status!=='completed')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
           const output=modelOutput(model.result);
           if(!output.toolCalls.length||run.diagnostic?.profile==='catalog'){
-            if(record(model.data)&&model.data.replanRequested===true){fragments.push(replayModelContext(config.protocol,{kind:'continuation',output,results:[],replan:true}));continue;}
+            if(record(model.data)&&model.data.replanRequested===true){retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results:[],replan:true});continue;}
             if(record(model.data)&&model.data.noteContinuationRequested===true||(journal.run(runId).notes??[]).some(note=>note.modelStepId===undefined)){
               if(!record(model.data)||model.data.noteContinuationRequested!==true)journal.updateStep(runId,model.id,{data:{...(record(model.data)?model.data:{}),noteContinuationRequested:true}});
               const diagnosticResults=output.toolCalls.map(call=>({callId:call.id,result:{error:{code:'DIAGNOSTIC_NOT_EXECUTED'}}}));
-              fragments.push(replayModelContext(config.protocol,{kind:'continuation',output,results:diagnosticResults}));resumeModel=model;continue;
+              retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results:diagnosticResults});resumeModel=model;continue;
             }
             changeStatus(runId,'completed');return;
           }
@@ -284,13 +295,21 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
             if(finished.status==='failed'&&(!record(model.data)||model.data.toolsInvalidated!==true)){
               changeStatus(runId,'failed',finished.error?.code??'AGENT_TASK_FAILED');return;
             }
-            results.push({callId:call.id,result:finished.result??{error:{code:finished.status}}});
+            results.push({callId:call.id,result:retainedToolContextResult(finished)});
           }
-          fragments.push(replayModelContext(config.protocol,{kind:'continuation',output,results}));resumeModel=model;
+          retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results});resumeModel=model;
         }
         run=fence(runId);const originalBody=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:undefined;
-        const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,fragments,notes:pendingModel?[]:run.notes,tools:originalBody===undefined?runTools(run):[]});
-        const body=originalBody??buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic}),model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}},pendingNotes.map(note=>note.requestId));
+        let body:string,model:AgentTaskStep;
+        if(pendingModel&&originalBody!==undefined){
+          // A durable intent owns its exact request and already-bound notes.
+          // Even a capacity-changing upgrade must not reconstruct this input.
+          body=originalBody;model=pendingModel;
+        }else{
+          const current=journal.snapshot(runId),{history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:runTools(run),replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets}});
+          body=buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});
+          model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(journal.revisionSnapshot(run.projectId)),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}},pendingNotes.map(note=>note.requestId));
+        }
         const knownTools=run.diagnostic?undefined:toolset().list();
         journal.markDispatch(runId,model.id);inflight=model.id;let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
         const flush=()=>{if(pending&&!closed){journal.appendText(runId,model.id,pending);pending='';lastFlush=Date.now();}};
@@ -354,24 +373,31 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   }
   function assertNoteCapacity(runId:string):void {
     const snapshot=journal.snapshot(runId),run=snapshot.run,latest=snapshot.steps.filter(step=>step.kind==='model').at(-1);
-    const saved=latest&&record(latest.request)&&Array.isArray(latest.request.history)?latest.request.history:undefined;
-    const context=assembleModelInput({context:saved??run.context,text:run.text}).history,fragments:AgentTaskJson[][]=[];
-    if(latest?.status==='completed'){
-      const output=modelOutput(latest.result),results=output.toolCalls.map(call=>{
-        const tool=snapshot.steps.find(step=>step.toolCall?.id===call.id&&record(step.data)&&step.data.sourceModelStepId===latest.id);
-        return {callId:call.id,result:tool?.result??null};
-      });
-      fragments.push(replayModelContext(configuration(run).protocol,{kind:'continuation',output,results}));
-    }else if(latest?.status==='dispatch_started'&&latest.text){
-      // Persisted deltas are already known continuation content. Count the
-      // protocol's smallest text message, without inventing later output or
-      // treating an unknown reply that may be discarded as saved history.
-      fragments.push(replayModelContext(configuration(run).protocol,{kind:'partial',text:latest.text}));
+    const context=cloneTaskBaseContext(run.context,run.text),fragments:TaskModelContextFragment[]=[];
+    // Replay only retained observations, never prepare or execute a tool. The
+    // saved request may already be compressed and must not be used as a raw
+    // base followed by the same rounds for a second time.
+    for(const model of snapshot.steps.filter(step=>step.kind==='model')){
+      fragments.push({kind:'notes',notes:run.notes??[],modelStepId:model.id});
+      if(model.status==='failed'&&record(model.result)&&model.result.discarded===true){fragments.push({kind:'discarded',modelStepId:model.id});continue;}
+      if(model.status==='failed'&&record(model.data)&&model.data.retryRequested===true)continue;
+      if(model.status==='completed'){
+        const output=modelOutput(model.result),results=output.toolCalls.map(call=>{
+          const tool=snapshot.steps.find(step=>step.toolCall?.id===call.id&&record(step.data)&&step.data.sourceModelStepId===model.id);
+          return {callId:call.id,result:run.diagnostic?.profile==='catalog'?{error:{code:'DIAGNOSTIC_NOT_EXECUTED'}}:retainedToolContextResult(tool)};
+        });
+        const replan=(!output.toolCalls.length||run.diagnostic?.profile==='catalog')&&record(model.data)&&model.data.replanRequested===true;
+        fragments.push({kind:'continuation',modelStepId:model.id,output,results,...(replan?{replan:true}:{})});
+      }else if(model===latest&&model.status==='dispatch_started'&&model.text){
+        // Count only already-persisted deltas. Unknown output may be explicitly
+        // discarded later, and buffered deltas are not saved observations.
+        fragments.push({kind:'partial',modelStepId:model.id,text:model.text});
+      }
     }
     // Reject known overflow in the control transaction, before acknowledging
     // the note. Future model/tool output remains subject to the original caps.
     // This is only a capacity probe: it never submits or changes a saved intent.
-    try{const config=configuration(run),{history,tools:definitions}=assembleModelInput({context,text:run.text,fragments,notes:run.notes,tools:runTools(run)});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});}
+    try{const config=configuration(run),{history,tools:definitions}=assembleModelInput({context,text:run.text,notes:run.notes,tools:runTools(run),replay:{protocol:config.protocol,fragments,steps:snapshot.steps,changes:snapshot.changes,skippedTargets:run.skippedTargets}});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});}
     catch(error){if(code(error)==='AGENT_CHAT_LIMIT')throw agentTaskFailure('AGENT_TASK_NOTE_CAPACITY');throw error;}
   }
   async function action(projectId:string,runId:string,input:unknown):Promise<AgentTaskSnapshot>{
