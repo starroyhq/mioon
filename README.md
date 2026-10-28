@@ -4,9 +4,9 @@
 
 <h1 align="center">Mioon</h1>
 
-<p align="center"><strong>与 AI 共同创作的视频工作台</strong></p>
+<p align="center"><strong>内置视频 Agent 的创作工作台</strong></p>
 
-<p align="center">从构思、镜头到剪辑，和 Mio 一起把想法做成作品</p>
+<p align="center">一句话交给 Mio，排镜头、剪时间线，你随时接手</p>
 
 <p align="center">
   <a href="https://mioon.app">官网</a> ·
@@ -25,13 +25,26 @@
 
 ## Mioon 是什么
 
-Mioon 是面向个人创作者、本地优先的开源视频创作工作台。工作台承载项目、素材、画板、镜头和时间线；内置 Agent **Mio** 在你的授权下参与构思和执行，让人与 AI 围绕同一份可编辑的作品协作。
+Mioon 是内置视频 Agent **Mio** 的开源创作工作台，面向个人创作者，本地优先。用一句话告诉 Mio 想做什么，它会读取已授权的项目内容，用和界面相同的操作整理镜头、编排时间线、加字幕，需要时提交生成。每一步都显示在对话里，修改落在同一份可编辑的项目中，你随时可以在画板和时间线上接手。
 
-你可以直接整理素材、编排镜头和剪辑，也可以把具体任务交给 Mio，检查结果后继续修改。创意与关键决定由你掌握，Mio 在已有工具和授权范围内推进工作。
+创意和关键决定由你掌握：付费生成默认先征得你确认，你正在编辑的地方 Mio 会等你改完。不用 Mio 时，工作台本身就能导入、剪辑、加手动字幕、预览和导出已有素材，不需要 AI 账号或密钥。
 
-项目和素材默认保存在自己的电脑上。导入、剪辑、手动字幕、预览和导出已有素材，不需要 AI 账号或密钥。
+Mioon 免费开源（Apache-2.0），项目和素材默认保存在自己的电脑上。
 
 ## Mioon 能帮你做什么
+
+### 把具体工作交给 Mio
+
+Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
+
+- **能干活**：排镜头、剪片段、加字幕，也能提交图片或视频生成
+- **每步可见**：每一步都显示在对话里，每处修改都有记录，可撤销的修改能单独或整体撤销；画板和时间线上被 Mio 改过的地方带有标记
+- **你说了算**：本地修改和付费操作可以分别设为直接执行或需要确认，付费生成默认需要确认；你正在编辑的地方 Mio 会等你改完，它计划修改的地方被你改过时，这一轮会暂停并让你选择
+- **模型自选**：DeepSeek、通义千问、Kimi、Claude 等服务或本机 Ollama，支持 Chat Completions、Responses 和 [Anthropic Messages](docs/AGENT-ANTHROPIC.md) 三种协议，由你明确选择，不自动重试或回退到其他协议
+
+使用方法见 [Mio 使用说明](docs/MIO-GUIDE.zh-CN.md)，执行与恢复规则见 [Mio 执行与恢复](docs/AGENT-TASKS-V2.md)。模型服务按你在服务商的用量计费。
+
+[![Mioon 的 Mio 助手空闲面板：可按项目授权协助创作，尚未发起模型调用](docs/images/readme/mio.webp)](docs/images/readme/mio.webp)
 
 ### 用画板整理故事
 
@@ -47,23 +60,14 @@ Mioon 是面向个人创作者、本地优先的开源视频创作工作台。�
 
 [![Mioon 剪辑：视频与图片叠加、音轨和真实合成预览](docs/images/readme/timeline.webp)](docs/images/readme/timeline.webp)
 
-### 和 Mio 一起推进作品
+### 接入你自己的生成服务
 
-Mio 是工作台中的创作 Agent，能够读取已授权的项目内容，通过工具参与规划、镜头整理和剪辑。它的修改进入同一个项目，你可以在画板和时间线上查看、调整，再让 Mio 继续工作。遇到同一处的编辑占用或目标变化时，Mio 会暂停相关操作，等待处理。
-
-是否使用 Mio、使用哪个模型以及哪些操作需要确认，由你设置。工具执行保留记录，待确认的操作可在原任务中继续处理；使用方法见 [Mio 使用说明](docs/MIO-GUIDE.zh-CN.md)，可用范围见 [Mio 执行与恢复](docs/AGENT-TASKS-V2.md)。
-
-图片和视频生成需要自行配置供应商及凭据，按界面核对本次输入与费用确认。生成的镜头会作为新版本保留，已经放进剪辑区的片段不会因为新一轮生成而自动替换。
-
-[![Mioon 的 Mio 助手空闲面板：可按项目授权协助创作，尚未发起模型调用](docs/images/readme/mio.webp)](docs/images/readme/mio.webp)
-
-以上为[官网演示项目截图](docs/images/readme/SOURCES.md)；导入素材不代表 Mioon 生成结果。
-
-可选模型连接及能力范围：
+图片和视频生成使用你自己配置的服务和凭据，提交前按界面核对本次输入与费用。生成的镜头会作为新版本保留，已经放进剪辑区的片段不会因为新一轮生成而自动替换。
 
 - [视频服务](docs/PROVIDERS.md)：火山方舟、Google Veo、MiniMax、Vidu、可灵、通义万相及自定义兼容连接。
 - [图片生成](docs/IMAGE-ACTIVATION.md)与[图片编辑](docs/IMAGE-EDITING.md)：OpenAI 官方、自定义兼容连接及 ComfyUI 的范围见对应说明。
-- Mio 支持 Chat Completions、Responses 和 [Anthropic Messages](docs/AGENT-ANTHROPIC.md)，由你明确选择协议，不自动重试或回退到其他协议。
+
+以上为[官网演示项目截图](docs/images/readme/SOURCES.md)；导入素材不代表 Mioon 生成结果。
 
 界面支持深色、浅色和跟随系统主题，以及简体中文、繁体中文、英语和日语。
 
