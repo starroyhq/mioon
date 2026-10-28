@@ -1,0 +1,155 @@
+{
+  "formatVersion": 1,
+  "synthetic": true,
+  "baseSchema": 62,
+  "targetSchema": 64,
+  "provenance": "Reviewed camera previs schema64 additive delta, frozen once on 2026-10-28. It adds the previs receipt and thumbnail tables, their guards and the previs node row bounds on nodes. Historical fixtures remain unchanged. Tests never reconstruct this expectation from application schema definitions.",
+  "schemaVersionRows": [
+    [
+      "64",
+      "integer",
+      "3634"
+    ]
+  ],
+  "objects": [
+    {
+      "type": "index",
+      "name": "previs_requests_project",
+      "tbl_name": "previs_requests",
+      "sql": "CREATE INDEX previs_requests_project ON previs_requests(projectId,operation)"
+    },
+    {
+      "type": "index",
+      "name": "previs_thumbnails_age",
+      "tbl_name": "previs_thumbnails",
+      "sql": "CREATE INDEX previs_thumbnails_age ON previs_thumbnails(updatedAt)"
+    },
+    {
+      "type": "index",
+      "name": "previs_thumbnails_project_age",
+      "tbl_name": "previs_thumbnails",
+      "sql": "CREATE INDEX previs_thumbnails_project_age ON previs_thumbnails(projectId,updatedAt)"
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_previs_requests_1",
+      "tbl_name": "previs_requests",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_previs_requests_2",
+      "tbl_name": "previs_requests",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_previs_thumbnails_1",
+      "tbl_name": "previs_thumbnails",
+      "sql": null
+    },
+    {
+      "type": "table",
+      "name": "previs_requests",
+      "tbl_name": "previs_requests",
+      "sql": "CREATE TABLE previs_requests(\n requestId TEXT PRIMARY KEY NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),\n operation TEXT NOT NULL CHECK(operation IN ('previs.create','previs.scene.set')),\n projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n nodeId TEXT NOT NULL REFERENCES nodes(id) CHECK(length(CAST(nodeId AS BLOB))=36),\n sceneRevision INTEGER NOT NULL CHECK(typeof(sceneRevision)='integer' AND sceneRevision BETWEEN 1 AND 9007199254740991),\n inputHash TEXT NOT NULL CHECK(length(inputHash)=64 AND inputHash NOT GLOB '*[^a-f0-9]*'),\n response TEXT NOT NULL CHECK(json_valid(response) AND json_type(response)='object' AND length(CAST(response AS BLOB)) BETWEEN 1 AND 24576),\n UNIQUE(nodeId,operation,sceneRevision),\n CHECK(json_extract(response,'$.id') IS nodeId AND json_extract(response,'$.projectId') IS projectId AND json_extract(response,'$.type') IS 'previs'\n AND json_extract(response,'$.sceneRevision') IS sceneRevision AND json_type(response,'$.scene') IS 'object'),\n CHECK(operation!='previs.create' OR (sceneRevision=1 AND json_extract(response,'$.revision') IS 1))\n)"
+    },
+    {
+      "type": "table",
+      "name": "previs_thumbnails",
+      "tbl_name": "previs_thumbnails",
+      "sql": "CREATE TABLE previs_thumbnails(\n nodeId TEXT NOT NULL REFERENCES nodes(id) CHECK(length(CAST(nodeId AS BLOB))=36),\n slot TEXT NOT NULL CHECK(slot='card' OR (length(slot) BETWEEN 2 AND 5 AND slot GLOB 'k[1-9]*' AND substr(slot,2) NOT GLOB '*[^0-9]*')),\n projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n sceneRevision INTEGER NOT NULL CHECK(typeof(sceneRevision)='integer' AND sceneRevision BETWEEN 1 AND 9007199254740991),\n width INTEGER NOT NULL CHECK(typeof(width)='integer' AND width BETWEEN 1 AND 384),\n height INTEGER NOT NULL CHECK(typeof(height)='integer' AND height BETWEEN 1 AND 384),\n bytes BLOB NOT NULL CHECK(typeof(bytes)='blob' AND length(bytes) BETWEEN 1 AND 65536),\n updatedAt TEXT NOT NULL CHECK(length(updatedAt) BETWEEN 1 AND 40),\n PRIMARY KEY(nodeId,slot)\n)"
+    },
+    {
+      "type": "trigger",
+      "name": "immutable_previs_requests",
+      "tbl_name": "previs_requests",
+      "sql": "CREATE TRIGGER immutable_previs_requests BEFORE UPDATE ON previs_requests\n BEGIN SELECT RAISE(ABORT,'previs request responses are immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "previs_node_insert_bounds",
+      "tbl_name": "nodes",
+      "sql": "CREATE TRIGGER previs_node_insert_bounds BEFORE INSERT ON nodes\n WHEN CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.type') END IS 'previs' AND (length(CAST(NEW.data AS BLOB))>24576 OR json_type(NEW.data,'$.scene') IS NOT 'object' OR json_extract(NEW.data,'$.scene.schemaVersion') IS NOT 1\n OR json_extract(NEW.data,'$.text') IS NOT '' OR json_type(NEW.data,'$.assetId') IS NOT NULL)\n BEGIN SELECT RAISE(ABORT,'previs nodes must stay bounded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "previs_node_update_bounds",
+      "tbl_name": "nodes",
+      "sql": "CREATE TRIGGER previs_node_update_bounds BEFORE UPDATE ON nodes\n WHEN (CASE WHEN json_valid(OLD.data) THEN json_extract(OLD.data,'$.type') END IS 'previs') IS NOT (CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.type') END IS 'previs') OR (CASE WHEN json_valid(NEW.data) THEN json_extract(NEW.data,'$.type') END IS 'previs' AND (length(CAST(NEW.data AS BLOB))>24576 OR json_type(NEW.data,'$.scene') IS NOT 'object' OR json_extract(NEW.data,'$.scene.schemaVersion') IS NOT 1\n OR json_extract(NEW.data,'$.text') IS NOT '' OR json_type(NEW.data,'$.assetId') IS NOT NULL))\n BEGIN SELECT RAISE(ABORT,'previs nodes must stay bounded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "previs_request_capacity",
+      "tbl_name": "previs_requests",
+      "sql": "CREATE TRIGGER previs_request_capacity BEFORE INSERT ON previs_requests\n WHEN (SELECT count(*) FROM previs_requests WHERE nodeId=NEW.nodeId)>=5 OR (SELECT count(*) FROM previs_requests)>=8192\n OR (NEW.operation='previs.create' AND ((SELECT count(*) FROM previs_requests WHERE projectId=NEW.projectId AND operation='previs.create')>=256\n OR (SELECT count(*) FROM previs_requests WHERE operation='previs.create')>=1024))\n BEGIN SELECT RAISE(ABORT,'previs request capacity exceeded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "previs_request_identity",
+      "tbl_name": "previs_requests",
+      "sql": "CREATE TRIGGER previs_request_identity BEFORE INSERT ON previs_requests\n WHEN NOT EXISTS(SELECT 1 FROM nodes WHERE id=NEW.nodeId AND projectId=NEW.projectId AND json_valid(data)\n AND json_extract(data,'$.type') IS 'previs' AND json_extract(data,'$.sceneRevision') IS NEW.sceneRevision)\n BEGIN SELECT RAISE(ABORT,'previs requests must bind their saved node');END"
+    },
+    {
+      "type": "trigger",
+      "name": "previs_thumbnail_capacity",
+      "tbl_name": "previs_thumbnails",
+      "sql": "CREATE TRIGGER previs_thumbnail_capacity BEFORE INSERT ON previs_thumbnails\n WHEN (SELECT count(*) FROM previs_thumbnails WHERE nodeId=NEW.nodeId)>=25 OR (SELECT count(*) FROM previs_thumbnails WHERE projectId=NEW.projectId)>=1000\n OR (SELECT count(*) FROM previs_thumbnails)>=2048\n BEGIN SELECT RAISE(ABORT,'previs thumbnail capacity exceeded');END"
+    },
+    {
+      "type": "trigger",
+      "name": "previs_thumbnail_insert_identity",
+      "tbl_name": "previs_thumbnails",
+      "sql": "CREATE TRIGGER previs_thumbnail_insert_identity BEFORE INSERT ON previs_thumbnails\n WHEN NOT EXISTS(SELECT 1 FROM nodes n WHERE n.id=NEW.nodeId AND n.projectId=NEW.projectId AND json_valid(n.data)\n AND json_extract(n.data,'$.type') IS 'previs' AND json_extract(n.data,'$.sceneRevision') IS NEW.sceneRevision\n AND (NEW.slot='card' OR EXISTS(SELECT 1 FROM json_each(n.data,'$.scene.keyframes') k WHERE json_extract(k.value,'$.id') IS NEW.slot)))\n BEGIN SELECT RAISE(ABORT,'previs thumbnails belong to the current scene');END"
+    },
+    {
+      "type": "trigger",
+      "name": "previs_thumbnail_update_identity",
+      "tbl_name": "previs_thumbnails",
+      "sql": "CREATE TRIGGER previs_thumbnail_update_identity BEFORE UPDATE ON previs_thumbnails\n WHEN NEW.nodeId IS NOT OLD.nodeId OR NEW.slot IS NOT OLD.slot OR NEW.projectId IS NOT OLD.projectId OR NOT EXISTS(SELECT 1 FROM nodes n WHERE n.id=NEW.nodeId AND n.projectId=NEW.projectId AND json_valid(n.data)\n AND json_extract(n.data,'$.type') IS 'previs' AND json_extract(n.data,'$.sceneRevision') IS NEW.sceneRevision\n AND (NEW.slot='card' OR EXISTS(SELECT 1 FROM json_each(n.data,'$.scene.keyframes') k WHERE json_extract(k.value,'$.id') IS NEW.slot)))\n BEGIN SELECT RAISE(ABORT,'previs thumbnails belong to the current scene');END"
+    },
+    {
+      "type": "trigger",
+      "name": "reject_previs_request_replacement",
+      "tbl_name": "previs_requests",
+      "sql": "CREATE TRIGGER reject_previs_request_replacement BEFORE INSERT ON previs_requests\n WHEN EXISTS(SELECT 1 FROM previs_requests WHERE requestId=NEW.requestId OR (nodeId=NEW.nodeId AND operation=NEW.operation AND sceneRevision=NEW.sceneRevision))\n BEGIN SELECT RAISE(ABORT,'previs request responses cannot be replaced');END"
+    },
+    {
+      "type": "trigger",
+      "name": "retain_previs_requests",
+      "tbl_name": "previs_requests",
+      "sql": "CREATE TRIGGER retain_previs_requests BEFORE DELETE ON previs_requests\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='previs_requests' AND rowId=OLD.rowid)\n AND NOT (OLD.operation='previs.scene.set' AND (SELECT count(*) FROM previs_requests r\n WHERE r.nodeId=OLD.nodeId AND r.operation='previs.scene.set' AND r.sceneRevision>OLD.sceneRevision)>=3)\n BEGIN SELECT RAISE(ABORT,'previs request responses must be retained');END"
+    }
+  ],
+  "tables": {
+    "previs_requests": {
+      "fields": [
+        "requestId",
+        "operation",
+        "projectId",
+        "nodeId",
+        "sceneRevision",
+        "inputHash",
+        "response"
+      ],
+      "rows": 0
+    },
+    "previs_thumbnails": {
+      "fields": [
+        "nodeId",
+        "slot",
+        "projectId",
+        "sceneRevision",
+        "width",
+        "height",
+        "bytes",
+        "updatedAt"
+      ],
+      "rows": 0
+    }
+  },
+  "catalog": {
+    "count": 18,
+    "sha256": "38192cf016057e2caa4d0314b308888c70dcb9305eded482e408515b3d62d189"
+  }
+}

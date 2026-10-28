@@ -5,6 +5,7 @@ import {currentOrdinary56Delta,withoutReviewedInteractionObjects,removeReviewedS
 import {currentOrdinary58Delta,withoutReviewedSceneObjects,removeReviewedSchema58} from './current-schema58-delta.ts';
 import {currentOrdinary60Delta,withoutReviewedStorageObjects,withReviewedStorageObjects,removeReviewedSchema60} from './current-schema60-delta.ts';
 import {currentOrdinary62Delta,withoutReviewedSubjectVariantObjects,withReviewedSubjectVariantObjects,removeReviewedSchema62} from './current-schema62-delta.ts';
+import {currentOrdinary64Delta,withoutReviewedPrevisObjects,removeReviewedSchema64} from './current-schema64-delta.ts';
 import {CURRENT_ORDINARY_SCHEMA} from './workspace-schema-current.ts';
 
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
@@ -34,6 +35,7 @@ const adding=(added:readonly SchemaObject[])=>(objects:readonly SchemaObject[]):
   return [...objects,...added].sort(order);
 };
 const LAYERS:readonly ReviewedLayer[]=Object.freeze([
+  {version:64,schemaVersionRows:currentOrdinary64Delta.schemaVersionRows,tables:currentOrdinary64Delta.tables,without:withoutReviewedPrevisObjects,with:adding(currentOrdinary64Delta.objects),restores:[],remove:removeReviewedSchema64},
   {version:62,schemaVersionRows:currentOrdinary62Delta.schemaVersionRows,tables:currentOrdinary62Delta.tables,without:withoutReviewedSubjectVariantObjects,with:withReviewedSubjectVariantObjects,restores:[...currentOrdinary62Delta.removed,...currentOrdinary62Delta.replaced].map(object=>object.name),remove:removeReviewedSchema62},
   {version:60,schemaVersionRows:currentOrdinary60Delta.schemaVersionRows,tables:{},without:withoutReviewedStorageObjects,with:withReviewedStorageObjects,restores:currentOrdinary60Delta.quotaObjects.map(object=>object.name),remove:removeReviewedSchema60},
   {version:58,schemaVersionRows:currentOrdinary58Delta.schemaVersionRows,tables:currentOrdinary58Delta.tables,without:withoutReviewedSceneObjects,with:adding(currentOrdinary58Delta.objects),restores:[],remove:removeReviewedSchema58},

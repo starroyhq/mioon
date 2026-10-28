@@ -32,6 +32,8 @@ export function withoutReviewedSubjectVariantObjects<T extends SchemaObject>(obj
 export function removeReviewedSchema62(db:DatabaseSync):void {
  if(!db.prepare('SELECT 1 FROM schema_version WHERE version=62').get())return;
  assert.equal(db.prepare('SELECT 1 FROM schema_version WHERE version=63').get(),undefined);
+ // Newer layers go first; use downgradeReviewedWorkspace from reviewed-schema-layers.ts.
+ assert.equal(db.prepare('SELECT 1 FROM schema_version WHERE version>63').get(),undefined,'newer reviewed layers are removed first');
  const tables=Object.keys(currentOrdinary62Delta.tables);
  for(const table of tables)assert.equal(db.prepare(`SELECT count(*) AS n FROM "${table}"`).get()!.n,0,`${table} is empty`);
  assert.equal(db.prepare("SELECT 1 FROM image_reviews WHERE json_extract(canonicalIntent,'$.schemaVersion') IS 5 LIMIT 1").get(),undefined,'v5 edit reviews cannot be disguised as historical60');

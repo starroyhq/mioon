@@ -1,3 +1,5 @@
+import {validateWorkspaceSchema64} from './workspace-schema-v64.ts';
+import {createWorkspaceRestoreProfileV65} from './workspace-restore-schema-v65.ts';
 import {validateWorkspaceSchema62} from './workspace-schema-v62.ts';
 import {createWorkspaceRestoreProfileV63} from './workspace-restore-schema-v63.ts';
 import {validateWorkspaceSchema60} from './workspace-schema-v60.ts';
@@ -54,6 +56,7 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
   versions.add(row.version);version=Math.max(version,row.version);
  }
  if(!version)invalid();
+ if(version===64){try{validateWorkspaceSchema64(db);}catch{try{const classification=createWorkspaceRestoreProfileV65(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV64V65AllowingUnknown(db);if(classification.schemaVersion!==64)invalid();}catch{invalid();}}return version;}
  if(version===62){try{validateWorkspaceSchema62(db);}catch{try{const classification=createWorkspaceRestoreProfileV63(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV62V63AllowingUnknown(db);if(classification.schemaVersion!==62)invalid();}catch{invalid();}}return version;}
  if(version===60){try{validateWorkspaceSchema60(db);}catch{try{const classification=createWorkspaceRestoreProfileV61(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV60V61AllowingUnknown(db);if(classification.schemaVersion!==60)invalid();}catch{invalid();}}return version;}
  if(version===58){try{validateWorkspaceSchema58(db);}catch{try{const classification=createWorkspaceRestoreProfileV59(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV58V59AllowingUnknown(db);if(classification.schemaVersion!==58)invalid();}catch{try{const classification=createPrivateStorageProfileV59(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV58V59(db);if(classification.schemaVersion!==58)invalid();}catch{invalid();}}}return version;}

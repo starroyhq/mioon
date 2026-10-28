@@ -49,7 +49,7 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  DESTINATION_EXISTS:'The restore destination already exists. Choose a new destination; existing contents were not changed.',
  LOCKED:'The destination contains a preexisting workspace lock. No lock was removed or repaired.',
  LOCK_LOST:'The destination lock changed. The restore was not activated by this operation.',
- SOURCE_SCHEMA_UNSUPPORTED:'Only fully classified schema24, schema26, schema28, schema30, schema32, schema34, schema36, schema38, schema40, schema44, schema48, schema50, schema52, schema54, schema56, schema58, schema60 or schema62 original backups can be restored. Restored or unknown schemas are not supported.',
+ SOURCE_SCHEMA_UNSUPPORTED:'Only fully classified schema24, schema26, schema28, schema30, schema32, schema34, schema36, schema38, schema40, schema44, schema48, schema50, schema52, schema54, schema56, schema58, schema60, schema62 or schema64 original backups can be restored. Restored or unknown schemas are not supported.',
  CHANGED:'A backup or destination file changed. Preserve the incomplete destination for review.',
  LIMIT:'The backup or restored candidate exceeds a fixed offline restore safety limit.',
  CANCELLED:'Restore was cancelled before activation. The incomplete destination is retained and cannot be reused automatically.',

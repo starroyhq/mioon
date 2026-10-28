@@ -863,6 +863,19 @@ approve in the app); the finished image becomes a variant version without
 changing the subject's default version. `undo` hides the batch's versions and
 keeps the images. Retain each full input and key, as for other writes.
 
+Camera previs (schema 64) adds four commands; the scene format and rules are in
+[PREVIS.md](PREVIS.md):
+
+```sh
+mioon schema previs.scene.set
+mioon previs create --input '{"projectId":"PROJECT_UUID","label":"Night street","position":{"x":40,"y":60},"requestId":"previs-create-0001"}'
+mioon previs scene set --input '{"projectId":"PROJECT_UUID","nodeId":"NODE_UUID","expectedSceneRevision":1,"scene":SCENE_JSON,"requestId":"previs-scene-0002"}'
+mioon previs thumbnail get --input '{"projectId":"PROJECT_UUID","nodeId":"NODE_UUID","slots":["card"]}'
+```
+
+`scene set` replaces the whole scene: start from the node's current `scene` in
+`mioon project get`. The editor writes thumbnails with `previs thumbnail set`.
+
 These are templates, not a blind replay script. Replace IDs, revisions and keys
 with the intended project's current state. `kind` is `character`, `product`,
 `location` or `look`; name is nonblank and 1–120 characters. Use an existing owned

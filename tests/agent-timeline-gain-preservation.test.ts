@@ -1,4 +1,4 @@
-import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE} from './helpers/workspace-schema-current.ts';
+import {CURRENT_MARKER_CHAIN,CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE} from './helpers/workspace-schema-current.ts';
 import {reviewedCatalogAt,reviewedCatalogFrom} from './helpers/reviewed-schema-layers.ts';
 import type {SchemaObject,SqlRow,FrozenBaseline,FrozenClosure,HistoricalDelta48} from './helpers/strict-agent-workspace-types.ts';
 import type {Failure} from './helpers/strict-agent-workspace-types.ts';
@@ -439,7 +439,7 @@ test('actual offline backup CLI retains mixed legacy and v3 gain bytes; the curr
  let store=(openStore(destination) as unknown as FixtureStore);t.after(()=>store.close());let services=(createServices(store,new Map()) as unknown as FixtureServices);
  assert.deepEqual(classifyCurrentWorkspaceSchema(store.db),{schemaVersion:CURRENT_RESTORED_SCHEMA,profile:CURRENT_RESTORE_PROFILE});
  const after=allRows(store.db);for(const [table,rows]of Object.entries(before)){if(table==='schema_version'){assert.deepEqual(after[table].filter((row)=>(row.version as number)<=CURRENT_ORDINARY_SCHEMA),rows);continue;}if(table==='edit_tasks'){assert.deepEqual(after[table].map((row)=>{const result={...row};delete result.executionEpoch;return result;}),rows);continue;}assert.deepEqual(after[table],rows,table);}
- assert.deepEqual(sequences(store.db),beforeSql.sequence);assert.deepEqual(legacyRows(store.db),legacy);assert.equal(markers(store.db).length,42);
+ assert.deepEqual(sequences(store.db),beforeSql.sequence);assert.deepEqual(legacyRows(store.db),legacy);assert.equal(markers(store.db).length,CURRENT_MARKER_CHAIN.length+1);
  // Existing SQL is unchanged except the two documented restoration edit-task
  // additions and new restore-owned objects; all Agent SQL remains exact.
  for(const object of beforeSql.objects.filter((value)=>(value.tbl_name as string).startsWith('agent_')))assert.deepEqual(objects(store.db).find((value)=>value.name===object.name),object);

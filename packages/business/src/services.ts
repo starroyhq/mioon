@@ -82,6 +82,7 @@ import {createImageServices} from './images.ts';
 import {createFrameServices} from './frames.ts';
 import {createSceneServices} from './scene-tasks.ts';
 import {createSubjectVariantServices} from './subject-variants.ts';
+import {createPrevisServices} from './previs.ts';
 import {isSubjectVersionHidden} from './subject-variant-visibility.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
@@ -437,6 +438,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // Registered after images: finished variant images become subject versions in
  // the image service's publishing transaction.
  const subjectVariants=restored?inactive():createSubjectVariantServices(store);
+ const previs=restored?inactive():createPrevisServices(store,{now});
  // Read disclosure verifies only retained subject ownership/provenance. It
  // never evaluates current provider lifecycle, quota, enabled state or POST policy.
  function subjectDisclosure(table: string,value: ServiceRow,projectId?: string,exportId?: string): ServiceRow {
@@ -486,6 +488,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   ...assetAnnotations.handlers,
   ...subjects.handlers,
   ...subjectVariants.handlers,
+  ...previs.handlers,
   ...inspection.handlers,
   ...timeline.handlers,
   ...references.handlers,

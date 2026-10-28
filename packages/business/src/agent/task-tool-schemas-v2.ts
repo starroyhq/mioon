@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="79b00c07a9f8146aab187dd3cade4ea9e5e85bceb15cd4944c149995dd2bd3de";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="4dca7e966245d84fcfec5f03b777d1acdd341393ac419b659cacf8e621e82a14";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -2177,6 +2177,493 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   },
   "required": [
    "subjectId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "previs.create": {
+  "type": "object",
+  "properties": {
+   "label": {
+    "type": "string",
+    "maxLength": 150
+   },
+   "position": {
+    "type": "object",
+    "properties": {
+     "x": {
+      "type": "number"
+     },
+     "y": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "x",
+     "y"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "position"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "previs.scene.set": {
+  "type": "object",
+  "properties": {
+   "nodeId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "expectedSceneRevision": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 9007199254740991
+   },
+   "scene": {
+    "type": "object",
+    "properties": {
+     "schemaVersion": {
+      "type": "number",
+      "const": 1
+     },
+     "figures": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string",
+         "pattern": "^f[1-9][0-9]{0,3}$"
+        },
+        "name": {
+         "type": "string",
+         "maxLength": 20,
+         "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+        },
+        "visible": {
+         "type": "boolean"
+        },
+        "position": {
+         "type": "array",
+         "minItems": 3,
+         "maxItems": 3,
+         "items": [
+          {
+           "type": "number",
+           "minimum": -100,
+           "maximum": 100
+          },
+          {
+           "type": "number",
+           "minimum": -100,
+           "maximum": 100
+          },
+          {
+           "type": "number",
+           "minimum": -100,
+           "maximum": 100
+          }
+         ]
+        },
+        "rotation": {
+         "type": "number",
+         "minimum": -180,
+         "maximum": 180
+        },
+        "pose": {
+         "type": "string",
+         "enum": [
+          "stand",
+          "walk",
+          "sit",
+          "hold",
+          "look-back"
+         ]
+        },
+        "held": {
+         "anyOf": [
+          {
+           "type": "object",
+           "properties": {
+            "propId": {
+             "type": "string",
+             "pattern": "^p[1-9][0-9]{0,3}$"
+            },
+            "hand": {
+             "type": "string",
+             "enum": [
+              "left",
+              "right"
+             ]
+            }
+           },
+           "required": [
+            "propId",
+            "hand"
+           ],
+           "additionalProperties": false
+          },
+          {
+           "type": "null"
+          }
+         ]
+        }
+       },
+       "required": [
+        "id",
+        "name",
+        "visible",
+        "position",
+        "rotation",
+        "pose",
+        "held"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 8
+     },
+     "props": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string",
+         "pattern": "^p[1-9][0-9]{0,3}$"
+        },
+        "kind": {
+         "type": "string",
+         "enum": [
+          "box",
+          "cylinder",
+          "sphere",
+          "panel",
+          "umbrella",
+          "phone",
+          "bag",
+          "cup"
+         ]
+        },
+        "name": {
+         "type": "string",
+         "maxLength": 20,
+         "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+        },
+        "visible": {
+         "type": "boolean"
+        },
+        "position": {
+         "type": "array",
+         "minItems": 3,
+         "maxItems": 3,
+         "items": [
+          {
+           "type": "number",
+           "minimum": -100,
+           "maximum": 100
+          },
+          {
+           "type": "number",
+           "minimum": -100,
+           "maximum": 100
+          },
+          {
+           "type": "number",
+           "minimum": -100,
+           "maximum": 100
+          }
+         ]
+        },
+        "rotation": {
+         "type": "number",
+         "minimum": -180,
+         "maximum": 180
+        },
+        "size": {
+         "type": "array",
+         "minItems": 3,
+         "maxItems": 3,
+         "items": [
+          {
+           "type": "number",
+           "minimum": 0.01,
+           "maximum": 20
+          },
+          {
+           "type": "number",
+           "minimum": 0.01,
+           "maximum": 20
+          },
+          {
+           "type": "number",
+           "minimum": 0.01,
+           "maximum": 20
+          }
+         ]
+        }
+       },
+       "required": [
+        "id",
+        "kind",
+        "name",
+        "visible",
+        "position",
+        "rotation",
+        "size"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 24
+     },
+     "light": {
+      "type": "object",
+      "properties": {
+       "visible": {
+        "type": "boolean"
+       },
+       "azimuth": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180
+       },
+       "elevation": {
+        "type": "number",
+        "minimum": -90,
+        "maximum": 90
+       },
+       "intensity": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 4
+       }
+      },
+      "required": [
+       "visible",
+       "azimuth",
+       "elevation",
+       "intensity"
+      ],
+      "additionalProperties": false
+     },
+     "camera": {
+      "type": "object",
+      "properties": {
+       "position": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": [
+         {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100
+         },
+         {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100
+         },
+         {
+          "type": "number",
+          "minimum": -100,
+          "maximum": 100
+         }
+        ]
+       },
+       "yaw": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180
+       },
+       "pitch": {
+        "type": "number",
+        "minimum": -90,
+        "maximum": 90
+       },
+       "focalLength": {
+        "type": "number",
+        "minimum": 10,
+        "maximum": 300
+       }
+      },
+      "required": [
+       "position",
+       "yaw",
+       "pitch",
+       "focalLength"
+      ],
+      "additionalProperties": false
+     },
+     "keyframes": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "id": {
+         "type": "string",
+         "pattern": "^k[1-9][0-9]{0,3}$"
+        },
+        "name": {
+         "type": "string",
+         "maxLength": 20,
+         "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\ud800-\\udfff]*$"
+        },
+        "camera": {
+         "type": "object",
+         "properties": {
+          "position": {
+           "type": "array",
+           "minItems": 3,
+           "maxItems": 3,
+           "items": [
+            {
+             "type": "number",
+             "minimum": -100,
+             "maximum": 100
+            },
+            {
+             "type": "number",
+             "minimum": -100,
+             "maximum": 100
+            },
+            {
+             "type": "number",
+             "minimum": -100,
+             "maximum": 100
+            }
+           ]
+          },
+          "yaw": {
+           "type": "number",
+           "minimum": -180,
+           "maximum": 180
+          },
+          "pitch": {
+           "type": "number",
+           "minimum": -90,
+           "maximum": 90
+          },
+          "focalLength": {
+           "type": "number",
+           "minimum": 10,
+           "maximum": 300
+          }
+         },
+         "required": [
+          "position",
+          "yaw",
+          "pitch",
+          "focalLength"
+         ],
+         "additionalProperties": false
+        },
+        "exports": {
+         "type": "array",
+         "items": {
+          "type": "string",
+          "format": "uuid"
+         },
+         "maxItems": 4
+        }
+       },
+       "required": [
+        "id",
+        "name",
+        "camera",
+        "exports"
+       ],
+       "additionalProperties": false
+      },
+      "maxItems": 24
+     },
+     "activeKeyframeId": {
+      "anyOf": [
+       {
+        "type": "string",
+        "pattern": "^k[1-9][0-9]{0,3}$"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "schemaVersion",
+     "figures",
+     "props",
+     "light",
+     "camera",
+     "keyframes",
+     "activeKeyframeId"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "nodeId",
+   "expectedSceneRevision",
+   "scene"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "previs.thumbnail.set": {
+  "type": "object",
+  "properties": {
+   "nodeId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "slot": {
+    "type": "string",
+    "pattern": "^(?:card|k[1-9][0-9]{0,3})$"
+   },
+   "sceneRevision": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 9007199254740991
+   },
+   "dataBase64": {
+    "type": "string",
+    "minLength": 4,
+    "maxLength": 87384,
+    "pattern": "^[A-Za-z0-9+/]+={0,2}$"
+   }
+  },
+  "required": [
+   "nodeId",
+   "slot",
+   "sceneRevision",
+   "dataBase64"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "previs.thumbnail.get": {
+  "type": "object",
+  "properties": {
+   "nodeId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "slots": {
+    "type": "array",
+    "items": {
+     "type": "string",
+     "pattern": "^(?:card|k[1-9][0-9]{0,3})$"
+    },
+    "minItems": 1,
+    "maxItems": 25
+   }
+  },
+  "required": [
+   "nodeId",
+   "slots"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

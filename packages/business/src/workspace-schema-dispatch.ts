@@ -1,3 +1,5 @@
+import {initializeWorkspaceSchema64} from './workspace-schema-v64.ts';
+import {createWorkspaceRestoreProfileV65} from './workspace-restore-schema-v65.ts';
 import {initializeWorkspaceSchema62} from './workspace-schema-v62.ts';
 import {createWorkspaceRestoreProfileV63} from './workspace-restore-schema-v63.ts';
 import {initializeWorkspaceSchema60} from './workspace-schema-v60.ts';
@@ -43,7 +45,7 @@ import type {WorkspaceRestoreMetadataV27} from './workspace-restore-schema-v27.t
 import {WORKSPACE_SCHEMA_LINEAGE,isWorkspaceSchemaSince,workspaceSchemasSince} from '../../contracts/src/workspace-schema-lineage.ts';
 import type {WorkspaceOrdinarySchema} from '../../contracts/src/workspace-schema-lineage.ts';
 
-export type CurrentWorkspaceRole = 'ordinary-62' | 'restored-63-evidence' | 'ordinary-60' | 'restored-61-evidence' | 'storage-private-58' | 'storage-private-59-evidence' | 'ordinary-58' | 'restored-59-evidence' | 'ordinary-56' | 'restored-57-evidence' | 'ordinary-54' | 'restored-55-evidence' | 'ordinary-52' | 'restored-53-evidence' | 'ordinary-50' | 'restored-51-evidence' | 'ordinary-48' | 'restored-49-evidence' | 'ordinary-44' | 'restored-45-evidence' | 'ordinary-through-24' | 'ordinary-26' | 'ordinary-28' | 'ordinary-30' | 'ordinary-32' | 'ordinary-40' | 'ordinary-38' | 'ordinary-36' | 'ordinary-34' | 'restored-25-evidence' | 'restored-27-evidence' | 'restored-29-evidence' | 'restored-31-evidence' | 'restored-33-evidence' | 'restored-35-evidence' | 'restored-37-evidence' | 'restored-39-evidence' | 'restored-41-evidence';
+export type CurrentWorkspaceRole = 'ordinary-64' | 'restored-65-evidence' | 'ordinary-62' | 'restored-63-evidence' | 'ordinary-60' | 'restored-61-evidence' | 'storage-private-58' | 'storage-private-59-evidence' | 'ordinary-58' | 'restored-59-evidence' | 'ordinary-56' | 'restored-57-evidence' | 'ordinary-54' | 'restored-55-evidence' | 'ordinary-52' | 'restored-53-evidence' | 'ordinary-50' | 'restored-51-evidence' | 'ordinary-48' | 'restored-49-evidence' | 'ordinary-44' | 'restored-45-evidence' | 'ordinary-through-24' | 'ordinary-26' | 'ordinary-28' | 'ordinary-30' | 'ordinary-32' | 'ordinary-40' | 'ordinary-38' | 'ordinary-36' | 'ordinary-34' | 'restored-25-evidence' | 'restored-27-evidence' | 'restored-29-evidence' | 'restored-31-evidence' | 'restored-33-evidence' | 'restored-35-evidence' | 'restored-37-evidence' | 'restored-39-evidence' | 'restored-41-evidence';
 // Every ordinary or restored role carries the lineage schema it was created
 // from. The map is built from the explicit contracts lineage, so a role outside
 // it never inherits a capability from its number. The development-only private
@@ -122,7 +124,7 @@ function hasLoudnessApplyOperation(sql: string): boolean {
  * separate gate; ordinary legacy repair eligibility does not prove that every
  * schema object is known. Numeric ordering never confers restoration authority. */
 export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWorkspaceRole {
-  let marker = false, restoreEvidence = false, rippleEvidence = false, loudnessApplyEvidence = false, lutEvidence = false, annotationEvidence=false, deletionEvidence=false, taskDispositionEvidence=false, taskEvidence=false, sceneEvidence=false, variantEvidence=false, count = 0;
+  let marker = false, restoreEvidence = false, rippleEvidence = false, loudnessApplyEvidence = false, lutEvidence = false, annotationEvidence=false, deletionEvidence=false, taskDispositionEvidence=false, taskEvidence=false, sceneEvidence=false, variantEvidence=false, previsEvidence=false, count = 0;
   for (const item of db.prepare("SELECT type,CASE WHEN length(CAST(name AS BLOB))<=128 THEN name END AS name,CASE WHEN length(CAST(sql AS BLOB))<=131072 THEN sql END AS sql FROM main.sqlite_schema LIMIT 1025").iterate()) {
     const value = row(item);
     if (++count > 1024 || typeof value.name !== 'string' || Buffer.byteLength(value.name) > 128)
@@ -133,6 +135,7 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
     if(name.startsWith('project_deletion_')||name==='project_mutation_requests')deletionEvidence=true;
     if(/scene_(tasks|requests|results)/.test(name))sceneEvidence=true;
     if(/subject_variant_(batches|items|requests)/.test(name))variantEvidence=true;
+    if(name.includes('previs'))previsEvidence=true;
     if (/asset_annotation|annotation_cross|cross_annotation/.test(name)) annotationEvidence=true;
     if (/project_lut_resources|lut_import_requests/.test(name)) lutEvidence = true;
     if (name.startsWith('workspace_restor') || name.startsWith('restore_')) restoreEvidence = true;
@@ -164,6 +167,15 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
     return 'restored-25-evidence';
   }
   const lifecycleLineage=['26','28','30','32','34','36','38','40','44','48'];
+  const ordinary64=extra.length===18&&extra.every((value,index)=>value.version===[...lifecycleLineage,'50','52','54','56','58','60','62','64'][index]);
+  const restored65=extra.length===19&&extra.every((value,index)=>value.version===[...lifecycleLineage,'50','52','54','56','58','60','62','64','65'][index]);
+  if(ordinary64||restored65){
+    const known=db.prepare('SELECT CAST(version AS TEXT) AS version FROM main.schema_version WHERE main.schema_version.version BETWEEN 1 AND 24 ORDER BY main.schema_version.version LIMIT 25').all().map(row);
+    if(!deletionEvidence||!taskDispositionEvidence||!taskEvidence||!sceneEvidence||!variantEvidence||!previsEvidence||ordinary64&&restoreEvidence||restored65&&!restoreEvidence||known.length!==24||known.some((value,index)=>value.version!==String(index+1)))return unsupported();
+    return ordinary64?'ordinary-64':'restored-65-evidence';
+  }
+  // Previs tables and triggers first appear in schema64.
+  if(previsEvidence)return unsupported();
   const ordinary62=extra.length===17&&extra.every((value,index)=>value.version===[...lifecycleLineage,'50','52','54','56','58','60','62'][index]);
   const restored63=extra.length===18&&extra.every((value,index)=>value.version===[...lifecycleLineage,'50','52','54','56','58','60','62','63'][index]);
   if(ordinary62||restored63){
@@ -308,6 +320,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   const restored41 = createWorkspaceRestoreProfileV41(legacy.initializeThrough24);
   const restored53 = createWorkspaceRestoreProfileV53(legacy.initializeThrough24);
   const restored59 = createWorkspaceRestoreProfileV59(legacy.initializeThrough24);
+  const restored65 = createWorkspaceRestoreProfileV65(legacy.initializeThrough24);
   const restored63 = createWorkspaceRestoreProfileV63(legacy.initializeThrough24);
   const restored61 = createWorkspaceRestoreProfileV61(legacy.initializeThrough24);
   const private59 = createPrivateStorageProfileV59(legacy.initializeThrough24);
@@ -372,6 +385,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     validateWorkspaceVolumeEnvelopeRows(db,volumeEnvelopeAdmission(role));
     validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
     validateWorkspaceColourRows(db, colourAdmission(role));
+    if(role==='ordinary-64'||role==='restored-65-evidence')return restored65.classifyWorkspaceSchemaV64V65(db);
     if(role==='ordinary-62'||role==='restored-63-evidence')return restored63.classifyWorkspaceSchemaV62V63(db);
     if(role==='ordinary-60'||role==='restored-61-evidence')return restored61.classifyWorkspaceSchemaV60V61(db);
     if(role==='storage-private-58'||role==='storage-private-59-evidence')return private59.classifyWorkspaceSchemaV58V59(db);
@@ -397,6 +411,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     validateWorkspaceVolumeEnvelopeRows(db,volumeEnvelopeAdmission(role));
     validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
     validateWorkspaceColourRows(db, colourAdmission(role));
+    if(role==='restored-65-evidence')return restored65.validateWorkspaceRestoreSchemaV65(db);
     if(role==='restored-63-evidence')return restored63.validateWorkspaceRestoreSchemaV63(db);
     if(role==='restored-61-evidence')return restored61.validateWorkspaceRestoreSchemaV61(db);
     if(role==='storage-private-59-evidence')return private59.validateWorkspaceRestoreSchemaV59(db);
@@ -434,6 +449,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     [58, db => initializeWorkspaceSchema58(db, legacy.initializeThrough24)],
     [60, db => initializeWorkspaceSchema60(db, legacy.initializeThrough24)],
     [62, db => initializeWorkspaceSchema62(db, legacy.initializeThrough24)],
+    [64, db => initializeWorkspaceSchema64(db, legacy.initializeThrough24)],
   ];
   if (ordinaryInitializers.map(([version]) => version).join() !== workspaceSchemasSince(26).join())
     throw new TypeError('Every ordinary lineage schema after 24 needs exactly one upgrade initializer.');
@@ -445,6 +461,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     const role = readCurrentWorkspaceRole(db);
     // Restored roles never upgrade; they validate their exact restore profile.
     if (isWorkspaceRoleSince(role, 24, 'restored') || role === 'storage-private-59-evidence') return validateRestore(db);
+    if(role==='ordinary-64'){restored65.classifyWorkspaceSchemaV64V65(db);return initializeAfter(db,64);}
     if(role==='ordinary-62'){restored63.classifyWorkspaceSchemaV62V63(db);return initializeAfter(db,62);}
     if(role==='ordinary-60'){restored61.classifyWorkspaceSchemaV60V61(db);return initializeAfter(db,60);}
     if(role==='ordinary-58'||role==='storage-private-58')return initializeAfter(db,58);
@@ -496,6 +513,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     if (profile.schemaVersion === 24 && profile.profile === 'ordinary') return legacy.install(db, metadata);
     if (profile.schemaVersion === 26 && profile.profile === 'ordinary') return restored27.installWorkspaceRestoreSchemaV27(db, metadata);
     if (profile.schemaVersion === 28 && profile.profile === 'ordinary') return restored29.installWorkspaceRestoreSchemaV29(db, metadata);
+    if(profile.schemaVersion===64&&profile.profile==='ordinary')return restored65.installWorkspaceRestoreSchemaV65(db,metadata);
     if(profile.schemaVersion===62&&profile.profile==='ordinary')return restored63.installWorkspaceRestoreSchemaV63(db,metadata);
     if(profile.schemaVersion===60&&profile.profile==='ordinary')return restored61.installWorkspaceRestoreSchemaV61(db,metadata);
     if (profile.schemaVersion === 58 && profile.profile === 'ordinary') return readCurrentWorkspaceRole(db)==='storage-private-58'?private59.installWorkspaceRestoreSchemaV59(db,metadata):restored59.installWorkspaceRestoreSchemaV59(db, metadata);
@@ -519,6 +537,11 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
 /** Positive schema-role gate; absence or table-name probing never grants compatibility. */
 export function usesAssetAnnotationSchema(db:WorkspaceSchemaReader):boolean{
  return admitsSince(readCurrentWorkspaceRole(db),36);
+}
+
+/** Positive schema-role gate for the previs receipt and thumbnail tables (schema64 on). */
+export function usesPrevisSchema(db:WorkspaceSchemaReader):boolean{
+ return isWorkspaceRoleSince(readCurrentWorkspaceRole(db),64);
 }
 
 /** Runtime negative capability gate; existing invocation/origin checks still apply. */
