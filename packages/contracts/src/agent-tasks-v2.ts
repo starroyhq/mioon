@@ -110,3 +110,5 @@ export const agentTaskConnectionTestSchema:z.ZodType<AgentTaskConnectionTest>=z.
 export const agentTaskConnectionTestResponseSchema=z.object({test:agentTaskConnectionTestSchema.nullable()}).strict();
 export const agentTaskHistoryPageSchema:z.ZodType<AgentTaskHistoryPage>=z.object({conversations:z.array(agentTaskConversationSchema).max(100),nextCursor:z.string().max(512).nullable()}).strict();
 export const agentTaskConversationPageSchema:z.ZodType<AgentTaskConversationPage>=z.object({conversation:agentTaskConversationSchema,runs:z.array(agentTaskRunSchema).max(100),nextCursor:z.string().max(512).nullable()}).strict();
+
+export * from './agent-task-checks-v2.ts';

@@ -69,6 +69,22 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
         }
         const runId=tail[1];if(!/^[-a-f0-9]{36}$/u.test(runId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
         if(tail.length===2&&req.method==='GET'){query(url,[]);json(res,200,runtime.get(projectId,runId));return true;}
+        if(tail[2]==='checks'&&tail.length===3){
+          query(url,['preflight']);const requested=url.searchParams.get('preflight');if(requested!==null&&requested!=='1')throw agentTaskFailure('AGENT_TASK_INVALID');
+          if(req.method==='GET'){
+            // This advisory read owns no background work. Losing its observer
+            // cancels only the local preflight, as for the existing read RPC.
+            const observer=new AbortController(),aborted=()=>observer.abort(),disconnected=()=>{if(!res.writableFinished)observer.abort();};
+            req.once('aborted',aborted);res.once('close',disconnected);
+            try{
+              if(req.aborted||res.destroyed)observer.abort();
+              const value=await runtime.checks(projectId,runId,{signal:observer.signal,preflight:requested==='1'});
+              if(!observer.signal.aborted&&!res.destroyed&&!res.writableEnded)json(res,200,value);
+            }catch(error){if(!observer.signal.aborted&&!res.destroyed&&!res.writableEnded)throw error;}
+            finally{req.removeListener('aborted',aborted);res.removeListener('close',disconnected);}
+          }
+          else {res.setHeader('Allow','GET');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET。'});}return true;
+        }
         if(tail[2]==='actions'&&tail.length===3&&req.method==='POST'){query(url,[]);json(res,200,await runtime.action(projectId,runId,await mutationBody(req)));return true;}
         if(tail[2]==='actions'&&tail.length===4&&req.method==='GET'){query(url,[]);json(res,200,runtime.lookupAction(projectId,runId,tail[3]));return true;}
         if(tail[2]==='events'&&tail.length===3&&req.method==='GET'){
