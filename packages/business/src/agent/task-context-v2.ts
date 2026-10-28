@@ -1,8 +1,9 @@
-import type {AgentTaskDiagnostic,AgentTaskJson,AgentTaskLocale,AgentTaskNote,AgentTaskStep,AgentTaskTier} from '@mioon/contracts/agent-tasks-v2';
+import type {AgentTaskChange,AgentTaskDiagnostic,AgentTaskJson,AgentTaskLocale,AgentTaskNote,AgentTaskSkippedTarget,AgentTaskStep,AgentTaskTier} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentConfiguration} from './config.ts';
 import {TASK_MODEL_LIMITS,taskContinuation,taskResponseLanguageContext} from './task-gateway-v2.ts';
 import type {TaskModelOutput,TaskToolDefinition} from './task-gateway-v2.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,loadedAgentTaskToolGroups} from './task-tool-groups-v2.ts';
+import {compactTaskModelHistory} from './task-context-compaction-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const bytes=(value:unknown):number=>Buffer.byteLength(JSON.stringify(value));
@@ -85,9 +86,9 @@ export function sourceTaskModelToolNames(protocol:AgentConfiguration['protocol']
 export interface TaskModelToolResult {callId:string;result:AgentTaskJson}
 export type TaskModelContextFragment=
   | {kind:'notes';notes:readonly AgentTaskNote[];modelStepId:string}
-  | {kind:'discarded'}
-  | {kind:'continuation';output:TaskModelOutput;results:TaskModelToolResult[];replan?:boolean}
-  | {kind:'partial';text:string};
+  | {kind:'discarded';modelStepId?:string}
+  | {kind:'continuation';output:TaskModelOutput;results:TaskModelToolResult[];replan?:boolean;modelStepId?:string}
+  | {kind:'partial';text:string;modelStepId?:string};
 
 /** Runtime chooses each fragment only after its existing control/effect checks.
  * Protocol continuation is validated immediately, before any later tool batch. */
@@ -108,6 +109,21 @@ export interface TaskModelInputOptions {
   fragments?:readonly (readonly AgentTaskJson[])[];
   notes?:readonly AgentTaskNote[];
   tools?:readonly TaskToolDefinition[];
+  replay?:TaskModelReplayInput;
+}
+/** Semantic request boundaries let compaction replay its earlier decisions,
+ * rather than re-optimizing an ever-growing raw transcript on every call. */
+export interface TaskModelReplayInput {
+  protocol:AgentConfiguration['protocol'];
+  fragments:readonly TaskModelContextFragment[];
+  steps?:readonly AgentTaskStep[];
+  changes?:readonly AgentTaskChange[];
+  skippedTargets?:readonly AgentTaskSkippedTarget[];
+}
+
+/** Base-context copies are deliberately outside the compaction path. */
+export function cloneTaskBaseContext(context:readonly AgentTaskJson[]|undefined,text:string):AgentTaskJson[]{
+  return structuredClone([...(context??[{role:'user',content:text}])]);
 }
 export interface TaskModelInput {
   history:AgentTaskJson[];
@@ -118,10 +134,11 @@ export interface TaskModelInput {
 
 /** Shared by execution and note-capacity probes. Saved intents bypass request
  * reconstruction; a probe supplies the saved history and known partial output. */
-export function assembleModelInput({context,text,fragments=[],notes=[],tools=[]}:TaskModelInputOptions):TaskModelInput {
-  const history:AgentTaskJson[]=structuredClone([...(context??[{role:'user',content:text}])]);
+export function assembleModelInput({context,text,fragments=[],notes=[],tools=[],replay}:TaskModelInputOptions):TaskModelInput {
+  let history:AgentTaskJson[]=cloneTaskBaseContext(context,text);
   for(const fragment of fragments)history.push(...fragment);
   const pendingNotes=notes.filter(note=>note.modelStepId===undefined);
-  history.push(...pendingNotes.map(note=>({role:'user',content:note.text})));
+  if(replay)history=compactTaskModelHistory(history,pendingNotes,replay,replayModelContext);
+  else history.push(...pendingNotes.map(note=>({role:'user',content:note.text})));
   return {history,tools:[...tools],pendingNotes,metrics:{historyBytes:bytes(history),toolCount:tools.length}};
 }

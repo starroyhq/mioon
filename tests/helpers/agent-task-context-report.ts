@@ -24,6 +24,7 @@ export interface ContextReportOptions {
   toolRounds?: number;
   replyBytes?: number;
   deltaBytes?: number;
+  stress30Steps?: boolean;
 }
 interface RequestMeasurement {index: number; bytes: number; toolCount: number}
 interface ModelStepMeasurement {
@@ -42,6 +43,7 @@ interface TableMeasurement {
   countedRows: boolean;
   countedBytes: boolean;
 }
+interface ToolStepMeasurement {index: number; toolName: string; status: string; storedDataBytes: number; resultBytes: number}
 export interface ContextProtocolReport {
   protocol: AgentProtocol;
   run: {status: string; reason: string | null; stepsUsed: number; budget: number; textEvents: number};
@@ -56,10 +58,11 @@ export interface ContextProtocolReport {
     additionalEquivalentRuns: number | null;
   };
   tokenUsage: null;
+  toolSteps?: ToolStepMeasurement[];
 }
 export interface ContextReport {
   version: 1;
-  scenario: {toolRounds: number; replyBytes: number; deltaBytes: number; stepLimit: number};
+  scenario: {toolRounds: number; replyBytes: number; deltaBytes: number; stepLimit: number; stress30Steps?: true; toolResultBytes?: number; firstRoundToolCalls?: number};
   modelLimits: typeof TASK_MODEL_LIMITS;
   measurement: {storage: string; capacity: string; streaming: string; tokens: string};
   protocols: ContextProtocolReport[];
@@ -72,6 +75,13 @@ function record(value: unknown): Record<string, unknown> {
 function positiveInteger(value: number, label: string, maximum: number): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) throw new Error(`${label} must be an integer from 1 to ${maximum}`);
   return value;
+}
+export function contextReportScenario(options: ContextReportOptions = {}): ContextReport['scenario'] {
+  if (options.stress30Steps) {
+    if (options.toolRounds !== undefined || options.replyBytes !== undefined || options.deltaBytes !== undefined) throw new Error('stress30Steps has a fixed workload; do not combine it with toolRounds, replyBytes or deltaBytes');
+    return {toolRounds: 14, replyBytes: 30 * 1024, deltaBytes: 3 * 1024, stepLimit: 30, stress30Steps: true, toolResultBytes: 20 * 1024, firstRoundToolCalls: 2};
+  }
+  return {toolRounds: positiveInteger(options.toolRounds ?? 14, 'toolRounds', 14), replyBytes: positiveInteger(options.replyBytes ?? 30 * 1024, 'replyBytes', TASK_MODEL_LIMITS.outputBytes), deltaBytes: positiveInteger(options.deltaBytes ?? 3 * 1024, 'deltaBytes', TASK_MODEL_LIMITS.outputBytes), stepLimit: 30};
 }
 function modelOutput(protocol: AgentProtocol, text: string, calls: AgentTaskToolCall[], index: number): TaskModelOutput {
   let providerOutput: AgentTaskJson;
@@ -111,7 +121,23 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
     await settings.put({expectedRevision: 0, configuration: {presetId: 'ollama', platformId: 'local', protocol, model: 'qwen3:8b', baseUrl: `http://127.0.0.1:11434${protocol === 'anthropic_messages' ? '' : '/v1'}`}, secret: {action: 'remove'}});
     const authorizations = createTestAuthorizations(() => ({...store}), settings);
     await authorizeTestScope(authorizations, 'project_agent');
-    tools = createAgentTaskTools({store, services});
+    const baseTools = createAgentTaskTools({store, services});
+    tools = scenario.stress30Steps ? {
+      ...baseTools,
+      async execute(prepared: Parameters<typeof baseTools.execute>[0], context: Parameters<typeof baseTools.execute>[1]) {
+        const outcome = await baseTools.execute(prepared, context);
+        assert.equal(prepared.operation, 'project.inspect');
+        assert.ok(outcome.result !== null && typeof outcome.result === 'object' && !Array.isArray(outcome.result));
+        const result = {...outcome.result, syntheticContextPayload: ''};
+        const paddingBytes = scenario.toolResultBytes! - Buffer.byteLength(JSON.stringify(result));
+        assert.ok(paddingBytes >= 0, 'The actual observation is larger than the fixed synthetic result');
+        result.syntheticContextPayload = 'x'.repeat(paddingBytes);
+        assert.equal(Buffer.byteLength(JSON.stringify(result)), scenario.toolResultBytes);
+        // Return through the ordinary runtime/journal path. The full padded
+        // result is persisted, so view compression cannot fake storage savings.
+        return {...outcome, result};
+      },
+    } : baseTools;
     const requests: RequestMeasurement[] = [];
     const gateway: TaskGateway = async function* (request) {
       request.beforeSubmit?.();
@@ -120,7 +146,8 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
       requests.push({index, bytes: Buffer.byteLength(request.body), toolCount: Array.isArray(body.tools) ? body.tools.length : 0});
       const text = 'x'.repeat(scenario.replyBytes);
       for (let offset = 0; offset < text.length; offset += scenario.deltaBytes) yield {type: 'delta', text: text.slice(offset, offset + scenario.deltaBytes)};
-      const calls: AgentTaskToolCall[] = index <= scenario.toolRounds ? [{id: `synthetic_read_${String(index).padStart(3, '0')}`, name: 'mioon_project_inspect', arguments: {}}] : [];
+      const callCount = index <= scenario.toolRounds ? scenario.stress30Steps && index === 1 ? scenario.firstRoundToolCalls! : 1 : 0;
+      const calls: AgentTaskToolCall[] = Array.from({length: callCount}, (_value, callIndex) => ({id: `synthetic_read_${String(index).padStart(3, '0')}${scenario.stress30Steps ? `_${callIndex + 1}` : ''}`, name: 'mioon_project_inspect', arguments: {}}));
       yield {type: 'done', output: modelOutput(protocol, text, calls, index)};
     };
     runtime = createAgentTaskRuntime({store, agentSettings: settings, authorizations, tools, gateway, selfPort: () => 4318});
@@ -141,6 +168,11 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
     const quotaRows = after.usage.rows - before.usage.rows;
     const byBytes = equivalentRuns(after.remaining.bytes, quotaBytes), byRows = equivalentRuns(after.remaining.rows, quotaRows);
     const estimates = [byBytes, byRows].filter((value): value is number => value !== null);
+    const toolSteps: ToolStepMeasurement[] | undefined = scenario.stress30Steps ? store.db.prepare("SELECT status,data,length(CAST(data AS BLOB)) AS bytes FROM agent_task_steps_v2 WHERE runId=? AND json_extract(data,'$.kind')='tool' ORDER BY position").all(sent.run.id).map((row, index) => {
+      const saved = record(JSON.parse(String(row.data))), call = record(saved.toolCall);
+      assert.equal(typeof call.name, 'string');
+      return {index: index + 1, toolName: String(call.name), status: String(row.status), storedDataBytes: Number(row.bytes), resultBytes: saved.result === undefined ? 0 : Buffer.byteLength(JSON.stringify(saved.result))};
+    }) : undefined;
     return {
       protocol,
       run: {status: snapshot.run.status, reason: snapshot.run.pauseReason ?? null, stepsUsed: snapshot.run.stepsUsed, budget: snapshot.run.budget, textEvents: modelSteps.reduce((sum, step) => sum + step.textEvents, 0)},
@@ -148,6 +180,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
       retained: {quotaBytes, quotaRows, tables: tableGrowth(before, after)},
       capacity: {limits: after.limits, remaining: after.remaining, additionalEquivalentRunsByBytes: byBytes, additionalEquivalentRunsByRows: byRows, additionalEquivalentRuns: estimates.length ? Math.min(...estimates) : null},
       tokenUsage: null,
+      ...(toolSteps ? {toolSteps} : {}),
     };
   } finally {
     runtime?.close();
@@ -159,7 +192,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
 }
 
 export async function collectAgentTaskContextReport(options: ContextReportOptions = {}): Promise<ContextReport> {
-  const scenario = {toolRounds: positiveInteger(options.toolRounds ?? 14, 'toolRounds', 14), replyBytes: positiveInteger(options.replyBytes ?? 30 * 1024, 'replyBytes', TASK_MODEL_LIMITS.outputBytes), deltaBytes: positiveInteger(options.deltaBytes ?? 3 * 1024, 'deltaBytes', TASK_MODEL_LIMITS.outputBytes), stepLimit: 30};
+  const scenario = contextReportScenario(options);
   const selected = options.protocols ?? protocols;
   if (!selected.length || selected.some(protocol => !protocols.includes(protocol))) throw new Error('Select at least one supported protocol');
   const reports: ContextProtocolReport[] = [];
@@ -177,9 +210,9 @@ export async function collectAgentTaskContextReport(options: ContextReportOption
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const {values} = parseArgs({options: {protocol: {type: 'string', default: 'all'}, 'tool-rounds': {type: 'string'}, 'reply-bytes': {type: 'string'}, 'delta-bytes': {type: 'string'}, output: {type: 'string'}}});
+  const {values} = parseArgs({options: {protocol: {type: 'string', default: 'all'}, 'tool-rounds': {type: 'string'}, 'reply-bytes': {type: 'string'}, 'delta-bytes': {type: 'string'}, 'stress-30-steps': {type: 'boolean', default: false}, output: {type: 'string'}}});
   const selected = values.protocol === 'all' ? protocols : protocols.filter(protocol => protocol === values.protocol);
-  const report = await collectAgentTaskContextReport({protocols: selected, ...(values['tool-rounds'] ? {toolRounds: Number(values['tool-rounds'])} : {}), ...(values['reply-bytes'] ? {replyBytes: Number(values['reply-bytes'])} : {}), ...(values['delta-bytes'] ? {deltaBytes: Number(values['delta-bytes'])} : {})});
+  const report = await collectAgentTaskContextReport({protocols: selected, ...(values['tool-rounds'] ? {toolRounds: Number(values['tool-rounds'])} : {}), ...(values['reply-bytes'] ? {replyBytes: Number(values['reply-bytes'])} : {}), ...(values['delta-bytes'] ? {deltaBytes: Number(values['delta-bytes'])} : {}), ...(values['stress-30-steps'] ? {stress30Steps: true} : {})});
   const json = JSON.stringify(report, null, 2) + '\n';
   if (values.output) writeFileSync(resolve(values.output), json);
   else process.stdout.write(json);
