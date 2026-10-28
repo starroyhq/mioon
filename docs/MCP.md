@@ -657,6 +657,17 @@ local planning only: actual `first_frame` still uses `reference_attach`. Later
 choices. Motion and identity-lock guarantees remain unsupported. No Blender or
 live-generation step is needed. See [scope and current release gate](SUBJECT-LIBRARY.md).
 
+### Camera previs tools
+
+- `previs_create({projectId,label?,position,requestId})`
+- `previs_scene_set({projectId,nodeId,expectedSceneRevision,scene,requestId})`
+- `previs_thumbnail_set({projectId,nodeId,slot,sceneRevision,dataBase64})`
+- `previs_thumbnail_get({projectId,nodeId,slots})`
+
+The four `previs_*` tools (schema 64) create camera previs nodes and save their
+whole scene under `expectedSceneRevision`; thumbnails are a JPEG cache that the
+editor writes. The scene format and rules are in [PREVIS.md](PREVIS.md).
+
 ## Local frame extraction tools
 
 The existing official SDK bridge exposes exactly six strict frame tools from

@@ -10,6 +10,7 @@ import type {ProjectPackageManifest,ProjectPackageOptions,ProjectPackageCounts,P
 import {projectPackageError} from './container.ts';
 import type {ProjectPackageMediaSource} from './container.ts';
 import {isSubjectVersionHidden} from '../subject-variant-visibility.ts';
+import {validateImportedPrevisNode} from '../previs.ts';
 
 type Row=Record<string,any>;
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/giu;
@@ -187,6 +188,8 @@ export function createProjectFromDocument(store:WorkspaceStore,{document,files,n
    const reader=createOwnedMediaGraphReader(db,projectId);
    for(const row of assetRows)reader.asset(row.id);
    for(const {version} of doc.generations)reader.version(version.id);
+   // Previs scenes travel on their nodes; their keyframe exports must be images of this project.
+   for(const row of doc.nodes)if(row.type==='previs')validateImportedPrevisNode(db,store.get('nodes',row.id),projectId);
    if(doc.timeline)createTimelineRecoveryBoundary(db,{projectId}).validate(store.get('timelines',doc.timeline.id) as never);
    for(const row of doc.subjectVersions)reader.subjectVersion(row.id);
    if(receipt)db.prepare('INSERT INTO idempotency(scope,requestId,requestHash,resourceId) VALUES(?,?,?,?)').run(receipt.scope,receipt.requestId,receipt.requestHash,projectId);

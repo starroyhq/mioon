@@ -458,6 +458,30 @@ export const operationMessages = {
     "en": "List one subject's angle and lighting batches in read-only pages; read each batch to see whether it can be undone",
     "ja": "主体1件の角度追加とライティングのバッチを読み取り専用でページごとに一覧表示します。取り消せるかどうかはバッチごとに読み取って確認します"
   },
+  "operation.previs.create": {
+    "zh-Hans": "在画布上新建一个机位预演节点，带默认场景（一个站立人偶、主光和视平线机位）；只在本机保存，不渲染、不调用模型、不付费；使用必填稳定requestId精确重放",
+    "zh-Hant": "在畫布上新建一個機位預演節點，帶預設場景（一個站立人偶、主光和視平線機位）；只在本機儲存，不渲染、不呼叫模型、不付費；使用必填穩定requestId精確重放",
+    "en": "Create a camera previs node on the canvas with the default scene (one standing mannequin, the key light and an eye-level camera). Saved locally only: no rendering, model calls or charges. A stable requestId is required for exact replay",
+    "ja": "キャンバスにカメラプレビズのノードを作成し、既定のシーン（立っているマネキン1体、キーライト、目線の高さのカメラ）を用意します。ローカルに保存するだけで、レンダリング、モデル呼び出し、課金は行いません。正確な再実行には安定したrequestIdが必須です"
+  },
+  "operation.previs.scene.set": {
+    "zh-Hans": "按场景修订号整体保存一个预演节点的场景：人偶、道具、主光、当前机位和关键帧，节点名称和位置不变；同时删除已不存在关键帧的缩略图；使用必填稳定requestId精确重放",
+    "zh-Hant": "按場景修訂號整體儲存一個預演節點的場景：人偶、道具、主光、目前機位和關鍵影格，節點名稱和位置不變；同時刪除已不存在關鍵影格的縮圖；使用必填穩定requestId精確重放",
+    "en": "Save the whole scene of a previs node under its scene revision: mannequins, props, key light, current camera and keyframes. The node's name and position stay unchanged, and thumbnails of keyframes that no longer exist are removed. A stable requestId is required for exact replay",
+    "ja": "プレビズノードのシーン全体（マネキン、小道具、キーライト、現在のカメラ、キーフレーム）をシーンのリビジョンに基づいて保存します。ノードの名前と位置は変わりません。存在しなくなったキーフレームのサムネイルは削除されます。正確な再実行には安定したrequestIdが必須です"
+  },
+  "operation.previs.thumbnail.set": {
+    "zh-Hans": "保存预演节点卡片或当前场景某个关键帧的JPEG缩略图（长边不超过384像素、不超过64KB），按节点和位置覆盖；只是可重建的缓存，不留回执，不进项目包",
+    "zh-Hant": "儲存預演節點卡片或目前場景某個關鍵影格的JPEG縮圖（長邊不超過384像素、不超過64KB），按節點和位置覆寫；只是可重建的快取，不留回執，不進專案包",
+    "en": "Save a JPEG thumbnail (long edge up to 384 pixels, up to 64 KB) for the card of a previs node or one keyframe of its current scene, replacing that slot. A rebuildable cache only: no receipt and never part of a project package",
+    "ja": "プレビズノードのカード、または現在のシーンのキーフレーム1つのJPEGサムネイル（長辺384ピクセル以内、64KB以内）を保存し、そのスロットを置き換えます。再生成できるキャッシュにすぎず、受付記録は残らず、プロジェクトパッケージにも含まれません"
+  },
+  "operation.previs.thumbnail.get": {
+    "zh-Hans": "只读获取预演节点卡片或关键帧的缩略图；没有缩略图的位置不返回，不渲染",
+    "zh-Hant": "唯讀取得預演節點卡片或關鍵影格的縮圖；沒有縮圖的位置不傳回，不渲染",
+    "en": "Read the thumbnails of the card or keyframes of a previs node, read-only. Slots without a thumbnail are left out; nothing is rendered",
+    "ja": "プレビズノードのカードまたはキーフレームのサムネイルを読み取り専用で取得します。サムネイルのないスロットは返さず、レンダリングも行いません"
+  },
   "operation.subject.binding.list": {
     "zh-Hans": "按唯一镜头或主体过滤器分页只读列出绑定及保留的解绑版本，标记是否需复核",
     "zh-Hant": "按唯一鏡頭或主體篩選器分頁唯讀列出綁定及保留的解綁版本，標記是否需複核",

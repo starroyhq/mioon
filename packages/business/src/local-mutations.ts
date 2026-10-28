@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
-import {AppError} from '@mioon/contracts';
+import {AppError,isPrevisNodeRecord} from '@mioon/contracts';
 import {createMutationReplay} from './mutation-replay.ts';
 import {validateImageConsumption} from './image-consumption.ts';
 
@@ -97,6 +97,8 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
   if(shot.selectedVersionId!=null)version(shot,shot.selectedVersionId as string);
  }
  function nodeRelations(node: MutationRecord) {
+  // A previs node has no asset; its whole record, scene included, must be valid.
+  if(node.type==='previs'){if(!isPrevisNodeRecord(node))invalid();return;}
   if(node.assetId!==undefined&&node.assetId!==null)owned('assets',node.assetId,node.projectId);
   if(node.type!=='text'){
    if(!node.assetId)throw new AppError('ASSET_REQUIRED','图片/视频/音频节点需要素材');
@@ -178,7 +180,11 @@ export function createLocalMutationServices(store: LocalMutationStore,{check,can
   'node.update':(input: NodeUpdateInput)=>mutate('node.update',input,{
    resolve:()=>target('nodes',input.nodeId),
    validate:({value})=>nodeRelations(value),
-   apply:({value})=>{check(value,input.expectedRevision);return put('nodes',{...value,...input.patch,revision:(value.revision as number)+1});},
+   apply:({value})=>{
+    // A previs node's scene is saved by previs.scene.set; only its label and position change here.
+    if(value.type==='previs'&&Object.hasOwn(input.patch,'text')&&input.patch.text!==value.text)throw new AppError('INVALID_NODE_PATCH','机位预演节点只能修改名称和位置',400,{nodeId:value.id});
+    check(value,input.expectedRevision);return put('nodes',{...value,...input.patch,revision:(value.revision as number)+1});
+   },
    replay:(response,context)=>{if((response as MutationRecord).id!==input.nodeId)invalid();replayRecord('nodes',response,context);},
   }),
   'version.select':(input: VersionSelectInput)=>mutate('version.select',input,{

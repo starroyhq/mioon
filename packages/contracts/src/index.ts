@@ -68,6 +68,8 @@ export * from './subject-generation.ts';
 import {subjectSchemas} from './subjects.ts';
 import {subjectVariantSchemas,subjectVariantDescriptions} from './subject-variants.ts';
 export * from './subject-variants.ts';
+import {previsSchemas,previsDescriptions} from './previs.ts';
+export * from './previs.ts';
 export {SUBJECT_KINDS,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,subjectSchemas,subjectResponseSchema,subjectVersionResponseSchema,subjectBindingResponseSchema,isSubjectResponse,isSubjectVersionResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from './subjects.ts';
 import {inspectionSchemas} from './inspection.ts';
 import {sourceRangeSchemas} from './source-range.ts';
@@ -151,6 +153,7 @@ export const schemas={
 ...inspectionSchemas,
 ...subjectSchemas,
 ...subjectVariantSchemas,
+...previsSchemas,
 ...sourceRangeSchemas,
 ...assetDispositionSchemas,
 ...assetAnnotationSchemas,
@@ -242,6 +245,7 @@ Object.assign(descriptions,{
  ...timelineSceneSplitDescriptions,
  ...sceneDescriptions,
  ...subjectVariantDescriptions,
+ ...previsDescriptions,
  'timeline.audioPreview.plan':'只读规划当前已保存时间线最多20秒的声音试听区间；绑定项目、版本与素材哈希，返回有界PCM准备清单。此调用不解码、不播放、不初始化时间线、不写入；PCM另由固定已认证本地资源显式有界解码，不能作为完整成片或响度/真峰值检查。',
  'timeline.audioPreview.continuousPlan':'只读规划已保存时间线的连续音频预览会话；绑定完整版本与源身份，固定双秒块及全会话96MiB额度。不解码、不播放、不写入；显式播放后由固定认证本地资源按需准备完整多轨混音。不是内置Agent工具。',
  'timeline.subtitle.add':'按时间线版本添加一条手动字幕；固定字体排版，30fps时间，返回完整已保存时间线',

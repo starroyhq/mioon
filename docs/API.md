@@ -1364,6 +1364,29 @@ only when a fresh transaction finds no receipt for that key. Restored copies
 and refuse all five operations with `RESTORE_OPERATION_UNAVAILABLE`. These
 operations are not built-in Mio tools.
 
+### Camera previs (schema 64)
+
+Status: backend implemented (C8a); the canvas node and the 3D editor are not
+built yet. The scene format and all rules are in [PREVIS.md](PREVIS.md).
+
+| Operation | Strict RPC input |
+| --- | --- |
+| `previs.create` | `{projectId,label?,position,requestId}` |
+| `previs.scene.set` | `{projectId,nodeId,expectedSceneRevision,scene,requestId}` |
+| `previs.thumbnail.set` | `{projectId,nodeId,slot,sceneRevision,dataBase64}` |
+| `previs.thumbnail.get` | `{projectId,nodeId,slots}` |
+
+A previs node is a canvas node of type `previs` whose record carries a bounded
+scene and a `sceneRevision`. `create` adds the default scene; `scene.set`
+replaces the whole scene under `expectedSceneRevision` and keeps the node's
+label and position. `node.update` changes only a previs node's label and
+position. Both writes require a stable `requestId`; only the newest four scene
+saves of a node keep receipts, and an older retry fails the revision check
+instead of applying again. Thumbnails are a bounded JPEG cache per card or
+keyframe, outside receipts and packages. Restored copies (schema 65,
+`restored-local-v21`) allow only `previs.thumbnail.get`. These operations are
+not built-in Mio tools.
+
 
 ## Timeline output presets (schema 21)
 

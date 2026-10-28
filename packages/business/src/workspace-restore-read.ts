@@ -16,6 +16,7 @@ import {createWaveformHistoryReaders} from './waveforms-history.ts';
 import {createImageHistoryReaders} from './images/history.ts';
 import {createFrameHistoryReaders} from './frames-history.ts';
 import {createSceneHistoryReaders} from './scene-history.ts';
+import {createPrevisReaders} from './previs.ts';
 import {AppError,parse,publicValue,TIMELINE_MUTATION_OPERATIONS,REFERENCE_MUTATION_OPERATIONS,SUBJECT_MUTATION_OPERATIONS,LOCAL_MUTATION_OPERATIONS} from '@mioon/contracts';
 import {getWorkspaceRestoreContext,isRestoredRecordHeld} from './workspace-restore-schema.ts';
 import {RESTORE_READ_OPERATIONS,RESTORE_LOCAL_OPERATIONS,RESTORE_DENIED_OPERATIONS,refuseRestoredOperation,workspaceRestoreError} from './workspace-restore-policy.ts';
@@ -126,6 +127,8 @@ export function createRestoredReadServices(store: RestoreReadStore,{signal}: Res
   'subject.list':(input: RestoreReadInput)=>subjects.handlers['subject.list'](input as never),
   'subject.version.list':(input: RestoreReadInput)=>subjects.handlers['subject.version.list'](input as never),
   'subject.binding.list':(input: RestoreReadInput)=>subjects.handlers['subject.binding.list'](input as never),
+  // Previs nodes can be viewed, not saved, in a restored workspace.
+  'previs.thumbnail.get':(input: RestoreReadInput)=>createPrevisReaders(db).thumbnails(input),
  };
  // These exact existing receipt readers verify original request hash and owned
  // response without entering a business mutator. Absence is never a probe by

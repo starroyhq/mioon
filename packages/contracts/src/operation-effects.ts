@@ -1,6 +1,7 @@
 import {lookPackInspectEffects} from './look-pack-inspection.ts';
 import {timelineColourEffects} from './timeline-colour.ts';
 import {lutResourceEffects} from './lut-resources.ts';
+import {previsEffects} from './previs.ts';
 // Audited against services.ts, local-mutations.mjs, references.ts, timeline.ts and jobs.ts.
 // Effects include work the call schedules/resumes, not just its synchronous RPC.
 // These are advisory descriptions, never permission checks or authorization.
@@ -51,6 +52,7 @@ export const operationEffects = Object.freeze({
   ...timelineColourEffects,
   ...lutResourceEffects,
   ...lookPackInspectEffects,
+  ...previsEffects,
   'timeline.loudness.apply': define({...replayEdit,localProcess:true,notes:'Explicit project/revision/request-bound fixed-gain application. Replays a retained exact acknowledgement before media work. A new request rehashes owned audio sources and remeasures the complete original and candidate float mix, then atomically updates eligible clip gains, one undo history and an immutable receipt. No client gains, limiter, normalization, implicit export-profile change, network, model or payment. Socket interruption does not cancel accepted mutation; reconcile the same durable request. Restored workspaces may read captured receipts but cannot execute a new application.'}),
   'timeline.clip.loudness': define({...read,localProcess:true,notes:'Explicit bounded read of one complete selected saved clip, at most 60 seconds (1800 frames); longer clips are refused without automatic trimming. Measures independently after source trim, gain and fades. Exact timeline/revision/selection/source hash binding and fixed measurement profile. Reports bounded complete-window loudness range. An explicit optional LUFS/dBTP target prepares an actually measured supported fixed-gain candidate; no implicit target or apply authority. No persistent report, database/file write, queue, automatic retry, network, model or paid generation. Not a built-in Agent tool.'}),
   'timeline.loudness.prepare': define({...read,localProcess:true,notes:'Explicit resource-intensive read of one complete saved timeline at its expected revision, fixed mix/measurement profiles and user-selected LUFS/dBTP target. Hashes owned potentially audible sources twice and streams pre-encode float PCM for the original and, when representable, an actually measured fixed-multiplier candidate. Bounded 120-second local observation; no queue, cache, persistent task, database/file write, automatic retry, network, model or paid generation. Results are ephemeral with applyAllowed always false, never edit/export authority. Read-only idempotence does not promise identical future measurements. Not a built-in Agent tool.'}),

@@ -27,6 +27,7 @@ import {canonicalImageInput,isComfyObserveResponse,isComfyRemoteResponse} from '
 import {FRAME_MUTATION_OPERATIONS,frameSchemas,canonicalFrameInput,isFrameMutationResponse,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '@mioon/contracts';
 import {SCENE_MUTATION_OPERATIONS,sceneSchemas,canonicalSceneInput,isSceneMutationResponse,isSceneTaskResponse,isSceneRequestResponse,isSceneListResponse,isSceneResultResponse} from '@mioon/contracts';
 import {SUBJECT_VARIANT_MUTATION_OPERATIONS,subjectVariantSchemas,canonicalSubjectVariantInput,isSubjectVariantMutationResponse,isSubjectVariantBatch,isSubjectVariantListResponse} from '@mioon/contracts';
+import {PREVIS_MUTATION_OPERATIONS,isPrevisMutationResponse,isPrevisThumbnailSetResponse,isPrevisThumbnailGetResponse} from '@mioon/contracts';
 import {isTimelineExportCapabilitiesResponse} from '@mioon/contracts';
 import {isExportSamplePeakResponse, EXPORT_SAMPLE_PEAK_LIMITS} from '@mioon/contracts/export-sample-peak';
 import {isExportLoudnessResponse, EXPORT_LOUDNESS_LIMITS} from '@mioon/contracts/export-loudness';
@@ -155,7 +156,7 @@ export function validateDiscovery(name: string, input: unknown): {operation?: st
 function interrupted(): ClientError { return new ClientError('INTERRUPTED', 'Stopped waiting locally. No remote job was cancelled.'); }
 function checkSignal(signal: AbortSignal | undefined): void { if (signal?.aborted) throw interrupted(); }
 const keyedMutationOperations = new Set<string>([
-  ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS, ...SCENE_MUTATION_OPERATIONS,
+  ...LOCAL_MUTATION_OPERATIONS, ...TIMELINE_MUTATION_OPERATIONS, ...REFERENCE_MUTATION_OPERATIONS, ...IMAGE_MUTATION_OPERATIONS, ...FRAME_MUTATION_OPERATIONS, ...SCENE_MUTATION_OPERATIONS, ...PREVIS_MUTATION_OPERATIONS,
   'generation.submit', 'job.retry', 'export.create', 'image.task.observeRemote', 'image.review.prepare', 'lut.import',
 ]);
 interface RpcBody {operation: string; input: Record<string, unknown>; expectedWorkspaceOrigin?: string}
@@ -380,6 +381,10 @@ export function createClient(clientOptions: ClientOptions = {}): Client {
     const variantReadValid = operation === 'subject.variants.get' ? isSubjectVariantBatch(result) && resultRecord?.projectId === parsed.projectId && resultRecord?.id === parsed.batchId && resultRecord?.undo !== null
       : operation === 'subject.variants.list' ? isSubjectVariantListResponse(parsed, result) : true;
     if (!variantReadValid) throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid subject variant record.');
+    if ((PREVIS_MUTATION_OPERATIONS as readonly string[]).includes(operation) && !isPrevisMutationResponse(operation, parsed, result))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid previs acknowledgement.', {details: {...uncertainRequestDetails(body), submissionMayHaveSucceeded: true}});
+    if ((operation === 'previs.thumbnail.set' && !isPrevisThumbnailSetResponse(parsed, result)) || (operation === 'previs.thumbnail.get' && !isPrevisThumbnailGetResponse(parsed, result)))
+      throw new ClientError('BACKEND_PROTOCOL_ERROR', 'The backend returned an invalid previs thumbnail record.');
     if(operation==='image.task.observeRemote'&&!isComfyObserveResponse(parsed,result))
       throw new ClientError('BACKEND_PROTOCOL_ERROR','The backend returned an invalid ComfyUI observation acknowledgement.',{details:{...uncertainRequestDetails(body),submissionMayHaveSucceeded:true}});
     if(operation==='image.task.remote.get'&&(!isComfyRemoteResponse(result)||resultRecord?.projectId!==parsed.projectId||resultRecord?.taskId!==parsed.taskId))

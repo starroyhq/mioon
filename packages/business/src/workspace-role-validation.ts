@@ -19,6 +19,8 @@ import {validateWorkspaceSchema60} from './workspace-schema-v60.ts';
 import {validateWorkspaceRestoreSchemaV61} from './workspace-restore-schema-v61.ts';
 import {validateWorkspaceSchema62} from './workspace-schema-v62.ts';
 import {validateWorkspaceRestoreSchemaV63} from './workspace-restore-schema-v63.ts';
+import {validateWorkspaceSchema64} from './workspace-schema-v64.ts';
+import {validateWorkspaceRestoreSchemaV65} from './workspace-restore-schema-v65.ts';
 
 /** The standalone complete fixed-profile validator of each role from schema44
  * on. Capability readers validate a role here instead of keeping their own
@@ -35,6 +37,7 @@ const validators: Readonly<Partial<Record<CurrentWorkspaceRole, (db: DatabaseSyn
   'storage-private-59-evidence': db => validateWorkspaceStorageRestoreSchemaV59(db),
   'ordinary-60': db => validateWorkspaceSchema60(db), 'restored-61-evidence': db => validateWorkspaceRestoreSchemaV61(db),
   'ordinary-62': db => validateWorkspaceSchema62(db), 'restored-63-evidence': db => validateWorkspaceRestoreSchemaV63(db),
+  'ordinary-64': db => validateWorkspaceSchema64(db), 'restored-65-evidence': db => validateWorkspaceRestoreSchemaV65(db),
 });
 
 /** Validates the complete fixed profile of `role`; never grants a capability. */

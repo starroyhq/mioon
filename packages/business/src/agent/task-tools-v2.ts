@@ -59,6 +59,9 @@ const forbiddenOperations=[
  // Angle and lighting batches are user-driven for now; Mio can still read the
  // resulting subject versions. Tools for them belong to the harness tool groups.
  'subject.variants.create','subject.variants.retry','subject.variants.undo','subject.variants.get','subject.variants.list',
+ // Camera previs is edited by the user in its editor; Mio sees previs nodes
+ // through the canvas tools but not their scenes or thumbnails yet.
+ 'previs.create','previs.scene.set','previs.thumbnail.set','previs.thumbnail.get',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),
