@@ -204,9 +204,12 @@ import { sourceRangeAddPlan, sameSourceSnapshot } from './source-range-state.ts'
 import { Media, nodeTypes } from './Nodes.tsx';
 import { createPortal } from 'react-dom';
 import { isPrevisNodeRecord } from '@mioon/contracts';
+import type { PrevisScene } from '@mioon/contracts';
 import PrevisInspector from './previs/PrevisInspector.tsx';
 import PrevisEditorHost from './previs/PrevisEditorHost.tsx';
-import { usePrevisThumbnails } from './previs/use-previs-thumbnails.ts';
+import { usePrevisKeyframeThumbnails, usePrevisThumbnails } from './previs/use-previs-thumbnails.ts';
+import { previsEdgeLabel, previsFrameIssue, previsKeyframeOfAsset } from './previs/previs-output.ts';
+import type { PrevisFrameOutcome, PrevisFrameRequest, PrevisFrameUndo, PrevisImportOutcome, PrevisImportRequest, PrevisUndoOutcome } from './previs/previs-output.ts';
 import { createPrevisNode } from './previs/previs-create.ts';
 import { previsFrame } from './previs/previs-camera.ts';
 import { rpc as productionRpc, requestId, activeJob, assetUrl, versionUrl } from './api.ts';
@@ -585,6 +588,8 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   // The previs editor opens over the window for one node of the open project (C8b).
   const [previsOpen, setPrevisOpen] = useState<{projectId: string; nodeId: string} | null>(null);
   const previsOpener = useRef<HTMLElement | null>(null);
+  // Moves when the editor closes, so the inspector reads the keyframe thumbnails it uploaded.
+  const [previsGeneration, setPrevisGeneration] = useState(0);
   const previewAssetRef = useRef<AppAsset | null>(null), canvasAssetSelectionRef = useRef<{id: string; projectId: string | null; epoch: number} | null>(null), clipLoudnessEpoch = useRef(0);
   const setPreviewAsset = (value: AppAsset | null) => { previewAssetRef.current = value; if (value) canvasAssetSelectionRef.current = { id: value.id, projectId: currentProject.current, epoch: projectEpoch.current }; clipLoudnessEpoch.current++; updatePreviewAsset(value); };
   const [realConfirm, setRealConfirm] = useState<GenerationReviewArgs | null>(null);
@@ -1528,8 +1533,88 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
     const opener = previsOpener.current;
     previsOpener.current = null;
     setPrevisOpen(null);
+    setPrevisGeneration(value => value + 1);
     if (currentProject.current === projectId) void refresh(projectId);
     requestAnimationFrame(() => { if (opener?.isConnected && !opener.matches(':disabled') && !opener.closest('[inert], [hidden]')) opener.focus({ preventScroll: true }); });
+  }
+  // An exported keyframe picture enters the library through asset.import. The
+  // same picture is never imported twice; an uncertain answer is resolved by
+  // reading the library again and looking for its hash.
+  async function importPrevisImage(request: PrevisImportRequest): Promise<PrevisImportOutcome> {
+    const captured = context(), projectId = captured.projectId as string | null;
+    if (application || restored || !projectId || request.projectId !== projectId) return { status: 'failed', code: 'PREVIS_PROJECT_CHANGED' };
+    const find = () => dataRef.current!.assets.find(asset => asset.projectId === projectId && asset.mimeType === 'image/png' && typeof asset.sha256 === 'string' && asset.sha256 === request.sha256);
+    const existing = find();
+    if (existing) return { status: 'imported', assetId: existing.id };
+    const input = { projectId, name: request.name, mimeType: 'image/png', dataBase64: request.dataBase64 };
+    let nativeImport: object | null = null, outcome: PrevisImportOutcome;
+    try {
+      const invocation = captured.workspace ? pinNewWorkspaceIntent({}, captured.workspace) : {};
+      if (captured.workspace) assertWorkspaceOperation(captured.workspace, 'asset.import');
+      if (nativeWindow) nativeImport = editorInputs.current!.beginImport(projectId);
+      const asset = await rpc('asset.import', input, invocation as never);
+      if (!importAcknowledged(asset, input)) throw Object.assign(new Error('Invalid import acknowledgement'), { code: 'BACKEND_PROTOCOL_ERROR' });
+      outcome = { status: 'imported', assetId: (asset as { id: string }).id };
+    } catch (error) {
+      const failure = error as { definitive?: boolean; status?: number; code?: string };
+      if (failure.definitive === true && (failure.status ?? 0) >= 400 && (failure.status ?? 0) < 500) outcome = { status: 'failed', code: typeof failure.code === 'string' ? failure.code : 'IMPORT_REJECTED' };
+      else {
+        if (currentProject.current === projectId) await refresh(projectId);
+        const found = find();
+        outcome = found ? { status: 'imported', assetId: found.id } : { status: 'unknown' };
+      }
+    }
+    editorInputs.current!.finishImport(nativeImport, outcome.status === 'unknown');
+    if (outcome.status === 'imported' && currentProject.current === projectId) await refresh(projectId);
+    return outcome;
+  }
+  // A keyframe picture becomes a shot's first frame (its hand-picked
+  // reference) or last frame through an ordinary shot.update, and a plain link
+  // from the previs node is added when nothing links them yet.
+  async function setPrevisFrame(request: PrevisFrameRequest): Promise<PrevisFrameOutcome> {
+    const state = dataRef.current!, projectId = state.project?.id;
+    const shot = state.shots.find(item => item.id === request.shotId && item.projectId === projectId);
+    const node = state.nodes.find(item => item.id === request.nodeId && item.projectId === projectId && item.type === 'previs');
+    if (application || restored || !projectId || request.projectId !== projectId || !shot || !node) return { status: 'refused', reason: 'missing' };
+    const issue = previsFrameIssue({ shot, role: request.role, ratio: previsFrame(state.timeline).ratio, edges: state.edges, assetId: request.assetId });
+    if (issue) return { status: 'refused', reason: issue };
+    const hold = previsFrameHold(projectId);
+    if (hold) return { status: 'refused', reason: hold };
+    const previous = request.role === 'first' ? [...(shot.referenceAssetIds ?? [])] : (typeof shot.lastFrameAssetId === 'string' ? shot.lastFrameAssetId : null);
+    const patch = request.role === 'first' ? { referenceAssetIds: [request.assetId] } : { lastFrameAssetId: request.assetId };
+    const result = await run(`save:${shot.id}`, 'shot.update', { shotId: shot.id, expectedRevision: shot.revision, patch }, undefined, { returnAfterNavigation: true });
+    if (!result) return { status: 'failed' };
+    let edgeId: string | null = null;
+    if (!dataRef.current!.edges.some(edge => edge.source === node.id && edge.target === shot.id)) {
+      const edge = await run(`edge:${node.id}:${shot.id}`, 'edge.create', { projectId, source: node.id, target: shot.id }, undefined, { returnAfterNavigation: true });
+      edgeId = typeof (edge as { id?: unknown } | null)?.id === 'string' ? (edge as { id: string }).id : null;
+    }
+    return { status: 'applied', undo: { projectId, nodeId: node.id, shotId: shot.id, role: request.role, assetId: request.assetId, previous, edgeId } };
+  }
+  // Like other shot edits, frames from the previs wait for unsaved shot text and edits awaiting confirmation.
+  function previsFrameHold(projectId: string): 'text' | 'pending' | null {
+    if (shotTextRef.current?.blocksLegacy() || inspectorDirty) return 'text';
+    if ((tasksRef.current!.blocked as unknown as (projectId: string | null, lane?: string) => boolean)(projectId, 'reference:mutation') ||
+      pendingForProject(projectId, { strict: true, workspace: workspaceRef.current as never, activeOnly: true }).some(entry => isMutationOperation(entry.operation))) return 'pending';
+    return null;
+  }
+  // Undo puts the shot's frame back only while it is still the picture that was
+  // set. `scene` is the open editor's, which knows every image it exported.
+  async function undoPrevisFrame(undo: PrevisFrameUndo, scene: PrevisScene): Promise<PrevisUndoOutcome> {
+    const state = dataRef.current!, shot = state.shots.find(item => item.id === undo.shotId && item.projectId === undo.projectId);
+    if (application || restored || state.project?.id !== undo.projectId) return { status: 'failed' };
+    if (!shot) return { status: 'refused', reason: 'missing' };
+    const current = undo.role === 'first' ? shot.referenceAssetIds?.[0] ?? null : (typeof shot.lastFrameAssetId === 'string' ? shot.lastFrameAssetId : null);
+    if (!current || current.toLowerCase() !== undo.assetId.toLowerCase()) return { status: 'refused', reason: 'changed' };
+    const hold = previsFrameHold(undo.projectId);
+    if (hold) return { status: 'refused', reason: hold };
+    const patch = undo.role === 'first' ? { referenceAssetIds: Array.isArray(undo.previous) ? [...undo.previous] : [] } : { lastFrameAssetId: typeof undo.previous === 'string' ? undo.previous : null };
+    const result = await run(`save:${shot.id}`, 'shot.update', { shotId: shot.id, expectedRevision: shot.revision, patch }, undefined, { returnAfterNavigation: true }) as AppShot | null;
+    if (!result) return { status: 'failed' };
+    // The link this action added goes too, unless the shot's other frame still comes from the previs.
+    const other = undo.role === 'first' ? (typeof result.lastFrameAssetId === 'string' ? result.lastFrameAssetId : null) : result.referenceAssetIds?.[0] ?? null;
+    if (undo.edgeId && previsKeyframeOfAsset(scene, other) < 0 && dataRef.current!.edges.some(edge => edge.id === undo.edgeId)) await run(`delete-edge:${undo.edgeId}`, 'edge.delete', { edgeId: undo.edgeId });
+    return { status: 'undone' };
   }
   async function importFiles(files?: FileList | File[]): Promise<void> {
     if (application?.isRestoredWorkspace(workspaceRef.current)) return;
@@ -2529,8 +2614,10 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const subjectPanel = subjectFocusActive && subjectFocus ? <SubjectInspector subjects={subjects as never} variants={subjectVariants} subjectId={subjectFocus.subjectId} assets={data.assets as never} shots={data.shots as never} blocked={subjectBlocked} restored={restored} onShowTasks={() => openTasks()} onInspectShot={id => { void inspect(id, 'settings', null, { reveal: true }); }} /> : null;
   const previsFrameInfo = previsFrame(data.timeline);
   const chosenPrevis = chosenNode?.type === 'previs' && isPrevisNodeRecord(chosenNode) ? chosenNode : null;
+  const previsKeyframeThumbs = usePrevisKeyframeThumbnails({ projectId: workbenchReady ? (data.project?.id ?? null) : null, node: chosenPrevis, generation: previsGeneration, read: (operation, input) => rpc(operation, input) });
   const previsPanel = chosenPrevis && data.project ? <PrevisInspector key={`previs:${data.project.id}:${chosenPrevis.id}`} node={chosenPrevis} frame={previsFrameInfo} readOnly={restored || Boolean(application)} busy={Boolean(busy[`save:${chosenPrevis.id}`])}
     protectEditing={content => <AgentEditingBoundary workspaceScope={workspaceOriginScope(workspace)||'unverified'} disabled={Boolean(application) || restored} projectId={data.project?.id} targets={[{kind:'node',id:chosenPrevis.id,revision:chosenPrevis.revision}]} canRelease={() => !isBusy(`save:${chosenPrevis.id}`)}>{content}</AgentEditingBoundary>}
+    shots={data.shots} edges={data.edges} keyframeThumbnails={previsKeyframeThumbs}
     onRename={label => saveNode(chosenPrevis.id, chosenPrevis.revision, { label })} onOpen={() => openPrevis(chosenPrevis.id)} /> : null;
   const selectedCanvasAsset = chosenNode?.assetId || chosenVersion?.assetId || chosenShot?.referenceAssetIds?.[0] || (!chosenNode && !chosenShot && canvasAssetSelectionRef.current?.projectId === currentProject.current && canvasAssetSelectionRef.current?.epoch === projectEpoch.current ? canvasAssetSelectionRef.current.id : null);
   const librarySource = workspaceMode === 'editing' ? sourceAsset : previewAsset || data.assets.find(asset => asset.id === selectedCanvasAsset);
@@ -2563,13 +2650,19 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null, op
   const previsEditor = previsOpen && data.project && isPrevisNodeRecord(previsRecord) ? createPortal(<PrevisEditorHost key={`${previsOpen.projectId}:${previsOpen.nodeId}`} node={previsRecord} projectName={data.project.name} frame={previsFrameInfo}
     readOnly={restored || Boolean(application)} thumbnailRevision={previsThumbs.thumbnails[previsRecord.id]?.sceneRevision ?? 0} rpc={(operation, input) => rpc(operation, input)} requestId={requestId}
     onThumbnail={(nodeId, sceneRevision, dataBase64) => previsThumbs.put(previsOpen.projectId, nodeId, sceneRevision, dataBase64)}
-    onClose={() => closePrevis(previsOpen.projectId)} closeRegistry={nativeCloseRegistry.current!} />, document.body) : null;
+    onClose={() => closePrevis(previsOpen.projectId)} closeRegistry={nativeCloseRegistry.current!}
+    shots={data.shots} edges={data.edges} onImport={importPrevisImage} onSetFrame={setPrevisFrame} onUndoFrame={undoPrevisFrame} />, document.body) : null;
   useEffect(() => {
     if (dragging.current) return;
     const next = [...data.nodes.map(record => ({ id: record.id, type: record.type, position: record.position, selected: record.id === selectedId, data: { record, asset: data.assets.find(a => a.id === record.assetId), canReference: isImageReferenceNode(record, data.assets as never[], data.project?.id), referenceBusy, onInspect: (id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true }), ...(record.type === 'previs' ? { thumbnail: previsThumbs.thumbnails[record.id]?.url ?? null, ratio: previsFrameInfo.ratio, onOpen: openPrevis } : {}) } })), ...sortedShots.map((record, index) => ({ id: record.id, type: 'shot', position: record.position, selected: record.id === selectedId, data: { record, index, referenceConnection: referenceForShot(data.edges as never[], record.id), referenceSourceLabel: data.nodes.find(node => node.id === (referenceForShot(data.edges as never[], record.id) as {source?: string} | null | undefined)?.source)?.label || data.assets.find(asset => asset.id === (referenceForShot(data.edges as never[], record.id) as {source?: string; sourceAssetId?: string} | null | undefined)?.sourceAssetId)?.name || msg('assets.imageNode'), referenceBusy, asset: data.assets.find(a => a.id === record.referenceAssetIds?.[0]), version: data.versions.find(v => v.id === record.selectedVersionId), versionCount: data.versions.filter(v => v.shotId === record.id).length, timelineStatus: shotStatuses.get(record.id) ?? null, onViewInEditing: viewShotInEditing, batchMark: storyboardEdited.split(',').includes(record.id) ? 'edited' : null, job: jobs.find(j => j.shotId === record.id), busy: busy[`generate:${record.id}`], generationUnavailableReason, generationProvider: generationSelection(providers, generationOptions[record.id], record).provider, onInspect: (id: string, nextTab: string) => inspect(id, nextTab, null, { reveal: true }), onGenerate: async (shot: AppShot) => { if (!await inspect(shot.id)) return; if (shot.id === selectedId && inspectorDirty) { notify(msg('shell.saveShotBeforeGenerate'), 'warning'); return; } generate(shot); } } }))];
     setNodes(next as FlowNode[]);
   }, [data, sortedShots, selectedId, jobs, busy, inspectorDirty, providers, generationOptions, referenceBusy, generationUnavailableReason, shotStatuses, storyboardEdited, previsThumbs.thumbnails, previsFrameInfo.ratio]);
-  const edges = useMemo(() => data.edges.map(edge => canvasEdge(edge, edge.id === selectedEdgeId, locale)), [data.edges, selectedEdgeId, locale]);
+  const edges = useMemo(() => data.edges.map(edge => {
+    const value = canvasEdge(edge, edge.id === selectedEdgeId, locale);
+    const source = isReferenceEdge(edge) ? undefined : data.nodes.find(node => node.id === edge.source && node.type === 'previs'), shot = source ? data.shots.find(item => item.id === edge.target) : undefined;
+    const label = source && shot && isPrevisNodeRecord(source) ? previsEdgeLabel(source.scene, shot, (key, params) => t(key as never, params as never)) : null;
+    return label ? { ...value, label, ariaLabel: label, className: 'visual-edge previs-frame-edge', style: { stroke: 'var(--wb-text)', strokeWidth: 1.5 }, labelStyle: { ...value.labelStyle, fill: 'var(--wb-text)' } } : value;
+  }), [data.edges, data.nodes, data.shots, selectedEdgeId, locale]);
   const selectedEdge = data.edges.find(edge => edge.id === selectedEdgeId);
   const visibleAssets = data.assets.filter(a => (assetFilter === 'all' || a.mimeType?.startsWith(`${assetFilter}/`)) && a.name.toLowerCase().includes(assetSearch.toLowerCase()));
   const guardRetainedInputInteraction = (event: React.SyntheticEvent) => {

@@ -4,6 +4,7 @@ import type {PrevisHistory} from './previs-history.ts';
 import {previsViewDirection} from './previs-camera.ts';
 import type {Vector3} from './previs-camera.ts';
 import {isHeldPropKind} from './previs-scene.ts';
+import {mergePrevisExports,recordPrevisExport} from './previs-keyframes.ts';
 
 // What the open editor holds besides the saver: the scene being edited, the
 // session's undo steps and the selected element. A selection is a figure or
@@ -25,13 +26,23 @@ export function editPrevisModel(model: PrevisEditorModel, scene: PrevisScene, {k
   if (scene === model.scene) return selection === model.selection ? model : {...model, selection};
   return {scene, history: recordPrevisEdit(model.history, model.scene, scene, {key, now}), selection};
 }
+// Undo and redo keep the exported images recorded since: they stay in the library.
 export function undoPrevisModel(model: PrevisEditorModel): PrevisEditorModel {
   const step = undoPrevisEdit(model.history, model.scene);
-  return step ? {scene: step.scene, history: step.history, selection: valid(step.scene, model.selection)} : model;
+  if (!step) return model;
+  const scene = mergePrevisExports(step.scene, model.scene);
+  return {scene, history: step.history, selection: valid(scene, model.selection)};
 }
 export function redoPrevisModel(model: PrevisEditorModel): PrevisEditorModel {
   const step = redoPrevisEdit(model.history, model.scene);
-  return step ? {scene: step.scene, history: step.history, selection: valid(step.scene, model.selection)} : model;
+  if (!step) return model;
+  const scene = mergePrevisExports(step.scene, model.scene);
+  return {scene, history: step.history, selection: valid(scene, model.selection)};
+}
+/** Records an exported image on its keyframe. It is a fact, not an edit: no undo step. */
+export function recordPrevisModelExport(model: PrevisEditorModel, keyframeId: string, assetId: string): PrevisEditorModel {
+  const scene = recordPrevisExport(model.scene, keyframeId, assetId);
+  return scene === model.scene ? model : {...model, scene};
 }
 export const selectPrevisElement = (model: PrevisEditorModel, selection: PrevisSelection): PrevisEditorModel =>
   valid(model.scene, selection) === model.selection ? model : {...model, selection: valid(model.scene, selection)};

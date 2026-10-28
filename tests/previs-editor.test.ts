@@ -17,6 +17,8 @@ import * as camera from '../apps/web/src/previs/previs-camera.ts';
 import * as sceneEdits from '../apps/web/src/previs/previs-scene.ts';
 import * as history from '../apps/web/src/previs/previs-history.ts';
 import * as editorState from '../apps/web/src/previs/previs-editor-state.ts';
+import * as keyframes from '../apps/web/src/previs/previs-keyframes.ts';
+import * as output from '../apps/web/src/previs/previs-output.ts';
 import {createPrevisSaver} from '../apps/web/src/previs/previs-save.ts';
 import type {PrevisSaveState} from '../apps/web/src/previs/previs-save.ts';
 import {createPrevisNode} from '../apps/web/src/previs/previs-create.ts';
@@ -394,7 +396,7 @@ function harness(file: string) {
   };
   const visible = {value: true};
   const modules: Record<string, Row> = {};
-  const real: Record<string, unknown> = {'previs-editor-state.ts': editorState, 'previs-scene.ts': sceneEdits, 'previs-camera.ts': camera};
+  const real: Record<string, unknown> = {'previs-editor-state.ts': editorState, 'previs-scene.ts': sceneEdits, 'previs-camera.ts': camera, 'previs-keyframes.ts': keyframes, 'previs-output.ts': output};
   function load(name: string): Row {
     if (modules[name]) return modules[name]!;
     const source = readFileSync(path.join(root, 'apps/web/src', name), 'utf8'), module = {exports: {} as Row};
