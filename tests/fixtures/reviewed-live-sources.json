@@ -43,12 +43,12 @@
       "sha256": "3c85b6c33035a94e07d12d68f4b642de43d4320256e0ee003d4b36a637fd08b7"
     },
     "packages/business/src/workspace-schema-dispatch.ts": {
-      "bytes": 47471,
-      "sha256": "e4fce1692e62ab6782b6540dceb0997e4a6b2bebf31376a197ae95b44027f18b"
+      "bytes": 47982,
+      "sha256": "c71931f5fdb1aa6653fdb3b5c90361fa2e5d6276bba96c336f98c7fb9e5887cc"
     },
     "packages/business/src/workspace-volume-envelope-validation.ts": {
-      "bytes": 16939,
-      "sha256": "cb5beeacd993cbfdbbbe121bd2d531000215e18cb282c35e5b5584e22014a650"
+      "bytes": 17707,
+      "sha256": "c4d51827712836b7532d1f47de755ba8c40e44aef96aef45dc54866d398e1483"
     },
     "packages/contracts/package.json": {
       "bytes": 1601,
