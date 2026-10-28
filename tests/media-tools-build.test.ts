@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {FFMPEG_LIBRARIES as CI_LIBRARIES} from '../.github/scripts/install-ffmpeg.ts';
 import {FFMPEG_LIBRARIES, FFMPEG_VERSION, FONTCONFIG_RUNTIME_OPTIONS, MACOS_DEPLOYMENT_TARGET, MEDIA_TOOLS_VERSION, SOURCES, assetName, buildEnvironment, curlArguments, ffmpegConfigureArguments,
-  listedNames, manifestName, minimumMacOS, sourcesBundleName, unexpectedLinks} from '../.github/scripts/build-media-tools.ts';
+  hostPathReferences, listedNames, manifestName, minimumMacOS, sourcesBundleName, unexpectedLinks} from '../.github/scripts/build-media-tools.ts';
 import {FFMPEG_SOURCE} from '../.github/scripts/install-ffmpeg.ts';
 
 test('every source is pinned to an HTTPS archive with a SHA-256 and the CI FFmpeg mirror', () => {
@@ -61,6 +61,10 @@ test('verification parsers reject non-system libraries and read listings and dep
   const otool = '/out/ffmpeg:\n\t/System/Library/Frameworks/CoreText.framework/Versions/A/CoreText (compatibility version 1.0.0)\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0)\n\t/opt/homebrew/opt/x264/lib/libx264.164.dylib (compatibility version 164.0.0)\n\t@rpath/libass.9.dylib (compatibility version 1.0.0)\n';
   assert.deepEqual(unexpectedLinks(otool), ['/opt/homebrew/opt/x264/lib/libx264.164.dylib', '@rpath/libass.9.dylib']);
   assert.deepEqual(unexpectedLinks('/out/ffmpeg:\n\t/usr/lib/libz.1.dylib (compatibility version 1.0.0)\n'), []);
+  // Host package-manager paths in FFmpeg's flags stop the build; the SDK's own usr/local does not.
+  assert.deepEqual(hostPathReferences('EXTRALIBS-avfilter=-L/work/prefix/lib -lfontconfig -L/usr/local/lib -lintl\nCFLAGS=-I/opt/homebrew/include -isysroot /sdk/MacOSX.sdk -I/sdk/MacOSX.sdk/usr/local/include\nLDFLAGS=-Wl,-rpath,/opt/local/lib'),
+    ['/opt/homebrew/include', '/opt/local/lib', '/usr/local/lib']);
+  assert.deepEqual(hostPathReferences('EXTRALIBS-avcodec=-pthread -lm -L/work/prefix/lib -lx264 -lpthread -lm -lz\nprefix=/work/prefix'), []);
   assert.equal(minimumMacOS('Load command 9\n      cmd LC_BUILD_VERSION\n  cmdsize 32\n platform 1\n    minos 12.0\n      sdk 27.0\n'), '12.0');
   assert.equal(minimumMacOS('cmd LC_UUID'), null);
   const encoders = listedNames('Encoders:\n V..... = Video\n ------\n V....D libx264              libx264 H.264\n A....D aac                  AAC (Advanced Audio Coding)\n');

@@ -213,8 +213,10 @@ async function autotools(context: BuildContext, name: string, args: readonly str
 async function meson(context: BuildContext, name: string, args: readonly string[], tags?: string): Promise<void> {
   const directory = await unpack(context, name);
   const tool = path.join(context.tools, 'venv/bin/meson');
-  await run(tool, ['setup', 'build', `--prefix=${context.prefix}`, '--libdir=lib', '--buildtype=release', '--default-library=static', '-Db_ndebug=true', ...args],
-    {cwd: directory, env: context.env, log: context.log});
+  // No fallback subprojects: every dependency comes from the private prefix. Fontconfig's
+  // bundled libintl subproject searches /usr/local, where Intel Homebrew keeps gettext.
+  await run(tool, ['setup', 'build', `--prefix=${context.prefix}`, '--libdir=lib', '--buildtype=release', '--default-library=static', '-Db_ndebug=true',
+    '--wrap-mode=nofallback', ...args], {cwd: directory, env: context.env, log: context.log});
   await run(tool, ['compile', '-C', 'build', '-j', String(context.jobs)], {cwd: directory, env: context.env, log: context.log});
   await run(tool, ['install', '-C', 'build', ...(tags ? ['--tags', tags] : [])], {cwd: directory, env: context.env, log: context.log});
 }
@@ -267,8 +269,22 @@ async function buildFFmpeg(context: BuildContext): Promise<{ffmpeg: string; ffpr
   const directory = await unpack(context, 'ffmpeg');
   const configure = ffmpegConfigureArguments(context.prefix, context.arch, context.sdk);
   await run('./configure', configure, {cwd: directory, env: context.env, log: context.log});
+  // config.mak holds every compiler and linker flag, including those from pkg-config. A
+  // host path there could link a library that is not in the source bundle, even statically.
+  const leaks = hostPathReferences(await readFile(path.join(directory, 'ffbuild/config.mak'), 'utf8'));
+  if (leaks.length) fail('MEDIA_TOOLS_HOST_PATH_LEAK', leaks.join(', '));
   await run('/usr/bin/make', [`-j${context.jobs}`, 'ffmpeg', 'ffprobe'], {cwd: directory, env: context.env, log: context.log});
   return {ffmpeg: path.join(directory, 'ffmpeg'), ffprobe: path.join(directory, 'ffprobe'), configure};
+}
+
+/** Paths into host package managers (Homebrew: /opt/homebrew, or /usr/local on Intel; MacPorts: /opt/local). */
+export function hostPathReferences(text: string): string[] {
+  const found = new Set<string>();
+  for (const token of text.split(/[\s'"=,:;]+/u)) {
+    const value = token.replace(/^-(?:isystem|idirafter|iquote|[LIF])/u, '');
+    if (/^\/(?:usr\/local|opt\/homebrew|opt\/local)(?:\/|$)/u.test(value)) found.add(value);
+  }
+  return [...found].sort();
 }
 
 /** Only macOS system libraries and frameworks may be linked dynamically. */
