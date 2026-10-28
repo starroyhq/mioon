@@ -842,6 +842,13 @@ export const operationMessages = {
     "en": "Against the timeline version, split every clip from one reference video at each cut inside its source range, using the asset's current valid detection result. Splits follow the single-split rules; cuts inside audio fades are skipped and returned. Nothing is written when no clip can be split. The whole batch is one history entry that a single undo reverts. A stable requestId is required for exact replay; no media is processed",
     "ja": "タイムラインのバージョンを照合し、参照動画1件に由来するすべてのクリップを、ソース範囲内の各カット点で一括分割します。カット点はその素材の現在有効な分割結果を使います。分割規則は単一分割と同じで、音声のフェードイン・フェードアウト内のカット点はスキップして返します。分割できるクリップがない場合は書き込みません。一括で1件の履歴となり、1回の取り消しですべて元に戻ります。正確な再実行には安定したrequestIdが必須で、メディアの処理は行いません"
   },
+  "operation.timeline.clip.crossfade": {
+    "zh-Hans": "按时间线版本为不同轨道上的两个有声片段做交叉淡化：后一段的开头落在前一段之内（可以同时开始），且后一段不早于前一段结束；重叠区间从后一段的开头到前一段的结尾，前一段在区间内线性淡出到0，后一段线性淡入到1（线性，不是等功率），原有音量和淡入淡出仍与曲线相乘；两段都不能已有音量包络；两条曲线一次写入并记一条历史，撤销一次两段一起复原；使用必填稳定requestId精确重放，不处理媒体",
+    "zh-Hant": "按時間軸版本為不同軌道上的兩個有聲片段做交叉淡化：後一段的開頭落在前一段之內（可以同時開始），且後一段不早於前一段結束；重疊區間從後一段的開頭到前一段的結尾，前一段在區間內線性淡出到0，後一段線性淡入到1（線性，不是等功率），原有音量和淡入淡出仍與曲線相乘；兩段都不能已有音量包絡；兩條曲線一次寫入並記為一筆歷史，復原一次兩段一起還原；使用必填穩定requestId精確重放，不處理媒體",
+    "en": "Against the timeline version, crossfade two sounding clips on different tracks: the later clip starts within the earlier one (possibly at the same frame) and ends no earlier than it. The overlap runs from the start of the later clip to the end of the earlier one, where the earlier clip fades linearly to 0 and the later one fades linearly in to 1 (linear, not equal-power); existing gain and fades still multiply the curves. Neither clip may already have a volume envelope. Both curves are written at once as one history entry, and a single undo restores both clips. A stable requestId is required for exact replay; no media is processed",
+    "ja": "タイムラインのバージョンを照合し、異なるトラック上の音声付きクリップ2件をクロスフェードします。後のクリップは前のクリップの範囲内で始まり（同時に始まってもかまいません）、前のクリップより早く終わってはいけません。重なり区間は後のクリップの先頭から前のクリップの末尾までで、前のクリップは区間内で0まで直線的にフェードアウトし、後のクリップは1まで直線的にフェードインします（直線で、等電力ではありません）。既存の音量とフェードは引き続き曲線に掛け合わされます。どちらのクリップにも既存の音量エンベロープがあってはなりません。2本の曲線は一度に書き込まれて1件の履歴となり、1回の取り消しで両方のクリップが元に戻ります。正確な再実行には安定したrequestIdが必須で、メディアの処理は行いません"
+  },
+
   "operation.timeline.render": {
     "zh-Hans": "冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询",
     "zh-Hant": "凍結完整多軌時間軸和素材雜湊，排隊產生真實預覽或匯出；匯出可指定30fps左閉右開的影格範圍，快照保持完整；透過export_get查詢",

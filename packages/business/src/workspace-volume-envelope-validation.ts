@@ -8,6 +8,7 @@ import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 import {createTimelineLoudnessApplyContracts} from '../../contracts/src/timeline-loudness-apply.ts';
 import {isTimelineClipLoudnessResponse} from '../../contracts/src/timeline-clip-loudness.ts';
 import {isTimelineMixLoudnessResponse} from '../../contracts/src/timeline-mix-loudness.ts';
+import {TIMELINE_CROSSFADE_OPERATION,createTimelineCrossfadeContracts} from '../../contracts/src/timeline-crossfade.ts';
 import {WRAPPED_TIMELINE_OPERATIONS} from './workspace-wrapped-timeline-receipts.ts';
 
 const JSON_BYTES=4*1024*1024, SNAPSHOT_BYTES=256*1024;
@@ -90,6 +91,11 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
    const timeline=root.timeline;
    if(!object(timeline)||typeof root.requestId!=='string'||bindings.request&&request!==root.requestId||
     !requireWorkspaceEnvelopeRuntime().isTimelineRecord(timeline,{projectId:timeline.projectId}))invalid(true);
+   if(root.operation===TIMELINE_CROSSFADE_OPERATION){
+    const summary=root.crossfade,revision=Number(timeline.revision);
+    const input=object(summary)?{projectId:timeline.projectId,expectedRevision:revision-1,requestId:root.requestId,outgoingClipId:summary.outgoingClipId,incomingClipId:summary.incomingClipId}:null;
+    if(!input||!createTimelineCrossfadeContracts({isTimelineRecord:requireWorkspaceEnvelopeRuntime().isTimelineRecord}).isTimelineCrossfadeResponse(root,input))invalid(true);
+   }
   }
   const admitted=new WeakMap<object,Set<string>>();
   const mark=(value:object,key:string)=>{let set=admitted.get(value);if(!set)admitted.set(value,set=new Set());set.add(key);};

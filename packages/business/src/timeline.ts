@@ -23,6 +23,7 @@ export {TIMELINE_LIMITS} from './timeline-inputs.ts';
 import {readTimelinePreflightSnapshot} from './timeline-sources.ts';
 import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
 import {appendTimelineShots,refreshTimelineSources} from './timeline-shot-sync.ts';
+import {crossfadeTimelineClips} from './timeline-crossfade.ts';
 import {splitTimelineAtScenes} from './timeline-scene-split.ts';
 import type {TimelineSceneSplitPlan} from './timeline-scene-split.ts';
 import {readSceneSplitCuts} from './scene-history.ts';
@@ -357,6 +358,11 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     const cuts=readSceneSplitCuts(db,input.projectId,input.assetId as string,input.resultId as string);
     plan=splitTimelineAtScenes(timeline,input.assetId as string,cuts,(piece,atFrame)=>splitClip(timeline,piece,atFrame,boundary));
    },undefined,timeline=>({operation:'timeline.clip.splitAtScenes',requestId:input.requestId,timeline,...plan}));
+  },
+  'timeline.clip.crossfade':(input: TimelineMutationInput)=>{
+   let plan: ReturnType<typeof crossfadeTimelineClips>|undefined;
+   return mutate('timeline.clip.crossfade',input,(timeline,boundary)=>{plan=crossfadeTimelineClips(timeline,boundary,input.outgoingClipId as string,input.incomingClipId as string);},undefined,
+    timeline=>({operation:'timeline.clip.crossfade',requestId:input.requestId,timeline,...plan}));
   },
   'timeline.seed':(input: TimelineMutationInput)=>mutate('timeline.seed',input,(timeline,boundary)=>{
    if(timeline.clips.length)throw new AppError('TIMELINE_NOT_EMPTY','只有空时间线可以从镜头顺序导入',409);
