@@ -16,6 +16,7 @@ const operationMessages: Readonly<Record<string, DisplayMessage>> = {
   'timeline.clip.refreshSources': message('timeline.history.sourcesRefresh'),
   'timeline.shots.append': message('timeline.history.shotsAppend'),
   'timeline.clip.splitAtScenes': message('timeline.history.splitAtScenes'),
+  'timeline.clip.crossfade': message('timeline.history.crossfade'),
 };
 interface HistoryEntryView {id?: unknown; operation?: unknown}
 interface HistoryView {

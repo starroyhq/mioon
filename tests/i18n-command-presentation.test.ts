@@ -79,7 +79,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   expectedOperations.splice(expectedOperations.indexOf('provider.list') + 1, 0, 'video.connection.list');
   expectedOperations.splice(expectedOperations.indexOf('subject.binding.list') + 1, 0, 'subject.variants.create', 'subject.variants.retry', 'subject.variants.undo', 'subject.variants.get', 'subject.variants.list', 'previs.create', 'previs.scene.set', 'previs.thumbnail.set', 'previs.thumbnail.get');
   expectedOperations.splice(expectedOperations.indexOf('timeline.clip.remove') + 1, 0, 'timeline.clip.rippleRemove');
-  expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.apply') + 1, 0, 'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes');
+  expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.apply') + 1, 0, 'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade');
   expectedOperations.splice(expectedOperations.indexOf('frame.task.recoverResult') + 1, 0, 'scene.detect', 'scene.request.get', 'scene.task.get', 'scene.task.list', 'scene.task.cancel', 'scene.result.get', 'scene.cuts.save', 'scene.shots.create', 'scene.shots.undo');
   const expectedUsage = [...snapshot.data.usage];
   expectedUsage.splice(expectedUsage.indexOf('mioon capabilities') + 1, 0, 'mioon agent --help');

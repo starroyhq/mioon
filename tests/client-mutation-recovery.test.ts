@@ -9,6 +9,7 @@ import { readPending, clearPending, prepareSubmission, reconcilePending } from '
 import { loudnessApplyFixture } from './fixtures/timeline-loudness-apply.ts';
 import { shotSyncFixture } from './fixtures/timeline-shot-sync.ts';
 import { sceneSplitFixture } from './fixtures/timeline-scene-split.ts';
+import { crossfadeFixture } from './fixtures/timeline-crossfade.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
 const Function = lenientFunction;
@@ -131,8 +132,8 @@ test('App opts every six-op path in, uses explicit drawer replay, and never resu
   const rejection = { code: 'REVISION_CONFLICT', definitive: true, details: {} };
   for (const operation of ['shot.create', 'shot.update', 'shot.reorder', 'node.create', 'node.update', 'version.select', ...TIMELINE_MUTATION_OPERATIONS]) {
     assert.equal(check(operation, rejection), false, `${operation} does not trust a bare 4xx`);
-    if (operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.') || (TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation) || operation === 'timeline.clip.splitAtScenes') {
-      const fields = operation === 'timeline.loudness.apply' ? loudnessInput : (TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation) ? shotSyncFixture(operation as Parameters<typeof shotSyncFixture>[0], stored.input).input : operation === 'timeline.clip.splitAtScenes' ? sceneSplitFixture(stored.input).input :operation === 'timeline.format.set' ? { expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } : operation === 'timeline.subtitle.add' ? { expectedRevision: 1, text: '字幕', startFrame: 0, durationFrames: 30 } : { expectedRevision: 1, cueId: other, ...(operation === 'timeline.subtitle.update' ? { patch: { text: '字幕' } } : {}) };
+    if (operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.') || (TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation) || operation === 'timeline.clip.splitAtScenes' || operation === 'timeline.clip.crossfade') {
+      const fields = operation === 'timeline.loudness.apply' ? loudnessInput : (TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation) ? shotSyncFixture(operation as Parameters<typeof shotSyncFixture>[0], stored.input).input : operation === 'timeline.clip.splitAtScenes' ? sceneSplitFixture(stored.input).input : operation === 'timeline.clip.crossfade' ? crossfadeFixture(stored.input).input :operation === 'timeline.format.set' ? { expectedProjectRevision: 1, expectedRevision: 0, presetId: 'landscape_720' } : operation === 'timeline.subtitle.add' ? { expectedRevision: 1, text: '字幕', startFrame: 0, durationFrames: 30 } : { expectedRevision: 1, cueId: other, ...(operation === 'timeline.subtitle.update' ? { patch: { text: '字幕' } } : {}) };
       const formatStored = { input: { ...stored.input, ...fields } };
       const proof = { mutationOutcome: 'not_applied', operation, projectId: owner, requestId: stored.input.requestId };
       assert.equal(check(operation, { ...rejection, details: proof }, formatStored), true);
