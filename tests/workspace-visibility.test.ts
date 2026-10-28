@@ -85,6 +85,7 @@ function createHarness(file: string, exportName = 'default') {
     './BoardInspectorGroup.tsx': { default: 'BoardInspectorGroup', __esModule: true },
     './VersionCardPreview.tsx': { default: 'VersionCardPreview', __esModule: true },
     './CompactNodePlayer.tsx': { default: 'CompactNodePlayer', __esModule: true },
+    './previs/PrevisNode.tsx': { default: 'PrevisNode', __esModule: true },
     './PreviewPlaybackControls.tsx': { default: 'PreviewPlaybackControls', __esModule: true },
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
     './preview-playback.ts': previewPlayback,

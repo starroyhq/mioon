@@ -14,6 +14,7 @@ import type { GenerationProvider } from './generation-settings.ts';
 import './board-redesign.css';
 import './board-timeline-status.css';
 import { ArrowUpRight } from '@mioon/ui/components/workbench-icons';
+import PrevisNode from './previs/PrevisNode.tsx';
 
 export interface NodeAssetView { id?: string; name?: string; mimeType?: string; width?: number; height?: number; url?: string; [key: string]: unknown }
 export interface NodeVersionView { id?: string; assetId?: string; url?: string; snapshot?: { aspectRatio?: string; duration?: number; [key: string]: unknown }; [key: string]: unknown }
@@ -151,4 +152,4 @@ const TextNode = memo(function TextNode({ data, selected }: { data: TextNodeData
   const { t } = useI18n();
   return <article className={`canvas-node text-node ${selected ? 'is-selected' : ''}`} data-testid={`text-node-${data.record.id}`} data-text-selectable={false}><Handle id={VISUAL_TARGET_HANDLE} type="target" position={Position.Left} aria-label={t('shell.node.noteVisualInput')} title={t('shell.node.visualOnly')} /><header className="node-header"><span className="type-icon"><Icon name="text" size={16} /></span><span className="node-title">{data.record.label || t('projects.default.note')}</span><span className="tiny-label">{t('shell.node.textType')}</span></header><div className="text-node-content nodrag nopan nowheel" data-text-selectable>{data.record.text || t('shell.node.notePlaceholder')}</div><Handle id={VISUAL_SOURCE_HANDLE} type="source" position={Position.Right} aria-label={t('shell.node.noteVisualOutput')} title={t('shell.node.visualOnly')} /></article>;
 });
-export const nodeTypes = { shot: ShotNode, image: AssetNode, video: AssetNode, audio: AssetNode, text: TextNode };
+export const nodeTypes = { shot: ShotNode, image: AssetNode, video: AssetNode, audio: AssetNode, text: TextNode, previs: PrevisNode };
