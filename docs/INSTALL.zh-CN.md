@@ -32,7 +32,7 @@ Mac 可在苹果菜单的“关于本机”查看芯片或处理器。发布流�
 
 Mioon 需要 **FFmpeg** 处理视频和声音，使用 **ffprobe** 读取素材信息。它们是独立的命令行工具，**没有包含在 Mioon 安装包中**
 
-**最简单的方式是第一次打开时点“下载并安装”**，使用 Mioon 提供的 FFmpeg 7.1.5（Apple 芯片和 Intel 各一份，约 24 MB）。下载后会校验文件，安装到应用数据目录，按 GPL 许可分发，源码见对应的 [Release](https://github.com/starroyhq/mioon/releases/tag/media-tools-7.1.5-1)，构建方式见[视频工具说明](MEDIA-TOOLS.md)。只有你明确选择时才会下载
+**最简单的方式是第一次打开时点“下载并安装”**，使用 Mioon 提供的 FFmpeg 7.1.5（Apple 芯片和 Intel 各一份，下载约 23 MB 和 26 MB）。下载后会校验文件，安装到应用数据目录，按 GPL 许可分发，源码见对应的 [Release](https://github.com/starroyhq/mioon/releases/tag/media-tools-7.1.5-1)，构建方式见[视频工具说明](MEDIA-TOOLS.md)。只有你明确选择时才会下载
 
 也可以使用自己安装的工具。如果电脑上已有这两个工具，可以继续使用符合要求的版本。否则从 [FFmpeg 官方下载页](https://ffmpeg.org/download.html)查找适合系统和处理器的编译包或软件包；FFmpeg 项目本身提供源码，页面列出的预编译工具来自相应提供者。不要只下载源码、安装器或只有 `ffmpeg` 而没有 `ffprobe` 的包
 

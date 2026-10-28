@@ -36,7 +36,21 @@ export const MEDIA_TOOLS_RELEASE: MediaToolsRelease = Object.freeze({
   license: 'GPL-2.0-or-later',
   baseUrl: 'https://github.com/starroyhq/mioon/releases/download/media-tools-7.1.5-1/',
   sourceUrl: 'https://github.com/starroyhq/mioon/releases/tag/media-tools-7.1.5-1',
-  builds: Object.freeze({}),
+  // media-tools.yml run 40738885330 (commit 528ca27): Developer ID A7C3K354YP, notarized.
+  builds: Object.freeze({
+    'darwin-arm64': Object.freeze({
+      ffmpeg: Object.freeze({file: 'mioon-ffmpeg-7.1.5-1-darwin-arm64.gz', bytes: 12303879, unpackedBytes: 24702784,
+        sha256: 'f58c9b8a6bf9c3016ea3be6cc45d7165e62035ec6a653819742862bf9071db36', unpackedSha256: 'ffb7ed43b084f81a140c23fdf1451342ac969c48405897a3036d0f2823b10a0d'}),
+      ffprobe: Object.freeze({file: 'mioon-ffprobe-7.1.5-1-darwin-arm64.gz', bytes: 12244087, unpackedBytes: 24627520,
+        sha256: '4ce84d3b38aa2e4a0869705638ead01ce9f9bc44e242f7d93db555bdff4c168b', unpackedSha256: '56da274d23c045a0a46c8364675ac18a33e8fa9a48d83044fd9d1f361e5bfb6e'}),
+    }),
+    'darwin-x64': Object.freeze({
+      ffmpeg: Object.freeze({file: 'mioon-ffmpeg-7.1.5-1-darwin-x64.gz', bytes: 13551350, unpackedBytes: 30315120,
+        sha256: 'e897c02960cc8da83b9a1a380682620d44eaa1c33c0278ecb165db4b1691df44', unpackedSha256: '66995cbc4c9dfcd6e0dc612681b3bf166fb2ea292a873a5562bf96bdda0f3d5e'}),
+      ffprobe: Object.freeze({file: 'mioon-ffprobe-7.1.5-1-darwin-x64.gz', bytes: 13486550, unpackedBytes: 30231536,
+        sha256: '976eaa4e5c9e6a5916495f445646365f1d5236b082506d7d4deec920b17d939e', unpackedSha256: '2a00da015e934e211ac182461630f3aad11fe454a33a15b934882cc93dbdcc4a'}),
+    }),
+  }),
 });
 const TOOLS = ['ffmpeg', 'ffprobe'] as const;
 type Tool = typeof TOOLS[number];
