@@ -36,3 +36,5 @@
 .edit-inspector-audio .input-hint,.edit-inspector-audio .notice{overflow:visible;white-space:normal;max-height:none}.dock-workbench .edit-clip-inspector .inspector-scroll{min-height:0;overflow-y:auto;padding-bottom:12px}
 /* Keep the displayed dB value readable inside the 320px inspector. */
 .edit-clip-inspector .clip-db-input{max-width:98px}.dock-workbench .edit-clip-inspector .clip-db-input input{width:68px;min-width:68px;appearance:textfield;-moz-appearance:textfield;padding-right:6px;padding-left:6px}.clip-db-input input::-webkit-inner-spin-button,.clip-db-input input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+/* Crossfade pairs: the pair and its range stack on the left, the action stays on the right. */
+.clip-crossfade{padding:8px 0;border-top:1px solid var(--wb-line-subtle);margin-top:8px}.clip-crossfade>.clip-crossfade-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}.clip-crossfade-pair{display:flex;flex-direction:column;gap:2px;min-width:0}.clip-crossfade-pair>span:first-child{overflow-wrap:anywhere}.clip-crossfade-row>[data-slot=button]{flex:none}

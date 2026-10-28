@@ -566,6 +566,22 @@ fades are left out. With nothing to split it writes nothing and fails with
 or `SCENE_RESULT_STALE`. Full semantics:
 [Split at scene cuts](API.md#split-at-scene-cuts-2026-10-24).
 
+### Crossfade two clips
+
+`timeline clip crossfade` fades the sound of one clip out while another clip on
+a different track fades in. The incoming clip must start within the outgoing one
+and end no earlier than it. Read `timeline get` first:
+
+```sh
+mioon timeline clip crossfade --input '{"projectId":"PROJECT_UUID","expectedRevision":12,"requestId":"crossfade-0001","outgoingClipId":"CLIP_A_UUID","incomingClipId":"CLIP_B_UUID"}'
+```
+
+It writes linear volume keyframes on both clips as one undoable edit and returns
+the timeline with a `crossfade` summary (`startFrame`, `durationFrames`). Clips
+that already have volume keyframes are refused rather than overwritten; gain and
+fades are kept and multiply the curves. Full semantics:
+[Crossfade](API.md#crossfade-2026-10-28).
+
 ### Clip audio fades
 
 Use existing `timeline clip add` or `timeline clip update` commands; inspect

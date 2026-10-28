@@ -62,6 +62,8 @@ const forbiddenOperations=[
  // Camera previs is edited by the user in its editor; Mio sees previs nodes
  // through the canvas tools but not their scenes or thumbnails yet.
  'previs.create','previs.scene.set','previs.thumbnail.set','previs.thumbnail.get',
+ // Crossfades are user-driven for now; Mio still reads the resulting curves.
+ 'timeline.clip.crossfade',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),

@@ -6,6 +6,8 @@ export function touchesLockedTrack(operation:string,input:Record<string,unknown>
   if(['timeline.undo','timeline.redo','timeline.seed','timeline.loudness.apply'].includes(operation))return true;
   // The two canvas bridges name no track: refreshing touches its clips' tracks, appending the first video track.
   if(operation==='timeline.clip.refreshSources')return Array.isArray(input.clipIds)&&input.clipIds.some(id=>{const track=timeline?.clips?.find(clip=>clip.id===id)?.trackId;return typeof track==='string'&&locked.has(track);});
+  // A crossfade touches the tracks of both of its clips.
+  if(operation==='timeline.clip.crossfade')return [input.outgoingClipId,input.incomingClipId].some(id=>{const track=timeline?.clips?.find(clip=>clip.id===id)?.trackId;return typeof track==='string'&&locked.has(track);});
   // The scene split touches every clip of its reference video.
   if(operation==='timeline.clip.splitAtScenes')return Boolean(timeline?.clips?.some(clip=>clip.assetId===input.assetId&&locked.has(clip.trackId)));
   if(operation==='timeline.shots.append'){const lane=[...(timeline?.tracks??[])].filter(track=>track.kind==='video').sort((a,b)=>a.orderIndex-b.orderIndex)[0];return Boolean(lane&&locked.has(lane.id));}

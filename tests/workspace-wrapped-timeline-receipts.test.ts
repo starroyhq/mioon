@@ -6,7 +6,7 @@ import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/works
 import {validateWorkspaceAudioRoleRows} from '../packages/business/src/workspace-audio-role-validation.ts';
 import {validateWorkspaceColourRows} from '../packages/business/src/workspace-colour-validation.ts';
 import {WRAPPED_TIMELINE_OPERATIONS,wrappedTimelineReceiptView} from '../packages/business/src/workspace-wrapped-timeline-receipts.ts';
-import {TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SCENE_SPLIT_OPERATION} from '@mioon/contracts';
+import {TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_CROSSFADE_OPERATION} from '@mioon/contracts';
 import {open,insert} from './workspace-schema26-fixtures.mjs';
 
 const id=(n: number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -34,7 +34,7 @@ function database(t: test.TestContext,response: unknown,requestId='request-wrapp
 }
 
 test('a wrapped receipt whose timeline carries an audio role or a colour reads as that timeline',t=>{
- assert.deepEqual(WRAPPED_TIMELINE_OPERATIONS,[...TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SCENE_SPLIT_OPERATION]);
+ assert.deepEqual(WRAPPED_TIMELINE_OPERATIONS,[...TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_CROSSFADE_OPERATION]);
  for(const operation of WRAPPED_TIMELINE_OPERATIONS){
   const db=database(t,wrapped(operation));
   // The frozen workspace40/41 adapter reads the wrapper as a broken render receipt.
