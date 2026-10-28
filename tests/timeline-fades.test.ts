@@ -69,7 +69,8 @@ test('fade schema preserves absence and explicit zero, accepts only bounded inte
     }
   }
   assert.throws(() => parse('timeline.clip.update', {...update, patch: {fadeInSeconds: 1}}), {code: 'VALIDATION_ERROR'});
-  assert.deepEqual((Object.keys(schemas).filter(name => name.includes('fade')) as unknown), []);
+  // Fade fields add no operation; the two-clip crossfade is its own operation.
+  assert.deepEqual((Object.keys(schemas).filter(name => name.includes('fade')) as unknown), ['timeline.clip.crossfade']);
   assert.equal(TIMELINE_FADE_MAX_FRAMES, 18000);
 });
 

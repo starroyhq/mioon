@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="4dca7e966245d84fcfec5f03b777d1acdd341393ac419b659cacf8e621e82a14";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="66a536a01dbe46f0551d05df3fc8d58b34811decbc8e761de5c94d1f8d3b7f0f";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -3357,6 +3357,32 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "expectedRevision",
    "assetId",
    "resultId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.clip.crossfade": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "outgoingClipId": {
+    "type": "string",
+    "format": "uuid",
+    "description": "The earlier clip, which fades out over the overlap."
+   },
+   "incomingClipId": {
+    "type": "string",
+    "format": "uuid",
+    "description": "The later clip on another track, which fades in over the overlap."
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "outgoingClipId",
+   "incomingClipId"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

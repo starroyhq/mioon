@@ -25,6 +25,8 @@ import {installProjectLifecycleDefinitions,validateProjectLifecycleRows} from '.
 import {initializeWorkspaceSchema40} from './workspace-schema-v40.ts';
 import {validateWorkspaceVolumeEnvelopeRows} from './workspace-volume-envelope-validation.ts';
 import {validateWorkspaceAudioRoleRows} from './workspace-audio-role-validation.ts';
+// Wrapped timeline receipts exist from schema56 on; the frozen scanners read them through this view.
+import {wrappedTimelineReceiptView} from './workspace-wrapped-timeline-receipts.ts';
 import {initializeWorkspaceSchema36} from './workspace-schema-v36.ts';
 import {validateAssetAnnotationRows} from './asset-annotation-validation.ts';
 import {initializeWorkspaceSchema34} from './workspace-schema-v34.ts';
@@ -168,10 +170,10 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
   assertNoRippleWorkspaceOpacity(db);
   const actual=schema(db),fixed=fixedProfilesV62V63();
   if(matches(actual,fixed.ordinary)||matches(actual,fixed.ordinaryMock)){
-   markers(db,false);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateSceneRows(db);validateSubjectVariantRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:62,profile:'ordinary'});
+   markers(db,false);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateSceneRows(db);validateSubjectVariantRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(wrappedTimelineReceiptView(db),{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(wrappedTimelineReceiptView(db),{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:62,profile:'ordinary'});
   }
   if(matches(actual,fixed.restored)||matches(actual,fixed.restoredMock)){
-   markers(db,true);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateSceneRows(db);validateSubjectVariantRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:63,profile:WORKSPACE_RESTORE_PROFILE});
+   markers(db,true);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateSceneRows(db);validateSubjectVariantRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(wrappedTimelineReceiptView(db),{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(wrappedTimelineReceiptView(db),{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});return Object.freeze({schemaVersion:63,profile:WORKSPACE_RESTORE_PROFILE});
   }
   fail('RESTORE_SCHEMA_UNSUPPORTED');
  }
@@ -181,7 +183,7 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
   assertNoRippleWorkspaceOpacity(db);
   const actual=schema(db),fixed=fixedProfilesV62V63();
   if(!matchesToleratingUnknown(actual,fixed.ordinary))fail('RESTORE_SCHEMA_UNSUPPORTED');
-  markers(db,false);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateSceneRows(db);validateSubjectVariantRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(db,{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(db,{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});
+  markers(db,false);validateTaskDispositionRows(db);validateAgentTaskStorageRowsV2(db);validateSceneRows(db);validateSubjectVariantRows(db);validateProjectLifecycleRows(db);validateAssetAnnotationRows(db);validateWorkspaceAudioRoleRows(wrappedTimelineReceiptView(db),{allowAudioRoles:true,frozenEvidenceProfile:'workspace40-restored41'});validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:true});validateWorkspaceColourRows(wrappedTimelineReceiptView(db),{allowColour:true,allowMixedImages:true,allowJpegImages:true,frozenEvidenceProfile:'workspace40-restored41'});
   return Object.freeze({schemaVersion:62,profile:'ordinary'});
  }
 
