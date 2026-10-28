@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type {PrevisCamera,PrevisScene} from '@mioon/contracts';
-import {normalizePrevisCamera,orbitPrevisCamera,previsFrameRect,previsLightDirection,previsViewportFov,turnPrevisCamera,walkPrevisCamera} from './previs-camera.ts';
+import {normalizePrevisCamera,orbitPrevisCamera,previsFrameRect,previsLightDirection,previsVerticalFov,previsViewportFov,turnPrevisCamera,walkPrevisCamera} from './previs-camera.ts';
 import type {Vector3} from './previs-camera.ts';
 import {PREVIS_LIGHT_SELECTION,previsOrbitPivot,previsSceneCenter} from './previs-editor-state.ts';
 import type {PrevisSelection} from './previs-editor-state.ts';
@@ -30,11 +30,17 @@ export interface PrevisViewportEvents {
   lost?(lost: boolean): void;
 }
 export interface PrevisCapture {readonly dataBase64: string; readonly width: number; readonly height: number}
+/** One picture through a camera, exactly the output frame, at a pixel size. */
+export interface PrevisRenderView {readonly camera: PrevisCamera; readonly width: number; readonly height: number}
 export interface PrevisViewport {
   update(input: PrevisViewportInput): void;
   /** A JPEG of what the camera sees now, at most `maxEdge` pixels long: the
    * output frame, or a wide 16:9 view around it for the canvas card. */
   capture(maxEdge: number, maxBytes: number, region?: 'frame' | 'wide'): Promise<PrevisCapture | null>;
+  /** Pictures through other cameras (keyframes) at exact pixel sizes, without
+   * the overlays. The visible view is restored in the same task, so it never
+   * flickers. Null for a view when the context is lost. */
+  renderViews(views: readonly PrevisRenderView[]): HTMLCanvasElement[] | null;
   /** True while the user is moving the camera or an element. */
   busy(): boolean;
   dispose(): void;
@@ -413,6 +419,36 @@ export function createPrevisViewport(host: HTMLElement, overlay: HTMLElement, ev
         if (blob && blob.size <= maxBytes) return {dataBase64: await blobBase64(blob), width: outWidth, height: outHeight};
       }
       return null;
+    },
+    renderViews(views) {
+      if (disposed || lost || !input) return null;
+      sync();
+      const ratio = renderer.getPixelRatio(), visible = renderer.getSize(new THREE.Vector2()), canvases: HTMLCanvasElement[] = [];
+      const shot = new THREE.PerspectiveCamera(50, 1, 0.05, 200);
+      shot.rotation.order = 'YXZ';
+      try {
+        renderer.setPixelRatio(1);
+        for (const view of views) {
+          const width = Math.max(1, Math.round(view.width)), height = Math.max(1, Math.round(view.height));
+          renderer.setSize(width, height, false);
+          shot.aspect = width / height;
+          shot.fov = previsVerticalFov(view.camera.focalLength, shot.aspect);
+          shot.position.set(view.camera.position[0], view.camera.position[1], view.camera.position[2]);
+          shot.rotation.set(radians(view.camera.pitch), radians(view.camera.yaw), 0);
+          shot.updateProjectionMatrix(); shot.updateMatrixWorld();
+          renderer.render(world, shot);
+          // The drawing buffer is valid until this task ends; copy it now.
+          const target = document.createElement('canvas');
+          target.width = width; target.height = height;
+          target.getContext('2d')?.drawImage(canvas, 0, 0, width, height);
+          canvases.push(target);
+        }
+      } finally {
+        renderer.setPixelRatio(ratio);
+        renderer.setSize(visible.x, visible.y, false);
+        render();
+      }
+      return canvases;
     },
     busy: () => Boolean(gesture) || keys.size > 0 || wheelTimer !== null,
     dispose() {

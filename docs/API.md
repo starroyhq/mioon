@@ -1366,8 +1366,8 @@ operations are not built-in Mio tools.
 
 ### Camera previs (schema 64)
 
-Status: backend implemented (C8a); the canvas node and the 3D editor are not
-built yet. The scene format and all rules are in [PREVIS.md](PREVIS.md).
+Status: implemented, with the canvas node, the 3D editor, keyframes and
+keyframe export. The scene format and all rules are in [PREVIS.md](PREVIS.md).
 
 | Operation | Strict RPC input |
 | --- | --- |
@@ -1385,7 +1385,10 @@ saves of a node keep receipts, and an older retry fails the revision check
 instead of applying again. Thumbnails are a bounded JPEG cache per card or
 keyframe, outside receipts and packages. Restored copies (schema 65,
 `restored-local-v21`) allow only `previs.thumbnail.get`. These operations are
-not built-in Mio tools.
+not built-in Mio tools. There is no separate export operation: the editor
+imports a keyframe image with `asset.import`, records its asset ID in the
+keyframe's `exports` with `scene.set`, and sets a shot's first or last frame
+with `shot.update`.
 
 
 ## Timeline output presets (schema 21)
