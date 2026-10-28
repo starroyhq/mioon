@@ -1085,6 +1085,12 @@ export const mioPanelMessages = {
     "en": "Split at cuts",
     "ja": "カット点で分割"
   },
+  "agent.display.operation.timeline.clip.crossfade": {
+    "zh-Hans": "交叉淡化",
+    "zh-Hant": "交叉淡化",
+    "en": "Crossfade",
+    "ja": "クロスフェード"
+  },
   "agent.display.operation.timeline.history.get": {
     "zh-Hans": "查看编辑历史",
     "zh-Hant": "查看編輯歷史",

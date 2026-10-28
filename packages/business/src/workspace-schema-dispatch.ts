@@ -41,6 +41,7 @@ import {createWorkspaceRestoreProfileV35} from './workspace-restore-schema-v35.t
 import {createWorkspaceRestoreProfileV33} from './workspace-restore-schema-v33.ts';
 import {createWorkspaceRestoreProfileV31} from './workspace-restore-schema-v31.ts';
 import {validateWorkspaceColourRows} from './workspace-colour-validation.ts';
+import {wrappedTimelineReceiptView} from './workspace-wrapped-timeline-receipts.ts';
 import {createWorkspaceRestoreProfileV29} from './workspace-restore-schema-v29.ts';
 import {createWorkspaceRestoreProfileV27} from './workspace-restore-schema-v27.ts';
 import type {WorkspaceRestoreMetadataV27} from './workspace-restore-schema-v27.ts';
@@ -312,14 +313,19 @@ function audioRoleAdmission(role:CurrentWorkspaceRole) {
 function colourAdmission(role:CurrentWorkspaceRole) {
   return {...frozenAdmission(role),allowColour:admitsSince(role,30),allowMixedImages:admitsSince(role,32),allowJpegImages:admitsSince(role,34)};
 }
+// Wrapped timeline receipts exist from schema56 on; older roles keep the
+// frozen audio-role and colour scanners' strict reading of every receipt.
+function receiptRows(db:DatabaseSync,role:CurrentWorkspaceRole) {
+  return admitsSince(role,56)?wrappedTimelineReceiptView(db):db;
+}
 
 /** Read-only row admission for callers which need a migration guard without
  * claiming fixed-catalog restoration capability or mutating the source. */
 export function validateCurrentWorkspaceColourProfile(db: DatabaseSync): void {
   const role=readCurrentWorkspaceRole(db);
   validateWorkspaceVolumeEnvelopeRows(db,volumeEnvelopeAdmission(role));
-  validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
-  validateWorkspaceColourRows(db, colourAdmission(role));
+  validateWorkspaceAudioRoleRows(receiptRows(db,role),audioRoleAdmission(role));
+  validateWorkspaceColourRows(receiptRows(db,role), colourAdmission(role));
 }
 
 /** Bound once by existing db wiring. Only application-owned fixed constructors
@@ -396,8 +402,8 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   const classify = (db: DatabaseSync): Classification => {
     const role = readCurrentWorkspaceRole(db);
     validateWorkspaceVolumeEnvelopeRows(db,volumeEnvelopeAdmission(role));
-    validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
-    validateWorkspaceColourRows(db, colourAdmission(role));
+    validateWorkspaceAudioRoleRows(receiptRows(db,role),audioRoleAdmission(role));
+    validateWorkspaceColourRows(receiptRows(db,role), colourAdmission(role));
     if(role==='ordinary-66'||role==='restored-67-evidence')return restored67.classifyWorkspaceSchemaV66V67(db);
     if(role==='ordinary-64'||role==='restored-65-evidence')return restored65.classifyWorkspaceSchemaV64V65(db);
     if(role==='ordinary-62'||role==='restored-63-evidence')return restored63.classifyWorkspaceSchemaV62V63(db);
@@ -423,8 +429,8 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   const validateRestore = (db: DatabaseSync) => {
     const role = readCurrentWorkspaceRole(db);
     validateWorkspaceVolumeEnvelopeRows(db,volumeEnvelopeAdmission(role));
-    validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
-    validateWorkspaceColourRows(db, colourAdmission(role));
+    validateWorkspaceAudioRoleRows(receiptRows(db,role),audioRoleAdmission(role));
+    validateWorkspaceColourRows(receiptRows(db,role), colourAdmission(role));
     if(role==='restored-67-evidence')return restored67.validateWorkspaceRestoreSchemaV67(db);
     if(role==='restored-65-evidence')return restored65.validateWorkspaceRestoreSchemaV65(db);
     if(role==='restored-63-evidence')return restored63.validateWorkspaceRestoreSchemaV63(db);
@@ -501,8 +507,8 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     }
     if (role === 'ordinary-44') return initializeAfter(db,44);
     validateWorkspaceVolumeEnvelopeRows(db,{allowVolumeEnvelopes:role==='ordinary-40'});
-    validateWorkspaceAudioRoleRows(db,audioRoleAdmission(role));
-    validateWorkspaceColourRows(db, colourAdmission(role));
+    validateWorkspaceAudioRoleRows(receiptRows(db,role),audioRoleAdmission(role));
+    validateWorkspaceColourRows(receiptRows(db,role), colourAdmission(role));
     // Ordinary40 reruns its own additive initializer, as do ordinary36/38 with schema38.
     if (role === 'ordinary-40') {initializeWorkspaceSchema40(db); return initializeAfter(db,40);}
     if(role!=='ordinary-36'&&role!=='ordinary-38')assertNoAssetAnnotationSchema(db);

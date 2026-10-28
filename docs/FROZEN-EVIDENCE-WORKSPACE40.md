@@ -83,3 +83,27 @@ run uses only in-memory fixtures. The independent initial 154-test run additiona
 included the historical38 suite, whose last two cases use disposable synthetic
 on-disk workspaces, existing services and backup/restore. No user workspace, media,
 install/build, GUI, network push or Mac action was performed.
+
+## Wrapped timeline receipts (2026-10-28)
+
+From schema56 on, shot-sync, scene-split and crossfade receipts wrap the saved
+timeline as `{operation, requestId, timeline, ...outcomes}`. The adapter above
+treats any receipt with a `timeline` key as a render receipt, so before this
+change a wrapped receipt whose timeline had an audio role or a colour made the
+role and colour scanners reject the whole workspace. That blocked capability
+reads, envelope edits and restore.
+
+The frozen scanners and this adapter are unchanged. For schema56-on roles, the
+dispatcher and the restore57–65 classifiers give both scanners
+`wrappedTimelineReceiptView` (`workspace-wrapped-timeline-receipts.ts`). That
+read-only view shows a wrapped receipt as its bare timeline only when all of the
+following hold:
+
+- its `requestId` matches its row;
+- its timeline passes the timeline record validator;
+- its outcomes carry no role, colour, profile or snapshot keys.
+
+The scanners then check that timeline clip by clip against the current asset rows,
+as they check any bare mutation receipt. Any other wrapper is left as stored, so
+the scanners still reject it when it carries evidence. Roles before schema56
+still read every receipt strictly.

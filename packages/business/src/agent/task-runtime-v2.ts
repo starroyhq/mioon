@@ -16,7 +16,7 @@ import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
-import type {TaskGateway,TaskModelOutput} from './task-gateway-v2.ts';
+import type {TaskGateway,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
 import type {TaskContextPreviousRun,TaskModelContextFragment} from './task-context-v2.ts';
 import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
@@ -324,14 +324,53 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         }
         const knownTools=run.diagnostic?undefined:toolset().list();
         journal.markDispatch(runId,model.id);inflight=model.id;let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
-        const flush=()=>{if(pending&&!closed){journal.appendText(runId,model.id,pending);pending='';lastFlush=Date.now();}};
-        for await(const item of gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),knownTools,beforeSubmit:()=>{fence(runId);}})){
-          if(closed||journal.run(runId).status==='stopped')return;
-          if(output)throw agentTaskFailure('AGENT_TASK_FAILED');
-          if(item.type==='delta'){pending+=item.text;if(Buffer.byteLength(pending)>2048||Date.now()-lastFlush>50)flush();}
-          else output=item.output;
+        let flushTimer:ReturnType<typeof setTimeout>|undefined,flushFailed=false,timerError:unknown,rejectRead:((error:unknown)=>void)|undefined;
+        const clearFlushTimer=()=>{if(flushTimer!==undefined){clearTimeout(flushTimer);flushTimer=undefined;}};
+        const flush=()=>{
+          clearFlushTimer();
+          if(pending&&!closed&&!storageFaulted&&journal.run(runId).status!=='stopped'){
+            try{journal.appendText(runId,model.id,pending);}catch(error){flushFailed=true;throw error;}
+            pending='';lastFlush=Date.now();
+          }
+        };
+        const scheduleFlush=()=>{
+          if(!pending||flushTimer!==undefined||signal.aborted)return;
+          flushTimer=setTimeout(()=>{
+            try{flush();}catch(error){
+              // A timer must not throw outside the executor or leave a stalled
+              // gateway running after an audit write failed. Fence immediately
+              // and deliver the failure to its one pending iterator read.
+              try{failStorage(error);}catch(failure){timerError=failure;rejectRead?.(failure);}
+            }
+          },Math.max(0,250-(Date.now()-lastFlush)));
+        };
+        signal.addEventListener('abort',clearFlushTimer,{once:true});
+        const stream=gateway({configuration:config,body,apiKey:key,signal,selfPort:selfPort(),knownTools,beforeSubmit:()=>{fence(runId);}});
+        let streamEnded=false;
+        try{
+          for(;;){
+            if(timerError)throw timerError;
+            let next:IteratorResult<TaskModelItem,void>;
+            try{next=await new Promise<IteratorResult<TaskModelItem,void>>((resolve,reject)=>{rejectRead=reject;stream.next().then(resolve,reject);});}
+            finally{rejectRead=undefined;}
+            if(timerError)throw timerError;
+            if(next.done){streamEnded=true;if(closed||journal.run(runId).status==='stopped')return;break;}
+            const item=next.value;
+            if(closed||journal.run(runId).status==='stopped')return;
+            if(output)throw agentTaskFailure('AGENT_TASK_FAILED');
+            if(item.type==='delta'){pending+=item.text;if(Buffer.byteLength(pending)>8*1024||Date.now()-lastFlush>=250)flush();else scheduleFlush();}
+            else output=item.output;
+          }
+          flush();if(!output)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
+        }catch(error){
+          // Preserve received text before recording a failed/unknown exchange.
+          // Failed writes are never retried; stop and close discard the buffer.
+          if(!flushFailed)flush();
+          throw error;
+        }finally{
+          clearFlushTimer();signal.removeEventListener('abort',clearFlushTimer);
+          if(!streamEnded)await stream.return();
         }
-        flush();if(!output)throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
         journal.completeStep(runId,model.id,{result:json(output)});inflight=undefined;
         if(journal.run(runId).status!=='running')return;
       }
