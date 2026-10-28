@@ -2,7 +2,7 @@
   "name": "mioon",
   "version": "0.1.0",
   "private": true,
-  "description": "与 AI 共同创作的视频工作台，本地优先、开源，和 Mio 一起构思、编排镜头与剪辑",
+  "description": "内置视频 Agent 的创作工作台，本地优先、开源：一句话交给 Mio，排镜头、剪时间线，你随时接手",
   "license": "Apache-2.0",
   "homepage": "https://mioon.app",
   "repository": {
