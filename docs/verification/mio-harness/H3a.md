@@ -1,6 +1,6 @@
 # H3a · 宿主检查（后端）
 
-2026-10-28 实施，2026-10-29 按授权同步 main 并准备提交／PR。H3a 已确认；显式完整预检审查见第 7 节，最新超时修复、main 同步与提交前验证见第 8 节。PR 要求 merge commit，代理不执行合并。
+2026-10-28 实施，2026-10-29 按授权同步 main 并准备提交／PR。H3a 已确认；显式完整预检审查见第 7 节，超时修复、main 同步与提交前验证见第 8 节；PR CI 后续修复见第 9 节。PR 要求 merge commit，代理不执行合并。
 
 ## 1. 基点与范围
 
@@ -455,3 +455,26 @@ TMPDIR=/private/tmp TZ=UTC caffeinate -i node tests/helpers/agent-task-checks-re
 提交前再次 fetch，`origin/main` 仍为上述 `d373a105…`，与本次已验证基点一致。最新结果与历史证据分别保存，未跑本机全量；全量测试由新 PR 的 CI 执行。
 
 最终提交范围仍为 H3a 原 15 文件，不纳入 main 已有的产品文案／H2 变化；不修改流式实现、请求装配、存储格式、依赖、指纹 fixture 或现有字节 pin。合并仅使用 merge commit，代理不合并。全量验证由本次 PR 的 CI 提供。
+
+## 9. PR #66 CI 修复：UTF-8 输出采集清单漏登记
+
+首次 PR head `f20db24faae933fd8923c5ff8b7945cf41f09467` 的 CI 中，Linux shard 6 在 `tests/transport-utf8-output.test.ts` 的 `every inventoried test/QA text collector configures continuous decoding at its actual listener, before delivery` 失败，报 `tests/agent-task-checks-transport-v2.test.ts: classify each newly introduced stream consumer`。该分片 1714/1715 通过、1 失败；其余 7 个 Linux 分片与 Linux／macOS／Windows source checks 成功。CI run `40727699692`、job `122956062967`，详细链接：<https://github.com/starroyhq/mioon/actions/runs/40727699692/job/122956062967>。
+
+新增 CLI helper 的 stdout JSON 与 stderr 诊断均已使用 `setEncoding('utf8').on('data',...)`，但本阶段漏同步了全库流读取 inventory；原 42 文件聚焦范围也未包含这个审计门禁。修复仅在 `textSites` 增加 `'tests/agent-task-checks-transport-v2.test.ts': 2` 及对应注释，并补录本节。未把新 helper 排除出扫描，也未改动或放宽审计断言。
+
+该 guard 会先转译已登记的严格 TypeScript 源码，核对恰好 2 个实际读取注册点，再执行这两个真实注册表达式，使用中文和 emoji 逐字节投递验证连续解码。现有机制直接覆盖新增 helper，未另造只复述实现的重复用例。
+
+新证据独立保存在 `/Users/kouzen/Library/Caches/mioon-harness-H3a-2026-10-28/ci-utf8-inventory/`：
+
+| 验证 | 实际结果 | 证据 |
+| --- | --- | --- |
+| 原生修复前 `transport-utf8-output.test.ts` | 3/4 通过，原样复现 CI 相同的漏登记错误 | `before.tap`、`ci-failure.json` |
+| 原生修复后 `transport-utf8-output.test.ts` | 4/4，通过，0 失败／取消／跳过 | `after.tap` |
+| 原生 `agent-task-checks-transport-v2.test.ts` | 8/8，通过，0 失败／取消／跳过 | `checks-transport.tap` |
+| 固定 Linux 环境两文件复验 | 2/2 文件、12/12 通过（guard 4 + transport 8），22.952 秒；0 失败／取消／跳过／超时 | `linux-validation-summary.json`、`linux-results.json` |
+
+原生均为 Node 24.21.0、UTC、`TMPDIR=/private/tmp`，每文件独立 `node --test --test-reporter=tap --test-timeout=120000 <file>`，使用本次专用 `caffeinate -i`。本轮没有重跑已通过的 42 文件或本机全量；42 文件历史验收仍见第 8 节。本次审计遗漏提示后续涉及新增子进程文本采集时，应把该全库 UTF-8 guard 纳入对应聚焦集合。
+
+Linux 沿用固定完整 FFmpeg 镜像、Node 24.21.0、UTC、逐文件独立进程／有界超时和本次专用 `caffeinate -i`。新隔离快照 SHA-256 为 `15b4c7b4d1a8fccf8704ccf9f5a811280f24334eda205474323e6e4341facfb7`，5995 个输入文件，排除本报告；相对上次已验证的 PR 源码，仅 UTF-8 审计文件变化。未覆盖旧快照或证据，依赖锁及 99 条请求指纹 fixture 哈希保持。
+
+修复前后 guard 的 4 个测试名均保留，失败的 inventory 用例现已通过；transport 的 8 个测试名／状态与上次 Linux 验证完全相同。运行后源码与快照无漂移，专用驱动、caffeinate 和容器均退出。本次只追加该最小修复提交至原 PR #66；全量由修复后的 PR CI 重新执行，代理仍不合并 PR。
