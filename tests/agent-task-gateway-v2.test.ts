@@ -21,6 +21,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {schemas} from '../packages/contracts/src/index.ts';
 import {taskToolWireSchema} from '../packages/business/src/agent/task-tool-wire-schema.ts';
+import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {agentChatAllowsNaturalEof,createChatCompletionGateway} from '../packages/business/src/agent/chat-completions.ts';
 import {nativeAnthropicEvents,nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
 
@@ -107,12 +108,57 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol'],fra
   const address=server.address();assert.ok(address&&typeof address!=='string');
   const configuration:AgentConfiguration={presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:${address.port}${protocol==='anthropic_messages'?'':'/v1'}`};
   const body=buildTaskModelRequest(configuration,[{role:'user',content:'创建两个镜头'}],toolDefinitions,4318);
-  const stream=({requestBody=body,beforeSubmit,signal}:{requestBody?:string;beforeSubmit?:()=>void;signal?:AbortSignal}={})=>createTaskGateway()({configuration,body:requestBody,apiKey:null,selfPort:4318,beforeSubmit,signal});
+  const stream=({requestBody=body,beforeSubmit,signal,knownTools}:{requestBody?:string;beforeSubmit?:()=>void;signal?:AbortSignal;knownTools?:readonly TaskToolDefinition[]}={})=>createTaskGateway()({configuration,body:requestBody,apiKey:null,selfPort:4318,beforeSubmit,signal,knownTools});
   async function output(beforeSubmit?:()=>void,requestBody=body):Promise<TaskModelOutput>{let result:TaskModelOutput|undefined;
     for await(const item of stream({beforeSubmit,requestBody}))if(item.type==='done')result=item.output;
     assert.ok(result);return result;
   }
   return {configuration,body,requests,output,stream};
+}
+for(const protocol of ['chat_completions','responses','anthropic_messages'] as const){
+  const argumentsJson=JSON.stringify({title:'Saved shot',_mio_step:'Create a saved test shot'});
+  const frames=protocol==='chat_completions'?chatFrames({argumentsJson}):protocol==='responses'?responseFrames({argumentsJson}):nativeAnthropicSse(nativeAnthropicEvents({toolName:'mioon_shot_create',argumentsJson}));
+  test(`${protocol}: trusted catalog accepts an unloaded tool without changing the frozen request`,async t=>{
+    const f=await fixture(t,protocol,frames,[]);let result:TaskModelOutput|undefined;
+    for await(const item of f.stream({knownTools:definitions}))if(item.type==='done')result=item.output;
+    assert.ok(result);assert.ok(result.toolCalls.length>0);
+    for(const call of result.toolCalls){assert.equal(call.name,'mioon_shot_create');assert.deepEqual(call.arguments,{title:'Saved shot'});}
+    assert.equal(f.requests[0]!.rawBody,f.body);assert.equal(f.requests[0]!.body.tools,undefined);
+    assert.ok(!f.requests[0]!.rawBody.includes('knownTools'));
+  });
+  test(`${protocol}: a tool in the request cannot extend a supplied host catalog`,async t=>{
+    const f=await fixture(t,protocol,frames,definitions);
+    await assert.rejects(async()=>{for await(const _item of f.stream({knownTools:[]})){/* Drain to validate the complete provider response. */}},(error:unknown)=>!!error&&typeof error==='object'&&'code' in error&&error.code==='AGENT_CHAT_TOOLS_UNSUPPORTED');
+  });
+  test(`${protocol}: no trusted catalog preserves the original unloaded-name protocol error`,async t=>{
+    const f=await fixture(t,protocol,frames,[]);
+    await assert.rejects(async()=>{for await(const _item of f.stream()){/* The hidden name is absent from this frozen request. */}},(error:unknown)=>!!error&&typeof error==='object'&&'code' in error&&error.code==='AGENT_CHAT_TOOLS_UNSUPPORTED');
+  });
+  test(`${protocol}: a legacy visible schema retains its original explanation handling with a trusted catalog`,async t=>{
+    const f=await fixture(t,protocol,frames,definitions),legacy=JSON.parse(f.body) as {tools:Array<{function?:{parameters:unknown};parameters?:unknown;input_schema?:unknown}>};
+    for(const tool of legacy.tools){if(protocol==='chat_completions')tool.function!.parameters=definitions[0]!.parameters;else if(protocol==='responses')tool.parameters=definitions[0]!.parameters;else tool.input_schema=definitions[0]!.parameters;}
+    const requestBody=JSON.stringify(legacy);let result:TaskModelOutput|undefined;
+    for await(const item of f.stream({requestBody,knownTools:definitions}))if(item.type==='done')result=item.output;
+    assert.ok(result);for(const call of result.toolCalls)assert.deepEqual(call.arguments,{title:'Saved shot',_mio_step:'Create a saved test shot'});
+    assert.equal(f.requests[0]!.rawBody,requestBody);
+  });
+  test(`${protocol}: group guidance is an explicit normal-run option in each language`,()=>{
+    for(const locale of AGENT_TASK_LOCALES){
+      const configuration={...DEFAULT_AGENT_CONFIGURATION,protocol},history=[taskResponseLanguageContext(locale),{role:'user',content:'Synthetic request'}];
+      const previous=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
+      const normal=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318,{toolLoading:true})) as Record<string,unknown>;
+      const instruction=(body:Record<string,unknown>)=>protocol==='chat_completions'?(body.messages as {content:string}[])[0]!.content:String(protocol==='responses'?body.instructions:body.system);
+      assert.ok(!instruction(previous).includes('mioon_tools_load'));assert.ok(instruction(normal).startsWith(instruction(previous)+' '));assert.ok(instruction(normal).includes('mioon_tools_load'));
+      const field=protocol==='chat_completions'?'messages':protocol==='responses'?'instructions':'system';
+      const {...rest}=normal;if(field==='messages')rest.messages=(normal.messages as unknown[]).slice(1);else delete rest[field];
+      const {...oldRest}=previous;if(field==='messages')oldRest.messages=(previous.messages as unknown[]).slice(1);else delete oldRest[field];
+      assert.deepEqual(rest,oldRest);
+      const loader={name:AGENT_TASK_TOOLS_LOAD_NAME,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS};
+      const localized=JSON.parse(buildTaskModelRequest(configuration,history,[loader],4318,{toolLoading:true})) as {tools:Array<{description?:string;function?:{description:string}}>};
+      assert.equal(protocol==='chat_completions'?localized.tools[0]!.function!.description:localized.tools[0]!.description,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS[locale]);
+      assert.equal(loader.description,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en);
+    }
+  });
 }
 function syntheticNetwork({peer='8.8.8.8',authorized=true,status=200,body='',connectionError,endError,readError=false,holdOpen=false}: {peer?:string;authorized?:boolean;status?:number;body?:string;connectionError?:Error;endError?:Error;readError?:boolean;holdOpen?:boolean}={}){
   const state={calls:0,ends:0,destroyed:false};

@@ -15,6 +15,7 @@ import type {Provider} from '../packages/business/src/provider-registry.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
+import {agentTaskToolGroupForName} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createTaskGateway, buildTaskModelRequest, taskContinuation, taskToolExplanation, taskResponseLanguageContext} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
@@ -54,7 +55,7 @@ async function fixture(t:TestContext,{authorize=true,providers=new Map<string,Pr
   const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});
   await settings.put({expectedRevision:0,configuration:selectedConfiguration,secret:{action:'replace',storage:'session',value:key}});
   const authorizations=createTestAuthorizations(()=>({...store}),settings);if(authorize)await authorizeTestScope(authorizations,'project_agent');
-  const requests:RecordedRequest[]=[],effects:string[]=[];
+  const requests:RecordedRequest[]=[],effects:string[]=[],loads:string[]=[];
   let script:Script=(_request,response)=>response.end(frames([],'离线任务完成',{model:selectedConfiguration.model}));
   const server=http.createServer(async(req,res)=>{
     const chunks:Buffer[]=[];for await(const chunk of req)chunks.push(Buffer.from(chunk as Uint8Array));
@@ -72,13 +73,19 @@ async function fixture(t:TestContext,{authorize=true,providers=new Map<string,Pr
   };
   const gateway=createTaskGateway({lookup:async()=>[{address:'8.8.8.8',family:4}],httpsRequest:request} as unknown as AgentTransportDependencies);
   const baseTools=createAgentTaskTools({store,services}),tools={...baseTools,execute:async(...args:Parameters<typeof baseTools.execute>)=>{
-    effects.push(args[0].operation);return baseTools.execute(...args);
+    // Loading records a read-only host observation, never a domain effect.
+    (args[0].operation==='tools.load'?loads:effects).push(args[0].operation);return baseTools.execute(...args);
   }};
   let runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
   t.after(async()=>{runtime.close();await runtime.drain();baseTools.dispose();await services.drain();await settings.close();store.close();await new Promise<void>(resolve=>{server.close(()=>resolve());server.closeAllConnections();});rmSync(root,{recursive:true,force:true});});
-  return {store,services,settings,authorizations,projectId,shot,requests,effects,get runtime(){return runtime;},
+  return {store,services,settings,authorizations,projectId,shot,requests,effects,loads,get runtime(){return runtime;},
     script(next:Script){script=next;},
-    plan(calls:AgentTaskToolCall[]){script=(_request,response,index)=>response.end(index===1?frames(calls,'准备处理',{model:selectedConfiguration.model}):frames([],'离线任务完成',{model:selectedConfiguration.model}));},
+    plan(calls:AgentTaskToolCall[]){
+      const groups=[...new Set(calls.map(item=>agentTaskToolGroupForName(item.name)).filter(group=>group!==undefined&&group!=='core'))];
+      script=(_request,response,index)=>response.end(groups.length&&index===1
+        ?frames([call('mioon_tools_load',{groups})],'加载本轮工具',{model:selectedConfiguration.model})
+        :index===(groups.length?2:1)?frames(calls,'准备处理',{model:selectedConfiguration.model}):frames([],'离线任务完成',{model:selectedConfiguration.model}));
+    },
     async send(requestId:string=randomUUID()){return runtime.send(projectId,{requestId,text:'仅执行离线测试',expectedSettingsRevision:(await settings.get()).revision});},
     async settle(runId:string){await runtime.drain();return runtime.get(projectId,runId);},
     async wait(runId:string,status:string){const until=Date.now()+10000;for(;;){const value=runtime.get(projectId,runId);if(value.run.status===status)return value;if(Date.now()>until)throw Error(`Unexpected task state: ${value.run.status}/${value.run.pauseReason}`);await pause(5);}},
@@ -117,13 +124,14 @@ test('Anthropic approved edit resumes the original tool after restart without an
   const f=await fixture(t),planned=call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:Number(f.shot.revision),patch:{prompt:'approved native edit'},_mio_step:'调整镜头提示词'});f.plan([planned]);
   f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
   const sent=await f.send(),waiting=await f.wait(sent.run.id,'awaiting_approval');await f.runtime.drain();const step=waiting.steps.find(item=>item.status==='awaiting_approval')!;
-  assert.equal(step.text,'调整镜头提示词');assert.equal(f.requests.length,1);assert.equal(f.effects.length,0);const frozen=JSON.stringify(f.runtime.journal.snapshot(sent.run.id).steps[0]!.request);
-  f.restart();let restored=f.runtime.get(f.projectId,sent.run.id);assert.equal(restored.run.status,'interrupted');assert.equal(JSON.stringify(f.runtime.journal.snapshot(sent.run.id).steps[0]!.request),frozen);
-  await f.action(restored,'resume');restored=await f.wait(sent.run.id,'awaiting_approval');assert.equal(f.requests.length,1);
+  assert.equal(step.text,'调整镜头提示词');assert.equal(f.requests.length,2);assert.equal(f.effects.length,0);assert.deepEqual(f.loads,['tools.load']);assert.equal(waiting.run.stepsUsed,4);
+  const planning=f.runtime.journal.snapshot(sent.run.id).steps.filter(item=>item.kind==='model').at(-1)!,frozen=JSON.stringify(planning.request);
+  f.restart();let restored=f.runtime.get(f.projectId,sent.run.id);assert.equal(restored.run.status,'interrupted');assert.equal(JSON.stringify(f.runtime.journal.step(planning.id).request),frozen);
+  await f.action(restored,'resume');restored=await f.wait(sent.run.id,'awaiting_approval');assert.equal(f.requests.length,2);
   const approval={requestId:randomUUID(),expectedRevision:restored.run.revision,action:'approve',stepId:step.id};await f.runtime.action(f.projectId,sent.run.id,approval);await f.runtime.action(f.projectId,sent.run.id,approval);
-  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.deepEqual(f.effects,['shot.update']);
+  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,3);assert.deepEqual(f.effects,['shot.update']);assert.deepEqual(f.loads,['tools.load']);assert.equal(done.run.stepsUsed,5);
   const shot=object(f.store.get('shots',String(f.shot.id)));assert.equal(shot.prompt,'approved native edit');assert.equal(shot.revision,Number(f.shot.revision)+1);assert.equal(done.changes.length,1);
-  assert.equal(JSON.stringify(f.runtime.journal.snapshot(sent.run.id).steps[0]!.request),frozen);
+  assert.equal(JSON.stringify(f.runtime.journal.step(planning.id).request),frozen);
 });
 
 const miniMaxNative:AgentConfiguration={presetId:'minimax',platformId:'china',protocol:'anthropic_messages',model:'MiniMax-M3',baseUrl:'https://minimax-compatible.example.com/anthropic'};
@@ -131,31 +139,31 @@ test('MiniMax preset keeps Messages, bound credentials and one approved edit acr
   const f=await fixture(t,{selectedConfiguration:miniMaxNative});f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
   f.plan([call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:Number(f.shot.revision),patch:{prompt:'MiniMax native edit'},_mio_step:'调整测试镜头'})]);
   const sent=await f.send(),waiting=await f.wait(sent.run.id,'awaiting_approval');await f.runtime.drain();
-  assert.deepEqual(waiting.run.configuration,miniMaxNative);assert.equal(f.requests.length,1);assert.equal(f.effects.length,0);
-  const first=f.requests[0]!,frozen=JSON.stringify(f.runtime.journal.snapshot(sent.run.id).steps[0]!.request),step=waiting.steps.find(item=>item.status==='awaiting_approval')!;
+  assert.deepEqual(waiting.run.configuration,miniMaxNative);assert.equal(f.requests.length,2);assert.equal(f.effects.length,0);assert.deepEqual(f.loads,['tools.load']);assert.equal(waiting.run.stepsUsed,4);
+  const first=f.requests[1]!,planning=f.runtime.journal.snapshot(sent.run.id).steps.filter(item=>item.kind==='model').at(-1)!,frozen=JSON.stringify(planning.request),step=waiting.steps.find(item=>item.status==='awaiting_approval')!;
   assert.equal(first.path,'/anthropic/v1/messages');assert.equal(first.headers['x-api-key'],key);assert.equal(first.headers.authorization,undefined);assert.equal(first.body.model,miniMaxNative.model);assert.equal(first.body.max_tokens,4096);assert.deepEqual(first.body.thinking,{type:'disabled'});
   for(const field of ['max_completion_tokens','max_output_tokens','parallel_tool_calls','store','input'])assert.equal(Object.hasOwn(first.body,field),false,field);
-  f.restart();await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const restored=await f.wait(sent.run.id,'awaiting_approval');assert.equal(f.requests.length,1);assert.deepEqual(restored.run.configuration,miniMaxNative);
+  f.restart();await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const restored=await f.wait(sent.run.id,'awaiting_approval');assert.equal(f.requests.length,2);assert.deepEqual(restored.run.configuration,miniMaxNative);
   const approval={requestId:randomUUID(),expectedRevision:restored.run.revision,stepId:step.id,action:'approve'};await f.runtime.action(f.projectId,sent.run.id,approval);await f.runtime.action(f.projectId,sent.run.id,approval);
-  const completed=await f.settle(sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(f.requests.length,2);assert.deepEqual(f.effects,['shot.update']);assert.equal(completed.changes.length,1);assert.equal(object(f.store.get('shots',String(f.shot.id))).prompt,'MiniMax native edit');
-  assert.equal(JSON.stringify(f.runtime.journal.snapshot(sent.run.id).steps[0]!.request),frozen);assert.deepEqual(completed.run.configuration,miniMaxNative);
+  const completed=await f.settle(sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(f.requests.length,3);assert.deepEqual(f.effects,['shot.update']);assert.deepEqual(f.loads,['tools.load']);assert.equal(completed.run.stepsUsed,5);assert.equal(completed.changes.length,1);assert.equal(object(f.store.get('shots',String(f.shot.id))).prompt,'MiniMax native edit');
+  assert.equal(JSON.stringify(f.runtime.journal.step(planning.id).request),frozen);assert.deepEqual(completed.run.configuration,miniMaxNative);
 });
 
 test('changing the current MiniMax protocol cannot rewrite or replay an already frozen native task',async t=>{
   const f=await fixture(t,{selectedConfiguration:miniMaxNative});f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
   f.plan([call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:Number(f.shot.revision),patch:{prompt:'must remain unapplied'}})]);
-  const sent=await f.send();await f.wait(sent.run.id,'awaiting_approval');await f.runtime.drain();const frozen=JSON.stringify(f.runtime.journal.snapshot(sent.run.id).steps[0]!.request),settings=await f.settings.get();
+  const sent=await f.send();await f.wait(sent.run.id,'awaiting_approval');await f.runtime.drain();const planning=f.runtime.journal.snapshot(sent.run.id).steps.filter(item=>item.kind==='model').at(-1)!,frozen=JSON.stringify(planning.request),settings=await f.settings.get();
   await f.settings.put({expectedRevision:settings.revision,configuration:{...miniMaxNative,protocol:'chat_completions'},secret:{action:'keep'}});
   f.restart();await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const failed=await f.settle(sent.run.id);
-  assert.equal(failed.run.status,'failed');assert.equal(failed.run.pauseReason,'AGENT_SETTINGS_CONFLICT');assert.equal(f.requests.length,1);assert.equal(f.effects.length,0);
-  assert.deepEqual(failed.run.configuration,miniMaxNative);assert.equal(JSON.stringify(f.runtime.journal.snapshot(sent.run.id).steps[0]!.request),frozen);assert.equal(object(f.store.get('shots',String(f.shot.id))).prompt,'original prompt');
+  assert.equal(failed.run.status,'failed');assert.equal(failed.run.pauseReason,'AGENT_SETTINGS_CONFLICT');assert.equal(f.requests.length,2);assert.equal(f.effects.length,0);assert.deepEqual(f.loads,['tools.load']);
+  assert.deepEqual(failed.run.configuration,miniMaxNative);assert.equal(JSON.stringify(f.runtime.journal.step(planning.id).request),frozen);assert.equal(object(f.store.get('shots',String(f.shot.id))).prompt,'original prompt');
 });
 
 test('Anthropic paid tool remains unsubmitted across restart until host approval, and denial makes no job',async t=>{
   const f=await fixture(t);f.plan([call('mioon_generation_submit',{shotId:String(f.shot.id),expectedRevision:Number(f.shot.revision),providerId:'mock',model:'mock-motion-v1',_mio_step:'生成镜头视频'})]);
-  const sent=await f.send(),waiting=await f.wait(sent.run.id,'awaiting_approval');await f.runtime.drain();const step=waiting.steps.find(item=>item.status==='awaiting_approval')!;assert.equal(step.tier,'paid');assert.equal(f.requests.length,1);assert.equal(f.effects.length,0);assert.equal(f.store.db.prepare('SELECT count(*) n FROM jobs').get()?.n,0);
-  f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);await f.action(interrupted,'resume');const again=await f.wait(sent.run.id,'awaiting_approval');assert.equal(f.requests.length,1);await f.action(again,'deny',{stepId:step.id});
-  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,2);assert.equal(f.effects.length,0);assert.equal(f.store.db.prepare('SELECT count(*) n FROM jobs').get()?.n,0);
+  const sent=await f.send(),waiting=await f.wait(sent.run.id,'awaiting_approval');await f.runtime.drain();const step=waiting.steps.find(item=>item.status==='awaiting_approval')!;assert.equal(step.tier,'paid');assert.equal(f.requests.length,2);assert.equal(f.effects.length,0);assert.deepEqual(f.loads,['tools.load']);assert.equal(waiting.run.stepsUsed,4);assert.equal(f.store.db.prepare('SELECT count(*) n FROM jobs').get()?.n,0);
+  f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id);await f.action(interrupted,'resume');const again=await f.wait(sent.run.id,'awaiting_approval');assert.equal(f.requests.length,2);await f.action(again,'deny',{stepId:step.id});
+  const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.requests.length,3);assert.equal(f.effects.length,0);assert.deepEqual(f.loads,['tools.load']);assert.equal(f.store.db.prepare('SELECT count(*) n FROM jobs').get()?.n,0);
 });
 
 test('Anthropic paid approval creates one bound job and recovery cannot submit it in the background',async t=>{
@@ -170,10 +178,10 @@ test('Anthropic paid approval creates one bound job and recovery cannot submit i
   const step=waiting.steps.find(item=>item.status==='awaiting_approval')!,request={requestId:randomUUID(),expectedRevision:waiting.run.revision,action:'approve',stepId:step.id};
   assert.equal(f.store.list('jobs',f.projectId).length,0);assert.equal(submissions,0);
   await f.runtime.action(f.projectId,sent.run.id,request);await f.runtime.action(f.projectId,sent.run.id,request);
-  const completed=await f.settle(sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(f.store.list('jobs',f.projectId).length,1);assert.equal(f.requests.length,2);assert.deepEqual(f.effects,['generation.submit']);
+  const completed=await f.settle(sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(f.store.list('jobs',f.projectId).length,1);assert.equal(f.requests.length,3);assert.deepEqual(f.effects,['generation.submit']);assert.deepEqual(f.loads,['tools.load']);assert.equal(completed.run.stepsUsed,5);
   const originalJob=object(f.store.list('jobs',f.projectId)[0]);assert.equal(originalJob.status,'queued');f.restart();assert.equal(f.runtime.get(f.projectId,sent.run.id).run.status,'interrupted');
   const worker=startWorker(f.store,f.services,providers);try{await worker.tick();await worker.tick();}finally{await worker.stop();}
-  assert.equal(submissions,0);assert.equal(f.requests.length,2);assert.equal(f.store.list('jobs',f.projectId).length,1);assert.equal(object(f.store.list('jobs',f.projectId)[0]).id,originalJob.id);
+  assert.equal(submissions,0);assert.equal(f.requests.length,3);assert.equal(f.store.list('jobs',f.projectId).length,1);assert.equal(object(f.store.list('jobs',f.projectId)[0]).id,originalJob.id);
 });
 
 test('Anthropic interrupted model outcome remains UNKNOWN and passive recovery never POSTs again',async t=>{
@@ -208,7 +216,7 @@ test('Anthropic missing or revoked project authority blocks inference and saved 
   const denied=await fixture(t,{authorize:false});await assert.rejects(denied.send(),{code:'AGENT_TASK_CONSENT_REQUIRED'});assert.equal(denied.requests.length,0);
   const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});f.plan([call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:Number(f.shot.revision),patch:{prompt:'must remain unapplied'}})]);
   const sent=await f.send(),waiting=await f.wait(sent.run.id,'awaiting_approval');await f.runtime.drain();const step=waiting.steps.find(item=>item.status==='awaiting_approval')!;await f.revoke();
-  await assert.rejects(f.action(waiting,'approve',{stepId:step.id}),{code:'AGENT_TASK_CONSENT_REQUIRED'});assert.equal(f.requests.length,1);assert.equal(f.effects.length,0);assert.equal(object(f.store.get('shots',String(f.shot.id))).prompt,'original prompt');
+  await assert.rejects(f.action(waiting,'approve',{stepId:step.id}),{code:'AGENT_TASK_CONSENT_REQUIRED'});assert.equal(f.requests.length,2);assert.equal(f.effects.length,0);assert.deepEqual(f.loads,['tools.load']);assert.equal(object(f.store.get('shots',String(f.shot.id))).prompt,'original prompt');
 });
 
 for(const reason of ['missing_stop','max_tokens','duplicate_arguments','unknown_tool'] as const)test(`Anthropic ${reason} never dispatches partial tools or silently retries`,async t=>{

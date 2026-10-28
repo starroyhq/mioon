@@ -8,9 +8,18 @@ import {agentTaskDisplaySchema} from '../packages/contracts/src/agent-tasks-v2.t
 import type {AgentTaskChange,AgentTaskJson,AgentTaskStep} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from '../packages/business/src/agent/task-display-v2.ts';
 import {openStore} from '../packages/business/src/db.ts';
-import {taskOperationTitle} from '../apps/web/src/agent-task-presentation.ts';
+import {taskOperationTitle,taskStepTitle} from '../apps/web/src/agent-task-presentation.ts';
 
 const now='2026-10-21T00:00:00.000Z';
+test('the model-only loading step uses the actual four-language panel caption without requiring model prose',()=>{
+ const loader=step('mioon_tools_load',{groups:['canvas']}),display=projectAgentTaskStepDisplay(loader);
+ assert.ok(display);assert.equal(display.operation,'tools.load');
+ const expected={'zh-Hans':'加载工具组','zh-Hant':'載入工具組',en:'Load tool groups',ja:'ツールグループを読み込む'};
+ for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
+  assert.equal(taskStepTitle({...loader,display},locale),expected[locale]);
+  assert.equal(taskStepTitle(loader,locale),expected[locale]);
+ }
+});
 test('submission, lifecycle and result publication have distinct localized audit labels',()=>{
  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
   const operations=['generation.submit','generation.status','generation.publish'];

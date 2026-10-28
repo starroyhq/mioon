@@ -12,6 +12,7 @@ import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskTargetSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
+import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,parseAgentTaskToolLoadInput} from './task-tool-groups-v2.ts';
 import {agentTaskParameterFeedback} from './task-tool-errors-v2.ts';
 import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
@@ -71,6 +72,8 @@ export function assertAgentTaskOperationCoverage():void{
  if(canonical(expected)!==canonical(actual))throw Error('Agent task operation admission is incomplete');
 }
 assertAgentTaskOperationCoverage();
+// Group coverage is checked against list() itself below, so host-only tools
+// are reviewed alongside the admitted public operations above.
 const hostFields=new Set(['projectId','requestId','approval','approved','allowPaid','permission','dataBase64','filePath','relativePath','apiKey','credential']);
 function rejectHostFields(value:unknown):void{
  if(Array.isArray(value)){for(const child of value)rejectHostFields(child);return;}
@@ -89,6 +92,7 @@ function taskToolOperation(operation:string):string{
  if(operation==='mioon_node_inspect')return 'node.inspect';
  if(operation==='mioon_edge_inspect')return 'edge.inspect';
  if(operation==='mioon_task_wait')return 'task.wait';
+ if(operation===AGENT_TASK_TOOLS_LOAD_NAME)return AGENT_TASK_TOOLS_LOAD_OPERATION;
  if(operation==='mioon_asset_import_selected')return 'asset.importSelected';
  if(operation==='mioon_lut_import_selected')return 'lut.importSelected';
  return operation.startsWith('mioon_')?Object.keys(AGENT_TASK_OPERATION_ADMISSION).find(name=>`mioon_${name.replaceAll('.','_')}`===operation)??operation:operation;
@@ -365,8 +369,13 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  }
  function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
-  let risk=['task.wait','node.inspect','edge.inspect'].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
+  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_TOOLS_LOAD_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
+  if(operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
+   const groups=parseAgentTaskToolLoadInput(input);if(!groups)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
+   if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
+   return {projectId,operation,input:{groups},risk:'read_only',targets:[],referencedTargets:[],before:{}};
+  }
   let hostInput:Value={...input};
   const schema=Object.hasOwn(schemas,operation)?schemas[operation as OperationName]:null;
   // Whether identity exists in the exact input is discovered from the generated
@@ -439,6 +448,14 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   preparedOrigins.set(origin,prepared);
   return withTaskEffectOrigin(origin,async()=>{
    beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
+   if(prepared.operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
+    if(journal.run(context.runId).projectId!==prepared.projectId)fail('AGENT_TASK_PROJECT_MISMATCH','工具执行不属于当前项目');
+    const requested=parseAgentTaskToolLoadInput(prepared.input);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
+    const loaded=new Set(loadedAgentTaskToolGroups(journal.snapshot(context.runId).steps));
+    const groups=requested.filter(group=>!loaded.has(group)),selected=new Set(groups);
+    const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name);return group!==undefined&&group!=='core'&&selected.has(group);}).map(tool=>tool.name);
+    return {result:{groups,tools:names},changes:[],recorded:false};
+   }
    if(prepared.operation==='node.inspect'||prepared.operation==='edge.inspect')return {result:inspectCanvas(prepared.projectId,prepared.operation,prepared.input),changes:[],recorded:false};
    if(prepared.operation==='task.wait')return {result:await waitTask(prepared.projectId,prepared.input,context.signal,context.beforeEffect),changes:[],recorded:false};
    if(['asset.importSelected','lut.importSelected'].includes(prepared.operation))return executeImport(prepared,context,origin);
@@ -616,12 +633,13 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const values=fields.map(field=>{const item=value[field];if(typeof item==='string'||typeof item==='number'||item===null)return item;throw new TypeError('Invalid compensation SQL value');});
   db.prepare(`UPDATE ${table} SET ${fields.map(field=>`"${field}"=?`).join(',')} WHERE ${descriptor.id}=? AND projectId=?`).run(...values,identity.id,projectId);
  }
- const list=():AgentTaskToolDefinition[]=>[...[...tierByOperation].map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:descriptions[operation]??operation,parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:operationEffect(operation).readOnly?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+ const list=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:descriptions[operation]??operation,parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:operationEffect(operation).readOnly?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
   {name:'mioon_asset_import_selected',operation:'asset.importSelected',description:'导入用户已选择并授权的文件句柄，不能指定路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
   {name:'mioon_lut_import_selected',operation:'lut.importSelected',description:'导入用户选择的Cube文件句柄，最多7MiB，不允许路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
- ];
+  {name:AGENT_TASK_TOOLS_LOAD_NAME,operation:AGENT_TASK_TOOLS_LOAD_OPERATION,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'read completed tool loading steps; never repeat an unknown result',undo:'unavailable'},
+ ];assertAgentTaskToolGroupCoverage(definitions);return definitions;};
  return {list,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

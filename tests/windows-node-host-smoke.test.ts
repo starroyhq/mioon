@@ -18,7 +18,12 @@ test('native Windows headless backend and separate CLI share private storage, di
  type Gateway = NonNullable<NonNullable<Parameters<typeof startServer>[0]>['taskGatewayV2']>;
  const gateway: Gateway = async function*(request: Parameters<Gateway>[0]): ReturnType<Gateway>{
   request.beforeSubmit?.();modelCalls++;
-  const body=JSON.parse(request.body),answered=body.messages.some((item: { role: string; })=>item.role==='tool');
+  const body=JSON.parse(request.body) as {tools?:Array<{function?:{name?:string}}> ;messages:Array<{role:string;tool_call_id?:string}>};
+  if(!body.tools?.some(tool=>tool.function?.name==='mioon_shot_create')){
+   const call={id:'windows_load_canvas',name:'mioon_tools_load',arguments:{groups:['canvas']}};
+   yield {type:'done',output:{text:'',toolCalls:[call],providerOutput:{role:'assistant',content:null,tool_calls:[{id:call.id,type:'function' as const,function:{name:call.name,arguments:JSON.stringify(call.arguments)}}]}}};return;
+  }
+  const answered=body.messages.some(item=>item.role==='tool'&&item.tool_call_id==='windows_synthetic_shot');
   if(answered){const text='Windows synthetic tool loop completed';yield {type:'done',output:{text,toolCalls:[],providerOutput:{role:'assistant',content:text}}};}
   else{const call={id:'windows_synthetic_shot',name:'mioon_shot_create',arguments:{title:'Windows synthetic reversible shot'}};yield {type:'done',output:{text:'',toolCalls:[call],providerOutput:{role:'assistant',content:null,tool_calls:[{id:call.id,type:'function' as const,function:{name:call.name,arguments:JSON.stringify(call.arguments)}}]}}};}
  };
@@ -47,10 +52,10 @@ test('native Windows headless backend and separate CLI share private storage, di
  await cli(['agent','authorization','grant'],{requestId:randomUUID(),expectedRevision:authorization.revision,expectedSettingsRevision:secured.revision,destination:authorization.currentTarget.destination,model:authorization.currentTarget.model,scope:'project_agent'});
  const send={projectId:project.id,requestId:randomUUID(),expectedSettingsRevision:secured.revision,text:'Create one synthetic shot for the isolated Windows task-control test'};
  const accepted=await cli(['agent','task','send'],send);
- const ended=await cli(['agent','task','status'],{projectId:project.id,runId:accepted.run.id});assert.equal(ended.run.status,'completed');assert.equal(ended.changes.length,1);assert.equal(modelCalls,2);
+ const ended=await cli(['agent','task','status'],{projectId:project.id,runId:accepted.run.id});assert.equal(ended.run.status,'completed');assert.equal(ended.changes.length,1);assert.equal(modelCalls,3);
  const control={projectId:project.id,runId:ended.run.id,requestId:randomUUID(),expectedRevision:ended.run.revision};
  const undone=await cli(['agent','task','undo-all'],control);assert.equal(undone.run.status,'reverted');assert.ok(undone.changes.every((change: { status: string; })=>change.status==='reverted'));
  assert.deepEqual(await cli(['agent','task','undo-all'],control),undone);
  const receipt=await cli(['agent','task','action-lookup'],{projectId:project.id,runId:ended.run.id,requestId:control.requestId});assert.equal(receipt.found,true);
- const original=await cli(['agent','task','lookup'],{projectId:project.id,requestId:send.requestId});assert.equal(original.found,true);assert.equal(modelCalls,2);
+ const original=await cli(['agent','task','lookup'],{projectId:project.id,requestId:send.requestId});assert.equal(original.found,true);assert.equal(modelCalls,3);
 });

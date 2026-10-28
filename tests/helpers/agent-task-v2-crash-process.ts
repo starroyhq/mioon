@@ -36,8 +36,9 @@ let modelCount=0;
 const output=(calls:AgentTaskToolCall[]=[]):TaskModelOutput=>({text:calls.length?'':'Completed locally',toolCalls:calls,providerOutput:protocol==='responses'?calls.map(call=>({type:'function_call',call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'})):{role:'assistant',content:'Completed locally',tool_calls:calls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))}});
 const generated=boundary==='generation_accept'||boundary==='result_commit';
 const gateway:TaskGateway=async function*(request){request.beforeSubmit?.();trace('model');if(boundary==='model_send')crash();modelCount++;let calls:AgentTaskToolCall[]=[];
- if(modelCount===1)calls=[{id:randomUUID(),name:generated?'mioon_image_generate':'mioon_shot_update',arguments:generated?{name:'Local PNG',prompt:'Synthetic local PNG',providerId:'mock',model:'mock-image-v1',options:{size:'1024x1024',quality:'low',background:'opaque',outputFormat:'png',n:1}}:{shotId:shot.id,expectedRevision:1,patch:{title:'After atomic AI edit'}}}];
- else if(generated&&modelCount===2){const task=store.db.prepare('SELECT id FROM image_tasks LIMIT 1').get();if(!task)throw Error('No accepted image task');calls=[{id:randomUUID(),name:'mioon_task_wait',arguments:{kind:'image',id:String(task.id)}}];}
+ if(modelCount===1)calls=[{id:randomUUID(),name:'mioon_tools_load',arguments:{groups:[generated?'images':'canvas']}}];
+ else if(modelCount===2)calls=[{id:randomUUID(),name:generated?'mioon_image_generate':'mioon_shot_update',arguments:generated?{name:'Local PNG',prompt:'Synthetic local PNG',providerId:'mock',model:'mock-image-v1',options:{size:'1024x1024',quality:'low',background:'opaque',outputFormat:'png',n:1}}:{shotId:shot.id,expectedRevision:1,patch:{title:'After atomic AI edit'}}}];
+ else if(generated&&modelCount===3){const task=store.db.prepare('SELECT id FROM image_tasks LIMIT 1').get();if(!task)throw Error('No accepted image task');calls=[{id:randomUUID(),name:'mioon_task_wait',arguments:{kind:'image',id:String(task.id)}}];}
  yield {type:'done',output:output(calls)};
 };
 const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
