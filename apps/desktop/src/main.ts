@@ -2,15 +2,18 @@ import { createDesktopLutRecoveryHost } from './lut-recovery-host.ts';
 import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
 import { calculateWorkspaceScope } from '../../../packages/contracts/src/workspace-scope.ts';
-import { ensurePrivateDirectory, validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic } from '@mioon/contracts/private-storage';
+import { ensurePrivateDirectory, validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic, createPrivateTemporaryDirectory } from '@mioon/contracts/private-storage';
 import type {ReadPrivateFileOptions} from '@mioon/contracts/private-storage';
 import { createAppLanguageHost } from './app-language-host.ts';
 import { APP_LANGUAGE_CHANNEL } from '../../../packages/i18n/src/preference.ts';
 import { resolveLocale } from '../../../packages/i18n/src/locale.ts';
 import { nativeText as nt, setNativeLanguageReader } from './app-language-text.ts';
-import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme } from 'electron';
+import { app, BrowserWindow, Menu, Tray, nativeImage, session, dialog, utilityProcess, safeStorage, ipcMain, shell, nativeTheme, net } from 'electron';
 import type {IpcMainInvokeEvent, MenuItemConstructorOptions, MessageBoxOptions, Session, WebContents} from 'electron';
 import {createWorkspaceToolsHost} from './workspace-tools-host.ts';
+import {createMediaToolsInstaller} from './media-tools.ts';
+import type {MediaToolsInstaller, MediaToolsInstallOutcome} from './media-tools.ts';
+import {MEDIA_TOOLS_CANCEL_TITLE, mediaToolsProgressScript, mediaToolsProgressUrl, megabytes} from './media-tools-window.ts';
 import {WORKSPACE_TOOLS_CHANNEL,workspaceInfoSchema} from '../../../packages/contracts/src/workspace-info.ts';
 import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {WORKSPACE_NATIVE_CHANNEL} from '../../../packages/contracts/src/workspace-native.ts';
@@ -262,8 +265,67 @@ let quitFailureNotice: Promise<void> | null = null;
 let smokeDiscardDecision: boolean | undefined;
 const smokeOutput: string | false | undefined = !app.isPackaged && process.env.MIOON_DESKTOP_USER_DATA && process.env.MIOON_DESKTOP_SMOKE_OUTPUT;
 
+let mediaTools: MediaToolsInstaller | null | undefined;
+/** Mioon's pinned FFmpeg download, shared by first-run setup and the settings page. */
+function mediaToolsInstaller(): MediaToolsInstaller | null {
+  if (mediaTools !== undefined) return mediaTools;
+  // Lifecycle harnesses execute this module with imports stripped.
+  if (typeof createMediaToolsInstaller !== 'function') return mediaTools = null;
+  try {
+    mediaTools = createMediaToolsInstaller({ root: path.join(paths.userData, 'media-tools'),
+      fetch: (url, init) => net.fetch(url, init),
+      prepareRoot: root => { ensurePrivateDirectory(root, { create: true }); },
+      createStaging: root => createPrivateTemporaryDirectory(root, 'download-'),
+      validate: (tools, signal) => validateTools(tools, { signal }) });
+  } catch { mediaTools = null; }
+  return mediaTools;
+}
+function mediaToolsFailureText(code: string): string {
+  const key = code === 'MEDIA_TOOLS_CANCELLED' ? 'native.mediaToolsCancelled'
+    : ['MEDIA_TOOLS_CHECKSUM_MISMATCH', 'MEDIA_TOOLS_SIZE_MISMATCH', 'MEDIA_TOOLS_ARCHIVE_INVALID'].includes(code) ? 'native.mediaToolsCorrupt'
+      : code === 'MEDIA_TOOLS_CHECK_FAILED' ? 'native.mediaToolsCheckFailed'
+        : ['MEDIA_TOOLS_STORAGE_UNAVAILABLE', 'MEDIA_TOOLS_INSTALL_FAILED'].includes(code) ? 'native.mediaToolsStorage' : 'native.mediaToolsNetwork';
+  return `${nt(key)} (${code})`;
+}
+/** First-run progress before the local service exists; closing the window cancels. */
+async function installMediaToolsWithProgress(installer: MediaToolsInstaller, startup: DesktopStartup): Promise<MediaToolsInstallOutcome> {
+  const progressSession = session.fromPartition('mioon-media-tools-progress', { cache: false });
+  progressSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  progressSession.setPermissionCheckHandler(() => false);
+  progressSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !details.url.startsWith('data:') }));
+  const window = new BrowserWindow({ title: nt('native.toolsProgressTitle'), width: 440, height: 150, useContentSize: true, resizable: false,
+    minimizable: false, maximizable: false, fullscreenable: false, show: false, icon: path.join(app.getAppPath(), 'icons/icon.png'),
+    webPreferences: secureWebPreferences(progressSession) });
+  window.webContents.on('will-navigate', event => event.preventDefault());
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.on('page-title-updated', (event, title) => { event.preventDefault(); if (title === MEDIA_TOOLS_CANCEL_TITLE) installer.cancel(); });
+  window.on('close', () => { installer.cancel(); });
+  window.once('ready-to-show', () => { if (!window.isDestroyed()) window.show(); });
+  const update = (progress: ReturnType<MediaToolsInstaller['progress']>): void => {
+    if (window.isDestroyed()) return;
+    window.setProgressBar(progress.phase === 'downloading' && progress.totalBytes > 0 ? progress.receivedBytes / progress.totalBytes : 2);
+    void window.webContents.executeJavaScript(mediaToolsProgressScript(progress)).catch(() => {});
+  };
+  const unsubscribe = installer.subscribe(update), stop = () => { installer.cancel(); };
+  startup.signal.addEventListener('abort', stop, { once: true });
+  try {
+    const pending = installer.install();
+    await window.loadURL(mediaToolsProgressUrl({ lang: languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()),
+      title: nt('native.toolsProgressTitle'), heading: nt('native.toolsProgressHeading'), cancel: nt('native.toolsProgressCancel'),
+      phases: { downloading: nt('native.toolsProgressDownloading'), verifying: nt('native.toolsProgressVerifying'),
+        checking: nt('native.toolsProgressChecking'), installing: nt('native.toolsProgressInstalling') } })).catch(() => {});
+    update(installer.progress());
+    return await pending;
+  } finally {
+    unsubscribe();
+    startup.signal.removeEventListener('abort', stop);
+    if (!window.isDestroyed()) { window.setProgressBar(-1); window.destroy(); }
+  }
+}
+
 async function toolsFromUser(startup: DesktopStartup): Promise<ToolValidation> {
   let stored: ToolPaths;
+  let diagnostic: string;
   try {
     stored = await readToolConfig(paths.configFile);
     startup.checkpoint();
@@ -273,12 +335,39 @@ async function toolsFromUser(startup: DesktopStartup): Promise<ToolValidation> {
     startup.checkpoint();
     if (errorCode(error)?.startsWith('STORAGE_')) throw error;
     if (smokeOutput) throw error;
+    diagnostic = nt('native.originalDiagnostic', { detail: errorMessage(error) });
+  }
+  // Where Mioon offers its own build, downloading it is the first choice; an
+  // installed pair can still be selected. Failed downloads return to this choice.
+  const installer = mediaToolsInstaller(), offer = installer?.offer() ?? null;
+  for (;;) {
+    const buttons = offer ? [nt('native.downloadTools'), nt('native.chooseInstalledTools'), nt('native.quit')] : [nt('native.chooseTools'), nt('native.quit')];
     const result = await dialog.showMessageBox({ type: 'warning', title: nt('native.toolsTitle'),
-      message: nt('native.toolsMessage'),
-      detail: nt('native.toolsDetail') + '\n\n' + nt('native.originalDiagnostic', { detail: errorMessage(error) }),
-      buttons: [nt('native.chooseTools'), nt('native.quit')], defaultId: 0, cancelId: 1 });
+      message: offer ? nt('native.toolsDownloadMessage') : nt('native.toolsMessage'),
+      detail: (offer ? nt('native.toolsDownloadDetail', { version: offer.ffmpegVersion, size: megabytes(offer.downloadBytes), source: offer.sourceUrl })
+        : nt('native.toolsDetail')) + '\n\n' + diagnostic,
+      buttons, defaultId: 0, cancelId: buttons.length - 1 });
     startup.checkpoint();
-    if (result.response !== 0) throw new Error('未配置 FFmpeg');
+    if (result.response === buttons.length - 1) throw new Error('未配置 FFmpeg');
+    if (!offer || !installer || result.response !== 0) break;
+    let code: string;
+    try {
+      const outcome = await installMediaToolsWithProgress(installer, startup);
+      startup.checkpoint();
+      if (outcome.ok) {
+        const configuration = await validateTools(outcome.paths, { signal: startup.signal });
+        startup.checkpoint();
+        await saveToolConfig(paths.configFile, configuration);
+        return configuration;
+      }
+      code = outcome.code;
+    } catch (error) {
+      // Cancelled starts and storage refusals keep their existing handling.
+      startup.checkpoint();
+      if (errorCode(error)?.startsWith('STORAGE_')) throw error;
+      code = 'MEDIA_TOOLS_INSTALL_FAILED';
+    }
+    diagnostic = mediaToolsFailureText(code);
   }
   const choose = async (name: 'ffmpeg' | 'ffprobe'): Promise<string> => {
     const result = await dialog.showOpenDialog({ title: nt('native.chooseExecutable', { name }), buttonLabel: nt('native.chooseTools'), properties: ['openFile'] });
@@ -874,6 +963,12 @@ else {
       },
       save:configuration=>saveToolConfig(paths.configFile,configuration),
       revealWorkspace:async()=>{validatePrivateDirectory(paths.dataDir);return (await shell.openPath(paths.dataDir))==='';},
+      mediaTools:{
+        status:async()=>{const installer=mediaToolsInstaller(),offer=installer?.offer()??null;
+          return {offer,installed:offer&&installer?await installer.installedPaths():null,progress:installer?.progress()??{phase:'idle',receivedBytes:0,totalBytes:0,code:null}};},
+        install:async()=>{const installer=mediaToolsInstaller();return installer?installer.install():{ok:false,code:'MEDIA_TOOLS_UNAVAILABLE'};},
+        cancel:()=>mediaToolsInstaller()?.cancel()??false,
+      },
     });
     languageHost = createAppLanguageHost({ systemLanguages,
       storage: { read: () => readAppLanguagePreference(paths), write: text => writeAppLanguagePreference(paths, text) },

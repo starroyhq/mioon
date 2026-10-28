@@ -1,0 +1,162 @@
+name: Media tools
+
+# Builds the FFmpeg / ffprobe pair the desktop app offers as a download on macOS.
+# Each run signs, notarizes and uploads the executables as an artifact; publishing
+# a release and pinning its checksums in apps/desktop/src/media-tools.ts are
+# separate, reviewed steps (docs/MEDIA-TOOLS.md).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/scripts/build-media-tools.ts
+      - .github/workflows/media-tools.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: media-tools-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            arch: arm64
+            os: macos-15
+          - target: darwin-x64
+            arch: x64
+            os: macos-15-intel
+    defaults:
+      run:
+        shell: bash
+    env:
+      MIOON_ARCH: ${{ matrix.arch }}
+      MIOON_TARGET: ${{ matrix.target }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify native runner architecture
+        run: |
+          actual_arch=$(uname -m)
+          expected_arch="$MIOON_ARCH"
+          if [[ "$expected_arch" == x64 ]]; then expected_arch=x86_64; fi
+          test "$actual_arch" = "$expected_arch"
+          test "$(id -u)" -ne 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24.21.0
+
+      - name: Build FFmpeg and ffprobe from pinned sources
+        run: |
+          node .github/scripts/build-media-tools.ts build --arch="$MIOON_ARCH" \
+            --work="$RUNNER_TEMP/media-tools" --output="$RUNNER_TEMP/media-tools/out"
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: media-tools-${{ matrix.target }}-build-log
+          path: ${{ runner.temp }}/media-tools/build-${{ matrix.arch }}.log
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Check signing credentials
+        id: signing
+        env:
+          HAS_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        run: printf 'available=%s\n' "$HAS_APPLE_CERTIFICATE" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare temporary Apple signing credentials
+        if: steps.signing.outputs.available == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          umask 077
+          credentials_dir="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$credentials_dir"
+          export MIOON_APPLE_CREDENTIALS_DIR="$credentials_dir"
+          node --input-type=module -e 'import {writeFileSync} from "node:fs"; import path from "node:path"; const dir=process.env.MIOON_APPLE_CREDENTIALS_DIR; writeFileSync(path.join(dir,"signing.p12"),Buffer.from(process.env.APPLE_CERTIFICATE,"base64"),{mode:0o600}); writeFileSync(path.join(dir,"notarization.p8"),process.env.APPLE_API_PRIVATE_KEY,{mode:0o600});'
+          keychain="$credentials_dir/signing.keychain-db"
+          node .github/scripts/apple-keychain.ts capture --state="$credentials_dir/keychain-search-list.json"
+          keychain_password=$(uuidgen)
+          echo "::add-mask::$keychain_password"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$credentials_dir/signing.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          node .github/scripts/apple-keychain.ts activate --state="$credentials_dir/keychain-search-list.json" --keychain="$keychain"
+          rm "$credentials_dir/signing.p12"
+          printf 'MIOON_SIGNING_KEYCHAIN=%s\nAPPLE_API_KEY_PATH=%s\n' "$keychain" "$credentials_dir/notarization.p8" >> "$GITHUB_ENV"
+
+      - name: Sign and notarize executables
+        if: steps.signing.outputs.available == 'true'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          out="$RUNNER_TEMP/media-tools/out"
+          for tool in ffmpeg ffprobe; do
+            codesign --sign "$APPLE_SIGNING_IDENTITY" --force --keychain "$MIOON_SIGNING_KEYCHAIN" --timestamp --options runtime \
+              --identifier "app.starroy.mioon.$tool" "$out/$tool"
+            codesign --verify --strict --verbose=2 "$out/$tool"
+            codesign -dv "$out/$tool" 2>&1 | grep -F "TeamIdentifier=$APPLE_TEAM_ID"
+          done
+          staging="$RUNNER_TEMP/media-tools/notarize/mioon-media-tools"
+          mkdir -p "$staging"
+          cp "$out/ffmpeg" "$out/ffprobe" "$staging/"
+          submission="$RUNNER_TEMP/media-tools/notarization.zip"
+          ditto -c -k --keepParent "$staging" "$submission"
+          report="$RUNNER_TEMP/media-tools/out/notarization-$MIOON_TARGET.json"
+          xcrun notarytool submit "$submission" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER" --wait --timeout 30m --output-format json > "$report"
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; const report=JSON.parse(readFileSync(process.argv[1],"utf8")); if(report.status!=="Accepted")process.exit(1);' "$report"
+
+      - name: Verify final executables
+        run: |
+          node .github/scripts/build-media-tools.ts verify --arch="$MIOON_ARCH" \
+            --dir="$RUNNER_TEMP/media-tools/out" --work="$RUNNER_TEMP/media-tools/verify"
+
+      - name: Package executables and corresponding source
+        run: |
+          dist="$RUNNER_TEMP/media-tools/dist"
+          node .github/scripts/build-media-tools.ts package --arch="$MIOON_ARCH" --dir="$RUNNER_TEMP/media-tools/out" --output="$dist"
+          if [[ -f "$RUNNER_TEMP/media-tools/out/notarization-$MIOON_TARGET.json" ]]; then cp "$RUNNER_TEMP/media-tools/out/notarization-$MIOON_TARGET.json" "$dist/"; fi
+          # The source bundle is identical for both architectures.
+          if [[ "$MIOON_ARCH" == arm64 ]]; then node .github/scripts/build-media-tools.ts sources --work="$RUNNER_TEMP/media-tools" --output="$dist"; fi
+          (cd "$dist" && shasum -a 256 * | tee -a "$GITHUB_STEP_SUMMARY")
+
+      - name: Upload media tools
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: media-tools-${{ matrix.target }}${{ steps.signing.outputs.available != 'true' && '-unsigned' || '' }}
+          path: ${{ runner.temp }}/media-tools/dist/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Clean temporary Apple signing credentials
+        if: always() && steps.signing.outputs.available == 'true'
+        run: |
+          credentials_dir="$RUNNER_TEMP/mioon-apple-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          trap 'rm -rf "$credentials_dir"' EXIT
+          mioon_cleanup_status=0
+          node .github/scripts/apple-keychain.ts restore --state="$credentials_dir/keychain-search-list.json" || mioon_cleanup_status=1
+          if [[ -f "$credentials_dir/signing.keychain-db" ]]; then security delete-keychain "$credentials_dir/signing.keychain-db" || mioon_cleanup_status=1; fi
+          exit "$mioon_cleanup_status"

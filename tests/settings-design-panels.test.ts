@@ -12,11 +12,12 @@ import * as menuProtocol from '../apps/desktop/src/menu-command-protocol.ts';
 const nodes = (value: RootTree) : RootNode[] => Array.isArray(value) ? value.flatMap(nodes) : value && typeof value === 'object' ? [value, ...nodes(value.props?.children)] : [];
 const text = (value: RootTree) : string => Array.isArray(value) ? value.map(text).join('') : value && typeof value === 'object' ? text(value.props?.children) : value == null || typeof value === 'boolean' ? '' : String(value);
 const flush = () => new Promise(setImmediate);
-function harness<File extends 'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx', Export extends keyof RootControlledModules[File]>(file: File, exportName: Export, imports: Record<string,unknown>) {
-  const hooks: RootHook[] = []; let cursor = 0, effects: number[] = [], tree: string|number|boolean|RootNode|RootTree[]|null|undefined, props = { active: true };
+function harness<File extends 'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|'SettingsWorkspace.tsx'|'SettingsMediaToolsDownload.tsx', Export extends keyof RootControlledModules[File]>(file: File, exportName: Export, imports: Record<string,unknown>, initialProps: Record<string,unknown> = {}) {
+  const hooks: RootHook[] = []; let cursor = 0, effects: number[] = [], tree: string|number|boolean|RootNode|RootTree[]|null|undefined, props: Record<string,unknown> = { active: true, ...initialProps };
   const react = {
     createElement: (type: string, props: Record<string, unknown> | null, ...children: RootTree[]) => ({ type, props: { ...props, children } }),
     useRef(initial: unknown) { return hooks[cursor++] ||= { current: initial }; },
+    useCallback(callback: unknown, deps: readonly unknown[]) { const index = cursor++, previous = hooks[index]; if (previous?.deps?.length === deps.length && deps.every((value, i) => Object.is(value, previous.deps![i]))) return previous.value; hooks[index] = { value: callback, deps }; return callback; },
     useState(initial: unknown) { const index = cursor++; hooks[index] ||= { value: typeof initial === 'function' ? initial() : initial }; return [hooks[index].value, (next: unknown) => { hooks[index].value = typeof next === 'function' ? next(hooks[index].value) : next; }]; },
     useEffect(callback: () => void | (() => void), deps: readonly unknown[] | undefined) { const index = cursor++, previous = hooks[index]; if (previous?.deps!.length === deps!.length && deps!.every((value, i) => Object.is(value, previous.deps![i]))) return; hooks[index] = { callback, deps, cleanup: previous?.cleanup }; effects.push(index); },
   };
@@ -33,7 +34,7 @@ function harness<File extends 'SettingsExtraPages.tsx'|'SettingsVideoTools.tsx'|
     assert.fail(`Unexpected setting dependency ${name}`);
   }, module, module.exports);
   return {
-    render(patch: { active?: boolean; }|undefined = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = (module.exports[exportName] as (props:{active:boolean})=>RootTree)(props); for (const index of effects) { hooks[index].cleanup?.(); hooks[index].cleanup = hooks[index].callback!(); } return tree; },
+    render(patch: Record<string,unknown>|undefined = {}) { props = { ...props, ...patch }; cursor = 0; effects = []; tree = (module.exports[exportName] as (props:Record<string,unknown>)=>RootTree)(props); for (const index of effects) { hooks[index].cleanup?.(); hooks[index].cleanup = hooks[index].callback!(); } return tree; },
     find(id: string) { return nodes(tree).find((node) => node.props?.['data-testid'] === id); },
     get tree() { return tree; },
     unmount() { hooks.forEach(hook => hook?.cleanup?.()); },
@@ -80,7 +81,7 @@ test('live switch waits for the persisted revision and stale hidden callbacks ca
 
 test('video tool cards expose actual versions and missing capabilities after one bounded local check, without requiring a manual first check', async () => {
   const calls: unknown[] = [], diagnostics = { ffmpeg: { path: '/local/ffmpeg', available: true, version: 'ffmpeg version synthetic' }, ffprobe: { path: '/local/ffprobe', available: true, version: 'ffprobe version synthetic' }, capabilities: { libx264: true, aac: true, drawtext: false, subtitles: false } };
-  const h = harness('SettingsVideoTools.tsx', 'default', { './workspace-info-client.ts': { workspaceToolsBridge: () => undefined, readWorkspaceInfo: async () => ({ tools: { ffmpeg: '/local/ffmpeg', ffprobe: '/local/ffprobe' } }), checkConfiguredMediaTools: async () => { calls.push('check'); return diagnostics; } } });
+  const h = harness('SettingsVideoTools.tsx', 'default', { './SettingsMediaToolsDownload.tsx': { default: () => { calls.push('download card'); return null; } }, './workspace-info-client.ts': { workspaceToolsBridge: () => undefined, readWorkspaceInfo: async () => ({ tools: { ffmpeg: '/local/ffmpeg', ffprobe: '/local/ffprobe' } }), checkConfiguredMediaTools: async () => { calls.push('check'); return diagnostics; } } });
   h.render(); await flush(); h.render(); await flush(); h.render();
   assert.match(text(h.find('workspace-tool-ffmpeg')), /ffmpeg version synthetic/u);
   assert.match(text(h.find('workspace-tool-ffprobe')), /ffprobe version synthetic/u);
@@ -89,6 +90,44 @@ test('video tool cards expose actual versions and missing capabilities after one
   h.render({ active: false }); h.render({ active: true }); await flush(); h.render();
   assert.deepEqual(calls, ['check']);
   h.unmount();
+});
+
+test('Mioon media tools card downloads through the native bridge, reports progress and failures, and marks the saved copy in use', async () => {
+  const offer = { version: '7.1.5-1', ffmpegVersion: '7.1.5', arch: 'arm64', downloadBytes: 31_457_280, license: 'GPL-2.0-or-later', sourceUrl: 'https://github.com/starroyhq/mioon/releases/tag/media-tools-7.1.5-1' };
+  const installedPaths = { ffmpeg: '/private/media-tools/7.1.5-1/ffmpeg', ffprobe: '/private/media-tools/7.1.5-1/ffprobe' };
+  const diagnostics = { ffmpeg: { path: installedPaths.ffmpeg, available: true, version: 'ffmpeg version 7.1.5' }, ffprobe: { path: installedPaths.ffprobe, available: true, version: 'ffprobe version 7.1.5' }, capabilities: { libx264: true, aac: true, drawtext: true, subtitles: true } };
+  let status: Record<string, unknown> = { offer, installed: null, progress: { phase: 'idle', receivedBytes: 0, totalBytes: 0, code: null } }, finish!: (value: unknown) => void;
+  const installedCalls: unknown[][] = [], busy: boolean[] = [], requests: string[] = [];
+  const native = { mediaToolsStatus: async () => { requests.push('status'); return status; }, installMediaTools: () => { requests.push('install'); return new Promise(resolve => { finish = resolve; }); }, cancelMediaToolsInstall: async () => { requests.push('cancel'); return true; } };
+  const h = harness('SettingsMediaToolsDownload.tsx', 'default', { './workspace-settings-client.ts': { workspaceBackupBridge: () => ({ restart: async () => { requests.push('restart'); } }) } },
+    { native, saved: { ffmpeg: '/opt/homebrew/bin/ffmpeg', ffprobe: '/opt/homebrew/bin/ffprobe' }, onInstalled: (...args: unknown[]) => installedCalls.push(args), onBusyChange: (value: boolean) => busy.push(value) });
+  h.render(); await flush(); h.render();
+  assert.match(text(h.tree), /Mioon 提供的版本.*FFmpeg 7\.1\.5 · Apple 芯片 · 约 30\.0 MB.*GPL.*media-tools-7\.1\.5-1/u);
+  h.find('workspace-tools-download-install')!.props.onClick(); h.render();
+  status = { ...status, progress: { phase: 'downloading', receivedBytes: 10_485_760, totalBytes: 31_457_280, code: null } };
+  await flush(); h.render();
+  assert.ok(h.find('workspace-tools-download-progress'));
+  assert.equal(busy.at(-1), true);
+  h.find('workspace-tools-download-cancel')!.props.onClick();
+  finish({ ok: false, code: 'MEDIA_TOOLS_CHECKSUM_MISMATCH' }); status = { ...status, progress: { phase: 'failed', receivedBytes: 0, totalBytes: 31_457_280, code: 'MEDIA_TOOLS_CHECKSUM_MISMATCH' } };
+  await flush(); h.render(); await flush(); h.render();
+  assert.match(text(h.find('workspace-tools-download-failure')), /没有通过校验/u);
+  assert.equal(busy.at(-1), false);
+  h.find('workspace-tools-download-install')!.props.onClick(); h.render();
+  finish({ ok: true, paths: installedPaths, diagnostics }); status = { ...status, installed: installedPaths, progress: { phase: 'completed', receivedBytes: 31_457_280, totalBytes: 31_457_280, code: null } };
+  await flush(); h.render(); await flush(); h.render();
+  assert.deepEqual(installedCalls, [[installedPaths, diagnostics]]);
+  assert.match(text(h.tree), /已安装并保存路径/u);
+  h.render({ saved: installedPaths });
+  assert.match(text(h.tree), /正在使用/u);
+  assert.equal(h.find('workspace-tools-download-install'), undefined, 'the copy in use offers no install button');
+  assert.deepEqual(requests.filter(request => request !== 'status'), ['install', 'cancel', 'install']);
+  h.unmount();
+  const hidden = harness('SettingsMediaToolsDownload.tsx', 'default', { './workspace-settings-client.ts': { workspaceBackupBridge: () => undefined } },
+    { native: { ...native, mediaToolsStatus: async () => ({ ...status, offer: null }) }, saved: null, onInstalled: () => {} });
+  hidden.render(); await flush(); hidden.render();
+  assert.equal(hidden.tree, null, 'platforms without a Mioon build show nothing');
+  hidden.unmount();
 });
 
 function workspaceFixture(options: { readSettings?:(settings:ReturnType<typeof workspaceSettings>,signal:unknown)=>unknown;save?:(input:unknown)=>unknown;create?:(request:unknown)=>unknown;confirm?:()=>Promise<unknown>; }|undefined={}) {

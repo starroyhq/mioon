@@ -62,6 +62,7 @@ export interface RootControlledModules {
   'TimelineExportPreflight.tsx': typeof import('../../apps/web/src/TimelineExportPreflight.tsx');
   'SettingsExtraPages.tsx': typeof import('../../apps/web/src/SettingsExtraPages.tsx');
   'SettingsVideoTools.tsx': typeof import('../../apps/web/src/SettingsVideoTools.tsx');
+  'SettingsMediaToolsDownload.tsx': typeof import('../../apps/web/src/SettingsMediaToolsDownload.tsx');
   'SettingsWorkspace.tsx': typeof import('../../apps/web/src/SettingsWorkspace.tsx');
   'ProjectHomeConnections.tsx': typeof import('../../apps/web/src/ProjectHomeConnections.tsx');
   'workspace-visibility.tsx': typeof import('../../apps/web/src/workspace-visibility.tsx');

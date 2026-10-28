@@ -24,6 +24,6 @@ Electron 与 Chromium 使用目标运行时发行包提供的原始通知：macO
 
 ## 外部工具与用户内容
 
-FFmpeg、ffprobe 由用户单独安装，不随当前 Mioon 桌面安装包捆绑；其工具、编码器和构建选项适用各自许可。CI 使用的固定 FFmpeg 源码镜像与启用 GPL/libx264 的构建仅供测试，不因 Mioon 采用 Apache-2.0 而改变许可。相关说明见 [GitHub Actions 文档](docs/GITHUB-ACTIONS.zh-CN.md)。
+FFmpeg、ffprobe 不随 Mioon 桌面安装包捆绑。用户可以自行安装，其工具、编码器和构建选项适用各自许可；也可以在 macOS 版应用内明确选择下载 Mioon 构建的 FFmpeg 7.1.5 与 ffprobe。该构建包含 libx264 等组件，整体按 GPL-2.0-or-later 分发，完整对应源码和构建脚本随同一 GitHub Release 提供，组件清单见 [视频工具说明](docs/MEDIA-TOOLS.md)。Mioon 通过命令行将其作为独立程序调用。CI 使用的固定 FFmpeg 源码镜像与启用 GPL/libx264 的构建仅供测试，不因 Mioon 采用 Apache-2.0 而改变许可。相关说明见 [GitHub Actions 文档](docs/GITHUB-ACTIONS.zh-CN.md)。
 
 导入的项目、媒体、LUT，以及模型或外部服务提供的内容，其权利和服务条款由对应来源决定。使用 Mioon 不会自动将这些内容改为 Apache-2.0。本说明不构成对全部历史媒体或第三方内容权利的认证。

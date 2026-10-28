@@ -174,6 +174,102 @@ export const nativeMessages = {
     "en": "Choose the {name} executable",
     "ja": "{name} の実行ファイルを選択"
   },
+  "native.toolsDownloadMessage": {
+    "zh-Hans": "需要 FFmpeg 和 ffprobe 才能处理视频",
+    "zh-Hant": "需要 FFmpeg 和 ffprobe 才能處理影片",
+    "en": "FFmpeg and ffprobe are needed to process video",
+    "ja": "動画の処理には FFmpeg と ffprobe が必要です"
+  },
+  "native.toolsDownloadDetail": {
+    "zh-Hans": "可以下载 Mioon 提供的 FFmpeg {version}（约 {size}）。下载后会校验文件，并安装到本应用的数据目录。也可以选择你已安装的 ffmpeg 和 ffprobe。\n\nMioon 提供的版本按 GPL 许可分发，源码见 {source}",
+    "zh-Hant": "可以下載 Mioon 提供的 FFmpeg {version}（約 {size}）。下載後會校驗檔案，並安裝到本應用程式的資料目錄。也可以選擇你已安裝的 ffmpeg 和 ffprobe。\n\nMioon 提供的版本依 GPL 授權散布，原始碼見 {source}",
+    "en": "You can download FFmpeg {version} provided by Mioon (about {size}). The files are verified and installed in this app's data folder. You can also choose ffmpeg and ffprobe that you have installed.\n\nThe Mioon build is distributed under the GPL. Source code: {source}",
+    "ja": "Mioon が提供する FFmpeg {version}（約 {size}）をダウンロードできます。ファイルを検証してから、このアプリのデータフォルダーにインストールします。インストール済みの ffmpeg と ffprobe を選ぶこともできます。\n\nMioon 提供版は GPL で配布されています。ソースコード：{source}"
+  },
+  "native.downloadTools": {
+    "zh-Hans": "下载并安装",
+    "zh-Hant": "下載並安裝",
+    "en": "Download and install",
+    "ja": "ダウンロードしてインストール"
+  },
+  "native.chooseInstalledTools": {
+    "zh-Hans": "选择已安装的工具",
+    "zh-Hant": "選擇已安裝的工具",
+    "en": "Choose installed tools",
+    "ja": "インストール済みのツールを選択"
+  },
+  "native.toolsProgressTitle": {
+    "zh-Hans": "安装视频工具",
+    "zh-Hant": "安裝影片工具",
+    "en": "Install video tools",
+    "ja": "動画ツールのインストール"
+  },
+  "native.toolsProgressHeading": {
+    "zh-Hans": "正在安装 FFmpeg 和 ffprobe",
+    "zh-Hant": "正在安裝 FFmpeg 和 ffprobe",
+    "en": "Installing FFmpeg and ffprobe",
+    "ja": "FFmpeg と ffprobe をインストールしています"
+  },
+  "native.toolsProgressDownloading": {
+    "zh-Hans": "正在下载…",
+    "zh-Hant": "正在下載…",
+    "en": "Downloading…",
+    "ja": "ダウンロード中…"
+  },
+  "native.toolsProgressVerifying": {
+    "zh-Hans": "正在校验…",
+    "zh-Hant": "正在校驗…",
+    "en": "Verifying…",
+    "ja": "検証中…"
+  },
+  "native.toolsProgressChecking": {
+    "zh-Hans": "正在检测…",
+    "zh-Hant": "正在偵測…",
+    "en": "Checking…",
+    "ja": "確認中…"
+  },
+  "native.toolsProgressInstalling": {
+    "zh-Hans": "正在安装…",
+    "zh-Hant": "正在安裝…",
+    "en": "Installing…",
+    "ja": "インストール中…"
+  },
+  "native.toolsProgressCancel": {
+    "zh-Hans": "取消",
+    "zh-Hant": "取消",
+    "en": "Cancel",
+    "ja": "キャンセル"
+  },
+  "native.mediaToolsNetwork": {
+    "zh-Hans": "下载没有完成。请检查网络连接后重试",
+    "zh-Hant": "下載沒有完成。請檢查網路連線後重試",
+    "en": "The download did not finish. Check your network connection and try again",
+    "ja": "ダウンロードが完了しませんでした。ネットワーク接続を確認してから再試行してください"
+  },
+  "native.mediaToolsCorrupt": {
+    "zh-Hans": "下载的文件没有通过校验，已删除。请重试",
+    "zh-Hant": "下載的檔案沒有通過校驗，已刪除。請重試",
+    "en": "The downloaded files failed verification and were deleted. Try again",
+    "ja": "ダウンロードしたファイルが検証に失敗したため削除しました。再試行してください"
+  },
+  "native.mediaToolsCheckFailed": {
+    "zh-Hans": "下载的工具没有通过检测，没有安装",
+    "zh-Hant": "下載的工具沒有通過偵測，沒有安裝",
+    "en": "The downloaded tools did not pass the check and were not installed",
+    "ja": "ダウンロードしたツールが確認に通らなかったため、インストールしませんでした"
+  },
+  "native.mediaToolsStorage": {
+    "zh-Hans": "无法写入本应用的数据目录。检查文件权限后重试",
+    "zh-Hant": "無法寫入本應用程式的資料目錄。檢查檔案權限後重試",
+    "en": "The app's data folder could not be written. Check file permissions and try again",
+    "ja": "アプリのデータフォルダーに書き込めませんでした。ファイルの権限を確認してから再試行してください"
+  },
+  "native.mediaToolsCancelled": {
+    "zh-Hans": "已取消下载",
+    "zh-Hant": "已取消下載",
+    "en": "The download was cancelled",
+    "ja": "ダウンロードをキャンセルしました"
+  },
   "native.originalDiagnostic": {
     "zh-Hans": "原始诊断信息：{detail}",
     "zh-Hant": "原始診斷資訊：{detail}",
