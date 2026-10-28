@@ -1,5 +1,6 @@
-import { agentTaskPolicySchema, agentTaskSnapshotSchema, agentTaskRunSchema, agentTaskEventSchema, agentTaskReceiptSchema, agentTaskLocaleSchema, agentTaskHistoryPageSchema, agentTaskConversationPageSchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
-import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskDiagnostic, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt, AgentTaskLocale, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import { agentTaskPolicySchema, agentTaskSnapshotSchema, agentTaskRunSchema, agentTaskEventSchema, agentTaskReceiptSchema, agentTaskLocaleSchema, agentTaskHistoryPageSchema, agentTaskConversationPageSchema, agentTaskConversationPolicySchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import { sameAgentTaskPolicyModes } from './agent-task-policy-menu.ts';
+import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskDiagnostic, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt, AgentTaskLocale, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskConversationPolicy, AgentTaskPolicyModes } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { agentAuthorizationReceiptSchema, safeAgentAuthorizationSnapshot } from './agent-authorization-state.ts';
 import type { AgentAuthorizationSnapshot } from '../../../packages/contracts/src/agent-authorization.ts';
 import { deriveAgentEndpoint, safeAgentSettings } from './agent-settings.ts';
@@ -9,18 +10,22 @@ import { readAgentChatSSE } from './agent-chat.ts';
 export interface AgentTaskProjectSnapshot { version: 2; instanceId: string; projectId: string; runs: AgentTaskRun[]; policy: AgentTaskPolicy; settings: AgentSettingsSnapshot; authorization: AgentAuthorizationSnapshot; readOnly?: boolean }
 export interface AgentTaskUpload {id: string; name: string; mimeType: string; status: string}
 export interface AgentTaskPolicyView {policy: AgentTaskPolicy; readOnly: boolean}
+export interface AgentTaskConversationPolicyView {policy: AgentTaskConversationPolicy; readOnly: boolean}
+/** The confirmation modes of the selected conversation. A new conversation has
+ * no server record yet: `modes` is its own choice, null to follow the global policy. */
+export interface AgentTaskComposerPolicy {conversationId: string | null; phase: 'loading' | 'ready' | 'saving' | 'error'; value: AgentTaskConversationPolicy | null; modes: AgentTaskPolicyModes | null}
 export interface AgentTaskLookup { found: boolean; snapshot?: AgentTaskSnapshot; upload?: AgentTaskUpload; receipt?:AgentTaskReceipt }
 export interface AgentTaskPending { requestId: string; runId: string | null; action: 'send' | 'upload' | AgentTaskControlAction; definitiveRejected?:boolean; conversationId?:string|null }
 interface AgentTaskControlExtras {stepId?:string;changeId?:string;undoChangeIds?:string[];resolution?:'discard'|'accept_result';text?:string}
 // Answers carry their own choice payload and are submitted separately.
 type AgentTaskPanelControlAction=Exclude<AgentTaskControlAction,'answer'>;
-export interface AgentTaskAuthorizationReview { projectId: string; settingsRevision: number; authorizationRevision: number; destination: string; model: string; text: string; uploads: string[]; locale: AgentTaskLocale; conversationId?:string|null }
+export interface AgentTaskAuthorizationReview { projectId: string; settingsRevision: number; authorizationRevision: number; destination: string; model: string; text: string; uploads: string[]; locale: AgentTaskLocale; conversationId?:string|null; modes?:AgentTaskPolicyModes|null }
 export interface AgentTaskClient {
   list(projectId: string): Promise<AgentTaskProjectSnapshot>;
   history(projectId:string,cursor?:string|null):Promise<AgentTaskHistoryPage>;
   conversation(projectId:string,conversationId:string,cursor?:string|null):Promise<AgentTaskConversationPage>;
   read(projectId: string, runId: string): Promise<AgentTaskSnapshot>;
-  send(projectId: string, input: { requestId: string; text: string; expectedSettingsRevision: number; locale?: AgentTaskLocale; uploads?: string[]; conversationId?:string; diagnostic?: AgentTaskDiagnostic }): Promise<AgentTaskSnapshot>;
+  send(projectId: string, input: { requestId: string; text: string; expectedSettingsRevision: number; locale?: AgentTaskLocale; uploads?: string[]; conversationId?:string; diagnostic?: AgentTaskDiagnostic; policy?: {modes: AgentTaskPolicyModes; acknowledgePaid?: true} }): Promise<AgentTaskSnapshot>;
   upload(projectId: string, input: {requestId: string; name: string; mimeType: string; dataBase64: string}): Promise<AgentTaskUpload>;
   action(projectId: string, input: AgentTaskControlInput): Promise<AgentTaskSnapshot>;
   lookup(projectId: string, pending: AgentTaskPending): Promise<AgentTaskLookup>;
@@ -29,12 +34,15 @@ export interface AgentTaskClient {
   policy(): Promise<AgentTaskPolicyView>;
   savePolicy(input: AgentTaskPolicy & {requestId: string; expectedRevision: number; acknowledgePaid?: boolean}): Promise<AgentTaskPolicyView>;
   lookupPolicy(requestId: string): Promise<{found: boolean; policy?: AgentTaskPolicy; readOnly: boolean}>;
+  conversationPolicy(projectId: string, conversationId: string): Promise<AgentTaskConversationPolicyView>;
+  setConversationPolicy(projectId: string, conversationId: string, input: {requestId: string; expectedRevision: number; modes: AgentTaskPolicyModes | null; acknowledgePaid?: true}): Promise<AgentTaskConversationPolicyView>;
 }
 const record = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value));
 export const agentTaskPromptValid=(text:string):boolean=>Boolean(text.trim())&&text.length<=32000&&new TextEncoder().encode(text).byteLength<=32768;
 const failure = (code = 'NETWORK',definitive=false) => Object.assign(new Error('Agent task request failed'), { code,definitive });
 export const agentTaskDefinitiveFailure=(error:unknown):boolean=>record(error)&&error.definitive===true;
 function safeUpload(value: unknown): AgentTaskUpload { if (!record(value) || typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.mimeType !== 'string' || typeof value.status !== 'string') throw failure('INVALID_RESPONSE'); return {id:value.id,name:value.name,mimeType:value.mimeType,status:value.status}; }
+function safeConversationPolicyView(value: unknown, projectId: string, conversationId: string): AgentTaskConversationPolicyView { if (!record(value) || typeof value.readOnly !== 'boolean') throw failure('INVALID_RESPONSE'); const policy=agentTaskConversationPolicySchema.parse(value.policy); if(policy.projectId!==projectId||policy.conversationId!==conversationId)throw failure('INVALID_RESPONSE'); return {policy,readOnly:value.readOnly}; }
 function safePolicyView(value: unknown): AgentTaskPolicyView { if (!record(value) || typeof value.readOnly !== 'boolean') throw failure('INVALID_RESPONSE'); return {policy:agentTaskPolicySchema.parse(value.policy),readOnly:value.readOnly}; }
 function errorCode(error: unknown): string { return record(error) && typeof error.code === 'string' && /^[A-Z][A-Z0-9_]{1,90}$/u.test(error.code) ? error.code : 'NETWORK'; }
 // Match the existing asset importer aliases; filenames never infer media types.
@@ -91,11 +99,13 @@ export function createAgentTaskClient({ fetchImpl = globalThis.fetch, timeoutMs 
     },
     policy: async () => safePolicyView(await json(`${root}/policy`)),
     savePolicy: async input => safePolicyView(await json(`${root}/policy`, 'PUT', input)),
+    conversationPolicy: async (projectId, conversationId) => safeConversationPolicyView(await json(`${path(projectId)}/conversations/${encodeURIComponent(conversationId)}/policy`), projectId, conversationId),
+    setConversationPolicy: async (projectId, conversationId, input) => safeConversationPolicyView(await json(`${path(projectId)}/conversations/${encodeURIComponent(conversationId)}/policy`, 'PUT', input), projectId, conversationId),
     lookupPolicy: async requestId => { const value = await json(`${root}/policy/requests/${encodeURIComponent(requestId)}`); if (!record(value) || typeof value.found !== 'boolean' || typeof value.readOnly !== 'boolean') throw failure('INVALID_RESPONSE'); return {found:value.found,readOnly:value.readOnly,...(value.policy === undefined ? {} : {policy:agentTaskPolicySchema.parse(value.policy)})}; },
   };
 }
 
-export interface AgentTaskSessionState { phase: 'loading' | 'refreshing' | 'ready' | 'submitting' | 'unknown' | 'detached' | 'error' | 'read_error'; project: AgentTaskProjectSnapshot | null; snapshot: AgentTaskSnapshot | null; draft: string; uploads: AgentTaskUpload[]; pending: AgentTaskPending | null; error: string; conversationId:string|null; conversation:AgentTaskConversation|null; rounds:AgentTaskSnapshot[]; selectionKey:string; legacy:boolean; draftDirty:boolean; draftVersion:number; unknownOutcome:boolean; backgroundPending?:boolean; history:{conversations:AgentTaskConversation[];nextCursor:string|null;phase:'closed'|'loading'|'ready'|'error'} }
+export interface AgentTaskSessionState { phase: 'loading' | 'refreshing' | 'ready' | 'submitting' | 'unknown' | 'detached' | 'error' | 'read_error'; project: AgentTaskProjectSnapshot | null; snapshot: AgentTaskSnapshot | null; draft: string; uploads: AgentTaskUpload[]; pending: AgentTaskPending | null; error: string; conversationId:string|null; conversation:AgentTaskConversation|null; rounds:AgentTaskSnapshot[]; selectionKey:string; legacy:boolean; draftDirty:boolean; draftVersion:number; unknownOutcome:boolean; backgroundPending?:boolean; policy:AgentTaskComposerPolicy; history:{conversations:AgentTaskConversation[];nextCursor:string|null;phase:'closed'|'loading'|'ready'|'error'} }
 export const agentTaskSessionBusy=(state:Pick<AgentTaskSessionState,'phase'>):boolean=>['loading','refreshing','submitting'].includes(state.phase);
 export interface AgentTaskReceiptStore { read(projectId: string): AgentTaskPending | null; write(projectId: string, value: AgentTaskPending | null): void }
 export function createAgentTaskReceiptStore(storage: () => Storage | null = () => typeof sessionStorage === 'undefined' ? null : sessionStorage, workspaceScope = 'normal'): AgentTaskReceiptStore {
@@ -119,10 +129,65 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
   let restored:AgentTaskPending|null=null,receiptsBlocked=false;try{restored=receipts.read(projectId);}catch{receiptsBlocked=true;}
   const drafts=new Map<string,{text:string;uploads:AgentTaskUpload[]}>(),unknownRuns=new Set<string>(),backgroundRuns=new Set<string>();let selectionChosen=false;
   const noteDrafts=new Map<string,{selectionKey:string;version:number;text:string}>();
-  let state: AgentTaskSessionState = { phase: receiptsBlocked?'error':'loading', project: null, snapshot: null, draft: '', uploads: [], pending: restored, error: receiptsBlocked?'LOCAL_RECEIPT_UNAVAILABLE':'',conversationId:restored?.conversationId??null,conversation:null,rounds:[],selectionKey:restored?.conversationId??'new',legacy:false,draftDirty:false,draftVersion:0,unknownOutcome:false,history:{conversations:[],nextCursor:null,phase:'closed'} }, active = true, generation = 0, visible = true, busy = false, after = 0, historyEpoch=0, retryAttempt=0, stream: AbortController | null = null, retry: ReturnType<typeof setTimeout> | null = null;
-  const publish = (patch: Partial<AgentTaskSessionState>) => { const previous=state;state = { ...state, ...patch };drafts.set(state.selectionKey,{text:state.draft,uploads:state.uploads});state.draftDirty=[...drafts.values()].some(value=>Boolean(value.text.trim())||value.uploads.length>0);state.unknownOutcome=unknownRuns.size>0;state.backgroundPending=backgroundRuns.size>0;if(previous.draft!==state.draft||previous.uploads!==state.uploads||previous.selectionKey!==state.selectionKey)state.draftVersion++;if (active) onChange(state); };
+  let state: AgentTaskSessionState = { phase: receiptsBlocked?'error':'loading', project: null, snapshot: null, draft: '', uploads: [], pending: restored, error: receiptsBlocked?'LOCAL_RECEIPT_UNAVAILABLE':'',conversationId:restored?.conversationId??null,conversation:null,rounds:[],selectionKey:restored?.conversationId??'new',legacy:false,draftDirty:false,draftVersion:0,unknownOutcome:false,policy:{conversationId:null,phase:'ready',value:null,modes:null},history:{conversations:[],nextCursor:null,phase:'closed'} }, active = true, generation = 0, visible = true, busy = false, after = 0, historyEpoch=0, retryAttempt=0, stream: AbortController | null = null, retry: ReturnType<typeof setTimeout> | null = null;
+  const publish = (patch: Partial<AgentTaskSessionState>) => { const previous=state;state = { ...state, ...patch };drafts.set(state.selectionKey,{text:state.draft,uploads:state.uploads});state.draftDirty=[...drafts.values()].some(value=>Boolean(value.text.trim())||value.uploads.length>0);state.unknownOutcome=unknownRuns.size>0;state.backgroundPending=backgroundRuns.size>0;if(previous.draft!==state.draft||previous.uploads!==state.uploads||previous.selectionKey!==state.selectionKey)state.draftVersion++;if (active) onChange(state);syncPolicy(); };
   function rememberPendingResults(snapshot:AgentTaskSnapshot){if(snapshot.steps.some(step=>step.status==='unknown'))unknownRuns.add(snapshot.run.id);else unknownRuns.delete(snapshot.run.id);if(snapshot.backgroundPending===true)backgroundRuns.add(snapshot.run.id);else backgroundRuns.delete(snapshot.run.id);}
   const persist = (value: AgentTaskPending | null) => { receipts.write(projectId, value); publish({ pending: value }); };
+  // The composer shows the selected conversation's own modes; a new one has
+  // only a local choice until its first send saves it with the run.
+  let policyEpoch=0;
+  function syncPolicy(){
+    const id=state.legacy?null:state.conversationId;
+    if(!active||state.policy.conversationId===id)return;
+    policyEpoch++;
+    if(id===null)publish({policy:{conversationId:null,phase:'ready',value:null,modes:null}});else void loadPolicy(id);
+  }
+  async function loadPolicy(id:string):Promise<void>{
+    const epoch=++policyEpoch,previous=state.policy.conversationId===id?state.policy.value:null;
+    publish({policy:{conversationId:id,phase:'loading',value:previous,modes:null}});
+    try{const view=await client.conversationPolicy(projectId,id);if(active&&epoch===policyEpoch&&state.policy.conversationId===id)publish({policy:{conversationId:id,phase:'ready',value:view.policy,modes:null}});}
+    catch{if(active&&epoch===policyEpoch&&state.policy.conversationId===id)publish({policy:{conversationId:id,phase:'error',value:previous,modes:null}});}
+  }
+  const policyLocked=():boolean=>!active||!visible||receiptsBlocked||!state.project||state.project.readOnly===true||state.legacy||state.policy.phase==='saving'||state.policy.phase==='loading';
+  /** Choose this conversation's modes. Choosing the global ones follows the global policy again. */
+  async function choosePolicy(modes:AgentTaskPolicyModes):Promise<boolean>{
+    if(policyLocked())return false;
+    const global=state.project!.policy.modes,next=sameAgentTaskPolicyModes(modes,global)?null:structuredClone(modes),current=state.policy;
+    if(current.conversationId===null){publish({policy:{conversationId:null,phase:'ready',value:null,modes:next}});return true;}
+    if(!current.value||current.phase!=='ready')return false;
+    const id=current.conversationId,epoch=++policyEpoch,after=next??global;
+    publish({policy:{...current,phase:'saving'}});
+    try{
+      const view=await client.setConversationPolicy(projectId,id,{requestId:requestId(),expectedRevision:current.value.revision,modes:next,...(after.paid==='direct'&&current.value.effective.paid!=='direct'?{acknowledgePaid:true as const}:{})});
+      if(!active||epoch!==policyEpoch||state.policy.conversationId!==id)return false;
+      publish({policy:{conversationId:id,phase:'ready',value:view.policy,modes:null},error:''});return true;
+    }catch(error){
+      if(!active||epoch!==policyEpoch||state.policy.conversationId!==id)return false;
+      // Never resend: read the saved modes back and show the failure.
+      publish({error:errorCode(error)});await loadPolicy(id);return false;
+    }
+  }
+  /** Write these modes to the global policy, keeping its step limit. */
+  async function setGlobalPolicy(modes:AgentTaskPolicyModes):Promise<boolean>{
+    if(policyLocked())return false;
+    const saved=state.project!.policy,current=state.policy,epoch=++policyEpoch,request=requestId();
+    publish({policy:{...current,phase:'saving'}});
+    try{
+      let view:{policy:AgentTaskPolicy};
+      try{view=await client.savePolicy({...saved,modes:structuredClone(modes),requestId:request,expectedRevision:saved.revision,...(modes.paid==='direct'&&saved.modes.paid!=='direct'?{acknowledgePaid:true}:{})});}
+      catch(error){const receipt=await client.lookupPolicy(request).catch(()=>null);if(!receipt?.found||!receipt.policy)throw error;view={policy:receipt.policy};}
+      if(!active||epoch!==policyEpoch||!state.project)return false;
+      publish({project:{...state.project,policy:view.policy},error:''});
+      if(current.conversationId===null)publish({policy:{conversationId:null,phase:'ready',value:null,modes:current.modes&&sameAgentTaskPolicyModes(current.modes,view.policy.modes)?null:current.modes}});
+      else await loadPolicy(current.conversationId);
+      return true;
+    }catch(error){
+      if(!active||epoch!==policyEpoch)return false;
+      publish({error:errorCode(error)});
+      if(current.conversationId===null)publish({policy:{...current,phase:'ready'}});else await loadPolicy(current.conversationId);
+      return false;
+    }
+  }
   function switchDraft(key:string){const saved=drafts.get(key);return {selectionKey:key,draft:saved?.text??'',uploads:saved?.uploads??[]};}
   function noteAccepted(pending:AgentTaskPending,snapshot:AgentTaskSnapshot|undefined):boolean {
     const captured=noteDrafts.get(pending.requestId);return pending.action!=='note'||Boolean(snapshot?.run.notes?.some(note=>note.requestId===pending.requestId&&(!captured||note.text===captured.text)));
@@ -231,7 +296,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     const refreshing=Boolean(state.project&&!state.legacy&&!state.pending&&!state.unknownOutcome&&!state.backgroundPending&&
       ['ready','refreshing'].includes(state.phase)&&state.snapshot&&finished(state.snapshot)&&state.rounds.every(finished));
     const owner = ++generation; detach(); publish({ phase: refreshing?'refreshing':'loading', error: '' });
-    try { const next = await client.list(projectId); if (!active || owner !== generation) return; publish({ project: next }); if (state.pending) { publish({ phase: 'unknown' }); await reconcile(); return; } const chosen = state.conversationId ?? (!selectionChosen&&next.runs.find(run=>!run.diagnostic)?conversationIdOf(next.runs.find(run=>!run.diagnostic)!):null); if (chosen&&!state.legacy) {const value=await readConversation(chosen,owner);if(!value)return;showConversation(value);} if (!active || owner !== generation) return; publish({ phase: 'ready' }); void observe(); }
+    try { const next = await client.list(projectId); if (!active || owner !== generation) return; publish({ project: next }); if (state.pending) { publish({ phase: 'unknown' }); await reconcile(); return; } const chosen = state.conversationId ?? (!selectionChosen&&next.runs.find(run=>!run.diagnostic)?conversationIdOf(next.runs.find(run=>!run.diagnostic)!):null); if (chosen&&!state.legacy) {const value=await readConversation(chosen,owner);if(!value)return;showConversation(value);} if (!active || owner !== generation) return; publish({ phase: 'ready' }); if(state.conversationId&&state.policy.conversationId===state.conversationId&&state.policy.phase==='error')void loadPolicy(state.conversationId); void observe(); }
     // A failed GET after a verified receipt read must not trap an untouched
     // window behind the same close gate needed to restart its local service.
     catch (error) { if (active && owner === generation) publish({ phase: state.pending ? 'unknown' : 'read_error', error: errorCode(error) }); }
@@ -252,21 +317,21 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     if (!active || !visible || receiptsBlocked || busy || agentTaskSessionBusy(state) || state.pending || !state.project || state.project.readOnly || state.legacy || action !== 'send' && !target) return false;
     if (action === 'send' && (!agentTaskPromptValid(state.draft) || !state.project.authorization.scopes.includes('project_agent') || agentTaskNewConversationBlock(state)!==null)) return false;
     if(action==='note'&&(!target||target.run.id!==state.snapshot?.run.id||!['running','awaiting_approval','paused'].includes(target.run.status)||target.steps.some(step=>step.status==='unknown')||state.unknownOutcome||!agentTaskPromptValid(extras.text??state.draft)))return false;
-    const owner = generation, pending: AgentTaskPending = { requestId: requestId(), action, runId: action === 'send' ? null : target!.run.id,conversationId:state.conversationId }, text = action==='note'?extras.text??state.draft:state.draft, locale = action === 'send' ? getLocale() : undefined,conversationId=state.conversationId;
+    const owner = generation, pending: AgentTaskPending = { requestId: requestId(), action, runId: action === 'send' ? null : target!.run.id,conversationId:state.conversationId }, text = action==='note'?extras.text??state.draft:state.draft, locale = action === 'send' ? getLocale() : undefined,conversationId=state.conversationId,modes=action==='send'&&!conversationId&&state.policy.conversationId===null?state.policy.modes:null;
     if(action==='note')noteDrafts.set(pending.requestId,{selectionKey:state.selectionKey,version:state.draftVersion,text});
     try { persist(pending); } catch { noteDrafts.delete(pending.requestId);publish({ phase: 'error', error: 'LOCAL_RECEIPT_UNAVAILABLE' }); return false; }
     busy = true; publish({ phase: 'submitting', error: '' });
-    try { const next = action === 'send' ? await client.send(projectId, { requestId: pending.requestId, text, expectedSettingsRevision: state.project.settings.revision, locale,...(conversationId?{conversationId}:{}), ...(state.uploads.length ? {uploads:state.uploads.map(upload=>upload.id)} : {}) }) : await client.action(projectId, action==='note'?{requestId:pending.requestId,runId:pending.runId!,expectedRevision:target!.run.revision,action,text}:{requestId:pending.requestId,runId:pending.runId!,expectedRevision:target!.run.revision,action,...extras}); if (!active || owner !== generation) return false;if(conversationId&&conversationIdOf(next.run)!==conversationId||!noteAccepted(pending,next))throw failure('INVALID_RESPONSE'); accept(next); if(action==='undo_all'||action==='undo_change'){busy=false;return await reconcile();} persist(null); publish({ phase: 'ready', ...(action === 'send' && state.draft === text ? { draft: '', uploads:[] } : {}),...finishNoteDraft(pending) }); void observe(); return true; }
+    try { const next = action === 'send' ? await client.send(projectId, { requestId: pending.requestId, text, expectedSettingsRevision: state.project.settings.revision, locale,...(conversationId?{conversationId}:{}), ...(state.uploads.length ? {uploads:state.uploads.map(upload=>upload.id)} : {}),...(!conversationId&&modes?{policy:{modes,...(modes.paid==='direct'&&state.project.policy.modes.paid!=='direct'?{acknowledgePaid:true as const}:{})}}:{}) }) : await client.action(projectId, action==='note'?{requestId:pending.requestId,runId:pending.runId!,expectedRevision:target!.run.revision,action,text}:{requestId:pending.requestId,runId:pending.runId!,expectedRevision:target!.run.revision,action,...extras}); if (!active || owner !== generation) return false;if(conversationId&&conversationIdOf(next.run)!==conversationId||!noteAccepted(pending,next))throw failure('INVALID_RESPONSE'); accept(next); if(action==='undo_all'||action==='undo_change'){busy=false;return await reconcile();} persist(null); publish({ phase: 'ready', ...(action === 'send' && state.draft === text ? { draft: '', uploads:[] } : {}),...finishNoteDraft(pending) }); void observe(); return true; }
     catch (error) { if (active && owner === generation) {if(agentTaskDefinitiveFailure(error)){try{persist({...pending,definitiveRejected:true});busy=false;const accepted=await reconcile();if(action==='note'&&!accepted&&active&&!state.pending&&state.conversationId===conversationId&&state.snapshot?.run.id===targetRunId)publish({error:errorCode(error)});return accepted;}catch{}}publish({ phase: 'unknown', error: errorCode(error) });} return false; } finally { busy = false; }
   }
   function authorizationReview(): AgentTaskAuthorizationReview | null {
     const project = state.project;
     if (!active || !visible || !project || project.readOnly || state.legacy || receiptsBlocked || busy || state.pending || !agentTaskPromptValid(state.draft) || agentTaskNewConversationBlock(state)!==null) return null;
-    return { projectId, settingsRevision: project.settings.revision, authorizationRevision: project.authorization.revision, destination: deriveAgentEndpoint(project.settings.configuration), model: project.settings.configuration.model, text: state.draft, uploads: state.uploads.map(upload => upload.id), locale: getLocale(),conversationId:state.conversationId };
+    return { projectId, settingsRevision: project.settings.revision, authorizationRevision: project.authorization.revision, destination: deriveAgentEndpoint(project.settings.configuration), model: project.settings.configuration.model, text: state.draft, uploads: state.uploads.map(upload => upload.id), locale: getLocale(),conversationId:state.conversationId,modes:state.conversationId===null&&state.policy.conversationId===null?state.policy.modes:null };
   }
   function sameReview(review: AgentTaskAuthorizationReview, includeAuthorization: boolean): boolean {
     const current = authorizationReview();
-    return Boolean(current && current.projectId === review.projectId && current.conversationId===review.conversationId && current.settingsRevision === review.settingsRevision && (!includeAuthorization || current.authorizationRevision === review.authorizationRevision) && current.destination === review.destination && current.model === review.model && current.text === review.text && current.locale === review.locale && JSON.stringify(current.uploads) === JSON.stringify(review.uploads));
+    return Boolean(current && current.projectId === review.projectId && current.conversationId===review.conversationId && current.settingsRevision === review.settingsRevision && (!includeAuthorization || current.authorizationRevision === review.authorizationRevision) && current.destination === review.destination && current.model === review.model && current.text === review.text && current.locale === review.locale && JSON.stringify(current.uploads) === JSON.stringify(review.uploads) && JSON.stringify(current.modes ?? null) === JSON.stringify(review.modes ?? null));
   }
   async function authorize(): Promise<boolean> {
     if (!active || !visible || !state.project || state.project.readOnly || busy || agentTaskSessionBusy(state) || state.pending) return false;
@@ -275,7 +340,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     catch (error) { if (active) publish({ phase: 'error', error: errorCode(error) }); return false; }
     finally { busy = false; }
   }
-  return { getState: () => state, load, reconcile, refreshRound, send: () => mutate('send'), note: () => mutate('note',{text:state.draft}), action: (action: AgentTaskPanelControlAction, extras?: AgentTaskControlExtras,runId?:string) => mutate(action, extras,runId), edit(text: string,selectionKey=state.selectionKey) { if (active && visible&&!state.legacy&&selectionKey===state.selectionKey) publish({ draft: text }); },
+  return { getState: () => state, load, reconcile, refreshRound, choosePolicy, setGlobalPolicy, send: () => mutate('send'), note: () => mutate('note',{text:state.draft}), action: (action: AgentTaskPanelControlAction, extras?: AgentTaskControlExtras,runId?:string) => mutate(action, extras,runId), edit(text: string,selectionKey=state.selectionKey) { if (active && visible&&!state.legacy&&selectionKey===state.selectionKey) publish({ draft: text }); },
     authorizationReview,
     async authorizeAndSend(review: AgentTaskAuthorizationReview) {
       // Confirm exactly the reviewed destination and input. A settings, draft,

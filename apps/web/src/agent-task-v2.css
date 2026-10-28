@@ -143,3 +143,36 @@
 /* A change row opened from its "Mio 修改" label on the canvas or timeline. */
 .mio-panel .mio-change{transition:background-color .3s ease-out,box-shadow .3s ease-out}.mio-panel .mio-change[data-revealed]{background:color-mix(in srgb,var(--wb-accent) 12%,var(--wb-card));box-shadow:inset 0 0 0 1px var(--wb-accent-line)}
 @media (prefers-reduced-motion:reduce){.mio-panel .mio-change{transition:none}}
+/* Confirmation modes in the composer (09-01, 09-02). */
+.mio-policy-trigger.wb-button{flex:none;height:var(--wb-space-6);min-width:0;gap:var(--wb-space-1);padding-inline:6px;border-radius:var(--wb-radius-control);background:var(--wb-card);color:var(--wb-soft);font-size:var(--wb-text-label);font-weight:500}
+.mio-panel .mio-policy-trigger svg{width:14px;height:14px}
+.mio-panel .mio-policy-trigger .mio-policy-chevron{width:12px;height:12px;transition:transform .12s ease}
+.mio-policy-trigger.wb-button:hover:not(:disabled){background:var(--wb-hover)}
+.mio-policy-trigger[aria-expanded=true]{color:var(--wb-text)}
+.mio-policy-trigger[aria-expanded=true] .mio-policy-chevron{transform:rotate(180deg)}
+.mio-policy-trigger.wb-button[data-preset=full]{color:var(--wb-warning);background:var(--wb-warning-subtle)}
+.mio-policy-name{white-space:nowrap}
+.mio-policy-menu{display:flex;flex-direction:column;gap:2px;padding:var(--wb-space-2);background:var(--wb-raised);border:1px solid var(--wb-line);border-radius:var(--wb-radius-card);box-shadow:var(--wb-shadow);color:var(--wb-text);max-width:calc(100vw - var(--wb-space-6))}
+.mio-policy-menu svg{width:var(--wb-space-4);height:var(--wb-space-4);flex:none}
+.mio-policy-title.wb-menu-label,.mio-policy-title{padding:var(--wb-space-1) var(--wb-space-2);font-size:var(--wb-text-label);font-weight:400;color:var(--wb-soft)}
+.mio-policy-option{align-items:flex-start;gap:var(--wb-space-2);padding:var(--wb-space-2) var(--wb-space-6) var(--wb-space-2) var(--wb-space-2);border-radius:var(--wb-radius-control);color:var(--wb-soft)}
+.mio-policy-option[data-checked]{background:var(--wb-selected);color:var(--wb-text)}
+.mio-policy-option[data-highlighted]:not([data-checked]),.mio-policy-global[data-highlighted]{background:var(--wb-hover);color:var(--wb-text)}
+.mio-policy-option>svg{margin-top:1px}
+.mio-policy-option[data-preset=full]>svg,.mio-policy-option[data-preset=full] strong{color:var(--wb-warning)}
+.mio-policy-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mio-policy-copy strong{font-size:13px;font-weight:500;color:var(--wb-text)}
+.mio-policy-copy span{font-size:var(--wb-text-caption);color:var(--wb-muted);line-height:1.4;white-space:normal}
+.mio-policy-custom{display:flex;gap:var(--wb-space-1);align-items:center;margin:0;padding:var(--wb-space-1) var(--wb-space-2);font-size:var(--wb-text-caption);color:var(--wb-muted)}
+.mio-policy-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--wb-space-2);margin-top:var(--wb-space-1);padding:var(--wb-space-2) var(--wb-space-2) 0;border-top:1px solid var(--wb-line-subtle);font-size:var(--wb-text-caption);color:var(--wb-muted)}
+.mio-policy-foot>span{min-width:0}
+.mio-policy-global{flex:none;padding:2px var(--wb-space-1);font-size:var(--wb-text-label);font-weight:500;color:var(--wb-text)}
+.mio-policy-dialog-title{display:flex;align-items:center;gap:var(--wb-space-3)}
+.mio-policy-dialog-icon{display:inline-flex;align-items:center;justify-content:center;width:var(--wb-space-8);height:var(--wb-space-8);flex:none;border-radius:50%;background:var(--wb-warning-subtle);color:var(--wb-warning)}
+.mio-policy-dialog-icon svg{width:18px;height:18px}
+.mio-policy-full-confirm.wb-button{background:var(--wb-warning);color:var(--wb-bg);border-color:transparent}
+.mio-policy-full-confirm.wb-button:hover:not(:disabled){background:var(--wb-warning);filter:brightness(1.06)}
+.mio-policy-dialog .wb-dialog-content:empty{display:none}
+.mio-panel .mio-model-trigger.wb-button{justify-content:flex-end}
+/* Narrow composers keep the send button: the model loses its scope first, then the mode its name. */
+.mio-composer-tools:is([data-compact="1"],[data-compact="2"]) .mio-model-scope,.mio-composer-tools[data-compact="2"] .mio-policy-name{display:none}

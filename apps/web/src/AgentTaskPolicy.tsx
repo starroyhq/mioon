@@ -6,7 +6,8 @@ import { WorkbenchAlert, WorkbenchBadge, WorkbenchButton, WorkbenchTabs } from '
 import Icon from './icons.tsx';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { message } from '../../../packages/i18n/src/index.ts';
-import type { AgentTaskPolicy, AgentTaskMode, AgentTaskTier } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import type { AgentTaskPolicy, AgentTaskMode, AgentTaskPolicyPreset, AgentTaskTier } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import { AGENT_TASK_POLICY_PRESETS, agentTaskPolicyPreset } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { createAgentTaskClient, agentTaskDefinitiveFailure } from './agent-tasks-v2.ts';
 
 const policyReceiptKey='mioon.agent-task-v2.policy-pending';
@@ -21,15 +22,19 @@ const tierCopy = {
   local_irreversible: {title: 'agent.task.tier.local_irreversible', hint: 'mio.settings.tier.local_irreversible.hint'},
   paid: {title: 'mio.settings.tier.paid', hint: 'mio.settings.tier.paid.hint'},
 } as const satisfies Record<AgentTaskTier, {title: string; hint: string}>;
+const presets = ['step', 'default', 'full'] as const satisfies readonly AgentTaskPolicyPreset[];
 export default function AgentTaskPolicy({ visible = true, onNavigationChange = () => {}, controller }: { visible?: boolean; onNavigationChange?: (state: AgentTaskPolicyNavigation) => void; controller?: MutableRefObject<AgentTaskPolicyController | null> }) {
   const { t } = useI18n(), confirm = useConfirmation(), [saved, setSaved] = useState<AgentTaskPolicy | null>(null), [draft, setDraft] = useState<AgentTaskPolicy | null>(null), [busy, setBusy] = useState(false), [readOnly,setReadOnly]=useState(false), [notice, setNotice] = useState<'error' | 'saved' | 'unknown' | null>(null);
+  // The category rows stay folded behind the presets unless the first saved modes match none of them.
+  const [details, setDetails] = useState<boolean | null>(null);
   const client = useRef(createAgentTaskClient()), serial = useRef(0), mutation = useRef(false), mounted = useRef(false), viewEpoch=useRef(0),visibility=useRef(visible),paidAcknowledged = useRef(false), pending = useRef<string|null>(readPolicyReceipt()), report = useRef(onNavigationChange); report.current=onNavigationChange;
   useLayoutEffect(() => { report.current({dirty:JSON.stringify(saved)!==JSON.stringify(draft),busy,unknown:notice==='unknown'}); }, [saved,draft,busy,notice]);
   useLayoutEffect(()=>{visibility.current=visible;viewEpoch.current++;},[visible]);
   useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; serial.current++; }; }, []);
-  async function load() { const token = ++serial.current; setBusy(true); try { let next:AgentTaskPolicy; if(pending.current){const receipt=await client.current.lookupPolicy(pending.current);if(!receipt.found||!receipt.policy){setNotice('unknown');return;}pending.current=null;writePolicyReceipt(null);const current=await client.current.policy();next=current.policy;setReadOnly(current.readOnly);}else {const response=await client.current.policy();next=response.policy;setReadOnly(response.readOnly);} if (mounted.current && serial.current === token) { setSaved(next); setDraft(next); paidAcknowledged.current=false; setNotice(null); } } catch { if (mounted.current && serial.current === token) setNotice(pending.current?'unknown':'error'); } finally { if (mounted.current && serial.current === token) setBusy(false); } }
+  async function load() { const token = ++serial.current; setBusy(true); try { let next:AgentTaskPolicy; if(pending.current){const receipt=await client.current.lookupPolicy(pending.current);if(!receipt.found||!receipt.policy){setNotice('unknown');return;}pending.current=null;writePolicyReceipt(null);const current=await client.current.policy();next=current.policy;setReadOnly(current.readOnly);}else {const response=await client.current.policy();next=response.policy;setReadOnly(response.readOnly);} if (mounted.current && serial.current === token) { setSaved(next); setDraft(next); setDetails(value => value ?? agentTaskPolicyPreset(next.modes) === 'custom'); paidAcknowledged.current=false; setNotice(null); } } catch { if (mounted.current && serial.current === token) setNotice(pending.current?'unknown':'error'); } finally { if (mounted.current && serial.current === token) setBusy(false); } }
   useLayoutEffect(() => { if (visible && !draft) void load(); }, [visible]);
   async function mode(tier: AgentTaskTier, value: AgentTaskMode) { if (!visibility.current || readOnly || busy || !draft || mutation.current || pending.current) return; const before = draft, token = ++serial.current, view=viewEpoch.current; if (tier === 'paid' && value === 'direct' && before.modes.paid !== 'direct') {if(!await confirm(message('agent.task.feeWarning')))return;paidAcknowledged.current=true;} if (!mounted.current || token !== serial.current || view!==viewEpoch.current || !visibility.current) return; report.current({dirty:true,busy:false,unknown:false}); setDraft({ ...before, modes: { ...before.modes, [tier]: value } }); setNotice(null); }
+  async function choosePreset(next: AgentTaskPolicyPreset) { if (!visibility.current || readOnly || busy || !draft || mutation.current || pending.current) return; const before = draft, token = ++serial.current, view=viewEpoch.current, target = AGENT_TASK_POLICY_PRESETS[next]; if (target.paid === 'direct' && before.modes.paid !== 'direct') {if(!await confirm(message('agent.task.feeWarning')))return;paidAcknowledged.current=true;} if (!mounted.current || token !== serial.current || view!==viewEpoch.current || !visibility.current) return; report.current({dirty:true,busy:false,unknown:false}); setDraft({ ...before, modes: { ...target } }); setNotice(null); }
   async function save() {
     if (!draft || !saved || readOnly || mutation.current || !visibility.current || busy || pending.current) return;
     mutation.current=true;setBusy(true);report.current({dirty:true,busy:true,unknown:false});const token=++serial.current;pending.current=crypto.randomUUID();let dispatched=false;
@@ -49,12 +54,21 @@ export default function AgentTaskPolicy({ visible = true, onNavigationChange = (
   function discard() { if (!visibility.current || busy || mutation.current || pending.current || !saved) return; serial.current++; paidAcknowledged.current=false; setDraft(saved); setNotice(null); }
   useLayoutEffect(() => { if (!controller) return; const own: AgentTaskPolicyController = { save, discard }; controller.current = own; return () => { if (controller.current === own) controller.current = null; }; });
   const locked = !visible || readOnly || busy || notice === 'unknown';
+  const preset = draft ? agentTaskPolicyPreset(draft.modes) : null, open = details ?? false;
   // Viewing is always direct by default; only a stored exception (for example set through the CLI) is shown as a choice.
   const tiers: readonly AgentTaskTier[] = draft && (draft.modes.read_only !== 'direct' || saved?.modes.read_only !== 'direct') ? ['read_only', 'local_reversible', 'local_irreversible', 'paid'] : ['local_reversible', 'local_irreversible', 'paid'];
   return <>
     <section className="mio-settings-section" data-testid="agent-task-policy" aria-busy={busy}>
       <header className="mio-settings-section-head"><h2>{t('agent.task.policyTitle')}</h2><p>{t('mio.settings.policy.description')}</p></header>
-      {draft && <div className="mio-settings-tiers">
+      {draft && preset && <div className="mio-settings-tier mio-settings-preset" data-testid="agent-policy-preset">
+        <div className="mio-settings-tier-main">
+          <div className="mio-settings-tier-copy"><span className="mio-settings-tier-title">{t('mio.settings.policy.preset')}{preset === 'custom' && <WorkbenchBadge data-testid="agent-policy-custom">{t('agent.panel.policy.preset.custom')}</WorkbenchBadge>}</span><span className="agent-settings-help">{t(`agent.panel.policy.preset.${preset}.hint`)}</span></div>
+          <WorkbenchTabs data-testid="agent-policy-presets" value={preset === 'custom' ? '' : preset} label={t('mio.settings.policy.preset')} onValueChange={value => { void choosePreset(value as AgentTaskPolicyPreset); }}
+            options={presets.map(item => ({ value: item, label: t(`agent.panel.policy.preset.${item}`), disabled: locked, testId: `agent-policy-preset-${item}` }))} />
+        </div>
+        <WorkbenchButton type="button" variant="ghost" size="compact" className="mio-settings-details" data-testid="agent-policy-details" aria-expanded={open} onClick={() => setDetails(!open)}>{t('mio.settings.policy.details')}<Icon name="down" size={12} /></WorkbenchButton>
+      </div>}
+      {draft && open && <div className="mio-settings-tiers" data-testid="agent-policy-tiers">
         {tiers.map(tier => <div key={tier} className={`mio-settings-tier ${tier === 'paid' ? 'is-paid' : ''}`} data-testid={`agent-policy-row-${tier}`}>
           <div className="mio-settings-tier-main">
             <div className="mio-settings-tier-copy"><span className="mio-settings-tier-title">{t(tierCopy[tier].title)}{tier === 'paid' && <WorkbenchBadge tone="warning">{t('mio.settings.policy.paidBadge')}</WorkbenchBadge>}</span><span className="agent-settings-help">{t(tierCopy[tier].hint)}</span></div>
@@ -63,8 +77,8 @@ export default function AgentTaskPolicy({ visible = true, onNavigationChange = (
           </div>
           {tier === 'paid' && <WorkbenchAlert tone="warning" icon={<Icon name="warning" size={14} />} data-testid="agent-policy-fee-warning">{t('mio.settings.policy.paidWarning')}</WorkbenchAlert>}
         </div>)}
-        {!tiers.includes('read_only') && <p className="mio-settings-locked" data-testid="agent-policy-locked"><Icon name="lock" size={12} />{t('mio.settings.policy.locked')}</p>}
       </div>}
+      {draft && !tiers.includes('read_only') && <p className="mio-settings-locked" data-testid="agent-policy-locked"><Icon name="lock" size={12} />{t('mio.settings.policy.locked')}</p>}
       {notice && <div className="mio-settings-notice" role={notice === 'saved' ? 'status' : 'alert'}><span>{t(notice === 'saved' ? 'agent.task.policySaved' : notice === 'unknown' ? 'agent.task.unknown' : 'agent.task.error')}</span>{notice !== 'saved' && <WorkbenchButton type="button" variant="ghost" size="compact" data-testid="agent-policy-reload" disabled={!visible || busy} onClick={() => { void load(); }}>{t('agent.task.reload')}</WorkbenchButton>}</div>}
     </section>
     <section className="mio-settings-section mio-settings-steps" data-testid="agent-task-steps">

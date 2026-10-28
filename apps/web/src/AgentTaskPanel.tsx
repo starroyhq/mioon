@@ -20,6 +20,7 @@ import AgentConversationHistory from './AgentConversationHistory.tsx';
 import {readLegacyConversation} from './agent-conversations.ts';
 import type {LegacyConversation} from './agent-conversations.ts';
 import AgentRetainedEditing from './AgentRetainedEditing.tsx';
+import AgentTaskPolicyMenu from './AgentTaskPolicyMenu.tsx';
 import Icon from './icons.tsx';
 import { agentTaskErrorKey } from './agent-task-errors.ts';
 import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle } from './agent-task-presentation.ts';
@@ -43,7 +44,7 @@ function StepIcon({ step }: { step: AgentTaskStep }) {
 }
 export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, nativeCloseRegistry }: AgentTaskPanelProps) {
   const { t, locale } = useI18n(), visible = useWorkspaceVisibility();
-  const [state, setState] = useState<AgentTaskSessionState>({ phase: 'loading', project: null, snapshot: null, draft: '', uploads: [], pending: null, error: '', conversationId:null,conversation:null,rounds:[],selectionKey:'new',legacy:false,draftDirty:false,draftVersion:0,unknownOutcome:false,history: { conversations: [], nextCursor: null, phase: 'closed' } });
+  const [state, setState] = useState<AgentTaskSessionState>({ phase: 'loading', project: null, snapshot: null, draft: '', uploads: [], pending: null, error: '', conversationId:null,conversation:null,rounds:[],selectionKey:'new',legacy:false,draftDirty:false,draftVersion:0,unknownOutcome:false,policy:{conversationId:null,phase:'ready',value:null,modes:null},history: { conversations: [], nextCursor: null, phase: 'closed' } });
   const [undoPreview,setUndoPreview]=useState<{snapshot:AgentTaskSnapshot;selectionKey:string}|null>(null),[undoLoading,setUndoLoading]=useState(false);
   const undoTrigger=useRef<HTMLButtonElement|null>(null),undoCancel=useRef<HTMLButtonElement|null>(null),undoFlight=useRef(false),undoRead=useRef(0);
   const [review, setReview] = useState<AgentTaskAuthorizationReview | null>(null), [historyOpen, setHistoryOpen] = useState(false), [stepsOpen, setStepsOpen] = useState<Record<string,boolean>>({}), [modelMenuOpen, setModelMenuOpen] = useState(false), [following, setFollowing] = useState(true),[composing,setComposing]=useState(false);
@@ -52,6 +53,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const composition=useRef(false),historyVisible=useRef(historyOpen);historyVisible.current=historyOpen;
   const language = useRef(locale); language.current = locale;
   const visibility = useRef(visible); visibility.current = visible;
+  const composer = useRef<HTMLFormElement | null>(null), tools = useRef<HTMLDivElement | null>(null);
   const log = useRef<HTMLDivElement | null>(null), follow = useRef(true), historyButton = useRef<HTMLButtonElement | null>(null), input = useRef<HTMLTextAreaElement | null>(null), file = useRef<HTMLInputElement | null>(null), sendButton = useRef<HTMLButtonElement | null>(null), authorizeButton = useRef<HTMLButtonElement | null>(null), sendFlight = useRef(false);
   useLayoutEffect(() => {
     let mounted = true;
@@ -73,6 +75,20 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   // round can always be ended.
   const stopInComposer = Boolean(run && (run.status==='accepted'||run.status==='awaiting_answer'||noteMode&&!state.draft.trim()));
   const model = project?.settings.configuration.model ?? '';
+  // A saved conversation runs with its own modes or the global ones; a new
+  // conversation with its local choice until the first send saves it.
+  const globalModes = project?.policy?.modes ?? null, policy = state.policy;
+  const policyModes = !project || state.legacy ? null : state.conversationId ? (policy?.conversationId === state.conversationId ? policy.value?.effective ?? null : null) : (policy?.conversationId === null ? policy.modes ?? globalModes : globalModes);
+  // When the composer tools do not fit, the model first drops its scope and
+  // then the mode button its name; the send button always stays.
+  useLayoutEffect(() => {
+    const row = tools.current;
+    if (!row || typeof ResizeObserver === 'undefined') return;
+    const fit = () => { for (const level of ['0', '1', '2']) { row.dataset.compact = level; const label = row.querySelector<HTMLElement>('.mio-model-trigger > span'); if (!label || label.scrollWidth <= label.clientWidth) return; } };
+    const observer = new ResizeObserver(fit);
+    observer.observe(row); fit();
+    return () => observer.disconnect();
+  }, [model, locale, JSON.stringify(policyModes)]);
   const latest = steps.filter(step => step.kind === 'model' && modelText(step)).at(-1);
   const configurationKey = project ? JSON.stringify([project.settings.revision, project.settings.configuration, project.authorization.revision]) : '';
   useLayoutEffect(() => { setReview(null); }, [projectId, configurationKey, locale, state.selectionKey]);
@@ -241,14 +257,15 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
     <AgentConversationHistory open={historyOpen&&visible} projectId={projectId} conversations={state.history.conversations} phase={state.history.phase} nextCursor={state.history.nextCursor} currentId={state.conversationId} currentLegacyId={state.legacy?legacyView?.id:undefined} newConversation={!state.conversationId&&!state.legacy} disabled={!visible||busy||composing||Boolean(state.pending)} selectionError={state.phase==='read_error'} onClose={closeHistory} onSelect={id=>{void selectConversation(id);}} onSelectLegacy={selectLegacy} onMore={()=>{void session.current?.history(state.history.phase!=='error'&&Boolean(state.history.nextCursor));}} />
     </div>
     {!historyOpen && !following && <Button variant="ghost" className="mio-latest" data-testid="agent-task-latest" onClick={() => { if (log.current) { follow.current = true; setFollowing(true); log.current.scrollTop = log.current.scrollHeight; } }}>{t('agent.panel.latest')} <Icon name="down" /></Button>}
-    <form className="agent-task-composer mio-composer" onSubmit={event => { event.preventDefault(); void send(); }}>
+    <form ref={composer} className="agent-task-composer mio-composer" onSubmit={event => { event.preventDefault(); void send(); }}>
       {state.uploads.length > 0 && <div className="agent-task-uploads mio-attachments">{state.uploads.map(upload => <span key={upload.id} data-testid="agent-task-uploaded"><span title={upload.name}>{upload.name}</span><Button variant="icon" aria-label={t('agent.task.removeAttachment')} disabled={blocked} onClick={() => session.current?.removeUpload(upload.id,state.selectionKey)}><Icon name="close" /></Button></span>)}</div>}
       <Textarea key={state.selectionKey} ref={input} data-testid="agent-task-draft" aria-label={t('agent.task.draft')} placeholder={state.legacy?t('agent.conversation.legacyDraft'):unknown.length || interrupted || state.unknownOutcome ? t('agent.panel.blockedDraft') : noteMode?t(run?.status==='paused'?'agent.panel.pausedNoteDraft':'agent.panel.noteDraft'):run && finished(run.status) ? t('agent.panel.continuedraft') : t('agent.task.draft')} maxLength={32000} value={state.draft} disabled={!visible || ['loading','refreshing'].includes(state.phase) || readOnly || unknown.length > 0 || interrupted || state.unknownOutcome} onChange={event => session.current?.edit(event.target.value,state.selectionKey)} onCompositionStart={()=>{composition.current=true;setComposing(true);}} onCompositionEnd={()=>{composition.current=false;setComposing(false);}} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void send(); } }} />
       {noteMode&&state.uploads.length>0&&<p className="mio-secondary">{t('agent.panel.attachNextRound')}</p>}
       {noteMode&&queuedNotes>=5&&<p className="mio-secondary" role="status" data-testid="agent-task-note-limit">{t('agent.task.error.noteLimit')}</p>}
-      <div className="mio-composer-tools">{!readOnly && <Input key={state.selectionKey} ref={file} className="sr-only" tabIndex={-1} aria-hidden="true" data-testid="agent-task-upload" type="file" disabled={blocked||noteMode} accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/mp4,.cube" onChange={event => { const selected = event.target.files?.[0]; event.target.value = ''; if (selected) void session.current?.upload(selected,state.selectionKey); }} />}
+      <div ref={tools} className="mio-composer-tools">{!readOnly && <Input key={state.selectionKey} ref={file} className="sr-only" tabIndex={-1} aria-hidden="true" data-testid="agent-task-upload" type="file" disabled={blocked||noteMode} accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,audio/mpeg,audio/wav,audio/mp4,.cube" onChange={event => { const selected = event.target.files?.[0]; event.target.value = ''; if (selected) void session.current?.upload(selected,state.selectionKey); }} />}
         {!readOnly && <WorkbenchTooltip content={t('agent.task.attach')}><Button variant="icon" data-testid="agent-task-attach" aria-label={t('agent.task.attach')} disabled={blocked||noteMode} onClick={() => file.current?.click()}><Icon name="link" /></Button></WorkbenchTooltip>}
-        <WorkbenchPopover open={modelMenuOpen && visible} onOpenChange={open => setModelMenuOpen(open)}><WorkbenchPopoverTrigger render={<Button variant="ghost" className="mio-model-trigger" aria-label={t('agent.panel.modelMenu')} disabled={!visible} />}><span>{model || t('agent.panel.noConnection')} · {t('agent.authorization.scope.project_agent')}</span><Icon name="down" /></WorkbenchPopoverTrigger><WorkbenchPopoverContent className="mio-model-menu"><p>{model}</p>{project && <p className="mio-secondary">{deriveAgentEndpoint(project.settings.configuration)}</p>}<Button variant="ghost" onClick={() => { if (visibility.current) onSettings(); }}>{t('agent.panel.changeModel')}</Button></WorkbenchPopoverContent></WorkbenchPopover>
+        {!readOnly && <AgentTaskPolicyMenu modes={policyModes} global={globalModes} disabled={blocked || policy?.phase === 'saving' || policy?.phase === 'loading'} anchor={composer} onChoose={modes => session.current?.choosePolicy(modes)} onSetGlobal={modes => session.current?.setGlobalPolicy(modes)} />}
+        <WorkbenchPopover open={modelMenuOpen && visible} onOpenChange={open => setModelMenuOpen(open)}><WorkbenchPopoverTrigger render={<Button variant="ghost" className="mio-model-trigger" aria-label={t('agent.panel.modelMenu')} disabled={!visible} />}><span><span className="mio-model-name">{model || t('agent.panel.noConnection')}</span><span className="mio-model-scope"> · {t('agent.authorization.scope.project_agent')}</span></span><Icon name="down" /></WorkbenchPopoverTrigger><WorkbenchPopoverContent className="mio-model-menu"><p>{model}</p>{project && <p className="mio-secondary">{deriveAgentEndpoint(project.settings.configuration)}</p>}<Button variant="ghost" onClick={() => { if (visibility.current) onSettings(); }}>{t('agent.panel.changeModel')}</Button></WorkbenchPopoverContent></WorkbenchPopover>
         <WorkbenchTooltip content={t(stopInComposer ? 'agent.task.stop' : noteMode&&queuedNotes>=5?'agent.task.error.noteLimit':noteMode?'agent.panel.sendNote':'agent.task.send')}><Button variant="primary" className="mio-send" ref={sendButton} type={stopInComposer ? 'button' : 'submit'} aria-label={t(stopInComposer ? 'agent.task.stop' : noteMode?'agent.panel.sendNote':'agent.task.send')} data-testid={stopInComposer ? 'agent-task-stop' : 'agent-task-send'} disabled={stopInComposer ? blocked : !canSubmit} onClick={stopInComposer ? () => { void session.current?.action('stop',{},run?.id); } : undefined}><Icon name={stopInComposer ? 'stop' : 'upload'} /></Button></WorkbenchTooltip>
       </div>
     </form>

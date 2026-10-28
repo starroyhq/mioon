@@ -220,6 +220,9 @@ html[data-density="compact"] .task-workspace .job-card { padding-inline: var(--w
 .mio-settings-tier-copy { display: flex; flex-direction: column; gap: var(--wb-space-1); min-width: 0; }
 .mio-settings-tier-title { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-2); color: var(--wb-text); font-size: var(--wb-text-label); font-weight: 500; }
 .mio-settings-tier-main > .wb-tabs { flex: none; }
+.mio-settings-preset { margin-bottom: var(--wb-space-1); }
+.mio-settings-details.wb-button { align-self: flex-start; gap: var(--wb-space-1); color: var(--wb-soft); }
+.mio-settings-details[aria-expanded=true] > svg { transform: rotate(180deg); }
 .mio-settings-locked { display: flex; align-items: center; gap: var(--wb-space-2); padding: var(--wb-space-1) var(--wb-space-3); color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; }
 .mio-settings-locked > svg { flex: none; }
 .mio-settings-notice { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-2); color: var(--wb-warning); font-size: var(--wb-text-caption); line-height: 1.6; }
