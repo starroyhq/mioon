@@ -1,8 +1,9 @@
 # Camera previs
 
-Status: storage and operations implemented (schema 64). The canvas node, the
-3D editor, keyframe export and setting a shot's first or last frame come next.
-Contracts: `packages/contracts/src/previs.ts`.
+Status: storage and operations (schema 64), the canvas node and the 3D editor
+are implemented. Keyframes, keyframe export and setting a shot's first or last
+frame come next. Contracts: `packages/contracts/src/previs.ts`; web UI:
+`apps/web/src/previs/`.
 
 A previs node is a canvas node of type `previs`. It holds one small 3D scene:
 mannequins, props, one key light, the current camera and recorded camera
@@ -88,6 +89,45 @@ others keep their older `sceneRevision`, which tells the editor to redraw
 them. Each project keeps at most 1,000 and the workspace 2,048 thumbnails;
 the oldest are evicted first. `thumbnail.get` returns the requested slots that
 exist, in request order, as base64.
+
+## Canvas and editor
+
+The canvas toolbar's **预演** button adds a previs node next to the view's
+centre. Its card shows the newest `card` thumbnail, the keyframe count, the
+project frame (the timeline format, or 9:16 1080×1920 without one) and that it
+renders locally. The inspector renames the node, shows the frame it follows and
+a scene summary, and opens the editor; double-clicking the card opens it too.
+
+The editor covers the window. The scene outline lists figures, props and the
+key light, each with a visibility toggle, and adds figures and props. The
+properties panel edits the selection: a figure's name, pose, held prop and
+holding hand, position and facing; a prop's name, position, facing and size; or,
+with nothing selected, the camera. The key light's direction and intensity are
+always below. The 3D view looks through the scene camera itself; the frame
+guide in the middle is exactly the output frame, with its focal length and
+size above it and the camera height and tilt in the corner.
+
+- Orbit mode drags the camera around the selection, or around the line of
+  sight at the scene's depth. Free mode drags to look around. WASD walks,
+  Space rises, Shift sinks, the wheel changes the focal length, and the right
+  or middle button pans. Dragging a figure or prop moves it on the floor; a
+  held prop moves with its holder. The focal presets are 24, 35, 50 and 85 mm.
+- Edits save on their own 0.8 s after the last change, one save at a time,
+  under the node's scene revision. An uncertain answer resends the same
+  request. A conflict offers to load the newer scene or keep this one. ⌘Z or
+  Ctrl+Z undoes and ⇧⌘Z or Ctrl+Y redoes within the open session, up to 200
+  steps; one drag or slider movement is one step.
+- About a second after a save settles, the editor captures a 384×216 view of
+  the scene for the card thumbnail.
+- Leaving waits for the last save. If it cannot finish, the editor asks before
+  discarding the unsaved changes.
+- Without WebGL the 3D view shows a notice; the panels still edit and save the
+  scene. A restored copy opens read-only: the camera can be moved to look
+  around, but nothing is saved.
+
+three.js (`three` 0.186.1, MIT) renders the view. It loads only when a previs
+is opened, as a separate chunk; the mannequins and props are built from basic
+shapes, so no model files ship with the app.
 
 ## Packages, backups and Mio
 

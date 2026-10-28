@@ -58,7 +58,7 @@ test('actual explicit Use revalidates binding before existing revision-aware sel
   assert.match(app, /'version.select', \{ shotId: shot.id, versionId, expectedRevision: shot.revision \}/);
 });
 test('background visibility, exact comparison ownership and four-locale catalog are wired without duplicate UI', () => {
-  const background = app.indexOf('<WorkspaceVisibilityProvider visible={!comparisonId}>'), end = app.indexOf('</WorkspaceVisibilityProvider>', background), comparison = app.indexOf('<VersionComparison key=');
+  const background = app.indexOf('<WorkspaceVisibilityProvider visible={!comparisonId && !previsOpen}>'), end = app.indexOf('</WorkspaceVisibilityProvider>', background), comparison = app.indexOf('<VersionComparison key=');
   assert.ok(background > 0 && end > background && comparison > end);
   for (const name of ['<Inspector ', '<Preview ', '<ExportPreview', '<Media asset={previewAsset}']) assert.ok(app.indexOf(name, background) < end);
   assert.match(app, /visible=\{!comparisonId && workbenchReady && showDelivery && !showExports\}/);
