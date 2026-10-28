@@ -10,6 +10,8 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
+import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
+import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {schemas,descriptions,operationEffect,isTimelineMutationResponse,hasRequestNotAppliedProof,TIMELINE_MUTATION_OPERATIONS,DURABLE_EDIT_OPERATIONS,
  TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES} from '@mioon/contracts';
 import {translate} from '../packages/i18n/src/index.ts';
@@ -45,6 +47,7 @@ async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,
    return next.clips.at(-1);
   },
   request:<P extends Record<string,unknown>=Record<never,never>>(timeline: { revision: number; },extra?: P):P & {projectId:string;expectedRevision:number;requestId:string}=>({projectId:f.projectId,expectedRevision:timeline.revision,requestId:randomUUID(),...(extra as P)}),
+  async close(){await services.drain();store.close();},
  };
  const f = _strictFixtureBase as typeof _strictFixtureBase & {projectId: string};
  f.projectId=(await f.call('project.create',{name:t.name.slice(0,150)})).id;
@@ -115,4 +118,39 @@ test('splitting past the timeline clip limit is refused with a proof', async t=>
  const resultId=await f.detect(film),input=f.request(await f.timeline(),{assetId:film.id,resultId}),before=f.capture();
  await assert.rejects(f.call(SPLIT,input),code('TIMELINE_LIMIT',(((error?: unknown)=>hasRequestNotAppliedProof(error,input,{operation:SPLIT})) as unknown as Parameters<typeof code>[1])));
  assert.deepEqual(f.capture(),before);
+});
+
+test('a timeline whose clips carry volume envelopes still splits, and its receipt keeps the workspace valid', async t=>{
+ const f=await fixture(t),film=await f.video();
+ const envelope={profileId:'mioon-clip-linear-attenuation-v1',points:[{frame:0,multiplier:0.5},{frame:120,multiplier:1}]};
+ const clip=await f.add(film,{startFrame:0,durationFrames:120,sourceInFrame:0,volumeEnvelope:envelope});
+ const resultId=await f.detect(film),input=f.request(await f.timeline(),{assetId:film.id,resultId}),response=await f.call(SPLIT,input);
+ assert.deepEqual(response.split.map((row)=>row.clipId),[(clip)!.id]);
+ assert.equal((await f.timeline()).revision,response.timeline.revision,'later reads admit the enveloped receipt');
+ assert.deepEqual(await f.call(SPLIT,input),response,'exact replay');
+});
+
+test('a split beside a dialogue clip keeps the audio-role and envelope capabilities, and the workspace restores', async t=>{
+ const f=await fixture(t),film=await f.video();
+ const bytes=Buffer.from(`Dialogue ${randomUUID()}`),relativePath=`media/${randomUUID()}.wav`;writeFileSync(path.join(f.root,relativePath),bytes,{mode:0o600});
+ const voice=f.store.put('assets',{id:randomUUID(),projectId:f.projectId,name:'Dialogue.wav',mimeType:'audio/wav',sha256:digest(bytes),sizeBytes:bytes.length,relativePath,duration:10,hasAudio:true,provenance:'user-import'});
+ const line=await f.add(voice,{trackId:(await f.timeline()).tracks.find((track)=>track.kind==='audio')!.id,startFrame:0,durationFrames:90,sourceInFrame:0,audioRole:'human'});
+ await f.add(film,{startFrame:0,durationFrames:120,sourceInFrame:0});
+ const resultId=await f.detect(film),response=await f.call(SPLIT,f.request(await f.timeline(),{assetId:film.id,resultId}));
+ assert.equal(response.split.length,1);
+ // The receipt wraps a timeline with an audio role; the workspace validators
+ // behind both capabilities, envelope edits and restore must still accept it.
+ const inspected=await f.call('workspace.restore.inspect',{includeAudioRoleCapability:true,includeVolumeEnvelopeCapability:true}) as {audioRoleCapability?: {editable: boolean};volumeEnvelopeCapability?: {editable: boolean}};
+ assert.deepEqual([inspected.audioRoleCapability?.editable,inspected.volumeEnvelopeCapability?.editable],[true,true]);
+ const envelope={profileId:'mioon-clip-linear-attenuation-v1',points:[{frame:0,multiplier:0.5},{frame:90,multiplier:1}]};
+ const edited=await f.call('timeline.clip.update',{...f.request(await f.timeline()),clipId:line!.id,patch:{volumeEnvelope:envelope}});
+ assert.deepEqual(edited.clips.find((clip)=>clip.id===line!.id)!.volumeEnvelope,envelope);
+ await f.close();
+ const backup=`${f.root}-backup`,destination=`${f.root}-restored`;
+ t.after(async()=>{await rm(backup,{recursive:true,force:true});await rm(destination,{recursive:true,force:true});});
+ assert.equal((await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string}).integrity,'verified');
+ await restoreWorkspaceBackup({directory:backup,destination});
+ const store=openStore(destination),services=createServices(store,new Map());
+ try{assert.deepEqual((await services.call('timeline.get',{projectId:f.projectId}) as {clips: unknown[]}).clips,edited.clips);}
+ finally{await services.drain();store.close();}
 });
