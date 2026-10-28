@@ -1122,5 +1122,761 @@ export const subjectsMessages = {
     "zh-Hant": "方位 {azimuth}° · 俯仰 {elevation}° · {kelvin}K",
     "en": "Azimuth {azimuth}° · elevation {elevation}° · {kelvin}K",
     "ja": "方位 {azimuth}° · 仰角 {elevation}° · {kelvin}K"
+  },
+  "subjects.variants.kindOnly": {
+    "zh-Hans": "补角度只用于角色和产品",
+    "zh-Hant": "補角度只用於角色和產品",
+    "en": "New angles are for characters and products only",
+    "ja": "別アングルはキャラクターと製品のみ"
+  },
+  "subjects.variants.newBadge": {
+    "zh-Hans": "新",
+    "zh-Hant": "新",
+    "en": "New",
+    "ja": "新規"
+  },
+  "subjects.variants.rowAngle": {
+    "zh-Hans": "补角度 · {done}/{total} 已完成",
+    "zh-Hant": "補角度 · {done}/{total} 已完成",
+    "en": "New angles · {done} of {total} done",
+    "ja": "別アングル · {total} 件中 {done} 件完了"
+  },
+  "subjects.variants.rowLight": {
+    "zh-Hans": "打光 · {done}/{total} 已完成",
+    "zh-Hant": "打光 · {done}/{total} 已完成",
+    "en": "Relight · {done} of {total} done",
+    "ja": "ライティング · {total} 件中 {done} 件完了"
+  },
+  "subjects.variants.rowFailed": {
+    "zh-Hans": "{failed} 张失败",
+    "zh-Hant": "{failed} 張失敗",
+    "en": "{failed} failed",
+    "ja": "{failed} 件失敗"
+  },
+  "subjects.variants.rowUnknown": {
+    "zh-Hans": "{unknown} 张结果未知",
+    "zh-Hant": "{unknown} 張結果未知",
+    "en": "{unknown} with an unknown result",
+    "ja": "{unknown} 件は結果不明"
+  },
+  "subjects.variants.rowUnsubmitted": {
+    "zh-Hans": "{pending} 张未提交",
+    "zh-Hant": "{pending} 張未提交",
+    "en": "{pending} not submitted",
+    "ja": "{pending} 件未送信"
+  },
+  "subjects.variants.undo": {
+    "zh-Hans": "撤销本批",
+    "zh-Hant": "撤銷本批",
+    "en": "Undo batch",
+    "ja": "このバッチを取り消す"
+  },
+  "subjects.variants.undoConfirm": {
+    "zh-Hans": "撤销这批？这批的 {total} 个版本会被隐藏，图片留在素材库。",
+    "zh-Hant": "撤銷這批？這批的 {total} 個版本會被隱藏，圖片留在素材庫。",
+    "en": "Undo this batch? Its versions are hidden ({total}); the images stay in the library.",
+    "ja": "このバッチを取り消しますか？{total} 件のバージョンは非表示になり、画像は素材ライブラリに残ります。"
+  },
+  "subjects.variants.undoBlocked": {
+    "zh-Hans": "暂时不能撤销本批",
+    "zh-Hant": "暫時不能撤銷本批",
+    "en": "This batch can't be undone right now",
+    "ja": "このバッチは今は取り消せません"
+  },
+  "subjects.variants.blocker.inProgress": {
+    "zh-Hans": "{item} 还在生成，完成后再撤销",
+    "zh-Hant": "{item} 還在生成，完成後再撤銷",
+    "en": "{item} is still generating. Undo after it finishes",
+    "ja": "{item} はまだ生成中です。完了してから取り消してください"
+  },
+  "subjects.variants.blocker.unknown": {
+    "zh-Hans": "{item} 的结果未知，先到任务中心核对",
+    "zh-Hant": "{item} 的結果未知，請先到工作中心核對",
+    "en": "{item} has an unknown result. Check it in the task center first",
+    "ja": "{item} の結果が不明です。先にタスクセンターで確認してください"
+  },
+  "subjects.variants.blocker.bound": {
+    "zh-Hans": "{item} 已被镜头 {shot} 选用，先在镜头里换成别的版本",
+    "zh-Hant": "{item} 已被鏡頭 {shot} 選用，請先在鏡頭裡換成其他版本",
+    "en": "{item} is used by shot {shot}. Choose another version in that shot first",
+    "ja": "{item} はショット {shot} で使われています。先にショットで別のバージョンに替えてください"
+  },
+  "subjects.variants.blocker.boundAnyShot": {
+    "zh-Hans": "{item} 已被镜头选用，先在镜头里换成别的版本",
+    "zh-Hant": "{item} 已被鏡頭選用，請先在鏡頭裡換成其他版本",
+    "en": "{item} is used by a shot. Choose another version in that shot first",
+    "ja": "{item} はショットで使われています。先にショットで別のバージョンに替えてください"
+  },
+  "subjects.variants.blocker.generated": {
+    "zh-Hans": "{item} 已用于生成视频，不能撤销这批",
+    "zh-Hant": "{item} 已用於產生影片，不能撤銷這批",
+    "en": "{item} was used to generate a video, so this batch can't be undone",
+    "ja": "{item} は動画生成に使われたため、このバッチは取り消せません"
+  },
+  "subjects.variants.blocker.source": {
+    "zh-Hans": "{item} 是另一批的源图，先撤销那一批",
+    "zh-Hant": "{item} 是另一批的來源圖，請先撤銷那一批",
+    "en": "{item} is the source of another batch. Undo that batch first",
+    "ja": "{item} は別のバッチの元画像です。先にそのバッチを取り消してください"
+  },
+  "subjects.variants.item.queued": {
+    "zh-Hans": "排队中",
+    "zh-Hant": "排隊中",
+    "en": "Queued",
+    "ja": "待機中"
+  },
+  "subjects.variants.item.running": {
+    "zh-Hans": "生成中",
+    "zh-Hant": "生成中",
+    "en": "Generating",
+    "ja": "生成中"
+  },
+  "subjects.variants.item.submitting": {
+    "zh-Hans": "提交中",
+    "zh-Hant": "提交中",
+    "en": "Submitting",
+    "ja": "送信中"
+  },
+  "subjects.variants.item.pending": {
+    "zh-Hans": "未提交",
+    "zh-Hant": "未提交",
+    "en": "Not submitted",
+    "ja": "未送信"
+  },
+  "subjects.variants.item.failed": {
+    "zh-Hans": "失败",
+    "zh-Hant": "失敗",
+    "en": "Failed",
+    "ja": "失敗"
+  },
+  "subjects.variants.item.failedReason": {
+    "zh-Hans": "服务商拒绝了请求",
+    "zh-Hant": "服務商拒絕了請求",
+    "en": "The provider refused the request",
+    "ja": "プロバイダーがリクエストを拒否しました"
+  },
+  "subjects.variants.item.cancelledReason": {
+    "zh-Hans": "未发出就取消了",
+    "zh-Hant": "未送出就取消了",
+    "en": "Cancelled before it was sent",
+    "ja": "送信前に取り消されました"
+  },
+  "subjects.variants.item.unknown": {
+    "zh-Hans": "结果未知",
+    "zh-Hant": "結果未知",
+    "en": "Unknown result",
+    "ja": "結果不明"
+  },
+  "subjects.variants.item.unknownHint": {
+    "zh-Hans": "不会自动重发，请到任务中心核对原请求",
+    "zh-Hant": "不會自動重送，請到工作中心核對原請求",
+    "en": "Not resent automatically. Check the original request in the task center",
+    "ja": "自動では再送しません。タスクセンターで元のリクエストを確認してください"
+  },
+  "subjects.variants.retry": {
+    "zh-Hans": "重试",
+    "zh-Hant": "重試",
+    "en": "Retry",
+    "ja": "再試行"
+  },
+  "subjects.variants.retryConfirmPaid": {
+    "zh-Hans": "重新提交这一张？只提交这一张，会产生费用。",
+    "zh-Hant": "重新提交這一張？只提交這一張，會產生費用。",
+    "en": "Submit this image again? Only this one is sent, and it is charged.",
+    "ja": "この1枚を再送信しますか？送信されるのはこの1枚だけで、料金が発生します。"
+  },
+  "subjects.variants.retryConfirmMock": {
+    "zh-Hans": "重新提交这一张？模拟服务不产生费用。",
+    "zh-Hant": "重新提交這一張？模擬服務不產生費用。",
+    "en": "Submit this image again? The mock service is free.",
+    "ja": "この1枚を再送信しますか？モックサービスは無料です。"
+  },
+  "subjects.variants.continue": {
+    "zh-Hans": "继续提交",
+    "zh-Hant": "繼續提交",
+    "en": "Continue submitting",
+    "ja": "送信を続ける"
+  },
+  "subjects.variants.continueConfirmPaid": {
+    "zh-Hans": "继续提交这批没有提交的 {total} 张？会产生费用。",
+    "zh-Hant": "繼續提交這批尚未提交的 {total} 張？會產生費用。",
+    "en": "Submit the images of this batch that were not sent ({total})? They are charged.",
+    "ja": "このバッチの未送信の {total} 枚を送信しますか？料金が発生します。"
+  },
+  "subjects.variants.continueConfirmMock": {
+    "zh-Hans": "继续提交这批没有提交的 {total} 张？模拟服务不产生费用。",
+    "zh-Hant": "繼續提交這批尚未提交的 {total} 張？模擬服務不產生費用。",
+    "en": "Submit the images of this batch that were not sent ({total})? The mock service is free.",
+    "ja": "このバッチの未送信の {total} 枚を送信しますか？モックサービスは無料です。"
+  },
+  "subjects.variants.showTasks": {
+    "zh-Hans": "到任务中心核对",
+    "zh-Hant": "到工作中心核對",
+    "en": "Check in the task center",
+    "ja": "タスクセンターで確認"
+  },
+  "subjects.variants.readFailed": {
+    "zh-Hans": "补角度和打光记录读取失败，请重新读取",
+    "zh-Hant": "補角度和打光紀錄讀取失敗，請重新讀取",
+    "en": "Angle and lighting batches couldn't be read. Read again",
+    "ja": "別アングルとライティングの記録を読み込めませんでした。再読み込みしてください"
+  },
+  "subjects.variants.unconfirmed": {
+    "zh-Hans": "补角度请求的结果尚未确认。请重新读取，或重新提交同一请求；不会自动重试。",
+    "zh-Hant": "補角度請求的結果尚未確認。請重新讀取，或重新提交同一請求；不會自動重試。",
+    "en": "The batch request isn't confirmed yet. Read again, or resend the same request. Nothing is retried automatically.",
+    "ja": "バッチのリクエスト結果はまだ確認できていません。再読み込みするか、同じリクエストを再送信してください。自動では再試行しません。"
+  },
+  "subjects.variants.recoveredUnsubmitted": {
+    "zh-Hans": "这批已记录，还有图片没有提交。请在版本区继续提交。",
+    "zh-Hant": "這批已記錄，還有圖片尚未提交。請在版本區繼續提交。",
+    "en": "The batch was recorded, but some images were not submitted. Continue submitting in Versions.",
+    "ja": "バッチは記録されましたが、未送信の画像があります。バージョン欄で送信を続けてください。"
+  },
+  "subjects.variants.reconcile": {
+    "zh-Hans": "重新读取",
+    "zh-Hant": "重新讀取",
+    "en": "Read again",
+    "ja": "再読み込み"
+  },
+  "subjects.variants.resend": {
+    "zh-Hans": "重新提交同一请求",
+    "zh-Hant": "重新提交同一請求",
+    "en": "Resend the same request",
+    "ja": "同じリクエストを再送信"
+  },
+  "subjects.variants.refused.queueFull": {
+    "zh-Hans": "图片队列放不下整批，请等已排队的图片完成后再试。没有记录这批。",
+    "zh-Hant": "圖片佇列放不下整批，請等已排隊的圖片完成後再試。沒有記錄這批。",
+    "en": "The image queue can't hold the whole batch. Wait for queued images to finish. Nothing was recorded.",
+    "ja": "画像キューにバッチ全体が入りません。待機中の画像が終わってから再試行してください。何も記録されていません。"
+  },
+  "subjects.variants.refused.source": {
+    "zh-Hans": "这个模型不能编辑选中的版本，请换一张。没有记录这批。",
+    "zh-Hant": "這個模型不能編輯選中的版本，請換一張。沒有記錄這批。",
+    "en": "This model can't edit the chosen version. Choose another. Nothing was recorded.",
+    "ja": "このモデルは選んだバージョンを編集できません。別の画像を選んでください。何も記録されていません。"
+  },
+  "subjects.variants.refused.kind": {
+    "zh-Hans": "补角度和打光只用于角色和产品。",
+    "zh-Hant": "補角度和打光只用於角色和產品。",
+    "en": "Angles and lighting are for characters and products only.",
+    "ja": "別アングルとライティングはキャラクターと製品のみです。"
+  },
+  "subjects.variants.refused.changed": {
+    "zh-Hans": "这批已经变化，已重新读取。请再确认一次。",
+    "zh-Hant": "這批已經變化，已重新讀取。請再確認一次。",
+    "en": "The batch changed and was read again. Check it and try again.",
+    "ja": "バッチが変わったため再読み込みしました。もう一度確認してください。"
+  },
+  "subjects.variants.refused.undoBlocked": {
+    "zh-Hans": "这批已经不能撤销，原因见下方。",
+    "zh-Hant": "這批已經不能撤銷，原因見下方。",
+    "en": "This batch can't be undone. See the reasons below.",
+    "ja": "このバッチは取り消せません。理由は下に表示されています。"
+  },
+  "subjects.variants.refused.retry": {
+    "zh-Hans": "只有服务商拒绝或未发出就取消的图片可以重试。",
+    "zh-Hant": "只有服務商拒絕或未送出就取消的圖片可以重試。",
+    "en": "Only an image the provider refused, or one cancelled before it was sent, can be retried.",
+    "ja": "プロバイダーが拒否した画像か、送信前に取り消した画像だけ再試行できます。"
+  },
+  "subjects.variants.refused.hidden": {
+    "zh-Hans": "这个版本属于已撤销的批次，已隐藏。",
+    "zh-Hant": "這個版本屬於已撤銷的批次，已隱藏。",
+    "en": "This version belongs to an undone batch and is hidden.",
+    "ja": "このバージョンは取り消されたバッチのもので、非表示です。"
+  },
+  "subjects.variants.refused.capacity": {
+    "zh-Hans": "补角度记录已满，暂时不能记录新批次。",
+    "zh-Hant": "補角度紀錄已滿，暫時不能記錄新批次。",
+    "en": "The batch records are full. A new batch cannot be recorded now.",
+    "ja": "バッチ記録がいっぱいです。今は新しいバッチを記録できません。"
+  },
+  "subjects.variants.submit.queueFull": {
+    "zh-Hans": "图片队列已满，这张没有提交。稍后继续提交。",
+    "zh-Hant": "圖片佇列已滿，這張沒有提交。稍後繼續提交。",
+    "en": "The image queue is full, so this image was not submitted. Continue later.",
+    "ja": "画像キューがいっぱいのため、この画像は送信されていません。後で続けてください。"
+  },
+  "subjects.variants.submit.sourceInvalid": {
+    "zh-Hans": "源图没有通过核验（例如有透明区域），这张没有提交。",
+    "zh-Hant": "來源圖沒有通過核驗（例如有透明區域），這張沒有提交。",
+    "en": "The source didn't pass the check (for example, it has transparency), so this image was not submitted.",
+    "ja": "元画像が検証に通らなかったため（例：透明部分がある）、この画像は送信されていません。"
+  },
+  "subjects.variants.submit.settings": {
+    "zh-Hans": "GPT Image 的连接设置已变化或不可用，这张没有提交。",
+    "zh-Hant": "GPT Image 的連線設定已變化或不可用，這張沒有提交。",
+    "en": "The GPT Image connection changed or is unavailable, so this image was not submitted.",
+    "ja": "GPT Image の接続設定が変わったか使えないため、この画像は送信されていません。"
+  },
+  "subjects.variants.submit.unknown": {
+    "zh-Hans": "这张的提交结果未确认。请重新读取，或到任务中心核对；不会自动重试。",
+    "zh-Hant": "這張的提交結果未確認。請重新讀取，或到工作中心核對；不會自動重試。",
+    "en": "This image's submission isn't confirmed. Read again or check the task center. Nothing is retried automatically.",
+    "ja": "この画像の送信結果は未確認です。再読み込みするか、タスクセンターで確認してください。自動では再試行しません。"
+  },
+  "subjects.variants.submit.rejected": {
+    "zh-Hans": "这张的审批已被拒绝，不会生成。",
+    "zh-Hant": "這張的審批已被拒絕，不會產生。",
+    "en": "The review for this image was rejected, so it will not be made.",
+    "ja": "この画像の承認は拒否されたため、作成されません。"
+  },
+  "subjects.variants.dialogTitle": {
+    "zh-Hans": "生成新版本",
+    "zh-Hant": "產生新版本",
+    "en": "New versions",
+    "ja": "新しいバージョン"
+  },
+  "subjects.variants.dialogDescription": {
+    "zh-Hans": "以一个版本为源图，补拍其他机位或换一种打光。结果加入版本列表，不会成为默认版本。",
+    "zh-Hant": "以一個版本為來源圖，補拍其他機位或換一種打光。結果加入版本列表，不會成為預設版本。",
+    "en": "Use one version as the source to shoot other camera positions or relight it. Results join the versions and never become the default.",
+    "ja": "1つのバージョンを元画像にして、別のカメラ位置やライティングで撮り直します。結果はバージョンに加わり、既定にはなりません。"
+  },
+  "subjects.variants.tabs": {
+    "zh-Hans": "新版本类型",
+    "zh-Hant": "新版本類型",
+    "en": "New version type",
+    "ja": "新しいバージョンの種類"
+  },
+  "subjects.variants.source": {
+    "zh-Hans": "源图",
+    "zh-Hant": "來源圖",
+    "en": "Source",
+    "ja": "元画像"
+  },
+  "subjects.variants.changeSource": {
+    "zh-Hans": "换一张",
+    "zh-Hant": "換一張",
+    "en": "Change",
+    "ja": "変更"
+  },
+  "subjects.variants.sourcePicker": {
+    "zh-Hans": "选择源图版本",
+    "zh-Hant": "選擇來源圖版本",
+    "en": "Choose the source version",
+    "ja": "元画像のバージョンを選択"
+  },
+  "subjects.variants.sourceAngleHint": {
+    "zh-Hans": "以这张图为准，只改变机位",
+    "zh-Hant": "以這張圖為準，只改變機位",
+    "en": "Keeps this image and changes only the camera",
+    "ja": "この画像のまま、カメラ位置だけを変えます"
+  },
+  "subjects.variants.sourceLightHint": {
+    "zh-Hans": "以这张图为准，只改变光线",
+    "zh-Hant": "以這張圖為準，只改變光線",
+    "en": "Keeps this image and changes only the light",
+    "ja": "この画像のまま、光だけを変えます"
+  },
+  "subjects.variants.sourceUsable": {
+    "zh-Hans": "可以用于图片编辑",
+    "zh-Hant": "可以用於圖片編輯",
+    "en": "Can be edited",
+    "ja": "画像編集に使えます"
+  },
+  "subjects.variants.sourceUnusable": {
+    "zh-Hans": "不能用于图片编辑",
+    "zh-Hant": "不能用於圖片編輯",
+    "en": "Can't be edited",
+    "ja": "画像編集に使えません"
+  },
+  "subjects.variants.sourceChecking": {
+    "zh-Hans": "正在检查透明区域…",
+    "zh-Hant": "正在檢查透明區域…",
+    "en": "Checking for transparency…",
+    "ja": "透明部分を確認中…"
+  },
+  "subjects.variants.issue.format": {
+    "zh-Hans": "只接受 PNG、JPEG 或 WebP。",
+    "zh-Hant": "只接受 PNG、JPEG 或 WebP。",
+    "en": "Only PNG, JPEG or WebP can be edited.",
+    "ja": "編集できるのは PNG、JPEG、WebP のみです。"
+  },
+  "subjects.variants.issue.bytes": {
+    "zh-Hans": "图片需小于 50 MB。",
+    "zh-Hant": "圖片需小於 50 MB。",
+    "en": "The image must be under 50 MB.",
+    "ja": "画像は 50 MB 未満にしてください。"
+  },
+  "subjects.variants.issue.dimensions": {
+    "zh-Hans": "最长边不能超过 4096 像素。",
+    "zh-Hant": "最長邊不能超過 4096 像素。",
+    "en": "The long edge must be 4096 pixels or less.",
+    "ja": "長辺は 4096 ピクセル以下にしてください。"
+  },
+  "subjects.variants.issue.origin": {
+    "zh-Hans": "视频生成结果和导出素材不能用于图片编辑。",
+    "zh-Hant": "影片產生結果和匯出素材不能用於圖片編輯。",
+    "en": "Video results and exports can't be used for image editing.",
+    "ja": "動画の生成結果と書き出し素材は画像編集に使えません。"
+  },
+  "subjects.variants.issue.missing": {
+    "zh-Hans": "源图未加载或已缺失。",
+    "zh-Hant": "來源圖尚未載入或已遺失。",
+    "en": "The source image hasn't loaded or is missing.",
+    "ja": "元画像が読み込まれていないか、見つかりません。"
+  },
+  "subjects.variants.issue.transparent": {
+    "zh-Hans": "有透明区域。图片编辑只接受不透明的图片。",
+    "zh-Hant": "有透明區域。圖片編輯只接受不透明的圖片。",
+    "en": "It has transparent areas. Image editing accepts only opaque images.",
+    "ja": "透明部分があります。画像編集には不透明な画像のみ使えます。"
+  },
+  "subjects.variants.sourceRequired": {
+    "zh-Hans": "源图不可用，换一张后才能生成",
+    "zh-Hant": "來源圖不可用，換一張後才能產生",
+    "en": "The source can't be used. Choose another to continue",
+    "ja": "元画像が使えません。別の画像を選んでください"
+  },
+  "subjects.variants.model": {
+    "zh-Hans": "模型",
+    "zh-Hant": "模型",
+    "en": "Model",
+    "ja": "モデル"
+  },
+  "subjects.variants.modelOpenAI": {
+    "zh-Hans": "GPT Image · 图片编辑",
+    "zh-Hant": "GPT Image · 圖片編輯",
+    "en": "GPT Image · image edit",
+    "ja": "GPT Image · 画像編集"
+  },
+  "subjects.variants.modelMock": {
+    "zh-Hans": "模拟服务 · 图片编辑",
+    "zh-Hant": "模擬服務 · 圖片編輯",
+    "en": "Mock service · image edit",
+    "ja": "モックサービス · 画像編集"
+  },
+  "subjects.variants.modelCompatible": {
+    "zh-Hans": "兼容服务 · 不支持图片编辑",
+    "zh-Hant": "相容服務 · 不支援圖片編輯",
+    "en": "Compatible service · no image editing",
+    "ja": "互換サービス · 画像編集に非対応"
+  },
+  "subjects.variants.modelComfy": {
+    "zh-Hans": "本地 ComfyUI · 不支持图片编辑",
+    "zh-Hant": "本機 ComfyUI · 不支援圖片編輯",
+    "en": "Local ComfyUI · no image editing",
+    "ja": "ローカル ComfyUI · 画像編集に非対応"
+  },
+  "subjects.variants.modelOpenAIUnavailable": {
+    "zh-Hans": "GPT Image 未连接。在设置里启用官方连接并保存密钥后可用。",
+    "zh-Hant": "GPT Image 未連線。在設定裡啟用官方連線並儲存金鑰後可用。",
+    "en": "GPT Image is not connected. Enable the official connection and save a key in Settings.",
+    "ja": "GPT Image は未接続です。設定で公式接続を有効にしてキーを保存すると使えます。"
+  },
+  "subjects.variants.camera": {
+    "zh-Hans": "机位",
+    "zh-Hant": "機位",
+    "en": "Camera",
+    "ja": "カメラ位置"
+  },
+  "subjects.variants.selected": {
+    "zh-Hans": "已选 {count} 个",
+    "zh-Hant": "已選 {count} 個",
+    "en": "Selected: {count}",
+    "ja": "{count} 件選択"
+  },
+  "subjects.variants.clear": {
+    "zh-Hans": "清空",
+    "zh-Hant": "清空",
+    "en": "Clear",
+    "ja": "クリア"
+  },
+  "subjects.variants.ringCenter": {
+    "zh-Hans": "面朝上方",
+    "zh-Hant": "面朝上方",
+    "en": "Facing up",
+    "ja": "上向き"
+  },
+  "subjects.variants.existing": {
+    "zh-Hans": "已有",
+    "zh-Hant": "已有",
+    "en": "Exists",
+    "ja": "作成済み"
+  },
+  "subjects.variants.height": {
+    "zh-Hans": "高度",
+    "zh-Hant": "高度",
+    "en": "Height",
+    "ja": "高さ"
+  },
+  "subjects.variants.heightHint": {
+    "zh-Hans": "俯拍、仰拍以正面为基准",
+    "zh-Hant": "俯拍、仰拍以正面為基準",
+    "en": "High and low angles are taken from the front",
+    "ja": "ハイ・ローアングルは正面が基準です"
+  },
+  "subjects.variants.willGenerate": {
+    "zh-Hans": "将生成",
+    "zh-Hant": "將產生",
+    "en": "Will make",
+    "ja": "作成予定"
+  },
+  "subjects.variants.remove": {
+    "zh-Hans": "移除 {angle}",
+    "zh-Hant": "移除 {angle}",
+    "en": "Remove {angle}",
+    "ja": "{angle} を外す"
+  },
+  "subjects.variants.focal": {
+    "zh-Hans": "焦距",
+    "zh-Hant": "焦距",
+    "en": "Focal length",
+    "ja": "焦点距離"
+  },
+  "subjects.variants.focalCurrent": {
+    "zh-Hans": "当前：{angle}",
+    "zh-Hant": "目前：{angle}",
+    "en": "Current: {angle}",
+    "ja": "現在：{angle}"
+  },
+  "subjects.variants.focalStandard": {
+    "zh-Hans": "标准 50mm",
+    "zh-Hant": "標準 50mm",
+    "en": "Standard 50mm",
+    "ja": "標準 50mm"
+  },
+  "subjects.variants.focalWide": {
+    "zh-Hans": "广角 24mm",
+    "zh-Hant": "廣角 24mm",
+    "en": "Wide 24mm",
+    "ja": "広角 24mm"
+  },
+  "subjects.variants.focalHint": {
+    "zh-Hans": "焦距按机位分别设置。",
+    "zh-Hant": "焦距按機位分別設定。",
+    "en": "Each camera keeps its own focal length.",
+    "ja": "焦点距離はカメラ位置ごとに設定します。"
+  },
+  "subjects.variants.focalExisting": {
+    "zh-Hans": "{angle}已有{focal}版本。",
+    "zh-Hant": "{angle}已有{focal}版本。",
+    "en": "{angle} already has a {focal} version.",
+    "ja": "{angle} には{focal}のバージョンがあります。"
+  },
+  "subjects.variants.limit": {
+    "zh-Hans": "一批最多 8 张",
+    "zh-Hant": "一批最多 8 張",
+    "en": "Up to 8 images per batch",
+    "ja": "1 バッチ最大 8 枚"
+  },
+  "subjects.variants.pickAngle": {
+    "zh-Hans": "至少选一个机位",
+    "zh-Hant": "至少選一個機位",
+    "en": "Choose at least one camera",
+    "ja": "カメラ位置を1つ以上選んでください"
+  },
+  "subjects.variants.lightDirection": {
+    "zh-Hans": "光源方向",
+    "zh-Hant": "光源方向",
+    "en": "Light direction",
+    "ja": "光源の方向"
+  },
+  "subjects.variants.reset": {
+    "zh-Hans": "复位",
+    "zh-Hant": "復位",
+    "en": "Reset",
+    "ja": "リセット"
+  },
+  "subjects.variants.azimuth": {
+    "zh-Hans": "方位角",
+    "zh-Hant": "方位角",
+    "en": "Azimuth",
+    "ja": "方位角"
+  },
+  "subjects.variants.elevation": {
+    "zh-Hans": "俯仰角",
+    "zh-Hant": "俯仰角",
+    "en": "Elevation",
+    "ja": "仰角"
+  },
+  "subjects.variants.dirRight": {
+    "zh-Hans": "偏右",
+    "zh-Hant": "偏右",
+    "en": "Right",
+    "ja": "右寄り"
+  },
+  "subjects.variants.dirLeft": {
+    "zh-Hans": "偏左",
+    "zh-Hant": "偏左",
+    "en": "Left",
+    "ja": "左寄り"
+  },
+  "subjects.variants.dirFront": {
+    "zh-Hans": "正前",
+    "zh-Hant": "正前",
+    "en": "Front",
+    "ja": "正面"
+  },
+  "subjects.variants.dirBehind": {
+    "zh-Hans": "偏后",
+    "zh-Hant": "偏後",
+    "en": "Behind",
+    "ja": "後ろ寄り"
+  },
+  "subjects.variants.dirUp": {
+    "zh-Hans": "偏上",
+    "zh-Hant": "偏上",
+    "en": "Up",
+    "ja": "上寄り"
+  },
+  "subjects.variants.dirDown": {
+    "zh-Hans": "偏下",
+    "zh-Hant": "偏下",
+    "en": "Down",
+    "ja": "下寄り"
+  },
+  "subjects.variants.dirLevel": {
+    "zh-Hans": "水平",
+    "zh-Hant": "水平",
+    "en": "Level",
+    "ja": "水平"
+  },
+  "subjects.variants.lightHint": {
+    "zh-Hans": "拖动球面上的光点，或直接输入角度。0° 为镜头方向。",
+    "zh-Hant": "拖曳球面上的光點，或直接輸入角度。0° 為鏡頭方向。",
+    "en": "Drag the light on the sphere, or type the angles. 0° faces the camera.",
+    "ja": "球面の光点をドラッグするか、角度を入力します。0° はカメラ方向です。"
+  },
+  "subjects.variants.sphereLabel": {
+    "zh-Hans": "光源位置",
+    "zh-Hant": "光源位置",
+    "en": "Light position",
+    "ja": "光源の位置"
+  },
+  "subjects.variants.up": {
+    "zh-Hans": "上",
+    "zh-Hant": "上",
+    "en": "Up",
+    "ja": "上"
+  },
+  "subjects.variants.down": {
+    "zh-Hans": "下",
+    "zh-Hant": "下",
+    "en": "Down",
+    "ja": "下"
+  },
+  "subjects.variants.left": {
+    "zh-Hans": "左",
+    "zh-Hant": "左",
+    "en": "Left",
+    "ja": "左"
+  },
+  "subjects.variants.right": {
+    "zh-Hans": "右",
+    "zh-Hant": "右",
+    "en": "Right",
+    "ja": "右"
+  },
+  "subjects.variants.quality": {
+    "zh-Hans": "光质",
+    "zh-Hant": "光質",
+    "en": "Quality",
+    "ja": "光の質"
+  },
+  "subjects.variants.kelvin": {
+    "zh-Hans": "色温",
+    "zh-Hant": "色溫",
+    "en": "Color temperature",
+    "ja": "色温度"
+  },
+  "subjects.variants.warm": {
+    "zh-Hans": "暖",
+    "zh-Hant": "暖",
+    "en": "Warm",
+    "ja": "暖"
+  },
+  "subjects.variants.cool": {
+    "zh-Hans": "冷",
+    "zh-Hant": "冷",
+    "en": "Cool",
+    "ja": "寒"
+  },
+  "subjects.variants.summary": {
+    "zh-Hans": "将生成 {count} 张，加入{name}的版本",
+    "zh-Hant": "將產生 {count} 張，加入{name}的版本",
+    "en": "Adds {count} to {name}'s versions",
+    "ja": "{name} のバージョンに {count} 枚追加します"
+  },
+  "subjects.variants.sizeLine": {
+    "zh-Hans": "每张 {size}，跟随源图比例 · 不会成为默认版本",
+    "zh-Hant": "每張 {size}，跟隨來源圖比例 · 不會成為預設版本",
+    "en": "Each {size}, following the source ratio · never the default version",
+    "ja": "各 {size}（元画像の比率）· 既定のバージョンにはなりません"
+  },
+  "subjects.variants.generate": {
+    "zh-Hans": "生成 {count} 张",
+    "zh-Hant": "產生 {count} 張",
+    "en": "Make {count}",
+    "ja": "{count} 枚作成"
+  },
+  "subjects.variants.generateOne": {
+    "zh-Hans": "生成",
+    "zh-Hant": "產生",
+    "en": "Make",
+    "ja": "作成"
+  },
+  "subjects.variants.costPaid": {
+    "zh-Hans": "会产生费用，生成前会再确认一次",
+    "zh-Hant": "會產生費用，產生前會再確認一次",
+    "en": "Charged by the provider; you confirm once before it starts",
+    "ja": "料金が発生します。開始前に一度確認します"
+  },
+  "subjects.variants.costMock": {
+    "zh-Hans": "模拟服务不产生费用，只生成测试图",
+    "zh-Hant": "模擬服務不產生費用，只產生測試圖",
+    "en": "The mock service is free and makes test images only",
+    "ja": "モックサービスは無料で、テスト画像のみ作成します"
+  },
+  "subjects.variants.confirmPaid": {
+    "zh-Hans": "用 GPT Image 生成 {count} 张{name}的新版本？会产生费用；确认后依次提交。",
+    "zh-Hant": "用 GPT Image 產生 {count} 張{name}的新版本？會產生費用；確認後依次提交。",
+    "en": "Make {count} new versions of {name} with GPT Image? This is charged; they are submitted one by one after you confirm.",
+    "ja": "GPT Image で {name} の新しいバージョンを {count} 枚作成しますか？料金が発生します。確認後に順番に送信します。"
+  },
+  "subjects.variants.confirmMock": {
+    "zh-Hans": "用模拟服务生成 {count} 张{name}的测试版本？不产生费用。",
+    "zh-Hant": "用模擬服務產生 {count} 張{name}的測試版本？不產生費用。",
+    "en": "Make {count} test versions of {name} with the mock service? This is free.",
+    "ja": "モックサービスで {name} のテストバージョンを {count} 枚作成しますか？無料です。"
+  },
+  "subjects.variants.busy": {
+    "zh-Hans": "有补角度请求正在处理，请稍候",
+    "zh-Hant": "有補角度請求正在處理，請稍候",
+    "en": "A batch request is in progress. Please wait",
+    "ja": "バッチのリクエストを処理中です。お待ちください"
+  },
+  "subjects.variants.pendingBlock": {
+    "zh-Hans": "上一个补角度请求的结果未确认，先在版本区核对",
+    "zh-Hant": "上一個補角度請求的結果未確認，請先在版本區核對",
+    "en": "The previous batch request isn't confirmed. Check it in Versions first",
+    "ja": "前のバッチのリクエスト結果が未確認です。先にバージョン欄で確認してください"
+  },
+  "subjects.binding.angleFilter": {
+    "zh-Hans": "按角度筛选版本",
+    "zh-Hant": "按角度篩選版本",
+    "en": "Filter versions by angle",
+    "ja": "アングルでバージョンを絞り込む"
+  },
+  "subjects.binding.usesThis": {
+    "zh-Hans": "本镜头使用此版本",
+    "zh-Hant": "本鏡頭使用此版本",
+    "en": "This shot uses this version",
+    "ja": "このショットはこのバージョンを使います"
+  },
+  "subjects.binding.onlyOne": {
+    "zh-Hans": "{angle}只有这一张。换角度请在上方筛选。",
+    "zh-Hant": "{angle}只有這一張。換角度請在上方篩選。",
+    "en": "This is the only {angle} version. Filter above to change the angle.",
+    "ja": "{angle} はこの1枚だけです。アングルを変えるには上で絞り込んでください。"
+  },
+  "subjects.binding.pickVersion": {
+    "zh-Hans": "选用 V{number}",
+    "zh-Hant": "選用 V{number}",
+    "en": "Use V{number}",
+    "ja": "V{number} を使う"
   }
 } as const satisfies MessageCatalog;

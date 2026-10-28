@@ -38,6 +38,26 @@ or source edit asks first. The pane shows the read-only name and type, every
 visible version with the default (head) version marked and variants tagged by
 angle or light, and the shots whose planning binding pins each version.
 Appending an image version there makes it the new default.
+
+For a character or product, "补角度" in the pane opens the angle and lighting
+dialog on the shown version: up to eight camera positions (each standard or
+wide), or one lighting change. It checks the source against the chosen model
+(GPT Image needs an enabled official connection with a saved key; the mock
+service always works), shows the output size and asks once for the whole batch.
+The batch is recorded first and its images are then submitted one by one as
+ordinary image edits, paid ones approved in turn; submission stops at the first
+image that is not accepted and resumes only through an explicit "继续提交".
+The pane shows the newest batch and any unfinished one as rows with progress
+and "撤销本批"; undo is offered only when a fresh read allows it, and otherwise
+each blocker is named (still generating, unknown result, used by a shot or a
+generation, or the source of another batch). A refused or cancelled image can
+be retried alone; an unknown result is checked in the task center and never
+resent automatically. These writes are exact-replay requests rather than
+durable edit tasks: an unconfirmed one blocks further variant writes until it
+is read again or the identical request is resent. In a shot's properties a bound
+subject's versions can be filtered by angle and picked as the shot's version,
+which is saved like any other binding change. Restored workspaces offer none of
+this.
 Built-in Agent tools, context, inspection DTOs and approval scope do not expand.
 
 Existing image assets and result lineage stay authoritative. Original media,

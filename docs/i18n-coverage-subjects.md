@@ -3,15 +3,18 @@
 ## Covered presentation
 
 - `SubjectLibrary.tsx`: local library list, search and kind chips, subject count, create form, empty/loading/error states, page controls, accessible names, and image alternatives.
-- `SubjectInspector.tsx`: the subject properties pane: read-only basics, version grid with default, origin and angle/light labels, version details and the variant note, append-version form, planning-linked shot usage with pinned versions, accessible names.
-- `ShotSubjectBindings.jsx`: pinned and candidate version review, explicit keep/use/unlink controls, incomplete/unknown links, historical version selection, draft conflict and capacity notices, accessible names.
+- `SubjectInspector.tsx`: the subject properties pane: read-only basics, version grid with default, origin and angle/light labels, version details and the variant note, append-version form, planning-linked shot usage with pinned versions, the new-angle entry with its unavailable reasons, the "new" badge, accessible names.
+- `SubjectVariantDialog.tsx`: the angle and lighting dialog: camera ring, heights and focal lengths, light direction, quality and colour temperature, source check and unusable-source reasons, model menu with unsupported services, output size, cost and confirmation copy.
+- `SubjectVariantRows.tsx`: batch progress rows, undo and its blocked reasons, unsubmitted/queued/generating/failed/unknown image tiles, retry and continue confirmations, submission issues, unknown-outcome notice with read-again and resend.
+- `subject-variant-state.ts`: display descriptors for variant refusals, submission issues and unconfirmed outcomes; no raw server message is shown.
+- `ShotSubjectBindings.jsx`: pinned and candidate version review, explicit keep/use/unlink controls, incomplete/unknown links, historical version selection, choosing a version by angle, draft conflict and capacity notices, accessible names.
 - `SubjectVideoSelection.jsx`: session-only selection, independently pinned versions, provider/first-frame conflicts, Ark face restrictions, Mock limitations, exact input constraints, and disabled-state explanations.
 - `SubjectVideoSummary.jsx`: pinned historical image, latest-version comparison, source description, checksums, IDs, and provenance labels.
 - `subject-state.js`: frozen display descriptors for app-owned read/mutation notices. Original error messages are retained only as separate diagnostics; unknown original diagnostics are not primary UI text. Legacy subject kind labels remain stable with a new descriptor counterpart.
 - `subject-video.js`: display-only descriptors for warnings, conflict/reference validation and source labels, with legacy raw helper results retained byte-for-byte.
 - `use-subjects.js`: reviewed; it has no presentation strings and remains unchanged. Language is not a controller, effect, or interaction identity dependency.
 
-`packages/i18n/src/catalogs/subjects.ts` exports `subjectsMessages`: 187 explicitly authored semantic entries with exactly `zh-Hans`, region-neutral `zh-Hant`, `en`, and `ja`. The shell owner aggregates this fragment with duplicate-key checks. The existing shell tab key `subjects.subjects` remains outside this fragment.
+`packages/i18n/src/catalogs/subjects.ts` exports `subjectsMessages`: 313 explicitly authored semantic entries with exactly `zh-Hans`, region-neutral `zh-Hant`, `en`, and `ja`. The shell owner aggregates this fragment with duplicate-key checks. The existing shell tab key `subjects.subjects` remains outside this fragment.
 
 ## Preserved boundaries
 
