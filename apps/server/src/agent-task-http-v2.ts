@@ -52,6 +52,11 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
         if(tail[1]==='requests'&&tail.length===3&&req.method==='GET'){query(url,[]);json(res,200,runtime.lookup(projectId,tail[2]));return true;}
         if(tail[1]==='history'&&tail.length===2&&req.method==='GET'){query(url,['cursor']);json(res,200,runtime.history(projectId,url.searchParams.get('cursor')??undefined));return true;}
         if(tail[1]==='conversations'&&tail.length===3&&req.method==='GET'){query(url,['cursor']);json(res,200,runtime.conversation(projectId,tail[2]!,url.searchParams.get('cursor')??undefined));return true;}
+        if(tail[1]==='conversations'&&tail.length===4&&tail[3]==='policy'){
+          query(url,[]);if(req.method==='GET')json(res,200,{policy:runtime.conversationPolicy(projectId,tail[2]!),readOnly:runtime.readOnly});
+          else if(req.method==='PUT')json(res,200,{policy:runtime.setConversationPolicy(projectId,tail[2]!,await mutationBody(req)),readOnly:runtime.readOnly});
+          else {res.setHeader('Allow','GET, PUT');json(res,405,{code:'METHOD_NOT_ALLOWED',message:'请使用 GET 或 PUT。'});}return true;
+        }
         if(tail[1]==='uploads'&&tail.length===2&&req.method==='POST'){
           if(runtime.readOnly||!tools)throw agentTaskFailure('AGENT_TASK_READ_ONLY');
           query(url,[]);const input=await mutationBody(req,41*1024*1024);

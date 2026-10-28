@@ -1,4 +1,4 @@
-import {reviewedCatalogAt} from './helpers/reviewed-schema-layers.ts';
+import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
@@ -27,6 +27,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
+// Exact table names of the independently reviewed layers after schema52.
+const reviewedLayerTables=new Set(reviewedTablesAfter(52).map(([table])=>table));
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./fixtures/local-shot-text-process-worker.ts',import.meta.url));
 const authority=(value: WorkerEnvelope)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});
@@ -61,9 +63,10 @@ async function fixture(t: test.TestContext){
   assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
   assert.deepEqual((schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
   // Preserve every table and row in the crash oracle; admit digits only in
-  // the independently frozen52 table names rather than any new table name.
+  // the independently frozen52 or reviewed later-layer table names rather
+  // than any new table name.
   return {schema,tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{
-   assert.ok(/^[a-z_]+$/.test(name as string)||Object.hasOwn(currentOrdinary52Delta.tables,name as string),'only safe legacy or independently frozen52 table names');
+   assert.ok(/^[a-z_]+$/.test(name as string)||Object.hasOwn(currentOrdinary52Delta.tables,name as string)||reviewedLayerTables.has(name as string),'only safe legacy, independently frozen52 or reviewed later-layer table names');
    return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];
   }))};
  });},

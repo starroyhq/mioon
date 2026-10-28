@@ -256,6 +256,16 @@ for(const protocol of protocols)test(`${protocol}: note-capacity views drop whol
   assert.ok(assembled.history.length<context.length+2);assert.doesNotThrow(()=>buildTaskModelRequest(configuration(protocol),assembled.history,assembled.tools));
 });
 
+test('compaction keeps the user answers to Mio questions verbatim, and omits the record when there are none',()=>{
+  const plain=longContext('responses',6),none=hostData(assembleModelInput(freeze(plain)).history,'mio.context.constraints');assert.ok(none);assert.equal(Object.hasOwn(none,'answers'),false);
+  const source=longContext('responses',6),tool=source.replay.steps.find(step=>step.kind==='tool');assert.ok(tool&&tool.toolCall);
+  const text='Open on the harbour at dawn, "as discussed"\nthen cut to the street';
+  tool.toolCall={...tool.toolCall,name:'mioon_ask',arguments:{question:'Which opening should Mio use?',options:[{label:'Wide street'},{label:'Close-up'}],allowOther:true}};
+  tool.status='completed';tool.result={answer:{choices:[1],text},selected:['Close-up'],text};
+  const input=freeze(source),saved=JSON.stringify(input),assembled=assembleModelInput(input);assert.equal(JSON.stringify(input),saved);
+  const constraints=hostData(assembled.history,'mio.context.constraints');assert.ok(constraints);
+  assert.deepEqual(constraints.answers,[{stepId:tool.id,question:'Which opening should Mio use?',selected:['Close-up'],text}]);
+});
 for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const)test(`${locale}: compaction records preserve complete control facts as reference data`,()=>{
   const source=longContext('responses',6,{locale}),tool=source.replay.steps.find(step=>step.kind==='tool');assert.ok(tool);
   tool.status='rejected';tool.error={code:'USER_REJECTED',message:'User kept the target.'};

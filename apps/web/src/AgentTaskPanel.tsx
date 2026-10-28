@@ -69,7 +69,9 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const unknown = steps.filter(step => step.status === 'unknown');
   const noteMode = Boolean(run && ['running','awaiting_approval','paused'].includes(run.status));
   const queuedNotes = run?.notes?.filter(note=>note.modelStepId===undefined).length??0;
-  const stopInComposer = Boolean(run && (run.status==='accepted'||noteMode&&!state.draft.trim()));
+  // While a question waits for its answer the composer offers Stop, so the
+  // round can always be ended.
+  const stopInComposer = Boolean(run && (run.status==='accepted'||run.status==='awaiting_answer'||noteMode&&!state.draft.trim()));
   const model = project?.settings.configuration.model ?? '';
   const latest = steps.filter(step => step.kind === 'model' && modelText(step)).at(-1);
   const configurationKey = project ? JSON.stringify([project.settings.revision, project.settings.configuration, project.authorization.revision]) : '';

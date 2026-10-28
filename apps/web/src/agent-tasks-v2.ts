@@ -12,6 +12,8 @@ export interface AgentTaskPolicyView {policy: AgentTaskPolicy; readOnly: boolean
 export interface AgentTaskLookup { found: boolean; snapshot?: AgentTaskSnapshot; upload?: AgentTaskUpload; receipt?:AgentTaskReceipt }
 export interface AgentTaskPending { requestId: string; runId: string | null; action: 'send' | 'upload' | AgentTaskControlAction; definitiveRejected?:boolean; conversationId?:string|null }
 interface AgentTaskControlExtras {stepId?:string;changeId?:string;undoChangeIds?:string[];resolution?:'discard'|'accept_result';text?:string}
+// Answers carry their own choice payload and are submitted separately.
+type AgentTaskPanelControlAction=Exclude<AgentTaskControlAction,'answer'>;
 export interface AgentTaskAuthorizationReview { projectId: string; settingsRevision: number; authorizationRevision: number; destination: string; model: string; text: string; uploads: string[]; locale: AgentTaskLocale; conversationId?:string|null }
 export interface AgentTaskClient {
   list(projectId: string): Promise<AgentTaskProjectSnapshot>;
@@ -245,7 +247,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
       accept(next);return state.rounds.find(item=>item.run.id===runId)??null;
     }catch(error){if(active&&visible&&owner===generation&&key===state.selectionKey)publish({error:errorCode(error)});return null;}
   }
-  async function mutate(action: 'send' | AgentTaskControlAction, extras: AgentTaskControlExtras = {},targetRunId=state.snapshot?.run.id) {
+  async function mutate(action: 'send' | AgentTaskPanelControlAction, extras: AgentTaskControlExtras = {},targetRunId=state.snapshot?.run.id) {
     const target=state.rounds.find(item=>item.run.id===targetRunId)??(state.snapshot?.run.id===targetRunId?state.snapshot:null);
     if (!active || !visible || receiptsBlocked || busy || agentTaskSessionBusy(state) || state.pending || !state.project || state.project.readOnly || state.legacy || action !== 'send' && !target) return false;
     if (action === 'send' && (!agentTaskPromptValid(state.draft) || !state.project.authorization.scopes.includes('project_agent') || agentTaskNewConversationBlock(state)!==null)) return false;
@@ -273,7 +275,7 @@ export function createAgentTaskSession({ projectId, client = createAgentTaskClie
     catch (error) { if (active) publish({ phase: 'error', error: errorCode(error) }); return false; }
     finally { busy = false; }
   }
-  return { getState: () => state, load, reconcile, refreshRound, send: () => mutate('send'), note: () => mutate('note',{text:state.draft}), action: (action: AgentTaskControlAction, extras?: AgentTaskControlExtras,runId?:string) => mutate(action, extras,runId), edit(text: string,selectionKey=state.selectionKey) { if (active && visible&&!state.legacy&&selectionKey===state.selectionKey) publish({ draft: text }); },
+  return { getState: () => state, load, reconcile, refreshRound, send: () => mutate('send'), note: () => mutate('note',{text:state.draft}), action: (action: AgentTaskPanelControlAction, extras?: AgentTaskControlExtras,runId?:string) => mutate(action, extras,runId), edit(text: string,selectionKey=state.selectionKey) { if (active && visible&&!state.legacy&&selectionKey===state.selectionKey) publish({ draft: text }); },
     authorizationReview,
     async authorizeAndSend(review: AgentTaskAuthorizationReview) {
       // Confirm exactly the reviewed destination and input. A settings, draft,

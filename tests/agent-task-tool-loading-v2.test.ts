@@ -15,7 +15,7 @@ import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtim
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskModelItem,TaskModelOutput,TaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {selectTaskModelTools,sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
-import {AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName} from '../packages/business/src/agent/task-tool-groups-v2.ts';
+import {AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskJson,AgentTaskToolCall,AgentTaskSnapshot,AgentTaskStatus,AgentTaskControlAction} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
@@ -184,7 +184,8 @@ for(const protocol of protocols)test(`${protocol}: a real zero-tool legacy inten
 });
 
 test('diagnostics retain their old catalog and cannot select or execute the new loader',async t=>{
- const f=await fixture(t),oldCatalog=f.tools.list().filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME);
+ // Neither host tool joins a diagnostic: the loader is new, and a diagnostic has no conversation to answer a question in.
+ const f=await fixture(t),oldCatalog=f.tools.list().filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME&&tool.name!==AGENT_TASK_ASK_TOOL);
  for(const profile of ['text','read_only','catalog'] as const){
   const before=f.requests.length,sent=await f.send({diagnostic:{profile}});assert.equal((await f.settle(sent.run.id)).run.status,'completed');
   const body=object(JSON.parse(f.requests[before]!.body));
@@ -193,6 +194,7 @@ test('diagnostics retain their old catalog and cannot select or execute the new 
   assert.equal(f.requests[before]!.knownTools,undefined);assert.ok(!f.requests[before]!.body.includes(AGENT_TASK_TOOLS_LOAD_NAME));
  }
  await assert.rejects(f.send({diagnostic:{profile:'catalog',toolNames:[AGENT_TASK_TOOLS_LOAD_NAME]}}),{code:'AGENT_TASK_INVALID'});
+ await assert.rejects(f.send({diagnostic:{profile:'catalog',toolNames:[AGENT_TASK_ASK_TOOL]}}),{code:'AGENT_TASK_INVALID'});
  assert.deepEqual(f.prepared,[]);assert.deepEqual(f.executed,[]);
 });
 

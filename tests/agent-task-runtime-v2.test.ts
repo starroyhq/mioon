@@ -366,7 +366,7 @@ test('whole task undo changes only AI targets and preserves manual edits elsewhe
 test('whole undo retains the generated shot owner while reverting earlier edits and preserving products across restart and replay',async t=>{
  const providers=new Map<string,Provider>(),f=await fixture(t,'responses',providers);providers.set('mock',mockProviderAdapter(createMockProvider({db:f.store.db,root:f.root})));
  const timeline=object(await f.services.call('timeline.get',{projectId:f.projectId}));assert.ok(Array.isArray(timeline.tracks));const trackId=textField(timeline.tracks[0],'id');
- f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
+ f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,local_irreversible:'direct',paid:'direct'},acknowledgePaid:true});
  const created=()=>object(f.store.list('shots',f.projectId).find(value=>object(value).title==='Created generated owner'));
  f.setScript(async function*(index){
   let next:AgentTaskToolCall[]=[];
@@ -397,7 +397,7 @@ test('whole undo retains the generated shot owner while reverting earlier edits 
 for(const started of [false,true])test(`retained shot ${started?'keeps a late product without selecting it':'cancels its queued work on whole undo'} and never dispatches after reversion`,async t=>{
  const providers=new Map<string,Provider>(),f=await fixture(t,'responses',providers),entered=gate(),release=gate();let posts=0,downloads=0;
  const mock=mockProviderAdapter(createMockProvider({db:f.store.db,root:f.root}));providers.set('mock',{...mock,async submit(snapshot,context){posts++;return mock.submit(snapshot,context);},async download(id,destination,context){downloads++;entered.resolve();await release.promise;return mock.download(id,destination,context);}});
- f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
+ f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,local_irreversible:'direct',paid:'direct'},acknowledgePaid:true});
  f.setScript(async function*(index){let next:AgentTaskToolCall[]=[];if(index===1)next=[call('mioon_shot_create',{title:'Pending generated owner',duration:2})];if(index===2){const shot=object(f.store.list('shots',f.projectId).find(value=>object(value).title==='Pending generated owner'));next=[call('mioon_generation_submit',{shotId:textField(shot,'id'),expectedRevision:revisionField(shot),providerId:'mock',model:'mock-motion-v1',parameters:{delayMs:0}})];}yield {type:'done',output:output('responses',next)};},{loadGroups:['canvas','video']});
  const sent=await f.send(),completed=await f.settle(sent.run.id);assert.equal(completed.run.status,'completed');assert.equal(completed.backgroundPending,true);
  let worker:ReturnType<typeof startWorker>|undefined;
@@ -435,7 +435,7 @@ for(const reason of ['budget','revocation','audit_failure'] as const)test(reason
   await f.services.call('timeline.clip.add',{projectId,requestId:randomUUID(),expectedRevision:timeline.revision,assetId:asset.id,trackId:object(timeline.tracks[0]).id,startFrame:0,durationFrames:6});
  }
  await prepareTimeline(f.projectId);
- f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:4,modes:f.runtime.policy().modes});
+ f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:4,modes:{...f.runtime.policy().modes,local_irreversible:'direct'}});
  f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_timeline_render',{expectedRevision:2,purpose:'export'})])};},{loadGroups:['exports']});
  const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.backgroundPending,true);
  const blocked=object(f.store.list('exports',f.projectId)[0]);assert.equal(blocked.status,'queued');

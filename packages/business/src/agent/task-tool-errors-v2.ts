@@ -1,6 +1,7 @@
 import {schemas} from '@mioon/contracts';
 import {parseVideoBinding,videoInputProfile} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../../contracts/src/video-providers.ts';
+import {AGENT_TASK_QUESTION_LIMITS,agentTaskQuestionSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 
 type ParameterIssueReason='required'|'invalid_type'|'invalid_value'|'unknown_field'|'unsupported_parameter';
 export interface AgentTaskParameterFeedback {
@@ -87,4 +88,20 @@ export function agentTaskParameterFeedback({operation,input,capabilities}:{opera
   if(supported)messages.push(`所选精确模型支持 parameters：${supported.parameters.join('、')||'无'}；镜头画幅：${supported.aspectRatios.join('、')}；镜头时长（秒）：${supported.durationsSeconds.join('、')}；时长与分辨率组合：${supported.durationResolutionMap.map(pair=>`${pair.duration.join('/')} 秒 → ${pair.resolution.join('/')}`).join('；')||'当前连接没有可用组合，请重新读取连接配置'}。`);
   messages.push('此反馈不授权付费，也不代表任务已提交；请修正参数并遵循正常确认流程。');
   return {message:messages.join(' '),issues,...(supported?{supported}:{})};
+}
+const questionFields=new Set(['question','options','multiple','allowOther',...Array.from({length:AGENT_TASK_QUESTION_LIMITS.options},(_,index)=>[`options.${index}`,`options.${index}.label`,`options.${index}.description`]).flat()]);
+/** Advisory feedback for Mio's own question (C3): which fields broke the
+ * fixed limits, never their values. A corrected question waits as usual. */
+export function agentTaskQuestionFeedback(input:unknown):AgentTaskParameterFeedback|null {
+  const parsed=agentTaskQuestionSchema.safeParse(input);if(parsed.success)return null;
+  const issues:AgentTaskParameterFeedback['issues']=[];
+  const add=(field:string,reason:ParameterIssueReason):void=>{if(issues.length<16&&!issues.some(issue=>issue.field===field&&issue.reason===reason))issues.push({field,reason});};
+  const field=(path:readonly (string|number)[]):string=>{const joined=path.join('.');return questionFields.has(joined)?joined:path[0]==='options'?'options':'input';};
+  for(const issue of parsed.error.issues){
+    if(issue.code==='unrecognized_keys')add(field(issue.path),'unknown_field');
+    else add(field(issue.path),issue.code==='invalid_type'?(issue.received==='undefined'?'required':'invalid_type'):'invalid_value');
+  }
+  const descriptions:Record<ParameterIssueReason,string>={required:'缺少必填字段',invalid_type:'字段类型不符',invalid_value:'字段值或组合无效',unknown_field:'未声明的字段',unsupported_parameter:'不支持此参数'};
+  const limits=AGENT_TASK_QUESTION_LIMITS;
+  return {message:`提问参数未通过本地校验：${issues.map(issue=>`${issue.field}（${descriptions[issue.reason]}）`).join('；')}。问题不超过${limits.question}字，选项${limits.minOptions}-${limits.options}个；选项名不超过${limits.label}字且互不相同，说明不超过${limits.description}字；它们都只占一行。用户还没有看到这个问题，请修正后重新提问。`,issues};
 }
