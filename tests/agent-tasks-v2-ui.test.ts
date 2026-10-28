@@ -8,6 +8,10 @@ import { AGENT_TASK_POLICY_PRESETS, DEFAULT_AGENT_TASK_POLICY } from '../package
 import type { AgentTaskConversationPolicy, AgentTaskPolicy, AgentTaskPolicyModes } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { agentTaskCloseState,createAgentTaskCloseReporter } from '../apps/web/src/native-close-sources.ts';
 import { agentTaskPolicyMenuStep } from '../apps/web/src/agent-task-policy-menu.ts';
+import { agentTaskAnswerTextValid, taskAnswerOf, taskQuestionOf } from '../apps/web/src/agent-task-questions.ts';
+import { agentTaskWaitingQuestion } from '../apps/web/src/agent-tasks-v2.ts';
+import { taskStepTitle } from '../apps/web/src/agent-task-presentation.ts';
+import type { AgentTaskJson, AgentTaskStep } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { createNativeCloseRegistry,createNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 
@@ -368,7 +372,7 @@ test('a completed run with pending background work keeps observing late cost and
 
 test('pending task identities remain stable across backend restarts and isolated from restored workspace origins',()=>{
   const values=new Map<string,string>();const storage:Storage={get length(){return values.size;},clear(){values.clear();},getItem:key=>values.get(key)??null,key:index=>[...values.keys()][index]??null,removeItem:key=>{values.delete(key);},setItem:(key,value)=>{values.set(key,value);}};
-  for(const action of ['pause','note','skip','retry'] as const){const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action};createAgentTaskReceiptStore(()=>storage,'normal').write(projectId,pending);assert.deepEqual(createAgentTaskReceiptStore(()=>storage,'normal').read(projectId),pending);assert.equal(createAgentTaskReceiptStore(()=>storage,'restored:'+crypto.randomUUID()).read(projectId),null);assert.equal(values.size,1);}
+  for(const action of ['pause','note','skip','retry','answer'] as const){const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action};createAgentTaskReceiptStore(()=>storage,'normal').write(projectId,pending);assert.deepEqual(createAgentTaskReceiptStore(()=>storage,'normal').read(projectId),pending);assert.equal(createAgentTaskReceiptStore(()=>storage,'restored:'+crypto.randomUUID()).read(projectId),null);assert.equal(values.size,1);}
 });
 
 test('SSE reconnect retries failed durable reads until the network returns, without reposting and with visibility cancellation',async t=>{
@@ -513,4 +517,46 @@ test('the composer menu confirms before paid work becomes direct, and the curren
   assert.deepEqual(agentTaskPolicyMenuStep(FULL,DEFAULT,'global'),{kind:'confirm',scope:'global'},'making direct paid work global is confirmed again');
   assert.deepEqual(agentTaskPolicyMenuStep(FULL,{...FULL},'global'),{kind:'none'});
 });
+const askStepId='66666666-6666-4666-8666-666666666666';
+const askArguments:AgentTaskJson={question:'Which opening should Mio use?',options:[{label:'Wide street',description:'Establish the city first'},{label:'Close-up'},{label:'Rooftop'}],multiple:true,allowOther:true};
+const askStep=(status:AgentTaskStep['status']='awaiting_answer',result?:AgentTaskStep['result']):AgentTaskStep=>({id:askStepId,runId,position:2,kind:'tool',status,tier:'read_only',toolCall:{id:'call_ask',name:'mioon_ask',arguments:askArguments},createdAt:time,updatedAt:time,...(result!==undefined?{result}:{})});
+const waiting=(revision=3):AgentTaskSnapshot=>{const value=snapshot('awaiting_answer',revision);return {...value,run:{...value.run,conversationId:runId},steps:[askStep()]};};
+test('question helpers read only saved mioon_ask arguments and answers, and bound typed answers',()=>{
+  const question=taskQuestionOf(askStep());assert.ok(question);assert.equal(question.options.length,3);
+  assert.equal(taskQuestionOf({...askStep(),toolCall:{id:'x',name:'mioon_shot_update',arguments:askArguments}}),null);
+  assert.equal(taskQuestionOf({...askStep(),toolCall:{id:'x',name:'mioon_ask',arguments:{question:'Two\nlines',options:[{label:'A'},{label:'B'}]}}}),null,'an invalid saved question is not shown');
+  assert.equal(taskAnswerOf(askStep(),question),null,'a waiting question has no answer');
+  assert.deepEqual(taskAnswerOf(askStep('completed',{answer:{choices:[0,2]},selected:['Wide street','Rooftop']}),question),{labels:['Wide street','Rooftop']});
+  assert.deepEqual(taskAnswerOf(askStep('completed',{answer:{choices:[1],text:'  and a drone shot '}}),question),{labels:['Close-up'],text:'and a drone shot'});
+  assert.deepEqual(taskAnswerOf(askStep('completed',{answer:{choices:[],text:'Open on the harbour'}}),question),{labels:[],text:'Open on the harbour'});
+  assert.deepEqual(taskAnswerOf(askStep('completed',{answer:{choices:[7]},selected:['Forged label']}),question),null,'labels come from the saved options, not from the result text');
+  assert.equal(agentTaskAnswerTextValid('Line one\nline two'),true);assert.equal(agentTaskAnswerTextValid('   '),false);assert.equal(agentTaskAnswerTextValid('x'.repeat(2001)),false);
+  assert.equal(taskStepTitle({...askStep(),display:{operation:'ask',targets:[],targetCount:0,fields:[]}},'zh-Hans'),'提问','the server projects the ask step as operation "ask"');
+  assert.equal(agentTaskWaitingQuestion(waiting())?.id,askStepId);assert.equal(agentTaskWaitingQuestion({...waiting(),run:{...waiting().run,status:'stopped'}}),null);
+});
+test('an answer posts its exact choices under a persisted receipt and only for the question the run waits on',async t=>{
+  const f=fixture({list:async()=>({...project(),runs:[waiting().run]}),read:async()=>waiting(),conversation:async()=>({conversation:conversation(waiting().run),runs:[waiting().run],nextCursor:null}),
+    action:async(_,input)=>{f.actions.push(input);const done=snapshot('running',4);return {...done,run:{...done.run,conversationId:runId},steps:[askStep('completed',{answer:{choices:[0,2],text:'and a drone shot'}})]};}});
+  t.after(()=>f.session.dispose());await f.session.load();await flush();
+  assert.equal(await f.session.answer(randomStep(),[0]),false,'another step is never answered');assert.equal(f.actions.length,0);
+  assert.equal(await f.session.answer(askStepId,[]),false,'an empty answer is not sent');assert.equal(f.actions.length,0);
+  const answering=f.session.answer(askStepId,[0,2],'and a drone shot');assert.equal(f.receipts.get(projectId)?.action,'answer');
+  assert.equal(await answering,true);assert.equal(f.receipts.size,0);
+  assert.deepEqual(f.actions[0],{requestId:(f.actions[0] as {requestId:string}).requestId,runId,expectedRevision:3,action:'answer',stepId:askStepId,choices:[0,2],text:'and a drone shot'});
+  assert.equal(await f.session.answer(askStepId,[1]),false,'an answered question takes no second answer');assert.equal(f.actions.length,1);
+});
+test('a composer answer consumes only the draft it captured, and a reopened answer receipt is only looked up',async t=>{
+  const held=deferred<AgentTaskSnapshot>();
+  const f=fixture({list:async()=>({...project(),runs:[waiting().run]}),read:async()=>waiting(),conversation:async()=>({conversation:conversation(waiting().run),runs:[waiting().run],nextCursor:null}),action:async(_,input)=>{f.actions.push(input);return held.promise;}});
+  t.after(()=>f.session.dispose());await f.session.load();await flush();
+  f.session.edit('Open on the harbour');const answering=f.session.answer(askStepId,[],'Open on the harbour');
+  const done=snapshot('running',4);held.resolve({...done,run:{...done.run,conversationId:runId},steps:[askStep('completed',{answer:{choices:[],text:'Open on the harbour'}})]});
+  assert.equal(await answering,true);assert.equal(f.session.getState().draft,'','the captured draft is consumed');
+  assert.deepEqual((f.actions[0] as {choices:unknown;text:unknown}).choices,[]);
+  let lookups=0;const pending={requestId:crypto.randomUUID(),runId,action:'answer' as const,conversationId:runId};
+  const reopened=fixture({list:async()=>({...project(),runs:[waiting().run]}),read:async()=>waiting(),lookup:async()=>{lookups++;return {found:false};},action:async()=>{throw new Error('never resent');}},pending);
+  t.after(()=>reopened.session.dispose());await reopened.session.load();await reopened.session.reconcile();
+  assert.ok(lookups>=1);assert.equal(reopened.actions.length,0);assert.equal(reopened.receipts.get(projectId)?.action,'answer');
+});
+function randomStep(){return '77777777-7777-4777-8777-777777777777';}
 
