@@ -60,7 +60,10 @@ export function agentTaskParameterFeedback({operation,input,capabilities}:{opera
   }
   const parameters=object(input.parameters)?input.parameters:null;
   const nonWan=typeof input.providerId==='string'&&['mock','runway','ark','veo','minimax','vidu','kling','compatible'].includes(input.providerId);
-  if(nonWan&&parameters)for(const field of wanFields)if(Object.hasOwn(parameters,field))add(`parameters.${field}`,'unsupported_parameter');
+  // Ark may carry Seedance 2.5's generation duration and ratio; the exact
+  // selected profile below decides whether this model has them.
+  const ark=input.providerId==='ark',schemaOnly:readonly string[]=ark?['promptExtend','watermark']:wanFields;
+  if(nonWan&&parameters)for(const field of schemaOnly)if(Object.hasOwn(parameters,field))add(`parameters.${field}`,'unsupported_parameter');
   const binding=selectedBinding(input,capabilities),profile=binding?videoInputProfile(binding):null;
   if(profile&&parameters)for(const field of parameterFields){
     if(!Object.hasOwn(parameters,field))continue;
@@ -84,8 +87,10 @@ export function agentTaskParameterFeedback({operation,input,capabilities}:{opera
   }:undefined;
   const descriptions:Record<ParameterIssueReason,string>={required:'缺少必填字段',invalid_type:'字段类型不符',invalid_value:'字段值或组合无效',unknown_field:'未声明的字段',unsupported_parameter:'所选模型不支持此参数'};
   const messages=[`本次生成参数未通过本地校验：${issues.map(issue=>`${issue.field}（${descriptions[issue.reason]}）`).join('；')}。`];
-  if(nonWan&&issues.some(issue=>wanFields.some(field=>issue.field===`parameters.${field}`)))messages.push('durationSeconds、aspectRatio、promptExtend、watermark 是 Wan 专属生成参数，请从本次 parameters 中移除。');
-  if(nonWan)messages.push('画幅、时长和提示词取自已保存镜头；需修改时先读取镜头当前版本，再使用 shot.update 的 patch.aspectRatio、patch.duration、patch.prompt，随后以新镜头版本提交。');
+  const generationLevel=Boolean(profile?.parameters.durationSeconds);
+  if(nonWan&&issues.some(issue=>wanFields.some(field=>issue.field===`parameters.${field}`)))messages.push(ark?'promptExtend、watermark 是 Wan 专属生成参数；durationSeconds、aspectRatio 只适用于支持本次生成时长的精确模型（如 Seedance 2.5）。请从本次 parameters 中移除所选模型不支持的字段。':'durationSeconds、aspectRatio、promptExtend、watermark 是 Wan 专属生成参数，请从本次 parameters 中移除。');
+  if(nonWan&&generationLevel)messages.push('提示词取自已保存镜头；时长和画幅可用本次 parameters.durationSeconds、parameters.aspectRatio 指定，只作用于这次生成，不修改镜头。');
+  else if(nonWan)messages.push('画幅、时长和提示词取自已保存镜头；需修改时先读取镜头当前版本，再使用 shot.update 的 patch.aspectRatio、patch.duration、patch.prompt，随后以新镜头版本提交。');
   if(supported)messages.push(`所选精确模型支持 parameters：${supported.parameters.join('、')||'无'}；镜头画幅：${supported.aspectRatios.join('、')}；镜头时长（秒）：${supported.durationsSeconds.join('、')}；时长与分辨率组合：${supported.durationResolutionMap.map(pair=>`${pair.duration.join('/')} 秒 → ${pair.resolution.join('/')}`).join('；')||'当前连接没有可用组合，请重新读取连接配置'}。`);
   messages.push('此反馈不授权付费，也不代表任务已提交；请修正参数并遵循正常确认流程。');
   return {message:messages.join(' '),issues,...(supported?{supported}:{})};

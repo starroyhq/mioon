@@ -13,7 +13,7 @@ const input:VideoAdapterInput={prompt:'A synthetic shape moves',aspectRatio:'9:1
 type ResponseItem=Response|Error|((init:RequestInit)=>Promise<Response>);
 const json=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json'}});
 const bodyOf=(init:RequestInit)=>JSON.parse(typeof init.body==='string'?init.body:Buffer.from(init.body as Uint8Array).toString('utf8')) as Record<string,unknown>;
-function fixture(responses:ResponseItem[],{model=MODEL,ensureEnabled=()=>{}}:{model?:string;ensureEnabled?:()=>void}={}) {
+function fixture(responses:ResponseItem[],{model=MODEL,ensureEnabled=()=>{},audio}:{model?:string;ensureEnabled?:()=>void;audio?:'off'|'on'|'optional'}={}) {
   const calls:Array<{url:string;init:RequestInit}>=[];
   const fetchImpl:typeof fetch=async(url,init={})=>{
     calls.push({url:String(url),init});const next=responses.shift();
@@ -21,7 +21,7 @@ function fixture(responses:ResponseItem[],{model=MODEL,ensureEnabled=()=>{}}:{mo
     if(typeof next==='function')return next(init);
     assert.ok(next,'Only injected responses may be used');return next;
   };
-  const sdk=createArkSdkClient({api:API,model,send:(endpoint,options)=>createJsonRequest({api:API,headers:{...options.headers,Authorization:`Bearer ${SECRET}`},fetchImpl,ensureEnabled,name:'Seedance'})(endpoint,options)});
+  const sdk=createArkSdkClient({api:API,model,...(audio?{audio}:{}),send:(endpoint,options)=>createJsonRequest({api:API,headers:{...options.headers,Authorization:`Bearer ${SECRET}`},fetchImpl,ensureEnabled,name:'Seedance'})(endpoint,options)});
   return {sdk,calls};
 }
 
@@ -103,4 +103,30 @@ test('Ark SDK rejects unadvertised parameters and image combinations before tran
   const f=fixture([]),image={role:'first_frame',mimeType:'image/png',base64:'c3ludGhldGlj'};
   for(const patch of [{parameters:{seed:1}},{parameters:{generateAudio:true}},{images:[{...image,role:'last_frame'}]},{images:[image,{...image,role:'reference_image'}]},{images:[image,image,image]},{subjectReference:true},{subjectReference:true,images:[image]}])await assert.rejects(f.sdk.submit({...input,...patch}));
   assert.equal(f.calls.length,0);
+});
+
+test('Ark SDK sends Seedance 2.5 long, automatic, adaptive and 1080p requests exactly as resolved',async()=>{
+  const cases:Array<[Partial<VideoAdapterInput>,Record<string,unknown>]>=[
+    [{duration:30,aspectRatio:'21:9',parameters:{resolution:'1080p',durationSeconds:30,aspectRatio:'21:9',generateAudio:true}},{duration:30,ratio:'21:9',resolution:'1080p',generate_audio:true}],
+    [{duration:-1,aspectRatio:'adaptive',parameters:{resolution:'480p',durationSeconds:-1,aspectRatio:'adaptive',generateAudio:false}},{duration:-1,ratio:'adaptive',resolution:'480p',generate_audio:false}],
+    [{duration:12,aspectRatio:'1:1',parameters:{resolution:'720p'}},{duration:12,ratio:'1:1',resolution:'720p',generate_audio:false}],
+  ];
+  for(const [patch,expected] of cases){
+    const f=fixture([json({id:ID})],{audio:'optional'});await f.sdk.submit({...input,...patch});
+    assert.deepEqual(bodyOf(f.calls[0]!.init),{model:MODEL,content:[{type:'text',text:input.prompt}],output_format:'mp4',...expected});
+  }
+});
+
+test('Ark SDK follows the saved audio mode and keeps frame tasks adaptive at any length',async()=>{
+  const on=fixture([json({id:ID})],{audio:'on'});await on.sdk.submit(input);assert.equal(bodyOf(on.calls[0]!.init).generate_audio,true);
+  const frames=fixture([json({id:ID})],{audio:'optional'}),image={role:'first_frame',mimeType:'image/png',base64:'Zmlyc3Q='};
+  await frames.sdk.submit({...input,duration:25,aspectRatio:'4:3',parameters:{resolution:'720p',durationSeconds:25,aspectRatio:'4:3'},images:[image]});
+  const body=bodyOf(frames.calls[0]!.init);assert.equal(body.duration,25);assert.equal(body.ratio,'adaptive');assert.equal(body.generate_audio,false);
+});
+
+test('Ark SDK rejects audio choices the saved model does not offer and parameters that disagree with the resolved input',async()=>{
+  const optional=fixture([],{audio:'optional'}),on=fixture([],{audio:'on'});
+  for(const patch of [{parameters:{generateAudio:'true'}},{duration:8,parameters:{durationSeconds:30}},{parameters:{aspectRatio:'16:9'}},{duration:3,parameters:{}},{duration:31,parameters:{}},{duration:4.5,parameters:{}},{parameters:{promptExtend:true}},{parameters:{watermark:false}}])await assert.rejects(optional.sdk.submit({...input,...patch} as VideoAdapterInput),{code:'UNSUPPORTED_PARAMETER'},JSON.stringify(patch));
+  await assert.rejects(on.sdk.submit({...input,parameters:{generateAudio:false}}),{code:'UNSUPPORTED_PARAMETER'});
+  assert.equal(optional.calls.length+on.calls.length,0);
 });

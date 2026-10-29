@@ -71,8 +71,8 @@
       "sha256": "9fbec00e2d6a812d0774c516e91ff8fb51acae53caace555fdcd47953573a582"
     },
     "packages/contracts/src/index.ts": {
-      "bytes": 51215,
-      "sha256": "7344a108dcac830c8eb0d1a799c96f15795fd1cf1b1efb064f1b57eadc21742b"
+      "bytes": 51640,
+      "sha256": "cd0b7f4fa797e45068e2f503a265f40e58b3befdcdc6b171e6b6459a3187bcbc"
     },
     "packages/contracts/src/operation-effects.ts": {
       "bytes": 39532,

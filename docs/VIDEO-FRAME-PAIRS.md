@@ -12,8 +12,12 @@ adapter and local Mock are being connected end to end. Subject/style library
 bindings remain local planning metadata and are not uploaded. There is no automatic
 image-to-video second stage, new canvas port, identity-lock promise or Blender dependency.
 
-Ark keeps `doubao-seedance-2-5-260628`, the fixed Beijing task API, 4/8 seconds,
-720p, 9:16/16:9, MP4 and `generate_audio:false`. PNG/JPEG files are each limited to
+The environment-configured Ark adapter keeps `doubao-seedance-2-5-260628`, the
+fixed Beijing task API, 4/8 seconds, 720p, 9:16/16:9, MP4 and `generate_audio:false`.
+A UI-configured Seedance 2.5 connection also offers 4–30 seconds or automatic, six
+ratios or adaptive, 480p–1080p and optional sound for frame pairs; see
+[Seedance 2.5 connections](PROVIDERS.md#seedance-25-connections-reviewed-2026-10-30).
+PNG/JPEG files are each limited to
 10 MiB, with each width and height in 300–6000 pixels. Both images must individually
 match the selected aspect ratio; their pixel dimensions need not be identical.
 These selected durations, output settings, formats, byte cap and strict aspect-match

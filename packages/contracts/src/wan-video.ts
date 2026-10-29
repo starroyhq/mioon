@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {getSeedance25Capability} from './seedance-video.ts';
 
 export const WAN30_MODEL_IDS=['wan3.0-video','wan3.0-video-prime'] as const;
 export const WAN30_PROTOCOL_VERSION='wan30-v1';
@@ -68,15 +69,18 @@ export function resolveWanGenerationParameters(
  return {durationSeconds,resolution,aspectRatio,generateAudio:defaults.generateAudio,promptExtend:defaults.promptExtend,watermark:defaults.watermark,...specified};
 }
 
-/** Automatic values belong to the generation request, never the saved shot's fixed fields. */
+/** Automatic values belong to the generation request, never the saved shot's fixed fields.
+ * Wan 3.0 and the reviewed Seedance 2.5 row take duration and ratio from the
+ * request when given; every other protocol uses the saved shot. */
 export function effectiveVideoParameters(binding:{providerId:string;region:string;model:{modelId:string;templateId:string;durationResolutionMap:Array<{duration:number[];resolution:string[]}>}},snapshot:{prompt?:unknown;duration?:unknown;aspectRatio?:unknown;parameters?:unknown;videoInput?:unknown}) {
  const parameters=snapshot.parameters&&typeof snapshot.parameters==='object'&&!Array.isArray(snapshot.parameters)?snapshot.parameters as Record<string,unknown>:{},capability=binding.providerId==='wan'?getWan30Capability(binding.model.modelId,binding.region,binding.model.templateId):undefined,wan30=Boolean(capability);
+ const explicit=wan30||binding.providerId==='ark'&&Boolean(getSeedance25Capability(binding.model.modelId,binding.region,binding.model.templateId));
  const input=snapshot.videoInput&&typeof snapshot.videoInput==='object'?snapshot.videoInput as {prompt?:unknown}:undefined;
- const durationSeconds=wan30?parameters.durationSeconds??snapshot.duration:snapshot.duration;
+ const durationSeconds=explicit?parameters.durationSeconds??snapshot.duration:snapshot.duration;
  return {
   prompt:(wan30&&input?.prompt!==undefined?input.prompt:snapshot.prompt)??(wan30?'':undefined),
-  durationSeconds,aspectRatio:wan30?parameters.aspectRatio??snapshot.aspectRatio:snapshot.aspectRatio,
-  resolution:parameters.resolution??binding.model.durationResolutionMap.find(pair=>pair.duration.includes(durationSeconds as number))?.resolution[0]??(wan30&&durationSeconds===-1?binding.model.durationResolutionMap[0]?.resolution[0]:undefined),
+  durationSeconds,aspectRatio:explicit?parameters.aspectRatio??snapshot.aspectRatio:snapshot.aspectRatio,
+  resolution:parameters.resolution??binding.model.durationResolutionMap.find(pair=>pair.duration.includes(durationSeconds as number))?.resolution[0]??(explicit&&durationSeconds===-1?binding.model.durationResolutionMap[0]?.resolution[0]:undefined),
   generateAudio:parameters.generateAudio??capability?.defaults.generateAudio,promptExtend:parameters.promptExtend??capability?.defaults.promptExtend,watermark:parameters.watermark??capability?.defaults.watermark,seed:parameters.seed,
  };
 }

@@ -540,3 +540,43 @@ test('Wan first/last image reordering keeps roles and unavailable or custom capa
   const custom = structuredClone(p); delete custom.modelCapabilities![0].wanCapabilities; delete (custom.modelCapabilities![0].connectionCapabilities as {modelCapabilities: {wanCapabilities?: unknown}[]}).modelCapabilities[0].wanCapabilities;
   const unknown = harness({ providers: [custom], generationOptions: { connectionId: custom.connectionId, modelEntryId: custom.modelCapabilities![0].modelEntryId } }); unknown.render(); assert.equal(unknown.find('wan-video-input'), undefined);
 });
+function seedanceProvider(patch: Partial<contracts.VideoModelEntry> = {}) {
+  const entry = { ...contracts.defaultVideoModels('ark')[0]!, ...patch };
+  const binding = { version: 1 as const, connectionId: id(62), configurationRevision: 2, providerId: 'ark', region: 'cn-beijing', workspaceId: '', endpoint: contracts.resolveVideoEndpoint('ark', 'cn-beijing'), credentialRef: id(63), model: entry, outputHosts: [] };
+  return settings.videoConnectionProviders([{ connectionId: binding.connectionId, providerId: 'ark', configurationRevision: 2, name: 'Ark account', enabled: true, configured: true, archived: false, models: [{ entry, capabilities: contracts.videoBindingCapabilities(binding as Parameters<typeof contracts.videoBindingCapabilities>[0]) }] }])[0];
+}
+test('Seedance 2.5 sets duration, ratio, resolution and sound for one generation without the Wan-only controls or shot edits', async () => {
+  const p = seedanceProvider(), h = harness({ shot: shot({ referenceAssetIds: [], duration: 4, aspectRatio: '9:16' }), providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
+  h.render();
+  for (const testId of ['wan-video-input', 'wan-prompt-extend', 'wan-watermark', 'shot-duration', 'seedance-hevc-hint']) assert.equal(h.find(testId), undefined, testId);
+  assert.match(text(h.find('seedance-session-hint')), /只用于本次生成/);
+  assert.equal(h.find('wan-video-duration')!.props.value, 4); assert.equal(h.find('wan-video-ratio')!.props.value, '9:16');
+  assert.equal(h.find('generation-resolution')!.props.value, '720p'); assert.equal(h.find('generation-audio')!.props.checked, false);
+  const durations = nodes(h.find('wan-video-duration')).filter(node => node.type === 'option').map(node => Number(node.props.value));
+  assert.deepEqual(durations, [-1, ...Array.from({ length: 27 }, (_, index) => index + 4)]);
+  assert.ok(nodes(h.find('wan-video-ratio')).some(node => node.type === 'option' && node.props.value === 'adaptive'));
+  h.edit('wan-video-duration', '30'); h.edit('wan-video-ratio', '21:9'); h.edit('generation-resolution', '1080p');
+  h.find('generation-audio')!.props.onChange({ target: { checked: true } }); h.render();
+  assert.match(text(h.find('seedance-hevc-hint')), /10 位 HEVC/);
+  assert.deepEqual(h.props().generationOptions.parameters, { durationSeconds: 30, aspectRatio: '21:9', resolution: '1080p', generateAudio: true });
+  assert.equal(h.saves.length, 0); assert.equal(h.props().shot.duration, 4); assert.equal(h.props().shot.aspectRatio, '9:16');
+  await h.click('generate-shot');
+  assert.equal(h.generated.length, 1); assert.equal(h.generated[0][1].videoInput, undefined);
+  const expected = { durationSeconds: 30, aspectRatio: '21:9', resolution: '1080p', generateAudio: true };
+  assert.deepEqual(h.generated[0][1].parameters, expected);
+  // The paid review and the submitted request carry the generation duration, not the shot's 4 seconds.
+  const app = appGenerationFlow({ providers: [p], options: h.props().generationOptions, currentShot: h.props().shot });
+  app.generate(h.generated[0][0], h.generated[0][1]);
+  const review = app.state.review; assert.ok(review); assert.deepEqual(review.shot.parameters, expected); assert.equal(review.shot.duration, 4);
+  app.confirmGeneration(review); await Promise.resolve();
+  assert.equal(app.state.calls.length, 1); assert.equal(app.state.calls[0][2].providerId, 'ark'); assert.deepEqual(app.state.calls[0][2].parameters, expected);
+});
+test('custom Ark models keep shot-only duration and ratio controls', () => {
+  const p = seedanceProvider({ modelId: 'custom-seedance-model', inputModes: ['text', 'image', 'frames'], durationResolutionMap: [{ duration: [4, 8], resolution: ['720p'] }] });
+  const h = harness({ shot: shot({ referenceAssetIds: [] }), providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
+  h.render();
+  assert.equal(h.find('wan-video-duration'), undefined); assert.equal(h.find('wan-video-ratio'), undefined); assert.ok(h.find('shot-duration'));
+  assert.equal(h.find('seedance-session-hint'), undefined);
+  assert.equal(settings.seedanceGenerationCapabilities(p), null);
+  assert.equal(Object.hasOwn(settings.generationParameters(shot(), p), 'durationSeconds'), false);
+});

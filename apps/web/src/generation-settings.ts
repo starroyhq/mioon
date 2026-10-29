@@ -439,6 +439,20 @@ export function generationParameters(shot: GenerationShot, provider: GenerationP
   const model = provider.videoModel as import('../../../packages/contracts/src/video-providers.ts').VideoModelEntry | undefined;
   if (wan?.defaults && model) return resolveWanGenerationParameters(model, wan.defaults, shot, overrides);
   const parameters: Record<string, unknown> = { ...(shot.parameters || {}), ...overrides };
+  const seedance = seedanceGenerationCapabilities(provider);
+  if (seedance && model) {
+    // The generation follows the saved shot until the user picks another
+    // duration or ratio for this generation; the shot itself is not changed.
+    for (const key of Object.keys(parameters)) if (parameters[key] === undefined) delete parameters[key];
+    const durations = model.durationResolutionMap.flatMap(pair => pair.duration);
+    parameters.durationSeconds ??= durations.includes(Number(shot.duration)) ? Number(shot.duration) : durations[0];
+    parameters.aspectRatio ??= (model.aspectRatios as readonly string[]).includes(String(shot.aspectRatio)) ? shot.aspectRatio : model.aspectRatios[0];
+    if (parameters.resolution === undefined) {
+      const resolutions = model.durationResolutionMap.filter(pair => parameters.durationSeconds === -1 || pair.duration.includes(Number(parameters.durationSeconds))).flatMap(pair => pair.resolution);
+      parameters.resolution = resolutions.includes(String(seedance.defaults?.resolution)) ? seedance.defaults?.resolution : resolutions[0];
+    }
+    return parameters;
+  }
   if (parameters.resolution === undefined) {
     const resolution = model?.durationResolutionMap.find(pair => pair.duration.includes(Number(shot.duration)))?.resolution[0];
     if (resolution) parameters.resolution = resolution;
@@ -455,6 +469,13 @@ export function wanGenerationCapabilities(provider: GenerationProvider | null | 
   return capabilities && typeof capabilities === 'object' && !Array.isArray(capabilities) ? capabilities as Record<string, unknown> : null;
 }
 
+/** Exact server-declared Seedance 2.5 capability metadata for generation-level duration and ratio. */
+export function seedanceGenerationCapabilities(provider: GenerationProvider | null | undefined): { smartDuration?: boolean; adaptiveAspectRatio?: boolean; defaults?: { resolution: string; generateAudio: boolean }; [key: string]: unknown } | null {
+  const model = provider?.videoModel as { id?: string } | undefined;
+  const entry = providerModels(provider).find(item => model?.id ? item.modelEntryId === model.id : item.modelEntryId === provider?.modelEntryId);
+  const capabilities = entry?.seedanceCapabilities ?? (provider?.modelCapabilities?.length === 1 ? provider.modelCapabilities[0]?.seedanceCapabilities : undefined);
+  return capabilities && typeof capabilities === 'object' && !Array.isArray(capabilities) ? capabilities as Record<string, unknown> : null;
+}
 export function generationVideoInput(shot: GenerationShot, options: { videoInput?: GenerationVideoInput } = {}, provider?: GenerationProvider | null): GenerationVideoInput | undefined {
   if (!wanGenerationCapabilities(provider)) return undefined;
   if (options.videoInput) return { ...structuredClone(options.videoInput), prompt: options.videoInput.prompt ?? shot.prompt ?? '' };
