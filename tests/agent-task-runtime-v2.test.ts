@@ -24,6 +24,7 @@ import type {Provider,ProviderContext} from '../packages/business/src/provider-r
 import type {TaskModelItem,TaskModelRequest,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLanguageContext,taskResponseLocale,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {sourceTaskModelToolNames,selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
+import {taskBaseModelHistory} from '../packages/business/src/agent/task-context-base-v2.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentTaskLoadableToolGroupId} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {AGENT_TASK_LOCALES} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -179,7 +180,7 @@ test('history byte trimming keeps the exact host language and final user message
   const f=await fixture(t);f.setScript(async function*(){yield {type:'done',output:output('responses',[],'x'.repeat(50000))};});
   let conversationId:string|undefined;for(let index=0;index<4;index++){const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'previous '+index+' '+('x'.repeat(28000)),expectedSettingsRevision:(await f.settings.get()).revision,locale:'en',...(conversationId?{conversationId}:{})});conversationId=sent.run.conversationId;await f.settle(sent.run.id);}
   const text='現在の指示',sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,expectedSettingsRevision:(await f.settings.get()).revision,locale:'ja',conversationId});await f.settle(sent.run.id);
-  const context=f.runtime.journal.run(sent.run.id).context!;assert.deepEqual(context[0],taskResponseLanguageContext('ja'));assert.deepEqual(context.at(-1),{role:'user',content:text});assert.ok(Buffer.byteLength(JSON.stringify(context))<=TASK_MODEL_LIMITS.historyBytes);assert.ok(context.length<10);assert.equal(taskResponseLocale(context),'ja');
+  const context=f.runtime.journal.run(sent.run.id).context!;assert.deepEqual(context[0],taskResponseLanguageContext('ja'));assert.deepEqual(context.at(-1),{role:'user',content:text});assert.ok(Buffer.byteLength(JSON.stringify(taskBaseModelHistory(context)))<=TASK_MODEL_LIMITS.historyBytes);assert.ok(context.length<10);assert.equal(taskResponseLocale(context),'ja');
 });
 test('resuming a legacy model intent sends its original journaled body without rewriting language',async t=>{
   const f=await fixture(t),settings=await f.settings.get(),context=[{role:'user',content:'legacy request'}];
@@ -806,7 +807,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  f.setScript(async function*(index){yield {type:'done',output:longReadOutput(protocol,index===1?'r'.repeat(97000):'Complete.',index===1?[call('mioon_project_inspect')]:[])};});
  const sent=await f.send('u'.repeat(32000)),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'budget');assert.equal(preparations,1);
  const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model'),tool=before.steps.find(step=>step.kind==='tool');assert.ok(model&&tool?.toolCall);assert.equal(tool.status,'completed');assert.equal(tool.result,null);
- const retained=object(model.result) as unknown as TaskModelOutput,history=before.run.context??[],withoutFallback=taskContinuation(protocol,retained,[{callId:tool.toolCall.id,result:null}]);
+ const retained=object(model.result) as unknown as TaskModelOutput,history=taskBaseModelHistory(before.run.context??[]),withoutFallback=taskContinuation(protocol,retained,[{callId:tool.toolCall.id,result:null}]);
  const emptyNote={role:'user',content:''},length=TASK_MODEL_LIMITS.historyBytes-Buffer.byteLength(JSON.stringify([...history,...withoutFallback,emptyNote]));assert.ok(length>0&&length<=32*1024);
  const note='n'.repeat(length),withNote=[...history,...withoutFallback,{...emptyNote,content:note}];assert.equal(Buffer.byteLength(JSON.stringify(withNote)),TASK_MODEL_LIMITS.historyBytes);
  const executionRound=taskContinuation(protocol,retained,[{callId:tool.toolCall.id,result:{error:{code:'completed'}}}]);assert.ok(Buffer.byteLength(JSON.stringify([...history,...executionRound,{...emptyNote,content:note}]))>TASK_MODEL_LIMITS.historyBytes);
@@ -863,7 +864,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const sent=await f.send('u'.repeat(32000));await entered.promise;
  try{
   const before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.ok(model);assert.equal(model.status,'dispatch_started');assert.equal(model.text,reply);
-  const historyBytes=Buffer.byteLength(JSON.stringify(before.run.context));assert.ok(historyBytes+Buffer.byteLength(note)+200<TASK_MODEL_LIMITS.historyBytes);assert.ok(historyBytes+Buffer.byteLength(model.text)+Buffer.byteLength(note)>TASK_MODEL_LIMITS.historyBytes);
+  const historyBytes=Buffer.byteLength(JSON.stringify(taskBaseModelHistory(before.run.context??[])));assert.ok(historyBytes+Buffer.byteLength(note)+200<TASK_MODEL_LIMITS.historyBytes);assert.ok(historyBytes+Buffer.byteLength(model.text)+Buffer.byteLength(note)>TASK_MODEL_LIMITS.historyBytes);
   const body=f.requests.at(-1)!.body,request={requestId:randomUUID(),expectedRevision:before.run.revision,action:'note',text:note};
   await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:'AGENT_TASK_NOTE_CAPACITY'});
   const rejectedEvents=f.runtime.journal.events(sent.run.id),receipt=f.runtime.journal.lookupControl(request.requestId);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.deepEqual(rejectedEvents.slice(0,-1),events);assert.equal(rejectedEvents.at(-1)?.type,'control');assert.deepEqual(rejectedEvents.at(-1)?.data,receipt);assert.deepEqual(receipt,{requestId:request.requestId,runId:sent.run.id,action:'note',revision:before.run.revision,result:{state:'rejected',code:'AGENT_TASK_NOTE_CAPACITY'}});
@@ -879,7 +880,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const sent=await f.sendNext();await entered.promise;
  const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.ok(model);assert.equal(model.text,reply);
  const frozen=model.request,initialBody=f.requests.at(-1)!.body,context=structuredClone(before.run.context);
- assert.ok(Buffer.byteLength(JSON.stringify(before.run.context))+Buffer.byteLength(reply)+Buffer.byteLength(note)>TASK_MODEL_LIMITS.historyBytes);
+ assert.ok(Buffer.byteLength(JSON.stringify(taskBaseModelHistory(before.run.context??[])))+Buffer.byteLength(reply)+Buffer.byteLength(note)>TASK_MODEL_LIMITS.historyBytes);
  try{
   const accepted=await f.action(f.runtime.get(f.projectId,sent.run.id),'note',{text:note});assert.equal(accepted.run.notes?.[0]?.text,note);
   assert.deepEqual(f.runtime.journal.step(model.id).request,frozen);assert.equal(f.requests.at(-1)!.body,initialBody);assert.deepEqual(f.runtime.journal.run(sent.run.id).context,context);
@@ -889,7 +890,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const history=object(latest.request).history;assert.ok(Array.isArray(history));assert.ok(Buffer.byteLength(JSON.stringify(history))<=TASK_MODEL_LIMITS.historyBytes);
  assert.ok(f.requests.at(-1)!.body.includes(reply));assert.ok(f.requests.at(-1)!.body.includes(note));
  const oldReply='a'.repeat(2000),remaining=history.filter(value=>object(value).role==='assistant'&&object(value).content===oldReply).length;
- assert.ok(remaining<(context??[]).filter(value=>object(value).role==='assistant'&&object(value).content===oldReply).length);
+ assert.ok(remaining<taskBaseModelHistory(context??[]).filter(value=>object(value).role==='assistant'&&object(value).content===oldReply).length);
  assert.deepEqual(f.runtime.journal.step(model.id).request,frozen);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: note capacity accepts a persisted streamed reply below the limit without rewriting its intent`,async t=>{
@@ -898,7 +899,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const sent=await f.sendNext();await entered.promise;
  try{
   const before=f.runtime.journal.snapshot(sent.run.id),model=before.steps.find(step=>step.kind==='model');assert.equal(model?.text,reply);const request=model?.request;
-  assert.ok(Buffer.byteLength(JSON.stringify(before.run.context))+Buffer.byteLength(reply)+Buffer.byteLength(note)+1000<TASK_MODEL_LIMITS.historyBytes);
+  assert.ok(Buffer.byteLength(JSON.stringify(taskBaseModelHistory(before.run.context??[])))+Buffer.byteLength(reply)+Buffer.byteLength(note)+1000<TASK_MODEL_LIMITS.historyBytes);
   const accepted=await f.action(before,'note',{text:note});assert.equal(accepted.run.notes?.[0]?.text,note);assert.deepEqual(f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.id===model?.id)?.request,request);
  }finally{release.resolve();await f.runtime.drain();}
  const done=f.runtime.get(f.projectId,sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,5);
