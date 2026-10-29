@@ -78,6 +78,7 @@ const textSites = {
   'tests/agent-task-http-v2.test.ts': 9,
   // Checks CLI stdout JSON and stderr diagnostics both decode before collection.
   'tests/agent-task-checks-transport-v2.test.ts': 2,
+  'tests/agent-task-h1e-runtime-v2.test.ts': 2,
   // Native Anthropic transport checks collect CLI JSON and diagnostics as UTF-8.
   'tests/agent-anthropic-transports.test.ts': 2,
   'tests/headless-agent-secret-public-native.test.mjs': 2,

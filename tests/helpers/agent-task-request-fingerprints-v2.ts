@@ -82,7 +82,21 @@ function assertRequest(body: string, protocol: AgentProtocol): void {
   const request = object(JSON.parse(body));
   if (protocol === 'anthropic_messages') {
     assert.ok(Array.isArray(request.messages));
-    anthropicMessages(request.messages as AgentTaskJson[]);
+    // The context validator accepts plain conversation blocks. Cache policy is
+    // applied later by the request builder, so validate pairing on a copy with
+    // only legal block metadata removed. The original body is still hashed
+    // directly below; neither cache metadata nor ordering is normalized there.
+    const messages=request.messages.map(value=>{
+      const message=object(value);
+      if(!Array.isArray(message.content))return message;
+      return {...message,content:message.content.map(value=>{
+        const block=object(value);
+        if(!Object.hasOwn(block,'cache_control'))return block;
+        assert.deepEqual(block.cache_control,{type:'ephemeral'});
+        return Object.fromEntries(Object.entries(block).filter(([key])=>key!=='cache_control'));
+      })};
+    });
+    anthropicMessages(messages as AgentTaskJson[]);
     return;
   }
   const history = request[protocol === 'responses' ? 'input' : 'messages'];

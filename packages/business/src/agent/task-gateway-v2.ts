@@ -12,6 +12,9 @@ import {parseModelToolArguments} from './model-tool-arguments.ts';
 import {anthropicMessages} from './anthropic-wire.ts';
 import {ANTHROPIC_MESSAGES_FIELDS} from './anthropic-protocol.ts';
 import {taskToolWireSchema} from './task-tool-wire-schema.ts';
+import {createTaskUsageCollector} from './task-usage-v2.ts';
+import type {TaskModelUsage} from './task-usage-v2.ts';
+import {applyTaskAnthropicCaching} from './task-cache-v2.ts';
 import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from './task-tool-groups-v2.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
@@ -22,7 +25,7 @@ import {AGENT_TASK_LOCALES,AGENT_TASK_STEP_STATUSES,DEFAULT_AGENT_TASK_LOCALE} f
 import type {AgentTaskJson,AgentTaskToolCall,AgentTaskLocale} from '@mioon/contracts/agent-tasks-v2';
 
 export interface TaskToolDefinition {name:string;description:string;parameters:unknown}
-export interface TaskModelOutput {text:string;toolCalls:AgentTaskToolCall[];providerOutput:AgentTaskJson}
+export interface TaskModelOutput {text:string;toolCalls:AgentTaskToolCall[];providerOutput:AgentTaskJson;usage?:TaskModelUsage}
 export type TaskModelItem={type:'delta';text:string}|{type:'done';output:TaskModelOutput};
 export interface TaskModelRequest {configuration:AgentConfiguration;body:string;apiKey?:string|null;signal?:AbortSignal;selfPort?:number;beforeSubmit?:()=>void;knownTools?:readonly TaskToolDefinition[]}
 export type TaskGateway=(request:TaskModelRequest)=>AsyncGenerator<TaskModelItem,void,undefined>;
@@ -114,6 +117,15 @@ export function taskResponseLocale(context:readonly AgentTaskJson[]|undefined):A
   return DEFAULT_AGENT_TASK_LOCALE;
 }
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+// Presets can point at a compatible server, so documented optional fields also
+// require its official endpoint. Workspace Qwen endpoints stay passive until
+// their usage-option support has been established for that endpoint shape.
+function chatUsageRequest(configuration:AgentConfiguration):boolean {
+  const url=new URL(configuration.baseUrl),path=url.pathname.replace(/\/+$/u,'');
+  if(configuration.presetId==='openai')return url.origin==='https://api.openai.com'&&path==='/v1';
+  if(configuration.presetId==='deepseek')return url.origin==='https://api.deepseek.com'&&['','/v1'].includes(path);
+  return configuration.presetId==='qwen'&&['https://dashscope.aliyuncs.com','https://dashscope-intl.aliyuncs.com'].includes(url.origin)&&path==='/compatible-mode/v1';
+}
 function fail(code='AGENT_CHAT_PROTOCOL_ERROR'):never {throw agentChatError(code);}
 function string(value:unknown,max=TASK_MODEL_LIMITS.outputBytes):string {
   if(typeof value!=='string'||Buffer.byteLength(value)>max||Buffer.from(value).toString('utf8')!==value)fail();
@@ -157,6 +169,7 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
     const chat=agentChatProfile(configuration);
     body={model:configuration.model,stream:true,messages:[{role:'system',content:instruction},...modelHistory],
       [chat.tokenField]:4096,...chat.fields,
+      ...(chatUsageRequest(configuration)?{stream_options:{include_usage:true}}:{}),
       ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',function:{...tool,...(profile.strict?{strict:false}:{})}}))}:{}),...controls};
   }else if(configuration.protocol==='anthropic_messages'){
     body={model:configuration.model,stream:true,max_tokens:4096,...ANTHROPIC_MESSAGES_FIELDS,...native,
@@ -166,7 +179,7 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
     body={model:configuration.model,stream:true,store:false,instructions:instruction,input:modelHistory,max_output_tokens:4096,
       ...responses.fields,...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',...tool,...(profile.strict?{strict:false}:{})}))}:{}),...controls};
   }
-  const serialized=JSON.stringify(body);if(Buffer.byteLength(serialized)>TASK_MODEL_LIMITS.requestBytes)fail('AGENT_CHAT_LIMIT');return serialized;
+  const serialized=JSON.stringify(applyTaskAnthropicCaching(configuration,body));if(Buffer.byteLength(serialized)>TASK_MODEL_LIMITS.requestBytes)fail('AGENT_CHAT_LIMIT');return serialized;
 }
 export function taskContinuation(protocol:AgentConfiguration['protocol'],output:TaskModelOutput,results:{callId:string;result:AgentTaskJson}[]):AgentTaskJson[] {
   if(results.length!==output.toolCalls.length||results.some((item,index)=>item.callId!==output.toolCalls[index].id))fail();
@@ -205,6 +218,8 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
     let stream:Awaited<ReturnType<typeof open>>;
     try{stream=await open(guarded);}catch(error){if(blocked)throw blocked;if(wasAgentTransportSubmissionPrevented(error)&&error!==null&&typeof error==='object')preventedSubmissions.add(error);throw error;}
     let streamState:AgentStreamState|undefined;
+    const usageCollector=createTaskUsageCollector(options.configuration.protocol);
+    const usageOutput=():{usage?:TaskModelUsage}=>{const usage=usageCollector.usage();return usage?{usage}:{};};
     try {
       if(options.configuration.protocol==='chat_completions') {
         let text='',finished:string|null=null,done=false,refused=false;
@@ -215,7 +230,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           if(frame.event==='error')fail('AGENT_CHAT_PROVIDER_ERROR');if(frame.event!=='message')fail();
           if(done)fail();if(frame.data==='[DONE]'){streamState.done=true;if(!finished)throw agentChatStreamError('missing_finish');done=true;continue;}
           let raw:unknown;try{raw=JSON.parse(frame.data);}catch{fail();}if(!object(raw)||raw.error)fail('AGENT_CHAT_PROVIDER_ERROR');
-          noReasoning(raw);if(!Array.isArray(raw.choices)||raw.choices.length>1)fail();if(!raw.choices.length)continue;
+          noReasoning(raw);if(!Array.isArray(raw.choices)||raw.choices.length>1)fail();usageCollector.observe(raw.usage);if(!raw.choices.length)continue;
           const choice=raw.choices[0];if(!object(choice)||choice.index!==0||!object(choice.delta))fail();noReasoning(choice.delta);
           if(finished)fail();const delta=choice.delta;
           if(delta.content!=null){const part=string(delta.content);text+=part;streamState.outputBytes=Buffer.byteLength(text);if(streamState.outputBytes>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');if(part)yield {type:'delta',text:part};}
@@ -237,10 +252,10 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         const toolCalls=ordered.map(([,item])=>call(item.id,item.name,item.arguments,definitions,options.knownTools));
         if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length||(finished==='tool_calls')!==!!toolCalls.length)fail();
         const providerOutput:AgentTaskJson={role:'assistant',content:text||null,...(toolCalls.length?{tool_calls:ordered.map(([,item])=>({id:item.id,type:'function',function:{name:item.name,arguments:item.arguments}}))}:{})};
-        yield {type:'done',output:{text,toolCalls,providerOutput}};
+        yield {type:'done',output:{text,toolCalls,providerOutput,...usageOutput()}};
       } else if(options.configuration.protocol==='anthropic_messages') {
         let completion:AnthropicCompletion|undefined;
-        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls})){
+        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls,usageMode:'optional',onUsage:usageCollector.observe})){
           if(item.type==='delta')yield item;
           else completion=item.completion;
         }
@@ -252,7 +267,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         const toolCalls=completion.toolCalls.map(item=>call(item.id,item.name,item.argumentsJson,definitions,options.knownTools));
         if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length||(completion.stopReason==='tool_use')!==!!toolCalls.length)fail();
         const providerOutput:AgentTaskJson={role:'assistant',content:completion.content};
-        yield {type:'done',output:{text:completion.text,toolCalls,providerOutput}};
+        yield {type:'done',output:{text:completion.text,toolCalls,providerOutput,...usageOutput()}};
       } else {
         let responseId:string|null=null,completed=false,text='';const added=new Map<number,Record<string,unknown>>(),done=new Map<number,Record<string,unknown>>(),argumentsByIndex=new Map<number,string>(),parts=new Map<string,string>();
         let terminal:Record<string,unknown>|null=null;
@@ -267,7 +282,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           if(type==='response.completed'){
             if(!object(raw.response)||raw.response.status!=='completed'||!Array.isArray(raw.response.output)||responseId&&raw.response.id!==responseId)fail();
             if(raw.response.output.length!==done.size||raw.response.output.some((item,index)=>!isDeepStrictEqual(item,done.get(index))))fail();
-            terminal=raw.response;completed=true;continue;
+            usageCollector.observe(raw.response.usage);terminal=raw.response;completed=true;continue;
           }
           const index=raw.output_index;if(!Number.isSafeInteger(index)||(index as number)<0||(index as number)>=64)fail();const position=index as number;
           if(type==='response.output_item.added'){
@@ -301,7 +316,7 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         if(stream.error())throw stream.error();if(!terminal||!completed)fail('AGENT_CHAT_TRUNCATED');
         const output=terminal.output as Record<string,unknown>[],toolCalls=output.filter(item=>item.type==='function_call').map(item=>call(item.call_id,item.name,item.arguments,definitions,options.knownTools));
         if(toolCalls.length>TASK_MODEL_LIMITS.toolCalls||new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length)fail();
-        yield {type:'done',output:{text,toolCalls,providerOutput:output as AgentTaskJson[]}};
+        yield {type:'done',output:{text,toolCalls,providerOutput:output as AgentTaskJson[],...usageOutput()}};
       }
     }catch(error){if(blocked)throw blocked;if(streamState)annotateAgentChatStreamError(error,streamState);throw error;}finally{stream.close();}
   };

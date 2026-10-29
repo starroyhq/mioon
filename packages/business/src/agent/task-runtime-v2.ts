@@ -17,6 +17,7 @@ import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
 import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
 import type {TaskGateway,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
+import {taskModelUsage} from './task-usage-v2.ts';
 import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
 import type {TaskModelContextFragment} from './task-context-v2.ts';
 import {collectTaskProjectOverview} from './task-context-observations-v2.ts';
@@ -377,7 +378,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           clearFlushTimer();signal.removeEventListener('abort',clearFlushTimer);
           if(!streamEnded)await stream.return();
         }
-        journal.completeStep(runId,model.id,{result:json(output)});inflight=undefined;
+        // Only normalized counters join the private completion receipt. Missing
+        // or malformed passive usage never changes model/tool recovery rules.
+        const {usage:reportedUsage,...completion}=output,usage=taskModelUsage(reportedUsage);
+        journal.completeStep(runId,model.id,{result:json({...completion,...(usage?{usage}:{})})});inflight=undefined;
         if(journal.run(runId).status!=='running')return;
       }
     }catch(error){
