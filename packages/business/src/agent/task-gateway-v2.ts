@@ -12,7 +12,8 @@ import {parseModelToolArguments} from './model-tool-arguments.ts';
 import {anthropicMessages} from './anthropic-wire.ts';
 import {ANTHROPIC_MESSAGES_FIELDS} from './anthropic-protocol.ts';
 import {taskToolWireSchema} from './task-tool-wire-schema.ts';
-import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from './task-tool-groups-v2.ts';
+import {agentTaskSkillInstructions} from './task-skills-v2.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
 import {agentChatError,agentChatStreamError,annotateAgentChatStreamError} from './chat-errors.ts';
@@ -146,7 +147,10 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
   const profile=agentReadToolProfile(configuration);
   if(!profile)fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
   const controls=definitions.length?{...(profile.parallel?{parallel_tool_calls:false}:{}),...(profile.choice?{tool_choice:'auto'}:{})}:{};
-  const locale=taskResponseLocale(history),instruction=`${instructions[locale]} ${explanationInstructions[locale]}${options.toolLoading?` ${toolLoadingInstructions[locale]}`:''}`;
+  const locale=taskResponseLocale(history);
+  // C6: the method catalog (names and summaries only) accompanies the tool that reads it.
+  const skills=definitions.some(tool=>tool.name===AGENT_TASK_SKILL_READ_TOOL)?` ${agentTaskSkillInstructions(locale)}`:'';
+  const instruction=`${instructions[locale]} ${explanationInstructions[locale]}${options.toolLoading?` ${toolLoadingInstructions[locale]}`:''}${skills}`;
   const wireTools=definitions.map(tool=>({name:tool.name,description:tool.name===AGENT_TASK_TOOLS_LOAD_NAME?AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS[locale]:tool.description,parameters:explainedToolParameters(taskToolWireSchema(configuration,tool.name,tool.parameters),locale)}));
   // The host marker is local journal metadata, not an extra model-facing system
   // message. All protocols receive the same authoritative root instruction.

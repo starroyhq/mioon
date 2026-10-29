@@ -19,7 +19,7 @@ import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLoc
 import type {TaskGateway,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
 import type {TaskModelContextFragment} from './task-context-v2.ts';
-import {collectTaskProjectOverview} from './task-context-observations-v2.ts';
+import {collectTaskProjectNotes,collectTaskProjectOverview} from './task-context-observations-v2.ts';
 import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,agentTaskToolGroupForName} from './task-tool-groups-v2.ts';
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 import {readAgentTaskChecks} from './task-checks-v2.ts';
@@ -425,9 +425,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const dummy={configuration:json(settings.configuration)} as AgentTaskRun;authorize(dummy);
     if(conversationModes?.paid==='direct'&&journal.policy().modes.paid!=='direct'&&parsedPolicy?.success&&parsedPolicy.data?.acknowledgePaid!==true)throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     const historyRuns=diagnostic||!conversationId?undefined:journal.modelContextRuns(projectId,conversationId).reverse();
-    const projectOverview=diagnostic?undefined:collectTaskProjectOverview(store,projectId);
+    const projectOverview=diagnostic?undefined:collectTaskProjectOverview(store,projectId),projectNotes=diagnostic?undefined:collectTaskProjectNotes(store,projectId);
     const attachments=uploads.map(id=>{const row=store.db.prepare('SELECT id,name,mimeType FROM agent_task_imports_v2 WHERE id=? AND projectId=?').get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
-    const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,attachments});
+    const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,attachments});
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
     const created=journal.create({projectId,...(conversationId?{conversationId}:{}),...(conversationModes?{conversationModes}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);

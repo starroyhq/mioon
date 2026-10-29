@@ -71,7 +71,7 @@ test('CLI localizes only prose; default help snapshot, schema, version and error
   // Keep the frozen help fixture: application version and explicit discovery
   // additions may differ, but prose, schemas and operation ordering stay exact.
   const expectedOperations = [...snapshot.data.operations];
-  expectedOperations.unshift('project.rename', 'project.delete', 'project.summary.list', 'agent.authorization.list', 'agent.authorization.grant', 'agent.authorization.revoke');
+  expectedOperations.unshift('project.rename', 'project.notes.set', 'project.delete', 'project.summary.list', 'agent.authorization.list', 'agent.authorization.grant', 'agent.authorization.revoke');
   expectedOperations.unshift(...round2Operations);
   expectedOperations.splice(expectedOperations.indexOf('timeline.loudness.prepare') + 1, 0, 'timeline.clip.loudness');
   expectedOperations.splice(expectedOperations.indexOf('timeline.audioPreview.plan') + 1, 0, 'timeline.audioPreview.continuousPlan');

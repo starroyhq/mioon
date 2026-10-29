@@ -27,7 +27,8 @@ const userImportProvenance={kind:'user-import',versionId:null,shotId:null,jobId:
  * are always replaced on import. */
 export interface ProjectDocument {
  formatVersion:1;
- project:{id:string;name:string;description:string};
+ /** `notes` (C6) is optional: older documents have none, and older apps ignore it. */
+ project:{id:string;name:string;description:string;notes?:string};
  timeline:Row|null;
  assets:(Row&{media:string})[];
  annotations:Row[];dispositions:Row[];ranges:Row[];
@@ -90,7 +91,7 @@ export function collectProject(store:WorkspaceStore,projectId:string,options:Pro
   const subjectAssetsKind=new Map(kept.map(asset=>[asset.id,relabel(asset).provenance]));
   const document:ProjectDocument={
    formatVersion:PROJECT_PACKAGE_FORMAT_VERSION,
-   project:{id:projectRow.id,name:projectRow.name,description:projectRow.description??''},
+   project:{id:projectRow.id,name:projectRow.name,description:projectRow.description??'',...(typeof projectRow.notes==='string'&&projectRow.notes.trim()?{notes:projectRow.notes}:{})},
    timeline:timeline?omit(timeline,'projectId'):null,
    assets:documentAssets,annotations,dispositions:meta('asset_dispositions'),ranges:meta('asset_ranges'),
    shots:shots.map(row=>omit(row,'projectId')),nodes:nodes.map(row=>omit(row,'projectId')),edges:edges.map(row=>omit(row,'projectId')),
@@ -157,7 +158,7 @@ export function createProjectFromDocument(store:WorkspaceStore,{document,files,n
   });
   store.tx(()=>{
    const db=store.db;
-   store.put('projects',{id:projectId,name,description:doc.project.description,revision:1,createdAt,updatedAt:createdAt});
+   store.put('projects',{id:projectId,name,description:doc.project.description,...(typeof doc.project.notes==='string'&&doc.project.notes.trim()?{notes:doc.project.notes}:{}),revision:1,createdAt,updatedAt:createdAt});
    for(const row of assetRows)store.put('assets',row);
    for(const lut of doc.luts){
     const content=readFileSync(sourceFor(lut.media));
