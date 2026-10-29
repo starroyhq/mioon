@@ -5,8 +5,9 @@ import {readCurrentWorkspaceRole,isWorkspaceRoleSince,isPrivateStorageWorkspaceR
 import {referenceAgentTaskEventRequest,hydrateAgentTaskEventRequest,AGENT_TASK_EVENT_PAGE_BYTES} from './task-model-requests-v2.ts';
 import type {AgentTaskRequestCache} from './task-model-requests-v2.ts';
 import {projectAgentTaskChangeDisplay} from './task-display-v2.ts';
-import type {TaskHistoricalContextRun,TaskHistoricalStatus,TaskRunRecordBackground,TaskRunRecordChange,TaskRunRecordTarget} from './task-run-record-v2.ts';
-import {DEFAULT_AGENT_TASK_POLICY,agentTaskPolicySchema,agentTaskPolicyModesSchema,agentTaskConversationPolicySchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import type {TaskHistoricalStatus,TaskRunRecordBackground,TaskRunRecordChange,TaskRunRecordTarget} from './task-run-record-v2.ts';
+import type {TaskContextHistoryInput,TaskContextHistoryRun} from './task-context-v2.ts';
+import {DEFAULT_AGENT_TASK_POLICY,agentTaskPolicySchema,agentTaskPolicyModesSchema,agentTaskConversationPolicySchema,agentTaskQuestionSchema,agentTaskAnswerSchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskConversationPolicy,AgentTaskConversationPolicySetInput,AgentTaskPolicyModes} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskRun,AgentTaskStep,AgentTaskChange,AgentTaskEvent,AgentTaskSnapshot,AgentTaskStatus,AgentTaskStepStatus,AgentTaskJson,AgentTaskReceipt,AgentTaskPolicy,AgentTaskTarget,AgentTaskClaim,AgentTaskEditingInput,AgentTaskDiagnostic,AgentTaskConversation,AgentTaskConversationPage,AgentTaskHistoryPage,AgentTaskNote,AgentTaskSkippedTarget} from '../../../contracts/src/agent-tasks-v2.ts';
 
@@ -149,7 +150,7 @@ export function createAgentTaskJournal(store:WorkspaceStore){
   * hydrate model step rows: each retains a full request and provider output.
   * Recent candidates are bounded independently of the final 4 KiB record;
   * total counts let the model distinguish an omitted row from an absent one. */
- function modelContextRuns(projectId:string,conversationId:string):TaskHistoricalContextRun[] {
+ function modelContextRuns(projectId:string,conversationId:string):TaskContextHistoryRun[] {
   if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(conversationId))fail('AGENT_TASK_INVALID');
   const where=`projectId=? AND ${visibleRuns} AND ${conversationIdentity}=?`;
   if(!db.prepare(`SELECT 1 FROM agent_task_runs_v2 WHERE ${where} LIMIT 1`).get(projectId,conversationId))fail('AGENT_TASK_NOT_FOUND');
@@ -186,8 +187,30 @@ export function createAgentTaskJournal(store:WorkspaceStore){
    ${scenes?"LEFT JOIN scene_tasks sc ON b.kind='scene' AND sc.id=b.jobId AND sc.projectId=b.projectId":''}
    LEFT JOIN agent_task_steps_v2 st ON st.id=b.stepId AND st.runId=b.runId AND st.projectId=b.projectId
    WHERE b.runId=? AND b.projectId=? ORDER BY b.rowid DESC LIMIT 64`;
+  const answersSql=`SELECT s.position,s.data -> '$.toolCall.arguments.question' AS question,
+   (SELECT json_group_array(CASE WHEN o.type='object' THEN o.value -> '$.label' END ORDER BY CAST(o.key AS INTEGER)) FROM json_each(s.data,'$.toolCall.arguments.options') o WHERE json_type(s.data,'$.toolCall.arguments.options')='array') AS labels,
+   s.data -> '$.toolCall.arguments.multiple' AS multiple,s.data -> '$.toolCall.arguments.allowOther' AS allowOther,
+   s.data -> '$.result.answer.choices' AS choices,s.data -> '$.result.answer.text' AS text
+   FROM agent_task_steps_v2 s WHERE s.runId=? AND s.projectId=? AND s.status='completed' AND json_extract(s.data,'$.kind')='tool' AND json_extract(s.data,'$.toolCall.name')='mioon_ask' AND json_type(s.data,'$.result.answer')='object' ORDER BY s.position`;
+  const notesSql=`SELECT n.value -> '$.text' AS text,m.position FROM agent_task_runs_v2 r CROSS JOIN json_each(r.data,'$.notes') n
+   LEFT JOIN agent_task_steps_v2 m ON m.id=json_extract(n.value,'$.modelStepId') AND m.runId=r.id AND m.projectId=r.projectId AND json_extract(m.data,'$.kind')='model'
+   WHERE r.id=? AND r.projectId=? ORDER BY CAST(n.key AS INTEGER)`;
   return rows.map(row=>{
    const id=String(row.id),status=String(row.status) as TaskHistoricalStatus;
+   const history:Array<{position:number;order:number;input:TaskContextHistoryInput}>=[];
+   for(const item of db.prepare(answersSql).iterate(id,projectId)){
+    const labels=decode<unknown[]>(item.labels),question=agentTaskQuestionSchema.safeParse({question:item.question===null?undefined:decode<unknown>(item.question),options:labels.map(label=>({label})),...(item.multiple===null?{}:{multiple:decode<unknown>(item.multiple)}),...(item.allowOther===null?{}:{allowOther:decode<unknown>(item.allowOther)})});
+    const answer=agentTaskAnswerSchema.safeParse({choices:item.choices===null?undefined:decode<unknown>(item.choices),...(item.text===null?{}:{text:decode<unknown>(item.text)})});
+    if(!question.success||!answer.success)continue;
+    const {choices,text}=answer.data;
+    if(new Set(choices).size!==choices.length||choices.some(index=>index>=question.data.options.length)||!question.data.multiple&&choices.length>1||choices.length&&text!==undefined&&!question.data.allowOther||!choices.length&&text===undefined)continue;
+    history.push({position:Number(item.position),order:history.length,input:{kind:'answer',question:question.data.question,selected:choices.map(index=>question.data.options[index]!.label),...(text===undefined?{}:{text})}});
+   }
+   // Legacy runs without answers take the exact earlier notes path. For
+   // answered runs, bound notes precede their model step; unbound notes stay
+   // at the end in array order. No timestamp or current state is consulted.
+   if(history.length)for(const item of db.prepare(notesSql).iterate(id,projectId))history.push({position:typeof item.position==='number'?item.position:Number.POSITIVE_INFINITY,order:history.length,input:{kind:'note',text:decode<string>(item.text)}});
+   const historyInputs=history.length?history.sort((a,b)=>a.position-b.position||a.order-b.order).map(item=>item.input):undefined;
    const skipped:TaskRunRecordTarget[]=[];
    for(const item of db.prepare("SELECT json_extract(v.value,'$.target.kind') AS kind,json_extract(v.value,'$.target.id') AS id,json_extract(v.value,'$.target.revision') AS revision FROM agent_task_runs_v2 r,json_each(r.data,'$.skippedTargets') v WHERE r.id=? AND r.projectId=? ORDER BY CAST(v.key AS INTEGER) DESC LIMIT 64").iterate(id,projectId))if(typeof item.kind==='string'&&/^[a-z][a-z0-9_]{0,79}$/u.test(item.kind)&&typeof item.id==='string'&&identity.test(item.id)&&typeof item.revision==='number')skipped.push({kind:item.kind,id:item.id,revision:item.revision});
    const background:TaskRunRecordBackground[]=[];
@@ -204,7 +227,7 @@ export function createAgentTaskJournal(store:WorkspaceStore){
    }
    const failureCode=(status==='failed'||row.executionStatus==='failed')&&typeof row.failureCode==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(row.failureCode)?row.failureCode:undefined;
    const finalText=status==='completed'&&typeof row.finalText==='string'?decode<AgentTaskJson>(row.finalText):undefined;
-   return {id,text:decode<string>(row.text),notes:decode<string[]>(row.notes),status,...(typeof finalText==='string'?{finalText}:{}),record:{runId:id,status,...(failureCode?{failureCode}:{}),skipped:{items:skipped,total:Number(row.skippedTotal)},background:{items:background,total:Number(row.backgroundTotal)},changes:{items:changes,total:Number(row.changeTotal)}}};
+   return {id,text:decode<string>(row.text),notes:decode<string[]>(row.notes),status,...(historyInputs===undefined?{}:{historyInputs}),...(typeof finalText==='string'?{finalText}:{}),record:{runId:id,status,...(failureCode?{failureCode}:{}),skipped:{items:skipped,total:Number(row.skippedTotal)},background:{items:background,total:Number(row.backgroundTotal)},changes:{items:changes,total:Number(row.changeTotal)}}};
   });
  }
  function transition(runId:string,expectedRevision:number,status:AgentTaskStatus,reason?:string):AgentTaskRun{return transact(()=>{const value=run(runId);if(value.revision!==expectedRevision)fail('AGENT_TASK_REVISION_CONFLICT');const allowed:Record<AgentTaskStatus,AgentTaskStatus[]>={accepted:['running','stopped','failed','interrupted'],running:['paused','awaiting_approval','awaiting_answer','completed','failed','stopped','interrupted'],paused:['running','stopped','failed','interrupted'],awaiting_approval:['running','paused','stopped','failed','interrupted'],awaiting_answer:['running','stopped','failed','interrupted'],interrupted:['running','stopped','failed'],completed:['reverted'],failed:['running','reverted'],stopped:['reverted'],reverted:[]};if(value.status!==status&&!allowed[value.status].includes(status)&&!(value.status==='completed'&&['paused','awaiting_approval','stopped','interrupted'].includes(status)&&hasPendingBackground(runId)))fail('AGENT_TASK_STATE_CONFLICT');value.status=status;if(reason)value.pauseReason=reason;else delete value.pauseReason;touch(value);appendEventInside(runId,'run',value as unknown as AgentTaskJson);return value;});}

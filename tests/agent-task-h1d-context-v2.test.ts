@@ -145,3 +145,58 @@ for(const locale of locales)test(`H1d ${locale}: recovery and replan prose uses 
     assert.ok(discarded[0].content.startsWith(starts[0]!));assert.ok(replan.content.startsWith(starts[1]!));
   }
 });
+
+for(const protocol of protocols)test(`H1d ${protocol}: answered questions survive compaction with exact notes, stale ordering and a frozen next-request prefix`,()=>{
+  const target={kind:'shot',id:id(3),revision:1},question='Which opening should Mio use? "Keep the choice" \\ exactly',selected=['Wide street','Rooftop'];
+  // This is the durable C13a result, after its answer action trims only the
+  // outside whitespace. Internal newlines, quotes and Unicode remain exact.
+  const text='Open on the harbour 🌄, "as discussed"\nthen cut to the street \\ entrance',answer:AgentTaskJson={answer:{choices:[0,2],text},selected,text};
+  const ask:AgentTaskToolCall={id:'combined_ask',name:'mioon_ask',arguments:{question,options:[{label:selected[0]!},{label:'Close-up'},{label:selected[1]!}],multiple:true,allowOther:true}};
+  const definitions:TaskToolDefinition[]=[...tools,
+    {name:ask.name,description:'Ask the user.',parameters:{type:'object',properties:{question:{type:'string'},options:{type:'array',items:{type:'object',properties:{label:{type:'string'}},required:['label'],additionalProperties:false}},multiple:{type:'boolean'},allowOther:{type:'boolean'}},required:['question','options'],additionalProperties:false}},
+    {name:'mioon_version_list',description:'Read saved versions.',parameters:{type:'object',properties:{shotId:{type:'string',format:'uuid'}},required:['shotId'],additionalProperties:false}},
+  ];
+  const current='COMBINED_CURRENT_'+'c'.repeat(32000),base=assembleRunContext({locale:'en',text:current,projectOverview:overview()});
+  const noteBefore={requestId:'before-question',text:'BEFORE_QUESTION_原话',createdAt:stamp,modelStepId:id(101)},pending={requestId:'after-compaction',text:'PENDING_AFTER_COMPACTION_原话',createdAt:stamp};
+  const source=(count:number,revision=2,bindPending=false)=>{
+    const steps:AgentTaskStep[]=[],fragments:TaskModelContextFragment[]=[],notes=[noteBefore,bindPending?{...pending,modelStepId:id(100+count)}:pending];
+    for(let index=0;index<count;index++){
+      const modelId=id(100+index),call:AgentTaskToolCall=index===1?ask:{id:`combined_read_${index}`,name:index===0?'mioon_version_list':tools[0]!.name,arguments:index===0?{shotId:target.id}:{}};
+      const result:AgentTaskJson=index===1?answer:index===0?{revision:1}:{payload:'v'.repeat(20*1024)};
+      const reply=output(protocol,index<2?`Original round ${index}`:`COMBINED_REPLY_${index}_`+'r'.repeat(30*1024),[call]);
+      steps.push({id:modelId,runId:id(1),kind:'model',position:index*2,status:'completed',createdAt:stamp,updatedAt:stamp,data:{baseline:[{...target,revision:index?2:1}]}});
+      steps.push({id:id(200+index),runId:id(1),kind:'tool',position:index*2+1,status:'completed',createdAt:stamp,updatedAt:stamp,toolCall:call,result,targets:[],data:{sourceModelStepId:modelId,referencedTargets:index===0?[target]:[]}});
+      fragments.push({kind:'notes',notes,modelStepId:modelId},{kind:'continuation',modelStepId:modelId,output:reply,results:[{callId:call.id,result}]});
+    }
+    if(bindPending){
+      const modelId=id(100+count);steps.push({id:modelId,runId:id(1),kind:'model',position:count*2,status:'completed',createdAt:stamp,updatedAt:stamp,data:{baseline:[{...target,revision}]}});
+      fragments.push({kind:'notes',notes,modelStepId:modelId},{kind:'continuation',modelStepId:modelId,output:output(protocol,'The saved answer and update are acknowledged.'),results:[]});
+    }
+    return freeze({context:base.context,text:current,notes,tools:definitions,replay:{protocol,steps,fragments,baseline:[{...target,revision}],runId:id(1)}});
+  };
+  const uncompressed=assembleModelInput(source(2)),oldNotice=hostRows(uncompressed.history,'mio.context.stale')[0];assert.ok(oldNotice);
+  const oldIndex=uncompressed.history.findIndex(row=>hostRows([row],'mio.context.stale').length>0),beforeIndex=uncompressed.history.findIndex(row=>object(row)&&row.content===noteBefore.text);
+  const askContinuation=replayModelContext(protocol,{kind:'continuation',modelStepId:id(101),output:output(protocol,'Original round 1',[ask]),results:[{callId:ask.id,result:answer}]},'en');
+  assert.ok(beforeIndex>=0&&beforeIndex<oldIndex);assert.deepEqual(uncompressed.history.slice(oldIndex+1,oldIndex+1+askContinuation.length),askContinuation);
+  assert.equal(hostRows(uncompressed.history,'mio.context.constraints').length,0);
+
+  const input=source(7,3),saved=JSON.stringify(input),assembled=assembleModelInput(input);assert.equal(JSON.stringify(input),saved);assert.deepEqual(assembleModelInput(input),assembled);
+  assert.ok(assembled.metrics.historyBytes<=TASK_MODEL_LIMITS.historyBytes);assert.equal(hostRows(assembled.history,'mio.context.journal').length,1);
+  const constraints=hostRows(assembled.history,'mio.context.constraints');assert.equal(constraints.length,1);const constraintData=constraints[0]!.data;assert.ok(object(constraintData));
+  assert.deepEqual(constraintData.answers,[{stepId:id(201),question,selected,text}]);
+  const notices=hostRows(assembled.history,'mio.context.stale');assert.equal(notices.length,1);const noticeData=notices[0]!.data;assert.ok(object(noticeData));
+  assert.deepEqual(noticeData.targets,[{kind:target.kind,id:target.id,previousRevision:2,revision:3}]);
+  assert.ok(!notices.some(row=>JSON.stringify(row)===JSON.stringify(oldNotice)),'The question round and its old revision notice are removed together');
+  const constraintIndex=assembled.history.findIndex(row=>hostRows([row],'mio.context.constraints').length>0),latestIndex=assembled.history.findIndex(row=>JSON.stringify(row).includes('COMBINED_REPLY_6_'));
+  const noteIndex=assembled.history.findIndex(row=>object(row)&&row.content===pending.text),noticeIndex=assembled.history.findIndex(row=>hostRows([row],'mio.context.stale').length>0);
+  assert.ok(constraintIndex>=0&&constraintIndex<latestIndex&&latestIndex<noteIndex&&noteIndex<noticeIndex);assert.equal(noticeIndex,assembled.history.length-1);
+  for(const note of [noteBefore,pending])assert.equal(assembled.history.filter(row=>object(row)&&row.content===note.text).length,1);
+  assert.equal(hostRows(assembled.history,'mio.project.overview').length,1);assert.ok(assembled.history.some(row=>object(row)&&row.content===current));
+  const wire=buildTaskModelRequest({presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:11434${protocol==='anthropic_messages'?'':'/v1'}`},assembled.history,definitions),paired=pairs(protocol,wire);
+  assert.deepEqual(paired.calls,paired.results);assert.ok(!paired.calls.includes(ask.id),'The exact answer survives outside the removed tool round');
+
+  const extendedInput=source(7,3,true),extendedSaved=JSON.stringify(extendedInput),extended=assembleModelInput(extendedInput);
+  assert.equal(JSON.stringify(extendedInput),extendedSaved);assert.deepEqual(extended.history.slice(0,assembled.history.length),assembled.history);
+  assert.equal(JSON.stringify(extended.history.slice(0,assembled.history.length)),JSON.stringify(assembled.history));assert.equal(hostRows(extended.history,'mio.context.stale').length,1);
+  assert.deepEqual(assembleModelInput(extendedInput),extended);assert.deepEqual(pairs(protocol,buildTaskModelRequest({presetId:'ollama',platformId:'local',protocol,model:'qwen3:8b',baseUrl:`http://127.0.0.1:11434${protocol==='anthropic_messages'?'':'/v1'}`},extended.history,definitions)),paired);
+});

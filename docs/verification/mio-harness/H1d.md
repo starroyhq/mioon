@@ -1,6 +1,6 @@
 # Mio harness H1d · 执行记录、项目概况、过期提示
 
-日期：2026-10-28 至 2026-10-29（Asia/Taipei）。从 `2665fcfc850c8062d7fcebc7c770c5564c10f7ce` 开始，即以 merge commit 合入 H1c 的 PR #58。按用户要求新建 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`，分支 `codex/mio-harness-h1d`；起点干净，不改主 checkout。只实施 H1d，不提交、推送或创建 PR。
+日期：2026-10-28 至 2026-10-29（Asia/Taipei）。从 `2665fcfc850c8062d7fcebc7c770c5564c10f7ce` 开始，即以 merge commit 合入 H1c 的 PR #58。按用户要求新建 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`，分支 `codex/mio-harness-h1d`；起点干净，不改主 checkout。首次阶段实施只做 H1d，交付后停下；用户确认后授权的提交、同步 main 与 PR 验证见第 7 节。
 
 证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1d-2026-10-28/`。本报告不进入最终验证源快照，供验证结束后补录；其他源码、测试、fixture 与文档均须冻结并核对哈希。
 
@@ -177,9 +177,76 @@ helper 在每个协议中只发送一个新对话、使用固定空项目；因�
 
 ## 6. 剩余事项及后续
 
-本阶段实现和上述验证已完成，停止在 H1d，不进入 H1e／H2／H3a，不提交、推送或创建 PR。
+以上为首次阶段交付时已完成的实现与验证；当时停止在 H1d，没有提交、推送或创建 PR。后续用户确认并授权的同步见第 7 节，不进入 H1e；H2／H3a 已由 main 合入，其语义继续保留。
 
 - Linux 编译首项仍未通过；两边原门槛复验、同源原生 5/5 及严格构建的证据分别保留，未定位 137 的唯一原因。后续 CI 应继续检查该 Linux 门槛。
 - 缺少已保存目标回执的聚合读取不推断 stale；discarded／partial／retry 无 continuation 的恢复提示固定保留。正常往返提示与压缩组合已有直接覆盖，恢复提示再触发压缩的组合未另设专门新用例。
 - 容量实测不包含四个接近 4 KiB 的跨轮记录或高频 stale 最坏负载，不由保留字节推断内存、累计写入量、token 或缓存成本。
 - H1e 设计缓存断点时，继续保留本期历史前缀确定性，并计入 H1b 按需加载改变工具列表导致的缓存失效；本期不增加缓存字段。
+
+## 7. 确认后的 main 同步与跨轮问答
+
+2026-10-29，按用户明确授权，先将已确认 H1d 提交为 `9692e43`，未推送；随后 fetch `origin/main`，将 `66e1b3e` 以双父 merge commit `74c2b7a` 合入，父提交为 `9692e43` 与 `66e1b3e`，没有 rebase。main 相对 `2665fcf` 的 11 个合并 PR 为 #59、#60、#62、#63、#64、#66、#65、#61、#68、#69、#67。
+
+冲突涉及 compaction、journal、runtime 与请求指纹。保留 C13a 的提问工具、原文回答约束、`awaiting_answer`、对话策略；保留 H2 的 8 KiB／250 ms 定时合并、异常正文保留和关闭门禁；保留 H3a 检查接口。相对 main 的 runtime 差异仍仅为 H1d 上下文接线，journal 在加入窄查询以外与 main 逐字核对一致。指纹先采用 main 原件，不把旧 H1d fixture 覆盖到 C13a 目录上。
+
+同步 main 的 fixture SHA-256 为 `ce325c3aeff5fd9779c3b1556c3cb9ddf66d9198ba997b5309316ea293031ac8`；旧 `01492d0d…` 仅是首次阶段基线。旧 H1d 相对 `2665fcf` 的逐请求增量从两个提交原件提取，作为本次 99 条的比较门槛。干净 main 正式 99 条先实际通过（20.70 秒），随后候选两次 Linux 采样实际 exit 0（19.98／19.80 秒）；99 个完整元数据逐条稳定、每条增量均符合门槛，12 条诊断的 bytes／SHA 同 main。
+
+| 合并后相对 main 的变化 | 条数 | 实际字节差 | 对旧 H1d 增量的偏差 |
+| --- | ---: | ---: | ---: |
+| 简中／繁中概况等 | 72 | +498 | 0 |
+| English 概况等 | 6 | +503 | 0 |
+| 日本語概况 | 3 | +561 | 0 |
+| 历史场景后两请求 | 6 | +904 | 0 |
+| 诊断 | 12 | 0，SHA 不变 | 0 |
+
+主代理另从实际 metadata 原件与 Git 中 main／2665fcf／9692e43 的 fixture 独立核对全部 99 行后，才实际执行 `node tests/helpers/agent-task-request-fingerprints-v2.ts --update`（原生 Node 24.21.0、UTC、真实 TMPDIR、scoped caffeinate，exit 0，19.77 秒）。新 fixture SHA-256 为 `89dd1b4e60af51e05391fbaa13cb7c7dc93b2abdbaa4d4d5856deb260e2ead25`，99 条与已复核的 Linux 预览全部相等，无异常增量。证据为 `expected-fingerprint-deltas.json`、`fingerprint-delta-review.json`、`fingerprint-update.json/log` 及 `validation/candidate-preview-1/` 两份 metadata／summary；只记录 bytes／SHA，不保存请求正文或会话密钥。
+
+跨轮问答新增仅修改 `task-journal-v2.ts` 的窄查询和 `task-context-v2.ts` 的内部装配接口／消息组，不改 runtime、公共契约、数据库或执行记录格式。已答提问按步骤位置与说明交错，使用问题／选项参数及已保存的 canonical `answer.choices / answer.text`，不依赖重复展示字段；用户文字不再清理或裁剪。这里的回答原文指已保存的 `answer.text`：C13a 原有运行时保存前的 trim 行为继续保留，跨轮阶段不再次 trim。未绑定说明保留在末尾；未回答就结束的提问不带入。问答作为普通 user 消息归入该历史组，整组删除，4 KiB 执行记录中不重复。无问答的轮次继续原 notes 路径。
+
+本次证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1d-sync-2026-10-29/`。只重跑用户指定的类型、开发构建、harness、99 指纹和 main／候选 legacy／stress30 对照，全量由 PR CI 执行；不会把第 3 节旧全量写成最新 main 的全量。
+
+跨轮新测试 `agent-task-h1d-answers-v2.test.ts` 开发整文件 15/15 通过（7.34 秒）：四语原文及 UTF-16 保真、步骤与说明排序、四终态、未答／诊断、canonical 字段、窄读取／无 snapshot、跨轮整组删除与真实只读恢复。原两个 H1d 测试文件各追加三协议组合：context 24/24、runtime 12/12（共 36/36），覆盖真实等待回答、等待期间外部修订推进、压缩后答案原文约束、过期提示顺序、概况保留、工具配对及后续请求前缀；不改旧 C13a 测试。新问答业务仅两个文件，独立只读审查未发现明确缺陷。
+
+### 同步验证
+
+最终同步候选源码 SHA-256 为 `e5c7d66236549f3309dc741398c963e491276db25b391890b595d49bf57cca67`，6036 个源文件、945 个顶层测试文件，仅本报告排除。与双采预览 `2b4941e6…` 的完整源集合逐文件核对，只有 fixture 改为已复核的 `89dd1b4e…`，其他路径和字节完全相同。manifest 在 `validation/candidate-final-snapshot.json`。
+
+干净 main 固定 `66e1b3e5970fe63a59df3d2427f25f913c1bc4ed`，6028 个源文件、940 个测试文件；本次只实际执行 main 正式 99 条及两项容量探针，不声称重新跑了 main 全量。两边锁仍为 `429c516a…de497e5b`，依赖声明未变；main 仅根 package 的 description 文本有差异。Linux 独立复用并克隆同锁安装依赖，核对 manifest／installed lock，不伪称一次新的 Linux 安装。
+
+| 实际命令／范围 | 结果 | 证据 |
+| --- | --- | --- |
+| 原生 `CI=true pnpm install --frozen-lockfile`（合并后 worktree） | exit 0，0.28 秒，Already up to date，锁不变 | `candidate-install.json/log` |
+| 原生 `node scripts/tooling.ts typecheck`（最终同步源） | exit 0，56.10 秒，严格项目通过，源码／锁／fixture 不变 | `validation/candidate-final/native-command-results.json` |
+| 原生 `node scripts/tooling.ts build --channel=development`（最终同步源） | exit 0，114.34 秒，三个严格项目及 Web／Desktop 通过，6036 源及 fixture 不变 | 同上，完整日志及 SHA 分别记录 |
+| Linux 五个 H1d 整文件 | 95/95：answers 15、context 24、observations 27、run-record 17、runtime 12；相对首次 74 项新增 21 项 | 本次候选整文件 TAP，纳入下述 52 文件覆盖，不双计 |
+| Linux 正式请求指纹整文件 | exit 0，40.26 秒，99 条全部匹配最终 `89dd1b4e…` fixture | 同一候选聚焦中的正式指纹 TAP，不另计为 99 个 TAP 用例 |
+| Linux 52 个 harness 整文件 | driver exit 0，301.11 秒；1112/1112 passed，无失败／取消／跳过／外层超时 | `validation/candidate-final/focus-results.json` 及每文件 TAP／命令结果 |
+
+52 文件由原 38 文件加 Anthropic 恢复、H2 streaming／report、H3a checks／integration／transport、C13a policy-answer／恢复位置／M5／wire／UI、editing boundaries／client，以及本次新 answers 文件组成。每文件独立进程，保持原内部期限及 600／630 秒保护，共享并发 2；严格类型与开发构建结束后才启动 Linux 回归。旧 38 文件的 870 个完整 TAP 身份全部匹配，无缺失、状态或跳过理由变化；新增 242 项中，本次 H1d 新增 21（跨轮 15＋组合 6），其余 221 来自 main 既有扩展与纳入范围，不能说成本期新增实现。精确文件、层级及同名序号见 `focus-name-comparison.json`。原 runtime 185 项及两项完整 FFmpeg 撤销／晚到产品回归均通过；检查、提问、工具加载和流式断言没有放宽。
+
+### 与当前 main 的容量对照
+
+main 与最终候选分别实际执行未改动的 helper：`node tests/helpers/agent-task-context-report.ts --delta-interval-ms 0` 与加 `--stress-30-steps` 的固定压力场景，两边三协议均 completed。两边共同模拟 Date／setTimeout 的 0 ms delta 时钟，避免把调度差异当作 H2 的写入变化；这与第 4 节首次默认时钟口径不同，不直接跨口径宣称削减。helper SHA-256 两边一致：`0da3b15bdb33ad286e0c02318607c875552d660c15ed61095fe5e59e99a93c3f`。
+
+- legacy 均为 29 步＝15 模型＋14 工具；stress30 均为 30 步＝15 模型＋15 工具，完整工具结果每条 20480 B。
+- 六组均有 15 个请求、60 次正文追加、60 个文本事件，token 用量为 null；步骤、行数与流式追加次数前后相同。
+
+| 场景／协议 | 请求字节 main → 候选 | 模型步骤 data 字节 main → 候选 | 配额保留字节 main → 候选 | 配额行 main → 候选 |
+| --- | ---: | ---: | ---: | ---: |
+| legacy / Chat Completions | 1,441,151 → 1,448,846 | 4,101,015 → 4,117,920 | 6,035,482 → 6,054,076 | 193 → 193 |
+| legacy / Responses | 1,443,587 → 1,451,282 | 4,110,654 → 4,127,559 | 6,046,912 → 6,065,506 | 193 → 193 |
+| legacy / Anthropic Messages | 1,436,771 → 1,444,466 | 4,096,573 → 4,113,478 | 6,030,936 → 6,049,530 | 193 → 193 |
+| stress30 / Chat Completions | 1,262,345 → 1,270,040 | 3,745,265 → 3,762,170 | 6,291,129 → 6,309,723 | 198 → 198 |
+| stress30 / Responses | 1,262,515 → 1,270,210 | 3,750,034 → 3,766,939 | 6,297,707 → 6,316,301 | 198 → 198 |
+| stress30 / Anthropic Messages | 1,257,489 → 1,265,184 | 3,739,736 → 3,756,641 | 6,285,477 → 6,304,071 | 198 → 198 |
+
+各组累计请求 +7695 B、模型步骤 data +16905 B、配额保留 +18594 B；每请求 +513 B、每模型步骤 +1127 B。正文追加导致的整行 data 重写量每组增加 67620 B＝60×1127，是每行携带更多上下文的开销；追加次数及 text event 字节不变，没有改变 H2 的合并频率。按当前 inventory 估算的可再执行同等轮数，两边 legacy 均 43、stress30 均 41。本期不宣称节省存储或提升该负载容量。
+
+原 helper 的 legacy 报告未提供可选 `toolSteps` 数组，工具执行数 14 依据此固定场景的 29 步减 15 模型步骤；未提供的逐工具向量不冒充 0 次工具。初版派生摘要曾将缺失数组计为 0，已修正并保留 `capacity-vs-main.initial.json`、修正说明；原始报告和哈希未改，也未为修改统计重跑测试。stress30 原件显式提供 15 个工具步骤。
+
+六组每请求／每步骤向量、逐表 rows／bytes、容量与 streaming 指标见 `validation/candidate-final/capacity-vs-main.json`；原报告及各自真实命令、exit、耗时、SHA 单独保留。保留字节、重写字节、token 的统计边界仍按第 4 节，重写量不等于 SQLite 物理写入。本探针仍是固定空项目的新对话，没有跨轮问答载荷，不能把 +513 B 推广至所有带历史问答的请求。
+
+最终主工作树和冻结副本均核对 6036 个源文件无漂移，只有本报告补录；本线测试 driver、容器、caffeinate 和资源观察器已排空，未操作其他会话。完整结果、原件路径和哈希索引在 `validation/VALIDATION-DELIVERY-INDEX.json`。源码 pin 和工具 schema 均沿用 main，无需重新生成。
+
+本次指定验证完成后提交补充改动、推送本分支并创建面向 main 的 PR；请使用 merge commit 合入，不启用自动合并，代理不执行合并。当前 main 的整仓全量由 PR 的 CI 覆盖，本轮未在本机执行全量。

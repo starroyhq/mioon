@@ -146,3 +146,55 @@ for(const protocol of protocols)test(`${protocol}: diagnostics omit H1d observat
   assert.equal(resumed.run.status,'completed');assert.equal(f.requests.length,requestsBefore+1);assert.equal(f.requests.at(-1),original);assert.deepEqual(f.runtime.journal.step(model.id).request,saved);assert.deepEqual(f.runtime.journal.run(retained.run.id).context,context);
   assert.equal(markerCount(f.requests.at(-1)!,TASK_PROJECT_OVERVIEW_KIND),0);assert.equal(markerCount(f.requests.at(-1)!,TASK_STALE_TARGETS_KIND),0);
 });
+
+for(const protocol of protocols)test(`${protocol}: an actual answered question retains its saved words after compression and external revision notices`,async t=>{
+  const f=await fixture(t,protocol),question='Which opening should Mio use? "Keep the choice" \\ exactly',options=[{label:'Wide street'},{label:'Close-up'},{label:'Rooftop'}];
+  const planned=call('mioon_ask',{question,options,multiple:true,allowOther:true}),rawAnswer='  Open on the harbour 🌄, "as discussed"\nthen use the street \\ entrance  ',savedText=rawAnswer.trim();
+  let advanced=false,externalFailure:unknown;
+  f.afterRead(async prepared=>{
+    if(advanced||prepared.operation!=='version.list')return;advanced=true;
+    try{assert.deepEqual(prepared.referencedTargets,[{kind:'shot',id:f.shotId,revision:1}]);await f.services.call('shot.update',{shotId:f.shotId,expectedRevision:1,patch:{prompt:'External update before the question'}});}
+    catch(error){externalFailure=error;throw error;}
+  });
+  f.setScript(async function*(index){
+    const calls=index===1?[call('mioon_version_list',{shotId:f.shotId})]:index===2?[planned]:index<=8?[call('mioon_project_inspect')]:[];
+    yield {type:'done',output:output(protocol,calls,index<=8?`ANSWER_COMBO_REPLY_${index}_`+'r'.repeat(30*1024):'The answer and saved project have been checked.')};
+  });
+  const sent=await f.send('ANSWER_COMBO_CURRENT_'+'u'.repeat(31000)),waiting=await f.settle(sent.run.id);
+  if(externalFailure)throw externalFailure;
+  assert.equal(waiting.run.status,'awaiting_answer');assert.equal(f.requests.length,2);assert.equal(advanced,true);
+  const ask=waiting.steps.find(step=>step.toolCall?.id===planned.id);assert.ok(ask);assert.equal(ask.status,'awaiting_answer');assert.equal(ask.result,undefined);
+  const initialRequests=models(waiting).map(step=>({id:step.id,request:structuredClone(step.request)})),initialOverview=host(history(models(waiting)[0]!),TASK_PROJECT_OVERVIEW_KIND);
+  assert.deepEqual(object(host(history(models(waiting)[1]!),TASK_STALE_TARGETS_KIND)[0]!.data).targets,[{kind:'shot',id:f.shotId,previousRevision:1,revision:2}]);
+  // The project can advance while the run awaits input. No model request is
+  // dispatched until the real C13a answer control durably completes its step.
+  await f.services.call('shot.update',{shotId:f.shotId,expectedRevision:2,patch:{prompt:'External update while waiting for the answer'}});
+  assert.equal(f.requests.length,2);const control=await f.action(waiting,'answer',{stepId:ask.id,choices:[2,0],text:rawAnswer}),done=await f.settle(sent.run.id);
+  assert.equal(control.steps.find(step=>step.id===ask.id)?.status,'completed');assert.equal(done.run.status,'completed');assert.equal(f.requests.length,9);
+  const savedAnswer={answer:{choices:[0,2],text:savedText},selected:[options[0]!.label,options[2]!.label],text:savedText};
+  assert.deepEqual(f.runtime.journal.step(ask.id).result,savedAnswer);assert.equal(object(f.store.get('shots',f.shotId)).prompt,'External update while waiting for the answer');
+  const steps=models(done),afterAnswer=history(steps[2]!);assert.ok(Array.isArray(afterAnswer));
+  const updates=host(afterAnswer,TASK_STALE_TARGETS_KIND);assert.equal(updates.length,2);
+  assert.deepEqual(updates.map(row=>object(row.data).targets),[[{kind:'shot',id:f.shotId,previousRevision:1,revision:2}],[{kind:'shot',id:f.shotId,previousRevision:2,revision:3}]]);
+  assert.deepEqual(host([afterAnswer.at(-1)!],TASK_STALE_TARGETS_KIND),[updates[1]!]);
+  const finalHistory=history(steps.at(-1)!);assert.ok(Array.isArray(finalHistory));assert.ok(Buffer.byteLength(JSON.stringify(finalHistory))<=TASK_MODEL_LIMITS.historyBytes);
+  const constraints=host(finalHistory,'mio.context.constraints');assert.equal(constraints.length,1);
+  assert.deepEqual(object(constraints[0]!.data).answers,[{stepId:ask.id,question,selected:savedAnswer.selected,text:savedText}]);
+  assert.equal(host(finalHistory,'mio.context.journal').length,1);assert.equal(host(finalHistory,TASK_STALE_TARGETS_KIND).length,0,'Old notices leave with their removed model rounds, without a new notice for the unchanged revision');
+  for(const step of steps)assert.deepEqual(host(history(step),TASK_PROJECT_OVERVIEW_KIND),initialOverview);
+  for(const saved of initialRequests)assert.deepEqual(f.runtime.journal.step(saved.id).request,saved.request);
+  assert.deepEqual(f.requests,steps.map(step=>String(object(step.request).body)));
+  for(const source of f.requests){
+    const body=object(JSON.parse(source)),rows=body[protocol==='responses'?'input':'messages'];assert.ok(Array.isArray(rows));const calls:string[]=[],results:string[]=[];
+    for(const entry of rows){const row=object(entry);
+      if(protocol==='chat_completions'){
+        if(Array.isArray(row.tool_calls))for(const item of row.tool_calls)calls.push(String(object(item).id));
+        if(row.role==='tool')results.push(String(row.tool_call_id));
+      }else if(protocol==='responses'){
+        if(row.type==='function_call')calls.push(String(row.call_id));if(row.type==='function_call_output')results.push(String(row.call_id));
+      }else if(Array.isArray(row.content))for(const item of row.content){const block=object(item);if(block.type==='tool_use')calls.push(String(block.id));if(block.type==='tool_result')results.push(String(block.tool_use_id));}
+    }
+    assert.deepEqual(calls,results);
+    if(source===f.requests.at(-1))assert.ok(!calls.includes(planned.id),'The question answer remains exact even after its original tool exchange was removed');
+  }
+});
