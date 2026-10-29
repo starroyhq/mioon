@@ -260,6 +260,18 @@ M5 不升级工作区版本：retry 回执的 action 原为受限字符串，sup
 - 变化显示为“写入预演场景”，字段是人偶、道具、关键帧的数量（`figureCount`、`propCount`、`keyframeCount`）的前后值；执行前的确认卡片和冲突卡片只显示目标节点，整个场景的数量说明不了计划改什么。画板卡片和其他画板节点一样短暂显示“Mio 修改”。
 - `previs.thumbnail.*` 仍不对 Mio 开放。
 
+## 交叉淡化与多段增益
+
+两个操作原先只在界面里用，现在也是 Mio 的本地可撤销工具。参数就是共享 schema 生成的那份，宿主补 `projectId` 和 `requestId`；操作规则见 `docs/API.md` 的 Crossfades 和 Clip gains 两节。
+
+- `mioon_timeline_clip_crossfade` 在 editing 组：为不同轨道上首尾重叠的两段有声片段写两条线性曲线。`mioon_timeline_clip_setGains` 在 audio 组：一次设置 1–100 段有声片段的增益，建议增益由 Mio 先用 `mioon_timeline_clip_loudness` 测量得到。
+- 目标是交叉淡化的两段和增益批次里列出的每一段，每段都必须是当前时间线上的片段。用户正在编辑其中任一段时，Mio 按 `editing` 暂停。
+- 和其他片段编辑一样，宿主核对的是这些目标片段的修订号，执行时把模型给的时间线修订号换成当前值：别的片段被改不算冲突，目标片段在计划之后被改过就停下。
+- 两个操作都是一个时间线修订、一条历史。Mio 的这一步记一条变化，撤销时所有目标片段一起复原；之后任一段被改过，这条变化就不能撤销。
+- 用全新 requestId 时被确定拒绝（重叠关系不对、已有音量曲线、素材无声、增益都没变等）会带未执行证明，步骤直接失败；结果未知时按 `timeline_requests` 核对。
+- 变化行：交叉淡化列出两段片段，没有字段；增益批次每段显示增益的前后 dB。执行前的确认卡片和冲突卡片显示每段计划的增益和当前值。
+- 片段变换（`timeline.clip.setTransform`）仍只读；主体补角度和打光（`subject.variants.*`）还不开放。
+
 ## 本地接口
 
 所有接口都经过现有 Host、Origin 和本地身份校验。

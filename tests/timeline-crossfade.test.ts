@@ -74,11 +74,11 @@ async function rejects(f: Fixture,input: Request,code: string){
  assert.deepEqual(f.capture(),before,`${code} writes nothing`);
 }
 
-test('the crossfade is registered, described, effect-annotated, restore-denied, user-only and localized',()=>{
+test('the crossfade is registered, described, effect-annotated, restore-denied, a reversible Mio tool and localized',()=>{
  assert.ok(schemas[CROSSFADE]&&descriptions[CROSSFADE].length>40);
  assert.ok(TIMELINE_MUTATION_OPERATIONS.includes(CROSSFADE));assert.ok(!DURABLE_EDIT_OPERATIONS.includes(CROSSFADE));
  assert.ok(RESTORE_DENIED_OPERATIONS.includes(CROSSFADE));assert.equal(TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+1024);
- assert.equal((AGENT_TASK_OPERATION_ADMISSION as Record<string,{allowed: boolean}>)[CROSSFADE].allowed,false);
+ assert.deepEqual((AGENT_TASK_OPERATION_ADMISSION as Record<string,unknown>)[CROSSFADE],{allowed:true,tier:'local_reversible'});
  const effect=operationEffect(CROSSFADE);
  assert.deepEqual([effect.readOnly,effect.idempotent,effect.destructive,effect.paidGeneration,effect.externalIO],[false,true,true,false,false]);
  assert.equal(translate('zh-Hans',`operation.${CROSSFADE}`),descriptions[CROSSFADE]);
