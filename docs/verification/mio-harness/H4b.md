@@ -2,7 +2,7 @@
 
 日期：2026-10-29–30（Asia/Taipei）。分支 `codex/mio-harness-h4b`，独立 managed worktree `~/.codex/worktrees/mio-harness-h4b/mioon`。从 main `0094b5b7f5711da29b555ceb7f84ad62a1ab367c`（已含 H4a，PR #85）创建，开工时工作树干净。设计资料仅从主 checkout 的 `designs/` 读取，没有复制进分支或修改设计稿。
 
-实施依据是 `MIO-HARNESS-PARALLEL-PROMPTS.md` 第 7 节和已确认的 `.pen` 第 11 分区／11-01～11-07 预览；提示词里的单一最坏状态摘要优先于早期行为说明的双摘要示例。只完成 H4b；H5、真实官方模型复测与媒体生成不在本期范围。按本期授权停止在修改与验证，不提交、推送或创建 PR。
+实施依据是 `MIO-HARNESS-PARALLEL-PROMPTS.md` 第 7 节和已确认的 `.pen` 第 11 分区／11-01～11-07 预览；提示词里的单一最坏状态摘要优先于早期行为说明的双摘要示例。只完成 H4b；H5、真实官方模型复测与媒体生成不在本期范围。初次复核前按当时授权停止在修改与验证；2026-10-30 获准提交、合入最新 main、推送与创建 PR，同步后的记录见第 8 节。
 
 ## 1. 改动与边界
 
@@ -135,4 +135,104 @@ v3 补验实际结果均 actual exit 0，7 阶段各自 6131 文件守卫无漂�
 
 旧 seconds／tolerance、数量上下限、已保存的请求／回执与恢复副本继续可读；不重写旧记录、改变未知结果处理或绕过放行确认。新增时长字段是可选的闭集扩展，拒绝与旧形式混用；CLI 开始输出本已可选的 requirements，是本期明确要求的行为变化。没有工作区存储格式、依赖、公共 RPC schema 或模型私有用量暴露变化。
 
-H4b 的实现与本地验证已完成；完整 978 文件全量未在本机运行，按要求留待后续获授权创建 PR 时的 CI。当前 26 个本期文件仍未提交、未推送，未调用真实模型或付费生成，停下等待复核；没有实施 H5。
+以上为首次复核前的验证记录：当时完整 978 文件全量未在本机运行，26 个本期文件未提交、未推送；未调用真实模型或付费生成，没有实施 H5。用户确认后的同步、验证与 PR 交付记录见下节。
+
+
+## 8. 审查通过后的 main 同步与交付（2026-10-30）
+
+### 第一次同步（#86–#90）与双方语义
+
+先将本报告原有两处本机主目录改为 `~`，把已批准的 26 文件提交为 `ce9d990b4c63d433714227879f2b0b1ddc832198`，未推送。随后 fetch 并固定最新 `origin/main` 为 `f8cf7146ec27920c4c006c400aa91f1b6ec0ab7c`，包含 #86–#90；用 merge commit `7bb80ba6fac89e271d560b3eda368cf662acf58b` 合入，父提交依次为 H4b 提交和该 main，没有 rebase。
+
+冲突仅在 i18n 目录注册和指纹 fixture。前者同时保留 H4b 的 requirements 和 main 的 clipTransition 两个目录的 import、重复键校验与 spread；独立解析确认 main 的 5996 个四语键值全部保留，恰好新增 H4b 的 5 个步骤键和 45 个要求键，内置方法的 7 个键完整。`mio-panel.ts`、内置方法说明与 CLI 文档自动合并后的双方内容也逐项核对。
+
+相对最新 main，源改动仍只在原 H4b 范围内；后端／契约差异严格等于已批准的时长上下限扩展，runtime、gateway、journal、工具分组、方法目录与 main 字节一致。main 自带的转场及 schema 72／73 变更原样保留，不算 H4b 新增。7 个界面关键输入与已批准 v3 字节相同，首次补做徽标、空正文挂载、最后声明清空／畸形处理和完整读取期间串行刷新均保留。因此本次沿用第 6 节按来源标记的截图，不宣称在合并源重拍。
+
+### 指纹重新生成与逐条复核
+
+先将工作 fixture 恢复成所固定 main 的原件（SHA-256 `9b612eb1d5cc62f0e94164e713732799d53efa415dbcb45b6d95ec2ef7e1c90b`），在合并源只读采集两次，actual exit 均为 0（22.121／22.120 秒），99 条元数据逐字节一致。按完整 `(scenario, protocol, index)` 对齐新 main、合并源、原 `0094b5b` 和原 H4b `ce9d990`，每条均满足“合并后 − main = H4b − 0094b5b”；没有缺项、重复或例外。复核后才执行 `node tests/helpers/agent-task-request-fingerprints-v2.ts --update`，actual exit 0，21.45 秒；结果与两次预览完全相同。
+
+| 协议 | 非诊断请求 | 每条字节变化 | 诊断请求 | 诊断变化 |
+| --- | ---: | ---: | ---: | --- |
+| Chat Completions | 29 | +525 B | 4 | 字节数与 SHA 均不变 |
+| Responses | 29 | +525 B | 4 | 字节数与 SHA 均不变 |
+| Anthropic Messages | 29 | +525 B | 4 | 字节数与 SHA 均不变 |
+| 合计 | 87 | +525 B | 12 | 全部不变 |
+
+变化仍只有核心 `mioon_goal_set` 新增的时长上下限 schema 分支（524 B 加分隔逗号），旧分支及其余条件不变；诊断不提供该工具。main 的新方法提示与自身 fixture 已包含在比较基线内。新 fixture SHA-256 为 `672a617d64b474627ed429606e5f9ff407ae17fac31c2b23ccd436ced04693d2`。
+
+本次原件单独保留在 `~/Library/Caches/mioon-harness-H4b-sync-2026-10-30/`；`fingerprint-preview/`、`fingerprint-update/` 保存实际命令、返回码与源守卫；`root-four-way-fingerprint-review.json` 为主代理独立逐条核对。独立审计 `independent-audit/merged-source-audit.json` SHA-256 为 `28f15577ddd560554aa792a4b2c3be98ad7e98e3a91f475915e762b173fcb3dc`，`fingerprint-final-audit.json` 为 `735d7af9300e6ba8b5c9598d2eb67176259aac8d90db49dfc43d67dcb883da0a`。旧阶段证据、失败与修复经过仍在原目录，没有覆盖或改标为本次结果。
+
+### 同步后验证
+
+固定 main 源摘要为 `119768889396a84f2d0ae2f2d96b6e349d93a10ba690e8e22968a03860d17608`（6146 源文件／976 测试文件），第一次同步候选为 `91573b3edff4ce5be73ed6fe00a8983cde5a5614b432a0b4b7dd3ac238503983`（6154 源文件／981 测试文件），仅排除本报告。源码逐 Git blob 验证，私有验证副本的 Git HEAD 分别固定到真实 `f8cf714`／`7bb80ba`，不修改主仓库 refs。14 项配置与 virtual-store lock 校验一致后才复用依赖，未重新安装或更新依赖；锁 SHA-256 仍为 `429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b`。
+
+全部长执行使用 `caffeinate -i`，Node 24.21.0、pnpm 11.25.0、UTC 和真实临时目录；先串行完成原生检查，再依次运行 main 基线与 H4b 候选，不叠加重套。Linux 使用 H0 固定完整 FFmpeg 镜像 `sha256:32fc444b18573b988300b1bb9ceb7009ae4d9cb2456c382a0353b0c521846de5`；逐文件内部 600 秒、外部 630 秒，runtime 独占，其余并发 2，未因并发延长期限或停止其他会话进程。
+
+| 合并候选的实际命令 | 结果 | 用时 |
+| --- | --- | ---: |
+| `node scripts/tooling.ts typecheck` | 三套 strict 通过，actual exit 0 | 57.70 秒 |
+| `node scripts/tooling.ts build --channel=development` | strict、Web 与 Desktop 通过，actual exit 0 | 116.91 秒 |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/agent-task-request-fingerprints-v2.test.ts` | 99 条指纹通过（1 个聚合 TAP 测试），actual exit 0 | 26.98 秒 |
+
+三阶段每次 6154 文件守卫均零漂移，原件见 `native-validation/`。独立重解析实际 metadata、driver、stdout／stderr SHA 和正式 TAP，结果 `independent-audit/native-final-audit.json` SHA-256 为 `801abb2fecd6b5b5ca225469b81326b0a492d3a39002ef8fa92a6be07b840ab1`。本次采样 runner 准备首次遇到 cache 内 Python 空格语法错误，actual exit 1，尚未派发采样或测试；原 stderr 和 `fingerprint-preview/runner-prepare-note.json` 保留，修正后才进行上文两次正式采样，未计作测试重跑。
+
+### 聚焦集逐名对照与停止范围
+
+本次沿原聚焦集，额外纳入已用于最终 Panel 修复的 `agent-task-reviews-ui.test.ts`，形成最新 main 的 80 文件基线；加 H4b 五个新文件后为候选 85 文件。#86 方法测试与共享 i18n 校验已包含，不扩展无关转场媒体套件。两套按前述同一镜像、相同逐文件命令和期限先后运行，取各 `*-results.json` 的队列 wall 用时：
+
+| 本次实际 Linux 队列 | 结果 | 用时 |
+| --- | --- | ---: |
+| 固定 main `f8cf714`，80 文件 | 80/80 文件、1391/1391 项通过 | 682.57 秒 |
+| 合并 H4b `7bb80ba`，85 文件 | 85/85 文件、1432/1432 项通过 | 791.36 秒 |
+
+两套 actual exit 均为 0；失败、超时、取消、跳过、todo、文件缺失与重复均为 0，源守卫无漂移。两套 runtime 都是 185/185，指定完整 FFmpeg 两项均通过：`whole undo retains the generated shot owner while reverting earlier edits and preserving products across restart and replay`、`retained shot keeps a late product without selecting it and never dispatches after reversion`。原始队列记录、每文件 TAP 与命令结果分别在 `main-baseline/suite/`、`candidate/suite/`，总调度结果为 `coordinator-result.json`；不与旧阶段用例相加。
+
+按 `(file, path-array, occurrence)` 独立重解析 165 份原始 TAP，并核 footer、每份 SHA、实际退出码与源摘要。main 的 1391 项中，1390 项身份和状态精确保留；另 1 项沿本期已批准的 CLI 语义明确改名：`H4a clients retain optional requirements while CLI and existing UI keep the original check groups` → `H4b clients and CLI retain optional requirements while host check groups stay separate`。新增五文件 41 项全部通过：duration 8、CLI 1、steps 13、reader 11、requirements 8；没有其他缺失、既有文件额外新增、状态或跳过原因变化，不模糊匹配或归一测试标题。
+
+旧 `0094b5b` 的 79 文件／1377 项也全部原名、原状态保留至 fresh main。本次 main 比旧基线多 14 项：额外 reviews 文件 10 项、main 新方法 1 项、schema 72 令原参数化循环增加 3 项（backup reads 1、step/change display 各 1）。后 3 项的测试源本身与旧基线相同，不算 H4b 新增。独立记录为 `independent-audit/main-baseline-evolution.json`，SHA-256 `dd0bbdc75875a722e51d760a44c8b1b00b1ba81f9140d241212a05143093e105`；最终逐名独立审计 `final-name-comparison.json` 为 `db945e556a1d81968ac56332eaedce909cbdaef1429343647ebeadefe0c582e5`。
+
+第一次同步在 `7bb80ba` 的合并源码上重新完成类型、开发构建、99 条指纹和完整聚焦集；当时完整 981 文件全量未在本机运行。没有真实模型请求、付费生成或 H5 改动。验证期间 main 又合入 #92；第二次同步与最终验证见下节。
+
+
+## 9. 验证期间 main 合入 #92 后的最终同步
+
+第一次验证结束检查 Git 状态时，发现共享 `origin/main` 已前进到 `f6e8340c3931a0f1abb0e44c4e304fe17f0ffece`（#92，转场标记）。随后无冲突合入 merge commit `9751ce3ab3991e4a925d7b3a62e6f2c1e6a9c252`，父提交为 `7bb80ba` 和该 main；本报告保持未暂存，未混入这次合并提交。追加内容全部来自 main，未修改已批准的 H4b 实现。
+
+#92 仅涉及 11 个转场界面／文案／测试文件，不改后端、依赖锁或指纹 fixture。两份 main 的 fixture 都是 `9b612eb1d5cc62f0e94164e713732799d53efa415dbcb45b6d95ec2ef7e1c90b`，因此前述 87 条各 +525 B、12 条诊断不变的逐条比较基线仍相同。本次仍对最终合并源重新执行类型、开发构建、正式 99 条指纹和完整 85 文件聚焦集；第 8 节全部原件及最终摘要封存，新增结果单独保存，不覆盖第一次同步的通过记录。
+
+测试名比较继续使用第 8 节实际执行的 `f8cf714` fresh main80，不把该基线改标为在 `f6e8340` 上重跑。两个 main 的 80 份选集测试源均逐字节相同；#92 变更的两个转场测试都不在本期选集内。
+
+独立检查确认旧 main 的 5996 个四语键值全部保留，仅新增 `timeline.transition.mark`／`timeline.transition.add`；最终目录共 6048 键，包含原 H4b 的 50 键。图标定义精确只新增 `transition` 一行，旧定义原字节保留；7 个 H4b renderer／CSS 仍等于批准 v3，未重拍截图。记录 `independent-audit/phase2-source-audit.json` 的 SHA-256 为 `8f85002d38b36664deb807bca6b78d94f82f585f8fafa18cddeef968dc60fd0a`。
+
+最终冻结记录为 `phase2/candidate/source.json`：HEAD `9751ce3`，源摘要 `26560434c91d41e81001913a6ff01c8ba7f2e6b6d695b61c9b6beb29a02f7e0d`，6158 源文件／982 测试文件，仅排除本报告。两种平台继续复用已验证同锁依赖；最终指纹仍为 `672a617d64b474627ed429606e5f9ff407ae17fac31c2b23ccd436ced04693d2`，没有再次 `--update` 写入相同内容。独立冻结绑定为 `independent-audit/phase2-frozen-source-binding.json`，SHA-256 `dacb1b2b2d40c63c91a6d4277341537898146183bd7effb32ac7f8d28a351c90`。
+
+### 最终合并源验证
+
+最终原生三阶段均 actual exit 0，6158 文件守卫每次无漂移；命令继续由 `caffeinate -i` 包裹，Node 24.21.0／pnpm 11.25.0／UTC／原阶段期限不变：
+
+| 在 `9751ce3` 上实际执行的命令 | 结果 | 用时 |
+| --- | --- | ---: |
+| `node scripts/tooling.ts typecheck` | strict 通过 | 60.77 秒 |
+| `node scripts/tooling.ts build --channel=development` | strict、Web 与 Desktop 通过 | 137.03 秒 |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/agent-task-request-fingerprints-v2.test.ts` | 99 条指纹通过（1 个聚合 TAP 测试） | 28.57 秒 |
+
+实际原件为 `phase2/native-validation/`。该次正式指纹与第一次同步的双预览和 fixture 全部一致；最新 main 的原 fixture 也与比较时相同，因此逐条差仍为 87 条各 +525 B、12 条诊断字节数和 SHA 不变，没有例外。
+
+最终 Linux 85 文件队列继续在同 H0 镜像、Node 24.21.0、UTC、runtime 独占／其余并发 2、逐文件内部 600 秒／外部 630 秒下实际跑完：
+
+| 最终实际队列 | 结果 | 队列 wall 用时 |
+| --- | --- | ---: |
+| `9751ce3` 完整聚焦 85 文件 | 85/85 文件、1432/1432 项通过，actual exit 0 | 572.46 秒 |
+
+失败、超时、取消、跳过、todo、文件缺失与重复均为 0，6158 文件守卫无漂移，runtime 185/185 和指定完整 FFmpeg 两项均通过。原件为 `phase2/candidate/suite/`，实际命令、返回码与每文件 TAP 原样保留；没有以第一次同步的 1432 项代替这次执行。
+
+对最终 85 份原始 TAP 重新解析后：与 `7bb80ba` 的 1432 项身份、状态和跳过原因全部精确保留；与实际执行过的 `f8cf714` main80 基线相比，仍为 1390 精确保留、1 项已批准 CLI 标题替换及五新文件 41 项通过，没有其他差异。独立解析全部 250 份原 TAP（main80／旧85／最终85），不模糊匹配或归一标题；记录 `independent-audit/phase2-final-name-comparison.json` SHA-256 为 `c9af63c59b2d4da2801d68b6875666947b6d7d128f38ab67d6e47ad423c9a319`。
+
+最终原生独立审计为 `independent-audit/phase2-native-final-audit.json`，SHA-256 `845ea3520c33a0d8917332c9d7869f52d09a0e83e5d5047c6d2b752b1591d832`。主代理另用 `f6e8340` 原件四方复算全部 99 条差异，并确认最终相对 main 恰原批准 26 路径；`root-final-main-fingerprint-review.json` 的每行与独立结果一致，对应独立审计 `phase2-final-fingerprint-scope-audit.json` SHA-256 `f8c68e12aa73eca063597fd0dc78befdb78782d33fbe31f6ff58942025976120`。
+
+本期最终代码与离线验证完成；完整 982 文件全量未在本机运行，交由本次 PR 的 CI。没有真实模型请求、付费生成或 H5 改动。最终测试固定到 `9751ce3` 的源，后续提交只补本报告并推送、创建 PR；PR 合并方式使用 merge commit，本次不执行合并。
+
+最终守卫对 6 根共 36932 份源哈希逐项核对，无漂移；旧 `f8cf714`／`7bb80ba` 冻结源也保持原样，4 份私有 Git metadata 与最终 `9751ce3` 绑定一致。主线完整 6158 路径仅排除本报告；专属进程及精确标签容器无遗留，没有停止其他会话进程。原件为 `phase2/final-source-owned-cleanup.json`；独立实际重哈希记录 `independent-audit/phase2-final-guard-independent.json` SHA-256 为 `6e6bc798c07ca5bdebfc43fc8fd07e47d8e34d90ab3fcb3e386f2ac05261b61c`，其中 PID／容器明确引用验证代理保存的观测。
+
+第二次同步的最终验证摘要为 `phase2/validation-delivery-summary.json`，SHA-256 `49d2285e6116012bf72967938f62ef242ae3fe4ff6917c0494c142a7119b9c17`；第一阶段 `validation-delivery-summary.json` 仍为 `facccc48534deb66df66f4353ea056253fcd15a49a54daffdc37dfb8bee0ed07`。两阶段证据分别封存，不把旧基线、旧截图或先前通过记录改标为最终重跑。
