@@ -47,6 +47,12 @@ test('H4a goal declaration is a host-only core tool with its independent closed 
   const f=await fixture(t),tool=f.tools.list().find(value=>value.name===AGENT_TASK_GOAL_SET_TOOL);assert.ok(tool);
   assert.equal(tool.operation,AGENT_TASK_GOAL_SET_OPERATION);assert.equal(tool.risk,'read_only');assert.equal(agentTaskToolGroupForName(tool.name),'core');
   assert.deepEqual(tool.parameters,AGENT_TASK_GOAL_SET_PARAMETERS);
+  // The merged transform operation remains public for the editor and is
+  // explicitly forbidden to Mio; the run-local goal tool stays core-only.
+  assert.equal(Object.hasOwn(schemas,'timeline.clip.setTransform'),true);
+  assert.equal(AGENT_TASK_OPERATION_ADMISSION['timeline.clip.setTransform']?.allowed,false);
+  assert.equal(f.tools.list().some(value=>value.operation==='timeline.clip.setTransform'),false);
+  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'timeline.clip.setTransform',input:{}}),{code:'AGENT_TASK_TOOL_FORBIDDEN'});
   assert.equal(Object.hasOwn(schemas,AGENT_TASK_GOAL_SET_OPERATION),false);
   assert.equal(Object.hasOwn(schemas,AGENT_TASK_GOAL_SET_TOOL),false);
   assert.equal(Object.hasOwn(AGENT_TASK_OPERATION_ADMISSION,AGENT_TASK_GOAL_SET_OPERATION),false);

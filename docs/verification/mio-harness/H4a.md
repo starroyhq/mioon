@@ -199,8 +199,27 @@ H4a 实施与本地验证已完成，原始全量的五个非零文件及隔离�
 
 审查后按授权修正两项条件语义：时长在容差帧数外叠加半帧和极小 epsilon；三种数量统一使用 `min`／`max`，至少提供一边，恰好等于用相等的上下界。工具 schema、规范化、expected 与实际运行用例同步，时长不额外扩展上下限。原始全量、失败与隔离补验仍保留在前述首轮记录。
 
-本轮顺序为先提交 H4a（暂不推送），再将最新 origin/main 以 merge commit 合入，不 rebase；保留主线 `timeline.clip.setTransform` 的 Mio 禁用边界与 H4a 宿主目标工具。同步后复核 99 条指纹（12 条诊断预期不变），再明确 `--update`，重跑类型、开发构建和 harness 回归；本轮全量由 PR CI 执行。现行提交、同步点、指纹类别及验证结果在执行后补录，不沿用首轮结果充当本轮通过。
+本轮先创建 H4a 提交 `a2a6f353031ae4f24eaf22f65af5953f88576ed0`（暂不推送），随后 fetch 并以 merge commit `a9fb2f7ee58f1aaf3d2fe486f969d5597d29a96a` 合入最新 main `f7dabcce37fea89c06f900b9da9f4878187c6af6`，不 rebase。该 main 包含 #79、#80 及已合入的 #81（片段变换框，非本期 H4b）。`task-tools-v2.ts` 自动合并，无冲突；检查合并 diff 确认完整保留 `timeline.clip.setTransform` 的 Mio 禁用边界和 H4a 宿主目标工具。另在原目标工具用例中加入 public schema 仍有变换操作、Mio admission/list/prepare 拒绝它、目标工具保持核心只读的组合断言。
+
+同步后复核 99 条指纹（12 条诊断预期不变），再明确 `--update`，重跑类型、开发构建和 harness 回归；本轮全量由 PR CI 执行。后续现行验证结果另列，不沿用首轮结果充当本轮通过。
 
 提交前定向验证：条件与实际检查 18/18（包括 1,200 个 0.1–120 秒时长点及真实三字幕上下限）；工具／运行时／上下文／transport／分组五文件 70/70，其中补做运行时为 42 项。证据分别为 `mioon-harness-H4a-review-conditions/goals/` 和首轮证据目录下 `review-fix-count-range/`，原失败／先红后绿记录均保留。
 
 为使首个提交的 fixture 与 schema 一致，在同步前先作两次安全 metadata 预览：99 条稳定，87 条非诊断相对首轮 H4a 各增加 738 B（三种数量分支各增加 246 B），12 条诊断字节／哈希均不变。复核后显式 `--update` exit 0（24.41 秒），99 条与两次预览逐条一致，新 fixture SHA-256 为 `9172b11e76500614ac370aa638a06d6de0f82e14cb3a4da32c89b5decf78116f`。同步后的对 main 正式复核与验证继续另记；不以本次预提交采样替代。
+
+合并后冻结源码 `be77c24f3195d88dcb0b4d87e8f5711814ffceeae47cbcf83dcc3fb96c66cf9a`（6117 源文件、971 测试文件；本轮不执行本地全量），包括原目标工具用例中的合并边界断言。Node 24.21.0／UTC／真实 TMPDIR／`caffeinate -i` 下，完整类型检查 5/5、83.17 秒；开发构建 exit 0、159.50 秒，三套 strict 与 Web/Desktop 均通过。
+
+合并后两次 99 条预览逐条一致，且全与预提交 `9172…` 相同。对合入 main 的 `21d3…` fixture，87 条非诊断改变、12 条诊断字节和 SHA-256 全部不变；复核后再次明确 `--update`（幂等、24.58 秒），正式 99 条通过（22.08 秒）。独立一次真实 intent 反事实审计证明：actual 99 条等于 `9172…`，同 builder 移除 goal 后的 control 99 条等于 main 的 `21d3…`；缓存锚点、历史／恢复／用量部分没有额外差异。
+
+| 现行请求类别 | 每协议条数 | Chat Completions 对 main 增量 | Responses 对 main 增量 | Anthropic Messages 对 main 增量 |
+| --- | ---: | ---: | ---: | ---: |
+| 普通简体场景 | 20 | +3777 B | +3764 B | +3748 B |
+| 官方预设简体场景 | 5 | +3792 B | +3779 B | +3748 B |
+| 英文单次／附件 | 2 | +3860 B | +3847 B | +3831 B |
+| 繁体单次 | 1 | +3786 B | +3773 B | +3757 B |
+| 日文单次 | 1 | +3989 B | +3976 B | +3960 B |
+| 诊断 | 4 | 0 B | 0 B | 0 B |
+
+相对第 5 节首轮的唯一区别是三类数量 schema 各增加 246 B，合计每个非诊断请求增加 738 B；半帧比较改变的是判定语义，不改变时长工具参数。语言差异仍为英文 +83／繁体 +9／日文 +212 B，官方 OpenAI 两协议的 `strict:false` 仍另加 15 B。当前与 main 的模型目录除新增核心 goal 外完全相同（核心 16 → 17），公共 RPC schema 145 项及生成哈希与 main 相同；新变换操作保留公共接口、对 Mio 禁用。所有源码／目录和元数据证明在新证据目录 `/Users/kouzen/Library/Caches/mioon-harness-H4a-sync-2026-10-29/` 的 `postmerge-native-preview/`、`independent-audit/` 与后续聚焦结果内。
+
+以上为同步到 #81／`f7dabcc` 的独立快照。聚焦队列执行期间主线又合入 #82／`c4fead2`（C8 v2），直接改变同一工具目录、契约和请求 fixture；因此暂停旧 102 队列后续派发，在途文件按原期限自然结束并保存为 pre-#82 记录，不将未完成队列写成通过。随后继续以 merge commit 同步新主线，最终验证以该新基线另记；已完成的类型、构建与指纹结果均不冒充覆盖 #82。
