@@ -24,7 +24,9 @@ test('Wan input wire contract bounds modes, order, identity, provider and subjec
  assert.equal(schemas['generation.submit'].safeParse({...request,subjectVersionId:randomUUID()}).success,false);
  assert.equal(schemas['generation.submit'].safeParse({...request,providerId:'ark'}).success,false);
  assert.equal(schemas['generation.submit'].safeParse({...request,connectionId:undefined,configurationRevision:undefined,modelEntryId:undefined}).success,false);
- for(const providerId of ['mock','ark','veo','minimax','vidu','kling','runway'])for(const parameters of [{durationSeconds:5},{aspectRatio:'16:9'},{promptExtend:false},{watermark:false}])assert.equal(schemas['generation.submit'].safeParse({...request,providerId,videoInput:undefined,parameters}).success,false);
+ // Ark connections may carry Seedance 2.5 generation duration and ratio; the
+ // exact model is checked against the frozen binding, not the request schema.
+ for(const providerId of ['mock','ark','veo','minimax','vidu','kling','runway'])for(const parameters of [{durationSeconds:5},{aspectRatio:'16:9'},{promptExtend:false},{watermark:false}])assert.equal(schemas['generation.submit'].safeParse({...request,providerId,videoInput:undefined,parameters}).success,providerId==='ark'&&!('promptExtend' in parameters)&&!('watermark' in parameters),`${providerId} ${JSON.stringify(parameters)}`);
  assert.equal(wanVideoInputSchema.safeParse({version:1,mode:'reference_images',images:Array.from({length:11},()=>({role:'reference_image',assetId:randomUUID()}))}).success,false);
 });
 

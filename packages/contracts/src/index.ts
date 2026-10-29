@@ -202,7 +202,10 @@ export const schemas={
  if(!has&&(value.parameters?.resolution!==undefined||value.parameters?.generateAudio!==undefined||Object.keys(wanVideoParametersSchema.shape).some(key=>value.parameters?.[key as keyof typeof value.parameters]!==undefined)))ctx.addIssue({code:'custom',path:['parameters'],message:'Configured video parameters require an explicit connection.'});
  if(value.videoInput!==undefined&&(value.providerId!=='wan'||!has))ctx.addIssue({code:'custom',path:['videoInput'],message:'Explicit video input requires a configured Wan 3.0 connection.'});
  if(value.videoInput!==undefined&&value.subjectVersionId!==undefined)ctx.addIssue({code:'custom',path:['videoInput'],message:'Explicit video input and subject reference are mutually exclusive.'});
- if(value.providerId!=='wan'&&Object.keys(wanVideoParametersSchema.shape).some(key=>value.parameters?.[key as keyof typeof value.parameters]!==undefined))ctx.addIssue({code:'custom',path:['parameters'],message:'Wan parameters require a Wan video model.'});
+ // Seedance 2.5 shares generation-level duration and ratio; the exact model is
+ // checked against its configured connection. Prompt extension and watermark stay Wan-only.
+ const generationLevel:readonly string[]=value.providerId==='wan'?Object.keys(wanVideoParametersSchema.shape):value.providerId==='ark'?['durationSeconds','aspectRatio']:[];
+ if(Object.keys(wanVideoParametersSchema.shape).some(key=>!generationLevel.includes(key)&&value.parameters?.[key as keyof typeof value.parameters]!==undefined))ctx.addIssue({code:'custom',path:['parameters'],message:'Generation duration and ratio require a Wan 3.0 or Seedance 2.5 model; prompt extension and watermark require Wan.'});
 }),
 'job.get':z.object({jobId:id}).strict(),
 'job.list':z.object({projectId:id}).strict(),

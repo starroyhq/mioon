@@ -61,6 +61,18 @@ test('valid Wan options and other providers retain their own parameter capabilit
   const rejected=agentTaskParameterFeedback({operation:'generation.submit',input:miniMaxInput,capabilities:videoBindingCapabilities(miniMax)});assert.ok(rejected);
   assert.ok(rejected.issues.some(issue=>issue.field==='parameters.seed'&&issue.reason==='unsupported_parameter'));assert.ok(rejected.issues.some(issue=>issue.field==='parameters.generateAudio'&&issue.reason==='unsupported_parameter'));
 });
+test('Seedance 2.5 accepts generation duration and ratio while other Ark models and Wan-only fields are corrected locally',()=>{
+  const seedance=bindingFor('ark'),capabilities=videoBindingCapabilities(seedance);
+  assert.equal(agentTaskParameterFeedback({operation:'generation.submit',input:{...inputFor(seedance),parameters:{resolution:'1080p',durationSeconds:30,aspectRatio:'21:9',generateAudio:true}},capabilities}),null);
+  assert.equal(agentTaskParameterFeedback({operation:'generation.submit',input:{...inputFor(seedance),parameters:{resolution:'720p',durationSeconds:-1,aspectRatio:'adaptive'}},capabilities}),null);
+  const wanOnly=agentTaskParameterFeedback({operation:'generation.submit',input:{...inputFor(seedance),parameters:{resolution:'720p',durationSeconds:8,promptExtend:true,watermark:false}},capabilities});assert.ok(wanOnly);
+  assert.deepEqual(wanOnly.issues.filter(issue=>issue.reason==='unsupported_parameter').map(issue=>issue.field).sort(),['parameters.promptExtend','parameters.watermark']);
+  assert.ok(wanOnly.supported?.parameters.includes('durationSeconds'));assert.match(wanOnly.message,/Seedance 2\.5/u);assert.match(wanOnly.message,/parameters\.durationSeconds、parameters\.aspectRatio/u);
+  assert.doesNotMatch(wanOnly.message,/patch\.duration/u);
+  const custom=bindingFor('ark');custom.model={...custom.model,modelId:'custom-seedance-model',inputModes:['text','image','frames']};
+  const legacy=agentTaskParameterFeedback({operation:'generation.submit',input:{...inputFor(custom),parameters:{resolution:'720p',durationSeconds:8}},capabilities:videoBindingCapabilities(custom)});assert.ok(legacy);
+  assert.ok(legacy.issues.some(issue=>issue.field==='parameters.durationSeconds'&&issue.reason==='unsupported_parameter'));assert.match(legacy.message,/patch\.aspectRatio、patch\.duration、patch\.prompt/u);
+});
 test('field feedback uses closed paths and categories without exposing validation values or identities',()=>{
   const binding=bindingFor(),base=inputFor(binding),capabilities=videoBindingCapabilities(binding);
   for(const [patch,field,reason] of [

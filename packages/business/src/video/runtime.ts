@@ -88,7 +88,7 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
   }
   const sdkOptions={api:frozen.endpoint,model:frozen.model.modelId,send:request};
   const compatibleSdk=compatible?createCompatibleVideoSdkClient(sdkOptions):null;
-  const sdk=compatibleSdk??(frozen.providerId==='runway'?createRunwaySdkClient(sdkOptions):frozen.providerId==='veo'?createVeoSdkClient(sdkOptions):frozen.providerId==='ark'?createArkSdkClient(sdkOptions):frozen.providerId==='minimax'?createMinimaxSdkClient(sdkOptions):null);
+  const sdk=compatibleSdk??(frozen.providerId==='runway'?createRunwaySdkClient(sdkOptions):frozen.providerId==='veo'?createVeoSdkClient(sdkOptions):frozen.providerId==='ark'?createArkSdkClient({...sdkOptions,audio:frozen.model.audio}):frozen.providerId==='minimax'?createMinimaxSdkClient(sdkOptions):null);
   const cache=createPollCache({now,interval:capabilities.minPollIntervalMs,retrieve:async(id,context)=>wan?{...await wan.retrieve(id,context)}:{...configuredTask(selection,id,sdk?await sdk.retrieve(id,context):await request(configuredTaskPath(selection,id),{context}))}});
   const retrieve=async(id: string,context: ProviderContext):Promise<ConfiguredVideoTask>=>{
     assertConfiguredTaskId(selection,id);

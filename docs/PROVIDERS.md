@@ -25,6 +25,43 @@ connections and their text/first-frame templates remain unchanged. Reference
 video/audio and arbitrary workflow import are outside this increment. Existing
 Ark frame-pair and one-image subject modes are retained.
 
+### Seedance 2.5 connections (reviewed 2026-10-30)
+
+A UI-configured Ark connection whose model entry is exactly
+`doubao-seedance-2-5-260628` on the `ark-v3` template in `cn-beijing` uses the
+wider Seedance 2.5 range. Other Ark model IDs, including custom entries on the
+same template, keep shot-only duration and ratio.
+
+- **Duration:** 4–30 seconds, or automatic (`-1`, the model chooses within that
+  range). Shots still store at most 20 seconds, so the generation duration is a
+  request parameter, `parameters.durationSeconds`, frozen with the task. When it is
+  omitted the generation uses the shot duration. The shot is never rewritten.
+- **Ratio:** 9:16, 16:9, 1:1, 3:4, 4:3 or 21:9, or adaptive, through
+  `parameters.aspectRatio`; omitted means the shot ratio. First/last-frame tasks
+  always send `ratio: adaptive`, as Ark requires, and the output follows the first
+  frame. With a fixed ratio both frames must still match it exactly; with adaptive
+  they only need Ark's 0.4–2.5 width/height range.
+- **Resolution:** 480p and 720p (8-bit) or 1080p. Ark returns 1080p as 10-bit
+  H.265/HEVC. Such results can be placed on the timeline and exported, but frame
+  capture, cut detection and breakdown accept only 8-bit H.264/VP8/VP9, and some
+  environments cannot preview HEVC.
+- **Sound:** new model entries use the `optional` audio policy, so each generation
+  can turn `generateAudio` on. It stays off unless chosen, although Ark's own
+  default is on. Entries saved with `off` remain silent.
+- **Prompt:** up to the shot field's 5000 characters. Ark sets no hard limit and
+  recommends at most 500 Chinese characters or 1000 English words.
+- **Output check:** the downloaded ratio must be within 2% of the requested one
+  (Ark's 480p 21:9 size is 992×432) and the duration within 0.25 seconds of a fixed
+  request, or 4–30 seconds for automatic. A mismatch pauses the task for review
+  instead of publishing a version or resubmitting.
+
+Connections saved before this change keep their earlier combinations (4 or 8
+seconds, 720p, silent). Edit the model's duration/resolution combinations and
+audio policy, or add a new connection, to use the wider range. The
+environment-configured `ARK_API_KEY` adapter below is unchanged. Sources:
+[create task API](https://ark.volcengine.com/region:cn-beijing/docs/create-video-generation-task-api),
+[Seedance 2.5 guide](https://ark.volcengine.com/region:cn-beijing/docs/seedance-2-5).
+
 ### Official SDK coverage (reviewed 2026-10-23)
 
 Video submission and task queries use the following pinned official Node.js
