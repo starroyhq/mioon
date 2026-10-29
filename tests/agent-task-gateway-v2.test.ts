@@ -525,14 +525,21 @@ test('the complete production tool catalog builds in every supported preset/prot
   const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-mio-complete-wire-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services});
   t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
   const catalog=tools.list(),original=structuredClone(catalog);assert.ok(catalog.some(tool=>tool.operation==='image.generate'));assert.ok(catalog.length>80);
+  const catalogByName=new Map(catalog.map(tool=>[tool.name,tool])),catalogNames=catalog.map(tool=>tool.name);
   let combinations=0;const compiled=new Set<string>();
   for(const preset of AGENT_PRESETS)for(const protocol of preset.availableProtocols){
     const platform=preset.platforms.find(item=>item.baseUrl)||preset.platforms[0]!,configuration:AgentConfiguration={presetId:preset.id as AgentConfiguration['presetId'],platformId:platform.id,baseUrl:protocol==='anthropic_messages'&&preset.id==='ollama'?new URL(platform.baseUrl).origin:platform.baseUrl||'https://example.com/v1',model:(protocol==='responses'?preset.supportedModelHints?.responses?.[0]:undefined)||platform.model||'synthetic-mio',protocol};
     const body=JSON.parse(buildTaskModelRequest(configuration,[{role:'user',content:'Complete production catalog only'}],catalog,4318)) as {tools:{name?:string;parameters?:unknown;input_schema?:unknown;function?:{name:string;parameters:unknown}}[]};
     assert.equal(body.tools.length,catalog.length);combinations++;compiled.add(`${preset.id}/${protocol}`);
-    for(const [index,item] of body.tools.entries()){
-      const definition=protocol==='chat_completions'?item.function!:item,tool=catalog[index]!;
-      assert.equal(definition.name,tool.name);assert.deepEqual(removeCaptionSchema(protocol==='anthropic_messages'?item.input_schema:definition.parameters),taskToolWireSchema(configuration,tool.name,tool.parameters),`${preset.id}/${protocol}/${tool.operation}`);
+    const names=body.tools.map(item=>protocol==='chat_completions'?item.function!.name:item.name);
+    assert.equal(new Set(names).size,catalog.length);assert.deepEqual([...names].sort(),[...catalogNames].sort());
+    // Official Anthropic groups the wire tools to preserve cache prefixes;
+    // every other preset/protocol retains the original catalog order.
+    if(!(preset.id==='anthropic'&&protocol==='anthropic_messages'&&configuration.baseUrl==='https://api.anthropic.com'))assert.deepEqual(names,catalogNames);
+    for(const item of body.tools){
+      const definition=protocol==='chat_completions'?item.function!:item;assert.ok(typeof definition.name==='string');
+      const tool=catalogByName.get(definition.name);assert.ok(tool);
+      assert.deepEqual(removeCaptionSchema(protocol==='anthropic_messages'?item.input_schema:definition.parameters),taskToolWireSchema(configuration,tool.name,tool.parameters),`${preset.id}/${protocol}/${tool.operation}`);
     }
   }
   for(const combination of ['minimax/anthropic_messages','minimax/responses','anthropic/chat_completions','ollama/anthropic_messages'])assert.ok(compiled.has(combination),combination);
