@@ -250,3 +250,18 @@
 .mio-answer-edit.wb-button:hover{background:transparent;color:var(--wb-disabled)}
 .mio-answer-not-approval{display:flex;align-items:center;gap:var(--wb-space-1);margin:0;color:var(--wb-muted);font-size:var(--wb-text-caption)}
 .mio-panel .mio-answer-not-approval svg{width:12px;height:12px}
+/* Read-only steps stay low-key (C6, 09-09): soft text and a neutral icon for what was read. */
+.mio-panel .mio-step[data-read] .mio-step-line>span:nth-child(2){color:var(--wb-soft)}
+/* Continuity check (C6): a host line that nothing changed, then one card per reported issue. The dock is a card
+   surface in the dark theme and a panel surface in the light one, so the card lifts by an accent tint in both. */
+.mio-review{display:flex;flex-direction:column;gap:var(--wb-space-2);min-width:0}
+.mio-review-summary{font-size:var(--wb-text-body);line-height:1.65}
+.mio-panel .mio-review-issue{display:flex;flex-direction:column;gap:var(--wb-space-1);padding:var(--wb-space-2) var(--wb-space-3) var(--wb-space-3);border-radius:var(--wb-radius-card);background:color-mix(in srgb,var(--wb-accent) 5%,transparent);min-width:0;transition:background-color .3s ease-out,box-shadow .3s ease-out}
+.mio-review-issue>header{display:flex;align-items:center;gap:var(--wb-space-2);min-width:0}
+.mio-review-category{flex:none;padding:0 var(--wb-space-2);border-radius:var(--wb-radius-control);background:var(--wb-warning-subtle);color:var(--wb-warning);font-size:var(--wb-text-caption);line-height:20px;white-space:nowrap}
+.mio-review-shots{flex:1;min-width:0;overflow:hidden;color:var(--wb-soft);font-size:var(--wb-text-caption);text-overflow:ellipsis;white-space:nowrap}
+.mio-panel .mio-review-issue .mio-review-locate{flex:none;gap:var(--wb-space-1);border:1px solid var(--wb-line)}
+.mio-panel .mio-review-issue .mio-review-locate>svg{width:14px;height:14px}
+.mio-review-issue>p{font-size:var(--wb-text-label);line-height:1.6;overflow-wrap:anywhere}
+.mio-panel .mio-review-issue[data-revealed]{background:color-mix(in srgb,var(--wb-accent) 12%,transparent);box-shadow:inset 0 0 0 1px var(--wb-accent-line)}
+@media (prefers-reduced-motion:reduce){.mio-panel .mio-review-issue{transition:none}}
