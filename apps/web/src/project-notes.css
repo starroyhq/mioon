@@ -1,0 +1,22 @@
+/* Project notes (C6, 09-09 left): a wide plain-text editor with a byte counter under it. */
+.project-notes-dialog.wb-dialog[data-slot="dialog-content"] { width: min(720px, calc(100vw - 32px)); }
+.project-notes-dialog .wb-dialog-content { display: flex; flex-direction: column; gap: var(--wb-space-2); }
+.project-notes-dialog textarea.project-notes-text {
+  field-sizing: fixed; flex: none; height: min(370px, calc(100dvh - 300px)); min-height: 160px; resize: none;
+  padding: var(--wb-space-3) var(--wb-space-4); border: 1px solid var(--wb-line-strong); border-radius: var(--wb-radius-card);
+  background: var(--wb-bg); color: var(--wb-text); font-family: var(--wb-font-sans); font-size: var(--wb-text-body); line-height: 1.75;
+  box-shadow: none; overflow-wrap: anywhere;
+}
+.project-notes-dialog textarea.project-notes-text::placeholder { color: var(--wb-muted); }
+/* Explicit for both, and above the light theme's `:root.light :is(…, textarea, …):focus-visible` outline, so the
+   field keeps this border instead of a second ring outside it. */
+.project-notes-dialog textarea.project-notes-text[data-slot="textarea"]:focus,
+.project-notes-dialog textarea.project-notes-text[data-slot="textarea"]:focus-visible { outline: none; border-color: var(--wb-accent-line); box-shadow: 0 0 0 1px var(--wb-accent-line); }
+.project-notes-dialog textarea.project-notes-text[readonly] { color: var(--wb-soft); }
+.project-notes-dialog textarea.project-notes-text[aria-invalid="true"] { border-color: var(--wb-danger); box-shadow: none; }
+.project-notes-count { align-self: flex-end; color: var(--wb-soft); font-family: var(--wb-font-mono); font-size: var(--wb-text-caption); line-height: 1.5; }
+.project-notes-count[data-over] { color: var(--wb-danger); }
+.project-notes-problem { color: var(--wb-danger); font-size: var(--wb-text-caption); line-height: 1.5; }
+.project-notes-read-only { color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; }
+.project-notes-dialog .wb-dialog-footer > .project-notes-exported { display: flex; flex: 1; align-items: center; gap: var(--wb-space-2); min-width: 0; margin-right: auto; color: var(--wb-soft); font-size: var(--wb-text-caption); line-height: 1.5; }
+.project-notes-exported > svg { flex: none; }

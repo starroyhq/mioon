@@ -24,28 +24,33 @@ import AgentTaskPolicyMenu from './AgentTaskPolicyMenu.tsx';
 import { AgentTaskAnswerRow, AgentTaskQuestionCard } from './AgentTaskQuestion.tsx';
 import { agentTaskAnswerTextValid, taskQuestionOf } from './agent-task-questions.ts';
 import AgentTaskChecks from './AgentTaskChecks.tsx';
+import AgentTaskContinuityReport from './AgentTaskContinuityReport.tsx';
+import { createReviewArrivals, revealReviewIssue, taskContinuityReportOf } from './agent-task-reviews.ts';
+import type { AgentReviewReveal, ReviewIssueEntry } from './agent-task-reviews.ts';
 import Icon from './icons.tsx';
 import { agentTaskErrorKey } from './agent-task-errors.ts';
 import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
 import './agent-task-v2.css';
 
-export interface AgentTaskPanelProps { projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; nativeCloseRegistry?: unknown }
+export interface AgentTaskPanelProps { projectId: string; workspaceScope?: string; projectName?: string; timelineFps?:number; targetName?: TaskDisplayLookup; onSettings: (page?: 'agent' | 'models' | 'video-tools') => unknown; onClose: () => unknown; onOpenRequests?: (selectedId?: string) => unknown; onDraftChange?: (dirty: boolean) => unknown; onApplied?: (projectId: string, snapshot: AgentTaskSnapshot, landed?: readonly string[]) => unknown; onLocate?: (change: AgentTaskChange) => unknown; reveal?: AgentTaskReveal | null; shotNumber?: (shotId: string) => number | undefined; onReview?: (projectId: string, entries: ReviewIssueEntry[]) => unknown; onReviewLocate?: (entry: ReviewIssueEntry) => unknown; reviewReveal?: AgentReviewReveal | null; nativeCloseRegistry?: unknown }
 const finished = (status: string) => ['completed', 'failed', 'stopped', 'reverted'].includes(status);
 const errorSettings = (code: string): 'agent' | 'models' | 'video-tools' | undefined => {
   if (['FFMPEG_UNAVAILABLE', 'FFMPEG_NOT_FOUND', 'FFMPEG_MISSING', 'FFPROBE_UNAVAILABLE', 'FFPROBE_NOT_FOUND', 'FFMPEG_CAPABILITY_UNAVAILABLE', 'FFMPEG_FILTER_UNAVAILABLE', 'EXPORT_CAPABILITY_TOOL_UNAVAILABLE', 'EXPORT_CAPABILITY_UNSUPPORTED', 'EXPORT_CAPABILITY_CONFIGURATION', 'EXPORT_CAPABILITY_FAILED', 'EXPORT_CAPABILITY_TIMEOUT', 'SUBTITLE_RENDERER_UNAVAILABLE'].includes(code)) return 'video-tools';
   if (['GENERATION_FAILED', 'PROVIDER_ERROR', 'PROVIDER_NOT_FOUND', 'PROVIDER_UNAVAILABLE', 'PROVIDER_GENERATION_FAILED', 'PROVIDER_NOT_READY', 'PROVIDER_POLL_TIMEOUT', 'PROVIDER_CONFIGURATION', 'PROVIDER_DISABLED', 'PROVIDER_REGION_CHANGED', 'IMAGE_SETTINGS_DISABLED', 'IMAGE_SETTINGS_NOT_CONFIGURED', 'IMAGE_CONNECTION_FAILED', 'IMAGE_NETWORK_DENIED', 'IMAGE_TIMEOUT', 'COMFY_SETTINGS_CHECK_REQUIRED', 'COMFY_SETTINGS_DISABLED', 'COMFY_SETTINGS_NOT_CONFIGURED', 'COMFY_CONNECTION_FAILED', 'COMFY_NETWORK_DENIED', 'COMFY_TIMEOUT'].includes(code)) return 'models';
   if (['AGENT_TASK_SETTINGS_CHANGED', 'AGENT_SETTINGS_CONFLICT', 'AGENT_TASK_CONSENT_REQUIRED', 'AGENT_AUTHORIZATION_REQUIRED', 'AGENT_CHAT_CONNECT_FAILED', 'AGENT_CHAT_NETWORK_DENIED', 'AGENT_CHAT_TIMEOUT', 'AGENT_CHAT_HTTP_ERROR', 'AGENT_CHAT_KEY_REQUIRED', 'AGENT_CHAT_PROTOCOL_ERROR', 'AGENT_CHAT_TRUNCATED', 'AGENT_CHAT_PROFILE_UNSUPPORTED', 'AGENT_CHAT_REASONING_UNSUPPORTED', 'AGENT_CHAT_PROVIDER_ERROR'].includes(code)) return 'agent';
 };
+// Completed read-only steps (a method, the project, the generation services) stay low-key (09-09); a question keeps its own line.
+const readIcon = (step: AgentTaskStep): string | undefined => step.kind === 'tool' && step.status === 'completed' && step.tier === 'read_only' && step.toolCall?.name !== 'mioon_ask' ? step.toolCall?.name === 'mioon_skill_read' ? 'book' : 'search' : undefined;
 const modelText = (step: AgentTaskStep): string => step.text || (step.result && typeof step.result === 'object' && !Array.isArray(step.result) && typeof step.result.text === 'string' ? step.result.text : '');
-function StepIcon({ step }: { step: AgentTaskStep }) {
+function StepIcon({ step, read }: { step: AgentTaskStep; read?: string }) {
   const { t } = useI18n();
   const working = step.status === 'dispatch_started' || step.status === 'intent';
-  return <span className="mio-step-icon" data-tone={step.status === 'completed' ? 'success' : step.status === 'failed' ? 'danger' : ['awaiting_approval', 'unknown'].includes(step.status) ? 'warning' : 'neutral'} aria-label={t(taskStepStatusKey(step.status))}>
-    {working ? <span className="wb-spinner" /> : <Icon name={step.status === 'completed' ? 'check' : step.status === 'failed' ? 'close' : step.status === 'unknown' ? 'info' : step.status === 'awaiting_approval' ? 'pause' : step.status === 'awaiting_answer' ? 'question' : 'minus'} />}
+  return <span className="mio-step-icon" data-tone={read ? 'neutral' : step.status === 'completed' ? 'success' : step.status === 'failed' ? 'danger' : ['awaiting_approval', 'unknown'].includes(step.status) ? 'warning' : 'neutral'} aria-label={t(taskStepStatusKey(step.status))}>
+    {working ? <span className="wb-spinner" /> : <Icon name={read ?? (step.status === 'completed' ? 'check' : step.status === 'failed' ? 'close' : step.status === 'unknown' ? 'info' : step.status === 'awaiting_approval' ? 'pause' : step.status === 'awaiting_answer' ? 'question' : 'minus')} />}
   </span>;
 }
-export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, nativeCloseRegistry }: AgentTaskPanelProps) {
+export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', timelineFps, targetName, onSettings, onOpenRequests, onDraftChange = () => {}, onApplied, onLocate, reveal = null, shotNumber, onReview, onReviewLocate, reviewReveal = null, nativeCloseRegistry }: AgentTaskPanelProps) {
   const { t, locale } = useI18n(), visible = useWorkspaceVisibility();
   const [state, setState] = useState<AgentTaskSessionState>({ phase: 'loading', project: null, snapshot: null, draft: '', uploads: [], pending: null, error: '', conversationId:null,conversation:null,rounds:[],selectionKey:'new',legacy:false,draftDirty:false,draftVersion:0,unknownOutcome:false,policy:{conversationId:null,phase:'ready',value:null,modes:null},history: { conversations: [], nextCursor: null, phase: 'closed' } });
   const [undoPreview,setUndoPreview]=useState<{snapshot:AgentTaskSnapshot;selectionKey:string}|null>(null),[undoLoading,setUndoLoading]=useState(false);
@@ -54,6 +59,8 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const [legacyView,setLegacyView]=useState<LegacyConversation|null>(null),[legacyBusy,setLegacyBusy]=useState(false),[legacyError,setLegacyError]=useState(false);
   const [checksAttached,setChecksAttached]=useState(true),checksNavigation=useRef(0);
   const session = useRef<ReturnType<typeof createAgentTaskSession> | null>(null), callbacks = useRef({ onDraftChange, onApplied }); callbacks.current = { onDraftChange, onApplied };
+  const reviewed = useRef(onReview); reviewed.current = onReview;
+  const arrivals = useRef<ReturnType<typeof createReviewArrivals> | null>(null); arrivals.current ??= createReviewArrivals();
   const composition=useRef(false),historyVisible=useRef(historyOpen);historyVisible.current=historyOpen;
   const language = useRef(locale); language.current = locale;
   const visibility = useRef(visible); visibility.current = visible;
@@ -117,6 +124,22 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
     follow.current = shown.following; setFollowing(shown.following);
     return shown.cleanup;
   }, [reveal, visible, historyOpen]);
+  // A "待核对" label opens its issue card the same way (C6).
+  const reviewRevealed = useRef(0);
+  useLayoutEffect(() => {
+    if (!reviewReveal || !visible || reviewReveal.nonce === reviewRevealed.current) return;
+    if (historyOpen) { closeHistory(); return; }
+    reviewRevealed.current = reviewReveal.nonce;
+    const shown = log.current ? revealReviewIssue(log.current, reviewReveal.owner) : null;
+    if (!shown) return;
+    follow.current = shown.following; setFollowing(shown.following);
+    return shown.cleanup;
+  }, [reviewReveal, visible, historyOpen]);
+  // A continuity report that arrives while its round is on screen marks its shots "待核对"; an opened round's reports do not.
+  useLayoutEffect(() => {
+    const fresh = arrivals.current?.arrived((state.rounds.length ? state.rounds : state.snapshot ? [state.snapshot] : []).filter(item => item.run.projectId === projectId)) ?? [];
+    if (fresh.length) reviewed.current?.(projectId, fresh);
+  }, [state.rounds, state.snapshot, projectId]);
   const formatOptions={fps:timelineFps,lookup:targetName};
   const newBlocked=agentTaskNewConversationBlock(state);
   const closeHistory=()=>{historyVisible.current=false;session.current?.cancelSelection();checksNavigation.current++;setChecksAttached(true);setHistoryOpen(false);historyButton.current?.focus();};
@@ -206,6 +229,10 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
     const asks=steps.flatMap(step=>{const question=taskQuestionOf(step);return question?[{step,question}]:[];});
     const askedBefore=asks.filter(item=>item.step.status==='completed'&&latest!==undefined&&item.step.position<latest.position),askedAfter=asks.filter(item=>!askedBefore.includes(item));
     const answered=asks.some(item=>item.step.status==='completed');
+    // A continuity report sits before the reply that followed it, like an answered question (09-09).
+    const reports=steps.flatMap(step=>{const issues=taskContinuityReportOf(step);return issues?[{step,issues}]:[];});
+    const reportedBefore=reports.filter(item=>latest!==undefined&&item.step.position<latest.position),reportedAfter=reports.filter(item=>!reportedBefore.includes(item));
+    const reviewCards=(items:typeof reports)=>items.map(item=><AgentTaskContinuityReport key={item.step.id} step={item.step} issues={item.issues} shotNumber={shotNumber} disabled={!visible||run.projectId!==projectId} onLocate={onReviewLocate&&(entry=>{if(visibility.current)onReviewLocate(entry);})} />);
     const act=(action:Parameters<NonNullable<typeof session.current>['action']>[0],extras?:Parameters<NonNullable<typeof session.current>['action']>[1])=>session.current?.action(action,extras,run.id);
     const beforeReply=notes.filter(note=>note.modelStepId&&steps.some(step=>step.id===note.modelStepId&&latest&&step.position<=latest.position));
     const afterReply=notes.filter(note=>!beforeReply.includes(note));
@@ -219,10 +246,12 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
         <p className="agent-chat-message is-user mio-user">{run.text}</p>
         {noteMessages(beforeReply)}
         {askedBefore.map(item=><AgentTaskAnswerRow key={item.step.id} step={item.step} question={item.question} />)}
+        {reviewCards(reportedBefore)}
         {latest && <p className="agent-task-text mio-reply" data-testid="agent-task-reply">{modelText(latest)}</p>}
         {noteMessages(afterReply)}
-        {steps.length > 0 && <details className="mio-steps" open={stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')} onToggle={event => { const open=event.currentTarget.open;if(open!==(stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')))setStepsOpen(value=>({...value,[run.id]:open})); }}><summary>{t('agent.panel.steps', { count: steps.length })}</summary><div>{steps.map(step => <article key={step.id} data-step-id={step.id} className="agent-task-step mio-step">
-          <div className="mio-step-line"><StepIcon step={step} /><span>{taskStepTitle(step, locale)}{['awaiting_approval', 'unknown', 'awaiting_answer'].includes(step.status) && <> · {t(taskStepStatusKey(step.status))}</>}{step.status === 'completed' && step.toolCall?.name === 'mioon_ask' && <> · {t('agent.panel.question.answered')}</>}</span><span className="mio-step-time">{['intent', 'dispatch_started'].includes(step.status) ? '…' : taskDurationSeconds(step.createdAt, step.updatedAt) !== undefined ? t('agent.panel.stepElapsed', { seconds: taskDurationSeconds(step.createdAt, step.updatedAt)! }) : ''}</span></div>
+        {reviewCards(reportedAfter)}
+        {steps.length > 0 && <details className="mio-steps" open={stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')} onToggle={event => { const open=event.currentTarget.open;if(open!==(stepsOpen[run.id]??(!finished(run.status)||run.status==='failed')))setStepsOpen(value=>({...value,[run.id]:open})); }}><summary>{t('agent.panel.steps', { count: steps.length })}</summary><div>{steps.map(step => <article key={step.id} data-step-id={step.id} className="agent-task-step mio-step" data-read={readIcon(step) ? 'true' : undefined}>
+          <div className="mio-step-line"><StepIcon step={step} read={readIcon(step)} /><span>{taskStepTitle(step, locale)}{['awaiting_approval', 'unknown', 'awaiting_answer'].includes(step.status) && <> · {t(taskStepStatusKey(step.status))}</>}{step.status === 'completed' && step.toolCall?.name === 'mioon_ask' && <> · {t('agent.panel.question.answered')}</>}</span><span className="mio-step-time">{['intent', 'dispatch_started'].includes(step.status) ? '…' : taskDurationSeconds(step.createdAt, step.updatedAt) !== undefined ? t('agent.panel.stepElapsed', { seconds: taskDurationSeconds(step.createdAt, step.updatedAt)! }) : ''}</span></div>
           {step.kind === 'model' && step !== latest && modelText(step) && <p className="agent-task-text mio-previous-reply">{modelText(step)}</p>}
           {step.cost && <p data-testid={`agent-task-cost-${step.id}`} className="mio-secondary">{t(`agent.task.cost.${step.cost}`)}</p>}
           {step.error && <div className="mio-error-card"><p role="alert" data-testid={`agent-task-step-error-${step.id}`}>{t('agent.panel.failureReason',{reason:t(agentTaskErrorKey(step.error.code))})}</p><div className="mio-failure-actions">{run.status==='failed'&&step.status==='failed'&&step===steps.at(-1)&&unknown.length===0&&!steps.some(item=>item.status==='dispatch_started')&&<Button size="compact" data-testid={`agent-task-retry-${step.id}`} disabled={blocked||backgroundPending} onClick={()=>{void act('retry',{stepId:step.id});}}><Icon name="undo" />{t('agent.panel.retry')}</Button>}{detail(step)}</div>{errorSettings(step.error.code) && <Button variant="ghost" className="mio-settings-link" data-testid={`agent-task-error-settings-${step.id}`} onClick={() => { if (visibility.current) onSettings(errorSettings(step.error!.code)); }} disabled={!visible}>{t(`agent.panel.errorSettings.${errorSettings(step.error.code)!}`)} <Icon name="arrow" /></Button>}</div>}
