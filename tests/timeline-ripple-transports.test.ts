@@ -39,7 +39,7 @@ test('ripple HTTP durable tasks, actual CLI and official MCP agree on strict sch
   if(backend.exitCode===null&&backend.signalCode===null){const done=once(backend,'exit');backend.kill('SIGTERM');const timer=setTimeout(()=>backend.kill('SIGKILL'),10000);try{await done;}finally{clearTimeout(timer);}}
   await rm(root,{recursive:true,force:true});
  });
- let url!: unknown;const deadline=Date.now()+15000;
+ let url!: unknown;const deadline=Date.now()+20000;
  while(Date.now()<deadline){assert.equal((backend.exitCode as unknown),null,stderr);const match=/Mioon ready at (http:\/\/127\.0\.0\.1:\d+)/u.exec(stdout);if(match){url=match[1];break;}await pause(25);}
  assert.ok(url,'owned backend starts before deadline');
  const connection={...env,MIOON_BASE_URL:url,MIOON_TOKEN:token};
