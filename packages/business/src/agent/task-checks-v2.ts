@@ -1,17 +1,19 @@
 import {isDeepStrictEqual} from 'node:util';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
-import {isTimelineRenderRecord,exportPreflightResponseSchema} from '@mioon/contracts';
+import {isTimelineRecord,isTimelineRenderRecord,exportPreflightResponseSchema} from '@mioon/contracts';
 import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
 import {validateManagedSource} from '../managed-media.ts';
-import {storyboardOutputGeometry} from '../storyboard-output.ts';
+import {freezeStoryboardOutputGeometry,storyboardOutputGeometry} from '../storyboard-output.ts';
+import {evaluateAgentTaskGoals,latestAgentTaskGoals} from './task-goals-v2.ts';
 import {createImageHistoryReaders} from '../images/history.ts';
 import {createFrameHistoryReaders} from '../frames-history.ts';
 import {createSceneHistoryReaders} from '../scene-history.ts';
+import {timelineExportOutputFrames} from '@mioon/contracts/timeline-export-range';
 
 type Value=Record<string,unknown>;
 type Target=AgentTaskCheck['target'];
@@ -69,6 +71,8 @@ const canonical=(value:unknown):string=>JSON.stringify(value,(_key,child:unknown
 export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTaskSnapshot,{preflight,includePreflight=false,signal}:{preflight?:AgentTaskChecksPreflight;includePreflight?:boolean;signal?:AbortSignal}={}):Promise<AgentTaskChecks> {
  signal?.throwIfAborted();
  const {run}=snapshot,projectId=run.projectId,steps=new Map(snapshot.steps.map(step=>[step.id,step]));
+ const goals=run.diagnostic?undefined:latestAgentTaskGoals(snapshot.steps),goalExportValues=new Map<string,AgentTaskCheckValues>();
+ const goalOutputFrames=goals?.conditions.some(condition=>condition.type==='export_parameters'&&condition.durationFrames!==undefined);
  const groups:AgentTaskChecks['groups']=[{id:'export_render',items:[]},{id:'generation',items:[]},{id:'timeline',items:[]},{id:'decomposition_frames',items:[]}];
  const revision=(kind:Target['kind'],id:string,fallback=0):number=>{
   if(kind==='run')return run.revision;
@@ -156,6 +160,13 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
     }
    }catch(error){if(!knownObservationFailure(error))throw error;matches=false;}
    const observed=geometry(published);if(published&&(['width','height'] as const).some(field=>expected[field]!==undefined&&expected[field]!==observed[field]))matches=false;
+   if(goalOutputFrames&&matches&&value?.mode==='timeline'){
+    // This is the accepted output interval, not a probe of encoded frame
+    // count. Reuse the same domain range calculation as the render worker;
+    // do not alter H3's historical expected/current groups.
+    try{goalExportValues.set(origin.step.id,{durationFrames:timelineExportOutputFrames(value.snapshot)});}
+    catch(error){if(!knownObservationFailure(error))throw error;}
+   }
    add('export_render','export_parameters',target,artifactProof,!matches?reason('failed','PARAMETERS_MISMATCH'):result.status==='pending'?reason('pending','TASK_PENDING'):result.status==='passed'&&!published?reason('failed','ARTIFACT_UNAVAILABLE'):result.status!=='passed'?reason('not_applicable','TASK_FAILED'):{status:'passed'},{expected,current:observed});
   }
   if(origin.kind==='job'||origin.kind==='image'){
@@ -205,5 +216,27 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
   const type=group.id==='export_render'?'export_status':group.id==='generation'?'generation_status':group.id==='timeline'?'timeline_references':'decomposition_status',target:Target={kind:'run',id:run.id};
   add(group.id,type,target,basis(target),reason('not_applicable',group.id==='timeline'?'NOT_CHANGED':'NO_APPLICABLE_TASK'));
  }
- signal?.throwIfAborted();return agentTaskChecksSchema.parse({projectId,runId:run.id,runRevision:run.revision,groups});
+ let requirements:AgentTaskChecks['requirements'];
+ if(goals?.conditions.length){
+  // Reuse this read's H3 observations. No lazy timeline.get(), workers or
+  // alternate export/publication validation are introduced for requirements.
+  const exists=!!store.db.prepare('SELECT 1 FROM timelines WHERE projectId=?').get(projectId);
+  const valid=timeline&&isTimelineRecord(timeline,{projectId});
+  let values:AgentTaskCheckValues={};
+  if(valid)values={...geometry(timeline),durationFrames:Number(timeline.durationFrames)};
+  else if(!exists)values={...freezeStoryboardOutputGeometry(store.db,projectId),durationFrames:0};
+  const projectTarget:Target={kind:'project',id:projectId},runTarget:Target={kind:'run',id:run.id};
+  const shotCount=store.db.prepare('SELECT count(*) count FROM shots WHERE projectId=?').get(projectId)?.count;
+  const subtitles=valid&&object(timeline.subtitles)&&Array.isArray(timeline.subtitles.cues)?timeline.subtitles.cues.length:valid?0:undefined;
+  requirements=evaluateAgentTaskGoals(goals,{
+   timeline:{target:timelineTarget,basis:timelineProof,values,...(valid?{clipCount:(timeline.clips as unknown[]).length,subtitleCount:subtitles}:!exists?{clipCount:0,subtitleCount:0}:{})},
+   project:{target:projectTarget,basis:basis(projectTarget),...(integer(shotCount)?{shotCount}:{})},
+   run:{target:runTarget,basis:basis(runTarget)},checks:groups.flatMap(group=>group.items),steps:snapshot.steps,
+   exports:snapshot.steps.filter(step=>step.kind==='tool'&&step.toolCall&&operations[step.toolCall.name]?.kind==='export').map(step=>{
+    const origin=origins.find(item=>item.kind==='export'&&item.step.id===step.id);
+    return {stepId:step.id,checks:groups[0]!.items.filter(item=>origin?item.target.kind==='export'&&item.target.id===origin.id:item.target.kind==='step'&&item.target.id===step.id),...(goalExportValues.has(step.id)?{values:goalExportValues.get(step.id)}:{})};
+   }),
+  });
+ }
+ signal?.throwIfAborted();return agentTaskChecksSchema.parse({projectId,runId:run.id,runRevision:run.revision,groups,...(requirements===undefined?{}:{requirements})});
 }

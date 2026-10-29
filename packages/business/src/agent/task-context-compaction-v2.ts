@@ -140,9 +140,9 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
       retainBoundary();
       const messages=replay(input.protocol,fragment);if(messages.length)entries.push({kind:'pinned',messages});continue;
     }
-    const continuation=replay(input.protocol,{...fragment,replan:false,results:fragment.results.map(result=>({...result,result:taskToolResultView(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes)}))});
+    const continuation=replay(input.protocol,{...fragment,replan:false,repairMessage:undefined,results:fragment.results.map(result=>({...result,result:taskToolResultView(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes)}))});
     const full=[...boundaryHints,...continuation];
-    const stub=[...boundaryHints,...replay(input.protocol,{...fragment,replan:false,results:fragment.results.map(result=>({...result,result:taskToolResultStub(result.result,locale,fragment.output.toolCalls.find(call=>call.id===result.callId)?.name)}))})];
+    const stub=[...boundaryHints,...replay(input.protocol,{...fragment,replan:false,repairMessage:undefined,results:fragment.results.map(result=>({...result,result:taskToolResultStub(result.result,locale,fragment.output.toolCalls.find(call=>call.id===result.callId)?.name)}))})];
     boundaryHints=[];
     const sourceId=fragment.modelStepId,toolSteps=steps.filter(step=>step.kind==='tool'&&object(step.data)&&step.data.sourceModelStepId===sourceId);
     const summary=(boundary?:string):AgentTaskJson=>({
@@ -155,7 +155,7 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
       }),
     });
     entries.push({kind:'round',full,stub,summary,state:'full'});
-    if(fragment.replan){
+    if(fragment.replan||fragment.repairMessage){
       const messages=replay(input.protocol,{...fragment,results:fragment.results.map(result=>({...result,result:taskToolResultView(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes)}))});
       entries.push({kind:'pinned',messages:messages.slice(continuation.length)});
     }
