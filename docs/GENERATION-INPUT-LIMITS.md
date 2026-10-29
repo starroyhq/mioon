@@ -8,6 +8,13 @@ managed Base64 bytes; reference groups never mix with frames. Explicit
 `generation.submit.videoInput` replaces saved frame selection for one request,
 and remains frozen for recovery. Intelligent duration/adaptive output do not
 change saved shot geometry. See [Wan SDK scope and limits](PROVIDERS.md#wan-official-sdk-and-reviewed-model-capabilities-2026-10-23).
+
+Seedance 2.5 update (2026-10-30): the exact `doubao-seedance-2-5-260628` /
+`cn-beijing` / `ark-v3` row takes the same explicit `videoInput` with 1–30
+ordered reference images, always with the saved shot prompt. Its other modes keep
+the saved frame selection in the UI. The encoded images together stay within
+60,000,000 bytes because Ark caps the request body at 64 MB. See
+[Seedance 2.5 connections](PROVIDERS.md#seedance-25-connections-reviewed-2026-10-30).
 The dated baseline and archived profile evidence below remain unchanged.
 
 Date: 2026-10-10. Baseline: `cfbbfd3`. Implementation, final 414-case focused

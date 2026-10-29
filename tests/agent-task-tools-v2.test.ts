@@ -203,7 +203,8 @@ test('video tool discovery preserves Wan input bounds while runtime admission re
  assert.deepEqual(schemaAt(tool.parameters,['properties','parameters','properties','durationSeconds']),{anyOf:[{type:'number',const:-1},{type:'integer',minimum:2,maximum:30}]});
  assert.deepEqual(schemaAt(tool.parameters,['properties','videoInput','properties','mode']),{type:'string',enum:['text','first_frame','first_last_frame','reference_images']});
  assert.deepEqual(schemaAt(tool.parameters,['properties','videoInput','properties','images','items','properties','assetId']),{type:'string',format:'uuid'});
- assert.equal(schemaAt(tool.parameters,['properties','videoInput','properties','images','maxItems']),10);
+ // The shared input holds Seedance 2.5's 30 references; a Wan request above 10 is refused below.
+ assert.equal(schemaAt(tool.parameters,['properties','videoInput','properties','images','maxItems']),30);
  assert.equal(schemaAt(tool.parameters,['properties','videoInput','properties','prompt','maxLength']),20000);assertSchemaReferences(tool.parameters);
  const input={shotId:shot.id,expectedRevision:shot.revision,providerId:'wan',model:'wan3.0-video',connectionId:randomUUID(),configurationRevision:1,modelEntryId:randomUUID(),videoInput:{version:1,mode:'text',images:[],prompt:'Synthetic tool input'},parameters:{durationSeconds:5,resolution:'720P',aspectRatio:'adaptive',generateAudio:true,promptExtend:true,watermark:false}};
  for(const durationSeconds of [-1,2,30]){

@@ -27,7 +27,7 @@ const fieldPaths=new Set<string>([
 function safeField(path:readonly (string|number)[]):string {
   const joined=path.join('.');
   if(fieldPaths.has(joined))return joined;
-  if(path[0]==='videoInput'&&path[1]==='images'&&Number.isInteger(path[2])&&Number(path[2])>=0&&Number(path[2])<10&&
+  if(path[0]==='videoInput'&&path[1]==='images'&&Number.isInteger(path[2])&&Number(path[2])>=0&&Number(path[2])<30&&
     (path.length===3||path.length===4&&['role','assetId'].includes(String(path[3]))))return joined;
   return path[0]==='parameters'?'parameters':path[0]==='videoInput'?'videoInput':'input';
 }

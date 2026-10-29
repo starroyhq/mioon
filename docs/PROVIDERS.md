@@ -50,14 +50,29 @@ same template, keep shot-only duration and ratio.
   default is on. Entries saved with `off` remain silent.
 - **Prompt:** up to the shot field's 5000 characters. Ark sets no hard limit and
   recommends at most 500 Chinese characters or 1000 English words.
+- **Reference images:** 1–30 ordered images in one explicit
+  `generation.submit.videoInput` (`mode: reference_images`, every image
+  `role: reference_image`; Seedance accepts no other explicit mode, so its frames
+  still come from the saved shot), sent as Ark `reference_image` items with
+  `omni_reference_task_type: reference` and the chosen ratio. The group belongs to
+  this generation only: it replaces the shot's saved frames for the request, never
+  mixes with first/last frames or a subject image, and is frozen with the task.
+  The prompt is always the saved shot prompt (`videoInput.prompt` is refused);
+  refer to the images in their order as `@图片1`, `@图片2` (or `@image1`). Images must be PNG or JPEG up to 10 MiB,
+  300–6000 pixels per side and within Ark's 0.4–2.5 width/height range; they need
+  not match the output ratio. Mioon sends Base64 data URIs and Ark caps the request
+  body at 64 MB, so the encoded images together must stay within 60,000,000 bytes:
+  four 10 MiB images fit, five do not. Ark rejects reference images that contain
+  real human faces, and Mioon does not detect faces. Wan 3.0 keeps its limit of 10.
 - **Output check:** the downloaded ratio must be within 2% of the requested one
   (Ark's 480p 21:9 size is 992×432) and the duration within 0.25 seconds of a fixed
   request, or 4–30 seconds for automatic. A mismatch pauses the task for review
   instead of publishing a version or resubmitting.
 
 Connections saved before this change keep their earlier combinations (4 or 8
-seconds, 720p, silent). Edit the model's duration/resolution combinations and
-audio policy, or add a new connection, to use the wider range. The
+seconds, 720p, silent) and input modes. Edit the model's duration/resolution
+combinations, audio policy and input modes (reference images), or add a new
+connection, to use the wider range. The
 environment-configured `ARK_API_KEY` adapter below is unchanged. Sources:
 [create task API](https://ark.volcengine.com/region:cn-beijing/docs/create-video-generation-task-api),
 [Seedance 2.5 guide](https://ark.volcengine.com/region:cn-beijing/docs/seedance-2-5).
@@ -232,7 +247,9 @@ input path. Selection order, asset identities/hashes, optional prompt (up to
 20,000 code units), parameters and original connection are frozen into the
 existing job snapshot. Explicit retry retains that snapshot. Intelligent
 duration uses `durationSeconds: -1`; adaptive output uses `aspectRatio:
-"adaptive"`. No new SQL table or migration is required.
+"adaptive"`. No new SQL table or migration is required. The exact Seedance 2.5
+row accepts the same object with up to 30 images and no `prompt`; see
+[Seedance 2.5 connections](#seedance-25-connections-reviewed-2026-10-30).
 
 Enter the API key, choose its storage scope and explicitly enable the connection.
 The workspace **Real generation** switch must also be enabled in Model services.

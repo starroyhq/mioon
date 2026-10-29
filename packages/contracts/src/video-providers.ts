@@ -2,6 +2,7 @@ import {z} from 'zod';
 import {AppError} from './app-error.ts';
 import {getCapabilityProfile,INPUT_ROLES} from './generation-input-profiles.ts';
 import type {GenerationInputProfile} from './generation-input-profiles.ts';
+import {encodedImageDataUriBytes} from './generation-input-validation.ts';
 import {effectiveVideoParameters,getWan30Capability,isWan30Binding,wanVideoInputSchema,WAN30_CAPABILITIES,WAN30_REVIEWED_ON} from './wan-video.ts';
 export * from './wan-video.ts';
 import {getSeedance25Capability,isSeedance25Binding,SEEDANCE25_CAPABILITIES,SEEDANCE25_REVIEWED_ON} from './seedance-video.ts';
@@ -41,7 +42,8 @@ export const VIDEO_TEMPLATES:readonly VideoTemplate[]=Object.freeze([
  {id:'runway-v1',providerId:'runway',inputModes:['image'],aspectRatios:VIDEO_ASPECT_RATIOS,durations:range(2,10),resolutions:['720p'],audio:['default'],seed:true,...image,maxImageBytes:3932160,mimeTypes:['image/png','image/jpeg','image/webp'],defaultOutputHosts:['dnznrvs05pmza.cloudfront.net']},
  // Bounds of the protocol, from the widest reviewed model (Seedance 2.5). Each
  // saved model entry narrows them; historical 'off' audio entries stay valid.
- {id:'ark-v3',providerId:'ark',inputModes:['text','image','frames','subject'],aspectRatios:seedance25Protocol.aspectRatios,durations:seedance25Protocol.durationsSeconds,resolutions:seedance25Protocol.resolutions,audio:['optional','off'],seed:false,...image,minDimension:300,maxDimension:6000,defaultOutputHosts:['ark-content-generation-cn-beijing.tos-cn-beijing.volces.com','ark-acg-cn-beijing.tos-cn-beijing.volces.com']},
+ // Subject and reference images stay limited to the exact Seedance 2.5 row.
+ {id:'ark-v3',providerId:'ark',inputModes:['text','image','frames','subject','reference'],aspectRatios:seedance25Protocol.aspectRatios,durations:seedance25Protocol.durationsSeconds,resolutions:seedance25Protocol.resolutions,audio:['optional','off'],seed:false,...image,minDimension:300,maxDimension:6000,defaultOutputHosts:['ark-content-generation-cn-beijing.tos-cn-beijing.volces.com','ark-acg-cn-beijing.tos-cn-beijing.volces.com']},
  {id:'veo-v1',providerId:'veo',inputModes:['text','image'],aspectRatios:['9:16','16:9'],durations:[4,6,8],resolutions:['720p'],audio:['on'],seed:false,...image,defaultOutputHosts:['generativelanguage.googleapis.com']},
  {id:'minimax-v2',providerId:'minimax',inputModes:['text','image'],aspectRatios:['9:16','16:9'],durations:[4,8],resolutions:['2K','768P'],audio:['default'],seed:false,...image,minDimension:256,maxDimension:5760,defaultOutputHosts:['cdn.hailuoai.com','video-product.cdn.minimax.io']},
  {id:'vidu-v2',providerId:'vidu',inputModes:['text','image'],aspectRatios:['9:16','16:9'],durations:[4,8],resolutions:['720p'],audio:['off'],seed:false,...image,maxImageBytes:9999999,defaultOutputHosts:[]},
@@ -72,6 +74,7 @@ export const videoConnectionConfigurationSchema=z.object({
   const template=VIDEO_TEMPLATES.find(item=>item.id===model.templateId);
   if(!template||template.providerId!==value.providerId||model.inputModes.some(mode=>!template.inputModes.includes(mode))||model.aspectRatios.some(ratio=>!template.aspectRatios.includes(ratio))||!template.audio.includes(model.audio)||model.seed&&!template.seed||model.durationResolutionMap.some(pair=>pair.duration.some(duration=>!template.durations.includes(duration))||pair.resolution.some(resolution=>!template.resolutions.includes(resolution))))ctx.addIssue({code:'custom',path:['models',index],message:'Model capabilities exceed the selected implemented protocol.'});
   if(model.inputModes.includes('subject')&&model.modelId!=='doubao-seedance-2-5-260628')ctx.addIssue({code:'custom',path:['models',index,'inputModes'],message:'Subject reference is implemented only for the existing exact Seedance model.'});
+  if(model.templateId==='ark-v3'&&model.inputModes.includes('reference')&&!getSeedance25Capability(model.modelId,value.region,model.templateId))ctx.addIssue({code:'custom',path:['models',index,'inputModes'],message:'Reference images are implemented only for the reviewed Seedance 2.5 model, region and protocol row.'});
   if(model.templateId==='wan30-v1'&&!getWan30Capability(model.modelId,value.region,model.templateId))ctx.addIssue({code:'custom',path:['models',index],message:'Wan 3.0 requires an exact reviewed model, region and protocol capability row. Use an existing Wan 2.7 template for legacy custom models.'});
  }
 });
@@ -180,13 +183,16 @@ export function videoInputProfile(binding:VideoExecutionBinding):GenerationInput
  if(model.inputModes.some(mode=>mode==='image'||mode==='frames'))roles.first_frame={...constraints,implemented:true,min:model.inputModes.includes('text')?0:1,max:1};
  if(model.inputModes.includes('frames'))roles.last_frame={...constraints,implemented:true,min:0,max:1};
  if(model.inputModes.includes('subject'))roles.subject_reference={...constraints,implemented:true,min:0,max:1,dimensions:{...constraints.dimensions,matchAspectRatio:false,minAspectRatio:.4,maxAspectRatio:2.5}};
- if(wan30&&model.inputModes.includes('reference'))roles.reference_image={...constraints,implemented:true,min:1,max:10};
+ // Reference images never have to match the output ratio. Wan 3.0 takes up to
+ // 10 of them; Seedance 2.5 takes up to 30 within Ark's 0.4–2.5 image ratio.
+ const referenceMax=wan30?10:seedance?seedance25Protocol.referenceImages:0;
+ if(referenceMax&&model.inputModes.includes('reference'))roles.reference_image={...constraints,implemented:true,min:1,max:referenceMax,dimensions:{...constraints.dimensions,matchAspectRatio:false}};
  const combinations:string[][]=[];
  if(model.inputModes.includes('text'))combinations.push([]);
  if(model.inputModes.includes('image'))combinations.push(['first_frame']);
  if(model.inputModes.includes('frames'))combinations.push(['first_frame','last_frame']);
  if(model.inputModes.includes('subject'))combinations.push(['subject_reference']);
- if(wan30&&model.inputModes.includes('reference'))for(let count=1;count<=10;count++)combinations.push(Array<string>(count).fill('reference_image'));
+ if(referenceMax&&model.inputModes.includes('reference'))for(let count=1;count<=referenceMax;count++)combinations.push(Array<string>(count).fill('reference_image'));
  return {profileVersion:original&&model.inputModes.includes('subject')?original.profileVersion:VIDEO_INPUT_PROFILE_VERSION,profileId:original&&model.inputModes.includes('subject')?original.profileId:`video:${binding.connectionId}:${binding.configurationRevision}:${model.id}`,
   reviewedOn:wan30?WAN30_REVIEWED_ON:seedance?SEEDANCE25_REVIEWED_ON:'2026-10-20',implemented:true,liveVerified:false,runtimeAvailability:'configured',prompt:{required:!wan30,maxCodeUnits:wan30?20000:seedance?seedance25Protocol.maxPromptLength:1000},aspectRatios:[...model.aspectRatios,...(wan30||seedance?['adaptive']:[])],durationsSeconds:[...new Set(model.durationResolutionMap.flatMap(pair=>pair.duration)),...(wan30||seedance?[-1]:[])],parameters:{...(model.seed?{seed:{type:'integer' as const,min:wan30?-1:0,max:binding.providerId==='wan'?2147483647:4294967295}}:{}),resolution:{type:'enum',values:submissionResolutions(binding,[...new Set(model.durationResolutionMap.flatMap(pair=>pair.resolution))])},...(model.audio==='optional'?{generateAudio:{type:'enum' as const,values:['true','false']}}:{}),...(wan30||seedance?{durationSeconds:{type:'integer' as const,min:-1,max:30},aspectRatio:{type:'enum' as const,values:[...model.aspectRatios,'adaptive']}}:{}),...(wan30?{promptExtend:{type:'enum' as const,values:['true','false']},watermark:{type:'enum' as const,values:['true','false']}}:{})},approvalRequired:true,requiresManagedImageVerification:true,
   providerId:binding.providerId,model:model.modelId,regions:[binding.region],regionMeaning:'Explicit official API region; credentials must match.',apiFamily:model.templateId,origins:{[binding.region]:binding.endpoint},adapterSource:'packages/business/src/video/runtime.ts',inputModes:[...new Set(model.inputModes.map(mode=>mode==='frames'?'image':mode))],output:{audio:model.audio},inputs:{minReferences:Math.min(...combinations.map(combination=>combination.length)),maxReferences:Math.max(...combinations.map(combination=>combination.length)),combinations,roles},...(original?.lifecycle?{lifecycle:original.lifecycle}:{}),};
@@ -202,8 +208,12 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
  const value=snapshot as Record<string,unknown>,profile=videoInputProfile(binding),params=value.parameters??{};
  if(profile.lifecycle&&asOf>=profile.lifecycle.earliestShutdownDate)fail('MODEL_LIFECYCLE_REVALIDATION_REQUIRED','此视频模型已到达需要重新核验的日期。');
  const explicit=value.videoInput===undefined?null:wanVideoInputSchema.safeParse(value.videoInput);
- if(value.videoInput!==undefined&&(!wan30||!explicit?.success))fail('UNSUPPORTED_INPUT_ROLE','此模型不支持所选显式视频输入。');
+ if(value.videoInput!==undefined&&(!requestLevel||!explicit?.success))fail('UNSUPPORTED_INPUT_ROLE','此模型不支持所选显式视频输入。');
  if(value.videoInput!==undefined&&(value.subjectReference!==undefined||value.subjectVersionId!==undefined))fail('UNSUPPORTED_INPUT_ROLE','显式视频输入不能与主体参考组合。');
+ // Seedance 2.5 takes an explicit input only for reference images, always with
+ // the saved shot prompt; its frames come from the saved shot.
+ if(seedance&&explicit?.success&&explicit.data.mode!=='reference_images')fail('UNSUPPORTED_INPUT_ROLE','Seedance 2.5 的显式视频输入只用于参考图片；首帧和尾帧取自已保存的镜头。');
+ if(seedance&&explicit?.success&&explicit.data.prompt!==undefined)fail('INVALID_PROMPT','Seedance 2.5 的提示词取自已保存的镜头，不能在本次视频输入里另写。');
  if(!object(params)||Object.keys(params).some(key=>!['seed','resolution','generateAudio',...(wan30?['durationSeconds','aspectRatio','promptExtend','watermark']:seedance?['durationSeconds','aspectRatio']:[])].includes(key)))fail('UNSUPPORTED_PARAMETERS','此模型参数无效。');
  const parameters=params as Record<string,unknown>,effective=effectiveVideoParameters(binding,value),duration=effective.durationSeconds,ratio=effective.aspectRatio,resolution=effective.resolution;
  if(binding.providerId==='minimax'&&resolution!=='2K')fail('UNSUPPORTED_PARAMETERS','MiniMax 官方 SDK 仅支持 2K 新生成，请显式将连接中的分辨率改为 2K；历史 768P 任务仍可查询和下载。');
@@ -214,7 +224,7 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
  if(wan30&&['promptExtend','watermark'].some(key=>parameters[key]!==undefined&&typeof parameters[key]!=='boolean'))fail('UNSUPPORTED_PARAMETERS','此模型参数无效。');
  if(parameters.seed!==undefined&&(!model.seed||!Number.isSafeInteger(parameters.seed)||(parameters.seed as number)<(wan30?-1:0)||(parameters.seed as number)>(binding.providerId==='wan'?2147483647:4294967295)))fail('UNSUPPORTED_PARAMETERS','此随机种子不受模型支持。');
  if(parameters.generateAudio!==undefined&&(model.audio!=='optional'||typeof parameters.generateAudio!=='boolean'))fail('UNSUPPORTED_PARAMETERS','此模型不支持切换音频。');
- const assets=value.referenceAssets;if(!Array.isArray(assets)||assets.length>(wan30?10:2)||assets.some(asset=>!object(asset)))fail('INVALID_REFERENCE_MANIFEST','参考图片清单无效。');
+ const assets=value.referenceAssets;if(!Array.isArray(assets)||assets.length>(wan30?10:seedance?seedance25Protocol.referenceImages:2)||assets.some(asset=>!object(asset)))fail('INVALID_REFERENCE_MANIFEST','参考图片清单无效。');
  const references=assets as Record<string,unknown>[],roles=references.map(asset=>asset.role??'first_frame');
  if(wan30&&!references.length&&(!(effective.prompt as string).trim()))fail('INVALID_PROMPT','文生视频需要提示词。');
  if(explicit?.success&&(explicit.data.images.length!==references.length||explicit.data.images.some((image,index)=>image.assetId!==references[index]!.id||image.role!==roles[index])))fail('INVALID_REFERENCE_MANIFEST','参考图片必须与显式视频输入的顺序和角色一致。');
@@ -232,6 +242,8 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
   if(wan30&&((width as number)/(height as number)>8||(height as number)/(width as number)>8))fail('REFERENCE_ASPECT_RATIO_MISMATCH','参考图片长宽比不能超过 8:1。');
   if(role==='subject_reference'&&((width as number)/(height as number)<.4||(width as number)/(height as number)>2.5))fail('REFERENCE_ASPECT_RATIO_MISMATCH','主体图片比例超出支持范围。');
  }
+ // Ark caps the whole request body at 64 MB and Mioon sends Base64 data URIs.
+ if(seedance&&references.reduce((total,asset)=>total+(encodedImageDataUriBytes(asset.mimeType,asset.sizeBytes)??Infinity),0)>seedance25Protocol.maxEncodedImageBytes)fail('REFERENCE_REQUEST_TOO_LARGE','参考图片编码后合计超过 60 MB（方舟请求体上限 64 MB），请减少图片或换用更小的图片。');
  return true;
 }
 export function videoBindingCapabilities(binding:VideoExecutionBinding,{configured=true,enabled=true,asOf=new Date().toISOString().slice(0,10)}:{configured?:boolean;enabled?:boolean;asOf?:string}={}) {

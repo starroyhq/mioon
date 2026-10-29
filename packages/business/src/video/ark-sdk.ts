@@ -1,6 +1,7 @@
 import {ArkRuntimeClient} from '@volcengine/ark-runtime';
 import type {ClientConfig} from '@volcengine/ark-runtime';
 import axios from 'axios';
+import {SEEDANCE25_CAPABILITIES} from '../../../contracts/src/seedance-video.ts';
 import {providerError} from '../providers/live-common.ts';
 import type {ProviderContext} from '../providers/live-common.ts';
 import type {VideoAdapterInput} from './adapters.ts';
@@ -45,13 +46,19 @@ export function createArkSdkClient({api,model,send,audio='off'}:ArkSdkClientOpti
       if(!Number.isInteger(input.duration)||input.duration!==-1&&(input.duration<4||input.duration>30))throw providerError('UNSUPPORTED_PARAMETER','Seedance duration must be 4–30 seconds or automatic.');
       const roles=input.images.map(image=>image.role),subject=input.subjectReference;
       const frames=roles.length===0||roles.length===1&&roles[0]==='first_frame'||roles.length===2&&roles[0]==='first_frame'&&roles[1]==='last_frame';
-      if(subject?roles.length!==1||!['subject_reference','reference_image'].includes(roles[0]!):!frames)throw providerError('UNSUPPORTED_INPUT_ROLE','Seedance requires an advertised frame or subject image combination.');
+      // An ordered reference group (Seedance 2.5, 1–30 images) never mixes with frames.
+      const references=!subject&&roles.length>=1&&roles.length<=SEEDANCE25_CAPABILITIES[0]!.referenceImages&&roles.every(role=>role==='reference_image');
+      if(subject?roles.length!==1||!['subject_reference','reference_image'].includes(roles[0]!):!frames&&!references)throw providerError('UNSUPPORTED_INPUT_ROLE','Seedance requires an advertised frame, subject or reference image combination.');
+      const urls=input.images.map(image=>`data:${image.mimeType};base64,${image.base64}`);
+      // Ark caps the request body at 64 MB; the profile already checked the
+      // frozen sizes, and this repeats the check on the actual encoded bytes.
+      if(urls.reduce((total,url)=>total+url.length,0)>SEEDANCE25_CAPABILITIES[0]!.maxEncodedImageBytes)throw providerError('REFERENCE_REQUEST_TOO_LARGE','Encoded Seedance images exceed the request budget.');
       // Ark keeps a frame task's output ratio equal to its first frame and
-      // accepts only adaptive there.
+      // accepts only adaptive there. Reference tasks take the chosen ratio.
       return invoke('POST',context,sdk=>sdk.createContentGenerationTask({
-        model,content:[{type:'text',text:input.prompt},...input.images.map(image=>({type:'image_url' as const,image_url:{url:`data:${image.mimeType};base64,${image.base64}`},role:subject?'reference_image':image.role}))],
-        duration:input.duration,ratio:!subject&&roles.length?'adaptive':input.aspectRatio,
-        ...(subject?{omni_reference_task_type:'reference'}:{}),resolution:String(parameters.resolution??'720p'),output_format:'mp4',
+        model,content:[{type:'text',text:input.prompt},...input.images.map((image,index)=>({type:'image_url' as const,image_url:{url:urls[index]!},role:subject?'reference_image':image.role}))],
+        duration:input.duration,ratio:frames&&roles.length?'adaptive':input.aspectRatio,
+        ...(subject||references?{omni_reference_task_type:'reference'}:{}),resolution:String(parameters.resolution??'720p'),output_format:'mp4',
         generate_audio:audio==='on'||audio==='optional'&&parameters.generateAudio===true,
       },{signal:context.signal}));
     },

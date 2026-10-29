@@ -260,7 +260,7 @@ async function inspectorContinuation(t: test.TestContext, { wan = false, videoIn
     shotTextContext: { ...scope, getCurrent: () => { counts.getCurrent++; return scope; } }, actionScope: 'action:1', actionEpoch: { current: 0 }, frameEpoch: { current: 0 },
     renderedAction: { frameEpoch: 0 }, renderSerial: 0, actionState: { current: { actionScope: 'action:1', referenceBlocked: false, referenceLocked } },
     visibleRef: { current: true }, tab: 'settings', referenceBusy: false, referencePending: false, busy: {}, generationOptionsKey: 'options:1',
-    wanCapabilities: wan ? getWan30Capability('wan3.0-video', 'cn-beijing', 'wan30-v1') : null, videoInput,
+    wanCapabilities: wan ? getWan30Capability('wan3.0-video', 'cn-beijing', 'wan30-v1') : null, seedanceCapabilities: null, videoInput,
     confirm: () => confirmation, setDraft: (value: unknown) => { queuedState.draft = value; }, setDirty: (value: unknown) => { queuedState.dirty = value; }, updateGeneration: (value: unknown) => { queuedState.generation = value; },
   };
   const realBoundaries = between(inspectorSource, '  const actionCurrent =', '  const shotText = useLocalShotText(') +
