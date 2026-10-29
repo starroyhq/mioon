@@ -23,6 +23,7 @@ import AgentRetainedEditing from './AgentRetainedEditing.tsx';
 import AgentTaskPolicyMenu from './AgentTaskPolicyMenu.tsx';
 import { AgentTaskAnswerRow, AgentTaskQuestionCard } from './AgentTaskQuestion.tsx';
 import { agentTaskAnswerTextValid, taskQuestionOf } from './agent-task-questions.ts';
+import AgentTaskChecks from './AgentTaskChecks.tsx';
 import Icon from './icons.tsx';
 import { agentTaskErrorKey } from './agent-task-errors.ts';
 import { taskBackgroundLocation, taskCurrentEntries, taskDisplayEntries, taskDisplayLines, taskChangeSummary, taskDisplayTargets, taskTargetTitle, taskDurationSeconds, taskRunDurationSeconds, taskOperationTitle, taskStepStatusKey, taskStepTitle } from './agent-task-presentation.ts';
@@ -51,6 +52,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const undoTrigger=useRef<HTMLButtonElement|null>(null),undoCancel=useRef<HTMLButtonElement|null>(null),undoFlight=useRef(false),undoRead=useRef(0);
   const [review, setReview] = useState<AgentTaskAuthorizationReview | null>(null), [historyOpen, setHistoryOpen] = useState(false), [stepsOpen, setStepsOpen] = useState<Record<string,boolean>>({}), [modelMenuOpen, setModelMenuOpen] = useState(false), [following, setFollowing] = useState(true),[composing,setComposing]=useState(false);
   const [legacyView,setLegacyView]=useState<LegacyConversation|null>(null),[legacyBusy,setLegacyBusy]=useState(false),[legacyError,setLegacyError]=useState(false);
+  const [checksAttached,setChecksAttached]=useState(true),checksNavigation=useRef(0);
   const session = useRef<ReturnType<typeof createAgentTaskSession> | null>(null), callbacks = useRef({ onDraftChange, onApplied }); callbacks.current = { onDraftChange, onApplied };
   const composition=useRef(false),historyVisible=useRef(historyOpen);historyVisible.current=historyOpen;
   const language = useRef(locale); language.current = locale;
@@ -59,6 +61,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const log = useRef<HTMLDivElement | null>(null), follow = useRef(true), historyButton = useRef<HTMLButtonElement | null>(null), input = useRef<HTMLTextAreaElement | null>(null), file = useRef<HTMLInputElement | null>(null), sendButton = useRef<HTMLButtonElement | null>(null), authorizeButton = useRef<HTMLButtonElement | null>(null), sendFlight = useRef(false);
   useLayoutEffect(() => {
     let mounted = true;
+    checksNavigation.current++;setChecksAttached(true);
     const close = createAgentTaskCloseReporter(nativeCloseRegistry as NativeCloseSourceRegistry | undefined);
     const current = createAgentTaskSession({ projectId, getLocale: () => language.current, receipts: createAgentTaskReceiptStore(undefined, workspaceScope), onChange: next => { if (!mounted) return; close.publish(next); callbacks.current.onDraftChange(next.draftDirty && !next.pending); setState(next); }, onChangeApplied: (next, landed) => callbacks.current.onApplied?.(projectId, next, landed) });
     session.current = current; close.publish(current.getState());
@@ -116,8 +119,17 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   }, [reveal, visible, historyOpen]);
   const formatOptions={fps:timelineFps,lookup:targetName};
   const newBlocked=agentTaskNewConversationBlock(state);
-  const closeHistory=()=>{historyVisible.current=false;session.current?.cancelSelection();setHistoryOpen(false);historyButton.current?.focus();};
-  async function selectConversation(id:string){if(!historyVisible.current||composition.current)return;const current=session.current;if(current&&await current.selectConversation(id)&&session.current===current){setLegacyView(null);closeHistory();}}
+  const closeHistory=()=>{historyVisible.current=false;session.current?.cancelSelection();checksNavigation.current++;setChecksAttached(true);setHistoryOpen(false);historyButton.current?.focus();};
+  async function selectConversation(id:string){
+    if(!historyVisible.current||composition.current)return;
+    const current=session.current;if(!current)return;
+    const owner=++checksNavigation.current;
+    // Visibility and same-conversation reloads do not end a full preflight.
+    // Only an actual navigation detaches the checks owner before its read.
+    if(id!==current.getState().conversationId)setChecksAttached(false);
+    try{if(await current.selectConversation(id)&&session.current===current){setLegacyView(null);closeHistory();}}
+    finally{if(checksNavigation.current===owner&&session.current===current)setChecksAttached(true);}
+  }
   function selectLegacy(value:LegacyConversation){if(!historyVisible.current||composition.current)return;if(value.projectId===projectId&&session.current?.selectLegacy(value.id)){setLegacyView(value);closeHistory();}}
   function newConversation(){if(composition.current||session.current?.getState().selectionKey!==state.selectionKey)return;if(session.current?.newConversation()){setLegacyView(null);closeHistory();input.current?.focus();}}
   async function olderLegacy(){const current=session.current,value=legacyView,key=state.selectionKey;if(!current||!value||legacyBusy)return;setLegacyBusy(true);setLegacyError(false);try{const next=await readLegacyConversation(projectId,value);if(visibility.current&&session.current===current&&current.getState().selectionKey===key&&next)setLegacyView(next);}catch{if(visibility.current&&session.current===current&&current.getState().selectionKey===key)setLegacyError(true);}finally{if(session.current===current)setLegacyBusy(false);}}
@@ -232,6 +244,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
           return <article key={`${entry.stepId}:${entry.target.kind}:${entry.target.id}:${index}`} className="mio-skipped" data-testid="agent-task-skipped"><Icon name="play" /><div><p>{t('agent.panel.skippedOperation',{operation})}</p><p className="mio-secondary">{taskTargetTitle(entry.target.kind,entry.target.id,locale,targetName,target?.name)}</p>{current.length>0&&<p className="mio-secondary">{t('agent.panel.retainedValue',{value:current.map(value=>`${value.label} ${value.value}`).join(' · ')})}</p>}</div></article>;
         })}</section>}
         {answered&&approval.some(step=>step.tier==='paid')&&<p className="mio-answer-not-approval" data-testid="agent-task-answer-not-approval"><Icon name="info" />{t('agent.panel.question.notApproval')}</p>}
+        {run.status === 'completed' && latest && run.projectId===projectId && <AgentTaskChecks key={`${workspaceScope}:${run.id}`} scope={workspaceScope} snapshot={snapshot} latest={snapshot===state.snapshot} attached={checksAttached&&!state.legacy} visible={visible&&!historyOpen&&!state.legacy} readOnly={readOnly} targetName={targetName} onLocate={onLocate} onOpenRequests={onOpenRequests} />}
         {approval.map(step => <section key={step.id} className="agent-task-approval mio-card" data-testid={`agent-task-approval-${step.id}`}><header><Icon name={step.tier === 'paid' ? 'film' : 'info'} /><strong>{step.tier === 'paid' ? taskOperationTitle(step.display?.operation ?? step.toolCall?.name ?? '', locale) : t('agent.panel.approvalTitle')}</strong></header><p className="mio-secondary">{step.display && taskDisplayTargets(step.display, locale, targetName)}</p>{parameters(step)}{step.tier === 'paid' && step.display?.targets.length ? <dl className="mio-parameters"><div><dt>{t('agent.panel.result')}</dt><dd>{taskDisplayTargets(step.display, locale, targetName)} · {t('agent.panel.newVersion')}</dd></div></dl> : null}{step.tier === 'paid' ? <p className="mio-fee"><Icon name="info" />{t('agent.panel.fee')}</p> : <p>{step.tier ? t(`agent.task.tier.${step.tier}`) : t('agent.task.pending')}</p>}<div className="mio-card-actions"><Button data-testid={`agent-task-deny-${step.id}`} disabled={blocked} onClick={() => { void act('deny', { stepId: step.id }); }}>{t('agent.panel.reject')}</Button><Button variant="primary" data-mio-primary data-testid={`agent-task-approve-${step.id}`} disabled={blocked} onClick={() => { void act('approve', { stepId: step.id }); }}>{t(step.tier === 'paid' ? 'agent.panel.confirmGenerate' : 'agent.task.approve')}</Button></div>{step.tier === 'paid' && <Button variant="ghost" className="mio-settings-link" disabled={!visible} onClick={() => { if (visibility.current) onSettings(); }}>{t('agent.panel.paidSettings')} <Icon name="arrow" /></Button>}</section>)}
         {run.status === 'paused' && unknown.length === 0 && <section className="mio-card" data-testid="agent-task-paused">
           <strong>{t(run.pauseReason === 'budget' ? 'agent.panel.budgetTitle' : ['conflict', 'editing'].includes(run.pauseReason ?? '') ? 'agent.panel.conflictTitle' : 'agent.panel.pauseTitle')}</strong>
