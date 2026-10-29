@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { PrevisCamera, PrevisNodeRecord, PrevisProp, PrevisScene } from '@mioon/contracts';
+import type { PrevisCamera, PrevisKeyframe, PrevisNodeRecord, PrevisProp, PrevisScene } from '@mioon/contracts';
 import { PREVIS_LIMITS, PREVIS_THUMBNAIL_CARD, canonicalPrevisValue } from '@mioon/contracts';
 import { WorkbenchButton } from '@mioon/ui/components/workbench-controls';
 import { useConfirmation } from '@mioon/ui/components/workbench-confirm';
@@ -19,7 +19,8 @@ import type { PrevisSaveState, PrevisSaver } from './previs-save.ts';
 import { addPrevisFigure, addPrevisProp, holdPrevisProp, removePrevisElement, updatePrevisFigure, updatePrevisLight, updatePrevisProp } from './previs-scene.ts';
 import type { PrevisFigurePatch, PrevisLightPatch, PrevisPropPatch } from './previs-scene.ts';
 import { createPrevisViewport } from './previs-viewport.ts';
-import type { PrevisViewMode, PrevisViewport } from './previs-viewport.ts';
+import type { PrevisViewMode, PrevisViewport, PrevisViewportInput } from './previs-viewport.ts';
+import { PREVIS_PLAYBACK_HOLD_MS, canPlayPrevisKeyframes, previsPlaybackCamera, previsPlaybackDuration } from './previs-playback.ts';
 import type { NativeCloseRegistry } from '../native-close-state.ts';
 import PrevisOutline from './PrevisOutline.tsx';
 import PrevisProperties from './PrevisProperties.tsx';
@@ -135,6 +136,38 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   const renameKeyframe = useCallback((id: string, name: string) => change(scene => renamePrevisKeyframe(scene, id, name)), [change]);
   const moveKeyframe = useCallback((id: string, index: number) => change(scene => movePrevisKeyframe(scene, id, index)), [change]);
   const removeKeyframe = useCallback((id: string) => change(scene => removePrevisKeyframe(scene, id)), [change]);
+  // ---- Playback: the view moves through the keyframes; the scene camera stays as it is ----
+  const [playing, setPlaying] = useState(false);
+  const playback = useRef<{ frame: number; start: number; keyframes: readonly PrevisKeyframe[]; camera: PrevisCamera } | null>(null);
+  const viewInput = useRef<PrevisViewportInput | null>(null);
+  const stopPlayback = useCallback((): void => {
+    const current = playback.current;
+    if (!current) return;
+    cancelAnimationFrame(current.frame);
+    playback.current = null;
+    setPlaying(false);
+    if (viewInput.current) viewport.current?.update(viewInput.current);
+  }, []);
+  const startPlayback = useCallback((): void => {
+    const keyframes = modelRef.current.scene.keyframes;
+    if (playback.current || !viewport.current || !canPlayPrevisKeyframes(keyframes)) return;
+    const state = { frame: 0, start: performance.now(), keyframes: [...keyframes], camera: keyframes[0]!.camera }, duration = previsPlaybackDuration(keyframes.length);
+    const tick = (now: number): void => {
+      if (playback.current !== state) return;
+      const elapsed = now - state.start;
+      if (elapsed >= duration + PREVIS_PLAYBACK_HOLD_MS) { stopPlayback(); return; }
+      state.camera = previsPlaybackCamera(state.keyframes, elapsed) ?? state.camera;
+      const input = viewInput.current;
+      if (input) viewport.current?.update({ ...input, scene: { ...input.scene, camera: state.camera } });
+      state.frame = requestAnimationFrame(tick);
+    };
+    playback.current = state;
+    state.frame = requestAnimationFrame(tick);
+    setPlaying(true);
+  }, [stopPlayback]);
+  useEffect(() => () => { if (playback.current) cancelAnimationFrame(playback.current.frame); playback.current = null; }, []);
+  // Any other click or key in the editor, or the wheel over the view, ends the preview first.
+  const interrupt = (event: React.SyntheticEvent): void => { if (playback.current && !(event.target as Element | null)?.closest?.('[data-previs-play]')) stopPlayback(); };
   const connected = useMemo(() => previsConnectedShots(node.id, shots, edges), [node.id, shots, edges]);
   const others = useMemo(() => [...shots].filter(shot => !connected.includes(shot)).sort((a, b) => a.orderIndex - b.orderIndex), [shots, connected]);
   const uses = useMemo(() => previsKeyframeUses(model.scene, shots), [model.scene, shots]);
@@ -178,7 +211,8 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   useLayoutEffect(() => { publishClose(); });
   const uploadThumbnail = useCallback(async (): Promise<void> => {
     const state = saver.current!.state(), view = viewport.current, revision = state.node.sceneRevision;
-    if (readOnly || !view || thumbnail.current.running || state.status !== 'saved' || revision <= thumbnail.current.uploaded || !same(modelRef.current.scene, state.node.scene)) return;
+    // The card shows the scene camera, never a moment of playback.
+    if (readOnly || !view || playback.current || thumbnail.current.running || state.status !== 'saved' || revision <= thumbnail.current.uploaded || !same(modelRef.current.scene, state.node.scene)) return;
     thumbnail.current.running = true;
     try {
       const shot = await view.capture(PREVIS_LIMITS.thumbnailEdge, PREVIS_LIMITS.thumbnailBytes, 'wide');
@@ -190,10 +224,10 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
     finally { thumbnail.current.running = false; }
   }, [readOnly]);
   useEffect(() => {
-    if (readOnly || webgl !== 'ready' || save.status !== 'saved' || save.node.sceneRevision <= thumbnail.current.uploaded) return;
+    if (readOnly || playing || webgl !== 'ready' || save.status !== 'saved' || save.node.sceneRevision <= thumbnail.current.uploaded) return;
     const timer = setTimeout(() => { if (viewport.current?.busy()) return; void uploadThumbnail(); }, THUMBNAIL_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [readOnly, webgl, save.status, save.node.sceneRevision, model.scene, uploadThumbnail]);
+  }, [readOnly, playing, webgl, save.status, save.node.sceneRevision, model.scene, uploadThumbnail]);
   // ---- Keyframe pictures: local thumbnails for the strip, uploaded for the canvas ----
   const [keyframeThumbs, setKeyframeThumbs] = useState<Readonly<Record<string, KeyframeThumbnail>>>({});
   const keyframeThumbsRef = useRef(keyframeThumbs);
@@ -293,6 +327,7 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   }, [showToast, t]);
   const leave = useCallback(async (): Promise<void> => {
     if (leaving) return;
+    stopPlayback();
     setLeaving(true);
     try {
       if (!readOnly) {
@@ -310,7 +345,7 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
       }
       calls.current.onClose();
     } finally { setLeaving(false); }
-  }, [confirm, leaving, readOnly, uploadThumbnail]);
+  }, [confirm, leaving, readOnly, stopPlayback, uploadThumbnail]);
 
   // ---- Viewport ----
   useLayoutEffect(() => {
@@ -325,7 +360,12 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
     setWebgl(created ? 'ready' : 'unavailable');
     return () => { created?.dispose(); viewport.current = null; };
   }, [figure, prop, select, setCamera]);
-  useLayoutEffect(() => { viewport.current?.update({ scene: model.scene, selection: model.selection, mode, readOnly, aspect: frame.aspect }); });
+  useLayoutEffect(() => {
+    const input: PrevisViewportInput = { scene: model.scene, selection: model.selection, mode, readOnly, aspect: frame.aspect };
+    viewInput.current = input;
+    const preview = playback.current?.camera;
+    viewport.current?.update(preview ? { ...input, scene: { ...input.scene, camera: preview } } : input);
+  });
   useLayoutEffect(() => {
     const element = host.current;
     if (!element) return;
@@ -373,7 +413,8 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
   const held = useMemo(() => new Set(scene.figures.flatMap(item => item.held ? [item.held.propId] : [])), [scene.figures]);
   const keyframeUrls = useMemo(() => Object.fromEntries(Object.entries(keyframeThumbs).map(([id, value]) => [id, value.url])), [keyframeThumbs]);
   const shortcut = mac ? '⌘Z' : 'Ctrl+Z', viewable = webgl !== 'unavailable' && webgl !== 'lost';
-  return <div className="previs-editor" ref={root} role="dialog" aria-modal="true" aria-label={t('previs.editor.label')} data-testid="previs-editor" data-read-only={readOnly || undefined} onKeyDown={onKeyDown} onKeyUp={event => event.stopPropagation()}>
+  return <div className="previs-editor" ref={root} role="dialog" aria-modal="true" aria-label={t('previs.editor.label')} data-testid="previs-editor" data-read-only={readOnly || undefined} data-playing={playing || undefined}
+    onPointerDownCapture={interrupt} onKeyDownCapture={interrupt} onKeyDown={onKeyDown} onKeyUp={event => event.stopPropagation()}>
     <header className="previs-editor-topbar">
       <WorkbenchButton variant="secondary" className="previs-back" data-testid="previs-back" disabled={leaving} onClick={() => { void leave(); }}><ArrowLeft size={14} aria-hidden="true" />{t('previs.editor.back')}</WorkbenchButton>
       <span className="previs-topbar-divider" aria-hidden="true" />
@@ -394,7 +435,7 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
       <PrevisOutline scene={scene} selection={model.selection} readOnly={readOnly} onSelect={select} onVisible={visible} onAddFigure={addFigure} onAddProp={addProp} />
       <div className="previs-stage">
         <div className="previs-view-area" data-toast={toast ? '' : undefined}>
-        <div className="previs-viewport dark" ref={host} tabIndex={0} aria-label={t('previs.view.label')} data-testid="previs-viewport" data-mode={mode}>
+        <div className="previs-viewport dark" ref={host} tabIndex={0} aria-label={t('previs.view.label')} data-testid="previs-viewport" data-mode={mode} onWheelCapture={interrupt}>
           <div className="previs-overlay" ref={overlay} hidden={!viewable}>
             {rect && <div className="previs-frame" data-testid="previs-frame" style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}>
               <span className="previs-frame-label"><strong>{frame.ratio}</strong>{t('previs.view.frame', { focal, width: frame.width, height: frame.height })}</span></div>}
@@ -431,7 +472,9 @@ export default function PrevisEditor({ node, projectName, frame, readOnly, thumb
           exportIssue={readOnly ? t('previs.frame.issueReadOnly') : !viewable || webgl !== 'ready' ? t('previs.frame.issueView') : null} frameIssue={frameIssue}
           onRecord={recordKeyframe} onJump={jumpKeyframe} onRename={renameKeyframe} onMove={moveKeyframe} onRemove={removeKeyframe}
           onExport={id => startExport(id, null)} onSetFrame={(id, shot, role) => startExport(id, { shot, role })}
-          camera={camera} onFocal={value => setCamera({ ...camera, focalLength: value }, 'camera:focal-preset')} aspect={frame.aspect} />
+          camera={camera} onFocal={value => setCamera({ ...camera, focalLength: value }, 'camera:focal-preset')} aspect={frame.aspect}
+          playing={playing} playIssue={webgl !== 'ready' ? t('previs.keyframes.playUnavailable') : canPlayPrevisKeyframes(scene.keyframes) ? null : t('previs.keyframes.playNeedsTwo')}
+          onPlay={() => { if (playback.current) stopPlayback(); else startPlayback(); }} />
       </div>
       <PrevisProperties scene={scene} selection={model.selection} readOnly={readOnly} shortcut={shortcut} onFigure={figure} onProp={prop} onLight={light} onCamera={setCamera} onHold={hold} onRemove={remove} />
     </div>

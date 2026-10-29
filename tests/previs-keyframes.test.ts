@@ -14,6 +14,7 @@ import * as editorState from '../apps/web/src/previs/previs-editor-state.ts';
 import * as keyframes from '../apps/web/src/previs/previs-keyframes.ts';
 import * as output from '../apps/web/src/previs/previs-output.ts';
 import type {PrevisShotView} from '../apps/web/src/previs/previs-output.ts';
+import * as playback from '../apps/web/src/previs/previs-playback.ts';
 import * as i18nIndex from '../packages/i18n/src/index.ts';
 import {i18nTestModule, translate} from './helpers/i18n.ts';
 import type {ElementNode, ElementTree} from './helpers/strict-timeline-audio-harness-types.ts';
@@ -139,6 +140,30 @@ test('a keyframe lists what its camera frames', () => {
   assert.deepEqual(output.previsFramedNames(scene, {...view, yaw: 180}, 9 / 16, t), ['周屿']);
   assert.deepEqual(output.previsFramedNames(sceneEdits.updatePrevisFigure(scene, 'f1', {visible: false}), view, 9 / 16, t), ['便利店门'], 'a hidden holder hides its prop');
   assert.deepEqual(output.previsFramedNames(scene, {...view, focalLength: 300, yaw: 40}, 9 / 16, t), []);
+  // Names come from the shared frustum estimate, which reports IDs in scene order.
+  assert.deepEqual(contracts.previsFramedElements(scene, view, 9 / 16), {figures: ['f1'], props: ['p1', 'p2']});
+});
+
+// ---- Playback ----
+test('playback eases from keyframe to keyframe in strip order and turns the short way round', () => {
+  const near = (actual: number, expected: number): void => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} ≈ ${expected}`);
+  const segment = playback.PREVIS_PLAYBACK_SEGMENT_MS, key = (id: string, view: contracts.PrevisCamera) => ({id, name: '', camera: view, exports: []});
+  const frames = [key('k1', {position: [0, 1.6, 4], yaw: 170, pitch: -4, focalLength: 24}), key('k2', {position: [2, 1.2, 2], yaw: -170, pitch: 6, focalLength: 85}),
+    key('k3', {position: [2, 1.2, 0], yaw: -90, pitch: 0, focalLength: 50})];
+  assert.equal(playback.canPlayPrevisKeyframes(frames.slice(0, 1)), false);
+  assert.equal(playback.canPlayPrevisKeyframes(frames), true);
+  assert.equal(playback.previsPlaybackDuration(frames.length), 2 * segment);
+  assert.equal(playback.previsPlaybackCamera([], 0), null);
+  assert.deepEqual(playback.previsPlaybackCamera(frames, -16), frames[0]!.camera, 'an early frame shows the first keyframe');
+  const middle = playback.previsPlaybackCamera(frames, segment / 2)!;
+  middle.position.forEach((value, index) => near(value, [1, 1.4, 3][index]!));
+  near(middle.yaw, 180); near(middle.pitch, 1); near(middle.focalLength, 54.5);
+  // Smoothstep: a quarter of the way in time is 15.625% of the way along, then past ±180 the short way.
+  const early = playback.previsPlaybackCamera(frames, segment / 4)!;
+  near(early.focalLength, 24 + 61 * 0.15625); near(early.yaw, 170 + 20 * 0.15625);
+  near(playback.previsPlaybackCamera(frames, segment * 3 / 4)!.yaw, 170 + 20 * 0.84375 - 360);
+  assert.deepEqual(playback.previsPlaybackCamera(frames, segment), frames[1]!.camera, 'each keyframe is reached exactly');
+  assert.deepEqual(playback.previsPlaybackCamera(frames, 2 * segment + playback.PREVIS_PLAYBACK_HOLD_MS), frames[2]!.camera, 'the last keyframe holds');
 });
 
 // ---- Components ----
@@ -240,6 +265,22 @@ test('the keyframe strip shows cards, their uses and the menu actions', () => {
   assert.equal(byId(tree, 'previs-keyframe-k1')!.props.draggable, false);
   tree = render({...props, scene: {...scene, keyframes: []}, uses: new Map()});
   assert.match(text(byId(tree, 'previs-keyframe-list')), /还没有关键帧/);
+  assert.equal(byId(tree, 'previs-keyframes-play'), undefined, 'no playback control without an editor to play it');
+});
+test('the strip plays the keyframes as a preview and says why it cannot', () => {
+  const {render} = harness('previs/PrevisKeyframes.tsx'), scene = withKeyframes(24, 85), calls: string[] = [];
+  const props = {scene, thumbnails: {}, uses: new Map(), connected: [], others: [], readOnly: true, exportIssue: null, busy: false, frameIssue: () => null,
+    onRecord() {}, onJump() {}, onRename() {}, onMove() {}, onRemove() {}, onExport() {}, onSetFrame() {}, camera: scene.camera, onFocal() {}, aspect: 9 / 16,
+    playing: false, playIssue: null, onPlay: () => { calls.push('play'); }};
+  let button = byId(render(props), 'previs-keyframes-play');
+  assert.deepEqual([text(button), button?.props.disabled, button?.props['aria-pressed']], ['播放', false, false], 'a restored copy can play too');
+  assert.match(String(button?.props.title), /只是预览，不保存/);
+  (button!.props.onClick as () => void)();
+  assert.deepEqual(calls, ['play']);
+  button = byId(render({...props, playing: true}), 'previs-keyframes-play');
+  assert.deepEqual([text(button), button?.props.disabled, button?.props['aria-pressed']], ['停止', false, true]);
+  button = byId(render({...props, playIssue: zh('previs.keyframes.playNeedsTwo')}), 'previs-keyframes-play');
+  assert.deepEqual([button?.props.disabled, button?.props.title], [true, '至少要有两个关键帧才能播放']);
 });
 test('the inspector lists keyframes with what they frame and the shots they feed', () => {
   const {render} = harness('previs/PrevisInspector.tsx'), first = asset(), last = asset();

@@ -123,10 +123,11 @@ export function taskDisplayTargets(display:AgentTaskDisplay|undefined,locale:Loc
   if(omitted)names.push(translate(locale,'agent.display.moreTargets',{count:omitted}));
   return names.join('、')||translate(locale,'agent.display.target.unknown');
 }
-const units:Readonly<Record<DisplayProperty,DisplayUnit>>={durationFrames:'frames',sourceInFrame:'frames',sourceOutFrame:'frames',startFrame:'frames',positionX:'pixels',positionY:'pixels',gainDb:'db',fadeInFrames:'frames',fadeOutFrames:'frames',aspectRatio:'ratio',durationSeconds:'seconds',description:'text',subtitleText:'text',provider:'enum',model:'text',mode:'enum',versionNumber:'count',resolution:'enum',generateAudio:'boolean',seed:'count',width:'pixels',height:'pixels',count:'count',quality:'enum',outputFormat:'enum',background:'enum'};
+const units:Readonly<Record<DisplayProperty,DisplayUnit>>={durationFrames:'frames',sourceInFrame:'frames',sourceOutFrame:'frames',startFrame:'frames',positionX:'pixels',positionY:'pixels',gainDb:'db',fadeInFrames:'frames',fadeOutFrames:'frames',aspectRatio:'ratio',durationSeconds:'seconds',description:'text',subtitleText:'text',provider:'enum',model:'text',mode:'enum',versionNumber:'count',resolution:'enum',generateAudio:'boolean',seed:'count',width:'pixels',height:'pixels',count:'count',quality:'enum',outputFormat:'enum',background:'enum',figureCount:'count',propCount:'count',keyframeCount:'count'};
 const clipFields:ReadonlySet<DisplayProperty>=new Set(['durationFrames','sourceInFrame','sourceOutFrame','startFrame','positionX','positionY','gainDb','fadeInFrames','fadeOutFrames','width','height']);
 const shotFields:ReadonlySet<DisplayProperty>=new Set(['aspectRatio','durationSeconds','description']);
 const generationFields:ReadonlySet<DisplayProperty>=new Set(['provider','model','mode','versionNumber','aspectRatio','durationSeconds','resolution','generateAudio','seed','width','height','count','quality','outputFormat','background']);
+const previsFields:ReadonlySet<DisplayProperty>=new Set(['figureCount','propCount','keyframeCount']);
 const providers:ReadonlySet<string>=new Set(['mock','runway','ark','veo','minimax','vidu','kling','wan','openai','openai-compatible','comfy-local']);
 const ratios:ReadonlySet<string>=new Set(['9:16','16:9','1:1','3:4','4:3','21:9']);
 const modes:ReadonlySet<string>=new Set(['text_to_video','image_to_video','first_last_frame','subject_reference','text_to_image','image_edit']);
@@ -135,6 +136,7 @@ function allowedField(operation:string,field:AgentTaskDisplayField,target?:Agent
   if(operation.startsWith('timeline.clip.'))return clipFields.has(field.property)&&(!target||target.kind==='timeline_clip');
   if(operation==='shot.create'||operation==='shot.update')return shotFields.has(field.property)&&(!target||target.kind==='shot');
   if(operation.startsWith('timeline.subtitle.'))return field.property==='subtitleText'&&(!target||target.kind==='timeline_subtitle');
+  if(operation==='previs.scene.set')return previsFields.has(field.property)&&(!target||target.kind==='node');
   return (operation==='generation.submit'||operation==='image.generate')&&generationFields.has(field.property);
 }
 function enumText(property:DisplayProperty,value:string,locale:Locale):string|undefined {

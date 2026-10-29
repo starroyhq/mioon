@@ -131,15 +131,21 @@ test('scenes save under scene revision CAS, so renaming or moving the node never
  const second=scene({keyframes:[keyframe('k1'),keyframe('k2',[],85)],activeKeyframeId:'k2'});
  const latest=await f.save(moved,second);
  assert.deepEqual([latest.revision,latest.sceneRevision,latest.label,latest.position],[4,3,'雨夜街口',{x:300,y:80}]);
- const stale=await failure(f.save(saved,scene()));
+ const staleKey=randomUUID(),stale=await failure(f.save(saved,scene(),{requestId:staleKey}));
  assert.equal(stale.code,'REVISION_CONFLICT');
  assert.equal(stale.details?.currentSceneRevision,3);
  assert.deepEqual((stale.details?.current as PrevisNodeRecord).scene,second,'the conflict carries the current node for a read-back');
+ assert.deepEqual([stale.details?.mutationOutcome,stale.details?.operation,stale.details?.projectId,stale.details?.requestId],['not_applied','previs.scene.set',f.projectId,staleKey],
+  'a fresh key refused inside the save transaction is marked not applied');
  assert.deepEqual(await f.call('previs.scene.set',firstInput),saved,'an exact retry returns the node as that save left it');
- await assert.rejects(f.call('previs.scene.set',{...firstInput,scene:second}),{code:'IDEMPOTENCY_CONFLICT'});
+ const reused=await failure(f.call('previs.scene.set',{...firstInput,scene:second}));
+ assert.equal(reused.code,'IDEMPOTENCY_CONFLICT');assert.equal(reused.details?.mutationOutcome,undefined,'a key with a receipt is never marked');
  const text=await f.call<{id: string}>('node.create',{projectId:f.projectId,type:'text',text:'雨夜',position:{x:0,y:0},requestId:randomUUID()});
- await assert.rejects(f.call('previs.scene.set',{...firstInput,nodeId:text.id,requestId:randomUUID()}),{code:'PREVIS_NODE_REQUIRED'});
+ const notPrevis=await failure(f.call('previs.scene.set',{...firstInput,nodeId:text.id,requestId:randomUUID()}));
+ assert.deepEqual([notPrevis.code,notPrevis.details?.mutationOutcome],['PREVIS_NODE_REQUIRED','not_applied']);
  await assert.rejects(f.call('previs.scene.set',{...firstInput,nodeId:randomUUID(),requestId:randomUUID()}),{code:'NOT_FOUND'});
+ const missingProject=await failure(f.call('previs.create',{projectId:randomUUID(),position:{x:0,y:0},requestId:randomUUID()}));
+ assert.deepEqual([missingProject.code,missingProject.details?.mutationOutcome],['NOT_FOUND','not_applied']);
  // The scene changes only through previs.scene.set.
  const refusal=await failure(f.call('node.update',{nodeId:node.id,expectedRevision:4,patch:{text:'note'},requestId:randomUUID()}));
  assert.equal(refusal.code,'INVALID_NODE_PATCH');assert.equal(refusal.details?.mutationOutcome,'not_applied');
@@ -198,6 +204,9 @@ test('thumbnails belong to the current scene, stay bounded JPEGs and leave with 
  // Saving without k2 drops its thumbnail; the others stay, now older than the scene.
  const next=await f.save(node,scene({keyframes:[keyframe('k1')]}));
  assert.deepEqual((await f.thumbnails(next,['card','k1','k2'])).items.map(item=>[item.slot,item.sceneRevision]),[['card',2],['k1',2]]);
+ // A keyframe that now looks elsewhere loses its picture; the card keeps its older one.
+ const moved=await f.save(next,scene({keyframes:[{...keyframe('k1'),camera:camera(85)}]}));
+ assert.deepEqual((await f.thumbnails(moved,['card','k1'])).items.map(item=>[item.slot,item.sceneRevision]),[['card',2]]);
  const text=await f.call<{id: string}>('node.create',{projectId:f.projectId,type:'text',text:'x',position:{x:0,y:0}});
  await assert.rejects(f.call('previs.thumbnail.get',{projectId:f.projectId,nodeId:text.id,slots:['card']}),{code:'PREVIS_NODE_REQUIRED'});
  assert.throws(()=>f.store.db.prepare('INSERT INTO previs_thumbnails(nodeId,slot,projectId,sceneRevision,width,height,bytes,updatedAt) VALUES(?,?,?,?,?,?,?,?)')
@@ -332,11 +341,11 @@ test('deleting a project removes its previs nodes, receipts and thumbnails',asyn
  for(const table of ['nodes','previs_requests','previs_thumbnails'])assert.equal(f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n,0,table);
 });
 
-test('Mio cannot call previs operations, and each operation declares its effects',()=>{
- for(const operation of operations){
-  assert.equal((AGENT_TASK_OPERATION_ADMISSION as Record<string,{allowed: boolean}>)[operation]?.allowed,false,operation);
-  assert.ok(descriptions[operation],operation);
- }
+test('Mio creates and saves previs scenes but never thumbnails, and each operation declares its effects',()=>{
+ const admission=AGENT_TASK_OPERATION_ADMISSION as Record<string,{allowed: boolean; tier?: string}>;
+ assert.deepEqual(operations.map(operation=>[admission[operation]?.allowed,admission[operation]?.tier]),
+  [[true,'local_irreversible'],[true,'local_reversible'],[false,undefined],[false,undefined]]);
+ for(const operation of operations)assert.ok(descriptions[operation],operation);
  assert.deepEqual(operations.map(operation=>[operationEffect(operation).readOnly,operationEffect(operation).databaseWrite,operationEffect(operation).paidGeneration]),
   [[false,true,false],[false,true,false],[false,true,false],[true,false,false]]);
 });

@@ -70,6 +70,7 @@ import {subjectVariantSchemas,subjectVariantDescriptions} from './subject-varian
 export * from './subject-variants.ts';
 import {previsSchemas,previsDescriptions} from './previs.ts';
 export * from './previs.ts';
+export * from './previs-framing.ts';
 export {SUBJECT_KINDS,SUBJECT_MUTATION_OPERATIONS,SUBJECT_LIMITS,subjectSchemas,subjectResponseSchema,subjectVersionResponseSchema,subjectBindingResponseSchema,isSubjectResponse,isSubjectVersionResponse,isSubjectBindingResponse,isSubjectMutationResponse,isSubjectListResponse} from './subjects.ts';
 import {inspectionSchemas} from './inspection.ts';
 import {sourceRangeSchemas} from './source-range.ts';

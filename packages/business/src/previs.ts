@@ -42,6 +42,18 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
 });
 const failure=(code: string,status=409,details?: unknown): AppError=>new AppError(code,messages[code]??messages.INVALID_PREVIS_RECORD!,status,details);
 function invalid(): never {throw failure('INVALID_PREVIS_RECORD');}
+// Business rejections raised inside the single write transaction. With a fresh
+// request key they prove nothing was applied, as local mutation replay marks them.
+const DEFINITE=new Set(['NOT_FOUND','PREVIS_NODE_REQUIRED','REVISION_CONFLICT','PREVIS_REVISION_LIMIT','PREVIS_EXPORT_INVALID','PREVIS_CAPACITY']);
+
+/** Keyframe thumbnails stay while their keyframe keeps its camera; one that
+ * is gone or now looks elsewhere loses its picture. The card thumbnail stays,
+ * older than the scene, until the editor renders the card again. */
+export function prunePrevisThumbnails(db: DatabaseSync,nodeId: string,current: PrevisScene,next: PrevisScene): void {
+ const cameras=new Map(current.keyframes.map(keyframe=>[keyframe.id,canonicalPrevisValue(keyframe.camera)]));
+ const kept=next.keyframes.filter(keyframe=>cameras.get(keyframe.id)===canonicalPrevisValue(keyframe.camera)).map(keyframe=>keyframe.id);
+ db.prepare("DELETE FROM previs_thumbnails WHERE nodeId=? AND slot!='card' AND slot NOT IN (SELECT value FROM json_each(?))").run(nodeId,JSON.stringify(kept));
+}
 const sha=(value: string): string=>createHash('sha256').update(value).digest('hex');
 const inputHash=(operation: PrevisOperation,fields: Row): string=>sha(canonicalPrevisValue({operation,input:fields}));
 const decode=(text: unknown): unknown=>{try{return JSON.parse(String(text));}catch{return invalid();}};
@@ -156,6 +168,17 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
   return response;
  }
  function count(sql: string,...values: string[]): number {return Number(db.prepare(sql).get(...values)!.n);}
+ /** Runs one write transaction. A definite rejection of a key that had no
+  * receipt is marked not applied once the transaction has rolled back. */
+ function settle<T>(operation: PrevisOperation,input: {projectId: string; requestId: string},write: (fresh: ()=>void)=>T): T {
+  let fresh=false;
+  try{return tx(()=>write(()=>{fresh=true;}));}
+  catch(error){
+   if(fresh&&!db.isTransaction&&error instanceof AppError&&DEFINITE.has(error.code))
+    error.details={...(error.details!==null&&typeof error.details==='object'?error.details:{}),mutationOutcome:'not_applied',operation,projectId:input.projectId,requestId:input.requestId};
+   throw error;
+  }
+ }
  function record(requestId: string,operation: PrevisOperation,value: PrevisNodeRecord,hash: string): PrevisNodeRecord {
   const serialized=JSON.stringify(publicValue(value));
   if(Buffer.byteLength(serialized)>PREVIS_LIMITS.responseBytes)throw failure('PREVIS_CAPACITY',507);
@@ -167,9 +190,10 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
   const input=parse<CreateInput>('previs.create',raw);
   writable('previs.create',input as unknown as Row);
   const {requestId,...fields}=input,hash=inputHash('previs.create',fields);
-  return tx(()=>{
-   readers.project(input.projectId);
+  return settle('previs.create',input,fresh=>{
    const prior=receipt(requestId);
+   if(!prior)fresh();
+   readers.project(input.projectId);
    if(prior)return replay(prior,'previs.create',input.projectId,hash,requestId);
    if(count("SELECT count(*) AS n FROM previs_requests WHERE projectId=? AND operation='previs.create'",input.projectId)>=PREVIS_LIMITS.createsPerProject||
     count("SELECT count(*) AS n FROM previs_requests WHERE operation='previs.create'")>=PREVIS_LIMITS.createsGlobal||count('SELECT count(*) AS n FROM previs_requests')>=8192)
@@ -184,10 +208,11 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
   const input=parse<SceneSetInput>('previs.scene.set',raw);
   writable('previs.scene.set',input as unknown as Row);
   const {requestId,...fields}=input,hash=inputHash('previs.scene.set',fields);
-  return tx(()=>{
+  return settle('previs.scene.set',input,fresh=>{
+   const prior=receipt(requestId);
+   if(!prior)fresh();
    // Ownership is checked before any retained receipt is used.
    const current=readers.node(input.projectId,input.nodeId);
-   const prior=receipt(requestId);
    if(prior)return replay(prior,'previs.scene.set',input.projectId,hash,requestId,input.nodeId);
    if(current.sceneRevision!==input.expectedSceneRevision)throw failure('REVISION_CONFLICT',409,{entityId:current.id,
     expectedSceneRevision:input.expectedSceneRevision,currentSceneRevision:current.sceneRevision,current:publicValue(current)});
@@ -197,8 +222,7 @@ export function createPrevisServices(store: PrevisStore,{now=()=>new Date().toIS
    for(const assetId of input.scene.keyframes.flatMap(keyframe=>keyframe.exports))if(!known.has(assetId))exportAsset(db,input.projectId,assetId);
    const next: PrevisNodeRecord={...current,scene:input.scene,revision:current.revision+1,sceneRevision:current.sceneRevision+1};
    put('nodes',next);
-   db.prepare("DELETE FROM previs_thumbnails WHERE nodeId=? AND slot!='card' AND slot NOT IN (SELECT value FROM json_each(?))")
-    .run(current.id,JSON.stringify(input.scene.keyframes.map(keyframe=>keyframe.id)));
+   prunePrevisThumbnails(db,current.id,current.scene,input.scene);
    // Keep the newest three earlier saves; this save becomes the fourth.
    db.prepare(`DELETE FROM previs_requests WHERE nodeId=? AND operation='previs.scene.set' AND (SELECT count(*) FROM previs_requests r
     WHERE r.nodeId=previs_requests.nodeId AND r.operation='previs.scene.set' AND r.sceneRevision>previs_requests.sceneRevision)>=${PREVIS_LIMITS.sceneReceiptsPerNode-1}`).run(current.id);

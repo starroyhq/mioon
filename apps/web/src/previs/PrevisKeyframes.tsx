@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { PrevisCamera, PrevisKeyframe, PrevisScene } from '@mioon/contracts';
 import { PREVIS_LIMITS } from '@mioon/contracts';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@mioon/ui/components/dropdown-menu';
-import { Box, Check, Diamond, Focus, ImageDown, Link, MoreHorizontal, PencilLine, Plus, Trash2 } from '@mioon/ui/components/workbench-icons';
+import { Box, Check, Diamond, Focus, ImageDown, Link, MoreHorizontal, PencilLine, Play, Plus, Square, Trash2 } from '@mioon/ui/components/workbench-icons';
 import { useI18n } from '../i18n/I18nProvider.tsx';
 import { PREVIS_FOCAL_PRESETS } from './previs-camera.ts';
 import { isPrevisKeyframeCurrent, previsKeyframeLabel, previsKeyframeName } from './previs-keyframes.ts';
@@ -36,6 +36,11 @@ export interface PrevisKeyframesProps {
   onFocal: (focalLength: number) => void;
   /** Width over height of the output frame, for the card thumbnails. */
   aspect: number;
+  /** Playback previews the camera moving through the keyframes in order (C8 v2). */
+  playing?: boolean;
+  /** Why playback cannot start now (fewer than two keyframes, no 3D view), or null. */
+  playIssue?: string | null;
+  onPlay?: () => void;
 }
 const DRAG_TYPE = 'application/x-mioon-previs-keyframe';
 export default function PrevisKeyframes(props: PrevisKeyframesProps): React.ReactElement {
@@ -63,6 +68,9 @@ export default function PrevisKeyframes(props: PrevisKeyframesProps): React.Reac
   return <section className="previs-keyframes" aria-label={t('previs.keyframes.title')} data-testid="previs-keyframes" style={{ '--previs-frame-aspect': String(props.aspect) } as React.CSSProperties}>
     <header className="previs-keyframes-heading">
       <Diamond size={13} aria-hidden="true" /><strong>{t('previs.keyframes.title')}</strong><small>{scene.keyframes.length}</small>
+      {props.onPlay && <button type="button" className="previs-play" data-previs-play="" data-testid="previs-keyframes-play" aria-pressed={Boolean(props.playing)}
+        disabled={!props.playing && Boolean(props.playIssue)} title={!props.playing && props.playIssue ? props.playIssue : t('previs.keyframes.playHint')} onClick={props.onPlay}>
+        {props.playing ? <Square size={11} aria-hidden="true" /> : <Play size={11} aria-hidden="true" />}{t(props.playing ? 'previs.keyframes.stop' : 'previs.keyframes.play')}</button>}
       {scene.keyframes.length > 1 && !readOnly && <span className="previs-keyframes-hint">{t('previs.keyframes.hint')}</span>}
       <span className="previs-topbar-spacer" />
       <span className="previs-focal-title"><Focus size={13} aria-hidden="true" />{t('previs.focal.title')}</span><small className="previs-focal-note">{t('previs.focal.current')}</small>

@@ -1,7 +1,8 @@
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {setTimeout as waitDelay} from 'node:timers/promises';
-import {AppError,schemas,descriptions,operationEffect,parse} from '@mioon/contracts';
+import {AppError,schemas,descriptions,operationEffect,parse,canonicalPrevisValue,isPrevisNodeRecord,isPrevisScene} from '@mioon/contracts';
+import type {PrevisScene} from '@mioon/contracts';
 import {ensurePrivateDirectory,readPrivateFile,writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudness';
 import {isTimelineLoudnessApplicableReport,timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
@@ -20,6 +21,9 @@ import {AGENT_TASK_GOAL_SET_PARAMETERS,normalizeAgentTaskGoals} from './task-goa
 import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
+import {createPrevisReaders,prunePrevisThumbnails} from '../previs.ts';
+import {usesPrevisSchema} from '../workspace-schema-dispatch.ts';
+import {AGENT_TASK_PREVIS_DESCRIPTIONS,AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_PREVIS_INSPECT_PARAMETERS,AGENT_TASK_PREVIS_INSPECT_TOOL,AGENT_TASK_PREVIS_SCENE_PARAMETERS,agentTaskPrevisSceneFeedback,previsRequestedKeyframe,previsSceneCandidate,previsSceneForNode,previsTaskView} from './task-previs-v2.ts';
 import type {TimelineRecord,TimelineClipRecord,TimelineTrackRecord,TimelineSubtitleCueRecord} from '../timeline-inputs.ts';
 import type {AgentTaskEffectOrigin,TaskChangeInput} from './task-effects-v2.ts';
 
@@ -48,11 +52,15 @@ const reversibleOperations=[
  'shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select',
  'timeline.loudness.apply','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed',
  'timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes',
+ // C8 v2: a scene save is undone by saving the earlier scene as a new scene revision.
+ 'previs.scene.set',
 ] as const;
 // A storyboard's images and shots are created by its background task after the
 // call returns, so a run's undo cannot compensate them; the user undoes the batch.
+// A previs node keeps permanent creation receipts that reference it, so it can
+// never be removed again (canvas nodes have no deletion either).
 const irreversibleOperations=[
- 'frame.extract','scene.shots.create','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render',
+ 'frame.extract','scene.shots.create','subject.create','subject.version.add','asset.waveform.request','export.create','timeline.render','previs.create',
 ] as const;
 const paidOperations=['generation.submit','image.generate'] as const;
 const forbiddenOperations=[
@@ -63,9 +71,9 @@ const forbiddenOperations=[
  // Angle and lighting batches are user-driven for now; Mio can still read the
  // resulting subject versions. Tools for them belong to the harness tool groups.
  'subject.variants.create','subject.variants.retry','subject.variants.undo','subject.variants.get','subject.variants.list',
- // Camera previs is edited by the user in its editor; Mio sees previs nodes
- // through the canvas tools but not their scenes or thumbnails yet.
- 'previs.create','previs.scene.set','previs.thumbnail.set','previs.thumbnail.get',
+ // Previs thumbnails are the editor's render cache; Mio reads scenes through
+ // its own previs tool and never renders.
+ 'previs.thumbnail.set','previs.thumbnail.get',
  // Crossfades are user-driven for now; Mio still reads the resulting curves.
  'timeline.clip.crossfade',
  // The batch gain change applies the dialogue loudness match the user reviewed;
@@ -105,6 +113,7 @@ function hydrateInput(operation:string,input:Value,projectId:string,requestId:st
 function taskToolOperation(operation:string):string{
  if(operation==='mioon_node_inspect')return 'node.inspect';
  if(operation==='mioon_edge_inspect')return 'edge.inspect';
+ if(operation===AGENT_TASK_PREVIS_INSPECT_TOOL)return AGENT_TASK_PREVIS_INSPECT_OPERATION;
  if(operation==='mioon_task_wait')return 'task.wait';
  if(operation===AGENT_TASK_ASK_TOOL)return AGENT_TASK_ASK_OPERATION;
  if(operation===AGENT_TASK_SKILL_READ_TOOL)return AGENT_TASK_SKILL_READ_OPERATION;
@@ -309,8 +318,11 @@ function transactionResult(operation:string,projectId:string,value:unknown):Agen
  return projectResult(value);
 }
 
+const previsWrite=(operation:string):boolean=>operation==='previs.create'||operation==='previs.scene.set';
 export function createAgentTaskTools({store,services}:{store:WorkspaceStore;services:OrdinaryServices}){
  const {db}=store;
+ // Mio reads back a previs node it created or saved the way it reads one, with framing.
+ const taskResult=(operation:string,projectId:string,value:unknown):AgentTaskJson=>previsWrite(operation)&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):transactionResult(operation,projectId,value);
  const preparedOrigins=new WeakMap<AgentTaskEffectOrigin,PreparedAgentTaskTool>();
  const backgroundOrigins=new WeakSet<AgentTaskEffectOrigin>();
  const transactionSnapshots=new WeakMap<AgentTaskEffectOrigin,Snapshot>();
@@ -327,11 +339,11 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    // Same-value local mutations can still commit a revision and immutable RPC
    // receipt. Their task receipt must share that transaction as well. Paid
    // review preparation and file-import intent markers are deliberately excluded.
-   if(!origin.recorded&&active.risk==='local_reversible'&&Number(db.prepare('SELECT total_changes() AS n').get()!.n)>(transactionCounts.get(origin)??Number.MAX_SAFE_INTEGER)){origin.recordInside(transactionResult(active.operation,active.projectId,result),[]);origin.recorded=true;}
+   if(!origin.recorded&&active.risk==='local_reversible'&&Number(db.prepare('SELECT total_changes() AS n').get()!.n)>(transactionCounts.get(origin)??Number.MAX_SAFE_INTEGER)){origin.recordInside(taskResult(active.operation,active.projectId,result),[]);origin.recorded=true;}
    return;
   }
   if(origin.recorded){if(!origin.appendChangesInside)throw Error('Late task changes require a durable origin recorder');origin.appendChangesInside(captured);}
-  else{origin.recordInside(transactionResult(active.operation,active.projectId,result),captured);origin.recorded=true;}
+  else{origin.recordInside(taskResult(active.operation,active.projectId,result),captured);origin.recorded=true;}
  });
  const journal=createAgentTaskJournal(store);
  const removeDispatchRecorder=setAgentTaskJobDispatchRecorder(db,binding=>{const step=journal.step(binding.stepId);if(step.cost!=='submitted')journal.updateStep(binding.runId,binding.stepId,{cost:'submitted'});});
@@ -374,6 +386,13 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(operation===AGENT_TASK_SKILL_READ_OPERATION)return agentTaskSkillReadFeedback(input);
   if(operation===AGENT_TASK_CONTINUITY_REPORT_OPERATION)return agentTaskContinuityFeedback(input,shotId=>db.prepare('SELECT projectId FROM shots WHERE id=?').get(shotId)?.projectId===projectId);
   if(operation===AGENT_TASK_GOAL_SET_OPERATION)return normalizeAgentTaskGoals(input)?null:{message:goalParameterMessage,issues:[{field:'conditions',reason:'invalid_value' as const}]};
+  if(operation==='previs.scene.set'&&object(input)){
+   rejectHostFields(input);
+   // The current scene only adds the size check after exports are kept.
+   let current:PrevisScene|undefined;
+   if(typeof input.nodeId==='string'){beforeTargetRead?.({kind:'node',id:input.nodeId});const node=store.get('nodes',input.nodeId);if(isPrevisNodeRecord(node)&&node.projectId===projectId)current=node.scene;}
+   return agentTaskPrevisSceneFeedback(input,current);
+  }
   if(operation!=='generation.submit'||!object(input))return null;
   rejectHostFields(input);
   for(const target of agentTaskExplicitTargets(operation,input,projectId))beforeTargetRead?.(target);
@@ -391,7 +410,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  }
  function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
-  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
+  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
   if(operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
    const groups=parseAgentTaskToolLoadInput(input);if(!groups)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
@@ -424,7 +443,18 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    for(const issue of parsed.data.issues)for(const shotId of issue.shotIds)if(db.prepare('SELECT projectId FROM shots WHERE id=?').get(shotId)?.projectId!==projectId)fail('VALIDATION_ERROR','连续性检查引用的镜头不属于当前项目');
    return {projectId,operation,input:parsed.data as unknown as Value,risk:'read_only',targets:[],referencedTargets:[],before:{}};
   }
+  // C8 v2: reading a previs scene only names one owned previs node.
+  if(operation===AGENT_TASK_PREVIS_INSPECT_OPERATION){
+   const nodeId=input.nodeId;
+   if(Object.keys(input).some(field=>field!=='nodeId')||typeof nodeId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(nodeId))fail('VALIDATION_ERROR','预演读取参数无效：只需要一个节点 nodeId');
+   beforeTargetRead?.({kind:'node',id:nodeId});
+   if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
+   if(owned('nodes',nodeId,projectId).type!=='previs')fail('PREVIS_NODE_REQUIRED','这个节点不是机位预演');
+   return {projectId,operation,input:{nodeId},risk:'read_only',targets:[],referencedTargets:[{kind:'node',id:nodeId,revision:readRevision(store,projectId,'node',nodeId)}],before:{}};
+  }
   let hostInput:Value={...input};
+  // Mio writes a scene without the host's fields; they are filled in before validation.
+  if(operation==='previs.scene.set')hostInput={...hostInput,scene:previsSceneCandidate(hostInput.scene)};
   const schema=Object.hasOwn(schemas,operation)?schemas[operation as OperationName]:null;
   // Whether identity exists in the exact input is discovered from the generated
   // schema, while authoritative validation remains the shared runtime schema.
@@ -465,6 +495,14 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(operation==='reference.detach'){
    const edge=before[key('edge',String(hostInput.edgeId))];
    if(edge)for(const [field,kind] of [['source','node'],['target','shot']] as const){const id=edge.value[field];if(typeof id==='string'&&before[key(kind,id)])add(kind,id);}
+  }
+  // Exported images stay with their keyframe IDs, from the scene this save replaces.
+  if(operation==='previs.scene.set'){
+   const node=before[key('node',String(hostInput.nodeId))]?.value;
+   if(node?.type!=='previs')fail('PREVIS_NODE_REQUIRED','这个节点不是机位预演');
+   if(!isPrevisNodeRecord(node))fail('AGENT_TASK_INVALID_TARGET','预演节点记录无法验证');
+   const scene=previsSceneForNode(hostInput.scene as PrevisScene,node.scene,previsRequestedKeyframe(input));
+   hostInput={...hostInput,scene:(parse('previs.scene.set',{...hostInput,scene,requestId:'00000000-0000-4000-8000-000000000000'}) as Value).scene};
   }
   if(operation==='timeline.format.set')add('timeline',projectId);
   if(operation==='project.rename'||operation==='project.notes.set')add('project',projectId);
@@ -517,6 +555,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
     return {result,changes:[],recorded:false};
    }
    if(prepared.operation==='node.inspect'||prepared.operation==='edge.inspect')return {result:inspectCanvas(prepared.projectId,prepared.operation,prepared.input),changes:[],recorded:false};
+   if(prepared.operation===AGENT_TASK_PREVIS_INSPECT_OPERATION)return {result:previsTaskView(store,prepared.projectId,createPrevisReaders(db).node(prepared.projectId,String(prepared.input.nodeId))),changes:[],recorded:false};
    if(prepared.operation==='task.wait')return {result:await waitTask(prepared.projectId,prepared.input,context.signal,context.beforeEffect),changes:[],recorded:false};
    if(['asset.importSelected','lut.importSelected'].includes(prepared.operation))return executeImport(prepared,context,origin);
    const input=hydrateInput(prepared.operation,prepared.input,prepared.projectId,context.requestId);
@@ -543,7 +582,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
      // never mint a usable digest for a stripped or truncated observation.
      if(!isTimelineMixLoudnessResponse(result,parsed)||canonical(result)!==canonical(value))fail('AGENT_TASK_INVALID_TOOL_RESULT','响度报告无法完整提供给助理');
      if(isTimelineLoudnessApplicableReport(result))result={...result,candidateDigest:await timelineLoudnessCandidateDigest(result)};
-    }else result=projectResult(value);
+    }else result=previsWrite(prepared.operation)?taskResult(prepared.operation,prepared.projectId,value):projectResult(value);
     return {result,changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
   });
  }
@@ -606,7 +645,9 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   // These operations have no effects outside their domain transaction. The
   // immutable domain receipt and v2 completion either both committed or neither
   // did. A present domain receipt is preserved for explicit result inspection.
-  const table=prepared.operation==='project.rename'||prepared.operation==='project.notes.set'?'project_mutation_requests':prepared.operation.startsWith('reference.')?'reference_requests':prepared.operation==='subject.binding.set'?'subject_requests':prepared.operation==='asset.range.set'?'asset_range_requests':prepared.operation==='asset.disposition.set'?'asset_disposition_requests':prepared.operation==='asset.annotation.set'?'asset_annotation_requests':prepared.operation.startsWith('timeline.')?'timeline_requests':prepared.operation.startsWith('edge.')?null:'mutation_requests';
+  // A previs save always changes its node, so its v2 completion and Change
+  // commit with it; a receipt pruned after newer saves cannot hide a commit.
+  const table=prepared.operation==='project.rename'||prepared.operation==='project.notes.set'?'project_mutation_requests':prepared.operation.startsWith('previs.')?'previs_requests':prepared.operation.startsWith('reference.')?'reference_requests':prepared.operation==='subject.binding.set'?'subject_requests':prepared.operation==='asset.range.set'?'asset_range_requests':prepared.operation==='asset.disposition.set'?'asset_disposition_requests':prepared.operation==='asset.annotation.set'?'asset_annotation_requests':prepared.operation.startsWith('timeline.')?'timeline_requests':prepared.operation.startsWith('edge.')?null:'mutation_requests';
   if(table&&db.prepare(`SELECT 1 FROM ${table} WHERE requestId=?`).get(input.requestId))return null;
   return {outcome:'not_applied',reason:'atomic_receipt_absent'};
  }
@@ -665,6 +706,15 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    return {targets:change.targets.map(target=>({...target,revision:readRevision(store,change.projectId,target.kind,target.id)}))};
   });
  }
+ /** An earlier previs scene comes back as a new scene revision: save receipts
+  * and open editors know the numbers already used. Keyframe thumbnails that no
+  * longer match their camera go, as when the scene is saved. */
+ function restorePrevisScene(value:Value,current:unknown):void{
+  if(!object(current)||current.type!=='previs'||!isPrevisScene(current.scene)||!isPrevisScene(value.scene)||typeof current.sceneRevision!=='number')fail('AGENT_TASK_TARGET_CHANGED','预演节点记录已改变');
+  if(canonicalPrevisValue(value.scene)===canonicalPrevisValue(current.scene)){value.sceneRevision=current.sceneRevision;return;}
+  value.sceneRevision=current.sceneRevision+1;
+  if(usesPrevisSchema(db))prunePrevisThumbnails(db,String(value.id),current.scene,value.scene);
+ }
  function compensateRow(projectId:string,entry:{before?:SnapshotEntry;after?:SnapshotEntry}):void{
   const identity=(entry.after??entry.before)!,table=identity.table;
   if(Object.hasOwn(rowTables,table)||table==='projects'){
@@ -679,6 +729,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    const current=store.get(table,identity.id),value={...entry.before.value};
    if(object(current)&&typeof current.revision==='number')value.revision=current.revision+1;
    if(Object.hasOwn(value,'updatedAt'))value.updatedAt=new Date().toISOString();
+   if(table==='nodes'&&value.type==='previs')restorePrevisScene(value,current);
    store.put(table,value);return;
   }
   const descriptor=extraTables[table];if(!descriptor||!reversibleMetadata.has(identity.kind))fail('AGENT_TASK_NOT_REVERSIBLE','此项没有安全补偿操作');
@@ -693,8 +744,14 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const values=fields.map(field=>{const item=value[field];if(typeof item==='string'||typeof item==='number'||item===null)return item;throw new TypeError('Invalid compensation SQL value');});
   db.prepare(`UPDATE ${table} SET ${fields.map(field=>`"${field}"=?`).join(',')} WHERE ${descriptor.id}=? AND projectId=?`).run(...values,identity.id,projectId);
  }
- const list=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:descriptions[operation]??operation,parameters:AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:operationEffect(operation).readOnly?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
+ // Mio's previs tools explain axes and units and leave host-owned scene fields out.
+ const previsTools:Readonly<Record<string,{description:string;parameters?:unknown}>>={
+  'previs.create':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.create']},
+  'previs.scene.set':{description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.scene.set'],parameters:AGENT_TASK_PREVIS_SCENE_PARAMETERS},
+ };
+ const list=():AgentTaskToolDefinition[]=>{const definitions:AgentTaskToolDefinition[]=[...[...tierByOperation].map(([operation,risk])=>({name:`mioon_${operation.replaceAll('.','_')}`,operation,description:previsTools[operation]?.description??descriptions[operation]??operation,parameters:previsTools[operation]?.parameters??AGENT_TASK_TOOL_SCHEMAS[operation],risk,receipt:operationEffect(operation).readOnly?'observation':'durable task step',recovery:'read retained receipt; never repeat unknown execution',undo:risk==='local_reversible'?'target compensation':'unavailable'})),
   ...(['node','edge'] as const).map(kind=>({name:`mioon_${kind}_inspect`,operation:`${kind}.inspect`,description:`分页观察当前项目${kind==='node'?'画布节点的文本和位置':'连线的来源与目标'}，不读文件。`,parameters:{type:'object',properties:{limit:{type:'integer',minimum:1,maximum:20},after:{type:'string',description:'Previous nextAfter; omit for the first page.'}},additionalProperties:false},risk:'read_only' as const,receipt:'observation',recovery:'read saved metadata',undo:'unavailable'})),
+  {name:AGENT_TASK_PREVIS_INSPECT_TOOL,operation:AGENT_TASK_PREVIS_INSPECT_OPERATION,description:AGENT_TASK_PREVIS_DESCRIPTIONS['previs.inspect'],parameters:AGENT_TASK_PREVIS_INSPECT_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the saved scene again',undo:'unavailable'},
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
   {name:'mioon_asset_import_selected',operation:'asset.importSelected',description:'导入用户已选择并授权的文件句柄，不能指定路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
   {name:'mioon_lut_import_selected',operation:'lut.importSelected',description:'导入用户选择的Cube文件句柄，最多7MiB，不允许路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},

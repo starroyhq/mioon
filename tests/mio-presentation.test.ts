@@ -295,3 +295,14 @@ test('subtitle clip and shot creation uses localized add copy without empty arro
   subtitle.targets=[];subtitle.targetCount=0;delete subtitle.fields[0]!.targetIndex;
   assert.equal(taskChangeSummary(subtitle,'en'),'Add subtitle “台词：密码：芝麻开门”');
 });
+
+test('a previs scene save shows its figure, prop and keyframe counts, and previs tools have short titles',()=>{
+  const value:AgentTaskDisplay={operation:'previs.scene.set',targets:[{kind:'node',id:'11111111-1111-4111-8111-111111111111',name:'雨夜街口'}],targetCount:1,fields:[
+    {targetIndex:0,property:'figureCount',unit:'count',before:1,after:2},{targetIndex:0,property:'propCount',unit:'count',before:0,after:2},{targetIndex:0,property:'keyframeCount',unit:'count',before:0,after:1}]};
+  assert.equal(taskChangeSummary(value,'zh-Hans'),'人偶 1 → 2 · 道具 0 → 2 · 等 1 项');
+  assert.deepEqual(taskDisplayLines(value,'en'),['Figures 1 → 2','Props 0 → 2','Keyframes 0 → 1']);
+  assert.deepEqual(taskDisplayLines({...value,operation:'node.update'},'en'),[],'the counts belong to the scene save only');
+  assert.deepEqual(taskDisplayLines({...value,fields:[{targetIndex:0,property:'figureCount',unit:'text',after:'2'}]},'en'),[]);
+  for(const locale of LOCALES)for(const operation of ['previs.inspect','previs.create','previs.scene.set'])assert.notEqual(taskOperationTitle(operation,locale),translate(locale,'agent.display.fallback'),`${locale} ${operation}`);
+  assert.deepEqual(['mioon_previs_inspect','mioon_previs_create','mioon_previs_scene_set'].map(name=>taskOperationTitle(name,'zh-Hans')),['查看机位预演','新建机位预演','写入预演场景']);
+});
