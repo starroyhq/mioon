@@ -57,6 +57,19 @@ kind and a duration or removes the transition. Each button is one saved edit,
 so the section waits until the clip draft is saved or discarded. The preview is
 a rendered video, so it shows a change after it is updated.
 
+On the timeline (`TimelineTransitionMarks.tsx`, rules in
+`timeline-transition-marks.ts`):
+
+- Each transition is a bar across its cut near the bottom of the video lane,
+  as wide as the frames it covers. Selecting it selects the incoming
+  clip, whose inspector edits it.
+- While a clip is selected, each cut at its start or end without a transition
+  shows a + button. It adds the cut's default, a 15-frame dissolve or the
+  longest one that fits, as one saved edit, then selects the incoming clip.
+- The button waits for a saved clip draft and an unlocked track, and says why
+  when the cut has no room. Restored and read-only timelines show the bars
+  only.
+
 ## Rendering
 
 `packages/business/src/timeline-transition-filter.ts` builds the graph pieces
@@ -118,3 +131,7 @@ The reviewed delta is frozen in
   workspace gates through backup and restore.
 - `tests/clip-transition-ui.test.ts` covers the inspector state, its markup
   and its wiring.
+- `tests/timeline-transition-marks.test.ts` covers the timeline marks, the
+  quick-add cuts, their markup and App's wiring;
+  `tests/timeline-collapsed-presentation.test.ts` checks that they keep to
+  video lanes and the timeline body's gate.

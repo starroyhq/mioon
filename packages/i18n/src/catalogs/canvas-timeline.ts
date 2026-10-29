@@ -31,6 +31,8 @@ export const canvasTimelineMessages = {
   'timeline.history.setGains': { 'zh-Hans': '调整多段增益', 'zh-Hant': '調整多段增益', en: 'Set clip gains', ja: '複数クリップのゲインを変更' },
   'timeline.history.setTransform': { 'zh-Hans': '调整片段变换', 'zh-Hant': '調整片段變換', en: 'Change clip transform', ja: 'クリップのトランスフォームを変更' },
   'timeline.history.setTransition': { 'zh-Hans': '调整片段转场', 'zh-Hant': '調整片段轉場', en: 'Change clip transition', ja: 'クリップのトランジションを変更' },
+  'timeline.transition.mark': { 'zh-Hans': '转场：{kind}，{frames} 帧', 'zh-Hant': '轉場：{kind}，{frames} 幀', en: 'Transition: {kind}, {frames} frames', ja: 'トランジション：{kind}、{frames} フレーム' },
+  'timeline.transition.add': { 'zh-Hans': '在这里加 {frames} 帧溶解', 'zh-Hant': '在這裡加 {frames} 幀溶解', en: 'Add a {frames}-frame dissolve here', ja: 'ここに {frames} フレームのディゾルブを追加' },
   'timeline.sync.clipBadge': { 'zh-Hans': '已过期', 'zh-Hant': '已過期', en: 'Outdated', ja: '古い' },
   'timeline.sync.restoredUnavailable': { 'zh-Hans': '恢复出的工作区暂不支持批量更新来源和追加镜头', 'zh-Hant': '還原出的工作區暫不支援批次更新來源與附加鏡頭', en: 'Restored workspaces can’t update sources in bulk or append shots yet', ja: '復元したワークスペースでは、ソースの一括更新とショットの追加はまだ使えません' },
   'timeline.sync.error.nothingToRefresh': { 'zh-Hans': '没有片段被更新，原因见时间线上方的说明', 'zh-Hant': '沒有片段被更新，原因見時間軸上方的說明', en: 'No clips were updated. The note above the timeline lists why', ja: '更新されたクリップはありません。理由はタイムライン上部に表示しています' },

@@ -13,11 +13,14 @@ const DEFAULT_FRAMES = 15;
 export function savedTransition(clip: { readonly transitionIn?: unknown }): ClipTransition | null {
   return Object.hasOwn(clip, 'transitionIn') && clip.transitionIn !== null && isClipTransition(clip.transitionIn) ? clip.transitionIn as ClipTransition : null;
 }
-/** The saved values, or a dissolve of half a second where it fits. */
+/** A cut's default: a dissolve of half a second, or the longest that fits. */
+export function defaultTransition(maxFrames: number): ClipTransition {
+  return { profileId: CLIP_TRANSITION_PROFILE, kind: 'dissolve', durationFrames: Math.max(CLIP_TRANSITION_LIMITS.minFrames, Math.min(DEFAULT_FRAMES, maxFrames)) };
+}
+/** The saved values, or the cut's default. */
 export function transitionFields(clip: { readonly transitionIn?: unknown }, context: TransitionContext): TransitionFields {
-  const saved = savedTransition(clip);
-  if (saved) return { kind: saved.kind, frames: String(saved.durationFrames) };
-  return { kind: 'dissolve', frames: String(Math.max(CLIP_TRANSITION_LIMITS.minFrames, Math.min(DEFAULT_FRAMES, context.maxFrames))) };
+  const shown = savedTransition(clip) ?? defaultTransition(context.maxFrames);
+  return { kind: shown.kind, frames: String(shown.durationFrames) };
 }
 export function transitionIssue(fields: TransitionFields, context: TransitionContext): TransitionIssue {
   if (!context.hasCut) return 'clip.transition.noCut';

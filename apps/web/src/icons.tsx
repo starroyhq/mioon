@@ -29,6 +29,7 @@ const paths: Record<string, ReactNode> = {
   zoom: <><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" /><path d="m8 8-5-5m13 5 5-5M8 16l-5 5m13-5 5 5" /></>,
   minus: <path d="M5 12h14" />,
   compare: <><rect x="3" y="4" width="7" height="16" rx="1" /><rect x="14" y="4" width="7" height="16" rx="1" /></>,
+  transition: <path d="M4 5v14l8-7Zm16 0v14l-8-7Z" />,
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   link: <><path d="m10 13 4-4m-6 7-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m0 2 1-1a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" /></>,
   bolt: <path d="m13 2-9 12h7l-1 8L20 9h-8Z" />,
