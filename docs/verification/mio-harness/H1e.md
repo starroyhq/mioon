@@ -1,6 +1,6 @@
 # Mio harness H1e · 模型缓存与用量
 
-日期：2026-10-29（Asia/Taipei）。开工 fetch 后从最新 `origin/main`（`4a52403f8a89bb3e665cb1699d8984a896de9b1e`，已含 H1d／H3b／C13a）建立 `codex/mio-harness-h1e`。复用已附加且干净的 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`，保留目录名，不改主 checkout。仅实施 H1e；离线交付时未调用真实模型，后续授权的兼容复测见第 7 节；没有提交、推送。
+日期：2026-10-29（Asia/Taipei）。开工 fetch 后从最新 `origin/main`（`4a52403f8a89bb3e665cb1699d8984a896de9b1e`，已含 H1d／H3b／C13a）建立 `codex/mio-harness-h1e`。复用已附加且干净的 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`，保留目录名，不改主 checkout。仅实施 H1e；离线交付时未提交、未推送、未调用真实模型。后续授权的兼容复测见第 7 节，同步 main 与 PR 验证见第 8 节。
 
 证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1e-2026-10-29/`。本报告在最终源码快照外，供验证结束后补录；其余源码、测试、fixture 和文档纳入冻结检查。
 
@@ -208,3 +208,80 @@ main fixture 的 SHA-256 为 `89dd1b4e60af51e05391fbaa13cb7c7dc93b2abdbaa4d4d585
 ## 7. 后续真实复测记录
 
 2026-10-29，用户另行确认预算并选择“先测 MiniMax，官方缓存待补”。已完成中国区 MiniMax-M3 的五次两协议推理及两次只计数请求；详细结果见 [H1-REAL-SAMPLE.md](H1-REAL-SAMPLE.md)。原第 6 节保留离线交付时提出的官方方案；Responses、官方 OpenAI／Anthropic 及 Haiku 断点计数尚未执行。MiniMax 兼容端点继续不发送缓存断点，生产源码与离线冻结版不变。临时密钥文件已删除，未提交、未推送。
+
+
+## 8. 同步 #72–#75 后的提交与 PR 验证
+
+本节记录用户复核通过后的同步交付；第 3 节的原始完整全量及其失败、配对复验保持原样，本次不重跑全量，交由 PR CI。官方 OpenAI／Anthropic 真实复测及 MiniMax `include_usage` 已按用户决定列入 `H1-REAL-SAMPLE.md` 末尾“待测项”，不阻塞本期；没有追加真实模型或计数调用，也未开启 MiniMax 的用量开关。
+
+先创建本地 H1e 提交 `7f298413945a14a4c00cad6a66627dff5afb5b34`，再 fetch 并将 `origin/main=9ce071d017747e5a80b655c1cd1b510010453e85`（含 #72–#75）合入，产生 merge commit `673b33f5d48127da2e54dbdd5a53a237af175193`；两个父提交分别为 H1e 与 main，没有 rebase。冲突只有 gateway 导入和指纹 fixture：网关合并 C6 方法目录与 H1e 缓存／用量导入，fixture 先取新 main 原件，再按下述逐条审计更新。C6 上下文、说明、压缩、工具、journal 等关键模块逐字节保留 main；C13a 问答、H2 流式合并、H3 检查、原 intent 恢复和冻结工具名单门控均保留，见 `semantic-review/merge-semantic-review-673b33f.json`。
+
+### 同步指纹
+
+证据根目录：`/Users/kouzen/Library/Caches/mioon-harness-H1e-sync-2026-10-29/`。以原 main `4a52403`、已确认 H1e `7f29841`、新 main `9ce071d` 和合并工作区逐身份比较 99 条，原件 SHA 直接覆盖冻结正文，未归一化 ID 或时间。两次实际预览 21.544／21.186 秒逐条完全相同；99/99 的“合并后−新 main”均等于“原 H1e−4a52403”，没有额外差异。
+
+| 类别 | 条数 | 每条字节差 |
+| --- | ---: | ---: |
+| 官方 OpenAI CC | 5 | +40 |
+| 官方 Anthropic 核心请求 | 2 | +161 |
+| 官方 Anthropic 已加载请求 | 3 | +173 |
+| 其他，含全部 12 条诊断 | 89 | 0 |
+
+新 main 总字节 2,874,961，合并后 2,876,002，总差 1041。差异复核及独立只读核对通过后才执行 `--update`，实际 exit 0，20.487 秒；正式指纹整文件 exit 0，20.397 秒，1/1 测试覆盖 99 请求，无失败／取消／跳过。另在 clean 9ce builder 上作反事实内容审计，20.690 秒 exit 0：撤去本期合法 metadata／表示差异及工具排序后 99/99 逐字节等于 main builder，main builder 99/99 等于 main fixture，实际候选 99/99 等于未插桩预览。
+
+新 main fixture SHA-256：`c7bcb320b45ebc332fdc72447aee68ec1571882898ca9594eea52c7eb23d77d9`；更新后：`21d3a000a1e57085a19f25d0ca27fef2d97c0690a0eced8ee3dc2326ca90d4b0`。逐条四来源 bytes／SHA、命令与原始输出在 `fingerprints/summary.json`、`three-way-delta-audit.json` 和 `formal-99.tap`。
+
+### C6a 工具与断点
+
+`skill.read`、`continuity.report` 归入 core，`project.notes.set` 归入 canvas。当前核心 16 工具，加载 canvas 后 28 工具；核心目录末项仍为 `mioon_tools_load`。在现有 `agent-task-h1e-cache-v2.test.ts` 新增一个真实 `tools.list()` 组合回归：两新增读取工具在核心前缀，说明修改工具在加载段；加载前后核心定义及其断点逐字节相同，组内保留目录顺序；核心 3 点、加载后 4 点；系统保留 C6 方法目录，MiniMax 保持原工具顺序且无断点。没有改变生产实现或已有测试标题。
+
+### 原生编译与构建
+
+Node 24.21.0、UTC、真实 TMPDIR、scoped `caffeinate -i`。`node --test --test-reporter=tap --test-concurrency=1 tests/typecheck-runtime.test.ts` 整文件实际 5/5 passed，60.290 秒，原用例／子编译期限保留，含 foundation／browser／tests 三严格项目；`node scripts/tooling.ts build --channel=development` 实际 exit 0，119.291 秒，含类型门槛及 Web／Desktop。构建保留依赖中 `use client` 指令与 bundle 大小提示，没有为通过而关闭检查。
+
+两项各有 6083 路径的前后 source guard，零漂移；当时仅排除本报告和正由指纹代理审计更新的 fixture。最终 harness 冻结包含已更新 fixture，6084 路径（排本报告）、全仓 961 个顶层测试文件，SHA-256 为 `24543c23891785488dec2de49fa6a6f0a8557613c6f7b640e8b74ddd559c895d`。锁文件仍为 `429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b`，无依赖或安装变更。命令、退出及全部原始输出见 `native-checks/results.json`。
+
+
+### 同步后 harness 回归
+
+固定 H0 Linux ARM 完整 FFmpeg 镜像、Node 24.21.0／pnpm 11.25.0／FFmpeg 7.1.5、无网络、非 root。70 个文件实际全部 exit 0，371.929 秒，**1315/1315 passed**，0 failed／cancelled／skipped，文件遗漏／重复为 0，6084 冻结源零漂移。先独占运行 runtime，再以固定并发 2 执行其余文件；每文件 600 秒内部、630 秒外层期限及各用例自身期限均不改，没有重试、暂停或跳过。
+
+运行时整文件 **185/185 passed**，101.963 秒；第 3 节列出的两项完整 FFmpeg 用例均在该真实 TAP 中唯一匹配 passed，未跳过。回归包括 Anthropic recovery、context report、C13a、H3b、C6a `skills-notes`、C6b `reviews-ui`、H1e 五文件及 UTF-8 清单守卫。正式 99 亦在本次 Linux 聚焦中重跑，实际 exit 0、26.975 秒；前述原生正式指纹记录另行保留。H1e 五文件合计 69 项通过。
+
+与旧基线按相同文件、完整 TAP 层级名称、同名序号比较，不把未运行的整仓文件计为缺失。原 H1e 的 67 文件为 1281 名；本次相同 67 文件为 1291，1281 全部匹配且通过，新增 10 名：本期 C6/cache 组合 1 名；其余 9 名来自 main 引入 schema68 后既有参数化矩阵的展开（conversations 1、interactions-schema 2、m5-storage 6），不是本期删改标题或漏跑。另两份 C6 新文件各 10 名、UTF-8 守卫 4 名，总计 1291＋20＋4＝1315。具体基线状态及来源由逐名对照原件保存；原始全量的失败记录不被本次聚焦覆盖。
+
+### 同步后 legacy／stress30
+
+先排空 harness，再串行完成 main／候选的两负载四项命令，全部 actual exit 0；legacy 14.987／12.380 秒，stress30 14.017／13.549 秒。使用同一份测量 helper、官方预设、0 ms 合成流时钟，三协议均完成 legacy 29 步（15 模型＋14 工具）及 stress30 30 步（15＋15）。预算不变，没有真实 provider 调用。
+
+| 负载／协议 | 请求字节 main → H1e | 模型步骤落库字节 main → H1e | 配额保留字节 main → H1e | 配额行 main → H1e |
+| --- | ---: | ---: | ---: | ---: |
+| legacy / Chat Completions | 1,500,506 → 1,501,106 | 4,173,060 → 4,173,720 | 6,109,231 → 6,109,891 | 193 → 193 |
+| legacy / Responses | 1,502,477 → 1,502,477 | 4,182,174 → 4,182,174 | 6,120,136 → 6,120,136 | 193 → 193 |
+| legacy / Anthropic | 1,490,996 → 1,493,061 | 4,162,768 → 4,165,199 | 6,098,865 → 6,101,296 | 193 → 193 |
+| stress30 / Chat Completions | 1,321,700 → 1,322,300 | 3,817,310 → 3,817,970 | 6,364,878 → 6,365,538 | 198 → 198 |
+| stress30 / Responses | 1,321,405 → 1,321,405 | 3,821,554 → 3,821,554 | 6,370,931 → 6,370,931 | 198 → 198 |
+| stress30 / Anthropic | 1,311,714 → 1,313,779 | 3,805,931 → 3,808,362 | 6,353,406 → 6,355,837 | 198 → 198 |
+
+两个负载的本期增量均为 CC 请求 +600 B、模型步骤及配额保留 +660 B；Responses 全部为 0；Anthropic 请求 +2065 B、模型步骤及配额保留 +2431 B。60 文本事件／append 数及行数两侧相同。H2 四次刷写造成的累计行重写增量另为 CC +2640 B、Anthropic +9724 B，不混作保留字节、页或 WAL。tokenUsage、cacheReadRate 均为 null；各轮 15 模型步骤的四字段均缺失 15，保持未知，不填零。
+
+Anthropic 当前核心 16 工具，核心／全工具断点重合，候选实际 3 点；main 实际 0 点，仅分析时列 3 个虚拟边界。每负载 15 请求、14 次相邻比较：工具和系统当前末端的 raw／内容前缀均 14/14 相等，历史当前末端均 0/14。查看上次已写入旧边界在当前对应位置的内容字节，legacy 保留 10/14（其余 4 不可定位），stress30 保留 8/14（1 变化、5 不可定位）；main 的同位置虚拟内容边界相同。候选历史 raw 含 metadata 投影为 0/14，原因仍是末尾标记／文本简写移动。工具累计内容前缀为 13,938 B、工具＋system 为 15,766 B；这些是离线 JSON 投影，不是服务方 cache key、token 数或真实命中率。
+
+pristine main 为 6075 源、956 顶层测试文件，SHA `c47ee44d5f7408ee10d8ee3076f7b67fb4bc10d6310d73c5d3623349b9c69065`；容量 main 仅覆盖两个已标明的测试 helper，生产代码保持 clean 9ce，SHA `563f4aaa0c17af0c8dc41cc6ebcb94072023aad6c5ce6923cdcb56b3eb2b616a`，不声称无插桩的原 archive。候选使用上述同一 `24543c…895d` 冻结源。测量原件与命令在 `validation/capacity-final/commands.json`、`sampling-complete.json`、`final-measurement-vectors.json`；Linux 70 文件、媒体证明与完整 TAP 在 `validation/suite-focused70/`。复用同锁的隔离依赖副本，没有安装或升级依赖。
+
+
+按名比较的参考交集如下；只比较本次实际执行的同文件范围，额外名称不等同本期新增代码，跳过变化均为 0。
+
+| 参考 | 同文件数 | 匹配旧名 | 参考外名称 | 缺失 | 状态变化 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 旧 H1e 聚焦 67 | 67 | 1281 | 10 | 0 | 0 |
+| 旧 H1e 原始全量的本次交集 | 68 | 1285 | 10 | 0 | 1 个 UTF-8 登记守卫 failed→passed |
+| 旧 H1e Linux 整文件补充组合的交集 | 68 | 1285 | 10 | 0 | 0 |
+| H1d 同步后聚焦 52 | 52 | 1112 | 9 | 0 | 0 |
+| H1d Linux 补充组合的本次交集 | 51 | 1053 | 36 | 0 | 0 |
+
+旧 H1e 原始 UTF-8 守卫失败已在上期 final2 整文件复验中修复，本次 4/4 与该补充观察一致；原失败不删除。九个 schema68 展开项的测试源／lineage 来自主线 #74，另保留来源证明，不记为 H1e 修改标题。完整逐名结果和参考覆盖范围见 `validation/harness-name-comparison.json`、`harness-name-comparison-summary.json`、`harness-extra-case-source-provenance.json`。
+
+上述验证结束时 source／fixture／锁及两个 helper 的 hash 全部无漂移；main 插桩只改现有 context-report 并新增 prefix-report，两侧 helper 字节一致。harness 与容量的自有 wrapper、driver、`caffeinate` 和对应标签容器均已排空，详见 `validation/final-status.json`。本期验证后仅提交报告、C6/cache 组合单测及复核后的 fixture；未重跑其余 891 测试文件，全量以 PR CI 的最终提交为准。按用户授权推送并开 PR，PR 使用 merge commit，当前不合并也不启用自动合并。
+
+提交前只将 `H1-REAL-SAMPLE.md` 待测计划的五分钟计时起点明确为首次请求发起，而非完成时刻；过期不追加请求。相对验证快照，仅此文档一行改变，其余 6083 文件（含全部生产代码、测试、helper、fixture、锁）逐字节一致。最终排本报告的 6084 源 SHA-256 为 `21314dec0e2db18490c053d208937ef62b972c9a5183c112c14ab4cd3bca21e6`，证明见 `post-validation-doc-adjustment.json`；不为该文案重复执行测试。

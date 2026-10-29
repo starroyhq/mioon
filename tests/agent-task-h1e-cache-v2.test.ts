@@ -1,5 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {openStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
+import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
+import {selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
+import {agentTaskToolGroupForName} from '../packages/business/src/agent/task-tool-groups-v2.ts';
+import {AGENT_TASK_SKILLS} from '../packages/business/src/agent/task-skills-v2.ts';
 import {applyTaskAnthropicCaching} from '../packages/business/src/agent/task-cache-v2.ts';
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
@@ -72,4 +81,31 @@ test('H1e request builder freezes the official cache policy into the serialized 
   assert.equal(count(JSON.parse(wire)),3);assert.equal(JSON.parse(wire).max_tokens,4096);
   const compatible=buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,presetId:'minimax',platformId:'international',baseUrl:'https://api.minimax.io/v1',protocol:'anthropic_messages',model:'MiniMax-M3'},[{role:'user',content:'离线'}],[definition]);
   assert.equal(compatible.includes('cache_control'),false);
+});
+
+test('H1e merged C6 catalog keeps methods in the cached core and project notes after it',async t=>{
+  const directory=mkdtempSync(join(realpathSync(tmpdir()),'mioon-h1e-c6-cache-'));
+  const store=openStore(directory),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services});
+  t.after(async()=>{tools.dispose();await services.drain();store.close();rmSync(directory,{recursive:true,force:true});});
+  const catalog=tools.list(),core=selectTaskModelTools(catalog);
+  const loaded=catalog.filter(item=>['core','canvas'].includes(agentTaskToolGroupForName(item.name)??''));
+  for(const name of ['mioon_skill_read','mioon_continuity_report']){
+    assert.equal(agentTaskToolGroupForName(name),'core');assert.ok(core.some(item=>item.name===name));
+  }
+  assert.equal(core.at(-1)?.name,'mioon_tools_load');
+  assert.equal(agentTaskToolGroupForName('mioon_project_notes_set'),'canvas');
+  assert.ok(!core.some(item=>item.name==='mioon_project_notes_set'));
+  assert.ok(loaded.some(item=>item.name==='mioon_project_notes_set'));
+  const history=[{role:'user',content:'合并后的离线目录验证'}];
+  const first=JSON.parse(buildTaskModelRequest(config,history,core,undefined,{toolLoading:true})) as ReturnType<typeof body>;
+  const next=JSON.parse(buildTaskModelRequest(config,history,loaded,undefined,{toolLoading:true})) as ReturnType<typeof body>;
+  assert.equal(count(first),3);assert.equal(count(next),4);
+  assert.deepEqual(next.tools.slice(0,core.length),first.tools);
+  assert.deepEqual(next.tools.map(item=>item.name),[...core,...loaded.filter(item=>agentTaskToolGroupForName(item.name)==='canvas')].map(item=>item.name));
+  assert.deepEqual((next.tools[core.length-1] as Record<string,unknown>).cache_control,marker);
+  assert.deepEqual((next.tools.at(-1) as Record<string,unknown>).cache_control,marker);
+  for(const skill of AGENT_TASK_SKILLS)assert.ok(JSON.stringify(next.system).includes(skill.name));
+  const compatible=JSON.parse(buildTaskModelRequest({...config,presetId:'minimax',platformId:'china',baseUrl:'https://api.minimax.cn/anthropic',model:'MiniMax-M3'},history,loaded,undefined,{toolLoading:true})) as ReturnType<typeof body>;
+  assert.equal(count(compatible),0);
+  assert.deepEqual(compatible.tools.map(item=>item.name),loaded.map(item=>item.name));
 });

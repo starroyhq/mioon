@@ -84,5 +84,5 @@ Messages 三次输入预估为 51,581；CC 两次使用相同核心／系统计�
 用户已确认上述 MiniMax 复测及 H1e 代码、离线验证通过，并决定以下真实复测不阻塞本期。后续须取得对应连接及真实调用授权，不以现有兼容结果替代官方服务验证。
 
 - 官方 OpenAI：分别验证 Chat Completions 和 Responses 的真实输入、输出、缓存读写用量及字段缺失行为。
-- 官方 Anthropic：验证显式缓存断点、Haiku 4.5 的 4096-token 最小可缓存前缀门槛，以及各断点累计前缀的 token 数。先发送“核心＋canvas 工具组＋较大离线压缩历史”的请求；完成后在五分钟内原样重复相同 body；最后发送只含核心工具的请求。推理前使用 `count_tokens` 记录各断点前缀，并明确完整输入计数、前缀估计与实际 usage 的区别；不以 MiniMax tokenizer 推断 Haiku 门槛。计数不计入上述三次推理请求。
+- 官方 Anthropic：验证显式缓存断点、Haiku 4.5 的 4096-token 最小可缓存前缀门槛，以及各断点累计前缀的 token 数。先发送“核心＋canvas 工具组＋较大离线压缩历史”的请求；完成后串行原样重复相同 body，且第二次请求发起距首次请求发起不足五分钟；过期如实记录，不自动追加请求；最后发送只含核心工具的请求。推理前使用 `count_tokens` 记录各断点前缀，并明确完整输入计数、前缀估计与实际 usage 的区别；不以 MiniMax tokenizer 推断 Haiku 门槛。计数不计入上述三次推理请求。
 - MiniMax Chat Completions：本次两次均未返回用量。官方文档已明确支持流式 `stream_options.include_usage=true`，后续可单独验证开启后的终末用量帧、四字段解析及缺失行为。本期保持已复核的请求模板，不开启该字段、不改指纹、不追加真实调用。[官方参数说明](https://platform.minimax.cn/docs/api-reference/text-openai-api)
