@@ -64,6 +64,9 @@ const forbiddenOperations=[
  'previs.create','previs.scene.set','previs.thumbnail.set','previs.thumbnail.get',
  // Crossfades are user-driven for now; Mio still reads the resulting curves.
  'timeline.clip.crossfade',
+ // The batch gain change applies the dialogue loudness match the user reviewed;
+ // Mio proposes a single clip's gain through its own reviewed tool.
+ 'timeline.clip.setGains',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),

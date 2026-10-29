@@ -848,6 +848,12 @@ export const operationMessages = {
     "en": "Against the timeline version, crossfade two sounding clips on different tracks: the later clip starts within the earlier one (possibly at the same frame) and ends no earlier than it. The overlap runs from the start of the later clip to the end of the earlier one, where the earlier clip fades linearly to 0 and the later one fades linearly in to 1 (linear, not equal-power); existing gain and fades still multiply the curves. Neither clip may already have a volume envelope. Both curves are written at once as one history entry, and a single undo restores both clips. A stable requestId is required for exact replay; no media is processed",
     "ja": "タイムラインのバージョンを照合し、異なるトラック上の音声付きクリップ2件をクロスフェードします。後のクリップは前のクリップの範囲内で始まり（同時に始まってもかまいません）、前のクリップより早く終わってはいけません。重なり区間は後のクリップの先頭から前のクリップの末尾までで、前のクリップは区間内で0まで直線的にフェードアウトし、後のクリップは1まで直線的にフェードインします（直線で、等電力ではありません）。既存の音量とフェードは引き続き曲線に掛け合わされます。どちらのクリップにも既存の音量エンベロープがあってはなりません。2本の曲線は一度に書き込まれて1件の履歴となり、1回の取り消しで両方のクリップが元に戻ります。正確な再実行には安定したrequestIdが必須で、メディアの処理は行いません"
   },
+  "operation.timeline.clip.setGains": {
+    "zh-Hans": "按时间线版本一次设置多个有声片段的增益（0–2，与片段更新相同）：每个片段最多出现一次，图片或无声素材会被拒绝，所列片段的增益都没有变化时不写入；所有增益一次写入并记一条历史，撤销一次全部复原；不测量也不处理媒体，响度匹配的建议增益由调用方先用片段响度测量得到；使用必填稳定requestId精确重放",
+    "zh-Hant": "按時間軸版本一次設定多個有聲片段的增益（0–2，與片段更新相同）：每個片段最多出現一次，圖片或無聲素材會被拒絕，所列片段的增益都沒有變化時不寫入；所有增益一次寫入並記為一筆歷史，復原一次全部還原；不測量也不處理媒體，響度匹配的建議增益由呼叫方先用片段響度測量取得；使用必填穩定requestId精確重放",
+    "en": "Against the timeline version, set the gains of several sounding clips at once (0 to 2, as for a clip update). Each clip may be listed once; images and silent sources are refused, and nothing is written when no listed gain changes. All gains are written at once as one history entry, and a single undo restores every clip. Nothing is measured and no media is processed: a loudness match first measures each clip with the clip loudness operation. A stable requestId is required for exact replay",
+    "ja": "タイムラインのバージョンを照合し、音声付きクリップ複数件のゲインを一度に設定します（0〜2、クリップ更新と同じ）。各クリップは1回だけ指定できます。画像や無音の素材は拒否し、指定したゲインがどれも変わらない場合は書き込みません。すべてのゲインは一度に書き込まれて1件の履歴となり、1回の取り消しですべてのクリップが元に戻ります。測定もメディアの処理も行いません。ラウドネスを合わせる場合は、先にクリップのラウドネス測定で各クリップを測ります。正確な再実行には安定したrequestIdが必須です"
+  },
 
   "operation.timeline.render": {
     "zh-Hans": "冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询",

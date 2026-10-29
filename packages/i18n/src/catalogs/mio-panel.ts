@@ -1091,6 +1091,12 @@ export const mioPanelMessages = {
     "en": "Crossfade",
     "ja": "クロスフェード"
   },
+  "agent.display.operation.timeline.clip.setGains": {
+    "zh-Hans": "调整多段增益",
+    "zh-Hant": "調整多段增益",
+    "en": "Set clip gains",
+    "ja": "複数クリップのゲインを変更"
+  },
   "agent.display.operation.timeline.history.get": {
     "zh-Hans": "查看编辑历史",
     "zh-Hant": "查看編輯歷史",

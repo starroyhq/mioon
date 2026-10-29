@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="66a536a01dbe46f0551d05df3fc8d58b34811decbc8e761de5c94d1f8d3b7f0f";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="fca046de45a508c86bfcab5b0b83c9197bdd25daffbc552c0fee283267221e56";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -3383,6 +3383,46 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "expectedRevision",
    "outgoingClipId",
    "incomingClipId"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.clip.setGains": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "gains": {
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "clipId": {
+       "type": "string",
+       "format": "uuid"
+      },
+      "gain": {
+       "type": "number",
+       "minimum": 0,
+       "maximum": 2,
+       "description": "The new linear gain of the clip, 0 to 2."
+      }
+     },
+     "required": [
+      "clipId",
+      "gain"
+     ],
+     "additionalProperties": false
+    },
+    "minItems": 1,
+    "maxItems": 100
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "gains"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"
