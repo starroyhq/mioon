@@ -16,6 +16,7 @@ const basis=z.object({kind:targetKind,id,revision:integer}).strict();
 export const agentTaskCheckValuesSchema=z.object({
  width:integer.optional(),height:integer.optional(),fps:z.number().finite().positive().optional(),
  durationFrames:integer.optional(),durationSeconds:z.number().finite().min(0).optional(),
+ minSeconds:z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER).optional(),maxSeconds:z.number().finite().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
  toleranceSeconds:z.number().finite().min(0).optional(),min:integer.optional(),max:integer.optional(),count:integer.optional(),completedCount:integer.optional(),
  versionId:id.optional(),assetId:id.optional(),available:z.boolean().optional(),
  blockingCount:integer.optional(),missingCount:integer.optional(),referenceCount:integer.optional(),

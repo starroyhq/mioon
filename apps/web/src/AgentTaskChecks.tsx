@@ -2,12 +2,13 @@ import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'reac
 import { WorkbenchButton as Button } from '@mioon/ui/components/workbench-controls';
 import { WorkbenchTooltip } from '@mioon/ui/components/workbench-tooltip';
 import type { AgentTaskChange, AgentTaskSnapshot } from '../../../packages/contracts/src/agent-tasks-v2.ts';
-import type { AgentTaskCheck } from '../../../packages/contracts/src/agent-task-checks-v2.ts';
+import type { AgentTaskCheck, AgentTaskRequirement } from '../../../packages/contracts/src/agent-task-checks-v2.ts';
 import { useI18n } from './i18n/I18nProvider.tsx';
 import { createAgentTaskChecksView, visibleAgentTaskChecks } from './agent-task-checks-state.ts';
 import type { AgentTaskChecksViewState } from './agent-task-checks-state.ts';
 import { taskCheckExplanation, taskCheckLocation, taskCheckMetadata, taskCheckTargetTitle } from './agent-task-presentation.ts';
 import type { TaskDisplayLookup } from './agent-task-presentation.ts';
+import { isTaskGoalRepairActive, taskCurrentGoalStepId, visibleTaskRequirements, taskRequirementStatus, taskRequirementNote, taskRequirementTitle, taskRequirementCurrent } from './agent-task-requirements.ts';
 import Icon from './icons.tsx';
 
 interface Props {
@@ -51,12 +52,23 @@ function CheckRow({ item, preflighting, snapshot, readOnly, visible, targetName,
   </div>;
 }
 
+function RequirementRow({item,snapshot}:{item:AgentTaskRequirement;snapshot:AgentTaskSnapshot}) {
+  const {t,locale}=useI18n(),status=taskRequirementStatus(item,snapshot);
+  return <div className="mio-check-row mio-requirement-row" data-testid="agent-task-requirement" data-requirement-id={item.id} data-status={status}>
+    <span className="mio-check-icon" data-tone={status==='passed'?'success':status==='failed'?'danger':'neutral'} role="img" aria-label={t(`agent.requirements.status.${status}`)}>
+      {status==='repairing'?<span className="wb-spinner" aria-hidden="true"/>:status==='failed'?<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6m0-6-6 6"/></svg>:<Icon name={status==='passed'?'check':'clock'}/>}
+    </span>
+    <div className="mio-check-copy"><p className="mio-check-name">{taskRequirementTitle(item,locale)}</p><p className="mio-check-reason">{taskRequirementCurrent(item,locale)}</p></div>
+    {status==='repairing'&&<span className="mio-requirement-status">{t('agent.requirements.status.repairing')}</span>}
+  </div>;
+}
+
 export default function AgentTaskChecks({ scope, snapshot, latest, visible, attached = true, readOnly, targetName, onLocate, onOpenRequests }: Props) {
   const { t, locale } = useI18n(), contentId = useId();
   const [state, setState] = useState(initial), [inView, setInView] = useState(false), [documentVisible, setDocumentVisible] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden');
   const [expanded, setExpanded] = useState<boolean | undefined>();
   const root = useRef<HTMLElement | null>(null), view = useRef<ReturnType<typeof createAgentTaskChecksView> | null>(null);
-  const { run } = snapshot, eligible = run.status === 'completed' && !run.diagnostic;
+  const { run } = snapshot, repairing = isTaskGoalRepairActive(snapshot), completed = run.status === 'completed' && !run.diagnostic, eligible = completed || repairing, goalStepId = taskCurrentGoalStepId(snapshot);
   useEffect(() => {
     const changed = () => setDocumentVisible(document.visibilityState !== 'hidden');
     document.addEventListener('visibilitychange', changed); changed();
@@ -78,14 +90,17 @@ export default function AgentTaskChecks({ scope, snapshot, latest, visible, atta
     return () => { current.dispose(); if (view.current === current) view.current = null; };
   }, [scope, run.projectId, run.id]);
   const active = eligible && visible && inView && documentVisible;
-  useEffect(() => { view.current?.update({ runId: run.id, runRevision: run.revision, completed: eligible, attached, latest, backgroundPending: snapshot.backgroundPending === true, visible: active }); }, [run.id, run.revision, eligible, attached, latest, snapshot.backgroundPending, active]);
+  useEffect(() => { view.current?.update({ runId: run.id, runRevision: run.revision, completed, repairing, goalStepId, attached, latest, backgroundPending: snapshot.backgroundPending === true, visible: active }); }, [run.id, run.revision, completed, repairing, goalStepId, attached, latest, snapshot.backgroundPending, active]);
   const groups = visibleAgentTaskChecks(state.report, state.preflighting), items = groups.flatMap(group => group.items);
-  const failed = items.filter(item => item.status === 'failed' && !(state.preflighting && item.type === 'timeline_preflight')).length;
-  const pending = items.filter(item => item.status === 'pending' || state.preflighting && item.type === 'timeline_preflight').length;
-  const open = expanded ?? (failed > 0 || pending > 0);
-  const count = failed || pending, summary = failed ? t('agent.checks.summary.failed', { count }) : pending ? t('agent.checks.summary.pending', { count }) : items.length ? t('agent.checks.summary.allPassed') : '';
-  const heading = items.length ? t('agent.checks.titleCount', { count: items.length }) : t('agent.checks.title');
-  const showContent = items.length > 0 || state.preflighting || state.error;
+  const requirements = visibleTaskRequirements(state.report,snapshot), note = taskRequirementNote(requirements,snapshot);
+  const hostFailed = items.filter(item => item.status === 'failed' && !(state.preflighting && item.type === 'timeline_preflight')).length;
+  const failed = hostFailed + requirements.filter(item=>taskRequirementStatus(item,snapshot)==='failed').length;
+  const pending = items.filter(item => item.status === 'pending' || state.preflighting && item.type === 'timeline_preflight').length + requirements.filter(item=>taskRequirementStatus(item,snapshot)==='pending').length;
+  const repairingCount = requirements.filter(item=>taskRequirementStatus(item,snapshot)==='repairing').length, total = items.length + requirements.length;
+  const open = expanded ?? (failed > 0 || pending > 0 || repairingCount > 0);
+  const count = failed || repairingCount || pending, summary = failed ? t(hostFailed?'agent.checks.summary.failed':'agent.requirements.summary.failed', { count }) : repairingCount ? t('agent.requirements.summary.repairing',{count}) : pending ? t('agent.checks.summary.pending', { count }) : total ? t(requirements.length?'agent.requirements.summary.allPassed':'agent.checks.summary.allPassed') : '';
+  const heading = total ? t('agent.checks.titleCount', { count: total }) : t('agent.checks.title');
+  const showContent = total > 0 || state.preflighting || state.error;
   if (!eligible) return null;
   // Keep the same observed element across loading/empty/result transitions.
   // An empty completed round contributes no visible heading or placeholder.
@@ -95,7 +110,7 @@ export default function AgentTaskChecks({ scope, snapshot, latest, visible, atta
       <Button variant="ghost" className="mio-check-toggle" aria-label={`${t(open ? 'agent.checks.collapse' : 'agent.checks.expand')} · ${heading}${summary ? ` · ${summary}` : ''}`} aria-expanded={open} aria-controls={contentId} onClick={() => setExpanded(!open)}>
         <Icon name={open ? 'down' : 'arrow'} />
         <span className="mio-check-heading">{heading}</span>
-        {summary && <><span className="mio-check-separator" aria-hidden="true"> · </span><span className="mio-check-summary" data-tone={failed ? 'danger' : pending ? 'pending' : undefined} data-testid="agent-task-check-summary">{summary}</span></>}
+        {summary && <><span className="mio-check-separator" aria-hidden="true"> · </span><span className="mio-check-summary" data-tone={failed ? 'danger' : pending || repairingCount ? 'pending' : requirements.length ? 'success' : undefined} data-testid="agent-task-check-summary">{summary}</span></>}
         {state.justChecked && <span className="mio-check-fresh" role="status">{t('agent.checks.justChecked')}</span>}
       </Button>
       <WorkbenchTooltip content={t('agent.checks.recheckTooltip')}><Button variant="icon" className="mio-check-refresh" aria-label={t('agent.checks.recheck')} loading={state.preflighting} disabled={!active} onClick={() => { void view.current?.recheck(); }}>
@@ -104,6 +119,11 @@ export default function AgentTaskChecks({ scope, snapshot, latest, visible, atta
     </header>
     {state.error && <p className="mio-error" role="alert">{t('agent.checks.readFailed')}</p>}
     <div id={contentId} hidden={!open}>
+      {requirements.length>0&&<section className="mio-check-group" data-check-group="requirements">
+        <h5 className="mio-requirements-head">{t('agent.requirements.group')}<span>{t('agent.requirements.hint')}</span></h5>
+        {requirements.map(item=><RequirementRow key={item.id} item={item} snapshot={snapshot}/>)}
+        {note&&<p className="mio-check-note" data-testid="agent-task-check-note">{t(`agent.requirements.note.${note}`)}</p>}
+      </section>}
       {groups.map(group => <section key={group.id} className="mio-check-group" data-check-group={group.id}>
         <h5>{t(`agent.checks.group.${group.id}`)}</h5>
         {group.items.map(item => <CheckRow key={item.id} item={item} preflighting={state.preflighting} snapshot={snapshot} readOnly={readOnly} visible={active} targetName={targetName} onLocate={onLocate} onOpenRequests={onOpenRequests} />)}

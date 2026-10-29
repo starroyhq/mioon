@@ -1,4 +1,4 @@
-import {AGENT_TASK_STEP_STATUSES} from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import {AGENT_TASK_STEP_STATUSES,agentTaskGoalsSchema} from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskSnapshot,AgentTaskStep} from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskCheck} from '../../../packages/contracts/src/agent-task-checks-v2.ts';
 import {catalogs,translate} from '../../../packages/i18n/src/index.ts';
@@ -242,9 +242,55 @@ export function taskCurrentEntries(display:AgentTaskDisplay|undefined,locale:Loc
   return taskDisplayEntries({...display,fields},locale,options);
 }
 
-export function taskStepTitle(step:AgentTaskStep,locale:Locale):string {
-  if(step.kind==='model')return translate(locale,'agent.display.model');
+function normalizedGoalDeclaration(value:unknown) {
+  const parsed=agentTaskGoalsSchema.safeParse(value);
+  if(!parsed.success)return;
+  return {conditions:parsed.data.conditions.map(condition=>condition.type==='duration'&&condition.seconds!==undefined?{...condition,toleranceSeconds:condition.toleranceSeconds??0}:condition)};
+}
+const canonicalGoalDeclaration=(value:ReturnType<typeof normalizedGoalDeclaration>):string=>JSON.stringify(value,(_key,item:unknown)=>item!==null&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
+function completedGoalDeclaration(step:AgentTaskStep) {
+  if(step.kind!=='tool'||step.status!=='completed'||step.toolCall?.name!=='mioon_goal_set')return;
+  const requested=normalizedGoalDeclaration(step.toolCall.arguments),saved=normalizedGoalDeclaration(step.result);
+  if(requested&&saved&&canonicalGoalDeclaration(requested)===canonicalGoalDeclaration(saved))return saved;
+}
+/** Only a bounded count is shown; goal arguments never become free-form copy. */
+export function taskGoalCount(step:AgentTaskStep):number|undefined {
+  if(step.kind!=='tool'||step.toolCall?.name!=='mioon_goal_set')return;
+  return (step.status==='completed'?completedGoalDeclaration(step):normalizedGoalDeclaration(step.toolCall.arguments))?.conditions.length;
+}
+/** The newest completed receipt owns this round, even when corrupt. Withhold
+ * its requirements rather than reviving an older, no longer current set. */
+export function taskLatestGoalStep(steps:readonly AgentTaskStep[]):AgentTaskStep|undefined {
+  const latest=steps.filter(step=>step.kind==='tool'&&step.status==='completed'&&step.toolCall?.name==='mioon_goal_set').reduce<AgentTaskStep|undefined>((last,step)=>!last||step.position>last.position?step:last,undefined);
+  return latest&&completedGoalDeclaration(latest)?latest:undefined;
+}
+export function taskUpdatedGoalStepIds(steps:readonly AgentTaskStep[]):ReadonlySet<string> {
+  const valid=steps.filter(step=>completedGoalDeclaration(step)!==undefined),latest=new Map<string,AgentTaskStep>();
+  for(const step of valid){const previous=latest.get(step.runId);if(!previous||step.position>previous.position)latest.set(step.runId,step);}
+  return new Set(valid.filter(step=>latest.get(step.runId)!.position>step.position).map(step=>step.id));
+}
+/** The public repair provenance follows later model/tool steps too. Only the
+ * first model intent for each run/source is the host's single repair request. */
+export function taskFirstGoalRepairStepIds(steps:readonly AgentTaskStep[]):ReadonlySet<string> {
+  const first=new Map<string,AgentTaskStep>();
+  for(const step of steps){
+    if(step.kind!=='model'||!step.repair)continue;
+    const key=JSON.stringify([step.runId,step.repair.sourceModelStepId]),previous=first.get(key);
+    if(!previous||step.position<previous.position)first.set(key,step);
+  }
+  return new Set([...first.values()].map(step=>step.id));
+}
+export function taskStepBadge(step:AgentTaskStep,updatedGoals:ReadonlySet<string>=new Set(),firstRepairs?:ReadonlySet<string>):'repair'|'updated'|undefined {
+  if(step.kind==='model'&&step.repair&&(firstRepairs===undefined||firstRepairs.has(step.id)))return 'repair';
+  if(step.kind==='tool'&&updatedGoals.has(step.id))return 'updated';
+}
+export function taskStepTitle(step:AgentTaskStep,locale:Locale,firstRepairs?:ReadonlySet<string>):string {
+  if(step.kind==='model')return translate(locale,step.repair&&(firstRepairs===undefined||firstRepairs.has(step.id))?'agent.panel.goal.repairTitle':'agent.display.model');
   if(step.kind==='wait')return translate(locale,'agent.display.wait');
+  if(step.toolCall?.name==='mioon_goal_set'){
+    const count=taskGoalCount(step);
+    return count===undefined?translate(locale,'agent.panel.goal.title'):translate(locale,'agent.panel.goal.titleCount',{count});
+  }
   // A method read names the built-in method from its saved arguments (C6), never the model's explanation.
   const skill=taskSkillReadOf(step);
   if(skill)return translate(locale,'agent.skill.read',{title:translate(locale,taskSkillTitleKey(skill) as MessageKey)});

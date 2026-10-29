@@ -7,6 +7,7 @@ const dimension={...integer,minimum:1},fps={type:'number',exclusiveMinimum:0,max
 const condition=(type:string,properties:Record<string,unknown>={},required:string[]=[])=>({type:'object',properties:{type:{type:'string',enum:[type]},...properties},required:['type',...required],additionalProperties:false});
 export const AGENT_TASK_GOAL_SET_PARAMETERS=Object.freeze({type:'object',properties:{conditions:{type:'array',maxItems:20,items:{anyOf:[
  condition('duration',{seconds:number,toleranceSeconds:number},['seconds']),
+ {...condition('duration',{minSeconds:number,maxSeconds:number}),description:'Inclusive duration bounds in seconds: provide minSeconds, maxSeconds or both, with minSeconds not exceeding maxSeconds. Do not combine bounds with seconds or toleranceSeconds.',anyOf:[{required:['minSeconds']},{required:['maxSeconds']}]},
  condition('timeline_format',{width:dimension,height:dimension,fps},['width','height','fps']),
  {...condition('export_parameters',{width:dimension,height:dimension,fps,durationFrames:integer}),anyOf:['width','height','fps','durationFrames'].map(key=>({required:[key]}))},
  ...['clip_count','subtitle_count','shot_count'].map(type=>({...condition(type,{min:integer,max:integer}),description:'Inclusive count bounds: provide min, max or both. When both are present, min must not exceed max. Exact counts use min=max.',anyOf:[{required:['min']},{required:['max']}]})),condition('generation_completed'),
@@ -17,7 +18,7 @@ export const AGENT_TASK_GOAL_SET_PARAMETERS=Object.freeze({type:'object',propert
 export function normalizeAgentTaskGoals(input:unknown):AgentTaskGoals|null{
  const parsed=agentTaskGoalsSchema.safeParse(input);if(!parsed.success)return null;
  return {conditions:parsed.data.conditions.map(value=>{
-  if(value.type==='duration')return {type:value.type,seconds:value.seconds,toleranceSeconds:value.toleranceSeconds??0};
+  if(value.type==='duration')return value.seconds!==undefined?{type:value.type,seconds:value.seconds,toleranceSeconds:value.toleranceSeconds??0}:{type:value.type,...(value.minSeconds===undefined?{}:{minSeconds:value.minSeconds}),...(value.maxSeconds===undefined?{}:{maxSeconds:value.maxSeconds})};
   if(value.type==='timeline_format')return {type:value.type,width:value.width,height:value.height,fps:value.fps};
   if(value.type==='export_parameters')return {type:value.type,...(value.width===undefined?{}:{width:value.width}),...(value.height===undefined?{}:{height:value.height}),...(value.fps===undefined?{}:{fps:value.fps}),...(value.durationFrames===undefined?{}:{durationFrames:value.durationFrames})};
   if(value.type==='generation_completed')return {type:value.type};
@@ -48,7 +49,7 @@ type Result=Pick<AgentTaskRequirement,'status'|'reason'>;
 const pending=():Result=>({status:'pending',reason:{code:'RECORD_UNAVAILABLE'}});
 const compare=(matches:boolean):Result=>matches?{status:'passed'}:{status:'failed',reason:{code:'PARAMETERS_MISMATCH'}};
 function fields(condition:AgentTaskGoalCondition):AgentTaskCheckValues{
- if(condition.type==='duration')return {durationSeconds:condition.seconds,toleranceSeconds:condition.toleranceSeconds??0};
+ if(condition.type==='duration')return condition.seconds!==undefined?{durationSeconds:condition.seconds,toleranceSeconds:condition.toleranceSeconds??0}:{...(condition.minSeconds===undefined?{}:{minSeconds:condition.minSeconds}),...(condition.maxSeconds===undefined?{}:{maxSeconds:condition.maxSeconds})};
  if(condition.type==='clip_count'||condition.type==='subtitle_count'||condition.type==='shot_count')return {...(condition.min===undefined?{}:{min:condition.min}),...(condition.max===undefined?{}:{max:condition.max})};
  if(condition.type==='generation_completed')return {status:'succeeded'};
  return {...(condition.width===undefined?{}:{width:condition.width}),...(condition.height===undefined?{}:{height:condition.height}),...(condition.fps===undefined?{}:{fps:condition.fps}),...('durationFrames' in condition?{durationFrames:condition.durationFrames}:{})};
@@ -65,7 +66,9 @@ export function evaluateAgentTaskGoals(goals:TaskSavedGoals,observation:TaskGoal
     current={durationFrames,fps,durationSeconds:durationFrames/fps};
     // Saved timelines use integer frames. Accept the nearest half-frame in
     // addition to the explicit tolerance; the fixed epsilon is only roundoff.
-    result=compare(Math.abs(durationFrames-condition.seconds*fps)<=(condition.toleranceSeconds??0)*fps+0.5+1e-9);
+    result=compare(condition.seconds!==undefined
+     ?Math.abs(durationFrames-condition.seconds*fps)<=(condition.toleranceSeconds??0)*fps+0.5+1e-9
+     :(condition.minSeconds===undefined||durationFrames>=condition.minSeconds*fps-0.5-1e-9)&&(condition.maxSeconds===undefined||durationFrames<=condition.maxSeconds*fps+0.5+1e-9));
    }
   }else if(condition.type==='timeline_format'){
    current=Object.fromEntries((['width','height','fps'] as const).filter(key=>owner.values[key]!==undefined).map(key=>[key,owner.values[key]]));

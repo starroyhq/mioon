@@ -6,6 +6,8 @@ export interface AgentTaskChecksRound {
   runId: string;
   runRevision: number;
   completed: boolean;
+  repairing?: boolean;
+  goalStepId?: string;
   latest: boolean;
   backgroundPending: boolean;
   visible: boolean;
@@ -123,8 +125,9 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
   let round: AgentTaskChecksRound | null = null, disposed = false, epoch = 0;
   let controller: AbortController | null = null, timer: ReturnType<typeof setTimeout> | null = null;
   let fullFlight = false, automaticAttempt: { key: string; token: symbol } | null = null;
+  let refreshAfterFull: string | null = null;
   const publish = (patch: Partial<AgentTaskChecksViewState>) => { state = { ...state, ...patch }; if (!disposed) onChange(state); };
-  const attached = () => !disposed && round?.completed === true && round.attached !== false;
+  const attached = () => !disposed && !!round && (round.completed || round.repairing === true) && round.attached !== false;
   const readable = () => attached() && round?.visible === true;
   function cancel() {
     epoch++; controller?.abort(); controller = null;
@@ -138,11 +141,11 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
     if (timer !== null) clearTimer(timer);
     timer = null;
     if (!readable() || state.loading) return;
-    if (!visibleAgentTaskChecks(state.report).some(group => group.items.some(item => item.status === 'pending'))) return;
+    if (!round?.repairing && !state.report?.requirements?.some(item => item.status === 'pending') && !visibleAgentTaskChecks(state.report).some(group => group.items.some(item => item.status === 'pending'))) return;
     timer = setTimer(() => { timer = null; void load(false); }, 5000);
   }
   function automatic() {
-    if (!readable() || fullFlight || !round?.latest || !state.report?.groups.some(group => group.items.some(item => item.reason?.code === 'PREFLIGHT_NOT_REQUESTED'))) return;
+    if (!readable() || fullFlight || !round?.completed || !round.latest || !state.report?.groups.some(group => group.items.some(item => item.reason?.code === 'PREFLIGHT_NOT_REQUESTED'))) return;
     const key = identity(scope, projectId, round.runId), token = cache.claimAutomatic(key);
     if (token) void load(true, false, { key, token });
   }
@@ -153,6 +156,7 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
     }
     cancel();
     const owner = epoch, current = round, key = identity(scope, projectId, current.runId), abort = new AbortController();
+    if (!full && refreshAfterFull === current.runId) refreshAfterFull = null;
     controller = abort;
     fullFlight = full;
     automaticAttempt = attempt ?? null;
@@ -172,7 +176,11 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
         publish({ loading: false, preflighting: false, error: true });
       }
     } finally {
-      if (owner === epoch) { controller = null; poll(); }
+      if (owner === epoch) {
+        controller = null;
+        if (refreshAfterFull === round?.runId && readable()) void load(false);
+        else poll();
+      }
     }
   }
   return {
@@ -180,9 +188,10 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
     update(next: AgentTaskChecksRound) {
       if (disposed) return;
       const previous = round;
-      const changed = previous?.runId !== next.runId || previous.runRevision !== next.runRevision || previous.backgroundPending !== next.backgroundPending || previous.completed !== next.completed || previous.attached !== next.attached;
+      const changed = previous?.runId !== next.runId || previous.runRevision !== next.runRevision || previous.backgroundPending !== next.backgroundPending || previous.completed !== next.completed || previous.repairing !== next.repairing || previous.goalStepId !== next.goalStepId || previous.attached !== next.attached;
       round = next;
       if (!attached() || previous && previous.runId !== next.runId) {
+        refreshAfterFull = null;
         cancel(); publish({ loading: false, preflighting: false });
         if (previous && previous.runId !== next.runId) publish({ report: null, error: false, justChecked: false });
         if (!attached()) return;
@@ -190,8 +199,15 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
       // A full local preflight has an explicit lifetime. Ignore intermediate
       // lightweight refreshes until it settles, including background completion
       // and viewport/window visibility changes. Detachment above still cancels.
-      if (fullFlight) return;
+      if (fullFlight) {
+        // Ordinary H3b revision/visibility changes still leave a full preflight
+        // alone. A repair can replace its goals and finish while it is reading;
+        // one subsequent light read must make that replacement visible.
+        if (previous && (previous.repairing || next.repairing) && (previous.goalStepId !== next.goalStepId || previous.repairing && next.completed)) refreshAfterFull = next.runId;
+        return;
+      }
       if (!readable()) { cancel(); publish({ loading: false, preflighting: false }); return; }
+      if (refreshAfterFull === next.runId) { void load(false); return; }
       if (!changed && previous?.visible) { automatic(); poll(); return; }
       cancel();
       const cached = cache.read(identity(scope, projectId, next.runId), next.runRevision);
@@ -205,6 +221,6 @@ export function createAgentTaskChecksView({ scope, projectId, read = readAgentTa
       }
     },
     recheck() { return load(true, true); },
-    dispose() { cancel(); disposed = true; },
+    dispose() { refreshAfterFull = null; cancel(); disposed = true; },
   };
 }
