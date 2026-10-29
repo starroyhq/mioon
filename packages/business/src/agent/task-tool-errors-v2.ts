@@ -1,7 +1,8 @@
 import {schemas} from '@mioon/contracts';
 import {parseVideoBinding,videoInputProfile} from '../../../contracts/src/video-providers.ts';
 import type {VideoExecutionBinding} from '../../../contracts/src/video-providers.ts';
-import {AGENT_TASK_QUESTION_LIMITS,agentTaskQuestionSchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import {AGENT_TASK_QUESTION_LIMITS,agentTaskQuestionSchema,AGENT_TASK_CONTINUITY_LIMITS,agentTaskContinuityReportSchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import {AGENT_TASK_SKILLS,parseAgentTaskSkillRead} from './task-skills-v2.ts';
 
 type ParameterIssueReason='required'|'invalid_type'|'invalid_value'|'unknown_field'|'unsupported_parameter';
 export interface AgentTaskParameterFeedback {
@@ -104,4 +105,37 @@ export function agentTaskQuestionFeedback(input:unknown):AgentTaskParameterFeedb
   const descriptions:Record<ParameterIssueReason,string>={required:'缺少必填字段',invalid_type:'字段类型不符',invalid_value:'字段值或组合无效',unknown_field:'未声明的字段',unsupported_parameter:'不支持此参数'};
   const limits=AGENT_TASK_QUESTION_LIMITS;
   return {message:`提问参数未通过本地校验：${issues.map(issue=>`${issue.field}（${descriptions[issue.reason]}）`).join('；')}。问题不超过${limits.question}字，选项${limits.minOptions}-${limits.options}个；选项名不超过${limits.label}字且互不相同，说明不超过${limits.description}字；它们都只占一行。用户还没有看到这个问题，请修正后重新提问。`,issues};
+}
+
+/** C6: an unknown method or section is corrected by the model; the listed
+ * names and section titles are host-owned, so they are safe to return. */
+export function agentTaskSkillReadFeedback(input:unknown):AgentTaskParameterFeedback|null {
+  if(parseAgentTaskSkillRead(input))return null;
+  const value=input!==null&&typeof input==='object'&&!Array.isArray(input)?input as Record<string,unknown>:{};
+  const skill=typeof value.name==='string'?AGENT_TASK_SKILLS.find(item=>item.name===value.name):undefined;
+  const issues:AgentTaskParameterFeedback['issues']=[];
+  if(Object.keys(value).some(key=>key!=='name'&&key!=='section'))issues.push({field:'input',reason:'unknown_field'});
+  if(!skill)issues.push({field:'name',reason:value.name===undefined?'required':'invalid_value'});
+  else if(value.section!==undefined)issues.push({field:'section',reason:typeof value.section==='string'?'invalid_value':'invalid_type'});
+  const listed=skill?`${skill.name} 的章节：${skill.sections.map(section=>section.title).join('、')}。`:`可读的方法：${AGENT_TASK_SKILLS.map(item=>item.name).join('、')}。`;
+  return {message:`方法读取参数未通过本地校验。${listed}不带 section 可读取全文。`,issues};
+}
+/** C6: a continuity report names 1-4 shots of this project per issue. Shot
+ * identities are never echoed back; only which issue field failed. */
+export function agentTaskContinuityFeedback(input:unknown,ownsShot:(shotId:string)=>boolean):AgentTaskParameterFeedback|null {
+  const parsed=agentTaskContinuityReportSchema.safeParse(input);
+  const issues:AgentTaskParameterFeedback['issues']=[];
+  const add=(field:string,reason:ParameterIssueReason):void=>{if(issues.length<16&&!issues.some(issue=>issue.field===field&&issue.reason===reason))issues.push({field,reason});};
+  const field=(path:readonly (string|number)[]):string=>{
+    if(path[0]!=='issues')return 'input';if(typeof path[1]!=='number'||path[1]>=AGENT_TASK_CONTINUITY_LIMITS.issues)return 'issues';
+    return ['category','shotIds','text'].includes(String(path[2]))?`issues.${path[1]}.${String(path[2])}`:`issues.${path[1]}`;
+  };
+  if(!parsed.success)for(const issue of parsed.error.issues){
+    if(issue.code==='unrecognized_keys')add(field(issue.path),'unknown_field');
+    else add(field(issue.path),issue.code==='invalid_type'?(issue.received==='undefined'?'required':'invalid_type'):'invalid_value');
+  }else parsed.data.issues.forEach((issue,index)=>{if(issue.shotIds.some(shotId=>!ownsShot(shotId)))add(`issues.${index}.shotIds`,'invalid_value');});
+  if(!issues.length)return null;
+  const descriptions:Record<ParameterIssueReason,string>={required:'缺少必填字段',invalid_type:'字段类型不符',invalid_value:'字段值无效或镜头不属于当前项目',unknown_field:'未声明的字段',unsupported_parameter:'不支持此参数'};
+  const limits=AGENT_TASK_CONTINUITY_LIMITS;
+  return {message:`连续性检查参数未通过本地校验：${issues.map(issue=>`${issue.field}（${descriptions[issue.reason]}）`).join('；')}。最多${limits.issues}条；每条的 category 取列出的类别之一，shotIds 是当前项目的1-${limits.shots}个不重复镜头，text 是一句不超过${limits.text}字的说明。用户还没有看到这份报告，请修正后重新报告。`,issues};
 }

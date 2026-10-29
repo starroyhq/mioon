@@ -33,7 +33,7 @@ export const RESTORE_DENIED_OPERATIONS = Object.freeze([
  'export.cancel','export.activity.get','export.output.get',
  'workspace.settings.get','workspace.settings.set','workspace.backup.status','workspace.backup.list','workspace.backup.create','workspace.backup.restore.stage',
  'task.disposition.list','task.disposition.markFailed','task.disposition.archiveCompleted',
- 'agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','project.rename','project.delete',
+ 'agent.authorization.list','agent.authorization.grant','agent.authorization.revoke','project.rename','project.notes.set','project.delete',
  'asset.annotation.set', 'lut.import',
  'timeline.audioPreview.continuousPlan','timeline.colour.source.inspect','timeline.colour.image.inspect','timeline.colour.jpeg.inspect',
  'timeline.clip.loudness','timeline.loudness.prepare','timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes','timeline.clip.crossfade','timeline.clip.setGains','timeline.audioPreview.plan','timeline.export.samplePeak','timeline.export.loudness','workspace.backup.inspect','provider.list','video.connection.list','generation.submit','job.retry','job.cancel','job.reconcile','asset.waveform.request',

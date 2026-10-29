@@ -11,7 +11,7 @@ import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
-import {AGENT_TASK_ASK_TOOL, AGENT_TASK_TOOLS_LOAD_NAME} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
+import {AGENT_TASK_CONVERSATION_TOOLS, AGENT_TASK_TOOLS_LOAD_NAME} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import {TASK_MODEL_LIMITS} from '../../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskGateway, TaskModelItem, TaskModelOutput, TaskModelRequest} from '../../packages/business/src/agent/task-gateway-v2.ts';
@@ -334,12 +334,12 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
     assert.equal(done.changes.length, 0);
     const tools = object(JSON.parse(f.requests[0]!)).tools;
     assert.ok(Array.isArray(tools));
-    // A diagnostic has neither the loader nor the question tool; nobody
-    // could answer a question there.
-    assert.equal(tools.length, f.tools.list().filter(value => value.risk === 'read_only' && value.name !== AGENT_TASK_TOOLS_LOAD_NAME && value.name !== AGENT_TASK_ASK_TOOL).length);
+    // A diagnostic has none of the conversation-only host tools: no loader,
+    // nobody to answer a question, and no methods or review reports (C6).
+    assert.equal(tools.length, f.tools.list().filter(value => value.risk === 'read_only' && !AGENT_TASK_CONVERSATION_TOOLS.includes(value.name)).length);
     assert.ok(tools.every(value => {
       const tool = object(value), name = object(protocol === 'chat_completions' ? tool.function : tool).name;
-      return name !== AGENT_TASK_TOOLS_LOAD_NAME && name !== AGENT_TASK_ASK_TOOL;
+      return !AGENT_TASK_CONVERSATION_TOOLS.includes(String(name));
     }));
   } else if (scenario === 'diagnostic_catalog') {
     f.setScript(async function* () {yield {type: 'done', output: output(protocol, [call('mioon_shot_update', {

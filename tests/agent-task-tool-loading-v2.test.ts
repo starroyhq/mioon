@@ -15,7 +15,7 @@ import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtim
 import {buildTaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskModelItem,TaskModelOutput,TaskModelRequest} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {selectTaskModelTools,sourceTaskModelToolNames} from '../packages/business/src/agent/task-context-v2.ts';
-import {AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName} from '../packages/business/src/agent/task-tool-groups-v2.ts';
+import {AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,AGENT_TASK_CONVERSATION_TOOLS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskJson,AgentTaskToolCall,AgentTaskSnapshot,AgentTaskStatus,AgentTaskControlAction} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
@@ -184,8 +184,9 @@ for(const protocol of protocols)test(`${protocol}: a real zero-tool legacy inten
 });
 
 test('diagnostics retain their old catalog and cannot select or execute the new loader',async t=>{
- // Neither host tool joins a diagnostic: the loader is new, and a diagnostic has no conversation to answer a question in.
- const f=await fixture(t),oldCatalog=f.tools.list().filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME&&tool.name!==AGENT_TASK_ASK_TOOL);
+ // No conversation-only host tool joins a diagnostic: the loader is new, a diagnostic has no conversation to
+ // answer a question in, and it neither reads methods nor reports a review (C6).
+ const f=await fixture(t),oldCatalog=f.tools.list().filter(tool=>!AGENT_TASK_CONVERSATION_TOOLS.includes(tool.name));
  for(const profile of ['text','read_only','catalog'] as const){
   const before=f.requests.length,sent=await f.send({diagnostic:{profile}});assert.equal((await f.settle(sent.run.id)).run.status,'completed');
   const body=object(JSON.parse(f.requests[before]!.body));

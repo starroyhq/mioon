@@ -74,6 +74,12 @@ export const operationMessages = {
     "en": "Atomically archive and hide conclusively finished tasks that need no reconciliation, preserving all original records, files, idempotent receipts and history",
     "ja": "終了が確定し照合が不要なタスクを原子的にアーカイブして非表示にします。元の記録、ファイル、冪等な受領結果、履歴はすべて保持します"
   },
+  "operation.project.notes.set": {
+    "zh-Hans": "按项目版本保存项目说明（不超过8192字节的纯文本），使用稳定requestId精确重放；说明是资料，不改变放行档位或权限，恢复与候选工作区不可用",
+    "zh-Hant": "按專案版本儲存專案說明（不超過8192位元組的純文字），使用穩定requestId精確重播；說明是資料，不變更放行檔位或權限，復原與候選工作區無法使用",
+    "en": "Save project notes (plain text, at most 8192 bytes) against the project revision with exact stable-requestId replay. Notes are reference material and never change confirmation modes or permissions; unavailable in restored or candidate workspaces.",
+    "ja": "プロジェクトのバージョンを照合し、安定したrequestIdで元の結果を再現してプロジェクトメモ（8192バイト以内のプレーンテキスト）を保存します。メモは参照資料であり、確認モードや権限を変えません。復元済みまたは候補ワークスペースでは使用できません"
+  },
   "operation.project.rename": {
     "zh-Hans": "按项目版本重命名，使用稳定requestId精确重放；不改动时间线、镜头或媒体，恢复与候选工作区不可用",
     "zh-Hant": "按專案版本重新命名，使用穩定requestId精確重播；不變更時間軸、鏡頭或媒體，復原與候選工作區無法使用",

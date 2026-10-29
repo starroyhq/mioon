@@ -2,12 +2,12 @@ import type {AgentTaskChange,AgentTaskDiagnostic,AgentTaskJson,AgentTaskLocale,A
 import type {AgentConfiguration} from './config.ts';
 import {TASK_MODEL_LIMITS,taskContinuation,taskResponseLanguageContext,taskResponseLocale} from './task-gateway-v2.ts';
 import type {TaskModelOutput,TaskToolDefinition} from './task-gateway-v2.ts';
-import {AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,loadedAgentTaskToolGroups} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_CONVERSATION_TOOLS,agentTaskToolGroupForName,loadedAgentTaskToolGroups} from './task-tool-groups-v2.ts';
 import {compactTaskModelHistory} from './task-context-compaction-v2.ts';
-import {taskBaseModelHistory,taskContextHistoryRound,taskContextProjectOverview} from './task-context-base-v2.ts';
+import {taskBaseModelHistory,taskContextHistoryRound,taskContextProjectNotes,taskContextProjectOverview} from './task-context-base-v2.ts';
 import {taskRunRecordMessage} from './task-run-record-v2.ts';
 import type {TaskHistoricalContextRun} from './task-run-record-v2.ts';
-import {taskProjectOverviewMessage} from './task-context-observations-v2.ts';
+import {taskProjectNotesMessage,taskProjectOverviewMessage} from './task-context-observations-v2.ts';
 import type {TaskProjectOverview} from './task-context-observations-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
@@ -40,6 +40,8 @@ export interface TaskRunContextInput {
   /** Narrow journal projections, already scoped/selected, oldest first. */
   historyRuns?:readonly TaskContextHistoryRun[];
   projectOverview?:TaskProjectOverview;
+  /** C6: the project's notes, frozen with this send; omitted when empty. */
+  projectNotes?:string;
   attachments?:readonly TaskContextAttachment[];
 }
 export interface TaskRunContext {
@@ -59,7 +61,7 @@ function historyInputMessage(input:TaskContextHistoryInput,locale:AgentTaskLocal
 
 /** Assemble only the host's supplied observations. Project/conversation
  * ownership and terminal-run selection remain journal responsibilities. */
-export function assembleRunContext({locale,text,previousRuns=[],historyRuns,projectOverview,attachments=[]}:TaskRunContextInput):TaskRunContext {
+export function assembleRunContext({locale,text,previousRuns=[],historyRuns,projectOverview,projectNotes,attachments=[]}:TaskRunContextInput):TaskRunContext {
   const groups:AgentTaskJson[][]=[];
   if(historyRuns!==undefined)for(const previous of historyRuns){
     const messages:AgentTaskJson[]=[{role:'user',content:previous.text},...(previous.historyInputs===undefined?previous.notes.map(content=>({role:'user',content})):previous.historyInputs.map(input=>historyInputMessage(input,locale)))];
@@ -74,13 +76,15 @@ export function assembleRunContext({locale,text,previousRuns=[],historyRuns,proj
       ...(previous.notes??[]).map(note=>({role:'user',content:note.text})),
       {role:'assistant',content:final.result.text},
       ];
-      groups.push(projectOverview===undefined?messages:[taskContextHistoryRound(messages)]);
+      // Structured host items (overview, notes) require structured history rounds.
+      groups.push(projectOverview===undefined&&projectNotes===undefined?messages:[taskContextHistoryRound(messages)]);
     }
   }
   const previousCount=groups.length;
   const currentMessage:AgentTaskJson={role:'user',content:text+(attachments.length?`\n${attachmentInstructions[locale]}${JSON.stringify(attachments)}`:'')};
   const overview=projectOverview===undefined?[]:[taskContextProjectOverview(taskProjectOverviewMessage(locale,projectOverview))];
-  const render=():AgentTaskJson[]=>[taskResponseLanguageContext(locale),...groups.flat(),...overview,currentMessage];
+  const notes=projectNotes===undefined?[]:[taskContextProjectNotes(taskProjectNotesMessage(locale,projectNotes))];
+  const render=():AgentTaskJson[]=>[taskResponseLanguageContext(locale),...groups.flat(),...overview,...notes,currentMessage];
   let context=render();
   while(groups.length&&bytes(taskBaseModelHistory(context))>TASK_MODEL_LIMITS.historyBytes){groups.shift();context=render();}
   return {context,metrics:{historyBytes:bytes(taskBaseModelHistory(context)),retainedRuns:groups.length,trimmedRuns:previousCount-groups.length}};
@@ -89,8 +93,9 @@ export function assembleRunContext({locale,text,previousRuns=[],historyRuns,proj
 export interface TaskModelToolSelection {steps?:readonly AgentTaskStep[];attachments?:readonly string[]}
 export function selectTaskModelTools<T extends TaskToolDefinition&{risk:AgentTaskTier}>(definitions:readonly T[],diagnostic?:AgentTaskDiagnostic,{steps=[],attachments=[]}:TaskModelToolSelection={}):T[]{
   if(diagnostic){
-    // Diagnostics are not shown in a conversation, so nobody could answer a question.
-    const original=definitions.filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME&&tool.name!==AGENT_TASK_ASK_TOOL);
+    // Diagnostics are not shown in a conversation: nobody could answer a question,
+    // and they neither read methods nor report reviews.
+    const original=definitions.filter(tool=>!AGENT_TASK_CONVERSATION_TOOLS.includes(tool.name));
     if(diagnostic.profile==='text')return [];
     if(diagnostic.profile==='read_only')return original.filter(tool=>tool.risk==='read_only');
     return diagnostic.toolNames?original.filter(tool=>diagnostic.toolNames!.includes(tool.name)):original;

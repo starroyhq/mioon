@@ -845,6 +845,24 @@ export const mioPanelMessages = {
     "en": "Read project",
     "ja": "プロジェクトを確認"
   },
+  "agent.display.operation.project.notes.set": {
+    "zh-Hans": "修改项目说明",
+    "zh-Hant": "修改專案說明",
+    "en": "Update project notes",
+    "ja": "プロジェクトメモを更新"
+  },
+  "agent.display.operation.skill.read": {
+    "zh-Hans": "读取方法",
+    "zh-Hant": "讀取方法",
+    "en": "Read a method",
+    "ja": "手順を読む"
+  },
+  "agent.display.operation.continuity.report": {
+    "zh-Hans": "报告连续性检查",
+    "zh-Hant": "報告連續性檢查",
+    "en": "Report continuity check",
+    "ja": "連続性チェックを報告"
+  },
   "agent.display.operation.project.rename": {
     "zh-Hans": "修改项目名称",
     "zh-Hant": "修改專案名稱",

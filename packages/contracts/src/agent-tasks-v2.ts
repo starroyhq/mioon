@@ -52,6 +52,20 @@ export const agentTaskQuestionOptionSchema:z.ZodType<AgentTaskQuestionOption>=z.
 export const agentTaskQuestionSchema:z.ZodType<AgentTaskQuestion>=z.object({question:singleLine(AGENT_TASK_QUESTION_LIMITS.question),
  options:z.array(agentTaskQuestionOptionSchema).min(AGENT_TASK_QUESTION_LIMITS.minOptions).max(AGENT_TASK_QUESTION_LIMITS.options).refine(values=>new Set(values.map(value=>value.label.trim())).size===values.length,{message:'Option labels must be distinct'}),
  multiple:z.boolean().optional(),allowOther:z.boolean().optional()}).strict();
+/** Built-in method documents Mio reads with `mioon_skill_read` (C6). */
+export const AGENT_TASK_SKILL_NAMES=Object.freeze(['script-to-shots','shot-prompts','character-consistency','continuity-check'] as const);
+export type AgentTaskSkillName=typeof AGENT_TASK_SKILL_NAMES[number];
+/** A read-only continuity review (C6) reported through `mioon_continuity_report`.
+ * It names shots and what may not match; it never changes them. */
+export const AGENT_TASK_CONTINUITY_CATEGORIES=Object.freeze(['wardrobe','props','injury','position','direction','eyeline','lighting','sound','other'] as const);
+export type AgentTaskContinuityCategory=typeof AGENT_TASK_CONTINUITY_CATEGORIES[number];
+export const AGENT_TASK_CONTINUITY_LIMITS=Object.freeze({issues:20,shots:4,text:200});
+export interface AgentTaskContinuityIssue {category:AgentTaskContinuityCategory;shotIds:string[];text:string}
+export interface AgentTaskContinuityReport {issues:AgentTaskContinuityIssue[]}
+export const agentTaskContinuityIssueSchema:z.ZodType<AgentTaskContinuityIssue>=z.object({category:z.enum(AGENT_TASK_CONTINUITY_CATEGORIES),
+ shotIds:z.array(id).min(1).max(AGENT_TASK_CONTINUITY_LIMITS.shots).refine(values=>new Set(values.map(value=>value.toLowerCase())).size===values.length,{message:'Shot ids must be distinct'}),
+ text:singleLine(AGENT_TASK_CONTINUITY_LIMITS.text)}).strict();
+export const agentTaskContinuityReportSchema:z.ZodType<AgentTaskContinuityReport>=z.object({issues:z.array(agentTaskContinuityIssueSchema).max(AGENT_TASK_CONTINUITY_LIMITS.issues)}).strict();
 export const agentTaskAnswerTextSchema=z.string().refine(value=>value.trim().length>0&&[...value].length<=AGENT_TASK_QUESTION_LIMITS.answer&&!/[\p{Cc}]/u.test(value.replace(/[\n\t]/gu,'')),{message:'Answer text must be 1-2000 characters'});
 export const agentTaskAnswerSchema:z.ZodType<AgentTaskAnswer>=z.object({choices:z.array(z.number().int().min(0).max(AGENT_TASK_QUESTION_LIMITS.options-1)).max(AGENT_TASK_QUESTION_LIMITS.options),text:agentTaskAnswerTextSchema.optional()}).strict();
 export const agentTaskSendSchema=z.object({requestId,projectId:id,conversationId:id.optional(),expectedSettingsRevision:revision,text:agentTaskTextSchema,locale:agentTaskLocaleSchema.optional(),uploads:z.array(id).max(20).optional(),diagnostic:agentTaskDiagnosticSchema.optional(),policy:z.object({modes:agentTaskPolicyModesSchema,acknowledgePaid:z.literal(true).optional()}).strict().optional()}).strict();
