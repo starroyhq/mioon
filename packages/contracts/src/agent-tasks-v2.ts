@@ -53,7 +53,7 @@ export const agentTaskQuestionSchema:z.ZodType<AgentTaskQuestion>=z.object({ques
  options:z.array(agentTaskQuestionOptionSchema).min(AGENT_TASK_QUESTION_LIMITS.minOptions).max(AGENT_TASK_QUESTION_LIMITS.options).refine(values=>new Set(values.map(value=>value.label.trim())).size===values.length,{message:'Option labels must be distinct'}),
  multiple:z.boolean().optional(),allowOther:z.boolean().optional()}).strict();
 /** Built-in method documents Mio reads with `mioon_skill_read` (C6). */
-export const AGENT_TASK_SKILL_NAMES=Object.freeze(['script-to-shots','shot-prompts','character-consistency','continuity-check'] as const);
+export const AGENT_TASK_SKILL_NAMES=Object.freeze(['script-to-shots','shot-prompts','character-consistency','continuity-check','script-sync','preview-to-shots','frame-patch'] as const);
 export type AgentTaskSkillName=typeof AGENT_TASK_SKILL_NAMES[number];
 /** A read-only continuity review (C6) reported through `mioon_continuity_report`.
  * It names shots and what may not match; it never changes them. */
