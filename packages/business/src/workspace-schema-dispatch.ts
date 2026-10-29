@@ -1,3 +1,6 @@
+import {initializeWorkspaceSchema72} from './workspace-schema-v72.ts';
+import {createWorkspaceRestoreProfileV73} from './workspace-restore-schema-v73.ts';
+import {validateWorkspaceTransitionRows} from './workspace-transition-validation.ts';
 import {initializeWorkspaceSchema70} from './workspace-schema-v70.ts';
 import {createWorkspaceRestoreProfileV71} from './workspace-restore-schema-v71.ts';
 import {validateWorkspaceTransformRows} from './workspace-transform-validation.ts';
@@ -53,7 +56,7 @@ import type {WorkspaceRestoreMetadataV27} from './workspace-restore-schema-v27.t
 import {WORKSPACE_SCHEMA_LINEAGE,isWorkspaceSchemaSince,workspaceSchemasSince} from '../../contracts/src/workspace-schema-lineage.ts';
 import type {WorkspaceOrdinarySchema} from '../../contracts/src/workspace-schema-lineage.ts';
 
-export type CurrentWorkspaceRole = 'ordinary-70' | 'restored-71-evidence' | 'ordinary-68' | 'restored-69-evidence' | 'ordinary-66' | 'restored-67-evidence' | 'ordinary-64' | 'restored-65-evidence' | 'ordinary-62' | 'restored-63-evidence' | 'ordinary-60' | 'restored-61-evidence' | 'storage-private-58' | 'storage-private-59-evidence' | 'ordinary-58' | 'restored-59-evidence' | 'ordinary-56' | 'restored-57-evidence' | 'ordinary-54' | 'restored-55-evidence' | 'ordinary-52' | 'restored-53-evidence' | 'ordinary-50' | 'restored-51-evidence' | 'ordinary-48' | 'restored-49-evidence' | 'ordinary-44' | 'restored-45-evidence' | 'ordinary-through-24' | 'ordinary-26' | 'ordinary-28' | 'ordinary-30' | 'ordinary-32' | 'ordinary-40' | 'ordinary-38' | 'ordinary-36' | 'ordinary-34' | 'restored-25-evidence' | 'restored-27-evidence' | 'restored-29-evidence' | 'restored-31-evidence' | 'restored-33-evidence' | 'restored-35-evidence' | 'restored-37-evidence' | 'restored-39-evidence' | 'restored-41-evidence';
+export type CurrentWorkspaceRole = 'ordinary-72' | 'restored-73-evidence' | 'ordinary-70' | 'restored-71-evidence' | 'ordinary-68' | 'restored-69-evidence' | 'ordinary-66' | 'restored-67-evidence' | 'ordinary-64' | 'restored-65-evidence' | 'ordinary-62' | 'restored-63-evidence' | 'ordinary-60' | 'restored-61-evidence' | 'storage-private-58' | 'storage-private-59-evidence' | 'ordinary-58' | 'restored-59-evidence' | 'ordinary-56' | 'restored-57-evidence' | 'ordinary-54' | 'restored-55-evidence' | 'ordinary-52' | 'restored-53-evidence' | 'ordinary-50' | 'restored-51-evidence' | 'ordinary-48' | 'restored-49-evidence' | 'ordinary-44' | 'restored-45-evidence' | 'ordinary-through-24' | 'ordinary-26' | 'ordinary-28' | 'ordinary-30' | 'ordinary-32' | 'ordinary-40' | 'ordinary-38' | 'ordinary-36' | 'ordinary-34' | 'restored-25-evidence' | 'restored-27-evidence' | 'restored-29-evidence' | 'restored-31-evidence' | 'restored-33-evidence' | 'restored-35-evidence' | 'restored-37-evidence' | 'restored-39-evidence' | 'restored-41-evidence';
 // Every ordinary or restored role carries the lineage schema it was created
 // from. The map is built from the explicit contracts lineage, so a role outside
 // it never inherits a capability from its number. The development-only private
@@ -165,7 +168,7 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
     if (rippleEvidence || loudnessApplyEvidence || lutEvidence || annotationEvidence) return unsupported();
     return restoreEvidence ? 'restored-25-evidence' : 'ordinary-through-24';
   }
-  const extra = db.prepare('SELECT CAST(version AS TEXT) AS version,typeof(version) AS type FROM main.schema_version WHERE version NOT IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24) ORDER BY main.schema_version.version LIMIT 23').all().map(row);
+  const extra = db.prepare('SELECT CAST(version AS TEXT) AS version,typeof(version) AS type FROM main.schema_version WHERE version NOT IN (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24) ORDER BY main.schema_version.version LIMIT 24').all().map(row);
   if (extra.length === 0) {
     if(deletionEvidence||taskDispositionEvidence||taskEvidence)return unsupported();
     if (rippleEvidence || loudnessApplyEvidence || lutEvidence || annotationEvidence) return unsupported();
@@ -177,6 +180,15 @@ export function readCurrentWorkspaceRole(db: WorkspaceSchemaReader): CurrentWork
     return 'restored-25-evidence';
   }
   const lifecycleLineage=['26','28','30','32','34','36','38','40','44','48'];
+  // Schema72 adds only its marker, as schema70 did; persisted transitions are
+  // admitted by role through the transition row gate, never by this marker alone.
+  const ordinary72=extra.length===22&&extra.every((value,index)=>value.version===[...lifecycleLineage,'50','52','54','56','58','60','62','64','66','68','70','72'][index]);
+  const restored73=extra.length===23&&extra.every((value,index)=>value.version===[...lifecycleLineage,'50','52','54','56','58','60','62','64','66','68','70','72','73'][index]);
+  if(ordinary72||restored73){
+    const known=db.prepare('SELECT CAST(version AS TEXT) AS version FROM main.schema_version WHERE main.schema_version.version BETWEEN 1 AND 24 ORDER BY main.schema_version.version LIMIT 25').all().map(row);
+    if(!deletionEvidence||!taskDispositionEvidence||!taskEvidence||!sceneEvidence||!variantEvidence||!previsEvidence||!policyEvidence||!keyframeEditEvidence||ordinary72&&restoreEvidence||restored73&&!restoreEvidence||known.length!==24||known.some((value,index)=>value.version!==String(index+1)))return unsupported();
+    return ordinary72?'ordinary-72':'restored-73-evidence';
+  }
   // Schema70 adds only its marker, as schema40 did; persisted transforms are
   // admitted by role through the transform row gate, never by this marker alone.
   const ordinary70=extra.length===21&&extra.every((value,index)=>value.version===[...lifecycleLineage,'50','52','54','56','58','60','62','64','66','68','70'][index]);
@@ -338,6 +350,10 @@ function audioRoleAdmission(role:CurrentWorkspaceRole) {
 function transformAdmission(role:CurrentWorkspaceRole) {
   return {allowTransforms:admitsSince(role,70)};
 }
+// Clip transitions exist from schema72 on.
+function transitionAdmission(role:CurrentWorkspaceRole) {
+  return {allowTransitions:admitsSince(role,72)};
+}
 function colourAdmission(role:CurrentWorkspaceRole) {
   return {...frozenAdmission(role),allowColour:admitsSince(role,30),allowMixedImages:admitsSince(role,32),allowJpegImages:admitsSince(role,34)};
 }
@@ -355,6 +371,7 @@ export function validateCurrentWorkspaceColourProfile(db: DatabaseSync): void {
   validateWorkspaceAudioRoleRows(receiptRows(db,role),audioRoleAdmission(role));
   validateWorkspaceColourRows(receiptRows(db,role), colourAdmission(role));
   validateWorkspaceTransformRows(db,transformAdmission(role));
+  validateWorkspaceTransitionRows(db,transitionAdmission(role));
 }
 
 /** Bound once by existing db wiring. Only application-owned fixed constructors
@@ -368,6 +385,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
   const restored53 = createWorkspaceRestoreProfileV53(legacy.initializeThrough24);
   const restored59 = createWorkspaceRestoreProfileV59(legacy.initializeThrough24);
   const restored71 = createWorkspaceRestoreProfileV71(legacy.initializeThrough24);
+  const restored73 = createWorkspaceRestoreProfileV73(legacy.initializeThrough24);
   const restored69 = createWorkspaceRestoreProfileV69(legacy.initializeThrough24);
   const restored67 = createWorkspaceRestoreProfileV67(legacy.initializeThrough24);
   const restored65 = createWorkspaceRestoreProfileV65(legacy.initializeThrough24);
@@ -436,6 +454,8 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     validateWorkspaceAudioRoleRows(receiptRows(db,role),audioRoleAdmission(role));
     validateWorkspaceColourRows(receiptRows(db,role), colourAdmission(role));
     validateWorkspaceTransformRows(db,transformAdmission(role));
+    validateWorkspaceTransitionRows(db,transitionAdmission(role));
+    if(role==='ordinary-72'||role==='restored-73-evidence')return restored73.classifyWorkspaceSchemaV72V73(db);
     if(role==='ordinary-70'||role==='restored-71-evidence')return restored71.classifyWorkspaceSchemaV70V71(db);
     if(role==='ordinary-68'||role==='restored-69-evidence')return restored69.classifyWorkspaceSchemaV68V69(db);
     if(role==='ordinary-66'||role==='restored-67-evidence')return restored67.classifyWorkspaceSchemaV66V67(db);
@@ -466,6 +486,8 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     validateWorkspaceAudioRoleRows(receiptRows(db,role),audioRoleAdmission(role));
     validateWorkspaceColourRows(receiptRows(db,role), colourAdmission(role));
     validateWorkspaceTransformRows(db,transformAdmission(role));
+    validateWorkspaceTransitionRows(db,transitionAdmission(role));
+    if(role==='restored-73-evidence')return restored73.validateWorkspaceRestoreSchemaV73(db);
     if(role==='restored-71-evidence')return restored71.validateWorkspaceRestoreSchemaV71(db);
     if(role==='restored-69-evidence')return restored69.validateWorkspaceRestoreSchemaV69(db);
     if(role==='restored-67-evidence')return restored67.validateWorkspaceRestoreSchemaV67(db);
@@ -511,6 +533,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     [66, db => initializeWorkspaceSchema66(db, legacy.initializeThrough24)],
     [68, db => initializeWorkspaceSchema68(db, legacy.initializeThrough24)],
     [70, db => initializeWorkspaceSchema70(db, legacy.initializeThrough24)],
+    [72, db => initializeWorkspaceSchema72(db, legacy.initializeThrough24)],
   ];
   if (ordinaryInitializers.map(([version]) => version).join() !== workspaceSchemasSince(26).join())
     throw new TypeError('Every ordinary lineage schema after 24 needs exactly one upgrade initializer.');
@@ -522,6 +545,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     const role = readCurrentWorkspaceRole(db);
     // Restored roles never upgrade; they validate their exact restore profile.
     if (isWorkspaceRoleSince(role, 24, 'restored') || role === 'storage-private-59-evidence') return validateRestore(db);
+    if(role==='ordinary-72'){restored73.classifyWorkspaceSchemaV72V73(db);return initializeAfter(db,72);}
     if(role==='ordinary-70'){restored71.classifyWorkspaceSchemaV70V71(db);return initializeAfter(db,70);}
     if(role==='ordinary-68'){restored69.classifyWorkspaceSchemaV68V69(db);return initializeAfter(db,68);}
     if(role==='ordinary-66'){restored67.classifyWorkspaceSchemaV66V67(db);return initializeAfter(db,66);}
@@ -577,6 +601,7 @@ export function createWorkspaceSchemaDispatch<T extends object>(legacy: LegacyWo
     if (profile.schemaVersion === 24 && profile.profile === 'ordinary') return legacy.install(db, metadata);
     if (profile.schemaVersion === 26 && profile.profile === 'ordinary') return restored27.installWorkspaceRestoreSchemaV27(db, metadata);
     if (profile.schemaVersion === 28 && profile.profile === 'ordinary') return restored29.installWorkspaceRestoreSchemaV29(db, metadata);
+    if(profile.schemaVersion===72&&profile.profile==='ordinary')return restored73.installWorkspaceRestoreSchemaV73(db,metadata);
     if(profile.schemaVersion===70&&profile.profile==='ordinary')return restored71.installWorkspaceRestoreSchemaV71(db,metadata);
     if(profile.schemaVersion===68&&profile.profile==='ordinary')return restored69.installWorkspaceRestoreSchemaV69(db,metadata);
     if(profile.schemaVersion===66&&profile.profile==='ordinary')return restored67.installWorkspaceRestoreSchemaV67(db,metadata);

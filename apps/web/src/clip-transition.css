@@ -1,0 +1,4 @@
+/* The transition at the cut before a clip, in the inspector's visual group; mirrors the transform section. */
+.clip-transition{padding:8px 0;border-top:1px solid var(--wb-line-subtle);margin-top:8px}
+.clip-transition-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.clip-transition-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}

@@ -15,48 +15,48 @@
       "sha256": "80411c0b5580ba588cf43fd47cbc462a32dc96e6e6a66e4b40555b8e68aa6fa9"
     },
     "packages/business/src/inspection.ts": {
-      "bytes": 37579,
-      "sha256": "27b386b72b1e51fb8dea4e213c5645f20de2adac2bfc0607b17c10b573c76cb8"
+      "bytes": 38131,
+      "sha256": "2b2840b9492eabba651a88a0d6d941f6de0d8b6a9ca7fa20c55f7dcf70e8dbd0"
     },
     "packages/business/src/local-drafts.ts": {
       "bytes": 16893,
       "sha256": "aa44cb73b9276fb0b0f47bd0c432f48ed316c9daff90a263791523d6cd844170"
     },
     "packages/business/src/timeline-media.ts": {
-      "bytes": 24101,
-      "sha256": "b7cfaa1c5883747500284595836086543b9d4f839e8d11288d6462d4127197a5"
+      "bytes": 25581,
+      "sha256": "a36330640987f27c4c7f9a1a879858eb7841c3a564b35df483476e8044d77d02"
     },
     "packages/business/src/timeline-recovery.ts": {
-      "bytes": 25303,
-      "sha256": "bce4f81fa93c465d4ea2d8ed253f2ee08edac91fa768f88f249449d247520d05"
+      "bytes": 25681,
+      "sha256": "7fb99f526d7f544fd0b7fa7461fbcef2c3788c932919afcef8ef9b9d7ca140d9"
     },
     "packages/business/src/workspace-backup-schema-versions.ts": {
-      "bytes": 11473,
-      "sha256": "4ba81813ef9d1765c2349898560b89df5d9699dfdce89ea83eb18d730b3b4415"
+      "bytes": 12201,
+      "sha256": "1b1fea86d029f3ca787b483e4b028e3249d74032b77deaef7e4fa3b197a7e8b2"
     },
     "packages/business/src/workspace-lock.ts": {
       "bytes": 2717,
       "sha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463"
     },
     "packages/business/src/workspace-restore-policy.ts": {
-      "bytes": 12194,
-      "sha256": "f0a56c2bd51e277c4245ef6e4f0b413cfe5b4a64dd5cba2221b7a708962e275d"
+      "bytes": 12224,
+      "sha256": "96540a8a28711331639a5d06fadda5eab1f3279314ab9db97dec682c1346aed6"
     },
     "packages/business/src/workspace-schema-dispatch.ts": {
-      "bytes": 54500,
-      "sha256": "243473562094141ca49a04e0588e2c4a5a8a9cdf0adfb43ad5325a34634faa4a"
+      "bytes": 56866,
+      "sha256": "af57ac175239730aa058f19bc6741d27706fc8b306edd64f3bf1789a243c8ff2"
     },
     "packages/business/src/workspace-volume-envelope-validation.ts": {
-      "bytes": 19548,
-      "sha256": "ce58dc334db9a9d6fa15c0b7de5512db716db05f3662e8217dbcac1b3bed6cc7"
+      "bytes": 20131,
+      "sha256": "d32f4b5c1c4ea8ee8ad1f4b6425a23ef461b4cfb17f919dfa0a04f3bd269d018"
     },
     "packages/contracts/package.json": {
       "bytes": 1601,
       "sha256": "a9401556454b98b060582b16f2e86d6478bf1dc1d02edc9d6c0d0e288e329a8b"
     },
     "packages/contracts/src/edit-tasks.ts": {
-      "bytes": 7718,
-      "sha256": "7da9152c746ba32663deb22c1b96c8521c74a69fab4cb6e648b54f85a7b60737"
+      "bytes": 7862,
+      "sha256": "bef59f46e26a37ff93bb65a588e6565277e3649448a48c9e985a054aeaa59e74"
     },
     "packages/contracts/src/generation-input-profiles.ts": {
       "bytes": 14029,
@@ -71,12 +71,12 @@
       "sha256": "9fbec00e2d6a812d0774c516e91ff8fb51acae53caace555fdcd47953573a582"
     },
     "packages/contracts/src/index.ts": {
-      "bytes": 51340,
-      "sha256": "8d5ef59be8b30923946d8e9241f58c478c8e7c49a3e8cb67375d613504684593"
+      "bytes": 51640,
+      "sha256": "cd0b7f4fa797e45068e2f503a265f40e58b3befdcdc6b171e6b6459a3187bcbc"
     },
     "packages/contracts/src/operation-effects.ts": {
-      "bytes": 39112,
-      "sha256": "d27c9773a9c0737b703216ab2821577d3b861937082978f5389e5c02a8b367e3"
+      "bytes": 39532,
+      "sha256": "a6426ca44faea4f4e70f8263e60e8a97fd43a9a45156c3701eb5999c107bdd42"
     },
     "packages/contracts/src/private-storage.ts": {
       "bytes": 23412,
@@ -91,16 +91,16 @@
       "sha256": "f728024366e189185f3235f0fa5cc77509915a55ad27d74f4a2fff2590bb0ec5"
     },
     "packages/contracts/src/timeline-acknowledgement.ts": {
-      "bytes": 30360,
-      "sha256": "35be98c875df2917cc3d4e0b25e2b6621a241eb3e1ca67d98224b0c1d30eba30"
+      "bytes": 31098,
+      "sha256": "a1c26ae6c5d343eac855341be0b9c70a15c563d64b17723fbf841c7fb0972ac7"
     },
     "packages/contracts/src/timeline-clip-loudness.ts": {
       "bytes": 10958,
       "sha256": "4374d1d1d5c0a9bcab4b015b90677053eaeb6357790236ef8fbcf4c762115370"
     },
     "packages/contracts/src/timeline-replacement.ts": {
-      "bytes": 8705,
-      "sha256": "c642879f608ff21720736ebf1944aa1f45c9fabec68e8d699c1f7310087e4aaf"
+      "bytes": 8972,
+      "sha256": "6a5826f0b555c912a8862f76cae8a117f6f2655e9228c60f54e33a3fe2bd99f8"
     },
     "packages/contracts/src/workspace-backup.ts": {
       "bytes": 7831,

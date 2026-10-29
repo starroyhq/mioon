@@ -24,7 +24,7 @@ import type { SQLOutputValue } from 'node:sqlite';
 
 const at='2026-10-10T00:00:00.000Z',clone=<T>(value: T): T => JSON.parse(JSON.stringify(value));
 // Acknowledgements that wrap the saved timeline with their own outcome fields.
-const wrapped=(operation: string)=>['timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes','timeline.clip.crossfade','timeline.clip.setGains','timeline.clip.setTransform'].includes(operation);
+const wrapped=(operation: string)=>['timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes','timeline.clip.crossfade','timeline.clip.setGains','timeline.clip.setTransform','timeline.clip.setTransition'].includes(operation);
 // Scene detection is replaced by a fixed cut list; the task, result and split
 // storage, receipts and recovery are production code.
 const sceneOptions={detect:async (input: { beforeSpawn: (arg0?: unknown) => void; signal: unknown; options: unknown; asset: { sha256: unknown; }; })=>{input.beforeSpawn(input.signal);
@@ -109,7 +109,7 @@ async function populated(f:Awaited<ReturnType<typeof fixture>>){
 async function allReceipts(f:Awaited<ReturnType<typeof fixture>>){
  const generated=await f.generated(),other=f.asset(),replacement=f.asset(),receipts: RecoveryReceipt[]=[];
  let timeline=await f.call('timeline.get',{projectId:f.projectId});
- async function call<O extends string>(operation:O,fields: {expectedProjectRevision?: unknown; presetId?: string; clipIds?: unknown[]; kind?: string; name?: string; trackId?: unknown; patch?: { name: string; }|{ startFrame: number; durationFrames: number; gain: number; }|{ text: string; }; assetId?: unknown; startFrame?: number; durationFrames?: number; clipId?: unknown; atFrame?: number; resultId?: unknown; text?: string; cueId?: unknown; purpose?: string; outgoingClipId?: unknown; incomingClipId?: unknown; gains?: {clipId: string; gain: number}[]; transform?: unknown;}={}){
+ async function call<O extends string>(operation:O,fields: {expectedProjectRevision?: unknown; presetId?: string; clipIds?: unknown[]; kind?: string; name?: string; trackId?: unknown; patch?: { name: string; }|{ startFrame: number; durationFrames: number; gain: number; }|{ text: string; }; assetId?: unknown; startFrame?: number; durationFrames?: number; clipId?: unknown; atFrame?: number; resultId?: unknown; text?: string; cueId?: unknown; purpose?: string; outgoingClipId?: unknown; incomingClipId?: unknown; gains?: {clipId: string; gain: number}[]; transform?: unknown; sourceInFrame?: number; transition?: unknown;}={}){
   const input=params(f,timeline,fields),response=await f.call(((operation) as unknown as Parameters<NonNullable<(typeof f)["call"]>>[0]),input);
   assert.equal(isTimelineMutationResponse(operation,input,response),true,`${operation} complete ACK`);
   receipts.push({operation,input,response:clone(response) as RecoveryReceipt["response"]});if(operation!=='timeline.render')timeline=wrapped(((operation) as unknown as Parameters<typeof wrapped>[0]))?(response as {timeline:FixtureTimeline}).timeline:response as FixtureTimeline;return response;
@@ -151,6 +151,12 @@ async function allReceipts(f:Awaited<ReturnType<typeof fixture>>){
  // A visual clip's transform: one static keyframe, valid at any duration.
  const visual=(timeline.clips.find((clip)=>timeline.tracks.find((track)=>track.id===clip.trackId)?.kind==='video'))!;
  await call('timeline.clip.setTransform',{clipId:visual.id,transform:{profileId:'mioon-clip-transform-v1',keyframes:[{frame:0,x:24,y:-12,scale:1.25}],rotation:0,crop:{left:0,top:0,right:0,bottom:0}}});
+ // Two adjacent clips with source handles meet at frame 660 on their own video track.
+ await call('timeline.track.add',{kind:'video'});
+ const lane=timeline.tracks.filter((track)=>track.kind==='video').at(-1)!;
+ await call('timeline.clip.add',{trackId:lane.id,assetId:other.id,startFrame:600,durationFrames:60});
+ await call('timeline.clip.add',{trackId:lane.id,assetId:other.id,startFrame:660,durationFrames:60,sourceInFrame:30});
+ await call('timeline.clip.setTransition',{clipId:(timeline.clips.at(-1))!.id,transition:{profileId:'mioon-clip-transition-v1',kind:'dissolve',durationFrames:20}});
  await call('timeline.clip.remove',{clipId});
  await call('timeline.clip.rippleRemove',{clipId:(timeline.clips.find((clip)=>clip.startFrame===110))!.id});
  await call('timeline.undo');
@@ -186,7 +192,7 @@ test('service-created empty timelines remain writable while a zero-track sentine
  const before=f.capture();assert.deepEqual(await f.call('timeline.track.add',input),added);assert.deepEqual(f.capture(),before);
 });
 
-test('all twenty-three retained responses remain exact after removal, branching, render progress and restart',async t=>{
+test('all twenty-four retained responses remain exact after removal, branching, render progress and restart',async t=>{
  const f=await fixture(t),result=await allReceipts(f);let timeline=result.timeline;
  for(const clip of ([...timeline.clips] as const))timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
  const render=(result.receipts.find(x=>x.operation==='timeline.render'))!.response;
@@ -205,7 +211,7 @@ test('all twenty-three retained responses remain exact after removal, branching,
  assert.deepEqual(f.capture(),before);
 });
 
-test('all twenty-three fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
+test('all twenty-four fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
  const f=await fixture(t),{receipts,timeline}=await allReceipts(f);
  for(const saved of receipts)await rejected(f,saved.operation,{...saved.input,requestId:randomUUID(),expectedRevision:timeline.revision-1},(({code:'REVISION_CONFLICT',proof:true}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
  const clip=timeline.clips[0];
@@ -249,7 +255,7 @@ test('lost acknowledgements retain proof absence after project, timeline and his
  }) as unknown as test.TestFn));
 });
 
-test('all twenty-three malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
+test('all twenty-four malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
  for(const corruption of (['hash','JSON','owner','semantics'] as const))await t.test(corruption,async t=>{
   const f=await fixture(t),{receipts}=await allReceipts(f);
   // Lift the receipt guard only while writing each corruption. A missing trigger
@@ -280,7 +286,7 @@ async function prepared(f:Awaited<ReturnType<typeof fixture>>,operation: string)
  if(operation==='timeline.clip.refreshSources')f.newerVersion(generated.shot);
  if(operation==='timeline.shots.append')await f.generated();
  if(['timeline.subtitle.update','timeline.subtitle.remove'].includes(operation))timeline=await f.call('timeline.subtitle.add',params(f,timeline,{text:'待修改字幕',startFrame:0,durationFrames:30}));
- let scene={},crossfade={},gains={},transform={};
+ let scene={},crossfade={},gains={},transform={},transition={};
  if(operation==='timeline.clip.splitAtScenes'){const film=await f.film();timeline=await f.call('timeline.clip.add',params(f,timeline,{assetId:film.asset.id,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:60}));scene={assetId:film.asset.id,resultId:film.resultId};}
  if(operation==='timeline.clip.crossfade'){
   timeline=await f.call('timeline.track.add',params(f,timeline,{kind:'audio'}));
@@ -297,12 +303,18 @@ async function prepared(f:Awaited<ReturnType<typeof fixture>>,operation: string)
   gains={gains:[{clipId:(timeline.clips.at(-1))!.id,gain:1.25}]};
  }
  if(operation==='timeline.clip.setTransform')transform={clipId:timeline.clips[0].id,transform:{profileId:'mioon-clip-transform-v1',keyframes:[{frame:0,x:24,y:-12,scale:1.25}],rotation:0,crop:{left:0,top:0,right:0,bottom:0}}};
+ if(operation==='timeline.clip.setTransition'){
+  // The seeded clip uses its whole source; two shorter clips meet on the second video track.
+  timeline=await f.call('timeline.clip.add',params(f,timeline,{assetId:f.asset().id,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:60}));
+  timeline=await f.call('timeline.clip.add',params(f,timeline,{assetId:f.asset().id,trackId:timeline.tracks[1].id,startFrame:60,durationFrames:60,sourceInFrame:30}));
+  transition={clipId:(timeline.clips.at(-1))!.id,transition:{profileId:'mioon-clip-transition-v1',kind:'dissolve',durationFrames:20}};
+ }
  const clip=timeline.clips[0];
  const fields={
   'timeline.track.add':{kind:'video'},'timeline.track.update':{trackId:timeline.tracks[0].id,patch:{name:'Changed'}},
   'timeline.clip.add':{assetId:generated.asset.id as string,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:30},
   'timeline.clip.update':{clipId:clip?.id,patch:{gain:.3}},'timeline.clip.remove':{clipId:clip?.id},
-  'timeline.clip.rippleRemove':{clipId:clip?.id},'timeline.clip.refreshSources':{clipIds:[clip?.id]},'timeline.clip.splitAtScenes':scene,'timeline.clip.crossfade':crossfade,'timeline.clip.setGains':gains,'timeline.clip.setTransform':transform,
+  'timeline.clip.rippleRemove':{clipId:clip?.id},'timeline.clip.refreshSources':{clipIds:[clip?.id]},'timeline.clip.splitAtScenes':scene,'timeline.clip.crossfade':crossfade,'timeline.clip.setGains':gains,'timeline.clip.setTransform':transform,'timeline.clip.setTransition':transition,
   'timeline.clip.split':{clipId:clip?.id,atFrame:30},'timeline.clip.replaceSource':{clipId:clip?.id,assetId:f.asset().id},
   'timeline.render':{purpose:'preview'},
   'timeline.subtitle.add':{text:'新增字幕',startFrame:0,durationFrames:30},
