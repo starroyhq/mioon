@@ -1,16 +1,20 @@
 import React, { memo, useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Box, Diamond } from '@mioon/ui/components/workbench-icons';
+import { Box, Diamond, RefreshCw } from '@mioon/ui/components/workbench-icons';
 import { useI18n } from '../i18n/I18nProvider.tsx';
 import { VISUAL_SOURCE_HANDLE, VISUAL_TARGET_HANDLE } from '../reference-connections.ts';
 import './previs.css';
 
 // The previs card on the canvas (09-11): the latest card thumbnail the editor
 // rendered, the keyframe count, the project frame and the local-render note.
+// A thumbnail older than the saved scene (Mio or an undo changed it) says so
+// until the editor renders the card again.
 export interface PrevisNodeData {
   record: { id: string; label?: string; scene?: { keyframes?: readonly unknown[] } | null };
   thumbnail: string | null;
+  /** The thumbnail was rendered before the current scene was saved. */
+  outdated?: boolean;
   ratio: string;
   /** Opens the editor for this node. */
   onOpen?: (nodeId: string) => void;
@@ -39,6 +43,7 @@ function PrevisNodeCard({ data, selected }: { data: PrevisNodeData; selected?: b
     <div className="previs-node-media">
       {data.thumbnail ? <img src={data.thumbnail} alt={t('previs.node.thumbnail', { name })} draggable={false} data-testid={`previs-node-thumbnail-${record.id}`} />
         : <div className="previs-node-empty"><Box size={22} aria-hidden="true" /><span>{t('previs.node.empty')}</span></div>}
+      {data.thumbnail && data.outdated && <span className="previs-node-badge previs-node-outdated" data-testid={`previs-node-outdated-${record.id}`} title={t('previs.node.outdatedHint')}><RefreshCw size={10} aria-hidden="true" />{t('previs.node.outdated')}</span>}
       {keyframes > 0 && <span className="previs-node-badge" data-testid={`previs-node-keyframes-${record.id}`}><Diamond size={10} aria-hidden="true" />{t('previs.node.keyframes', { count: keyframes })}</span>}
     </div>
     <footer className="node-footer"><span className="node-output-spec">{data.ratio}</span><span className="previs-node-local">{t('previs.node.local')}</span></footer>

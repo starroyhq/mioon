@@ -608,6 +608,24 @@ export const mioPanelMessages = {
     "en": "Background",
     "ja": "背景"
   },
+  "agent.display.field.figureCount": {
+    "zh-Hans": "人偶",
+    "zh-Hant": "人偶",
+    "en": "Figures",
+    "ja": "人形"
+  },
+  "agent.display.field.propCount": {
+    "zh-Hans": "道具",
+    "zh-Hant": "道具",
+    "en": "Props",
+    "ja": "小道具"
+  },
+  "agent.display.field.keyframeCount": {
+    "zh-Hans": "关键帧",
+    "zh-Hant": "關鍵影格",
+    "en": "Keyframes",
+    "ja": "キーフレーム"
+  },
   "agent.display.target.project": {
     "zh-Hans": "项目",
     "zh-Hant": "專案",
@@ -943,6 +961,24 @@ export const mioPanelMessages = {
     "zh-Hant": "修改畫板內容",
     "en": "Edit canvas content",
     "ja": "キャンバスの内容を編集"
+  },
+  "agent.display.operation.previs.inspect": {
+    "zh-Hans": "查看机位预演",
+    "zh-Hant": "查看機位預演",
+    "en": "Read camera previs",
+    "ja": "カメラプリビズを確認"
+  },
+  "agent.display.operation.previs.create": {
+    "zh-Hans": "新建机位预演",
+    "zh-Hant": "新增機位預演",
+    "en": "Add camera previs",
+    "ja": "カメラプリビズを追加"
+  },
+  "agent.display.operation.previs.scene.set": {
+    "zh-Hans": "写入预演场景",
+    "zh-Hant": "寫入預演場景",
+    "en": "Save previs scene",
+    "ja": "プリビズのシーンを保存"
   },
   "agent.display.operation.edge.inspect": {
     "zh-Hans": "查看连线",

@@ -60,6 +60,10 @@ function fields(operationName:string,kind:string,value:Value|undefined):Projecte
     put('description','text',safeText(value.prompt));
   }
   if(operationName.startsWith('timeline.subtitle.')&&kind==='timeline_subtitle')put('subtitleText','text',safeText(value.text));
+  // A saved previs scene is summarised by how many figures, props and keyframes it holds.
+  if(operationName==='previs.scene.set'&&kind==='node'&&object(value.scene)){
+    for(const [property,field] of [['figureCount','figures'],['propCount','props'],['keyframeCount','keyframes']] as const){const items=value.scene[field];if(Array.isArray(items))number(property,'count',items.length,true,100);}
+  }
   if(['generation.submit','image.generate'].includes(operationName)){
     let source=kind==='job'&&object(value.snapshot)?{...value.snapshot,providerId:value.providerId,model:value.model}:value;
     if(kind==='image_task'&&typeof value.input==='string'&&value.input.length<=24576){try{const input:unknown=JSON.parse(value.input);if(object(input))source=input;}catch{/* Corrupt retained input contributes no display values. */}}
@@ -129,7 +133,9 @@ export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:Targe
     const current=readTarget?.(item),projected=target(item,current);if(!projected)continue;
     display.targetCount++;if(display.targets.length>=200)continue;
     const index=display.targets.push(projected)-1,input=object(args.patch)?args.patch:args;if(operationWide)continue;
-    let planned=fields(display.operation,item.kind,input);
+    // A whole previs scene's counts say nothing about the planned edit, and next
+    // to the current counts in a conflict they would read as a difference.
+    let planned=display.operation==='previs.scene.set'?{}:fields(display.operation,item.kind,input);
     if(display.operation==='generation.submit'&&item.kind==='shot')planned=fields(display.operation,'shot',{...(current?.revision===args.expectedRevision?{aspectRatio:current.aspectRatio,duration:current.duration,referenceAssetIds:current.referenceAssetIds,lastFrameAssetId:current.lastFrameAssetId}:{}),...args});
     appendFields(display,index,{},planned,true);
     // Conflict values are read from this snapshot's saved project state, never

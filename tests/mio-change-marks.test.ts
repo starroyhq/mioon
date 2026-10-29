@@ -315,3 +315,17 @@ test('the mark label is localized and keeps the Latin Mio name', () => {
   assert.deepEqual(LOCALES.map(locale => translate(locale, 'agent.mark.label')), ['Mio 修改', 'Mio 修改', 'Edited by Mio', 'Mio が変更']);
   for (const locale of LOCALES) assert.ok(translate(locale, 'agent.mark.open').startsWith(translate(locale, 'agent.mark.label')), `${locale}: the accessible name starts with the visible label`);
 });
+
+test('a camera previs card is a canvas node target, so a Mio scene change marks the card', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const doc = new FakeDocument(), flow = doc.element({ class: 'react-flow' }, rect(0, 44, 1440, 856)), box = rect(400, 300, 240, 180);
+  const card = doc.element({ class: 'canvas-node previs-node', 'data-testid': 'previs-node-previs-1' }, box);
+  flow.append(doc.element({ class: 'react-flow__node' }, box).append(card));
+  doc.root.append(flow);
+  const marks = createTargetMarks({ document: doc.dom });
+  assert.deepEqual(marks.mark([{ owner: 'scene-change', targets: [{ kind: 'node', id: 'previs-1' }] }]), ['scene-change']);
+  assert.equal(card.getAttribute(MARK_ATTRIBUTE), 'shown');
+  assert.deepEqual(marks.list().map(mark => [mark.key, mark.label]), [['node:previs-1', true]]);
+  marks.dispose();
+  assert.equal(card.getAttribute(MARK_ATTRIBUTE), null);
+});

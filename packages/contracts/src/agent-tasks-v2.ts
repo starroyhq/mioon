@@ -11,7 +11,7 @@ export type AgentTaskStepStatus=typeof AGENT_TASK_STEP_STATUSES[number];
 export type AgentTaskLocale=typeof AGENT_TASK_LOCALES[number];
 export type AgentTaskMode='direct'|'confirm';
 /** Read-only presentation values. These never grant tool or undo authority. */
-export const AGENT_TASK_DISPLAY_PROPERTIES=Object.freeze(['durationFrames','sourceInFrame','sourceOutFrame','startFrame','positionX','positionY','gainDb','fadeInFrames','fadeOutFrames','aspectRatio','durationSeconds','description','subtitleText','provider','model','mode','versionNumber','resolution','generateAudio','seed','width','height','count','quality','outputFormat','background'] as const);
+export const AGENT_TASK_DISPLAY_PROPERTIES=Object.freeze(['durationFrames','sourceInFrame','sourceOutFrame','startFrame','positionX','positionY','gainDb','fadeInFrames','fadeOutFrames','aspectRatio','durationSeconds','description','subtitleText','provider','model','mode','versionNumber','resolution','generateAudio','seed','width','height','count','quality','outputFormat','background','figureCount','propCount','keyframeCount'] as const);
 export const AGENT_TASK_DISPLAY_TARGET_KINDS=Object.freeze(['project','shot','node','edge','asset','version','job','export','asset_range','asset_disposition','asset_annotation','subject','subject_version','subject_binding','image_task','image_group','image_version','frame_task','timeline','timeline_clip','timeline_track','timeline_subtitle','unknown'] as const);
 export type AgentTaskDisplayValue=number|string|boolean|null;
 export interface AgentTaskDisplayTarget {kind:typeof AGENT_TASK_DISPLAY_TARGET_KINDS[number];id:string;name?:string}

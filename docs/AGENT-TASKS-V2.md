@@ -246,6 +246,20 @@ M5 不升级工作区版本：retry 回执的 action 原为受限字符串，sup
 
 诊断运行不提供 `mioon_skill_read` 和 `mioon_continuity_report`，也不带项目说明。
 
+## 机位预演（C8 v2）
+
+三个工具都在 canvas 组，场景格式、单位和取景估算见 `docs/PREVIS.md`。
+
+- 宿主工具 `mioon_previs_inspect {nodeId}`（只读，计一步）：读取当前项目的一个预演节点。结果是 `{nodeId, label, revision, sceneRevision, frame, scene, framing}`；`scene` 不含 `schemaVersion` 和关键帧 `exports`，可以修改后整体写回；`framing` 列出当前机位和每个关键帧在项目画幅内拍到的人偶、道具 ID，关键帧另有 K 编号、导出图片数和使用这些图片的镜头首尾帧。
+- `mioon_previs_create` 是 `previs.create`，本地不可撤销（创建回执引用节点、不可删除，画布节点也没有删除），默认档位先确认。
+- `mioon_previs_scene_set` 是 `previs.scene.set`，本地可撤销。给模型的参数说明坐标轴和单位，数组不用元组形式，名称规则写成文字（共享 Zod 仍做完整校验）；参数里没有 `schemaVersion` 和 `exports`。宿主在校验前把数值四舍五入到三位小数、补 `schemaVersion`、把机位的 `lookAt` 换算成 yaw 和 pitch、按关键帧 ID 保留被替换场景的导出（新 ID 为空），选中关键帧在模型给出有效值或 `null` 时采用，否则保留原值或清空。不合规时按参数纠错返回出错字段路径，不回显取值和未知字段名。
+- 两个写操作的结果都是和 `mioon_previs_inspect` 相同的读取结果，在保存事务内生成。
+- 撤销把修改前的场景保存为新的场景修订号（旧修订号可能还有保存回执，打开的编辑器也按修订号比较），并删除已不存在或机位改变的关键帧缩略图；节点之后有任何改动就不能撤销。
+- 预演写入在单个事务内完成；用全新 requestId 时被 `NOT_FOUND`、`PREVIS_NODE_REQUIRED`、`REVISION_CONFLICT`、`PREVIS_REVISION_LIMIT`、`PREVIS_EXPORT_INVALID`、`PREVIS_CAPACITY` 拒绝，会标 `mutationOutcome: "not_applied"`，步骤直接失败，不进入结果未知。结果未知的场景保存按 `previs_requests` 核对。
+- 编辑器打开期间持有节点的编辑保护，Mio 写这个节点时按 `editing` 暂停。
+- 变化显示为“写入预演场景”，字段是人偶、道具、关键帧的数量（`figureCount`、`propCount`、`keyframeCount`）的前后值；执行前的确认卡片和冲突卡片只显示目标节点，整个场景的数量说明不了计划改什么。画板卡片和其他画板节点一样短暂显示“Mio 修改”。
+- `previs.thumbnail.*` 仍不对 Mio 开放。
+
 ## 本地接口
 
 所有接口都经过现有 Host、Origin 和本地身份校验。
