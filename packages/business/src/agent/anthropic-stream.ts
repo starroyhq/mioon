@@ -16,6 +16,10 @@ export interface AnthropicStreamOptions {
   maxOutputBytes: number;
   maxArgumentBytes: number;
   maxToolCalls: number;
+  /** Task measurements are optional passive metadata. Legacy chat consumers
+   * keep required, bounded usage validation unless they explicitly opt in. */
+  usageMode?: 'required' | 'optional';
+  onUsage?: (raw: unknown) => void;
 }
 export type AnthropicStreamItem = {type: 'delta'; text: string} | {type: 'done'; completion: AnthropicCompletion};
 interface TextBlock {type: 'text'; text: string; closed: boolean}
@@ -44,9 +48,7 @@ interface TokenUsage {input: number; cacheCreation: number; cacheRead: number; o
 function serviceTier(value: unknown): void {
   if (value != null && !['standard', 'priority', 'batch'].includes(value as string)) fail();
 }
-function usageMetadata(value: Record<string, unknown>, start: boolean): void {
-  fields(value, ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens', 'output_tokens_details', 'server_tool_use', 'service_tier',
-    ...(start ? ['cache_creation', 'inference_geo', 'speed'] : [])]);
+function usageCapabilities(value: Record<string, unknown>): void {
   if (value.output_tokens_details != null) {
     if (!object(value.output_tokens_details)) fail();
     fields(value.output_tokens_details, ['thinking_tokens']);
@@ -57,6 +59,11 @@ function usageMetadata(value: Record<string, unknown>, start: boolean): void {
     fields(value.server_tool_use, ['web_fetch_requests', 'web_search_requests']);
     if (count(value.server_tool_use.web_fetch_requests) || count(value.server_tool_use.web_search_requests)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
   }
+}
+function usageMetadata(value: Record<string, unknown>, start: boolean): void {
+  fields(value, ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens', 'output_tokens_details', 'server_tool_use', 'service_tier',
+    ...(start ? ['cache_creation', 'inference_geo', 'speed'] : [])]);
+  usageCapabilities(value);
   if (value.cache_creation != null) {
     if (!object(value.cache_creation)) fail();
     fields(value.cache_creation, ['ephemeral_1h_input_tokens', 'ephemeral_5m_input_tokens']);
@@ -92,6 +99,7 @@ function refusalDetails(value: unknown, reason: unknown): void {
  * released only after all blocks, message_stop and a clean framed EOF. The SDK
  * neither accumulates/executes tools nor reconnects this bounded raw stream. */
 export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, options: AnthropicStreamOptions): AsyncGenerator<AnthropicStreamItem, void, undefined> {
+  const optionalUsage = options.usageMode === 'optional';
   let started = false, stopped = false, sawFinalUsage = false, outputBytes = 0, toolCount = 0;
   let stopReason: AnthropicCompletion['stopReason'] | undefined, usage: TokenUsage | undefined;
   const blocks: Block[] = [], toolIds = new Set<string>();
@@ -123,7 +131,10 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
       // Compatible providers may repeat this passive usage metadata on the
       // message itself. Validate it without retaining it or granting abilities.
       serviceTier(message.service_tier);
-      usage = inputUsage(message.usage);
+      if (optionalUsage) {
+        if (object(message.usage)) usageCapabilities(message.usage);
+      } else usage = inputUsage(message.usage);
+      options.onUsage?.(message.usage);
       started = true;
       continue;
     }
@@ -185,23 +196,31 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
     }
     if (value.type === 'message_delta') {
       fields(value, ['type', 'delta', 'usage']);
-      if (stopReason || blocks.some(block => !block.closed) || !object(value.delta) || !object(value.usage)) fail();
+      if (stopReason || blocks.some(block => !block.closed) || !object(value.delta) || (!optionalUsage && !object(value.usage))) fail();
       fields(value.delta, ['stop_reason', 'stop_sequence', 'container', 'stop_details']);
       if (value.delta.container != null) fail();
       refusalDetails(value.delta.stop_details, value.delta.stop_reason);
-      usageMetadata(value.usage, false);
-      const nextTokens = count(value.usage.output_tokens);
-      if (!usage || nextTokens < usage.output) fail();
-      usage.output = nextTokens;
-      // SDK usage counters are whole-message cumulative totals. Null means the
-      // counter is absent in this event; present counters replace, never add.
-      for (const [field, key] of [['input_tokens', 'input'], ['cache_creation_input_tokens', 'cacheCreation'], ['cache_read_input_tokens', 'cacheRead']] as const) {
-        if (value.usage[field] == null) continue;
-        const next = count(value.usage[field]);
-        if (next < usage[key]) fail();
-        usage[key] = next;
+      if (optionalUsage) {
+        // Counts may be absent or malformed, but usage cannot advertise an
+        // unsupported thinking/server-tool capability and bypass its gate.
+        if (object(value.usage)) usageCapabilities(value.usage);
+      } else {
+        if (!object(value.usage)) fail();
+        usageMetadata(value.usage, false);
+        const nextTokens = count(value.usage.output_tokens);
+        if (!usage || nextTokens < usage.output) fail();
+        usage.output = nextTokens;
+        // SDK usage counters are whole-message cumulative totals. Null means the
+        // counter is absent in this event; present counters replace, never add.
+        for (const [field, key] of [['input_tokens', 'input'], ['cache_creation_input_tokens', 'cacheCreation'], ['cache_read_input_tokens', 'cacheRead']] as const) {
+          if (value.usage[field] == null) continue;
+          const next = count(value.usage[field]);
+          if (next < usage[key]) fail();
+          usage[key] = next;
+        }
+        promptTokens(usage);
       }
-      promptTokens(usage);
+      options.onUsage?.(value.usage);
       const reason = value.delta.stop_reason;
       if (reason == null && value.delta.stop_sequence != null) fail();
       if (reason === 'model_context_window_exceeded') throw agentChatStreamError('output_limit');
@@ -217,14 +236,14 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
     }
     if (value.type === 'message_stop') {
       fields(value, ['type']);
-      if (!stopReason || !sawFinalUsage || blocks.some(block => !block.closed)) fail();
+      if (!stopReason || (!optionalUsage && !sawFinalUsage) || blocks.some(block => !block.closed)) fail();
       stopped = true;
       continue;
     }
     fail();
   }
   if (options.signal?.aborted) fail('AGENT_CHAT_ABORTED');
-  if (!stopped || !stopReason || !usage) throw agentChatStreamError('missing_done');
+  if (!stopped || !stopReason || (!optionalUsage && !usage)) throw agentChatStreamError('missing_done');
   if ((stopReason === 'tool_use') !== (toolCount > 0) && !['max_tokens', 'refusal'].includes(stopReason)) fail();
   const toolCalls: AnthropicCompletion['toolCalls'] = [];
   const content: AnthropicContentBlock[] = blocks.map(block => {
@@ -237,5 +256,5 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
     return {type: 'tool_use', id: block.id, name: block.name, input};
   });
   yield {type: 'done', completion: {text: content.filter((block): block is Extract<AnthropicContentBlock, {type: 'text'}> => block.type === 'text').map(block => block.text).join(''),
-    content, toolCalls, stopReason, usage: {prompt_tokens: promptTokens(usage), completion_tokens: usage.output, total_tokens: promptTokens(usage) + usage.output}}};
+    content, toolCalls, stopReason, ...(usage ? {usage: {prompt_tokens: promptTokens(usage), completion_tokens: usage.output, total_tokens: promptTokens(usage) + usage.output}} : {})}};
 }

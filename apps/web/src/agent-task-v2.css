@@ -88,8 +88,9 @@
 .mio-retained-items article{display:flex;flex-direction:column;gap:var(--wb-space-2);font-size:var(--wb-text-label)}
 .agent-editing-protection{padding:8px;border:1px solid var(--wb-line-subtle,var(--border));border-radius:6px;font-size:12px}.agent-editing-protection p{margin:0 0 6px}.agent-editing-fields{border:0;padding:0;margin:0;min-width:0;display:contents}.agent-ai-target{outline:2px solid var(--wb-accent)!important;outline-offset:3px}
 
-/* ReactFlow resolves its viewport against this extra ownership boundary. */
-.agent-editing-canvas{position:relative;width:100%;height:100%}.agent-editing-canvas>.agent-editing-protection{position:absolute;z-index:5;top:64px;left:50%;transform:translateX(-50%);width:min(520px,calc(100% - 80px));background:var(--wb-panel)}
+/* The canvas editing control floats over the canvas, its sibling (see App.tsx). Only the control takes pointer
+   input, so panning, dragging and drops reach React Flow. */
+.agent-editing-canvas{position:absolute;inset:0;pointer-events:none}.agent-editing-canvas>.agent-editing-protection{position:absolute;z-index:5;top:64px;left:50%;transform:translateX(-50%);width:min(520px,calc(100% - 80px));background:var(--wb-panel);pointer-events:auto}
 
 /* Ordinary states: only the Edit / Finish editing control shows; the explanation is its hint and an announced status. */
 .agent-editing-protection.is-compact{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--wb-space-2,8px);padding:0;border:0;border-radius:0}
@@ -250,3 +251,18 @@
 .mio-answer-edit.wb-button:hover{background:transparent;color:var(--wb-disabled)}
 .mio-answer-not-approval{display:flex;align-items:center;gap:var(--wb-space-1);margin:0;color:var(--wb-muted);font-size:var(--wb-text-caption)}
 .mio-panel .mio-answer-not-approval svg{width:12px;height:12px}
+/* Read-only steps stay low-key (C6, 09-09): soft text and a neutral icon for what was read. */
+.mio-panel .mio-step[data-read] .mio-step-line>span:nth-child(2){color:var(--wb-soft)}
+/* Continuity check (C6): a host line that nothing changed, then one card per reported issue. The dock is a card
+   surface in the dark theme and a panel surface in the light one, so the card lifts by an accent tint in both. */
+.mio-review{display:flex;flex-direction:column;gap:var(--wb-space-2);min-width:0}
+.mio-review-summary{font-size:var(--wb-text-body);line-height:1.65}
+.mio-panel .mio-review-issue{display:flex;flex-direction:column;gap:var(--wb-space-1);padding:var(--wb-space-2) var(--wb-space-3) var(--wb-space-3);border-radius:var(--wb-radius-card);background:color-mix(in srgb,var(--wb-accent) 5%,transparent);min-width:0;transition:background-color .3s ease-out,box-shadow .3s ease-out}
+.mio-review-issue>header{display:flex;align-items:center;gap:var(--wb-space-2);min-width:0}
+.mio-review-category{flex:none;padding:0 var(--wb-space-2);border-radius:var(--wb-radius-control);background:var(--wb-warning-subtle);color:var(--wb-warning);font-size:var(--wb-text-caption);line-height:20px;white-space:nowrap}
+.mio-review-shots{flex:1;min-width:0;overflow:hidden;color:var(--wb-soft);font-size:var(--wb-text-caption);text-overflow:ellipsis;white-space:nowrap}
+.mio-panel .mio-review-issue .mio-review-locate{flex:none;gap:var(--wb-space-1);border:1px solid var(--wb-line)}
+.mio-panel .mio-review-issue .mio-review-locate>svg{width:14px;height:14px}
+.mio-review-issue>p{font-size:var(--wb-text-label);line-height:1.6;overflow-wrap:anywhere}
+.mio-panel .mio-review-issue[data-revealed]{background:color-mix(in srgb,var(--wb-accent) 12%,transparent);box-shadow:inset 0 0 0 1px var(--wb-accent-line)}
+@media (prefers-reduced-motion:reduce){.mio-panel .mio-review-issue{transition:none}}

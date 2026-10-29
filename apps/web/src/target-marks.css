@@ -13,6 +13,9 @@
 .react-flow__node .canvas-node.is-selected[data-mio-mark] { --mio-mark-selection: 0 0 0 1px var(--wb-accent-line); --mio-mark-ring-width: 2px; }
 /* Above neighbouring clips so the glow is not hidden under them; a selected clip stays on top. */
 .timeline-clip[data-mio-mark] { z-index: 3; }
+/* A storyboard frame ("待核对", C6) keeps a tighter glow inside its strip and its selection ring under it. */
+.board-storyboard .storyboard-preview[data-mio-mark] { --mio-mark-blur: 10px; }
+.board-storyboard .storyboard-shot.selected .storyboard-preview[data-mio-mark] { --mio-mark-selection: 0 0 0 1px var(--wb-accent-line); --mio-mark-ring-width: 2px; }
 
 /* Above the canvas and the timeline panel, below popovers, menus and dialogs. */
 .mio-mark-layer { position: fixed; inset: 0; z-index: 30; overflow: hidden; pointer-events: none; }
