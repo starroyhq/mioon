@@ -1,6 +1,6 @@
 # Mio harness H4a · 目标检查与一次补做
 
-日期：2026-10-29（Asia/Taipei）。分支 `codex/mio-harness-h4a`；首轮基线为 main `9ae9b87db889cf556b754ab6972cad6a46d5d19a`（#78），审查修订后已同步到 `c4fead29e2d49ebfd0fc712474b69343648248ca`（#82），现行结果见第 9 节。复用 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`。只实施 H4a 后端，不进入 H4b，不调用真实模型或媒体供应商。
+日期：2026-10-29（Asia/Taipei）。分支 `codex/mio-harness-h4a`；首轮基线为 main `9ae9b87db889cf556b754ab6972cad6a46d5d19a`（#78），审查修订后已同步到 `7d8e5f37b5efc5c014d7b0670694844d1f16ba60`（#83），现行结果见第 9 节。复用 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`。只实施 H4a 后端，不进入 H4b，不调用真实模型或媒体供应商。
 
 首轮验证期间 origin/main 又合入 #79（片段变换及 schema 70）与 #80（后端冷启动测试期限），当时最终检查的 tip 为 `46881d0`，本分支比该远端引用落后 5 个提交。首轮保留起始基线与原期限的冻结验证，当时未合入这些后续上游变更；该历史结果不声称覆盖它们，实际同步与补验另记于第 9 节。
 
@@ -224,7 +224,7 @@ H4a 实施与本地验证已完成，原始全量的五个非零文件及隔离�
 
 以上为同步到 #81／`f7dabcc` 的独立快照。聚焦队列执行期间主线又合入 #82／`c4fead2`（C8 v2），直接改变同一工具目录、契约和请求 fixture；因此暂停旧 102 队列后续派发，在途文件按原期限自然结束并保存为 pre-#82 记录，不将未完成队列写成通过。随后继续以 merge commit 同步新主线，最终验证以该新基线另记；已完成的类型、构建与指纹结果均不冒充覆盖 #82。
 
-### 同步 #82 的最终代码与指纹
+### 同步 #82 的冻结代码与指纹
 
 先将已完成的边界断言和阶段记录保存为本地提交 `82d7718`，再以 merge commit `208b932eefed845d2963a3f820795832345ca92a` 合入 main `c4fead29e2d49ebfd0fc712474b69343648248ca`。冲突涉及工具分组、工具执行与 fixture；保留核心 goal、canvas 的 `previs.inspect/create/scene.set` 三项、相应风险分类与参数反馈，以及 `timeline.clip.setTransform` 的禁用边界。契约同时保留 H4a 可选 repair 与 C8 的三个 display 字段。独立审阅确认，工具模块相对 incoming main 仅增加既有 H4a goal 接线；预演和 display 模块与 main 逐字节相同。
 
@@ -235,7 +235,8 @@ H4a 实施与本地验证已完成，原始全量的五个非零文件及隔离�
 | `node --test --test-reporter=tap --test-concurrency=1 tests/typecheck-runtime.test.ts` | 5/5，包括三套 strict | 94.71 秒 |
 | `node scripts/tooling.ts build --channel=development` | exit 0，包括三套 strict 与 Web/Desktop | 150.05 秒 |
 | `node --test --test-reporter=tap --test-concurrency=1 tests/agent-task-request-fingerprints-v2.test.ts` | exit 0，99 条 | 22.01 秒 |
-| 固定完整 FFmpeg Linux 镜像中的 106 文件聚焦队列 | 1714/1714，106 文件均 exit 0，无失败／取消／跳过／超时／缺失／重复 | 806.92 秒 |
+| 固定完整 FFmpeg Linux 镜像中的 106 文件聚焦队列 | 1714/1714，106 文件均 exit 0，无失败／取消／跳过／超时／缺失／重复 | 806.99 秒 |
+| 同镜像 main 的 35 文件对照队列 | 411/411，35 文件均 exit 0，无失败／取消／跳过／超时／缺失／重复 | 349.96 秒 |
 
 以新 main fixture `e1d2ce722948d8f3a726e964dc4593eb919b09b8a8c21b6f1daec8e88300f5e8` 作基准，两次 metadata 预览均 exit 0（22.97／22.16 秒），99 条逐项一致。复核后显式执行 `node tests/helpers/agent-task-request-fingerprints-v2.ts --update`，exit 0、21.70 秒，生成 `f11fd5e19890254fc94ceae91b9136be84b656569d64fa337255d75235449250`，与两份预览完全一致。
 
@@ -248,3 +249,36 @@ H4a 实施与本地验证已完成，原始全量的五个非零文件及隔离�
 ### 最终聚焦与主线逐名对照
 
 106 文件聚焦队列覆盖本期四个新文件的 70 项（goals 18、goal-tool 7、repair-context 3、repair 42）及 checks transport 的 1 项新增，共 71 项全部通过。运行时 185/185 通过，前述两个指定真实 FFmpeg 场景均通过；使用 H0 固定镜像 `sha256:32fc444b18573b988300b1bb9ceb7009ae4d9cb2456c382a0353b0c521846de5`，Linux arm64、FFmpeg 7.1.5、pnpm 11.25.0、断网。旧 pre-#82 队列仅 67/102 文件自然完成且均 exit 0，主动停止后 wrapper exit -2、余下 35 文件未跑，作为独立 partial 保留，不消费为最终覆盖。
+
+审查要求的 `4.1 秒/123 帧`、`1.25 秒/37 帧`、`1.25 秒/38 帧` 均通过，`4.0 秒/123 帧` 不通过；另覆盖 1200 个小数秒时长点、显式容差相加和 epsilon 外侧拒绝。真实三字幕下 `min:1`、`max:3`、`min:3,max:3` 通过，`max:2`、`min:1,max:1` 未通过；expected 保留上下限，current 为实际 count，连续读取没有写库。
+
+main 对照在候选排空后串行执行，35 文件 411/411。独立重解析两侧原始 TAP，并核 SHA、footer，以 `(file, path 数组, occurrence)` 精确匹配，411 项全部同名、同状态、同跳过理由；无新增、缺失或跳过变化。没有为了归因补跑其它 main 文件。旧 74 文件是首轮 H4a 的历史参考：1379 项全部保留，状态和跳过理由不变；当前同 74 文件为 1397 项，新增 18＝本次 H4a 审查补测 7（goals 4、三协议 repair 3）＋主线继承 11。
+
+继承 11 中，9 项由 `tests/helpers/workspace-schema-current.ts` 的 ordinary lineage 新增 `70` 展开：conversations 1、interactions-schema 2、m5-storage 6；另外两个 mio 文件各新增 1 项来自 #82。三侧 helper 的 SHA、闭集数组、导入和模板逐一绑定，实际 9 项标题／身份与模板展开严格一致；不模糊改写测试名。m5 的 6 项和 mio 的 2 项在 fresh main35 实际执行；conversations/interactions 的 3 项只做相同依赖闭集的源码归因，没有声称执行过 main 的测试体。旧 CI 的五对字面未匹配仍保留。#80 的冷启动预算变化由 main 继承（相关就绪门槛 10→20 秒、preferences HTTP 外层 30→60 秒），本线没有另放宽期限。
+
+最终核对 primary、候选 native/Linux 各 6121 源文件与 main native/Linux 各 6113 文件，逐文件哈希均零漂移，primary 路径集合未变；锁仍为 `429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b`，fixture 为对应的 `f11fd5…`／`e1d2ce…`。两套队列自有 driver、wrapper、caffeinate 和精确标签容器均零遗留。证据为新目录中的 `post82/validation-delivery-summary.json`、`final-source-guards.json`、`final-owned-cleanup.json` 及 `name-comparison/post82-exact-name-comparison.json`（SHA-256 `f9d534b24069fc042875aa13603d3819a3b474047932e07bd9866dde4cc1d95c`）；24 份逐名证据清单为 `post82-final-name-comparison-evidence-manifest.json`。
+
+上述为选定的 candidate106／main35，不能冒充本轮 972／968 文件的本地全量。本轮全量交 PR CI；首轮原始全量、五个非零文件、隔离补验和旧 partial 均继续保留。
+
+### 提交前同步 #83 与最小补验
+
+最后 fetch 时 main 已到 `7d8e5f37b5efc5c014d7b0670694844d1f16ba60`（#83，T4c 静态旋转／裁切属性栏）。先保存报告检查点 `31780aa`，再以无冲突的 merge commit `9a77fc57445798c6ac14b5b9f51820a2cad36ab4` 合入。仅继承六条路径：`ClipTransformControls.tsx`、`clip-transform-state.ts`、`clip-transform.css`、`docs/CLIP-TRANSFORM.md`、`catalogs/clip-transform.ts` 和 `tests/clip-transform-ui.test.ts`；这些 UI 改动均来自 main，不属于 H4b。
+
+最终代码冻结源为 `102bf2fc1f2523debc183f7e2516c3216779cea038f07e7563061bf9112cf5c1`（6121 源文件、972 测试文件，仍排除报告）。独立逐文件绑定证明，相对 `e660…` 恰好仅上述六路径变化，其余 6115 文件字节相同，包括 business 全包 378 文件、contracts 全包 110 文件、原 74 个 harness 测试、H4a helpers、fixture 和锁文件。UI 文件可由旧 main 严格应用 #83 补丁得到，并与新快照逐字节一致。
+
+在新快照上顺序执行以下实际命令，均使用同一 Node／UTC／真实 TMPDIR／`caffeinate -i` 环境：
+
+| 检查 | 实际结果 | 用时 |
+| --- | --- | ---: |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/typecheck-runtime.test.ts` | 5/5，exit 0 | 89.15 秒 |
+| `node scripts/tooling.ts build --channel=development` | 三套 strict 与 Web/Desktop，exit 0 | 141.56 秒 |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/agent-task-request-fingerprints-v2.test.ts` | 99 条，exit 0，fixture 仍为 `f11fd5…49250` | 20.66 秒 |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/clip-transform-ui.test.ts` | 6/6，exit 0 | 0.51 秒 |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/clip-transform-box.test.ts` | 5/5，exit 0 | 0.45 秒 |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/i18n-catalog-integrity.test.ts` | 5/5，exit 0 | 1.43 秒 |
+
+独立重解析三文件原始 TAP，共 16/16。UI 原 5 项身份、状态均保留，新增恰好 1 项来自 #83；box 的 5 项同名同状态，catalog 的 5 项是另加的词库检查范围，不算 H4a 新用例。新快照 primary/native 各 6121 文件前后零漂移、路径集合不变，锁与 fixture 未变，自有 driver／caffeinate 零遗留。
+
+本次没有重复 106／35 队列或 FFmpeg／全量。前述 1714 项聚焦和 411 项 main 对照仍分别属于 `e660…`／`80031…`，由六路径等价证明和上述补验连接，不能称为最新源码重新跑过完整 106／35。证据为 `post83/validation-delivery-summary.json`、`post82-equivalence-proof.json`、`final-source-guards.json`、`final-owned-cleanup.json`，独立审计为 `name-comparison/post83-source-binding.json`、`post83-minimal-name-comparison.json`；最终 34 份证据清单 `post83-final-evidence-manifest.json` 的 SHA-256 为 `3d417b81801f279f92ef1526b7a111d1e29b72a3582c5dd4b5c9896ba78d0dba`。
+
+本轮代码和离线验证完成；按授权提交、推送并创建面向 main 的 PR，合并方式注明 merge commit，不合并 PR。全量由 PR CI 执行；没有继续 H4b、引入真实生成或实现跨轮目标记忆。
