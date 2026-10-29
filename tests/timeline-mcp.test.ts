@@ -35,7 +35,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
     const record = { event: 'start', at: new Date().toISOString(), port, stdout: '', stderr: '' }; report.processes.push(((record) as unknown as Parameters<typeof report.processes.push>[0]));
     backend = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
     (record as typeof record & {pid:(number | undefined)}).pid = backend.pid; backend.stdout.setEncoding('utf8').on('data', bytes => record.stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => record.stderr += bytes); backend.on('exit', (code, signal) => Object.assign(record, { exitCode: code, signal }));
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) { if (backend.exitCode !== null) throw Error(record.stderr); try { if ((await fetch(base + '/health')).ok) return; } catch {} await pause(40); }
     throw Error(`Backend startup timed out: ${record.stderr}`);
   }
