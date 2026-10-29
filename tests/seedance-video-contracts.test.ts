@@ -82,7 +82,9 @@ test('the request schema lets Ark connections carry generation duration and rati
  for(const parameters of [{promptExtend:true},{watermark:false},{durationSeconds:31},{aspectRatio:'5:4'}])assert.equal(schemas['generation.submit'].safeParse({...request,parameters}).success,false,JSON.stringify(parameters));
  const legacy={shotId:request.shotId,expectedRevision:1,requestId:'synthetic-request',providerId:'ark'};
  for(const parameters of [{durationSeconds:30},{aspectRatio:'21:9'}])assert.equal(schemas['generation.submit'].safeParse({...legacy,parameters}).success,false,'The environment-configured provider keeps shot-only duration and ratio');
- assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:{version:1,mode:'text',images:[]}}).success,true,'A configured Ark connection may carry an explicit input');
+ // A configured Ark connection may carry an explicit input only for reference images.
+ for(const videoInput of [{version:1,mode:'text',images:[]},{version:1,mode:'first_frame',images:[{role:'first_frame',assetId:randomUUID()}]}])assert.equal(schemas['generation.submit'].safeParse({...request,videoInput}).success,false,videoInput.mode);
+ assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:{version:1,mode:'reference_images',images:[{role:'reference_image',assetId:randomUUID()}]}}).success,true);
  assert.equal(schemas['generation.submit'].safeParse({...legacy,videoInput:{version:1,mode:'text',images:[]}}).success,false);
 });
 
@@ -117,6 +119,9 @@ test('Seedance 2.5 takes 1–30 ordered reference images in any ratio inside 0.4
  // The saved shot prompt is the prompt sent; a separate prompt belongs to Wan 3.0 only.
  assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:{...explicit(group),prompt:'@图片1 在左，@图片2 在右'}}).success,false);
  assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:group,videoInput:{...explicit(group),prompt:'@图片1'}})),{code:'INVALID_PROMPT'});
+ // Frames keep coming from the saved shot, not from an explicit input.
+ const first=[image('first_frame')];
+ assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:first,videoInput:{version:1,mode:'first_frame',images:[{role:'first_frame',assetId:first[0]!.id}]}})),{code:'UNSUPPORTED_INPUT_ROLE'});
 });
 
 test('only the exact Seedance 2.5 row may save the reference mode',()=>{

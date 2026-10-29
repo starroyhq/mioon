@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="02ad6179592a62c7b9d2c2d9bcb60164255b98203f53f6e68062b3b1a831b419";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="3a0cbc02f1381b9bbf2677db67dd35da67a93852841cc87e2e9617f43f079130";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -4529,7 +4529,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "images"
     ],
     "additionalProperties": false,
-    "description": "Versioned explicit Wan 3.0 or Seedance 2.5 input. Ordered managed image IDs replace saved shot references for this generation; omission preserves legacy selection. Wan 3.0 takes up to 10 reference images and an optional prompt; Seedance 2.5 takes up to 30 and always uses the saved shot prompt."
+    "description": "Versioned explicit Wan 3.0 or Seedance 2.5 input. Ordered managed image IDs replace saved shot references for this generation; omission preserves legacy selection. Wan 3.0 takes every mode, up to 10 reference images and an optional prompt; Seedance 2.5 takes only reference_images, up to 30, and always uses the saved shot prompt."
    },
    "subjectVersionId": {
     "type": "string",

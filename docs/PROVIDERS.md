@@ -52,7 +52,8 @@ same template, keep shot-only duration and ratio.
   recommends at most 500 Chinese characters or 1000 English words.
 - **Reference images:** 1–30 ordered images in one explicit
   `generation.submit.videoInput` (`mode: reference_images`, every image
-  `role: reference_image`), sent as Ark `reference_image` items with
+  `role: reference_image`; Seedance accepts no other explicit mode, so its frames
+  still come from the saved shot), sent as Ark `reference_image` items with
   `omni_reference_task_type: reference` and the chosen ratio. The group belongs to
   this generation only: it replaces the shot's saved frames for the request, never
   mixes with first/last frames or a subject image, and is frozen with the task.

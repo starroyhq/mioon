@@ -616,6 +616,8 @@ test('Seedance 2.5 reference advisories follow the 30-image limit and the encode
   const large = many.slice(0, 5).map(item => ({ ...item, sizeBytes: 10 * 1024 * 1024 }));
   assert.equal(settings.generationInputIssue({ ...shot(), videoInput: group(4) }, p, model, large, 'reference'), '');
   assert.match(String(settings.generationInputIssue({ ...shot(), videoInput: group(5) }, p, model, large, 'reference')), /requestTooLarge/);
+  assert.equal(settings.generationVideoInput(shot(), { videoInput: { version: 1, mode: 'first_frame', images: [{ role: 'first_frame', assetId: firstId }] } }, p), undefined, 'Frames stay with the saved shot');
+  assert.notEqual(settings.generationInputIssue({ ...shot(), videoInput: { version: 1, mode: 'first_frame', images: [{ role: 'first_frame', assetId: firstId }] } }, p, model, many, 'image'), '');
   const savedModes = seedanceProvider({ inputModes: ['text', 'image', 'frames', 'subject'] });
   assert.notEqual(settings.generationInputIssue({ ...shot(), videoInput: group(2) }, savedModes, String(settings.providerModels(savedModes)[0]!.id), many, 'reference'), '');
 });

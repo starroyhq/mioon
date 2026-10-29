@@ -210,7 +210,9 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
  const explicit=value.videoInput===undefined?null:wanVideoInputSchema.safeParse(value.videoInput);
  if(value.videoInput!==undefined&&(!requestLevel||!explicit?.success))fail('UNSUPPORTED_INPUT_ROLE','此模型不支持所选显式视频输入。');
  if(value.videoInput!==undefined&&(value.subjectReference!==undefined||value.subjectVersionId!==undefined))fail('UNSUPPORTED_INPUT_ROLE','显式视频输入不能与主体参考组合。');
- // Seedance 2.5 always sends the saved shot prompt; only Wan 3.0 takes one per generation.
+ // Seedance 2.5 takes an explicit input only for reference images, always with
+ // the saved shot prompt; its frames come from the saved shot.
+ if(seedance&&explicit?.success&&explicit.data.mode!=='reference_images')fail('UNSUPPORTED_INPUT_ROLE','Seedance 2.5 的显式视频输入只用于参考图片；首帧和尾帧取自已保存的镜头。');
  if(seedance&&explicit?.success&&explicit.data.prompt!==undefined)fail('INVALID_PROMPT','Seedance 2.5 的提示词取自已保存的镜头，不能在本次视频输入里另写。');
  if(!object(params)||Object.keys(params).some(key=>!['seed','resolution','generateAudio',...(wan30?['durationSeconds','aspectRatio','promptExtend','watermark']:seedance?['durationSeconds','aspectRatio']:[])].includes(key)))fail('UNSUPPORTED_PARAMETERS','此模型参数无效。');
  const parameters=params as Record<string,unknown>,effective=effectiveVideoParameters(binding,value),duration=effective.durationSeconds,ratio=effective.aspectRatio,resolution=effective.resolution;

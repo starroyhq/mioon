@@ -34,8 +34,9 @@ test('Wan input wire contract bounds modes, order, identity, provider and subjec
  assert.equal(wanVideoInputSchema.safeParse(references(31)).success,false);
  assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:references(10)}).success,true);
  assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:references(11)}).success,false);
- // Only configured Wan and Ark connections may carry an explicit input.
- assert.equal(schemas['generation.submit'].safeParse({...request,providerId:'ark',parameters:{durationSeconds:-1,aspectRatio:'adaptive'}}).success,true);
+ // Only configured Wan and Ark connections may carry an explicit input; Ark only for reference images.
+ assert.equal(schemas['generation.submit'].safeParse({...request,providerId:'ark',parameters:{durationSeconds:-1,aspectRatio:'adaptive'}}).success,false);
+ assert.equal(schemas['generation.submit'].safeParse({...request,providerId:'ark',videoInput:references(30),parameters:{durationSeconds:-1,aspectRatio:'adaptive'}}).success,true);
  for(const providerId of ['mock','veo','minimax','vidu','kling','runway','compatible'])assert.equal(schemas['generation.submit'].safeParse({...request,providerId,parameters:undefined}).success,false,providerId);
 });
 

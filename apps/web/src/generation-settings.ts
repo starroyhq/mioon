@@ -481,7 +481,7 @@ export function generationVideoInput(shot: GenerationShot, options: { videoInput
   if (!wanGenerationCapabilities(provider)) {
     // Seedance 2.5 takes an explicit input only for an ordered reference group
     // chosen for this generation. Its prompt is always the saved shot prompt.
-    if (!options.videoInput || !seedanceGenerationCapabilities(provider)) return undefined;
+    if (options.videoInput?.mode !== 'reference_images' || !seedanceGenerationCapabilities(provider)) return undefined;
     const { prompt: _prompt, ...input } = structuredClone(options.videoInput);
     return input;
   }
@@ -500,6 +500,7 @@ export function generationVideoInputIssue(shot: GenerationShot, provider: Genera
   if (!wanVideoInputSchema.safeParse(input).success) return message(invalidImages);
   if (subjectReference || shot.subjectReference) return message('video.wan.subjectConflict');
   if (!wan && !seedance) return message('video.wan.unsupported');
+  if (seedance && input.mode !== 'reference_images') return message(invalidImages);
   const maxReferences = wan ? 10 : Number(seedance!.referenceImages) || 30;
   const expectedRoles = input.mode === 'text' ? [] : input.mode === 'first_frame' ? ['first_frame'] : input.mode === 'first_last_frame' ? ['first_frame', 'last_frame'] : input.mode === 'reference_images' ? input.images.map(() => 'reference_image') : null;
   if (input.version !== 1 || !expectedRoles || input.images.length !== expectedRoles.length || input.mode === 'reference_images' && (input.images.length < 1 || input.images.length > maxReferences) || input.images.some((image, index) => image.role !== expectedRoles[index]) || new Set(input.images.map(image => image.assetId)).size !== input.images.length) return message(invalidImages);
