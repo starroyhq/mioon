@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { keyframeAt, transformFields, transformFrame, transformIssue, withKeyframe, withoutKeyframe } from '../apps/web/src/clip-transform-state.ts';
+import { keyframeAt, staticChanged, staticFields, staticIssue, transformFields, transformFrame, transformIssue, withKeyframe, withoutKeyframe, withStatic } from '../apps/web/src/clip-transform-state.ts';
 import { touchesLockedTrack } from '../apps/web/src/timeline-track-locks.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -36,6 +36,27 @@ test('keyframe actions build the complete next transform', () => {
   assert.equal(transformIssue(clip(full), 30, { x: '0', y: '0', scale: '100' }), 'clip.transform.full');
   assert.equal(transformIssue(clip(full), 3, { x: '0', y: '0', scale: '100' }), '', 'an existing keyframe can still change');
   assert.equal(withKeyframe(clip(full), 30, { x: '0', y: '0', scale: '100' }), null);
+});
+
+test('rotation and crop are typed in degrees and percent and keep the keyframes', () => {
+  const fields = (rotation: string, left = '0', top = '0', right = '0', bottom = '0') => ({ rotation, left, top, right, bottom });
+  assert.deepEqual(staticFields(clip()), fields('0'));
+  assert.deepEqual(staticFields(clip({ ...zoom, rotation: -12.5, crop: { left: 0.1, top: 0.255, right: 0, bottom: 0.3 } })), fields('-12.5', '10', '25.5', '0', '30'));
+  assert.deepEqual(withStatic(clip(), fields('30', '25')), { profileId, keyframes: [{ frame: 0, x: 0, y: 0, scale: 1 }], rotation: 30, crop: { left: 0.25, top: 0, right: 0, bottom: 0 } }, 'an identity keyframe holds them');
+  assert.deepEqual(withStatic(clip(zoom), fields('-90'))!.keyframes, zoom.keyframes, 'keyframes stay');
+  assert.equal(withStatic(clip({ ...zoom, keyframes: [{ frame: 0, x: 0, y: 0, scale: 1 }], rotation: 15 }), fields('0')), null, 'nothing left to do ends the transform');
+  assert.equal(withStatic(clip(), fields('181')), undefined);
+  for (const bad of [fields(''), fields('-180.5'), fields('0', '-1'), fields('0', '91'), fields('0', '50', '0', '41'), fields('0', '0', '45', '0', '46'), fields('0', 'x')])
+    assert.equal(staticIssue(bad), 'clip.transform.staticInvalid', JSON.stringify(bad));
+  assert.equal(staticIssue(fields('180', '45', '0', '45')), '');
+  // 0.34 + 0.56 exceeds 0.9 as floats; the far edge gives up a few ulps instead.
+  const tight = withStatic(clip(), fields('0', '34', '0', '56'))!;
+  assert.ok(tight.crop.left + tight.crop.right <= 0.9 && Math.abs(tight.crop.right - 0.56) < 1e-12);
+  assert.deepEqual(staticFields(clip(tight)), fields('0', '34', '0', '56'));
+  assert.equal(staticChanged(clip(tight), fields('0', '34', '0', '56')), false, 'the saved value reads back unchanged');
+  assert.equal(staticChanged(clip(zoom), fields('0')), false);
+  assert.equal(staticChanged(clip(zoom), fields('1')), true);
+  assert.equal(staticChanged(clip(zoom), fields('x')), false, 'invalid is not a change');
 });
 
 test('a transform edit respects the clip track lock', () => {
@@ -80,10 +101,13 @@ test('the controls render the frame, keyframes, static parts and the disabled st
   assert.match(markup.keyed, /第 50 帧 · X 100 · Y -20 · 150%/);
   assert.deepEqual(['set', 'remove', 'clear'].map(id => disabled(markup.keyed, id)), [false, false, false]);
   assert.match(markup.between, /片段第 30 帧 · 由关键帧推算的值/);
-  assert.match(markup.between, /data-testid="clip-transform-static"[^>]*>另有旋转 15° 和裁切（左 10%、上 0%、右 0%、下 0%），会保留/);
+  assert.match(markup.between, /data-testid="clip-transform-rotation"[^>]*value="15"/);
+  assert.match(markup.between, /data-testid="clip-transform-crop-left"[^>]*value="10"/);
+  assert.equal(disabled(markup.between, 'apply-static'), true, 'nothing to apply yet');
   assert.equal(disabled(markup.between, 'remove'), true, 'no keyframe at this frame to remove');
   assert.match(markup.dirty, /data-testid="clip-transform-disabled"[^>]*>请先保存/);
-  assert.ok(['set', 'remove', 'clear'].every(id => disabled(markup.dirty, id)));
+  assert.ok(['set', 'remove', 'clear', 'apply-static'].every(id => disabled(markup.dirty, id)));
+  assert.match(markup.none, /旋转和裁切[\s\S]*旋转 \(°\)[\s\S]*裁切左边 \(%\)[\s\S]*裁切右边 \(%\)[\s\S]*裁切上边 \(%\)[\s\S]*裁切下边 \(%\)/);
 });
 
 test('the inspector offers transforms on visual clips of editable workspaces only', () => {
