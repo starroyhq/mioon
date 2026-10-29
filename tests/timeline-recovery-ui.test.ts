@@ -22,6 +22,7 @@ import { sceneSplitFixture } from './fixtures/timeline-scene-split.ts';
 import { crossfadeFixture } from './fixtures/timeline-crossfade.ts';
 import { clipGainsFixture } from './fixtures/timeline-clip-gains.ts';
 import { clipTransformFixture } from './fixtures/timeline-clip-transform.ts';
+import { clipTransitionFixture } from './fixtures/timeline-clip-transition.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
 import { creationParameter } from '../apps/web/src/creation-i18n.ts';
 
@@ -37,7 +38,7 @@ const id = (n: number) => `82000000-0000-4000-8000-${String(n).padStart(12, '0')
 const projectId = id(1), otherProjectId = id(2), trackId = id(3), clipId = id(4), assetId = id(5);
 const operations = (['timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.remove', 'timeline.clip.rippleRemove',
   'timeline.clip.split', 'timeline.clip.replaceSource', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set', 'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove', 'timeline.loudness.apply',
-  'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade', 'timeline.clip.setGains', 'timeline.clip.setTransform'] as const);
+  'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade', 'timeline.clip.setGains', 'timeline.clip.setTransform', 'timeline.clip.setTransition'] as const);
 const shotSync = (operation: string) => operation === 'timeline.clip.refreshSources' || operation === 'timeline.shots.append';
 const clone = <T>(value: T): T => structuredClone(value);
 const loudnessApply = await loudnessApplyFixture({projectId, expectedRevision: 7, requestId: 'original-timeline.loudness.apply'});
@@ -57,6 +58,7 @@ function inputFor(operation: string, patch: {expectedRevision?: number; presetId
   if (operation === 'timeline.clip.crossfade') return ({...crossfadeFixture({projectId, expectedRevision: 7, requestId: `original-${operation}`}).input, ...patch} as unknown as RecoveryInput);
   if (operation === 'timeline.clip.setGains') return ({...clipGainsFixture({projectId, expectedRevision: 7, requestId: `original-${operation}`}).input, ...patch} as unknown as RecoveryInput);
   if (operation === 'timeline.clip.setTransform') return ({...clipTransformFixture({projectId, expectedRevision: 7, requestId: `original-${operation}`}).input, ...patch} as unknown as RecoveryInput);
+  if (operation === 'timeline.clip.setTransition') return ({...clipTransitionFixture({projectId, expectedRevision: 7, requestId: `original-${operation}`}).input, ...patch} as unknown as RecoveryInput);
   const fields:Record<string,Record<string,unknown>> = {
     'timeline.track.add': { kind: 'audio', name: 'Sound' },
     'timeline.track.update': { trackId, patch: { muted: true, name: 'Edited track' } },
@@ -88,6 +90,7 @@ function acknowledgedValue(operation: string, input: { projectId: string|undefin
   if (operation === 'timeline.clip.crossfade') return crossfadeFixture({projectId: ((input.projectId) as unknown as string), expectedRevision: input.expectedRevision, requestId: ((input.requestId) as unknown as string)}).response;
   if (operation === 'timeline.clip.setGains') return clipGainsFixture({projectId: ((input.projectId) as unknown as string), expectedRevision: input.expectedRevision, requestId: ((input.requestId) as unknown as string)}).response;
   if (operation === 'timeline.clip.setTransform') return clipTransformFixture({projectId: ((input.projectId) as unknown as string), expectedRevision: input.expectedRevision, requestId: ((input.requestId) as unknown as string)}).response;
+  if (operation === 'timeline.clip.setTransition') return clipTransitionFixture({projectId: ((input.projectId) as unknown as string), expectedRevision: input.expectedRevision, requestId: ((input.requestId) as unknown as string)}).response;
   if (operation === 'timeline.loudness.apply') {
     const value = clone(loudnessApply.response);
     value.requestId = input.requestId;
@@ -157,7 +160,7 @@ function harness(dispatch:(operation:string,input:Record<string,unknown>)=>unkno
 const keyFor = (operation: string) => operation === 'timeline.render' ? 'timeline:render:preview' : 'timeline:mutation';
 const error = (code: string, details: {requestId?: unknown; operation?: unknown; projectId?: unknown; mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];} = {}, definitive: boolean|undefined = true) => Object.assign(Error('Synthetic failure'), { code, details, definitive });
 
-test('actual App legacy session runner guards exactly the twenty-three timeline writes and accepts their complete matching acknowledgements', async t => {
+test('actual App legacy session runner guards exactly the twenty-four timeline writes and accepts their complete matching acknowledgements', async t => {
   storage(t); assert.deepEqual(new Set(TIMELINE_MUTATION_OPERATIONS), new Set(operations));
   const h = harness(((acknowledged) as unknown as Parameters<typeof harness>[0]));
   for (const operation of operations) {
@@ -204,7 +207,7 @@ test('every timeline write retains the exact original receipt after loss, 404/40
     failure = null;
     const expected = acknowledged(operation, input);
     for (const invalid of ([null, {}, { projectId, revision: 8 }, { ...expected, projectId: otherProjectId },
-      ...(operation === 'timeline.loudness.apply' || shotSync(operation) || operation === 'timeline.clip.splitAtScenes' || operation === 'timeline.clip.crossfade' || operation === 'timeline.clip.setGains' || operation === 'timeline.clip.setTransform' ? [(expected as {timeline:FixtureTimeline}).timeline, {...expected, timeline: {...(expected as {timeline:FixtureTimeline}).timeline, projectId: otherProjectId}}] : [])] as const)) {
+      ...(operation === 'timeline.loudness.apply' || shotSync(operation) || operation === 'timeline.clip.splitAtScenes' || operation === 'timeline.clip.crossfade' || operation === 'timeline.clip.setGains' || operation === 'timeline.clip.setTransform' || operation === 'timeline.clip.setTransition' ? [(expected as {timeline:FixtureTimeline}).timeline, {...expected, timeline: {...(expected as {timeline:FixtureTimeline}).timeline, projectId: otherProjectId}}] : [])] as const)) {
       result = invalid; await h.run(key, operation, input, undefined, { replay: true });
       assert.deepEqual(submissions.readPending(projectId, key), original, `${operation}: corrupt ACK`);
     }
@@ -226,7 +229,7 @@ test('timeline rollback requires matching request-bound proof and rejects forbid
     let failure:(Error & {code?:string})|null = Error('Response lost');
     const h = harness(() => { throw failure; }); await h.run(key, operation, input);
     const original = submissions.readPending(projectId, key);
-    const strictOwnerProof = operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.') || shotSync(operation) || operation === 'timeline.clip.splitAtScenes' || operation === 'timeline.clip.crossfade' || operation === 'timeline.clip.setGains' || operation === 'timeline.clip.setTransform';
+    const strictOwnerProof = operation === 'timeline.loudness.apply' || operation === 'timeline.format.set' || operation.startsWith('timeline.subtitle.') || shotSync(operation) || operation === 'timeline.clip.splitAtScenes' || operation === 'timeline.clip.crossfade' || operation === 'timeline.clip.setGains' || operation === 'timeline.clip.setTransform' || operation === 'timeline.clip.setTransition';
     const proof = { mutationOutcome: 'not_applied', requestId: input.requestId, ...(strictOwnerProof ? { operation, projectId: input.projectId } : {}) };
     for (const invalid of ([error('REVISION_CONFLICT', { ...proof, requestId: 'wrong-request' }), error('REVISION_CONFLICT', proof, false),
       error('REVISION_CONFLICT', { ...proof, mutationOutcome: 'applied' }), error('UNAUTHORIZED', proof), error('IDEMPOTENCY_CONFLICT', proof),

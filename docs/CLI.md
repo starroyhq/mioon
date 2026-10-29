@@ -623,6 +623,21 @@ Pass `"transform":null` to remove it. Audio clips, keyframes past the clip's
 end and an unchanged transform are refused without writing. Full semantics:
 [Clip transforms](API.md#clip-transforms-2026-10-29).
 
+### Set a clip transition
+
+`timeline clip setTransition` sets or clears the picture transition at the cut
+where a clip starts, as one undoable edit. Read `timeline get` first for the
+two adjacent clips and the revision:
+
+```sh
+mioon timeline clip setTransition --input '{"projectId":"PROJECT_UUID","expectedRevision":12,"requestId":"transition-0001","clipId":"INCOMING_CLIP_UUID","transition":{"profileId":"mioon-clip-transition-v1","kind":"dissolve","durationFrames":15}}'
+```
+
+Pass `"transition":null` to remove it. A clip without an adjacent clip before
+it, too little source on either side and an unchanged transition are refused
+without writing. Full semantics:
+[Clip transitions](API.md#clip-transitions-2026-10-29).
+
 ### Clip audio fades
 
 Use existing `timeline clip add` or `timeline clip update` commands; inspect

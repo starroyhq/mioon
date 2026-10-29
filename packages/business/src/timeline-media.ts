@@ -24,6 +24,8 @@ import {prepareTimelineColourLuts,timelineColourInputFilter,TIMELINE_COLOUR_OUTP
 import {validateTimelineColourSourceInterpretation} from './timeline-colour-source.ts';
 import {clipTransformCropFilter,clipTransformLayerFilters,clipTransformOverlayPosition,clipTransformPixelCrop,clipTransformRenderPlan} from './timeline-transform-filter.ts';
 import {assertTimelineTransformCapability} from './timeline-transform-capability.ts';
+import {segmentTransition,timelineTransitionRegions,transitionFilters,transitionPictureRange,transitionPlanSnapshot,type TransitionLayer} from './timeline-transition-filter.ts';
+import {assertTimelineTransitionCapability} from './timeline-transition-capability.ts';
 import type {Stats} from 'node:fs';
 import type {FileHandle} from 'node:fs/promises';
 import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord} from './timeline-inputs.ts';
@@ -110,6 +112,8 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  if(opacity){snapshot=opacity.validationSnapshot as unknown as TimelineSnapshotLike;beforeEffect=opacity.effectFence(beforeEffect) as (()=>void)|undefined;readLut=opacity.readLut as ((value: unknown)=>unknown)|undefined;signal=opacity.signal&&signal&&opacity.signal!==signal?AbortSignal.any([opacity.signal,signal]):opacity.signal??signal;}
  checkMediaEffect(beforeEffect,signal);
  const timeline=snapshot.timeline,tracks=validateTimeline(timeline,assets);
+ // Transitions add segment edges and reach into neighbouring clips' ranges.
+ const transitions=timelineTransitionRegions(timeline as never,assets as never);
  validateSubtitleSnapshotProfile(snapshot);
  if(snapshot.colourPlan&&([TIMELINE_MIXED_COLOUR_RENDER_PROFILE,TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE] as readonly string[]).includes(snapshot.colourPlan.profileId))projectTimelineColourPlan(snapshot as never);
  if(!isTimelineExportSnapshot(snapshot)||!isTimelineColourSnapshot(snapshot))throw Object.assign(Error('The saved export delivery profile is invalid.'),{code:'INVALID_TIMELINE_SNAPSHOT'});
@@ -117,10 +121,11 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  if(colour)for(const item of colour.clips){const clip=timeline.clips.find(value=>value.id===item.clipId),asset=assets.get(item.assetId);
   if(item.kind==='image')validateTimelineImageSourceInterpretation({source:clip?.colour?.source,evidence:asset?.colourImageEvidence,probe:asset?.colourProbe,assetSha256:asset?.sha256,streamIndex:asset?.videoStreamIndex} as never);
   else validateTimelineColourSourceInterpretation({source:clip?.colour?.source,probe:asset?.colourProbe,assetSha256:asset?.sha256,streamIndex:asset?.videoStreamIndex} as never);}
- const delivery=snapshot.delivery,plan=planTimelineExportRange(snapshot),floatChecked=delivery?.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID;
+ const delivery=snapshot.delivery,plan=planTimelineExportRange(transitionPlanSnapshot(snapshot,transitions)),floatChecked=delivery?.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID;
  // Never trust an earlier capability report as an admission token. Legacy and
  // omitted-settings snapshots keep their original no-probe rendering path.
  if(timeline.clips.some(clip=>clipTransformRenderPlan(clip as never)?.animated)){await assertTimelineTransformCapability({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
+ if(transitions.length){await assertTimelineTransitionCapability({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
  if(delivery){await assertTimelineExportCapability(delivery as never,{signal,beforeEffect,...(floatChecked?{capabilityWorkRoot:path.dirname(destination)}:{})} as never);checkMediaEffect(beforeEffect,signal);}
  if(delivery||plan.selected)beforeEncode?.();
  checkMediaEffect(beforeEffect,signal);
@@ -156,14 +161,14 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
   for(let segment=0;segment<plan.segments.length;segment++){
    checkMediaEffect(effect,signal);
    const selected=plan.segments[segment],begin=selected.beginFrame,end=selected.endFrame,frames=end-begin,samples=frames*SAMPLES_PER_FRAME;
-   const clips=timeline.clips.filter(c=>c.startFrame<=begin&&c.startFrame+c.durationFrames>=end).sort((a,b)=>tracks.get(a.trackId)!.orderIndex-tracks.get(b.trackId)!.orderIndex||a.id.localeCompare(b.id));
+   const clips=timeline.clips.filter(c=>{const range=transitionPictureRange(c as never,transitions);return range.start<=begin&&range.end>=end;}).sort((a,b)=>tracks.get(a.trackId)!.orderIndex-tracks.get(b.trackId)!.orderIndex||a.id.localeCompare(b.id));
    // This independently fences the exact PNG inputs opened by this segment,
    // not merely a nominal track count or a hidden-source descriptor.
    assertTimelineImageCompositorInputCount(clips.filter(clip=>colourClips.get(clip.id)?.kind==='image'&&!tracks.get(clip.trackId)!.hidden).length);
    const args: string[]=['-hide_banner','-loglevel','error',owned?'-y':'-n','-filter_complex_threads','1'];
    const inputs: {clip: TimelineClipRecord;asset: RenderAsset;visual: boolean;audio: boolean;input: number}[]=[];
    for(const clip of clips){
-    const asset=assets.get(clip.assetId)!,track=tracks.get(clip.trackId)!,visual=track.kind==='video'&&!track.hidden,audio=!!asset.hasAudio&&!track.muted&&clip.gain>0;
+    const asset=assets.get(clip.assetId)!,track=tracks.get(clip.trackId)!,visual=track.kind==='video'&&!track.hidden,audio=!!asset.hasAudio&&!track.muted&&clip.gain>0&&clip.startFrame<=begin&&clip.startFrame+clip.durationFrames>=end;
     if(!visual&&!audio)continue;
     const input=inputs.length,isImage=asset.mimeType.startsWith('image/');
     args.push('-threads','1');
@@ -178,7 +183,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
     inputs.push({clip,asset,visual,audio,input});
    }
    const filters=[`color=c=black:s=${width}x${height}:r=${FPS},trim=end_frame=${frames},setpts=N/(${FPS}*TB),format=${colour?'rgba':'yuv420p'}[base]`,timelineAudioSilenceFilter(samples)];
-   let visual='base';const sounds=['silence'];
+   let visual='base';const sounds=['silence'];const pairing=new Map<string, TransitionLayer>();
    for(const {clip,asset,input,visual:show,audio} of inputs){
     if(show){
      const {x,y,width,height}=clip.rect,label=`v${input}`,next=`layer${input}`;
@@ -195,7 +200,17 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
       const colourInput=colour?`${timelineColourInputFilter(planned!.range as never)},${colourStage!.filter(clip.id)}`:'';
       filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}${clipTransformCropFilter(plan)}scale=${layerWidth}:${layerHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${layerWidth}:${layerHeight}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}${transformStage}[${label}]`);
      }
-     filters.push(`[${visual}][${label}]overlay=${plan?clipTransformOverlayPosition(plan,clip.rect,local):`x=${x}:y=${y}`}:eof_action=pass:repeatlast=0:shortest=0${colour?':format=rgb':''}${image?':alpha=premultiplied':''}[${next}]`);visual=next;
+     const placement=`:eof_action=pass:repeatlast=0:shortest=0${colour?':format=rgb':''}${image?':alpha=premultiplied':''}`;
+     const position=(shift?: string): string=>plan?clipTransformOverlayPosition(plan,clip.rect,local,shift):shift?`x='${x}+${shift}':y=${y}:eval=frame`:`x=${x}:y=${y}`;
+     // Inside a transition both clips of the cut are on this track: the second
+     // one to arrive places the pair; elsewhere a clip is placed as always.
+     const transition=segmentTransition(transitions,clip.trackId,begin,end);
+     if(!transition){filters.push(`[${visual}][${label}]overlay=${position()}${placement}[${next}]`);visual=next;}
+     else{
+      pairing.set(clip.id,{label,position,placement});
+      const outgoing=pairing.get(transition.outgoingId),incoming=pairing.get(transition.incomingId);
+      if(outgoing&&incoming){filters.push(...transitionFilters(transition,{begin,width:timeline.width,below:visual,outgoing,incoming,out:next}));visual=next;}
+     }
     }
     if(audio){
      const label=`a${input}`;

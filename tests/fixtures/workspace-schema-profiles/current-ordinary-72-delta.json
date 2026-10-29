@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "synthetic": true,
+  "baseSchema": 70,
+  "targetSchema": 72,
+  "provenance": "Reviewed clip transition schema72 marker-only delta, frozen once on 2026-10-29. It adds the schema72 marker and no schema object; from this marker on the transition row gate admits persisted clip transitions. Historical fixtures remain unchanged. Tests never reconstruct this expectation from application schema definitions.",
+  "schemaVersionRows": [
+    [
+      "72",
+      "integer",
+      "3732"
+    ]
+  ],
+  "objects": [],
+  "removed": [],
+  "replaced": [],
+  "tables": {},
+  "catalog": {
+    "count": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+}

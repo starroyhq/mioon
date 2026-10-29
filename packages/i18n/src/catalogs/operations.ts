@@ -866,6 +866,12 @@ export const operationMessages = {
     "en": "Against the timeline version, set or clear the transform of one clip on a video track: position and scale keyframes (clip-local frames, at most 16, changing linearly between points) and a static rotation and crop. Clips on audio tracks and audio sources are refused, and nothing is written when a keyframe lies past the clip's end or the transform does not change. One history entry; one undo restores it. No media is processed. A stable requestId is required for exact replay",
     "ja": "タイムラインのバージョンを照合し、ビデオトラック上のクリップ1件のトランスフォームを設定または解除します。位置と拡大率のキーフレーム（クリップ内のフレーム、最大16個、点と点の間は直線的に変化）と、固定の回転・切り抜きです。オーディオトラックのクリップや音声素材は拒否し、キーフレームがクリップの長さを超える場合やトランスフォームが変わらない場合は書き込みません。履歴は1件で、1回の取り消しで元に戻ります。メディアの処理は行いません。正確な再実行には安定したrequestIdが必須です"
   },
+  "operation.timeline.clip.setTransition": {
+    "zh-Hans": "按时间线版本设置或清除同一视频轨上首尾相接两段之间的画面转场（溶解、黑场、向左或向右擦除、向左或向右推移，2–60帧），挂在后一段上、居中跨在切点：切点前用后一段入点前的素材余量，切点后用前一段出点后的余量；没有相接的前一段、余量或片段长度不够、转场没有变化时不写入；声音保持硬切；记一条历史，撤销一次复原；不处理媒体；使用必填稳定requestId精确重放",
+    "zh-Hant": "按時間軸版本設定或清除同一影片軌道上首尾相接兩段之間的畫面轉場（溶解、黑場、向左或向右擦除、向左或向右推移，2–60幀），掛在後一段上、居中跨在切點：切點前使用後一段入點前的素材餘量，切點後使用前一段出點後的餘量；沒有相接的前一段、餘量或片段長度不夠、轉場沒有變化時不寫入；聲音維持硬切；記為一筆歷史，復原一次即還原；不處理媒體；使用必填穩定requestId精確重放",
+    "en": "Against the timeline version, set or clear the picture transition at the cut between two adjacent clips on one video track (dissolve, dip to black, wipe left or right, push left or right; 2–60 frames). It is saved on the second clip and centred on the cut: frames before the cut come from the second clip's source before its in point, frames after it from the first clip's source after its out point. Nothing is written without an adjacent first clip, with too little source or clip length, or when the transition does not change. The sound keeps a hard cut. One history entry; one undo restores it. No media is processed. A stable requestId is required for exact replay",
+    "ja": "タイムラインのバージョンを照合し、同じビデオトラックで隣り合う2つのクリップの間のカットに画面トランジション（ディゾルブ、黒へのフェード、左右へのワイプ、左右へのプッシュ、2〜60フレーム）を設定または解除します。後ろのクリップに保存され、カットを中心に配置されます。カット前は後ろのクリップのイン点より前の素材、カット後は前のクリップのアウト点より後の素材を使います。隣り合う前のクリップがない場合、素材やクリップの長さが足りない場合、トランジションが変わらない場合は書き込みません。音声はハードカットのままです。履歴は1件で、1回の取り消しで元に戻ります。メディアの処理は行いません。正確な再実行には安定したrequestIdが必須です"
+  },
 
   "operation.timeline.render": {
     "zh-Hans": "冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询",

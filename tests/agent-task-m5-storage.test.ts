@@ -63,7 +63,7 @@ for(const version of AGENT_TASK_ORDINARY_SCHEMAS)test(`existing schema${version}
  assert.equal(restored.sourceSchema,version);assert.equal(restored.databaseSchemaVersion,version+1);
  const copy=openStore(f.root+'-restored');
  try{
-  assert.deepEqual(classifyCurrentWorkspaceSchema(copy.db),{schemaVersion:version+1,profile:`restored-local-v${version===52?15:version===54?16:version===56?17:version===58?18:version===60?19:version===62?20:version===64?21:version===66?22:version===68?23:24}`});
+  assert.deepEqual(classifyCurrentWorkspaceSchema(copy.db),{schemaVersion:version+1,profile:`restored-local-v${version===52?15:version===54?16:version===56?17:version===58?18:version===60?19:version===62?20:version===64?21:version===66?22:version===68?23:version===70?24:25}`});
   assert.deepEqual(retained({store:copy}),original);
   const journal=createAgentTaskJournal(copy),snapshot=journal.snapshot(f.run.id);
   assert.equal(snapshot.changes[0]?.status,'superseded');assert.equal(journal.lookupControl(f.request.requestId)?.action,'retry');
