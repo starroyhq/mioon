@@ -52,6 +52,8 @@ const reversibleOperations=[
  'timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes',
  // C8 v2: a scene save is undone by saving the earlier scene as a new scene revision.
  'previs.scene.set',
+ // Both write several clips in one timeline revision; a run's undo restores every listed clip or none.
+ 'timeline.clip.crossfade','timeline.clip.setGains',
 ] as const;
 // A storyboard's images and shots are created by its background task after the
 // call returns, so a run's undo cannot compensate them; the user undoes the batch.
@@ -72,11 +74,6 @@ const forbiddenOperations=[
  // Previs thumbnails are the editor's render cache; Mio reads scenes through
  // its own previs tool and never renders.
  'previs.thumbnail.set','previs.thumbnail.get',
- // Crossfades are user-driven for now; Mio still reads the resulting curves.
- 'timeline.clip.crossfade',
- // The batch gain change applies the dialogue loudness match the user reviewed;
- // Mio proposes a single clip's gain through its own reviewed tool.
- 'timeline.clip.setGains',
  // Transforms are user-driven for now; Mio still reads them in the timeline.
  'timeline.clip.setTransform',
 ] as const;
@@ -141,6 +138,9 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  if(shot){if(Array.isArray(shot.referenceAssetIds))for(const id of shot.referenceAssetIds)add('asset',id);add('asset',shot.lastFrameAssetId);}
  const clip=operation==='timeline.clip.add'?input:operation==='timeline.clip.update'&&object(input.patch)?input.patch:undefined;
  if(clip){add('timeline_track',clip.trackId);if(object(clip.colour)&&object(clip.colour.look))add('lut',clip.colour.look.resourceId);}
+ // A crossfade names its pair, a gain batch each listed clip.
+ if(operation==='timeline.clip.crossfade')for(const field of ['outgoingClipId','incomingClipId'] as const)add('timeline_clip',input[field]);
+ if(operation==='timeline.clip.setGains'&&Array.isArray(input.gains))for(const item of input.gains)if(object(item))add('timeline_clip',item.clipId);
  if(operation==='image.generate'&&object(input.inputImage))add('asset',input.inputImage.assetId);
  if(operation==='generation.submit'&&object(input.videoInput)&&Array.isArray(input.videoInput.images))for(const image of input.videoInput.images)if(object(image))add('asset',image.assetId);
  const assetKind=operation.startsWith('asset.range.')?'asset_range':operation.startsWith('asset.annotation.')?'asset_annotation':operation.startsWith('asset.disposition.')?'asset_disposition':undefined;
@@ -478,6 +478,9 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   // Scene tasks are observed directly; they are not part of the change snapshot.
   if(operation.startsWith('scene.')&&hostInput.taskId!==undefined&&db.prepare('SELECT projectId FROM scene_tasks WHERE id=?').get(String(hostInput.taskId))?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
   for(const [field,kind] of [['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],...(operation.startsWith('scene.')?[]:[['taskId',operation.startsWith('frame.')?'frame_task':'image_task']] as const),['groupId','image_group']] as const)if(hostInput[field]!==undefined){const found=before[key(kind,String(hostInput[field]))];if(!found)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');if(kind!=='timeline_track'||!operation.startsWith('timeline.clip.'))add(kind,String(hostInput[field]));}
+  // A crossfade writes both clips of its pair, a gain batch every listed clip; each must be a clip of this timeline.
+  const writtenClips=operation==='timeline.clip.crossfade'?[hostInput.outgoingClipId,hostInput.incomingClipId]:operation==='timeline.clip.setGains'&&Array.isArray(hostInput.gains)?hostInput.gains.map(item=>object(item)?item.clipId:undefined):[];
+  for(const clipId of writtenClips){if(typeof clipId!=='string'||!before[key('timeline_clip',clipId)])fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');add('timeline_clip',clipId);}
   if(operation==='timeline.clip.rippleRemove'){
    const removed=before[key('timeline_clip',String(hostInput.clipId))];
    if(removed)for(const entry of Object.values(before))if(entry.kind==='timeline_clip'&&entry.value.trackId===removed.value.trackId&&Number(entry.value.startFrame)>=Number(removed.value.startFrame))add(entry.kind,entry.id);

@@ -76,12 +76,12 @@ async function rejects(f: Fixture,input: Request,code: string){
  assert.deepEqual(f.capture(),before,`${code} writes nothing`);
 }
 
-test('the clip-gain batch is registered, described, effect-annotated, restore-denied, user-only and localized',()=>{
+test('the clip-gain batch is registered, described, effect-annotated, restore-denied, a reversible Mio tool and localized',()=>{
  assert.ok(schemas[GAINS]&&descriptions[GAINS].length>40);
  assert.ok(TIMELINE_MUTATION_OPERATIONS.includes(GAINS));assert.ok(!DURABLE_EDIT_OPERATIONS.includes(GAINS));
  assert.ok(RESTORE_DENIED_OPERATIONS.includes(GAINS));assert.ok(WRAPPED_TIMELINE_OPERATIONS.includes(GAINS));
  assert.equal(TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_RESPONSE_BYTES+16*1024);assert.equal(TIMELINE_CLIP_GAINS_LIMITS.clips,100);
- assert.equal((AGENT_TASK_OPERATION_ADMISSION as Record<string,{allowed: boolean}>)[GAINS].allowed,false);
+ assert.deepEqual((AGENT_TASK_OPERATION_ADMISSION as Record<string,unknown>)[GAINS],{allowed:true,tier:'local_reversible'});
  const effect=operationEffect(GAINS);
  assert.deepEqual([effect.readOnly,effect.idempotent,effect.destructive,effect.paidGeneration,effect.externalIO],[false,true,true,false,false]);
  assert.equal(translate('zh-Hans',`operation.${GAINS}`),descriptions[GAINS]);
