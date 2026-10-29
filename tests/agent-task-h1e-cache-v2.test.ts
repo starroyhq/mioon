@@ -89,7 +89,7 @@ test('H1e merged C6 catalog keeps methods in the cached core and project notes a
   t.after(async()=>{tools.dispose();await services.drain();store.close();rmSync(directory,{recursive:true,force:true});});
   const catalog=tools.list(),core=selectTaskModelTools(catalog);
   const loaded=catalog.filter(item=>['core','canvas'].includes(agentTaskToolGroupForName(item.name)??''));
-  for(const name of ['mioon_skill_read','mioon_continuity_report']){
+  for(const name of ['mioon_skill_read','mioon_continuity_report','mioon_goal_set']){
     assert.equal(agentTaskToolGroupForName(name),'core');assert.ok(core.some(item=>item.name===name));
   }
   assert.equal(core.at(-1)?.name,'mioon_tools_load');

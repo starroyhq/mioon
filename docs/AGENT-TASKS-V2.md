@@ -225,10 +225,15 @@ M5 不升级工作区版本：retry 回执的 action 原为受限字符串，sup
 
 ### 内置方法
 
-- 4 份方法：`script-to-shots`（剧本拆镜头）、`shot-prompts`（镜头提示词）、`character-consistency`（角色一致性）、`continuity-check`（连续性检查）。源文件是 `packages/business/src/agent/skills/*.md`，由 `node scripts/generate-agent-skills.ts` 原文嵌入 `task-skill-catalog-v2.ts`（桌面后台经 esbuild 打包，运行时读不到 .md）；测试检查两者一致。
+- 7 份方法：`script-to-shots`（剧本拆镜头）、`shot-prompts`（镜头提示词）、`character-consistency`（角色一致性）、`continuity-check`（连续性检查）、`script-sync`（脚本改动同步）、`preview-to-shots`（预演视频拆镜）、`frame-patch`（首尾帧补镜）。源文件是 `packages/business/src/agent/skills/*.md`，由 `node scripts/generate-agent-skills.ts` 原文嵌入 `task-skill-catalog-v2.ts`（桌面后台经 esbuild 打包，运行时读不到 .md）；测试检查两者一致。
 - 提供 `mioon_skill_read` 时，系统指令按本轮语言附上方法名称和简介，不附正文。
 - 宿主工具 `mioon_skill_read {name, section?}`（核心组，只读，计一步）：不带 `section` 返回 `{name, version, title, sections, text}`，`sections` 是章节标题；带 `section` 返回 `{name, version, title, section, text}`。结果不超过 12 KiB，低于 16 KiB 的结果视图上限。未知方法或章节按参数纠错返回可读的章节，这一轮不失败。
 - 拆镜头方法要求先加载 video 组，用 `provider.list` 读所用模型的 `durations`，不写死任何模型。
+- 后加的三份只用现有工具，付费生成照常确认，真实模型下的效果还没有验证：
+  - 脚本改动同步：用 `node.inspect` 读文字节点里的脚本，`shot.inspect` 读全部镜头，先列出受影响的镜头（超过 5 个或拿不准时用 `mioon_ask` 确认），再用 `shot.update` 逐个改；提示词被截断（`promptTruncated`）的镜头不整段改写；不提交生成。
+  - 预演视频拆镜：先生成一条硬切的多镜头预演视频，用 `scene.detect`（`minShotSeconds` 约 0.3）拆出切点，`scene.shots.create` 建出以各段中间帧为首帧的镜头，再补全提示词并逐个生成。
+  - 首尾帧补镜：模型的 `inputModes` 要有 `frames`；补的长度取模型允许的时长，用 `frame.extract` 抽出前后两帧，生成成功后再用 `timeline.clip.split`、`timeline.clip.remove` 和 `timeline.clip.add` 换掉这一段，后面的片段不移动。
+- 测试检查每份方法里提到的操作和工具名都是 Mio 能加载的工具。
 
 ### 项目说明
 
@@ -259,6 +264,18 @@ M5 不升级工作区版本：retry 回执的 action 原为受限字符串，sup
 - 编辑器打开期间持有节点的编辑保护，Mio 写这个节点时按 `editing` 暂停。
 - 变化显示为“写入预演场景”，字段是人偶、道具、关键帧的数量（`figureCount`、`propCount`、`keyframeCount`）的前后值；执行前的确认卡片和冲突卡片只显示目标节点，整个场景的数量说明不了计划改什么。画板卡片和其他画板节点一样短暂显示“Mio 修改”。
 - `previs.thumbnail.*` 仍不对 Mio 开放。
+
+## 交叉淡化与多段增益
+
+两个操作原先只在界面里用，现在也是 Mio 的本地可撤销工具。参数就是共享 schema 生成的那份，宿主补 `projectId` 和 `requestId`；操作规则见 `docs/API.md` 的 Crossfades 和 Clip gains 两节。
+
+- `mioon_timeline_clip_crossfade` 在 editing 组：为不同轨道上首尾重叠的两段有声片段写两条线性曲线。`mioon_timeline_clip_setGains` 在 audio 组：一次设置 1–100 段有声片段的增益，建议增益由 Mio 先用 `mioon_timeline_clip_loudness` 测量得到。
+- 目标是交叉淡化的两段和增益批次里列出的每一段，每段都必须是当前时间线上的片段。用户正在编辑其中任一段时，Mio 按 `editing` 暂停。
+- 和其他片段编辑一样，宿主核对的是这些目标片段的修订号，执行时把模型给的时间线修订号换成当前值：别的片段被改不算冲突，目标片段在计划之后被改过就停下。
+- 两个操作都是一个时间线修订、一条历史。Mio 的这一步记一条变化，撤销时所有目标片段一起复原；之后任一段被改过，这条变化就不能撤销。
+- 用全新 requestId 时被确定拒绝（重叠关系不对、已有音量曲线、素材无声、增益都没变等）会带未执行证明，步骤直接失败；结果未知时按 `timeline_requests` 核对。
+- 变化行：交叉淡化列出两段片段，没有字段；增益批次每段显示增益的前后 dB。执行前的确认卡片和冲突卡片显示每段计划的增益和当前值。
+- 片段变换（`timeline.clip.setTransform`）仍只读；主体补角度和打光（`subject.variants.*`）还不开放。
 
 ## 本地接口
 

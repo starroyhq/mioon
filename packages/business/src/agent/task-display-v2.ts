@@ -136,6 +136,8 @@ export function projectAgentTaskStepDisplay(step:AgentTaskStep,readTarget?:Targe
     // A whole previs scene's counts say nothing about the planned edit, and next
     // to the current counts in a conflict they would read as a difference.
     let planned=display.operation==='previs.scene.set'?{}:fields(display.operation,item.kind,input);
+    // A gain batch plans one gain for each clip it lists.
+    if(display.operation==='timeline.clip.setGains'){const listed=Array.isArray(args.gains)?args.gains.find(entry=>object(entry)&&entry.clipId===item.id):undefined;planned=object(listed)?fields(display.operation,item.kind,{gain:listed.gain}):{};}
     if(display.operation==='generation.submit'&&item.kind==='shot')planned=fields(display.operation,'shot',{...(current?.revision===args.expectedRevision?{aspectRatio:current.aspectRatio,duration:current.duration,referenceAssetIds:current.referenceAssetIds,lastFrameAssetId:current.lastFrameAssetId}:{}),...args});
     appendFields(display,index,{},planned,true);
     // Conflict values are read from this snapshot's saved project state, never

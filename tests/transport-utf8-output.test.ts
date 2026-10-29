@@ -119,6 +119,7 @@ const textSites = {
   "tests/agent-chat-durable-crash.test.mjs": 1,
   // The v2 crash harness collects only continuously decoded child stderr.
   'tests/agent-task-crash-v2.test.ts': 1,
+  'tests/agent-task-goal-repair-v2.test.ts': 1,
   "tests/agent-edit-scope.test.mjs": 1,
   "tests/agent-tool-journal-crash.test.mjs": 2,
   "tests/asset-disposition-transports.test.mjs": 2,

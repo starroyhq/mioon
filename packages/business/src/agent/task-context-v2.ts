@@ -128,7 +128,7 @@ export interface TaskModelToolResult {callId:string;result:AgentTaskJson}
 export type TaskModelContextFragment=
   | {kind:'notes';notes:readonly AgentTaskNote[];modelStepId:string}
   | {kind:'discarded';modelStepId?:string}
-  | {kind:'continuation';output:TaskModelOutput;results:TaskModelToolResult[];replan?:boolean;modelStepId?:string}
+  | {kind:'continuation';output:TaskModelOutput;results:TaskModelToolResult[];replan?:boolean;repairMessage?:string;modelStepId?:string}
   | {kind:'partial';text:string;modelStepId?:string};
 
 /** Runtime chooses each fragment only after its existing control/effect checks.
@@ -153,6 +153,7 @@ export function replayModelContext(protocol:AgentConfiguration['protocol'],fragm
     :{type:'message',role:'assistant',content:[{type:'output_text',text:fragment.text}]}];
   const messages=taskContinuation(protocol,fragment.output,fragment.results);
   if(fragment.replan)messages.push({role:'user',content:replanInstructions[locale]});
+  if(fragment.repairMessage)messages.push({role:'user',content:fragment.repairMessage});
   return messages;
 }
 

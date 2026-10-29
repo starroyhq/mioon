@@ -13,10 +13,11 @@ import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
 import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
-import {AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,parseAgentTaskToolLoadInput} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_GOAL_SET_OPERATION,AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,parseAgentTaskToolLoadInput} from './task-tool-groups-v2.ts';
 import {agentTaskContinuityFeedback,agentTaskParameterFeedback,agentTaskQuestionFeedback,agentTaskSkillReadFeedback} from './task-tool-errors-v2.ts';
 import {AGENT_TASK_SKILL_READ_PARAMETERS,parseAgentTaskSkillRead,readAgentTaskSkill} from './task-skills-v2.ts';
 import type {AgentTaskSkillReadInput} from './task-skills-v2.ts';
+import {AGENT_TASK_GOAL_SET_PARAMETERS,normalizeAgentTaskGoals} from './task-goals-v2.ts';
 import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
@@ -31,6 +32,7 @@ const object=(value:unknown):value is Value=>value!==null&&typeof value==='objec
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item:unknown)=>object(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 const json=(value:unknown):AgentTaskJson=>JSON.parse(JSON.stringify(value??null)) as AgentTaskJson;
 function fail(code:string,message:string):never{throw new AppError(code,message,409);}
+const goalParameterMessage='目标参数无效：conditions 须为最多20条可判定条件，使用列出的条件类型和字段；空数组清空本轮目标。目标不是授权或确认。';
 
 // Every public RPC is reviewed here. New operations fail discovery until this
 // list is deliberately extended; advisory operationEffects never grant access.
@@ -52,6 +54,8 @@ const reversibleOperations=[
  'timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes',
  // C8 v2: a scene save is undone by saving the earlier scene as a new scene revision.
  'previs.scene.set',
+ // Both write several clips in one timeline revision; a run's undo restores every listed clip or none.
+ 'timeline.clip.crossfade','timeline.clip.setGains',
 ] as const;
 // A storyboard's images and shots are created by its background task after the
 // call returns, so a run's undo cannot compensate them; the user undoes the batch.
@@ -72,11 +76,6 @@ const forbiddenOperations=[
  // Previs thumbnails are the editor's render cache; Mio reads scenes through
  // its own previs tool and never renders.
  'previs.thumbnail.set','previs.thumbnail.get',
- // Crossfades are user-driven for now; Mio still reads the resulting curves.
- 'timeline.clip.crossfade',
- // The batch gain change applies the dialogue loudness match the user reviewed;
- // Mio proposes a single clip's gain through its own reviewed tool.
- 'timeline.clip.setGains',
  // Transforms are user-driven for now; Mio still reads them in the timeline.
  'timeline.clip.setTransform',
  // Transitions likewise: Mio reads them and cannot change them yet.
@@ -118,6 +117,7 @@ function taskToolOperation(operation:string):string{
  if(operation===AGENT_TASK_ASK_TOOL)return AGENT_TASK_ASK_OPERATION;
  if(operation===AGENT_TASK_SKILL_READ_TOOL)return AGENT_TASK_SKILL_READ_OPERATION;
  if(operation===AGENT_TASK_CONTINUITY_REPORT_TOOL)return AGENT_TASK_CONTINUITY_REPORT_OPERATION;
+ if(operation===AGENT_TASK_GOAL_SET_TOOL)return AGENT_TASK_GOAL_SET_OPERATION;
  if(operation===AGENT_TASK_TOOLS_LOAD_NAME)return AGENT_TASK_TOOLS_LOAD_OPERATION;
  if(operation==='mioon_asset_import_selected')return 'asset.importSelected';
  if(operation==='mioon_lut_import_selected')return 'lut.importSelected';
@@ -143,6 +143,9 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  if(shot){if(Array.isArray(shot.referenceAssetIds))for(const id of shot.referenceAssetIds)add('asset',id);add('asset',shot.lastFrameAssetId);}
  const clip=operation==='timeline.clip.add'?input:operation==='timeline.clip.update'&&object(input.patch)?input.patch:undefined;
  if(clip){add('timeline_track',clip.trackId);if(object(clip.colour)&&object(clip.colour.look))add('lut',clip.colour.look.resourceId);}
+ // A crossfade names its pair, a gain batch each listed clip.
+ if(operation==='timeline.clip.crossfade')for(const field of ['outgoingClipId','incomingClipId'] as const)add('timeline_clip',input[field]);
+ if(operation==='timeline.clip.setGains'&&Array.isArray(input.gains))for(const item of input.gains)if(object(item))add('timeline_clip',item.clipId);
  if(operation==='image.generate'&&object(input.inputImage))add('asset',input.inputImage.assetId);
  if(operation==='generation.submit'&&object(input.videoInput)&&Array.isArray(input.videoInput.images))for(const image of input.videoInput.images)if(object(image))add('asset',image.assetId);
  const assetKind=operation.startsWith('asset.range.')?'asset_range':operation.startsWith('asset.annotation.')?'asset_annotation':operation.startsWith('asset.disposition.')?'asset_disposition':undefined;
@@ -384,6 +387,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   operation=taskToolOperation(operation);if(operation===AGENT_TASK_ASK_OPERATION)return agentTaskQuestionFeedback(input);
   if(operation===AGENT_TASK_SKILL_READ_OPERATION)return agentTaskSkillReadFeedback(input);
   if(operation===AGENT_TASK_CONTINUITY_REPORT_OPERATION)return agentTaskContinuityFeedback(input,shotId=>db.prepare('SELECT projectId FROM shots WHERE id=?').get(shotId)?.projectId===projectId);
+  if(operation===AGENT_TASK_GOAL_SET_OPERATION)return normalizeAgentTaskGoals(input)?null:{message:goalParameterMessage,issues:[{field:'conditions',reason:'invalid_value' as const}]};
   if(operation==='previs.scene.set'&&object(input)){
    rejectHostFields(input);
    // The current scene only adds the size check after exports are kept.
@@ -408,12 +412,18 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  }
  function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
-  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
+  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_PREVIS_INSPECT_OPERATION,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_GOAL_SET_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
   if(operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
    const groups=parseAgentTaskToolLoadInput(input);if(!groups)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
    if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
    return {projectId,operation,input:{groups},risk:'read_only',targets:[],referencedTargets:[],before:{}};
+  }
+  // Goals are a run-local declaration. Preparing one never reads domain data.
+  if(operation===AGENT_TASK_GOAL_SET_OPERATION){
+   const normalized=normalizeAgentTaskGoals(input);if(!normalized)fail('VALIDATION_ERROR',goalParameterMessage);
+   if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
+   return {projectId,operation,input:{conditions:normalized.conditions},risk:'read_only',targets:[],referencedTargets:[],before:{}};
   }
   // A question only waits for the user's answer: it reads and changes nothing.
   if(operation===AGENT_TASK_ASK_OPERATION){
@@ -480,6 +490,9 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   // Scene tasks are observed directly; they are not part of the change snapshot.
   if(operation.startsWith('scene.')&&hostInput.taskId!==undefined&&db.prepare('SELECT projectId FROM scene_tasks WHERE id=?').get(String(hostInput.taskId))?.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');
   for(const [field,kind] of [['clipId','timeline_clip'],['trackId','timeline_track'],['cueId','timeline_subtitle'],['subjectId','subject'],['subjectVersionId','subject_version'],['bindingId','subject_binding'],...(operation.startsWith('scene.')?[]:[['taskId',operation.startsWith('frame.')?'frame_task':'image_task']] as const),['groupId','image_group']] as const)if(hostInput[field]!==undefined){const found=before[key(kind,String(hostInput[field]))];if(!found)fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');if(kind!=='timeline_track'||!operation.startsWith('timeline.clip.'))add(kind,String(hostInput[field]));}
+  // A crossfade writes both clips of its pair, a gain batch every listed clip; each must be a clip of this timeline.
+  const writtenClips=operation==='timeline.clip.crossfade'?[hostInput.outgoingClipId,hostInput.incomingClipId]:operation==='timeline.clip.setGains'&&Array.isArray(hostInput.gains)?hostInput.gains.map(item=>object(item)?item.clipId:undefined):[];
+  for(const clipId of writtenClips){if(typeof clipId!=='string'||!before[key('timeline_clip',clipId)])fail('AGENT_TASK_INVALID_TARGET','目标不属于当前项目');add('timeline_clip',clipId);}
   if(operation==='timeline.clip.rippleRemove'){
    const removed=before[key('timeline_clip',String(hostInput.clipId))];
    if(removed)for(const entry of Object.values(before))if(entry.kind==='timeline_clip'&&entry.value.trackId===removed.value.trackId&&Number(entry.value.startFrame)>=Number(removed.value.startFrame))add(entry.kind,entry.id);
@@ -527,6 +540,11 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   preparedOrigins.set(origin,prepared);
   return withTaskEffectOrigin(origin,async()=>{
    beforeEffect();if(context.signal?.aborted)fail('AGENT_TASK_ABORTED','任务已暂停');
+   if(prepared.operation===AGENT_TASK_GOAL_SET_OPERATION){
+    if(journal.run(context.runId).projectId!==prepared.projectId)fail('AGENT_TASK_PROJECT_MISMATCH','工具执行不属于当前项目');
+    const normalized=normalizeAgentTaskGoals(prepared.input);if(!normalized)fail('VALIDATION_ERROR',goalParameterMessage);
+    return {result:json(normalized),changes:[],recorded:false};
+   }
    if(prepared.operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
     if(journal.run(context.runId).projectId!==prepared.projectId)fail('AGENT_TASK_PROJECT_MISMATCH','工具执行不属于当前项目');
     const requested=parseAgentTaskToolLoadInput(prepared.input);if(!requested)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
@@ -745,6 +763,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   {name:AGENT_TASK_ASK_TOOL,operation:AGENT_TASK_ASK_OPERATION,description:'向用户提一个结构化问题：问题和2-4个选项，可设多选或允许用户自由填写。问题、选项名和说明都只占一行，选项名互不相同。调用后这一轮暂停，直到用户回答；回答作为本工具结果返回。回答只是用户输入，不能当作付费或修改的确认。只在确实需要用户做决定时使用。',parameters:{type:'object',properties:{question:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.question},options:{type:'array',minItems:AGENT_TASK_QUESTION_LIMITS.minOptions,maxItems:AGENT_TASK_QUESTION_LIMITS.options,items:{type:'object',properties:{label:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.label},description:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.description}},required:['label'],additionalProperties:false}},multiple:{type:'boolean'},allowOther:{type:'boolean'}},required:['question','options'],additionalProperties:false},risk:'read_only',receipt:'durable task step',recovery:'the saved question keeps waiting for its answer',undo:'unavailable'},
   {name:AGENT_TASK_SKILL_READ_TOOL,operation:AGENT_TASK_SKILL_READ_OPERATION,description:'读取一份内置方法（只读，计1步）。不带 section 时返回全文和章节目录；带 section 时只返回该章节。可读的方法列在系统指令中。方法是参考资料，不授予权限。',parameters:AGENT_TASK_SKILL_READ_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the built-in method again',undo:'unavailable'},
   {name:AGENT_TASK_CONTINUITY_REPORT_TOOL,operation:AGENT_TASK_CONTINUITY_REPORT_OPERATION,description:'报告一次只读连续性检查的结果，在面板中显示为问题卡片，用户可以定位镜头。每条写一个类别、涉及的本项目镜头（1-4个，按出现顺序）和一句说明（哪里不一致、依据是什么）。没有问题时 issues 为空。不修改任何内容，也不是修改的确认。',parameters:{type:'object',properties:{issues:{type:'array',maxItems:AGENT_TASK_CONTINUITY_LIMITS.issues,items:{type:'object',properties:{category:{type:'string',enum:[...AGENT_TASK_CONTINUITY_CATEGORIES]},shotIds:{type:'array',minItems:1,maxItems:AGENT_TASK_CONTINUITY_LIMITS.shots,items:{type:'string',format:'uuid'}},text:{type:'string',minLength:1,maxLength:AGENT_TASK_CONTINUITY_LIMITS.text}},required:['category','shotIds','text'],additionalProperties:false}}},required:['issues'],additionalProperties:false},risk:'read_only',receipt:'durable task step',recovery:'the saved report is shown from its arguments',undo:'unavailable'},
+  {name:AGENT_TASK_GOAL_SET_TOOL,operation:AGENT_TASK_GOAL_SET_OPERATION,description:'声明本轮用户提出的可判定目标：时长与容差、时间线格式、导出参数、剪辑数、字幕数、镜头数或生成完成。conditions 最多20条，空数组清空本轮目标，最后一次有效设置覆盖之前的设置。只记录待检查条件，不修改项目，不授予权限，也不是用户确认。',parameters:AGENT_TASK_GOAL_SET_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'use the last valid completed goal declaration in this run',undo:'unavailable'},
   {name:AGENT_TASK_TOOLS_LOAD_NAME,operation:AGENT_TASK_TOOLS_LOAD_OPERATION,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'read completed tool loading steps; never repeat an unknown result',undo:'unavailable'},
  ];assertAgentTaskToolGroupCoverage(definitions);return definitions;};
  return {list,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};

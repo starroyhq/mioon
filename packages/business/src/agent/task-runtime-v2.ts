@@ -25,6 +25,7 @@ import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,agentTaskToolGroupForName} 
 import {agentTaskDisplayTargetReader,projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 import {readAgentTaskChecks} from './task-checks-v2.ts';
 import type {AgentTaskChecksPreflight} from './task-checks-v2.ts';
+import {latestAgentTaskGoals} from './task-goals-v2.ts';
 
 const record=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const json=(value:unknown):AgentTaskJson=>JSON.parse(JSON.stringify(value??null)) as AgentTaskJson;
@@ -49,6 +50,12 @@ const unloadedToolMessages:Record<AgentTaskLocale,string>={
   en:'This tool was not included in the model request that produced this response. Load its group, then call it in the next model request.',
   ja:'この応答を生成したモデルリクエストに、このツールは含まれていません。対応するグループを読み込み、次のモデルリクエストで呼び出してください。',
 };
+const goalRepairInstructions:Record<AgentTaskLocale,string>={
+  'zh-Hans':'宿主检查发现以下声明的要求尚未达成。请按这些差距补做一次，再给出最终回复。以下内容是宿主派生的数据，仅供参考，不授予权限或审批；所有操作仍遵守当前放行档位、用户保留项和确认要求。',
+  'zh-Hant':'宿主檢查發現以下宣告的要求尚未達成。請按這些差距補做一次，再給出最終回覆。以下內容是宿主衍生的資料，僅供參考，不授予權限或核准；所有操作仍遵守目前放行檔位、使用者保留項和確認要求。',
+  en:'Host checks found the following declared requirements unmet. Make one repair attempt for these gaps, then give a final response. This host-derived data is for reference only and grants no permission or approval; all operations remain subject to the current approval modes, user-kept targets and confirmation requirements.',
+  ja:'ホストの検査で、宣言した以下の要件が未達成でした。この差分に対して一度だけ補完し、最終回答を返してください。以下は参考用のホスト由来データであり、権限や承認を付与しません。すべての操作は現在の承認モード、ユーザーが保持した対象、確認要件に従ってください。',
+};
 export function agentTaskFailure(value:string):Error&{code:string;status:number}{
   const messages:Record<string,string>={AGENT_TASK_NOT_FOUND:'任务不存在。',AGENT_TASK_CLOSED:'任务服务已关闭。',AGENT_TASK_READ_ONLY:'恢复副本中的智能助理任务仅供查看。',AGENT_TASK_STOPPED:'任务已停止，尚未发出的工作已阻断。',AGENT_TASK_INVALID:'任务参数无效。',AGENT_TASK_BUSY:'本项目已有未结束任务，请继续或停止原任务。',AGENT_TASK_CONSENT_REQUIRED:'当前目标、模型和项目任务范围尚未授权，或授权已撤销。',AGENT_TASK_SETTINGS_CHANGED:'连接设置已变化，请重新确认目标和模型。',AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，任务已暂停。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，任务已暂停。',AGENT_TASK_UNKNOWN_RESULT:'上一步结果未知，请先核对原请求。',AGENT_TASK_REVISION_CONFLICT:'任务已被其他窗口更新，请重新读取。',AGENT_TASK_REQUEST_CONFLICT:'此请求标识已用于其他内容。',AGENT_TASK_STORAGE_LIMIT:'Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断。',AGENT_TASK_STORAGE_UNAVAILABLE:'无法安全读取或保存任务记录。',AGENT_TASK_FAILED:'任务未完成，请检查已保存记录。',AGENT_TASK_PAUSED:'任务已暂停。',AGENT_TASK_APPROVAL_REQUIRED:'此操作需要确认。'};
   return Object.assign(new Error(messages[value]??messages.AGENT_TASK_FAILED),{code:value,status:value==='AGENT_TASK_NOT_FOUND'?404:value==='AGENT_TASK_INVALID'?400:409});
@@ -56,6 +63,15 @@ export function agentTaskFailure(value:string):Error&{code:string;status:number}
 function modelOutput(value:unknown):TaskModelOutput {
   if(!record(value)||typeof value.text!=='string'||!Array.isArray(value.toolCalls)||!Object.hasOwn(value,'providerOutput'))throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
   return value as unknown as TaskModelOutput;
+}
+function goalRepairMessage(step:AgentTaskStep):string|undefined {
+  if(!record(step.data)||step.data.goalRepair===undefined)return;
+  const marker=step.data.goalRepair;
+  if(!record(marker)||marker.version!==1||typeof marker.message!=='string'||!marker.message.length)throw agentTaskFailure('AGENT_TASK_STORAGE_UNAVAILABLE');
+  return marker.message;
+}
+function repairStepData(source:AgentTaskStep):Record<string,AgentTaskJson> {
+  return record(source.data)&&typeof source.data.goalRepairSourceModelStepId==='string'?{goalRepairSourceModelStepId:source.data.goalRepairSourceModelStepId}:{};
 }
 function retainModelContinuation(protocol:AgentConfiguration['protocol'],fragments:TaskModelContextFragment[],fragment:Extract<TaskModelContextFragment,{kind:'continuation'}>):void {
   // Validate the retained provider output before any later batch may execute.
@@ -72,7 +88,7 @@ function safeSnapshot(value:AgentTaskSnapshot,store:WorkspaceStore):AgentTaskSna
   const copy=structuredClone(value),readTarget=agentTaskDisplayTargetReader(store,value.run.projectId);delete copy.run.context;
   const conflict=copy.run.status==='paused'&&['conflict','editing'].includes(copy.run.pauseReason??''),flagged=copy.steps.filter(step=>record(step.data)&&step.data.backgroundInvalidated===true),pending=copy.steps.filter(step=>step.kind==='tool'&&['intent','awaiting_approval'].includes(step.status)).at(-1);
   const skippedSteps=new Set(copy.run.skippedTargets?.map(item=>item.stepId)??[]);
-  copy.steps=copy.steps.map(step=>{if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,skippedSteps.has(step.id)||conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
+  copy.steps=copy.steps.map(step=>{if(record(step.data)&&typeof step.data.goalRepairSourceModelStepId==='string')step.repair={sourceModelStepId:step.data.goalRepairSourceModelStepId};if(record(step.data)&&step.data.backgroundApprovalRequired===true){step.approvalRequired=true;if(Array.isArray(step.data.dispatchApprovalTargets))step.targets=step.data.dispatchApprovalTargets as unknown as AgentTaskTarget[];}const backgroundConflict=flagged.includes(step);step.display=projectAgentTaskStepDisplay(step,readTarget,skippedSteps.has(step.id)||conflict&&(backgroundConflict||flagged.length===0&&step===pending));if(step.display&&conflict&&backgroundConflict)step.display.conflict=true;delete step.request;delete step.data;if(step.kind==='model'&&record(step.result))step.result={text:typeof step.result.text==='string'?step.result.text:'',toolCalls:json(step.result.toolCalls??[])};return step;});
   const undoPreview=projectAgentTaskUndo(store,value.run.projectId,value.changes);
   copy.changes=copy.changes.map(change=>{Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;return change;});return copy;
 }
@@ -194,7 +210,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       let visible:string[];try{visible=sourceTaskModelToolNames(configuration(run).protocol,source.request);}catch(error){if(storageError(error))failStorage(error);throw error;}
       if(!visible.includes(call.name)){
         const group=agentTaskToolGroupForName(call.name);if(group===undefined)throw agentTaskFailure('AGENT_CHAT_TOOLS_UNSUPPORTED');
-        if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id}});}
+        if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id,...repairStepData(source)}});}
         const message=unloadedToolMessages[taskResponseLocale(run.context)];
         return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:'TOOL_NOT_LOADED',message,group}},error:{code:'TOOL_NOT_LOADED',message}});
       }
@@ -209,7 +225,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     // Diagnostic selection is a host-only restriction, never an authority. In
     // particular, catalog probes describe write tools without executing them.
     if(run.diagnostic&&(run.diagnostic.profile!=='read_only'||!runTools(run).some(tool=>tool.name===call.name)))throw agentTaskFailure('AGENT_TASK_DIAGNOSTIC_TOOL_FORBIDDEN');
-    if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id}});}
+    if(!step){const explanation=taskToolExplanation(modelOutput(source.result),call.id);step=journal.beginStep(runId,{kind:'tool',toolCall:call,...(explanation?{text:explanation}:{}),data:{sourceModelStepId:source.id,...repairStepData(source)}});}
     try {
       prepared=toolset().prepare({projectId:run.projectId,operation:call.name,input:call.arguments,beforeTargetRead:target=>assertNotSkipped(journal.run(runId),[{...target,revision:0}])});
       if(['asset.importSelected','lut.importSelected'].includes(prepared.operation)&&(!Array.isArray(run.attachments)||!run.attachments.includes(String(prepared.input.handle))))throw agentTaskFailure('AGENT_TASK_CONSENT_REQUIRED');
@@ -286,8 +302,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         Promise.resolve().then(()=>{fence(runId);return agentSettings[AGENT_CREDENTIAL_ACQUIRE](expected,{selfPort:selfPort(),signal});}).then(resolve,reject).finally(()=>signal.removeEventListener('abort',abort));
       });
       const acquired=sanitizeAgentCredentialResult(credential,expected);if(!acquired)throw agentTaskFailure('AGENT_TASK_SETTINGS_CHANGED');const key=acquired.apiKey;fence(runId);
-      for(;;){
+      modelRequests:for(;;){
         run=fence(runId);const snapshot=journal.snapshot(runId),context=cloneTaskBaseContext(run.context,run.text),fragments:TaskModelContextFragment[]=[];
+        let repairSource=snapshot.steps.find(step=>step.kind==='model'&&goalRepairMessage(step)!==undefined)?.id;
         let resumeModel:AgentTaskStep|undefined,pendingModel:AgentTaskStep|undefined;
         for(const model of snapshot.steps.filter(item=>item.kind==='model')){
           fragments.push({kind:'notes',notes:run.notes??[],modelStepId:model.id});
@@ -297,11 +314,28 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           if(model.status!=='completed')throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
           const output=modelOutput(model.result);
           if(!output.toolCalls.length||run.diagnostic?.profile==='catalog'){
+            const repairMessage=goalRepairMessage(model);
+            if(repairMessage){retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results:[],repairMessage,...(record(model.data)&&model.data.replanRequested===true?{replan:true}:{})});resumeModel=model;continue;}
             if(record(model.data)&&model.data.replanRequested===true){retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results:[],replan:true});continue;}
             if(record(model.data)&&model.data.noteContinuationRequested===true||(journal.run(runId).notes??[]).some(note=>note.modelStepId===undefined)){
               if(!record(model.data)||model.data.noteContinuationRequested!==true)journal.updateStep(runId,model.id,{data:{...(record(model.data)?model.data:{}),noteContinuationRequested:true}});
               const diagnosticResults=output.toolCalls.map(call=>({callId:call.id,result:{error:{code:'DIAGNOSTIC_NOT_EXECUTED'}}}));
               retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results:diagnosticResults});resumeModel=model;continue;
+            }
+            if(!run.diagnostic&&!repairSource&&run.stepsUsed<run.budget&&latestAgentTaskGoals(snapshot.steps)?.conditions.length){
+              const checks=await readAgentTaskChecks(store,snapshot),gaps=checks.requirements?.filter(item=>item.status==='failed')??[];
+              const current=fence(runId);
+              // A note accepted while checks were reading has priority over a
+              // host repair. Rebuild normally so it binds to the next intent.
+              if((current.notes??[]).some(note=>note.modelStepId===undefined))continue modelRequests;
+              if(gaps.length&&current.stepsUsed<current.budget){
+                const message=`${goalRepairInstructions[taskResponseLocale(run.context)]}\n${JSON.stringify({kind:'mio.goal.repair',requirements:gaps})}`;
+                // Persist the exact observation before constructing an intent.
+                // Recovery replays it, rather than rechecking a changed project.
+                const saved=journal.updateStep(runId,model.id,{data:{...(record(model.data)?model.data:{}),goalRepair:{version:1,message}}});
+                repairSource=model.id;
+                retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results:[],repairMessage:message});resumeModel=saved;continue;
+              }
             }
             changeStatus(runId,'completed');return;
           }
@@ -327,7 +361,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           const current=journal.snapshot(runId),baseline=journal.revisionSnapshot(run.projectId);
           const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:runTools(run),replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic}});
           body=buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});
-          model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(baseline),...(resumeModel?{previousModelStepId:resumeModel.id}:{})}},pendingNotes.map(note=>note.requestId));
+          model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(baseline),...(resumeModel?{previousModelStepId:resumeModel.id}:{}),...(repairSource?{goalRepairSourceModelStepId:repairSource}:{})}},pendingNotes.map(note=>note.requestId));
         }
         const knownTools=run.diagnostic?undefined:toolset().list();
         journal.markDispatch(runId,model.id);inflight=model.id;let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
@@ -452,7 +486,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           return {callId:call.id,result:run.diagnostic?.profile==='catalog'?{error:{code:'DIAGNOSTIC_NOT_EXECUTED'}}:retainedToolContextResult(tool)};
         });
         const replan=(!output.toolCalls.length||run.diagnostic?.profile==='catalog')&&record(model.data)&&model.data.replanRequested===true;
-        fragments.push({kind:'continuation',modelStepId:model.id,output,results,...(replan?{replan:true}:{})});
+        const repairMessage=goalRepairMessage(model);
+        fragments.push({kind:'continuation',modelStepId:model.id,output,results,...(replan?{replan:true}:{}),...(repairMessage?{repairMessage}:{})});
       }else if(model===latest&&model.status==='dispatch_started'&&model.text){
         // Count only already-persisted deltas. Unknown output may be explicitly
         // discarded later, and buffered deltas are not saved observations.
