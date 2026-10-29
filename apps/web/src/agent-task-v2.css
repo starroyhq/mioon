@@ -88,8 +88,9 @@
 .mio-retained-items article{display:flex;flex-direction:column;gap:var(--wb-space-2);font-size:var(--wb-text-label)}
 .agent-editing-protection{padding:8px;border:1px solid var(--wb-line-subtle,var(--border));border-radius:6px;font-size:12px}.agent-editing-protection p{margin:0 0 6px}.agent-editing-fields{border:0;padding:0;margin:0;min-width:0;display:contents}.agent-ai-target{outline:2px solid var(--wb-accent)!important;outline-offset:3px}
 
-/* ReactFlow resolves its viewport against this extra ownership boundary. */
-.agent-editing-canvas{position:relative;width:100%;height:100%}.agent-editing-canvas>.agent-editing-protection{position:absolute;z-index:5;top:64px;left:50%;transform:translateX(-50%);width:min(520px,calc(100% - 80px));background:var(--wb-panel)}
+/* The canvas editing control floats over the canvas, its sibling (see App.tsx). Only the control takes pointer
+   input, so panning, dragging and drops reach React Flow. */
+.agent-editing-canvas{position:absolute;inset:0;pointer-events:none}.agent-editing-canvas>.agent-editing-protection{position:absolute;z-index:5;top:64px;left:50%;transform:translateX(-50%);width:min(520px,calc(100% - 80px));background:var(--wb-panel);pointer-events:auto}
 
 /* Ordinary states: only the Edit / Finish editing control shows; the explanation is its hint and an announced status. */
 .agent-editing-protection.is-compact{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--wb-space-2,8px);padding:0;border:0;border-radius:0}
