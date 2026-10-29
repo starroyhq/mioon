@@ -1,0 +1,19 @@
+/* A transition mark lies across its cut near the bottom of a video lane, above
+   the clips and below the playhead, clear of the clip names at the top. */
+.track-lane > .timeline-transition-mark[data-slot="button"] {
+  position: absolute; bottom: 5px; height: 14px; min-width: 0; min-height: 0; padding: 0; gap: 0; overflow: visible; z-index: 4;
+  border: 1px solid var(--wb-text); border-radius: 4px; color: var(--wb-text); box-shadow: 0 1px 3px var(--wb-shadow-color);
+  background: color-mix(in srgb, var(--wb-bg) 72%, transparent);
+}
+.track-lane > .timeline-transition-mark[data-slot="button"]:hover { background: color-mix(in srgb, var(--wb-bg) 90%, transparent); }
+.track-lane > .timeline-transition-mark svg { width: 10px; height: 10px; fill: currentColor; stroke: none; }
+/* The visual stays 14px tall; the hit area grows to the 24px floor. */
+.track-lane > .timeline-transition-mark::after { content: ""; position: absolute; inset: -5px -9px; }
+/* The quick-add button is centred on the cut beside the selected clip. */
+.track-lane > .timeline-transition-add[data-slot="button"] {
+  position: absolute; top: 50%; width: 18px; height: 18px; min-width: 0; min-height: 0; padding: 0; z-index: 5;
+  transform: translate(-50%, -50%); border: 0; border-radius: 50%;
+  background: var(--wb-accent); color: var(--wb-accent-foreground); box-shadow: 0 1px 4px var(--wb-shadow-color);
+}
+.track-lane > .timeline-transition-add[data-slot="button"][data-disabled] { opacity: .5; cursor: not-allowed; }
+.track-lane > .timeline-transition-add::after { content: ""; position: absolute; inset: -3px; }

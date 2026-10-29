@@ -36,7 +36,7 @@ function harness(locale: unknown='zh-Hans'){
   if(name==='./TimelineWaveform.tsx')return{__esModule:true,default:'TimelineWaveform',TimelineWaveformControls:'TimelineWaveformControls'};
   if((name)!.endsWith('.css'))return{};
   if((name)!.startsWith('@mioon/ui/'))return new Proxy({},{get:(_,key)=>String(key)});
-  if(['./icons.tsx','./TimelineToolbar.tsx','./TimelineHistoryControls.tsx','./TimelineSplitControls.tsx','./SubtitleLane.tsx'].includes(((name) as unknown as string)))return mark((name)!.slice(2).split('.')[0]);
+  if(['./icons.tsx','./TimelineToolbar.tsx','./TimelineHistoryControls.tsx','./TimelineSplitControls.tsx','./SubtitleLane.tsx','./TimelineTransitionMarks.tsx'].includes(((name) as unknown as string)))return mark((name)!.slice(2).split('.')[0]);
   throw Error(name);
  },module,module.exports);
  const timeline={id:'t1',projectId:'p1',revision:2,fps:30,width:1080,height:1920,durationFrames:60,tracks:[{id:'v1',kind:'video',name:'Video1',orderIndex:0},{id:'a1',kind:'audio',name:'Audio1',orderIndex:1}],clips:[{id:'c1',trackId:'v1',assetId:'asset1',name:'Clip',startFrame:0,durationFrames:60,sourceInFrame:0,gain:1}]};
@@ -93,5 +93,24 @@ test('default track names localize while a user supplied track name stays unchan
  assert.equal(label('a1').children[0],'Music');
  assert.equal(label('a2').children[0],'配乐');
  assert.equal(label('a2').title,'配乐');
+ h.dispose();
+});
+
+test('transition marks sit on video lanes and their callbacks follow the body gate',()=>{
+ type MarksProps={trackId:string;disabled:boolean;onAdd?:(...args:unknown[])=>unknown;onSelect:(...args:unknown[])=>unknown};
+ const h=harness(),onAddTransition=(...args: unknown[])=>h.calls.push(['onAddTransition',...args]);
+ const marksOf=(view: ReturnType<ReturnType<typeof harness>['render']>)=>view.all.filter((node)=>node.type==='TimelineTransitionMarks').map((node)=>node.props as unknown as MarksProps);
+ const active=h.render({onAddTransition}),[marks]=marksOf(active);
+ assert.deepEqual(marksOf(active).map(props=>props.trackId),['v1'],'video tracks only');
+ assert.equal(marks!.disabled,false);
+ marks!.onAdd!('c1','dissolve');marks!.onSelect('c1');
+ assert.deepEqual(h.calls,[['onAddTransition','c1','dissolve'],['onSelectClip','c1']]);
+ assert.equal(marksOf(h.render({onAddTransition,structureReadOnly:true}))[0]!.onAdd,undefined,'a read-only structure has no quick add');
+ assert.equal(marksOf(h.render({onAddTransition,lockedTrackIds:new Set(['v1'])}))[0]!.disabled,true,'a locked track waits');
+ h.calls.length=0;
+ const [gated]=marksOf(h.render({onAddTransition,visible:false,presentationVisible:true,collapsed:true}));
+ assert.equal(gated!.disabled,true);
+ gated!.onAdd!('c1','dissolve');gated!.onSelect('c1');marks!.onSelect('c1');
+ assert.deepEqual(h.calls,[],'a hidden body and retained closures never dispatch');
  h.dispose();
 });
