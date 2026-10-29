@@ -268,9 +268,9 @@ test('App wires review marks apart from the "Mio 修改" marks and clears them o
   assert.match(app, /useLayoutEffect\(\(\) => \{ reviewMarks\.clear\(\); \}, \[reviewMarks, workspaceMode\]\);/);
   const locate = app.slice(app.indexOf('  async function locateReviewIssue('), app.indexOf('  useEffect(() => () => reviewMarks.reset()'));
   assert.match(locate, /if \(!await inspect\(first\)\) return;/, '"定位" selects the shot through the normal navigation guard');
-  // A new selection remounts the canvas inside its editing boundary, which reopens on the saved viewport.
+  // From the editing workspace the canvas mounts and restores its saved viewport, so the located one is saved first.
   assert.match(locate, /updateView\('canvas', \{ viewport \}\); void flow\.setViewport\(viewport\);/);
-  assert.doesNotMatch(locate, /fitView\(/, 'a queued fit would be undone by the remount');
+  assert.doesNotMatch(locate, /fitView\(/, 'a fit started before the mounted canvas restores its viewport would be undone');
   assert.match(workspace, /shotNumber=\{shotNumber\} onReview=\{onTaskReview\} onReviewLocate=\{onTaskReviewLocate\} reviewReveal=\{reviewReveal\}/);
   // The report sits before the reply that followed it.
   assert.match(panel, /\{reviewCards\(reportedBefore\)\}\n        \{latest && <p className="agent-task-text mio-reply"/);
