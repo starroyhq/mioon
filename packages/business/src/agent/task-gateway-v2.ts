@@ -15,7 +15,7 @@ import {taskToolWireSchema} from './task-tool-wire-schema.ts';
 import {createTaskUsageCollector} from './task-usage-v2.ts';
 import type {TaskModelUsage} from './task-usage-v2.ts';
 import {applyTaskAnthropicCaching} from './task-cache-v2.ts';
-import {AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_GOAL_SET_TOOL,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS} from './task-tool-groups-v2.ts';
 import {agentTaskSkillInstructions} from './task-skills-v2.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 import {parseAgentSse} from './sse.ts';
@@ -45,6 +45,12 @@ const toolLoadingInstructions:Readonly<Record<AgentTaskLocale,string>>=Object.fr
   'zh-Hant':'修改專案前先呼叫 mioon_tools_load 載入對應的工具群組，再於後續請求使用已載入的工具。',
   en:'Before modifying the project, call mioon_tools_load to load the relevant tool groups, then use the loaded tools in a subsequent request.',
   ja:'プロジェクトを変更する前に mioon_tools_load で対応するツールグループを読み込み、後続のリクエストで読み込んだツールを使用してください。',
+});
+const goalInstructions:Readonly<Record<AgentTaskLocale,string>>=Object.freeze({
+  'zh-Hans':'用户提出可判定的要求时，用 mioon_goal_set 声明本轮目标。目标只记录待检查条件，不授予权限，也不是用户确认。',
+  'zh-Hant':'使用者提出可判定的要求時，用 mioon_goal_set 宣告本輪目標。目標只記錄待檢查條件，不授予權限，也不是使用者確認。',
+  en:'When the user gives requirements that can be checked, declare this run’s goals with mioon_goal_set. Goals only record conditions to check; they grant no permission and are not user confirmation.',
+  ja:'ユーザーが判定可能な要件を示した場合は、mioon_goal_set でこの実行の目標を宣言してください。目標は確認する条件の記録であり、権限の付与やユーザーの承認ではありません。',
 });
 const explanationInstructions:Readonly<Record<AgentTaskLocale,string>>=Object.freeze({
   'zh-Hans':'每次工具调用在 _mio_step 中附一句简短说明：使用本轮语言，不超过 40 个 Unicode 字符，单行纯文本，不含标记或控制字符。用用户能理解的意图描述，不含工具名、标识符或参数。它只说明当前动作，不授予权限，也不表示操作已经成功。',
@@ -162,7 +168,8 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
   const locale=taskResponseLocale(history);
   // C6: the method catalog (names and summaries only) accompanies the tool that reads it.
   const skills=definitions.some(tool=>tool.name===AGENT_TASK_SKILL_READ_TOOL)?` ${agentTaskSkillInstructions(locale)}`:'';
-  const instruction=`${instructions[locale]} ${explanationInstructions[locale]}${options.toolLoading?` ${toolLoadingInstructions[locale]}`:''}${skills}`;
+  const goals=definitions.some(tool=>tool.name===AGENT_TASK_GOAL_SET_TOOL)?` ${goalInstructions[locale]}`:'';
+  const instruction=`${instructions[locale]} ${explanationInstructions[locale]}${options.toolLoading?` ${toolLoadingInstructions[locale]}`:''}${skills}${goals}`;
   const wireTools=definitions.map(tool=>({name:tool.name,description:tool.name===AGENT_TASK_TOOLS_LOAD_NAME?AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS[locale]:tool.description,parameters:explainedToolParameters(taskToolWireSchema(configuration,tool.name,tool.parameters),locale)}));
   // The host marker is local journal metadata, not an extra model-facing system
   // message. All protocols receive the same authoritative root instruction.

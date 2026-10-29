@@ -48,6 +48,7 @@ test('every actual model tool, including host tools and imports, has exactly one
   assert.equal(agentTaskToolGroupForName('mioon_node_inspect'),'core');
   assert.equal(agentTaskToolGroupForName('mioon_edge_inspect'),'core');
   assert.equal(agentTaskToolGroupForName('mioon_task_wait'),'core');
+  assert.equal(agentTaskToolGroupForName('mioon_goal_set'),'core');
   assert.equal(agentTaskToolGroupForName(AGENT_TASK_TOOLS_LOAD_NAME),'core');
   assert.equal(agentTaskToolGroupForName('mioon_unreviewed_tool'),undefined);
   assert.throws(()=>assertAgentTaskToolGroupCoverage(catalog.filter(tool=>tool.name!=='mioon_node_inspect')));
