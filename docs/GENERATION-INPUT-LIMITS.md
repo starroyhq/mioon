@@ -12,7 +12,9 @@ change saved shot geometry. See [Wan SDK scope and limits](PROVIDERS.md#wan-offi
 Seedance 2.5 update (2026-10-30): the exact `doubao-seedance-2-5-260628` /
 `cn-beijing` / `ark-v3` row takes the same explicit `videoInput` with 1–30
 ordered reference images, always with the saved shot prompt. Its other modes keep
-the saved frame selection in the UI. The encoded images together stay within
+the saved frame selection in the UI. The Inspector can fill that list from the
+shot's subject bindings when the user asks; the request still carries explicit
+asset IDs, so the rule below that no image is inferred from a binding holds. The encoded images together stay within
 60,000,000 bytes because Ark caps the request body at 64 MB. See
 [Seedance 2.5 connections](PROVIDERS.md#seedance-25-connections-reviewed-2026-10-30).
 The dated baseline and archived profile evidence below remain unchanged.

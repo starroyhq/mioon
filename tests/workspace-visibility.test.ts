@@ -106,7 +106,7 @@ function createHarness(file: string, exportName = 'default') {
     './ProviderSettings.tsx': { default: 'ProviderSettings', __esModule: true },
     './SubjectVideoSelection.tsx': { default: 'SubjectVideoSelection', __esModule: true },
     './SubjectVideoSummary.tsx': { default: 'SubjectVideoSummary', __esModule: true },
-    './subject-video.ts': { subjectVideoConflictIssue: () => '' },
+    './subject-video.ts': { subjectVideoConflictIssue: () => '', seedanceReferenceRules: () => null, subjectReferencePlan: () => null, subjectReferenceLabel: () => null },
     './ShotSubjectBindings.tsx': { default: 'ShotSubjectBindings', __esModule: true },
     './WorkspaceControls.tsx': { WorkbenchSelect: 'WorkbenchSelect', WorkbenchTooltip: 'WorkbenchTooltip' },
     './ReferenceConnections.tsx': { ReferenceSourcePanel: 'ReferenceSourcePanel', BoundReference: 'BoundReference' },

@@ -64,6 +64,17 @@ same template, keep shot-only duration and ratio.
   body at 64 MB, so the encoded images together must stay within 60,000,000 bytes:
   four 10 MiB images fit, five do not. Ark rejects reference images that contain
   real human faces, and Mioon does not detect faces. Wan 3.0 keeps its limit of 10.
+- **Filling from subjects:** in reference mode the Inspector lists the shot's
+  active subject bindings and, when the user presses **Fill from bound subjects**,
+  puts their images into the list: characters, products and locations first, then
+  looks (style bindings), in the order they were bound within each kind. Each
+  uses the version its binding pinned, even when a newer version awaits review. Each list row names the subject
+  and version, for example "图片1 = 林夏 V2", so the prompt can refer to it.
+  Images the model cannot take (WebP, size, dimensions or ratio out of range, an
+  asset that no longer matches its version record, beyond 30 images or the
+  encoded budget) are listed with the reason and never converted. Entering the
+  mode does not fill anything by itself; the filled list stays editable, and the
+  request still names explicit asset IDs. The server never reads bindings.
 - **Output check:** the downloaded ratio must be within 2% of the requested one
   (Ark's 480p 21:9 size is 992×432) and the duration within 0.25 seconds of a fixed
   request, or 4–30 seconds for automatic. A mismatch pauses the task for review
