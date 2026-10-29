@@ -1,0 +1,132 @@
+{
+  "formatVersion": 1,
+  "synthetic": true,
+  "baseSchema": 64,
+  "targetSchema": 66,
+  "provenance": "Reviewed conversation policy and question schema66 additive delta, frozen once on 2026-10-28. It adds the per-conversation confirmation policy table, its request receipts and their guards. Runs and steps waiting for an answer reuse the existing tables. Historical fixtures remain unchanged. Tests never reconstruct this expectation from application schema definitions.",
+  "schemaVersionRows": [
+    [
+      "66",
+      "integer",
+      "3636"
+    ]
+  ],
+  "objects": [
+    {
+      "type": "index",
+      "name": "agent_task_conversation_policies_project_v2",
+      "tbl_name": "agent_task_conversation_policies_v2",
+      "sql": "CREATE INDEX agent_task_conversation_policies_project_v2 ON agent_task_conversation_policies_v2(projectId)"
+    },
+    {
+      "type": "index",
+      "name": "agent_task_conversation_policy_requests_project_v2",
+      "tbl_name": "agent_task_conversation_policy_requests_v2",
+      "sql": "CREATE INDEX agent_task_conversation_policy_requests_project_v2 ON agent_task_conversation_policy_requests_v2(projectId,conversationId)"
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_conversation_policies_v2_1",
+      "tbl_name": "agent_task_conversation_policies_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_conversation_policy_requests_v2_1",
+      "tbl_name": "agent_task_conversation_policy_requests_v2",
+      "sql": null
+    },
+    {
+      "type": "index",
+      "name": "sqlite_autoindex_agent_task_conversation_policy_requests_v2_2",
+      "tbl_name": "agent_task_conversation_policy_requests_v2",
+      "sql": null
+    },
+    {
+      "type": "table",
+      "name": "agent_task_conversation_policies_v2",
+      "tbl_name": "agent_task_conversation_policies_v2",
+      "sql": "CREATE TABLE agent_task_conversation_policies_v2(\n conversationId TEXT PRIMARY KEY NOT NULL CHECK(length(CAST(conversationId AS BLOB))=36 AND conversationId GLOB '????????-????-????-????-????????????' AND conversationId NOT GLOB '*[^a-fA-F0-9-]*'),\n projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),\n data TEXT NOT NULL CHECK(json_valid(data) AND json_type(data)='object' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 4096),\n CHECK(json_extract(data,'$.conversationId') IS conversationId AND json_extract(data,'$.projectId') IS projectId AND json_extract(data,'$.revision') IS revision AND json_type(data,'$.modes') IN ('object','null'))\n)"
+    },
+    {
+      "type": "table",
+      "name": "agent_task_conversation_policy_requests_v2",
+      "tbl_name": "agent_task_conversation_policy_requests_v2",
+      "sql": "CREATE TABLE agent_task_conversation_policy_requests_v2(\n requestId TEXT PRIMARY KEY NOT NULL CHECK(length(requestId) BETWEEN 8 AND 200 AND length(CAST(requestId AS BLOB))<=800),\n projectId TEXT NOT NULL REFERENCES projects(id) CHECK(length(CAST(projectId AS BLOB))=36),\n conversationId TEXT NOT NULL CHECK(length(CAST(conversationId AS BLOB))=36),\n revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 1 AND 9007199254740991),\n inputHash TEXT NOT NULL CHECK(length(inputHash)=64 AND inputHash NOT GLOB '*[^a-f0-9]*'),\n response TEXT NOT NULL CHECK(json_valid(response) AND json_type(response)='object' AND length(CAST(response AS BLOB)) BETWEEN 1 AND 8192),\n UNIQUE(conversationId,revision),\n CHECK(json_extract(response,'$.conversationId') IS conversationId AND json_extract(response,'$.projectId') IS projectId AND json_extract(response,'$.revision') IS revision)\n)"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_task_conversation_policy_capacity_v2",
+      "tbl_name": "agent_task_conversation_policies_v2",
+      "sql": "CREATE TRIGGER agent_task_conversation_policy_capacity_v2 BEFORE INSERT ON agent_task_conversation_policies_v2\n WHEN (SELECT count(*) FROM agent_task_conversation_policies_v2)>=20000\n BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT');END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_task_conversation_policy_delete_v2",
+      "tbl_name": "agent_task_conversation_policies_v2",
+      "sql": "CREATE TRIGGER agent_task_conversation_policy_delete_v2 BEFORE DELETE ON agent_task_conversation_policies_v2\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_task_conversation_policies_v2' AND rowId=OLD.rowid)\n BEGIN SELECT RAISE(ABORT,'Agent conversation policies must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_task_conversation_policy_owner_v2",
+      "tbl_name": "agent_task_conversation_policies_v2",
+      "sql": "CREATE TRIGGER agent_task_conversation_policy_owner_v2 BEFORE INSERT ON agent_task_conversation_policies_v2\n WHEN EXISTS(SELECT 1 FROM agent_task_runs_v2 WHERE projectId IS NOT NEW.projectId AND json_extract(data,'$.conversationId') IS NEW.conversationId)\n BEGIN SELECT RAISE(ABORT,'Agent conversation policies belong to their project');END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_task_conversation_policy_request_capacity_v2",
+      "tbl_name": "agent_task_conversation_policy_requests_v2",
+      "sql": "CREATE TRIGGER agent_task_conversation_policy_request_capacity_v2 BEFORE INSERT ON agent_task_conversation_policy_requests_v2\n WHEN (SELECT count(*) FROM agent_task_conversation_policy_requests_v2)>=20000\n BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT');END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_task_conversation_policy_request_identity_v2",
+      "tbl_name": "agent_task_conversation_policy_requests_v2",
+      "sql": "CREATE TRIGGER agent_task_conversation_policy_request_identity_v2 BEFORE INSERT ON agent_task_conversation_policy_requests_v2\n WHEN NOT EXISTS(SELECT 1 FROM agent_task_conversation_policies_v2 WHERE conversationId=NEW.conversationId AND projectId=NEW.projectId AND revision=NEW.revision)\n BEGIN SELECT RAISE(ABORT,'Agent conversation policy receipts bind their saved revision');END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_task_conversation_policy_request_immutable_v2",
+      "tbl_name": "agent_task_conversation_policy_requests_v2",
+      "sql": "CREATE TRIGGER agent_task_conversation_policy_request_immutable_v2 BEFORE UPDATE ON agent_task_conversation_policy_requests_v2\n BEGIN SELECT RAISE(ABORT,'Agent conversation policy receipts are immutable');END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_task_conversation_policy_request_retain_v2",
+      "tbl_name": "agent_task_conversation_policy_requests_v2",
+      "sql": "CREATE TRIGGER agent_task_conversation_policy_request_retain_v2 BEFORE DELETE ON agent_task_conversation_policy_requests_v2\n WHEN NOT EXISTS(SELECT 1 FROM project_deletion_scope WHERE tableName='agent_task_conversation_policy_requests_v2' AND rowId=OLD.rowid)\n BEGIN SELECT RAISE(ABORT,'Agent conversation policy receipts must be retained');END"
+    },
+    {
+      "type": "trigger",
+      "name": "agent_task_conversation_policy_update_v2",
+      "tbl_name": "agent_task_conversation_policies_v2",
+      "sql": "CREATE TRIGGER agent_task_conversation_policy_update_v2 BEFORE UPDATE ON agent_task_conversation_policies_v2\n WHEN NEW.conversationId IS NOT OLD.conversationId OR NEW.projectId IS NOT OLD.projectId OR NEW.revision<=OLD.revision\n BEGIN SELECT RAISE(ABORT,'Agent conversation policy revisions only advance');END"
+    }
+  ],
+  "tables": {
+    "agent_task_conversation_policies_v2": {
+      "fields": [
+        "conversationId",
+        "projectId",
+        "revision",
+        "data"
+      ],
+      "rows": 0
+    },
+    "agent_task_conversation_policy_requests_v2": {
+      "fields": [
+        "requestId",
+        "projectId",
+        "conversationId",
+        "revision",
+        "inputHash",
+        "response"
+      ],
+      "rows": 0
+    }
+  },
+  "catalog": {
+    "count": 15,
+    "sha256": "19d7c7d82bd386b259060e119813e037a56e15ac91b08adf6b3035b92e647fd8"
+  }
+}

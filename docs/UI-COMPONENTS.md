@@ -198,7 +198,7 @@ responsibility. No model/service or persistence behavior lives in these adapters
 contrast, renderer token references and Tooltip-safe selectors without installed
 dependencies. `node --test tests/workbench-controls.test.ts` checks real React /
 Base UI rendering, callback/test-ID forwarding, loading and progress bounds under
-the shipped classic JSX transform. These checks complement the official-source
+the shipped automatic JSX runtime. These checks complement the official-source
 integrity suite; browser keyboard/focus and screenshot acceptance are still needed
 as the redesigned pages adopt the compositions. System light appearance is not
 enabled by this foundation; its separate two-page screenshot review remains a gate.

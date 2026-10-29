@@ -19,19 +19,31 @@ The CLI is a local HTTP client for the **same running backend and database** use
 | `agent diagnose --live` | 与 send 相同，必须包含 `diagnostic`；显式允许诊断模型请求 |
 | `agent diagnose latest` | `{}`；只读返回全工作区最近一次文本诊断（设置页的测试连接）的状态、时间、协议、地址、模型和失败代码；不发送模型请求，不返回测试文字、回复或密钥 |
 | `agent policy get/set/lookup` | get 为 `{}`；set 为 `{requestId, expectedRevision, stepLimit, modes, acknowledgePaid?}`；lookup 为 `{requestId}` |
+| `agent conversation policy get/set` | get 为 `{projectId, conversationId}`，返回 `override`、`global` 和 `effective`；set 为 `{projectId, conversationId, requestId, expectedRevision, modes, acknowledgePaid?}`，`modes` 为 `null` 时回到全局。付费改为直接执行时需要 `acknowledgePaid:true`；已经等待确认的步骤不会因放宽而免于确认 |
 | `agent task list/history` | `{projectId}`；history 按对话返回 `conversations`，另接受原样返回的 `cursor`，不含诊断运行 |
 | `agent task conversation` | `{projectId, conversationId, cursor?}`；升序分页读取本对话轮次摘要，逐轮详情使用 status |
 | `agent task status` | `{projectId, runId}`；读取持久快照 |
-| `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?}`；lookup 为 `{projectId, requestId}` |
+| `agent task checks` | `{projectId, runId, preflight?}`；`preflight` 为可选布尔值，默认不跑完整预检，`true` 才运行；只读计算本轮检查，恢复副本可用，不调用模型或查询供应商 |
+| `agent task send/lookup` | send 为 `{projectId, requestId, expectedSettingsRevision, text, conversationId?, locale?, uploads?, policy?}`；`policy` 为 `{modes, acknowledgePaid?}`，只用于新对话，与第一轮一起保存；lookup 为 `{projectId, requestId}` |
 | `agent task upload/upload-lookup` | upload 为 `{projectId, requestId, name?, mimeType?}` 加 `--file`；返回托管句柄。lookup 为 `{projectId, requestId}` |
 | `agent task pause/resume/retry/stop/approve/deny/skip` | `{projectId, runId, requestId, expectedRevision, stepId?}`；approve/deny 使用快照中的精确 stepId；retry 可携带最后失败步骤的 stepId |
 | `agent task note` | `{projectId, runId, requestId, expectedRevision, text}`；运行、等待确认或已暂停时，先持久保存补充说明，下一次新模型请求使用。最多排队 5 条，单条同 send 的 32 KiB UTF-8 上限；已知上下文（含已落库的流式回复）与说明组合经相同结果视图和整轮压缩后仍超过原历史／请求容量时，返回 `AGENT_TASK_NOTE_CAPACITY` 和持久 rejected 回执，不改变原执行 |
 | `agent task undo-change/undo-all` | 同一控制身份和 revision；undo-change 另传 `changeId`，之后被修改的变化不能单撤；undo-all 逆序保留可证明被后续修改的单目标变化，可带 `undoChangeIds` 绑定确认时的可撤销集合 |
 | `agent task resolve-unknown` | 同一控制身份和 revision，另传 `stepId, resolution`；仅接受服务端已有的 `discard` / `accept_result` 边界 |
+| `agent task answer` | 同一控制身份和 revision，另传 `stepId, choices, text?`；只用于状态为 `awaiting_answer` 的执行。`choices` 为选项下标，单选题最多一个；`text` 为 1–2000 字，和选项一起提交需要问题允许 `allowOther`，只交文字总是可以。回答不是付费或修改的确认 |
 | `agent task action-lookup` | `{projectId, runId, requestId}`；只查询原控制回执 |
 | `agent task watch/events` | `{projectId, runId, after?}`；有界观察，默认 60 秒，可设 `--timeout-ms` 和 `--interval-ms` |
 
 `status`、`lookup` 和控制回执返回的公开快照可包含 Step / Change 的 `display` 安全投影；原始 before/after 与补偿数据不因此开放。新版 CLI 与 HTTP 共用 contracts，独立旧版严格客户端需同步升级。内置 Mio 的 `_mio_step` 说明仅存在于模型工具包装，不是 CLI/MCP 业务参数。
+
+`checks` 使用独立 GET 接口，不把检查加入快照。结果固定分为 `export_render`、`generation`、`timeline`、`decomposition_frames`，每项包含机器类型／原因码、状态、可定位目标、依据修订及安全的期望／当前值，可用时返回进度。没有相关工作时为 `not_applicable`。本轮修改过时间线时，每次照常计算引用检查；默认完整预检项为 `pending`／`PREFLIGHT_NOT_REQUESTED`。只有 JSON 输入的 `preflight:true` 才发送 `GET .../checks?preflight=1` 并执行完整本地预检，`false` 或省略均不发送该查询参数。不缓存或沿用上次的完整预检结果。读取不落库，不改变执行状态，重复读取可观察后台完成或人工改动，不触发生成、重试或补做。
+
+显式完整预检使用至少 60 秒的 client 请求超时，为服务端 30 秒预检预算留出响应余量；更长的全局超时保留，client 的显式 `options.timeoutMs` 仍优先。默认轻量检查沿用普通请求超时。
+
+```sh
+mioon agent task checks --input '{"projectId":"PROJECT_UUID","runId":"RUN_UUID"}'
+mioon agent task checks --input '{"projectId":"PROJECT_UUID","runId":"RUN_UUID","preflight":true}'
+```
 
 终态快照的可选 `executionEndedAt` 是执行结束时间的只读投影；后续撤销的 `run.updatedAt` 仍表示最后更新时间，不能当作执行用时的终点。旧记录没有可靠终态证据时省略该字段；CLI 不推算或补写它。
 
@@ -66,7 +78,7 @@ mioon agent settings secret set --input-file ./metadata.json --key-stdin --stora
 
 `--key-stdin` 消费原始密钥，不能与 `--input -` 共用 stdin。`--key-file` 必须是私有目录内的当前用户独占普通文件，遵循共享私有存储策略；不会自动修权限。Windows 独立 Node 入口需要显式构建并验证完整原生私有存储 helper，缺失时拒绝，不将 chmod 或环境开关当作 ACL 证明。持久密钥属于所选 headless/desktop 服务的独立配置，不读取或复制另一实例的密钥。
 
-诊断使用 `agent diagnose --live`，输入中另传 `diagnostic:{profile:"text"|"read_only"|"catalog",toolNames?:[...]}`；普通 `agent task send` 拒绝该字段并指向明确的诊断入口。底层客户端和 REST 仍复用同一发送接口。text 不提供工具；read_only 只提供只读工具；catalog 可选唯一工具名子集，仅验证目录接受情况，绝不执行模型返回的工具。诊断仍检查 requestId、settings revision、`project_agent` 授权和步数预算，可能产生文本模型费用。诊断成功不能替代完整工具目录下的真实回复、只读往返和自主剪片验收。
+诊断使用 `agent diagnose --live`，输入中另传 `diagnostic:{profile:"text"|"read_only"|"catalog",toolNames?:[...]}`；普通 `agent task send` 拒绝该字段并指向明确的诊断入口。底层客户端和 REST 仍复用同一发送接口。text 不提供工具；read_only 只提供只读工具（不含提问工具 `mioon_ask`，诊断没有可以作答的对话）；catalog 可选唯一工具名子集，仅验证目录接受情况，绝不执行模型返回的工具。诊断仍检查 requestId、settings revision、`project_agent` 授权和步数预算，可能产生文本模型费用。诊断成功不能替代完整工具目录下的真实回复、只读往返和自主剪片验收。
 
 每轮执行、上传、策略和控制写入必须保留调用者自己的 requestId；CLI 不生成它，也不自动提交第二次。响应丢失或无法验证时返回 UNKNOWN 与对应 GET lookup；只查原操作，不换 ID、不自动重发。settings PUT 没有 requestId/持久回执，因此未知时在同一个已绑定本地连接上只追加一次有界 GET，错误仍报告未知，并附 revision、配置是否匹配、configured/storage 的公开观察值；不能把 configured=true 当作新密钥已经保存的证明。读回失败也只报告观察不可用，不重发 PUT；Ctrl+C 不再发起读回。后续可手动 `agent settings get` 核对。
 
@@ -565,6 +577,22 @@ fades are left out. With nothing to split it writes nothing and fails with
 `NOTHING_TO_SPLIT`; a newer or stale result fails with `SCENE_RESULT_CONFLICT`
 or `SCENE_RESULT_STALE`. Full semantics:
 [Split at scene cuts](API.md#split-at-scene-cuts-2026-10-24).
+
+### Crossfade two clips
+
+`timeline clip crossfade` fades the sound of one clip out while another clip on
+a different track fades in. The incoming clip must start within the outgoing one
+and end no earlier than it. Read `timeline get` first:
+
+```sh
+mioon timeline clip crossfade --input '{"projectId":"PROJECT_UUID","expectedRevision":12,"requestId":"crossfade-0001","outgoingClipId":"CLIP_A_UUID","incomingClipId":"CLIP_B_UUID"}'
+```
+
+It writes linear volume keyframes on both clips as one undoable edit and returns
+the timeline with a `crossfade` summary (`startFrame`, `durationFrames`). Clips
+that already have volume keyframes are refused rather than overwritten; gain and
+fades are kept and multiply the curves. Full semantics:
+[Crossfade](API.md#crossfade-2026-10-28).
 
 ### Clip audio fades
 

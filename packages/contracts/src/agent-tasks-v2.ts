@@ -1,8 +1,8 @@
 import {z} from 'zod';
 
 export const AGENT_TASK_TIERS=Object.freeze(['read_only','local_reversible','local_irreversible','paid'] as const);
-export const AGENT_TASK_STATUSES=Object.freeze(['accepted','running','paused','awaiting_approval','completed','failed','stopped','interrupted','reverted'] as const);
-export const AGENT_TASK_STEP_STATUSES=Object.freeze(['intent','awaiting_approval','dispatch_started','completed','denied','rejected','failed','unknown'] as const);
+export const AGENT_TASK_STATUSES=Object.freeze(['accepted','running','paused','awaiting_approval','completed','failed','stopped','interrupted','reverted','awaiting_answer'] as const);
+export const AGENT_TASK_STEP_STATUSES=Object.freeze(['intent','awaiting_approval','dispatch_started','completed','denied','rejected','failed','unknown','awaiting_answer'] as const);
 export const AGENT_TASK_LOCALES=Object.freeze(['zh-Hans','zh-Hant','en','ja'] as const);
 export const DEFAULT_AGENT_TASK_LOCALE='zh-Hans' as const;
 export type AgentTaskTier=typeof AGENT_TASK_TIERS[number];
@@ -37,16 +37,50 @@ export interface AgentTaskClaim {id:string;projectId:string;ownerId:string;targe
 const id=z.string().uuid(),requestId=z.string().min(8).max(200),revision=z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const agentTaskTierSchema=z.enum(AGENT_TASK_TIERS);
 export const agentTaskLocaleSchema=z.enum(AGENT_TASK_LOCALES);
-export const agentTaskPolicySchema=z.object({revision,stepLimit:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),modes:z.object({read_only:z.enum(['direct','confirm']),local_reversible:z.enum(['direct','confirm']),local_irreversible:z.enum(['direct','confirm']),paid:z.enum(['direct','confirm'])}).strict()}).strict();
+export const agentTaskPolicyModesSchema=z.object({read_only:z.enum(['direct','confirm']),local_reversible:z.enum(['direct','confirm']),local_irreversible:z.enum(['direct','confirm']),paid:z.enum(['direct','confirm'])}).strict();
+export const agentTaskPolicySchema=z.object({revision,stepLimit:z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),modes:agentTaskPolicyModesSchema}).strict();
 export const agentTaskDiagnosticSchema=z.object({profile:z.enum(['text','read_only','catalog']),toolNames:z.array(z.string().regex(/^[A-Za-z0-9_-]{1,64}$/u)).min(1).max(200).optional()}).strict().refine(value=>value.toolNames===undefined||value.profile==='catalog'&&new Set(value.toolNames).size===value.toolNames.length,{message:'Only catalog diagnostics may select a unique tool subset.'});
 export const agentTaskTextSchema=z.string().min(1).max(32*1024).refine(value=>value.trim().length>0&&new TextEncoder().encode(value).length<=32*1024,{message:'Task text must contain 1–32768 UTF-8 bytes.'});
-export const agentTaskSendSchema=z.object({requestId,projectId:id,conversationId:id.optional(),expectedSettingsRevision:revision,text:agentTaskTextSchema,locale:agentTaskLocaleSchema.optional(),uploads:z.array(id).max(20).optional(),diagnostic:agentTaskDiagnosticSchema.optional()}).strict();
+/** Mio's structured question (C3), asked through the host tool `mioon_ask`.
+ * The answer is the user's own input to the model, never an approval. */
+export const AGENT_TASK_QUESTION_LIMITS=Object.freeze({question:200,minOptions:2,options:4,label:60,description:80,answer:2000});
+const singleLine=(max:number)=>z.string().refine(value=>value.trim().length>0&&[...value].length<=max&&!/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value),{message:`Text must be 1-${max} characters on one line`});
+export interface AgentTaskQuestionOption {label:string;description?:string}
+export interface AgentTaskQuestion {question:string;options:AgentTaskQuestionOption[];multiple?:boolean;allowOther?:boolean}
+export interface AgentTaskAnswer {choices:number[];text?:string}
+export const agentTaskQuestionOptionSchema:z.ZodType<AgentTaskQuestionOption>=z.object({label:singleLine(AGENT_TASK_QUESTION_LIMITS.label),description:singleLine(AGENT_TASK_QUESTION_LIMITS.description).optional()}).strict();
+export const agentTaskQuestionSchema:z.ZodType<AgentTaskQuestion>=z.object({question:singleLine(AGENT_TASK_QUESTION_LIMITS.question),
+ options:z.array(agentTaskQuestionOptionSchema).min(AGENT_TASK_QUESTION_LIMITS.minOptions).max(AGENT_TASK_QUESTION_LIMITS.options).refine(values=>new Set(values.map(value=>value.label.trim())).size===values.length,{message:'Option labels must be distinct'}),
+ multiple:z.boolean().optional(),allowOther:z.boolean().optional()}).strict();
+export const agentTaskAnswerTextSchema=z.string().refine(value=>value.trim().length>0&&[...value].length<=AGENT_TASK_QUESTION_LIMITS.answer&&!/[\p{Cc}]/u.test(value.replace(/[\n\t]/gu,'')),{message:'Answer text must be 1-2000 characters'});
+export const agentTaskAnswerSchema:z.ZodType<AgentTaskAnswer>=z.object({choices:z.array(z.number().int().min(0).max(AGENT_TASK_QUESTION_LIMITS.options-1)).max(AGENT_TASK_QUESTION_LIMITS.options),text:agentTaskAnswerTextSchema.optional()}).strict();
+export const agentTaskSendSchema=z.object({requestId,projectId:id,conversationId:id.optional(),expectedSettingsRevision:revision,text:agentTaskTextSchema,locale:agentTaskLocaleSchema.optional(),uploads:z.array(id).max(20).optional(),diagnostic:agentTaskDiagnosticSchema.optional(),policy:z.object({modes:agentTaskPolicyModesSchema,acknowledgePaid:z.literal(true).optional()}).strict().optional()}).strict();
 export const agentTaskControlBaseSchema=z.object({requestId,runId:id,expectedRevision:revision,stepId:id.optional(),changeId:id.optional(),resolution:z.enum(['discard','accept_result']).optional()}).strict();
 export const agentTaskNoteControlSchema=z.object({requestId,runId:id,expectedRevision:revision,action:z.literal('note'),text:agentTaskTextSchema}).strict();
 export const agentTaskUndoAllControlSchema=agentTaskControlBaseSchema.extend({action:z.literal('undo_all'),undoChangeIds:z.array(id).max(10000).refine(values=>new Set(values).size===values.length).optional()}).strict();
-export const agentTaskControlSchema=z.union([agentTaskControlBaseSchema.extend({action:z.enum(['pause','resume','retry','stop','approve','deny','skip','undo_change','resolve_unknown'])}).strict(),agentTaskUndoAllControlSchema,agentTaskNoteControlSchema]);
+export const agentTaskAnswerControlObjectSchema=z.object({requestId,runId:id,expectedRevision:revision,action:z.literal('answer'),stepId:id,choices:z.array(z.number().int().min(0).max(AGENT_TASK_QUESTION_LIMITS.options-1)).max(AGENT_TASK_QUESTION_LIMITS.options).refine(values=>new Set(values).size===values.length,{message:'Choices must be distinct'}),text:agentTaskAnswerTextSchema.optional()}).strict();
+export const agentTaskAnswerControlSchema=agentTaskAnswerControlObjectSchema.refine(value=>value.choices.length>0||value.text!==undefined,{message:'An answer needs a choice or text'});
+export const agentTaskControlSchema=z.union([agentTaskControlBaseSchema.extend({action:z.enum(['pause','resume','retry','stop','approve','deny','skip','undo_change','resolve_unknown'])}).strict(),agentTaskUndoAllControlSchema,agentTaskNoteControlSchema,agentTaskAnswerControlSchema]);
 export const agentTaskClaimSchema=z.object({requestId,projectId:id,ownerId:requestId,kind:z.string().min(1).max(80),targetId:z.string().min(1).max(200),expectedRevision:revision}).strict();
-export const DEFAULT_AGENT_TASK_POLICY:Readonly<AgentTaskPolicy>=Object.freeze({revision:0,stepLimit:30,modes:Object.freeze({read_only:'direct',local_reversible:'direct',local_irreversible:'direct',paid:'confirm'})});
+export const DEFAULT_AGENT_TASK_POLICY:Readonly<AgentTaskPolicy>=Object.freeze({revision:0,stepLimit:30,modes:Object.freeze({read_only:'direct',local_reversible:'direct',local_irreversible:'confirm',paid:'confirm'})});
+/** A conversation's own confirmation modes (C1). `override` null follows the
+ * global policy; the step limit always comes from the global policy. */
+export type AgentTaskPolicyModes=Record<AgentTaskTier,AgentTaskMode>;
+export interface AgentTaskConversationPolicy {projectId:string;conversationId:string;revision:number;override:AgentTaskPolicyModes|null;global:AgentTaskPolicy;effective:AgentTaskPolicyModes}
+export const agentTaskConversationPolicySetSchema=z.object({requestId,expectedRevision:revision,modes:agentTaskPolicyModesSchema.nullable(),acknowledgePaid:z.literal(true).optional()}).strict();
+export type AgentTaskConversationPolicySetInput=z.infer<typeof agentTaskConversationPolicySetSchema>;
+export const agentTaskConversationPolicySchema:z.ZodType<AgentTaskConversationPolicy>=z.object({projectId:id,conversationId:id,revision,override:agentTaskPolicyModesSchema.nullable(),global:agentTaskPolicySchema,effective:agentTaskPolicyModesSchema}).strict();
+/** The three presets of the composer menu; anything else is shown as custom. */
+export const AGENT_TASK_POLICY_PRESETS=Object.freeze({
+ step:Object.freeze({read_only:'direct',local_reversible:'confirm',local_irreversible:'confirm',paid:'confirm'}),
+ default:Object.freeze({read_only:'direct',local_reversible:'direct',local_irreversible:'confirm',paid:'confirm'}),
+ full:Object.freeze({read_only:'direct',local_reversible:'direct',local_irreversible:'direct',paid:'direct'}),
+} as const satisfies Record<string,Readonly<AgentTaskPolicyModes>>);
+export type AgentTaskPolicyPreset=keyof typeof AGENT_TASK_POLICY_PRESETS;
+export function agentTaskPolicyPreset(modes:Readonly<AgentTaskPolicyModes>):AgentTaskPolicyPreset|'custom'{
+ for(const [name,preset] of Object.entries(AGENT_TASK_POLICY_PRESETS) as [AgentTaskPolicyPreset,Readonly<AgentTaskPolicyModes>][])if(AGENT_TASK_TIERS.every(tier=>preset[tier]===modes[tier]))return name;
+ return 'custom';
+}
 
 export type AgentTaskSendInput=z.infer<typeof agentTaskSendSchema>;
 export type AgentTaskControlInput=z.infer<typeof agentTaskControlSchema>;
@@ -76,3 +110,5 @@ export const agentTaskConnectionTestSchema:z.ZodType<AgentTaskConnectionTest>=z.
 export const agentTaskConnectionTestResponseSchema=z.object({test:agentTaskConnectionTestSchema.nullable()}).strict();
 export const agentTaskHistoryPageSchema:z.ZodType<AgentTaskHistoryPage>=z.object({conversations:z.array(agentTaskConversationSchema).max(100),nextCursor:z.string().max(512).nullable()}).strict();
 export const agentTaskConversationPageSchema:z.ZodType<AgentTaskConversationPage>=z.object({conversation:agentTaskConversationSchema,runs:z.array(agentTaskRunSchema).max(100),nextCursor:z.string().max(512).nullable()}).strict();
+
+export * from './agent-task-checks-v2.ts';

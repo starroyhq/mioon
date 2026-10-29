@@ -8,6 +8,8 @@ import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 import {createTimelineLoudnessApplyContracts} from '../../contracts/src/timeline-loudness-apply.ts';
 import {isTimelineClipLoudnessResponse} from '../../contracts/src/timeline-clip-loudness.ts';
 import {isTimelineMixLoudnessResponse} from '../../contracts/src/timeline-mix-loudness.ts';
+import {TIMELINE_CROSSFADE_OPERATION,createTimelineCrossfadeContracts} from '../../contracts/src/timeline-crossfade.ts';
+import {WRAPPED_TIMELINE_OPERATIONS} from './workspace-wrapped-timeline-receipts.ts';
 
 const JSON_BYTES=4*1024*1024, SNAPSHOT_BYTES=256*1024;
 const keys=['volumeEnvelope','volumeEnvelopeProfile','volumeEnvelopeProcessingProfile','volumeEnvelopeSha256'];
@@ -80,6 +82,21 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
    // Payload validation establishes self-consistency, not independent authority.
    if(!Boolean(isTimelineLoudnessApplyResponse(root,input))||Buffer.byteLength(JSON.stringify(root))>SNAPSHOT_BYTES)invalid(true);
   }
+  // A wrapped receipt's timeline is a timeline record, not a render snapshot,
+  // so it carries no frozen assets.
+  const wrapped=!loudness&&table==='timeline_requests'&&object(root)&&WRAPPED_TIMELINE_OPERATIONS.includes(root.operation as string);
+  if(wrapped){
+   // Bind the wrapper to its row and its timeline to the record validator; the
+   // clips inside are still checked one by one below, sources included.
+   const timeline=root.timeline;
+   if(!object(timeline)||typeof root.requestId!=='string'||bindings.request&&request!==root.requestId||
+    !requireWorkspaceEnvelopeRuntime().isTimelineRecord(timeline,{projectId:timeline.projectId}))invalid(true);
+   if(root.operation===TIMELINE_CROSSFADE_OPERATION){
+    const summary=root.crossfade,revision=Number(timeline.revision);
+    const input=object(summary)?{projectId:timeline.projectId,expectedRevision:revision-1,requestId:root.requestId,outgoingClipId:summary.outgoingClipId,incomingClipId:summary.incomingClipId}:null;
+    if(!input||!createTimelineCrossfadeContracts({isTimelineRecord:requireWorkspaceEnvelopeRuntime().isTimelineRecord}).isTimelineCrossfadeResponse(root,input))invalid(true);
+   }
+  }
   const admitted=new WeakMap<object,Set<string>>();
   const mark=(value:object,key:string)=>{let set=admitted.get(value);if(!set)admitted.set(value,set=new Set());set.add(key);};
   const envelope=(value:Record<string,unknown>,partial:boolean)=>{
@@ -135,7 +152,7 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
    const project=parentOwner??value.projectId;
    const frozen=object(value.timeline)&&Array.isArray(value.assets)?value.assets:parentFrozen;
    if(object(value.timeline)&&hasWorkspaceVolumeEnvelopeEvidence(value.timeline)){
-    if(value===root&&loudness){ /* Exact complete ACK admitted above. */ }else{
+    if(value===root&&(loudness||wrapped)){ /* Exact complete ACK admitted above. */ }else{
      if(value.operation==='timeline.loudness.apply')invalid(true);
      if(!Array.isArray(value.assets)||!isVolumeEnvelopeProcessingSnapshot(value))invalid(true);
      if(own(value,'volumeEnvelopeProfile'))mark(value,'volumeEnvelopeProfile');

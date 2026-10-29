@@ -24,7 +24,7 @@ import type { SQLOutputValue } from 'node:sqlite';
 
 const at='2026-10-10T00:00:00.000Z',clone=<T>(value: T): T => JSON.parse(JSON.stringify(value));
 // Acknowledgements that wrap the saved timeline with their own outcome fields.
-const wrapped=(operation: string)=>['timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes'].includes(operation);
+const wrapped=(operation: string)=>['timeline.loudness.apply','timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes','timeline.clip.crossfade'].includes(operation);
 // Scene detection is replaced by a fixed cut list; the task, result and split
 // storage, receipts and recovery are production code.
 const sceneOptions={detect:async (input: { beforeSpawn: (arg0?: unknown) => void; signal: unknown; options: unknown; asset: { sha256: unknown; }; })=>{input.beforeSpawn(input.signal);
@@ -109,7 +109,7 @@ async function populated(f:Awaited<ReturnType<typeof fixture>>){
 async function allReceipts(f:Awaited<ReturnType<typeof fixture>>){
  const generated=await f.generated(),other=f.asset(),replacement=f.asset(),receipts: RecoveryReceipt[]=[];
  let timeline=await f.call('timeline.get',{projectId:f.projectId});
- async function call<O extends string>(operation:O,fields: {expectedProjectRevision?: unknown; presetId?: string; clipIds?: unknown[]; kind?: string; name?: string; trackId?: unknown; patch?: { name: string; }|{ startFrame: number; durationFrames: number; gain: number; }|{ text: string; }; assetId?: unknown; startFrame?: number; durationFrames?: number; clipId?: unknown; atFrame?: number; resultId?: unknown; text?: string; cueId?: unknown; purpose?: string;}={}){
+ async function call<O extends string>(operation:O,fields: {expectedProjectRevision?: unknown; presetId?: string; clipIds?: unknown[]; kind?: string; name?: string; trackId?: unknown; patch?: { name: string; }|{ startFrame: number; durationFrames: number; gain: number; }|{ text: string; }; assetId?: unknown; startFrame?: number; durationFrames?: number; clipId?: unknown; atFrame?: number; resultId?: unknown; text?: string; cueId?: unknown; purpose?: string; outgoingClipId?: unknown; incomingClipId?: unknown;}={}){
   const input=params(f,timeline,fields),response=await f.call(((operation) as unknown as Parameters<NonNullable<(typeof f)["call"]>>[0]),input);
   assert.equal(isTimelineMutationResponse(operation,input,response),true,`${operation} complete ACK`);
   receipts.push({operation,input,response:clone(response) as RecoveryReceipt["response"]});if(operation!=='timeline.render')timeline=wrapped(((operation) as unknown as Parameters<typeof wrapped>[0]))?(response as {timeline:FixtureTimeline}).timeline:response as FixtureTimeline;return response;
@@ -140,6 +140,12 @@ async function allReceipts(f:Awaited<ReturnType<typeof fixture>>){
  await call('timeline.subtitle.remove',{cueId});
  await call('timeline.loudness.apply',await f.loudnessFields(timeline));
  await call('timeline.render',{purpose:'preview'});
+ // Two overlapping sounding clips on the two audio tracks, clear of the clips the later removals use.
+ const audio=timeline.tracks.filter((track)=>track.kind==='audio');
+ await call('timeline.clip.add',{trackId:audio[0].id,assetId:f.asset({mimeType:'audio/wav'}).id,startFrame:400,durationFrames:90});
+ const outgoingClipId=(timeline.clips.at(-1))!.id;
+ await call('timeline.clip.add',{trackId:audio[1].id,assetId:f.asset({mimeType:'audio/wav'}).id,startFrame:460,durationFrames:90});
+ await call('timeline.clip.crossfade',{outgoingClipId,incomingClipId:(timeline.clips.at(-1))!.id});
  await call('timeline.clip.remove',{clipId});
  await call('timeline.clip.rippleRemove',{clipId:(timeline.clips.find((clip)=>clip.startFrame===110))!.id});
  await call('timeline.undo');
@@ -175,7 +181,7 @@ test('service-created empty timelines remain writable while a zero-track sentine
  const before=f.capture();assert.deepEqual(await f.call('timeline.track.add',input),added);assert.deepEqual(f.capture(),before);
 });
 
-test('all twenty retained responses remain exact after removal, branching, render progress and restart',async t=>{
+test('all twenty-one retained responses remain exact after removal, branching, render progress and restart',async t=>{
  const f=await fixture(t),result=await allReceipts(f);let timeline=result.timeline;
  for(const clip of ([...timeline.clips] as const))timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
  const render=(result.receipts.find(x=>x.operation==='timeline.render'))!.response;
@@ -194,7 +200,7 @@ test('all twenty retained responses remain exact after removal, branching, rende
  assert.deepEqual(f.capture(),before);
 });
 
-test('all twenty fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
+test('all twenty-one fresh stale-revision rejections carry only transaction-backed not-applied proof',async t=>{
  const f=await fixture(t),{receipts,timeline}=await allReceipts(f);
  for(const saved of receipts)await rejected(f,saved.operation,{...saved.input,requestId:randomUUID(),expectedRevision:timeline.revision-1},(({code:'REVISION_CONFLICT',proof:true}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
  const clip=timeline.clips[0];
@@ -238,9 +244,12 @@ test('lost acknowledgements retain proof absence after project, timeline and his
  }) as unknown as test.TestFn));
 });
 
-test('all twenty malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
+test('all twenty-one malformed, foreign and semantically corrupt durable receipts fail closed unchanged',async t=>{
  for(const corruption of (['hash','JSON','owner','semantics'] as const))await t.test(corruption,async t=>{
-  const f=await fixture(t),{receipts}=await allReceipts(f);f.store.db.exec('DROP TRIGGER immutable_timeline_responses');
+  const f=await fixture(t),{receipts}=await allReceipts(f);
+  // Lift the receipt guard only while writing each corruption. A missing trigger
+  // would itself fail the fixed-profile check that enveloped timelines run first.
+  const guard=(f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='immutable_timeline_responses'").get() as {sql:string}).sql;
   for(const {operation,input,response} of receipts){
    const changed=clone(response);
    if(corruption==='owner')(wrapped(((operation) as unknown as Parameters<typeof wrapped>[0]))?(changed as {timeline:FixtureTimeline}).timeline:changed as FixtureTimeline).projectId=f.otherId;
@@ -250,8 +259,10 @@ test('all twenty malformed, foreign and semantically corrupt durable receipts fa
     else if(operation==='timeline.loudness.apply')timeline.clips[0].gain=.1; // Must match the retained application gain proof.
     else timeline.clips[0].sourceInFrame=10000;
    }
+   f.store.db.exec('DROP TRIGGER immutable_timeline_responses');
    if(corruption==='hash')f.store.db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run('g'.repeat(64),input.requestId);
    else f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(corruption==='JSON'?'FOREIGN_SECRET invalid JSON':JSON.stringify(changed),input.requestId);
+   f.store.db.exec(guard);
    await rejected(f,operation,input,(({code:['INVALID_TIMELINE_SNAPSHOT','TIMELINE_SOURCE_UNAVAILABLE']}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
   }
  });
@@ -264,14 +275,22 @@ async function prepared(f:Awaited<ReturnType<typeof fixture>>,operation: string)
  if(operation==='timeline.clip.refreshSources')f.newerVersion(generated.shot);
  if(operation==='timeline.shots.append')await f.generated();
  if(['timeline.subtitle.update','timeline.subtitle.remove'].includes(operation))timeline=await f.call('timeline.subtitle.add',params(f,timeline,{text:'待修改字幕',startFrame:0,durationFrames:30}));
- let scene={};
+ let scene={},crossfade={};
  if(operation==='timeline.clip.splitAtScenes'){const film=await f.film();timeline=await f.call('timeline.clip.add',params(f,timeline,{assetId:film.asset.id,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:60}));scene={assetId:film.asset.id,resultId:film.resultId};}
+ if(operation==='timeline.clip.crossfade'){
+  timeline=await f.call('timeline.track.add',params(f,timeline,{kind:'audio'}));
+  const audio=timeline.tracks.filter((track)=>track.kind==='audio');
+  timeline=await f.call('timeline.clip.add',params(f,timeline,{assetId:f.asset({mimeType:'audio/wav'}).id,trackId:audio[0].id,startFrame:0,durationFrames:90}));
+  const outgoingClipId=(timeline.clips.at(-1))!.id;
+  timeline=await f.call('timeline.clip.add',params(f,timeline,{assetId:f.asset({mimeType:'audio/wav'}).id,trackId:audio[1].id,startFrame:60,durationFrames:90}));
+  crossfade={outgoingClipId,incomingClipId:(timeline.clips.at(-1))!.id};
+ }
  const clip=timeline.clips[0];
  const fields={
   'timeline.track.add':{kind:'video'},'timeline.track.update':{trackId:timeline.tracks[0].id,patch:{name:'Changed'}},
   'timeline.clip.add':{assetId:generated.asset.id as string,trackId:timeline.tracks[1].id,startFrame:0,durationFrames:30},
   'timeline.clip.update':{clipId:clip?.id,patch:{gain:.3}},'timeline.clip.remove':{clipId:clip?.id},
-  'timeline.clip.rippleRemove':{clipId:clip?.id},'timeline.clip.refreshSources':{clipIds:[clip?.id]},'timeline.clip.splitAtScenes':scene,
+  'timeline.clip.rippleRemove':{clipId:clip?.id},'timeline.clip.refreshSources':{clipIds:[clip?.id]},'timeline.clip.splitAtScenes':scene,'timeline.clip.crossfade':crossfade,
   'timeline.clip.split':{clipId:clip?.id,atFrame:30},'timeline.clip.replaceSource':{clipId:clip?.id,assetId:f.asset().id},
   'timeline.render':{purpose:'preview'},
   'timeline.subtitle.add':{text:'新增字幕',startFrame:0,durationFrames:30},
@@ -283,10 +302,22 @@ async function prepared(f:Awaited<ReturnType<typeof fixture>>,operation: string)
 }
 test('every keyed write rolls back receipt failures and post-write owner changes without not-applied proof',async t=>{
  for(const operation of TIMELINE_MUTATION_OPERATIONS)for(const corruption of (['receipt failure','timeline owner'] as const))await t.test(`${operation}: ${corruption}`,async t=>{
-  const f=await fixture(t),{input,timeline}=await prepared(f,operation);
-  if(corruption==='receipt failure')f.store.db.exec("CREATE TRIGGER fail_timeline_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
+  const f=await fixture(t),{input,timeline}=await prepared(f,operation),db=f.store.db,prepare=db.prepare;
+  if(operation==='timeline.clip.crossfade'){
+   // An added trigger would fail the fixed-profile check that envelope writes run
+   // before any write, so inject at the receipt statement itself instead.
+   db.prepare=((sql: string)=>{
+    const statement=prepare.call(db,sql);
+    if(!sql.startsWith('INSERT INTO timeline_requests('))return statement;
+    return {run:(...values: never[])=>{
+     if(corruption==='receipt failure')throw new Error('injected receipt failure');
+     const result=statement.run(...values);prepare.call(db,'UPDATE timelines SET projectId=? WHERE id=?').run(f.otherId,timeline.id);return result;
+    }} as unknown as ReturnType<typeof prepare>;
+   }) as typeof prepare;
+  }
+  else if(corruption==='receipt failure')f.store.db.exec("CREATE TRIGGER fail_timeline_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
   else f.store.db.exec(`CREATE TRIGGER corrupt_timeline_owner AFTER INSERT ON timeline_requests BEGIN UPDATE timelines SET projectId='${f.otherId}' WHERE id='${timeline.id}'; END;`);
-  await rejected(f,operation,input);
+  try{await rejected(f,operation,input);}finally{db.prepare=prepare;}
  });
 });
 

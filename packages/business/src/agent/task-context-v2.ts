@@ -2,7 +2,7 @@ import type {AgentTaskChange,AgentTaskDiagnostic,AgentTaskJson,AgentTaskLocale,A
 import type {AgentConfiguration} from './config.ts';
 import {TASK_MODEL_LIMITS,taskContinuation,taskResponseLanguageContext,taskResponseLocale} from './task-gateway-v2.ts';
 import type {TaskModelOutput,TaskToolDefinition} from './task-gateway-v2.ts';
-import {AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,loadedAgentTaskToolGroups} from './task-tool-groups-v2.ts';
+import {AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,agentTaskToolGroupForName,loadedAgentTaskToolGroups} from './task-tool-groups-v2.ts';
 import {compactTaskModelHistory} from './task-context-compaction-v2.ts';
 import {taskBaseModelHistory,taskContextHistoryRound,taskContextProjectOverview} from './task-context-base-v2.ts';
 import {taskRunRecordMessage} from './task-run-record-v2.ts';
@@ -72,7 +72,8 @@ export function assembleRunContext({locale,text,previousRuns=[],historyRuns,proj
 export interface TaskModelToolSelection {steps?:readonly AgentTaskStep[];attachments?:readonly string[]}
 export function selectTaskModelTools<T extends TaskToolDefinition&{risk:AgentTaskTier}>(definitions:readonly T[],diagnostic?:AgentTaskDiagnostic,{steps=[],attachments=[]}:TaskModelToolSelection={}):T[]{
   if(diagnostic){
-    const original=definitions.filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME);
+    // Diagnostics are not shown in a conversation, so nobody could answer a question.
+    const original=definitions.filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME&&tool.name!==AGENT_TASK_ASK_TOOL);
     if(diagnostic.profile==='text')return [];
     if(diagnostic.profile==='read_only')return original.filter(tool=>tool.risk==='read_only');
     return diagnostic.toolNames?original.filter(tool=>diagnostic.toolNames!.includes(tool.name)):original;

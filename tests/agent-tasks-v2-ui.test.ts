@@ -4,8 +4,14 @@ import assert from 'node:assert/strict';
 import { createAgentTaskClient, createAgentTaskSession, createAgentTaskReceiptStore, safeAgentTaskSnapshot } from '../apps/web/src/agent-tasks-v2.ts';
 import type { AgentTaskClient, AgentTaskLookup, AgentTaskPending, AgentTaskProjectSnapshot, AgentTaskReceiptStore, AgentTaskSessionState } from '../apps/web/src/agent-tasks-v2.ts';
 import type { AgentTaskEvent, AgentTaskSnapshot, AgentTaskLocale } from '../packages/contracts/src/agent-tasks-v2.ts';
-import { DEFAULT_AGENT_TASK_POLICY } from '../packages/contracts/src/agent-tasks-v2.ts';
+import { AGENT_TASK_POLICY_PRESETS, DEFAULT_AGENT_TASK_POLICY } from '../packages/contracts/src/agent-tasks-v2.ts';
+import type { AgentTaskConversationPolicy, AgentTaskPolicy, AgentTaskPolicyModes } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { agentTaskCloseState,createAgentTaskCloseReporter } from '../apps/web/src/native-close-sources.ts';
+import { agentTaskPolicyMenuStep } from '../apps/web/src/agent-task-policy-menu.ts';
+import { agentTaskAnswerTextValid, taskAnswerOf, taskQuestionOf } from '../apps/web/src/agent-task-questions.ts';
+import { agentTaskWaitingQuestion } from '../apps/web/src/agent-tasks-v2.ts';
+import { taskStepTitle } from '../apps/web/src/agent-task-presentation.ts';
+import type { AgentTaskJson, AgentTaskStep } from '../packages/contracts/src/agent-tasks-v2.ts';
 import { createNativeCloseRegistry,createNativeCloseAdmission } from '../apps/web/src/native-close-state.ts';
 import {createSettingsNavigationRegistry} from '../apps/web/src/settings-navigation-state.ts';
 
@@ -22,7 +28,7 @@ function fixture(patch: Partial<AgentTaskClient> = {}, saved?: AgentTaskPending,
   const client: AgentTaskClient = {
     history: async()=>({conversations:[],nextCursor:null}), conversation:async(_,id)=>{const run={...snapshot().run,id,conversationId:id};return{conversation:conversation(run),runs:[run],nextCursor:null};}, list: async () => project(), read: async () => snapshot(), send: async (_, input) => { sent.push(input); return snapshot('running'); }, action: async (_, input) => { actions.push(input); return snapshot('paused', 2); }, lookup: async () => ({ found: false }), authorize: async () => {},
     stream: async (_, __, ___, signal, onEvent) => { streams.push({ signal, onEvent }); return new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); },
-    policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:value,readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
+    policy: async () => ({policy:structuredClone(DEFAULT_AGENT_TASK_POLICY),readOnly:false}), savePolicy: async value => ({policy:value,readOnly:false}), lookupPolicy: async () => ({ found: false,readOnly:false }), conversationPolicy: async (projectId, conversationId) => ({policy:{projectId,conversationId,revision:0,override:null,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), setConversationPolicy: async (projectId, conversationId, input) => ({policy:{projectId,conversationId,revision:input.expectedRevision+1,override:input.modes,global:structuredClone(DEFAULT_AGENT_TASK_POLICY),effective:structuredClone(input.modes??DEFAULT_AGENT_TASK_POLICY.modes)},readOnly:false}), upload: async (_, input) => ({ id: stepId, name: input.name, mimeType: input.mimeType, status: 'staged' }), ...patch,
   };
   const session = createAgentTaskSession({ projectId, client, receipts: options.receipts??store, onChange:options.onChange??(()=>{}),onChangeApplied,...(options.getLocale?{getLocale:options.getLocale}:{}) }); return { session, receipts, client, sent, actions, streams };
 }
@@ -366,7 +372,7 @@ test('a completed run with pending background work keeps observing late cost and
 
 test('pending task identities remain stable across backend restarts and isolated from restored workspace origins',()=>{
   const values=new Map<string,string>();const storage:Storage={get length(){return values.size;},clear(){values.clear();},getItem:key=>values.get(key)??null,key:index=>[...values.keys()][index]??null,removeItem:key=>{values.delete(key);},setItem:(key,value)=>{values.set(key,value);}};
-  for(const action of ['pause','note','skip','retry'] as const){const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action};createAgentTaskReceiptStore(()=>storage,'normal').write(projectId,pending);assert.deepEqual(createAgentTaskReceiptStore(()=>storage,'normal').read(projectId),pending);assert.equal(createAgentTaskReceiptStore(()=>storage,'restored:'+crypto.randomUUID()).read(projectId),null);assert.equal(values.size,1);}
+  for(const action of ['pause','note','skip','retry','answer'] as const){const pending:AgentTaskPending={requestId:crypto.randomUUID(),runId,action};createAgentTaskReceiptStore(()=>storage,'normal').write(projectId,pending);assert.deepEqual(createAgentTaskReceiptStore(()=>storage,'normal').read(projectId),pending);assert.equal(createAgentTaskReceiptStore(()=>storage,'restored:'+crypto.randomUUID()).read(projectId),null);assert.equal(values.size,1);}
 });
 
 test('SSE reconnect retries failed durable reads until the network returns, without reposting and with visibility cancellation',async t=>{
@@ -459,3 +465,98 @@ test('undo submits exactly the reviewed changes and a lost response only queries
     assert.equal(await f.session.action('undo_all',{undoChangeIds:[...changeIds,crypto.randomUUID()]}),false);await f.session.reconcile();assert.equal(actions.length,1);assert.deepEqual(lookups,[pending]);assert.equal(f.session.getState().pending,null);assert.equal(f.session.getState().draft,'keep unsent input');
   }finally{f.session.dispose();}
 });
+const {step:STEP,full:FULL}=AGENT_TASK_POLICY_PRESETS;
+const conversationPolicy=(conversationId:string,revision:number,override:AgentTaskPolicyModes|null,global:AgentTaskPolicy=structuredClone(DEFAULT_AGENT_TASK_POLICY)):AgentTaskConversationPolicy=>({projectId,conversationId,revision,override:override&&{...override},global,effective:{...(override??global.modes)}});
+test('a new conversation sends only its own chosen modes, acknowledging paid direct work, then reads the saved policy',async t=>{
+  const otherRunId='55555555-5555-4555-8555-555555555555',posts:unknown[]=[];let reads=0;
+  const f=fixture({send:async(_,input)=>{posts.push(input);const value=snapshot('completed');return posts.length===1?value:{...value,run:{...value.run,id:otherRunId}};},conversationPolicy:async(_,id)=>{reads++;return{policy:conversationPolicy(id,1,FULL),readOnly:false};}});
+  t.after(()=>f.session.dispose());await f.session.load();
+  assert.deepEqual(f.session.getState().policy,{conversationId:null,phase:'ready',value:null,modes:null});
+  assert.equal(await f.session.choosePolicy({...DEFAULT_AGENT_TASK_POLICY.modes}),true);assert.equal(f.session.getState().policy.modes,null,'the global modes are followed, not copied');
+  assert.equal(await f.session.choosePolicy({...FULL}),true);assert.deepEqual(f.session.getState().policy.modes,FULL);
+  f.session.edit('Start loosely');assert.deepEqual(f.session.authorizationReview()?.modes,FULL,'a reviewed first send is bound to its modes');
+  assert.equal(await f.session.send(),true);assert.deepEqual((posts[0] as {policy?:unknown}).policy,{modes:FULL,acknowledgePaid:true});
+  await flush();const state=f.session.getState();assert.equal(state.conversationId,runId);assert.equal(state.policy.conversationId,runId);assert.equal(state.policy.phase,'ready');assert.deepEqual(state.policy.value?.override,FULL);assert.equal(reads,1);
+  assert.equal(f.session.newConversation(),true);assert.deepEqual(f.session.getState().policy,{conversationId:null,phase:'ready',value:null,modes:null},'a new conversation starts from the global modes');
+  assert.equal(await f.session.choosePolicy({...STEP}),true);f.session.edit('Start carefully');assert.equal(await f.session.send(),true);assert.deepEqual((posts[1] as {policy?:unknown}).policy,{modes:STEP},'tightening needs no acknowledgement');
+  f.session.newConversation();f.session.edit('Start plainly');assert.equal(await f.session.send(),true);assert.equal(Object.hasOwn(posts[2] as object,'policy'),false,'following the global modes sends no policy');
+});
+test('a saved conversation changes its modes under the read revision and never resends a failed change',async t=>{
+  const saved={...snapshot('completed'),run:{...snapshot('completed').run,conversationId:runId}};let current=conversationPolicy(runId,0,null),puts:unknown[]=[],failNext=false;
+  const f=fixture({list:async()=>({...project(),runs:[saved.run]}),read:async()=>saved,conversationPolicy:async()=>({policy:current,readOnly:false}),
+    setConversationPolicy:async(_,id,input)=>{puts.push(input);if(failNext){failNext=false;throw Object.assign(new Error('lost'),{code:'NETWORK'});}current=conversationPolicy(id,input.expectedRevision+1,input.modes);return{policy:current,readOnly:false};}});
+  t.after(()=>f.session.dispose());await f.session.load();await flush();
+  assert.equal(f.session.getState().conversationId,runId);assert.equal(f.session.getState().policy.phase,'ready');assert.equal(f.session.getState().policy.value?.revision,0);
+  assert.equal(await f.session.choosePolicy({...STEP}),true);assert.deepEqual(puts.at(-1),{requestId:(puts.at(-1) as {requestId:string}).requestId,expectedRevision:0,modes:STEP});
+  assert.equal(await f.session.choosePolicy({...FULL}),true);assert.equal((puts.at(-1) as {acknowledgePaid?:boolean;expectedRevision:number}).acknowledgePaid,true);assert.equal((puts.at(-1) as {expectedRevision:number}).expectedRevision,1);
+  assert.equal(await f.session.choosePolicy({...DEFAULT_AGENT_TASK_POLICY.modes}),true);assert.equal((puts.at(-1) as {modes:unknown}).modes,null,'choosing the global modes clears the override');
+  assert.equal(f.session.getState().policy.value?.revision,3);
+  failNext=true;const before=puts.length;assert.equal(await f.session.choosePolicy({...STEP}),false);
+  assert.equal(puts.length,before+1,'a lost change is never resent');assert.equal(f.session.getState().error,'NETWORK');assert.equal(f.session.getState().policy.phase,'ready');assert.equal(f.session.getState().policy.value?.revision,3,'the saved modes are read back');
+});
+test('making the modes global keeps the step limit, acknowledges paid direct work and recovers a lost acknowledgement by receipt',async t=>{
+  const saved={...snapshot('completed'),run:{...snapshot('completed').run,conversationId:runId}},saves:unknown[]=[];let lost=false;
+  const f=fixture({list:async()=>({...project(),runs:[saved.run]}),read:async()=>saved,conversationPolicy:async(_,id)=>({policy:conversationPolicy(id,1,FULL),readOnly:false}),
+    savePolicy:async value=>{saves.push(value);if(lost)throw Object.assign(new Error('lost'),{code:'NETWORK'});return{policy:{revision:value.revision+1,stepLimit:value.stepLimit,modes:value.modes},readOnly:false};},
+    lookupPolicy:async()=>({found:true,policy:{revision:2,stepLimit:30,modes:{...STEP}},readOnly:false})});
+  t.after(()=>f.session.dispose());await f.session.load();await flush();
+  assert.equal(await f.session.setGlobalPolicy({...FULL}),true);assert.equal((saves[0] as {acknowledgePaid?:boolean}).acknowledgePaid,true);assert.equal((saves[0] as {stepLimit:number}).stepLimit,30);assert.deepEqual(f.session.getState().project?.policy.modes,FULL);
+  lost=true;assert.equal(await f.session.setGlobalPolicy({...STEP}),true);assert.equal(saves.length,2,'the receipt answers a lost acknowledgement');assert.deepEqual(f.session.getState().project?.policy.modes,STEP);
+});
+test('the composer menu confirms before paid work becomes direct, and the current preset or global modes change nothing',()=>{
+  const DEFAULT={...DEFAULT_AGENT_TASK_POLICY.modes},custom={...FULL,paid:'confirm' as const},paidDirect={...STEP,paid:'direct' as const};
+  assert.deepEqual(agentTaskPolicyMenuStep(null,DEFAULT,'step'),{kind:'none'});
+  assert.deepEqual(agentTaskPolicyMenuStep(DEFAULT,DEFAULT,'default'),{kind:'none'});
+  assert.deepEqual(agentTaskPolicyMenuStep(DEFAULT,DEFAULT,'step'),{kind:'choose',modes:STEP});
+  assert.deepEqual(agentTaskPolicyMenuStep(DEFAULT,DEFAULT,'full'),{kind:'confirm',scope:'conversation'});
+  assert.deepEqual(agentTaskPolicyMenuStep(custom,DEFAULT,'full'),{kind:'confirm',scope:'conversation'});
+  assert.deepEqual(agentTaskPolicyMenuStep(paidDirect,DEFAULT,'full'),{kind:'choose',modes:FULL},'paid work already direct needs no new confirmation');
+  assert.deepEqual(agentTaskPolicyMenuStep(FULL,DEFAULT,'default'),{kind:'choose',modes:DEFAULT});
+  assert.deepEqual(agentTaskPolicyMenuStep(DEFAULT,DEFAULT,'global'),{kind:'none'},'the same modes are not saved again');
+  assert.deepEqual(agentTaskPolicyMenuStep(STEP,DEFAULT,'global'),{kind:'global',modes:STEP});
+  assert.deepEqual(agentTaskPolicyMenuStep(FULL,DEFAULT,'global'),{kind:'confirm',scope:'global'},'making direct paid work global is confirmed again');
+  assert.deepEqual(agentTaskPolicyMenuStep(FULL,{...FULL},'global'),{kind:'none'});
+});
+const askStepId='66666666-6666-4666-8666-666666666666';
+const askArguments:AgentTaskJson={question:'Which opening should Mio use?',options:[{label:'Wide street',description:'Establish the city first'},{label:'Close-up'},{label:'Rooftop'}],multiple:true,allowOther:true};
+const askStep=(status:AgentTaskStep['status']='awaiting_answer',result?:AgentTaskStep['result']):AgentTaskStep=>({id:askStepId,runId,position:2,kind:'tool',status,tier:'read_only',toolCall:{id:'call_ask',name:'mioon_ask',arguments:askArguments},createdAt:time,updatedAt:time,...(result!==undefined?{result}:{})});
+const waiting=(revision=3):AgentTaskSnapshot=>{const value=snapshot('awaiting_answer',revision);return {...value,run:{...value.run,conversationId:runId},steps:[askStep()]};};
+test('question helpers read only saved mioon_ask arguments and answers, and bound typed answers',()=>{
+  const question=taskQuestionOf(askStep());assert.ok(question);assert.equal(question.options.length,3);
+  assert.equal(taskQuestionOf({...askStep(),toolCall:{id:'x',name:'mioon_shot_update',arguments:askArguments}}),null);
+  assert.equal(taskQuestionOf({...askStep(),toolCall:{id:'x',name:'mioon_ask',arguments:{question:'Two\nlines',options:[{label:'A'},{label:'B'}]}}}),null,'an invalid saved question is not shown');
+  assert.equal(taskAnswerOf(askStep(),question),null,'a waiting question has no answer');
+  assert.deepEqual(taskAnswerOf(askStep('completed',{answer:{choices:[0,2]},selected:['Wide street','Rooftop']}),question),{labels:['Wide street','Rooftop']});
+  assert.deepEqual(taskAnswerOf(askStep('completed',{answer:{choices:[1],text:'  and a drone shot '}}),question),{labels:['Close-up'],text:'and a drone shot'});
+  assert.deepEqual(taskAnswerOf(askStep('completed',{answer:{choices:[],text:'Open on the harbour'}}),question),{labels:[],text:'Open on the harbour'});
+  assert.deepEqual(taskAnswerOf(askStep('completed',{answer:{choices:[7]},selected:['Forged label']}),question),null,'labels come from the saved options, not from the result text');
+  assert.equal(agentTaskAnswerTextValid('Line one\nline two'),true);assert.equal(agentTaskAnswerTextValid('   '),false);assert.equal(agentTaskAnswerTextValid('x'.repeat(2001)),false);
+  assert.equal(taskStepTitle({...askStep(),display:{operation:'ask',targets:[],targetCount:0,fields:[]}},'zh-Hans'),'提问','the server projects the ask step as operation "ask"');
+  assert.equal(agentTaskWaitingQuestion(waiting())?.id,askStepId);assert.equal(agentTaskWaitingQuestion({...waiting(),run:{...waiting().run,status:'stopped'}}),null);
+});
+test('an answer posts its exact choices under a persisted receipt and only for the question the run waits on',async t=>{
+  const f=fixture({list:async()=>({...project(),runs:[waiting().run]}),read:async()=>waiting(),conversation:async()=>({conversation:conversation(waiting().run),runs:[waiting().run],nextCursor:null}),
+    action:async(_,input)=>{f.actions.push(input);const done=snapshot('running',4);return {...done,run:{...done.run,conversationId:runId},steps:[askStep('completed',{answer:{choices:[0,2],text:'and a drone shot'}})]};}});
+  t.after(()=>f.session.dispose());await f.session.load();await flush();
+  assert.equal(await f.session.answer(randomStep(),[0]),false,'another step is never answered');assert.equal(f.actions.length,0);
+  assert.equal(await f.session.answer(askStepId,[]),false,'an empty answer is not sent');assert.equal(f.actions.length,0);
+  const answering=f.session.answer(askStepId,[0,2],'and a drone shot');assert.equal(f.receipts.get(projectId)?.action,'answer');
+  assert.equal(await answering,true);assert.equal(f.receipts.size,0);
+  assert.deepEqual(f.actions[0],{requestId:(f.actions[0] as {requestId:string}).requestId,runId,expectedRevision:3,action:'answer',stepId:askStepId,choices:[0,2],text:'and a drone shot'});
+  assert.equal(await f.session.answer(askStepId,[1]),false,'an answered question takes no second answer');assert.equal(f.actions.length,1);
+});
+test('a composer answer consumes only the draft it captured, and a reopened answer receipt is only looked up',async t=>{
+  const held=deferred<AgentTaskSnapshot>();
+  const f=fixture({list:async()=>({...project(),runs:[waiting().run]}),read:async()=>waiting(),conversation:async()=>({conversation:conversation(waiting().run),runs:[waiting().run],nextCursor:null}),action:async(_,input)=>{f.actions.push(input);return held.promise;}});
+  t.after(()=>f.session.dispose());await f.session.load();await flush();
+  f.session.edit('Open on the harbour');const answering=f.session.answer(askStepId,[],'Open on the harbour');
+  const done=snapshot('running',4);held.resolve({...done,run:{...done.run,conversationId:runId},steps:[askStep('completed',{answer:{choices:[],text:'Open on the harbour'}})]});
+  assert.equal(await answering,true);assert.equal(f.session.getState().draft,'','the captured draft is consumed');
+  assert.deepEqual((f.actions[0] as {choices:unknown;text:unknown}).choices,[]);
+  let lookups=0;const pending={requestId:crypto.randomUUID(),runId,action:'answer' as const,conversationId:runId};
+  const reopened=fixture({list:async()=>({...project(),runs:[waiting().run]}),read:async()=>waiting(),lookup:async()=>{lookups++;return {found:false};},action:async()=>{throw new Error('never resent');}},pending);
+  t.after(()=>reopened.session.dispose());await reopened.session.load();await reopened.session.reconcile();
+  assert.ok(lookups>=1);assert.equal(reopened.actions.length,0);assert.equal(reopened.receipts.get(projectId)?.action,'answer');
+});
+function randomStep(){return '77777777-7777-4777-8777-777777777777';}
+

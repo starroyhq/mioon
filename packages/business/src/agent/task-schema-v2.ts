@@ -50,8 +50,8 @@ export function installAgentTaskDefinitionsV2(db:DatabaseSync):void{
  const bytes=['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2'].map(table=>`(SELECT COALESCE(sum(length(CAST(data AS BLOB))),0) FROM ${table})`).join('+');
  for(const table of quotaTables)for(const event of ['INSERT','UPDATE'])db.exec(`CREATE TRIGGER agent_quota_${table}_${event.toLowerCase()} AFTER ${event} ON ${table} BEGIN SELECT CASE WHEN ${counts}>20000 OR ${bytes}>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END;`);
 }/* installAgentTaskDefinitionsV2 */
-export interface AgentTaskRowValidationOptions {allowConversations?:boolean;allowInteractions?:boolean;allowRequestReferences?:boolean;maxBytes?:number}
-export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false,allowInteractions=false,allowRequestReferences=false,maxBytes=64*1024*1024}:AgentTaskRowValidationOptions={}):void{
+export interface AgentTaskRowValidationOptions {allowConversations?:boolean;allowInteractions?:boolean;allowRequestReferences?:boolean;allowAnswers?:boolean;maxBytes?:number}
+export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false,allowInteractions=false,allowRequestReferences=false,allowAnswers=false,maxBytes=64*1024*1024}:AgentTaskRowValidationOptions={}):void{
  for(const table of ['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2'])if(db.prepare(`SELECT 1 FROM ${table} WHERE NOT json_valid(data) OR length(CAST(data AS BLOB))>2097152 LIMIT 1`).get())throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  const invalid=():never=>{throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});};
  if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>256*1024*1024)invalid();
@@ -60,6 +60,8 @@ export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=fals
  for(const [table,schema] of families)for(const row of db.prepare(`SELECT *,length(CAST(data AS BLOB)) AS bytes FROM ${table} LIMIT 20001`).iterate()){
   if(++records>20000||(bytes+=Number(row.bytes))>maxBytes||typeof row.data!=='string')invalid();
   const parsed=schema.safeParse(JSON.parse(String(row.data)));if(!parsed.success)invalid();const value=parsed.data as unknown as Record<string,unknown>;if(table==='agent_task_runs_v2'&&(!allowConversations&&Object.hasOwn(value,'conversationId')||!allowInteractions&&(Object.hasOwn(value,'notes')||Object.hasOwn(value,'skippedTargets'))))invalid();
+  // Questions waiting for an answer first appear in schema66.
+  if(!allowAnswers&&(table==='agent_task_runs_v2'||table==='agent_task_steps_v2')&&value.status==='awaiting_answer')invalid();
   // Public snapshots add display and undo eligibility at read time; widening
   // their response schema must never widen any fixed persisted profile.
   if((table==='agent_task_steps_v2'||table==='agent_task_changes_v2')&&Object.hasOwn(value,'display'))invalid();

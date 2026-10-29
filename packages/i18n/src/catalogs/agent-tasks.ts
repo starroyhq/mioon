@@ -65,6 +65,7 @@ export const agentTaskMessages = {
   "agent.task.status.running": {"zh-Hans": "运行中", "zh-Hant": "執行中", "en": "Running", "ja": "実行中"},
   "agent.task.status.paused": {"zh-Hans": "已暂停", "zh-Hant": "已暫停", "en": "Paused", "ja": "一時停止中"},
   "agent.task.status.awaiting_approval": {"zh-Hans": "等待确认", "zh-Hant": "等待確認", "en": "Awaiting confirmation", "ja": "確認待ち"},
+  "agent.task.status.awaiting_answer": {"zh-Hans": "等待回答", "zh-Hant": "等待回答", "en": "Awaiting your answer", "ja": "回答待ち"},
   "agent.task.status.completed": {"zh-Hans": "已完成", "zh-Hant": "已完成", "en": "Completed", "ja": "完了"},
   "agent.task.status.failed": {"zh-Hans": "失败", "zh-Hant": "失敗", "en": "Failed", "ja": "失敗"},
   "agent.task.status.stopped": {"zh-Hans": "已停止", "zh-Hant": "已停止", "en": "Stopped", "ja": "停止済み"},

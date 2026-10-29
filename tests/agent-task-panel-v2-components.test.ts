@@ -1,4 +1,4 @@
-import type {TaskPanelChange,TaskPanelSnapshot,TaskPanelState,TaskPanelOptions,ElementProps} from './helpers/strict-agent-ui-types.ts';
+import type {TaskPanelChange,TaskPanelSnapshot,TaskPanelState,TaskPanelOptions,TaskPanelStep,ElementProps} from './helpers/strict-agent-ui-types.ts';
 import type {Locale} from '../packages/i18n/src/types.ts';
 import type {Tree, Element, Hook, Module} from './helpers/strict-agent-ui-types.ts';
 import test from 'node:test';
@@ -9,7 +9,8 @@ import { createI18nTestContext, translate } from './helpers/i18n.ts';
 import { agentTaskErrorKey } from '../apps/web/src/agent-task-errors.ts';
 import * as presentation from '../apps/web/src/agent-task-presentation.ts';
 import { message } from '../packages/i18n/src/index.ts';
-import {agentTaskNewConversationBlock,agentTaskSessionBusy} from '../apps/web/src/agent-tasks-v2.ts';
+import {agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion} from '../apps/web/src/agent-tasks-v2.ts';
+import * as questions from '../apps/web/src/agent-task-questions.ts';
 import {AGENT_TASK_STATUSES} from '../packages/contracts/src/agent-tasks-v2.ts';
 const nodes=(value: Tree): Element[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
 const source=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',import.meta.url),'utf8');
@@ -23,7 +24,7 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   const module: Module={exports:{}};let options: TaskPanelOptions;
   const previous=globalThis.document;globalThis.document={visibilityState:'visible',addEventListener(){},removeEventListener(){}} as unknown as Document;
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
-    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: TaskPanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string)=>{calls.push(['refreshRound',id]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
+    if(id==='react')return react;if(id==='./agent-task-presentation.ts')return presentation;if(id.includes('packages/i18n/src/index.ts'))return{message};if(id.includes('workbench-confirm'))return{useConfirmation:()=>async()=>true};if(id.includes('workbench-controls'))return{WorkbenchButton:'button',WorkbenchDialogContent:'dialog-content'};if(id.includes('/dialog'))return{Dialog:'dialog'};if(id.includes('workbench-tooltip'))return{WorkbenchTooltip:'tooltip'};if(id.includes('workbench-popover'))return{WorkbenchPopover:'popover',WorkbenchPopoverContent:'popover-content',WorkbenchPopoverTrigger:'popover-trigger'};if(id==='./AgentRetainedEditing.tsx')return{__esModule:true,default:'retained'};if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(currentLocale)};if(id==='./agent-task-errors.ts')return{agentTaskErrorKey};if(id.includes('workspace-visibility'))return{useWorkspaceVisibility:()=>currentVisible};if(id==='./AgentConversationHistory.tsx')return{__esModule:true,default:'conversation-history'};if(id==='./agent-task-questions.ts')return questions;if(id==='./AgentTaskQuestion.tsx')return{AgentTaskQuestionCard:'question-card',AgentTaskAnswerRow:'answer-row'};if(id==='./agent-tasks-v2.ts')return{agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion,createAgentTaskReceiptStore:()=>({}),agentTaskPromptValid:()=>true,createAgentTaskSession:(value: TaskPanelOptions)=>{options=value;return{getState:()=>state,load(){loads++;value.onChange(state);},setVisible(){},dispose(){},cancelSelection(){},refreshRound:async (id: string)=>{calls.push(['refreshRound',id]);if(refreshResult)return await refreshResult;return state.rounds.find(item=>item.run.id===id)??null;},action:(...args: unknown[])=>calls.push(args),send:async()=>{calls.push(['send']);return true;},note:async()=>{calls.push(['note']);return true;},answer:async(...args: unknown[])=>{calls.push(['answer',...args]);return true;},authorizationReview:()=>({projectId,settingsRevision:1,authorizationRevision:1,destination:'https://example.invalid/v1/responses',model:'current-model',text:state.draft,uploads:state.uploads.map(item=>item.id),locale:currentLocale}),authorizeAndSend:async (value: unknown)=>{calls.push(['authorizeAndSend',value]);return true;},edit:(value: string)=>{state.draft=value;calls.push(['edit',value]);},removeUpload:(id: unknown)=>{state.uploads=state.uploads.filter(item=>item.id!==id);},history(){calls.push(['history']);},selectConversation:async(...args: unknown[])=>{calls.push(['selectConversation',...args]);return true;},newConversation:()=>{calls.push(['newConversation']);return true;}};}};
     if(id.includes('native-close-sources'))return{createAgentTaskCloseReporter:()=>({publish(){},release(){}})};if(id.includes('agent-settings.ts'))return{deriveAgentEndpoint:()=>'/synthetic'};if(id.includes('/button'))return{Button:'button'};if(id.includes('/textarea'))return{Textarea:'textarea'};if(id.includes('/input'))return{Input:'input'};if(id.includes('/badge'))return{Badge:'badge'};return{__esModule:true,default:'placeholder'};
   });
   const render=()=>{cursor=0;pending=[];tree=module.exports.default!({projectId:currentProjectId,onSettings(page: unknown){calls.push(page ? ['settings',page] : ['settings']);},onClose(){}});for(const index of pending){hooks[index].cleanup?.();hooks[index].cleanup=hooks[index].fn!();}return nodes(tree);};render();
@@ -376,3 +377,35 @@ test('undo preview for an earlier round keeps the latest round selected and subm
   h.render();h.find('agent-task-undo-all')!.props.onClick({currentTarget:{focus(){}}});await new Promise(done=>setImmediate(done));h.render();assert.equal(h.state.snapshot!.run.id,'run');assert.equal(h.find('agent-task-undo-confirm')!.props.disabled,false);h.find('agent-task-undo-confirm')!.props.onClick();assert.deepEqual(h.calls,[['refreshRound','earlier-round'],['undo_all',{undoChangeIds:['old-change']},'earlier-round']]);
  }finally{h.unmount();}
 });
+const question={question:'Which opening should Mio use?',options:[{label:'Wide street'},{label:'Close-up'}]};
+const askStep=(status:string,result?:unknown):TaskPanelStep=>({id:stepId,kind:'tool',status,position:2,tier:'read_only',toolCall:{name:'mioon_ask',arguments:question},...(result!==undefined?{result}:{})});
+test('a waiting question shows its card, makes the composer its answer box and moves stop to the status row',async()=>{
+  const h=harness({status:'awaiting_answer'});try{
+    h.state.snapshot!.steps=[askStep('awaiting_answer')];h.state.draft='Open on the harbour';
+    const tree=h.render(),card=tree.find(node=>node.type==='question-card');assert.ok(card);assert.equal(card.props.state,'waiting');assert.equal(card.props.disabled,false);
+    assert.equal(h.find('agent-task-draft')!.props.placeholder,translate('zh-Hans','agent.panel.question.answerDraft'));
+    assert.equal(h.find('agent-task-attach')!.props.disabled,true,'an answer carries no attachments');
+    assert.ok(h.find('agent-task-send'));assert.equal(h.find('agent-task-stop'),undefined,'the composer keeps sending; stop moves to the status row');
+    h.find('agent-task-stop-question')!.props.onClick();assert.deepEqual(h.calls.at(-1),['stop',undefined,'run']);
+    (card.props.onAnswer as (choices:number[],text?:string)=>unknown)([1]);assert.deepEqual(h.calls.at(-1),['answer',stepId,[1],undefined,'run']);
+    h.render().find(node=>node.type==='form')!.props.onSubmit({preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));
+    assert.deepEqual(h.calls.at(-1),['answer',stepId,[],'Open on the harbour','run'],'typed text answers the waiting question');
+    assert.equal(h.calls.some(call=>call[0]==='send'||call[0]==='note'),false);
+  }finally{h.unmount();}
+});
+test('a stopped question stays in place, unanswered and read-only, and the composer returns to normal',()=>{
+  const h=harness({status:'stopped'});try{
+    h.state.snapshot!.steps=[askStep('awaiting_answer')];const card=h.render().find(node=>node.type==='question-card');assert.ok(card);assert.equal(card.props.state,'stopped');
+    assert.equal(h.find('agent-task-stop-question'),undefined);assert.notEqual(h.find('agent-task-draft')!.props.placeholder,translate('zh-Hans','agent.panel.question.answerDraft'));
+  }finally{h.unmount();}
+});
+test('an answered question collapses before the reply that followed it, and a later paid step still needs its approval',()=>{
+  const h=harness({status:'awaiting_approval'});try{
+    h.state.snapshot!.steps=[askStep('completed',{answer:{choices:[1]},selected:['Close-up']}),{id:'model-2',kind:'model',status:'completed',position:3,text:'Planning the close-up opening'},{id:'paid',kind:'tool',status:'awaiting_approval',position:4,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}];
+    const tree=h.render(),row=tree.findIndex(node=>node.type==='answer-row'),reply=tree.findIndex(node=>node.props?.['data-testid']==='agent-task-reply');
+    assert.ok(row>=0&&reply>row,'the answer precedes the reply that followed it');assert.equal(tree.some(node=>node.type==='question-card'),false);
+    assert.ok(h.find('agent-task-answer-not-approval'));assert.ok(h.find('agent-task-approval-paid'));
+    assert.ok(renderedText(tree.find(node=>node.props?.className==='mio-steps')).includes(translate('zh-Hans','agent.panel.question.answered')));
+  }finally{h.unmount();}
+});
+

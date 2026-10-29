@@ -6,6 +6,7 @@ import {taskToolResultStub,taskToolResultView} from './task-result-view-v2.ts';
 import type {TaskModelContextFragment,TaskModelReplayInput} from './task-context-v2.ts';
 import {taskBaseContextParts as baseParts} from './task-context-base-v2.ts';
 import {taskStaleMessage,taskStaleTargets} from './task-context-observations-v2.ts';
+import {AGENT_TASK_ASK_TOOL} from './task-tool-groups-v2.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const bytes=(value:unknown):number=>Buffer.byteLength(JSON.stringify(value));
@@ -93,10 +94,17 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
   const constraintView=(boundary?:string):AgentTaskJson=>{
     const position=boundary?byId.get(boundary)?.position:undefined,known=steps.filter(step=>position===undefined||step.position<position);
     const knownIds=new Set(known.map(step=>step.id));
+    // The user's answers are their own words: kept exactly, like notes. Runs
+    // without questions keep their earlier record bytes.
+    const answers=known.filter(step=>step.kind==='tool'&&step.toolCall?.name===AGENT_TASK_ASK_TOOL&&step.status==='completed'&&object(step.result)&&object(step.result.answer)).map(step=>{
+      const result=step.result as Record<string,AgentTaskJson>,question=object(step.toolCall?.arguments)?step.toolCall.arguments.question:null;
+      return {stepId:step.id,question:typeof question==='string'?question:null,selected:Array.isArray(result.selected)?result.selected:[],...(typeof result.text==='string'?{text:result.text}:{})};
+    });
     return {
       skippedTargets:(input.skippedTargets??[]).filter(item=>position===undefined||knownIds.has(item.stepId)).map(item=>({kind:item.target.kind,id:item.target.id,revision:item.target.revision,stepId:item.stepId})),
       deniedConfirmations:known.filter(step=>step.error?.code==='USER_REJECTED'||object(step.data)&&step.data.backgroundDenied===true).map(projectStep),
       failedOrUnknown:known.filter(step=>['failed','unknown','denied','rejected'].includes(step.status)&&step.error?.code!=='USER_REJECTED').map(projectStep),
+      ...(answers.length?{answers}:{}),
     };
   };
   const compact=(boundary?:string):void=>{

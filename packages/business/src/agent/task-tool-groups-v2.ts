@@ -2,6 +2,9 @@ import type {AgentTaskLocale,AgentTaskStep} from '@mioon/contracts/agent-tasks-v
 
 export const AGENT_TASK_TOOLS_LOAD_NAME='mioon_tools_load';
 export const AGENT_TASK_TOOLS_LOAD_OPERATION='tools.load';
+/** The host tool Mio asks with (C3); its step waits as `awaiting_answer`. */
+export const AGENT_TASK_ASK_TOOL='mioon_ask';
+export const AGENT_TASK_ASK_OPERATION='mio.ask';
 export const AGENT_TASK_TOOL_GROUP_IDS=Object.freeze(['core','canvas','subjects','assets','editing','subtitles','audio','colour','exports','video','images','scenes'] as const);
 export type AgentTaskToolGroupId=typeof AGENT_TASK_TOOL_GROUP_IDS[number];
 export type AgentTaskLoadableToolGroupId=Exclude<AgentTaskToolGroupId,'core'>;
@@ -16,7 +19,7 @@ export const AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS:Readonly<Record<AgentTaskLocale,
 /** Explicit alongside the tool admission tiers: neither RPC discovery nor a
  * name prefix may silently grant a newly added tool to a group. */
 export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
-  core:['project.inspect','asset.list','asset.inspect','shot.inspect','timeline.inspect','timeline.format.get','version.list','job.get','export.get','node.inspect','edge.inspect','task.wait','tools.load'],
+  core:['project.inspect','asset.list','asset.inspect','shot.inspect','timeline.inspect','timeline.format.get','version.list','job.get','export.get','node.inspect','edge.inspect','task.wait','tools.load','mio.ask'],
   canvas:['shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select','project.rename'],
   subjects:['subject.list','subject.version.list','subject.binding.list','subject.create','subject.version.add','subject.binding.set'],
   assets:['asset.range.get','asset.range.set','asset.disposition.list','asset.disposition.set','asset.annotation.list','asset.annotation.set','asset.waveform.get','asset.waveform.request','asset.importSelected'],
@@ -33,6 +36,7 @@ export const AGENT_TASK_TOOL_GROUPS=Object.freeze({
 function toolName(operation:string):string{
   if(operation==='asset.importSelected')return 'mioon_asset_import_selected';
   if(operation==='lut.importSelected')return 'mioon_lut_import_selected';
+  if(operation===AGENT_TASK_ASK_OPERATION)return AGENT_TASK_ASK_TOOL;
   return `mioon_${operation.replaceAll('.','_')}`;
 }
 const groupedTools=AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>AGENT_TASK_TOOL_GROUPS[group].map(operation=>({group,operation,name:toolName(operation)})));

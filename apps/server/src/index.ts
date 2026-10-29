@@ -453,15 +453,16 @@ async function composeServer({
     chatRuntime = createChatRuntime({store: ordinaryStore, agentSettings: chatSettings, authorizations:agentAuthorizations, editService, inspection: ordinary.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => listeningPort()});
     chatHttp = createChatHttp({runtime: chatRuntime});
     taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary});
-    taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
+    taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
     agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:()=>readAgentTaskStorage(store.db)});
     }
     // Restored task histories exist from source schema52 on.
-    if(isRestoredWorkspaceSchemaSince(52,restored?.schemaVersion)&&!candidate){
+    if(restored&&isRestoredWorkspaceSchemaSince(52,restored.schemaVersion)&&!candidate){
       if(!agentSettings)agentSettings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{throw workspaceRestoreError();}}});
       taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:agentSettings as unknown as AgentSettingsService,
-        authorizations:{assertAuthorized(){throw workspaceRestoreError();},snapshot(){return {revision:0,scopes:[]};}},selfPort:()=>listeningPort(),readOnly:true});
+        authorizations:{assertAuthorized(){throw workspaceRestoreError();},snapshot(){return {revision:0,scopes:[]};}},selfPort:()=>listeningPort(),readOnly:true,
+        checksPreflight:(input,{signal}={})=>services.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal,expectedWorkspaceOrigin:restored.workspaceOrigin})});
       taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2});
     }
     const origins = new Set<string>(), hosts = new Set<string>();

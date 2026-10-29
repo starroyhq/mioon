@@ -10,10 +10,10 @@ import type {WorkspaceStore} from '../db.ts';
 import {registerWorkspaceTransactionObserver,registerWorkspaceTransactionFence} from '../db.ts';
 import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
-import {agentTaskTargetSchema} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
-import {AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,parseAgentTaskToolLoadInput} from './task-tool-groups-v2.ts';
-import {agentTaskParameterFeedback} from './task-tool-errors-v2.ts';
+import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,parseAgentTaskToolLoadInput} from './task-tool-groups-v2.ts';
+import {agentTaskParameterFeedback,agentTaskQuestionFeedback} from './task-tool-errors-v2.ts';
 import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
@@ -62,6 +62,8 @@ const forbiddenOperations=[
  // Camera previs is edited by the user in its editor; Mio sees previs nodes
  // through the canvas tools but not their scenes or thumbnails yet.
  'previs.create','previs.scene.set','previs.thumbnail.set','previs.thumbnail.get',
+ // Crossfades are user-driven for now; Mio still reads the resulting curves.
+ 'timeline.clip.crossfade',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),
@@ -95,6 +97,7 @@ function taskToolOperation(operation:string):string{
  if(operation==='mioon_node_inspect')return 'node.inspect';
  if(operation==='mioon_edge_inspect')return 'edge.inspect';
  if(operation==='mioon_task_wait')return 'task.wait';
+ if(operation===AGENT_TASK_ASK_TOOL)return AGENT_TASK_ASK_OPERATION;
  if(operation===AGENT_TASK_TOOLS_LOAD_NAME)return AGENT_TASK_TOOLS_LOAD_OPERATION;
  if(operation==='mioon_asset_import_selected')return 'asset.importSelected';
  if(operation==='mioon_lut_import_selected')return 'lut.importSelected';
@@ -355,7 +358,8 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const record=store.get(table,id);if(!object(record))return fail('AGENT_TASK_INVALID_TARGET','工具目标无效');return record;
  };
  async function parameterFeedback({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}){
-  operation=taskToolOperation(operation);if(operation!=='generation.submit'||!object(input))return null;
+  operation=taskToolOperation(operation);if(operation===AGENT_TASK_ASK_OPERATION)return agentTaskQuestionFeedback(input);
+  if(operation!=='generation.submit'||!object(input))return null;
   rejectHostFields(input);
   for(const target of agentTaskExplicitTargets(operation,input,projectId))beforeTargetRead?.(target);
   owned('shots',input.shotId,projectId);
@@ -372,12 +376,18 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  }
  function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
-  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_TOOLS_LOAD_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
+  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
   if(operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
    const groups=parseAgentTaskToolLoadInput(input);if(!groups)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
    if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
    return {projectId,operation,input:{groups},risk:'read_only',targets:[],referencedTargets:[],before:{}};
+  }
+  // A question only waits for the user's answer: it reads and changes nothing.
+  if(operation===AGENT_TASK_ASK_OPERATION){
+   const parsed=agentTaskQuestionSchema.safeParse(input);if(!parsed.success)fail('VALIDATION_ERROR',`提问参数无效：问题1-${AGENT_TASK_QUESTION_LIMITS.question}字，${AGENT_TASK_QUESTION_LIMITS.minOptions}-${AGENT_TASK_QUESTION_LIMITS.options}个选项，选项名1-${AGENT_TASK_QUESTION_LIMITS.label}字且互不相同，说明不超过${AGENT_TASK_QUESTION_LIMITS.description}字，都不能换行`);
+   if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
+   return {projectId,operation,input:parsed.data as unknown as Value,risk:'read_only',targets:[],referencedTargets:[],before:{}};
   }
   let hostInput:Value={...input};
   const schema=Object.hasOwn(schemas,operation)?schemas[operation as OperationName]:null;
@@ -439,6 +449,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   return {projectId,operation,input:hostInput,risk,targets:risk==='read_only'?[]:targets,referencedTargets,before};
  }
  async function execute(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
+  if(prepared.operation===AGENT_TASK_ASK_OPERATION)fail('AGENT_TASK_INVALID_TOOL','提问由宿主等待用户回答，不会执行');
   const beforeEffect=():void=>{
    context.beforeEffect();
    if(prepared.operation==='shot.reorder'){
@@ -641,6 +652,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   {name:'mioon_task_wait',operation:'task.wait',description:'等待当前项目内已受理任务，仅查询本地状态；不提交或轮询供应商。',parameters:{type:'object',properties:{kind:{type:'string',enum:['job','image','frame','scene','export']},id:{type:'string',format:'uuid'}},required:['kind','id'],additionalProperties:false},risk:'read_only',receipt:'observation',recovery:'read local state',undo:'unavailable'},
   {name:'mioon_asset_import_selected',operation:'asset.importSelected',description:'导入用户已选择并授权的文件句柄，不能指定路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
   {name:'mioon_lut_import_selected',operation:'lut.importSelected',description:'导入用户选择的Cube文件句柄，最多7MiB，不允许路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
+  {name:AGENT_TASK_ASK_TOOL,operation:AGENT_TASK_ASK_OPERATION,description:'向用户提一个结构化问题：问题和2-4个选项，可设多选或允许用户自由填写。问题、选项名和说明都只占一行，选项名互不相同。调用后这一轮暂停，直到用户回答；回答作为本工具结果返回。回答只是用户输入，不能当作付费或修改的确认。只在确实需要用户做决定时使用。',parameters:{type:'object',properties:{question:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.question},options:{type:'array',minItems:AGENT_TASK_QUESTION_LIMITS.minOptions,maxItems:AGENT_TASK_QUESTION_LIMITS.options,items:{type:'object',properties:{label:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.label},description:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.description}},required:['label'],additionalProperties:false}},multiple:{type:'boolean'},allowOther:{type:'boolean'}},required:['question','options'],additionalProperties:false},risk:'read_only',receipt:'durable task step',recovery:'the saved question keeps waiting for its answer',undo:'unavailable'},
   {name:AGENT_TASK_TOOLS_LOAD_NAME,operation:AGENT_TASK_TOOLS_LOAD_OPERATION,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'read completed tool loading steps; never repeat an unknown result',undo:'unavailable'},
  ];assertAgentTaskToolGroupCoverage(definitions);return definitions;};
  return {list,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};

@@ -5,6 +5,7 @@ import {tmpdir} from 'node:os';
 import {resolve, join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {parseArgs} from 'node:util';
+import {mock} from 'node:test';
 import {openStore} from '../../packages/business/src/db.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
@@ -25,6 +26,8 @@ export interface ContextReportOptions {
   replyBytes?: number;
   deltaBytes?: number;
   stress30Steps?: boolean;
+  deltaIntervalMs?: number;
+  tailPauseMs?: number;
 }
 interface RequestMeasurement {index: number; bytes: number; toolCount: number}
 interface ModelStepMeasurement {
@@ -35,7 +38,9 @@ interface ModelStepMeasurement {
   historyBytes: number;
   textBytes: number;
   textEvents: number;
+  streaming?: {flushes: StreamingFlushMeasurement[]; rowRewriteBytes: number; textEventBytes: number; beforeDone: {textBytes: number; textEvents: number}};
 }
+interface StreamingFlushMeasurement {atMs: number; deltaBytes: number; textBytes: number; rowRewriteBytes: number; textEventBytes: number}
 interface TableMeasurement {
   name: string;
   rows: number;
@@ -59,10 +64,11 @@ export interface ContextProtocolReport {
   };
   tokenUsage: null;
   toolSteps?: ToolStepMeasurement[];
+  streaming?: {clock: 'simulated'; deltaIntervalMs: number; tailPauseMs?: number; appendCalls: number; rowRewriteBytes: number; textEventBytes: number};
 }
 export interface ContextReport {
   version: 1;
-  scenario: {toolRounds: number; replyBytes: number; deltaBytes: number; stepLimit: number; stress30Steps?: true; toolResultBytes?: number; firstRoundToolCalls?: number};
+  scenario: {toolRounds: number; replyBytes: number; deltaBytes: number; stepLimit: number; stress30Steps?: true; toolResultBytes?: number; firstRoundToolCalls?: number; deltaIntervalMs?: number; tailPauseMs?: number};
   modelLimits: typeof TASK_MODEL_LIMITS;
   measurement: {storage: string; capacity: string; streaming: string; tokens: string};
   protocols: ContextProtocolReport[];
@@ -77,11 +83,14 @@ function positiveInteger(value: number, label: string, maximum: number): number 
   return value;
 }
 export function contextReportScenario(options: ContextReportOptions = {}): ContextReport['scenario'] {
+  if (options.deltaIntervalMs !== undefined && (!Number.isSafeInteger(options.deltaIntervalMs) || options.deltaIntervalMs < 0 || options.deltaIntervalMs > 60_000)) throw new Error('deltaIntervalMs must be an integer from 0 to 60000');
+  if (options.tailPauseMs !== undefined && (options.deltaIntervalMs === undefined || !Number.isSafeInteger(options.tailPauseMs) || options.tailPauseMs < 0 || options.tailPauseMs > 60_000)) throw new Error('tailPauseMs requires deltaIntervalMs and must be an integer from 0 to 60000');
+  const streaming = options.deltaIntervalMs === undefined ? {} : {deltaIntervalMs: options.deltaIntervalMs, ...(options.tailPauseMs === undefined ? {} : {tailPauseMs: options.tailPauseMs})};
   if (options.stress30Steps) {
     if (options.toolRounds !== undefined || options.replyBytes !== undefined || options.deltaBytes !== undefined) throw new Error('stress30Steps has a fixed workload; do not combine it with toolRounds, replyBytes or deltaBytes');
-    return {toolRounds: 14, replyBytes: 30 * 1024, deltaBytes: 3 * 1024, stepLimit: 30, stress30Steps: true, toolResultBytes: 20 * 1024, firstRoundToolCalls: 2};
+    return {toolRounds: 14, replyBytes: 30 * 1024, deltaBytes: 3 * 1024, stepLimit: 30, stress30Steps: true, toolResultBytes: 20 * 1024, firstRoundToolCalls: 2, ...streaming};
   }
-  return {toolRounds: positiveInteger(options.toolRounds ?? 14, 'toolRounds', 14), replyBytes: positiveInteger(options.replyBytes ?? 30 * 1024, 'replyBytes', TASK_MODEL_LIMITS.outputBytes), deltaBytes: positiveInteger(options.deltaBytes ?? 3 * 1024, 'deltaBytes', TASK_MODEL_LIMITS.outputBytes), stepLimit: 30};
+  return {toolRounds: positiveInteger(options.toolRounds ?? 14, 'toolRounds', 14), replyBytes: positiveInteger(options.replyBytes ?? 30 * 1024, 'replyBytes', TASK_MODEL_LIMITS.outputBytes), deltaBytes: positiveInteger(options.deltaBytes ?? 3 * 1024, 'deltaBytes', TASK_MODEL_LIMITS.outputBytes), stepLimit: 30, ...streaming};
 }
 function modelOutput(protocol: AgentProtocol, text: string, calls: AgentTaskToolCall[], index: number): TaskModelOutput {
   let providerOutput: AgentTaskJson;
@@ -104,6 +113,11 @@ function tableGrowth(before: AgentTaskStorageSnapshot, after: AgentTaskStorageSn
   });
 }
 const equivalentRuns = (remaining: number, growth: number): number | null => growth > 0 ? Math.floor(remaining / growth) : null;
+function advanceStreamingClock(milliseconds: number): void {
+  // A single MockTimers.tick(400) invokes a 250 ms callback at Date.now()=400.
+  // Millisecond ticks let scheduled flushes run at their actual fake deadline.
+  for (let elapsed = 0; elapsed < milliseconds; elapsed++) mock.timers.tick(1);
+}
 
 /** Uses a fresh disposable workspace and the real execution/journal/tool paths.
  * The only replacement is the model gateway, which never opens a socket. */
@@ -139,18 +153,45 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
       },
     } : baseTools;
     const requests: RequestMeasurement[] = [];
+    const flushes = new Map<string, StreamingFlushMeasurement[]>();
+    const requestStarts = new Map<number, number>();
+    const beforeDone = new Map<number, {textBytes: number; textEvents: number}>();
     const gateway: TaskGateway = async function* (request) {
       request.beforeSubmit?.();
       const body = record(JSON.parse(request.body));
       const index = requests.length + 1;
+      requestStarts.set(index, Date.now());
       requests.push({index, bytes: Buffer.byteLength(request.body), toolCount: Array.isArray(body.tools) ? body.tools.length : 0});
       const text = 'x'.repeat(scenario.replyBytes);
-      for (let offset = 0; offset < text.length; offset += scenario.deltaBytes) yield {type: 'delta', text: text.slice(offset, offset + scenario.deltaBytes)};
+      for (let offset = 0; offset < text.length; offset += scenario.deltaBytes) {
+        if (scenario.deltaIntervalMs !== undefined) advanceStreamingClock(scenario.deltaIntervalMs);
+        yield {type: 'delta', text: text.slice(offset, offset + scenario.deltaBytes)};
+      }
+      if (scenario.deltaIntervalMs !== undefined) {
+        advanceStreamingClock(scenario.tailPauseMs ?? 0);
+        const model = store.db.prepare("SELECT id,data FROM agent_task_steps_v2 WHERE json_extract(data,'$.kind')='model' ORDER BY position DESC LIMIT 1").get()!;
+        const saved = record(JSON.parse(String(model.data)));
+        beforeDone.set(index, {textBytes: typeof saved.text === 'string' ? Buffer.byteLength(saved.text) : 0, textEvents: Number(store.db.prepare("SELECT count(*) AS n FROM agent_task_events_v2 WHERE type='text' AND json_extract(data,'$.data.stepId')=?").get(String(model.id))!.n)});
+      }
       const callCount = index <= scenario.toolRounds ? scenario.stress30Steps && index === 1 ? scenario.firstRoundToolCalls! : 1 : 0;
       const calls: AgentTaskToolCall[] = Array.from({length: callCount}, (_value, callIndex) => ({id: `synthetic_read_${String(index).padStart(3, '0')}${scenario.stress30Steps ? `_${callIndex + 1}` : ''}`, name: 'mioon_project_inspect', arguments: {}}));
       yield {type: 'done', output: modelOutput(protocol, text, calls, index)};
     };
     runtime = createAgentTaskRuntime({store, agentSettings: settings, authorizations, tools, gateway, selfPort: () => 4318});
+    if (scenario.deltaIntervalMs !== undefined) {
+      const appendText = runtime.journal.appendText;
+      runtime.journal.appendText = (runId, stepId, text) => {
+        appendText(runId, stepId, text);
+        // Read the actual row immediately after the real append. This counts
+        // the complete data column rewritten by appendText, not only its delta.
+        const row = store.db.prepare('SELECT data,length(CAST(data AS BLOB)) AS bytes FROM agent_task_steps_v2 WHERE id=?').get(stepId)!;
+        const saved = record(JSON.parse(String(row.data)));
+        const event = store.db.prepare("SELECT length(CAST(data AS BLOB)) AS bytes FROM agent_task_events_v2 WHERE runId=? AND type='text' ORDER BY sequence DESC LIMIT 1").get(runId)!;
+        const values = flushes.get(stepId) ?? [];
+        values.push({atMs: Date.now() - requestStarts.get(requests.length)!, deltaBytes: Buffer.byteLength(text), textBytes: typeof saved.text === 'string' ? Buffer.byteLength(saved.text) : 0, rowRewriteBytes: Number(row.bytes), textEventBytes: Number(event.bytes)});
+        flushes.set(stepId, values);
+      };
+    }
     const before = readAgentTaskStorage(store.db);
     const sent = await runtime.send(projectId, {requestId: randomUUID(), expectedSettingsRevision: (await settings.get()).revision, locale: 'en', text: 'Inspect the current project repeatedly, then report completion. Synthetic offline context measurement.'});
     await runtime.drain();
@@ -162,7 +203,8 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
       const request = record(saved.request);
       assert.equal(typeof request.body, 'string');
       const textEvents = Number(store.db.prepare("SELECT count(*) AS n FROM agent_task_events_v2 WHERE runId=? AND type='text' AND json_extract(data,'$.data.stepId')=?").get(sent.run.id, String(row.id))!.n);
-      return {index: index + 1, status: String(row.status), storedDataBytes: Number(row.bytes), requestBytes: Buffer.byteLength(request.body as string), historyBytes: Buffer.byteLength(JSON.stringify(request.history)), textBytes: typeof saved.text === 'string' ? Buffer.byteLength(saved.text) : 0, textEvents};
+      const appended = flushes.get(String(row.id)) ?? [];
+      return {index: index + 1, status: String(row.status), storedDataBytes: Number(row.bytes), requestBytes: Buffer.byteLength(request.body as string), historyBytes: Buffer.byteLength(JSON.stringify(request.history)), textBytes: typeof saved.text === 'string' ? Buffer.byteLength(saved.text) : 0, textEvents, ...(scenario.deltaIntervalMs === undefined ? {} : {streaming: {flushes: appended, rowRewriteBytes: appended.reduce((sum, value) => sum + value.rowRewriteBytes, 0), textEventBytes: appended.reduce((sum, value) => sum + value.textEventBytes, 0), beforeDone: beforeDone.get(index + 1)!}})};
     });
     const quotaBytes = after.usage.bytes - before.usage.bytes;
     const quotaRows = after.usage.rows - before.usage.rows;
@@ -181,6 +223,7 @@ async function measureProtocol(protocol: AgentProtocol, scenario: ContextReport[
       capacity: {limits: after.limits, remaining: after.remaining, additionalEquivalentRunsByBytes: byBytes, additionalEquivalentRunsByRows: byRows, additionalEquivalentRuns: estimates.length ? Math.min(...estimates) : null},
       tokenUsage: null,
       ...(toolSteps ? {toolSteps} : {}),
+      ...(scenario.deltaIntervalMs === undefined ? {} : {streaming: {clock: 'simulated' as const, deltaIntervalMs: scenario.deltaIntervalMs, ...(scenario.tailPauseMs === undefined ? {} : {tailPauseMs: scenario.tailPauseMs}), appendCalls: modelSteps.reduce((sum, step) => sum + step.streaming!.flushes.length, 0), rowRewriteBytes: modelSteps.reduce((sum, step) => sum + step.streaming!.rowRewriteBytes, 0), textEventBytes: modelSteps.reduce((sum, step) => sum + step.streaming!.textEventBytes, 0)}}),
     };
   } finally {
     runtime?.close();
@@ -196,13 +239,18 @@ export async function collectAgentTaskContextReport(options: ContextReportOption
   const selected = options.protocols ?? protocols;
   if (!selected.length || selected.some(protocol => !protocols.includes(protocol))) throw new Error('Select at least one supported protocol');
   const reports: ContextProtocolReport[] = [];
-  for (const protocol of selected) reports.push(await measureProtocol(protocol, scenario));
+  if (scenario.deltaIntervalMs !== undefined) mock.timers.enable({apis: ['Date', 'setTimeout'], now: Date.UTC(2026, 0, 1)});
+  try {
+    for (const protocol of selected) reports.push(await measureProtocol(protocol, scenario));
+  } finally {
+    if (scenario.deltaIntervalMs !== undefined) mock.timers.reset();
+  }
   return {
     version: 1, scenario, modelLimits: TASK_MODEL_LIMITS,
     measurement: {
       storage: 'Retained UTF-8 bytes in SQLite data columns, using the production quota inventory. Excludes SQLite page/WAL overhead and cumulative rewrites of the same row.',
       capacity: 'Additional equivalent runs estimated independently from remaining byte and row quotas; the lower bound wins. This is not a guarantee for different workloads.',
-      streaming: 'Synthetic deltas are emitted without sleeps. Default 3 KiB chunks exceed the current 2 KiB flush threshold. Later time-based flushes may depend on host speed.',
+      streaming: scenario.deltaIntervalMs === undefined ? 'Synthetic deltas are emitted without sleeps or a controlled clock; flushes follow the current runtime thresholds and host speed.' : 'Date and setTimeout are simulated at a fixed epoch; the clock advances in 1 ms ticks by deltaIntervalMs before each delta and by optional tailPauseMs before done, without real waiting, so deadline callbacks run at their actual fake time. beforeDone records persisted text and text-event counts before completion. Rewrite bytes sum the actual complete model-step data column after each successful appendText; text-event bytes count the inserted event data. Excludes other step updates, SQLite pages, indexes and WAL overhead. Retained quota bytes remain a separate measurement.',
       tokens: 'No token usage is fabricated: the synthetic gateway has no tokenizer or provider usage, and current model steps do not retain usage.',
     },
     protocols: reports,
@@ -210,9 +258,9 @@ export async function collectAgentTaskContextReport(options: ContextReportOption
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const {values} = parseArgs({options: {protocol: {type: 'string', default: 'all'}, 'tool-rounds': {type: 'string'}, 'reply-bytes': {type: 'string'}, 'delta-bytes': {type: 'string'}, 'stress-30-steps': {type: 'boolean', default: false}, output: {type: 'string'}}});
+  const {values} = parseArgs({options: {protocol: {type: 'string', default: 'all'}, 'tool-rounds': {type: 'string'}, 'reply-bytes': {type: 'string'}, 'delta-bytes': {type: 'string'}, 'delta-interval-ms': {type: 'string'}, 'tail-pause-ms': {type: 'string'}, 'stress-30-steps': {type: 'boolean', default: false}, output: {type: 'string'}}});
   const selected = values.protocol === 'all' ? protocols : protocols.filter(protocol => protocol === values.protocol);
-  const report = await collectAgentTaskContextReport({protocols: selected, ...(values['tool-rounds'] ? {toolRounds: Number(values['tool-rounds'])} : {}), ...(values['reply-bytes'] ? {replyBytes: Number(values['reply-bytes'])} : {}), ...(values['delta-bytes'] ? {deltaBytes: Number(values['delta-bytes'])} : {}), ...(values['stress-30-steps'] ? {stress30Steps: true} : {})});
+  const report = await collectAgentTaskContextReport({protocols: selected, ...(values['tool-rounds'] ? {toolRounds: Number(values['tool-rounds'])} : {}), ...(values['reply-bytes'] ? {replyBytes: Number(values['reply-bytes'])} : {}), ...(values['delta-bytes'] ? {deltaBytes: Number(values['delta-bytes'])} : {}), ...(values['delta-interval-ms'] !== undefined ? {deltaIntervalMs: Number(values['delta-interval-ms'])} : {}), ...(values['tail-pause-ms'] !== undefined ? {tailPauseMs: Number(values['tail-pause-ms'])} : {}), ...(values['stress-30-steps'] ? {stress30Steps: true} : {})});
   const json = JSON.stringify(report, null, 2) + '\n';
   if (values.output) writeFileSync(resolve(values.output), json);
   else process.stdout.write(json);

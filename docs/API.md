@@ -855,6 +855,39 @@ Exact replay returns the original acknowledgement. It is a local reversible Mio
 tool, outside the durable edit-task ledger and unavailable in restored
 workspaces.
 
+### Crossfade (2026-10-28)
+
+`timeline.clip.crossfade` takes the common
+`{projectId,expectedRevision,requestId}` plus `outgoingClipId` and
+`incomingClipId`, and returns `{operation,requestId,timeline,crossfade}` with
+`crossfade` = `{outgoingClipId,incomingClipId,startFrame,durationFrames}`.
+- The two clips are on different tracks and satisfy
+  `out.start <= in.start < out.end <= in.end`: the incoming clip starts within the
+  outgoing one (possibly on the same frame) and ends no earlier than it. The
+  overlap runs from the incoming clip's `startFrame` to the outgoing clip's end.
+  Same-track clips cannot overlap, so a same-track pair never qualifies.
+- Both clips must have sound: images and sources without audio fail with
+  `CROSSFADE_AUDIO_UNSUPPORTED`.
+- The edit writes one linear volume envelope on each clip
+  (`mioon-clip-linear-attenuation-v1`): the outgoing clip goes from 1 to 0 over
+  the overlap and the incoming clip from 0 to 1. The two multipliers sum to 1 at
+  every sample; this is a linear, not an equal-power, crossfade.
+- The first version never merges curves: a clip that already has a
+  `volumeEnvelope` fails with `CROSSFADE_ENVELOPE_EXISTS`; clear it first. Scalar
+  `gain` and the fade fields are kept and still multiply the new curves, so a
+  fade-out on the outgoing clip deepens its fade.
+- Both clips change in one revision with one history entry, so a single undo
+  restores both. Other geometry fails with `CROSSFADE_GEOMETRY`, the same clip
+  twice with `CROSSFADE_SAME_CLIP`.
+- These codes, `CLIP_NOT_FOUND`, revision conflicts and the revision limit carry
+  not-applied proofs binding `operation`, `projectId` and `requestId`. The
+  volume-envelope workspace and size rejections keep their own proofs.
+
+Exact replay returns the original acknowledgement. It is outside the durable
+edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
+not a Mio tool in this version: Mio can read the resulting curves but cannot
+create a crossfade.
+
 ## V4 discovery and capability validation
 
 `pnpm exec mioon schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
@@ -1384,7 +1417,8 @@ position. Both writes require a stable `requestId`; only the newest four scene
 saves of a node keep receipts, and an older retry fails the revision check
 instead of applying again. Thumbnails are a bounded JPEG cache per card or
 keyframe, outside receipts and packages. Restored copies (schema 65,
-`restored-local-v21`) allow only `previs.thumbnail.get`. These operations are
+`restored-local-v21`, and schema 67, `restored-local-v22`) allow only
+`previs.thumbnail.get`. These operations are
 not built-in Mio tools. There is no separate export operation: the editor
 imports a keyframe image with `asset.import`, records its asset ID in the
 keyframe's `exports` with `scene.set`, and sets a shot's first or last frame
