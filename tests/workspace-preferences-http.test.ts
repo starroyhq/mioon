@@ -34,7 +34,9 @@ async function backend(t: test.TestContext) {
     let stdout = '', stderr = '';
     child = (spawn as unknown as import('./helpers/strict-workspace-boundary-types.ts').SpawnChild)(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: '0'}), stdio: ['ignore', 'pipe', 'pipe']});
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => stdout += chunk); child.stderr.setEncoding('utf8').on('data', (chunk: string) => stderr += chunk);
-    const deadline = Date.now() + 10000;
+    // A cold start loads every source module and builds a new workspace: about
+    // 3 s locally, yet a loaded CI runner once needed more than 10 s.
+    const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {
       assert.equal(child.exitCode, null, stderr);
       const ready = /Mioon ready at (http:\/\/127\.0\.0\.1:\d+)/.exec(stdout);
@@ -62,7 +64,7 @@ async function backend(t: test.TestContext) {
   await start(); return f;
 }
 
-test('dedicated preferences HTTP survives a real killed/restarted backend and leaves project/history unchanged', {timeout: 30000}, async t => {
+test('dedicated preferences HTTP survives a real killed/restarted backend and leaves project/history unchanged', {timeout: 60000}, async t => {
   const f = await backend(t), project = await f.rpc('project.create', {name: 'Synthetic durable view'}), projectId = project.id;
   const route = `/api/workspace-preferences/${projectId}`;
   await f.rpc('shot.create', {projectId, title: 'Business shot', prompt: 'Keep business content intact'});

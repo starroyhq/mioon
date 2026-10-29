@@ -105,7 +105,7 @@ async function backendFixture(t: TestContext) {
     backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe']}) as unknown as ChildProcessWithoutNullStreams;
     backend.once('error', error => spawnError = error);
     backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
-    const deadline = Date.now() + 10000;
+    const deadline = Date.now() + 20000;
     while (Date.now() < deadline) {
       if (spawnError) throw spawnError;
       assert.equal(backend.exitCode, null, stderr); assert.equal(backend.signalCode, null, stderr);

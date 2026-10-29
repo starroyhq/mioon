@@ -165,7 +165,7 @@ async function backendFixture(t: test.TestContext) {
     backend.once('error', error => spawnError = error);
     backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes);
     backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       if (spawnError) throw spawnError;
       assert.equal((backend.exitCode as unknown), null, stderr);
