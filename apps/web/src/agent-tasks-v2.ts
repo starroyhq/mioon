@@ -1,6 +1,6 @@
-import { agentTaskPolicySchema, agentTaskSnapshotSchema, agentTaskRunSchema, agentTaskEventSchema, agentTaskReceiptSchema, agentTaskLocaleSchema, agentTaskHistoryPageSchema, agentTaskConversationPageSchema, agentTaskConversationPolicySchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import { agentTaskPolicySchema, agentTaskSnapshotSchema, agentTaskRunSchema, agentTaskEventSchema, agentTaskReceiptSchema, agentTaskLocaleSchema, agentTaskHistoryPageSchema, agentTaskConversationPageSchema, agentTaskConversationPolicySchema, agentTaskChecksSchema } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { sameAgentTaskPolicyModes } from './agent-task-policy-menu.ts';
-import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskDiagnostic, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt, AgentTaskLocale, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskConversationPolicy, AgentTaskPolicyModes } from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import type { AgentTaskControlAction, AgentTaskControlInput, AgentTaskDiagnostic, AgentTaskEvent, AgentTaskPolicy, AgentTaskRun, AgentTaskSnapshot, AgentTaskReceipt, AgentTaskLocale, AgentTaskConversation, AgentTaskHistoryPage, AgentTaskConversationPage, AgentTaskConversationPolicy, AgentTaskPolicyModes, AgentTaskChecks } from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import { agentAuthorizationReceiptSchema, safeAgentAuthorizationSnapshot } from './agent-authorization-state.ts';
 import type { AgentAuthorizationSnapshot } from '../../../packages/contracts/src/agent-authorization.ts';
 import { deriveAgentEndpoint, safeAgentSettings } from './agent-settings.ts';
@@ -62,6 +62,42 @@ export function safeAgentTaskProject(value: unknown, projectId: string): AgentTa
   if (!record(value) || value.version !== 2 || value.projectId !== projectId || typeof value.instanceId !== 'string' || !Array.isArray(value.runs) || value.runs.some(run => !record(run) || run.projectId !== projectId)) throw failure('INVALID_RESPONSE');
   return { version: 2, instanceId: value.instanceId, projectId, runs: value.runs.map(run => agentTaskRunSchema.parse(run)), policy: agentTaskPolicySchema.parse(value.policy), settings: safeAgentSettings(value.settings), authorization: safeAgentAuthorizationSnapshot(value.authorization), ...(value.readOnly === true ? {readOnly:true} : {}) };
 }
+export interface AgentTaskChecksReadOptions {preflight?:boolean;signal?:AbortSignal}
+/** Independent advisory GET. It shares neither execution requests nor their
+ * timeout: full local media preflight has its own 30-second server budget. */
+export function createAgentTaskChecksReader({fetchImpl=globalThis.fetch,timeoutMs=12000}:{fetchImpl?:typeof fetch;timeoutMs?:number}={}) {
+  if(!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>2147483647)throw failure('AGENT_TASK_INVALID');
+  return async(projectId:string,runId:string,{preflight=false,signal}:AgentTaskChecksReadOptions={}):Promise<AgentTaskChecks>=>{
+    if(signal?.aborted)throw failure();
+    const controller=new AbortController(),externalAbort=()=>controller.abort();
+    let rejectAborted:()=>void=()=>{};
+    const aborted=new Promise<never>((_resolve,reject)=>{rejectAborted=()=>reject(failure());});
+    controller.signal.addEventListener('abort',rejectAborted,{once:true});signal?.addEventListener('abort',externalAbort,{once:true});
+    const timer=setTimeout(()=>controller.abort(),preflight?Math.max(timeoutMs,60000):timeoutMs);
+    try{
+      if(signal?.aborted)controller.abort();
+      const work=(async()=>{
+        if(controller.signal.aborted)throw failure();
+        const response=await fetchImpl(`/api/agent/tasks/v2/${encodeURIComponent(projectId)}/${encodeURIComponent(runId)}/checks${preflight?'?preflight=1':''}`,{method:'GET',credentials:'same-origin',cache:'no-store',signal:controller.signal});
+        if(controller.signal.aborted)throw failure();
+        let value:unknown;try{value=await response.json();}catch{throw failure(controller.signal.aborted?'NETWORK':'INVALID_RESPONSE');}
+        if(controller.signal.aborted)throw failure();
+        if(!record(value)||value.ok!==true||!response.ok){
+          const backendError=record(value)&&value.ok===false&&record(value.error)?value.error:null;
+          const code=backendError&&typeof backendError.code==='string'&&/^[A-Z][A-Z0-9_]{1,90}$/u.test(backendError.code)?backendError.code:'INVALID_RESPONSE';
+          throw failure(code);
+        }
+        const parsed=agentTaskChecksSchema.safeParse(value.data);
+        if(!parsed.success||parsed.data.projectId!==projectId||parsed.data.runId!==runId)throw failure('INVALID_RESPONSE');
+        return parsed.data;
+      })();
+      // Reject even when a fetch implementation or body reader ignores abort.
+      return await Promise.race([work,aborted]);
+    }catch(error){throw failure(errorCode(error));}
+    finally{clearTimeout(timer);controller.signal.removeEventListener('abort',rejectAborted);signal?.removeEventListener('abort',externalAbort);}
+  };
+}
+export const readAgentTaskChecks=createAgentTaskChecksReader();
 export function createAgentTaskClient({ fetchImpl = globalThis.fetch, timeoutMs = 12000 }: { fetchImpl?: typeof fetch; timeoutMs?: number } = {}): AgentTaskClient {
   const root = '/api/agent/tasks/v2', path = (projectId: string, runId?: string) => `${root}/${encodeURIComponent(projectId)}${runId ? `/${encodeURIComponent(runId)}` : ''}`;
   async function json(url: string, method = 'GET', body?: unknown): Promise<unknown> {

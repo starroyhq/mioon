@@ -1,5 +1,6 @@
 import {AGENT_TASK_STEP_STATUSES} from '../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskDisplay,AgentTaskDisplayField,AgentTaskDisplayTarget,AgentTaskDisplayValue,AgentTaskSnapshot,AgentTaskStep} from '../../../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskCheck} from '../../../packages/contracts/src/agent-task-checks-v2.ts';
 import {catalogs,translate} from '../../../packages/i18n/src/index.ts';
 import type {Locale,MessageKey} from '../../../packages/i18n/src/index.ts';
 import {mioPanelMessages} from '../../../packages/i18n/src/catalogs/mio-panel.ts';
@@ -64,6 +65,55 @@ function targetTitle(target:AgentTaskDisplayTarget,locale:Locale,lookup?:TaskDis
 export function taskTargetTitle(kind:string,id:string,locale:Locale,lookup?:TaskDisplayLookup,fallbackName?:string):string {
   const label=targetKind(kind,locale),name=safeName(lookup?.(kind,id),kind)??safeName(fallbackName,kind);
   return name&&name!==label?`${label} · ${name}`:label;
+}
+export function taskCheckTargetTitle(item:AgentTaskCheck,locale:Locale,lookup?:TaskDisplayLookup):string {
+  return safeName(item.target.name,item.target.kind)??taskTargetTitle(item.target.kind,item.target.id,locale,lookup);
+}
+/** Only fields supplied by Checks become prose. IDs, issue codes and service
+ * statuses are machine values, never a fallback explanation for the reader. */
+export function taskCheckExplanation(item:AgentTaskCheck,locale:Locale):string|undefined {
+  if(item.status==='pending'&&item.progress!==undefined)return translate(locale,item.type.startsWith('generation_')?'agent.checks.generationProgress':'agent.checks.progress',{progress:new Intl.NumberFormat(locale,{maximumFractionDigits:1}).format(item.progress)});
+  const code=item.reason?.code;
+  if(!code)return;
+  if(code==='PARAMETERS_MISMATCH'){
+    const expected=item.expected,current=item.current;
+    if(expected?.width!==undefined&&expected.height!==undefined&&current?.width!==undefined&&current.height!==undefined&&(expected.width!==current.width||expected.height!==current.height))return translate(locale,'agent.checks.reason.PARAMETERS_MISMATCH.resolution',{expectedWidth:expected.width,expectedHeight:expected.height,currentWidth:current.width,currentHeight:current.height});
+  }
+  if(code==='REFERENCES_UNAVAILABLE'){
+    const count=item.reason?.params?.missingCount??item.current?.missingCount;
+    if(count!==undefined&&count>0)return translate(locale,'agent.checks.reason.REFERENCES_UNAVAILABLE.count',{count});
+  }
+  if(code==='PREFLIGHT_BLOCKED'){
+    const count=item.reason?.params?.blockingCount??item.current?.blockingCount;
+    if(count!==undefined&&count>0)return translate(locale,'agent.checks.reason.PREFLIGHT_BLOCKED.count',{count});
+  }
+  return translate(locale,`agent.checks.reason.${code}`);
+}
+export function taskCheckMetadata(item:AgentTaskCheck,locale:Locale):string[] {
+  if(!item.type.startsWith('timeline_'))return [];
+  const value=item.current,parts:string[]=[];
+  if(value?.referenceCount!==undefined)parts.push(translate(locale,'agent.checks.metadata.clips',{count:value.referenceCount}));
+  if(value?.width!==undefined&&value.height!==undefined)parts.push(translate(locale,'agent.checks.metadata.resolution',{width:value.width,height:value.height}));
+  if(value?.fps!==undefined)parts.push(translate(locale,'agent.checks.metadata.fps',{fps:new Intl.NumberFormat(locale,{maximumFractionDigits:3}).format(value.fps)}));
+  return parts;
+}
+export type TaskCheckLocation={change:AgentTaskSnapshot['changes'][number]}|{request:string};
+/** Reuse existing destinations only. In particular storyboard exports are
+ * absent from the render list, and restored image/frame inspectors cannot open. */
+export function taskCheckLocation(item:AgentTaskCheck,snapshot:AgentTaskSnapshot,readOnly=false):TaskCheckLocation|undefined {
+  const {kind,id}=item.target;
+  if(kind==='shot'||kind==='timeline'){
+    const change=snapshot.changes.find(change=>change.targets.some(target=>kind==='timeline'?target.kind.startsWith('timeline'):target.kind==='shot'&&target.id===id));
+    return change?{change}:undefined;
+  }
+  if(kind==='job')return {request:id};
+  if(kind==='scene_task')return {request:`scene:${id}`};
+  if(!readOnly&&(kind==='image_task'||kind==='frame_task'))return {request:`${kind==='image_task'?'image':'frame'}:${id}`};
+  if(kind==='export'&&snapshot.steps.some(step=>{
+    if(knownOperation(step.toolCall?.name??'')!=='timeline.render')return false;
+    const result=step.result;
+    return step.targets?.some(target=>target.kind==='export'&&target.id===id)||result!==null&&typeof result==='object'&&!Array.isArray(result)&&result.id===id;
+  }))return {request:`render:${id}`};
 }
 export function taskDisplayTargets(display:AgentTaskDisplay|undefined,locale:Locale,lookup?:TaskDisplayLookup):string {
   if(!display)return translate(locale,'agent.display.target.unknown');
