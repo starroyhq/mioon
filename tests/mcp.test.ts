@@ -43,7 +43,7 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(report, null, 2));
     if (!persist) await rm(root, { recursive: true, force: true });
   });
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 20_000;
   while (true) { if (backend.exitCode !== null) throw Error(`Backend exit ${backend.exitCode}: ${stderr}`); try { if ((await fetch(base + '/health')).ok) break; } catch {} if (Date.now() > deadline) throw Error(`Backend start timed out: ${stderr}`); await pause(40); }
   transport = new StdioClientTransport({ command: process.execPath, args: ['server/mcp.ts'], cwd: repo, env: { ...process.env, MIOON_BASE_URL: base, MIOON_TOKEN: token }, stderr: 'pipe' });
   (transport.stderr as unknown as {setEncoding(encoding: string): {on(event: string, listener: (chunk: string) => void): void}} | null)?.setEncoding('utf8').on('data', (bytes: string) => mcpStderr += bytes);

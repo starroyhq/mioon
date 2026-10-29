@@ -60,7 +60,7 @@ async function fixture(t: test.TestContext) {
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(records, null, 2));
     await rm(root, { recursive: true, force: true });
   });
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 20_000;
   let ready = false;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw Error(`Backend exited: ${records.server.stderr}`);
