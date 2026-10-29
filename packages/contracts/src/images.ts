@@ -4,6 +4,7 @@ import {customImageModelSchema} from './image-compatible.ts';
 import {comfyCheckpointSchema,comfyImageOptionsSchema} from './comfy-images.ts';
 import {frameSchemas,FRAME_PROFILE_ID,FRAME_SELECTION_RULE} from './frame-extraction.ts';
 import {SOURCE_RANGE_FPS} from './source-range.ts';
+import {SCENE_LIMITS} from './scene-tasks.ts';
 import {IMAGE_EDIT_SOURCE_BOUNDS,IMAGE_EDIT_SOURCE_MIME_TYPES,IMAGE_EDIT_OUTPUT_BOUNDS,imageEditProfile,imageEditSourceIssue,isImageEditOutputSize,parseImageSize} from './image-edit-profiles.ts';
 
 // Fixed image profiles; a provider label or local enable flag is never approval
@@ -29,9 +30,14 @@ export const imageEditInputImageSchema=z.object({assetId:id,sha256:hash}).strict
 const frameInputFields=frameSchemas['frame.extract'].shape;
 const editFrameSource=z.object({frameTaskId:id,sourceAssetId:frameInputFields.sourceAssetId,sourceHash:frameInputFields.sourceHash,
  sourceFrame:frameInputFields.sourceFrame,fps:z.literal(SOURCE_RANGE_FPS),profileId:z.literal(FRAME_PROFILE_ID),selectionRule:z.literal(FRAME_SELECTION_RULE)}).strict();
+// A storyboard keyframe (schema68 on): the finished scene task that captured it,
+// the reference video and its hash, the segment and the captured source frame.
+const editSceneKeyframe=z.object({sceneTaskId:id,sourceAssetId:id,sourceHash:hash,segment:z.number().int().min(1).max(SCENE_LIMITS.cuts+1),
+ sourceFrame:z.number().int().min(0).max(SCENE_LIMITS.frameCount)}).strict();
 const editOrigin=z.union([z.object({kind:z.literal('user-import')}).strict(),
  z.object({kind:z.enum(['generated','synthetic-mock']),imageSource:imageSourceSchema}).strict(),
- z.object({kind:z.literal('extracted-frame'),frameSource:editFrameSource}).strict()]);
+ z.object({kind:z.literal('extracted-frame'),frameSource:editFrameSource}).strict(),
+ z.object({kind:z.literal('scene-keyframe'),sceneKeyframe:editSceneKeyframe}).strict()]);
 // Backend-derived, safe provenance. Paths, bytes, URLs and credentials never
 // enter model/user arguments or retained public records.
 export const imageEditSourceSchema=z.object({assetId:id,sha256:hash,mimeType:z.enum(IMAGE_EDIT_SOURCE_MIME_TYPES),

@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import {AppError} from '@mioon/contracts';
+import {AppError,SCENE_KEYFRAME_PROVENANCE} from '@mioon/contracts';
 import {readPrivateFile} from '@mioon/contracts/private-storage';
 import {canonicalImageInput as canonical, IMAGE_EDIT_LIMITS, imageEditSourceSchema} from '../../../contracts/src/images.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
@@ -18,6 +18,7 @@ interface OwnedMediaGraph {
   legacySource(assetId: string): unknown;
   imageSource(assetId: string): unknown;
   frameSource(assetId: string): unknown;
+  sceneKeyframeSource(assetId: string): unknown;
 }
 export interface EditSourceStore {readonly db: DatabaseSync; readonly root: string}
 export interface VerifiedEditSource {descriptor: ImageEditSource; bytes: Buffer}
@@ -40,11 +41,13 @@ export function imageEditFields(snapshot: unknown): ImageEditFields {
   return record?.purpose === 'edit' ? {purpose: 'edit', inputImage: record.inputImage, sourceImage: record.sourceImage} : {};
 }
 // A closed descriptor, never a path, URL, arbitrary provenance object or bytes.
-export function describeImageEditSource(asset: InspectionAsset, imageSource: unknown, frameSource: unknown): ImageEditSource {
+export function describeImageEditSource(asset: InspectionAsset, imageSource: unknown, frameSource: unknown, sceneKeyframeSource?: unknown): ImageEditSource {
   let origin: unknown;
+  if (sceneKeyframeSource && (imageSource || frameSource)) fail();
   if (imageSource && !frameSource && ['generated', 'synthetic-mock'].includes(asset.provenance)) origin = {kind: asset.provenance, imageSource};
   else if (frameSource && !imageSource && asset.provenance === 'extracted-frame') origin = {kind: 'extracted-frame', frameSource};
-  else if (!imageSource && !frameSource && asset.provenance === 'user-import') origin = {kind: 'user-import'};
+  else if (sceneKeyframeSource && asset.provenance === SCENE_KEYFRAME_PROVENANCE) origin = {kind: SCENE_KEYFRAME_PROVENANCE, sceneKeyframe: sceneKeyframeSource};
+  else if (!imageSource && !frameSource && !sceneKeyframeSource && asset.provenance === 'user-import') origin = {kind: 'user-import'};
   else fail();
   const result = {assetId: asset.id, sha256: asset.sha256, mimeType: asset.mimeType, byteLength: asset.sizeBytes, width: asset.width, height: asset.height, name: asset.name, origin};
   if (!imageEditSourceSchema.safeParse(result).success) fail();
@@ -62,7 +65,9 @@ export function createImageEditSourceResolver(store: EditSourceStore, {signal}: 
       const asset = graph.asset(inputImage.assetId as string);
       // Legacy generated image/video owners cannot masquerade as an import.
       if (graph.legacySource(asset.id)) fail();
-      const descriptor = describeImageEditSource(asset, graph.imageSource(asset.id), graph.frameSource(asset.id));
+      const descriptor = describeImageEditSource(asset, graph.imageSource(asset.id), graph.frameSource(asset.id), graph.sceneKeyframeSource(asset.id));
+      // Only schema68 reviews can store a storyboard keyframe source.
+      if (descriptor.origin.kind === SCENE_KEYFRAME_PROVENANCE && !store.db.prepare('SELECT 1 FROM schema_version WHERE version=68 LIMIT 1').get()) fail();
       const profile = imageEditProfile(value.providerId, value.model);
       if (!profile || imageEditSourceIssue(profile, descriptor) || descriptor.assetId !== inputImage.assetId || descriptor.sha256 !== inputImage.sha256 || expected && canonical(descriptor) !== canonical(expected)) fail();
       return {asset, descriptor};

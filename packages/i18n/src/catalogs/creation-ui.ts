@@ -2145,6 +2145,12 @@ export const creationUiMessages = {
     "en": "Frame extracted from video",
     "ja": "動画から抽出したフレーム"
   },
+  "image.studio.sceneKeyframe": {
+    "zh-Hans": "分镜关键帧",
+    "zh-Hant": "分鏡關鍵影格",
+    "en": "Storyboard keyframe",
+    "ja": "絵コンテのキーフレーム"
+  },
   "image.studio.fixedSourceIdentity": {
     "zh-Hans": "固定源图身份",
     "zh-Hant": "固定來源圖像身分",
