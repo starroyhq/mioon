@@ -1,0 +1,22 @@
+import type { MessageCatalog } from '../types.ts';
+export const clipTransformMessages = {
+  "clip.transform.title": {"zh-Hans": "变换", "zh-Hant": "變換", "en": "Transform", "ja": "トランスフォーム"},
+  "clip.transform.frame": {"zh-Hans": "片段第 {frame} 帧", "zh-Hant": "片段第 {frame} 幀", "en": "Clip frame {frame}", "ja": "クリップの {frame} フレーム目"},
+  "clip.transform.atKeyframe": {"zh-Hans": "此帧是关键帧", "zh-Hant": "此幀是關鍵幀", "en": "a keyframe", "ja": "キーフレーム"},
+  "clip.transform.derived": {"zh-Hans": "由关键帧推算的值", "zh-Hant": "由關鍵幀推算的值", "en": "computed from keyframes", "ja": "キーフレームから算出した値"},
+  "clip.transform.none": {"zh-Hans": "未设置变换", "zh-Hant": "未設定變換", "en": "no transform yet", "ja": "トランスフォームなし"},
+  "clip.transform.x": {"zh-Hans": "水平偏移 (px)", "zh-Hant": "水平偏移 (px)", "en": "X offset (px)", "ja": "横オフセット (px)"},
+  "clip.transform.y": {"zh-Hans": "垂直偏移 (px)", "zh-Hant": "垂直偏移 (px)", "en": "Y offset (px)", "ja": "縦オフセット (px)"},
+  "clip.transform.scale": {"zh-Hans": "缩放 (%)", "zh-Hant": "縮放 (%)", "en": "Scale (%)", "ja": "拡大率 (%)"},
+  "clip.transform.setKeyframe": {"zh-Hans": "设为此帧关键帧", "zh-Hant": "設為此幀關鍵幀", "en": "Set keyframe here", "ja": "このフレームをキーフレームに"},
+  "clip.transform.removeKeyframe": {"zh-Hans": "删除此关键帧", "zh-Hant": "刪除此關鍵幀", "en": "Remove this keyframe", "ja": "このキーフレームを削除"},
+  "clip.transform.reset": {"zh-Hans": "清除变换", "zh-Hant": "清除變換", "en": "Clear transform", "ja": "トランスフォームを解除"},
+  "clip.transform.keyframe": {"zh-Hans": "第 {frame} 帧 · X {x} · Y {y} · {scale}%", "zh-Hant": "第 {frame} 幀 · X {x} · Y {y} · {scale}%", "en": "Frame {frame} · X {x} · Y {y} · {scale}%", "ja": "{frame} フレーム目 · X {x} · Y {y} · {scale}%"},
+  "clip.transform.static": {"zh-Hans": "另有旋转 {rotation}° 和裁切（左 {left}%、上 {top}%、右 {right}%、下 {bottom}%），会保留", "zh-Hant": "另有旋轉 {rotation}° 和裁切（左 {left}%、上 {top}%、右 {right}%、下 {bottom}%），會保留", "en": "Rotation {rotation}° and crop (left {left}%, top {top}%, right {right}%, bottom {bottom}%) are kept", "ja": "回転 {rotation}° と切り抜き（左 {left}%、上 {top}%、右 {right}%、下 {bottom}%）は維持されます"},
+  "clip.transform.invalid": {"zh-Hans": "偏移需在 ±8192 像素内，缩放在 5%–800% 之间", "zh-Hant": "偏移需在 ±8192 像素內，縮放在 5%–800% 之間", "en": "Offsets must stay within ±8192 px and scale between 5% and 800%", "ja": "オフセットは ±8192 px 以内、拡大率は 5%〜800% にしてください"},
+  "clip.transform.full": {"zh-Hans": "最多 16 个关键帧，请先删除一个", "zh-Hant": "最多 16 個關鍵幀，請先刪除一個", "en": "A clip has at most 16 keyframes; remove one first", "ja": "キーフレームは16個までです。先に1つ削除してください"},
+  "clip.transform.saveFirst": {"zh-Hans": "先保存或放弃片段修改，再调整变换", "zh-Hant": "先儲存或放棄片段修改，再調整變換", "en": "Save or discard the clip changes before changing the transform", "ja": "トランスフォームを変更する前に、クリップの変更を保存または破棄してください"},
+  "clip.transform.hint": {"zh-Hans": "关键帧设在播放头所在的片段帧。只有一个关键帧时整段保持该值，两个以上时在关键帧之间线性变化。偏移以画面框中心为原点，缩放相对于适配画面框后的尺寸；改动后需要更新预览。", "zh-Hant": "關鍵幀設在播放頭所在的片段幀。只有一個關鍵幀時整段保持該值，兩個以上時在關鍵幀之間線性變化。偏移以畫面框中心為原點，縮放相對於適配畫面框後的尺寸；改動後需要更新預覽。", "en": "Keyframes go on the clip frame under the playhead. With one keyframe the whole clip keeps its values; with more, values change linearly between them. Offsets start at the rectangle centre and scale is relative to the size that fits the rectangle. Update the preview after a change.", "ja": "キーフレームは再生ヘッド位置のクリップフレームに置かれます。キーフレームが1つならクリップ全体でその値を保ち、2つ以上ならキーフレーム間で直線的に変化します。オフセットは画面枠の中心が原点で、拡大率は画面枠に合わせたサイズに対する比率です。変更後はプレビューを更新してください。"},
+  "clip.transform.done": {"zh-Hans": "已更新片段变换", "zh-Hant": "已更新片段變換", "en": "Clip transform updated", "ja": "クリップのトランスフォームを更新しました"},
+  "clip.transform.stale": {"zh-Hans": "时间线或片段已变化，请重新调整变换", "zh-Hant": "時間軸或片段已變更，請重新調整變換", "en": "The timeline or clip changed; adjust the transform again", "ja": "タイムラインまたはクリップが変更されました。トランスフォームをもう一度調整してください"},
+} as const satisfies MessageCatalog;

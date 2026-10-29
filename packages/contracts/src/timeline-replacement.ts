@@ -3,6 +3,7 @@ import {isClipAudioRole} from './timeline-audio-role.ts';
 import {isTimelineClipColour} from './timeline-colour.ts';
 import {isTimelineSubtitles} from './timeline-subtitles.ts';
 import {timelineOutputPreset} from './timeline-format.ts';
+import {isClipTransform} from './timeline-clip-transform.ts';
 // Saved timeline acknowledgements are complete records, never patches. These
 // guards do not normalize records or claim a historical response is current.
 // Project-owned media/version lineage remains the backend's responsibility.
@@ -12,7 +13,7 @@ export interface TimelineClipRecord {
   id: string; trackId: string; assetId: string; name: string;
   startFrame: number; durationFrames: number; sourceInFrame: number;
   rect: TimelineRect; gain: number;
-  fadeInFrames?: number; fadeOutFrames?: number; colour?: unknown; audioRole?: unknown; volumeEnvelope?: unknown;
+  fadeInFrames?: number; fadeOutFrames?: number; colour?: unknown; audioRole?: unknown; volumeEnvelope?: unknown; transform?: unknown;
   versionId?: string; shotId?: string; jobId?: string;
   [key: string]: unknown;
 }
@@ -58,13 +59,15 @@ export function isTimelineRecord(value: unknown, {projectId}: TimelineRecordOpti
   }
   let duration = 0;
   for (const clip of value.clips as unknown[]) {
-    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope']) ||
+    if (!fields(clip, clipFields, [...provenance, 'fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole', 'volumeEnvelope', 'transform']) ||
         !uuid(clip.id) || ids.has(clip.id) || !uuid(clip.trackId) || !tracks.has(clip.trackId) || !uuid(clip.assetId) || !text(clip.name, 200) ||
         !integer(clip.startFrame, 0, 18000) || !integer(clip.durationFrames, 1, 18000) ||
         clip.startFrame + clip.durationFrames > 18000 || !integer(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000) ||
         !Number.isFinite(clip.gain) || (clip.gain as number) < 0 || (clip.gain as number) > 2 ||
         Object.hasOwn(clip, 'audioRole') && !isClipAudioRole(clip.audioRole) ||
         Object.hasOwn(clip, 'volumeEnvelope') && !isVolumeEnvelope(clip.volumeEnvelope,clip.durationFrames) ||
+        // A cleared transform is removed, never saved as null; only visual tracks place content.
+        Object.hasOwn(clip, 'transform') && (clip.transform === null || !isClipTransform(clip.transform, clip.durationFrames) || trackKinds.get(clip.trackId) !== 'video') ||
         provenance.some(key => Object.hasOwn(clip, key) && !uuid(clip[key])) ||
         Object.hasOwn(clip, 'colour') && (!isTimelineClipColour(clip.colour) || clip.colour !== null && trackKinds.get(clip.trackId) !== 'video')) return false;
     const rect = clip.rect as Record<string, unknown>;

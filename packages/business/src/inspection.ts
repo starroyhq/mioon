@@ -9,6 +9,7 @@ import {createImageOwnershipReader} from './image-ownership.ts';
 import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownership.ts';
 import {createSubjectOwnershipReader} from './subject-ownership.ts';
 import {createSceneKeyframeOwnershipReader} from './scene-keyframe-ownership.ts';
+import {isClipTransform,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 type InspectionRecord = Record<string, unknown>;
@@ -359,8 +360,12 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         if (Object.values(rect).some(value => value % 2 !== 0) || rect.x + rect.width > timelineWidth || rect.y + rect.height > timelineHeight) unavailable();
         const startFrame = number(clip.startFrame, 0, 18000, true), durationFrames = number(clip.durationFrames, 1, 18000, true);
         if (startFrame + durationFrames > 18000) unavailable();
+        // Mio reads a clip's transform (position and scale keyframes, rotation, crop) but cannot change it.
+        const transform = Object.hasOwn(clip, 'transform') ? clip.transform as ClipTransform | null : undefined;
+        if (transform !== undefined && (transform === null || !isClipTransform(transform, durationFrames))) unavailable();
         return {id: clipId, trackId: id(clip.trackId), assetId: asset.id, name: string(clip.name, 200, 1), startFrame, durationFrames,
-          sourceInFrame: number(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000, true), rect, gain: number(clip.gain, 0, 2)};
+          sourceInFrame: number(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000, true), rect, gain: number(clip.gain, 0, 2),
+          ...(transform ? {transform: {keyframes: transform.keyframes.map(({frame, x, y, scale}) => ({frame, x, y, scale})), rotation: transform.rotation, crop: {...transform.crop}}} : {})};
       });
       return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps: enumValue(timeline.fps, [30]), width: timeline.width, height: timeline.height,
         durationFrames: number(timeline.durationFrames, 0, 18000, true), tracks, clips};

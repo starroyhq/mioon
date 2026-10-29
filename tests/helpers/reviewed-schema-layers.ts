@@ -8,6 +8,7 @@ import {currentOrdinary62Delta,withoutReviewedSubjectVariantObjects,withReviewed
 import {currentOrdinary64Delta,withoutReviewedPrevisObjects,removeReviewedSchema64} from './current-schema64-delta.ts';
 import {currentOrdinary66Delta,withoutReviewedPolicyAnswerObjects,removeReviewedSchema66} from './current-schema66-delta.ts';
 import {currentOrdinary68Delta,withoutReviewedKeyframeEditObjects,withReviewedKeyframeEditObjects,removeReviewedSchema68} from './current-schema68-delta.ts';
+import {currentOrdinary70Delta,withoutReviewedTransformObjects,withReviewedTransformObjects,removeReviewedSchema70} from './current-schema70-delta.ts';
 import {CURRENT_ORDINARY_SCHEMA} from './workspace-schema-current.ts';
 
 interface SchemaObject {readonly type:string;readonly name:string;readonly tbl_name:string;readonly sql:string|null}
@@ -37,6 +38,7 @@ const adding=(added:readonly SchemaObject[])=>(objects:readonly SchemaObject[]):
   return [...objects,...added].sort(order);
 };
 const LAYERS:readonly ReviewedLayer[]=Object.freeze([
+  {version:70,schemaVersionRows:currentOrdinary70Delta.schemaVersionRows,tables:currentOrdinary70Delta.tables,without:withoutReviewedTransformObjects,with:withReviewedTransformObjects,restores:[],remove:removeReviewedSchema70},
   {version:68,schemaVersionRows:currentOrdinary68Delta.schemaVersionRows,tables:currentOrdinary68Delta.tables,without:withoutReviewedKeyframeEditObjects,with:withReviewedKeyframeEditObjects,restores:currentOrdinary68Delta.replaced.map(object=>object.name),remove:removeReviewedSchema68},
   {version:66,schemaVersionRows:currentOrdinary66Delta.schemaVersionRows,tables:currentOrdinary66Delta.tables,without:withoutReviewedPolicyAnswerObjects,with:adding(currentOrdinary66Delta.objects),restores:[],remove:removeReviewedSchema66},
   {version:64,schemaVersionRows:currentOrdinary64Delta.schemaVersionRows,tables:currentOrdinary64Delta.tables,without:withoutReviewedPrevisObjects,with:adding(currentOrdinary64Delta.objects),restores:[],remove:removeReviewedSchema64},

@@ -609,6 +609,20 @@ clip. Images and silent sources are refused, and a list that changes nothing is
 refused without writing. Full semantics:
 [Clip gains](API.md#clip-gains-2026-10-29).
 
+### Set a clip transform
+
+`timeline clip setTransform` sets or clears one visual clip's position and
+scale keyframes, rotation and crop as one undoable edit. Read `timeline get`
+first for the clip, its duration and the revision:
+
+```sh
+mioon timeline clip setTransform --input '{"projectId":"PROJECT_UUID","expectedRevision":12,"requestId":"transform-0001","clipId":"CLIP_UUID","transform":{"profileId":"mioon-clip-transform-v1","keyframes":[{"frame":0,"x":0,"y":0,"scale":1},{"frame":90,"x":-120,"y":40,"scale":1.4}],"rotation":0,"crop":{"left":0,"top":0,"right":0,"bottom":0}}}'
+```
+
+Pass `"transform":null` to remove it. Audio clips, keyframes past the clip's
+end and an unchanged transform are refused without writing. Full semantics:
+[Clip transforms](API.md#clip-transforms-2026-10-29).
+
 ### Clip audio fades
 
 Use existing `timeline clip add` or `timeline clip update` commands; inspect

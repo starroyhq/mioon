@@ -913,6 +913,51 @@ edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
 not a Mio tool in this version: Mio proposes a single clip's gain through its
 own reviewed tool.
 
+### Clip transforms (2026-10-29)
+
+`timeline.clip.setTransform` takes the common
+`{projectId,expectedRevision,requestId}` plus `clipId` and `transform`, and
+returns `{operation,requestId,timeline,clipId,previousTransform,transform}`.
+`transform: null` removes the clip's transform.
+- A transform is `{profileId:"mioon-clip-transform-v1",keyframes,rotation,crop}`:
+  - `keyframes`: 1 to 16 `{frame,x,y,scale}` at strictly increasing clip-local
+    frames, at most the clip duration. Values hold before the first and after
+    the last keyframe and change linearly between keyframes.
+  - `x`, `y`: offset of the content centre from the clip rectangle centre, in
+    timeline pixels (at most ±8192); the content may leave the frame.
+  - `scale`: 0.05 to 8 times the size the cropped source has after fitting
+    the rectangle.
+  - `rotation`: static clockwise degrees, −180 to 180.
+  - `crop`: static fractions removed from each source edge before fitting,
+    each 0 to 0.9, with left+right and top+bottom at most 0.9.
+- Only clips on video tracks with a video or image source take a transform
+  (`CLIP_TRANSFORM_UNSUPPORTED`). A keyframe past the clip's end fails with
+  `CLIP_TRANSFORM_INVALID`, an identical transform with
+  `CLIP_TRANSFORM_UNCHANGED`, a timeline that would exceed its saved size with
+  `CLIP_TRANSFORM_LIMIT`, and a workspace older than schema 70 with
+  `CLIP_TRANSFORM_WORKSPACE_REQUIRED`. These codes, `CLIP_NOT_FOUND`, revision
+  conflicts and the revision limit carry not-applied proofs binding
+  `operation`, `projectId` and `requestId`.
+- One revision and one history entry. Clip updates never carry a transform;
+  the transform follows its clip instead: a split keeps each keyframe on its
+  side and adds the interpolated value at the cut, start, source and duration
+  edits keep clip-local keyframe times, a shorter clip drops keyframes past its
+  new end and keeps the interpolated end value, and moves and source
+  replacement keep the transform.
+- Preview and export render it through the shared renderer. Animated
+  transforms need FFmpeg 5 or later; the render first runs a small probe and
+  fails with `TIMELINE_TRANSFORM_UNSUPPORTED` on an older tool.
+- Storage: schema 70 is a marker-only layer that admits persisted transforms;
+  its backups restore as read-only schema 71 copies (`restored-local-v24`).
+  Older ordinary and restored roles refuse any persisted transform.
+
+Exact replay returns the original acknowledgement. It is outside the durable
+edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
+not a Mio tool in this version. `timeline.inspect` lists each clip's transform
+(keyframes, rotation and crop), so Mio reads it.
+The model, rendering and editor are described in
+[Clip transforms](CLIP-TRANSFORM.md).
+
 ## V4 discovery and capability validation
 
 `pnpm exec mioon schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
@@ -1442,8 +1487,8 @@ position. Both writes require a stable `requestId`; only the newest four scene
 saves of a node keep receipts, and an older retry fails the revision check
 instead of applying again. Thumbnails are a bounded JPEG cache per card or
 keyframe, outside receipts and packages. Restored copies (schema 65,
-`restored-local-v21`, schema 67, `restored-local-v22`, and schema 69,
-`restored-local-v23`) allow only
+`restored-local-v21`, schema 67, `restored-local-v22`, schema 69,
+`restored-local-v23`, and schema 71, `restored-local-v24`) allow only
 `previs.thumbnail.get`. These operations are
 not built-in Mio tools. There is no separate export operation: the editor
 imports a keyframe image with `asset.import`, records its asset ID in the

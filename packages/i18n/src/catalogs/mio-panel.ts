@@ -1136,6 +1136,12 @@ export const mioPanelMessages = {
     "en": "Set clip gains",
     "ja": "複数クリップのゲインを変更"
   },
+  "agent.display.operation.timeline.clip.setTransform": {
+    "zh-Hans": "设置片段变换",
+    "zh-Hant": "設定片段變換",
+    "en": "Set clip transform",
+    "ja": "クリップのトランスフォームを設定"
+  },
   "agent.display.operation.timeline.history.get": {
     "zh-Hans": "查看编辑历史",
     "zh-Hant": "查看編輯歷史",

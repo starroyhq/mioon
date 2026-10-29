@@ -4,6 +4,7 @@ import {TIMELINE_SHOT_SYNC_OPERATIONS} from './timeline-shot-sync.ts';
 import {TIMELINE_SCENE_SPLIT_OPERATION} from './timeline-scene-split.ts';
 import {TIMELINE_CROSSFADE_OPERATION} from './timeline-crossfade.ts';
 import {TIMELINE_CLIP_GAINS_OPERATION} from './timeline-clip-gains.ts';
+import {TIMELINE_CLIP_TRANSFORM_OPERATION} from './timeline-clip-transform-operation.ts';
 import {TIMELINE_MUTATION_OPERATIONS, isTimelineMutationResponse} from './timeline-acknowledgement.ts';
 import {REFERENCE_MUTATION_OPERATIONS, isReferenceMutationResponse} from './reference-acknowledgement.ts';
 import {SUBJECT_MUTATION_OPERATIONS, isSubjectMutationResponse} from './subjects.ts';
@@ -15,7 +16,7 @@ import {schemas} from './index.ts';
 // The edit_tasks table checks this exact list, so shot-sync bridges and the
 // scene split, the crossfade and the clip-gain batch stay out.
 export const DURABLE_EDIT_OPERATIONS = Object.freeze([
-  ...TIMELINE_MUTATION_OPERATIONS.filter(operation => operation !== 'timeline.render' && operation !== 'timeline.format.set' && operation !== 'timeline.loudness.apply' && !TIMELINE_SUBTITLE_OPERATIONS.includes(operation) && !(TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation) && operation !== TIMELINE_SCENE_SPLIT_OPERATION && operation !== TIMELINE_CROSSFADE_OPERATION && operation !== TIMELINE_CLIP_GAINS_OPERATION),
+  ...TIMELINE_MUTATION_OPERATIONS.filter(operation => operation !== 'timeline.render' && operation !== 'timeline.format.set' && operation !== 'timeline.loudness.apply' && !TIMELINE_SUBTITLE_OPERATIONS.includes(operation) && !(TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation) && operation !== TIMELINE_SCENE_SPLIT_OPERATION && operation !== TIMELINE_CROSSFADE_OPERATION && operation !== TIMELINE_CLIP_GAINS_OPERATION && operation !== TIMELINE_CLIP_TRANSFORM_OPERATION),
   ...REFERENCE_MUTATION_OPERATIONS,
   ...SUBJECT_MUTATION_OPERATIONS,
   'timeline.format.set',
