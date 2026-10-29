@@ -24,6 +24,7 @@ import {readTimelinePreflightSnapshot} from './timeline-sources.ts';
 import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
 import {appendTimelineShots,refreshTimelineSources} from './timeline-shot-sync.ts';
 import {crossfadeTimelineClips} from './timeline-crossfade.ts';
+import {setTimelineClipGains} from './timeline-clip-gains.ts';
 import {splitTimelineAtScenes} from './timeline-scene-split.ts';
 import type {TimelineSceneSplitPlan} from './timeline-scene-split.ts';
 import {readSceneSplitCuts} from './scene-history.ts';
@@ -363,6 +364,11 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    let plan: ReturnType<typeof crossfadeTimelineClips>|undefined;
    return mutate('timeline.clip.crossfade',input,(timeline,boundary)=>{plan=crossfadeTimelineClips(timeline,boundary,input.outgoingClipId as string,input.incomingClipId as string);},undefined,
     timeline=>({operation:'timeline.clip.crossfade',requestId:input.requestId,timeline,...plan}));
+  },
+  'timeline.clip.setGains':(input: TimelineMutationInput)=>{
+   let plan: ReturnType<typeof setTimelineClipGains>|undefined;
+   return mutate('timeline.clip.setGains',input,(timeline,boundary)=>{plan=setTimelineClipGains(timeline,boundary,input.gains as {clipId: string;gain: number}[]);},undefined,
+    timeline=>({operation:'timeline.clip.setGains',requestId:input.requestId,timeline,...plan}));
   },
   'timeline.seed':(input: TimelineMutationInput)=>mutate('timeline.seed',input,(timeline,boundary)=>{
    if(timeline.clips.length)throw new AppError('TIMELINE_NOT_EMPTY','只有空时间线可以从镜头顺序导入',409);

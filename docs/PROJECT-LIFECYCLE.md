@@ -1,4 +1,4 @@
-# 项目重命名与永久删除
+# 项目重命名、项目说明与永久删除
 
 `project.rename` 与 `project.delete` 经同一 operation 契约接入 HTTP、CLI 和 MCP。内置 Agent 模型工具不包含这些操作。界面必须在危险确认后发送删除请求。
 
@@ -13,6 +13,8 @@
 ```
 
 `cleanup: "pending"` 表示项目数据库记录已经删除，但本地文件或项目草稿仍待确认清理。此时必须明确展示未完成的清理，并保留原请求 ID；精确重放只继续本地清理，不生成新任务。连接中断或回复丢失也使用原请求 ID 查询结果。
+
+项目说明（C6）用 `project.notes.set` 保存，传入 `requestId`、`projectId`、`expectedRevision` 和 `notes`。说明是纯文本，UTF-8 不超过 8192 字节，只允许换行和制表符两种控制字符，不接受不成对的代理项；空白内容清除说明。说明存在项目记录的 `notes` 字段，和重命名共用项目 revision 与 `project_mutation_requests` 回执：成功后 revision 加一，回复是更新后的项目记录，精确重放原回复，改变内容复用请求 ID 则冲突。`project.get` 返回的项目记录带说明；项目首页的摘要不带。说明是 Mio 每轮读取的资料，不改变放行档位或权限；恢复副本和候选工作区中不可修改。
 
 ## 准入与事务
 

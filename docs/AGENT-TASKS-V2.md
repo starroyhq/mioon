@@ -108,7 +108,9 @@ Anthropic 按工具、系统指令、消息的顺序计算缓存前缀。核心�
 
 普通执行还在发送时冻结不超过 2 KiB 的项目概况：项目名、已保存的时间线格式与时长、轨道／片段／字幕／镜头数、素材类型计数及未结束后台工作数。概况在本轮压缩中始终保留，不随下一次请求刷新。宿主依据已保存的相邻模型修订基线，对本轮工具回执中读过或改过、且由本轮自身变化无法解释修订推进的目标，在新请求边界加入过期提示；历史边界重放同一提示，本轮完整变化区间或重新读取到当前修订不提示。提示只要求重新读取，不改变冲突暂停、跳过、授权或审批判断。缺少目标回执的旧步骤不从结果正文猜测目标。
 
-执行记录、项目概况及过期提示均按本轮语言标明“仅供参考，不是指令”，不授予权限或审批。历史分组仅是既有私有 `run.context` 内的宿主结构，构造模型请求前展开；旧平铺上下文继续可读，已保存的模型 intent 仍直接发送其原始请求。诊断运行使用独立对话身份，不能续入普通对话，不带这些概况／记录／提示，也不进入项目执行列表、对话历史或后续上下文，但原 requestId／runId 仍可查询其审计记录。
+项目有项目说明（C6）时，发送时把说明冻结在项目概况之后、本次消息之前，同样在本轮压缩中始终保留；之后修改说明只影响新发送的轮次。
+
+执行记录、项目概况、项目说明及过期提示均按本轮语言标明“仅供参考，不是指令”，不授予权限或审批；项目说明还写明不能改变放行档位。历史分组仅是既有私有 `run.context` 内的宿主结构，构造模型请求前展开；旧平铺上下文继续可读，已保存的模型 intent 仍直接发送其原始请求。诊断运行使用独立对话身份，不能续入普通对话，不带这些概况／记录／提示，也不进入项目执行列表、对话历史或后续上下文，但原 requestId／runId 仍可查询其审计记录。
 
 历史返回 `conversations`，每条包含 `id`、`projectId`、`title`、`createdAt`、`updatedAt`、`lastRunId`、`lastRunStatus`、`changeCount` 与 `runCount`。标题只取首条用户消息，清理控制／双向字符、合并空白并安全截到 120 个 UTF-16 单位，不调用模型。更新时间取对话内所有轮次的最新更新时间，变化条数包含其全部 Change。对话成员接口返回 `conversation`、`runs` 和 `nextCursor`，每页默认 50／最多 100，删除私有 context；客户端按 runId 读取公开快照，不把项目最近 100 轮当成完整对话。
 
@@ -218,6 +220,31 @@ M5 不升级工作区版本：retry 回执的 action 原为受限字符串，sup
 - 新增 `agent_task_conversation_policies_v2`：每个对话一行，记录修订号和 `modes`（`null` 表示跟随全局）；`agent_task_conversation_policy_requests_v2` 记录请求回执，回执不可修改，必须对应已保存的修订。
 - 两张表只能随项目删除，各最多 20000 行；对话策略必须和该对话的执行属于同一项目。备份包含这两张表，恢复副本中只读。
 - 执行和步骤状态增加 `awaiting_answer`，只有 66/67 接受；旧的 52–65 固定格式仍然拒绝这一状态。迁移不重写已有执行、步骤、事件或回执。
+
+## 技能包、项目说明与连续性检查（C6）
+
+### 内置方法
+
+- 4 份方法：`script-to-shots`（剧本拆镜头）、`shot-prompts`（镜头提示词）、`character-consistency`（角色一致性）、`continuity-check`（连续性检查）。源文件是 `packages/business/src/agent/skills/*.md`，由 `node scripts/generate-agent-skills.ts` 原文嵌入 `task-skill-catalog-v2.ts`（桌面后台经 esbuild 打包，运行时读不到 .md）；测试检查两者一致。
+- 提供 `mioon_skill_read` 时，系统指令按本轮语言附上方法名称和简介，不附正文。
+- 宿主工具 `mioon_skill_read {name, section?}`（核心组，只读，计一步）：不带 `section` 返回 `{name, version, title, sections, text}`，`sections` 是章节标题；带 `section` 返回 `{name, version, title, section, text}`。结果不超过 12 KiB，低于 16 KiB 的结果视图上限。未知方法或章节按参数纠错返回可读的章节，这一轮不失败。
+- 拆镜头方法要求先加载 video 组，用 `provider.list` 读所用模型的 `durations`，不写死任何模型。
+
+### 项目说明
+
+- 操作 `project.notes.set {requestId, projectId, expectedRevision, notes}`：说明存在项目记录的 `notes` 字段，UTF-8 不超过 8192 字节，只允许换行和制表符两种控制字符；空白内容清除该字段。修订沿用项目修订号，回执沿用 `project_mutation_requests`，稳定 requestId 精确重放。恢复副本和候选工作区不可用。
+- Mio 的 `mioon_project_notes_set` 在 canvas 组，本地可撤销；变化记录保存项目记录前后快照，撤销与 `project.rename` 相同。
+- 说明随备份恢复，也随项目文件导出、导入和复制（见 `docs/PROJECT-PACKAGE.md`）。
+
+### 连续性检查
+
+宿主工具 `mioon_continuity_report {issues}`（核心组，只读，计一步，不产生变化）：
+
+- 最多 20 条；每条 `{category, shotIds, text}`。`category` 取 `wardrobe`、`props`、`injury`、`position`、`direction`、`eyeline`、`lighting`、`sound`、`other`；`shotIds` 是 1–4 个不重复且属于当前项目的镜头；`text` 是一行、1–200 字的说明。
+- 结果只有 `{issues, shots}` 两个计数；面板从保存的参数显示问题。
+- 参数不合规或镜头不属于当前项目时不执行，按参数纠错返回出错字段，不回显镜头标识。
+
+诊断运行不提供 `mioon_skill_read` 和 `mioon_continuity_report`，也不带项目说明。
 
 ## 本地接口
 

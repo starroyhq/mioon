@@ -65,7 +65,8 @@ asset and immutable image version; even an unchanged-looking Mock result has
 its own identity.
 
 The backend derives `sourceImage` with asset/hash, MIME, byte length,
-dimensions, saved name and typed import/image-version/extracted-frame origin.
+dimensions, saved name and typed import/image-version/extracted-frame or
+storyboard keyframe origin (see [Storyboard keyframe sources](#storyboard-keyframe-sources-schema-68)).
 Arguments cannot invent provenance. The accepted source identity is fixed in
 task, review and version records. Public DTOs contain no source bytes,
 filesystem paths, remote source URLs or secrets. The existing built-in Agent
@@ -137,10 +138,24 @@ uses the same profile, so every size path runs offline.
 - A result whose size is not 1024×1024 is recorded with result receipt
   version 3; 1024×1024 results keep the version 1 receipt.
 
+## Storyboard keyframe sources (schema 68)
+
+A keyframe that "建分镜" (`scene.shots.create`) saved in the asset library can be
+picked as the source like any other managed image, and the image page labels it
+"分镜关键帧". Its origin is
+`{kind:"scene-keyframe",sceneKeyframe:{sceneTaskId,sourceAssetId,sourceHash,segment,sourceFrame}}`:
+the finished storyboard task that captured it, the reference video and that
+video's hash, the segment and the captured source frame, all read from the
+task's own receipt. A keyframe whose storyboard was undone stays an owned image
+and stays editable. An image that only carries `scene-keyframe` provenance,
+without a storyboard receipt that names it, is refused like any other forged
+source. Only version 5 edit intents accept this origin; a workspace still at
+schema 66 refuses keyframe sources until startup upgrades it.
+
 ## Recovery, ownership and privacy
 
 Source verification checks actual managed bytes and the current typed
-project/asset/version/frame lineage. Approval and the final synchronous dispatch
+project/asset/version/frame/storyboard lineage. Approval and the final synchronous dispatch
 fence recheck the saved source and configuration; a renderer selection change
 cannot replace the approved source. Publication and explicit staged-result
 recovery also check the source graph. Historical replay returns the original
@@ -182,6 +197,13 @@ version 4 branch and its limits are kept exactly; the rebuild uses the same
 isolated foreign-key guard and preserves every row, rowid and raw byte, which
 `tests/image-edit-migration.test.ts` checks on a genuine ordinary60 workspace
 with version 4 rows. Restored 63 copies keep these rows read-only.
+
+Schema 68 rebuilds `image_reviews` with the same guard to add the
+storyboard-keyframe alternative to the version 5 branch only; version 4 and
+every retained row, rowid and raw byte are kept, and the reviewed delta is
+frozen in `tests/fixtures/workspace-schema-profiles/current-ordinary-68-delta.json`.
+Backups of a schema 68 workspace restore as read-only copies at schema 69
+(`restored-local-v23`).
 
 Old snapshots keep schemaVersion 1 through strict legacy/edit branches. Original
 T2I requests are not decorated with defaults or new fields. Existing public

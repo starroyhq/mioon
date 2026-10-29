@@ -12,7 +12,8 @@ error codes are in [the API](API.md#reference-film-scene-detection-2026-10-24).
 Since 2026-10-25 "建分镜" (`scene.shots.create`, undo `scene.shots.undo`) turns
 chosen segments into shots, capturing every middle keyframe in one decode with
 frame capture's profile (`scene-keyframe-decoder.ts`). The panel comes in a later
-increment.
+increment. Since schema 68 a saved keyframe can be the source of an image edit
+([image editing](IMAGE-EDITING.md#storyboard-keyframe-sources-schema-68)).
 
 ## Result
 

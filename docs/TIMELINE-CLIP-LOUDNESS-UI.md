@@ -23,7 +23,11 @@ signal. The Inspector starts with editable -14 LUFS / -1 dBTP values; these are
 not sent until Analyze. Match stages only a validated supported gain in the
 existing clip draft; Save clip uses the existing mutation and undo/redo. The
 read operation grants no mutation authority, and there is no limiter, batch
-normalization, media output or persisted report. LRA uses complete three-second windows at 100ms hops, with no synthetic
+normalization, media output or persisted report. The delivery panel's dialogue
+loudness match reuses this operation for every clip marked human voice, one at a
+time, and applies the gains the user keeps in one edit through
+`timeline.clip.setGains` ([API](API.md#clip-gains-2026-10-29)); it adds no limiter
+or normalization either. LRA uses complete three-second windows at 100ms hops, with no synthetic
 padding; shorter clips show an unavailable range, not a fabricated zero.
 Independent clip peaks cannot guarantee mix or
 AAC-encoded peaks.

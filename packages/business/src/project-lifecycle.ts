@@ -11,7 +11,7 @@ import type {Stats} from 'node:fs';
 import path from 'node:path';
 import {isProxy} from 'node:util/types';
 import type {DatabaseSync,SQLInputValue} from 'node:sqlite';
-import {projectRenameInputSchema,projectDeleteInputSchema,projectDeleteManifestSchema} from '../../contracts/src/project-lifecycle.ts';
+import {projectRenameInputSchema,projectNotesSetInputSchema,projectDeleteInputSchema,projectDeleteManifestSchema} from '../../contracts/src/project-lifecycle.ts';
 import type {ProjectDeleteManifest} from '../../contracts/src/project-lifecycle.ts';
 import {validateWorkspaceSchema48} from './workspace-schema-v48.ts';
 import {validateWorkspaceSchema52} from './workspace-schema-v52.ts';
@@ -197,6 +197,18 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
       db.prepare('INSERT INTO project_mutation_requests VALUES(?,?,?,?)').run(input.requestId,input.projectId,digest,JSON.stringify(updated));return updated;
     });
   }
+  /** Project notes live on the project record (C6), under the same project
+   * revision and immutable request receipts as a rename. Blank text clears them. */
+  function setNotes(value:unknown):unknown{
+    owned();const input=parse(projectNotesSetInputSchema,value),digest=hash(input);validateLifecycleSchema(db);
+    return store.tx(()=>{owned();const previous=db.prepare('SELECT projectId,digest,response FROM project_mutation_requests WHERE requestId=?').get(input.requestId);
+      if(previous){if(previous.projectId!==input.projectId||previous.digest!==digest)fail('IDEMPOTENCY_CONFLICT');return decoded(previous.response);}
+      const current=project(input.projectId);revision(current,input.expectedRevision);if(input.expectedRevision===Number.MAX_SAFE_INTEGER)fail('REVISION_CONFLICT');
+      const {notes:_previous,...rest}=current;
+      const updated={...rest,...(input.notes.trim()?{notes:input.notes}:{}),revision:input.expectedRevision+1,updatedAt:now()};store.put('projects',updated);
+      db.prepare('INSERT INTO project_mutation_requests VALUES(?,?,?,?)').run(input.requestId,input.projectId,digest,JSON.stringify(updated));return updated;
+    });
+  }
   function remove(value:unknown):unknown{
     owned();const input=parse(projectDeleteInputSchema,value),digest=hash(input);validateLifecycleSchema(db);
     const previous=db.prepare('SELECT projectId,digest FROM project_deletion_receipts WHERE requestId=?').get(input.requestId);
@@ -227,5 +239,5 @@ export function createProjectLifecycleServices(store:Store,{ownsLock,isReadOnly,
     for(const row of requests){if(typeof row.requestId!=='string')fail();if(cleanup(row.requestId)==='pending')pending++;}
     return {pending};
   }
-  return {handlers:{'project.rename':rename,'project.delete':remove},setProjectDeletionCompanions};
+  return {handlers:{'project.rename':rename,'project.notes.set':setNotes,'project.delete':remove},setProjectDeletionCompanions};
 }

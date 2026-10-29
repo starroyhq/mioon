@@ -27,14 +27,14 @@ test('pure help retains exact legacy bytes and schema object content in every pr
     .replace('"version":"0.4.1"', `"version":${JSON.stringify(VERSION)}`)
     .replace('"mioon capabilities",', '"mioon capabilities","mioon agent --help",')
     .replace('"mioon export download --input <JSON> --output <new-local-file>"', '"mioon export download --input <JSON> --output <new-local-file>","mioon project export --input <JSON> --output <new-local-file.mioon>","mioon project import --file <local-file.mioon> --request-id <id> [--input <JSON>]","mioon project duplicate --request-id <id> --input <JSON>"')
-    .replace('"operations":["lut.import",', '"operations":["export.cancel","export.activity.get","export.output.get","workspace.settings.get","workspace.settings.set","workspace.backup.status","workspace.backup.list","workspace.backup.create","workspace.backup.restore.stage","task.disposition.list","task.disposition.markFailed","task.disposition.archiveCompleted","project.rename","project.delete","project.summary.list","agent.authorization.list","agent.authorization.grant","agent.authorization.revoke","lut.import",')
+    .replace('"operations":["lut.import",', '"operations":["export.cancel","export.activity.get","export.output.get","workspace.settings.get","workspace.settings.set","workspace.backup.status","workspace.backup.list","workspace.backup.create","workspace.backup.restore.stage","task.disposition.list","task.disposition.markFailed","task.disposition.archiveCompleted","project.rename","project.notes.set","project.delete","project.summary.list","agent.authorization.list","agent.authorization.grant","agent.authorization.revoke","lut.import",')
     .replace('"timeline.loudness.prepare",', '"timeline.loudness.prepare","timeline.clip.loudness",')
     .replace('"timeline.audioPreview.plan",', '"timeline.audioPreview.plan","timeline.audioPreview.continuousPlan",')
     .replace('"asset.disposition.set",', '"asset.disposition.set","asset.annotation.list","asset.annotation.set",')
     .replace('"provider.list",', '"provider.list","video.connection.list",')
     .replace('"subject.binding.list",', '"subject.binding.list","subject.variants.create","subject.variants.retry","subject.variants.undo","subject.variants.get","subject.variants.list","previs.create","previs.scene.set","previs.thumbnail.set","previs.thumbnail.get",')
     .replace('"timeline.clip.remove",', '"timeline.clip.remove","timeline.clip.rippleRemove",')
-    .replace('"timeline.loudness.apply",', '"timeline.loudness.apply","timeline.clip.refreshSources","timeline.shots.append","timeline.clip.splitAtScenes","timeline.clip.crossfade",')
+    .replace('"timeline.loudness.apply",', '"timeline.loudness.apply","timeline.clip.refreshSources","timeline.shots.append","timeline.clip.splitAtScenes","timeline.clip.crossfade","timeline.clip.setGains",')
     .replace('"frame.task.recoverResult",', '"frame.task.recoverResult","scene.detect","scene.request.get","scene.task.get","scene.task.list","scene.task.cancel","scene.result.get","scene.cuts.save","scene.shots.create","scene.shots.undo",');
   assert.notEqual(expected, frozen);
   assert.equal(JSON.stringify(successEnvelope(original))+'\n', expected);

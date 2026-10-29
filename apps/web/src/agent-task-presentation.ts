@@ -4,6 +4,7 @@ import type {AgentTaskCheck} from '../../../packages/contracts/src/agent-task-ch
 import {catalogs,translate} from '../../../packages/i18n/src/index.ts';
 import type {Locale,MessageKey} from '../../../packages/i18n/src/index.ts';
 import {mioPanelMessages} from '../../../packages/i18n/src/catalogs/mio-panel.ts';
+import {taskSkillReadOf,taskSkillTitleKey} from './agent-task-reviews.ts';
 
 type DisplayProperty=AgentTaskDisplayField['property'];
 type DisplayUnit=AgentTaskDisplayField['unit'];
@@ -242,6 +243,9 @@ export function taskCurrentEntries(display:AgentTaskDisplay|undefined,locale:Loc
 export function taskStepTitle(step:AgentTaskStep,locale:Locale):string {
   if(step.kind==='model')return translate(locale,'agent.display.model');
   if(step.kind==='wait')return translate(locale,'agent.display.wait');
+  // A method read names the built-in method from its saved arguments (C6), never the model's explanation.
+  const skill=taskSkillReadOf(step);
+  if(skill)return translate(locale,'agent.skill.read',{title:translate(locale,taskSkillTitleKey(skill) as MessageKey)});
   // Tool explanations are untrusted prose. Invalid legacy content falls back to
   // a fixed operation label and the server's safe target projection.
   const text=safeText(step.text,40);

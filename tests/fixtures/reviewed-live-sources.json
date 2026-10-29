@@ -15,8 +15,8 @@
       "sha256": "80411c0b5580ba588cf43fd47cbc462a32dc96e6e6a66e4b40555b8e68aa6fa9"
     },
     "packages/business/src/inspection.ts": {
-      "bytes": 36438,
-      "sha256": "ce83accae66daa843b7e207e059c2cbec4bce186a03cc7272fcf0cbbf02d0941"
+      "bytes": 36945,
+      "sha256": "c19185fb0c7624f4fc77201ca6b5fd9ff2dcd4fd7cd464f08e393c7c9b8d442b"
     },
     "packages/business/src/local-drafts.ts": {
       "bytes": 16893,
@@ -27,36 +27,36 @@
       "sha256": "f4150ce725c187ef0c207a8dd613434e766acf96fbd343942862bf1f01a88aad"
     },
     "packages/business/src/timeline-recovery.ts": {
-      "bytes": 24576,
-      "sha256": "4c3eb1149230250fc6f5f39f69caf64d4eeec9b72e1338392a6063a542057810"
+      "bytes": 24937,
+      "sha256": "48c6e3bd873456553b191a17cd87960a9450880ac5ed9d7b529ef63392369de0"
     },
     "packages/business/src/workspace-backup-schema-versions.ts": {
-      "bytes": 10312,
-      "sha256": "f0d28bf893c2261c262d107821433b51eb8105b3e31ea5088d57fa35c5bdbffb"
+      "bytes": 10750,
+      "sha256": "e9fda644410719987627c71aa949426ed00a186ee79692711b05e3944211aba7"
     },
     "packages/business/src/workspace-lock.ts": {
       "bytes": 2717,
       "sha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463"
     },
     "packages/business/src/workspace-restore-policy.ts": {
-      "bytes": 12120,
-      "sha256": "0d3e894ba7ab76aee9f48952fde1ad373f70890ab663a73c8b1a267a8e997295"
+      "bytes": 12165,
+      "sha256": "f1131dcc86c4cabcc06941c2aefb72a8d455c416156aa67354f48fec77346404"
     },
     "packages/business/src/workspace-schema-dispatch.ts": {
-      "bytes": 50139,
-      "sha256": "6d4d6be50151cf97f48a7db09e0bdecd23eec338aac9b236bb3beaab45dfc017"
+      "bytes": 52157,
+      "sha256": "0243acaa5e3766ecba2cd0b515efa9dba9983f0ad86e696963c57114891d14d0"
     },
     "packages/business/src/workspace-volume-envelope-validation.ts": {
-      "bytes": 18329,
-      "sha256": "b3ffa2582e647b6717a059514780a053565b3531c5d09f927eda4ff2d6d862b7"
+      "bytes": 18973,
+      "sha256": "f6e97ab76538581a82f66b0c0f529558ad0ecaf50d142a7880c0f8ea998011ac"
     },
     "packages/contracts/package.json": {
       "bytes": 1601,
       "sha256": "a9401556454b98b060582b16f2e86d6478bf1dc1d02edc9d6c0d0e288e329a8b"
     },
     "packages/contracts/src/edit-tasks.ts": {
-      "bytes": 7437,
-      "sha256": "eff4fe855bff562c94e23c4373ac82ce476a28f3178916fafa6cce8f41d2f777"
+      "bytes": 7577,
+      "sha256": "cab7f1196b1696afedc8f1bd3f1f0eb2aec000e031b72d05eee182ad16efba99"
     },
     "packages/contracts/src/generation-input-profiles.ts": {
       "bytes": 14029,
@@ -67,16 +67,16 @@
       "sha256": "8b518c4b4881c7c5aec675c0368d545ec08b595140053de18067d13d033d34c1"
     },
     "packages/contracts/src/images.ts": {
-      "bytes": 21898,
-      "sha256": "a6a2b428acbee408f3e2d00ab2e5fa365a0e424395e57762dfc29c9d34a1a5b3"
+      "bytes": 22413,
+      "sha256": "9fbec00e2d6a812d0774c516e91ff8fb51acae53caace555fdcd47953573a582"
     },
     "packages/contracts/src/index.ts": {
-      "bytes": 50382,
-      "sha256": "930b553fd091dbfa1e94cf0d895d4a91c8c6f2ad68f080dccba7f6ee672f664d"
+      "bytes": 50585,
+      "sha256": "3cdaf5b14e6670d3daacf833f6b08f093129400f17b5cdd8fb40e07d8f75aeb9"
     },
     "packages/contracts/src/operation-effects.ts": {
-      "bytes": 38137,
-      "sha256": "a0b4d0a4a7d51d6d73f7c14edb8b27a15f11c99feb61b43ccc625ede7d8d5264"
+      "bytes": 38793,
+      "sha256": "7919962bf33c715588b74eded7a878c41f695c749769e900cbbad7f0ffaa189a"
     },
     "packages/contracts/src/private-storage.ts": {
       "bytes": 23412,
@@ -91,8 +91,8 @@
       "sha256": "f728024366e189185f3235f0fa5cc77509915a55ad27d74f4a2fff2590bb0ec5"
     },
     "packages/contracts/src/timeline-acknowledgement.ts": {
-      "bytes": 29215,
-      "sha256": "496eb13d546d138ea0724007e695cba277c66ae9db809d8284e97b0e365e8512"
+      "bytes": 29751,
+      "sha256": "bd9ec95fcfc718927e34e8bf457a506eafe77fffd9a9bbe120cb9f7180dd5f82"
     },
     "packages/contracts/src/timeline-clip-loudness.ts": {
       "bytes": 10958,

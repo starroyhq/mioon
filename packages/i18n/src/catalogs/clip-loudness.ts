@@ -215,5 +215,179 @@ export const clipLoudnessMessages = {
     "zh-Hant": "實際音訊與已儲存的來源資訊不符，未產生報告。請核對來源",
     "en": "Actual audio does not match the saved source metadata. No report was produced; check the source",
     "ja": "実際の音声が保存済みソース情報と一致しません。結果はありません。ソースを確認してください"
+  },
+  "audio.loudness.dialogue.label": {
+    "zh-Hans": "对白响度匹配",
+    "zh-Hant": "對白響度匹配",
+    "en": "Match dialogue loudness",
+    "ja": "台詞のラウドネスを揃える"
+  },
+  "audio.loudness.dialogue.help": {
+    "zh-Hans": "逐段测量标为“人声”的片段，按目标响度给出各自的建议增益。只调整增益，不做限幅或压缩。",
+    "zh-Hant": "逐段測量標為「人聲」的片段，按目標響度給出各自的建議增益。只調整增益，不做限幅或壓縮。",
+    "en": "Measures each clip marked Human voice and suggests its own gain for the target loudness. Only gain changes; nothing is limited or compressed.",
+    "ja": "「人の声」に分類したクリップを1件ずつ測定し、目標ラウドネスに合わせた個別のゲインを提案します。変わるのはゲインだけで、リミッターや圧縮はかけません。"
+  },
+  "audio.loudness.dialogue.none": {
+    "zh-Hans": "时间线上没有标为“人声”的片段。可以在片段属性的“音频分类”里设置。",
+    "zh-Hant": "時間軸上沒有標為「人聲」的片段。可以在片段屬性的「音訊分類」裡設定。",
+    "en": "No clip on the timeline is marked Human voice. Set it under Audio role in the clip properties.",
+    "ja": "タイムラインに「人の声」に分類したクリップがありません。クリップのプロパティの「音声の分類」で設定できます。"
+  },
+  "audio.loudness.dialogue.analyze": {
+    "zh-Hans": "分析对白",
+    "zh-Hant": "分析對白",
+    "en": "Measure dialogue",
+    "ja": "台詞を測定"
+  },
+  "audio.loudness.dialogue.analyzeAgain": {
+    "zh-Hans": "重新分析",
+    "zh-Hant": "重新分析",
+    "en": "Measure again",
+    "ja": "もう一度測定"
+  },
+  "audio.loudness.dialogue.stop": {
+    "zh-Hans": "停止",
+    "zh-Hant": "停止",
+    "en": "Stop",
+    "ja": "停止"
+  },
+  "audio.loudness.dialogue.progress": {
+    "zh-Hans": "正在测量第 {done}/{total} 段…",
+    "zh-Hant": "正在測量第 {done}/{total} 段…",
+    "en": "Measuring clip {done} of {total}…",
+    "ja": "{total} 件中 {done} 件目を測定中…"
+  },
+  "audio.loudness.dialogue.summary": {
+    "zh-Hans": "已测量 {count} 段，建议调整 {selected} 段",
+    "zh-Hant": "已測量 {count} 段，建議調整 {selected} 段",
+    "en": "{count} measured, {selected} to change",
+    "ja": "測定 {count} 件、変更の提案 {selected} 件"
+  },
+  "audio.loudness.dialogue.current": {
+    "zh-Hans": "当前 {lufs} LUFS · 真峰值 {peak} dBTP",
+    "zh-Hant": "目前 {lufs} LUFS · 真峰值 {peak} dBTP",
+    "en": "Now {lufs} LUFS · true peak {peak} dBTP",
+    "ja": "現在 {lufs} LUFS・トゥルーピーク {peak} dBTP"
+  },
+  "audio.loudness.dialogue.suggest": {
+    "zh-Hans": "建议 {db} dB（增益 {before} → {after}）",
+    "zh-Hant": "建議 {db} dB（增益 {before} → {after}）",
+    "en": "Suggested {db} dB (gain {before} → {after})",
+    "ja": "提案 {db} dB（ゲイン {before} → {after}）"
+  },
+  "audio.loudness.dialogue.peakRisk": {
+    "zh-Hans": "调整后真峰值约 {peak} dBTP，超过上限，默认不勾选",
+    "zh-Hant": "調整後真峰值約 {peak} dBTP，超過上限，預設不勾選",
+    "en": "The true peak would be about {peak} dBTP, above the ceiling, so it is left unchecked",
+    "ja": "変更後のトゥルーピークは約 {peak} dBTP で上限を超えるため、初期状態ではチェックしません"
+  },
+  "audio.loudness.dialogue.close": {
+    "zh-Hans": "已接近目标，无需调整",
+    "zh-Hant": "已接近目標，無需調整",
+    "en": "Already within 0.1 LU of the target",
+    "ja": "目標との差が 0.1 LU 以内のため、変更は不要です"
+  },
+  "audio.loudness.dialogue.noLoudness": {
+    "zh-Hans": "静音、太短或低于门限，测不出综合响度",
+    "zh-Hant": "靜音、太短或低於門限，測不出綜合響度",
+    "en": "Silent, too short or below the gate: no integrated loudness",
+    "ja": "無音、短すぎる、またはゲート未満のため、統合ラウドネスを測れません"
+  },
+  "audio.loudness.dialogue.gainRange": {
+    "zh-Hans": "需要的增益超出 0–2 范围，只调增益达不到目标",
+    "zh-Hant": "需要的增益超出 0–2 範圍，只調增益達不到目標",
+    "en": "The needed gain is outside 0–2, so gain alone cannot reach the target",
+    "ja": "必要なゲインが 0〜2 の範囲を超えるため、ゲインだけでは目標に届きません"
+  },
+  "audio.loudness.dialogue.muted": {
+    "zh-Hans": "所在轨道已静音，跳过",
+    "zh-Hant": "所在軌道已靜音，略過",
+    "en": "Its track is muted; skipped",
+    "ja": "トラックがミュートのためスキップします"
+  },
+  "audio.loudness.dialogue.zeroGain": {
+    "zh-Hans": "增益为 0，跳过",
+    "zh-Hant": "增益為 0，略過",
+    "en": "Its gain is 0; skipped",
+    "ja": "ゲインが 0 のためスキップします"
+  },
+  "audio.loudness.dialogue.tooLong": {
+    "zh-Hans": "超过 {seconds} 秒，无法测量",
+    "zh-Hant": "超過 {seconds} 秒，無法測量",
+    "en": "Longer than {seconds} s; cannot be measured",
+    "ja": "{seconds} 秒を超えるため測定できません"
+  },
+  "audio.loudness.dialogue.noSource": {
+    "zh-Hans": "找不到素材，跳过",
+    "zh-Hant": "找不到素材，略過",
+    "en": "Its source is missing; skipped",
+    "ja": "素材が見つからないためスキップします"
+  },
+  "audio.loudness.dialogue.waiting": {
+    "zh-Hans": "等待测量",
+    "zh-Hant": "等待測量",
+    "en": "Waiting",
+    "ja": "測定待ち"
+  },
+  "audio.loudness.dialogue.measuring": {
+    "zh-Hans": "正在测量…",
+    "zh-Hant": "正在測量…",
+    "en": "Measuring…",
+    "ja": "測定中…"
+  },
+  "audio.loudness.dialogue.failed": {
+    "zh-Hans": "测量失败：{reason}",
+    "zh-Hant": "測量失敗：{reason}",
+    "en": "Measurement failed: {reason}",
+    "ja": "測定に失敗しました：{reason}"
+  },
+  "audio.loudness.dialogue.select": {
+    "zh-Hans": "应用到“{name}”",
+    "zh-Hant": "套用到「{name}」",
+    "en": "Apply to “{name}”",
+    "ja": "「{name}」に適用"
+  },
+  "audio.loudness.dialogue.apply": {
+    "zh-Hans": "应用到 {count} 段",
+    "zh-Hant": "套用到 {count} 段",
+    "en": "Apply to checked ({count})",
+    "ja": "{count} 件に適用"
+  },
+  "audio.loudness.dialogue.applyHint": {
+    "zh-Hans": "勾选的增益一次保存为一条历史，撤销一次即可全部复原",
+    "zh-Hant": "勾選的增益一次儲存為一筆歷史，復原一次即可全部還原",
+    "en": "Checked gains are saved as one history entry; one undo restores them all",
+    "ja": "チェックしたゲインは1件の履歴としてまとめて保存され、1回の取り消しですべて元に戻ります"
+  },
+  "audio.loudness.dialogue.applying": {
+    "zh-Hans": "正在保存增益…",
+    "zh-Hant": "正在儲存增益…",
+    "en": "Saving gains…",
+    "ja": "ゲインを保存中…"
+  },
+  "audio.loudness.dialogue.applied": {
+    "zh-Hans": "已调整 {count} 段对白的增益",
+    "zh-Hant": "已調整 {count} 段對白的增益",
+    "en": "Dialogue gains changed: {count}",
+    "ja": "{count} 件の台詞のゲインを変更しました"
+  },
+  "audio.loudness.dialogue.stale": {
+    "zh-Hans": "时间线已变化，请重新分析",
+    "zh-Hant": "時間軸已變更，請重新分析",
+    "en": "The timeline changed. Measure again",
+    "ja": "タイムラインが変わりました。もう一度測定してください"
+  },
+  "audio.loudness.dialogue.cancelled": {
+    "zh-Hans": "已停止测量",
+    "zh-Hant": "已停止測量",
+    "en": "Measurement stopped",
+    "ja": "測定を停止しました"
+  },
+  "audio.loudness.dialogue.limitation": {
+    "zh-Hans": "只测量每段对白本身（含它的增益和淡入淡出），不含其他轨道，也不是导出后的结果；每段最长 {seconds} 秒。",
+    "zh-Hant": "只測量每段對白本身（含它的增益和淡入淡出），不含其他軌道，也不是匯出後的結果；每段最長 {seconds} 秒。",
+    "en": "Each dialogue clip is measured on its own, with its gain and fades but without other tracks, and not as exported. Each clip can be at most {seconds} s.",
+    "ja": "台詞クリップは1件ずつ、そのゲインとフェードを含めて単体で測定します。ほかのトラックや書き出し後の結果は含みません。1件の長さは最大 {seconds} 秒です。"
   }
 } as const satisfies MessageCatalog;

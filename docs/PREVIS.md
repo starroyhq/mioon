@@ -187,7 +187,7 @@ exports are not images of the new project. Deleting a project deletes its
 previs nodes, receipts and thumbnails.
 
 Backups carry everything. A restored copy (schema 65, `restored-local-v21`;
-schema 67, `restored-local-v22`, for current backups) holds the receipts, freezes the thumbnails and allows only
+schema 67, `restored-local-v22`; schema 69, `restored-local-v23`, for current backups) holds the receipts, freezes the thumbnails and allows only
 `previs.thumbnail.get`: previs nodes can be viewed, not saved. Restored copies
 of schema 62 backups have no previs storage.
 

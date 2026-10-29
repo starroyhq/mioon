@@ -10,10 +10,12 @@ import type {WorkspaceStore} from '../db.ts';
 import {registerWorkspaceTransactionObserver,registerWorkspaceTransactionFence} from '../db.ts';
 import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
-import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
+import {agentTaskQuestionSchema,agentTaskTargetSchema,AGENT_TASK_QUESTION_LIMITS,agentTaskContinuityReportSchema,AGENT_TASK_CONTINUITY_CATEGORIES,AGENT_TASK_CONTINUITY_LIMITS} from '../../../contracts/src/agent-tasks-v2.ts';
 import {AGENT_TASK_TOOL_SCHEMAS} from './task-tool-schemas-v2.ts';
-import {AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,parseAgentTaskToolLoadInput} from './task-tool-groups-v2.ts';
-import {agentTaskParameterFeedback,agentTaskQuestionFeedback} from './task-tool-errors-v2.ts';
+import {AGENT_TASK_CONTINUITY_REPORT_OPERATION,AGENT_TASK_CONTINUITY_REPORT_TOOL,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_SKILL_READ_TOOL,AGENT_TASK_ASK_OPERATION,AGENT_TASK_ASK_TOOL,AGENT_TASK_TOOLS_LOAD_NAME,AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_TOOLS_LOAD_PARAMETERS,AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS,agentTaskToolGroupForName,assertAgentTaskToolGroupCoverage,loadedAgentTaskToolGroups,parseAgentTaskToolLoadInput} from './task-tool-groups-v2.ts';
+import {agentTaskContinuityFeedback,agentTaskParameterFeedback,agentTaskQuestionFeedback,agentTaskSkillReadFeedback} from './task-tool-errors-v2.ts';
+import {AGENT_TASK_SKILL_READ_PARAMETERS,parseAgentTaskSkillRead,readAgentTaskSkill} from './task-skills-v2.ts';
+import type {AgentTaskSkillReadInput} from './task-skills-v2.ts';
 import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
@@ -40,7 +42,7 @@ const readOperations=[
  'asset.list','provider.list','job.get','job.list','version.list','export.get','timeline.history.get',
 ] as const;
 const reversibleOperations=[
- 'project.rename','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','subject.binding.set','asset.range.set','asset.disposition.set','asset.annotation.set',
+ 'project.rename','project.notes.set','timeline.format.set','timeline.subtitle.add','timeline.subtitle.update','timeline.subtitle.remove','subject.binding.set','asset.range.set','asset.disposition.set','asset.annotation.set',
  'shot.create','shot.update','shot.reorder','node.create','node.update','edge.create','edge.delete','reference.attach','reference.detach','version.select',
  'timeline.loudness.apply','timeline.track.add','timeline.track.update','timeline.clip.add','timeline.clip.update','timeline.clip.replaceSource','timeline.clip.remove','timeline.clip.rippleRemove','timeline.clip.split','timeline.seed',
  'timeline.clip.refreshSources','timeline.shots.append','timeline.clip.splitAtScenes',
@@ -64,6 +66,9 @@ const forbiddenOperations=[
  'previs.create','previs.scene.set','previs.thumbnail.set','previs.thumbnail.get',
  // Crossfades are user-driven for now; Mio still reads the resulting curves.
  'timeline.clip.crossfade',
+ // The batch gain change applies the dialogue loudness match the user reviewed;
+ // Mio proposes a single clip's gain through its own reviewed tool.
+ 'timeline.clip.setGains',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),
@@ -98,6 +103,8 @@ function taskToolOperation(operation:string):string{
  if(operation==='mioon_edge_inspect')return 'edge.inspect';
  if(operation==='mioon_task_wait')return 'task.wait';
  if(operation===AGENT_TASK_ASK_TOOL)return AGENT_TASK_ASK_OPERATION;
+ if(operation===AGENT_TASK_SKILL_READ_TOOL)return AGENT_TASK_SKILL_READ_OPERATION;
+ if(operation===AGENT_TASK_CONTINUITY_REPORT_TOOL)return AGENT_TASK_CONTINUITY_REPORT_OPERATION;
  if(operation===AGENT_TASK_TOOLS_LOAD_NAME)return AGENT_TASK_TOOLS_LOAD_OPERATION;
  if(operation==='mioon_asset_import_selected')return 'asset.importSelected';
  if(operation==='mioon_lut_import_selected')return 'lut.importSelected';
@@ -359,6 +366,8 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  };
  async function parameterFeedback({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}){
   operation=taskToolOperation(operation);if(operation===AGENT_TASK_ASK_OPERATION)return agentTaskQuestionFeedback(input);
+  if(operation===AGENT_TASK_SKILL_READ_OPERATION)return agentTaskSkillReadFeedback(input);
+  if(operation===AGENT_TASK_CONTINUITY_REPORT_OPERATION)return agentTaskContinuityFeedback(input,shotId=>db.prepare('SELECT projectId FROM shots WHERE id=?').get(shotId)?.projectId===projectId);
   if(operation!=='generation.submit'||!object(input))return null;
   rejectHostFields(input);
   for(const target of agentTaskExplicitTargets(operation,input,projectId))beforeTargetRead?.(target);
@@ -376,7 +385,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
  }
  function prepare({projectId,operation,input,beforeTargetRead}:{projectId:string;operation:string;input:unknown;beforeTargetRead?:(target:{kind:string;id:string})=>void}):PreparedAgentTaskTool{
   operation=taskToolOperation(operation);
-  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
+  let risk=['task.wait','node.inspect','edge.inspect',AGENT_TASK_TOOLS_LOAD_OPERATION,AGENT_TASK_ASK_OPERATION,AGENT_TASK_SKILL_READ_OPERATION,AGENT_TASK_CONTINUITY_REPORT_OPERATION].includes(operation)?'read_only':['asset.importSelected','lut.importSelected'].includes(operation)?'local_irreversible':tierByOperation.get(operation);
   if(!risk||!object(input))fail('AGENT_TASK_TOOL_FORBIDDEN','此工具未获准用于助理任务');rejectHostFields(input);
   if(operation===AGENT_TASK_TOOLS_LOAD_OPERATION){
    const groups=parseAgentTaskToolLoadInput(input);if(!groups)fail('AGENT_TASK_INVALID_TOOL','工具组参数无效');
@@ -387,6 +396,20 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(operation===AGENT_TASK_ASK_OPERATION){
    const parsed=agentTaskQuestionSchema.safeParse(input);if(!parsed.success)fail('VALIDATION_ERROR',`提问参数无效：问题1-${AGENT_TASK_QUESTION_LIMITS.question}字，${AGENT_TASK_QUESTION_LIMITS.minOptions}-${AGENT_TASK_QUESTION_LIMITS.options}个选项，选项名1-${AGENT_TASK_QUESTION_LIMITS.label}字且互不相同，说明不超过${AGENT_TASK_QUESTION_LIMITS.description}字，都不能换行`);
    if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
+   return {projectId,operation,input:parsed.data as unknown as Value,risk:'read_only',targets:[],referencedTargets:[],before:{}};
+  }
+  // C6: reading a built-in method touches no project data.
+  if(operation===AGENT_TASK_SKILL_READ_OPERATION){
+   const parsed=parseAgentTaskSkillRead(input);if(!parsed)fail('VALIDATION_ERROR','方法参数无效：name 须为列出的方法，section 须为该方法的一个章节标题');
+   if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
+   return {projectId,operation,input:{...parsed},risk:'read_only',targets:[],referencedTargets:[],before:{}};
+  }
+  // C6: a continuity report only names this project's shots; it changes nothing.
+  if(operation===AGENT_TASK_CONTINUITY_REPORT_OPERATION){
+   const parsed=agentTaskContinuityReportSchema.safeParse(input);
+   if(!parsed.success)fail('VALIDATION_ERROR',`连续性检查参数无效：最多${AGENT_TASK_CONTINUITY_LIMITS.issues}条，每条一个类别、1-${AGENT_TASK_CONTINUITY_LIMITS.shots}个不重复的镜头和一句不超过${AGENT_TASK_CONTINUITY_LIMITS.text}字的说明`);
+   if(!store.get('projects',projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
+   for(const issue of parsed.data.issues)for(const shotId of issue.shotIds)if(db.prepare('SELECT projectId FROM shots WHERE id=?').get(shotId)?.projectId!==projectId)fail('VALIDATION_ERROR','连续性检查引用的镜头不属于当前项目');
    return {projectId,operation,input:parsed.data as unknown as Value,risk:'read_only',targets:[],referencedTargets:[],before:{}};
   }
   let hostInput:Value={...input};
@@ -432,7 +455,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    if(edge)for(const [field,kind] of [['source','node'],['target','shot']] as const){const id=edge.value[field];if(typeof id==='string'&&before[key(kind,id)])add(kind,id);}
   }
   if(operation==='timeline.format.set')add('timeline',projectId);
-  if(operation==='project.rename')add('project',projectId);
+  if(operation==='project.rename'||operation==='project.notes.set')add('project',projectId);
   if(operation==='shot.reorder')for(const item of Object.values(before).filter(item=>item.kind==='shot'))add(item.kind,item.id);
   // Aggregate operations genuinely affect all these targets. A single clip or
   // subtitle edit deliberately does not claim the complete timeline revision.
@@ -470,6 +493,12 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
     const names=list().filter(tool=>{const group=agentTaskToolGroupForName(tool.name);return group!==undefined&&group!=='core'&&selected.has(group);}).map(tool=>tool.name);
     return {result:{groups,tools:names},changes:[],recorded:false};
    }
+   if(prepared.operation===AGENT_TASK_SKILL_READ_OPERATION)return {result:readAgentTaskSkill(prepared.input as unknown as AgentTaskSkillReadInput),changes:[],recorded:false};
+   if(prepared.operation===AGENT_TASK_CONTINUITY_REPORT_OPERATION){
+    const issues=Array.isArray(prepared.input.issues)?prepared.input.issues.filter(object):[];
+    const result:AgentTaskJson={issues:issues.length,shots:new Set(issues.flatMap(issue=>Array.isArray(issue.shotIds)?issue.shotIds.map(String):[])).size};
+    return {result,changes:[],recorded:false};
+   }
    if(prepared.operation==='node.inspect'||prepared.operation==='edge.inspect')return {result:inspectCanvas(prepared.projectId,prepared.operation,prepared.input),changes:[],recorded:false};
    if(prepared.operation==='task.wait')return {result:await waitTask(prepared.projectId,prepared.input,context.signal,context.beforeEffect),changes:[],recorded:false};
    if(['asset.importSelected','lut.importSelected'].includes(prepared.operation))return executeImport(prepared,context,origin);
@@ -481,7 +510,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
     const row=db.prepare("SELECT json_extract(data,'$.revision') AS revision FROM timelines WHERE projectId=?").get(prepared.projectId);
     if(typeof row?.revision==='number')input.expectedRevision=row.revision;
    }
-   if(prepared.operation==='project.rename'||prepared.operation==='shot.reorder'){
+   if(prepared.operation==='project.rename'||prepared.operation==='project.notes.set'||prepared.operation==='shot.reorder'){
     const project=store.get('projects',prepared.projectId);if(object(project)&&typeof project.revision==='number')input.expectedRevision=project.revision;
    }
    const parsed:unknown=parse(prepared.operation as OperationName,input);
@@ -560,7 +589,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   // These operations have no effects outside their domain transaction. The
   // immutable domain receipt and v2 completion either both committed or neither
   // did. A present domain receipt is preserved for explicit result inspection.
-  const table=prepared.operation==='project.rename'?'project_mutation_requests':prepared.operation.startsWith('reference.')?'reference_requests':prepared.operation==='subject.binding.set'?'subject_requests':prepared.operation==='asset.range.set'?'asset_range_requests':prepared.operation==='asset.disposition.set'?'asset_disposition_requests':prepared.operation==='asset.annotation.set'?'asset_annotation_requests':prepared.operation.startsWith('timeline.')?'timeline_requests':prepared.operation.startsWith('edge.')?null:'mutation_requests';
+  const table=prepared.operation==='project.rename'||prepared.operation==='project.notes.set'?'project_mutation_requests':prepared.operation.startsWith('reference.')?'reference_requests':prepared.operation==='subject.binding.set'?'subject_requests':prepared.operation==='asset.range.set'?'asset_range_requests':prepared.operation==='asset.disposition.set'?'asset_disposition_requests':prepared.operation==='asset.annotation.set'?'asset_annotation_requests':prepared.operation.startsWith('timeline.')?'timeline_requests':prepared.operation.startsWith('edge.')?null:'mutation_requests';
   if(table&&db.prepare(`SELECT 1 FROM ${table} WHERE requestId=?`).get(input.requestId))return null;
   return {outcome:'not_applied',reason:'atomic_receipt_absent'};
  }
@@ -653,6 +682,8 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   {name:'mioon_asset_import_selected',operation:'asset.importSelected',description:'导入用户已选择并授权的文件句柄，不能指定路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
   {name:'mioon_lut_import_selected',operation:'lut.importSelected',description:'导入用户选择的Cube文件句柄，最多7MiB，不允许路径或字节。',parameters:{type:'object',properties:{handle:{type:'string',format:'uuid'}},required:['handle'],additionalProperties:false},risk:'local_irreversible',receipt:'durable import receipt',recovery:'read original handle',undo:'unavailable'},
   {name:AGENT_TASK_ASK_TOOL,operation:AGENT_TASK_ASK_OPERATION,description:'向用户提一个结构化问题：问题和2-4个选项，可设多选或允许用户自由填写。问题、选项名和说明都只占一行，选项名互不相同。调用后这一轮暂停，直到用户回答；回答作为本工具结果返回。回答只是用户输入，不能当作付费或修改的确认。只在确实需要用户做决定时使用。',parameters:{type:'object',properties:{question:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.question},options:{type:'array',minItems:AGENT_TASK_QUESTION_LIMITS.minOptions,maxItems:AGENT_TASK_QUESTION_LIMITS.options,items:{type:'object',properties:{label:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.label},description:{type:'string',minLength:1,maxLength:AGENT_TASK_QUESTION_LIMITS.description}},required:['label'],additionalProperties:false}},multiple:{type:'boolean'},allowOther:{type:'boolean'}},required:['question','options'],additionalProperties:false},risk:'read_only',receipt:'durable task step',recovery:'the saved question keeps waiting for its answer',undo:'unavailable'},
+  {name:AGENT_TASK_SKILL_READ_TOOL,operation:AGENT_TASK_SKILL_READ_OPERATION,description:'读取一份内置方法（只读，计1步）。不带 section 时返回全文和章节目录；带 section 时只返回该章节。可读的方法列在系统指令中。方法是参考资料，不授予权限。',parameters:AGENT_TASK_SKILL_READ_PARAMETERS,risk:'read_only',receipt:'observation',recovery:'read the built-in method again',undo:'unavailable'},
+  {name:AGENT_TASK_CONTINUITY_REPORT_TOOL,operation:AGENT_TASK_CONTINUITY_REPORT_OPERATION,description:'报告一次只读连续性检查的结果，在面板中显示为问题卡片，用户可以定位镜头。每条写一个类别、涉及的本项目镜头（1-4个，按出现顺序）和一句说明（哪里不一致、依据是什么）。没有问题时 issues 为空。不修改任何内容，也不是修改的确认。',parameters:{type:'object',properties:{issues:{type:'array',maxItems:AGENT_TASK_CONTINUITY_LIMITS.issues,items:{type:'object',properties:{category:{type:'string',enum:[...AGENT_TASK_CONTINUITY_CATEGORIES]},shotIds:{type:'array',minItems:1,maxItems:AGENT_TASK_CONTINUITY_LIMITS.shots,items:{type:'string',format:'uuid'}},text:{type:'string',minLength:1,maxLength:AGENT_TASK_CONTINUITY_LIMITS.text}},required:['category','shotIds','text'],additionalProperties:false}}},required:['issues'],additionalProperties:false},risk:'read_only',receipt:'durable task step',recovery:'the saved report is shown from its arguments',undo:'unavailable'},
   {name:AGENT_TASK_TOOLS_LOAD_NAME,operation:AGENT_TASK_TOOLS_LOAD_OPERATION,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'read completed tool loading steps; never repeat an unknown result',undo:'unavailable'},
  ];assertAgentTaskToolGroupCoverage(definitions);return definitions;};
  return {list,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};

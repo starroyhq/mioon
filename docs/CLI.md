@@ -594,6 +594,21 @@ that already have volume keyframes are refused rather than overwritten; gain and
 fades are kept and multiply the curves. Full semantics:
 [Crossfade](API.md#crossfade-2026-10-28).
 
+### Set several clip gains
+
+`timeline clip setGains` changes the gain of several sounding clips as one
+undoable edit. Read `timeline get` first; measure clips with
+`timeline clip loudness` when matching loudness:
+
+```sh
+mioon timeline clip setGains --input '{"projectId":"PROJECT_UUID","expectedRevision":12,"requestId":"gains-0001","gains":[{"clipId":"CLIP_A_UUID","gain":1.4},{"clipId":"CLIP_B_UUID","gain":0.8}]}'
+```
+
+It returns the timeline with one `{clipId,previousGain,gain}` change per listed
+clip. Images and silent sources are refused, and a list that changes nothing is
+refused without writing. Full semantics:
+[Clip gains](API.md#clip-gains-2026-10-29).
+
 ### Clip audio fades
 
 Use existing `timeline clip add` or `timeline clip update` commands; inspect

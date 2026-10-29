@@ -203,6 +203,14 @@
 .export-workflow .export-loudness-row>div{min-width:0}
 .export-workflow .export-loudness-row .timeline-mix-loudness{padding:7px 10px;margin:0;background:var(--wb-input);border:1px solid var(--wb-line);border-radius:var(--wb-radius-control)}
 .export-workflow .export-loudness-row .timeline-mix-loudness>summary{font-size:var(--wb-text-caption);line-height:1.5}
+.export-workflow .export-loudness-row .timeline-dialogue-loudness{padding:7px 10px;margin:0 0 8px;background:var(--wb-input);border:1px solid var(--wb-line);border-radius:var(--wb-radius-control)}
+.export-workflow .export-loudness-row .timeline-dialogue-loudness>summary{font-size:var(--wb-text-caption);line-height:1.5}
+.export-workflow .dialogue-loudness-rows{list-style:none;margin:6px 0 0;padding:0}
+.export-workflow .dialogue-loudness-row{padding:6px 0;border-top:1px solid var(--wb-line)}
+.export-workflow .dialogue-loudness-row:first-child{border-top:0}
+.export-workflow .dialogue-loudness-name{display:flex;align-items:center;gap:6px;min-width:0;color:var(--wb-text);overflow-wrap:anywhere}
+.export-workflow .dialogue-loudness-name>input{flex:none;width:14px;height:14px;margin:0}
+.export-workflow .dialogue-loudness-row>p{margin:2px 0 0;padding-left:20px}
 .export-workflow .export-settings-recovery{margin:8px 0 0;font-size:var(--wb-text-caption);color:var(--wb-muted)}
 .export-workflow .export-settings-recovery>details>summary{cursor:pointer;line-height:1.5;width:fit-content}
 .export-workflow .export-settings-recovery>details[open]>summary{margin-bottom:8px}

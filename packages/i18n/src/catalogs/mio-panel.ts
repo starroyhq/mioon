@@ -10,6 +10,27 @@ export const mioPanelMessages = {
   "agent.panel.modifiedAfterKept": {"zh-Hans": "目标之后有更新，保留当前内容", "zh-Hant": "目標之後有更新，保留目前內容", "en": "This target has later updates; keep its current content", "ja": "対象に後続の更新があります。現在の内容を保持します"},
   "agent.mark.label": {"zh-Hans": "Mio 修改", "zh-Hant": "Mio 修改", "en": "Edited by Mio", "ja": "Mio が変更"},
   "agent.mark.open": {"zh-Hans": "Mio 修改，查看这处变化", "zh-Hant": "Mio 修改，查看這處變化", "en": "Edited by Mio. Show this change", "ja": "Mio が変更。この変更を表示"},
+  "agent.skill.read": {"zh-Hans": "读取方法：{title}", "zh-Hant": "讀取方法：{title}", "en": "Read method: {title}", "ja": "手順を読む：{title}"},
+  "agent.skill.title.scriptToShots": {"zh-Hans": "剧本拆镜头", "zh-Hant": "劇本拆鏡頭", "en": "Script to shots", "ja": "台本をショットに分ける"},
+  "agent.skill.title.shotPrompts": {"zh-Hans": "镜头提示词", "zh-Hant": "鏡頭提示詞", "en": "Shot prompts", "ja": "ショットのプロンプト"},
+  "agent.skill.title.characterConsistency": {"zh-Hans": "角色一致性", "zh-Hant": "角色一致性", "en": "Character consistency", "ja": "人物の一貫性"},
+  "agent.skill.title.continuityCheck": {"zh-Hans": "连续性检查", "zh-Hant": "連續性檢查", "en": "Continuity check", "ja": "連続性チェック"},
+  "agent.review.summary": {"zh-Hans": "发现 {count} 处可能不连贯，没有修改任何内容：", "zh-Hant": "發現 {count} 處可能不連貫，沒有修改任何內容：", "en": "Possible continuity breaks found: {count}. Nothing was changed:", "ja": "つながらない可能性がある箇所：{count} 件。何も変更していません："},
+  "agent.review.none": {"zh-Hans": "没有发现不连贯的地方，没有修改任何内容。", "zh-Hant": "沒有發現不連貫的地方，沒有修改任何內容。", "en": "No continuity breaks found. Nothing was changed.", "ja": "つながらない箇所は見つかりませんでした。何も変更していません。"},
+  "agent.review.locate": {"zh-Hans": "定位", "zh-Hant": "定位", "en": "Locate", "ja": "表示"},
+  "agent.review.shot": {"zh-Hans": "镜头 {number}", "zh-Hant": "鏡頭 {number}", "en": "Shot {number}", "ja": "ショット {number}"},
+  "agent.review.shotMissing": {"zh-Hans": "已删除的镜头", "zh-Hant": "已刪除的鏡頭", "en": "Deleted shot", "ja": "削除済みのショット"},
+  "agent.review.mark": {"zh-Hans": "待核对", "zh-Hant": "待核對", "en": "To check", "ja": "要確認"},
+  "agent.review.markTitle": {"zh-Hans": "{category} · 点击查看对应问题", "zh-Hant": "{category} · 點擊查看對應問題", "en": "{category} · Show the issue", "ja": "{category} · 該当する指摘を表示"},
+  "agent.review.category.wardrobe": {"zh-Hans": "衣着", "zh-Hant": "衣著", "en": "Wardrobe", "ja": "衣装"},
+  "agent.review.category.props": {"zh-Hans": "持物", "zh-Hant": "持物", "en": "Props", "ja": "持ち物"},
+  "agent.review.category.injury": {"zh-Hans": "伤情", "zh-Hant": "傷情", "en": "Injuries", "ja": "けが"},
+  "agent.review.category.position": {"zh-Hans": "站位", "zh-Hant": "站位", "en": "Positions", "ja": "立ち位置"},
+  "agent.review.category.direction": {"zh-Hans": "出入方向", "zh-Hant": "出入方向", "en": "Screen direction", "ja": "出入りの方向"},
+  "agent.review.category.eyeline": {"zh-Hans": "视线方向", "zh-Hant": "視線方向", "en": "Eyeline", "ja": "視線の方向"},
+  "agent.review.category.lighting": {"zh-Hans": "主光方向", "zh-Hant": "主光方向", "en": "Key light", "ja": "主光の向き"},
+  "agent.review.category.sound": {"zh-Hans": "声音与画面", "zh-Hant": "聲音與畫面", "en": "Sound and picture", "ja": "音と映像"},
+  "agent.review.category.other": {"zh-Hans": "其他", "zh-Hant": "其他", "en": "Other", "ja": "その他"},
   "agent.panel.undoTitle": {"zh-Hans": "撤销这一轮的 {count} 处变化？", "zh-Hant": "復原這一輪的 {count} 處變化？", "en": "Undo changes from this round ({count})?", "ja": "このラウンドの変更 {count} 件を取り消しますか？"},
   "agent.panel.undoRetained": {"zh-Hans": "{count} 处之后被你修改过，将保留。", "zh-Hant": "{count} 處之後被你修改過，將保留。", "en": "Modified afterward and kept: {count}.", "ja": "その後に変更された {count} 件は保持します。"},
   "agent.panel.undoWillUndo": {"zh-Hans": "将撤销", "zh-Hant": "將復原", "en": "Will undo", "ja": "取り消す変更"},
@@ -845,6 +866,24 @@ export const mioPanelMessages = {
     "en": "Read project",
     "ja": "プロジェクトを確認"
   },
+  "agent.display.operation.project.notes.set": {
+    "zh-Hans": "修改项目说明",
+    "zh-Hant": "修改專案說明",
+    "en": "Update project notes",
+    "ja": "プロジェクトメモを更新"
+  },
+  "agent.display.operation.skill.read": {
+    "zh-Hans": "读取方法",
+    "zh-Hant": "讀取方法",
+    "en": "Read a method",
+    "ja": "手順を読む"
+  },
+  "agent.display.operation.continuity.report": {
+    "zh-Hans": "报告连续性检查",
+    "zh-Hant": "報告連續性檢查",
+    "en": "Report continuity check",
+    "ja": "連続性チェックを報告"
+  },
   "agent.display.operation.project.rename": {
     "zh-Hans": "修改项目名称",
     "zh-Hant": "修改專案名稱",
@@ -1090,6 +1129,12 @@ export const mioPanelMessages = {
     "zh-Hant": "交叉淡化",
     "en": "Crossfade",
     "ja": "クロスフェード"
+  },
+  "agent.display.operation.timeline.clip.setGains": {
+    "zh-Hans": "调整多段增益",
+    "zh-Hant": "調整多段增益",
+    "en": "Set clip gains",
+    "ja": "複数クリップのゲインを変更"
   },
   "agent.display.operation.timeline.history.get": {
     "zh-Hans": "查看编辑历史",

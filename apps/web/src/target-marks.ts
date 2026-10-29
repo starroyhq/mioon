@@ -1,6 +1,6 @@
 // Short-lived marks on canvas and timeline targets: a soft glow on the target
 // element itself and, optionally, a clickable label in a floating layer. The
-// caller names the label (Mio's "Mio 修改"; later C6's "待核对"). A mark never
+// caller names the label (Mio's "Mio 修改"; C6's "待核对"). A mark never
 // selects, scrolls or switches modes; locating a target is the caller's job.
 import { coveredInsets, measuredOverlays } from './canvas-fit.ts';
 
@@ -19,10 +19,12 @@ export const MARK_FADE_MS = 400;
 // After the pointer or focus leaves a held label, it stays this long before fading.
 export const MARK_RELEASE_MS = 1500;
 
-const CANVAS = '.react-flow', TIMELINE = '[data-testid="timeline-scroll"]';
+const CANVAS = '.react-flow', TIMELINE = '[data-testid="timeline-scroll"]', STORYBOARD = '[data-testid="storyboard"]';
+// The nearest scroll area of a target: a storyboard frame floats over the canvas in its own scrolling strip.
+const AREAS = `${STORYBOARD}, ${CANVAS}, ${TIMELINE}`;
 // Sticky timeline headers scroll over the lanes; a label never sits on them.
 const STICKY = '.track-label, .timeline-ruler-row';
-const SPECIFIC = new Set(['shot', 'node', 'timeline_clip', 'timeline_subtitle']);
+const SPECIFIC = new Set(['shot', 'node', 'storyboard_shot', 'timeline_clip', 'timeline_subtitle']);
 const canvasKind = (kind: string): boolean => kind === 'shot' || kind === 'node';
 const escapeId = (id: string): string => typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(id) : id.replace(/[^A-Za-z0-9_-]/gu, '');
 
@@ -31,6 +33,8 @@ function selectors(target: MarkTarget): string[] {
   switch (target.kind) {
     case 'shot': return [`[data-testid="shot-node-${id}"]`];
     case 'node': return [`[data-testid="asset-node-${id}"]`, `[data-testid="text-node-${id}"]`];
+    // A shot's frame in the storyboard strip; the thumbnail carries the glow, not its title and buttons.
+    case 'storyboard_shot': return [`[data-testid="storyboard-shot-${id}"] > .storyboard-preview`];
     case 'timeline_clip': return [`[data-testid="timeline-clip-${id}"]`];
     case 'timeline_subtitle': return [`[data-testid="subtitle-cue-${id}"]`];
     // A whole row would glow across the timeline; its header stands for the track.
@@ -39,9 +43,9 @@ function selectors(target: MarkTarget): string[] {
   }
 }
 
-/** Elements that show a target on the canvas or the timeline; copies elsewhere (inspector, lists) are left alone. */
+/** Elements that show a target on the canvas, storyboard or timeline; copies elsewhere (inspector, lists) are left alone. */
 export function markTargetElements(target: MarkTarget, document: Document): Element[] {
-  const container = canvasKind(target.kind) ? CANVAS : TIMELINE;
+  const container = canvasKind(target.kind) ? CANVAS : target.kind === 'storyboard_shot' ? STORYBOARD : TIMELINE;
   return selectors(target).flatMap(selector => [...document.querySelectorAll(selector)]).filter(element => element.closest(container) !== null);
 }
 
@@ -74,14 +78,19 @@ const corners = (area: MarkBox): Array<[number, number]> => [[area.left + 1, are
  */
 export function markTargetVisible(element: Element, document: Document): boolean {
   if (!element.isConnected || element.closest('[hidden], [inert]')) return false;
-  const container = element.closest(`${CANVAS}, ${TIMELINE}`);
+  const container = element.closest(AREAS);
   const area = container ? intersect(element.getBoundingClientRect(), container.getBoundingClientRect()) : null;
   return Boolean(area && inner(area).some(([x, y]) => { const hit = topElement(document, x, y); return hit !== null && (hit === element || element.contains(hit)); }));
 }
 
-/** Label position from the design: above a canvas node's top-right corner; inside a clip's bottom-right corner. */
-export function markLabelPosition(kind: string, target: MarkBox, size: MarkSize): { x: number; y: number } {
-  if (canvasKind(kind)) return { x: target.right - 12 - size.width, y: target.top - 6 - size.height };
+/**
+ * Where a label sits on a canvas node: above its top-right corner ("Mio 修改"), or inside its bottom-right corner
+ * over the footer ("待核对", 09-09).
+ */
+export type MarkLabelPlacement = 'above' | 'inside';
+/** Label position from the design: on a canvas node by placement; inside a clip's bottom-right corner. */
+export function markLabelPosition(kind: string, target: MarkBox, size: MarkSize, placement: MarkLabelPlacement = 'above'): { x: number; y: number } {
+  if (canvasKind(kind)) return placement === 'inside' ? { x: target.right - 8 - size.width, y: target.bottom - 6 - size.height } : { x: target.right - 12 - size.width, y: target.top - 6 - size.height };
   if (kind === 'timeline_track') return { x: target.right + 6, y: target.top + (target.height - size.height) / 2 };
   // A clip too narrow for the label keeps it centred over the clip instead of spilling to one side.
   const x = target.width >= size.width + 40 ? target.right - 20 - size.width : target.left + (target.width - size.width) / 2;
@@ -91,7 +100,7 @@ export function markLabelPosition(kind: string, target: MarkBox, size: MarkSize)
 /** A label shows only while all of it lies over its own canvas or timeline, never over panels or sticky headers. */
 function labelVisible(element: Element, label: MarkBox, document: Document): boolean {
   if (!markTargetVisible(element, document)) return false;
-  const container = element.closest(`${CANVAS}, ${TIMELINE}`);
+  const container = element.closest(AREAS);
   return Boolean(container && corners(label).every(([x, y]) => { const hit = topElement(document, x, y); return hit !== null && container.contains(hit) && hit.closest(STICKY) === null; }));
 }
 
@@ -100,7 +109,7 @@ function labelVisible(element: Element, label: MarkBox, document: Document): boo
  * ruler; a full-bleed canvas without the docks, toolbar and storyboard floating over it.
  */
 function visibleArea(element: Element): MarkBox | null {
-  const container = element.closest(`${CANVAS}, ${TIMELINE}`);
+  const container = element.closest(AREAS);
   if (!container) return null;
   const pane = container.getBoundingClientRect();
   let { left, top, right, bottom } = pane;
@@ -109,7 +118,7 @@ function visibleArea(element: Element): MarkBox | null {
     const ruler = container.querySelector('.timeline-ruler-row')?.getBoundingClientRect();
     if (header) left = Math.max(left, header.right);
     if (ruler && ruler.height > 0) top = Math.max(top, ruler.bottom);
-  } else {
+  } else if (container.matches(CANVAS)) {
     const inset = coveredInsets(pane, measuredOverlays(container));
     left += Math.max(0, inset.left); right -= Math.max(0, inset.right); top += Math.max(0, inset.top); bottom -= Math.max(0, inset.bottom);
   }
@@ -131,6 +140,10 @@ export interface TargetMarksOptions {
   shownMs?: number;
   fadeMs?: number;
   releaseMs?: number;
+  /** Where labels sit on canvas nodes; above them unless a caller asks otherwise. */
+  placement?: MarkLabelPlacement;
+  /** Target kinds that may carry an entry's label; any kind when omitted. Other targets only glow. */
+  labelKinds?: ReadonlySet<string>;
 }
 export interface TargetMarks {
   /** Marks each entry's targets; the first marked target of an entry carries the label. Returns the owners marked. */
@@ -152,6 +165,7 @@ export function createTargetMarks(options: TargetMarksOptions = {}): TargetMarks
   const setTimer = options.setTimer ?? ((callback: () => void, ms: number) => setTimeout(callback, ms));
   const clearTimer = options.clearTimer ?? ((handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   const shownMs = options.shownMs ?? MARK_SHOWN_MS, fadeMs = options.fadeMs ?? MARK_FADE_MS, releaseMs = options.releaseMs ?? MARK_RELEASE_MS;
+  const placement = options.placement ?? 'above', labelKinds = options.labelKinds;
   interface Entry extends TargetMark { timer: unknown; elements: Element[] }
   const marks = new Map<string, Entry>(), listeners = new Set<() => void>();
   let snapshot: readonly TargetMark[] = [], disposed = false;
@@ -182,13 +196,13 @@ export function createTargetMarks(options: TargetMarksOptions = {}): TargetMarks
         for (const target of markableTargets(targets)) {
           const elements = markTargetElements(target, document).filter(element => !requireVisible || markTargetVisible(element, document));
           if (!elements.length) continue;
-          const key = `${target.kind}:${target.id}`, previous = marks.get(key);
+          const key = `${target.kind}:${target.id}`, previous = marks.get(key), labelled = !labelKinds || labelKinds.has(target.kind);
           // The same target changed again: restart its timer and keep a single label, now pointing at the latest owner.
           if (previous) { stop(previous); unpaint(previous); }
-          const entry: Entry = { key, target: { kind: target.kind, id: target.id }, owner, label: Boolean(previous?.label) || first, phase: 'shown', held: previous?.held ?? false, timer: undefined, elements };
+          const entry: Entry = { key, target: { kind: target.kind, id: target.id }, owner, label: Boolean(previous?.label) || first && labelled, phase: 'shown', held: previous?.held ?? false, timer: undefined, elements };
           marks.set(key, entry); paint(entry);
           if (!entry.held) fadeAfter(entry, shownMs);
-          first = false;
+          if (labelled) first = false;
           if (!marked.includes(owner)) marked.push(owner);
         }
       }
@@ -224,7 +238,7 @@ export function createTargetMarks(options: TargetMarksOptions = {}): TargetMarks
         if (!entry.label) continue;
         const element = entry.elements[0], size = measure(entry.key);
         if (!element || !size || !element.isConnected) { placements.push({ key: entry.key, x: 0, y: 0, visible: false }); continue; }
-        const position = markLabelPosition(entry.target.kind, labelAnchor(entry.target.kind, element.getBoundingClientRect(), visibleArea(element), size), size);
+        const position = markLabelPosition(entry.target.kind, labelAnchor(entry.target.kind, element.getBoundingClientRect(), visibleArea(element), size), size, placement);
         placements.push({ key: entry.key, ...position, visible: labelVisible(element, box(position.x, position.y, size.width, size.height), document) });
       }
       return placements;

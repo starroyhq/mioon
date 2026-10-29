@@ -8,9 +8,10 @@ import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 import {TIMELINE_SHOT_SYNC_OPERATIONS} from '../../contracts/src/timeline-shot-sync.ts';
 import {TIMELINE_SCENE_SPLIT_OPERATION} from '../../contracts/src/timeline-scene-split.ts';
 import {TIMELINE_CROSSFADE_OPERATION} from '../../contracts/src/timeline-crossfade.ts';
+import {TIMELINE_CLIP_GAINS_OPERATION} from '../../contracts/src/timeline-clip-gains.ts';
 
 /** Operations whose receipt is {operation, requestId, timeline, ...outcomes}. */
-export const WRAPPED_TIMELINE_OPERATIONS: readonly string[] = Object.freeze([...TIMELINE_SHOT_SYNC_OPERATIONS, TIMELINE_SCENE_SPLIT_OPERATION, TIMELINE_CROSSFADE_OPERATION]);
+export const WRAPPED_TIMELINE_OPERATIONS: readonly string[] = Object.freeze([...TIMELINE_SHOT_SYNC_OPERATIONS, TIMELINE_SCENE_SPLIT_OPERATION, TIMELINE_CROSSFADE_OPERATION, TIMELINE_CLIP_GAINS_OPERATION]);
 
 type Row = Record<string, SQLOutputValue>;
 const JSON_BYTES = 4 * 1024 * 1024;

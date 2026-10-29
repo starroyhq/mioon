@@ -5,6 +5,7 @@ import {pipeline} from 'node:stream/promises';
 import {Readable} from 'node:stream';
 import type {WorkspaceStore} from '../db.ts';
 import {projectPackageOptionsSchema} from '../../../contracts/src/project-package.ts';
+import {projectNotesValid} from '../../../contracts/src/project-lifecycle.ts';
 import type {ProjectPackageOptions,ProjectPackageManifest,ProjectPackageCounts} from '../../../contracts/src/project-package.ts';
 import {writeProjectPackage,readProjectPackage,projectPackageError,asProjectPackageError} from './container.ts';
 import {collectProject,packageDocumentBytes,buildManifest,createProjectFromDocument,findProjectPackageReceipt} from './document.ts';
@@ -108,6 +109,8 @@ export function createProjectPackageService({store,appVersion,afterCreate=async(
     const read=await readProjectPackage({source,destination:directory,signal});
     const document=read.document as ProjectDocument;
     if(!document||document.formatVersion!==1||!document.project||typeof document.project.name!=='string'||!Array.isArray(document.assets))throw projectPackageError('PROJECT_PACKAGE_INVALID_CONTENT');
+    // Project notes (C6) follow the same plain-text limit as project.notes.set.
+    if(document.project.notes!==undefined&&(typeof document.project.notes!=='string'||!projectNotesValid(document.project.notes)))throw projectPackageError('PROJECT_PACKAGE_INVALID_CONTENT');
     const files=new Map([...read.media].map(([key,value])=>[key,value.file]));
     const {suggested,taken}=uniqueName(read.manifest.project.name),timeline=document.timeline as {width?:number;height?:number;fps?:number}|null;
     const preview:ProjectPackageImportPreview={id,kind:'import',name:read.manifest.project.name,suggestedName:suggested,nameTaken:taken,counts:read.manifest.counts,totalBytes:read.totalBytes,fileCount:read.manifest.files.length,

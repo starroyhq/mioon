@@ -888,6 +888,31 @@ edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
 not a Mio tool in this version: Mio can read the resulting curves but cannot
 create a crossfade.
 
+### Clip gains (2026-10-29)
+
+`timeline.clip.setGains` takes the common
+`{projectId,expectedRevision,requestId}` plus `gains`, a list of 1 to 100
+`{clipId,gain}` items, and returns `{operation,requestId,timeline,gains}` with
+one `{clipId,previousGain,gain}` change per item, in request order.
+- `gain` has the same 0–2 bounds as a clip update. Each clip may be listed once.
+- Every listed clip must have sound: images and sources without audio fail with
+  `CLIP_GAINS_AUDIO_UNSUPPORTED`. When no listed gain differs from the clip's
+  current gain, nothing is written and the call fails with
+  `CLIP_GAINS_UNCHANGED`.
+- All gains change in one revision with one history entry, so a single undo
+  restores every clip. Fades, volume envelopes and every other clip field are
+  kept.
+- The operation measures nothing. The dialogue loudness match in the delivery
+  panel first measures each dialogue clip with `timeline.clip.loudness` against
+  the user's target, then applies the gains the user kept.
+- These codes, `CLIP_NOT_FOUND`, revision conflicts and the revision limit carry
+  not-applied proofs binding `operation`, `projectId` and `requestId`.
+
+Exact replay returns the original acknowledgement. It is outside the durable
+edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
+not a Mio tool in this version: Mio proposes a single clip's gain through its
+own reviewed tool.
+
 ## V4 discovery and capability validation
 
 `pnpm exec mioon schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
@@ -1417,7 +1442,8 @@ position. Both writes require a stable `requestId`; only the newest four scene
 saves of a node keep receipts, and an older retry fails the revision check
 instead of applying again. Thumbnails are a bounded JPEG cache per card or
 keyframe, outside receipts and packages. Restored copies (schema 65,
-`restored-local-v21`, and schema 67, `restored-local-v22`) allow only
+`restored-local-v21`, schema 67, `restored-local-v22`, and schema 69,
+`restored-local-v23`) allow only
 `previs.thumbnail.get`. These operations are
 not built-in Mio tools. There is no separate export operation: the editor
 imports a keyframe image with `asset.import`, records its asset ID in the
