@@ -1,9 +1,11 @@
-import type {AgentTaskChange,AgentTaskJson,AgentTaskLocale,AgentTaskNote,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
+import type {AgentTaskChange,AgentTaskJson,AgentTaskLocale,AgentTaskNote,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentConfiguration} from './config.ts';
 import {TASK_MODEL_LIMITS,taskResponseLocale,taskToolExplanation} from './task-gateway-v2.ts';
 import {projectAgentTaskChangeDisplay,projectAgentTaskStepDisplay} from './task-display-v2.ts';
 import {taskToolResultStub,taskToolResultView} from './task-result-view-v2.ts';
 import type {TaskModelContextFragment,TaskModelReplayInput} from './task-context-v2.ts';
+import {taskBaseContextParts as baseParts} from './task-context-base-v2.ts';
+import {taskStaleMessage,taskStaleTargets} from './task-context-observations-v2.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const bytes=(value:unknown):number=>Buffer.byteLength(JSON.stringify(value));
@@ -26,23 +28,14 @@ interface Round {
 interface Pinned {kind:'pinned';messages:AgentTaskJson[]}
 type Entry=Round|Pinned;
 
-/** Only H1a's complete previous conversation rounds may be removed. Unknown
- * legacy base messages stay pinned rather than guessing at their ownership. */
-function baseParts(context:readonly AgentTaskJson[]):{before:AgentTaskJson[];past:AgentTaskJson[][];current:AgentTaskJson[]}{
-  if(!context.length)return {before:[],past:[],current:[]};
-  const last=context.at(-1);
-  if(!object(last)||last.role!=='user'||typeof last.content!=='string')return {before:[...context],past:[],current:[]};
-  let first=0;const before:AgentTaskJson[]=[];
-  if(object(context[0])&&context[0].role==='system'){before.push(context[0]);first=1;}
-  const past:AgentTaskJson[][]=[],group:AgentTaskJson[]=[];
-  for(const item of context.slice(first,-1)){
-    if(!object(item)||!['user','assistant'].includes(String(item.role))||typeof item.content!=='string')return {before:[...context],past:[],current:[]};
-    group.push(item);
-    if(item.role==='assistant'){past.push([...group]);group.length=0;}
+function modelBaseline(step:AgentTaskStep|undefined):AgentTaskTarget[]|undefined {
+  if(!step||!object(step.data)||!Array.isArray(step.data.baseline))return;
+  const result:AgentTaskTarget[]=[];
+  for(const target of step.data.baseline){
+    if(!object(target)||typeof target.kind!=='string'||typeof target.id!=='string'||typeof target.revision!=='number'||!Number.isSafeInteger(target.revision)||target.revision<0)return;
+    result.push({kind:target.kind,id:target.id,revision:target.revision});
   }
-  // A loose legacy user message cannot be classified as an old round.
-  if(group.length)return {before:[...context],past:[],current:[]};
-  return {before,past,current:[last]};
+  return result;
 }
 
 /** Reproduce earlier request boundaries before appending later output. A
@@ -52,6 +45,16 @@ function baseParts(context:readonly AgentTaskJson[]):{before:AgentTaskJson[];pas
 export function compactTaskModelHistory(context:readonly AgentTaskJson[],pendingNotes:readonly AgentTaskNote[],input:TaskModelReplayInput,replay:Replay):AgentTaskJson[]{
   const locale=taskResponseLocale(context),base=baseParts(context),entries:Entry[]=[],removed:AgentTaskJson[]=[],removedRounds:Round[]=[];
   const steps=input.steps??[],changes=input.changes??[],byId=new Map(steps.map(step=>[step.id,step]));
+  const models=steps.filter(step=>step.kind==='model').sort((a,b)=>a.position-b.position);
+  let boundaryHints:AgentTaskJson[]=[];
+  const stale=(boundary?:AgentTaskStep):AgentTaskJson[]=>{
+    if(input.diagnostic)return [];
+    const previous=boundary?models.filter(step=>step.position<boundary.position).at(-1):models.at(-1);
+    const runId=input.runId??boundary?.runId??previous?.runId;if(!runId)return [];
+    const hint=taskStaleMessage(locale,taskStaleTargets({runId,steps,changes,previousBaseline:modelBaseline(previous),baseline:boundary?modelBaseline(boundary):input.baseline,beforePosition:boundary?.position}));
+    return hint?[hint]:[];
+  };
+  const retainBoundary=():void=>{if(boundaryHints.length)entries.push({kind:'pinned',messages:boundaryHints});boundaryHints=[];};
   let constraints:AgentTaskJson|undefined;
   // Journal details may be summarized; control facts must remain complete.
   // If protected notes/constraints and the latest round cannot fit, the normal
@@ -62,6 +65,7 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
     ...(removed.length?[host('mio.context.journal',{removedRounds:removed.length,steps:removed})]:[]),
     ...(constraints===undefined?[]:[host('mio.context.constraints',constraints)]),
     ...entries.flatMap(entry=>entry.kind==='pinned'?entry.messages:entry.state==='removed'?[]:entry[entry.state]),
+    ...boundaryHints,
   ];
   const projectStep=(step:AgentTaskStep):AgentTaskJson=>{
     const display=projectAgentTaskStepDisplay(step);
@@ -119,14 +123,19 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
   };
   for(const fragment of input.fragments){
     if(fragment.kind==='notes'){
+      retainBoundary();
       const messages=replay(input.protocol,fragment);if(messages.length)entries.push({kind:'pinned',messages});
+      const model=byId.get(fragment.modelStepId);boundaryHints=model?stale(model):[];
       compact(fragment.modelStepId);continue;
     }
     if(fragment.kind!=='continuation'){
+      retainBoundary();
       const messages=replay(input.protocol,fragment);if(messages.length)entries.push({kind:'pinned',messages});continue;
     }
-    const full=replay(input.protocol,{...fragment,replan:false,results:fragment.results.map(result=>({...result,result:taskToolResultView(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes)}))});
-    const stub=replay(input.protocol,{...fragment,replan:false,results:fragment.results.map(result=>({...result,result:taskToolResultStub(result.result,locale,fragment.output.toolCalls.find(call=>call.id===result.callId)?.name)}))});
+    const continuation=replay(input.protocol,{...fragment,replan:false,results:fragment.results.map(result=>({...result,result:taskToolResultView(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes)}))});
+    const full=[...boundaryHints,...continuation];
+    const stub=[...boundaryHints,...replay(input.protocol,{...fragment,replan:false,results:fragment.results.map(result=>({...result,result:taskToolResultStub(result.result,locale,fragment.output.toolCalls.find(call=>call.id===result.callId)?.name)}))})];
+    boundaryHints=[];
     const sourceId=fragment.modelStepId,toolSteps=steps.filter(step=>step.kind==='tool'&&object(step.data)&&step.data.sourceModelStepId===sourceId);
     const summary=(boundary?:string):AgentTaskJson=>({
       ...(sourceId?{modelStepId:sourceId}:{}),
@@ -140,10 +149,12 @@ export function compactTaskModelHistory(context:readonly AgentTaskJson[],pending
     entries.push({kind:'round',full,stub,summary,state:'full'});
     if(fragment.replan){
       const messages=replay(input.protocol,{...fragment,results:fragment.results.map(result=>({...result,result:taskToolResultView(result.result,locale,TASK_MODEL_LIMITS.toolResultViewBytes)}))});
-      entries.push({kind:'pinned',messages:messages.slice(full.length)});
+      entries.push({kind:'pinned',messages:messages.slice(continuation.length)});
     }
   }
+  retainBoundary();
   if(pendingNotes.length)entries.push({kind:'pinned',messages:pendingNotes.map(note=>({role:'user',content:note.text}))});
+  boundaryHints=stale();
   compact();
   return render();
 }
