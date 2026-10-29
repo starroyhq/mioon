@@ -1,10 +1,10 @@
 # Clip transforms
 
 Since 2026-10-29 a clip on a video track can move, zoom, rotate and crop its
-picture. This first increment stores the transform, renders it in preview and
-export, and edits position and scale keyframes with numbers in the clip
-inspector. A draggable transform box over the preview and inspector controls
-for rotation and crop come in later increments. Operation details are in
+picture. The transform is stored, rendered in preview and export, and its
+position and scale keyframes are edited with numbers in the clip inspector or
+by dragging a transform box over the rendered preview. Inspector controls for
+rotation and crop come in a later increment. Operation details are in
 [the API](API.md#clip-transforms-2026-10-29).
 
 ## Model
@@ -28,8 +28,8 @@ The rectangle keeps its meaning: the cropped source fits inside it with its
 aspect ratio and is centred, exactly as without a transform. The transform then
 scales, rotates and offsets that content around the rectangle centre, in this
 order. Timeline pixels are square. `clipTransformGeometry` returns the content
-centre and size at a clip frame; the renderer and the editor use it, and the
-later transform box will too.
+centre and size at a clip frame; the renderer, the inspector and the transform
+box use it.
 
 ## Editing
 
@@ -56,6 +56,21 @@ button is one saved edit, so the section waits until the clip draft is saved or
 discarded. Removing the last keyframe clears the transform unless it rotates or
 crops; then an identity keyframe keeps those. The preview is a rendered video,
 so it shows a change after it is updated.
+
+Over the rendered timeline preview, the selected clip shows its transform box
+at the playhead frame while the clip is on screen
+(`apps/web/src/ClipTransformBox.tsx`). The box is `clipTransformGeometry`
+scaled onto the picture the video element shows, so it rotates and crops with
+the content. Dragging the box moves the content in whole timeline pixels and
+dragging a corner scales it about its centre in whole percent; releasing sets a
+keyframe at that frame, like the inspector's button, and Esc cancels the drag.
+The box shows the saved transform at once, while the video keeps the last render
+until the preview is updated. The box follows the inspector's rules: it is
+absent where the inspector cannot set transforms, and only outlined while the
+clip draft has unsaved changes, the track is locked in this window or all 16
+keyframes are used elsewhere.
+Parts of the box beyond the preview stage are clipped, handles included; the
+inspector still reaches every value.
 
 ## Rendering
 
@@ -117,3 +132,5 @@ The reviewed delta is frozen in
 - `tests/timeline-transform-filter.test.ts` evaluates the generated
   expressions against the model.
 - `tests/clip-transform-ui.test.ts` covers the inspector state and markup.
+- `tests/clip-transform-box.test.ts` covers the box geometry on the picture,
+  the drag arithmetic, its markup and its wiring into the preview.
