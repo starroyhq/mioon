@@ -67,6 +67,10 @@ Mio 是工作台里的创作 Agent，不只回答问题，会直接动手：
 - [视频服务](docs/PROVIDERS.md)：火山方舟、Google Veo、MiniMax、Vidu、可灵、通义万相及自定义兼容连接。
 - [图片生成](docs/IMAGE-ACTIVATION.md)与[图片编辑](docs/IMAGE-EDITING.md)：OpenAI 官方、自定义兼容连接及 ComfyUI 的范围见对应说明。
 
+### 让 Claude Code、Codex 也来操作
+
+仓库自带一份[技能](skills/mioon/SKILL.md)。Claude Code、Codex 等外部 Agent 装上以后，可以通过命令行或 MCP 操作同一个项目：导入素材、管理镜头和版本、提交生成、修改时间线上的具体片段、导出 MP4。技能要求 Agent 在付费生成前先征得你同意，在线图片生成还要你在界面里确认。安装和连接步骤见[让 Claude Code、Codex 操作 Mioon](docs/EXTERNAL-AGENTS.zh-CN.md)。
+
 以上为[官网演示项目截图](docs/images/readme/SOURCES.md)；导入素材不代表 Mioon 生成结果。
 
 界面支持深色、浅色和跟随系统主题，以及简体中文、繁体中文、英语和日语。
@@ -114,7 +118,7 @@ Mioon 原创代码与文档采用 [Apache License 2.0](LICENSE)，允许按许�
 
 - [本地运行与检查](docs/PORTABLE-TOOLING.md) · [桌面运行说明](docs/DESKTOP.md)
 - [GitHub 自动检查与发布](docs/GITHUB-ACTIONS.zh-CN.md) · [CI 状态](https://github.com/starroyhq/mioon/actions/workflows/ci.yml)
-- [CLI](docs/CLI.md) · [MCP](docs/MCP.md) · [mioon Skill](skills/mioon/SKILL.md) · [API](docs/API.md)
+- [CLI](docs/CLI.md) · [MCP](docs/MCP.md) · [mioon Skill](skills/mioon/SKILL.md)（[安装与连接](docs/EXTERNAL-AGENTS.zh-CN.md)） · [API](docs/API.md)
 - [架构说明](docs/ARCHITECTURE.md) · [组件来源](docs/UI-COMPONENTS.md) · [TypeScript 约定](docs/TYPESCRIPT.md)
 - [产品定义：创作工作台 + Agent](docs/PRODUCT-DEFINITION.md)
 - [详细验证结果](docs/verification/mioon-redesign/full-test-repairs/README.md)
