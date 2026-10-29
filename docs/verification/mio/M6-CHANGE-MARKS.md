@@ -1,8 +1,8 @@
 # Mio · M6 "Mio 修改"标记
 
-日期：2026-10-24。本阶段只实施 M6，未进入 M7。工作树 `/Users/kouzen/Documents/data/mioon-worktrees/mio-m6`，分支 `claude/mio-m6`，基于 main `c26ddaf`（已含 M5 合并 `6125408` 及其复审修复，以及之后合入的 #22–#25）。开工时工作树干净。没有 push、开 PR、合入 main、新增依赖、真实模型调用或付费生成。
+日期：2026-10-24。本阶段只实施 M6，未进入 M7。工作树 `~/Documents/data/mioon-worktrees/mio-m6`，分支 `claude/mio-m6`，基于 main `c26ddaf`（已含 M5 合并 `6125408` 及其复审修复，以及之后合入的 #22–#25）。开工时工作树干净。没有 push、开 PR、合入 main、新增依赖、真实模型调用或付费生成。
 
-持久证据根：`/Users/kouzen/Library/Caches/mioon-mio-m6-20261024/`，下文简称 E。
+持久证据根：`~/Library/Caches/mioon-mio-m6-20261024/`，下文简称 E。
 
 ## 1. 完成内容与文件
 

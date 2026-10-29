@@ -1,8 +1,8 @@
 # Mio · 付费步骤"结果未知"的处理
 
-日期：2026-10-27。对应收尾验收 [WRAP-UP.md](WRAP-UP.md) 第 6 节的问题 1。按你的决定，在 M7 开出 PR #43 之后单独修改和验证：工作树 `/Users/kouzen/Documents/data/mioon-worktrees/mio-paid-unknown`，分支 `claude/mio-paid-unknown`，基于 `claude/mio-m7` 的 `4be68a9`。之后按你的意见合入 PR #43。没有新增依赖，也没有付费生成。
+日期：2026-10-27。对应收尾验收 [WRAP-UP.md](WRAP-UP.md) 第 6 节的问题 1。按你的决定，在 M7 开出 PR #43 之后单独修改和验证：工作树 `~/Documents/data/mioon-worktrees/mio-paid-unknown`，分支 `claude/mio-paid-unknown`，基于 `claude/mio-m7` 的 `4be68a9`。之后按你的意见合入 PR #43。没有新增依赖，也没有付费生成。
 
-持久证据根：`/Users/kouzen/Library/Caches/mioon-mio-paid-unknown-20261027/`，下文简称 E。
+持久证据根：`~/Library/Caches/mioon-mio-paid-unknown-20261027/`，下文简称 E。
 
 ## 1. 问题
 

@@ -1,8 +1,8 @@
 # Mio · 收尾验收
 
-日期：2026-10-26，10-27 合入最新 main 后在最终代码上复核。按 `designs/MIO-IMPLEMENTATION-PLAN.md` 第 7 节收尾，紧接 M7（见 [M7-SETTINGS.md](M7-SETTINGS.md)），同一工作树 `/Users/kouzen/Documents/data/mioon-worktrees/mio-m7`、分支 `claude/mio-m7`。开工时基于 main `cfc5e8f`，最终基于 `2bb498f`（PR #42 合并）。没有新增依赖或付费生成。
+日期：2026-10-26，10-27 合入最新 main 后在最终代码上复核。按 `designs/MIO-IMPLEMENTATION-PLAN.md` 第 7 节收尾，紧接 M7（见 [M7-SETTINGS.md](M7-SETTINGS.md)），同一工作树 `~/Documents/data/mioon-worktrees/mio-m7`、分支 `claude/mio-m7`。开工时基于 main `cfc5e8f`，最终基于 `2bb498f`（PR #42 合并）。没有新增依赖或付费生成。
 
-持久证据根：`/Users/kouzen/Library/Caches/mioon-mio-m7-20261025/`，下文简称 E。
+持久证据根：`~/Library/Caches/mioon-mio-m7-20261025/`，下文简称 E。
 
 ## 1. 完成标准对照
 
@@ -115,7 +115,7 @@
 
 按 acceptance README 的同一条 8 文件收口命令执行（`.ts` 文件名），并发 2，`TMPDIR=/private/tmp`，显式指定完整媒体工具路径并设置 `MIOON_ENABLE_LIVE_PROVIDER=0`。结果为 **338 项全部通过，失败、取消、跳过均为 0，退出 0**。此前失败的 "whole undo retains the generated shot owner…" 与 "retained shot keeps a late product…" 均通过；PR #43 已加入付费未知结果恢复用例，因此本轮总数为 338，原 335 项结果保留为历史记录。
 
-本轮只补验上述收口范围，全量的 73 项基线共有失败仍按原记录保留，未重跑全量。未调用真实模型或付费生成，也未干预占用 5173 的现有服务。补验证据根为 `/Users/kouzen/Library/Caches/mioon-mio-wrap-up-20261027/evidence/`，下文简称 E2；准确命令、环境、能力探针、原始 TAP 和摘要均保留。
+本轮只补验上述收口范围，全量的 73 项基线共有失败仍按原记录保留，未重跑全量。未调用真实模型或付费生成，也未干预占用 5173 的现有服务。补验证据根为 `~/Library/Caches/mioon-mio-wrap-up-20261027/evidence/`，下文简称 E2；准确命令、环境、能力探针、原始 TAP 和摘要均保留。
 
 ## 6. 问题、合入与观察项
 

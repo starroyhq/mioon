@@ -2,7 +2,7 @@
 
 审查日期：2026-10-10（Asia/Taipei）。源码基线：`4e66a9621babc4b1b8aed4d03685bbf15eb747d3`。
 
-本次为固定快照的发布配置审查和后续方案，仅新增本文，不改变运行时、打包或安全策略。隔离工作树为 `/Users/kouzen/Documents/data/mioon-dot-release-c156c85f`，分支为 `dot/platform-release-gates-c156c85f`；开始时根目录、分支、HEAD 均匹配，工作区干净，本文不存在。本文不是发布授权或原生验收报告。
+本次为固定快照的发布配置审查和后续方案，仅新增本文，不改变运行时、打包或安全策略。隔离工作树为 `~/Documents/data/mioon-dot-release-c156c85f`，分支为 `dot/platform-release-gates-c156c85f`；开始时根目录、分支、HEAD 均匹配，工作区干净，本文不存在。本文不是发布授权或原生验收报告。
 
 结论：macOS 两种架构已有 DMG 配置和开发/正式渠道隔离，但正式渠道仍跳过签名，未形成可放行的签名、公证及原生包验收链。Windows 缺少明确的项目打包目标，且 ACL 后端未实现，当前本地工作区启动会被拒绝。FFmpeg/ffprobe 继续由用户单独提供。
 

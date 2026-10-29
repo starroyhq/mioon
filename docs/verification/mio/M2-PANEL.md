@@ -1,8 +1,8 @@
 # Mio · M2 返修报告（待验收）
 
-日期：2026-10-22。只修复 M2（含 A6），没有进入 M3。工作树 `/Users/kouzen/.codex/worktrees/mio-m0-preparation/mioon`，分支 `codex/mio-m0-preparation`，HEAD 仍为 `ab65771998936e5e0bb1e2465e40ecefff233e91`。
+日期：2026-10-22。只修复 M2（含 A6），没有进入 M3。工作树 `~/.codex/worktrees/mio-m0-preparation/mioon`，分支 `codex/mio-m0-preparation`，HEAD 仍为 `ab65771998936e5e0bb1e2465e40ecefff233e91`。
 
-持久证据根：`/Users/kouzen/Library/Caches/mioon-mio-m2-repair-20261022/`。上一轮只跑相关子集，漏掉了本轮发现的回归，完成结论不充分；旧 `/private/tmp` 证据已不存在，原 932 项和 157 张截图均不作为本轮可访问证据。原报告文字保存在 `evidence/M2-PANEL-before-repair.md`；本报告使用重新运行的结果和新截图。
+持久证据根：`~/Library/Caches/mioon-mio-m2-repair-20261022/`。上一轮只跑相关子集，漏掉了本轮发现的回归，完成结论不充分；旧 `/private/tmp` 证据已不存在，原 932 项和 157 张截图均不作为本轮可访问证据。原报告文字保存在 `evidence/M2-PANEL-before-repair.md`；本报告使用重新运行的结果和新截图。
 
 ## 1. 本轮修改文件
 
@@ -113,7 +113,7 @@ node node_modules/typescript/bin/tsc -p tests/tsconfig.tests.json
 
 ## 4. 新的持久截图与日志
 
-截图根：`/Users/kouzen/Library/Caches/mioon-mio-m2-repair-20261022/evidence/browser/`。本轮重建 **41 张 PNG**：原报告引用的 9 张 + 32 张四语、两尺寸、description/subtitle 原文的上下滚动截图。**18 项逻辑检查通过**；16 对文字截图中五条原文均完整可见，不能只以 DOM 中存在判断。取消授权保草稿两例通过。最低有效正文对比度 5.252，无小于 10px 正文/24px 点击区或本面板溢出。
+截图根：`~/Library/Caches/mioon-mio-m2-repair-20261022/evidence/browser/`。本轮重建 **41 张 PNG**：原报告引用的 9 张 + 32 张四语、两尺寸、description/subtitle 原文的上下滚动截图。**18 项逻辑检查通过**；16 对文字截图中五条原文均完整可见，不能只以 DOM 中存在判断。取消授权保草稿两例通过。最低有效正文对比度 5.252，无小于 10px 正文/24px 点击区或本面板溢出。
 
 原报告引用的截图均已在持久根重建：
 
