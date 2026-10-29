@@ -1,10 +1,10 @@
 # Clip transforms
 
 Since 2026-10-29 a clip on a video track can move, zoom, rotate and crop its
-picture. The transform is stored, rendered in preview and export, and its
+picture. The transform is stored and rendered in preview and export. Its
 position and scale keyframes are edited with numbers in the clip inspector or
-by dragging a transform box over the rendered preview. Inspector controls for
-rotation and crop come in a later increment. Operation details are in
+by dragging a transform box over the rendered preview, and its static rotation
+and crop with numbers in the inspector. Operation details are in
 [the API](API.md#clip-transforms-2026-10-29).
 
 ## Model
@@ -56,6 +56,14 @@ button is one saved edit, so the section waits until the clip draft is saved or
 discarded. Removing the last keyframe clears the transform unless it rotates or
 crops; then an identity keyframe keeps those. The preview is a rendered video,
 so it shows a change after it is updated.
+
+Below the keyframes, rotation (degrees) and crop (percent of the source per
+edge) apply to the whole clip. Applying them is one saved edit that keeps the
+keyframes; without keyframes an identity keyframe at frame 0 holds them, and a
+transform left without any effect is cleared. The fields accept what the model
+accepts. A crop pair summing to exactly 90% can exceed 0.9 as binary fractions
+(0.34 + 0.56), so the far edge is reduced by a few units in the last place
+before saving; it still reads back as the typed percent.
 
 Over the rendered timeline preview, the selected clip shows its transform box
 at the playhead frame while the clip is on screen
