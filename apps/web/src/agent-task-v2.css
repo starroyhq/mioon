@@ -130,6 +130,14 @@
 .mio-check-target,.mio-check-reason{font-size:var(--wb-text-caption);line-height:1.4;color:var(--wb-muted)}
 .mio-check-row[data-status=failed] .mio-check-reason{color:var(--wb-danger)}
 .mio-check-fresh{margin:0;padding-left:var(--wb-space-1);font-size:var(--wb-text-caption);line-height:1.4;color:var(--wb-muted)}
+/* H4b additions use the approved check group and neutral step badge tokens. */
+.mio-check-summary[data-tone=success]{color:var(--wb-success)}
+.mio-requirements-head{display:flex;flex-wrap:wrap;gap:var(--wb-space-1)}
+.mio-requirements-head>span{font-weight:400;overflow-wrap:anywhere}
+.mio-requirement-row[data-status=repairing] .mio-check-name{color:var(--wb-text)}
+.mio-requirement-status{flex:none;font-size:var(--wb-text-caption);line-height:1.5;color:var(--wb-soft)}
+.mio-check-note{margin:var(--wb-space-1) 0 0 22px;font-size:var(--wb-text-caption);line-height:1.5;color:var(--wb-muted);overflow-wrap:anywhere}
+.mio-step-badge{flex:none;border:1px solid var(--wb-line);border-radius:var(--wb-radius-panel);padding:1px 6px;font-size:var(--wb-text-caption);line-height:1.4;color:var(--wb-soft);background:var(--wb-hover)}
 .mio-round+.mio-round{border-top:1px solid var(--wb-line-subtle);padding-top:var(--wb-space-3)}
 .mio-change{flex-wrap:wrap}
 .mio-change-details{flex-basis:100%;min-width:0;padding-left:var(--wb-space-5)}

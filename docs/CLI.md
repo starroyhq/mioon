@@ -38,6 +38,8 @@ The CLI is a local HTTP client for the **same running backend and database** use
 
 `checks` 使用独立 GET 接口，不把检查加入快照。结果固定分为 `export_render`、`generation`、`timeline`、`decomposition_frames`，每项包含机器类型／原因码、状态、可定位目标、依据修订及安全的期望／当前值，可用时返回进度。没有相关工作时为 `not_applicable`。本轮修改过时间线时，每次照常计算引用检查；默认完整预检项为 `pending`／`PREFLIGHT_NOT_REQUESTED`。只有 JSON 输入的 `preflight:true` 才发送 `GET .../checks?preflight=1` 并执行完整本地预检，`false` 或省略均不发送该查询参数。不缓存或沿用上次的完整预检结果。读取不落库，不改变执行状态，重复读取可观察后台完成或人工改动，不触发生成、重试或补做。
 
+本轮有有效要求时，CLI 原样返回可选的 `requirements` 数组；只包含本轮最后一次整理的条件，提供来源 `goal`、声明步骤、状态、依据与 `expected`／`current`，不再剔除此字段。旧记录没有要求时仍省略该字段。时长既可为 `seconds` 加可选 `toleranceSeconds`，也可为 `minSeconds`／`maxSeconds` 至少一边；两种形式互斥，范围形式不接受容差，提供两边时下限不得大于上限。时长在帧域比较，边界额外保留半帧和极小舍入余量；数量使用含边界的 `min`／`max`。这些观测不授予权限或审批，也不会由 CLI 触发补做。
+
 显式完整预检使用至少 60 秒的 client 请求超时，为服务端 30 秒预检预算留出响应余量；更长的全局超时保留，client 的显式 `options.timeoutMs` 仍优先。默认轻量检查沿用普通请求超时。
 
 ```sh

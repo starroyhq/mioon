@@ -1,6 +1,11 @@
 import type {MessageCatalog} from '../types.ts';
 
 export const mioPanelMessages = {
+  "agent.panel.goal.title": {"zh-Hans": "整理要求", "zh-Hant": "整理要求", "en": "Set requirements", "ja": "要件を整理"},
+  "agent.panel.goal.titleCount": {"zh-Hans": "整理要求 · {count} 项", "zh-Hant": "整理要求 · {count} 項", "en": "Set requirements · {count}", "ja": "要件を整理 · {count} 件"},
+  "agent.panel.goal.repairTitle": {"zh-Hans": "按未达成的要求补做", "zh-Hant": "按未達成的要求補做", "en": "Repair unmet requirements", "ja": "未達成の要件を補完"},
+  "agent.panel.goal.repairBadge": {"zh-Hans": "补做", "zh-Hant": "補做", "en": "Repair", "ja": "補完"},
+  "agent.panel.goal.updatedBadge": {"zh-Hans": "已更新", "zh-Hant": "已更新", "en": "Updated", "ja": "更新済み"},
   "agent.panel.retry": {"zh-Hans": "重试这一步", "zh-Hant": "重試這一步", "en": "Retry this step", "ja": "このステップを再試行"},
   "agent.panel.failureReason": {"zh-Hans": "原因：{reason}", "zh-Hant": "原因：{reason}", "en": "Reason: {reason}", "ja": "原因：{reason}"},
   "agent.panel.errorSettings.agent": {"zh-Hans": "检查 Mio 的模型连接", "zh-Hant": "檢查 Mio 的模型連線", "en": "Check Mio’s model connection", "ja": "Mio のモデル接続を確認"},

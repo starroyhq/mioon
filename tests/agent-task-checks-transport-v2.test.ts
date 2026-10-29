@@ -129,7 +129,7 @@ test('checks CLI discovers its strict schema offline and forwards only one GET',
  assert.equal(calls.length,3);
 });
 
-test('H4a clients retain optional requirements while CLI and existing UI keep the original check groups',async t=>{
+test('H4b clients and CLI retain optional requirements while host check groups stay separate',async t=>{
  const legacy=checks(),goalStepId=randomUUID(),report:AgentTaskChecks={...legacy,requirements:[{
   id:`goal:${goalStepId}:0`,type:'shot_count',source:'goal',goalStepId,status:'failed',
   target:{kind:'project',id:projectId},basis:[{kind:'project',id:projectId,revision:2}],
@@ -146,8 +146,8 @@ test('H4a clients retain optional requirements while CLI and existing UI keep th
  assert.deepEqual(visibleAgentTaskChecks(parsed),visibleAgentTaskChecks(legacy));
  assert.ok(visibleAgentTaskChecks(parsed).flatMap(group=>group.items).every(item=>item.source==='host'));
  const result=await command(['agent','task','checks','--input',JSON.stringify({projectId,runId})],base);
- assert.equal(result.code,0);assert.deepEqual(result.body,{ok:true,data:legacy});
- assert.ok(!result.stdout.includes('requirements'));assert.ok(!result.stdout.includes(goalStepId));
+ assert.equal(result.code,0);assert.deepEqual(result.body,{ok:true,data:report});
+ assert.ok(result.stdout.includes('requirements'));assert.ok(result.stdout.includes(goalStepId));
  assert.deepEqual(calls,Array.from({length:2},()=>({url:`/api/agent/tasks/v2/${projectId}/${runId}/checks`,method:'GET'})));
  assert.deepEqual(report.requirements?.[0]?.expected,{min:3,max:3},'presentation does not remove or mutate the backend requirement');
 });

@@ -7,6 +7,7 @@ import type { AgentTaskCheck, AgentTaskChecks } from '../packages/contracts/src/
 import type { AgentTaskChecksViewState } from '../apps/web/src/agent-task-checks-state.ts';
 import { visibleAgentTaskChecks } from '../apps/web/src/agent-task-checks-state.ts';
 import * as presentation from '../apps/web/src/agent-task-presentation.ts';
+import * as requirements from '../apps/web/src/agent-task-requirements.ts';
 import { createI18nTestContext, translate } from './helpers/i18n.ts';
 import type { Locale } from '../packages/i18n/src/index.ts';
 
@@ -44,6 +45,7 @@ function harness(viewState: AgentTaskChecksViewState, { locale = 'zh-Hans', read
     if (id === './i18n/I18nProvider.tsx') return { useI18n: () => createI18nTestContext(locale) };
     if (id === './agent-task-checks-state.ts') return { visibleAgentTaskChecks, createAgentTaskChecksView: () => assert.fail('Effects are not mounted in render-only checks') };
     if (id === './agent-task-presentation.ts') return presentation;
+    if (id === './agent-task-requirements.ts') return requirements;
     if (id === './icons.tsx') return { __esModule: true, default: (props: Record<string, unknown>) => ({ type: 'svg', props }) };
     assert.fail(`Unexpected component dependency: ${id}`);
   }, module, module.exports);
