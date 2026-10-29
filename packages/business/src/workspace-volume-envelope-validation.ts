@@ -11,6 +11,7 @@ import {isTimelineMixLoudnessResponse} from '../../contracts/src/timeline-mix-lo
 import {TIMELINE_CROSSFADE_OPERATION,createTimelineCrossfadeContracts} from '../../contracts/src/timeline-crossfade.ts';
 import {TIMELINE_CLIP_GAINS_OPERATION,createTimelineClipGainsContracts} from '../../contracts/src/timeline-clip-gains.ts';
 import {TIMELINE_CLIP_TRANSFORM_OPERATION,createTimelineClipTransformContracts} from '../../contracts/src/timeline-clip-transform-operation.ts';
+import {TIMELINE_CLIP_TRANSITION_OPERATION,createTimelineClipTransitionContracts} from '../../contracts/src/timeline-clip-transition-operation.ts';
 import {WRAPPED_TIMELINE_OPERATIONS} from './workspace-wrapped-timeline-receipts.ts';
 
 const JSON_BYTES=4*1024*1024, SNAPSHOT_BYTES=256*1024;
@@ -107,6 +108,11 @@ export function validateWorkspaceVolumeEnvelopeRows(db:Pick<DatabaseSync,'prepar
     const revision=Number(timeline.revision);
     const input={projectId:timeline.projectId,expectedRevision:revision-1,requestId:root.requestId,clipId:root.clipId,transform:root.transform};
     if(!createTimelineClipTransformContracts({isTimelineRecord:requireWorkspaceEnvelopeRuntime().isTimelineRecord}).isTimelineClipTransformResponse(root,input))invalid(true);
+   }
+   if(root.operation===TIMELINE_CLIP_TRANSITION_OPERATION){
+    const revision=Number(timeline.revision);
+    const input={projectId:timeline.projectId,expectedRevision:revision-1,requestId:root.requestId,clipId:root.clipId,transition:root.transition};
+    if(!createTimelineClipTransitionContracts({isTimelineRecord:requireWorkspaceEnvelopeRuntime().isTimelineRecord}).isTimelineClipTransitionResponse(root,input))invalid(true);
    }
   }
   const admitted=new WeakMap<object,Set<string>>();

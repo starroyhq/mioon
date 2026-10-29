@@ -8,6 +8,7 @@ import {createTimelineSceneSplitContracts,hasTimelineSceneSplitNotAppliedProof,T
 import {createTimelineCrossfadeContracts,hasTimelineCrossfadeNotAppliedProof,TIMELINE_CROSSFADE_OPERATION} from './timeline-crossfade.ts';
 import {createTimelineClipGainsContracts,hasTimelineClipGainsNotAppliedProof,TIMELINE_CLIP_GAINS_OPERATION} from './timeline-clip-gains.ts';
 import {createTimelineClipTransformContracts,hasTimelineClipTransformNotAppliedProof,TIMELINE_CLIP_TRANSFORM_OPERATION} from './timeline-clip-transform-operation.ts';
+import {createTimelineClipTransitionContracts,hasTimelineClipTransitionNotAppliedProof,TIMELINE_CLIP_TRANSITION_OPERATION} from './timeline-clip-transition-operation.ts';
 import {isTimelineExportRangeInput,isTimelineExportRangeProofInput,hasTimelineExportRangeBoundsProof} from './timeline-export-range.ts';
 import {isTimelineExportAudioOutcome} from './timeline-export-float.ts';
 import {isTimelineDeliveryNameInput} from './timeline-delivery.ts';
@@ -65,6 +66,7 @@ export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
   ...TIMELINE_SUBTITLE_OPERATIONS, TIMELINE_LOUDNESS_APPLY_OPERATION, ...TIMELINE_SHOT_SYNC_OPERATIONS, TIMELINE_SCENE_SPLIT_OPERATION, TIMELINE_CROSSFADE_OPERATION, TIMELINE_CLIP_GAINS_OPERATION,
   TIMELINE_CLIP_TRANSFORM_OPERATION,
+  TIMELINE_CLIP_TRANSITION_OPERATION,
 ]);
 export const TIMELINE_RENDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 
@@ -77,6 +79,7 @@ const sceneSplitContracts=createTimelineSceneSplitContracts({isTimelineRecord: (
 const crossfadeContracts=createTimelineCrossfadeContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
 const clipGainsContracts=createTimelineClipGainsContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
 const clipTransformContracts=createTimelineClipTransformContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
+const clipTransitionContracts=createTimelineClipTransitionContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
 export function isTimelineMutationResponse(operation: unknown, input: unknown, value: unknown): boolean {
   const request = input as Rec;
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessApplyContracts.isTimelineLoudnessApplyResponse(value,input);
@@ -85,6 +88,7 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
   if(operation===TIMELINE_CROSSFADE_OPERATION)return crossfadeContracts.isTimelineCrossfadeResponse(value,input);
   if(operation===TIMELINE_CLIP_GAINS_OPERATION)return clipGainsContracts.isTimelineClipGainsResponse(value,input);
   if(operation===TIMELINE_CLIP_TRANSFORM_OPERATION)return clipTransformContracts.isTimelineClipTransformResponse(value,input);
+  if(operation===TIMELINE_CLIP_TRANSITION_OPERATION)return clipTransitionContracts.isTimelineClipTransitionResponse(value,input);
   if(operation==='timeline.format.set') return (timelineFormatSchemas as Record<string, z.ZodTypeAny>)['timeline.format.set'].safeParse(input).success &&
     isTimelineRecord(value,{projectId:request.projectId}) && (value as Rec).revision===((request.expectedRevision as number)+1) &&
     timelineOutputPreset(value)?.id===request.presetId && (value as TimelineRecord).clips.length===0 && (value as Rec).durationFrames===0;
@@ -133,7 +137,9 @@ export function isTimelineMutationResponse(operation: unknown, input: unknown, v
       return timeline.clips.some(right => right.id !== target.id && right.startFrame === request.atFrame && splitEnvelopeMatches(target,right) &&
         ['trackId', 'assetId', 'name', 'rect', 'gain', 'colour', 'audioRole', ...provenance].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key) && same(right[key], target[key])) &&
         (right.sourceInFrame === target.sourceInFrame + target.durationFrames || right.sourceInFrame === 0 && target.sourceInFrame === 0) &&
-        (right.fadeInFrames ?? 0) === 0 && ['fadeInFrames', 'fadeOutFrames', 'transform'].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key)));
+        (right.fadeInFrames ?? 0) === 0 && ['fadeInFrames', 'fadeOutFrames', 'transform'].every(key => Object.hasOwn(right, key) === Object.hasOwn(target, key)) &&
+        // The new inner cut is plain: a transition stays at the outer cut only.
+        !Object.hasOwn(right, 'transitionIn'));
     case 'timeline.seed':
       return operationInput(input) && timeline.clips.length > 0;
     case 'timeline.undo':
@@ -230,6 +236,7 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
   if(operation===TIMELINE_CROSSFADE_OPERATION)return hasTimelineCrossfadeNotAppliedProof(failure,input,operation);
   if(operation===TIMELINE_CLIP_GAINS_OPERATION)return hasTimelineClipGainsNotAppliedProof(failure,input,operation);
   if(operation===TIMELINE_CLIP_TRANSFORM_OPERATION)return hasTimelineClipTransformNotAppliedProof(failure,input,operation);
+  if(operation===TIMELINE_CLIP_TRANSITION_OPERATION)return hasTimelineClipTransitionNotAppliedProof(failure,input,operation);
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return hasTimelineLoudnessApplyNotAppliedProof(failure,input);
   if(failure?.code==='AUDIO_ROLE_CLIP_UNSUPPORTED')return Boolean(baseInput(input)&&
     (operation==='timeline.clip.add'&&operationInput(input,['trackId','assetId','startFrame','durationFrames'],['name','sourceInFrame','rect','gain','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope'])&&uuid(request.trackId)&&uuid(request.assetId)&&Object.hasOwn(request,'audioRole')&&isClipAudioRole(request.audioRole)||

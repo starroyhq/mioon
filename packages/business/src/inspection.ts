@@ -10,6 +10,7 @@ import {createFrameOwnershipReader,FRAME_OWNERSHIP_LIMITS} from './frame-ownersh
 import {createSubjectOwnershipReader} from './subject-ownership.ts';
 import {createSceneKeyframeOwnershipReader} from './scene-keyframe-ownership.ts';
 import {isClipTransform,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
+import {isClipTransition,type ClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 type InspectionRecord = Record<string, unknown>;
@@ -363,9 +364,13 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
         // Mio reads a clip's transform (position and scale keyframes, rotation, crop) but cannot change it.
         const transform = Object.hasOwn(clip, 'transform') ? clip.transform as ClipTransform | null : undefined;
         if (transform !== undefined && (transform === null || !isClipTransform(transform, durationFrames))) unavailable();
+        // Mio reads the transition at the cut before a clip (kind and frames) but cannot change it.
+        const transition = Object.hasOwn(clip, 'transitionIn') ? clip.transitionIn as ClipTransition | null : undefined;
+        if (transition !== undefined && (transition === null || !isClipTransition(transition))) unavailable();
         return {id: clipId, trackId: id(clip.trackId), assetId: asset.id, name: string(clip.name, 200, 1), startFrame, durationFrames,
           sourceInFrame: number(clip.sourceInFrame, 0, Number.MAX_SAFE_INTEGER - 18000, true), rect, gain: number(clip.gain, 0, 2),
-          ...(transform ? {transform: {keyframes: transform.keyframes.map(({frame, x, y, scale}) => ({frame, x, y, scale})), rotation: transform.rotation, crop: {...transform.crop}}} : {})};
+          ...(transform ? {transform: {keyframes: transform.keyframes.map(({frame, x, y, scale}) => ({frame, x, y, scale})), rotation: transform.rotation, crop: {...transform.crop}}} : {}),
+          ...(transition ? {transitionIn: {kind: transition.kind, durationFrames: transition.durationFrames}} : {})};
       });
       return {id: timeline.id, revision: number(timeline.revision, 1, Number.MAX_SAFE_INTEGER, true), fps: enumValue(timeline.fps, [30]), width: timeline.width, height: timeline.height,
         durationFrames: number(timeline.durationFrames, 0, 18000, true), tracks, clips};

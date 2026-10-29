@@ -19,6 +19,7 @@ const operationMessages: Readonly<Record<string, DisplayMessage>> = {
   'timeline.clip.crossfade': message('timeline.history.crossfade'),
   'timeline.clip.setGains': message('timeline.history.setGains'),
   'timeline.clip.setTransform': message('timeline.history.setTransform'),
+  'timeline.clip.setTransition': message('timeline.history.setTransition'),
 };
 interface HistoryEntryView {id?: unknown; operation?: unknown}
 interface HistoryView {

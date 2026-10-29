@@ -27,6 +27,9 @@ import {crossfadeTimelineClips} from './timeline-crossfade.ts';
 import {setTimelineClipGains} from './timeline-clip-gains.ts';
 import {assertClipTransformWorkspace,setTimelineClipTransform} from './timeline-clip-transform.ts';
 import {clipTransformFieldsAfterEdit,splitClipTransformFields,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
+import {assertClipTransitionWorkspace,pruneTimelineClipTransitions,setTimelineClipTransition} from './timeline-clip-transition.ts';
+import {assertTransitionImageBudget} from './timeline-transition-filter.ts';
+import type {ClipTransition} from '../../contracts/src/timeline-clip-transition.ts';
 import {splitTimelineAtScenes} from './timeline-scene-split.ts';
 import type {TimelineSceneSplitPlan} from './timeline-scene-split.ts';
 import {readSceneSplitCuts} from './scene-history.ts';
@@ -225,6 +228,8 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    const before=snapshot(timeline);
    apply(timeline,boundary);
    boundary.validate(timeline);
+   // Transitions follow their cut; an edit that leaves one without room removes it.
+   pruneTimelineClipTransitions(timeline,boundary);
    timeline.revision++;
    timeline.updatedAt=now();
    admitTimelineImageResponse(timeline);
@@ -255,6 +260,8 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   // Preserve the original envelope at its two outer edges. Do not introduce
   // keys into legacy clips or make an omitted zero explicit at an inner edge.
   if(Object.hasOwn(left,'fadeInFrames'))right.fadeInFrames=0;
+  // The new inner cut is plain; a transition stays with the outer cut.
+  delete (right as TimelineClipRecord&{transitionIn?: unknown}).transitionIn;
   if(Object.hasOwn(left,'fadeOutFrames'))left.fadeOutFrames=0;
   Object.assign(left,(envelopes as [unknown,unknown])[0] as object,transforms[0]);
   left.durationFrames=leftDuration;
@@ -283,6 +290,8 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   const rangeIssue=timelineExportRangeBoundsIssue(input,timeline.durationFrames);
   if(rangeIssue)throw new AppError(rangeIssue.code as string,rangeIssue.message as string,rangeIssue.status as number);
   const frozen=domain?domain.freezeRenderSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input):freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
+  // The colour plan counts images per clip; a transition shows two at once.
+  if(!domain)assertTransitionImageBudget(frozen as never);
   if(input.preflightSnapshotHash!==undefined){
    let current;
    try{current=(domain?domain.readPreflightSnapshot(Object.fromEntries(['projectId','expectedRevision','purpose','exportSettings','deliveryName','exportRange'].filter(key=>Object.hasOwn(input,key)).map(key=>[key,input[key]]))):readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input)).snapshot;}
@@ -383,6 +392,14 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
     plan=setTimelineClipTransform(timeline,boundary,input.clipId as string,input.transform as ClipTransform|null);
    },undefined,
     timeline=>({operation:'timeline.clip.setTransform',requestId:input.requestId,timeline,...plan}));
+  },
+  'timeline.clip.setTransition':(input: TimelineMutationInput)=>{
+   let plan: ReturnType<typeof setTimelineClipTransition>|undefined;
+   return mutate('timeline.clip.setTransition',input,(timeline,boundary)=>{
+    assertClipTransitionWorkspace(db);
+    plan=setTimelineClipTransition(timeline,boundary,input.clipId as string,input.transition as ClipTransition|null);
+   },undefined,
+    timeline=>({operation:'timeline.clip.setTransition',requestId:input.requestId,timeline,...plan}));
   },
   'timeline.seed':(input: TimelineMutationInput)=>mutate('timeline.seed',input,(timeline,boundary)=>{
    if(timeline.clips.length)throw new AppError('TIMELINE_NOT_EMPTY','只有空时间线可以从镜头顺序导入',409);

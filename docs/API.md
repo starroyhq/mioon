@@ -958,6 +958,54 @@ not a Mio tool in this version. `timeline.inspect` lists each clip's transform
 The model, rendering and editor are described in
 [Clip transforms](CLIP-TRANSFORM.md).
 
+### Clip transitions (2026-10-29)
+
+`timeline.clip.setTransition` takes the common
+`{projectId,expectedRevision,requestId}` plus `clipId` and `transition`, and
+returns `{operation,requestId,timeline,clipId,previousTransition,transition}`.
+`clipId` names the incoming clip: the cut is where it starts, and the clip on
+the same track that ends there is the outgoing clip. `transition: null`
+removes the cut's transition.
+- A transition is `{profileId:"mioon-clip-transition-v1",kind,durationFrames}`
+  saved as the incoming clip's `transitionIn`:
+  - `kind`: `dissolve`, `dipToBlack`, `wipeLeft`, `wipeRight`, `pushLeft`
+    or `pushRight`.
+  - `durationFrames`: 2 to 60, centred on the cut: ⌊D/2⌋ frames before it
+    come from the incoming clip's source before its in point, the rest after it
+    from the outgoing clip's source after its out point. Stills repeat.
+- A transition fits when both source handles suffice and both clips keep
+  room beside the transitions on their other cuts; composition segments,
+  counting transition edges, stay at most 200.
+- Refusals: a clip that is not on a video track or has an audio source
+  (`CLIP_TRANSITION_UNSUPPORTED`), no adjacent outgoing clip
+  (`CLIP_TRANSITION_NO_CUT`), too little room (`CLIP_TRANSITION_ROOM`, with
+  `details.maxFrames`), an identical transition (`CLIP_TRANSITION_UNCHANGED`),
+  a composition or saved timeline over its limit (`CLIP_TRANSITION_LIMIT`) and a
+  workspace older than schema 72 (`CLIP_TRANSITION_WORKSPACE_REQUIRED`). These
+  codes, `CLIP_TRANSITION_INVALID`, `CLIP_NOT_FOUND`, revision conflicts and the
+  revision limit carry not-applied proofs binding `operation`, `projectId` and
+  `requestId`.
+- One revision and one history entry. Clip updates never carry a transition.
+  Any other timeline edit keeps the transitions that still fit and removes the
+  ones it leaves without a cut or room, in the same revision; a split never
+  adds one at its new inner cut.
+- Preview and export render the picture only: the sound keeps a hard cut. The
+  render first runs a small FFmpeg probe and fails with
+  `TIMELINE_TRANSITION_UNSUPPORTED` on a tool without the filters it needs.
+  With managed colour, both images of a transition count towards the two
+  visible images at a time (`TIMELINE_IMAGE_COMPOSITOR_BUDGET` in preflight
+  and render).
+- Storage: schema 72 is a marker-only layer that admits persisted transitions;
+  its backups restore as read-only schema 73 copies (`restored-local-v25`).
+  Older ordinary and restored roles refuse any persisted transition.
+
+Exact replay returns the original acknowledgement. It is outside the durable
+edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
+not a Mio tool in this version. `timeline.inspect` lists each clip's
+`transitionIn` (kind and frames), so Mio reads it.
+The model, rendering and editor are described in
+[Clip transitions](CLIP-TRANSITIONS.md).
+
 ## V4 discovery and capability validation
 
 `pnpm exec mioon schema` provides the current JSON Schema catalog; MCP `tools/list` uses the same runtime definitions. Use the shared client rather than duplicating authentication/discovery logic. See [CLI.md](CLI.md) for private token files, downloads and bounded watches.
@@ -1488,8 +1536,8 @@ saves of a node keep receipts, and an older retry fails the revision check
 instead of applying again. Thumbnails are a bounded JPEG cache per card or
 keyframe, outside receipts and packages. Restored copies (schema 65,
 `restored-local-v21`, schema 67, `restored-local-v22`, schema 69,
-`restored-local-v23`, and schema 71, `restored-local-v24`) allow only
-`previs.thumbnail.get`. These operations are
+`restored-local-v23`, schema 71, `restored-local-v24`, and schema 73,
+`restored-local-v25`) allow only `previs.thumbnail.get`. These operations are
 not built-in Mio tools. There is no separate export operation: the editor
 imports a keyframe image with `asset.import`, records its asset ID in the
 keyframe's `exports` with `scene.set`, and sets a shot's first or last frame

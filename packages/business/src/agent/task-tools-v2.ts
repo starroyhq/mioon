@@ -79,6 +79,8 @@ const forbiddenOperations=[
  'timeline.clip.setGains',
  // Transforms are user-driven for now; Mio still reads them in the timeline.
  'timeline.clip.setTransform',
+ // Transitions likewise: Mio reads them and cannot change them yet.
+ 'timeline.clip.setTransition',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),

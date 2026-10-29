@@ -40,6 +40,7 @@ export const WORKSPACE_SCHEMA_LINEAGE = Object.freeze([
   entry(66, 67, 'restored-local-v22'),
   entry(68, 69, 'restored-local-v23'),
   entry(70, 71, 'restored-local-v24'),
+  entry(72, 73, 'restored-local-v25'),
 ] as const);
 
 export type WorkspaceSchemaLineageEntry = typeof WORKSPACE_SCHEMA_LINEAGE[number];

@@ -95,6 +95,9 @@ export * from './timeline-clip-gains.ts';
 import {timelineClipTransformSchemas,timelineClipTransformDescriptions} from './timeline-clip-transform-operation.ts';
 export * from './timeline-clip-transform-operation.ts';
 export * from './timeline-clip-transform.ts';
+import {timelineClipTransitionSchemas,timelineClipTransitionDescriptions} from './timeline-clip-transition-operation.ts';
+export * from './timeline-clip-transition-operation.ts';
+export * from './timeline-clip-transition.ts';
 import {timelineClipLoudnessSchemas} from './timeline-clip-loudness.ts';
 import {timelineMixLoudnessSchemas} from './timeline-mix-loudness.ts';
 export * from './timeline-mix-loudness.ts';
@@ -177,6 +180,7 @@ export const schemas={
 ...timelineCrossfadeSchemas,
 ...timelineClipGainsSchemas,
 ...timelineClipTransformSchemas,
+...timelineClipTransitionSchemas,
 ...audioPreviewSchemas,
 ...continuousAudioSchemas,
 ...timelineExportCapabilitySchemas,
@@ -257,6 +261,7 @@ Object.assign(descriptions,{
  ...timelineCrossfadeDescriptions,
  ...timelineClipGainsDescriptions,
  ...timelineClipTransformDescriptions,
+ ...timelineClipTransitionDescriptions,
  ...sceneDescriptions,
  ...subjectVariantDescriptions,
  ...previsDescriptions,

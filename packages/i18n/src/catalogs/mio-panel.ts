@@ -1178,6 +1178,12 @@ export const mioPanelMessages = {
     "en": "Set clip transform",
     "ja": "クリップのトランスフォームを設定"
   },
+  "agent.display.operation.timeline.clip.setTransition": {
+    "zh-Hans": "设置片段转场",
+    "zh-Hant": "設定片段轉場",
+    "en": "Set clip transition",
+    "ja": "クリップのトランジションを設定"
+  },
   "agent.display.operation.timeline.history.get": {
     "zh-Hans": "查看编辑历史",
     "zh-Hant": "查看編輯歷史",
