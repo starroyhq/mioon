@@ -2,7 +2,7 @@
 
 日期：2026-10-27–28（Asia/Taipei）。起点：`ae83ff0faada0311603a519f412183c8ec79a84c`，已通过 merge commit 合入 H1a（PR #51）。
 
-分支：`codex/mio-harness-h1b`。复用用户已切到该分支的干净 managed worktree：`/Users/kouzen/.codex/worktrees/mio-harness-h1a/mioon`。开工时 HEAD 与新拉取的 `origin/main` 相同，没有未提交改动。
+分支：`codex/mio-harness-h1b`。复用用户已切到该分支的干净 managed worktree：`~/.codex/worktrees/mio-harness-h1a/mioon`。开工时 HEAD 与新拉取的 `origin/main` 相同，没有未提交改动。
 
 ## 实现与计划对照
 
@@ -30,7 +30,7 @@
 
 ## 验证环境与证据
 
-证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1b-2026-10-27/`。原生环境为 Node 24.21.0、`TMPDIR=/private/tmp`、UTC。长时间命令使用本次进程生命周期内的 `caffeinate -i`。
+证据目录：`~/Library/Caches/mioon-harness-H1b-2026-10-27/`。原生环境为 Node 24.21.0、`TMPDIR=/private/tmp`、UTC。长时间命令使用本次进程生命周期内的 `caffeinate -i`。
 
 Linux 使用 H0 的固定完整媒体镜像 `sha256:32fc444b18573b988300b1bb9ceb7009ae4d9cb2456c382a0353b0c521846de5`，Node 24.21.0、完整 FFmpeg/ffprobe 7.1.5、GNU tar 1.34，非 root、断网。每文件独立进程和有界超时。基线源码从 `ae83ff0` 独立展开，不混用候选源码。
 
@@ -173,7 +173,7 @@ Linux 编译首项的确切名称为 `repository source policy and genuine compi
 实际 driver 入口如下；这些脚本在 cache 内保存，逐容器参数、文件命令和中途切换记录均由结果 JSON 索引：
 
 ```sh
-H1B_EVIDENCE=/Users/kouzen/Library/Caches/mioon-harness-H1b-2026-10-27
+H1B_EVIDENCE=~/Library/Caches/mioon-harness-H1b-2026-10-27
 TMPDIR=/private/tmp python3 "$H1B_EVIDENCE/candidate-suite.py"
 TMPDIR=/private/tmp python3 "$H1B_EVIDENCE/candidate-resume.py"
 TMPDIR=/private/tmp python3 "$H1B_EVIDENCE/paired-isolated.py"
@@ -211,7 +211,7 @@ python3 "$H1B_EVIDENCE/write-final-summary.py"
 - 分组单测 5 → 9 项，补自身请求子集、未知组、无效回执隔离、旧 tools 元数据兼容；集成测试 18 → 24 项，在三协议下覆盖旧名单重启后继续、下一次请求显示当前成员、正常补充说明及其他项目继续执行，且旧回执保持原样。
 - 更新 `docs/AGENT-TASKS-V2.md` 的兼容语义，移除原目录扩展限制，将 H1e 缓存备注记在下方。未扩展本阶段范围。
 
-独立证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1b-2026-10-27/review-fix-2026-10-28/`。修复源码快照 `0432d899ce241eeb6693651f1365fe3cd9e33093b75a148707501db66cb20278`，相对 `3151630b` 只变更业务文档、分组模块、分组及加载测试四个快照文件；本报告在快照外继续补齐。
+独立证据目录：`~/Library/Caches/mioon-harness-H1b-2026-10-27/review-fix-2026-10-28/`。修复源码快照 `0432d899ce241eeb6693651f1365fe3cd9e33093b75a148707501db66cb20278`，相对 `3151630b` 只变更业务文档、分组模块、分组及加载测试四个快照文件；本报告在快照外继续补齐。
 
 全量修复候选在 418 个文件已有退出记录时因会话中断停止，原 driver 和自有容器均已结束。按原 920 清单减去已完成集合，剩余 502 个文件从同一 `0432d899` 快照续跑，保持逐文件 600／630 秒上限和原工具链。两个在途 TAP 虽已写页脚但缺少 driver 捕获的退出码，原件归档到 `interrupted-unrecorded-taps/`，不据此推断通过；只将其作为未完整记录文件重新运行。中断点、原 progress 备份和续跑进程均独立记录，不把两段当成第二套全量。
 
@@ -266,7 +266,7 @@ python3 "$H1B_EVIDENCE/write-final-summary.py"
 实际全量、配对及汇总入口：
 
 ```sh
-H1B_REPAIR_EVIDENCE=/Users/kouzen/Library/Caches/mioon-harness-H1b-2026-10-27/review-fix-2026-10-28
+H1B_REPAIR_EVIDENCE=~/Library/Caches/mioon-harness-H1b-2026-10-27/review-fix-2026-10-28
 TMPDIR=/private/tmp python3 "$H1B_REPAIR_EVIDENCE/repair-suite.py"
 TMPDIR=/private/tmp python3 "$H1B_REPAIR_EVIDENCE/repair-resume.py"
 python3 "$H1B_REPAIR_EVIDENCE/repair-paired-isolated.py"
@@ -283,7 +283,7 @@ python3 "$H1B_REPAIR_EVIDENCE/finalize-repair.py" --effective-results "$H1B_REPA
 
 `git fetch origin main` 后，`origin/main` 为 `c75981d0cc8096f25558bf3e0e3b95122b1377d8`，新增 C7b／C7c 的界面、文案、测试和文档共 21 个文件，与 H1b 的 26 个工作文件无重叠。在 `codex/mio-harness-h1b` 执行 `git merge --ff-only origin/main`，HEAD 从 `ae83ff0` 快进到 `c75981d`；26 个 H1b 文件逐文件 SHA-256 完全保留，无冲突、无历史改写、无新增合并提交，也未切换主 checkout。
 
-同步复验证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1b-2026-10-27/sync-main-2026-10-28/`。同步前后哈希与实际命令在 `before-sync.json`、`sync-result.json` 和 `fast-forward.log`；该次同步后的验证与前述 `0432d899` 全量分开记录。
+同步复验证据目录：`~/Library/Caches/mioon-harness-H1b-2026-10-27/sync-main-2026-10-28/`。同步前后哈希与实际命令在 `before-sync.json`、`sync-result.json` 和 `fast-forward.log`；该次同步后的验证与前述 `0432d899` 全量分开记录。
 
 同步后源码快照为 `0e7a29b26a015f45c4a6132c2504202330a7265f0712db08e6e8950df260dd7f`，5,946 个源文件。使用相同固定 Linux 完整媒体镜像、Node 24.21.0、pnpm 11.25.0、UTC、完整 FFmpeg 7.1.5 和 GNU tar 1.34，逐文件独立进程、600／630 秒边界、双并发、scoped `caffeinate -i` 执行聚焦回归：
 
@@ -300,7 +300,7 @@ fixture SHA 仍为 `01492d0daa0cdc653108036d5f9dbc2029e64b452cd3fdbf4fbd0ecbfe78
 实际入口：
 
 ```sh
-H1B_SYNC_EVIDENCE=/Users/kouzen/Library/Caches/mioon-harness-H1b-2026-10-27/sync-main-2026-10-28
+H1B_SYNC_EVIDENCE=~/Library/Caches/mioon-harness-H1b-2026-10-27/sync-main-2026-10-28
 python3 "$H1B_SYNC_EVIDENCE/prepare-focus-snapshot.py"
 TMPDIR=/private/tmp python3 "$H1B_SYNC_EVIDENCE/focus-suite.py"
 python3 "$H1B_SYNC_EVIDENCE/finalize-focus.py"

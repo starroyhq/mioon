@@ -1,8 +1,8 @@
 # Mio harness H1d · 执行记录、项目概况、过期提示
 
-日期：2026-10-28 至 2026-10-29（Asia/Taipei）。从 `2665fcfc850c8062d7fcebc7c770c5564c10f7ce` 开始，即以 merge commit 合入 H1c 的 PR #58。按用户要求新建 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`，分支 `codex/mio-harness-h1d`；起点干净，不改主 checkout。首次阶段实施只做 H1d，交付后停下；用户确认后授权的提交、同步 main 与 PR 验证见第 7 节。
+日期：2026-10-28 至 2026-10-29（Asia/Taipei）。从 `2665fcfc850c8062d7fcebc7c770c5564c10f7ce` 开始，即以 merge commit 合入 H1c 的 PR #58。按用户要求新建 managed worktree `~/.codex/worktrees/mio-harness-h1d/mioon`，分支 `codex/mio-harness-h1d`；起点干净，不改主 checkout。首次阶段实施只做 H1d，交付后停下；用户确认后授权的提交、同步 main 与 PR 验证见第 7 节。
 
-证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1d-2026-10-28/`。本报告不进入最终验证源快照，供验证结束后补录；其他源码、测试、fixture 与文档均须冻结并核对哈希。
+证据目录：`~/Library/Caches/mioon-harness-H1d-2026-10-28/`。本报告不进入最终验证源快照，供验证结束后补录；其他源码、测试、fixture 与文档均须冻结并核对哈希。
 
 ## 1. 实现范围
 
@@ -69,7 +69,7 @@ e309 独立覆盖与容量探针在重跑 gate 闭合期间串行执行，共 16
 
 最终 94a 队列的首文件在原门槛下实际 37/37 通过（241.05 秒），随后持续运行。第 16 文件再次出现成批就绪超时，同时只读确认新的本仓库原生全量进程（并发 6），本线仅暂停后续派发，在途文件按原期限自然结束。用户随后明确要求“同步进行”，覆盖最初仅单套本机全量的调度偏好；于 2026-10-29 00:36:25（Asia/Taipei）恢复剩余 914 文件，本线仍并发 2，并未停止其他会话或改任何 deadline。该次运行包含已授权的并行资源竞争，失败须另作对照，不能预先全归为环境或产品回归。授权与派发证据见 `attempt3-final-v2-gated/user-parallel-authorization-change.json` 及调度 NDJSON。
 
-全量实际驱动命令为 `python3 -u /Users/kouzen/Library/Caches/mioon-harness-H1d-2026-10-28/attempt3-final-v2-gated/candidate-suite.py`，配套独立 scoped `caffeinate -i`；镜像内每个文件执行 `timeout --signal=TERM --kill-after=5s 600s node --test --test-reporter=tap --test-concurrency=1 <file>`，宿主另设 630 秒保护。完整逐文件 Docker 参数、actual exit、时间和 TAP SHA 保留在结果 JSON。
+全量实际驱动命令为 `python3 -u ~/Library/Caches/mioon-harness-H1d-2026-10-28/attempt3-final-v2-gated/candidate-suite.py`，配套独立 scoped `caffeinate -i`；镜像内每个文件执行 `timeout --signal=TERM --kill-after=5s 600s node --test --test-reporter=tap --test-concurrency=1 <file>`，宿主另设 630 秒保护。完整逐文件 Docker 参数、actual exit、时间和 TAP SHA 保留在结果 JSON。
 
 最终原始全量 driver 实际 exit 1：930/930 个唯一文件，923 成功、7 失败，无遗漏、重复或外层 600／630 秒超时；14859 个具名结果为 14806 passed、28 failed、3 cancelled、22 skipped。总墙钟 7752.93 秒包含暂停等待，不作性能比较。源码／fixture 全程无漂移，原始结果和每份 TAP 保留在 `attempt3-final-v2-gated/`，清理仅限本线 driver、容器与 caffeinate。
 
@@ -98,7 +98,7 @@ harness 38 文件实际 870/870 passed：原 34 文件 796 名全部匹配 H1c �
 
 最新联合参考的 86 个新名称分为 H1d 74 项、main 已有 schema64 M5 6 项、Look／LUT／restore 3 项、future 标签 1 项、动态 PID 标签 2 项。三条 exact 缺失逐项对应 `future64 → future66`、upgrade lock PID `15 → 16`、backup lock PID `16 → 14`；原件全部 passed，保留缺失身份，不做模糊匹配。独立核对 7 个相关测试、9 个直接 helper、3 个支持文件与 clean2665、Git 对象和冻结94a 的字节一致；C8a 的 `7c690db` 已在 main 中引入 CURRENT64／NEXT66／lineage64。逐项完整名称、源码行及哈希见缓存 `name-attribution-final-v2.md/json`。
 
-H0 的原 42 条缺失全部保留；H1a／refresh 原 37／31 条分别另加一条动态 opacity PID 标题，成为 38／32。旧移除／改名归因沿用 `/Users/kouzen/Library/Caches/mioon-harness-H1c-2026-10-28/historical-name-attribution.md/json`，中间 future／PID 名称再衔接本次证据，不能直接沿用旧目标名。全部参考的原始比较及精确身份见 `candidate-final-v2-test-name-comparison.json`，源及结果绑定见 `candidate-final-v2-postprocess-binding.json`。
+H0 的原 42 条缺失全部保留；H1a／refresh 原 37／31 条分别另加一条动态 opacity PID 标题，成为 38／32。旧移除／改名归因沿用 `~/Library/Caches/mioon-harness-H1c-2026-10-28/historical-name-attribution.md/json`，中间 future／PID 名称再衔接本次证据，不能直接沿用旧目标名。全部参考的原始比较及精确身份见 `candidate-final-v2-test-name-comparison.json`，源及结果绑定见 `candidate-final-v2-postprocess-binding.json`。
 
 原始失败均保留；已完成以下七组整文件复验，使用 clean2665 → 冻结94a、同一固定镜像、每次一个文件、原内部期限及外层 600／630 秒，不能用复验覆盖原始全量：
 
@@ -204,7 +204,7 @@ helper 在每个协议中只发送一个新对话、使用固定空项目；因�
 
 跨轮问答新增仅修改 `task-journal-v2.ts` 的窄查询和 `task-context-v2.ts` 的内部装配接口／消息组，不改 runtime、公共契约、数据库或执行记录格式。已答提问按步骤位置与说明交错，使用问题／选项参数及已保存的 canonical `answer.choices / answer.text`，不依赖重复展示字段；用户文字不再清理或裁剪。这里的回答原文指已保存的 `answer.text`：C13a 原有运行时保存前的 trim 行为继续保留，跨轮阶段不再次 trim。未绑定说明保留在末尾；未回答就结束的提问不带入。问答作为普通 user 消息归入该历史组，整组删除，4 KiB 执行记录中不重复。无问答的轮次继续原 notes 路径。
 
-本次证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1d-sync-2026-10-29/`。只重跑用户指定的类型、开发构建、harness、99 指纹和 main／候选 legacy／stress30 对照，全量由 PR CI 执行；不会把第 3 节旧全量写成最新 main 的全量。
+本次证据目录：`~/Library/Caches/mioon-harness-H1d-sync-2026-10-29/`。只重跑用户指定的类型、开发构建、harness、99 指纹和 main／候选 legacy／stress30 对照，全量由 PR CI 执行；不会把第 3 节旧全量写成最新 main 的全量。
 
 跨轮新测试 `agent-task-h1d-answers-v2.test.ts` 开发整文件 15/15 通过（7.34 秒）：四语原文及 UTF-16 保真、步骤与说明排序、四终态、未答／诊断、canonical 字段、窄读取／无 snapshot、跨轮整组删除与真实只读恢复。原两个 H1d 测试文件各追加三协议组合：context 24/24、runtime 12/12（共 36/36），覆盖真实等待回答、等待期间外部修订推进、压缩后答案原文约束、过期提示顺序、概况保留、工具配对及后续请求前缀；不改旧 C13a 测试。新问答业务仅两个文件，独立只读审查未发现明确缺陷。
 

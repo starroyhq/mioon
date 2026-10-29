@@ -1,8 +1,8 @@
 # Mio harness H1e · 模型缓存与用量
 
-日期：2026-10-29（Asia/Taipei）。开工 fetch 后从最新 `origin/main`（`4a52403f8a89bb3e665cb1699d8984a896de9b1e`，已含 H1d／H3b／C13a）建立 `codex/mio-harness-h1e`。复用已附加且干净的 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`，保留目录名，不改主 checkout。仅实施 H1e；离线交付时未提交、未推送、未调用真实模型。后续授权的兼容复测见第 7 节，同步 main 与 PR 验证见第 8 节。
+日期：2026-10-29（Asia/Taipei）。开工 fetch 后从最新 `origin/main`（`4a52403f8a89bb3e665cb1699d8984a896de9b1e`，已含 H1d／H3b／C13a）建立 `codex/mio-harness-h1e`。复用已附加且干净的 managed worktree `~/.codex/worktrees/mio-harness-h1d/mioon`，保留目录名，不改主 checkout。仅实施 H1e；离线交付时未提交、未推送、未调用真实模型。后续授权的兼容复测见第 7 节，同步 main 与 PR 验证见第 8 节。
 
-证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1e-2026-10-29/`。本报告在最终源码快照外，供验证结束后补录；其余源码、测试、fixture 和文档纳入冻结检查。
+证据目录：`~/Library/Caches/mioon-harness-H1e-2026-10-29/`。本报告在最终源码快照外，供验证结束后补录；其余源码、测试、fixture 和文档纳入冻结检查。
 
 ## 1. 实现范围
 
@@ -218,7 +218,7 @@ main fixture 的 SHA-256 为 `89dd1b4e60af51e05391fbaa13cb7c7dc93b2abdbaa4d4d585
 
 ### 同步指纹
 
-证据根目录：`/Users/kouzen/Library/Caches/mioon-harness-H1e-sync-2026-10-29/`。以原 main `4a52403`、已确认 H1e `7f29841`、新 main `9ce071d` 和合并工作区逐身份比较 99 条，原件 SHA 直接覆盖冻结正文，未归一化 ID 或时间。两次实际预览 21.544／21.186 秒逐条完全相同；99/99 的“合并后−新 main”均等于“原 H1e−4a52403”，没有额外差异。
+证据根目录：`~/Library/Caches/mioon-harness-H1e-sync-2026-10-29/`。以原 main `4a52403`、已确认 H1e `7f29841`、新 main `9ce071d` 和合并工作区逐身份比较 99 条，原件 SHA 直接覆盖冻结正文，未归一化 ID 或时间。两次实际预览 21.544／21.186 秒逐条完全相同；99/99 的“合并后−新 main”均等于“原 H1e−4a52403”，没有额外差异。
 
 | 类别 | 条数 | 每条字节差 |
 | --- | ---: | ---: |

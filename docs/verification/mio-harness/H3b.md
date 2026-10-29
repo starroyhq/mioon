@@ -6,7 +6,7 @@
 
 ## 1. 基点与范围
 
-- 从 `origin/main` 的 `bd7ad28993d2589ab7cbccf7a1d7b26f946f6a0e`（PR #66 的 H3a merge commit）新建工作树 `/Users/kouzen/.codex/worktrees/mio-harness-h3b/mioon` 与分支 `codex/mio-harness-h3b`；开工时工作树干净。主 checkout 和 H3a 工作树未修改。
+- 从 `origin/main` 的 `bd7ad28993d2589ab7cbccf7a1d7b26f946f6a0e`（PR #66 的 H3a merge commit）新建工作树 `~/.codex/worktrees/mio-harness-h3b/mioon` 与分支 `codex/mio-harness-h3b`；开工时工作树干净。主 checkout 和 H3a 工作树未修改。
 - 按主 checkout 中只读的 `designs/MIO-HARNESS-PARALLEL-PROMPTS.md` 第 4 节、`MIO-HARNESS-DESIGN-PROMPTS.md` H3b、`mioon-design.pen` 第 10 分区和 10-01～10-08 预览实施。第 11 分区、要求组、补做徽标和说明行不实现。
 - 只修改前端、四语文案、对应测试与文档。没有改业务、契约、HTTP／SDK／CLI、请求装配、流式写入、存储格式、工具发现、依赖或请求指纹 fixture。
 - 本阶段没有模型调用、付费生成、用户项目数据写入、提交或推送。完整测试套件留到获准创建 PR 后的 CI，本机只跑聚焦集合。
@@ -63,7 +63,7 @@
 
 ## 4. 验证环境与结果
 
-证据根目录为 `/Users/kouzen/Library/Caches/mioon-harness-H3b-2026-10-29/`，不在临时目录。原生使用 Node 24.21.0、pnpm 11.25.0、UTC、`TMPDIR=/private/tmp`；长运行由各自的 `caffeinate -i` 包裹。
+证据根目录为 `~/Library/Caches/mioon-harness-H3b-2026-10-29/`，不在临时目录。原生使用 Node 24.21.0、pnpm 11.25.0、UTC、`TMPDIR=/private/tmp`；长运行由各自的 `caffeinate -i` 包裹。
 
 - 在自己的新工作树运行 `CI=true pnpm install --frozen-lockfile`，冻结锁安装成功，没有清空旧工作树依赖或修改锁文件。
 - `node scripts/tooling.ts build --channel=development` 首版与最终图标修正版都 exit 0；均实际运行 3 个 strict TypeScript 项目、Web 与 Desktop development 构建。日志 `build-final.log`／`build-final-v2.log`，命令结果 `build-result.json`／`build-result-v2.json`。没有仅靠 Vite 转译代替类型检查。
@@ -73,7 +73,7 @@
 
 固定完整 FFmpeg 镜像 `sha256:32fc444b18573b988300b1bb9ceb7009ae4d9cb2456c382a0353b0c521846de5`（Node 24.21.0／FFmpeg 7.1.5）、UTC、非 root、network none。每文件独立容器／进程，内层 600 秒、外层 630 秒限制，并发 2；保留已有独占调度规则，不运行本机全量。
 
-首版快照 6017 个输入（仅排除本报告），SHA-256 `8be31bb1743a944e31c4d0c17156cb93362b2f82152933c79ce3680aacbb6093`。实际执行 `TMPDIR=/private/tmp python3 -u /Users/kouzen/Library/Caches/mioon-harness-H3b-2026-10-29/focus-suite.py`，完整逐文件 Docker 命令保存在结果 JSON。
+首版快照 6017 个输入（仅排除本报告），SHA-256 `8be31bb1743a944e31c4d0c17156cb93362b2f82152933c79ce3680aacbb6093`。实际执行 `TMPDIR=/private/tmp python3 -u ~/Library/Caches/mioon-harness-H3b-2026-10-29/focus-suite.py`，完整逐文件 Docker 命令保存在结果 JSON。
 
 首轮 **63/63 文件、1107/1107 通过**，294.989 秒，0 失败／跳过／取消／超时。包含 runtime 185 条及两个 H0 要求的完整 FFmpeg 用例、Anthropic 恢复 15 条、context-report 4 条、H2 流式 23 条、H3a 检查 26 条、99 条请求指纹（含 12 条诊断）。原 H3a 42 文件／895 条和额外 16 文件／165 条的测试名、层级路径、同名序号及状态均匹配；新增 5 文件／47 条，合计 63／1107，不重复累计重叠用例。
 
@@ -81,7 +81,7 @@
 
 最终修正版快照 SHA-256 `000573e55b97e10d8e5184dfb24091b50d9d6790dc034b1d9bad7fedab7ca760`，同为 6017 输入；与首版正好上述 3 文件不同，其余 6014 输入逐字节相同。证据 `design-alignment-v2/source-differences.json` 和 `.patch`。
 
-实际执行 `TMPDIR=/private/tmp python3 -u /Users/kouzen/Library/Caches/mioon-harness-H3b-2026-10-29/design-alignment-v2/focus-suite.py`，**25/25 文件、301/301 通过**，59.073 秒，驱动 exit 0，0 失败／跳过／取消／超时。范围为新增 5 文件、Panel 组件、agent-tasks-v2 UI、ui-components、Mio 命名与展示、UTF-8 门禁、13 个既有 i18n 文件和 99 指纹。逐名与首版同范围对比，301 个完整路径／出现序号全部匹配，0 缺失、增加或状态变化；圆环仅增强已有断言，没有增加用例数量。完整结果、清单和命令见 `design-alignment-v2/{selection,candidate-focus-results,name-comparison,validation-summary,focus-suite-command-result}.json`。
+实际执行 `TMPDIR=/private/tmp python3 -u ~/Library/Caches/mioon-harness-H3b-2026-10-29/design-alignment-v2/focus-suite.py`，**25/25 文件、301/301 通过**，59.073 秒，驱动 exit 0，0 失败／跳过／取消／超时。范围为新增 5 文件、Panel 组件、agent-tasks-v2 UI、ui-components、Mio 命名与展示、UTF-8 门禁、13 个既有 i18n 文件和 99 指纹。逐名与首版同范围对比，301 个完整路径／出现序号全部匹配，0 缺失、增加或状态变化；圆环仅增强已有断言，没有增加用例数量。完整结果、清单和命令见 `design-alignment-v2/{selection,candidate-focus-results,name-comparison,validation-summary,focus-suite-command-result}.json`。
 
 两轮按文件去重后的覆盖仍为 **63 文件／1107 条**：首版未受图形修改影响的 38 文件／806 条，加最终修正版替换的 25 文件／301 条。不能将 1107 与 301 相加，也不声称最终修正版独立跑过一次 63 文件，更不是全量测试。无需重复未改的 runtime 长测，两个指定 FFmpeg 用例的首版通过证据保留。
 
@@ -147,7 +147,7 @@ Panel 没有用通用 loading 阶段取消完整预检：新 main 在同对话�
 
 ### 本轮验证
 
-本轮证据集中在 `/Users/kouzen/Library/Caches/mioon-harness-H3b-2026-10-29/review-fixes/`。独立 `node scripts/tooling.ts typecheck` exit 0；源码冻结后 `node scripts/tooling.ts build --channel=development` 也 exit 0，114.905 秒，包含 3 个 strict 项目、Web 与 Desktop development。两者均使用 Node 24.21.0、UTC、`TMPDIR=/private/tmp`、专用 `caffeinate -i`。命令和结果见 `typecheck-result.json`、`build-result.json`；冻结锁安装 exit 0，锁未改。12 个改动／新增 TS／TSX 文件 AST 审计的 explicit any、ignore／nocheck 为 0，见 `source-audit.json`。
+本轮证据集中在 `~/Library/Caches/mioon-harness-H3b-2026-10-29/review-fixes/`。独立 `node scripts/tooling.ts typecheck` exit 0；源码冻结后 `node scripts/tooling.ts build --channel=development` 也 exit 0，114.905 秒，包含 3 个 strict 项目、Web 与 Desktop development。两者均使用 Node 24.21.0、UTC、`TMPDIR=/private/tmp`、专用 `caffeinate -i`。命令和结果见 `typecheck-result.json`、`build-result.json`；冻结锁安装 exit 0，锁未改。12 个改动／新增 TS／TSX 文件 AST 审计的 explicit any、ignore／nocheck 为 0，见 `source-audit.json`。
 
 Linux 沿用固定镜像 `sha256:32fc444b18573b988300b1bb9ceb7009ae4d9cb2456c382a0353b0c521846de5`、Node 24.21.0、FFmpeg 7.1.5、UTC、非 root、network none。独立克隆此前同锁验证通过的 Linux 依赖，并逐个核对依赖清单／配置，不声称重新安装。每文件独立进程／容器、600／630 秒限制，并发 2；基线与候选依次执行，不叠加并发。
 
@@ -185,7 +185,7 @@ H3b 复核通过后，按新增要求仅补 `.mio-round>.mio-checks-sentinel{mar
 
 改动后再次 `git fetch origin`、`git merge --ff-only origin/main`，返回 Already up to date，main 仍为 `66e1b3e5970fe63a59df3d2427f25f913c1bc4ed`，没有需要再次合并的新提交。提交前的范围仍为 H3b 原 15 文件；锁、契约、business／runtime、server、SDK／CLI／MCP、指纹和 pin 相对该 main 均不改。
 
-本轮独立证据在 `/Users/kouzen/Library/Caches/mioon-harness-H3b-2026-10-29/submit-pr/`。冻结 6036 输入（本报告除外），SHA-256 `9b12aa27278d696f50ad68d862a7206d2224e945124ba86ce22b95046cf6330a`；逐文件与第 6 节快照对比，只有上述 CSS 一行变化，见 `source-differences.json`／`.patch`。
+本轮独立证据在 `~/Library/Caches/mioon-harness-H3b-2026-10-29/submit-pr/`。冻结 6036 输入（本报告除外），SHA-256 `9b12aa27278d696f50ad68d862a7206d2224e945124ba86ce22b95046cf6330a`；逐文件与第 6 节快照对比，只有上述 CSS 一行变化，见 `source-differences.json`／`.patch`。
 
 | 本轮实际验证 | 结果 |
 | --- | --- |

@@ -2,7 +2,7 @@
 
 日期：2026-10-21。仅实施 `MIO-IMPLEMENTATION-PLAN.md` 第 4 节的 M1；M0 已由用户确认。本阶段不进入 M2，也不实施 A1–A6。
 
-工作树：`/Users/kouzen/.codex/worktrees/mio-m0-preparation/mioon`，分支 `codex/mio-m0-preparation`；基线 `ab65771998936e5e0bb1e2465e40ecefff233e91`。继续沿用 M0 的隔离分支，没有切换原工作区分支、创建提交或推送。
+工作树：`~/.codex/worktrees/mio-m0-preparation/mioon`，分支 `codex/mio-m0-preparation`；基线 `ab65771998936e5e0bb1e2465e40ecefff233e91`。继续沿用 M0 的隔离分支，没有切换原工作区分支、创建提交或推送。
 
 证据目录：`/private/tmp/mioon-mio-m1-20261021-J7UxDD/evidence/`。日志与 PNG 保留在仓库外；验证副本在检查结束后删除。
 
@@ -45,7 +45,7 @@
 
 ```sh
 rsync -a --exclude node_modules --exclude .git --exclude apps/desktop/build --exclude apps/web/dist \
-  /Users/kouzen/.codex/worktrees/mio-m0-preparation/mioon/ \
+  ~/.codex/worktrees/mio-m0-preparation/mioon/ \
   /private/tmp/mioon-mio-m1-20261021-J7UxDD/verify/
 cd /private/tmp/mioon-mio-m1-20261021-J7UxDD/verify
 CI=true pnpm install --frozen-lockfile

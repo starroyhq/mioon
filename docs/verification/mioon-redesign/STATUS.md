@@ -1,6 +1,6 @@
 # Mioon 改版实施与验收
 
-日期：2026-10-19。基线 `8d2f7faea422b60e2030a72f15af2d7aa9d465f6`，分支 `codex/mioon-redesign`，未创建提交。工作树 `/Users/kouzen/.codex/worktrees/mioon-redesign/mioon` 保留原HEAD及领先远端的22个提交；原工作区未修改。
+日期：2026-10-19。基线 `8d2f7faea422b60e2030a72f15af2d7aa9d465f6`，分支 `codex/mioon-redesign`，未创建提交。工作树 `~/.codex/worktrees/mioon-redesign/mioon` 保留原HEAD及领先远端的22个提交；原工作区未修改。
 
 最新完整复验：剩余10个文件中4个通过、6个因真实媒体环境前提仍受阻；本轮修复FFmpeg参数/能力识别、1080音量提案与恢复摘要接线。当前全部755文件已逐个执行：648通过、107失败、0超时；新增37文件全过，29个旧失败文件转为通过，仍有106个旧失败文件及1个能力前提相关的原通过文件失败。类型检查、开发构建及portable97项通过；正式macOS full仍受阻。详见[本轮完整报告](full-test-repairs/README.md)及[剩余失败索引](full-test-repairs/remaining-failures.md)。下文保留各阶段历史快照，不代表当前全套全部通过
 

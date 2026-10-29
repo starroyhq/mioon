@@ -1,10 +1,10 @@
 # Mio harness H4a · 目标检查与一次补做
 
-日期：2026-10-29（Asia/Taipei）。分支 `codex/mio-harness-h4a`；首轮基线为 main `9ae9b87db889cf556b754ab6972cad6a46d5d19a`（#78），审查修订后已同步到 `7d8e5f37b5efc5c014d7b0670694844d1f16ba60`（#83），现行结果见第 9 节。复用 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`。只实施 H4a 后端，不进入 H4b，不调用真实模型或媒体供应商。
+日期：2026-10-29（Asia/Taipei）。分支 `codex/mio-harness-h4a`；首轮基线为 main `9ae9b87db889cf556b754ab6972cad6a46d5d19a`（#78），审查修订后已同步到 `7d8e5f37b5efc5c014d7b0670694844d1f16ba60`（#83），现行结果见第 9 节。复用 managed worktree `~/.codex/worktrees/mio-harness-h1d/mioon`。只实施 H4a 后端，不进入 H4b，不调用真实模型或媒体供应商。
 
 首轮验证期间 origin/main 又合入 #79（片段变换及 schema 70）与 #80（后端冷启动测试期限），当时最终检查的 tip 为 `46881d0`，本分支比该远端引用落后 5 个提交。首轮保留起始基线与原期限的冻结验证，当时未合入这些后续上游变更；该历史结果不声称覆盖它们，实际同步与补验另记于第 9 节。
 
-证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H4a-2026-10-29/`。本报告分别记录实现、最终冻结源码、原始全量与独立补充视图；保留全部失败和范围限制，不以聚焦或隔离补验通过冒充原始全量通过。
+证据目录：`~/Library/Caches/mioon-harness-H4a-2026-10-29/`。本报告分别记录实现、最终冻结源码、原始全量与独立补充视图；保留全部失败和范围限制，不以聚焦或隔离补验通过冒充原始全量通过。
 
 审查修订与同步 main 的现行验证见第 9 节。条件契约与比较公式已按审查更新；第 5、6、8 节的冻结哈希、测试数及停止点保留首轮历史，不代表修订后重新执行的结果。
 
@@ -115,7 +115,7 @@
 
 失败、取消、超时及补跑必须保留原始结果，按测试名区分本次回归、既有问题和环境证据；不延长原 deadline、不以新增 skip 或补充结果覆盖原始失败。
 
-根代理开发命令为 `caffeinate -i env TZ=UTC <Node24.21.0> --test tests/agent-task-goal-repair-v2.test.ts`、`--test tests/agent-task-goal-repair-context-v2.test.ts`，以及修复双标记后带 `--test-name-pattern=marker_replan` 的定向补验。`<Node24.21.0>` 为 `/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node`。开发期失败原件保留在同一 `root-development` 目录：合成 Responses 输出未保留文本使压缩测试没达到阈值、模拟 provider 未传入本地 DB、恢复组合在 interrupted 状态错误地提交说明；分别修正合成输出、provider fixture 和 resumed-but-not-launched 的组合状态，不改变生产期限或校验。
+根代理开发命令为 `caffeinate -i env TZ=UTC <Node24.21.0> --test tests/agent-task-goal-repair-v2.test.ts`、`--test tests/agent-task-goal-repair-context-v2.test.ts`，以及修复双标记后带 `--test-name-pattern=marker_replan` 的定向补验。`<Node24.21.0>` 为 `~/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node`。开发期失败原件保留在同一 `root-development` 目录：合成 Responses 输出未保留文本使压缩测试没达到阈值、模拟 provider 未传入本地 DB、恢复组合在 interrupted 状态错误地提交说明；分别修正合成输出、provider fixture 和 resumed-but-not-launched 的组合状态，不改变生产期限或校验。
 
 正式编译命令为 `caffeinate -i <Node24.21.0> --test --test-reporter=tap --test-concurrency=1 tests/typecheck-runtime.test.ts`，保持 compiler 子进程 240 秒、父用例 270 秒（均为上游 #76 已有设置）；开发构建为 `caffeinate -i <Node24.21.0> scripts/tooling.ts build --channel=development`。全量按每文件一个进程执行，16 个重文件独占，之后 shared 2，原文件 600／外层 630 秒上限和用例内部期限均保留。
 
@@ -220,7 +220,7 @@ H4a 实施与本地验证已完成，原始全量的五个非零文件及隔离�
 | 日文单次 | 1 | +3989 B | +3976 B | +3960 B |
 | 诊断 | 4 | 0 B | 0 B | 0 B |
 
-相对第 5 节首轮的唯一区别是三类数量 schema 各增加 246 B，合计每个非诊断请求增加 738 B；半帧比较改变的是判定语义，不改变时长工具参数。语言差异仍为英文 +83／繁体 +9／日文 +212 B，官方 OpenAI 两协议的 `strict:false` 仍另加 15 B。当前与 main 的模型目录除新增核心 goal 外完全相同（核心 16 → 17），公共 RPC schema 145 项及生成哈希与 main 相同；新变换操作保留公共接口、对 Mio 禁用。所有源码／目录和元数据证明在新证据目录 `/Users/kouzen/Library/Caches/mioon-harness-H4a-sync-2026-10-29/` 的 `postmerge-native-preview/`、`independent-audit/` 与后续聚焦结果内。
+相对第 5 节首轮的唯一区别是三类数量 schema 各增加 246 B，合计每个非诊断请求增加 738 B；半帧比较改变的是判定语义，不改变时长工具参数。语言差异仍为英文 +83／繁体 +9／日文 +212 B，官方 OpenAI 两协议的 `strict:false` 仍另加 15 B。当前与 main 的模型目录除新增核心 goal 外完全相同（核心 16 → 17），公共 RPC schema 145 项及生成哈希与 main 相同；新变换操作保留公共接口、对 Mio 禁用。所有源码／目录和元数据证明在新证据目录 `~/Library/Caches/mioon-harness-H4a-sync-2026-10-29/` 的 `postmerge-native-preview/`、`independent-audit/` 与后续聚焦结果内。
 
 以上为同步到 #81／`f7dabcc` 的独立快照。聚焦队列执行期间主线又合入 #82／`c4fead2`（C8 v2），直接改变同一工具目录、契约和请求 fixture；因此暂停旧 102 队列后续派发，在途文件按原期限自然结束并保存为 pre-#82 记录，不将未完成队列写成通过。随后继续以 merge commit 同步新主线，最终验证以该新基线另记；已完成的类型、构建与指纹结果均不冒充覆盖 #82。
 

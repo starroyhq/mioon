@@ -1,10 +1,10 @@
 # Mio · M7 设置 · Mio
 
-日期：2026-10-26，10-27 合入最新 main 后复核。本阶段实施 M7（设计稿 07-09、07-10，计划 5.15、5.16），之后在同一工作树完成收尾（见 [WRAP-UP.md](WRAP-UP.md)）。工作树 `/Users/kouzen/Documents/data/mioon-worktrees/mio-m7`，分支 `claude/mio-m7`。开工时基于 main `cfc5e8f`（PR #31 合并），工作树干净；之后两次合入 main，最终基于 `2bb498f`（PR #42 合并）。没有新增依赖或付费生成。
+日期：2026-10-26，10-27 合入最新 main 后复核。本阶段实施 M7（设计稿 07-09、07-10，计划 5.15、5.16），之后在同一工作树完成收尾（见 [WRAP-UP.md](WRAP-UP.md)）。工作树 `~/Documents/data/mioon-worktrees/mio-m7`，分支 `claude/mio-m7`。开工时基于 main `cfc5e8f`（PR #31 合并），工作树干净；之后两次合入 main，最终基于 `2bb498f`（PR #42 合并）。没有新增依赖或付费生成。
 
 测试连接的项目选择由你决定：用最近的项目跑诊断（项目内用当前项目；首页和桌面设置窗口用最近打开、其次最近更新的项目；没有项目时不可测试；该项目忙时提示先处理）。
 
-持久证据根：`/Users/kouzen/Library/Caches/mioon-mio-m7-20261025/`，下文简称 E。
+持久证据根：`~/Library/Caches/mioon-mio-m7-20261025/`，下文简称 E。
 
 ## 1. 完成内容与文件
 

@@ -1,8 +1,8 @@
 # Mio · M5 失败与撤销（A4、A5）
 
-日期：2026-10-23。本阶段仅实施 M5，未进入 M6。工作树 `/Users/kouzen/.codex/worktrees/mio-m5/mioon`，分支 `codex/mio-m5`，基于冻结 main `3f678c628e3afcbe8e71372fea00a36afd9033c5`，开工状态干净。没有 commit、push、开 PR、合入 main、依赖变更、真实模型调用或付费生成。
+日期：2026-10-23。本阶段仅实施 M5，未进入 M6。工作树 `~/.codex/worktrees/mio-m5/mioon`，分支 `codex/mio-m5`，基于冻结 main `3f678c628e3afcbe8e71372fea00a36afd9033c5`，开工状态干净。没有 commit、push、开 PR、合入 main、依赖变更、真实模型调用或付费生成。
 
-持久证据根：`/Users/kouzen/Library/Caches/mioon-mio-m5-20261023/`，下文简称 E。完整全量为 `current-fix1`，随后仅修正 UTF-8 检查清单并单文件重验；不把定向结果拼接成另一轮全量。早期 `current` 在修复审查问题后主动终止，不能当成最终结果。功能修改完成与环境未通过的检查分开记录。
+持久证据根：`~/Library/Caches/mioon-mio-m5-20261023/`，下文简称 E。完整全量为 `current-fix1`，随后仅修正 UTF-8 检查清单并单文件重验；不把定向结果拼接成另一轮全量。早期 `current` 在修复审查问题后主动终止，不能当成最终结果。功能修改完成与环境未通过的检查分开记录。
 
 ## 1. 完成内容与文件
 
@@ -32,12 +32,12 @@
 
 代表图（实际持久路径）：
 
-- [模型失败](/Users/kouzen/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-en-1440x900-model-failure-light.png)
-- [工具失败](/Users/kouzen/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-ja-1050x680-tool-detail-light.png)
-- [有保留项的整体确认](/Users/kouzen/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-en-1050x680-undo-confirm-light.png)
-- [后续修改提示](/Users/kouzen/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-ja-1050x680-undo-detail-light.png)
-- [零项禁用](/Users/kouzen/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-ja-1050x680-zero-confirm-light.png)
-- [深色确认](/Users/kouzen/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-en-1050x680-undo-dark.png)
+- [模型失败](~/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-en-1440x900-model-failure-light.png)
+- [工具失败](~/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-ja-1050x680-tool-detail-light.png)
+- [有保留项的整体确认](~/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-en-1050x680-undo-confirm-light.png)
+- [后续修改提示](~/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-ja-1050x680-undo-detail-light.png)
+- [零项禁用](~/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-ja-1050x680-zero-confirm-light.png)
+- [深色确认](~/Library/Caches/mioon-mio-m5-20261023/evidence/browser-accepted/m5-en-1050x680-undo-dark.png)
 
 有意复用／偏离：整体确认使用项目共享的420px居中 Dialog，保留焦点返回、Esc、遮罩和分组列表；组件稿为更紧凑的示意卡。失败末尾固定说明沿用已有 `.mio-error` 危险色，07-05 是普通正文色；内容、位置与四语按计划，实测对比度达标。合成工具失败选用真实预检过期，没有故意破坏工具或提交真实渲染来制造 FFmpeg 错误；FFmpeg、连接、生成服务各设置路由由组件测试覆盖。
 
@@ -50,7 +50,7 @@
 隔离复制／安装及最终构建实际执行：
 
 ```sh
-rsync -a --exclude node_modules --exclude .git --exclude apps/desktop/build --exclude apps/web/dist /Users/kouzen/.codex/worktrees/mio-m5/mioon/ /Users/kouzen/Library/Caches/mioon-mio-m5-20261023/verify/
+rsync -a --exclude node_modules --exclude .git --exclude apps/desktop/build --exclude apps/web/dist ~/.codex/worktrees/mio-m5/mioon/ ~/Library/Caches/mioon-mio-m5-20261023/verify/
 CI=true pnpm install --frozen-lockfile
 node scripts/tooling.ts build --channel=development
 node node_modules/typescript/bin/tsc -p tests/tsconfig.tests.json
@@ -61,8 +61,8 @@ build 包含严格生产类型、Web 和桌面开发构建，退出0；测试严
 完整全量实际启动命令（工作目录、Node绝对路径、双reporter等参数均由状态收据保存）：
 
 ```sh
-python3 /Users/kouzen/Library/Caches/mioon-mio-m5-20261023/evidence/run-full-suite.py baseline
-python3 /Users/kouzen/Library/Caches/mioon-mio-m5-20261023/evidence/run-full-suite.py current-fix1
+python3 ~/Library/Caches/mioon-mio-m5-20261023/evidence/run-full-suite.py baseline
+python3 ~/Library/Caches/mioon-mio-m5-20261023/evidence/run-full-suite.py current-fix1
 ```
 
 两次均使用 `node --test --test-concurrency=2 --test-timeout=600000 "tests/*.test.mjs" "tests/*.test.ts"`，并启用 TAP 与逐事件 NDJSON reporter。逐文件隔离，超时一致且没有放宽；完整命令分别在 `E/evidence/baseline-full-state.json`、`current-fix1-full-state.json`。
