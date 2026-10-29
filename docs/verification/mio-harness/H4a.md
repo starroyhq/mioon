@@ -1,8 +1,8 @@
 # Mio harness H4a · 目标检查与一次补做
 
-日期：2026-10-29（Asia/Taipei）。分支 `codex/mio-harness-h4a`；本期验证基线为开始时同步的 main `9ae9b87db889cf556b754ab6972cad6a46d5d19a`，包含 #78。复用 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`。只实施 H4a 后端，不进入 H4b，不提交、不推送，不调用真实模型或媒体供应商。
+日期：2026-10-29（Asia/Taipei）。分支 `codex/mio-harness-h4a`；首轮基线为 main `9ae9b87db889cf556b754ab6972cad6a46d5d19a`（#78），审查修订后已同步到 `c4fead29e2d49ebfd0fc712474b69343648248ca`（#82），现行结果见第 9 节。复用 managed worktree `/Users/kouzen/.codex/worktrees/mio-harness-h1d/mioon`。只实施 H4a 后端，不进入 H4b，不调用真实模型或媒体供应商。
 
-验证期间 origin/main 又合入 #79（片段变换及 schema 70）与 #80（后端冷启动测试期限），最终检查时 tip 为 `46881d0`，本分支比该远端引用落后 5 个提交。本次保留起始基线与原期限的冻结验证，未合入这两项后续上游变更；本报告不声称覆盖它们，同步后需要重新复核相关差异。
+首轮验证期间 origin/main 又合入 #79（片段变换及 schema 70）与 #80（后端冷启动测试期限），当时最终检查的 tip 为 `46881d0`，本分支比该远端引用落后 5 个提交。首轮保留起始基线与原期限的冻结验证，当时未合入这些后续上游变更；该历史结果不声称覆盖它们，实际同步与补验另记于第 9 节。
 
 证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H4a-2026-10-29/`。本报告分别记录实现、最终冻结源码、原始全量与独立补充视图；保留全部失败和范围限制，不以聚焦或隔离补验通过冒充原始全量通过。
 
@@ -44,7 +44,7 @@
 
 每个要求含 `source:'goal'`、声明步骤 `goalStepId`、目标与修订依据、状态及必需的 `expected/current`。这些字段只允许有界机器值和闭集原因码，不使用供应商原始错误、路径或自由文本。目标检查复用本次 H3 读取的任务绑定、回执、受管产物及发布检查，不启 worker、生成请求或替代媒体验证。
 
-时长由保存的 `durationFrames/fps` 得出，在帧域比较 `abs(durationFrames-seconds*fps) <= toleranceSeconds*fps + 0.5 + epsilon`，边界包含等号；半帧允许不可恰落帧格的秒数，小 epsilon 消除浮点舍入误差。格式和三种数量来自当前已保存项目数据，数量按提供的上下界作包含边界比较。缺少时间线记录时沿用现有分镜输出格式和空时间线的零时长／零片段／零字幕观测，不创建时间线；已有但畸形的时间线保持未知，不能伪造零值通过。缺少可比较观测时返回 `pending`。
+时长由保存的 `durationFrames/fps` 得出，在帧域比较 `abs(durationFrames-seconds*fps) <= toleranceSeconds*fps + 0.5 + 1e-9`，边界包含等号；半帧允许不可恰落帧格的秒数，小 epsilon 消除浮点舍入误差。格式和三种数量来自当前已保存项目数据，数量按提供的上下界作包含边界比较。缺少时间线记录时沿用现有分镜输出格式和空时间线的零时长／零片段／零字幕观测，不创建时间线；已有但畸形的时间线保持未知，不能伪造零值通过。缺少可比较观测时返回 `pending`。
 
 导出条件仅覆盖几何参数，不覆盖 codec、编码质量、声音或主观观感。选择本轮最近的 `export.create`／`timeline.render` 步骤，并要求其 H3 绑定、状态、受管产物、冻结请求参数检查通过；不拿另一导出的 ACK 标识或较早的成功任务替代。任何相关宿主失败优先得到 `failed`，否则有等待项则 `pending`，宿主三项全通过才比较所声明字段。
 
@@ -211,7 +211,7 @@ H4a 实施与本地验证已完成，原始全量的五个非零文件及隔离�
 
 合并后两次 99 条预览逐条一致，且全与预提交 `9172…` 相同。对合入 main 的 `21d3…` fixture，87 条非诊断改变、12 条诊断字节和 SHA-256 全部不变；复核后再次明确 `--update`（幂等、24.58 秒），正式 99 条通过（22.08 秒）。独立一次真实 intent 反事实审计证明：actual 99 条等于 `9172…`，同 builder 移除 goal 后的 control 99 条等于 main 的 `21d3…`；缓存锚点、历史／恢复／用量部分没有额外差异。
 
-| 现行请求类别 | 每协议条数 | Chat Completions 对 main 增量 | Responses 对 main 增量 | Anthropic Messages 对 main 增量 |
+| 同步 #81 时的请求类别 | 每协议条数 | Chat Completions 对 main 增量 | Responses 对 main 增量 | Anthropic Messages 对 main 增量 |
 | --- | ---: | ---: | ---: | ---: |
 | 普通简体场景 | 20 | +3777 B | +3764 B | +3748 B |
 | 官方预设简体场景 | 5 | +3792 B | +3779 B | +3748 B |
@@ -223,3 +223,28 @@ H4a 实施与本地验证已完成，原始全量的五个非零文件及隔离�
 相对第 5 节首轮的唯一区别是三类数量 schema 各增加 246 B，合计每个非诊断请求增加 738 B；半帧比较改变的是判定语义，不改变时长工具参数。语言差异仍为英文 +83／繁体 +9／日文 +212 B，官方 OpenAI 两协议的 `strict:false` 仍另加 15 B。当前与 main 的模型目录除新增核心 goal 外完全相同（核心 16 → 17），公共 RPC schema 145 项及生成哈希与 main 相同；新变换操作保留公共接口、对 Mio 禁用。所有源码／目录和元数据证明在新证据目录 `/Users/kouzen/Library/Caches/mioon-harness-H4a-sync-2026-10-29/` 的 `postmerge-native-preview/`、`independent-audit/` 与后续聚焦结果内。
 
 以上为同步到 #81／`f7dabcc` 的独立快照。聚焦队列执行期间主线又合入 #82／`c4fead2`（C8 v2），直接改变同一工具目录、契约和请求 fixture；因此暂停旧 102 队列后续派发，在途文件按原期限自然结束并保存为 pre-#82 记录，不将未完成队列写成通过。随后继续以 merge commit 同步新主线，最终验证以该新基线另记；已完成的类型、构建与指纹结果均不冒充覆盖 #82。
+
+### 同步 #82 的最终代码与指纹
+
+先将已完成的边界断言和阶段记录保存为本地提交 `82d7718`，再以 merge commit `208b932eefed845d2963a3f820795832345ca92a` 合入 main `c4fead29e2d49ebfd0fc712474b69343648248ca`。冲突涉及工具分组、工具执行与 fixture；保留核心 goal、canvas 的 `previs.inspect/create/scene.set` 三项、相应风险分类与参数反馈，以及 `timeline.clip.setTransform` 的禁用边界。契约同时保留 H4a 可选 repair 与 C8 的三个 display 字段。独立审阅确认，工具模块相对 incoming main 仅增加既有 H4a goal 接线；预演和 display 模块与 main 逐字节相同。
+
+最终冻结源为 `e660d46c6a98f9294157275285cd38175054e1150e89a44e6d8b12eb5fbfcc11`（6121 源文件、972 测试文件，不含本验证报告）；main 对照源为 `80031c89cf6eb9655e543682f67a45f8aeaf3be5f945148ef36943936978707a`（6113 源文件、968 测试文件）。报告补写不改变冻结的生产代码、测试或 fixture。下述命令均使用 Node 24.21.0、UTC、真实 TMPDIR 和 `caffeinate -i`，没有调用真实供应商。
+
+| 最终快照上的检查 | 实际结果 | 用时 |
+| --- | --- | ---: |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/typecheck-runtime.test.ts` | 5/5，包括三套 strict | 94.71 秒 |
+| `node scripts/tooling.ts build --channel=development` | exit 0，包括三套 strict 与 Web/Desktop | 150.05 秒 |
+| `node --test --test-reporter=tap --test-concurrency=1 tests/agent-task-request-fingerprints-v2.test.ts` | exit 0，99 条 | 22.01 秒 |
+| 固定完整 FFmpeg Linux 镜像中的 106 文件聚焦队列 | 1714/1714，106 文件均 exit 0，无失败／取消／跳过／超时／缺失／重复 | 806.92 秒 |
+
+以新 main fixture `e1d2ce722948d8f3a726e964dc4593eb919b09b8a8c21b6f1daec8e88300f5e8` 作基准，两次 metadata 预览均 exit 0（22.97／22.16 秒），99 条逐项一致。复核后显式执行 `node tests/helpers/agent-task-request-fingerprints-v2.ts --update`，exit 0、21.70 秒，生成 `f11fd5e19890254fc94ceae91b9136be84b656569d64fa337255d75235449250`，与两份预览完全一致。
+
+上表前的请求类别与增量对新 main 仍全部成立：87 条非诊断仅增加 goal schema 与四语系统指令，合计增加 328692 B；12 条诊断字节与 SHA-256 均不变。逐项比较 `(合并后 H4a − 新 main)` 与 `(合入 #82 前 H4a − 旧 main)`，99 项字节增量全部相等。#82 本身相对旧 main 改变 42 项，其中 6 项只读诊断分别为 CC +940／Responses +927／Messages +911 B（每协议两项）；这些由新 main 继承，不能计作 H4a 的诊断变化。
+
+独立的一次离线 runtime99 actual 全等最终 `f11fd5…`；在同 builder 内移除唯一目标工具和目标系统句后的 control99 全等新 main `e1d2ce…`，身份、顺序、字节和哈希均相等。仅三类数量 schema 分支各增加 246 B，其余四类条件参数未变；时长修正不改请求。去 goal 后的完整工具目录定义、顺序和风险等于新 main，公共 RPC schema 仍为 145 项，生成哈希仍为 `6c51a4c2e0eeb3bd4c21d975f54b8cd458921b8b6240f44c180b750b2c82d5e1`。
+
+缓存断点与新 main 一致：官方 Anthropic 核心工具末端仍为 `mioon_tools_load`；加载 canvas 后第二工具断点为 `mioon_previs_inspect`，这是 #82 的变化。两个仅核心请求各 3 个断点，三个已加载请求各 4 个，其余 94 项无断点；没有额外改写恢复请求、历史或用量。独立审计的两条命令分别 exit 0、25.90／8.60 秒，两侧 6113／6121 源文件前后零漂移。
+
+### 最终聚焦与主线逐名对照
+
+106 文件聚焦队列覆盖本期四个新文件的 70 项（goals 18、goal-tool 7、repair-context 3、repair 42）及 checks transport 的 1 项新增，共 71 项全部通过。运行时 185/185 通过，前述两个指定真实 FFmpeg 场景均通过；使用 H0 固定镜像 `sha256:32fc444b18573b988300b1bb9ceb7009ae4d9cb2456c382a0353b0c521846de5`，Linux arm64、FFmpeg 7.1.5、pnpm 11.25.0、断网。旧 pre-#82 队列仅 67/102 文件自然完成且均 exit 0，主动停止后 wrapper exit -2、余下 35 文件未跑，作为独立 partial 保留，不消费为最终覆盖。
