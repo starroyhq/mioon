@@ -96,6 +96,7 @@ function createHarness(file: string, exportName = 'default') {
     './export-settings-state.ts': exportSettings,
     '@xyflow/react': { Handle: 'Handle', Position: { Left: 'left', Right: 'right' } },
     './TimelineAudioPreview.tsx': { default: 'TimelineAudioPreview', __esModule: true },
+    './ClipTransformBox.tsx': { default: 'ClipTransformBox', __esModule: true },
     './icons.tsx': { default: 'Icon', __esModule: true },
     './api.ts': { assetUrl: (asset: { url: unknown; }) => asset?.url || '', versionUrl: (version: { url: unknown; }) => version?.url || '', activeJob, statusText: (value: unknown) => value, jobStatusText: (value: unknown) => value, outputReviewRequired: () => false },
     './Timeline.tsx': { assetKind: (asset: { mimeType: string; }) => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },

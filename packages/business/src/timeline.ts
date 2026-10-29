@@ -25,6 +25,8 @@ import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
 import {appendTimelineShots,refreshTimelineSources} from './timeline-shot-sync.ts';
 import {crossfadeTimelineClips} from './timeline-crossfade.ts';
 import {setTimelineClipGains} from './timeline-clip-gains.ts';
+import {assertClipTransformWorkspace,setTimelineClipTransform} from './timeline-clip-transform.ts';
+import {clipTransformFieldsAfterEdit,splitClipTransformFields,type ClipTransform} from '../../contracts/src/timeline-clip-transform.ts';
 import {splitTimelineAtScenes} from './timeline-scene-split.ts';
 import type {TimelineSceneSplitPlan} from './timeline-scene-split.ts';
 import {readSceneSplitCuts} from './scene-history.ts';
@@ -246,13 +248,15 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   // source ranges; copying the complete clip also preserves frozen references.
   let envelopes;try{envelopes=splitVolumeEnvelopeFields(left as never,leftDuration as never);}
   catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
-  const right={...clone(left),...(envelopes as [unknown,unknown])[1] as object,id:randomUUID(),startFrame:atFrame,durationFrames:end-atFrame,
+  // Each part keeps the keyframes on its side; the cut gets the interpolated value.
+  const transforms=splitClipTransformFields(left as never,leftDuration);
+  const right={...clone(left),...(envelopes as [unknown,unknown])[1] as object,...transforms[1],id:randomUUID(),startFrame:atFrame,durationFrames:end-atFrame,
    sourceInFrame:(source.mimeType.startsWith('image/')?0:left.sourceInFrame+leftDuration) as number} as TimelineClipRecord;
   // Preserve the original envelope at its two outer edges. Do not introduce
   // keys into legacy clips or make an omitted zero explicit at an inner edge.
   if(Object.hasOwn(left,'fadeInFrames'))right.fadeInFrames=0;
   if(Object.hasOwn(left,'fadeOutFrames'))left.fadeOutFrames=0;
-  Object.assign(left,(envelopes as [unknown,unknown])[0] as object);
+  Object.assign(left,(envelopes as [unknown,unknown])[0] as object,transforms[0]);
   left.durationFrames=leftDuration;
   timeline.clips.splice(timeline.clips.indexOf(left)+1,0,right);
   return right;
@@ -262,7 +266,9 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    const target=clip(timeline,input.clipId as string);let envelope;
    try{envelope=volumeEnvelopeFieldsAfterEdit(target as never,input.patch as never);}
    catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
-   Object.assign(target,input.patch,envelope,...(opacity?[opacityEnvelopeFieldsAfterEdit(target,input.patch)]:[]));
+   // Trims keep clip-local keyframe times; a shrink cuts keyframes past the new end.
+   const transform=clipTransformFieldsAfterEdit(target as never,input.patch as {durationFrames?: number});
+   Object.assign(target,input.patch,envelope,transform,...(opacity?[opacityEnvelopeFieldsAfterEdit(target,input.patch)]:[]));
   },boundary);
  }
  function renderSnapshot(input: TimelineMutationInput,boundary: TimelineRecoveryBoundary,write: ()=>void,expectedTimelineId?: string): unknown{
@@ -369,6 +375,14 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    let plan: ReturnType<typeof setTimelineClipGains>|undefined;
    return mutate('timeline.clip.setGains',input,(timeline,boundary)=>{plan=setTimelineClipGains(timeline,boundary,input.gains as {clipId: string;gain: number}[]);},undefined,
     timeline=>({operation:'timeline.clip.setGains',requestId:input.requestId,timeline,...plan}));
+  },
+  'timeline.clip.setTransform':(input: TimelineMutationInput)=>{
+   let plan: ReturnType<typeof setTimelineClipTransform>|undefined;
+   return mutate('timeline.clip.setTransform',input,(timeline,boundary)=>{
+    assertClipTransformWorkspace(db);
+    plan=setTimelineClipTransform(timeline,boundary,input.clipId as string,input.transform as ClipTransform|null);
+   },undefined,
+    timeline=>({operation:'timeline.clip.setTransform',requestId:input.requestId,timeline,...plan}));
   },
   'timeline.seed':(input: TimelineMutationInput)=>mutate('timeline.seed',input,(timeline,boundary)=>{
    if(timeline.clips.length)throw new AppError('TIMELINE_NOT_EMPTY','只有空时间线可以从镜头顺序导入',409);

@@ -1,0 +1,19 @@
+/* Clip transform keyframes in the clip inspector's visual group; mirrors the crossfade section. */
+.clip-transform{padding:8px 0;border-top:1px solid var(--wb-line-subtle);margin-top:8px}
+.clip-transform-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.clip-transform-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.clip-transform-keyframes{margin:8px 0 0;padding-left:18px;font-size:var(--wb-text-label);color:var(--wb-soft);font-variant-numeric:tabular-nums}
+.clip-transform-keyframes>li[aria-current=true]{color:var(--wb-text)}
+/* Transform box over the rendered timeline preview. The layer covers the stage
+ * and lets pointers through except on the box itself. */
+.preview-stage:has(> .clip-transform-box-layer){position:relative}
+.clip-transform-box-layer{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.clip-transform-box{position:absolute;box-sizing:border-box;border:1px solid var(--wb-accent);box-shadow:0 0 0 1px rgb(0 0 0 / .5);pointer-events:auto;touch-action:none}
+.clip-transform-box[data-editable=true]{cursor:move}
+.clip-transform-box[data-editable=false]{border-style:dashed;cursor:not-allowed}
+.clip-transform-handle{position:absolute;width:10px;height:10px;transform:translate(-50%,-50%);box-sizing:border-box;border:1px solid rgb(0 0 0 / .6);border-radius:2px;background:var(--wb-accent)}
+.clip-transform-handle.nw{left:0;top:0;cursor:nwse-resize}
+.clip-transform-handle.ne{left:100%;top:0;cursor:nesw-resize}
+.clip-transform-handle.se{left:100%;top:100%;cursor:nwse-resize}
+.clip-transform-handle.sw{left:0;top:100%;cursor:nesw-resize}
+.clip-transform-box-readout{position:absolute;left:8px;top:8px;padding:2px 6px;border:1px solid var(--wb-line);border-radius:4px;background:var(--wb-overlay);color:var(--wb-text);font:var(--wb-text-caption) var(--wb-font-mono);font-variant-numeric:tabular-nums}

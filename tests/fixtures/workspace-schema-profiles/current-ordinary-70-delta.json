@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "synthetic": true,
+  "baseSchema": 68,
+  "targetSchema": 70,
+  "provenance": "Reviewed clip transform schema70 marker-only delta, frozen once on 2026-10-29. It adds the schema70 marker and no schema object; from this marker on the transform row gate admits persisted clip transforms. Historical fixtures remain unchanged. Tests never reconstruct this expectation from application schema definitions.",
+  "schemaVersionRows": [
+    [
+      "70",
+      "integer",
+      "3730"
+    ]
+  ],
+  "objects": [],
+  "removed": [],
+  "replaced": [],
+  "tables": {},
+  "catalog": {
+    "count": 0,
+    "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+}

@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="56a2ff81b830415a3f62e9c7aac5cec1062319a365a4069dfdb2473695eb33d6";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="6c51a4c2e0eeb3bd4c21d975f54b8cd458921b8b6240f44c180b750b2c82d5e1";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -3443,6 +3443,129 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
   "required": [
    "expectedRevision",
    "gains"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.clip.setTransform": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "clipId": {
+    "type": "string",
+    "format": "uuid"
+   },
+   "transform": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "profileId": {
+        "type": "string",
+        "const": "mioon-clip-transform-v1"
+       },
+       "keyframes": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "properties": {
+          "frame": {
+           "type": "integer",
+           "minimum": 0,
+           "maximum": 18000,
+           "description": "Clip-local frame; at most the clip duration."
+          },
+          "x": {
+           "type": "number",
+           "minimum": -8192,
+           "maximum": 8192,
+           "description": "Horizontal or vertical offset of the content centre from the clip rectangle centre in timeline pixels (x)."
+          },
+          "y": {
+           "type": "number",
+           "minimum": -8192,
+           "maximum": 8192,
+           "description": "Horizontal or vertical offset of the content centre from the clip rectangle centre in timeline pixels (y)."
+          },
+          "scale": {
+           "type": "number",
+           "minimum": 0.05,
+           "maximum": 8,
+           "description": "Multiplier of the size the source has after fitting the clip rectangle."
+          }
+         },
+         "required": [
+          "frame",
+          "x",
+          "y",
+          "scale"
+         ],
+         "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 16
+       },
+       "rotation": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180,
+        "description": "Static clockwise degrees around the content centre."
+       },
+       "crop": {
+        "type": "object",
+        "properties": {
+         "left": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.9
+         },
+         "top": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.9
+         },
+         "right": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.9
+         },
+         "bottom": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.9
+         }
+        },
+        "required": [
+         "left",
+         "top",
+         "right",
+         "bottom"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "required": [
+       "profileId",
+       "keyframes",
+       "rotation",
+       "crop"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "description": "The new transform, or null to remove it."
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "clipId",
+   "transform"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

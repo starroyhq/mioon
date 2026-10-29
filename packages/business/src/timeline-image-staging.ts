@@ -16,6 +16,8 @@ export interface TimelineImageLayerInput {
  readonly clipId:string;readonly assetSha256:string;readonly sourcePath:string;
  readonly sourceWidth:number;readonly sourceHeight:number;readonly width:number;readonly height:number;
  readonly creativeLutPath?:string;
+ /** A clip transform's crop in whole source pixels; absent keeps the historical layer. */
+ readonly crop?:{readonly x:number;readonly y:number;readonly width:number;readonly height:number};
  /** Present only for the separately admitted JPEG generation. */
  readonly jpegEvidence?:TimelineJpegEvidence;
  /** Exact canonical creative binding identity, including strength and profile. */
@@ -81,7 +83,9 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
   if(!item||typeof item.clipId!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/u.test(item.clipId)||ids.has(item.clipId)||!validPath(item.sourcePath)||
    !/^[a-f0-9]{64}$/u.test(item.assetSha256)||!Number.isSafeInteger(item.width)||!Number.isSafeInteger(item.height)||item.width<1||item.height<1||item.width>4096||item.height>4096||item.width*item.height>TIMELINE_IMAGE_LAYER_LIMITS.outputPixels||
    !Number.isSafeInteger(item.sourceWidth)||!Number.isSafeInteger(item.sourceHeight)||item.sourceWidth<1||item.sourceHeight<1||item.sourceWidth>4096||item.sourceHeight>4096||item.sourceWidth*item.sourceHeight>TIMELINE_IMAGE_LAYER_LIMITS.sourcePixels||
-   (item.creativeLutPath===undefined?item.lookCacheKey!=null:!validPath(item.creativeLutPath)||typeof item.lookCacheKey!=='string'||item.lookCacheKey.length<1||item.lookCacheKey.length>2048))throw fault();
+   (item.creativeLutPath===undefined?item.lookCacheKey!=null:!validPath(item.creativeLutPath)||typeof item.lookCacheKey!=='string'||item.lookCacheKey.length<1||item.lookCacheKey.length>2048)||
+   item.crop!==undefined&&(!item.crop||![item.crop.x,item.crop.y].every(value=>Number.isSafeInteger(value)&&value>=0)||![item.crop.width,item.crop.height].every(value=>Number.isSafeInteger(value)&&value>=1)||
+    item.crop.x+item.crop.width>item.sourceWidth||item.crop.y+item.crop.height>item.sourceHeight))throw fault();
   if(item.jpegEvidence){jpegDecodeIdentity(item.jpegEvidence);if(item.jpegEvidence.sha256!==item.assetSha256||item.jpegEvidence.width!==item.sourceWidth||item.jpegEvidence.height!==item.sourceHeight)throw fault();}
   ids.add(item.clipId);
  }
@@ -98,7 +102,9 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
    if(activeSource.sha256!==item.assetSha256)throw fault();
    activeLook=item.creativeLutPath===undefined?undefined:{file:item.creativeLutPath,maximum:21*1024*1024,...inspect(item.creativeLutPath,21*1024*1024)};
    const identity=['static-image-evaluation-v1',item.assetSha256,'png-rgb8-srgb-v1',TIMELINE_IMAGE_DISPLAY_PROFILE_ID,TIMELINE_IMAGE_DISPLAY_TABLE_SHA256,
-    TIMELINE_IMAGE_RESIZE_PROFILE_ID,'straight-source-premultiplied-rgba8-output',item.sourceWidth,item.sourceHeight,item.width,item.height,item.lookCacheKey??null,activeLook?.sha256??null];
+    TIMELINE_IMAGE_RESIZE_PROFILE_ID,'straight-source-premultiplied-rgba8-output',item.sourceWidth,item.sourceHeight,item.width,item.height,item.lookCacheKey??null,activeLook?.sha256??null,
+    // Uncropped layers keep their historical identity.
+    ...(item.crop?['crop',item.crop.x,item.crop.y,item.crop.width,item.crop.height]:[])];
    const jpegIdentity=item.jpegEvidence?[...identity]:null;
    if(jpegIdentity){jpegIdentity[0]='static-jfif-evaluation-v1';jpegIdentity[2]=item.jpegEvidence!.profileId;}
    const key=digest(JSON.stringify(jpegIdentity?[...jpegIdentity,...jpegDecodeIdentity(item.jpegEvidence!)]:identity));
@@ -106,7 +112,7 @@ export async function prepareTimelineImageLayers(inputs:readonly TimelineImageLa
    if(file===undefined){
     const pixels=item.width*item.height;if(pixels>TIMELINE_IMAGE_LAYER_LIMITS.totalOutputPixels-totalPixels||totalBytes>TIMELINE_IMAGE_LAYER_LIMITS.totalBytes-TIMELINE_IMAGE_LAYER_LIMITS.fileBytes)throw fault(true);
     file=path.join(owned.work,`image-${String(files.size).padStart(3,'0')}-${key}.png`);owned.reserve(file);verifyBytes();
-    const filters=timelineImageFilterGraph({input:item.jpegEvidence?'jpeg_rgb':'0:v:0',label:'layer',sourceWidth:item.sourceWidth,sourceHeight:item.sourceHeight,width:item.width,height:item.height,displayTablePath:tablePath,creativeLutPath:item.creativeLutPath});
+    const filters=timelineImageFilterGraph({input:item.jpegEvidence?'jpeg_rgb':'0:v:0',label:'layer',sourceWidth:item.sourceWidth,sourceHeight:item.sourceHeight,width:item.width,height:item.height,...(item.crop?{crop:item.crop}:{}),displayTablePath:tablePath,creativeLutPath:item.creativeLutPath});
     if(item.jpegEvidence)filters.unshift(`[0:v:0]${JFIF_RGB24_FILTER}[jpeg_rgb]`);
     await runtime.run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-y','-threads','1','-filter_threads','1','-filter_complex_threads','1',...(item.jpegEvidence?JFIF_INPUT_ARGS:[]),'-noautorotate','-i',item.sourcePath,
      '-filter_complex',filters.join(';'),'-map','[layer]','-frames:v','1','-an','-threads','1','-c:v','png','-pix_fmt','rgba','-compression_level','1','-map_metadata','-1',

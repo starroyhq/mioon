@@ -2,6 +2,9 @@ import {validateWorkspaceSchema64} from './workspace-schema-v64.ts';
 import {createWorkspaceRestoreProfileV65} from './workspace-restore-schema-v65.ts';
 import {validateWorkspaceSchema66} from './workspace-schema-v66.ts';
 import {createWorkspaceRestoreProfileV67} from './workspace-restore-schema-v67.ts';
+import {validateWorkspaceSchema70} from './workspace-schema-v70.ts';
+import {createWorkspaceRestoreProfileV71} from './workspace-restore-schema-v71.ts';
+import {validateWorkspaceTransformRows} from './workspace-transform-validation.ts';
 import {validateWorkspaceSchema68} from './workspace-schema-v68.ts';
 import {createWorkspaceRestoreProfileV69} from './workspace-restore-schema-v69.ts';
 import {validateWorkspaceSchema62} from './workspace-schema-v62.ts';
@@ -60,7 +63,10 @@ export function readWorkspaceBackupSchemaVersion(db:DatabaseSync): number {
   versions.add(row.version);version=Math.max(version,row.version);
  }
  if(!version)invalid();
+ // Clip transforms exist from schema70 on; an older archive cannot carry one.
+ if(!isWorkspaceSchemaSince(70,version))try{validateWorkspaceTransformRows(db,{allowTransforms:false});}catch{invalid();}
  if(version===64){try{validateWorkspaceSchema64(db);}catch{try{const classification=createWorkspaceRestoreProfileV65(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV64V65AllowingUnknown(db);if(classification.schemaVersion!==64)invalid();}catch{invalid();}}return version;}
+ if(version===70){try{validateWorkspaceSchema70(db);}catch{try{const classification=createWorkspaceRestoreProfileV71(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV70V71AllowingUnknown(db);if(classification.schemaVersion!==70)invalid();}catch{invalid();}}return version;}
  if(version===68){try{validateWorkspaceSchema68(db);}catch{try{const classification=createWorkspaceRestoreProfileV69(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV68V69AllowingUnknown(db);if(classification.schemaVersion!==68)invalid();}catch{invalid();}}return version;}
  if(version===66){try{validateWorkspaceSchema66(db);}catch{try{const classification=createWorkspaceRestoreProfileV67(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV66V67AllowingUnknown(db);if(classification.schemaVersion!==66)invalid();}catch{invalid();}}return version;}
  if(version===62){try{validateWorkspaceSchema62(db);}catch{try{const classification=createWorkspaceRestoreProfileV63(initializeWorkspaceSchemaThrough24).classifyWorkspaceSchemaV62V63AllowingUnknown(db);if(classification.schemaVersion!==62)invalid();}catch{invalid();}}return version;}

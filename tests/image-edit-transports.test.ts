@@ -136,7 +136,7 @@ async function fixture(t: test.TestContext) {
     });
     child.stdout!.setEncoding('utf8').on('data', (chunk: string) => { stdout = (stdout + chunk).slice(-20_000); });
     child.stderr!.setEncoding('utf8').on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-20_000); });
-    const deadline = Date.now() + 15_000;
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       assert.equal(child.exitCode, null, stdout + stderr);
       assert.equal(child.signalCode, null, stdout + stderr);

@@ -9,6 +9,7 @@ import {shotSyncFixture} from './fixtures/timeline-shot-sync.ts';
 import {sceneSplitFixture} from './fixtures/timeline-scene-split.ts';
 import {crossfadeFixture} from './fixtures/timeline-crossfade.ts';
 import {clipGainsFixture} from './fixtures/timeline-clip-gains.ts';
+import {clipTransformFixture} from './fixtures/timeline-clip-transform.ts';
 const shotSync = (operation: string): boolean => operation === 'timeline.clip.refreshSources' || operation === 'timeline.shots.append';
 
 const env = {MIOON_TOKEN: 'synthetic-timeline-recovery-token'};
@@ -46,6 +47,10 @@ function fixture(operation: string, {empty = false, fades = {}}: {empty?: boolea
   if (operation === 'timeline.clip.setGains') {
     const gains = clipGainsFixture({projectId: randomUUID(), requestId: randomUUID()});
     return {input: gains.input as unknown as TimelineInput, value: gains.response as unknown as TValue};
+  }
+  if (operation === 'timeline.clip.setTransform') {
+    const transform = clipTransformFixture({projectId: randomUUID(), requestId: randomUUID()});
+    return {input: transform.input as unknown as TimelineInput, value: transform.response as unknown as TValue};
   }
   if (shotSync(operation)) {
     const synced = shotSyncFixture(operation as never, {projectId: randomUUID(), requestId: randomUUID()});
@@ -88,19 +93,19 @@ function fixture(operation: string, {empty = false, fades = {}}: {empty?: boolea
   return {input, value};
 }
 
-test('the strict timeline acknowledgement allowlist covers exactly the twenty-two replay-keyed operations', () => {
+test('the strict timeline acknowledgement allowlist covers exactly the twenty-three replay-keyed operations', () => {
   assert.deepEqual([...TIMELINE_MUTATION_OPERATIONS].sort(), [
     'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update', 'timeline.clip.replaceSource',
     'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.seed', 'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
     'timeline.subtitle.add', 'timeline.subtitle.update', 'timeline.subtitle.remove',
-    'timeline.loudness.apply', 'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade', 'timeline.clip.setGains',
+    'timeline.loudness.apply', 'timeline.clip.refreshSources', 'timeline.shots.append', 'timeline.clip.splitAtScenes', 'timeline.clip.crossfade', 'timeline.clip.setGains', 'timeline.clip.setTransform',
   ].sort());
   assert.ok(Object.isFrozen(TIMELINE_MUTATION_OPERATIONS));
   const {input, value} = fixture('timeline.undo');
   for (const operation of ['timeline.get', 'timeline.format.get', 'timeline.history.get', 'timeline.export.preflight', 'export.create', 'reference.attach']) assert.equal(isTimelineMutationResponse(operation, input, value), false);
 });
 
-test('all twenty-two complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
+test('all twenty-three complete historical acknowledgements validate without edits, defaults or array sorting', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation), before = clone(value), seen: unknown[] = [];
     frozen(input); frozen(value);
@@ -151,7 +156,7 @@ test('empty timelines are valid for track edits, removals, undo and redo, while 
 test('timeline shape rejects malformed complete records across every mutation and preserves exact recovery identity', async () => {
   for (const operation of TIMELINE_MUTATION_OPERATIONS) {
     const {input, value} = fixture(operation);
-    const wrapped = operation === 'timeline.loudness.apply' || shotSync(operation) || operation === 'timeline.clip.splitAtScenes' || operation === 'timeline.clip.crossfade' || operation === 'timeline.clip.setGains';
+    const wrapped = operation === 'timeline.loudness.apply' || shotSync(operation) || operation === 'timeline.clip.splitAtScenes' || operation === 'timeline.clip.crossfade' || operation === 'timeline.clip.setGains' || operation === 'timeline.clip.setTransform';
     const edit = (callback: (v: TValue) => void): TValue => {const result = clone(value); callback(operation === 'timeline.render' ? result.snapshot.timeline : wrapped ? result.timeline : result); return result;};
     const bad = [null, [], {}, 4, 'timeline',
       ...(wrapped ? [clone(value.timeline), {...clone(value), projectId: input.projectId}] : []),
@@ -239,6 +244,11 @@ test('each mutation binds the caller-verifiable track, clip or source intent', (
     ['timeline.clip.setGains', v => {(v.gains as unknown[]).reverse();}],
     ['timeline.clip.setGains', v => {(v.gains as {previousGain: number}[])[1].previousGain = 2.5;}],
     ['timeline.clip.setGains', v => {for (const change of v.gains as {previousGain: number; gain: number}[]) change.previousGain = change.gain;}],
+    ['timeline.clip.setTransform', v => v.operation = 'timeline.clip.setGains'],
+    ['timeline.clip.setTransform', v => {(v.transform as {rotation: number}).rotation = 6;}],
+    ['timeline.clip.setTransform', v => {(v.timeline.clips[0] as unknown as {transform: {rotation: number}}).transform.rotation = 6;}],
+    ['timeline.clip.setTransform', v => {v.previousTransform = structuredClone(v.transform);}],
+    ['timeline.clip.setTransform', v => {v.clipId = v.timeline.tracks[0].id;}],
   ];
   for (const [operation, change] of changes) {
     const {input, value} = fixture(operation); change(value, input);
