@@ -13,7 +13,7 @@ import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtim
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {selectTaskModelTools} from '../packages/business/src/agent/task-context-v2.ts';
 import {AGENT_TASK_SKILLS,AGENT_TASK_SKILL_READ_BYTES,agentTaskSkillInstructions,readAgentTaskSkill} from '../packages/business/src/agent/task-skills-v2.ts';
-import {AGENT_TASK_TOOL_GROUPS} from '../packages/business/src/agent/task-tool-groups-v2.ts';
+import {AGENT_TASK_TOOL_GROUPS,AGENT_TASK_TOOL_GROUP_IDS,agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 import {TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {collectProject,createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
@@ -78,6 +78,26 @@ test('splitting shots reads the chosen model\'s durations and names no model', (
  const names=[...VIDEO_TEMPLATES.map(template=>template.id),...Object.values(VIDEO_PROVIDER_NAMES),'Seedance','Kling','Veo','Runway','Vidu','MiniMax'];
  for(const skill of AGENT_TASK_SKILLS)for(const name of names)assert.ok(!skill.text.toLowerCase().includes(String(name).toLowerCase()),`${skill.name} must not hardcode ${name}`);
  assert.doesNotMatch(text,/\d+\s*秒/u,'no fixed shot length is written down');
+});
+test('every tool a method names is one Mio can load, and the workflow methods keep their key steps', () => {
+ const operations=new Set<string>(Object.values(AGENT_TASK_TOOL_GROUPS).flat());
+ const names=new Set(AGENT_TASK_TOOL_GROUP_IDS.flatMap(group=>agentTaskToolNamesForGroup(group)));
+ const namespaces=new Set([...operations].map(operation=>operation.split('.')[0]!));
+ for(const skill of AGENT_TASK_SKILLS){
+  // Field paths such as options.minShotSeconds start outside every operation namespace.
+  for(const [token] of skill.text.matchAll(/\b[a-z]+(?:\.[a-z][A-Za-z]*)+\b/gu))if(namespaces.has(token.split('.')[0]!))assert.ok(operations.has(token),`${skill.name} names ${token}, which Mio cannot load`);
+  for(const [token] of skill.text.matchAll(/\bmioon_[a-z_]+\b/gu))assert.ok(names.has(token),`${skill.name} names ${token}, which Mio does not have`);
+ }
+ const text=(name:string)=>AGENT_TASK_SKILLS.find(skill=>skill.name===name)!.text;
+ // The preview is cut with the scene tools, and each segment's middle frame becomes a first frame.
+ for(const step of ['provider.list','durations','inputModes','generation.submit','scene.detect','minShotSeconds','scene.result.get','scene.shots.create','shot.update','task.wait'])assert.ok(text('preview-to-shots').includes(step),`preview-to-shots: ${step}`);
+ assert.match(text('preview-to-shots'),/硬切/u);
+ // A patch needs a model that takes both frames, and nothing after it moves.
+ for(const step of ['frames','frame.extract','lastFrameAssetId','sourceInFrame','timeline.clip.split','timeline.clip.remove','timeline.clip.add'])assert.ok(text('frame-patch').includes(step),`frame-patch: ${step}`);
+ assert.match(text('frame-patch'),/不要用 rippleRemove/u);
+ // A sync reads the whole script and every shot first, edits by revision and never generates.
+ for(const step of ['node.inspect','shot.inspect','promptTruncated','shot.update','expectedRevision','mioon_ask','整体撤销'])assert.ok(text('script-sync').includes(step),`script-sync: ${step}`);
+ assert.match(text('script-sync'),/不要提交生成/u);
 });
 test('the system instruction lists methods only alongside the tool that reads them', () => {
  for(const locale of AGENT_TASK_LOCALES){

@@ -6,6 +6,7 @@ import {refuseRestoredOperation,safeWorkspaceRestoreError} from './workspace-res
 import {AppError,EXPORT_PREFLIGHT_LIMITS,timelineOutputPreset} from '@mioon/contracts';
 import {createHash} from 'node:crypto';
 import {readTimelinePreflightSnapshot,readOwnedTimelineAsset,prepareTimelineInputs,probeTimelineSource} from './timeline-sources.ts';
+import {assertTransitionImageBudget} from './timeline-transition-filter.ts';
 import {validateTimeline,validateSavedTimeline} from './timeline-inputs.ts';
 import {terminateMediaProcesses} from './media-processes.ts';
 import {checkpoint,assertMediaTerminated,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
@@ -84,7 +85,13 @@ function classify(error: unknown,opacity=false): [string,string]{
  */
 export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect}: PreflightServiceOptions={}){
  const opacity=createOpacityCandidatePreflightRuntime(store);
- const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>opacity?opacity.readSnapshot(input) as {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}:readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
+ const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>{
+  if(opacity)return opacity.readSnapshot(input) as {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null};
+  const read=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
+  // The colour plan counts images per clip; a transition shows two at once.
+  if(read.snapshot)assertTransitionImageBudget(read.snapshot as never);
+  return read;
+ };
  const active=new Set<PreflightAttempt>();let stopped=false,shutdownFailure: unknown;
  async function preflight(input: PreflightInput,{signal:callSignal}: PreflightCallOptions={}): Promise<TimelinePreflightReport>{
   if(opacity)input=opacity.parse(input) as unknown as PreflightInput;

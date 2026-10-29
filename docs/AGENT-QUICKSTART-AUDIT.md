@@ -1,6 +1,6 @@
 # 外部 Agent 从零接入 Mioon：契约审查与命令草案
 
-2026-10-10（Asia/Taipei）；基线 `8c694d191e6c90379c32c9f8db0a778c35c31e14`。工作树 `/Users/kouzen/Documents/data/mioon-dot-agent-quickstart-b1aee020`，分支 `dot/agent-quickstart-b1aee020`。开始时身份匹配、工作区干净，两个新增目标不存在，未发现额外 AGENTS.md。此前发布审查工作树未操作。
+2026-10-10（Asia/Taipei）；基线 `8c694d191e6c90379c32c9f8db0a778c35c31e14`。工作树 `~/Documents/data/mioon-dot-agent-quickstart-b1aee020`，分支 `dot/agent-quickstart-b1aee020`。开始时身份匹配、工作区干净，两个新增目标不存在，未发现额外 AGENTS.md。此前发布审查工作树未操作。
 
 当前补充（2026-10-10，基线 `090a8e3`）：原审查的 Q1 已由显式只读 revision 发现契约修复，见 [发现性验收](IMAGE-PROFILE-DISCOVERY.md)。以上 Mac 基线和环境仍是原始审查证据，不代表后续变更已在 Mac 原生验证。
 

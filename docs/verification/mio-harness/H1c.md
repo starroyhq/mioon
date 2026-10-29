@@ -222,7 +222,7 @@ stress30 中每条工具完整结果始终保留为 20,480 字节；基线真实
 - H1e 的提示缓存应结合两个事实设计：工具组加载会改变工具目录；历史在下一次必要压缩或控制事实变化时也会改变前缀。本期不发送缓存控制字段，不记录 token 用量。
 - 全轮总落库字节的比较须考虑完成工作量；不能用提前失败的基线与完成 30 步的候选直接宣称总存储下降。H2 的流式事件削减尚未实施。
 
-证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1c-2026-10-28/`。所有长验证使用进程范围内的 `caffeinate -i`，测试不调用真实模型或付费生成。
+证据目录：`~/Library/Caches/mioon-harness-H1c-2026-10-28/`。所有长验证使用进程范围内的 `caffeinate -i`，测试不调用真实模型或付费生成。
 
 ## 7. 阶段确认后首次同步 main（C8a／C8b）与验证
 
@@ -258,7 +258,7 @@ Linux 首次 `--offline` 安装因临时 HOME 缺少既有 `@anthropic-ai/sdk` �
 
 本次按授权重跑指纹、harness 及相邻 C8 集成检查，没有再次执行整仓全量或容量测量；原第 3／4 节的范围与 Linux 编译限制完整保留。提交范围仍为 H1c 的 13 个文件，PR 面向 main，注明使用 merge commit，未执行合并。
 
-同步证据子目录：`/Users/kouzen/Library/Caches/mioon-harness-H1c-2026-10-28/sync-main-2026-10-28/`。原件包括 `pre-sync-worktree.json`、`sync-main-result.json`、`native-install.json`、`linux-install-network.json`、`native-build.json`、`candidate-focus-results.json`、`sync-suite-command-result.json`、`sync-validation-summary.json` 和 `sync-name-comparison.json`。最终检查表明本轮 wrapper、driver、caffeinate 及安装／测试容器均无遗留。
+同步证据子目录：`~/Library/Caches/mioon-harness-H1c-2026-10-28/sync-main-2026-10-28/`。原件包括 `pre-sync-worktree.json`、`sync-main-result.json`、`native-install.json`、`linux-install-network.json`、`native-build.json`、`candidate-focus-results.json`、`sync-suite-command-result.json`、`sync-validation-summary.json` 和 `sync-name-comparison.json`。最终检查表明本轮 wrapper、driver、caffeinate 及安装／测试容器均无遗留。
 
 ## 8. 提交前再同步 C8c 与最终回归
 
@@ -284,4 +284,4 @@ fixture SHA-256 仍为 `01492d0daa0cdc653108036d5f9dbc2029e64b452cd3fdbf4fbd0ecb
 
 冻结副本及主机 5985 个源码哈希均无漂移，wrapper、driver、caffeinate 与本轮容器均无遗留。提交仍只包含 H1c 的 13 个文件及本报告补录，不进入后续 harness 阶段；全量与容量的旧证据仍按第 3／4 节原范围保留。
 
-最终同步证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1c-2026-10-28/sync-c8c-main-2026-10-28/`；包括 `sync-main-result.json`、`native-typecheck.json`、依赖复用核对、`candidate-focus-results.json`、`sync-suite-command-result.json`、`sync-validation-summary.json` 和 `sync-name-comparison.json`。
+最终同步证据目录：`~/Library/Caches/mioon-harness-H1c-2026-10-28/sync-c8c-main-2026-10-28/`；包括 `sync-main-result.json`、`native-typecheck.json`、依赖复用核对、`candidate-focus-results.json`、`sync-suite-command-result.json`、`sync-validation-summary.json` 和 `sync-name-comparison.json`。

@@ -2,7 +2,7 @@
 
 日期：2026-10-27（Asia/Taipei）。原始验收起点：`079b7b6d9f3f9646edc1f04951981323906a528e`，已通过 merge commit 合入 H0（PR #45）。PR 前按用户授权快进到 `43c9c6e805a6528fa0595c7b48f93bbfe1f60ba1`，同步验证单列于下文，原始验收证据不覆盖。
 
-分支：`codex/mio-harness-h1a`。工作目录：`/Users/kouzen/.codex/worktrees/mio-harness-h1a/mioon`。
+分支：`codex/mio-harness-h1a`。工作目录：`~/.codex/worktrees/mio-harness-h1a/mioon`。
 
 ## 范围与实现
 
@@ -40,9 +40,9 @@
 
 本节至“PR 前同步 main”之前均为 `079b7b6` 起点的原始验收。
 
-证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/`。
+证据目录：`~/Library/Caches/mioon-harness-H1a-2026-10-27/`。
 
-原生检查使用现有 Node 24.21.0：`/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node`，`TMPDIR=/private/tmp`、`TZ=UTC`。长时间命令使用 `caffeinate -i`，仅在本次命令生命周期内保持唤醒。
+原生检查使用现有 Node 24.21.0：`~/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node`，`TMPDIR=/private/tmp`、`TZ=UTC`。长时间命令使用 `caffeinate -i`，仅在本次命令生命周期内保持唤醒。
 
 | 检查 | 结果 | 证据 |
 |---|---|---|
@@ -61,7 +61,7 @@
 
 ```sh
 TMPDIR=/private/tmp TZ=UTC node tests/helpers/agent-task-context-report.ts \
-  --output=/Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/context-report.json
+  --output=~/Library/Caches/mioon-harness-H1a-2026-10-27/context-report.json
 ```
 
 与 H0 原始 `measurement-agent.json` 全对象深比较相等，包含每次请求、每个模型步骤、全部配额表和容量估算；比较结果保存为 `context-report-comparison.json`。
@@ -125,10 +125,10 @@ H0 参考混合了原生全量与对应环境的修复复验，本轮候选全�
 实际全量、复验与对比入口（脚本内部为各测试保留完整 Docker 命令，并用 `caffeinate -i -w driverPID` 覆盖运行生命周期）：
 
 ```sh
-TMPDIR=/private/tmp python3 /Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/candidate-suite.py
-TMPDIR=/private/tmp python3 /Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/paired-isolated.py
-python3 /Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/compare-h0.py
-python3 /Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/finalize-evidence.py
+TMPDIR=/private/tmp python3 ~/Library/Caches/mioon-harness-H1a-2026-10-27/candidate-suite.py
+TMPDIR=/private/tmp python3 ~/Library/Caches/mioon-harness-H1a-2026-10-27/paired-isolated.py
+python3 ~/Library/Caches/mioon-harness-H1a-2026-10-27/compare-h0.py
+python3 ~/Library/Caches/mioon-harness-H1a-2026-10-27/finalize-evidence.py
 ```
 
 完整证据索引与最终计数：`H1a-validation-summary.json`；结束快照校验：`candidate-final-integrity.json`。
@@ -144,7 +144,7 @@ python3 /Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/finalize-evide
 
 main 已包含 C7a、schema 谱系和 SQLite `busy_timeout` 修正。C7a 的 `ce29ab3` 已更新 87 条请求指纹 fixture，其 SHA-256 为 `4507448cc42c74309d8bcc6e8d158b32fe41e07ccd2292daf8db6d9c320b7447`；本期不再更新 fixture，以新 main 的指纹验证请求字节不变。锁文件仍为 `1f01209b29290b248b96045912aa4fb70d10beb32139de496047d4217163fb42`。
 
-同步验证证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/pr-refresh-43c9c6e/`。
+同步验证证据目录：`~/Library/Caches/mioon-harness-H1a-2026-10-27/pr-refresh-43c9c6e/`。
 
 `TMPDIR=/private/tmp TZ=UTC node scripts/tooling.ts build --channel=development` 再次 exit 0，包含当前全部源码的严格类型检查及 Web、Desktop development 构建；日志为该子目录的 `build-development.log`。
 
@@ -165,7 +165,7 @@ main 已包含 C7a、schema 谱系和 SQLite `busy_timeout` 修正。C7a 的 `ce
 入口为：
 
 ```sh
-TMPDIR=/private/tmp python3 /Users/kouzen/Library/Caches/mioon-harness-H1a-2026-10-27/pr-refresh-43c9c6e/refresh-suite.py
+TMPDIR=/private/tmp python3 ~/Library/Caches/mioon-harness-H1a-2026-10-27/pr-refresh-43c9c6e/refresh-suite.py
 ```
 
 逐文件实际命令、结果、快照校验和工具版本见 `refresh-results.json`，两项 FFmpeg 名称与 TAP 路径见 `refresh-media-confirmation.json`。这是更新 main 后的聚焦回归；前文 915 文件全量仍明确属于 `079b7b6` 起点，没有将其表述为 `43c9c6e` 的全量结果。

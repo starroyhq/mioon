@@ -43,7 +43,7 @@ async function fixture(t: test.TestContext) {
     let stdout = '', stderr = ''; processHandle.stdout.setEncoding('utf8').on('data', data => stdout += data); processHandle.stderr.setEncoding('utf8').on('data', data => stderr += data);
     const childPid = processHandle.pid; processHandle.on('close', (code, signal) => records.processEvents.push({ number, pid: childPid, code, signal, stdout, stderr }));
     records.processEvents.push({ action: 'spawn', number, pid: processHandle.pid, port, dataDirectory: root });
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) { if (processHandle.exitCode !== null) throw Error(`Backend exited: ${stderr}`); try { const r = await fetch(base + '/health'); if (r.ok) return; } catch {} await pause(40); }
     throw Error(`Backend failed to start: ${stderr}`);
   }

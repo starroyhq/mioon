@@ -4,7 +4,7 @@
 
 ## 1. 基点与范围
 
-从拉取后的 `origin/main` `2665fcfc850c8062d7fcebc7c770c5564c10f7ce`（merge commit 合入 H1c 的 PR #58）创建分支 `codex/mio-harness-h3a`。独立工作树：`/Users/kouzen/.codex/worktrees/mio-harness-h3a/mioon`，创建时干净。原工作树与主 checkout 的文件未修改。
+从拉取后的 `origin/main` `2665fcfc850c8062d7fcebc7c770c5564c10f7ce`（merge commit 合入 H1c 的 PR #58）创建分支 `codex/mio-harness-h3a`。独立工作树：`~/.codex/worktrees/mio-harness-h3a/mioon`，创建时干净。原工作树与主 checkout 的文件未修改。
 
 | 分类 | 文件与行为 |
 | --- | --- |
@@ -30,7 +30,7 @@
 
 ## 3. 初次实现验证（审查修改前）
 
-证据目录：`/Users/kouzen/Library/Caches/mioon-harness-H3a-2026-10-28/`。
+证据目录：`~/Library/Caches/mioon-harness-H3a-2026-10-28/`。
 
 环境：原生 Node 24.21.0、pnpm 11.25.0、UTC、`TMPDIR=/private/tmp`；长时间命令使用专用 `caffeinate -i`。在本工作树 `CI=true ... pnpm install --frozen-lockfile` 成功（6.1 秒），未清理主 checkout 依赖；只跳过 Electron binary 下载，不代表原生打包／发布验收。锁 SHA-256：`429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b`。
 
@@ -50,7 +50,7 @@ Linux 使用 H0 的完整 FFmpeg 镜像 `sha256:32fc444b18573b988300b1bb9ceb7009
 聚焦选择集是原 34 个 harness 文件，加 client／CLI 两个文件和 H3a 三个新文件；没有运行仓库全量。每个文件实际执行 `node --test --test-reporter=tap <单文件>`，容器内原 600 秒／外层 630 秒限制不变，驱动持有专用 `caffeinate -i`；完整命令保存在逐文件结果中。实际驱动命令：
 
 ```sh
-TMPDIR=/private/tmp python3 -u /Users/kouzen/Library/Caches/mioon-harness-H3a-2026-10-28/focus-suite.py
+TMPDIR=/private/tmp python3 -u ~/Library/Caches/mioon-harness-H3a-2026-10-28/focus-suite.py
 ```
 
 按 `文件 + 完整层级 TAP 路径 + 同名出现序号` 精确比较，不模糊匹配或只比文件数：
@@ -78,7 +78,7 @@ TMPDIR=/private/tmp python3 -u /Users/kouzen/Library/Caches/mioon-harness-H3a-20
 实际命令：
 
 ```sh
-PATH=/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin:$PATH \
+PATH=~/.npm/_npx/538786c08bcb9442/node_modules/node/bin:$PATH \
 TMPDIR=/private/tmp TZ=UTC caffeinate -i node tests/helpers/agent-task-checks-report.ts
 ```
 
@@ -382,7 +382,7 @@ TMPDIR=/private/tmp TZ=UTC caffeinate -i node tests/helpers/agent-task-checks-re
 | 请求指纹 | 99 条全匹配，12 条诊断不变；fixture 未更新 | `candidate-focus-agent-task-request-fingerprints-v2.test.ts.tap` |
 | Linux 全组聚焦与逐名对比 | 39/39 文件、856/856 测试通过；0 失败／取消／跳过／超时，exit 0，836.413 秒 | `validation-summary.json`、`candidate-focus-results.json`、`name-comparison.json` |
 
-沿用原固定 Linux 镜像、Node 24.21.0、UTC、非 root、network none；每文件独立进程／容器，专用 `caffeinate -i`，原 600／630 秒限制不变。新驱动实际命令为 `TMPDIR=/private/tmp python3 -u /Users/kouzen/Library/Caches/mioon-harness-H3a-2026-10-28/review-preflight-opt-in/focus-suite.py`；逐文件完整命令在结果文件中。
+沿用原固定 Linux 镜像、Node 24.21.0、UTC、非 root、network none；每文件独立进程／容器，专用 `caffeinate -i`，原 600／630 秒限制不变。新驱动实际命令为 `TMPDIR=/private/tmp python3 -u ~/Library/Caches/mioon-harness-H3a-2026-10-28/review-preflight-opt-in/focus-suite.py`；逐文件完整命令在结果文件中。
 
 按文件、完整层级测试名和重复序号比对：原 H3a **854 条全匹配**，0 缺失、0 改名、0 状态变化；其中原 831 条既有回归与原 23 条检查回归均保留。仅新增：
 
@@ -425,7 +425,7 @@ TMPDIR=/private/tmp TZ=UTC caffeinate -i node tests/helpers/agent-task-checks-re
 
 根 `package.json` 仅 `description` 变化，其余字段、其他 11 份 workspace manifests、workspace 配置和锁文件保持。原生 `CI=true pnpm install --frozen-lockfile` 实际 exit 0、Already up to date（Node 24.21.0／pnpm 11.25.0）；Linux 依赖从前次成功安装独立 APFS clone，并按依赖字段、实际虚拟 store 锁核对。复用不冒充新的 Linux install。锁 SHA-256 仍为 `429c516aa89649ac5acb2e4313c7087060bf3acbe1f6b9b749685eadde497e5b`。
 
-新证据独立保存在 `/Users/kouzen/Library/Caches/mioon-harness-H3a-2026-10-28/sync-main-for-pr/`：`pre-sync.json`、`pre-sync.patch`、`pre-sync-files/`、`stash-apply.txt`、`sync-result.json`、`dependency-decision.json`、`native-install.log`。同步后源码冻结摘要为 `d1221faac88f4575987d4c442090b81ab5e1c203e929136c9676253bedf98aef`，5995 个仓库输入文件；本报告排除。
+新证据独立保存在 `~/Library/Caches/mioon-harness-H3a-2026-10-28/sync-main-for-pr/`：`pre-sync.json`、`pre-sync.patch`、`pre-sync-files/`、`stash-apply.txt`、`sync-result.json`、`dependency-decision.json`、`native-install.log`。同步后源码冻结摘要为 `d1221faac88f4575987d4c442090b81ab5e1c203e929136c9676253bedf98aef`，5995 个仓库输入文件；本报告排除。
 
 ### 同步后验证
 
@@ -435,7 +435,7 @@ TMPDIR=/private/tmp TZ=UTC caffeinate -i node tests/helpers/agent-task-checks-re
 | 指纹 | 99 条全部匹配，含 12 条诊断；fixture 与 HEAD 原件相同 | `candidate-focus-agent-task-request-fingerprints-v2.test.ts.tap` |
 | Linux 完整聚焦 | 42/42 文件、895/895 通过；0 失败／取消／跳过／超时，exit 0，759.994 秒 | `validation-summary.json`、`candidate-focus-results.json` |
 
-固定 H0 完整 FFmpeg 镜像、Node 24.21.0、UTC、非 root、network none；原逐文件进程／容器、600／630 秒限制、并发 2 和专用 `caffeinate -i` 方法保持。实际驱动命令为 `TMPDIR=/private/tmp python3 -u /Users/kouzen/Library/Caches/mioon-harness-H3a-2026-10-28/sync-main-for-pr/focus-suite.py`；完整逐文件命令保存在结果中。
+固定 H0 完整 FFmpeg 镜像、Node 24.21.0、UTC、非 root、network none；原逐文件进程／容器、600／630 秒限制、并发 2 和专用 `caffeinate -i` 方法保持。实际驱动命令为 `TMPDIR=/private/tmp python3 -u ~/Library/Caches/mioon-harness-H3a-2026-10-28/sync-main-for-pr/focus-suite.py`；完整逐文件命令保存在结果中。
 
 | 同步后重点回归 | 结果 |
 | --- | ---: |
@@ -464,7 +464,7 @@ TMPDIR=/private/tmp TZ=UTC caffeinate -i node tests/helpers/agent-task-checks-re
 
 该 guard 会先转译已登记的严格 TypeScript 源码，核对恰好 2 个实际读取注册点，再执行这两个真实注册表达式，使用中文和 emoji 逐字节投递验证连续解码。现有机制直接覆盖新增 helper，未另造只复述实现的重复用例。
 
-新证据独立保存在 `/Users/kouzen/Library/Caches/mioon-harness-H3a-2026-10-28/ci-utf8-inventory/`：
+新证据独立保存在 `~/Library/Caches/mioon-harness-H3a-2026-10-28/ci-utf8-inventory/`：
 
 | 验证 | 实际结果 | 证据 |
 | --- | --- | --- |

@@ -5,8 +5,8 @@
 ## 1. 基线与改动范围
 
 - 开工前 `git fetch origin main`，本地与远端 main 均为 `ab65771998936e5e0bb1e2465e40ecefff233e91`。
-- 隔离 worktree：`/Users/kouzen/.codex/worktrees/mio-m0-preparation/mioon`；分支：`codex/mio-m0-preparation`。
-- 原工作区 `/Users/kouzen/Documents/data/mioon` 的已跟踪文件干净；唯一已有未跟踪文件是 `docs/MIOON-详细待办-2026-10-16.md`，保留原样。SHA-256：`bcd893c9e071d0c59948589796e6d1eeb366e877cd7c2ac35b380e22af918aad`。
+- 隔离 worktree：`~/.codex/worktrees/mio-m0-preparation/mioon`；分支：`codex/mio-m0-preparation`。
+- 原工作区 `~/Documents/data/mioon` 的已跟踪文件干净；唯一已有未跟踪文件是 `docs/MIOON-详细待办-2026-10-16.md`，保留原样。SHA-256：`bcd893c9e071d0c59948589796e6d1eeb366e877cd7c2ac35b380e22af918aad`。
 - 界面、i18n、契约、业务、HTTP/CLI、测试源码均未修改。文档仅新增本报告；临时 TypeScript 验证 runner、日志、设计 PNG 和清单均位于下述仓库外证据目录。
 - 未新增或升级依赖，未提交、推送、发布，未调用真实模型或真实付费生成，未启动或重启已有原生应用。
 
@@ -72,7 +72,7 @@ M0 没有界面实现或有意的视觉偏离。静态设计导出仅作为后�
 
 ```sh
 rsync -a --exclude node_modules --exclude .git --exclude apps/desktop/build --exclude apps/web/dist \
-  /Users/kouzen/.codex/worktrees/mio-m0-preparation/mioon/ \
+  ~/.codex/worktrees/mio-m0-preparation/mioon/ \
   /private/tmp/mioon-mio-m0-20261021-kS61xo/verify/
 cd /private/tmp/mioon-mio-m0-20261021-kS61xo/verify
 CI=true pnpm install --frozen-lockfile

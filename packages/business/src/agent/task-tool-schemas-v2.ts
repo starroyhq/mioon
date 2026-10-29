@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="6c51a4c2e0eeb3bd4c21d975f54b8cd458921b8b6240f44c180b750b2c82d5e1";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="ebfef77b09ca36de6d3b384bda3160d55b42642c45616750ec590af93309276c";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -3566,6 +3566,68 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
    "expectedRevision",
    "clipId",
    "transform"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+ },
+ "timeline.clip.setTransition": {
+  "type": "object",
+  "properties": {
+   "expectedRevision": {
+    "type": "integer",
+    "exclusiveMinimum": 0
+   },
+   "clipId": {
+    "type": "string",
+    "format": "uuid",
+    "description": "The incoming clip: the cut is where it starts."
+   },
+   "transition": {
+    "anyOf": [
+     {
+      "type": "object",
+      "properties": {
+       "profileId": {
+        "type": "string",
+        "const": "mioon-clip-transition-v1"
+       },
+       "kind": {
+        "type": "string",
+        "enum": [
+         "dissolve",
+         "dipToBlack",
+         "wipeLeft",
+         "wipeRight",
+         "pushLeft",
+         "pushRight"
+        ],
+        "description": "dissolve, dipToBlack, wipeLeft, wipeRight, pushLeft or pushRight."
+       },
+       "durationFrames": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 60,
+        "description": "Timeline frames, centred on the cut: half before it from the incoming clip, the rest after it from the outgoing clip."
+       }
+      },
+      "required": [
+       "profileId",
+       "kind",
+       "durationFrames"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "null"
+     }
+    ],
+    "description": "The new transition, or null to remove it."
+   }
+  },
+  "required": [
+   "expectedRevision",
+   "clipId",
+   "transition"
   ],
   "additionalProperties": false,
   "$schema": "http://json-schema.org/draft-07/schema#"

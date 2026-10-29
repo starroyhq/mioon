@@ -25,7 +25,7 @@
 - `node scripts/tooling.ts typecheck`、`node scripts/tooling.ts build --channel=development` 退出0，后者包含三项目严格检查、Web及desktop main/backend/preload构建；既有构建警告保留。
 - 首轮修复的37个相关测试文件以独立Node24进程、并发2、每文件600秒测试超时完整运行：763项，761通过、2失败，相对初始已验证PR head没有新增失败、无源码漂移。两项为初始PR及main共有的runtime媒体路径失败（生成镜头整体撤销／保留镜头迟到产物），错误同原记录；没有将其算作通过，精确媒体根因尚未证实。原始命令、来源SHA与逐项比较保存到下列证据。
 
-持久证据根：`/Users/kouzen/Library/Caches/mioon-pr17-review-20261023/`。
+持久证据根：`~/Library/Caches/mioon-pr17-review-20261023/`。
 
 - `review-scope.json`、`round1.diff`：初始固定范围和设计指纹。
 - `standards-r1.md`、`spec-r1.md`、`spec-r1-capacity-supplement.md`：按轴分开的发现及复现限制。

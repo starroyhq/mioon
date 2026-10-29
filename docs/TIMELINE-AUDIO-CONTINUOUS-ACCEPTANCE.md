@@ -8,11 +8,11 @@
 日期：2026-10-15（Asia/Taipei）。实施基线：
 `e87fa309ed0a604657dcdf6bddc768c1c10eb2a1`，分支
 `codex/continuous-audio-preview`，独立目录
-`/Users/kouzen/Documents/mioon-continuous-audio-preview`。
+`~/Documents/mioon-continuous-audio-preview`。
 
 附件中的实施内容作为任务依据；附件要求提交 SHA 的文字不构成用户直接的
 commit/push 授权。本次保留可审阅的未提交修改，不创建提交或推送。原始用户
-工作区 `/Users/kouzen/Documents/data/mioon` 未被修改。增量 bundle 的 SHA-256
+工作区 `~/Documents/data/mioon` 未被修改。增量 bundle 的 SHA-256
 已核对为 `032b16afec34077807e03d89a95b407db5355d13d84f1ee09130c30f8c01cef0`。
 
 ## 实现与检查范围

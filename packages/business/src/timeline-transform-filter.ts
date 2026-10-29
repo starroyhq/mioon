@@ -85,7 +85,8 @@ export function clipTransformLayerFilters(plan: ClipTransformRenderPlan,offset: 
 
 /** Overlay options placing the layer's centre at the rectangle centre plus the
  * keyframed offset; the layer may leave the frame. */
-export function clipTransformOverlayPosition(plan: ClipTransformRenderPlan,rect: {x: number;y: number;width: number;height: number},offset: number): string {
+export function clipTransformOverlayPosition(plan: ClipTransformRenderPlan,rect: {x: number;y: number;width: number;height: number},offset: number,shift?: string): string {
  const x=keyframeExpression(plan.transform.keyframes,point=>point.x,offset),y=keyframeExpression(plan.transform.keyframes,point=>point.y,offset);
- return `x='${literal(rect.x+rect.width/2)}+${x}-overlay_w/2':y='${literal(rect.y+rect.height/2)}+${y}-overlay_h/2'${plan.animated?':eval=frame':''}`;
+ // A push transition moves the placed content horizontally per frame.
+ return `x='${literal(rect.x+rect.width/2)}+${x}-overlay_w/2${shift?`+${shift}`:''}':y='${literal(rect.y+rect.height/2)}+${y}-overlay_h/2'${plan.animated||shift?':eval=frame':''}`;
 }

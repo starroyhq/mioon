@@ -2,7 +2,7 @@
 
 日期：2026-10-27（Asia/Taipei）。基线提交：`ce89144cd695b6291cc7c60ba9d9e1595b16077a`，已包含 M7（PR #43）。
 
-工作目录：`/Users/kouzen/.codex/worktrees/mio-harness-h0/mioon`。原 checkout 的 `.idea/`、架构文档和其他本地文档保留。本阶段只新增测试、fixture、辅助和文档。
+工作目录：`~/.codex/worktrees/mio-harness-h0/mioon`。原 checkout 的 `.idea/`、架构文档和其他本地文档保留。本阶段只新增测试、fixture、辅助和文档。
 
 ## 范围与前置
 
@@ -11,7 +11,7 @@
 - 实施计划和提示位于主 checkout 的本地忽略目录 `designs/`，没有被 Git 带入 worktree；按原文件读取，不另行改写或纳入本阶段。
 - 业务、契约、传输、界面和存储格式没有改动；没有真实模型请求或付费生成。
 
-环境：Node `v26.12.0`，pnpm `11.25.0`，FFmpeg `9.0.2`，macOS。测试统一使用真实临时目录 `TMPDIR=/private/tmp`。证据保存在 `/Users/kouzen/Library/Caches/mioon-harness-H0-2026-10-27/`。
+环境：Node `v26.12.0`，pnpm `11.25.0`，FFmpeg `9.0.2`，macOS。测试统一使用真实临时目录 `TMPDIR=/private/tmp`。证据保存在 `~/Library/Caches/mioon-harness-H0-2026-10-27/`。
 
 ## 请求指纹
 
@@ -57,7 +57,7 @@ TMPDIR=/private/tmp node tests/helpers/agent-task-request-fingerprints-v2.ts --u
 
 ```sh
 TMPDIR=/private/tmp node tests/helpers/agent-task-context-report.ts \
-  --output=/Users/kouzen/Library/Caches/mioon-harness-H0-2026-10-27/measurement-agent.json
+  --output=~/Library/Caches/mioon-harness-H0-2026-10-27/measurement-agent.json
 ```
 
 可选参数：`--protocol=all|chat_completions|responses|anthropic_messages`、`--tool-rounds=1..14`、`--reply-bytes`、`--delta-bytes`、`--output`。H1/H2 前后比较需保留相同参数。
@@ -113,8 +113,8 @@ TMPDIR=/private/tmp node tests/helpers/agent-task-context-report.ts \
 全量基线冻结当前 main 的 910 个 tracked 测试文件，排除本阶段新增测试；运行目录包含 H0 新增文件，生产代码与基线提交逐字节一致。既有 macOS full lane 会拒绝，且 runner 没有逐文件超时，因此使用证据目录内的驱动，复用既有 `toolingEnvironment()` 与 exclusive 列表：
 
 ```sh
-TMPDIR=/private/tmp node /Users/kouzen/Library/Caches/mioon-harness-H0-2026-10-27/baseline-runner.mjs
-TMPDIR=/private/tmp node /Users/kouzen/Library/Caches/mioon-harness-H0-2026-10-27/baseline-resume-runner.mjs
+TMPDIR=/private/tmp node ~/Library/Caches/mioon-harness-H0-2026-10-27/baseline-runner.mjs
+TMPDIR=/private/tmp node ~/Library/Caches/mioon-harness-H0-2026-10-27/baseline-resume-runner.mjs
 ```
 
 每文件独立 Node 进程，先完成 15 个 exclusive 文件，再以并发 2 完成 576 个文件。为缩短剩余等待，保存 checkpoint 后仅停止本次专用驱动和两个未完成测试组，剩余 319 个文件改为并发 4；中断的 `source-range-transports.test.ts`、`source-ranges.test.ts` 已在剩余队列重跑，未完成的尝试不计入有效结果。原始证据没有覆盖。选择和切换细节见 `baseline-selection.json`、`baseline-switch-checkpoint.json`、`baseline-resume-metadata.json`。
@@ -182,12 +182,12 @@ H0 的新增测试、两次指纹稳定性、测量辅助、严格类型检查�
 
 ### 工具链与复现
 
-原生复验使用已有 Node：`/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node`；GNU tar 目录：`/opt/homebrew/opt/gnu-tar/libexec/gnubin`。例如：
+原生复验使用已有 Node：`~/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node`；GNU tar 目录：`/opt/homebrew/opt/gnu-tar/libexec/gnubin`。例如：
 
 ```sh
-PATH=/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin:/opt/homebrew/opt/gnu-tar/libexec/gnubin:$PATH \
+PATH=~/.npm/_npx/538786c08bcb9442/node_modules/node/bin:/opt/homebrew/opt/gnu-tar/libexec/gnubin:$PATH \
 TMPDIR=/private/tmp \
-/Users/kouzen/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node \
+~/.npm/_npx/538786c08bcb9442/node_modules/node/bin/node \
   --test --test-reporter=tap tests/dev-proxy.test.ts
 ```
 
@@ -197,7 +197,7 @@ TMPDIR=/private/tmp \
 
 主代理逐字节比较了隔离副本与当前 worktree 的 2,337 个 tracked 代码与测试文件，0 差异；快照摘要为 `acd8c5ed7dbd52fb1045dd84c44ee77688544084243721b212cf24657dc28c99`。没有改系统默认 Node、FFmpeg、tar 或现有服务。测试生命周期内使用的 `caffeinate -i`、专用测试进程和容器均已结束。
 
-修复证据目录：`/Users/kouzen/Library/Caches/mioon-harness-fixes-2026-10-27/`。
+修复证据目录：`~/Library/Caches/mioon-harness-fixes-2026-10-27/`。
 
 - `repair-summary.json`：主代理核对原 37 文件集合无遗漏、无重复，以及 934 项全部通过的汇总。
 - `portability-dev-proxy-final.tap`、`portability-dev-proxy-node26.tap`：端口修复在两个 Node 版本下的结果。
@@ -216,7 +216,7 @@ TMPDIR=/private/tmp \
 
 会话凭据仅通过真实 settings 的 session 路径注入合成网关，不写入 fixture、日志或本报告。执行过程断言凭据正确到达网关，同时断言其不在正文、保存请求和指纹记录中。没有真实模型调用。
 
-审查补充的证据位于 `/Users/kouzen/Library/Caches/mioon-harness-H0-review-2026-10-27/`：
+审查补充的证据位于 `~/Library/Caches/mioon-harness-H0-review-2026-10-27/`：
 
 | 验证 | 结果 | 证据 |
 |---|---|---|

@@ -68,7 +68,7 @@ Messages 三次输入预估为 51,581；CC 两次使用相同核心／系统计�
 | 4 | `89322f92df06dd2f569a6a86d320dbeda4b025fe96b81e67d94daa3d56007877` |
 | 5 | `e6715d2c28d7ce3fc1db5faafda6aeb6113e4aa040a901198264d070be8a87bd` |
 
-证据根目录：`/Users/kouzen/Library/Caches/mioon-harness-H1e-2026-10-29/`。
+证据根目录：`~/Library/Caches/mioon-harness-H1e-2026-10-29/`。
 
 - `real-sample-preparation/offline-samples/samples.json`、`sources.json`、`loader-validation.json`：样本来源、冻结原件及读回校验；完整合成 body 留在本机证据目录。
 - `real-sample-preparation/run-minimax-real.ts`：一次性执行器，复用当前 gateway；固定端点、TLS／DNS pin、禁重试、失败即停、次数和预算限制。脚本在执行前经只读独立复核及转译语法检查。早期 `node --check .ts` 不支持类型语法的失败保留在会话记录，随后对转译后的 ESM 检查通过，未因此改变产品源码。

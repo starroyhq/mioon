@@ -53,7 +53,7 @@ async function fixture(t: test.TestContext) {
     (processRecord as typeof processRecord & {pid:(number | undefined)}).pid = child.pid; records.processes.push(((processRecord) as unknown as Parameters<typeof records.processes.push>[0]));
     child.stdout.setEncoding('utf8').on('data', bytes => processRecord.stdout += bytes); child.stderr.setEncoding('utf8').on('data', bytes => processRecord.stderr += bytes);
     child.on('close', (code, signal) => Object.assign(processRecord, { exitCode: code, signal }));
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       if (child.exitCode !== null) throw Error(`Backend exited: ${processRecord.stderr}`);
       try { if ((await fetch(base + '/health')).ok) return; } catch {}
