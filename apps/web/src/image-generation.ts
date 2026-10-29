@@ -205,7 +205,7 @@ export const imageDraftDirty = (state: ImageGenerationState): boolean => Boolean
 export function imageEditSourceIssue(asset: ImageEditAsset | null | undefined, projectId: string): string {
   if (!asset || asset.projectId !== projectId || !imageEditInputImageSchema.safeParse({ assetId: asset.id, sha256: asset.sha256 }).success) return '素材身份或所属项目无效。';
   if (!(IMAGE_EDIT_SOURCE_MIME_TYPES as readonly unknown[]).includes(asset.mimeType)) return '仅支持 PNG、JPEG 或 WebP。';
-  if (!['user-import', 'generated', 'synthetic-mock', 'extracted-frame'].includes(asset.provenance as string)) return '此素材来源不支持图像编辑。';
+  if (!['user-import', 'generated', 'synthetic-mock', 'extracted-frame', 'scene-keyframe'].includes(asset.provenance as string)) return '此素材来源不支持图像编辑。';
   if (typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 || asset.sizeBytes > IMAGE_EDIT_LIMITS.sourceBytes) return '源图必须小于 50 MB。';
   if (typeof asset.width !== 'number' || typeof asset.height !== 'number' || ![asset.width, asset.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= IMAGE_EDIT_LIMITS.sourceMaxEdge) || asset.width * asset.height > IMAGE_EDIT_LIMITS.sourceMaxPixels) return '每边最多 4096 像素。';
   return '';
@@ -789,7 +789,7 @@ export function imageInputIssueDescriptor(draft: ImageDraft): DisplayMessage | n
 export function imageEditSourceIssueDescriptor(asset: ImageEditAsset | null | undefined, projectId: string): DisplayMessage | null {
   if (!asset || asset.projectId !== projectId || !imageEditInputImageSchema.safeParse({ assetId: asset.id, sha256: asset.sha256 }).success) return localizedMessage('image.state.invalidAssetIdentity');
   if (!(IMAGE_EDIT_SOURCE_MIME_TYPES as readonly unknown[]).includes(asset.mimeType)) return localizedMessage('image.state.sourceFormat');
-  if (!['user-import', 'generated', 'synthetic-mock', 'extracted-frame'].includes(asset.provenance as string)) return localizedMessage('image.state.unsupportedSourceOrigin');
+  if (!['user-import', 'generated', 'synthetic-mock', 'extracted-frame', 'scene-keyframe'].includes(asset.provenance as string)) return localizedMessage('image.state.unsupportedSourceOrigin');
   if (typeof asset.sizeBytes !== 'number' || !Number.isSafeInteger(asset.sizeBytes) || asset.sizeBytes < 1 || asset.sizeBytes > IMAGE_EDIT_LIMITS.sourceBytes) return localizedMessage('image.state.sourceByteLimit');
   if (typeof asset.width !== 'number' || typeof asset.height !== 'number' || ![asset.width, asset.height].every(value => Number.isSafeInteger(value) && value > 0 && value <= IMAGE_EDIT_LIMITS.sourceMaxEdge) || asset.width * asset.height > IMAGE_EDIT_LIMITS.sourceMaxPixels) return localizedMessage('image.state.sourceDimensions');
   return null;

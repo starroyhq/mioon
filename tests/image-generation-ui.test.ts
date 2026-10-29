@@ -803,6 +803,9 @@ test('image edit intent capture rejects foreign, duplicate and unsupported sourc
   assert.equal(capture({ ...source, width: 4097 }), null);
   // Since schema62, JPEG and WebP sources up to 4096 pixels per edge can be edited.
   for (const patch of [{ mimeType: 'image/jpeg' }, { mimeType: 'image/webp' }, { width: 4096, height: 4096 }]) assert.notEqual(capture({ ...source, ...patch }), null, JSON.stringify(patch));
+  // Since schema68 a storyboard keyframe is a source too; an export never is.
+  assert.notEqual(capture({ ...source, provenance: 'scene-keyframe' }), null);
+  assert.equal(capture({ ...source, provenance: 'export' }), null);
   const intent = capture(source); assert.ok(Object.isFrozen(intent));
   assert.equal(imageEditIntents.imageEditIntentSource(intent!, { scope: 'scope', projectId, assets: [source, source] }), null);
   assert.equal(imageEditIntents.imageEditIntentSource(intent!, { scope: 'other', projectId, assets: [source] }), null);

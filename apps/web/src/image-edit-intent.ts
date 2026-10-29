@@ -8,7 +8,7 @@ const uuid = (value: unknown): value is string => typeof value === 'string' && /
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function asset(value: unknown): value is ImageEditIntentAsset {
   return object(value) && uuid(value.id) && uuid(value.projectId) && typeof value.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(value.sha256) && typeof value.name === 'string' &&
-    (IMAGE_EDIT_SOURCE_MIME_TYPES as readonly unknown[]).includes(value.mimeType) && typeof value.provenance === 'string' && ['user-import', 'generated', 'synthetic-mock', 'extracted-frame'].includes(value.provenance) &&
+    (IMAGE_EDIT_SOURCE_MIME_TYPES as readonly unknown[]).includes(value.mimeType) && typeof value.provenance === 'string' && ['user-import', 'generated', 'synthetic-mock', 'extracted-frame', 'scene-keyframe'].includes(value.provenance) &&
     typeof value.sizeBytes === 'number' && Number.isSafeInteger(value.sizeBytes) && value.sizeBytes > 0 && value.sizeBytes <= IMAGE_EDIT_LIMITS.sourceBytes &&
     [value.width, value.height].every(edge => typeof edge === 'number' && Number.isSafeInteger(edge) && edge > 0 && edge <= IMAGE_EDIT_LIMITS.sourceMaxEdge) &&
     (value.width as number) * (value.height as number) <= IMAGE_EDIT_LIMITS.sourceMaxPixels;

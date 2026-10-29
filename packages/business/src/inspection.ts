@@ -30,6 +30,7 @@ export interface OwnedMediaGraphReader {
  legacySource(assetId: unknown): unknown;
  frameTask(taskId: unknown): unknown;
  frameSource(assetId: unknown): unknown;
+ sceneKeyframeSource(assetId: unknown): unknown;
  timeline(): InspectionRecord|null;
  validateTimeline(timeline: InspectionRecord): Record<string, unknown>|null;
 }
@@ -47,6 +48,7 @@ export interface InspectionReader {
  legacySource(assetId: unknown): unknown;
  frameTask(taskId: unknown): unknown;
  frameSource(assetId: unknown): unknown;
+ sceneKeyframeSource(assetId: unknown): unknown;
  ownedTimeline(): InspectionRecord|null;
  validateTimeline(timeline: InspectionRecord): Record<string, unknown>|null;
  subjectAsset(id: string): unknown;subjectOwner(id: string): unknown;subjectVersion(id: string,subjectId?: string): unknown;
@@ -117,7 +119,7 @@ function excerpt(value: unknown): {prompt: string;promptTruncated: boolean} {
 }
 
 function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decodeCursor}: InspectionReaderOptions={}): InspectionReader {
-    const cache = new Map<string, InspectionRecord>(), validatedVersions = new Set<string>(), validatedAssets = new Set<string>(), assetVersions = new Map<string, InspectionRecord>(), imageSources = new Map<string, unknown>(), frameSources = new Map<string, unknown>(), frameTasks = new Set<string>(), pendingFrameTasks = new Set<string>();
+    const cache = new Map<string, InspectionRecord>(), validatedVersions = new Set<string>(), validatedAssets = new Set<string>(), assetVersions = new Map<string, InspectionRecord>(), imageSources = new Map<string, unknown>(), frameSources = new Map<string, unknown>(), sceneSources = new Map<string, unknown>(), frameTasks = new Set<string>(), pendingFrameTasks = new Set<string>();
     const pendingAssets=new Set<string>(),imageTasks=new Set<string>(),pendingImageTasks=new Set<string>();
     let readBytes = 0, readRecords = 0, frameDepth = 0;
     const consume=(text: unknown): void=>{if(++readRecords>INSPECTION_LIMITS.maxReadRecords||(readBytes+=Buffer.byteLength(text as string))>INSPECTION_LIMITS.maxReadBytes)exhausted();};
@@ -126,7 +128,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
     const sceneReader=createSceneKeyframeOwnershipReader(db,projectId,{fail:unavailable,consume});
     const subjectReader=createSubjectOwnershipReader(db,projectId,{fail:unavailable,notFound:unavailable,consume,resolveAsset:(assetId: string)=>{
       const asset=validateAsset(get('assets',id(assetId)));
-      return {asset,legacySource:assetVersions.get(assetId),imageSource:imageSources.get(assetId),frameSource:frameSources.get(assetId)} as never;
+      return {asset,legacySource:assetVersions.get(assetId),imageSource:imageSources.get(assetId),frameSource:frameSources.get(assetId),sceneKeyframeSource:sceneSources.get(assetId)} as never;
     }});
     // CASE guards are evaluated by SQLite before data crosses into JavaScript.
     // Oversized/malformed rows are errors, never silently skipped from a page.
@@ -262,11 +264,11 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       if (scenes.length) {
         const source=sceneReader.source(id(scenes[0]!.id),asset as never),video=get('assets',id(source.sourceAssetId));
         if(!['video/mp4','video/webm'].includes(video.mimeType as string)||video.sha256!==source.sourceHash)unavailable();
-        validateAsset(video);
+        validateAsset(video);sceneSources.set(asset.id as string,source);
       }
       if(asset.provenance===SCENE_KEYFRAME_PROVENANCE&&!scenes.length)unavailable();
       validatedAssets.add(asset.id as string);return asset;
-      }catch(error){validatedAssets.delete(asset.id as string);assetVersions.delete(asset.id as string);imageSources.delete(asset.id as string);frameSources.delete(asset.id as string);throw error;}finally{pendingAssets.delete(asset.id as string);}
+      }catch(error){validatedAssets.delete(asset.id as string);assetVersions.delete(asset.id as string);imageSources.delete(asset.id as string);frameSources.delete(asset.id as string);sceneSources.delete(asset.id as string);throw error;}finally{pendingAssets.delete(asset.id as string);}
     }
     function validateImageTask(taskId: unknown): unknown {
       const value=imageReader.task(id(taskId),{shallow:true}) as unknown as {input: {purpose?: string;inputImage?: {assetId?: unknown}};snapshot: {sourceImage?: unknown}};
@@ -277,7 +279,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       try{
         const source=validateAsset(get('assets',id(value.input.inputImage?.assetId)),{sourceEdge:true});
         if(assetVersions.has(source.id as string))unavailable();
-        const descriptor=describeImageEditSource(source as never,imageSources.get(source.id as string) as never,frameSources.get(source.id as string) as never);
+        const descriptor=describeImageEditSource(source as never,imageSources.get(source.id as string) as never,frameSources.get(source.id as string) as never,sceneSources.get(source.id as string));
         if(canonicalImageInput(descriptor)!==canonicalImageInput(value.snapshot.sourceImage))unavailable();
         const review=validateImageTaskReview(db,projectId,taskId as string,value.input as never,{consume});
         if(review&&canonicalImageInput((review as {sourceImage?: unknown}).sourceImage)!==canonicalImageInput(descriptor))unavailable();
@@ -372,7 +374,8 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
       imageVersion:(versionId: unknown,assetId?: unknown)=>{const value=imageReader.version(id(versionId)) as {assetId?: unknown};const asset=validateAsset(get('assets',id(assetId??value.assetId)));if(value.assetId!==asset.id)unavailable();return imageReader.version(versionId as string,asset as never);},
       imageTask:validateImageTask,legacySource:(assetId: unknown)=>{const asset=validateAsset(get('assets',id(assetId)));return assetVersions.get(asset.id as string)??null;},
       imageSource:(assetId: unknown)=>{const asset=validateAsset(get('assets',id(assetId)));return imageSources.get(asset.id as string)??null;},frameTask:validateFrameTask,
-      frameSource:(assetId: unknown)=>{const asset=validateAsset(get('assets',id(assetId)));return frameSources.get(asset.id as string)??null;}} as unknown as InspectionReader;
+      frameSource:(assetId: unknown)=>{const asset=validateAsset(get('assets',id(assetId)));return frameSources.get(asset.id as string)??null;},
+      sceneKeyframeSource:(assetId: unknown)=>{const asset=validateAsset(get('assets',id(assetId)));return sceneSources.get(asset.id as string)??null;}} as unknown as InspectionReader;
   }
 
 
@@ -380,7 +383,7 @@ function inspectionReader(db: DatabaseSync,projectId: string,{encodeCursor,decod
 // unscoped raw reader; all paths retain the same bounded project-owner gates.
 export function createOwnedMediaGraphReader(db: DatabaseSync,projectId: string): OwnedMediaGraphReader{
  const read=inspectionReader(db,projectId);
- return {subjectAsset:read.subjectAsset,subjectOwner:read.subjectOwner,subjectVersion:read.subjectVersion,subjectReference:read.subjectReference,validateSubjectReference:read.validateSubjectReference,asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,imageTask:read.imageTask,legacySource:read.legacySource,frameTask:read.frameTask,frameSource:read.frameSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
+ return {subjectAsset:read.subjectAsset,subjectOwner:read.subjectOwner,subjectVersion:read.subjectVersion,subjectReference:read.subjectReference,validateSubjectReference:read.validateSubjectReference,asset:read.ownedAsset,clipSource:read.clipSource,version:read.version,imageVersion:read.imageVersion,imageSource:read.imageSource,imageTask:read.imageTask,legacySource:read.legacySource,frameTask:read.frameTask,frameSource:read.frameSource,sceneKeyframeSource:read.sceneKeyframeSource,timeline:read.ownedTimeline,validateTimeline:read.validateTimeline};
 }
 
 type InspectionScope = {projectId: string;capabilities: Set<unknown>;maxCalls: number;maxResultBytes: number;maxTotalBytes: number;calls: number;bytes: number};
