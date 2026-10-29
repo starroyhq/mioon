@@ -77,6 +77,12 @@ that save is the current scene. Create receipts are kept for good; at most 256
 nodes per project and 1,024 per workspace are created this way
 (`PREVIS_CAPACITY`).
 
+Each write is one transaction. When a key that had no receipt is refused with
+`NOT_FOUND`, `PREVIS_NODE_REQUIRED`, `REVISION_CONFLICT`,
+`PREVIS_REVISION_LIMIT`, `PREVIS_EXPORT_INVALID` or `PREVIS_CAPACITY`, the
+error details also carry `mutationOutcome: "not_applied"` with the operation,
+project and request ID, as local mutation replay marks its definite refusals.
+
 ## Thumbnails
 
 Thumbnails are a disposable cache in `previs_thumbnails`. A slot is `card` or
@@ -84,9 +90,10 @@ a keyframe ID of the current scene. `thumbnail.set` takes a baseline or
 progressive JPEG, at most 384 pixels on the long edge and 64 KiB, rendered at
 the node's current `sceneRevision` (`PREVIS_THUMBNAIL_STALE`,
 `PREVIS_THUMBNAIL_SLOT`, `PREVIS_THUMBNAIL_INVALID`). A new write replaces the
-slot. Saving a scene removes the thumbnails of keyframes it no longer has; the
-others keep their older `sceneRevision`, which tells the editor to redraw
-them. Each project keeps at most 1,000 and the workspace 2,048 thumbnails;
+slot. Saving a scene removes the thumbnails of keyframes it no longer has and
+of keyframes whose camera changed (only Mio and Mio's undo change an existing
+keyframe's camera); the others keep their older `sceneRevision`, which tells
+the editor to redraw them. Each project keeps at most 1,000 and the workspace 2,048 thumbnails;
 the oldest are evicted first. `thumbnail.get` returns the requested slots that
 exist, in request order, as base64.
 
@@ -95,8 +102,11 @@ exist, in request order, as base64.
 The canvas toolbar's **预演** button adds a previs node next to the view's
 centre. Its card shows the newest `card` thumbnail, the keyframe count, the
 project frame (the timeline format, or 9:16 1080×1920 without one) and that it
-renders locally. The inspector renames the node, shows the frame it follows and
-a scene summary, and opens the editor; double-clicking the card opens it too.
+renders locally. When the card thumbnail is older than the saved scene, for
+example after Mio saved it, the card says **场景已更新** until the editor
+renders the card again; the canvas itself never loads three.js. The inspector
+renames the node, shows the frame it follows and a scene summary, and opens
+the editor; double-clicking the card opens it too.
 
 The editor covers the window. The scene outline lists figures, props and the
 key light, each with a visibility toggle, and adds figures and props. The
@@ -125,6 +135,9 @@ size above it and the camera height and tilt in the corner.
 - Without WebGL the 3D view shows a notice; the panels still edit and save the
   scene. A restored copy opens read-only: the camera can be moved to look
   around, but nothing is saved.
+- While the editor is open it holds the node's editing protection (claimed
+  when it opens, given back when it closes unless the user had already started
+  editing the node), so Mio's writes to this previs pause as for any edit.
 
 three.js (`three` 0.186.1, MIT) renders the view. It loads only when a previs
 is opened, as a separate chunk; the mannequins and props are built from basic
@@ -140,6 +153,14 @@ labelled K1, K2, … in strip order, so labels follow a reorder; an unnamed
 keyframe is named by shot size. Drag a card to reorder it, or focus it and
 press Alt+← or Alt+→; Delete removes it, and F2 or a double-click renames it.
 While the editor is open, a new keyframe never takes a deleted one's ID.
+
+**播放** in the strip's heading previews the camera moving through the
+keyframes in strip order, two seconds from one keyframe to the next, easing in
+and out at each and turning the short way round; it holds the last keyframe
+for a moment and then returns to the scene camera. It needs two keyframes and
+the 3D view. It is only a preview: nothing is saved, the scene camera does not
+move and it is not an undo step. Any click or key in the editor, or the wheel
+over the view, stops it first. A restored copy can play too.
 
 Each card shows a picture through its camera at the frame's aspect ratio. It
 is redrawn locally when the figures, props, light or that camera change, and
@@ -177,7 +198,7 @@ names the keyframes that supply the shot's frames, for example "首帧 · K2" or
 the keyframes' recorded exports, so they follow a reorder and disappear when
 the shot's frame is replaced.
 
-## Packages, backups and Mio
+## Packages and backups
 
 Project packages and duplicates carry previs nodes with their scenes; keyframe
 export asset IDs are remapped with the assets, and an exported image counts as
@@ -191,5 +212,37 @@ schema 67, `restored-local-v22`; schema 69, `restored-local-v23`; schema 71, `re
 `previs.thumbnail.get`: previs nodes can be viewed, not saved. Restored copies
 of schema 62 backups have no previs storage.
 
-Mio can see, rename and move previs nodes through the canvas tools, but cannot
-call any `previs.*` operation yet.
+## Mio
+
+Mio's previs tools are in the `canvas` tool group (see
+[AGENT-TASKS-V2.md](AGENT-TASKS-V2.md)). Mio never renders and never touches
+thumbnails; `previs.thumbnail.*` stay unavailable to it.
+
+- `mioon_previs_inspect {nodeId}` (read-only, host tool) returns the node's
+  label, `revision`, `sceneRevision`, the project frame, the scene in the shape
+  Mio writes it back (no `schemaVersion`, no keyframe `exports`), and framing:
+  which visible figures and props the current camera and each keyframe show in
+  the output frame. Framing uses the editor's frustum estimate (a figure at its
+  feet, middle or head; a prop at its middle; a held prop at the hand), shared
+  through `previsFramedElements` in the contracts. Each keyframe also reports
+  its label (K1, K2, …), how many images were exported from it and which shot
+  frames use them.
+- `mioon_previs_create` is `previs.create`, local and irreversible: a
+  creation receipt references the node and cannot be deleted, and canvas nodes
+  have no deletion either, so the default policy asks first.
+- `mioon_previs_scene_set` is `previs.scene.set`, local and reversible, under
+  the same scene revision check. Mio writes the whole scene without the host's
+  fields. Before validation the host rounds numbers to three decimals, fills
+  `schemaVersion`, turns a camera's optional `lookAt` point into yaw and pitch,
+  keeps each keyframe's `exports` from the scene being replaced by keyframe ID
+  (a new ID starts with none), and keeps the selected keyframe unless Mio named
+  another existing one or `null`. A refused scene returns the failing field
+  paths. Both writes return the same view as the inspect tool.
+- Undo saves the earlier scene as a new scene revision (the old number may
+  still have a save receipt, and an open editor compares revisions), drops the
+  thumbnails of keyframes that are gone or now look elsewhere, and is refused
+  once the node has changed since. The change is shown as "写入预演场景" with
+  the figure, prop and keyframe counts, and the card gets the short "Mio 修改"
+  mark like other canvas targets.
+
+Mio can still see, rename and move previs nodes through the other canvas tools.

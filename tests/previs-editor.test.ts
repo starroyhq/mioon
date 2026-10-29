@@ -22,7 +22,7 @@ import * as output from '../apps/web/src/previs/previs-output.ts';
 import {createPrevisSaver} from '../apps/web/src/previs/previs-save.ts';
 import type {PrevisSaveState} from '../apps/web/src/previs/previs-save.ts';
 import {createPrevisNode} from '../apps/web/src/previs/previs-create.ts';
-import {createPrevisThumbnails, previsThumbnailUrl} from '../apps/web/src/previs/previs-thumbnails.ts';
+import {createPrevisThumbnails, previsThumbnailOutdated, previsThumbnailUrl} from '../apps/web/src/previs/previs-thumbnails.ts';
 import * as i18nIndex from '../packages/i18n/src/index.ts';
 import {i18nTestModule, translate} from './helpers/i18n.ts';
 import type {ElementNode, ElementTree} from './helpers/strict-timeline-audio-harness-types.ts';
@@ -111,6 +111,8 @@ test('camera math matches the scene conventions and the frame guide', () => {
   assert.deepEqual(camera.previsFrame(null), {width: 1080, height: 1920, aspect: 1080 / 1920, ratio: '9:16'});
   assert.equal(camera.previsFrame({width: 1920, height: 1080}).ratio, '16:9');
   assert.deepEqual(camera.PREVIS_FOCAL_PRESETS, [24, 35, 50, 85]);
+  // The editor and Mio's previs tool share one implementation of this math.
+  for (const name of ['PREVIS_FILM_GAUGE', 'previsFrame', 'previsLookAt', 'previsVerticalFov', 'previsViewDirection'] as const) assert.equal(camera[name], contracts[name], name);
 });
 
 // ---- Scene edits ----
@@ -448,6 +450,15 @@ test('the canvas card shows the thumbnail, keyframe count, frame and local rende
   assert.equal(byId(tree, `previs-node-thumbnail-${record.id}`)?.props.src, 'data:image/jpeg;base64,AAAA');
   assert.equal(text(byId(tree, `previs-node-keyframes-${record.id}`)), '2 个关键帧');
   assert.equal(byId(tree, `previs-node-${record.id}`)?.props.className, 'canvas-node previs-node is-selected');
+  assert.equal(byId(tree, `previs-node-outdated-${record.id}`), undefined);
+  // A thumbnail older than the saved scene (after Mio saved it) says so; an empty card has nothing to flag.
+  tree = render({data: {record: withKeyframes, thumbnail: 'data:image/jpeg;base64,AAAA', outdated: true, ratio: '16:9'}, selected: false});
+  assert.equal(text(byId(tree, `previs-node-outdated-${record.id}`)), '场景已更新');
+  assert.match(String(byId(tree, `previs-node-outdated-${record.id}`)?.props.title), /打开预演后会重新生成/);
+  tree = render({data: {record, thumbnail: null, outdated: true, ratio: '9:16'}, selected: false});
+  assert.equal(byId(tree, `previs-node-outdated-${record.id}`), undefined);
+  assert.deepEqual([previsThumbnailOutdated({url: 'x', sceneRevision: 2}, 3), previsThumbnailOutdated({url: 'x', sceneRevision: 3}, 3), previsThumbnailOutdated(undefined, 3), previsThumbnailOutdated({url: 'x', sceneRevision: 2}, undefined)],
+    [true, false, false, false]);
 });
 test('the inspector names the node, follows the project frame and opens the editor', () => {
   const {render, visible} = harness('previs/PrevisInspector.tsx');

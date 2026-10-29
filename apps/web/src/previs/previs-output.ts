@@ -1,7 +1,6 @@
+import {previsFramedElements} from '@mioon/contracts';
 import type {PrevisCamera,PrevisScene} from '@mioon/contracts';
 import {isReferenceEdge,referenceForShot} from '../reference-connections.ts';
-import {previsVerticalFov,previsViewDirection} from './previs-camera.ts';
-import type {Vector3} from './previs-camera.ts';
 import {previsFigureName,previsPropName} from './previs-editor-state.ts';
 import {previsKeyframeLabel} from './previs-keyframes.ts';
 import type {PrevisTranslate} from './previs-keyframes.ts';
@@ -96,33 +95,12 @@ export interface PrevisFrameUndo {readonly projectId: string; readonly nodeId: s
 export type PrevisFrameOutcome = {readonly status: 'applied'; readonly undo: PrevisFrameUndo} | {readonly status: 'refused'; readonly reason: PrevisFrameRefusal} | {readonly status: 'failed'};
 /** Undo is refused when the frame has changed since (`changed`) or for the reasons setting is. */
 export type PrevisUndoOutcome = {readonly status: 'undone'} | {readonly status: 'refused'; readonly reason: PrevisFrameRefusal | 'changed'} | {readonly status: 'failed'};
-// ---- What a camera frames ----
-function sees(camera: PrevisCamera, aspect: number, point: Vector3): boolean {
-  const yaw = camera.yaw * Math.PI / 180, forward = previsViewDirection(camera.yaw, camera.pitch);
-  const right: Vector3 = [Math.cos(yaw), 0, -Math.sin(yaw)];
-  const up: Vector3 = [right[1] * forward[2] - right[2] * forward[1], right[2] * forward[0] - right[0] * forward[2], right[0] * forward[1] - right[1] * forward[0]];
-  const d: Vector3 = [point[0] - camera.position[0], point[1] - camera.position[1], point[2] - camera.position[2]];
-  const depth = d[0] * forward[0] + d[1] * forward[1] + d[2] * forward[2];
-  if (depth <= 0.05) return false;
-  const half = Math.tan(previsVerticalFov(camera.focalLength, aspect) * Math.PI / 360);
-  const x = (d[0] * right[0] + d[1] * right[1] + d[2] * right[2]) / depth, y = (d[0] * up[0] + d[1] * up[1] + d[2] * up[2]) / depth;
-  return Math.abs(x) <= half * aspect && Math.abs(y) <= half;
-}
+// ---- What a camera frames (the frustum math is shared with Mio's previs tool) ----
 /** Names of the visible figures and props a camera shows in the output frame. */
 export function previsFramedNames(scene: PrevisScene, camera: PrevisCamera, aspect: number, t: PrevisTranslate): string[] {
-  const names: string[] = [];
-  for (const figure of scene.figures) {
-    if (!figure.visible) continue;
-    const [x, y, z] = figure.position, top = figure.pose === 'sit' ? 1.3 : 1.7;
-    if ([0.15, 0.9, top].some(height => sees(camera, aspect, [x, y + height, z]))) names.push(previsFigureName(figure, t));
-  }
-  for (const prop of scene.props) {
-    const holder = scene.figures.find(item => item.held?.propId === prop.id);
-    if (!prop.visible || holder && !holder.visible) continue;
-    const base = holder ? holder.position : prop.position, height = holder ? 1.1 : prop.size[1] / 2;
-    if (sees(camera, aspect, [base[0], base[1] + height, base[2]])) names.push(previsPropName(scene, prop, t));
-  }
-  return names;
+  const framed = previsFramedElements(scene, camera, aspect);
+  return [...scene.figures.filter(figure => framed.figures.includes(figure.id)).map(figure => previsFigureName(figure, t)),
+    ...scene.props.filter(prop => framed.props.includes(prop.id)).map(prop => previsPropName(scene, prop, t))];
 }
 /** "镜头 03" style number of a shot in storyboard order. */
 export const previsShotNumber = (shot: PrevisShotView): string => String(shot.orderIndex + 1).padStart(2, '0');

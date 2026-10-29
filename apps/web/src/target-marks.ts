@@ -32,7 +32,7 @@ function selectors(target: MarkTarget): string[] {
   const id = escapeId(target.id);
   switch (target.kind) {
     case 'shot': return [`[data-testid="shot-node-${id}"]`];
-    case 'node': return [`[data-testid="asset-node-${id}"]`, `[data-testid="text-node-${id}"]`];
+    case 'node': return [`[data-testid="asset-node-${id}"]`, `[data-testid="text-node-${id}"]`, `[data-testid="previs-node-${id}"]`];
     // A shot's frame in the storyboard strip; the thumbnail carries the glow, not its title and buttons.
     case 'storyboard_shot': return [`[data-testid="storyboard-shot-${id}"] > .storyboard-preview`];
     case 'timeline_clip': return [`[data-testid="timeline-clip-${id}"]`];

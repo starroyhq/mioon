@@ -54,6 +54,54 @@ export function watchAgentEditingClose(registry: NativeCloseSourceRegistry): () 
 export async function acquireAgentEditingTarget(projectId: string, target: AgentTaskTarget): Promise<boolean> {
   try { const entry = protection(projectId, [target]); if (entry.controller.canEdit()) return true; if (entry.controller.getState().phase === 'idle') { await entry.controller.refresh(); if (entry.controller.getState().phase === 'idle') return entry.controller.acquire(); } return false; } catch { return false; }
 }
+/** Releases this window's active protection of one target; false when it is not active or still busy. */
+export async function releaseAgentEditingTarget(projectId: string, target: AgentTaskTarget): Promise<boolean> {
+  const entry = owners.get(`normal:${projectId}:${target.kind}:${target.id}`);
+  if (!entry?.controller.canEdit()) return false;
+  try { return await entry.controller.release(); } catch { return false; }
+}
+interface EditingHold { count: number; claimed: boolean; timer: ReturnType<typeof setTimeout> | null }
+const holds = new Map<string, EditingHold>();
+/**
+ * Holds editing protection of one target while a full-window editor is open
+ * (the camera previs editor), so Mio's writes to it pause as for any edit. It
+ * claims the target unless this window already protects it, and on release
+ * gives back only a claim it made. Releasing waits one task, so a StrictMode
+ * remount keeps the same claim.
+ */
+export function holdAgentEditingTarget(projectId: string, target: AgentTaskTarget): () => void {
+  const key = `${projectId}:${target.kind}:${target.id}`;
+  let hold = holds.get(key);
+  if (hold) {
+    if (hold.timer) { clearTimeout(hold.timer); hold.timer = null; }
+    hold.count++;
+  } else {
+    const created: EditingHold = { count: 1, claimed: false, timer: null };
+    hold = created; holds.set(key, created);
+    if (!agentEditingTargetActive(projectId, target.kind, target.id)) void acquireAgentEditingTarget(projectId, target).then(claimed => {
+      created.claimed = claimed;
+      const next = holds.get(key);
+      if (!claimed || next === created) return;
+      // The editor closed while the claim was being made: an editor opened
+      // again on the same target takes it over, otherwise it goes now.
+      if (next) next.claimed = true;
+      else void releaseAgentEditingTarget(projectId, target);
+    });
+  }
+  const current = hold;
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    if (--current.count > 0) return;
+    current.timer = setTimeout(() => {
+      current.timer = null;
+      if (current.count > 0 || holds.get(key) !== current) return;
+      holds.delete(key);
+      if (current.claimed) void releaseAgentEditingTarget(projectId, target);
+    }, 0);
+  };
+}
 export interface AgentEditingBoundaryProps { projectId?: string | null; workspaceScope?: string; targets: readonly AgentTaskTarget[]; disabled?: boolean; controlsOnly?: boolean; canRelease: () => boolean; onDiscard?: () => unknown; children: ReactNode | ((allowed: boolean) => ReactNode) }
 export default function AgentEditingBoundary(props: AgentEditingBoundaryProps) {
   const identity = JSON.stringify([props.projectId, props.workspaceScope, props.targets.map(target => [target.kind, target.id])]);

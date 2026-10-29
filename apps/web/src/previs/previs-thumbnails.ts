@@ -15,6 +15,11 @@ export interface PrevisThumbnailOptions {
 }
 const RECHECKS = 2, CONCURRENCY = 2;
 export const previsThumbnailUrl = (dataBase64: string): string => `data:${PREVIS_THUMBNAIL_MIME_TYPE};base64,${dataBase64}`;
+/** A card picture older than the saved scene, for example after Mio saved the
+ * scene; the editor renders the card again the next time it opens. */
+export function previsThumbnailOutdated(thumbnail: PrevisCardThumbnail | undefined, sceneRevision: unknown): boolean {
+  return Boolean(thumbnail) && typeof sceneRevision === 'number' && thumbnail!.sceneRevision < sceneRevision;
+}
 
 export function createPrevisThumbnails(options: PrevisThumbnailOptions) {
   const setTimer = options.setTimer ?? ((callback: () => void, delay: number) => setTimeout(callback, delay));
