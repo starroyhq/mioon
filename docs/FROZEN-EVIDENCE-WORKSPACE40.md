@@ -86,8 +86,8 @@ install/build, GUI, network push or Mac action was performed.
 
 ## Wrapped timeline receipts (2026-10-28)
 
-From schema56 on, shot-sync, scene-split and crossfade receipts wrap the saved
-timeline as `{operation, requestId, timeline, ...outcomes}`. The adapter above
+From schema56 on, shot-sync, scene-split, crossfade and clip-gain receipts wrap
+the saved timeline as `{operation, requestId, timeline, ...outcomes}`. The adapter above
 treats any receipt with a `timeline` key as a render receipt, so before this
 change a wrapped receipt whose timeline had an audio role or a colour made the
 role and colour scanners reject the whole workspace. That blocked capability

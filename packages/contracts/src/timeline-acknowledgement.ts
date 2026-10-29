@@ -6,6 +6,7 @@ import {createTimelineLoudnessApplyContracts,TIMELINE_LOUDNESS_APPLY_OPERATION,h
 import {createTimelineShotSyncContracts,hasTimelineShotSyncNotAppliedProof,TIMELINE_SHOT_SYNC_OPERATIONS} from './timeline-shot-sync.ts';
 import {createTimelineSceneSplitContracts,hasTimelineSceneSplitNotAppliedProof,TIMELINE_SCENE_SPLIT_OPERATION} from './timeline-scene-split.ts';
 import {createTimelineCrossfadeContracts,hasTimelineCrossfadeNotAppliedProof,TIMELINE_CROSSFADE_OPERATION} from './timeline-crossfade.ts';
+import {createTimelineClipGainsContracts,hasTimelineClipGainsNotAppliedProof,TIMELINE_CLIP_GAINS_OPERATION} from './timeline-clip-gains.ts';
 import {isTimelineExportRangeInput,isTimelineExportRangeProofInput,hasTimelineExportRangeBoundsProof} from './timeline-export-range.ts';
 import {isTimelineExportAudioOutcome} from './timeline-export-float.ts';
 import {isTimelineDeliveryNameInput} from './timeline-delivery.ts';
@@ -61,7 +62,7 @@ export const TIMELINE_MUTATION_OPERATIONS = Object.freeze([
   'timeline.track.add', 'timeline.track.update', 'timeline.clip.add', 'timeline.clip.update',
   'timeline.clip.replaceSource', 'timeline.clip.remove', 'timeline.clip.rippleRemove', 'timeline.clip.split', 'timeline.seed',
   'timeline.undo', 'timeline.redo', 'timeline.render', 'timeline.format.set',
-  ...TIMELINE_SUBTITLE_OPERATIONS, TIMELINE_LOUDNESS_APPLY_OPERATION, ...TIMELINE_SHOT_SYNC_OPERATIONS, TIMELINE_SCENE_SPLIT_OPERATION, TIMELINE_CROSSFADE_OPERATION,
+  ...TIMELINE_SUBTITLE_OPERATIONS, TIMELINE_LOUDNESS_APPLY_OPERATION, ...TIMELINE_SHOT_SYNC_OPERATIONS, TIMELINE_SCENE_SPLIT_OPERATION, TIMELINE_CROSSFADE_OPERATION, TIMELINE_CLIP_GAINS_OPERATION,
 ]);
 export const TIMELINE_RENDER_RESPONSE_BYTES = 4 * 1024 * 1024;
 
@@ -72,12 +73,14 @@ const loudnessApplyContracts=createTimelineLoudnessApplyContracts({isTimelineRec
 const shotSyncContracts=createTimelineShotSyncContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
 const sceneSplitContracts=createTimelineSceneSplitContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
 const crossfadeContracts=createTimelineCrossfadeContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
+const clipGainsContracts=createTimelineClipGainsContracts({isTimelineRecord: (value, options) => isTimelineRecord(value, options)});
 export function isTimelineMutationResponse(operation: unknown, input: unknown, value: unknown): boolean {
   const request = input as Rec;
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return loudnessApplyContracts.isTimelineLoudnessApplyResponse(value,input);
   if((TIMELINE_SHOT_SYNC_OPERATIONS as readonly unknown[]).includes(operation))return shotSyncContracts.isTimelineShotSyncResponse(operation,input,value);
   if(operation===TIMELINE_SCENE_SPLIT_OPERATION)return sceneSplitContracts.isTimelineSceneSplitResponse(value,input);
   if(operation===TIMELINE_CROSSFADE_OPERATION)return crossfadeContracts.isTimelineCrossfadeResponse(value,input);
+  if(operation===TIMELINE_CLIP_GAINS_OPERATION)return clipGainsContracts.isTimelineClipGainsResponse(value,input);
   if(operation==='timeline.format.set') return (timelineFormatSchemas as Record<string, z.ZodTypeAny>)['timeline.format.set'].safeParse(input).success &&
     isTimelineRecord(value,{projectId:request.projectId}) && (value as Rec).revision===((request.expectedRevision as number)+1) &&
     timelineOutputPreset(value)?.id===request.presetId && (value as TimelineRecord).clips.length===0 && (value as Rec).durationFrames===0;
@@ -221,6 +224,7 @@ export function hasRequestNotAppliedProof(error: unknown, input: unknown, {opera
   if((TIMELINE_SHOT_SYNC_OPERATIONS as readonly unknown[]).includes(operation))return hasTimelineShotSyncNotAppliedProof(failure,input,operation);
   if(operation===TIMELINE_SCENE_SPLIT_OPERATION)return hasTimelineSceneSplitNotAppliedProof(failure,input,operation);
   if(operation===TIMELINE_CROSSFADE_OPERATION)return hasTimelineCrossfadeNotAppliedProof(failure,input,operation);
+  if(operation===TIMELINE_CLIP_GAINS_OPERATION)return hasTimelineClipGainsNotAppliedProof(failure,input,operation);
   if(operation===TIMELINE_LOUDNESS_APPLY_OPERATION)return hasTimelineLoudnessApplyNotAppliedProof(failure,input);
   if(failure?.code==='AUDIO_ROLE_CLIP_UNSUPPORTED')return Boolean(baseInput(input)&&
     (operation==='timeline.clip.add'&&operationInput(input,['trackId','assetId','startFrame','durationFrames'],['name','sourceInFrame','rect','gain','fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope'])&&uuid(request.trackId)&&uuid(request.assetId)&&Object.hasOwn(request,'audioRole')&&isClipAudioRole(request.audioRole)||

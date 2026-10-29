@@ -5,7 +5,7 @@ import {validateTimelineColourBindings} from './timeline-colour-business.ts';
 import {createTimelineLoudnessRecovery} from './timeline-loudness-recovery.ts';
 import {TIMELINE_LOUDNESS_APPLY_OPERATION,TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES,createTimelineLoudnessApplyContracts} from '@mioon/contracts/timeline-loudness-apply';
 import {readTimelineFormatProvenance} from './timeline-format-receipts.ts';
-import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES,TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_PROOF_CODES,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_PROOF_CODES,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_PROOF_CODES,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES} from '@mioon/contracts';
+import {AppError,TIMELINE_SUBTITLE_OPERATIONS,TIMELINE_EXPORT_CAPABILITY_REJECTION_CODES,isTimelineMutationResponse,isTimelineRecord,isTimelineRenderRecord,TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES,TIMELINE_SHOT_SYNC_OPERATIONS,TIMELINE_SHOT_SYNC_PROOF_CODES,TIMELINE_SHOT_SYNC_RESPONSE_BYTES,TIMELINE_CROSSFADE_OPERATION,TIMELINE_CROSSFADE_PROOF_CODES,TIMELINE_CROSSFADE_RESPONSE_BYTES,TIMELINE_CLIP_GAINS_OPERATION,TIMELINE_CLIP_GAINS_PROOF_CODES,TIMELINE_CLIP_GAINS_RESPONSE_BYTES,TIMELINE_SCENE_SPLIT_OPERATION,TIMELINE_SCENE_SPLIT_PROOF_CODES,TIMELINE_SCENE_SPLIT_RESPONSE_BYTES} from '@mioon/contracts';
 export {TIMELINE_RESPONSE_BYTES,TIMELINE_REPLACEMENT_RESPONSE_BYTES,TIMELINE_RENDER_RESPONSE_BYTES} from '@mioon/contracts';
 import {createOwnedMediaGraphReader} from './inspection.ts';
 import {INSPECTION_ROW_LIMITS} from './inspection-query.ts';
@@ -60,10 +60,10 @@ const clone=(value: unknown)=>JSON.parse(JSON.stringify(value));
 const object=(value: unknown): boolean=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const uuid=(value: unknown): value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
 export const invalidTimeline: ()=>never=()=>{throw new AppError('INVALID_TIMELINE_SNAPSHOT','时间线或已保存的请求响应无效',409);};
-// Shot-sync, scene-split and crossfade acknowledgements wrap the saved timeline
-// with their outcomes; every other non-render timeline acknowledgement is the
-// timeline itself.
-const wrapsTimeline=(operation: string): boolean=>(TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation)||operation===TIMELINE_SCENE_SPLIT_OPERATION||operation===TIMELINE_CROSSFADE_OPERATION;
+// Shot-sync, scene-split, crossfade and clip-gain acknowledgements wrap the
+// saved timeline with their outcomes; every other non-render timeline
+// acknowledgement is the timeline itself.
+const wrapsTimeline=(operation: string): boolean=>(TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation)||operation===TIMELINE_SCENE_SPLIT_OPERATION||operation===TIMELINE_CROSSFADE_OPERATION||operation===TIMELINE_CLIP_GAINS_OPERATION;
 const responseTimeline=(operation: string,response: unknown): unknown=>
  wrapsTimeline(operation)?(response as {timeline?: unknown}).timeline:response;
 const unavailable: ()=>never=()=>{throw new AppError('TIMELINE_SOURCE_UNAVAILABLE','项目中的时间线或关联素材不可用',404);};
@@ -115,8 +115,9 @@ export function rejectTimelineMutation(db: DatabaseSync,input: TimelineRecoveryI
    failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',operation,projectId:input.projectId,requestId:input.requestId};
   return;
  }
- if(operation===TIMELINE_CROSSFADE_OPERATION){
-  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&(TIMELINE_CROSSFADE_PROOF_CODES as readonly string[]).includes(error.code))
+ if(operation===TIMELINE_CROSSFADE_OPERATION||operation===TIMELINE_CLIP_GAINS_OPERATION){
+  const codes: readonly string[]=operation===TIMELINE_CROSSFADE_OPERATION?TIMELINE_CROSSFADE_PROOF_CODES:TIMELINE_CLIP_GAINS_PROOF_CODES;
+  if(transactionEntered&&callbackFailed&&receiptAbsent&&!writesStarted&&!db.isTransaction&&error instanceof AppError&&codes.includes(error.code))
    failure.details={...(failure.details as Record<string,unknown>|undefined),mutationOutcome:'not_applied',operation,projectId:input.projectId,requestId:input.requestId};
   return;
  }
@@ -126,7 +127,7 @@ export function rejectTimelineMutation(db: DatabaseSync,input: TimelineRecoveryI
 
 export function readTimelineReceipt(db: DatabaseSync,input: TimelineRecoveryInput,operation: string): TimelineReceiptRow|undefined{
  const bytes=operation===TIMELINE_LOUDNESS_APPLY_OPERATION?TIMELINE_LOUDNESS_APPLY_RESPONSE_BYTES:operation==='timeline.render'?TIMELINE_RENDER_RESPONSE_BYTES:operation==='timeline.clip.replaceSource'?TIMELINE_REPLACEMENT_RESPONSE_BYTES:
-  (TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation)?TIMELINE_SHOT_SYNC_RESPONSE_BYTES:operation===TIMELINE_SCENE_SPLIT_OPERATION?TIMELINE_SCENE_SPLIT_RESPONSE_BYTES:operation===TIMELINE_CROSSFADE_OPERATION?TIMELINE_CROSSFADE_RESPONSE_BYTES:TIMELINE_RESPONSE_BYTES;
+  (TIMELINE_SHOT_SYNC_OPERATIONS as readonly string[]).includes(operation)?TIMELINE_SHOT_SYNC_RESPONSE_BYTES:operation===TIMELINE_SCENE_SPLIT_OPERATION?TIMELINE_SCENE_SPLIT_RESPONSE_BYTES:operation===TIMELINE_CROSSFADE_OPERATION?TIMELINE_CROSSFADE_RESPONSE_BYTES:operation===TIMELINE_CLIP_GAINS_OPERATION?TIMELINE_CLIP_GAINS_RESPONSE_BYTES:TIMELINE_RESPONSE_BYTES;
  const row=db.prepare(`SELECT ${bounded('requestHash',64)} AS requestHash,${bounded('response',bytes)} AS response FROM timeline_requests WHERE requestId=?`).get(input.requestId as string);
  if(row&&(typeof row.requestHash!=='string'||!/^[a-f0-9]{64}$/.test(row.requestHash)))invalidTimeline();
  return row as TimelineReceiptRow|undefined;
