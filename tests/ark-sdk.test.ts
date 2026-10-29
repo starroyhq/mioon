@@ -130,3 +130,21 @@ test('Ark SDK rejects audio choices the saved model does not offer and parameter
   await assert.rejects(on.sdk.submit({...input,parameters:{generateAudio:false}}),{code:'UNSUPPORTED_PARAMETER'});
   assert.equal(optional.calls.length+on.calls.length,0);
 });
+
+test('Ark SDK sends an ordered Seedance 2.5 reference group with the chosen ratio and keeps it under the request budget',async()=>{
+  const image=(index:number)=>({role:'reference_image',mimeType:'image/png',base64:Buffer.from(`reference ${index}`).toString('base64')});
+  const images=Array.from({length:30},(_,index)=>image(index+1)),f=fixture([json({id:ID})],{audio:'optional'});
+  await f.sdk.submit({...input,duration:-1,aspectRatio:'16:9',parameters:{resolution:'720p',durationSeconds:-1,aspectRatio:'16:9'},images});
+  const body=bodyOf(f.calls[0]!.init);
+  assert.equal(body.omni_reference_task_type,'reference');assert.equal(body.ratio,'16:9');assert.equal(body.duration,-1);
+  assert.deepEqual(body.content,[{type:'text',text:input.prompt},...images.map(item=>({type:'image_url',image_url:{url:`data:image/png;base64,${item.base64}`},role:'reference_image'}))]);
+  const adaptive=fixture([json({id:ID})]);
+  await adaptive.sdk.submit({...input,aspectRatio:'adaptive',parameters:{resolution:'720p',aspectRatio:'adaptive'},images:[image(1)]});
+  assert.equal(bodyOf(adaptive.calls[0]!.init).ratio,'adaptive');assert.equal(bodyOf(adaptive.calls[0]!.init).omni_reference_task_type,'reference');
+  const rejected=fixture([]);
+  await assert.rejects(rejected.sdk.submit({...input,images:Array.from({length:31},(_,index)=>image(index+1))}),{code:'UNSUPPORTED_INPUT_ROLE'});
+  // Five 10 MiB images encode to about 70 MB, above the 60,000,000-byte budget.
+  const large={role:'reference_image',mimeType:'image/png',base64:'A'.repeat(4*Math.ceil(10*1024*1024/3))};
+  await assert.rejects(rejected.sdk.submit({...input,images:Array.from({length:5},()=>large)}),{code:'REFERENCE_REQUEST_TOO_LARGE'});
+  assert.equal(rejected.calls.length,0);
+});

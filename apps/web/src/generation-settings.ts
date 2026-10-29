@@ -324,6 +324,7 @@ const generationIssueKeys: Record<string, MessageKey> = Object.freeze({
   "INVALID_REFERENCE_HASH": "connections.generation.issue.hash",
   "REFERENCE_TOO_LARGE": "connections.generation.issue.tooLarge",
   "REFERENCE_DATA_URI_TOO_LARGE": "connections.generation.issue.dataUri",
+  "REFERENCE_REQUEST_TOO_LARGE": "connections.generation.issue.requestTooLarge",
   "INVALID_REFERENCE_DIMENSIONS": "connections.generation.issue.dimensions",
   "REFERENCE_ASPECT_RATIO_MISMATCH": "connections.generation.issue.aspect",
   "UNSUPPORTED_INPUT_ROLE": "connections.generation.issue.roleUnsupported",
@@ -477,7 +478,13 @@ export function seedanceGenerationCapabilities(provider: GenerationProvider | nu
   return capabilities && typeof capabilities === 'object' && !Array.isArray(capabilities) ? capabilities as Record<string, unknown> : null;
 }
 export function generationVideoInput(shot: GenerationShot, options: { videoInput?: GenerationVideoInput } = {}, provider?: GenerationProvider | null): GenerationVideoInput | undefined {
-  if (!wanGenerationCapabilities(provider)) return undefined;
+  if (!wanGenerationCapabilities(provider)) {
+    // Seedance 2.5 takes an explicit input only for an ordered reference group
+    // chosen for this generation. Its prompt is always the saved shot prompt.
+    if (!options.videoInput || !seedanceGenerationCapabilities(provider)) return undefined;
+    const { prompt: _prompt, ...input } = structuredClone(options.videoInput);
+    return input;
+  }
   if (options.videoInput) return { ...structuredClone(options.videoInput), prompt: options.videoInput.prompt ?? shot.prompt ?? '' };
   const images: GenerationVideoInput['images'] = (shot.referenceAssetIds || []).map(assetId => ({ role: 'first_frame', assetId }));
   if (shot.lastFrameAssetId) images.push({ role: 'last_frame', assetId: shot.lastFrameAssetId });
@@ -488,13 +495,16 @@ export function generationVideoInput(shot: GenerationShot, options: { videoInput
 export function generationVideoInputIssue(shot: GenerationShot, provider: GenerationProvider, assets: readonly GenerationAsset[], { frozen = false, subjectReference }: GenerationReferenceOptions = {}): DisplayMessage | null {
   const input = shot.videoInput;
   if (!input) return null;
-  if (!wanVideoInputSchema.safeParse(input).success) return message('video.wan.invalidImages');
+  const wan = wanGenerationCapabilities(provider), seedance = wan ? null : seedanceGenerationCapabilities(provider);
+  const invalidImages = seedance ? 'video.seedance.invalidImages' : 'video.wan.invalidImages';
+  if (!wanVideoInputSchema.safeParse(input).success) return message(invalidImages);
   if (subjectReference || shot.subjectReference) return message('video.wan.subjectConflict');
-  if (!wanGenerationCapabilities(provider)) return message('video.wan.unsupported');
+  if (!wan && !seedance) return message('video.wan.unsupported');
+  const maxReferences = wan ? 10 : Number(seedance!.referenceImages) || 30;
   const expectedRoles = input.mode === 'text' ? [] : input.mode === 'first_frame' ? ['first_frame'] : input.mode === 'first_last_frame' ? ['first_frame', 'last_frame'] : input.mode === 'reference_images' ? input.images.map(() => 'reference_image') : null;
-  if (input.version !== 1 || !expectedRoles || input.images.length !== expectedRoles.length || input.mode === 'reference_images' && (input.images.length < 1 || input.images.length > 10) || input.images.some((image, index) => image.role !== expectedRoles[index]) || new Set(input.images.map(image => image.assetId)).size !== input.images.length) return message('video.wan.invalidImages');
+  if (input.version !== 1 || !expectedRoles || input.images.length !== expectedRoles.length || input.mode === 'reference_images' && (input.images.length < 1 || input.images.length > maxReferences) || input.images.some((image, index) => image.role !== expectedRoles[index]) || new Set(input.images.map(image => image.assetId)).size !== input.images.length) return message(invalidImages);
   const prompt = input.prompt ?? shot.prompt ?? '';
-  if (prompt.length > 20000 || input.mode === 'text' && !prompt.trim()) return message('video.wan.invalidPrompt');
+  if (seedance ? !prompt.trim() || prompt.length > (Number(seedance.maxPromptLength) || 5000) : prompt.length > 20000 || input.mode === 'text' && !prompt.trim()) return message(seedance ? 'connections.generation.issue.promptInvalid' : 'video.wan.invalidPrompt');
   const references = input.images.map(({ assetId, role }, index) => {
     const asset = assets.find(item => item.id === assetId && (!shot.projectId || item.projectId === shot.projectId));
     if (!asset) return null;

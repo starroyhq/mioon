@@ -1724,6 +1724,12 @@ export const connectionMessages = {
     "en": "The reference image’s complete encoded data URI exceeds the current adapter’s size limit",
     "ja": "参照画像のエンコード済み data URI 全体が、現在のアダプターのサイズ上限を超えています"
   },
+  "connections.generation.issue.requestTooLarge": {
+    "zh-Hans": "参考图片编码后合计超过方舟请求上限，请减少图片或换用更小的图片",
+    "zh-Hant": "參考圖片編碼後合計超過方舟請求上限，請減少圖片或換用更小的圖片",
+    "en": "The encoded reference images together exceed Ark’s request limit. Remove images or use smaller ones",
+    "ja": "参照画像のエンコード後の合計が方舟のリクエスト上限を超えています。画像を減らすか、より小さい画像を使用してください"
+  },
   "connections.generation.issue.dimensions": {
     "zh-Hans": "参考图片尺寸缺失或超出当前 Mioon 适配器的范围",
     "zh-Hant": "參考圖片尺寸缺失，或超出目前 Mioon 配接器的範圍",

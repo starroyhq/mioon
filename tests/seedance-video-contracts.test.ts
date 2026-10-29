@@ -82,5 +82,59 @@ test('the request schema lets Ark connections carry generation duration and rati
  for(const parameters of [{promptExtend:true},{watermark:false},{durationSeconds:31},{aspectRatio:'5:4'}])assert.equal(schemas['generation.submit'].safeParse({...request,parameters}).success,false,JSON.stringify(parameters));
  const legacy={shotId:request.shotId,expectedRevision:1,requestId:'synthetic-request',providerId:'ark'};
  for(const parameters of [{durationSeconds:30},{aspectRatio:'21:9'}])assert.equal(schemas['generation.submit'].safeParse({...legacy,parameters}).success,false,'The environment-configured provider keeps shot-only duration and ratio');
- assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:{version:1,mode:'text',images:[]}}).success,false);
+ assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:{version:1,mode:'text',images:[]}}).success,true,'A configured Ark connection may carry an explicit input');
+ assert.equal(schemas['generation.submit'].safeParse({...legacy,videoInput:{version:1,mode:'text',images:[]}}).success,false);
+});
+
+const references=(count:number,size:(index:number)=>[number,number]=index=>index%2?[1600,900]:[900,1600])=>Array.from({length:count},(_,index)=>image('reference_image',...size(index)));
+const explicit=(assets:Array<{id:string}>)=>({version:1,mode:'reference_images',images:assets.map(asset=>({role:'reference_image',assetId:asset.id}))});
+
+test('Seedance 2.5 takes 1–30 ordered reference images in any ratio inside 0.4–2.5, only through an explicit input',()=>{
+ const b=binding(),profile=videoInputProfile(b),rule=profile.inputs.roles.reference_image!;
+ assert.deepEqual(defaultVideoModels('ark')[0]!.inputModes,['text','image','frames','subject','reference']);
+ assert.deepEqual({implemented:rule.implemented,min:rule.min,max:rule.max,dimensions:rule.dimensions},{implemented:true,min:1,max:30,dimensions:{min:300,max:6000,matchAspectRatio:false,minAspectRatio:.4,maxAspectRatio:2.5}});
+ assert.equal(profile.inputs.maxReferences,30);assert.deepEqual(profile.inputs.combinations.at(-1),Array(30).fill('reference_image'));
+ const capability=videoBindingCapabilities(b).modelCapabilities[0]!;
+ assert.equal(capability.seedanceCapabilities?.referenceImages,30);assert.equal(capability.seedanceCapabilities?.maxEncodedImageBytes,60_000_000);assert.deepEqual(capability.referenceImages,{min:0,max:30});
+ for(const count of [1,30]){const assets=references(count);assert.equal(validateVideoSnapshot(b,snapshot(b,{referenceAssets:assets,videoInput:explicit(assets),parameters:{resolution:'720p',aspectRatio:'16:9'}})),true,String(count));}
+ const square=references(2,()=>[960,960]);
+ assert.equal(validateVideoSnapshot(b,snapshot(b,{referenceAssets:square,videoInput:explicit(square)})),true,'Reference images need not match the 9:16 output');
+ const many=references(31);
+ assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:many,videoInput:explicit(many)})),{code:'UNSUPPORTED_INPUT_ROLE'});
+ const group=references(2);
+ assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:group})),{code:'INVALID_REFERENCE_MANIFEST',message:'参考生视频必须提供显式视频输入。'});
+ for(const [width,height] of [[2600,1000],[1000,2600]]){const wide=[image('reference_image',width,height)];assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:wide,videoInput:explicit(wide)})),{code:'REFERENCE_ASPECT_RATIO_MISMATCH'});}
+ const mixed=[image('first_frame'),image('reference_image')];
+ assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:mixed,videoInput:{version:1,mode:'reference_images',images:mixed.map(asset=>({role:asset.role,assetId:asset.id}))}})),{code:'UNSUPPORTED_INPUT_ROLE'});
+ assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:group,videoInput:explicit(group),subjectVersionId:randomUUID()})),{code:'UNSUPPORTED_INPUT_ROLE'});
+ // A saved entry without the reference mode keeps working but cannot send a reference group.
+ const saved=binding({inputModes:['text','image','frames','subject']});
+ assert.equal(videoInputProfile(saved).inputs.maxReferences,2);assert.equal(videoInputProfile(saved).inputs.roles.reference_image,undefined);
+ assert.throws(()=>validateVideoSnapshot(saved,snapshot(saved,{referenceAssets:group,videoInput:explicit(group)})),{code:'UNSUPPORTED_INPUT_ROLE'});
+ const request={shotId:randomUUID(),expectedRevision:1,requestId:'synthetic-request',providerId:'ark',connectionId:b.connectionId,configurationRevision:1,modelEntryId:b.model.id};
+ assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:explicit(references(30))}).success,true);
+ assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:explicit(references(31))}).success,false);
+ // The saved shot prompt is the prompt sent; a separate prompt belongs to Wan 3.0 only.
+ assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:{...explicit(group),prompt:'@图片1 在左，@图片2 在右'}}).success,false);
+ assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:group,videoInput:{...explicit(group),prompt:'@图片1'}})),{code:'INVALID_PROMPT'});
+});
+
+test('only the exact Seedance 2.5 row may save the reference mode',()=>{
+ assert.equal(videoConnectionConfigurationSchema.safeParse(configured(binding())).success,true);
+ for(const modelId of ['custom-seedance-model','doubao-seedance-2-0-260128'])assert.equal(videoConnectionConfigurationSchema.safeParse(configured(binding({modelId,inputModes:['text','reference'],durationResolutionMap:[{duration:[4,8],resolution:['720p']}]}))).success,false,modelId);
+ assert.equal(videoConnectionConfigurationSchema.safeParse(configured(binding({modelId:'custom-seedance-model',inputModes:['text','image','frames'],durationResolutionMap:[{duration:[4,8],resolution:['720p']}]}))).success,true);
+});
+
+test('Seedance 2.5 keeps the encoded reference images within 60,000,000 bytes of Ark’s 64 MB request body',()=>{
+ const b=binding();
+ // Each PNG data URI adds a 22-byte header to 4/3 of its bytes, rounded up to whole Base64 groups.
+ const sized=(sizes:number[])=>sizes.map(sizeBytes=>({...image('reference_image',900,1600),sizeBytes}));
+ const exact=sized([7_499_985,7_499_985,7_499_985,7_499_985,7_499_985,7_499_976]);
+ assert.equal(exact.reduce((total,asset)=>total+22+4*Math.ceil(asset.sizeBytes/3),0),60_000_000);
+ assert.equal(validateVideoSnapshot(b,snapshot(b,{referenceAssets:exact,videoInput:explicit(exact)})),true);
+ const over=sized([7_499_985,7_499_985,7_499_985,7_499_985,7_499_985,7_499_977]);
+ assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:over,videoInput:explicit(over)})),{code:'REFERENCE_REQUEST_TOO_LARGE'});
+ const largest=sized(Array(5).fill(10*1024*1024));
+ assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:largest,videoInput:explicit(largest)})),{code:'REFERENCE_REQUEST_TOO_LARGE'});
+ assert.equal(validateVideoSnapshot(b,snapshot(b,{referenceAssets:largest.slice(0,4),videoInput:explicit(largest.slice(0,4))})),true,'Four 10 MiB images still fit');
 });

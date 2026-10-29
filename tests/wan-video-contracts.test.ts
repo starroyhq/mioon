@@ -27,7 +27,16 @@ test('Wan input wire contract bounds modes, order, identity, provider and subjec
  // Ark connections may carry Seedance 2.5 generation duration and ratio; the
  // exact model is checked against the frozen binding, not the request schema.
  for(const providerId of ['mock','ark','veo','minimax','vidu','kling','runway'])for(const parameters of [{durationSeconds:5},{aspectRatio:'16:9'},{promptExtend:false},{watermark:false}])assert.equal(schemas['generation.submit'].safeParse({...request,providerId,videoInput:undefined,parameters}).success,providerId==='ark'&&!('promptExtend' in parameters)&&!('watermark' in parameters),`${providerId} ${JSON.stringify(parameters)}`);
- assert.equal(wanVideoInputSchema.safeParse({version:1,mode:'reference_images',images:Array.from({length:11},()=>({role:'reference_image',assetId:randomUUID()}))}).success,false);
+ // The shared explicit input holds up to 30 images for Seedance 2.5; a Wan
+ // request still stops at 10 in the public schema.
+ const references=(count:number)=>({version:1 as const,mode:'reference_images' as const,images:Array.from({length:count},()=>({role:'reference_image' as const,assetId:randomUUID()}))});
+ assert.equal(wanVideoInputSchema.safeParse(references(30)).success,true);
+ assert.equal(wanVideoInputSchema.safeParse(references(31)).success,false);
+ assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:references(10)}).success,true);
+ assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:references(11)}).success,false);
+ // Only configured Wan and Ark connections may carry an explicit input.
+ assert.equal(schemas['generation.submit'].safeParse({...request,providerId:'ark',parameters:{durationSeconds:-1,aspectRatio:'adaptive'}}).success,true);
+ for(const providerId of ['mock','veo','minimax','vidu','kling','runway','compatible'])assert.equal(schemas['generation.submit'].safeParse({...request,providerId,parameters:undefined}).success,false,providerId);
 });
 
 test('only reviewed exact model/region/protocol rows advertise full Wan 3.0 features',()=>{

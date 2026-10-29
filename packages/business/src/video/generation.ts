@@ -27,12 +27,14 @@ export function sameVideoExecutionDomain(left:unknown,right:unknown):boolean{
 }
 export function prepareConfiguredVideoInputs({source,binding,projectId,readAsset,frozen=false,asOf}:{source:GenerationSource;binding:VideoExecutionBinding;projectId:string;readAsset:(id:string)=>GenerationAsset;frozen?:boolean;asOf:string}):PreparedGenerationInputs{
  const fail=(code:string,message:string):never=>{throw new AppError(code,message,400);};
+ // Wan 3.0 and Seedance 2.5 share the explicit input; messages name the provider in use.
+ const label=binding.providerId==='ark'?'Seedance':'Wan';
  const explicit=source.videoInput===undefined?null:wanVideoInputSchema.safeParse(source.videoInput);
- if(explicit&&!explicit.success)fail('INVALID_REFERENCE_MANIFEST','Wan 图片输入清单无效。');
+ if(explicit&&!explicit.success)fail('INVALID_REFERENCE_MANIFEST',`${label} 图片输入清单无效。`);
  const videoInput=explicit?.success?explicit.data:null;
  const {ids,references}=videoInput?{ids:videoInput.images.map(image=>image.assetId),references:videoInput.images}:generationReferenceSelection(source,{frozen}),profile=videoInputProfile(binding);
- if(videoInput&&source.subjectReference!==undefined)fail('UNSUPPORTED_INPUT_ROLE','Wan 图片输入不能与主体参考混用。');
- if(frozen&&videoInput&&(JSON.stringify(source.referenceAssetIds)!==JSON.stringify(ids)||!Array.isArray(source.referenceConnections)||source.referenceConnections.length||source.lastFrameAssetId!=null||videoInput.prompt!==undefined&&source.prompt!==videoInput.prompt))fail('INVALID_REFERENCE_MANIFEST','Wan 冻结输入的重复字段不一致，不能自动修复。');
+ if(videoInput&&source.subjectReference!==undefined)fail('UNSUPPORTED_INPUT_ROLE',`${label} 图片输入不能与主体参考混用。`);
+ if(frozen&&videoInput&&(JSON.stringify(source.referenceAssetIds)!==JSON.stringify(ids)||!Array.isArray(source.referenceConnections)||source.referenceConnections.length||source.lastFrameAssetId!=null||videoInput.prompt!==undefined&&source.prompt!==videoInput.prompt))fail('INVALID_REFERENCE_MANIFEST',`${label} 冻结输入的重复字段不一致，不能自动修复。`);
  if(frozen&&(source.inputProfileId!==profile.profileId||source.inputProfileVersion!==profile.profileVersion||source.providerRegion!==binding.region))fail('VIDEO_BINDING_INVALID','任务输入配置与冻结连接不一致。');
  const saved=source.referenceAssets;
  if(frozen&&(!Array.isArray(saved)||saved.length!==ids.length))fail('INVALID_REFERENCE_MANIFEST','冻结素材清单不完整。');
@@ -46,7 +48,7 @@ export function prepareConfiguredVideoInputs({source,binding,projectId,readAsset
  });
  const referenceBindings=assets.map(asset=>({role:asset.role,assetId:asset.id,sha256:asset.sha256}));
  const connections=source.referenceConnections??[];
- if(videoInput&&(!Array.isArray(connections)||connections.length))fail('REFERENCE_STATE_CONFLICT','本次 Wan 图片输入不能合并镜头参考连线。');
+ if(videoInput&&(!Array.isArray(connections)||connections.length))fail('REFERENCE_STATE_CONFLICT',`本次 ${label} 图片输入不能合并镜头参考连线。`);
  if(!Array.isArray(connections)||connections.length>1||connections.some(connection=>!connection||typeof connection!=='object'||connection.role!=='first_frame'||connection.sourceAssetId!==ids[0]||referenceBindings[0]?.role!=='first_frame'))fail('REFERENCE_STATE_CONFLICT','参考连线与冻结图片不一致。');
  const explicitFields=videoInput?{videoInput,prompt:videoInput.prompt??source.prompt,referenceConnections:[],lastFrameAssetId:null}:{};
  const candidate={...source,...explicitFields,providerId:binding.providerId,model:binding.model.modelId,referenceAssetIds:ids,referenceAssets:assets,referenceBindings};

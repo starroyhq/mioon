@@ -14,6 +14,7 @@ import {createProviderRegistry} from '../packages/business/src/provider-registry
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {defaultVideoModels,SEEDANCE25_MODEL_ID} from '../packages/contracts/src/video-providers.ts';
+import {png} from './helpers/timeline-image-fixtures.ts';
 import type {VideoConnectionConfiguration,VideoModelEntry} from '../packages/contracts/src/video-providers.ts';
 
 const json=(value:unknown)=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
@@ -131,4 +132,37 @@ test('Seedance 2.5 prompts may use the shot field limit of 5000 characters',asyn
  const custom=await fixture(t,{models:defaults=>[{...defaults[0]!,modelId:'custom-seedance-model',inputModes:['text','image','frames']}]});
  const customShot=await custom.services.call('shot.update',{shotId:custom.shot.id,expectedRevision:custom.shot.revision,patch:{prompt:'a'.repeat(1001)}}) as ServiceRow;
  await assert.rejects(custom.services.call('generation.submit',{...custom.input({resolution:'720p'}),expectedRevision:Number(customShot.revision)}),{code:'INVALID_PROMPT'});
+});
+
+const sizes=[[360,640],[640,360],[480,480]] as const;
+async function references(f:Awaited<ReturnType<typeof fixture>>){
+ const images:ServiceRow[]=[];
+ for(const [width,height] of sizes)images.push(await f.services.call('asset.import',{projectId:String(f.project.id),name:`Reference ${width}x${height}.png`,mimeType:'image/png',dataBase64:png({width,height,rgba:false}).toString('base64')}) as ServiceRow);
+ return {version:1 as const,mode:'reference_images' as const,images:images.map(image=>({role:'reference_image' as const,assetId:String(image.id)}))};
+}
+
+test('Seedance 2.5 sends an ordered reference group for this generation only, with the saved shot prompt',async t=>{
+ const f=await fixture(t),videoInput=await references(f);
+ const input={...f.input({durationSeconds:12,aspectRatio:'16:9',resolution:'720p'}),videoInput};
+ const job=await f.services.call('generation.submit',input) as JobRecord;
+ assert.deepEqual(job.snapshot.videoInput,videoInput);assert.equal(job.snapshot.prompt,f.shot.prompt,'The saved shot prompt is the prompt sent');
+ assert.deepEqual(job.snapshot.referenceAssetIds,videoInput.images.map(image=>image.assetId));
+ assert.deepEqual((job.snapshot.referenceBindings as Array<{role:string;assetId:string}>).map(({role,assetId})=>({role,assetId})),videoInput.images);
+ assert.equal((await f.services.call('generation.submit',input) as JobRecord).id,job.id,'Replaying the request returns the same job');
+ assert.equal((f.store.get('shots',String(f.shot.id)) as ServiceRow).revision,f.shot.revision,'The shot is not edited');
+ await f.tick();await f.stop();assert.equal(f.posts().length,1);
+ const sent=body(f.posts()[0]!),content=sent.content as Array<Record<string,unknown>>;
+ assert.equal(sent.omni_reference_task_type,'reference');assert.equal(sent.ratio,'16:9');assert.equal(sent.duration,12);
+ assert.deepEqual(content[0],{type:'text',text:f.shot.prompt});
+ assert.deepEqual(content.slice(1),sizes.map(([width,height])=>({type:'image_url',image_url:{url:`data:image/png;base64,${png({width,height,rgba:false}).toString('base64')}`},role:'reference_image'})));
+});
+
+test('Seedance 2.5 reference groups need the saved reference mode and stay within the request schema',async t=>{
+ const f=await fixture(t,{models:defaults=>[defaults[0]!,{...defaults[0]!,id:randomUUID(),name:'Saved Seedance',inputModes:['text','image','frames','subject']}]});
+ const [exact,saved]=f.configuration.models as [VideoModelEntry,VideoModelEntry],videoInput=await references(f);
+ await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},saved),videoInput}),{code:'UNSUPPORTED_INPUT_ROLE'});
+ const first=videoInput.images[0]!,many={...videoInput,images:Array.from({length:31},()=>({...first,assetId:randomUUID()}))};
+ for(const invalid of [many,{...videoInput,images:[{...first,role:'first_frame' as const},...videoInput.images.slice(1)]},{...videoInput,images:[first,first]}])
+  await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},exact),videoInput:invalid}),{code:'VALIDATION_ERROR'});
+ assert.equal(f.store.list('jobs').length,0);assert.equal(f.posts().length,0);
 });

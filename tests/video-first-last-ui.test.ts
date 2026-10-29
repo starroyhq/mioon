@@ -580,3 +580,42 @@ test('custom Ark models keep shot-only duration and ratio controls', () => {
   assert.equal(settings.seedanceGenerationCapabilities(p), null);
   assert.equal(Object.hasOwn(settings.generationParameters(shot(), p), 'durationSeconds'), false);
 });
+test('Seedance 2.5 reference mode builds an ordered group for one generation and keeps the saved shot prompt and first frame', async () => {
+  const p = seedanceProvider(), h = harness({ shot: shot({ duration: 4, aspectRatio: '9:16' }), providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
+  h.render();
+  assert.equal(h.find('wan-video-input'), undefined);
+  h.edit('input-mode-select', 'reference'); h.render();
+  assert.deepEqual(h.props().generationOptions.videoInput, { version: 1, mode: 'reference_images', images: [] });
+  assert.ok(h.find('wan-video-input')); assert.equal(h.find('wan-video-prompt'), undefined, 'The prompt stays the saved shot prompt');
+  assert.match(text(h.find('seedance-reference-hint')), /@图片1、@图片2/); assert.match(text(h.find('seedance-face-warning')), /真实人脸/);
+  for (const assetId of [tailId, otherId, firstId]) { h.click(`wan-image-choice-${assetId}`); h.render(); }
+  const group = [tailId, otherId, firstId].map(assetId => ({ assetId, role: 'reference_image' }));
+  assert.deepEqual(h.props().generationOptions.videoInput!.images, group);
+  assert.match(text(h.find('wan-video-images')), /图片1：暮色尾帧.*图片2：另一张图片.*图片3：晨光首帧/);
+  assert.match(text(h.find('seedance-reference-budget')), /已选 3\/30 张.*上限 60 MB/);
+  assert.deepEqual((h.props().shot.referenceAssetIds as unknown), [firstId]); assert.equal(h.saves.length, 0);
+  await h.click('generate-shot');
+  assert.equal(h.generated.length, 1); assert.deepEqual(h.generated[0][1].videoInput, { version: 1, mode: 'reference_images', images: group });
+  // The paid review and the request carry the same group and no separate prompt.
+  const app = appGenerationFlow({ providers: [p], options: h.props().generationOptions, currentShot: h.props().shot });
+  app.generate(h.generated[0][0], h.generated[0][1]);
+  const review = app.state.review; assert.ok(review); assert.deepEqual(review.shot.videoInput, { version: 1, mode: 'reference_images', images: group });
+  app.confirmGeneration(review); await Promise.resolve();
+  assert.equal(app.state.calls.length, 1); assert.deepEqual(app.state.calls[0][2].videoInput, { version: 1, mode: 'reference_images', images: group });
+  // Leaving the mode drops the group; the saved first frame is untouched.
+  h.edit('input-mode-select', 'image'); h.render();
+  assert.equal(h.props().generationOptions.videoInput, undefined); assert.equal(h.find('wan-video-input'), undefined);
+  assert.deepEqual((h.props().shot.referenceAssetIds as unknown), [firstId]);
+});
+test('Seedance 2.5 reference advisories follow the 30-image limit and the encoded size budget', () => {
+  const p = seedanceProvider(), group = (count: number) => ({ version: 1 as const, mode: 'reference_images' as const, images: Array.from({ length: count }, (_, index) => ({ role: 'reference_image' as const, assetId: id(100 + index) })) });
+  const many = Array.from({ length: 31 }, (_, index) => asset(id(100 + index), `参考图 ${index + 1}`));
+  const model = String(settings.providerModels(p)[0]!.id);
+  assert.equal(settings.generationInputIssue({ ...shot(), videoInput: group(30) }, p, model, many, 'reference'), '');
+  assert.notEqual(settings.generationInputIssue({ ...shot(), videoInput: group(31) }, p, model, many, 'reference'), '');
+  const large = many.slice(0, 5).map(item => ({ ...item, sizeBytes: 10 * 1024 * 1024 }));
+  assert.equal(settings.generationInputIssue({ ...shot(), videoInput: group(4) }, p, model, large, 'reference'), '');
+  assert.match(String(settings.generationInputIssue({ ...shot(), videoInput: group(5) }, p, model, large, 'reference')), /requestTooLarge/);
+  const savedModes = seedanceProvider({ inputModes: ['text', 'image', 'frames', 'subject'] });
+  assert.notEqual(settings.generationInputIssue({ ...shot(), videoInput: group(2) }, savedModes, String(settings.providerModels(savedModes)[0]!.id), many, 'reference'), '');
+});

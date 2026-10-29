@@ -6,9 +6,12 @@ export const WAN30_PROTOCOL_VERSION='wan30-v1';
 export const WAN30_REVIEWED_ON='2026-10-23';
 export const WAN30_SOURCE='https://help.aliyun.com/zh/model-studio/wan3-video-generation-api-reference';
 export const WAN30_INPUT_MODES=['text','first_frame','first_last_frame','reference_images'] as const;
+/** Explicit input for one Wan 3.0 or Seedance 2.5 generation. The exact model's
+ * input profile bounds the images: Wan 3.0 takes up to 10 references and
+ * Seedance 2.5 up to 30. */
 export const wanVideoInputSchema=z.object({
  version:z.literal(1),mode:z.enum(WAN30_INPUT_MODES),
- images:z.array(z.object({role:z.enum(['first_frame','last_frame','reference_image']),assetId:z.string().uuid()}).strict()).max(10),
+ images:z.array(z.object({role:z.enum(['first_frame','last_frame','reference_image']),assetId:z.string().uuid()}).strict()).max(30),
  prompt:z.string().max(20000).optional(),
 }).strict().superRefine((value,ctx)=>{
  const roles=value.images.map(image=>image.role),expected=value.mode==='text'?[]:value.mode==='first_frame'?['first_frame']:value.mode==='first_last_frame'?['first_frame','last_frame']:null;

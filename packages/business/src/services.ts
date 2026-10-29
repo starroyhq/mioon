@@ -262,7 +262,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const hasLastFrameRole=(value: unknown): boolean=>Array.isArray(value)&&value.some(reference=>property(reference,'role')==='last_frame');
  const validateProvider=(source: GenerationSource,providerId: string,requestedModel: string|undefined,parameters: ServiceRow|undefined,projectId: string,frozen=false,subjectGraph: GenerationSubjectGraph|null=null)=>{
   const binding=readVideoBinding(source);
-  if(source.videoInput!==undefined&&!binding)throw new AppError('UNSUPPORTED_INPUT_ROLE','Wan 图片输入需要明确的 Wan 3.0 连接。');
+  if(source.videoInput!==undefined&&!binding)throw new AppError('UNSUPPORTED_INPUT_ROLE',providerId==='ark'?'Seedance 图片输入需要明确的 Seedance 2.5 连接。':'Wan 图片输入需要明确的 Wan 3.0 连接。');
   if(binding){
    configuration.assertLiveEnabled();
    if(binding.providerId!==providerId||requestedModel!==undefined&&requestedModel!==binding.model.modelId)throw new AppError('VIDEO_BINDING_INVALID','请求模型与所选连接不一致。');
