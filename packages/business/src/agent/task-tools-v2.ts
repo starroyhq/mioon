@@ -69,6 +69,8 @@ const forbiddenOperations=[
  // The batch gain change applies the dialogue loudness match the user reviewed;
  // Mio proposes a single clip's gain through its own reviewed tool.
  'timeline.clip.setGains',
+ // Transforms are user-driven for now; Mio still reads them in the timeline.
+ 'timeline.clip.setTransform',
 ] as const;
 const tierByOperation=new Map<string,AgentTaskTier>([
  ...readOperations.map(operation=>[operation,'read_only'] as const),...reversibleOperations.map(operation=>[operation,'local_reversible'] as const),

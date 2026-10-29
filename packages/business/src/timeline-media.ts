@@ -22,6 +22,8 @@ import {planTimelineExportRange,validateTimelineExportRangeOutputStart} from './
 import {isTimelineColourSnapshot,projectTimelineColourPlan,assertTimelineImageCompositorInputCount,TIMELINE_MIXED_COLOUR_RENDER_PROFILE,TIMELINE_JPEG_MIXED_COLOUR_RENDER_PROFILE} from '../../contracts/src/timeline-colour.ts';
 import {prepareTimelineColourLuts,timelineColourInputFilter,TIMELINE_COLOUR_OUTPUT_FILTER,TIMELINE_COLOUR_OUTPUT_ARGS} from './timeline-colour-lut.ts';
 import {validateTimelineColourSourceInterpretation} from './timeline-colour-source.ts';
+import {clipTransformCropFilter,clipTransformLayerFilters,clipTransformOverlayPosition,clipTransformPixelCrop,clipTransformRenderPlan} from './timeline-transform-filter.ts';
+import {assertTimelineTransformCapability} from './timeline-transform-capability.ts';
 import type {Stats} from 'node:fs';
 import type {FileHandle} from 'node:fs/promises';
 import type {ManagedAssetRecord,TimelineClipRecord,TimelineRecord} from './timeline-inputs.ts';
@@ -118,6 +120,7 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
  const delivery=snapshot.delivery,plan=planTimelineExportRange(snapshot),floatChecked=delivery?.effective.profileId===TIMELINE_EXPORT_FLOAT_PROFILE_ID;
  // Never trust an earlier capability report as an admission token. Legacy and
  // omitted-settings snapshots keep their original no-probe rendering path.
+ if(timeline.clips.some(clip=>clipTransformRenderPlan(clip as never)?.animated)){await assertTimelineTransformCapability({signal,beforeEffect});checkMediaEffect(beforeEffect,signal);}
  if(delivery){await assertTimelineExportCapability(delivery as never,{signal,beforeEffect,...(floatChecked?{capabilityWorkRoot:path.dirname(destination)}:{})} as never);checkMediaEffect(beforeEffect,signal);}
  if(delivery||plan.selected)beforeEncode?.();
  checkMediaEffect(beforeEffect,signal);
@@ -136,8 +139,9 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
    effect=colourStage.effect;
    const images=colour.clips.filter(item=>item.kind==='image').map(item=>{
     const clip=timeline.clips.find(value=>value.id===item.clipId),asset=assets.get(item.assetId),creativeLutPath=colourStage!.path(item.clipId);
+    const crop=clipTransformPixelCrop(clipTransformRenderPlan(clip as never,{maxFactor:1}),item.evidence.width as number,item.evidence.height as number);
     return {clipId:item.clipId,assetSha256:item.assetSha256,sourcePath:asset?.path,sourceWidth:item.evidence.width as number,sourceHeight:item.evidence.height as number,...(item.sourceProfileId==='jfif-ycbcr8-srgb-v1'?{jpegEvidence:item.evidence}:{}),
-     width:clip!.rect.width,height:clip!.rect.height,creativeLutPath,lookCacheKey:creativeLutPath?JSON.stringify(item.look):null};
+     width:clip!.rect.width,height:clip!.rect.height,...(crop?{crop}:{}),creativeLutPath,lookCacheKey:creativeLutPath?JSON.stringify(item.look):null};
    });
    if(images.length){imageStage=await prepareTimelineImageLayers(images as never,destination,{signal,beforeEffect:effect},{checkMediaEffect,createPrivateTemporaryDirectory,validatePrivateDirectory,run,waitForMediaProcesses} as never);effect=imageStage.effect;}
    // An actual bounded float/colour conversion and LUT invocation, rather than
@@ -180,14 +184,18 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
      const {x,y,width,height}=clip.rect,label=`v${input}`,next=`layer${input}`;
      // rgba padding preserves the lower layers in the letterbox/pillarbox area.
      const planned=colourClips.get(clip.id),image=planned?.kind==='image';
+     // A transformed clip renders its rectangle as a larger layer, then rotates,
+     // scales and places it per frame; others keep the historical chain.
+     const plan=clipTransformRenderPlan(clip as never,image?{maxFactor:1}:{}),local=begin-clip.startFrame;
+     const layerWidth=plan?.layerWidth??width,layerHeight=plan?.layerHeight??height,transformStage=plan?`,${clipTransformLayerFilters(plan,local)}`:'';
      const opacityStage=opacity?.filterForSegment(clip.id,begin,frames,image?'premultiplied':'straight')??'';
      if(image){
-      filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}[${label}]`);
+      filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}${transformStage}[${label}]`);
      }else{
       const colourInput=colour?`${timelineColourInputFilter(planned!.range as never)},${colourStage!.filter(clip.id)}`:'';
-      filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}scale=${width}:${height}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}[${label}]`);
+      filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}${clipTransformCropFilter(plan)}scale=${layerWidth}:${layerHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${layerWidth}:${layerHeight}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}${transformStage}[${label}]`);
      }
-     filters.push(`[${visual}][${label}]overlay=x=${x}:y=${y}:eof_action=pass:repeatlast=0:shortest=0${colour?':format=rgb':''}${image?':alpha=premultiplied':''}[${next}]`);visual=next;
+     filters.push(`[${visual}][${label}]overlay=${plan?clipTransformOverlayPosition(plan,clip.rect,local):`x=${x}:y=${y}`}:eof_action=pass:repeatlast=0:shortest=0${colour?':format=rgb':''}${image?':alpha=premultiplied':''}[${next}]`);visual=next;
     }
     if(audio){
      const label=`a${input}`;

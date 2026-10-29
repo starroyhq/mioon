@@ -166,7 +166,7 @@ function optionalMockTables(db: DatabaseSync){return db.prepare("SELECT 1 FROM m
  }
  function markers(db: DatabaseSync, restored: boolean): void {
   const expected=[...Array.from({length:24},(_,i)=>i+1),26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60,62,64,66,68,...(restored?[69]:[])];
-  const values=db.prepare("SELECT CASE WHEN typeof(version)='integer' AND (version BETWEEN 1 AND 24 OR version IN (26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60,62,64,66,68,69)) THEN version END AS version,typeof(version) AS type FROM main.schema_version ORDER BY main.schema_version.version LIMIT 45").all();
+  const values=db.prepare("SELECT CASE WHEN typeof(version)='integer' AND (version BETWEEN 1 AND 24 OR version IN (26,28,30,32,34,36,38,40,44,48,50,52,54,56,58,60,62,64,66,68,69)) THEN version END AS version,typeof(version) AS type FROM main.schema_version ORDER BY main.schema_version.version LIMIT 46").all();
   if(values.length!==expected.length||values.some((row,i)=>row.type!=='integer'||row.version!==expected[i]))fail('RESTORE_SCHEMA_UNSUPPORTED','Schema markers are incomplete or unsupported');
  }
  function classifyWorkspaceSchemaV68V69(db: DatabaseSync): WorkspaceClassificationV68V69 {

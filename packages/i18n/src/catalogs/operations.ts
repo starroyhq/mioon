@@ -860,6 +860,12 @@ export const operationMessages = {
     "en": "Against the timeline version, set the gains of several sounding clips at once (0 to 2, as for a clip update). Each clip may be listed once; images and silent sources are refused, and nothing is written when no listed gain changes. All gains are written at once as one history entry, and a single undo restores every clip. Nothing is measured and no media is processed: a loudness match first measures each clip with the clip loudness operation. A stable requestId is required for exact replay",
     "ja": "タイムラインのバージョンを照合し、音声付きクリップ複数件のゲインを一度に設定します（0〜2、クリップ更新と同じ）。各クリップは1回だけ指定できます。画像や無音の素材は拒否し、指定したゲインがどれも変わらない場合は書き込みません。すべてのゲインは一度に書き込まれて1件の履歴となり、1回の取り消しですべてのクリップが元に戻ります。測定もメディアの処理も行いません。ラウドネスを合わせる場合は、先にクリップのラウドネス測定で各クリップを測ります。正確な再実行には安定したrequestIdが必須です"
   },
+  "operation.timeline.clip.setTransform": {
+    "zh-Hans": "按时间线版本设置或清除一个视频轨片段的变换：位置和缩放关键帧（片段内帧，最多16个，点间线性变化），以及静态旋转和裁切；音频轨片段或音频素材会被拒绝，关键帧超出片段时长或变换没有变化时不写入；记一条历史，撤销一次复原；不处理媒体；使用必填稳定requestId精确重放",
+    "zh-Hant": "按時間軸版本設定或清除一個影片軌道片段的變換：位置和縮放關鍵幀（片段內的幀，最多16個，點與點之間線性變化），以及靜態旋轉和裁切；音訊軌道片段或音訊素材會被拒絕，關鍵幀超出片段時長或變換沒有變化時不寫入；記為一筆歷史，復原一次即還原；不處理媒體；使用必填穩定requestId精確重放",
+    "en": "Against the timeline version, set or clear the transform of one clip on a video track: position and scale keyframes (clip-local frames, at most 16, changing linearly between points) and a static rotation and crop. Clips on audio tracks and audio sources are refused, and nothing is written when a keyframe lies past the clip's end or the transform does not change. One history entry; one undo restores it. No media is processed. A stable requestId is required for exact replay",
+    "ja": "タイムラインのバージョンを照合し、ビデオトラック上のクリップ1件のトランスフォームを設定または解除します。位置と拡大率のキーフレーム（クリップ内のフレーム、最大16個、点と点の間は直線的に変化）と、固定の回転・切り抜きです。オーディオトラックのクリップや音声素材は拒否し、キーフレームがクリップの長さを超える場合やトランスフォームが変わらない場合は書き込みません。履歴は1件で、1回の取り消しで元に戻ります。メディアの処理は行いません。正確な再実行には安定したrequestIdが必須です"
+  },
 
   "operation.timeline.render": {
     "zh-Hans": "冻结完整多轨时间线和素材哈希，排队生成真实预览或导出；导出可指定30fps左闭右开的帧范围，快照保持完整；通过export_get查询",

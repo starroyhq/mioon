@@ -22,6 +22,7 @@ export {currentOrdinary62Delta,withoutReviewedSubjectVariantObjects} from './cur
 export {currentOrdinary64Delta,withoutReviewedPrevisObjects} from './current-schema64-delta.ts';
 export {currentOrdinary66Delta,withoutReviewedPolicyAnswerObjects} from './current-schema66-delta.ts';
 export {currentOrdinary68Delta,withoutReviewedKeyframeEditObjects} from './current-schema68-delta.ts';
+export {currentOrdinary70Delta,withoutReviewedTransformObjects} from './current-schema70-delta.ts';
 // The current marker chain is pinned once in workspace-schema-current.ts.
 export {CURRENT_MARKER_CHAIN as currentMarkerChain} from './workspace-schema-current.ts';
 /** The current reviewed SQL for an object whose historical SQL was upgraded by

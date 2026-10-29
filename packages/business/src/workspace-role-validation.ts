@@ -23,6 +23,8 @@ import {validateWorkspaceSchema64} from './workspace-schema-v64.ts';
 import {validateWorkspaceRestoreSchemaV65} from './workspace-restore-schema-v65.ts';
 import {validateWorkspaceSchema66} from './workspace-schema-v66.ts';
 import {validateWorkspaceRestoreSchemaV67} from './workspace-restore-schema-v67.ts';
+import {validateWorkspaceSchema70} from './workspace-schema-v70.ts';
+import {validateWorkspaceRestoreSchemaV71} from './workspace-restore-schema-v71.ts';
 import {validateWorkspaceSchema68} from './workspace-schema-v68.ts';
 import {validateWorkspaceRestoreSchemaV69} from './workspace-restore-schema-v69.ts';
 
@@ -43,6 +45,7 @@ const validators: Readonly<Partial<Record<CurrentWorkspaceRole, (db: DatabaseSyn
   'ordinary-62': db => validateWorkspaceSchema62(db), 'restored-63-evidence': db => validateWorkspaceRestoreSchemaV63(db),
   'ordinary-64': db => validateWorkspaceSchema64(db), 'restored-65-evidence': db => validateWorkspaceRestoreSchemaV65(db),
   'ordinary-66': db => validateWorkspaceSchema66(db), 'restored-67-evidence': db => validateWorkspaceRestoreSchemaV67(db),
+  'ordinary-70': db => validateWorkspaceSchema70(db), 'restored-71-evidence': db => validateWorkspaceRestoreSchemaV71(db),
   'ordinary-68': db => validateWorkspaceSchema68(db), 'restored-69-evidence': db => validateWorkspaceRestoreSchemaV69(db),
 });
 

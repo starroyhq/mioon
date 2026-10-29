@@ -91,6 +91,8 @@ export function timelineImageDisplayTable():{readonly text:string;readonly bytes
 export interface TimelineImageFilterOptions {
  readonly input:string;readonly label:string;
  readonly sourceWidth:number;readonly sourceHeight:number;readonly width:number;readonly height:number;
+ /** A clip transform's crop in whole source pixels, applied before fitting. */
+ readonly crop?:{readonly x:number;readonly y:number;readonly width:number;readonly height:number};
  /** Paths are supplied only by the renderer's owned, verified staging set. */
  readonly displayTablePath:string;readonly creativeLutPath?:string;
 }
@@ -112,20 +114,23 @@ const dimension=(value:number):boolean=>Number.isSafeInteger(value)&&value>=1&&v
  * bilinear scaler uses mirrored-edge extension, including the downscale kernel.
  */
 export function timelineImageFilterGraph(options:TimelineImageFilterOptions):string[] {
- const {input,label,sourceWidth,sourceHeight,width,height,displayTablePath,creativeLutPath}=options;
+ const {input,label,sourceWidth,sourceHeight,width,height,displayTablePath,creativeLutPath,crop}=options;
  if(typeof input!=='string'||!(/^(?:[0-9]{1,3}:(?:v:)?[0-9]{1,3}|[a-zA-Z][a-zA-Z0-9_]{0,63})$/u).test(input)||
   typeof label!=='string'||!(/^[a-zA-Z][a-zA-Z0-9_]{0,47}$/u).test(label)||
   ![sourceWidth,sourceHeight,width,height].every(dimension)||sourceWidth>4096||sourceHeight>4096||sourceWidth*sourceHeight>2073600)throw invalid();
+ if(crop!==undefined&&(![crop.x,crop.y].every(value=>Number.isSafeInteger(value)&&value>=0)||![crop.width,crop.height].every(dimension)||
+  crop.x+crop.width>sourceWidth||crop.y+crop.height>sourceHeight))throw invalid();
+ const croppedWidth=crop?.width??sourceWidth,croppedHeight=crop?.height??sourceHeight;
  // Integer products choose the constrained edge exactly, avoiding a one-pixel
  // floating-point loss when a nominal scale factor rounds just below an integer.
- const fitWidth=width*sourceHeight<=height*sourceWidth;
- const fittedWidth=fitWidth?width:Math.max(1,Math.floor(sourceWidth*height/sourceHeight));
- const fittedHeight=fitWidth?Math.max(1,Math.floor(sourceHeight*width/sourceWidth)):height;
+ const fitWidth=width*croppedHeight<=height*croppedWidth;
+ const fittedWidth=fitWidth?width:Math.max(1,Math.floor(croppedWidth*height/croppedHeight));
+ const fittedHeight=fitWidth?Math.max(1,Math.floor(croppedHeight*width/croppedWidth)):height;
  const table=timelineColourFilterPath(displayTablePath),look=creativeLutPath===undefined?'':`,copy,lut3d=file=${timelineColourFilterPath(creativeLutPath)}:interp=tetrahedral`;
  const n=(suffix:string):string=>`${label}_${suffix}`;
- const resize=fittedWidth===sourceWidth&&fittedHeight===sourceHeight?'':`,zscale=w=${fittedWidth}:h=${fittedHeight}:filter=bilinear:matrixin=gbr:matrix=gbr:rangein=full:range=full:dither=none`;
+ const resize=fittedWidth===croppedWidth&&fittedHeight===croppedHeight?'':`,zscale=w=${fittedWidth}:h=${fittedHeight}:filter=bilinear:matrixin=gbr:matrix=gbr:rangein=full:range=full:dither=none`;
  return [
-  `[${input}]format=rgba,split[${n('colour')}][${n('alpha')}]`,
+  `[${input}]format=rgba${crop?`,crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}`:''},split[${n('colour')}][${n('alpha')}]`,
   `[${n('colour')}]${FLOAT},copy,lut1d=file=${table}:interp=linear${look},setparams=range=full:color_primaries=bt709:color_trc=bt709:colorspace=gbr[${n('rgb')}]`,
   `[${n('alpha')}]alphaextract,${FLOAT}[${n('aa')}]`,
   `[${n('rgb')}][${n('aa')}]${MERGE}[${n('straight')}]`,

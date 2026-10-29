@@ -74,6 +74,14 @@ test('graph validates finite bounded geometry and internal labels, while paths u
  for(const patch of ([{input:'0:v];movie=evil[out'},{label:'a;evil'},{sourceWidth:4097},{sourceWidth:4096,sourceHeight:4096},{sourceWidth:1920,sourceHeight:1081},{displayTablePath:'relative.cube'},{creativeLutPath:'/tmp/a\n.cube'}] as const))assert.throws(()=>timelineImageFilterGraph({...valid,...patch}));
  const graph=timelineImageFilterGraph({...valid,sourceWidth:1,sourceHeight:4096,width:3,height:3}).join(';');assert.match(graph,/zscale=w=1:h=3:filter=bilinear/);assert.doesNotMatch(graph,/force_divisible_by|bicubic|transferin=709/);
 });
+test('a clip transform crop applies to the source before the contain fit',()=>{
+ const valid={input:'0:0',label:'v0',sourceWidth:200,sourceHeight:100,width:300,height:300,displayTablePath:'/private/table.cube'};
+ const graph=timelineImageFilterGraph({...valid,crop:{x:50,y:0,width:100,height:100}}).join(';');
+ assert.match(graph,/format=rgba,crop=100:100:50:0,split/);assert.match(graph,/zscale=w=300:h=300:filter=bilinear/);
+ assert.doesNotMatch(timelineImageFilterGraph(valid).join(';'),/crop=/,'an uncropped layer keeps the historical graph');
+ for(const crop of [{x:-1,y:0,width:10,height:10},{x:0,y:0,width:0,height:10},{x:150,y:0,width:100,height:100},{x:0,y:1.5,width:10,height:10}])
+  assert.throws(()=>timelineImageFilterGraph({...valid,crop}),{code:'INVALID_TIMELINE_COLOUR'},JSON.stringify(crop));
+});
 test('actual PNG production conversion covers all256 RGB and alpha codes without scaling',{timeout:30000},async t=>{
  const f=await fixture(t),data=Buffer.from(Array.from({length:256},(_,i)=>[i,(i*73)%256,255-i,i]).flat()),file=await png(f.root,'ramp',256,1,data),graph=timelineImageFilterGraph(options(f,256,1));
  const straight=floatValues(await frame([file],stage(graph,'straight'),'gbrapf32le',256,1),256,1);near(flatten(straight),flatten(converted(data)),1.5e-7,'all256 float straight RGB and alpha');
