@@ -74,7 +74,10 @@ export async function runAgentCommand(operation:string,input:Record<string,unkno
   case 'agent.task.history':return client.history(input,request);
   case 'agent.task.conversation':return client.conversation(input,request);
   case 'agent.task.status':return client.status(input,request);
-  case 'agent.task.checks':return client.checks(input,request);
+  case 'agent.task.checks':{
+   // H4a adds backend requirements; their CLI presentation belongs to H4b.
+   const {requirements:_requirements,...checks}=await client.checks(input,request);return checks;
+  }
   case 'agent.task.send':return client.send(input,request);
   case 'agent.task.lookup':return client.lookup(input,request);
   case 'agent.task.upload-lookup':return client.uploadLookup(input,request);

@@ -20,6 +20,7 @@ import {createAgentTaskHttp} from '../apps/server/src/agent-task-http-v2.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import {visibleAgentTaskChecks} from '../apps/web/src/agent-task-checks-state.ts';
 
 const root=fileURLToPath(new URL('..',import.meta.url)),entry=join(root,'apps/cli/src/index.ts');
 const projectId=randomUUID(),runId=randomUUID(),exportId=randomUUID();
@@ -126,6 +127,29 @@ test('checks CLI discovers its strict schema offline and forwards only one GET',
  assert.deepEqual(calls.map(call=>call.url),[`/api/agent/tasks/v2/${projectId}/${runId}/checks`,`/api/agent/tasks/v2/${projectId}/${runId}/checks?preflight=1`,`/api/agent/tasks/v2/${projectId}/${runId}/checks`]);
  for(const input of [{projectId,runId,force:true},{projectId,runId,preflight:'1'}])assert.equal((await command(['agent','task','checks','--input',JSON.stringify(input)],base)).code,2);
  assert.equal(calls.length,3);
+});
+
+test('H4a clients retain optional requirements while CLI and existing UI keep the original check groups',async t=>{
+ const legacy=checks(),goalStepId=randomUUID(),report:AgentTaskChecks={...legacy,requirements:[{
+  id:`goal:${goalStepId}:0`,type:'shot_count',source:'goal',goalStepId,status:'failed',
+  target:{kind:'project',id:projectId},basis:[{kind:'project',id:projectId,revision:2}],
+  expected:{min:3,max:3},current:{count:1},reason:{code:'PARAMETERS_MISMATCH'},
+ }]};
+ const calls:Array<{url:string|undefined;method:string|undefined}>=[],server=http.createServer((req,res)=>{
+  assert.equal(req.headers.authorization,`Bearer ${env.MIOON_TOKEN}`);calls.push({url:req.url,method:req.method});
+  res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,data:report}));
+ });await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+ t.after(()=>new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());}));
+ const address=server.address();assert.ok(address&&typeof address==='object');const base=`http://127.0.0.1:${address.port}`;
+ const client=createAgentClient({env:{MIOON_BASE_URL:base,MIOON_TOKEN:env.MIOON_TOKEN}}),parsed=await client.checks({projectId,runId});
+ assert.deepEqual(parsed,report);assert.deepEqual(parsed.groups.map(group=>group.id),AGENT_TASK_CHECK_GROUPS);
+ assert.deepEqual(visibleAgentTaskChecks(parsed),visibleAgentTaskChecks(legacy));
+ assert.ok(visibleAgentTaskChecks(parsed).flatMap(group=>group.items).every(item=>item.source==='host'));
+ const result=await command(['agent','task','checks','--input',JSON.stringify({projectId,runId})],base);
+ assert.equal(result.code,0);assert.deepEqual(result.body,{ok:true,data:legacy});
+ assert.ok(!result.stdout.includes('requirements'));assert.ok(!result.stdout.includes(goalStepId));
+ assert.deepEqual(calls,Array.from({length:2},()=>({url:`/api/agent/tasks/v2/${projectId}/${runId}/checks`,method:'GET'})));
+ assert.deepEqual(report.requirements?.[0]?.expected,{min:3,max:3},'presentation does not remove or mutate the backend requirement');
 });
 
 async function workspace(){
