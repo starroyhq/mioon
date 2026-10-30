@@ -1,0 +1,13 @@
+// Derived from the format-72 workspace schema by `node tests/helpers/project-file-schema-derivation.ts --write`.
+// Owner: 丁 (rebuildable data in the cache database).
+// Changing this schema requires raising CACHE_SCHEMA_VERSION in ../databases.ts and regenerating ../manifest.ts.
+export const CACHE_SCHEMA: readonly string[] = Object.freeze([
+  // waveform_cache
+  "CREATE TABLE waveform_cache(\n position INTEGER PRIMARY KEY AUTOINCREMENT,cacheKey TEXT NOT NULL UNIQUE CHECK(length(CAST(cacheKey AS BLOB))=64),\n projectId TEXT NOT NULL CHECK(length(CAST(projectId AS BLOB))=36),\n sourceSha256 TEXT NOT NULL CHECK(length(CAST(sourceSha256 AS BLOB))=64),\n algorithm TEXT NOT NULL CHECK(length(CAST(algorithm AS BLOB)) BETWEEN 1 AND 100),\n status TEXT NOT NULL CHECK(status IN ('queued','running','ready','interrupted','error','unsupported')),\n attemptId TEXT NOT NULL CHECK(length(CAST(attemptId AS BLOB))=36),\n data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=393216),\n bytes INTEGER NOT NULL CHECK(typeof(bytes)='integer' AND bytes BETWEEN 1 AND 393216),\n reservedBytes INTEGER NOT NULL CHECK(typeof(reservedBytes)='integer' AND reservedBytes BETWEEN 0 AND 393216),\n UNIQUE(projectId,sourceSha256,algorithm))",
+  "CREATE INDEX waveform_cache_terminal ON waveform_cache(status,position)",
+  // previs_thumbnails
+  "CREATE TABLE previs_thumbnails(\n nodeId TEXT NOT NULL CHECK(length(CAST(nodeId AS BLOB))=36),\n slot TEXT NOT NULL CHECK(slot='card' OR (length(slot) BETWEEN 2 AND 5 AND slot GLOB 'k[1-9]*' AND substr(slot,2) NOT GLOB '*[^0-9]*')),\n projectId TEXT NOT NULL CHECK(length(CAST(projectId AS BLOB))=36),\n sceneRevision INTEGER NOT NULL CHECK(typeof(sceneRevision)='integer' AND sceneRevision BETWEEN 1 AND 9007199254740991),\n width INTEGER NOT NULL CHECK(typeof(width)='integer' AND width BETWEEN 1 AND 384),\n height INTEGER NOT NULL CHECK(typeof(height)='integer' AND height BETWEEN 1 AND 384),\n bytes BLOB NOT NULL CHECK(typeof(bytes)='blob' AND length(bytes) BETWEEN 1 AND 65536),\n updatedAt TEXT NOT NULL CHECK(length(updatedAt) BETWEEN 1 AND 40),\n PRIMARY KEY(nodeId,slot)\n)",
+  "CREATE INDEX previs_thumbnails_project_age ON previs_thumbnails(projectId,updatedAt)",
+  "CREATE INDEX previs_thumbnails_age ON previs_thumbnails(updatedAt)",
+  "CREATE TRIGGER previs_thumbnail_capacity BEFORE INSERT ON previs_thumbnails\n WHEN (SELECT count(*) FROM previs_thumbnails WHERE nodeId=NEW.nodeId)>=25 OR (SELECT count(*) FROM previs_thumbnails WHERE projectId=NEW.projectId)>=1000\n OR (SELECT count(*) FROM previs_thumbnails)>=2048\n BEGIN SELECT RAISE(ABORT,'previs thumbnail capacity exceeded');END",
+]);

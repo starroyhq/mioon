@@ -192,6 +192,10 @@ const textSites = {
   'tests/opacity-upgrade-cli.test.mjs': 2,
   'tests/timeline-audio-role-transports.test.mjs': 5,
   'tests/timeline-ripple-transports.test.mjs': 2,
+  // Project-file kernel children: the crash writer's stdout progress lines and the
+  // lock holder's stdout ready line, plus both stderr diagnostics, decode as UTF-8.
+  'tests/project-file-crash.test.ts': 2,
+  'tests/project-file-open.test.ts': 2,
 };
 // Byte-preserving passthrough forwarders: no text concatenation or decoding.
 const passthroughSites = {
