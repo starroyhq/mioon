@@ -1,4 +1,6 @@
 import type {DatabaseSync} from 'node:sqlite';
+import {PROJECT_FILE_SINGLE_PROJECT} from '../../../../contracts/src/project-file.ts';
+import type {PROJECT_DATABASE_NAMES} from '../../../../contracts/src/project-file.ts';
 import {CACHE_SCHEMA} from './domains/cache.ts';
 import {CONTENT_SCHEMA} from './domains/content.ts';
 import {MIO_SCHEMA} from './domains/mio.ts';
@@ -8,8 +10,10 @@ import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
 import {CONTENT_TABLES} from './tables.ts';
 
 /** The three SQLite databases of one project: the project file itself, the
- * local history database and the rebuildable cache database. */
-export type DatabaseKind = 'project' | 'history' | 'cache';
+ * local history database and the rebuildable cache database. Their file names
+ * and schema names on the kernel connection are the contract's
+ * PROJECT_HISTORY_FILE, PROJECT_CACHE_FILE and PROJECT_DATABASE_NAMES. */
+export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
 
 /** Changing a database's DDL requires raising its version, regenerating
  * schema/manifest.ts (`node tests/helpers/project-file-schema-derivation.ts --write`)
@@ -22,9 +26,6 @@ export const CACHE_SCHEMA_VERSION = 1;
 export const PROJECT_FILE_APPLICATION_ID = 0x4d696f50;
 export const HISTORY_APPLICATION_ID = 0x4d696f48;
 export const CACHE_APPLICATION_ID = 0x4d696f43;
-
-export const HISTORY_FILE_NAME = 'history.db';
-export const CACHE_FILE_NAME = 'cache.db';
 
 /** The format-72 definition, kept by each of the three databases. */
 export const SCHEMA_VERSION_TABLE_SQL = 'CREATE TABLE schema_version(version INTEGER PRIMARY KEY)';
@@ -50,8 +51,8 @@ const PROJECT_FILE_METADATA: readonly string[] = Object.freeze([
 /** A project file holds exactly the project named by its metadata row. The check
  * compares IDs instead of counting rows because an UPSERT fires BEFORE INSERT first. */
 const SINGLE_PROJECT_TRIGGERS: readonly string[] = Object.freeze([
-  "CREATE TRIGGER project_file_single_project_insert BEFORE INSERT ON projects WHEN NEW.id IS NOT (SELECT projectId FROM project_file) BEGIN SELECT RAISE(ABORT,'PROJECT_FILE_SINGLE_PROJECT');END",
-  "CREATE TRIGGER project_file_single_project_update BEFORE UPDATE OF id ON projects WHEN NEW.id IS NOT (SELECT projectId FROM project_file) BEGIN SELECT RAISE(ABORT,'PROJECT_FILE_SINGLE_PROJECT');END",
+  `CREATE TRIGGER project_file_single_project_insert BEFORE INSERT ON projects WHEN NEW.id IS NOT (SELECT projectId FROM project_file) BEGIN SELECT RAISE(ABORT,'${PROJECT_FILE_SINGLE_PROJECT}');END`,
+  `CREATE TRIGGER project_file_single_project_update BEFORE UPDATE OF id ON projects WHEN NEW.id IS NOT (SELECT projectId FROM project_file) BEGIN SELECT RAISE(ABORT,'${PROJECT_FILE_SINGLE_PROJECT}');END`,
 ]);
 
 /** Persistent row triggers, so every writer (autocommit statements, other

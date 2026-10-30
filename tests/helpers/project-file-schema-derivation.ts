@@ -9,6 +9,7 @@ import {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {openStore} from '../../packages/business/src/db.ts';
+import {PROJECT_DATABASE_NAMES} from '../../packages/contracts/src/project-file.ts';
 import {buildDatabase, schemaStatements, SCHEMA_VERSION_TABLE_SQL, CACHE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 import type {DatabaseKind} from '../../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../../packages/business/src/project-file/schema/manifest-check.ts';
@@ -407,11 +408,12 @@ export interface Derivation {
   readonly convertedTriggers: readonly ConvertedTriggerData[];
 }
 
-/** Schema names on the kernel connection: history.db is `main` (SQLite puts the
- * super-journal beside the main database, and the records directory does not
- * move), the project file is attached as `project` and cache.db as `cache`. */
-export type SchemaName = 'project' | 'main' | 'cache';
-export const SCHEMA_NAMES: Readonly<Record<'project' | 'history' | 'cache', SchemaName>> = Object.freeze({project: 'project', history: 'main', cache: 'cache'});
+/** Schema names on the kernel connection, the contract's PROJECT_DATABASE_NAMES:
+ * history.db is `main` (SQLite puts the super-journal beside the main database,
+ * and the records directory does not move), the project file is attached as
+ * `project` and cache.db as `cache`. */
+export type SchemaName = (typeof PROJECT_DATABASE_NAMES)[DatabaseKind];
+export const SCHEMA_NAMES = PROJECT_DATABASE_NAMES;
 const SCHEMA_OF = SCHEMA_NAMES;
 const kept = (placement: TablePlacement): placement is 'project' | 'history' | 'cache' => placement === 'project' || placement === 'history' || placement === 'cache';
 
@@ -499,9 +501,9 @@ export function deriveFromFormat72(format72: Format72 = readFormat72()): Derivat
       const originallyDeferred = matches[0]!.deferred;
       if ((placement === 'history' || placement === 'cache') && parentPlacement === 'project') {
         const info = new Map(shape.columns.map(column => [String(column.name), column]));
-        relations.push({index: 0, child: {schema: placement === 'history' ? 'main' : 'cache', table, columns,
+        relations.push({index: 0, child: {schema: SCHEMA_OF[placement], table, columns,
           nullable: columns.map(column => Number(info.get(column)!.notnull) === 0 && Number(info.get(column)!.pk) === 0)},
-        parent: {schema: 'project', table: parent, columns: parentColumns}, originallyDeferred});
+        parent: {schema: SCHEMA_OF.project, table: parent, columns: parentColumns}, originallyDeferred});
       } else if (placement === 'project' && parentPlacement === 'history') {
         droppedContentKeys.push({child: {table, columns}, parent: {table: parent, columns: parentColumns}, originallyDeferred});
       } else {
