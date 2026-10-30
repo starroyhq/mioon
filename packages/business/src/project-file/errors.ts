@@ -1,13 +1,10 @@
 import {AppError} from '../../../contracts/src/app-error.ts';
-import type {ProjectOpenErrorCode} from '../../../contracts/src/project-file.ts';
+import type {PROJECT_FILE_EXISTS, ProjectOpenErrorCode} from '../../../contracts/src/project-file.ts';
 import type {DatabaseKind} from './schema/databases.ts';
 
-/** Creating a project file where something already exists. The contract has no
- * code for it yet, so the kernel defines it here. */
-export const PROJECT_FILE_EXISTS = 'PROJECT_FILE_EXISTS';
-/** The codes projectFileError() raises: the contract's open codes and
- * PROJECT_FILE_EXISTS. Not the contract's ProjectFileErrorCode, which lists
- * the project-file codes of the API. */
+/** The codes projectFileError() raises: the contract's open codes and its
+ * PROJECT_FILE_EXISTS. A subset of the contract's ProjectFileErrorCode, which
+ * also lists the store-level and addressing codes of the API. */
 export type ProjectFileKernelErrorCode = ProjectOpenErrorCode | typeof PROJECT_FILE_EXISTS;
 
 /** Why an open or a create failed. `missing`, `locked` and `format-newer` go

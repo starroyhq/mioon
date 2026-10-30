@@ -6,10 +6,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {pathToFileURL} from 'node:url';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
-import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
+import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_FILE_EXISTS, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 import type {ProjectHistoryState, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
 import {installCrossFileTriggers} from './cross-file/install.ts';
-import {isSqliteBusy, isSqliteCorrupt, PROJECT_FILE_EXISTS, projectFileError} from './errors.ts';
+import {isSqliteBusy, isSqliteCorrupt, projectFileError} from './errors.ts';
 import type {ProjectFileErrorDetails, ProjectFileErrorReason} from './errors.ts';
 import {
   buildDatabase, CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION,
