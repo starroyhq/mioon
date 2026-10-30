@@ -23,6 +23,7 @@ import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.t
 import {AGENT_TASK_LOCALES,AGENT_TASK_SKILL_NAMES} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskJson,AgentTaskSnapshot,AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {VIDEO_PROVIDER_NAMES,VIDEO_TEMPLATES} from '../packages/contracts/src/video-providers.ts';
+import {SEEDANCE25_CAPABILITIES} from '../packages/contracts/src/seedance-video.ts';
 import {PROJECT_NOTES_MAX_BYTES} from '../packages/contracts/src/project-lifecycle.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
 
@@ -98,6 +99,15 @@ test('every tool a method names is one Mio can load, and the workflow methods ke
  // A sync reads the whole script and every shot first, edits by revision and never generates.
  for(const step of ['node.inspect','shot.inspect','promptTruncated','shot.update','expectedRevision','mioon_ask','整体撤销'])assert.ok(text('script-sync').includes(step),`script-sync: ${step}`);
  assert.match(text('script-sync'),/不要提交生成/u);
+});
+test('the shot prompt method takes material names and sound marks from the model capability fields', () => {
+ const text=AGENT_TASK_SKILLS.find(skill=>skill.name==='shot-prompts')!.text,capability=SEEDANCE25_CAPABILITIES[0]!;
+ // The method names each field the capability carries, so a renamed key cannot drift away from it.
+ for(const key of Object.keys(capability.promptReferences))assert.ok(text.includes(`promptReferences.${key}`),`promptReferences.${key}`);
+ for(const key of Object.keys(capability.soundMarks))assert.ok(text.includes(`soundMarks.${key}`),`soundMarks.${key}`);
+ // Numbers follow the submitted order, go into the saved prompt first, and sound stays a separate choice.
+ for(const step of ['videoInput.images','videoInput.audios','shot.update','generateAudio'])assert.ok(text.includes(step),`shot-prompts: ${step}`);
+ assert.equal(AGENT_TASK_SKILLS.find(skill=>skill.name==='shot-prompts')!.version,2);
 });
 test('the system instruction lists methods only alongside the tool that reads them', () => {
  for(const locale of AGENT_TASK_LOCALES){

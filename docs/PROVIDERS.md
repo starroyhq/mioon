@@ -88,6 +88,11 @@ same template, keep shot-only duration and ratio.
   `generateAudio` still decides whether the result has audio. The job freezes
   each clip's identity, hash, size and duration (`referenceAudios`), and a retry
   sends the same clips or fails if one changed.
+- **Prompt rules for Mio:** the exact row's `seedanceCapabilities` also carries
+  `promptReferences` (`@图片`, `@音频`, numbered from 1 in the order sent) and
+  `soundMarks` (music `()`, effects `<>`, dialogue `{}`, subtitles `【】`), from
+  Ark's prompt rules. The built-in shot prompt method reads these fields instead
+  of a model name. Nothing rewrites a prompt; the saved prompt is sent as is.
 - **Output check:** the downloaded ratio must be within 2% of the requested one
   (Ark's 480p 21:9 size is 992×432) and the duration within 0.25 seconds of a fixed
   request, or 4–30 seconds for automatic. A mismatch pauses the task for review
@@ -99,7 +104,8 @@ combinations, audio policy and input modes (reference images), or add a new
 connection, to use the wider range. The
 environment-configured `ARK_API_KEY` adapter below is unchanged. Sources:
 [create task API](https://ark.volcengine.com/region:cn-beijing/docs/create-video-generation-task-api),
-[Seedance 2.5 guide](https://ark.volcengine.com/region:cn-beijing/docs/seedance-2-5).
+[Seedance 2.5 guide](https://ark.volcengine.com/region:cn-beijing/docs/seedance-2-5),
+[Seedance 2.5 prompt guide](https://ark.volcengine.com/region:cn-beijing/docs/seedance-2-5-prompt-guide).
 
 ### Official SDK coverage (reviewed 2026-10-23)
 

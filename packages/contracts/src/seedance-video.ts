@@ -12,6 +12,7 @@ export interface Seedance25Capability {
  source:string;reviewedOn:string;smartDuration:true;adaptiveAspectRatio:true;maxPromptLength:5000;
  minAspectRatio:0.4;maxAspectRatio:2.5;referenceImages:30;maxEncodedImageBytes:60000000;
  referenceAudios:10;audioMimeTypes:readonly string[];maxAudioBytes:15000000;minAudioSeconds:2;maxAudioSeconds:30;maxTotalAudioSeconds:30;
+ promptReferences:Readonly<{image:'@图片';audio:'@音频'}>;soundMarks:Readonly<{music:'()';effect:'<>';dialogue:'{}';subtitle:'【】'}>;
  durationsSeconds:readonly number[];aspectRatios:readonly string[];resolutions:readonly string[];
  defaults:Readonly<{resolution:'720p';generateAudio:false}>;
 }
@@ -25,12 +26,18 @@ export interface Seedance25Capability {
 // Mioon sends both as Base64 data URIs and Ark caps the request body at 64 MB,
 // so images and audio together stay under 60,000,000 encoded bytes (the field
 // keeps its first name), leaving room for the prompt and the other fields.
+// Ark's prompt rules name the materials @图片1 and @音频1, numbered from 1 in
+// the order they are sent, and mark music, effects, dialogue and subtitles with
+// (), <>, {} and 【】. The built-in shot prompt method reads these two fields
+// from the capability instead of a model name.
 export const SEEDANCE25_CAPABILITIES:readonly Seedance25Capability[]=Object.freeze([Object.freeze({
  modelId:SEEDANCE25_MODEL_ID,region:'cn-beijing' as const,protocolVersion:SEEDANCE25_PROTOCOL_VERSION,
  source:SEEDANCE25_SOURCE,reviewedOn:SEEDANCE25_REVIEWED_ON,smartDuration:true as const,adaptiveAspectRatio:true as const,
  maxPromptLength:5000 as const,minAspectRatio:0.4 as const,maxAspectRatio:2.5 as const,
  referenceImages:30 as const,maxEncodedImageBytes:60000000 as const,
  referenceAudios:10 as const,audioMimeTypes:Object.freeze(['audio/wav','audio/mpeg']),maxAudioBytes:15000000 as const,minAudioSeconds:2 as const,maxAudioSeconds:30 as const,maxTotalAudioSeconds:30 as const,
+ promptReferences:Object.freeze({image:'@图片' as const,audio:'@音频' as const}),
+ soundMarks:Object.freeze({music:'()' as const,effect:'<>' as const,dialogue:'{}' as const,subtitle:'【】' as const}),
  durationsSeconds:Object.freeze(Array.from({length:27},(_,index)=>index+4)),
  aspectRatios:Object.freeze(['9:16','16:9','1:1','3:4','4:3','21:9']),
  resolutions:Object.freeze(['720p','480p','1080p']),

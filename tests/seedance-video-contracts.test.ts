@@ -188,3 +188,13 @@ test('the request schema keeps reference audio to Seedance 2.5 reference input',
  assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:{version:1,mode:'first_frame',images:[{role:'first_frame',assetId:randomUUID()}],audios:[clip()]}}).success,false,'Never with frames');
  assert.equal(schemas['generation.submit'].safeParse({...input({audios:[clip()]}),providerId:'wan'}).success,false,'Wan takes no reference audio');
 });
+
+test('the exact Seedance 2.5 row tells the shot prompt method how to name materials and mark sound',()=>{
+ const capability=videoBindingCapabilities(binding()).modelCapabilities[0]!.seedanceCapabilities!;
+ // Ark's prompt rules: @图片1 and @音频1 in sending order; (), <>, {} and 【】.
+ assert.deepEqual(capability.promptReferences,{image:'@图片',audio:'@音频'});
+ assert.deepEqual(capability.soundMarks,{music:'()',effect:'<>',dialogue:'{}',subtitle:'【】'});
+ assert.ok(Object.isFrozen(capability.promptReferences)&&Object.isFrozen(capability.soundMarks));
+ const custom=videoBindingCapabilities(binding({modelId:'custom-seedance-model',inputModes:['text','image','frames'],durationResolutionMap:[{duration:[4,8],resolution:['720p']}]})).modelCapabilities[0]!;
+ assert.equal(custom.seedanceCapabilities,undefined,'A custom model gets no prompt rules');
+});
