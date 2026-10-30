@@ -14,10 +14,16 @@ export const PROJECT_EXPORTS_FOLDER = '导出';
 export const PROJECT_RULES_FILE = 'AGENTS.md';
 
 /** New projects without a chosen location: web and headless servers use
- * `<dataDir>/projects/<name>/`, desktop uses `Mioon/<name>/` in the system
- * videos folder (`~/Movies` on macOS). A clashing folder name gets a number. */
+ * `<dataDir>/projects/<name>/`, desktop uses `Mioon/<name>/` in Electron's
+ * `app.getPath('videos')` (`~/Movies` on macOS, `Videos` on Windows). A
+ * clashing folder name gets a number. Web and headless servers keep their app
+ * cache in `<dataDir>/cache/` and temporary files in `<dataDir>/tmp/`, never
+ * in `dataDir` itself. */
 export const DEFAULT_PROJECTS_DIRECTORY = 'projects';
 export const DESKTOP_PROJECTS_FOLDER = 'Mioon';
+/** Web and headless servers: `<dataDir>/cache/` and `<dataDir>/tmp/`. */
+export const SERVER_CACHE_DIRECTORY = 'cache';
+export const SERVER_TEMP_DIRECTORY = 'tmp';
 
 /** localDir is `<app data>/records/<project ID>/`. It is not `projects/`,
  * where web projects are created by default. */
@@ -29,11 +35,31 @@ export const PROJECT_IMPORTS_DIRECTORY = 'imports';
 export const PROJECT_CACHE_DIRECTORY = 'projects';
 export const PROJECT_CACHE_FILE = 'cache.db';
 
-/** Schema names on the one project connection. The local records are only
- * ever attached to their project file. Opened alone, SQLite cannot see the
- * super-journal beside the project file and may keep half of a commit that
- * spanned both files. */
-export const PROJECT_DATABASE_NAMES = Object.freeze({project: 'main', history: 'history', cache: 'cache'} as const);
+/** Schema names on the one project connection: the local records are the
+ * main database, the project file and the cache are attached. Unqualified
+ * statements that create objects or set pragmas land in the local records.
+ *
+ * A commit that spans files puts its super-journal beside the main database
+ * and writes the super-journal's absolute path into each file's journal.
+ * Project folders are moved as a matter of course; the local records stay
+ * where they are. With the project file as main, a crash in such a commit
+ * followed by moving the project folder leaves the super-journal unreachable
+ * at the recorded path: SQLite then takes both hot journals as committed and
+ * one of the files is corrupted. With the local records as main, both files
+ * roll back.
+ *
+ * Opening order, never reversed:
+ * 1. open the project file alone, read its project ID and format version and
+ *    let SQLite finish any recovery, then close it;
+ * 2. open the local records as main;
+ * 3. attach the project file and the cache, check them against the schema
+ *    manifest, then create the connection's temporary triggers.
+ * Once SQLite has recovered one database, it deletes the super-journal if
+ * none of the other journals it lists is still at its recorded path, so the
+ * project file has to recover first. Apart from step 1 both files are opened
+ * only on this connection; the temporary triggers that stand in for the
+ * cross-file constraints exist nowhere else. */
+export const PROJECT_DATABASE_NAMES = Object.freeze({history: 'main', project: 'project', cache: 'cache'} as const);
 
 const CANONICAL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 /** Lowercase UUID, as `crypto.randomUUID()` writes it. Other spellings are
@@ -61,11 +87,16 @@ export const TEST_STORE_LAYOUT = Object.freeze({
 });
 // SQLite names a super-journal `<main database>-mj` + 6 hex + `9` + 2 hex
 // (checked with the SQLite 3.53 in Node 24). It exists while a commit spans
-// attached databases, and after a crash in the middle of one.
+// attached databases, and after a crash in the middle of one. The local
+// records are the main database, so it sits beside history.db, which is
+// inside `.mioon-store/` in the test layout; a project directory does not get
+// one. The name check stays as a safeguard.
 const SUPER_JOURNAL = /-mj[0-9A-F]{6}9[0-9A-F]{2}$/u;
 /** For directory snapshots in tests: true for the test store folder, the
  * project file's rollback journal and super-journals. `entry` is a path
- * relative to the project directory, with `/` or `\` separators. */
+ * relative to the project directory, with `/` or `\` separators. Production
+ * code that lists a project directory skips every entry starting with `.`
+ * instead, which also covers `.DS_Store` and the like. */
 export function isProjectStoreInternalEntry(entry: string): boolean {
   const parts = entry.split(/[\\/]/u).filter(part => part !== '' && part !== '.');
   const name = parts.at(-1) ?? '';

@@ -63,6 +63,9 @@ export type ProjectRulesTrust = z.infer<typeof projectRulesTrustSchema>;
 export const outsidePathConfirmationSchema = z.object({projectId: projectIdSchema, directory: absolutePath, confirmedAt: date}).strict();
 export type OutsidePathConfirmation = z.infer<typeof outsidePathConfirmationSchema>;
 /** One `records/<project ID>/` folder. Its size comes from the file system:
- * listing never opens history.db, which is only attached to its project file. */
-export const localRecordsEntrySchema = z.object({projectId: projectIdSchema, sizeBytes: count}).strict();
+ * listing never opens history.db, which is opened only as the main database of
+ * its project's connection. hasSuperJournal: a crash left a super-journal
+ * (`*-mj*`) in the folder. Such a folder must not be deleted, or the project
+ * file can no longer roll back the interrupted commit. */
+export const localRecordsEntrySchema = z.object({projectId: projectIdSchema, sizeBytes: count, hasSuperJournal: z.boolean()}).strict();
 export type LocalRecordsEntry = z.infer<typeof localRecordsEntrySchema>;

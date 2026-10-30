@@ -7,7 +7,8 @@ import {
   DEFAULT_PROJECTS_DIRECTORY, DESKTOP_PROJECTS_FOLDER, PROJECT_ADDRESS_ERROR_CODES, PROJECT_API_PREFIX, PROJECT_BACKUPS_DIRECTORY,
   PROJECT_CACHE_DIRECTORY, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_EXPORTS_FOLDER, PROJECT_FILE_ERROR_CODES,
   PROJECT_FILE_EXTENSION, PROJECT_FILE_SINGLE_PROJECT, PROJECT_GENERATED_FOLDER, PROJECT_HISTORY_FILE, PROJECT_HISTORY_STATES,
-  PROJECT_IMPORTS_DIRECTORY, PROJECT_OPEN_ERROR_CODES, PROJECT_RECORDS_DIRECTORY, PROJECT_RULES_FILE, TEST_STORE_DIRECTORY,
+  PROJECT_IMPORTS_DIRECTORY, PROJECT_OPEN_ERROR_CODES, PROJECT_RECORDS_DIRECTORY, PROJECT_RULES_FILE, SERVER_CACHE_DIRECTORY,
+  SERVER_TEMP_DIRECTORY, TEST_STORE_DIRECTORY,
   TEST_STORE_LAYOUT, isProjectId, isProjectStoreInternalEntry, parseProjectApiPath, projectAddressErrorDetailsSchemas, projectApiPath,
   projectCacheDirSegments, projectLocalDirSegments, projectMediaPath, projectOpenFailureSchema, projectOpenResultSchema, projectRpcPath,
 } from '../packages/contracts/src/project-file.ts';
@@ -34,7 +35,13 @@ test('file, folder and directory names are fixed, and the test store stays under
   assert.deepEqual([PROJECT_RECORDS_DIRECTORY, PROJECT_HISTORY_FILE, PROJECT_BACKUPS_DIRECTORY, PROJECT_IMPORTS_DIRECTORY], ['records', 'history.db', 'backups', 'imports']);
   assert.deepEqual([PROJECT_CACHE_DIRECTORY, PROJECT_CACHE_FILE], ['projects', 'cache.db']);
   assert.notEqual(PROJECT_RECORDS_DIRECTORY, DEFAULT_PROJECTS_DIRECTORY, 'local records never sit where web projects are created');
-  assert.deepEqual(PROJECT_DATABASE_NAMES, {project: 'main', history: 'history', cache: 'cache'});
+  assert.deepEqual([SERVER_CACHE_DIRECTORY, SERVER_TEMP_DIRECTORY], ['cache', 'tmp']);
+  for (const name of [SERVER_CACHE_DIRECTORY, SERVER_TEMP_DIRECTORY])
+    assert.ok(![DEFAULT_PROJECTS_DIRECTORY, PROJECT_RECORDS_DIRECTORY].includes(name), `${name} stays apart from projects and records under dataDir`);
+  // The fixed local records are main: a crash in a cross-file commit followed by
+  // moving the project folder still finds the super-journal beside them.
+  assert.deepEqual(PROJECT_DATABASE_NAMES, {history: 'main', project: 'project', cache: 'cache'});
+  assert.deepEqual(Object.keys(PROJECT_DATABASE_NAMES), ['history', 'project', 'cache']);
   assert.equal(TEST_STORE_DIRECTORY, '.mioon-store');
   assert.deepEqual(TEST_STORE_LAYOUT, {projectFile: ['project.mioon'], localDir: ['.mioon-store', 'local'], cacheDir: ['.mioon-store', 'cache'], tempDir: ['.mioon-store', 'tmp']});
   assert.ok([TEST_STORE_LAYOUT, ...Object.values(TEST_STORE_LAYOUT), PROJECT_DATABASE_NAMES].every(value => Object.isFrozen(value)));
@@ -103,7 +110,9 @@ test('the parser refuses traversal, encoded separators and loose shapes', () => 
 
 test('storage-internal entries are recognised for directory snapshots', () => {
   // Super-journal names as observed from Node 24's SQLite during commits spanning attached files.
+  // With the local records as main it is created beside history.db, inside .mioon-store/ in the test layout.
   for (const entry of ['.mioon-store', '.mioon-store/local/history.db', '.mioon-store\\tmp\\frame.png', './.mioon-store/cache',
+    '.mioon-store/local/history.db-mj0DA3D190E', '.mioon-store/local/history.db-journal',
     'project.mioon-journal', '短片.mioon-journal', 'project.mioon-mj0DA3D190E', '短片.mioon-mjCAA6C6996'])
     assert.equal(isProjectStoreInternalEntry(entry), true, entry);
   for (const entry of ['project.mioon', 'AGENTS.md', '生成', '生成/clip.mp4', '导出/成片.mp4', 'sub/.mioon-store', 'clip-mj.mp4',
@@ -168,8 +177,10 @@ test('registry records keep project IDs, identities and paths strict', () => {
   assert.ok(projectRulesTrustSchema.safeParse({projectId, sha256: 'd'.repeat(64), trustedAt: stamp}).success);
   assert.ok(outsidePathConfirmationSchema.safeParse({projectId, directory: '/Volumes/素材盘/访谈/0912', confirmedAt: stamp}).success);
   assert.equal(outsidePathConfirmationSchema.safeParse({projectId, directory: '../素材', confirmedAt: stamp}).success, false);
-  assert.ok(localRecordsEntrySchema.safeParse({projectId, sizeBytes: 0}).success);
-  assert.equal(localRecordsEntrySchema.safeParse({projectId, sizeBytes: 0, projectFile}).success, false);
+  assert.ok(localRecordsEntrySchema.safeParse({projectId, sizeBytes: 0, hasSuperJournal: false}).success);
+  assert.ok(localRecordsEntrySchema.safeParse({projectId, sizeBytes: 4096, hasSuperJournal: true}).success);
+  for (const entry of [{projectId, sizeBytes: 0}, {projectId, sizeBytes: 0, hasSuperJournal: 'no'}, {projectId, sizeBytes: 0, hasSuperJournal: false, projectFile}])
+    assert.equal(localRecordsEntrySchema.safeParse(entry).success, false, JSON.stringify(entry));
 });
 
 test('version summaries, restore previews and pack results', () => {
