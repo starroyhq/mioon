@@ -196,6 +196,8 @@ const textSites = {
   // lock holder's stdout ready line, plus both stderr diagnostics, decode as UTF-8.
   'tests/project-file-crash.test.ts': 2,
   'tests/project-file-open.test.ts': 2,
+  // The holder of recoverProjectFile's tests: its stdout ready line and stderr.
+  'tests/project-file-recover.test.ts': 2,
 };
 // Byte-preserving passthrough forwarders: no text concatenation or decoding.
 const passthroughSites = {

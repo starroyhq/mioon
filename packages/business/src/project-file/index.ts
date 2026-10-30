@@ -4,8 +4,11 @@
 export {openStore} from './test-store.ts';
 export {createProjectStore, openProjectStore, registerProjectTransactionFence, registerProjectTransactionObserver} from './store.ts';
 export type {ProjectStore} from './store.ts';
-export {createProjectFile, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT} from './connection.ts';
-export type {CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConnection, ProjectCopyCheck, ProjectLocation} from './connection.ts';
+export {createProjectFile, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT, recoverProjectFile} from './connection.ts';
+export type {
+  CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConnection, ProjectCopyCheck, ProjectFileRecovery, ProjectLocation,
+} from './connection.ts';
+export {isSuperJournalInUse, superJournalsIn} from './journals.ts';
 export {isSqliteBusy, MAX_REPORTED_DIFFERENCES, projectFileError} from './errors.ts';
 export type {ProjectFileErrorDetails, ProjectFileErrorReason, ProjectFileKernelErrorCode} from './errors.ts';
 export {PROJECT_FILE_EXISTS} from '../../../contracts/src/project-file.ts';
