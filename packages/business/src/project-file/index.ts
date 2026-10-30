@@ -7,7 +7,7 @@ export type {ProjectStore} from './store.ts';
 export {createProjectFile, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT} from './connection.ts';
 export type {CreateProjectFileOptions, OpenProjectConnectionOptions, ProjectConnection, ProjectCopyCheck, ProjectLocation} from './connection.ts';
 export {isSqliteBusy, MAX_REPORTED_DIFFERENCES, PROJECT_FILE_EXISTS, projectFileError} from './errors.ts';
-export type {ProjectFileErrorCode, ProjectFileErrorDetails, ProjectFileErrorReason} from './errors.ts';
+export type {ProjectFileErrorDetails, ProjectFileErrorReason, ProjectFileKernelErrorCode} from './errors.ts';
 export {crossFileTriggerStatements, FOREIGN_KEY_MESSAGE, installCrossFileTriggers} from './cross-file/install.ts';
 export {foreignKeyCheck, schemaObjects} from './cross-file/inspect.ts';
 export type {ForeignKeyViolation, SchemaObject} from './cross-file/inspect.ts';

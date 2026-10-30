@@ -82,9 +82,8 @@ test('every format-72 object has exactly one destination and the planned counts'
   assert.deepEqual(fates('index'), {app: 2, cache: 6, dropped: 19, history: 106, project: 54});
   const explicit = (fate: string) => count(of('index'), object => object.fate === fate && object.original !== null);
   assert.deepEqual(KINDS.map(explicit), [19, 33, 3]);
-  // The plan counted 27 TEMP and 161 history triggers: its word match took the string literal
-  // OLD.kind='shots' in scene_task_state_transitions for a table. That trigger reads no other
-  // table, so it stays a persistent history trigger.
+  // scene_task_state_transitions names shots only in the string literal OLD.kind='shots' and
+  // reads no other table, so it stays a persistent history trigger.
   assert.deepEqual(fates('trigger'), {app: 2, cache: 1, dropped: 20, history: 162, project: 91, temp: 26});
   const triggers = of('trigger');
   const rules = (object: DerivedObject) => object.rules.join('+') || 'unchanged';

@@ -278,8 +278,8 @@ test('installed connection-level triggers are exactly the generated statements',
   const db = kernelConnection();
   try {
     const statements = crossFileTriggerStatements();
-    // 26 converted format-72 triggers + 4 per relation + the content-sequence copy. The plan's 248
-    // counted 27 converted triggers; scene_task_state_transitions reads no other database.
+    // 26 converted format-72 triggers + 4 per relation + the content-sequence copy.
+    // scene_task_state_transitions reads no other database, so it is not among them.
     assert.deepEqual([CONVERTED_TEMP_TRIGGERS.length, CROSS_FILE_RELATIONS.length, statements.length], [26, 55, 247]);
     const stored = db.prepare("SELECT type,name,tbl_name,sql FROM temp.sqlite_master ORDER BY rowid").all();
     assert.ok(stored.every(row => row.type === 'trigger'));

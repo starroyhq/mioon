@@ -5,7 +5,10 @@ import type {DatabaseKind} from './schema/databases.ts';
 /** Creating a project file where something already exists. The contract has no
  * code for it yet, so the kernel defines it here. */
 export const PROJECT_FILE_EXISTS = 'PROJECT_FILE_EXISTS';
-export type ProjectFileErrorCode = ProjectOpenErrorCode | typeof PROJECT_FILE_EXISTS;
+/** The codes projectFileError() raises: the contract's open codes and
+ * PROJECT_FILE_EXISTS. Not the contract's ProjectFileErrorCode, which lists
+ * the project-file codes of the API. */
+export type ProjectFileKernelErrorCode = ProjectOpenErrorCode | typeof PROJECT_FILE_EXISTS;
 
 /** Why an open or a create failed. `missing`, `locked` and `format-newer` go
  * with their own codes; every other reason comes with PROJECT_INVALID. */
@@ -29,7 +32,7 @@ export interface ProjectFileErrorDetails {
   readonly supportedFormatVersion?: number;
 }
 
-const ERRORS: Readonly<Record<ProjectFileErrorCode, {readonly status: number; readonly message: string}>> = {
+const ERRORS: Readonly<Record<ProjectFileKernelErrorCode, {readonly status: number; readonly message: string}>> = {
   PROJECT_MISSING: {status: 404, message: '找不到项目文件'},
   PROJECT_LOCKED: {status: 409, message: '项目已在另一个 Mioon 中打开'},
   PROJECT_FORMAT_NEWER: {status: 409, message: '项目文件来自更新版本的 Mioon，请先升级'},
@@ -38,7 +41,7 @@ const ERRORS: Readonly<Record<ProjectFileErrorCode, {readonly status: number; re
 };
 export const MAX_REPORTED_DIFFERENCES = 20;
 
-export function projectFileError(code: ProjectFileErrorCode, details: ProjectFileErrorDetails): AppError {
+export function projectFileError(code: ProjectFileKernelErrorCode, details: ProjectFileErrorDetails): AppError {
   const {status, message} = ERRORS[code];
   const reported = details.differences && details.differences.length > MAX_REPORTED_DIFFERENCES
     ? {...details, differences: details.differences.slice(0, MAX_REPORTED_DIFFERENCES)}
