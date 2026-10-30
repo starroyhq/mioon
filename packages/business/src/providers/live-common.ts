@@ -240,6 +240,43 @@ export async function managedImage({ root, asset, approvedHashes, maxBytes = 10 
   return { ...dimensions, bytes, mimeType: asset.mimeType as string, base64: bytes.toString('base64') };
 }
 
+export interface ManagedAudio {bytes: Buffer; mimeType: string; base64: string}
+/** WAV is a RIFF/WAVE file; MP3 starts with an ID3 tag or an MPEG frame sync. */
+function audioMatches(bytes: Buffer, mimeType: unknown): boolean {
+  if (mimeType === 'audio/wav') return bytes.length >= 12 && bytes.toString('latin1', 0, 4) === 'RIFF' && bytes.toString('latin1', 8, 12) === 'WAVE';
+  if (mimeType === 'audio/mpeg') return bytes.length >= 3 && (bytes.toString('latin1', 0, 3) === 'ID3' || bytes[0] === 0xff && (bytes[1]! & 0xe0) === 0xe0);
+  return false;
+}
+/** One managed WAV or MP3 reference clip, with managedImage's storage, approval
+ * and hash checks. The bytes must really be the declared format. */
+export async function managedAudio({ root, asset, approvedHashes, maxBytes, signal, validateCurrent }: ManagedImageOptions & { maxBytes: number }): Promise<ManagedAudio> {
+  let boundaryError: unknown;
+  const check=(): void =>{if(signal?.aborted)throw operationCancelled({beforeDispatch:true});try{validateCurrent?.();}catch(error){boundaryError=error;throw error;}};
+  check();
+  if (!root || !asset || typeof asset.path !== 'string' || !/^[0-9a-f]{64}$/i.test(typeof asset.sha256 === 'string' ? asset.sha256 : '')) throw providerError('INVALID_REFERENCE', 'A managed local reference audio clip is required.');
+  if (!approvedHashes.has((asset.sha256 as string).toLowerCase())) throw providerError('REFERENCE_NOT_APPROVED', 'This reference audio clip is not in the server-side provider asset approval list.');
+  let bytes: Buffer;
+  try {
+    const base = await realpath(root);check();
+    const file = await realpath(asset.path);check();
+    if (!inside(base, file)) throw providerError('UNSAFE_REFERENCE_PATH', 'Reference audio must remain inside managed storage.');
+    const info = await stat(file);check();
+    if (!info.isFile()) throw providerError('INVALID_REFERENCE', 'Reference audio must be a managed file.');
+    if (info.size > maxBytes) throw providerError('REFERENCE_TOO_LARGE', 'Reference audio exceeds this adapter’s managed input limit.');
+    bytes = await readFile(file);check();
+    if (bytes.length > maxBytes) throw providerError('REFERENCE_TOO_LARGE', 'Reference audio exceeds this adapter’s managed input limit.');
+  } catch (cause) {
+    if(cause===boundaryError)throw cause;
+    check();
+    const code = codeOf(cause);
+    if (code && ['UNSAFE_REFERENCE_PATH', 'REFERENCE_TOO_LARGE', 'INVALID_REFERENCE'].includes(code)) throw cause;
+    throw providerError('REFERENCE_UNAVAILABLE', 'The managed reference audio clip could not be read.');
+  }
+  if (!audioMatches(bytes, asset.mimeType)) throw providerError('INVALID_REFERENCE_TYPE', 'Reference bytes do not match a supported WAV or MP3 clip.');
+  if (createHash('sha256').update(bytes).digest('hex') !== (asset.sha256 as string).toLowerCase()) throw providerError('REFERENCE_CHANGED', 'Reference audio changed after its generation snapshot was created.');
+  return { bytes, mimeType: asset.mimeType as string, base64: bytes.toString('base64') };
+}
+
 export const approvedAssetHashes = (value: unknown): Set<string> => new Set((typeof value === 'string' ? value : '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^[0-9a-f]{64}$/.test(x)));
 export const approvedOutputHosts = (value: unknown, defaults: readonly string[] = []): Set<string> => new Set([...defaults, ...(typeof value === 'string' ? value : '').split(',').map(x => x.trim().toLowerCase()).filter(x => /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/.test(x))]);
 

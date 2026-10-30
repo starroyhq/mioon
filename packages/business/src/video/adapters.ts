@@ -8,9 +8,11 @@ export interface VideoAdapterSelection {
   audio: 'default'|'off'|'on'|'optional';
 }
 export interface VideoAdapterImage {mimeType: string; base64: string; role: string}
+/** A Seedance 2.5 reference audio clip (WAV or MP3), in the explicit order. */
+export interface VideoAdapterAudio {mimeType: string; base64: string}
 export interface VideoAdapterInput {
   prompt: string; aspectRatio: string; duration: number; parameters: Record<string, unknown>;
-  images: VideoAdapterImage[]; subjectReference: boolean;
+  images: VideoAdapterImage[]; audios?: VideoAdapterAudio[]; subjectReference: boolean;
 }
 export interface VideoSubmissionRequest {path: string; body?: Record<string, unknown>; raw?: {bytes: Uint8Array; contentType: string}; headers?: Record<string,string>}
 export interface ConfiguredVideoTask {

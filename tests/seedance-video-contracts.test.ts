@@ -143,3 +143,48 @@ test('Seedance 2.5 keeps the encoded reference images within 60,000,000 bytes of
  assert.throws(()=>validateVideoSnapshot(b,snapshot(b,{referenceAssets:largest,videoInput:explicit(largest)})),{code:'REFERENCE_REQUEST_TOO_LARGE'});
  assert.equal(validateVideoSnapshot(b,snapshot(b,{referenceAssets:largest.slice(0,4),videoInput:explicit(largest.slice(0,4))})),true,'Four 10 MiB images still fit');
 });
+
+const audio=(patch:Record<string,unknown>={})=>({id:randomUUID(),role:'reference_audio',relativePath:'media/voice.wav',sha256:'b'.repeat(64),mimeType:'audio/wav',sizeBytes:96_000,duration:10,...patch});
+// The explicit input and the frozen records the server builds from it.
+const withAudio=(b:VideoExecutionBinding,images:Array<{id:string}>,audios:Array<{id:string}>,patch:Record<string,unknown>={})=>snapshot(b,{referenceAssets:images,
+ videoInput:{...explicit(images),...(audios.length?{audios:audios.map(item=>({role:'reference_audio',assetId:item.id}))}:{})},...(audios.length?{referenceAudios:audios}:{}),...patch});
+
+test('Seedance 2.5 takes up to 10 ordered WAV or MP3 clips, alone or with reference images',()=>{
+ const b=binding(),capability=videoBindingCapabilities(b).modelCapabilities[0]!.seedanceCapabilities!;
+ assert.equal(capability.referenceAudios,10);assert.deepEqual(capability.audioMimeTypes,['audio/wav','audio/mpeg']);
+ assert.equal(capability.maxAudioBytes,15_000_000);assert.equal(capability.maxTotalAudioSeconds,30);
+ assert.equal(validateVideoSnapshot(b,withAudio(b,[],[audio()])),true,'Audio alone');
+ assert.equal(validateVideoSnapshot(b,withAudio(b,references(2),[audio(),audio({mimeType:'audio/mpeg',relativePath:'media/music.mp3'})])),true,'Audio after images');
+ assert.equal(validateVideoSnapshot(b,withAudio(b,[],Array.from({length:10},()=>audio({duration:3})))),true,'Ten clips, 30 seconds in total');
+ for(const [patch,label] of [[{duration:1.9},'too short'],[{duration:30.1},'too long'],[{mimeType:'audio/mp4'},'M4A'],[{sizeBytes:15_000_001},'over 15 MB'],[{sha256:'bad'},'no hash']] as const)
+  assert.throws(()=>validateVideoSnapshot(b,withAudio(b,[],[audio(patch)])),{code:'INVALID_REFERENCE_AUDIO'},label);
+ assert.throws(()=>validateVideoSnapshot(b,withAudio(b,[],[audio({duration:20}),audio({duration:10.5})])),{code:'INVALID_REFERENCE_AUDIO',message:'参考音频合计不能超过 30 秒。'});
+ const [first,second]=[audio(),audio()],swapped=withAudio(b,[],[first,second]);
+ assert.throws(()=>validateVideoSnapshot(b,{...swapped,referenceAudios:[second,first]}),{code:'INVALID_REFERENCE_MANIFEST'},'Frozen clips follow the explicit order');
+ assert.throws(()=>validateVideoSnapshot(b,{...swapped,referenceAudios:undefined}),{code:'INVALID_REFERENCE_MANIFEST'});
+ const saved=binding({inputModes:['text','image','frames','subject']});
+ assert.throws(()=>validateVideoSnapshot(saved,withAudio(saved,[],[audio()])),{code:'UNSUPPORTED_INPUT_ROLE'},'A saved entry needs the reference mode');
+ const custom=binding({modelId:'custom-seedance-model',inputModes:['text','image','frames'],durationResolutionMap:[{duration:[4,8],resolution:['720p']}]});
+ assert.throws(()=>validateVideoSnapshot(custom,{...withAudio(custom,[],[audio()]),model:'custom-seedance-model'}),{code:'UNSUPPORTED_INPUT_ROLE'});
+});
+
+test('reference audio shares the 60,000,000-byte encoded budget with the images',()=>{
+ const b=binding(),large=references(4).map(asset=>({...asset,sizeBytes:10*1024*1024}));
+ // Four 10 MiB PNGs encode to 55,924,152 bytes; a WAV data URI adds 22 bytes plus 4/3 of its size.
+ assert.equal(validateVideoSnapshot(b,withAudio(b,large,[audio({sizeBytes:3_000_000})])),true);
+ assert.throws(()=>validateVideoSnapshot(b,withAudio(b,large,[audio({sizeBytes:3_100_000})])),{code:'REFERENCE_REQUEST_TOO_LARGE'});
+});
+
+test('the request schema keeps reference audio to Seedance 2.5 reference input',()=>{
+ const b=binding(),request={shotId:randomUUID(),expectedRevision:1,requestId:'synthetic-request',providerId:'ark',connectionId:b.connectionId,configurationRevision:1,modelEntryId:b.model.id};
+ const clip=()=>({role:'reference_audio',assetId:randomUUID()}),input=(patch:Record<string,unknown>)=>({...request,videoInput:{version:1,mode:'reference_images',images:[],...patch}});
+ assert.equal(schemas['generation.submit'].safeParse(input({audios:[clip()]})).success,true,'Audio alone');
+ assert.equal(schemas['generation.submit'].safeParse(input({audios:Array.from({length:10},clip)})).success,true);
+ assert.equal(schemas['generation.submit'].safeParse(input({audios:Array.from({length:11},clip)})).success,false,'At most 10 clips');
+ assert.equal(schemas['generation.submit'].safeParse(input({audios:[]})).success,false,'An empty list is left out instead');
+ assert.equal(schemas['generation.submit'].safeParse(input({})).success,false,'A reference input needs an image or a clip');
+ const same=clip();assert.equal(schemas['generation.submit'].safeParse(input({audios:[same,same]})).success,false,'Clips are distinct');
+ assert.equal(schemas['generation.submit'].safeParse(input({audios:[{...clip(),role:'reference_image'}]})).success,false);
+ assert.equal(schemas['generation.submit'].safeParse({...request,videoInput:{version:1,mode:'first_frame',images:[{role:'first_frame',assetId:randomUUID()}],audios:[clip()]}}).success,false,'Never with frames');
+ assert.equal(schemas['generation.submit'].safeParse({...input({audios:[clip()]}),providerId:'wan'}).success,false,'Wan takes no reference audio');
+});

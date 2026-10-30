@@ -1,6 +1,6 @@
 // Generated with node scripts/generate-agent-task-schemas.ts.
 // Shared runtime schemas remain authoritative; host supplies project identity and replay keys.
-export const AGENT_TASK_TOOL_SCHEMA_HASH="3a0cbc02f1381b9bbf2677db67dd35da67a93852841cc87e2e9617f43f079130";
+export const AGENT_TASK_TOOL_SCHEMA_HASH="129e656e0bfcf89afb3b805f8c7b7ce42c0a14c76aa492175249fe9f72124bb0";
 export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
  "export.cancel": {
   "type": "object",
@@ -4518,6 +4518,29 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
       },
       "maxItems": 30
      },
+     "audios": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "role": {
+         "type": "string",
+         "const": "reference_audio"
+        },
+        "assetId": {
+         "type": "string",
+         "format": "uuid"
+        }
+       },
+       "required": [
+        "role",
+        "assetId"
+       ],
+       "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 10
+     },
      "prompt": {
       "type": "string",
       "maxLength": 20000
@@ -4529,7 +4552,7 @@ export const AGENT_TASK_TOOL_SCHEMAS:Readonly<Record<string,unknown>>={
      "images"
     ],
     "additionalProperties": false,
-    "description": "Versioned explicit Wan 3.0 or Seedance 2.5 input. Ordered managed image IDs replace saved shot references for this generation; omission preserves legacy selection. Wan 3.0 takes every mode, up to 10 reference images and an optional prompt; Seedance 2.5 takes only reference_images, up to 30, and always uses the saved shot prompt."
+    "description": "Versioned explicit Wan 3.0 or Seedance 2.5 input. Ordered managed image IDs replace saved shot references for this generation; omission preserves legacy selection. Wan 3.0 takes every mode, up to 10 reference images and an optional prompt; Seedance 2.5 takes only reference_images, up to 30 images and up to 10 reference audio clips (WAV or MP3, 2–30 seconds each, 30 seconds in total, audio alone allowed), and always uses the saved shot prompt."
    },
    "subjectVersionId": {
     "type": "string",

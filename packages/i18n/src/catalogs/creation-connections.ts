@@ -1725,10 +1725,16 @@ export const connectionMessages = {
     "ja": "参照画像のエンコード済み data URI 全体が、現在のアダプターのサイズ上限を超えています"
   },
   "connections.generation.issue.requestTooLarge": {
-    "zh-Hans": "参考图片编码后合计超过方舟请求上限，请减少图片或换用更小的图片",
-    "zh-Hant": "參考圖片編碼後合計超過方舟請求上限，請減少圖片或換用更小的圖片",
-    "en": "The encoded reference images together exceed Ark’s request limit. Remove images or use smaller ones",
-    "ja": "参照画像のエンコード後の合計が方舟のリクエスト上限を超えています。画像を減らすか、より小さい画像を使用してください"
+    "zh-Hans": "参考图片和音频编码后合计超过方舟请求上限，请减少素材或换用更小的文件",
+    "zh-Hant": "參考圖片和音訊編碼後合計超過方舟請求上限，請減少素材或換用更小的檔案",
+    "en": "The encoded reference images and audio together exceed Ark’s request limit. Remove some or use smaller files",
+    "ja": "参照画像と音声のエンコード後の合計が方舟のリクエスト上限を超えています。素材を減らすか、より小さいファイルを使用してください"
+  },
+  "connections.generation.issue.audioInvalid": {
+    "zh-Hans": "参考音频须为 WAV 或 MP3，每段 2–30 秒、不超过 15 MB，合计不超过 30 秒",
+    "zh-Hant": "參考音訊須為 WAV 或 MP3，每段 2–30 秒、不超過 15 MB，合計不超過 30 秒",
+    "en": "Reference audio must be WAV or MP3, 2–30 seconds and up to 15 MB per clip, 30 seconds in total",
+    "ja": "参照音声は WAV または MP3、1 本 2～30 秒・15 MB 以内、合計 30 秒以内にしてください"
   },
   "connections.generation.issue.dimensions": {
     "zh-Hans": "参考图片尺寸缺失或超出当前 Mioon 适配器的范围",

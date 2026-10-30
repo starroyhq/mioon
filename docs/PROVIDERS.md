@@ -75,6 +75,19 @@ same template, keep shot-only duration and ratio.
   encoded budget) are listed with the reason and never converted. Entering the
   mode does not fill anything by itself; the filled list stays editable, and the
   request still names explicit asset IDs. The server never reads bindings.
+- **Reference audio:** up to 10 ordered WAV or MP3 clips in
+  `videoInput.audios` (every clip `role: reference_audio`), 2–30 seconds and at
+  most 15 MB each and 30 seconds in total, with or without reference images, in
+  the reference mode of the exact row only. Clips are managed project assets;
+  their import already decodes them and records the duration. They are sent as
+  Ark `audio_url` items with `role: reference_audio` and Base64 data URIs
+  (`data:audio/wav` or `data:audio/mp3`) after the images, and count toward the
+  same 60,000,000-byte encoded budget. Refer to them in the shot prompt as
+  `@音频1`, `@音频2` (or `@audio1`). M4A and other formats stay listed with the
+  reason and are never converted. Reference audio does not turn sound on:
+  `generateAudio` still decides whether the result has audio. The job freezes
+  each clip's identity, hash, size and duration (`referenceAudios`), and a retry
+  sends the same clips or fails if one changed.
 - **Output check:** the downloaded ratio must be within 2% of the requested one
   (Ark's 480p 21:9 size is 992×432) and the duration within 0.25 seconds of a fixed
   request, or 4–30 seconds for automatic. A mismatch pauses the task for review

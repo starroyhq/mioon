@@ -190,6 +190,17 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
      services.validateGenerationDispatch(j);
      referenceAssets.push({...reference,path:file});
     }
+    // Seedance 2.5 reference audio gets the same ownership, hash and path checks.
+    const referenceAudios: Record<string, unknown>[]=[];
+    for(const rawAudio of arrayValue(property(j.snapshot,'referenceAudios'))) {
+     checkpoint(signal);
+     const audio=recordValue(rawAudio);if(!audio)throw Error('Reference snapshot no longer matches managed asset');
+     const asset=recordValue(get('assets',String(audio.id)));
+     if(!asset||asset.projectId!==j.projectId||asset.sha256!==audio.sha256)throw Error('Reference snapshot no longer matches managed asset');
+     const file=await safePath(root,String(asset.relativePath));checkpoint(signal);
+     services.validateGenerationDispatch(j);
+     referenceAudios.push({...audio,path:file});
+    }
     checkpoint(signal);
     const current=recordValue(get('jobs',j.id)) as JobRecord|null;
     if(!current||current.status!=='queued')return;
@@ -213,7 +224,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
     // rejects drift. The final beforeSubmit fence still runs directly at POST.
     context.beforeSubmit=()=>{assertClaim();if(j!.providerId!=='mock')recordAgentTaskJobDispatch(store.db,'job',claim.id);postPermitted=true;};
     (context as unknown as {validateReferenceState: ()=>void}).validateReferenceState=assertClaim;
-    const accepted: unknown=await awaitProvider(()=>provider!.submit({...j!.snapshot,referenceAssets},context as never),signal,{submit:true});
+    const accepted: unknown=await awaitProvider(()=>provider!.submit({...j!.snapshot,referenceAssets,...(referenceAudios.length?{referenceAudios}:{})},context as never),signal,{submit:true});
     acceptedProviderId=stringValue(property(recordValue(accepted),'providerJobId'))??null;
     // Receipt persistence is the sole intentional write permitted after abort.
     // awaitProvider only delivers receipts inside its bounded settlement window.

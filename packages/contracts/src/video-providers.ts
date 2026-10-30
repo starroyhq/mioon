@@ -5,7 +5,7 @@ import type {GenerationInputProfile} from './generation-input-profiles.ts';
 import {encodedImageDataUriBytes} from './generation-input-validation.ts';
 import {effectiveVideoParameters,getWan30Capability,isWan30Binding,wanVideoInputSchema,WAN30_CAPABILITIES,WAN30_REVIEWED_ON} from './wan-video.ts';
 export * from './wan-video.ts';
-import {getSeedance25Capability,isSeedance25Binding,SEEDANCE25_CAPABILITIES,SEEDANCE25_REVIEWED_ON} from './seedance-video.ts';
+import {getSeedance25Capability,isSeedance25Binding,seedanceAudioDataUriPrefix,seedanceEncodedBytes,SEEDANCE25_CAPABILITIES,SEEDANCE25_REVIEWED_ON} from './seedance-video.ts';
 export * from './seedance-video.ts';
 import {normalizeCustomImageBaseUrl} from './image-compatible.ts';
 
@@ -231,7 +231,9 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
  if(explicit?.success&&value.referenceAssetIds!==undefined&&(!Array.isArray(value.referenceAssetIds)||value.referenceAssetIds.length!==references.length||value.referenceAssetIds.some((id,index)=>id!==references[index]!.id)))fail('INVALID_REFERENCE_MANIFEST','参考图片 ID 必须与显式视频输入一致。');
  if(explicit?.success&&value.referenceBindings!==undefined&&(!Array.isArray(value.referenceBindings)||value.referenceBindings.length!==references.length||value.referenceBindings.some((bound,index)=>!object(bound)||bound.assetId!==references[index]!.id||bound.role!==roles[index]||bound.sha256!==references[index]!.sha256)))fail('INVALID_REFERENCE_MANIFEST','参考图片角色和哈希必须与显式视频输入一致。');
  if(roles.includes('reference_image')&&!explicit?.success)fail('INVALID_REFERENCE_MANIFEST','参考生视频必须提供显式视频输入。');
- if(!profile.inputs.combinations.some(combination=>JSON.stringify(combination)===JSON.stringify(roles)))fail('UNSUPPORTED_INPUT_ROLE','此协议未实现所选参考图片组合。');
+ // Seedance 2.5 may take reference audio alone, without any image.
+ const audioOnly=Boolean(seedance&&explicit?.success&&explicit.data.audios?.length&&!roles.length);
+ if(!audioOnly&&!profile.inputs.combinations.some(combination=>JSON.stringify(combination)===JSON.stringify(roles)))fail('UNSUPPORTED_INPUT_ROLE','此协议未实现所选参考图片组合。');
  if(new Set(references.map(asset=>asset.id)).size!==references.length)fail('INVALID_REFERENCE_MANIFEST','参考图片不能重复。');
  for(const [index,asset] of references.entries()){
   const role=roles[index] as string,rule=profile.inputs.roles[role],width=asset.width,height=asset.height;
@@ -242,8 +244,22 @@ export function validateVideoSnapshot(bindingValue:VideoExecutionBinding,snapsho
   if(wan30&&((width as number)/(height as number)>8||(height as number)/(width as number)>8))fail('REFERENCE_ASPECT_RATIO_MISMATCH','参考图片长宽比不能超过 8:1。');
   if(role==='subject_reference'&&((width as number)/(height as number)<.4||(width as number)/(height as number)>2.5))fail('REFERENCE_ASPECT_RATIO_MISMATCH','主体图片比例超出支持范围。');
  }
+ // Reference audio belongs to the exact Seedance 2.5 reference mode and follows
+ // the explicit order; each clip and the total stay inside Ark's limits.
+ const audioInput=explicit?.success?explicit.data.audios??[]:[],audioAssets=value.referenceAudios,withAudio=audioInput.length>0||audioAssets!==undefined;
+ if(withAudio&&(!seedance||!model.inputModes.includes('reference')))fail('UNSUPPORTED_INPUT_ROLE','此模型不支持参考音频。');
+ if(withAudio&&(!Array.isArray(audioAssets)||audioAssets.length!==audioInput.length||audioAssets.some((asset,index)=>!object(asset)||asset.id!==audioInput[index]!.assetId||asset.role!=='reference_audio')))fail('INVALID_REFERENCE_MANIFEST','参考音频必须与显式视频输入的顺序一致。');
+ const audios=(Array.isArray(audioAssets)?audioAssets:[]) as Record<string,unknown>[];
+ let audioSeconds=0;
+ for(const asset of audios){
+  const seconds=Number(asset.duration);
+  if(typeof asset.sha256!=='string'||!/^[a-f0-9]{64}$/i.test(asset.sha256)||!seedance25Protocol.audioMimeTypes.includes(asset.mimeType as string)||!Number.isSafeInteger(asset.sizeBytes)||(asset.sizeBytes as number)<=0||(asset.sizeBytes as number)>seedance25Protocol.maxAudioBytes||!Number.isFinite(seconds)||seconds<seedance25Protocol.minAudioSeconds||seconds>seedance25Protocol.maxAudioSeconds)fail('INVALID_REFERENCE_AUDIO','每段参考音频须为 2–30 秒、不超过 15 MB 的 WAV 或 MP3。');
+  audioSeconds+=seconds;
+ }
+ if(audioSeconds>seedance25Protocol.maxTotalAudioSeconds)fail('INVALID_REFERENCE_AUDIO','参考音频合计不能超过 30 秒。');
  // Ark caps the whole request body at 64 MB and Mioon sends Base64 data URIs.
- if(seedance&&references.reduce((total,asset)=>total+(encodedImageDataUriBytes(asset.mimeType,asset.sizeBytes)??Infinity),0)>seedance25Protocol.maxEncodedImageBytes)fail('REFERENCE_REQUEST_TOO_LARGE','参考图片编码后合计超过 60 MB（方舟请求体上限 64 MB），请减少图片或换用更小的图片。');
+ const encoded=references.reduce((total,asset)=>total+(encodedImageDataUriBytes(asset.mimeType,asset.sizeBytes)??Infinity),0)+audios.reduce((total,asset)=>total+seedanceEncodedBytes(seedanceAudioDataUriPrefix(String(asset.mimeType)),asset.sizeBytes as number),0);
+ if(seedance&&encoded>seedance25Protocol.maxEncodedImageBytes)fail('REFERENCE_REQUEST_TOO_LARGE','参考素材编码后合计超过 60 MB（方舟请求体上限 64 MB），请减少图片或音频，或换用更小的文件。');
  return true;
 }
 export function videoBindingCapabilities(binding:VideoExecutionBinding,{configured=true,enabled=true,asOf=new Date().toISOString().slice(0,10)}:{configured?:boolean;enabled?:boolean;asOf?:string}={}) {
