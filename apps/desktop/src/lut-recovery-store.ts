@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { closeSync, constants, fstatSync, fsyncSync, openSync, renameSync } from 'node:fs';
 import type { Stats } from 'node:fs';
 import path from 'node:path';
+import { getWindowsManagedFileIO, samePrivateStorageIdentity } from '@mioon/contracts/private-storage';
 import { canonicalClipLutRecovery, clipLutRecoveryKey, ClipLutRecoveryError, decodeClipLutRecovery,
   parseClipLutRecoveryMetadata, sameClipLutRecovery } from '../../../packages/contracts/src/clip-lut-recovery.ts';
 import type { ClipLutRecoveryIdentity, ClipLutRecoveryMetadata } from '../../../packages/contracts/src/clip-lut-recovery.ts';
@@ -11,7 +12,8 @@ const filename = 'lut-import-pending-v1.json';
 function fail(code: 'LUT_RECOVERY_UNAVAILABLE' | 'LUT_RECOVERY_CONFLICT' | 'LUT_RECOVERY_CORRUPT'): never {
   throw new ClipLutRecoveryError(code, 'The private LUT recovery record could not be safely accessed; existing evidence has been preserved.');
 };
-const sameFile = (a: Stats | null, b: Stats | null): boolean => a === null || b === null ? a === b : a.dev === b.dev && a.ino === b.ino;
+// The storage identity is dev:ino on POSIX and the full volume/file ID on Windows.
+const sameFile = (a: Stats | null, b: Stats | null): boolean => a === null || b === null ? a === b : samePrivateStorageIdentity(a, b);
 const canonical = (records: ClipLutRecoveryMetadata[]): string => '{"version":1,"records":[' +
   [...records].sort((a, b) => { const left = clipLutRecoveryKey(a), right = clipLutRecoveryKey(b); return left < right ? -1 : left > right ? 1 : 0; })
     .map(canonicalClipLutRecovery).join(',') + ']}';
@@ -125,14 +127,18 @@ export function createDesktopLutRecoveryStore({ userData, guard, beforePublish, 
       boundary();
       if (!sameFile(staged, validateManagedFile(file, options) as Stats | null)) fail('LUT_RECOVERY_CONFLICT');
       // Best-effort directory durability, matching the private-storage helper.
-      let fd: number | undefined;
-      try {
-        fd = openSync(userData, constants.O_RDONLY | constants.O_NOFOLLOW);
-        if (!sameFile(rootIdentity!, fstatSync(fd))) fail('LUT_RECOVERY_UNAVAILABLE');
-        boundary();
-        try { fsyncSync(fd); } catch { /* Some supported filesystems cannot fsync directories. */ }
+      // Windows flushes through the ACL backend's verified directory handle.
+      if (process.platform === 'win32') { getWindowsManagedFileIO().syncDirectory(userData, { private: true }); boundary(); }
+      else {
+        let fd: number | undefined;
+        try {
+          fd = openSync(userData, constants.O_RDONLY | constants.O_NOFOLLOW);
+          if (!sameFile(rootIdentity!, fstatSync(fd))) fail('LUT_RECOVERY_UNAVAILABLE');
+          boundary();
+          try { fsyncSync(fd); } catch { /* Some supported filesystems cannot fsync directories. */ }
+        }
+        finally { if (fd !== undefined) closeSync(fd); }
       }
-      finally { if (fd !== undefined) closeSync(fd); }
       if (snapshot().raw !== raw) fail('LUT_RECOVERY_CONFLICT');
     } finally {
       if (!committed && staged) {

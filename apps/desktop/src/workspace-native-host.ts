@@ -1,7 +1,8 @@
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {createReadStream,constants,openSync,fstatSync,closeSync,writeSync,fsyncSync,renameSync,unlinkSync} from 'node:fs';
-import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+import type {Stats} from 'node:fs';
+import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedFile,getWindowsManagedFileIO,samePrivateStorageIdentity} from '@mioon/contracts/private-storage';
 import {workspaceNativeRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {workspaceSettingsSchema,type WorkspaceSettings} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {exportOutputSchema,type ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
@@ -21,10 +22,22 @@ export async function readNativeBackendMetadata({base,token,resource,input,signa
 async function verifyExport(root:string,output:ExportOutput,check:()=>void) {
  validatePrivateDirectory(root);if(!path.isAbsolute(output.fileLocation)||path.resolve(output.fileLocation)!==output.fileLocation||path.dirname(output.fileLocation)!==path.join(root,'media'))throw unavailable();
  const identity=validateManagedFile(output.fileLocation,{root})!;if(identity.size!==output.sizeBytes)throw unavailable();
+ if(process.platform==='win32'){await verifyWindowsExport(root,output,identity,check);return;}
  const fd=openSync(output.fileLocation,constants.O_RDONLY|constants.O_NOFOLLOW);if(!same(identity,fstatSync(fd))){closeSync(fd);throw unavailable();}
  const stream=createReadStream(output.fileLocation,{fd,autoClose:true,highWaterMark:1024*1024}),hash=createHash('sha256');let bytes=0;
  try{for await(const chunk of stream){check();bytes+=chunk.length;if(bytes>output.sizeBytes)throw unavailable();hash.update(chunk);}}finally{stream.destroy();}
  check();const after=validateManagedFile(output.fileLocation,{root});if(!after||!same(identity,after)||bytes!==output.sizeBytes||hash.digest('hex')!==output.sha256)throw unavailable();
+}
+/** Windows has no CRT descriptor for a verified file: the ACL backend's handle
+ * reads it, yielding between chunks, and full file identities replace dev/ino. */
+async function verifyWindowsExport(root:string,output:ExportOutput,identity:Stats,check:()=>void) {
+ const handle=getWindowsManagedFileIO().openFile(output.fileLocation,{root,private:false,maxBytes:output.sizeBytes,mode:'read',expected:identity}),hash=createHash('sha256');let bytes=0;
+ try{
+  if(!samePrivateStorageIdentity(identity,handle.metadata()))throw unavailable();
+  for(;;){check();const chunk=handle.read(1024*1024);if(!chunk.length)break;bytes+=chunk.length;if(bytes>output.sizeBytes)throw unavailable();hash.update(chunk);await new Promise(resolve=>setImmediate(resolve));}
+ }finally{handle.close();}
+ check();const after=validateManagedFile(output.fileLocation,{root});
+ if(!after||!samePrivateStorageIdentity(identity,after)||after.size!==identity.size||bytes!==output.sizeBytes||hash.digest('hex')!==output.sha256)throw unavailable();
 }
 /** Renderer input contains only fixed actions and export identities. Paths come
  * from the OS picker or a verified current backend response, never IPC input. */

@@ -5,6 +5,7 @@ import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type {App, BrowserWindow, Cookie, Session, WebContents, WebPreferences} from 'electron';
+import { validateManagedFile } from '@mioon/contracts/private-storage';
 import type {DesktopIdentity, DesktopPaths} from './config.ts';
 import type {BackendReady, BackendRuntime, BackendSupervisor} from './supervisor.ts';
 
@@ -164,8 +165,11 @@ export async function runSmoke({ app, getWindow, getProjectWindow, getSession, g
   const connection = JSON.parse(await readFile(path.join(paths.userData, 'mcp-connection.json'), 'utf8'));
   assert.equal(connection.appId, report.identity.appId); assert.equal(connection.channel, report.identity.channel);
   assert.equal(connection.url, origin); assert.equal(connection.pid, report.runtime.pid);
-  assert.equal((await stat(connection.tokenFile)).mode & 0o777, 0o600);
-  assert.equal((await stat(path.join(paths.userData, 'mcp-connection.json'))).mode & 0o777, 0o600);
+  // Windows privacy is the owner and protected ACL the storage backend verifies.
+  for (const file of [connection.tokenFile, path.join(paths.userData, 'mcp-connection.json')]) {
+    if (process.platform === 'win32') assert.ok(validateManagedFile(file, { root: paths.userData, private: true }), 'Connection files stay private');
+    else assert.equal((await stat(file)).mode & 0o777, 0o600);
+  }
   record('private-mcp-discovery-files');
   assert.equal(await restart(), true, 'Clean native entry accepts restart');
   const restored = await rpc('project.get', { projectId });

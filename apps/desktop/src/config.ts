@@ -49,6 +49,13 @@ function privateText(contents: Buffer | string | null): string | null {
 }
 const desktopStorageError = (code: string, message: string): Error => Object.assign(new Error(message), { code });
 
+/** The Windows ACL helper ships outside ASAR: under resources/native when
+ * packaged, beside the staged bundles otherwise. Only main names it. */
+export const PRIVATE_STORAGE_HELPER = 'mioon_private_storage.node';
+export function privateStorageHelperFile(app: Pick<App, 'isPackaged' | 'getAppPath'>, resourcesPath: string = process.resourcesPath): string {
+  return path.join(app.isPackaged ? resourcesPath : app.getAppPath(), 'native', PRIVATE_STORAGE_HELPER);
+}
+
 export function dataPaths(appDataPath: string, override?: string, channel: DesktopChannel = 'development'): DesktopPaths {
   const identity: DesktopIdentity = desktopIdentity.identityForChannel(channel);
   if (override && !path.isAbsolute(override)) throw desktopStorageError('DESKTOP_USER_DATA_INVALID', 'MIOON_DESKTOP_USER_DATA must be an absolute path');
@@ -99,6 +106,11 @@ export function storageFailureDialog(error: unknown): StorageFailureDialog {
   } else if (failure.code === 'DESKTOP_USER_DATA_INVALID') {
     message = nt('native.pathMessage');
     detail = nt('native.pathDetail');
+  } else if (failure.code === 'STORAGE_PRIVACY_UNAVAILABLE' && failure.reason === 'WINDOWS_HELPER_UNAVAILABLE') {
+    // Windows storage is implemented; only the helper this app ships is absent.
+    message = nt('native.windowsHelperMessage');
+    detail = nt('native.windowsHelperDetail');
+    recovery = nt('native.windowsHelperRecovery');
   } else if (failure.code === 'STORAGE_PRIVACY_UNAVAILABLE') {
     message = nt('native.privacyMessage');
     detail = nt('native.privacyDetail');
@@ -109,7 +121,7 @@ export function storageFailureDialog(error: unknown): StorageFailureDialog {
     detail = nt('native.sizeDetail');
   }
   return { type: 'error', title: nt('native.storageTitle'), message,
-    detail: `${detail}\n\n${nt('native.storagePreserved')}${recovery}`,
+    detail: `${detail}\n\n${nt('native.storagePreserved')}\n${recovery}`,
     buttons: [nt('native.quit')], defaultId: 0, cancelId: 0 };
 }
 
@@ -235,7 +247,7 @@ export async function saveToolConfig(file: string, config: ToolPaths): Promise<v
   writePrivateFileAtomic(file, JSON.stringify({ ffmpeg: config.ffmpeg, ffprobe: config.ffprobe }, null, 2) + '\n', { maxBytes: CONFIG_MAX_BYTES });
 }
 
-export function utilityEnvironment(env: NodeJS.ProcessEnv, tools: ToolPaths): Record<string, string> {
+export function utilityEnvironment(env: NodeJS.ProcessEnv, tools: ToolPaths, storageHelper?: string): Record<string, string> {
   // Never inherit Node injection options or unrelated credentials into the utility.
   const result: Record<string, string> = {};
   for (const key of ['HOME', 'USERPROFILE', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'SYSTEMROOT', 'WINDIR', 'MIOON_COMFY_MODULE',
@@ -245,6 +257,8 @@ export function utilityEnvironment(env: NodeJS.ProcessEnv, tools: ToolPaths): Re
   }
   result.MIOON_FFMPEG_PATH = tools.ffmpeg;
   result.MIOON_FFPROBE_PATH = tools.ffprobe;
+  // Windows only: the backend registers the same helper main verified.
+  if (storageHelper) result.MIOON_DESKTOP_PRIVATE_STORAGE_HELPER = storageHelper;
   return result;
 }
 

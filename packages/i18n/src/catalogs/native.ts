@@ -666,6 +666,24 @@ export const nativeMessages = {
     "en": "Use a supported local POSIX filesystem. Changing the directory path or enabling the system key store cannot bypass this check",
     "ja": "対応しているローカルの POSIX ファイルシステムを使用してください。ディレクトリの変更やシステムのキーストアの有効化では、このチェックを回避できません"
   },
+  "native.windowsHelperMessage": {
+    "zh-Hans": "缺少 Windows 存储保护组件",
+    "zh-Hant": "缺少 Windows 儲存保護元件",
+    "en": "The Windows storage protection component is missing",
+    "ja": "Windows のストレージ保護コンポーネントが見つかりません"
+  },
+  "native.windowsHelperDetail": {
+    "zh-Hans": "Mioon 在 Windows 上用随应用提供的组件检查数据目录的 ACL，只允许当前用户访问。这个组件缺失，或与当前版本不匹配",
+    "zh-Hant": "Mioon 在 Windows 上使用隨應用程式提供的元件檢查資料目錄的 ACL，只允許目前使用者存取。此元件遺失，或與目前版本不符",
+    "en": "On Windows, Mioon checks the data directory's ACL with a component shipped with the app, so that only the current user has access. The component is missing or does not match this version",
+    "ja": "Windows では、アプリ同梱のコンポーネントでデータディレクトリの ACL を確認し、現在のユーザーだけがアクセスできるようにしています。このコンポーネントが見つからないか、このバージョンと一致しません"
+  },
+  "native.windowsHelperRecovery": {
+    "zh-Hans": "请重新安装 Mioon。更改目录路径或启用系统密钥库不能绕过此检查",
+    "zh-Hant": "請重新安裝 Mioon。變更目錄路徑或啟用系統金鑰庫不能略過此檢查",
+    "en": "Reinstall Mioon. Changing the directory path or enabling the system key store cannot bypass this check",
+    "ja": "Mioon を再インストールしてください。ディレクトリの変更やシステムのキーストアの有効化では、このチェックを回避できません"
+  },
   "native.linkDetail": {
     "zh-Hans": "所选目录或应用文件经过符号链接。请使用真实的绝对路径，不能使用链接或路径别名",
     "zh-Hant": "所選目錄或應用程式檔案經過符號連結。請使用真實的絕對路徑，不能使用連結或路徑別名",

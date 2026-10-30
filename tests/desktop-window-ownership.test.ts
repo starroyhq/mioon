@@ -211,6 +211,7 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
   const context = vm.createContext({ app, applicationMenuTemplate, createMenuCommandHost, menuCommandGestureScript, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...nativeTray, createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
     prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
+    initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
     WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, createProjectFileOpener, uploadProjectFile, projectFileArguments,
     nativeTheme: Object.assign(new EventEmitter(), {shouldUseDarkColors:true}),

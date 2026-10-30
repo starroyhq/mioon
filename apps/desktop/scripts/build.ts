@@ -1,5 +1,5 @@
 import { build } from 'esbuild';
-import { rm, mkdir, cp, readFile, writeFile, readdir, realpath } from 'node:fs/promises';
+import { rm, mkdir, cp, readFile, writeFile, readdir, realpath, access } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,6 +45,14 @@ await verifySubtitleResources(subtitleSource);
 await mkdir(path.join(output,'subtitles'));
 for(const file of SUBTITLE_RESOURCE_FILES)await cp(path.join(subtitleSource,file),path.join(output,'subtitles',file));
 await verifySubtitleResources(path.join(output,'subtitles'));
+// Windows desktop storage opens only through the ACL helper staged beside the
+// bundles (outside ASAR when packaged); it is built separately, never here.
+if(process.platform==='win32'){
+  const helper=path.join(root,'packages/node-host/build/Release/mioon_private_storage.node');
+  await access(helper).catch(()=>{throw new Error('Build the Windows private storage helper first: pnpm --filter @mioon/node-host build:native');});
+  await mkdir(path.join(output,'native'));
+  await cp(helper,path.join(output,'native','mioon_private_storage.node'));
+}
 await writeFile(path.join(output, 'package.json'), JSON.stringify({ name: 'mioon-desktop', version: appVersion,
   private: true, license: pkg.license, desktopName: `${identity.appId}.desktop`, mioonDesktop: identity, description: pkg.description, author: 'Mioon', main: 'main.cjs', dependencies: {} }, null, 2));
 await mkdir(path.join(output, 'licenses'), { recursive: true });
