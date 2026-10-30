@@ -56,8 +56,8 @@
 **2026-10-30 状态（不改变上文 10-10 快照的结论）：**
 
 - ACL 后端已实现：`packages/node-host` 的 Node-API 组件，10-21 在 Windows 11 ARM64 上通过原生存储、备份、凭据、无界面 CLI 与第二用户拒绝访问测试，接入 CLI、MCP 和本地服务（[验收记录](verification/ai-workflows-acceptance/CLI-SDK-ACCEPTANCE.md)）。
-- 桌面端已接入同一组件，经用户单独授权（[验证记录](verification/windows-desktop-storage/DESKTOP-ACL.md)）。在 Windows 11 ARM64 + Electron 44.7.0 上实测：userData 与身份文件只允许当前用户与 SYSTEM；不安全的祖先目录、多出授权的已有目录、缺少组件都拒绝启动且不修复；第二个标准用户无法列出 userData 或读取其中文件。
-- 仍待完成：桌面后端在 Windows 上的启动及工作区、媒体、导出流程（需要 FFmpeg/ffprobe）；legacy 手工草稿保护流程；Windows 安装包、x64、签名与 per-user 安装（P1、P4–P6）。
+- 桌面端已接入同一组件，经用户单独授权（[验证记录](verification/windows-desktop-storage/DESKTOP-ACL.md)）。在 Windows 11 ARM64 + Electron 44.7.0 上实测：userData 与身份文件只允许当前用户与 SYSTEM；不安全的祖先目录、多出授权的已有目录、缺少组件都拒绝启动且不修复；第二个标准用户无法列出 userData 或读取其中文件。后端在 utilityProcess 中启动，媒体导入与 FFmpeg 导出走通；诊断、LUT 恢复记录和导出校验的 Windows 分支有原生测试。
+- 仍待完成：开发冒烟脚本的 Windows 移植；legacy 手工草稿保护流程；Windows 安装包、x64、签名与 per-user 安装（P1、P4–P6）。
 
 ### R3：现有包检查和测试通道不能认证 Mac/Windows 产物
 

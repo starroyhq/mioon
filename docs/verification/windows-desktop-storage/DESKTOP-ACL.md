@@ -32,9 +32,19 @@
 
 `windows-backup-integration-native.test.ts` 原先写死 schema 60/61，只在 Windows 上运行，所以 schema 升级后一直未被发现；现改用当前 schema 常量。
 
+## 合并后补充
+
+同日在已包含本改动的 main `0e43f47e` 上补测，同一台 VM。FFmpeg/ffprobe 用 BtbN 预编译的 n7.1.5 winarm64 GPL 版（与 CI 同为 7.1 系列），只在测试 VM 中使用，不随应用分发。
+
+| 项 | 方法 | 结果 |
+| --- | --- | --- |
+| 桌面后端流程 | 用 `MIOON_FFMPEG_PATH` / `MIOON_FFPROBE_PATH` 启动开发构建，经已认证的本地 RPC 新建项目、导入真实 H.264/AAC 片段、加入时间线并导出 | 后端在 utilityProcess 中启动，主窗口显示项目列表；导出成功，已认证请求取回 366,850 字节 `video/mp4`，未带令牌的请求返回 401；`workspace/media` 中的文件只继承当前用户与 SYSTEM；`diagnostics/backend-exit.jsonl` 关闭继承，记下 start 与 ready 两条 |
+| 桌面模块原生测试 | `tests/windows-desktop-storage-native.test.ts`：经无界面入口加载同一组件，直接调用桌面模块 | 3 项通过。诊断：轮换、超大文件丢弃、超长行拒绝，外来授权拒绝且不修复；LUT 恢复记录：重命名覆盖后身份不变，暂存与发布之间被改写判为冲突并清理暂存文件，外来授权拒绝；导出校验：打开与显示前分块计算哈希，摘要或大小不符、硬链接都拒绝，中途撤销后句柄已释放 |
+| 测试有效性 | 临时去掉导出校验中的 `handle.close()` | 该项以 `EPERM` 失败（组件打开文件时不允许删除共享），恢复后通过 |
+
 ## 未覆盖
 
-- 桌面后端尚未在 Windows 上启动：VM 中没有 FFmpeg/ffprobe，应用停在工具配置。工作区数据库、媒体、导出、诊断写入、LUT 恢复和导出校验的 Windows 分支只有 macOS 单元测试与代码审查。后端在 utilityProcess 中加载组件已由上面的探针在同一 Electron 上验证。
+- 界面里的“打开导出文件”“在资源管理器中显示”和 LUT 导入恢复没有在 Windows 上实际点击；对应模块由上面的原生测试直接调用。实际运行中诊断文件没有达到轮换上限。
 - 开发冒烟脚本 `apps/desktop/scripts/smoke.ts` 依赖仅支持 POSIX 的 `migrate-data` / `migration-restore-guard`，尚未移植到 Windows。
 - legacy 手工草稿与 `project.delete` 的草稿保护流程在 Windows 上按设计拒绝，未在桌面端核对其表现。
 - Windows 安装包（`resources/native` 的放置）、x64、签名与 per-user 安装待另行决定。
