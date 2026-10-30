@@ -118,3 +118,85 @@ export function subjectVideoSourceDescriptor(version: SubjectVersionRecord|null|
   if (provenance.kind === 'export') return message('subjects.source.export');
   return message('subjects.source.recorded');
 }
+
+// Seedance 2.5 reference images filled from a shot's subject bindings (4c),
+// only when the user asks. This drafts the explicit, ordered list the user
+// sees and can edit before paying; the request still names exact asset IDs and
+// the server never reads bindings to choose generation inputs. No image is
+// converted, cropped or replaced to pass the model's rules: an unusable one is
+// listed with the reason.
+export const SUBJECT_REFERENCE_KIND_ORDER = ['character', 'product', 'location', 'look'] as const;
+export type SubjectReferenceIssue = 'version' | 'asset' | 'changed' | 'format' | 'size' | 'dimensions' | 'ratio' | 'count' | 'budget';
+export interface SubjectReferenceRules {
+  readonly mimeTypes: readonly string[]; readonly maxBytes: number; readonly minDimension: number; readonly maxDimension: number;
+  readonly minAspectRatio: number; readonly maxAspectRatio: number; readonly maxImages: number; readonly maxEncodedBytes: number;
+}
+export interface SubjectReferenceCandidate {
+  readonly bindingId: string; readonly subjectId: string; readonly name: string | null; readonly kind: string | null; readonly role: string;
+  readonly versionId: string; readonly versionNumber: number | null; readonly assetId: string | null; readonly needsReview: boolean;
+  readonly issue: SubjectReferenceIssue | null;
+}
+export interface SubjectReferencePlan {
+  readonly phase: 'loading' | 'ready';
+  readonly candidates: readonly SubjectReferenceCandidate[];
+  readonly images: readonly { readonly role: 'reference_image'; readonly assetId: string }[];
+}
+interface SubjectBindingLike {readonly id: string; readonly subjectId: string; readonly role: string; readonly subjectVersionId: string | null; readonly needsReview?: boolean; readonly createdAt?: string}
+type VersionLike = SubjectVersionRecord & {readonly number?: unknown};
+export interface SubjectReferenceStateLike {
+  readonly bindings: Readonly<Record<string, {readonly phase: string; readonly items: readonly SubjectBindingLike[]; readonly nextCursor: string | null} | undefined>>;
+  readonly subjects: Readonly<Record<string, (SubjectRecord & {readonly headVersion?: VersionLike}) | undefined>>;
+  readonly versions: Readonly<Record<string, {readonly known?: Readonly<Record<string, VersionLike>>} | undefined>>;
+}
+/** The exact model's reference-image rules, read from its server-built input profile. */
+export function seedanceReferenceRules(provider: {readonly inputProfiles?: unknown} | null | undefined, model: unknown, capabilities: Record<string, unknown> | null | undefined): SubjectReferenceRules | null {
+  const profile = (Array.isArray(provider?.inputProfiles) ? provider.inputProfiles as unknown[] : []).find(item => property(item, 'model') === model);
+  const role = property(property(property(profile, 'inputs'), 'roles'), 'reference_image');
+  const dimensions = property(role, 'dimensions'), number = (value: unknown, fallback: number): number => typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  if (!capabilities || property(role, 'implemented') !== true || !Array.isArray(property(role, 'mimeTypes'))) return null;
+  return {mimeTypes: (property(role, 'mimeTypes') as unknown[]).filter((item): item is string => typeof item === 'string'), maxBytes: number(property(role, 'maxBytes'), 0),
+    minDimension: number(property(dimensions, 'min'), 1), maxDimension: number(property(dimensions, 'max'), Infinity),
+    minAspectRatio: number(property(dimensions, 'minAspectRatio'), 0), maxAspectRatio: number(property(dimensions, 'maxAspectRatio'), Infinity),
+    maxImages: number(property(role, 'max'), 0), maxEncodedBytes: number(capabilities.maxEncodedImageBytes, Infinity)};
+}
+/** Active bindings in a fixed order: subjects before styles, then character,
+ * product, location, look, then the order they were bound. Each uses the
+ * version its binding pinned, even when a newer one awaits review. */
+export function subjectReferencePlan(state: SubjectReferenceStateLike | null | undefined, shotId: string | null | undefined, assets: readonly SubjectAssetLike[], projectId: unknown, rules: SubjectReferenceRules): SubjectReferencePlan {
+  const entry = shotId ? state?.bindings[shotId] : undefined;
+  if (!state || !entry || entry.phase !== 'ready' || entry.nextCursor) return {phase: 'loading', candidates: [], images: []};
+  const kindRank = (subjectId: string): number => { const index = (SUBJECT_REFERENCE_KIND_ORDER as readonly string[]).indexOf(state.subjects[subjectId]?.kind ?? ''); return index < 0 ? SUBJECT_REFERENCE_KIND_ORDER.length : index; };
+  const active = entry.items.filter(row => row.subjectVersionId !== null).sort((a, b) => Number(a.role === 'style') - Number(b.role === 'style') || kindRank(a.subjectId) - kindRank(b.subjectId) || String(a.createdAt ?? '').localeCompare(String(b.createdAt ?? '')) || a.id.localeCompare(b.id));
+  const images: {role: 'reference_image'; assetId: string}[] = [], included = new Set<string>();
+  let encoded = 0;
+  const candidates = active.map((binding): SubjectReferenceCandidate => {
+    const subject = state.subjects[binding.subjectId], versionId = binding.subjectVersionId as string;
+    const version = subject?.headVersion?.id === versionId ? subject.headVersion : state.versions[binding.subjectId]?.known?.[versionId];
+    const issue = ((): SubjectReferenceIssue | null => {
+      if (!version || version.subjectId !== binding.subjectId) return 'version';
+      const asset = assets.find(item => property(item, 'id') === version.assetId && property(item, 'projectId') === projectId && version.projectId === projectId);
+      if (!asset) return 'asset';
+      if (contentKeys.some(key => property(asset, key) !== property(version, key))) return 'changed';
+      const mimeType = String(property(asset, 'mimeType')), size = Number(property(asset, 'sizeBytes')), width = Number(property(asset, 'width')), height = Number(property(asset, 'height'));
+      if (!rules.mimeTypes.includes(mimeType)) return 'format';
+      if (!Number.isSafeInteger(size) || size <= 0 || size > rules.maxBytes) return 'size';
+      if (!(width >= rules.minDimension && height >= rules.minDimension && width <= rules.maxDimension && height <= rules.maxDimension)) return 'dimensions';
+      if (width / height < rules.minAspectRatio || width / height > rules.maxAspectRatio) return 'ratio';
+      if (included.has(version.assetId)) return null;
+      if (images.length >= rules.maxImages) return 'count';
+      // Mioon sends each image as a Base64 data URI inside one request body.
+      const bytes = `data:${mimeType};base64,`.length + 4 * Math.ceil(size / 3);
+      if (encoded + bytes > rules.maxEncodedBytes) return 'budget';
+      encoded += bytes; included.add(version.assetId); images.push({role: 'reference_image', assetId: version.assetId});
+      return null;
+    })();
+    return {bindingId: binding.id, subjectId: binding.subjectId, name: subject?.name ?? null, kind: subject?.kind ?? null, role: binding.role,
+      versionId, versionNumber: typeof version?.number === 'number' ? version.number : null, assetId: version?.assetId ?? null, needsReview: Boolean(binding.needsReview), issue};
+  });
+  return {phase: 'ready', candidates, images};
+}
+/** "Name V2" for an image that is a bound subject version of this shot, else null. */
+export function subjectReferenceLabel(plan: SubjectReferencePlan | null | undefined, assetId: string): string | null {
+  const candidate = plan?.candidates.find(item => item.assetId === assetId && item.issue !== 'version' && item.issue !== 'asset' && item.issue !== 'changed' && item.name);
+  return candidate ? `${candidate.name}${candidate.versionNumber === null ? '' : ` V${candidate.versionNumber}`}` : null;
+}

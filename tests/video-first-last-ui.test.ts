@@ -621,3 +621,50 @@ test('Seedance 2.5 reference advisories follow the 30-image limit and the encode
   const savedModes = seedanceProvider({ inputModes: ['text', 'image', 'frames', 'subject'] });
   assert.notEqual(settings.generationInputIssue({ ...shot(), videoInput: group(2) }, savedModes, String(settings.providerModels(savedModes)[0]!.id), many, 'reference'), '');
 });
+function subjectBundle(phase = 'ready') {
+  const version = (subjectId: string, assetId: string, number: number) => { const image = [...assets, webpAsset].find(item => item.id === assetId)!; return { id: id(700 + number * 10 + Number(assetId.slice(-1))), subjectId, projectId, number, assetId, sha256: image.sha256, mimeType: image.mimeType, width: image.width, height: image.height }; };
+  const hero = version(id(40), tailId, 2), cup = version(id(20), otherId, 3), street = version(id(30), webpAsset.id, 1), look = version(id(10), firstId, 1);
+  const subject = (subjectId: string, name: string, kind: string, head: typeof hero) => ({ id: subjectId, projectId, name, kind, revision: head.number, headVersionId: head.id, headVersion: head });
+  const binding = (n: number, subjectId: string, role: string, versionId: string, needsReview = false) => ({ id: id(600 + n), projectId, shotId, subjectId, role, revision: 1, subjectVersionId: versionId, reviewedHeadVersionId: versionId, headVersionId: versionId, subjectRevision: 1, needsReview, createdAt: `2026-10-0${n}T00:00:00Z`, updatedAt: `2026-10-0${n}T00:00:00Z` });
+  const state = { scope: 'subjects:1', projectId, subjects: { [id(40)]: subject(id(40), '林夏', 'character', hero), [id(20)]: subject(id(20), '保温杯', 'product', cup), [id(30)]: subject(id(30), '雨夜街道', 'location', street), [id(10)]: subject(id(10), '胶片风格', 'look', look) }, versions: {},
+    bindings: { [shotId]: { phase, nextCursor: null, items: [binding(1, id(10), 'style', look.id), binding(2, id(20), 'subject', cup.id, true), binding(3, id(30), 'subject', street.id), binding(4, id(40), 'subject', hero.id)] } } };
+  return { state, controller: { getState: () => state, readBindings() {}, readVersions() {} } };
+}
+const webpAsset = { ...asset(id(6), '雨夜街道.webp'), mimeType: 'image/webp', sha256: 'd'.repeat(64) };
+test('Seedance 2.5 reference mode fills from the bound subjects only on request, in a fixed order, and names each image', async () => {
+  const p = seedanceProvider(), h = harness({ shot: shot({ duration: 4, aspectRatio: '9:16' }), assets: [...assets, webpAsset], providers: [p], subjects: subjectBundle(), generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
+  h.render();
+  h.edit('input-mode-select', 'reference'); h.render();
+  // Planning bindings are never applied on their own.
+  assert.deepEqual(h.props().generationOptions.videoInput!.images, []);
+  assert.equal(text(h.find(`seedance-subject-${id(604)}`)), '林夏 V2：未加入');
+  assert.match(text(h.find('seedance-subject-map')), /预填顺序：先角色、产品、场景，再风格/);
+  h.click('seedance-subject-prefill'); h.render();
+  const group = [tailId, otherId, firstId].map(assetId => ({ role: 'reference_image', assetId }));
+  assert.deepEqual(h.props().generationOptions.videoInput!.images, group, 'Character, product, then look; the webp location is not sent');
+  assert.equal(text(h.find(`seedance-subject-${id(604)}`)), '图片1 = 林夏 V2');
+  assert.equal(text(h.find(`seedance-subject-${id(602)}`)), '图片2 = 保温杯 V3（有新版本未复核）');
+  assert.equal(text(h.find(`seedance-subject-${id(603)}`)), '雨夜街道 V1：方舟只收 PNG 或 JPEG，这张图不会被转换');
+  assert.equal(text(h.find(`seedance-subject-${id(601)}`)), '图片3 = 胶片风格 V1');
+  assert.match(text(h.find('wan-video-images')), /图片1：林夏 V2.*图片2：保温杯 V3.*图片3：胶片风格 V1/);
+  assert.deepEqual((h.props().shot.referenceAssetIds as unknown), [firstId], 'The saved first frame is not touched'); assert.equal(h.saves.length, 0);
+  // Edits stay the user's; the button fills the list again from the bindings.
+  h.click('wan-image-remove-0'); h.render();
+  assert.equal(text(h.find(`seedance-subject-${id(604)}`)), '林夏 V2：未加入');
+  assert.equal(text(h.find(`seedance-subject-${id(602)}`)), '图片1 = 保温杯 V3（有新版本未复核）');
+  h.click('seedance-subject-prefill'); h.render();
+  assert.deepEqual(h.props().generationOptions.videoInput!.images, group);
+  await h.click('generate-shot');
+  assert.equal(h.generated.length, 1); assert.deepEqual(h.generated[0][1].videoInput, { version: 1, mode: 'reference_images', images: group });
+});
+test('Seedance 2.5 subject prefill waits for the binding list and needs a subject library', () => {
+  const p = seedanceProvider(), h = harness({ shot: shot(), assets: [...assets, webpAsset], providers: [p], subjects: subjectBundle('loading'), generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
+  h.render(); h.edit('input-mode-select', 'reference'); h.render();
+  assert.deepEqual(h.props().generationOptions.videoInput!.images, []);
+  assert.match(text(h.find('seedance-subject-map')), /正在读取镜头绑定的主体/);
+  assert.equal(h.find('seedance-subject-prefill')!.props.disabled, true);
+  const none = harness({ shot: shot(), providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
+  none.render(); none.edit('input-mode-select', 'reference'); none.render();
+  assert.equal(none.find('seedance-subject-map'), undefined, 'Without a subject library the reference list starts empty');
+  assert.deepEqual(none.props().generationOptions.videoInput!.images, []);
+});

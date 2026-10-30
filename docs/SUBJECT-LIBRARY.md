@@ -29,8 +29,12 @@ Existing `reference.attach` / `reference.detach` still govern the actual
 The separate saved last-frame workflow is described in
 [VIDEO-FRAME-PAIRS.md](VIDEO-FRAME-PAIRS.md). The explicit per-submit
 [subject-video candidate](SUBJECT-VIDEO-INPUTS.md) selects one immutable version;
-it does not make these planning bindings automatic provider inputs. Motion and
-style-generation roles remain future work.
+it does not make these planning bindings automatic provider inputs. In Seedance
+2.5 reference mode the Inspector can, when the user presses its fill button,
+copy the shot's bound versions into that generation's explicit reference list
+(see [PROVIDERS.md](PROVIDERS.md#seedance-25-connections-reviewed-2026-10-30));
+the list stays editable and the request names asset IDs, so bindings still never
+become inputs on their own. Motion and style-generation roles remain future work.
 In the workbench, the library's subject tab lists subjects (kind filter and
 search over the loaded page) and creates them. Choosing one shows it in the
 properties pane until something else is selected; leaving an unsaved shot, clip
