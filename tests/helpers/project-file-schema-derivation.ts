@@ -2,6 +2,7 @@
 // db.ts, and writes or checks the generated files.
 //   node tests/helpers/project-file-schema-derivation.ts --write   regenerate the files
 //   node tests/helpers/project-file-schema-derivation.ts --check   exit 1 when a file differs
+//   node tests/helpers/project-file-schema-derivation.ts --report  print the PR's mapping table and the application-database SQL
 import {mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -14,7 +15,7 @@ import {buildDatabase, schemaStatements, SCHEMA_VERSION_TABLE_SQL, CACHE_SCHEMA_
 import type {DatabaseKind} from '../../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../../packages/business/src/project-file/schema/manifest-check.ts';
 import type {ManifestEntry} from '../../packages/business/src/project-file/schema/manifest-check.ts';
-import {CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, databaseOf} from '../../packages/business/src/project-file/schema/tables.ts';
+import {APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, databaseOf} from '../../packages/business/src/project-file/schema/tables.ts';
 import type {TablePlacement} from '../../packages/business/src/project-file/schema/tables.ts';
 
 export const REPOSITORY = fileURLToPath(new URL('../../', import.meta.url));
@@ -642,10 +643,168 @@ export function staleDerivedFiles(files: ReadonlyMap<string, string>): string[] 
   return [...files].filter(([file, text]) => read(file) !== text).map(([file]) => file);
 }
 
+// ---------------------------------------------------------------------------
+// Report: the PR's cross-file mapping table and the application-database SQL
+
+export interface DerivationReport {
+  /** Markdown for the PR section on cross-file constraints. */
+  readonly mapping: string;
+  /** Markdown with the application-database DDL handed to B1. */
+  readonly appDatabase: string;
+}
+
+const PLACE_NAMES: Readonly<Record<TablePlacement, string>> = {project: '项目文件', history: '本机记录', cache: '缓存库', app: '应用库', removed: '要删除的表'};
+const code = (text: string): string => `\`${text}\``;
+const codes = (texts: readonly string[]): string => texts.map(code).join('、');
+const keyOf = (table: string, columns: readonly string[]): string => `${table}(${columns.join(',')})`;
+// Same numbering as relationConstraintName() in cross-file/install.ts.
+const fkName = (index: number): string => `project_file_fk_${String(index).padStart(2, '0')}`;
+
+/** Markdown for the PR: every cross-file foreign key and trigger with what it was
+ * in format 72 and what implements it now, and the application-database SQL. */
+export function renderReport(derivation: Derivation = deriveFromFormat72()): DerivationReport {
+  const {format72, objects, relations, droppedContentKeys, convertedTriggers} = derivation;
+  const known = new Set(format72.objects.filter(object => object.type === 'table').map(object => object.name).filter(name => name !== 'schema_version' && name !== 'sqlite_sequence'));
+  const triggers = objects.filter(object => object.type === 'trigger');
+  const deferred = relations.filter(relation => relation.originallyDeferred).map(relation => String(relation.index)).join('、');
+  const columnCount = (list: readonly {readonly child: {readonly columns: readonly string[]}}[]): number => list.reduce((sum, item) => sum + item.child.columns.length, 0);
+  const inSchema = (schema: string) => relations.filter(relation => relation.child.schema === schema);
+  const relationRows = relations.map(relation => {
+    const nullable = relation.child.columns.filter((_, i) => relation.child.nullable[i]);
+    const before = `NO ACTION${relation.originallyDeferred ? '，DEFERRABLE INITIALLY DEFERRED' : ''}${nullable.length ? `；可空列 ${codes(nullable)}` : ''}`;
+    const after = `${code(`${fkName(relation.index)}_*`)}${relation.originallyDeferred ? '，改为立即检查' : ''}`;
+    return `| ${relation.index} | ${code(`${relation.child.schema}.${keyOf(relation.child.table, relation.child.columns)}`)} → ${code(`${relation.parent.schema}.${keyOf(relation.parent.table, relation.parent.columns)}`)} | ${before} | ${after} |`;
+  });
+  const droppedRows = droppedContentKeys.map(key => `| ${code(keyOf(key.child.table, key.child.columns))} → ${code(keyOf(key.parent.table, key.parent.columns))} | 项目文件→本机记录，外键 NO ACTION${key.originallyDeferred ? '，延迟' : ''} | 去掉约束，列和其余约束保留；本机没有对应的过程记录时，代码按“来自别处”处理 |`);
+  const appKeyRows = APP_DATABASE_TABLES.flatMap(table => (format72.tables.get(table)?.foreignKeys ?? []).filter(row => databaseOf(String(row.table)) === 'project')
+    .map(row => `| ${code(`${table}(${String(row.from)})`)} → ${code(`${String(row.table)}(${String(row.to)})`)} | 应用库→项目文件，外键 NO ACTION | 应用库（B1）不建这个外键，改由代码检查 |`));
+  const convertedRows = convertedTriggers.map(trigger => {
+    const object = triggers.find(item => item.name === trigger.name)!, own = databaseOf(trigger.table);
+    const others = [...referencedTables(object.sql!, known)].filter(table => table !== trigger.table && databaseOf(table) !== own).sort();
+    const reads = others.map(table => `${code(table)}（${PLACE_NAMES[databaseOf(table)]}）`).join('、') || '—';
+    return `| ${code(trigger.name)} | ${code(`${trigger.schema}.${trigger.table}`)} | ${reads} | 同名临时触发器${object.rules.includes('exemption') ? '，去掉豁免条件' : ''} |`;
+  });
+  const exempted = triggers.filter(object => object.rules.includes('exemption'));
+  const contentTargets = exempted.filter(object => object.fate === 'project' && object.name.startsWith('agent_target_'));
+  const processTargets = exempted.filter(object => object.fate === 'temp');
+  const retained = exempted.filter(object => !object.name.startsWith('agent_target_'));
+  const retainedIn = (fate: ObjectFate) => retained.filter(object => object.fate === fate).map(object => object.name);
+  const quotas = triggers.filter(object => object.name.startsWith('agent_quota_'));
+  const rewrittenQuotas = quotas.filter(object => object.rules.includes('quota')), droppedQuotas = quotas.filter(object => object.fate === 'dropped');
+  const onRemoved = triggers.filter(object => object.fate === 'dropped' && databaseOf(object.table) === 'removed');
+  // Statements the kernel adds to a database: everything but schema_version and the domain files.
+  const added = (kind: DatabaseKind) => {
+    const statements = derivedDomainStatements(derivation, kind), domain = new Set(statements);
+    return schemaStatements(kind, statements).filter(sql => sql !== SCHEMA_VERSION_TABLE_SQL && !domain.has(sql)).map(sql => /^CREATE (?:TABLE|TRIGGER) (\w+)/.exec(sql)![1]!);
+  };
+  const projectAdded = added('project'), historyAdded = added('history');
+  const guards = (list: readonly string[]) => list.filter(name => name.includes('_guard_'));
+  const sequence = projectAdded.filter(name => name.startsWith('project_file_sequence_'));
+  const temporary = convertedTriggers.length + relations.length * 4 + 1;
+  const mapping = [
+    `连接上的库名：本机记录 \`main\`，项目文件 \`project\`，缓存库 \`cache\`。下面的表由 \`${COMMAND} --report\` 从格式 72 生成。`,
+    '',
+    `### 跨文件外键：${relations.length} 个约束、${columnCount(relations)} 列`,
+    '',
+    `- 本机记录→项目文件 ${inSchema('main').length} 个约束 ${columnCount(inSchema('main'))} 列，缓存库→项目文件 ${inSchema('cache').length} 个约束 ${columnCount(inSchema('cache'))} 列。原来都是 \`NO ACTION\`，没有级联。`,
+    '- 现在每个关系 4 个连接级临时触发器：`project_file_fk_NN_child_insert`（插入子行时父行必须存在）、`_child_update`（`UPDATE OF` 外键列时同样检查）、`_parent_delete`（父行被引用时不能删）、`_parent_update`（`UPDATE OF` 被引用的键且键值变了时报错，改成同值不报错）。外键列有一列为 NULL 就不检查（MATCH SIMPLE）。报错消息仍是 `FOREIGN KEY constraint failed`，错误码由 787 变为 1811。',
+    `- 原为 \`DEFERRABLE INITIALLY DEFERRED\` 的 2 个关系（${deferred}）改为立即检查。插入路径：现有代码先插结果行，再回填任务的 \`versionId\`、\`resultId\`（\`images.ts:258-260\`、\`scene-tasks.ts:329-332\`），立即检查能过。删除和改父键的路径：同一事务里先删父行（或先改父键）、后清子行的写法，现在在删父行（改父键）的那条语句上就失败，要先清子行。测试对这几种顺序都和同形状的引用库对照过。真实表上走不到这两条路径：\`image_versions\`、\`scene_results\` 在格式 72 里就由 \`retain_*\`、\`immutable_*\` 无条件拒绝删除和修改。`,
+    '- `PRAGMA defer_foreign_keys` 对模拟的外键无效；父键在同一条语句里互换这类 NO ACTION 允许的写法会被拒（键都是不可变的 UUID，没有这样的写法）。',
+    '',
+    `<details><summary>${relations.length} 个关系逐个（每行 4 个临时触发器）</summary>`,
+    '',
+    '| # | 子表(列) → 父表(列) | 原来 | 现在 |',
+    '|---|---|---|---|',
+    ...relationRows,
+    '',
+    '</details>',
+    '',
+    `### 去掉的外键：项目文件→本机记录 ${droppedContentKeys.length} 个约束 ${columnCount(droppedContentKeys)} 列，应用库→项目文件 ${appKeyRows.length} 列`,
+    '',
+    '| 子表(列) → 父表(列) | 原来 | 现在 |',
+    '|---|---|---|',
+    ...droppedRows,
+    ...appKeyRows,
+    '',
+    '`versions.jobId` 仍是 `NOT NULL UNIQUE`，可以指向本机没有的任务（有意的差别）；`image_groups.activeTaskId` 在本机找不到任务时当作空闲（交给 S0）。',
+    '',
+    `### 跨文件触发器：${convertedTriggers.length} 个改为同名临时触发器`,
+    '',
+    `其中读别库的 ${convertedTriggers.length - processTargets.length} 个、过程表上写项目文件目标修订表的 ${processTargets.length} 个。读表全部写库名（\`project.\`、\`main.\`、\`cache.\`），写入目标不写库名（三个库的表名不重复，\`installCrossFileTriggers\` 拒绝 temp 里同名的表和视图）。计划算的是 15 + 12 = 27 个：\`scene_task_state_transitions\` 只在字符串 \`OLD.kind='shots'\` 里出现 \`shots\`，不读别的库，照建在本机记录。`,
+    '',
+    '| 触发器 | 所在表 | 引用的别库表 | 现在 |',
+    '|---|---|---|---|',
+    ...convertedRows,
+    '',
+    '临时触发器先于同表的持久触发器触发，模拟外键又在 BEFORE 触发器里，先于 NOT NULL、UNIQUE、CHECK 检查；同一行同时违反多条时，报的消息可能和格式 72 不同。',
+    '',
+    '### 去掉删除记账豁免、改写配额和不建的触发器',
+    '',
+    `<details><summary>内容表上的目标修订 ${contentTargets.length} 个：去掉豁免条件，照建在项目文件</summary>`,
+    '',
+    codes(contentTargets.map(object => object.name)),
+    '',
+    '</details>',
+    '',
+    `<details><summary>保留类 ${retained.length} 个：去掉豁免条件以后，这些行一律不能删</summary>`,
+    '',
+    'V1 恢复版本时不删受保护的行，只恢复可变的状态。',
+    '',
+    `- 项目文件 ${retainedIn('project').length} 个：${codes(retainedIn('project'))}`,
+    `- 本机记录 ${retainedIn('history').length} 个：${codes(retainedIn('history'))}`,
+    `- 应用库 ${retainedIn('app').length} 个（交给 B1）：${codes(retainedIn('app'))}`,
+    '',
+    '</details>',
+    '',
+    `<details><summary>Mio 配额 ${quotas.length} 个：改写 ${rewrittenQuotas.length} 个，不建 ${droppedQuotas.length} 个</summary>`,
+    '',
+    `- Mio 表上的 ${rewrittenQuotas.length} 个：去掉 \`agent_task_policy_v2\`、\`agent_task_policy_requests_v2\` 的行数和字节数共 4 段，只统计本机记录里的 Mio 表；上限不变（20000 行、268435456 字节，R1 再定）。${codes(rewrittenQuotas.map(object => object.name))}`,
+    `- 放行表上的 ${droppedQuotas.length} 个：不建。${codes(droppedQuotas.map(object => object.name))}`,
+    '',
+    '</details>',
+    '',
+    `<details><summary>建在要删除的表上的 ${onRemoved.length} 个：不建</summary>`,
+    '',
+    codes(onRemoved.map(object => object.name)),
+    '',
+    '</details>',
+    '',
+    '### K1 新加的对象',
+    '',
+    '| 库 | 对象 |',
+    '|---|---|',
+    `| 项目文件 | \`project_file\` 表；守卫 ${guards(projectAdded).length} 个（${codes(guards(projectAdded))}）；单项目 ${projectAdded.filter(name => name.includes('_single_project_')).length} 个（${codes(projectAdded.filter(name => name.includes('_single_project_')))}）；内容序号 ${sequence.length} 个 \`project_file_sequence_<表>_<insert/update/delete>\`（${CONTENT_TABLES.length} 张内容表各 3 个） |`,
+    `| 本机记录 | \`history_state\` 表；守卫 ${guards(historyAdded).length} 个（${codes(guards(historyAdded))}） |`,
+    `| 临时（连接级） | \`project_file_seen_sequence\`（把新的内容序号写进 \`history_state.seenContentSequence\`）；外键模拟 ${relations.length * 4} 个；连同 ${convertedTriggers.length} 个转换触发器共 ${temporary} 个 |`,
+  ].join('\n');
+
+  const appObjects = objects.filter(object => object.fate === 'app');
+  const appTables = APP_DATABASE_TABLES.map(table => appObjects.find(object => object.type === 'table' && object.name === table)!);
+  const appTriggers = appObjects.filter(object => object.type === 'trigger');
+  const appIndexes = appObjects.filter(object => object.type === 'index').map(object => object.name);
+  const appDatabase = [
+    `应用库的 ${appTables.length} 张表和 ${appTriggers.length} 个触发器，由 \`${COMMAND} --report\` 从格式 72 生成：`,
+    '',
+    '```sql',
+    ...appTables.map(object => `${object.sql};`),
+    ...appTriggers.map(object => `-- ${object.rules.includes('exemption') ? '去掉了删除记账的豁免条件' : '与格式 72 相同'}\n${object.sql};`),
+    '```',
+    '',
+    `- 自动索引 ${appIndexes.length} 个随建表产生：${codes(appIndexes)}。`,
+    `- ${appKeyRows.length === 1 ? '`workspace_preferences.projectId` 原来引用 `projects(id)`' : '应用库指向项目文件的外键'}：应用库里没有项目表，上面的 SQL 已去掉这个外键，改由代码检查。`,
+    `- 放行表上的 ${droppedQuotas.length} 个配额触发器不建（${codes(droppedQuotas.map(object => object.name))}）：它们把放行表算进 Mio 的存储上限，本机记录里的 ${rewrittenQuotas.length} 个配额触发器已经不再统计这两张表。应用库要不要单独限额由 B1 定。`,
+    '- `retain_agent_task_policy_requests_v2` 去掉豁免条件以后，放行回执一律不能删。',
+  ].join('\n');
+  return {mapping, appDatabase};
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  if (args.length !== 1 || (args[0] !== '--write' && args[0] !== '--check')) {
-    process.stderr.write(`Usage: ${COMMAND} --write|--check\n`);
+  if (args.length === 1 && args[0] === '--report') {
+    const report = renderReport();
+    process.stdout.write(`## 跨文件约束对照表\n\n${report.mapping}\n\n## 交给 B1 的应用库 SQL\n\n${report.appDatabase}\n`);
+  } else if (args.length !== 1 || (args[0] !== '--write' && args[0] !== '--check')) {
+    process.stderr.write(`Usage: ${COMMAND} --write|--check|--report\n`);
     process.exitCode = 2;
   } else {
     const files = renderDerivedFiles();
