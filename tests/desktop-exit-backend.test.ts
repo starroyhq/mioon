@@ -30,7 +30,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {},
     startServer: (options: Record<string, unknown>) => { assert.equal(options.comfyModule, 'load'); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
-    initializeSubtitleResources: () => {}, onMediaProcess: () => {},
+    initializeSubtitleResources: () => {}, onMediaProcess: () => {}, initializeDesktopPrivateStorage: () => {},
     createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({ close: imageClose, refreshStorage: async () => {} }),
     createVideoSecretClient: () => ({ close() {}, refreshStorage: async () => {} }),
@@ -196,7 +196,7 @@ for (const [origin, trigger] of [
         createBackendLease, BACKEND_LEASE_TIMING, performance,
         process: sandboxProcess, DatabaseSync: function () {},
         createAgentSettingsClient: () => ({}), createImageSecretClient: () => ({}),
-        createVideoSecretClient: () => ({}),
+        createVideoSecretClient: () => ({}), initializeDesktopPrivateStorage() {},
         onMediaProcess() {}, setInterval() { return 1; }, clearInterval() {}, setImmediate
       });
       ${trigger}

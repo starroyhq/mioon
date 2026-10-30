@@ -3,6 +3,7 @@ import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdi
   openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import type { Stats } from 'node:fs';
 import path from 'node:path';
+import { appendWindowsDiagnostic } from './diagnostic-append-windows.ts';
 
 export const EXIT_DIAGNOSTIC_LIMITS = Object.freeze({ maxBytes: 65536, fileCount: 3 });
 
@@ -130,6 +131,8 @@ function sameFile(left: Stats | null, right: Stats | null): boolean {
 // its pathname-only operations, this does not claim protection against root or
 // an actively racing process running as the same OS account.
 function appendDiagnostic(dataDir: string, directory: string, file: string, line: Buffer, policy: DirectoryPolicy): void {
+  // Windows has no owner or mode bits to check; its ACL backend writes instead.
+  if (process.platform === 'win32') { appendWindowsDiagnostic(dataDir, directory, file, line, EXIT_DIAGNOSTIC_LIMITS); return; }
   policy.ensurePrivateDirectory(dataDir, { create: true });
   try { mkdirSync(directory, { mode: 0o700 }); }
   catch (error) { if (!isRecord(error) || error.code !== 'EEXIST') throw error; }

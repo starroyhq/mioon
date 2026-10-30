@@ -73,11 +73,13 @@ const overrides = new Map([
   // has an independent real-code suite. Importing the new broker grants no crypto.
   ['../../../packages/business/src/video/settings.ts', data('export function validateVideoSecretPlaintext() { throw Object.assign(new Error("Video credentials are outside this fixture"), {code: "VIDEO_SETTINGS_VALIDATION"}); }')],
   ['@mioon/business/agent/settings-file', data('export const createAgentSettingsFile = ' + forbidden.toString())],
-  ['@mioon/contracts/private-storage', data('export const validatePrivateDirectory = ' + forbidden.toString() + '; export const ensurePrivateDirectory = validatePrivateDirectory')],
+  // The Windows diagnostic append names further storage operations; on POSIX none is reached.
+  ['@mioon/contracts/private-storage', data('export const validatePrivateDirectory = ' + forbidden.toString() + '; export const ensurePrivateDirectory = validatePrivateDirectory;'
+    + ' export const validateManagedFile = validatePrivateDirectory, readPrivateFile = validatePrivateDirectory, writePrivateFileAtomic = validatePrivateDirectory, removePrivateFile = validatePrivateDirectory')],
 ]);
 const approved = new Set(['apps/desktop/src/app-language-text.ts', 'packages/i18n/src/catalogs/native.ts', 'apps/desktop/src/secret-store-linux.ts', 'apps/desktop/src/secret-store.ts', 'apps/desktop/src/image-secret-store.ts',
   'apps/desktop/src/image-secret-broker.ts', 'apps/desktop/src/video-secret-broker.ts', 'apps/desktop/src/secret-broker.ts', 'apps/desktop/src/supervisor.ts', 'apps/desktop/src/workspace-native-broker.ts',
-  'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts',
+  'apps/desktop/src/security.ts', 'apps/desktop/src/timeline-delivery-download.ts', 'apps/desktop/src/exit-diagnostics.ts', 'apps/desktop/src/diagnostic-append-windows.ts',
   'apps/desktop/src/project-window-navigation.ts', 'apps/desktop/src/native-audio-preview-broker.ts', 'apps/desktop/src/shutdown.ts', 'packages/business/src/agent/settings.ts', 'packages/business/src/agent/config.ts',
   'packages/business/src/agent/presets.ts', 'packages/contracts/src/agent-protocol.ts']);
 const reviewedTypeScript = approved;

@@ -1,11 +1,22 @@
 # Standalone Node private storage
 
 This package is composed explicitly by standalone CLI, MCP and headless server
-entry points. Shared contracts/client modules do not load native libraries, and
-Electron does not initialize this helper. `initializeNodePrivateStorage()` does
-nothing on POSIX. On Windows it requires the complete locally built Node-API v8
+entry points, and by the desktop app's main process and backend utilityProcess.
+Shared contracts/client modules do not load native libraries.
+`initializeNodePrivateStorage()` and `initializeDesktopPrivateStorage()` do
+nothing on POSIX. On Windows they require the complete locally built Node-API v8
 helper; a missing/incompatible helper fails closed. Installation does not build
 or download native binaries.
+
+The desktop entry takes the exact helper file the app ships and never searches
+for one; the headless entry still refuses to run inside Electron. The same
+Node-API binary loads in Node and in Electron (Windows' delay-load hook binds it
+to the host executable), so the helper is not rebuilt per Electron version.
+`apps/desktop/scripts/build.ts` stages it as `build/native/mioon_private_storage.node`
+on Windows and fails without it; main resolves `native/` beside the staged app,
+or under `resources/` when packaged, and passes that path to the backend.
+Placing `native/` outside ASAR in a Windows package belongs to the Windows
+packaging work, which is not defined yet.
 
 Build on Windows with the supported Node 24, matching Visual C++ target tools and
 Windows SDK:

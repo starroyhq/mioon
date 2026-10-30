@@ -2,6 +2,7 @@ import { closeSync, constants, fchmodSync, fstatSync, fsyncSync, lstatSync, mkdi
   openSync, readFileSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import type { Stats } from 'node:fs';
 import path from 'node:path';
+import { appendWindowsDiagnostic } from './diagnostic-append-windows.ts';
 
 // Renderer health evidence only. One bounded JSONL family covers unresponsive /
 // responsive / render-process-gone transitions so an issue #4 investigation has
@@ -121,6 +122,8 @@ function sameFile(left: Stats | null, right: Stats | null): boolean {
 // its pathname-only operations, this does not claim protection against root or
 // an actively racing process running as the same OS account.
 function appendDiagnostic(dataDir: string, directory: string, file: string, line: Buffer, policy: DirectoryPolicy): void {
+  // Windows has no owner or mode bits to check; its ACL backend writes instead.
+  if (process.platform === 'win32') { appendWindowsDiagnostic(dataDir, directory, file, line, RENDERER_DIAGNOSTIC_LIMITS); return; }
   const { maxBytes, fileCount } = RENDERER_DIAGNOSTIC_LIMITS;
   policy.ensurePrivateDirectory(dataDir, { create: true });
   try { mkdirSync(directory, { mode: 0o700 }); }

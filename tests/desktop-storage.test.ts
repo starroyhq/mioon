@@ -221,7 +221,7 @@ test('diagnostic cleanup preserves a replacement directory instead of deleting a
 
 test('main isolates fatal storage handling from lock acquisition and normal readiness', async () => {
   const main = await readFile(new URL('../apps/desktop/src/main.ts', import.meta.url), 'utf8');
-  assert.match(main, /try \{ paths = prepareDesktopStorage\(/);
+  assert.match(main, /try \{ initializeDesktopPrivateStorage\(privateStorageHelperFile\(app\)\); paths = prepareDesktopStorage\(/);
   assert.match(main, /if \(startupStorageError\) void showStorageStartupFailure\(app, dialog, startupStorageError\);\s*else if \(!app\.requestSingleInstanceLock\(\)\)/);
   assert.doesNotMatch(main, /mkdirSync\(paths\.userData|app\.setPath\('userData', paths\.userData\)/);
 });

@@ -12,6 +12,7 @@ import type {NativeAudioPreviewAuthority} from '@mioon/business/native-audio-pre
 import {workspaceNativeUtilityRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {createBackendLease, BACKEND_LEASE_TIMING} from './backend-lease.ts';
+import {initializeDesktopPrivateStorage} from '../../../packages/node-host/src/private-storage-bootstrap.ts';
 
 /** Fixed diagnostic categories only; never a native error message or path. */
 type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
@@ -100,6 +101,8 @@ process.parentPort.on('message', ({ data }) => {
   starting = true;
   initialization = (async () => {
     try {
+      // Windows storage opens only through the helper main verified and named.
+      initializeDesktopPrivateStorage(process.env.MIOON_DESKTOP_PRIVATE_STORAGE_HELPER ?? '');
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }

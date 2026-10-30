@@ -24,7 +24,8 @@ import {run as runMedia} from '@mioon/business/media-runtime';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown } from './config.ts';
+import { prepareDesktopStorage, readAppLanguagePreference, writeAppLanguagePreference, showStorageStartupFailure, storageFailureDialog, ensureDataIdentity, readToolConfig, validateTools, saveToolConfig, utilityEnvironment, writeConnection, removeConnectionOnShutdown, privateStorageHelperFile } from './config.ts';
+import { initializeDesktopPrivateStorage } from '../../../packages/node-host/src/private-storage-bootstrap.ts';
 import type {DesktopIdentity, DesktopPaths, ToolPaths, ToolValidation} from './config.ts';
 import desktopIdentity from '../identity.ts';
 import { BackendSupervisor } from './supervisor.ts';
@@ -128,7 +129,9 @@ const systemLanguages = (): readonly string[] => { try { return app.getPreferred
 setNativeLanguageReader(() => languageHost?.snapshot().locale ?? resolveLocale('system', systemLanguages()));
 let paths!: DesktopPaths;
 let startupStorageError: unknown;
-try { paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
+// Windows storage runs only through the shipped ACL helper; it registers before
+// any storage access and refuses startup through the same dialog when absent.
+try { initializeDesktopPrivateStorage(privateStorageHelperFile(app)); paths = prepareDesktopStorage(app, process.env.MIOON_DESKTOP_USER_DATA, identity.channel); }
 catch (error) { startupStorageError = error; }
 // Renderer health evidence for issue #4: bounded local records for unresponsive,
 // responsive and render-process-gone transitions. The factory is feature-detected
@@ -419,7 +422,7 @@ async function start(): Promise<DesktopStartReport> {
     const backendId = randomUUID(), nativeAudioIdentity = createNativeAudioPreviewSigningIdentity(backendId);
     let ownedAudioHost: NativeAudioHost | undefined, backendExitObserved = false;
     backend = new BackendSupervisor({ fork: utilityProcess.fork,
-      modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools), agentSettings,
+      modulePath: path.join(app.getAppPath(), 'backend.cjs'), environment: utilityEnvironment(process.env, tools, process.platform === 'win32' ? privateStorageHelperFile(app) : undefined), agentSettings,
       imageSecretCodec: createDesktopImageSecretCodec({ safeStorage, appId: identity.appId }),
       videoSecretCodec: createDesktopVideoSecretCodec({ safeStorage, appId: identity.appId }) });
     const ownedBackend = backend, incident = createProjectBackendIncident();

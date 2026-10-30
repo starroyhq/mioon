@@ -15,6 +15,7 @@ import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {streamFile,createNewDirectory,sameFile,writeBoundedFile} from '../packages/business/src/workspace-backup-storage.ts';
 import {exportWorkspaceBackupBundle,importWorkspaceBackupBundle} from '../packages/business/src/workspace-backup-bundle.ts';
+import {CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA} from './helpers/workspace-schema-current.ts';
 import type { BinaryLike } from 'crypto';
 
 const enabled=process.platform==='win32'&&process.env.MIOON_WINDOWS_BACKUP_TEST==='1';
@@ -47,7 +48,7 @@ test('Windows native offline CLI create/verify/restore/status preserves source a
   // restored roots require a protected DACL; parent durability still must flush.
   mkdirSync(parent);const backup=path.join(parent,'backup'),restored=path.join(parent,'restored');
   const created=success(cli(['create','--source',f.source,'--destination',backup]));
-  assert.equal(created.databaseSchemaVersion,60);assert.ok(existsSync(path.join(backup,'COMPLETE.json')));
+  assert.equal(created.databaseSchemaVersion,CURRENT_ORDINARY_SCHEMA);assert.ok(existsSync(path.join(backup,'COMPLETE.json')));
   const verified=success(cli(['verify','--directory',backup]));assert.equal(verified.backupId,created.backupId);
   const result=success(cli(['restore','--directory',backup,'--destination',restored]));
   assert.equal(result.sourceBackupId,created.backupId);
@@ -57,7 +58,7 @@ test('Windows native offline CLI create/verify/restore/status preserves source a
   assert.equal(hash(readFileSync(path.join(f.source,'workbench.sqlite'))),f.dbHash);
   for(const [root,file] of [[f.source,f.relative],[backup,`payload/${f.relative}`],[restored,f.relative]])assert.equal((await streamFile({file:path.join(root,file),root,private:true})).sha256,f.mediaHash);
   const db=new DatabaseSync(path.join(restored,'workbench.sqlite'),{readOnly:true});
-  try{assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion,61);}finally{db.close();}
+  try{assert.equal(classifyCurrentWorkspaceSchema(db).schemaVersion,CURRENT_RESTORED_SCHEMA);}finally{db.close();}
   const finalHash=hash(readFileSync(path.join(restored,'workbench.sqlite')));
   failure(cli(['create','--source',f.source,'--destination',backup]),'WORKSPACE_BACKUP_DESTINATION_EXISTS');
   failure(cli(['restore','--directory',backup,'--destination',restored]),'WORKSPACE_RESTORE_DESTINATION_EXISTS');
