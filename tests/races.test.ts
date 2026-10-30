@@ -1,6 +1,6 @@
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
-import test from 'node:test';
+import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -9,6 +9,16 @@ import path from 'node:path';
 import { openStore } from '../packages/business/src/db.ts';
 import { createServices, type ServiceRow } from '../packages/business/src/services.ts';
 import { startWorker, type Worker } from '../packages/business/src/jobs.ts';
+
+// The first workspace database a process creates pays a one-time setup cost
+// (about 2.4 s on a development machine and over 4.5 s on a CI runner); later
+// new ones take about 0.3 s. Pay it here, so each 5-second budget below covers
+// only its own race, not this process's first database. node:test still adds
+// this hook's time to the first test's reported duration, but not to its timeout.
+before(async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-race-warmup-'));
+  try { openStore(root).close(); } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 // Deferred, in-process adapters make the exact await boundary deterministic.
 // They do not contact a provider or read any real user's media or credentials.
