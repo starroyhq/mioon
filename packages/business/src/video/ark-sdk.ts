@@ -1,7 +1,7 @@
 import {ArkRuntimeClient} from '@volcengine/ark-runtime';
 import type {ClientConfig} from '@volcengine/ark-runtime';
 import axios from 'axios';
-import {SEEDANCE25_CAPABILITIES} from '../../../contracts/src/seedance-video.ts';
+import {SEEDANCE25_CAPABILITIES,seedanceAudioDataUriPrefix} from '../../../contracts/src/seedance-video.ts';
 import {providerError} from '../providers/live-common.ts';
 import type {ProviderContext} from '../providers/live-common.ts';
 import type {VideoAdapterInput} from './adapters.ts';
@@ -49,16 +49,19 @@ export function createArkSdkClient({api,model,send,audio='off'}:ArkSdkClientOpti
       // An ordered reference group (Seedance 2.5, 1–30 images) never mixes with frames.
       const references=!subject&&roles.length>=1&&roles.length<=SEEDANCE25_CAPABILITIES[0]!.referenceImages&&roles.every(role=>role==='reference_image');
       if(subject?roles.length!==1||!['subject_reference','reference_image'].includes(roles[0]!):!frames&&!references)throw providerError('UNSUPPORTED_INPUT_ROLE','Seedance requires an advertised frame, subject or reference image combination.');
-      const urls=input.images.map(image=>`data:${image.mimeType};base64,${image.base64}`);
+      // Reference audio joins a reference group or stands alone; never frames or a subject.
+      const audios=input.audios??[],capability=SEEDANCE25_CAPABILITIES[0]!;
+      if(audios.length&&(subject||roles.length&&!references||audios.length>capability.referenceAudios||audios.some(clip=>!capability.audioMimeTypes.includes(clip.mimeType))))throw providerError('UNSUPPORTED_INPUT_ROLE','Seedance reference audio needs WAV or MP3 clips in the reference mode.');
+      const urls=input.images.map(image=>`data:${image.mimeType};base64,${image.base64}`),audioUrls=audios.map(clip=>seedanceAudioDataUriPrefix(clip.mimeType)+clip.base64);
       // Ark caps the request body at 64 MB; the profile already checked the
       // frozen sizes, and this repeats the check on the actual encoded bytes.
-      if(urls.reduce((total,url)=>total+url.length,0)>SEEDANCE25_CAPABILITIES[0]!.maxEncodedImageBytes)throw providerError('REFERENCE_REQUEST_TOO_LARGE','Encoded Seedance images exceed the request budget.');
+      if([...urls,...audioUrls].reduce((total,url)=>total+url.length,0)>capability.maxEncodedImageBytes)throw providerError('REFERENCE_REQUEST_TOO_LARGE','Encoded Seedance references exceed the request budget.');
       // Ark keeps a frame task's output ratio equal to its first frame and
       // accepts only adaptive there. Reference tasks take the chosen ratio.
       return invoke('POST',context,sdk=>sdk.createContentGenerationTask({
-        model,content:[{type:'text',text:input.prompt},...input.images.map((image,index)=>({type:'image_url' as const,image_url:{url:urls[index]!},role:subject?'reference_image':image.role}))],
+        model,content:[{type:'text',text:input.prompt},...input.images.map((image,index)=>({type:'image_url' as const,image_url:{url:urls[index]!},role:subject?'reference_image':image.role})),...audioUrls.map(url=>({type:'audio_url' as const,audio_url:{url},role:'reference_audio'}))],
         duration:input.duration,ratio:frames&&roles.length?'adaptive':input.aspectRatio,
-        ...(subject||references?{omni_reference_task_type:'reference'}:{}),resolution:String(parameters.resolution??'720p'),output_format:'mp4',
+        ...(subject||references||audios.length?{omni_reference_task_type:'reference'}:{}),resolution:String(parameters.resolution??'720p'),output_format:'mp4',
         generate_audio:audio==='on'||audio==='optional'&&parameters.generateAudio===true,
       },{signal:context.signal}));
     },

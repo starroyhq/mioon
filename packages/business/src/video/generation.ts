@@ -47,11 +47,23 @@ export function prepareConfiguredVideoInputs({source,binding,projectId,readAsset
   return {...asset,role:frozen?String(bound!.role):references?.[index]?.role??'first_frame'};
  });
  const referenceBindings=assets.map(asset=>({role:asset.role,assetId:asset.id,sha256:asset.sha256}));
+ // Seedance 2.5 reference audio: exact managed clips in the explicit order. A
+ // frozen retry must find each recorded clip unchanged; nothing is re-chosen.
+ const audioIds=(videoInput?.audios??[]).map(audio=>audio.assetId),savedAudios=source.referenceAudios;
+ if(frozen&&(audioIds.length||savedAudios!==undefined)&&(!Array.isArray(savedAudios)||savedAudios.length!==audioIds.length))fail('INVALID_REFERENCE_MANIFEST','冻结参考音频清单不完整。');
+ const referenceAudios=audioIds.map((id,index)=>{
+  const asset=readAsset(id);if(asset.id!==id||asset.projectId!==projectId)fail('INVALID_REFERENCE_OWNERSHIP','参考音频必须属于当前项目。');
+  const record={id,relativePath:asset.relativePath,mimeType:asset.mimeType,sha256:asset.sha256,sizeBytes:asset.sizeBytes,duration:asset.duration,role:'reference_audio'};
+  const previous=frozen?(savedAudios as Record<string,unknown>[])[index]:null;
+  if(frozen&&(!previous||typeof previous!=='object'||Object.keys(previous).length!==Object.keys(record).length||Object.entries(record).some(([key,item])=>previous[key]!==item)))fail('REFERENCE_CHANGED','参考音频与冻结任务不一致。');
+  return record;
+ });
+ const audioFields=referenceAudios.length?{referenceAudios}:{};
  const connections=source.referenceConnections??[];
  if(videoInput&&(!Array.isArray(connections)||connections.length))fail('REFERENCE_STATE_CONFLICT',`本次 ${label} 图片输入不能合并镜头参考连线。`);
  if(!Array.isArray(connections)||connections.length>1||connections.some(connection=>!connection||typeof connection!=='object'||connection.role!=='first_frame'||connection.sourceAssetId!==ids[0]||referenceBindings[0]?.role!=='first_frame'))fail('REFERENCE_STATE_CONFLICT','参考连线与冻结图片不一致。');
  const explicitFields=videoInput?{videoInput,prompt:videoInput.prompt??source.prompt,referenceConnections:[],lastFrameAssetId:null}:{};
- const candidate={...source,...explicitFields,providerId:binding.providerId,model:binding.model.modelId,referenceAssetIds:ids,referenceAssets:assets,referenceBindings};
+ const candidate={...source,...explicitFields,providerId:binding.providerId,model:binding.model.modelId,referenceAssetIds:ids,referenceAssets:assets,referenceBindings,...audioFields};
  validateVideoSnapshot(binding,candidate,{asOf});
- return {assets,plan:null,fields:{...explicitFields,executionBinding:binding,inputProfileVersion:profile.profileVersion,inputProfileId:profile.profileId,providerRegion:binding.region,referenceBindings}};
+ return {assets,plan:null,fields:{...explicitFields,executionBinding:binding,inputProfileVersion:profile.profileVersion,inputProfileId:profile.profileId,providerRegion:binding.region,referenceBindings,...audioFields}};
 }

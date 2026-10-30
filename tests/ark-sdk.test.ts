@@ -148,3 +148,27 @@ test('Ark SDK sends an ordered Seedance 2.5 reference group with the chosen rati
   await assert.rejects(rejected.sdk.submit({...input,images:Array.from({length:5},()=>large)}),{code:'REFERENCE_REQUEST_TOO_LARGE'});
   assert.equal(rejected.calls.length,0);
 });
+
+test('Ark SDK sends Seedance 2.5 reference audio after the images, or alone, as a reference task',async()=>{
+  const wav={mimeType:'audio/wav',base64:Buffer.from('RIFF\0\0\0\0WAVEfmt ').toString('base64')},mp3={mimeType:'audio/mpeg',base64:Buffer.from('ID3 synthetic').toString('base64')};
+  const image={role:'reference_image',mimeType:'image/png',base64:Buffer.from('reference').toString('base64')};
+  const both=fixture([json({id:ID})]);
+  await both.sdk.submit({...input,aspectRatio:'16:9',parameters:{resolution:'720p',aspectRatio:'16:9'},images:[image],audios:[wav,mp3]});
+  const body=bodyOf(both.calls[0]!.init);
+  assert.deepEqual(body.content,[{type:'text',text:input.prompt},{type:'image_url',image_url:{url:`data:image/png;base64,${image.base64}`},role:'reference_image'},
+    {type:'audio_url',audio_url:{url:`data:audio/wav;base64,${wav.base64}`},role:'reference_audio'},{type:'audio_url',audio_url:{url:`data:audio/mp3;base64,${mp3.base64}`},role:'reference_audio'}]);
+  assert.equal(body.omni_reference_task_type,'reference');assert.equal(body.ratio,'16:9');
+  const alone=fixture([json({id:ID})]);await alone.sdk.submit({...input,audios:[wav]});
+  const only=bodyOf(alone.calls[0]!.init);
+  assert.deepEqual(only.content,[{type:'text',text:input.prompt},{type:'audio_url',audio_url:{url:`data:audio/wav;base64,${wav.base64}`},role:'reference_audio'}]);
+  assert.equal(only.omni_reference_task_type,'reference');assert.equal(only.ratio,'9:16');assert.equal(only.generate_audio,false,'Reference audio does not turn sound on');
+});
+
+test('Ark SDK rejects reference audio with frames, a subject, an unsupported format, too many clips or too many bytes',async()=>{
+  const wav={mimeType:'audio/wav',base64:'UklGRg=='},f=fixture([]);
+  const frame={role:'first_frame',mimeType:'image/png',base64:'cG5n'},subjectImage={role:'subject_reference',mimeType:'image/png',base64:'cG5n'};
+  for(const patch of [{images:[frame],audios:[wav]},{subjectReference:true,images:[subjectImage],audios:[wav]},{audios:[{mimeType:'audio/mp4',base64:'AAAA'}]},{audios:Array.from({length:11},()=>wav)}])
+    await assert.rejects(f.sdk.submit({...input,...patch}),{code:'UNSUPPORTED_INPUT_ROLE'},JSON.stringify(patch).slice(0,60));
+  await assert.rejects(f.sdk.submit({...input,audios:[{mimeType:'audio/wav',base64:'A'.repeat(60_000_000)}]}),{code:'REFERENCE_REQUEST_TOO_LARGE'});
+  assert.equal(f.calls.length,0);
+});

@@ -9,7 +9,7 @@ import type {ElementModule} from './helpers/strict-timeline-audio-harness-types.
 interface VideoShot {id: string; projectId: string; revision: number; title: string; prompt: string; referenceAssetIds: string[]; duration: number; aspectRatio: string; parameters: Record<string, unknown>; orderIndex: number; lastFrameAssetId?: string | null; [key: string]: unknown}
 type VideoOptions = GenerationOptionState;
 interface VideoProps {
- shot: VideoShot; project: {id: string}; assets: typeof assets; versions: unknown[]; jobs: unknown[]; providers: GenerationProvider[]; busy: Record<string, unknown>; tab: string; generationOptions: VideoOptions;
+ shot: VideoShot; project: {id: string}; assets: LibraryAsset[]; versions: unknown[]; jobs: unknown[]; providers: GenerationProvider[]; busy: Record<string, unknown>; tab: string; generationOptions: VideoOptions;
  onDirtyChange(): void; setTab(): void; onOpenJobs(): void; onCompare(): void; onAddVersion(): void; onSelectVersion(): void;
  onGenerationOptionsChange(id: unknown, next: VideoOptions): void;
  onGenerate(shot: VideoShot, selection: VideoOptions): unknown;
@@ -56,6 +56,8 @@ const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')
 const projectId = id(1), shotId = id(2), firstId = id(3), tailId = id(4), otherId = id(5);
 const asset = (assetId: string, name: string) => ({ id: assetId, projectId, name, mimeType: 'image/png', sha256: String(assetId === firstId ? 'a' : assetId === tailId ? 'b' : 'c').repeat(64), width: 720, height: 1280, sizeBytes: 100, relativePath: `assets/${assetId}.png` });
 const assets = [asset(firstId, '晨光首帧'), asset(tailId, '暮色尾帧'), asset(otherId, '另一张图片')];
+// The project library also holds audio, which has a duration instead of a size in pixels.
+type LibraryAsset = Omit<(typeof assets)[number], 'width' | 'height'> & {width?: number; height?: number; duration?: number};
 function provider(providerId = 'mock') {
   const profile = contracts.GENERATION_INPUT_PROFILES.find(item => item.providerId === providerId);
   return { id: providerId, name: providerId, mock: providerId === 'mock', status: 'available', enabled: true, configured: true,
@@ -157,7 +159,7 @@ function appGenerationFlow({ providers, options, currentShot }: {providers: Gene
   const state: {calls: [string, string, GenerationSubmitInput][]; notices: unknown[][]; review: GenerationReviewArgs | null} = { calls: [], notices: [], review: null }, scope = { ...settings, ...subjectVideo, ...contracts, msg,
     providers, generationOptionsRef: { current: { [shotId]: structuredClone(options) } }, currentProject: { current: projectId },
     generationUnavailableReason: '', workspaceRef: { current: { restored: false } }, shotTextRef: { current: { blocksLegacy: () => false } }, referenceWorkBlocked: () => false,
-    dataRef: { current: { shots: [currentShot], assets: structuredClone(assets), edges: [], jobs: [] } },
+    dataRef: { current: { shots: [currentShot], assets: structuredClone<LibraryAsset[]>(assets), edges: [], jobs: [] } },
     realConfirmRef: { current: null }, generationReviewScope: { current: { key: 'configured-connection' } }, context: () => ({ epoch: 1 }), isCurrent: (value: { epoch: number; }) => value.epoch === 1,
     setRealConfirm: (value: GenerationReviewArgs | null) => { state.review = value; }, notify: (...values: unknown[]) => state.notices.push(values),
     run: async (...args: [string, string, GenerationSubmitInput]) => { state.calls.push(args); return { status: 'queued' }; }, requestId: () => 'synthetic-configured-inspector-request', openTasks: () => {},
@@ -667,4 +669,54 @@ test('Seedance 2.5 subject prefill waits for the binding list and needs a subjec
   none.render(); none.edit('input-mode-select', 'reference'); none.render();
   assert.equal(none.find('seedance-subject-map'), undefined, 'Without a subject library the reference list starts empty');
   assert.deepEqual(none.props().generationOptions.videoInput!.images, []);
+});
+const audioAsset = (n: number, name: string, mimeType: string, duration: number, sizeBytes = 160_000) => ({ id: id(900 + n), projectId, name, mimeType, sha256: String(n % 10).repeat(64), sizeBytes, duration, relativePath: `media/${id(900 + n)}.audio` });
+const voice = audioAsset(1, '旁白.wav', 'audio/wav', 12), music = audioAsset(2, '配乐.mp3', 'audio/mpeg', 15), m4a = audioAsset(3, '采访.m4a', 'audio/mp4', 8), long = audioAsset(4, '长音乐.wav', 'audio/wav', 35), loud = audioAsset(5, '大文件.wav', 'audio/wav', 20, 15_000_001);
+test('Seedance 2.5 reference mode lists audio clips, takes them in order and explains the ones it cannot send', async () => {
+  const p = seedanceProvider(), h = harness({ shot: shot({ referenceAssetIds: [] }), assets: [...assets, voice, music, m4a, long, loud], providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
+  h.render(); h.edit('input-mode-select', 'reference'); h.render();
+  assert.match(text(h.find('seedance-audio-hint')), /@音频1、@音频2/);
+  assert.equal(text(h.find('seedance-audio-budget')), '已选 0/10 段，合计 0 秒，上限 30 秒');
+  assert.equal(text(h.find(`seedance-audio-reason-${m4a.id}`)), '方舟只收 WAV 或 MP3，这段音频不会被转换'); assert.equal(h.find(`seedance-audio-choice-${m4a.id}`)!.props.disabled, true);
+  assert.equal(text(h.find(`seedance-audio-reason-${long.id}`)), '时长须在 2–30 秒之间');
+  assert.equal(text(h.find(`seedance-audio-reason-${loud.id}`)), '超过单段 15 MB 上限');
+  h.click(`seedance-audio-choice-${voice.id}`); h.render();
+  // Both clips fit: 12 + 15 = 27 seconds.
+  h.click(`seedance-audio-choice-${music.id}`); h.render();
+  assert.deepEqual(h.props().generationOptions.videoInput!.audios, [voice, music].map(item => ({ role: 'reference_audio', assetId: item.id })));
+  assert.match(text(h.find('seedance-audio-list')), /音频1：旁白\.wav · 12 秒.*音频2：配乐\.mp3 · 15 秒/);
+  assert.equal(text(h.find('seedance-audio-budget')), '已选 2/10 段，合计 27 秒，上限 30 秒');
+  h.click('seedance-audio-up-1'); h.render();
+  assert.deepEqual(h.props().generationOptions.videoInput!.audios!.map(item => item.assetId), [music.id, voice.id]);
+  h.click('seedance-audio-remove-0'); h.render(); h.click('seedance-audio-remove-0'); h.render();
+  assert.equal(Object.hasOwn(h.props().generationOptions.videoInput!, 'audios'), false, 'An empty list leaves the key out');
+  assert.deepEqual((h.props().shot.referenceAssetIds as unknown), [], 'The shot is not edited'); assert.equal(h.saves.length, 0);
+});
+test('Seedance 2.5 can send reference audio alone, through the paid review and submit', async () => {
+  const p = seedanceProvider(), current = shot({ referenceAssetIds: [] }), library = [...assets, voice, music];
+  const h = harness({ shot: current, assets: library, providers: [p], generationOptions: { connectionId: p.connectionId, modelEntryId: p.modelCapabilities![0].modelEntryId } });
+  h.render(); h.edit('input-mode-select', 'reference'); h.render();
+  h.click(`seedance-audio-choice-${voice.id}`); h.render();
+  const expected = { version: 1, mode: 'reference_images', images: [], audios: [{ role: 'reference_audio', assetId: voice.id }] };
+  assert.equal(settings.generationInputIssue({ ...current, videoInput: expected as GenerationVideoInput }, p, String(settings.providerModels(p)[0]!.id), library, 'reference'), '', 'Audio alone is a valid input');
+  await h.click('generate-shot');
+  assert.equal(h.generated.length, 1); assert.deepEqual(h.generated[0][1].videoInput, expected);
+  const app = appGenerationFlow({ providers: [p], options: h.props().generationOptions, currentShot: h.props().shot });
+  app.scope.dataRef.current.assets = structuredClone(library);
+  app.generate(h.generated[0][0], h.generated[0][1]);
+  const review = app.state.review; assert.ok(review); assert.deepEqual(review.shot.videoInput, expected);
+  assert.ok(review.referenceAssets!.some(item => item.id === voice.id), 'The review carries the clip for its name and duration');
+  app.confirmGeneration(review); await Promise.resolve();
+  assert.equal(app.state.calls.length, 1); assert.deepEqual(app.state.calls[0][2].videoInput, expected);
+});
+test('Seedance 2.5 audio advisories follow the clip limits, the 30-second total and the reference mode', () => {
+  const p = seedanceProvider(), model = String(settings.providerModels(p)[0]!.id), clips = (list: Array<{ id: string }>) => ({ ...shot({ referenceAssetIds: [] }), videoInput: { version: 1 as const, mode: 'reference_images' as const, images: [], audios: list.map(item => ({ role: 'reference_audio' as const, assetId: item.id })) } });
+  const second = audioAsset(6, '第二段.wav', 'audio/wav', 16), library = [...assets, voice, music, m4a, long, second];
+  assert.equal(settings.generationInputIssue(clips([voice, music]), p, model, library, 'reference'), '');
+  assert.match(String(settings.generationInputIssue(clips([voice, music, second]), p, model, library, 'reference')), /audioInvalid/, '43 seconds in total');
+  assert.match(String(settings.generationInputIssue(clips([m4a]), p, model, library, 'reference')), /audioInvalid/);
+  assert.match(String(settings.generationInputIssue(clips([long]), p, model, library, 'reference')), /audioInvalid/);
+  assert.notEqual(settings.generationInputIssue(clips([audioAsset(7, '缺失.wav', 'audio/wav', 5)]), p, model, library, 'reference'), '', 'A clip that is not loaded is not guessed');
+  const savedModes = seedanceProvider({ inputModes: ['text', 'image', 'frames', 'subject'] });
+  assert.notEqual(settings.generationInputIssue(clips([voice]), savedModes, String(settings.providerModels(savedModes)[0]!.id), library, 'reference'), '');
 });

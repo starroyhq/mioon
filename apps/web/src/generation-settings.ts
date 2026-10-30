@@ -325,6 +325,7 @@ const generationIssueKeys: Record<string, MessageKey> = Object.freeze({
   "REFERENCE_TOO_LARGE": "connections.generation.issue.tooLarge",
   "REFERENCE_DATA_URI_TOO_LARGE": "connections.generation.issue.dataUri",
   "REFERENCE_REQUEST_TOO_LARGE": "connections.generation.issue.requestTooLarge",
+  "INVALID_REFERENCE_AUDIO": "connections.generation.issue.audioInvalid",
   "INVALID_REFERENCE_DIMENSIONS": "connections.generation.issue.dimensions",
   "REFERENCE_ASPECT_RATIO_MISMATCH": "connections.generation.issue.aspect",
   "UNSUPPORTED_INPUT_ROLE": "connections.generation.issue.roleUnsupported",
@@ -500,10 +501,12 @@ export function generationVideoInputIssue(shot: GenerationShot, provider: Genera
   if (!wanVideoInputSchema.safeParse(input).success) return message(invalidImages);
   if (subjectReference || shot.subjectReference) return message('video.wan.subjectConflict');
   if (!wan && !seedance) return message('video.wan.unsupported');
-  if (seedance && input.mode !== 'reference_images') return message(invalidImages);
+  if (seedance && input.mode !== 'reference_images' || wan && input.audios) return message(invalidImages);
+  // Seedance 2.5 may send reference audio alone, without any image.
+  const minReferences = input.audios?.length ? 0 : 1;
   const maxReferences = wan ? 10 : Number(seedance!.referenceImages) || 30;
   const expectedRoles = input.mode === 'text' ? [] : input.mode === 'first_frame' ? ['first_frame'] : input.mode === 'first_last_frame' ? ['first_frame', 'last_frame'] : input.mode === 'reference_images' ? input.images.map(() => 'reference_image') : null;
-  if (input.version !== 1 || !expectedRoles || input.images.length !== expectedRoles.length || input.mode === 'reference_images' && (input.images.length < 1 || input.images.length > maxReferences) || input.images.some((image, index) => image.role !== expectedRoles[index]) || new Set(input.images.map(image => image.assetId)).size !== input.images.length) return message(invalidImages);
+  if (input.version !== 1 || !expectedRoles || input.images.length !== expectedRoles.length || input.mode === 'reference_images' && (input.images.length < minReferences || input.images.length > maxReferences) || input.images.some((image, index) => image.role !== expectedRoles[index]) || new Set(input.images.map(image => image.assetId)).size !== input.images.length) return message(invalidImages);
   const prompt = input.prompt ?? shot.prompt ?? '';
   if (seedance ? !prompt.trim() || prompt.length > (Number(seedance.maxPromptLength) || 5000) : prompt.length > 20000 || input.mode === 'text' && !prompt.trim()) return message(seedance ? 'connections.generation.issue.promptInvalid' : 'video.wan.invalidPrompt');
   const references = input.images.map(({ assetId, role }, index) => {
@@ -514,6 +517,17 @@ export function generationVideoInputIssue(shot: GenerationShot, provider: Genera
     return { ...pinned, role };
   });
   if (references.some(item => !item)) return message('connections.generation.issue.referencesMissing');
-  const snapshot = { ...shot, prompt, model: (provider.videoModel as { modelId?: string } | undefined)?.modelId, referenceAssetIds: input.images.map(image => image.assetId), referenceAssets: references, referenceBindings: input.images.map((image, index) => ({ ...image, sha256: references[index]?.sha256 })) };
+  // The same audio records the server freezes, so the contract checks each
+  // clip's format, size and duration, the 30-second total and the request budget.
+  const frozenAudios = (shot as { referenceAudios?: readonly GenerationAsset[] }).referenceAudios;
+  const audios = (input.audios ?? []).map(({ assetId }, index) => {
+    const asset = assets.find(item => item.id === assetId && (!shot.projectId || item.projectId === shot.projectId));
+    if (!asset) return null;
+    const pinned = frozen ? frozenAudios?.[index] : asset;
+    if (!pinned || frozen && (pinned.id !== assetId || ['sha256', 'mimeType', 'relativePath', 'sizeBytes', 'duration'].some(key => pinned[key] !== asset[key]))) return null;
+    return { id: assetId, relativePath: pinned.relativePath, mimeType: pinned.mimeType, sha256: pinned.sha256, sizeBytes: pinned.sizeBytes, duration: pinned.duration, role: 'reference_audio' };
+  });
+  if (audios.some(item => !item)) return message('connections.generation.issue.referencesMissing');
+  const snapshot = { ...shot, prompt, model: (provider.videoModel as { modelId?: string } | undefined)?.modelId, referenceAssetIds: input.images.map(image => image.assetId), referenceAssets: references, referenceBindings: input.images.map((image, index) => ({ ...image, sha256: references[index]?.sha256 })), ...(audios.length ? { referenceAudios: audios } : {}) };
   return generationIssueDescriptor(advisoryGenerationIssue(snapshot, provider));
 }

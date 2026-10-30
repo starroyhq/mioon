@@ -14,7 +14,9 @@ Seedance 2.5 update (2026-10-30): the exact `doubao-seedance-2-5-260628` /
 ordered reference images, always with the saved shot prompt. Its other modes keep
 the saved frame selection in the UI. The Inspector can fill that list from the
 shot's subject bindings when the user asks; the request still carries explicit
-asset IDs, so the rule below that no image is inferred from a binding holds. The encoded images together stay within
+asset IDs, so the rule below that no image is inferred from a binding holds.
+The same input may carry up to 10 WAV or MP3 reference audio clips (2–30 s each,
+30 s in total), with or without images; they share the encoded budget. The encoded images together stay within
 60,000,000 bytes because Ark caps the request body at 64 MB. See
 [Seedance 2.5 connections](PROVIDERS.md#seedance-25-connections-reviewed-2026-10-30).
 The dated baseline and archived profile evidence below remain unchanged.

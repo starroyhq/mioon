@@ -148,6 +148,7 @@ export function agentTaskExplicitTargets(operation:string,input:unknown,projectI
  if(operation==='timeline.clip.setGains'&&Array.isArray(input.gains))for(const item of input.gains)if(object(item))add('timeline_clip',item.clipId);
  if(operation==='image.generate'&&object(input.inputImage))add('asset',input.inputImage.assetId);
  if(operation==='generation.submit'&&object(input.videoInput)&&Array.isArray(input.videoInput.images))for(const image of input.videoInput.images)if(object(image))add('asset',image.assetId);
+ if(operation==='generation.submit'&&object(input.videoInput)&&Array.isArray(input.videoInput.audios))for(const audio of input.videoInput.audios)if(object(audio))add('asset',audio.assetId);
  const assetKind=operation.startsWith('asset.range.')?'asset_range':operation.startsWith('asset.annotation.')?'asset_annotation':operation.startsWith('asset.disposition.')?'asset_disposition':undefined;
  if(assetKind){add(assetKind,input.assetId);if(Array.isArray(input.assetIds))for(const id of input.assetIds)add(assetKind,id);}
  return [...references.values()];

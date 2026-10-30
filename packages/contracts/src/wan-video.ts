@@ -8,15 +8,19 @@ export const WAN30_SOURCE='https://help.aliyun.com/zh/model-studio/wan3-video-ge
 export const WAN30_INPUT_MODES=['text','first_frame','first_last_frame','reference_images'] as const;
 /** Explicit input for one Wan 3.0 or Seedance 2.5 generation. The exact model's
  * input profile bounds the images: Wan 3.0 takes up to 10 references and
- * Seedance 2.5 up to 30. */
+ * Seedance 2.5 up to 30. Only Seedance 2.5 takes reference audio, up to 10
+ * clips, in the reference mode, where it may stand without images. */
 export const wanVideoInputSchema=z.object({
  version:z.literal(1),mode:z.enum(WAN30_INPUT_MODES),
  images:z.array(z.object({role:z.enum(['first_frame','last_frame','reference_image']),assetId:z.string().uuid()}).strict()).max(30),
+ audios:z.array(z.object({role:z.literal('reference_audio'),assetId:z.string().uuid()}).strict()).min(1).max(10).optional(),
  prompt:z.string().max(20000).optional(),
 }).strict().superRefine((value,ctx)=>{
  const roles=value.images.map(image=>image.role),expected=value.mode==='text'?[]:value.mode==='first_frame'?['first_frame']:value.mode==='first_last_frame'?['first_frame','last_frame']:null;
- if(expected?JSON.stringify(roles)!==JSON.stringify(expected):!roles.length||roles.some(role=>role!=='reference_image'))ctx.addIssue({code:'custom',path:['images'],message:'Images must exactly match the selected video input mode and order.'});
+ if(expected?JSON.stringify(roles)!==JSON.stringify(expected):!roles.length&&!value.audios||roles.some(role=>role!=='reference_image'))ctx.addIssue({code:'custom',path:['images'],message:'Images must exactly match the selected video input mode and order.'});
  if(new Set(value.images.map(image=>image.assetId)).size!==value.images.length)ctx.addIssue({code:'custom',path:['images'],message:'Video input images must be distinct.'});
+ if(value.audios&&value.mode!=='reference_images')ctx.addIssue({code:'custom',path:['audios'],message:'Reference audio belongs to the reference mode.'});
+ if(value.audios&&new Set(value.audios.map(audio=>audio.assetId)).size!==value.audios.length)ctx.addIssue({code:'custom',path:['audios'],message:'Reference audio clips must be distinct.'});
 });
 export type WanVideoInput=z.infer<typeof wanVideoInputSchema>;
 export const wanVideoParametersSchema=z.object({

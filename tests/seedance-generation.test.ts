@@ -2,7 +2,7 @@ import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp,realpath,rm,readFile} from 'node:fs/promises';
+import {mkdtemp,realpath,rm,readFile,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
@@ -164,5 +164,58 @@ test('Seedance 2.5 reference groups need the saved reference mode and stay withi
  const first=videoInput.images[0]!,many={...videoInput,images:Array.from({length:31},()=>({...first,assetId:randomUUID()}))};
  for(const invalid of [many,{...videoInput,images:[{...first,role:'first_frame' as const},...videoInput.images.slice(1)]},{...videoInput,images:[first,first]}])
   await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},exact),videoInput:invalid}),{code:'VALIDATION_ERROR'});
+ assert.equal(f.store.list('jobs').length,0);assert.equal(f.posts().length,0);
+});
+
+// A 16-bit mono 8 kHz PCM tone; the managed import decodes it and records its duration.
+function wav(seconds:number,tone=440):Buffer {
+ const rate=8000,frames=Math.round(seconds*rate),bytes=Buffer.alloc(44+frames*2);
+ bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(1,22);
+ bytes.writeUInt32LE(rate,24);bytes.writeUInt32LE(rate*2,28);bytes.writeUInt16LE(2,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(frames*2,40);
+ for(let frame=0;frame<frames;frame++)bytes.writeInt16LE(Math.round(8000*Math.sin(2*Math.PI*tone*frame/rate)),44+frame*2);
+ return bytes;
+}
+async function clip(f:Awaited<ReturnType<typeof fixture>>,seconds:number,projectId=String(f.project.id)){
+ const bytes=wav(seconds);
+ return {bytes,asset:await f.services.call('asset.import',{projectId,name:`Voice ${seconds}s.wav`,mimeType:'audio/wav',dataBase64:bytes.toString('base64')}) as ServiceRow};
+}
+// The service answers with public rows; the stored row keeps the managed file path.
+const stored=(f:Awaited<ReturnType<typeof fixture>>,asset:ServiceRow)=>f.store.get('assets',String(asset.id)) as ServiceRow;
+const audioInput=(images:Array<{role:'reference_image';assetId:string}>,ids:string[])=>({version:1 as const,mode:'reference_images' as const,images,audios:ids.map(assetId=>({role:'reference_audio' as const,assetId}))});
+
+test('Seedance 2.5 freezes reference audio and sends it after the images, with the saved shot prompt',async t=>{
+ const f=await fixture(t),voice=await clip(f,3),group=await references(f);
+ assert.ok(Math.abs(Number(voice.asset.duration)-3)<0.05,'The import records the decoded duration');
+ const videoInput=audioInput(group.images,[String(voice.asset.id)]),input={...f.input({durationSeconds:8,aspectRatio:'16:9',resolution:'720p'}),videoInput};
+ const job=await f.services.call('generation.submit',input) as JobRecord;
+ assert.deepEqual(job.snapshot.videoInput,videoInput);assert.equal(job.snapshot.prompt,f.shot.prompt);
+ const frozen={id:voice.asset.id,mimeType:'audio/wav',sha256:voice.asset.sha256,sizeBytes:voice.bytes.length,duration:voice.asset.duration,role:'reference_audio'};
+ assert.deepEqual(job.snapshot.referenceAudios,[frozen]);assert.ok(!JSON.stringify(job).includes('relativePath'),'The returned job keeps file paths private');
+ assert.deepEqual(f.job(job.id).snapshot.referenceAudios,[{...frozen,relativePath:stored(f,voice.asset).relativePath}]);
+ assert.equal((await f.services.call('generation.submit',input) as JobRecord).id,job.id,'Replaying the request returns the same job');
+ await f.tick();await f.stop();assert.equal(f.posts().length,1);
+ const sent=body(f.posts()[0]!),content=sent.content as Array<Record<string,unknown>>;
+ assert.equal(sent.omni_reference_task_type,'reference');assert.equal(sent.ratio,'16:9');assert.equal(sent.generate_audio,false);
+ assert.deepEqual(content.map(item=>item.type),['text','image_url','image_url','image_url','audio_url']);
+ assert.deepEqual(content.at(-1),{type:'audio_url',audio_url:{url:`data:audio/wav;base64,${voice.bytes.toString('base64')}`},role:'reference_audio'});
+});
+
+test('Seedance 2.5 may send reference audio alone, and refuses a clip that changed after the job froze it',async t=>{
+ const f=await fixture(t),voice=await clip(f,2.5);
+ const job=await f.services.call('generation.submit',{...f.input({resolution:'720p'}),videoInput:audioInput([],[String(voice.asset.id)])}) as JobRecord;
+ assert.deepEqual(job.snapshot.referenceAssetIds,[]);assert.equal((job.snapshot.referenceAudios as unknown[]).length,1);
+ await writeFile(path.join(f.root,String(stored(f,voice.asset).relativePath)),wav(2.5,660));
+ await f.tick();await f.stop();
+ assert.equal(f.job(job.id).status,'failed');assert.equal((f.job(job.id).error as {code?:string}).code,'REFERENCE_CHANGED');assert.equal(f.posts().length,0);
+});
+
+test('Seedance 2.5 reference audio must be a 2–30 second project clip on an entry with the reference mode',async t=>{
+ const f=await fixture(t,{models:defaults=>[defaults[0]!,{...defaults[0]!,id:randomUUID(),name:'Saved Seedance',inputModes:['text','image','frames','subject']}]});
+ const [exact,saved]=f.configuration.models as [VideoModelEntry,VideoModelEntry];
+ const short=await clip(f,1.5),good=await clip(f,4);
+ const other=await f.services.call('project.create',{name:'Other project'}) as ServiceRow,foreign=await clip(f,4,String(other.id));
+ await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},exact),videoInput:audioInput([],[String(short.asset.id)])}),{code:'INVALID_REFERENCE_AUDIO'});
+ await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},exact),videoInput:audioInput([],[String(foreign.asset.id)])}),{code:'INVALID_REFERENCE_OWNERSHIP'});
+ await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},saved),videoInput:audioInput([],[String(good.asset.id)])}),{code:'UNSUPPORTED_INPUT_ROLE'});
  assert.equal(f.store.list('jobs').length,0);assert.equal(f.posts().length,0);
 });

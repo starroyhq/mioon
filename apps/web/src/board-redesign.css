@@ -91,3 +91,4 @@
 
 .shot-property-value{display:block;padding:6px 0;min-height:28px;font:var(--wb-text-label)/1.5 var(--wb-font-mono);color:var(--wb-text)}
 .seedance-subject-map ul{margin:4px 0 8px;padding-left:16px;font-size:var(--wb-text-caption);color:var(--wb-soft)}.seedance-subject-map li{margin:2px 0}
+.seedance-audio-refs ul,.seedance-audio-refs ol{margin:4px 0 8px;padding-left:16px;font-size:var(--wb-text-caption)}.seedance-audio-refs li{margin:2px 0}

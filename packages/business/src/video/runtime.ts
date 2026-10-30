@@ -5,7 +5,8 @@ import {parseVideoBinding,videoConnectionEndpoint,validateVideoSnapshot,videoBin
 import type {VideoExecutionBinding} from '../../../contracts/src/video-providers.ts';
 import type {Provider,ProviderContext as RegisteredContext} from '../provider-registry.ts';
 import {awaitProvider,checkpoint,operationCancelled} from '../operation-lifecycle.ts';
-import {createJsonRequest,createPollCache,downloadMp4,managedImage,outputUrl,providerError} from '../providers/live-common.ts';
+import {createJsonRequest,createPollCache,downloadMp4,managedAudio,managedImage,outputUrl,providerError} from '../providers/live-common.ts';
+import {SEEDANCE25_CAPABILITIES} from '../../../contracts/src/seedance-video.ts';
 import type {ProviderContext,ProviderReferenceAsset,ManagedImage} from '../providers/live-common.ts';
 import {assertConfiguredTaskId,configuredKlingTask,configuredSubmission,configuredSubmissionId,configuredTask,configuredTaskPath} from './adapters.ts';
 import type {ConfiguredVideoTask,VideoAdapterInput,VideoAdapterSelection} from './adapters.ts';
@@ -112,9 +113,19 @@ export function createConfiguredVideoProvider({root,binding,acquireCredential,fe
         if(frozen.providerId==='runway'&&Buffer.byteLength(`data:${image.mimeType};base64,${image.base64}`)>5*1024*1024)throw providerError('REFERENCE_TOO_LARGE','Encoded reference exceeds the Runway data URI limit.');
         images.push({mimeType:image.mimeType,base64:image.base64,role:asset.role??'first_frame'});
       }
+      // Seedance 2.5 reference audio: managed-storage and hash checks as for
+      // images, in the frozen explicit order. validate() already admitted it.
+      const audioRecords=(Array.isArray(value.referenceAudios)?value.referenceAudios:[]) as Array<ProviderReferenceAsset&{sizeBytes:number}>;
+      const audioHashes=new Set(audioRecords.map(asset=>String(asset.sha256).toLowerCase()));
+      const audios=[];
+      for(const asset of audioRecords){
+        const audio=await managedAudio({root,asset,approvedHashes:audioHashes,maxBytes:SEEDANCE25_CAPABILITIES[0]!.maxAudioBytes,signal:context.signal,validateCurrent:context.validateReferenceState});
+        if(audio.bytes.length!==asset.sizeBytes)throw providerError('REFERENCE_CHANGED','Actual reference bytes differ from the frozen metadata.');
+        audios.push({mimeType:audio.mimeType,base64:audio.base64});
+      }
       const parameters=(value.parameters??{}) as Record<string,unknown>,effective=effectiveVideoParameters(frozen,value),duration=effective.durationSeconds as number;
       const resolution=effective.resolution as string;
-      const input:VideoAdapterInput={prompt:effective.prompt as string,aspectRatio:effective.aspectRatio as string,duration,parameters:{...parameters,resolution},images,subjectReference:Object.hasOwn(value,'subjectReference')};
+      const input:VideoAdapterInput={prompt:effective.prompt as string,aspectRatio:effective.aspectRatio as string,duration,parameters:{...parameters,resolution},images,...(audios.length?{audios}:{}),subjectReference:Object.hasOwn(value,'subjectReference')};
       const requestId=registered.requestId;
       if(frozen.providerId==='kling'&&(typeof requestId!=='string'||!requestId||requestId.length>200))throw providerError('INVALID_REQUEST_ID','A stable request ID is required before creating a Kling task.');
       if(wan)return {providerJobId:await wan.submit(input,context)};
