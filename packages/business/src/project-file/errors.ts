@@ -1,5 +1,5 @@
 import {AppError} from '../../../contracts/src/app-error.ts';
-import type {PROJECT_FILE_EXISTS, ProjectOpenErrorCode} from '../../../contracts/src/project-file.ts';
+import type {PROJECT_FILE_EXISTS, ProjectInvalidReason, ProjectOpenErrorCode} from '../../../contracts/src/project-file.ts';
 import type {DatabaseKind} from './schema/databases.ts';
 
 /** The codes projectFileError() raises: the contract's open codes and its
@@ -7,13 +7,10 @@ import type {DatabaseKind} from './schema/databases.ts';
  * also lists the store-level and addressing codes of the API. */
 export type ProjectFileKernelErrorCode = ProjectOpenErrorCode | typeof PROJECT_FILE_EXISTS;
 
-/** Why an open or a create failed. `missing`, `locked` and `format-newer` go
- * with their own codes; every other reason comes with PROJECT_INVALID. */
-export type ProjectFileErrorReason =
-  | 'missing' | 'locked' | 'format-newer' | 'exists'
-  | 'not-a-regular-file' | 'not-a-project-file' | 'journal-mode' | 'encoding' | 'application-id'
-  | 'schema-version' | 'schema' | 'metadata' | 'project-row' | 'foreign-key' | 'project-mismatch'
-  | 'corrupt' | 'unusable';
+/** Why an open or a create failed. `missing`, `locked`, `format-newer` and
+ * `exists` go with their own codes; every other reason comes with
+ * PROJECT_INVALID and is one of the contract's PROJECT_INVALID_REASONS. */
+export type ProjectFileErrorReason = 'missing' | 'locked' | 'format-newer' | 'exists' | ProjectInvalidReason;
 
 /** `details` of every project-file error. It never holds an absolute path:
  * `database` says which of the three files failed. `projectId` is set once the
@@ -60,4 +57,14 @@ export function isSqliteBusy(error: unknown): boolean {
 export function isSqliteCorrupt(error: unknown): boolean {
   const code = primaryCode(error);
   return code === 11 || code === 26;
+}
+/** SQLITE_READONLY_DBMOVED: the database file was renamed or unlinked while
+ * open. SQLite checks this when it opens a rollback journal. */
+export const SQLITE_READONLY_DBMOVED = 1032;
+/** SQLITE_READONLY and its extended codes (no write permission, a read-only
+ * volume, a directory where the journal cannot be created), except
+ * SQLITE_READONLY_DBMOVED, which is about a moved file. */
+export function isSqliteReadOnly(error: unknown): boolean {
+  const code = (error as {errcode?: unknown} | null | undefined)?.errcode;
+  return primaryCode(error) === 8 && code !== SQLITE_READONLY_DBMOVED;
 }

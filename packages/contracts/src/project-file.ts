@@ -168,6 +168,18 @@ export interface ForeignKeyViolation {
   readonly constraint: string;
 }
 
+/** Why a file is PROJECT_INVALID, the kernel's `details.reason`. `read-only`:
+ * no write permission or a read-only volume, which is not a damaged file (the
+ * open writes the project file's journal once, so it shows there).
+ * `corrupt`: SQLite found the file damaged. `unusable`: any other SQLite
+ * failure. The others name the check that failed. */
+export const PROJECT_INVALID_REASONS = Object.freeze([
+  'not-a-regular-file', 'not-a-project-file', 'journal-mode', 'encoding', 'application-id',
+  'schema-version', 'schema', 'metadata', 'project-row', 'foreign-key', 'project-mismatch',
+  'corrupt', 'read-only', 'unusable',
+] as const);
+export type ProjectInvalidReason = typeof PROJECT_INVALID_REASONS[number];
+
 const filePath = z.string().min(1).max(4096);
 const formatVersion = z.number().int().min(1).max(1_000_000);
 /** projectId is null when the file could not be read and is not registered. */
@@ -176,7 +188,7 @@ export const projectOpenFailureSchema = z.discriminatedUnion('code', [
   z.object({code: z.literal('PROJECT_MISSING'), ...failure}).strict(),
   z.object({code: z.literal('PROJECT_LOCKED'), ...failure}).strict(),
   z.object({code: z.literal('PROJECT_FORMAT_NEWER'), ...failure, database: z.enum(['project', 'history', 'cache']), formatVersion, supportedFormatVersion: formatVersion}).strict(),
-  z.object({code: z.literal('PROJECT_INVALID'), ...failure}).strict(),
+  z.object({code: z.literal('PROJECT_INVALID'), ...failure, reason: z.enum(PROJECT_INVALID_REASONS)}).strict(),
 ]).refine(value => value.code !== 'PROJECT_FORMAT_NEWER' || value.formatVersion > value.supportedFormatVersion,
   'A newer format must exceed the supported version.');
 export type ProjectOpenFailure = z.infer<typeof projectOpenFailureSchema>;

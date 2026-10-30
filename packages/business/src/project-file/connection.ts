@@ -9,7 +9,7 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_FILE_EXISTS, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 import type {ProjectHistoryState, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
 import {installCrossFileTriggers} from './cross-file/install.ts';
-import {isSqliteBusy, isSqliteCorrupt, projectFileError} from './errors.ts';
+import {isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly, projectFileError} from './errors.ts';
 import type {ProjectFileErrorDetails, ProjectFileErrorReason} from './errors.ts';
 import {
   buildDatabase, CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION,
@@ -78,7 +78,7 @@ function openFailure(error: unknown, database: DatabaseKind, projectId?: string)
   const code = (error as {code?: unknown} | null | undefined)?.code;
   const failure = isSqliteBusy(error) ? projectFileError('PROJECT_LOCKED', describe(database, 'locked', projectId))
     : database === 'project' && (code === 'ENOENT' || code === 'ENOTDIR') ? projectFileError('PROJECT_MISSING', describe(database, 'missing', projectId))
-    : invalid(database, isSqliteCorrupt(error) ? 'corrupt' : 'unusable', projectId);
+    : invalid(database, isSqliteCorrupt(error) ? 'corrupt' : isSqliteReadOnly(error) ? 'read-only' : 'unusable', projectId);
   failure.cause = error;
   return failure;
 }
