@@ -55,7 +55,8 @@ async function main(){
    if(input.kind==='duplicate')store.db.exec('DROP TRIGGER reject_asset_range_cross_request');
    else store.db.exec('DROP TRIGGER immutable_mutation_requests');
    if(input.kind==='response'){const response=JSON.parse(prior.response) as Record<string, unknown>;response.prompt='CORRUPTED_HISTORICAL_AFTERTEXT';store.db.prepare('UPDATE mutation_requests SET response=? WHERE requestId=?').run(JSON.stringify(response),String(input.requestId));}
-   else if(input.kind==='owner')store.db.prepare('UPDATE mutation_requests SET projectId=? WHERE requestId=?').run(String(input.foreignProjectId),String(input.requestId));
+   // The foreign project lives in a store of its own; write the damaged owner as a corrupt file would hold it.
+   else if(input.kind==='owner'){store.db.exec('PRAGMA foreign_keys=OFF');try{store.db.prepare('UPDATE mutation_requests SET projectId=? WHERE requestId=?').run(String(input.foreignProjectId),String(input.requestId));}finally{store.db.exec('PRAGMA foreign_keys=ON');}}
    else if(input.kind==='canonical')store.db.prepare('UPDATE mutation_requests SET canonicalInput=? WHERE requestId=?').run('{}',String(input.requestId));
    else if(input.kind==='duplicate')store.db.prepare('INSERT INTO asset_range_requests(requestId,operation,projectId,canonicalInput,response) VALUES(?,?,?,?,?)').run(prior.requestId,'asset.range.set',prior.projectId,prior.canonicalInput,prior.response);
    else throw Error('Unknown corruption');data={corrupted:input.kind};
