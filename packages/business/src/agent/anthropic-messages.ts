@@ -1,8 +1,9 @@
 import {assertAgentGainRequestBudget} from './gain-context-fence.ts';
 import {AGENT_CHAT_LIMITS, CHAT_SYSTEM_INSTRUCTION} from './chat-policy.ts';
-import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.ts';
+import {exactObject, MAX_AGENT_SECRET_BYTES} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
 import {agentChatError, errorCode, agentChatHttpStatus, agentChatStreamReason} from './chat-errors.ts';
+import {validateAnthropicMessagesProfile} from './model-profiles.ts';
 import {createAnthropicSdkTransport} from './anthropic-sdk-transport.ts';
 import {streamAnthropicMessages} from './anthropic-stream.ts';
 import {ANTHROPIC_MESSAGES_FIELDS} from './anthropic-protocol.ts';
@@ -13,14 +14,10 @@ import type {AgentGateway} from './agent-gateway.ts';
 import type {AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 import {wasAgentTransportSubmissionPrevented} from './network-policy.ts';
 
-// All presets use this same explicit text/client-tool Messages subset, with
-// thinking disabled. A model name does not grant additional content families.
 function fail(code: string): never {throw agentChatError(code);}
 export interface AnthropicValidationOptions {selfPort?: number; readTools?: unknown}
 export function validateAnthropicMessagesConfiguration(configuration: unknown, {selfPort, readTools}: AnthropicValidationOptions = {}): AgentConfiguration {
-  let config: AgentConfiguration;
-  try {config = parseAgentConfiguration(configuration, {selfPort});} catch {return fail('AGENT_CHAT_VALIDATION');}
-  if (config.protocol !== 'anthropic_messages') fail('AGENT_CHAT_VALIDATION');
+  const config = validateAnthropicMessagesProfile(configuration, {selfPort});
   validateReadTools(config, readTools);
   return config;
 }

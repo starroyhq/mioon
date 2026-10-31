@@ -28,6 +28,8 @@ import type {InspectionService, EditProposalService, WorkflowControl} from './re
 import type {AgentEditService} from './edit-proposals.ts';
 import type {ChatExecution, ChatStep} from './chat-step-journal.ts';
 import type {WireMessage} from './tool-wire.ts';
+import type {ChatAuthorizations} from './authorization-gate.ts';
+export type {ChatAuthorizations} from './authorization-gate.ts';
 
 export const CHAT_LIMITS = Object.freeze({messageBytes: 8192, responseBytes: 128 * 1024, contextBytes: 32 * 1024,
   historyRuns: 12, projects: 32, runs: 2048, runsPerProject: 16, requests: 2048, active: 4,
@@ -105,10 +107,6 @@ function bounded<T>(operation: () => T | Promise<T>, signal: AbortSignal | undef
 }
 
 export interface ChatRuntimeStore {db: DatabaseSync; tx<T>(operation: () => T): T; get(table: string, id: string): unknown}
-export interface ChatAuthorizations {
-  assertAuthorized(input: {destination: string; model: string; scope: string}): void;
-  snapshot(configuration: AgentConfiguration): unknown;
-}
 export interface ChatRuntimeOptions {
   store: ChatRuntimeStore;
   agentSettings: AgentSettingsService;

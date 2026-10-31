@@ -7,9 +7,7 @@ import type {AgentConfiguration} from '../packages/business/src/agent/config.ts'
 import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
 import {parseAgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {buildAgentRequest, createAgentGateway} from '../packages/business/src/agent/agent-gateway.ts';
-import {agentChatProfile, AGENT_CHAT_PROFILES} from '../packages/business/src/agent/chat-completions.ts';
-import {agentResponsesProfile, AGENT_RESPONSES_PROFILES} from '../packages/business/src/agent/responses.ts';
-import {agentReadToolProfile, AGENT_READ_TOOL_PROFILES} from '../packages/business/src/agent/tool-wire.ts';
+import {agentChatProfile, AGENT_CHAT_PROFILES, agentResponsesProfile, AGENT_RESPONSES_PROFILES, agentReadToolProfile, AGENT_READ_TOOL_PROFILES} from '../packages/business/src/agent/model-profiles.ts';
 import {nativeAnthropicEvents, nativeAnthropicSse} from './helpers/anthropic-native-events.ts';
 
 const messages = [{role: 'user', content: 'Offline protocol selection test'}];
