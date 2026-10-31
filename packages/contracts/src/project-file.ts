@@ -138,11 +138,24 @@ export const PROJECT_FILE_SINGLE_PROJECT = 'PROJECT_FILE_SINGLE_PROJECT';
  * kernel's details are `{database: 'project', reason: 'exists'}` and never an
  * absolute path; app-level creation adds `projectFile`. */
 export const PROJECT_FILE_EXISTS = 'PROJECT_FILE_EXISTS';
+/** The `.mioon` alone was renamed or moved while its project was open; its
+ * folder stayed where it was (HTTP 409). SQLite names the journal after the
+ * path the file was opened at, so after such a move a commit that crashes
+ * leaves half a transaction in the file at its new path. The check runs at
+ * the start of `store.tx` and in `put`: two `lstat` calls find that the
+ * opened path no longer holds the same file while the `-journal` is still
+ * there (a moved folder takes the journal along). On this error the host
+ * stops writing and reopens the project where file identity finds it, so the
+ * caller can retry. The check belongs to the kernel; until it lands there,
+ * the host registers it as a transaction fence. The details carry `projectId`. */
+export const PROJECT_FILE_MOVED = 'PROJECT_FILE_MOVED';
 /** Project-addressed requests. An operation addressed only by entity ID keeps
  * answering NOT_FOUND when the entity belongs to another project. */
 export const PROJECT_ADDRESS_ERROR_CODES = Object.freeze(['PROJECT_NOT_FOUND', 'PROJECT_ID_MISMATCH', 'PROJECT_UNAVAILABLE'] as const);
 export type ProjectAddressErrorCode = typeof PROJECT_ADDRESS_ERROR_CODES[number];
-export const PROJECT_FILE_ERROR_CODES = Object.freeze([...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, PROJECT_FILE_EXISTS, ...PROJECT_ADDRESS_ERROR_CODES] as const);
+export const PROJECT_FILE_ERROR_CODES = Object.freeze([
+  ...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, PROJECT_FILE_EXISTS, PROJECT_FILE_MOVED, ...PROJECT_ADDRESS_ERROR_CODES,
+] as const);
 export type ProjectFileErrorCode = typeof PROJECT_FILE_ERROR_CODES[number];
 
 /** One `sqlite_master` row of a database on a project connection, with its
@@ -198,11 +211,17 @@ export const projectOpenResultSchema = z.discriminatedUnion('ok', [
   z.object({ok: z.literal(false), error: projectOpenFailureSchema}).strict(),
 ]);
 export type ProjectOpenResult = z.infer<typeof projectOpenResultSchema>;
-/** `details` of the addressing errors. PROJECT_UNAVAILABLE carries the open failure code. */
+/** `details` of the addressing errors. PROJECT_UNAVAILABLE carries the open
+ * failure code. With PROJECT_INVALID it may add the kernel's `details.reason`
+ * as `invalidReason`, so callers by project ID (CLI, MCP) can tell a read-only
+ * place from a damaged file; with any other code it has none. */
 export const projectAddressErrorDetailsSchemas = Object.freeze({
   PROJECT_NOT_FOUND: z.object({projectId: projectIdSchema}).strict(),
   PROJECT_ID_MISMATCH: z.object({projectId: projectIdSchema}).strict(),
-  PROJECT_UNAVAILABLE: z.object({projectId: projectIdSchema, reason: z.enum(PROJECT_OPEN_ERROR_CODES)}).strict(),
+  PROJECT_UNAVAILABLE: z.object({
+    projectId: projectIdSchema, reason: z.enum(PROJECT_OPEN_ERROR_CODES), invalidReason: z.enum(PROJECT_INVALID_REASONS).optional(),
+  }).strict().refine(value => value.invalidReason === undefined || value.reason === 'PROJECT_INVALID',
+    'invalidReason goes only with PROJECT_INVALID.'),
 });
 
 /** Project-level endpoints live under `/api/projects/<project ID>/`. */
