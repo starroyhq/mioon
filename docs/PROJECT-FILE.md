@@ -279,7 +279,7 @@ projectDatabasePath(root: string): string                 // 取代直接拼 wor
 openProjectDatabase(root: string): DatabaseSync           // 按“一个连接，三个库”的顺序打开；只在 store 和服务端都没占着项目时用
 schemaObjects(db: DatabaseSync): SchemaObject[]           // 主库和挂载库的结构合在一起
 projectDirFor(dataDir: string, projectId: string): string // 取代直接拼 <dataDir>/media/…
-createServerProject(dataDir: string): {projectId: string; store: ProjectStore<DatabaseSync>}
+createServerProject(dataDir: string, options?: {name?: string}): {projectId: string; store: ProjectStore<DatabaseSync>}
 foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及用临时触发器模拟的跨文件关系
 ```
 
@@ -287,6 +287,8 @@ foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及�
 - 不带库名的 `PRAGMA foreign_key_check` 只查主库。K1 清点出生产代码里有 3 处、测试里有 21 个文件这样写，改用 `foreignKeyCheck` 或带上库名：生产代码那 3 处归 S0，测试归 W2。
 - `openProjectDatabase` 设置和内核相同的 pragma，建同样的连接级临时触发器，否则经这个连接写入时会绕过跨文件约束和目标修订触发器。store 或服务端还占着这个项目时拒绝打开；旧存储上也执行这条规则，例如发现 `server.lock` 存在就拒绝。
 - `createServerProject` 给“先填库、再起服务”的测试用：按服务端的布局建一个已登记的项目，返回 `{projectId, store}`。写完先 `store.close()`，再 `startServer({dataDir})`。切换以后，服务端只认登记过的项目，看不到在 `dataDir` 本身建的 store。
+  - 项目名用 `name` 选项给，不要建好以后再用 `store.put` 改名。切换以后，服务端的项目列表读的是登记里的名字；测试自己关掉的 store 不会更新登记，所以事后改的名字在列表里看不到。
+- 查结构按名字找对象，不按库名断言。旧存储上的对象都在 `main` 里；切换以后，内容表在 `project`，本机记录在 `main`。
 
 ### 测试里怎样访问库
 生产和测试一样，都用独占锁，测试不开特例。
@@ -302,14 +304,16 @@ foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及�
 - 项目打开期间，测试也不能用 `fs` 读、拷贝库文件或算它的哈希，见“一个连接，三个库”。要算哈希，在子进程里算，或者先关掉 store。
 
 ### 受信任的测试接口
-进程内启动的 `startServer` 增加一个只供测试用的受信任选项，写法参照现有的 `taskFault`、`taskGatewayV2`：注释写明只供测试，从不来自 HTTP 或环境变量。名字和形状：
+进程内启动的 `startServer` 增加一个只供测试用的受信任选项 `inspectProject`，写法参照现有的 `taskFault`、`taskGatewayV2`：注释写明只供测试，从不来自 HTTP 或环境变量。交给测试的方式和函数的形状：
 
 ```ts
-inspectProject<T>(projectId: string, inspect: (db: DatabaseSync) => T): T
+startServer({…, inspectProject: inspect => { … }})
+type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) => T) => T
 ```
 
+- 这个选项是一个接收函数。服务端打开 store 以后、启动完成以前调用它一次，把 `InspectProject` 交给测试。测试把它存下来，服务端运行期间用它查库。
 - 回调在项目宿主自己的连接上同步执行，不会撞上独占锁，也不能跨 `await` 持有连接。
-- W2 先在旧服务端上加，只在 `apps/server/src/index.ts` 里加一小块；S0 再换成项目宿主的实现。选项怎样把这个函数交给测试，由 W2 定、S0 沿用。
+- W2 先在旧服务端上加，只在 `apps/server/src/index.ts` 里加一小块；S0 再换成项目宿主的实现，交给测试的方式不变。
 
 ## 待定
 - 封面接口的名字：S6、B1。
