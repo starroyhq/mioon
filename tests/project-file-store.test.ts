@@ -3,7 +3,7 @@ import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {existsSync, mkdtempSync, realpathSync, rmSync, statSync} from 'node:fs';
+import {existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -23,6 +23,14 @@ function scratch(t: TestContext): string {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-k1-store-'));
   t.after(() => rmSync(root, {recursive: true, force: true}));
   return root;
+}
+/** sha256 of a file, read by another process: reading a file this process
+ * holds open would drop SQLite's POSIX locks on it. */
+function digestElsewhere(file: string): string {
+  const script = "process.stdout.write(require('node:crypto').createHash('sha256').update(require('node:fs').readFileSync(process.argv[1])).digest('hex'))";
+  const result = spawnSync(process.execPath, ['-e', script, file], {encoding: 'utf8', timeout: 60_000});
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout;
 }
 function openedStore(t: TestContext, root = scratch(t)): ProjectStore {
   const store = openStore(root);
@@ -138,6 +146,10 @@ test('a transaction commits and rolls back the project file and the local record
   assert.equal(reopened.get('jobs', lostJob.id), null);
 });
 
+// tx follows db.ts's tx statement for statement, with one intended difference:
+// it begins with a plain (deferred) BEGIN, not BEGIN IMMEDIATE. The connection
+// already holds every file's lock, so IMMEDIATE would only put all three
+// databases in each write transaction; see the next test.
 test('misuse fails with the same errors as the workspace store', t => {
   const workspace = openWorkspaceStore(path.join(scratch(t), 'workspace'), {lock: false});
   t.after(() => workspace.close());
@@ -174,6 +186,39 @@ test('misuse fails with the same errors as the workspace store', t => {
   ]);
   assert.deepEqual(misuse(store), expected);
   assert.equal(store.db.isTransaction, false);
+});
+
+test('a transaction of local records alone leaves the project file out of it and creates no super-journal (BEGIN, not BEGIN IMMEDIATE)', async t => {
+  const store = openedStore(t);
+  const {db, projectId, localDir} = store;
+  store.put('projects', {id: projectId});
+  addReceipt(db, 'k1-begin');
+  // SQLite creates a super-journal beside history.db, the main database, when
+  // a commit has more than one database in its write transaction, and deletes
+  // it again: the folder's modification time records it.
+  const folderStamp = (): string => {
+    const info = statSync(localDir, {bigint: true});
+    return `${info.mtimeNs}:${info.ctimeNs}`;
+  };
+  const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 50));
+  const fileBefore = digestElsewhere(store.projectFile), sequenceBefore = sequences(db);
+  await settle();
+  const before = folderStamp(), entries = readdirSync(localDir).sort();
+  for (let index = 0; index < 20; index++) store.tx(() => addReceipt(db, 'k1-begin'));
+  assert.equal(folderStamp(), before, 'no super-journal was created and deleted beside history.db');
+  assert.deepEqual(readdirSync(localDir).sort(), entries);
+  assert.deepEqual(sequences(db), sequenceBefore);
+  assert.equal(receipts(db, 'k1-begin'), 21);
+  assert.equal(digestElsewhere(store.projectFile), fileBefore, 'the project file is unchanged');
+  // A transaction that writes both files still commits them with a super-journal.
+  await settle();
+  store.tx(() => {
+    store.put('shots', {id: randomUUID(), projectId});
+    addReceipt(db, 'k1-begin');
+  });
+  assert.notEqual(folderStamp(), before, 'a commit that spans both files used a super-journal');
+  assert.deepEqual(readdirSync(localDir).sort(), entries);
+  assert.ok(sequences(db).seen > sequenceBefore.seen);
 });
 
 test('fences run after BEGIN and before the callback, and their writes commit or roll back with it', t => {

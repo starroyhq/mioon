@@ -7,7 +7,8 @@ import {createProjectFile, openProjectConnection} from './connection.ts';
 import type {CreateProjectFileOptions, OpenProjectConnectionOptions} from './connection.ts';
 
 /** The contract's project store with the read and write surface of today's
- * WorkspaceStore (same tables, columns, errors and transaction rules). */
+ * WorkspaceStore (same tables, columns, errors and transaction rules; tx
+ * begins with a deferred BEGIN, see below). */
 export interface ProjectStore extends WorkspaceStore, ProjectStoreContract<DatabaseSync> {}
 
 /** Backend-owned transaction fences run first inside every store transaction,
@@ -71,10 +72,16 @@ export function openProjectStore(options: OpenProjectConnectionOptions): Project
   };
   // A transaction owns its complete synchronous callback. Never commit before
   // asynchronous work, or let a nested caller roll back an outer transaction.
+  // The one intended difference from db.ts: a plain (deferred) BEGIN instead
+  // of BEGIN IMMEDIATE. The connection holds every file's lock already, so
+  // IMMEDIATE takes no lock earlier; it would put all three databases in the
+  // write transaction, and every commit would create, sync and delete a
+  // super-journal. With BEGIN only the databases written join it: a commit of
+  // local records alone does not touch the project file.
   const tx = <T>(callback: () => T): T => {
     if (typeof callback !== 'function' || isAsyncFunction(callback)) throw new TypeError('Transactions require a synchronous callback');
     if (database.isTransaction) throw new Error('Nested transactions are not supported');
-    database.exec('BEGIN IMMEDIATE');
+    database.exec('BEGIN');
     try {
       for (const fence of transactionFences.get(database) ?? []) fence();
       const result = callback();

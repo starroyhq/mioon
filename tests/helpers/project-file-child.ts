@@ -13,9 +13,12 @@
 //   - commit-loop: commits k+1, k+2, ... with 256 MiB caches, printing
 //     `commit k` before each COMMIT and `committed k` after it;
 //   - after-commit: commits k+1, prints `committed k+1` and blocks.
-//   They wait for SIGKILL and exit 3 if it does not come.
+//   They wait for SIGKILL and exit 3 if it does not come. With MOVED_PROJECT_FILE
+//   set, a crash mode prints `opened` once the store is open and writes only
+//   after that path exists (the parent moves the open project there), within
+//   60 s or it exits 4.
 // The project comes from ROOT (test layout) or PROJECT_FILE, LOCAL_DIR, CACHE_DIR, TEMP_DIR.
-import {writeSync} from 'node:fs';
+import {existsSync, writeSync} from 'node:fs';
 import path from 'node:path';
 import {performance} from 'node:perf_hooks';
 import {DatabaseSync} from 'node:sqlite';
@@ -79,9 +82,18 @@ if (mode === 'open-report') {
 } else if (mode === 'mid-transaction' || mode === 'commit-loop' || mode === 'after-commit') {
   const payload = Number(process.env.PAYLOAD_MIB ?? 16) * MIB;
   const line = (text: string): void => { writeSync(1, `${text}\n`); };
-  const block = (): void => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 120_000); };
+  const block = (milliseconds = 120_000): void => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds); };
   const store = openProjectStore(openOptions());
   const start = readCrashRows(store.db, store.projectId).content;
+  const moved = process.env.MOVED_PROJECT_FILE;
+  if (moved) {
+    line('opened');
+    const deadline = performance.now() + 60_000;
+    while (!existsSync(moved)) {
+      if (performance.now() > deadline) process.exit(4);
+      block(5);
+    }
+  }
   if (mode === 'mid-transaction') {
     store.db.exec('PRAGMA main.cache_size=16; PRAGMA project.cache_size=16');
     store.tx(() => {

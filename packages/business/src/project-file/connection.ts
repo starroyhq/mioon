@@ -7,9 +7,10 @@ import {pathToFileURL} from 'node:url';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_FILE_EXISTS, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
-import type {ProjectHistoryState, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
+import type {ProjectHistoryState, ProjectInvalidReason, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
 import {installCrossFileTriggers} from './cross-file/install.ts';
-import {isSqliteBusy, isSqliteCorrupt, projectFileError} from './errors.ts';
+import {isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly, projectFileError} from './errors.ts';
+import {isHotJournal, isSuperJournalInUse, superJournalsIn} from './journals.ts';
 import type {ProjectFileErrorDetails, ProjectFileErrorReason} from './errors.ts';
 import {
   buildDatabase, CACHE_APPLICATION_ID, CACHE_SCHEMA_VERSION, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION,
@@ -78,7 +79,7 @@ function openFailure(error: unknown, database: DatabaseKind, projectId?: string)
   const code = (error as {code?: unknown} | null | undefined)?.code;
   const failure = isSqliteBusy(error) ? projectFileError('PROJECT_LOCKED', describe(database, 'locked', projectId))
     : database === 'project' && (code === 'ENOENT' || code === 'ENOTDIR') ? projectFileError('PROJECT_MISSING', describe(database, 'missing', projectId))
-    : invalid(database, isSqliteCorrupt(error) ? 'corrupt' : 'unusable', projectId);
+    : invalid(database, isSqliteCorrupt(error) ? 'corrupt' : isSqliteReadOnly(error) ? 'read-only' : 'unusable', projectId);
   failure.cause = error;
   return failure;
 }
@@ -312,6 +313,48 @@ const sequenceOf = (db: DatabaseSync, sql: string): number => {
   return value;
 };
 
+/** The last step of an open: page 1 of the project file is changed in a
+ * transaction that is rolled back, so the change reaches only the page cache
+ * and the file keeps its bytes and modification time. SQLite opens a
+ * database's rollback journal for its first write and refuses it with
+ * SQLITE_READONLY_DBMOVED once the file has been renamed; in exclusive locking
+ * mode it keeps the journal open from then on (cut to 0 bytes after each
+ * transaction) and does not check again. So the project folder can be moved
+ * while the project is open. A location without write permission fails here
+ * with SQLITE_READONLY, at the open instead of at the first write. */
+function openProjectJournal(db: DatabaseSync): void {
+  const version = pragmaValue(db, `${PROJECT}.user_version`);
+  if (typeof version !== 'number' || !Number.isSafeInteger(version)) throw new Error('The project file user version is unreadable');
+  db.exec('BEGIN');
+  try {
+    db.exec(`PRAGMA ${PROJECT}.user_version=${version}`);
+  } finally {
+    if (db.isTransaction) db.exec('ROLLBACK');
+  }
+}
+
+/** Deletes the super-journals beside the local records that SQLite no longer
+ * needs (isSuperJournalInUse), such as one left by a process killed while it
+ * wrote the super-journal: it is never read again but would keep the local
+ * records folder from being deleted. Runs once the connection holds all three
+ * files, so no other process commits to them meanwhile. A super-journal still
+ * in use, or one that cannot be read, stays. */
+function removeUnusedSuperJournals(localDir: string): void {
+  let superJournals: string[];
+  try {
+    superJournals = superJournalsIn(localDir);
+  } catch {
+    return;
+  }
+  for (const superJournal of superJournals) {
+    try {
+      if (lstatSync(superJournal).isFile() && !isSuperJournalInUse(superJournal)) rmSync(superJournal, {force: true});
+    } catch {
+      // Kept: it may still be needed.
+    }
+  }
+}
+
 interface AttachedDatabases {
   readonly db: DatabaseSync;
   readonly historyState: ProjectHistoryState;
@@ -364,6 +407,7 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     installCrossFileTriggers(db);
     const file = sequenceOf(db, `SELECT contentSequence FROM ${PROJECT}.project_file`);
     const seen = sequenceOf(db, `SELECT seenContentSequence FROM ${HISTORY}.history_state`);
+    openProjectJournal(db);
     const held: readonly HeldFile[] = [
       [projectKey, 'project'],
       [identityOf(lstatSync(historyFile, {bigint: true}), historyFile), 'history'],
@@ -378,9 +422,11 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
 
 /** Opens a project file on one connection: the project file alone first (lock,
  * recovery, checks, project ID), then the copy check, then the local records
- * from `locate` as main with the project file and the cache attached. Every
- * failure closes what was opened and leaves no lock behind. Opening does not
- * change the seen content sequence. */
+ * from `locate` as main with the project file and the cache attached, and
+ * last the project file's journal kept open (openProjectJournal). Every
+ * failure closes what was opened and leaves no lock behind. Once open, unused
+ * super-journals beside the local records are deleted. Opening does not
+ * change the seen content sequence or the project file. */
 export function openProjectConnection({projectFile: requested, locate, checkCopy}: OpenProjectConnectionOptions): ProjectConnection {
   const projectFile = path.resolve(requested);
   let info: BigIntStats | undefined;
@@ -401,6 +447,7 @@ export function openProjectConnection({projectFile: requested, locate, checkCopy
   for (const directory of [localDir, cacheDir, tempDir]) ensurePrivateDirectory(directory, {create: true});
   const {db, held: files, historyState} = attachDatabases(projectFile, projectKey, identity, path.join(localDir, PROJECT_HISTORY_FILE), path.join(cacheDir, PROJECT_CACHE_FILE));
   for (const [key, kind] of files) heldFiles.set(key, {db, kind});
+  removeUnusedSuperJournals(localDir);
   let closed = false;
   return {
     db, projectId: identity.projectId, projectFile, projectDir: path.dirname(projectFile), localDir, cacheDir, tempDir, historyState,
@@ -414,4 +461,63 @@ export function openProjectConnection({projectFile: requested, locate, checkCopy
       }
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Recovering without opening
+
+/** What recoverProjectFile found:
+ * - `clean`: no hot journal beside the project file; only its header was read;
+ * - `recovered`: SQLite rolled the hot journal back;
+ * - `locked`: another process holds the project file, for example while it
+ *   writes; nothing to do here;
+ * - `open-here`: this process has the project open; no file was touched;
+ * - `missing`: no project file at this path;
+ * - `invalid`: not something to recover, with the PROJECT_INVALID reason the
+ *   open would report, such as `not-a-project-file` or `read-only`. */
+export type ProjectFileRecovery =
+  | {readonly state: 'clean' | 'recovered' | 'locked' | 'open-here' | 'missing'}
+  | {readonly state: 'invalid'; readonly reason: ProjectInvalidReason};
+
+const recoveryOf = (error: unknown): ProjectFileRecovery => {
+  const failure = openFailure(error, 'project');
+  if (failure.code === 'PROJECT_LOCKED') return {state: 'locked'};
+  if (failure.code === 'PROJECT_MISSING') return {state: 'missing'};
+  const {reason} = failure.details as ProjectFileErrorDetails;
+  return {state: 'invalid', reason: reason === 'missing' || reason === 'locked' || reason === 'format-newer' || reason === 'exists' ? 'unusable' : reason};
+};
+
+/** Step 1 of the opening order and nothing else: when the project file has a
+ * hot journal beside it, opens the project file alone, takes its lock so that
+ * SQLite rolls the journal back, and closes it; the local records are not
+ * opened. A commit that crashed in the middle can leave half a transaction in
+ * the project file with a hot journal that names a super-journal beside the
+ * local records; copied to another computer without being opened here first,
+ * the file would be taken as committed there. Call it for projects that are
+ * not open, for example at startup and when listing recent projects. A project
+ * this process has open is recognised by file identity before any file is read. */
+export function recoverProjectFile(requested: string): ProjectFileRecovery {
+  const projectFile = path.resolve(requested);
+  let info: BigIntStats | undefined;
+  try {
+    info = lstatSync(projectFile, {bigint: true, throwIfNoEntry: false});
+  } catch (error) {
+    return recoveryOf(error);
+  }
+  if (!info) return {state: 'missing'};
+  if (!info.isFile()) return {state: 'invalid', reason: 'not-a-regular-file'};
+  const held = heldFiles.get(identityOf(info, projectFile));
+  if (held?.db.isOpen) return held.kind === 'project' ? {state: 'open-here'} : {state: 'invalid', reason: 'not-a-project-file'};
+  let db: DatabaseSync | undefined;
+  try {
+    checkHeader(projectFile);
+    if (!isHotJournal(`${projectFile}-journal`)) return {state: 'clean'};
+    db = openDatabase(existingFile(projectFile));
+    lock(db);
+    return {state: 'recovered'};
+  } catch (error) {
+    return recoveryOf(error);
+  } finally {
+    db?.close();
+  }
 }
