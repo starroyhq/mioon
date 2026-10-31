@@ -178,6 +178,7 @@
 | `PROJECT_FILE_SINGLE_PROJECT` | store 级 `project.create` 用在已有项目的文件上 | |
 | `PROJECT_FILE_EXISTS` | 新建时目标位置已有文件；HTTP 409 | 内核的详情照打开错误的写法，是 `{database: 'project', reason: 'exists'}`，不放绝对路径；应用级的新建再补上 `projectFile` |
 | `PROJECT_FILE_MOVED` | 项目打开期间单独改名或移动了 `.mioon`，文件夹没动；HTTP 409 | `details` 带 `projectId`。宿主正在按新位置重开，重试即可，见“只改名或单独移动 `.mioon`” |
+| `PROJECT_FILE_COPY` | 要打开的 `.mioon` 带着一个已登记项目的 ID，而登记的那个文件还在原处，这个文件是副本（计划 5.2）；HTTP 409 | `details` 带 `projectId`。应用库在内核的 `checkCopy` 里拒绝，这时还没给副本建本机记录；问用户、给副本换新 ID 归 S0、S6 |
 | `PROJECT_NOT_FOUND` | URL 里的项目 ID 没有登记；HTTP 404 | `details: {projectId}` |
 | `PROJECT_ID_MISMATCH` | URL 和输入里的 projectId 不一致；HTTP 400 | `details: {projectId}`，是 URL 里的 ID |
 | `PROJECT_UNAVAILABLE` | 已登记，但现在打不开；HTTP 409 | `details: {projectId, reason, invalidReason?}`，`reason` 是前四个原因码之一 |
