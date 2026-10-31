@@ -6,13 +6,14 @@ import type {ServiceStore} from '../packages/business/src/services.ts';
 import {
   DEFAULT_PROJECTS_DIRECTORY, DESKTOP_PROJECTS_FOLDER, PROJECT_ADDRESS_ERROR_CODES, PROJECT_API_PREFIX, PROJECT_BACKUPS_DIRECTORY,
   PROJECT_CACHE_DIRECTORY, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_EXPORTS_FOLDER, PROJECT_FILE_ERROR_CODES,
-  PROJECT_FILE_EXTENSION, PROJECT_FILE_SINGLE_PROJECT, PROJECT_GENERATED_FOLDER, PROJECT_HISTORY_FILE, PROJECT_HISTORY_STATES,
+  PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION, PROJECT_FILE_SINGLE_PROJECT, PROJECT_GENERATED_FOLDER, PROJECT_HISTORY_FILE, PROJECT_HISTORY_STATES,
   PROJECT_IMPORTS_DIRECTORY, PROJECT_OPEN_ERROR_CODES, PROJECT_RECORDS_DIRECTORY, PROJECT_RULES_FILE, SERVER_CACHE_DIRECTORY,
   SERVER_TEMP_DIRECTORY, TEST_STORE_DIRECTORY,
   TEST_STORE_LAYOUT, isProjectId, isProjectStoreInternalEntry, parseProjectApiPath, projectAddressErrorDetailsSchemas, projectApiPath,
   projectCacheDirSegments, projectLocalDirSegments, projectMediaPath, projectOpenFailureSchema, projectOpenResultSchema, projectRpcPath,
 } from '../packages/contracts/src/project-file.ts';
-import type {ProjectStore} from '../packages/contracts/src/project-file.ts';
+import type {ForeignKeyViolation, ProjectStore, SchemaObject} from '../packages/contracts/src/project-file.ts';
+import {foreignKeyCheck, projectFileError, schemaObjects} from '../packages/business/src/project-file/index.ts';
 import {
   MEDIA_PATH_FORMS, MEDIA_STATUSES, isNormalizedAbsolutePath, isPortableRelativePath, mediaFingerprintSchema, mediaReferenceSchema,
   outsideProjectLocationSchema,
@@ -59,12 +60,26 @@ test('ProjectStore over DatabaseSync is a business ServiceStore', () => {
   assert.equal(typeof asServiceStore, 'function');
 });
 
+test('the kernel reports with the contract types and the contract creation code', () => {
+  // Type-level: the kernel's inspection functions return the contract's shapes.
+  const objects: (db: DatabaseSync) => SchemaObject[] = schemaObjects;
+  const violations: (db: DatabaseSync) => ForeignKeyViolation[] = foreignKeyCheck;
+  assert.equal(typeof objects, 'function');
+  assert.equal(typeof violations, 'function');
+  const error = projectFileError(PROJECT_FILE_EXISTS, {database: 'project', reason: 'exists'});
+  assert.equal(error.code, PROJECT_FILE_EXISTS);
+  assert.equal(error.status, 409);
+  assert.deepEqual(error.details, {database: 'project', reason: 'exists'});
+});
+
 test('states and error codes are the agreed strings', () => {
   assert.deepEqual(PROJECT_HISTORY_STATES, ['fresh', 'current', 'file-older', 'file-newer']);
   assert.deepEqual(PROJECT_OPEN_ERROR_CODES, ['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER', 'PROJECT_INVALID']);
   assert.equal(PROJECT_FILE_SINGLE_PROJECT, 'PROJECT_FILE_SINGLE_PROJECT');
+  assert.equal(PROJECT_FILE_EXISTS, 'PROJECT_FILE_EXISTS');
   assert.deepEqual(PROJECT_ADDRESS_ERROR_CODES, ['PROJECT_NOT_FOUND', 'PROJECT_ID_MISMATCH', 'PROJECT_UNAVAILABLE']);
-  assert.deepEqual(PROJECT_FILE_ERROR_CODES, [...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, ...PROJECT_ADDRESS_ERROR_CODES]);
+  assert.deepEqual(PROJECT_FILE_ERROR_CODES, [...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, PROJECT_FILE_EXISTS, ...PROJECT_ADDRESS_ERROR_CODES]);
+  assert.equal(new Set(PROJECT_FILE_ERROR_CODES).size, PROJECT_FILE_ERROR_CODES.length);
   assert.deepEqual(MEDIA_PATH_FORMS, ['relative', 'absolute']);
   assert.deepEqual(MEDIA_STATUSES, ['online', 'missing', 'changed']);
   assert.deepEqual(PROJECT_VERSION_TRIGGERS, ['manual', 'mio-turn', 'bulk-change', 'restore', 'daily-open']);

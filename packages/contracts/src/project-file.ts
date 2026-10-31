@@ -134,12 +134,39 @@ export const PROJECT_OPEN_ERROR_CODES = Object.freeze(['PROJECT_MISSING', 'PROJE
 export type ProjectOpenErrorCode = typeof PROJECT_OPEN_ERROR_CODES[number];
 /** Store-level `project.create` on a file that already has its project. */
 export const PROJECT_FILE_SINGLE_PROJECT = 'PROJECT_FILE_SINGLE_PROJECT';
+/** Creating a project file where something already exists (HTTP 409). The
+ * kernel's details are `{database: 'project', reason: 'exists'}` and never an
+ * absolute path; app-level creation adds `projectFile`. */
+export const PROJECT_FILE_EXISTS = 'PROJECT_FILE_EXISTS';
 /** Project-addressed requests. An operation addressed only by entity ID keeps
  * answering NOT_FOUND when the entity belongs to another project. */
 export const PROJECT_ADDRESS_ERROR_CODES = Object.freeze(['PROJECT_NOT_FOUND', 'PROJECT_ID_MISMATCH', 'PROJECT_UNAVAILABLE'] as const);
 export type ProjectAddressErrorCode = typeof PROJECT_ADDRESS_ERROR_CODES[number];
-export const PROJECT_FILE_ERROR_CODES = Object.freeze([...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, ...PROJECT_ADDRESS_ERROR_CODES] as const);
+export const PROJECT_FILE_ERROR_CODES = Object.freeze([...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, PROJECT_FILE_EXISTS, ...PROJECT_ADDRESS_ERROR_CODES] as const);
 export type ProjectFileErrorCode = typeof PROJECT_FILE_ERROR_CODES[number];
+
+/** One `sqlite_master` row of a database on a project connection, with its
+ * schema name (`main` for the local records, `temp`, `project`, `cache`).
+ * Returned by the test helper and kernel function `schemaObjects(db)`. */
+export interface SchemaObject {
+  readonly schema: string;
+  readonly type: string;
+  readonly name: string;
+  readonly tbl_name: string;
+  readonly sql: string | null;
+}
+/** A row whose parent row is missing, as `foreignKeyCheck(db)` reports it.
+ * `constraint` is `fk:<id>` (the id from `PRAGMA <schema>.foreign_key_check`)
+ * for a foreign key inside one database, and `project_file_fk_<NN>` for a
+ * cross-file relation the connection emulates with temporary triggers. */
+export interface ForeignKeyViolation {
+  readonly schema: string;
+  readonly table: string;
+  readonly rowid: number | null;
+  readonly parent: string;
+  readonly parentSchema: string;
+  readonly constraint: string;
+}
 
 const filePath = z.string().min(1).max(4096);
 const formatVersion = z.number().int().min(1).max(1_000_000);

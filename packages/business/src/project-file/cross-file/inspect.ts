@@ -1,29 +1,8 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {PROJECT_DATABASE_NAMES} from '../../../../contracts/src/project-file.ts';
+import type {ForeignKeyViolation, SchemaObject} from '../../../../contracts/src/project-file.ts';
 import {relationConstraintName} from './install.ts';
 import {CROSS_FILE_RELATIONS} from './relations.ts';
-
-/** One `sqlite_master` row of a database on the connection, with its schema
- * name (`main`, `temp`, `project`, `cache`). */
-export interface SchemaObject {
-  readonly schema: string;
-  readonly type: string;
-  readonly name: string;
-  readonly tbl_name: string;
-  readonly sql: string | null;
-}
-
-/** A row whose parent row is missing. `constraint` is `fk:<id>` (the id from
- * PRAGMA foreign_key_check) for a foreign key inside one database and
- * `project_file_fk_<NN>` for an emulated cross-file relation. */
-export interface ForeignKeyViolation {
-  readonly schema: string;
-  readonly table: string;
-  readonly rowid: number | null;
-  readonly parent: string;
-  readonly parentSchema: string;
-  readonly constraint: string;
-}
 
 const quote = (name: string): string => `"${name.replaceAll('"', '""')}"`;
 

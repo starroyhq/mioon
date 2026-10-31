@@ -1,5 +1,5 @@
 # 项目文件 v1：约定（草稿）
-日期：2026-10-30。基线：main `15671b7c`。状态：草稿；约定要改时提给协调人。
+日期：2026-10-30 起草，10-31 按新内核（K1）的实测补充。状态：草稿；约定要改时提给协调人。
 
 项目文件 v1 让 `.mioon` 成为项目本身：一个 SQLite 文件只存一个项目的当前内容；Mio 记录、撤销、版本、任务、回执和草稿按项目 ID 存在本机。这份文档记下各张任务卡共同遵守的约定，名字以契约代码为准：
 
@@ -21,6 +21,7 @@
     - 桌面版建在 Electron 的 `app.getPath('videos')` 下的 `Mioon/<项目名>/`：macOS 上是 `~/Movies/Mioon/`，Windows 上是 `Videos\Mioon\`；
     - 文件夹重名时加序号。由项目名得出文件夹名的规则和序号的写法由 S0 定。
   - **store 级**（`createServices(store)` 里的 `project.create`）：只初始化文件里唯一的一行，第二次报 `PROJECT_FILE_SINGLE_PROJECT`。
+  - 新建时目标位置已经有文件，报 `PROJECT_FILE_EXISTS`，从不覆盖，见“错误码”。
 - 直接 `INSERT INTO projects` 的测试改用 `project.create`（W1）。
 
 ## 用法不变
@@ -36,7 +37,8 @@
 
 - `root` 保留，等于 `projectDir`。S0 把用到 `store.root` 的 29 个业务文件逐个改到四个目录之一。
 - 本机记录放在 `records/`，不放在 `projects/`。网页版默认把项目建在 `<dataDir>/projects/` 下，混在一起时，列项目会把本机记录（尤其是 `backups/` 里同 ID 的副本）当成项目。
-- 同样的原因，网页版和无界面服务的应用缓存目录不能就是 `dataDir`：缓存用 `<dataDir>/cache/`，临时文件用 `<dataDir>/tmp/`（`SERVER_CACHE_DIRECTORY`、`SERVER_TEMP_DIRECTORY`），由 S0 实现。桌面版沿用 `dataPaths` 的取法。
+- 同样的原因，网页版和无界面服务的应用缓存目录不能就是 `dataDir`：缓存用 `<dataDir>/cache/`，临时文件用 `<dataDir>/tmp/`（`SERVER_CACHE_DIRECTORY`、`SERVER_TEMP_DIRECTORY`），由 S0 实现。
+- 桌面版的三个目录也由 S0 定。内核按私有目录的规则检查 `localDir`、`cacheDir`、`tempDir`，路径里不能有符号链接；macOS 的系统临时目录经过 `/var` 这个符号链接，会被拒绝。建议临时目录用 `<应用数据目录>/tmp/`，缓存用系统缓存目录下的 `<应用 ID>/`。
 - 文件夹名 `生成`、`导出` 固定，不随界面语言变化。
 - `tempDir` 可能和项目目录不在同一个盘上，暂存文件移进项目目录时不能只靠一次改名，否则会报 `EXDEV`。
 - 生产代码列项目目录时（L1 给 Mio 列目录、R3、V3 打包），跳过以 `.` 开头的条目。生产环境里本来就有 `.DS_Store` 这类文件，这样也不用专门识别测试布局里的 `.mioon-store`。
@@ -61,7 +63,8 @@
 
 - **主库是本机记录 `history.db`。** 项目文件以 `project` 的名字挂上去，缓存库以 `cache` 的名字挂上去（`PROJECT_DATABASE_NAMES`）。
   - 未加限定的表名，SQLite 依次到各个库里找，所以现有 SQL 大多不用改。
-  - 建表、建触发器，以及 `PRAGMA user_version`、`application_id`、`journal_mode`、`foreign_key_check` 这类语句要带库名，不带时落到主库，也就是本机记录。
+  - 建表、建触发器，以及 `PRAGMA user_version`、`PRAGMA application_id` 这类语句要带库名，不带时落到主库，也就是本机记录。`PRAGMA foreign_key_check` 不带库名时只查主库。
+  - 日志模式和锁模式另有规则，见下面的“日志模式按库名设”。
 - **为什么本机记录作主库：**
   - 跨文件提交时，SQLite 把超级日志建在主库旁边，并在每个文件的日志里记下它的绝对路径。
   - 项目目录会被移动，这是常规操作；本机记录的位置固定。
@@ -73,18 +76,38 @@
   3. 挂上项目文件和缓存库，按结构清单校验，建连接级的临时触发器。
 
   顺序不能反。SQLite 恢复完一个库以后，如果超级日志里列出的其他日志都不在原路径上，就会删掉超级日志，所以项目文件要先恢复。打开前本来也要先读出项目 ID，才知道该挂哪份本机记录。
+- **日志模式按库名设**（10-30 实测）：
+  - 不带库名的 `PRAGMA journal_mode=…` 只改当时已经挂上的库，之后挂上的库不受影响；`PRAGMA locking_mode=…` 则连之后挂上的库也一起改。所以挂上以后，三个库都按库名设一遍日志模式。
+  - WAL 模式写在文件头里，跟着文件走。内核读文件头时发现是 WAL 模式，报 `PROJECT_INVALID`（`reason: 'journal-mode'`），不转换。Mioon 自己从不建 WAL 模式的项目文件。
 - **其余时候只用这一个连接：** 除了第 1 步，项目文件和本机记录都只在这个连接上打开。临时触发器只存在于这个连接上，另开连接写入会绕过跨文件约束。
-- **本机记录清单：** 只统计大小、删除文件，不打开库。文件夹里有超级日志（`*-mj*`）时不能删，否则项目文件就恢复不了（`localRecordsEntrySchema` 的 `hasSuperJournal`）。
+- **同一进程不能对同一个项目开第二个连接：** 再开报 `PROJECT_LOCKED`。测试的写法见“测试里怎样访问库”。
+- **本进程不能用 `fs` 打开再关闭这三个库文件**（K1 实测）：
+  - POSIX 的锁属于进程。关闭任何一个指向同一文件的描述符，都会释放 SQLite 在上面的锁，别的进程随即能读写。
+  - 项目打开期间，拷贝、算哈希、读文件都不行；`stat` 可以，它不打开文件。
+  - 要拷贝，用 SQLite 的备份接口或 `VACUUM INTO`，或者先关掉项目。
+  - 涉及 S5（复制、另存为）、V2（备份）、V3（打包）、W2，以及 B1 的文件身份（只用 `stat`）。Windows 的锁按句柄，没有这个问题。
+- **本机记录的文件夹：**
+  - 本机记录清单只统计大小、删除文件，不打开库。
+  - 文件夹里有还用得着的超级日志（`*-mj*`）时不能删，否则项目文件就恢复不了（`localRecordsEntrySchema` 的 `hasSuperJournal`）。删除接口在服务端也要核对，不能只靠界面。
+  - 也不能移动或改名，包括以后迁移应用数据目录（K1 实测）。日志里记的是超级日志的绝对路径，路径一变，SQLite 就把热日志当成已提交，`history.db` 里留下半个事务。要搬，先经内核把项目打开一次再关上。
+  - 没用的超级日志：进程正好在写超级日志时被杀，会留下一个没人引用的超级日志，约 230 字节，它会让这个文件夹永远删不掉。S0 在每次成功打开以后清掉它。
+  - 判断规则（B1 按这条实现）：超级日志列出的日志里，至少有一个还存在、是热日志，而且尾部记的正是这个超级日志，才算还用得着。
+- **打开期间移动项目文件夹**（macOS、Linux 上能移；Windows 上文件被占用，移不动）：
+  - 打开以后还没写过项目文件就被移动，之后第一次写会报 `SQLITE_READONLY_DBMOVED`。写过一次以后再移动，就照常可用，因为独占模式下 SQLite 一直开着日志（K1 实测）。
+  - S0 在打开时就把项目文件的日志开着：在事务里改一页再回滚，项目文件的内容不变。做不到时，遇到这个错误就按文件身份找到新位置，关掉项目重新打开。
+  - 关闭时按文件身份更新登记。
+- **崩溃后没在本机恢复就被拷走：** 拷到别的电脑上的项目文件可能带着半个事务，因为那边找不到本机记录旁边的超级日志。S0、S6 在启动时，以及列最近项目时，项目文件旁边有热日志的，先在本机按打开顺序的第 1 步恢复一次。
+- **事务：** `store.tx` 改用 `BEGIN`（S0）。独占锁下 `BEGIN IMMEDIATE` 已经没有提前取锁的作用，反而让每次提交都把三个库拉进写事务、建一个超级日志。改成 `BEGIN` 以后，只写本机记录的提交（例如 Mio 流式输出）不碰项目文件，也不建超级日志。K1 实测，p50 从 1.11 ms 降到 0.34 ms。
 - **应用库：** 不挂到项目连接上，单独开一个连接。
 - **锁：** 都用回滚日志模式和独占锁，打开时立即取得写锁。第二个进程打开同一个项目时报 `PROJECT_LOCKED`。
 
 ## 日志文件
 10-30 实测，并按 SQLite 的实现核对过。
 
-- **单库提交后：** `-journal` 留着，头部清零，旧页还在，关闭项目时才删。可以设 `journal_size_limit=0`，让单库提交后也截成 0 字节，免得旧内容在日志里留到关闭。要不要设，由 K1 定。
+- **单库提交后：** 不设上限时，`-journal` 留着，头部清零，旧页还在，关闭项目时才删。内核设 `journal_size_limit=0`（`PROJECT_JOURNAL_SIZE_LIMIT`），所以每次提交后日志都截成 0 字节，旧内容不会在项目目录里留到关闭。
 - **跨库提交后：** `-journal` 截成 0 字节。
-- **超级日志：** 只在跨库提交的过程中出现，提交中途崩溃时会留下。它在本机记录旁边，见上一节。
-- **拷贝：** 项目打开期间单独拷走 `.mioon`，只有在没有写事务进行时拷出来的才完整。
+- **超级日志：** 只在多个库同时处于写事务时出现，提交完删掉；提交中途崩溃时会留下。它在本机记录旁边，见上一节。`store.tx` 改成 `BEGIN` 以前，每次提交都会建一个。
+- **拷贝：** 项目打开期间，在别处（例如访达）单独拷走 `.mioon`，只有在没有写事务进行时拷出来的才完整。本进程要拷，见上一节。
 
 ## 按项目寻址
 - 项目级接口放在 `/api/projects/<项目 ID>/` 下：
@@ -121,11 +144,13 @@
 | `PROJECT_FORMAT_NEWER` | 格式比当前 Mioon 支持的新（12-03c） | 另带 `database`（`project`、`history` 或 `cache`，本机记录有自己的格式版本）、`formatVersion`、`supportedFormatVersion` |
 | `PROJECT_INVALID` | 文件损坏、不是项目文件，或结构对不上（12-03d） | 同第一行 |
 | `PROJECT_FILE_SINGLE_PROJECT` | store 级 `project.create` 用在已有项目的文件上 | |
+| `PROJECT_FILE_EXISTS` | 新建时目标位置已有文件；HTTP 409 | 内核的详情照打开错误的写法，是 `{database: 'project', reason: 'exists'}`，不放绝对路径；应用级的新建再补上 `projectFile` |
 | `PROJECT_NOT_FOUND` | URL 里的项目 ID 没有登记；HTTP 404 | `details: {projectId}` |
 | `PROJECT_ID_MISMATCH` | URL 和输入里的 projectId 不一致；HTTP 400 | `details: {projectId}`，是 URL 里的 ID |
 | `PROJECT_UNAVAILABLE` | 已登记，但现在打不开；HTTP 409 | `details: {projectId, reason}`，`reason` 是前四个原因码之一 |
 
 - 三个寻址错误码的 HTTP 状态是 K2 先用的默认值，要改提给协调人。
+- 内核的打开错误另带 `details.reason`，例如 `journal-mode`、`schema`、`not-a-project-file`。只读位置（没有写权限、只读卷）现在报 `PROJECT_INVALID`（`unusable`），界面会显示成“文件损坏”；S0 加一个 `read-only` 原因，界面按 12-03d 的样式换文案。
 - 打开结果（`projectOpenResultSchema`）：成功时带 `projectId`、`projectFile`、`projectDir`、`historyState`，失败时带前四种之一。
 - 只按实体 ID 寻址的操作不用新的错误码，见上一节。
 
@@ -167,7 +192,9 @@
 - **本机记录清单：** 项目 ID、大小，以及文件夹里有没有超级日志（`hasSuperJournal`）。列清单时不打开 `history.db`；有超级日志的不能删。
 
 ## 跨文件约束
-160 列外键全是 `NO ACTION`，没有级联。清单第 5 节逐条列出；K1 按下面的规则处理，并在 PR 里附对照表。按去掉豁免条件后的 SQL 算，跨文件的触发器共 47 个。
+160 列外键全是 `NO ACTION`，没有级联。清单第 5 节逐条列出；新内核（K1）按下面的规则实现，PR #104 附了逐条的对照表。
+
+按去掉豁免条件后的 SQL 算，跨文件的触发器共 46 个：读别的库的 14 个、建在过程表上写目标修订的 12 个、Mio 配额 20 个。`scene_task_state_transitions` 只在字符串 `'shots'` 里出现表名，不读别的库，不算在内。
 
 - **本机记录、缓存表指向内容表的外键**（分别 62 列、3 列），以及这两类表上查内容表的触发器：改成连接级的临时触发器，完整模拟 `NO ACTION` 外键：
   - 插入子行、子表改外键列时，父行必须存在；
@@ -175,8 +202,8 @@
   - 外键列为空时不检查（`MATCH SIMPLE`），复合外键只要有一列为空就不检查。
 - **两个原本延迟检查的跨文件外键：** `image_tasks(versionId,id,groupId,projectId)` 指向 `image_versions`，`scene_tasks(resultId,projectId)` 指向 `scene_results`。临时触发器只能立即检查。
   - 插入路径：现有代码先插结果行，再回填任务的 `versionId`、`resultId`，所以立即检查也能过。
-  - 删除和改父键的路径也要核对：同一事务里先删父行、后清子行的写法，改成立即检查以后会失败。
-  - K1 把这两项写进对照表，并加测试。
+  - 删除和改父键的路径：同一事务里先删父行、后清子行的写法，改成立即检查以后会失败。在真实的表上走不到这条路径，因为 `image_versions`、`scene_results` 本来就有保留类和不可改的触发器。
+  - K1 把这两项写进了对照表，并有测试。
 - **内容表指向过程表的外键：** 共 10 列，属于 5 个复合外键：`versions.jobId` 指向 `jobs`，`image_groups`、`image_versions` 指向 `image_tasks`，`scene_results` 指向 `scene_requests`、`scene_tasks`。去掉约束，ID 列保留为普通列；本机没有对应的过程记录时，代码按“来自别处”处理。`image_groups.activeTaskId` 在本机找不到对应任务时当作空闲。
 - **内容表上查过程表的 4 个触发器**（`reject_legacy_frame_asset_owner`、`reject_image_frame_asset_owner`、`scene_result_identity`、`subject_variant_version_binding`）：改成连接级的临时触发器。
 - **Mio 配额的 20 个触发器：** 建在 Mio 表上的 16 个改写，只统计本机记录里的 Mio 表；建在放行表上的 4 个删除。上限在 R1 再定。
@@ -220,6 +247,8 @@ createServerProject(dataDir: string): {projectId: string; store: ProjectStore<Da
 foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及用临时触发器模拟的跨文件关系
 ```
 
+- `SchemaObject`、`ForeignKeyViolation` 两个类型定义在 `project-file.ts`。新内核上的 `schemaObjects`、`foreignKeyCheck` 由 K1 实现（`packages/business/src/project-file/cross-file/inspect.ts`），W2 在旧存储上实现同样的签名。
+- 不带库名的 `PRAGMA foreign_key_check` 只查主库。K1 清点出生产代码里有 3 处、测试里有 21 个文件这样写，改用 `foreignKeyCheck` 或带上库名：生产代码那 3 处归 S0，测试归 W2。
 - `openProjectDatabase` 设置和内核相同的 pragma，建同样的连接级临时触发器，否则经这个连接写入时会绕过跨文件约束和目标修订触发器。store 或服务端还占着这个项目时拒绝打开；旧存储上也执行这条规则，例如发现 `server.lock` 存在就拒绝。
 - `createServerProject` 给“先填库、再起服务”的测试用：按服务端的布局建一个已登记的项目，返回 `{projectId, store}`。写完先 `store.close()`，再 `startServer({dataDir})`。切换以后，服务端只认登记过的项目，看不到在 `dataDir` 本身建的 store。
 
@@ -232,7 +261,9 @@ foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及�
   - 进程内启动的服务端：用受信任的测试接口 `inspectProject`，见下一节；
   - 子进程里的服务端：改成进程内启动，或者调整检查的时机；
   - 也可以先关掉服务端再打开，或者改用接口读取。
-- 生产代码对项目文件只开一个连接，现在只有 `db.ts` 打开库文件。除了打开时第 1 步单独打开项目文件，不另开连接；K1 加一条守卫测试，防止以后有人另开连接。
+- 生产代码对项目文件只开一个连接，现在只有 `db.ts` 打开库文件。除了打开时第 1 步单独打开项目文件，不另开连接；K1 已经加了守卫测试，防止以后有人另开连接。
+- 同一进程对同一个项目再开一个 store，报 `PROJECT_LOCKED`。例如用 `openStore(root,{lock:false})` 再开一个连接的测试，要先 `close()`，或者把第二个连接放进子进程。
+- 项目打开期间，测试也不能用 `fs` 读、拷贝库文件或算它的哈希，见“一个连接，三个库”。要算哈希，在子进程里算，或者先关掉 store。
 
 ### 受信任的测试接口
 进程内启动的 `startServer` 增加一个只供测试用的受信任选项，写法参照现有的 `taskFault`、`taskGatewayV2`：注释写明只供测试，从不来自 HTTP 或环境变量。名字和形状：
