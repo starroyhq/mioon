@@ -6,7 +6,8 @@ import type {ServiceStore} from '../packages/business/src/services.ts';
 import {
   DEFAULT_PROJECTS_DIRECTORY, DESKTOP_PROJECTS_FOLDER, PROJECT_ADDRESS_ERROR_CODES, PROJECT_API_PREFIX, PROJECT_BACKUPS_DIRECTORY,
   PROJECT_CACHE_DIRECTORY, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_EXPORTS_FOLDER, PROJECT_FILE_ERROR_CODES,
-  PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION, PROJECT_FILE_SINGLE_PROJECT, PROJECT_GENERATED_FOLDER, PROJECT_HISTORY_FILE, PROJECT_HISTORY_STATES,
+  PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION, PROJECT_FILE_MOVED, PROJECT_FILE_SINGLE_PROJECT, PROJECT_GENERATED_FOLDER, PROJECT_HISTORY_FILE,
+  PROJECT_HISTORY_STATES,
   PROJECT_IMPORTS_DIRECTORY, PROJECT_INVALID_REASONS, PROJECT_OPEN_ERROR_CODES, PROJECT_RECORDS_DIRECTORY, PROJECT_RULES_FILE, SERVER_CACHE_DIRECTORY,
   SERVER_TEMP_DIRECTORY, TEST_STORE_DIRECTORY,
   TEST_STORE_LAYOUT, isProjectId, isProjectStoreInternalEntry, parseProjectApiPath, projectAddressErrorDetailsSchemas, projectApiPath,
@@ -89,8 +90,12 @@ test('states and error codes are the agreed strings', () => {
   assert.equal(invalidReason('read-only'), 'read-only');
   assert.equal(PROJECT_FILE_SINGLE_PROJECT, 'PROJECT_FILE_SINGLE_PROJECT');
   assert.equal(PROJECT_FILE_EXISTS, 'PROJECT_FILE_EXISTS');
+  assert.equal(PROJECT_FILE_MOVED, 'PROJECT_FILE_MOVED');
   assert.deepEqual(PROJECT_ADDRESS_ERROR_CODES, ['PROJECT_NOT_FOUND', 'PROJECT_ID_MISMATCH', 'PROJECT_UNAVAILABLE']);
-  assert.deepEqual(PROJECT_FILE_ERROR_CODES, [...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, PROJECT_FILE_EXISTS, ...PROJECT_ADDRESS_ERROR_CODES]);
+  assert.deepEqual(PROJECT_FILE_ERROR_CODES, [
+    ...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, PROJECT_FILE_EXISTS, PROJECT_FILE_MOVED, ...PROJECT_ADDRESS_ERROR_CODES,
+  ]);
+  assert.ok(Object.isFrozen(PROJECT_FILE_ERROR_CODES));
   assert.equal(new Set(PROJECT_FILE_ERROR_CODES).size, PROJECT_FILE_ERROR_CODES.length);
   assert.deepEqual(MEDIA_PATH_FORMS, ['relative', 'absolute']);
   assert.deepEqual(MEDIA_STATUSES, ['online', 'missing', 'changed']);
@@ -175,8 +180,19 @@ test('open results and addressing details are validated', () => {
   const kernel = projectFileError('PROJECT_INVALID', {database: 'project', reason: 'read-only', projectId});
   const {reason} = kernel.details as ProjectFileErrorDetails;
   assert.ok(projectOpenFailureSchema.safeParse({code: kernel.code, projectFile, projectId, reason}).success);
-  assert.ok(projectAddressErrorDetailsSchemas.PROJECT_UNAVAILABLE.safeParse({projectId, reason: 'PROJECT_LOCKED'}).success);
-  assert.equal(projectAddressErrorDetailsSchemas.PROJECT_UNAVAILABLE.safeParse({projectId, reason: 'PROJECT_NOT_FOUND'}).success, false);
+  const unavailable = projectAddressErrorDetailsSchemas.PROJECT_UNAVAILABLE;
+  assert.ok(unavailable.safeParse({projectId, reason: 'PROJECT_LOCKED'}).success);
+  assert.equal(unavailable.safeParse({projectId, reason: 'PROJECT_NOT_FOUND'}).success, false);
+  assert.equal(unavailable.safeParse({projectId, reason: 'PROJECT_LOCKED', database: 'project'}).success, false, 'still strict');
+  // With PROJECT_INVALID the kernel's reason may ride along, so callers by project ID can tell read-only from damaged.
+  assert.deepEqual(unavailable.parse({projectId, reason: kernel.code, invalidReason: reason}), {projectId, reason: 'PROJECT_INVALID', invalidReason: 'read-only'});
+  for (const invalidReason of PROJECT_INVALID_REASONS)
+    assert.ok(unavailable.safeParse({projectId, reason: 'PROJECT_INVALID', invalidReason}).success, invalidReason);
+  assert.ok(unavailable.safeParse({projectId, reason: 'PROJECT_INVALID'}).success, 'invalidReason is optional');
+  for (const code of ['PROJECT_MISSING', 'PROJECT_LOCKED', 'PROJECT_FORMAT_NEWER'] as const)
+    assert.equal(unavailable.safeParse({projectId, reason: code, invalidReason: 'corrupt'}).success, false, `${code} takes no invalidReason`);
+  for (const invalidReason of ['missing', 'locked', 'format-newer', 'exists', 'moved', 'damaged', ''])
+    assert.equal(unavailable.safeParse({projectId, reason: 'PROJECT_INVALID', invalidReason}).success, false, JSON.stringify(invalidReason));
   assert.ok(projectAddressErrorDetailsSchemas.PROJECT_NOT_FOUND.safeParse({projectId}).success);
   assert.equal(projectAddressErrorDetailsSchemas.PROJECT_ID_MISMATCH.safeParse({projectId: 'x'}).success, false);
 });
