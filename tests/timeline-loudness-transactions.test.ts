@@ -16,6 +16,7 @@ import {readTimelinePreflightSnapshot,readTimelineSourceGraph} from '../packages
 import {validateTimeline} from '../packages/business/src/timeline-inputs.ts';
 import {planTimelineMixLoudnessDecode} from '../packages/business/src/timeline-mix-loudness-decoder.ts';
 import {validateManagedSource,verifiedManagedHash} from '../packages/business/src/managed-media.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 interface AssetView {id: string; projectId: string; name: string; mimeType: string; relativePath: string; sha256: string; sizeBytes: number; duration: number; hasAudio: boolean; hasVideo: boolean; width: number; height: number; url: string; createdAt: string}
 interface ClipView {id: string; trackId: string; gain: number; startFrame: number; durationFrames: number; [key: string]: unknown}
 interface TrackView {id: string; kind: string; muted: boolean; [key: string]: unknown}
@@ -34,8 +35,18 @@ function readSaved(store: ReturnType<typeof openStore>,projectId: string): {time
     const assets=readTimelineSourceGraph(db as never,projectId,timeline as never) as unknown as Map<string, AssetView>;validateTimeline(timeline as never,assets as never,{structureOnly:true});return {timeline,assets:[...assets.values()]};
   }finally{if(!outer&&db.isTransaction)db.exec('COMMIT');}
 }
-function rows(db: ReturnType<typeof openStore>['db']): Record<string, Record<string, unknown>[]> {return Object.fromEntries((db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[])
+const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
+function rows(db: ReturnType<typeof openStore>['db']): Record<string, Record<string, unknown>[]> {return Object.fromEntries(schemaObjects(db).filter(({type})=>type==='table').sort(byName)
   .map(({name}: {name: string})=>[name,db.prepare(`SELECT rowid,* FROM "${name}" ORDER BY rowid`).all() as Record<string, unknown>[]]));}
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: import('node:test').TestContext,name='Foreign project'): Promise<{id: string}> {
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-atomic-gain-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const store=openStore(root),services=createServices(store,new Map());
+  try{return await services.call('project.create',{name}) as {id: string};}
+  finally{await services.drain();store.close();}
+}
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(db: ReturnType<typeof openStore>['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 async function syntheticDecode(timeline: TimelineView,assets: AssetView[],options: {beforeEffect(): void; onPcm(chunk: Buffer): void}): Promise<{sampleRate: number; channels: number} & Record<string, unknown>> {
   const plan=planTimelineMixLoudnessDecode(timeline as never,assets as never),tracks=new Map<string, TrackView>(timeline.tracks.map((track: TrackView)=>[track.id,track]));options.beforeEffect();
   for(let begin=0;begin<plan.sampleFrames;begin+=8192){const length=Math.min(8192,plan.sampleFrames-begin),chunk=Buffer.alloc(length*8);
@@ -112,8 +123,8 @@ test('receipt replay keeps historical source/lineage DB ownership without requir
   const f=await fixture(t),{input}=await f.review(),response=await f.apply(input);
   await f.services.call('timeline.clip.remove',{projectId:f.project.id,expectedRevision:response.timeline.revision,requestId:randomUUID(),clipId:f.timeline.clips[0]?.id} as never);
   assert.deepEqual(await f.apply(input),response);
-  const foreign=await f.services.call('project.create',{name:'Foreign'}) as {id: string},changed={...f.asset,projectId:foreign.id};
-  f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(foreign.id,JSON.stringify(changed),f.asset.id);
+  const foreign=await foreignProject(t,'Foreign'),changed={...f.asset,projectId:foreign.id};
+  withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(foreign.id,JSON.stringify(changed),f.asset.id));
   await assert.rejects(f.apply(input),{code:'TIMELINE_SOURCE_UNAVAILABLE'});
 });
 test('revision maximum and ordinary CAS conflicts reject before decoder with exact owner-bound not-applied proof',async t=>{
