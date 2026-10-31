@@ -11,6 +11,7 @@ import {Worker} from 'node:worker_threads';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type { SQLInputValue } from 'node:sqlite';
+import {schemaObjects} from './helpers/project-database.ts';
 
 const operation='timeline.clip.replaceSource';
 const clone=<T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -18,6 +19,16 @@ const domain=(value: { tracks: unknown; clips: unknown; durationFrames: unknown;
 const at='2026-10-10T00:00:00.000Z';
 const outsideTables=['projects','assets','shots','nodes','edges','jobs','versions','exports'];
 const definiteRejections=new Set(['REVISION_CONFLICT','SOURCE_UNCHANGED','INVALID_CLIP_TYPE','SOURCE_BOUNDS','INVALID_FADE','FADE_AUDIO_UNSUPPORTED']);
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext,name='Foreign project'){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-replacement-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
+ try{return await services.call('project.create',{name});}
+ finally{await services.drain();store.close();}
+}
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(db: FixtureStore['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
+const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-replacement-'));
  let store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
@@ -51,7 +62,7 @@ async function fixture(t: test.TestContext){
  };
  const f = _strictFixtureBase as typeof _strictFixtureBase & {projectId: string; otherId: string};
  f.projectId=(await f.call('project.create',{name:t.name.slice(0,150)})).id;
- f.otherId=(await f.call('project.create',{name:'Other private project'})).id;
+ f.otherId=(await foreignProject(t,'Other private project')).id;
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});
  return f;
 }
@@ -59,18 +70,20 @@ const params=<P extends Record<string,unknown>=Record<never,never>>(f: Awaited<R
 const replace=(f: Awaited<ReturnType<typeof fixture>>,timeline: FixtureTimeline,asset: { id: unknown; },extra: {versionId?: `${string}-${string}-${string}-${string}-${string}`;}={})=>params(f,timeline,{clipId:timeline.clips[0].id,assetId:asset.id,...extra});
 function corruptTimelineAggregate(f: Awaited<ReturnType<typeof fixture>>,timeline: { id: unknown; }){
  const db=f.store.db,names=['agent_target_timeline_update_v2','agent_target_timeline_timeline_clip_update_v2','agent_target_timeline_timeline_track_update_v2','agent_target_timeline_timeline_subtitle_update_v2'];
- const guards=db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names);
+ const current=()=>schemaObjects(db).filter(({name})=>names.includes(name)).sort(byName).map(({schema,name,sql})=>({schema,name,sql}));
+ const guards=current();
  assert.deepEqual(guards.map(((value)=>value.name)),[...names].sort());
  const tables=[...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests','agent_task_target_revisions_v2'],before=f.capture(tables);
  assert.throws(((()=>db.prepare('UPDATE timelines SET data=? WHERE id=?').run('{',timeline.id as string)) as unknown as Parameters<NonNullable<(typeof assert)["throws"]>>[0]),/malformed JSON/);
  assert.deepEqual(f.capture(tables),before,'live target guards reject malformed aggregate bytes atomically');
  // Only direct construction of corrupt fixture bytes omits these four JSON
- // readers. Restore their exact SQL before any business rejection is tested.
+ // readers. Restore their exact SQL before any business rejection is tested,
+ // each in the database that held it: an unqualified CREATE TRIGGER would go to main.
  try{
   for(const guard of guards)db.exec(`DROP TRIGGER "${guard.name}"`);
   db.prepare('UPDATE timelines SET data=? WHERE id=?').run('{',timeline.id as string);
- }finally{for(const guard of guards)db.exec(((guard.sql) as unknown as Parameters<typeof db.exec>[0]));}
- assert.deepEqual(db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names),guards);
+ }finally{for(const guard of guards)db.exec(guard.sql!.replace(/^CREATE TRIGGER /u,`CREATE TRIGGER "${guard.schema}".`));}
+ assert.deepEqual(current(),guards);
 }
 async function rejectAtomic(f: Awaited<ReturnType<typeof fixture>>,input: { assetId: unknown; versionId?: undefined; expectedRevision: unknown; projectId: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; }|{ versionId: `${string}-${string}-${string}-${string}-${string}`; assetId?: undefined; expectedRevision: unknown; projectId: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; }|{ expectedRevision: unknown; assetId?: undefined; versionId?: undefined; projectId: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; }|{ projectId: unknown; assetId?: undefined; versionId?: undefined; expectedRevision: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; },code: string|string[]){
  const before=f.capture([...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests']);
@@ -180,19 +193,20 @@ test('missing timelines and missing/foreign assets reject without initialization
  assert.equal(f.store.list('timelines').length,0);
  const timeline=await f.timeline(),base=replace(f,timeline,next);
  await rejectAtomic(f,(({...base,assetId:randomUUID()}) as unknown as Parameters<NonNullable<typeof rejectAtomic>>[1]),'TIMELINE_SOURCE_UNAVAILABLE');
- await rejectAtomic(f,(({...base,assetId:f.asset('video/mp4',{projectId:f.otherId,name:'FOREIGN_SECRET'}).id}) as unknown as Parameters<NonNullable<typeof rejectAtomic>>[1]),'TIMELINE_SOURCE_UNAVAILABLE');
+ // Another project lives in a store of its own: its asset does not exist in this one.
+ await rejectAtomic(f,(({...base,assetId:(await fixture(t)).asset('video/mp4',{name:'FOREIGN_SECRET'}).id}) as unknown as Parameters<NonNullable<typeof rejectAtomic>>[1]),'TIMELINE_SOURCE_UNAVAILABLE');
  await rejectAtomic(f,(({...base,projectId:randomUUID()}) as unknown as Parameters<NonNullable<typeof rejectAtomic>>[1]),'TIMELINE_SOURCE_UNAVAILABLE');
 });
 
 test('new replacement rejects SQL/JSON owner and identity corruption before CAS can expose current data',async t=>{
  const cases=([
   ['project JSON identity',(f: Awaited<ReturnType<typeof fixture>>,tl?: unknown,next?: unknown)=>f.update('projects',f.projectId,{id:f.otherId,name:'FOREIGN_SECRET'})],
-  ['timeline SQL owner',(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>f.update('timelines',((tl.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId})],
+  ['timeline SQL owner',(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>withoutForeignKeys(f.store.db,()=>f.update('timelines',((tl.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId}))],
   ['timeline JSON owner',(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>f.update('timelines',((tl.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId,name:'FOREIGN_SECRET'})],
   ['timeline JSON identity',(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>f.update('timelines',((tl.id) as unknown as Parameters<typeof f.update>[1]),{id:randomUUID()})],
-  ['current asset SQL owner',(f: Awaited<ReturnType<typeof fixture>>,tl: { clips: { assetId: unknown; }[]; },next?: unknown)=>f.update('assets',((tl.clips[0].assetId) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId})],
+  ['current asset SQL owner',(f: Awaited<ReturnType<typeof fixture>>,tl: { clips: { assetId: unknown; }[]; },next?: unknown)=>withoutForeignKeys(f.store.db,()=>f.update('assets',((tl.clips[0].assetId) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId}))],
   ['current asset JSON owner',(f: Awaited<ReturnType<typeof fixture>>,tl: { clips: { assetId: unknown; }[]; },next?: unknown)=>f.update('assets',((tl.clips[0].assetId) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId,name:'FOREIGN_SECRET'})],
-  ['candidate asset SQL owner',(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: {id:string})=>f.update('assets',((next.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId})],
+  ['candidate asset SQL owner',(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: {id:string})=>withoutForeignKeys(f.store.db,()=>f.update('assets',((next.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId}))],
   ['candidate asset JSON owner',(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: {id:string})=>f.update('assets',((next.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId,name:'FOREIGN_SECRET'})],
   ['candidate asset JSON identity',(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: { id: unknown; })=>f.update('assets',((next.id) as unknown as Parameters<typeof f.update>[1]),{id:randomUUID()})],
   ['malformed candidate JSON',(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: { id: unknown; })=>f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{',next.id as string)],
@@ -212,22 +226,23 @@ test('explicit versions and asset-only selection validate complete actual revers
  const cases=([
   ['unknown version',async(f: Awaited<ReturnType<typeof fixture>>,g?: unknown)=>({versionId:randomUUID()})],
   ['wrong asset version',async(f: Awaited<ReturnType<typeof fixture>>,g?: unknown)=>({versionId:(await f.generated()).version.id})],
-  ['foreign version',async(f: Awaited<ReturnType<typeof fixture>>,g?: unknown)=>({versionId:(await f.generated({projectId:f.otherId})).version.id})],
-  ['version SQL owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId});}],
+  // Another project lives in a store of its own: its version does not exist in this one.
+  ['foreign version',async(f: Awaited<ReturnType<typeof fixture>>,g?: unknown)=>({versionId:(await (await fixture(t)).generated()).version.id})],
+  ['version SQL owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{withoutForeignKeys(f.store.db,()=>f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId}));}],
   ['version JSON owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId});}],
   ['version SQL job',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{const other=await f.generated();f.store.db.prepare('DELETE FROM versions WHERE id=?').run(other.version.id);f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{}, {jobId:other.job.id});}],
   ['version hash',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{sha256:'b'.repeat(64)});}],
   ['job JSON owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId});}],
-  ['job SQL owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId});}],
+  ['job SQL owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{withoutForeignKeys(f.store.db,()=>f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId}));}],
   ['job asset mismatch',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{assetId:f.asset().id});}],
   ['job version mismatch',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{versionId:randomUUID()});}],
   ['job shot mismatch',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{shotId:randomUUID()});}],
-  ['shot SQL owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { shot: { id: unknown; }; })=>{f.update('shots',((g.shot.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId});}],
-  ['shot reference asset owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { shot: { id: unknown; }; })=>{f.update('shots',((g.shot.id) as unknown as Parameters<typeof f.update>[1]),{referenceAssetIds:[f.asset('image/png',{projectId:f.otherId}).id]});}],
+  ['shot SQL owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { shot: { id: unknown; }; })=>{withoutForeignKeys(f.store.db,()=>f.update('shots',((g.shot.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId}));}],
+  ['shot reference asset owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { shot: { id: unknown; }; })=>{f.update('shots',((g.shot.id) as unknown as Parameters<typeof f.update>[1]),{referenceAssetIds:[withoutForeignKeys(f.store.db,()=>f.asset('image/png',{projectId:f.otherId})).id]});}],
   ['version snapshot owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{snapshot:{projectId:f.otherId}});}],
-  ['job snapshot source owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{snapshot:{referenceAssets:[{id:f.asset('image/png',{projectId:f.otherId}).id}]}});}],
+  ['job snapshot source owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { job: { id: unknown; }; })=>{f.update('jobs',((g.job.id) as unknown as Parameters<typeof f.update>[1]),{snapshot:{referenceAssets:[{id:withoutForeignKeys(f.store.db,()=>f.asset('image/png',{projectId:f.otherId})).id}]}});}],
   ['missing reverse version',async(f: Awaited<ReturnType<typeof fixture>>,g: { version: { id: unknown; }; })=>{f.store.db.prepare('DELETE FROM versions WHERE id=?').run(((((((g.version.id) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["run"]>>[0]));}],
-  ['hidden foreign reverse owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { asset: { id: unknown; }; version: { id: unknown; }; })=>{f.update('assets',((g.asset.id) as unknown as Parameters<typeof f.update>[1]),{provenance:'user-import'});f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId},{projectId:f.otherId});}],
+  ['hidden foreign reverse owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { asset: { id: unknown; }; version: { id: unknown; }; })=>{f.update('assets',((g.asset.id) as unknown as Parameters<typeof f.update>[1]),{provenance:'user-import'});withoutForeignKeys(f.store.db,()=>f.update('versions',((g.version.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId},{projectId:f.otherId}));}],
   ['duplicate reverse owner',async(f: Awaited<ReturnType<typeof fixture>>,g: { asset: { id: unknown; }; })=>{const other=await f.generated();f.update('versions',other.version.id,{assetId:g.asset.id});}],
  ] as const);
  for(const [name,corrupt] of cases)await t.test(name as string,async t=>{
@@ -272,10 +287,10 @@ test('historical replay requires current project, aggregate and every saved sour
  const cases=([
   ['missing project',async(f: Awaited<ReturnType<typeof fixture>>,tl?: unknown,next?: unknown)=>{f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.projectId);}],
   ['missing timeline',async(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>f.store.db.prepare('DELETE FROM timelines WHERE id=?').run(((((((tl.id) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["run"]>>[0]))],
-  ['reassigned timeline',async(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>f.update('timelines',((tl.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId},{projectId:f.otherId})],
+  ['reassigned timeline',async(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>withoutForeignKeys(f.store.db,()=>f.update('timelines',((tl.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId},{projectId:f.otherId}))],
   ['missing saved source',async(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: { id: unknown; })=>f.store.db.prepare('DELETE FROM assets WHERE id=?').run(((((((next.id) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["run"]>>[0]))],
-  ['reassigned saved source',async(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: { id: unknown; })=>f.update('assets',((next.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId,name:'FOREIGN_SECRET'},{projectId:f.otherId})],
-  ['saved source SQL/JSON mismatch',async(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: { id: unknown; })=>f.update('assets',((next.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId})],
+  ['reassigned saved source',async(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: { id: unknown; })=>withoutForeignKeys(f.store.db,()=>f.update('assets',((next.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId,name:'FOREIGN_SECRET'},{projectId:f.otherId}))],
+  ['saved source SQL/JSON mismatch',async(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: { id: unknown; })=>withoutForeignKeys(f.store.db,()=>f.update('assets',((next.id) as unknown as Parameters<typeof f.update>[1]),{}, {projectId:f.otherId}))],
  ] as const);
  for(const [name,change] of cases)await t.test(name as string,async t=>{
   const f=await fixture(t),timeline=await f.timeline(),next=f.asset(),request=replace(f,timeline,next),saved=await f.call(operation,request);
@@ -296,10 +311,12 @@ test('durable receipt failures and post-write owner corruption roll back timelin
   if(mode==='response corruption')f.store.db.exec(`CREATE TRIGGER corrupt_replacement_receipt AFTER INSERT ON timeline_requests BEGIN DELETE FROM timeline_requests WHERE requestId=NEW.requestId; END;`);
   if(mode==='hash corruption')f.store.db.exec(`DROP TRIGGER immutable_timeline_responses; CREATE TRIGGER corrupt_replacement_hash AFTER INSERT ON timeline_requests BEGIN UPDATE timeline_requests SET requestHash='${'0'.repeat(64)}' WHERE requestId=NEW.requestId; END;`);
   const before=f.capture([...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests']);
-  await assert.rejects(f.call(operation,request),error=>{
+  // These triggers move a row to a project this store does not hold, inside the service's own transaction.
+  const reassigns=mode==='timeline owner'||mode==='asset owner';if(reassigns)f.store.db.exec('PRAGMA foreign_keys=OFF');
+  try{await assert.rejects(f.call(operation,request),error=>{
    assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details?.mutationOutcome,undefined,'Post-write validation or database errors remain unknown to recovery clients');
    return mode==='receipt failure'?/injected receipt failure/.test((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).message):['TIMELINE_SOURCE_UNAVAILABLE','CLIP_NOT_FOUND','INVALID_TIMELINE_SNAPSHOT','SOURCE_BOUNDS','FADE_AUDIO_UNSUPPORTED'].includes((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code);
-  });
+  });}finally{if(reassigns)f.store.db.exec('PRAGMA foreign_keys=ON');}
   assert.deepEqual(f.capture([...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests']),before);
  });
 });

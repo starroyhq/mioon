@@ -14,12 +14,19 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {hasRequestNotAppliedProof,isTimelineMutationResponse,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
 const at='2026-10-11T12:00:00.000Z';
 const tables=['projects','timelines','assets','shots','jobs','versions','exports','timeline_requests','timeline_history','timeline_history_cursors','edit_tasks'];
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext,name='Foreign project'){
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-subtitles-business-foreign-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const store=(openStore(root) as unknown as TypedStore),services=(createServices(store,new Map()) as unknown as TypedServices);
+ try{return await services.call('project.create',{name});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t: test.TestContext){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-subtitles-business-'));let store=(openStore(root) as unknown as TypedStore),services=(createServices(store,new Map()) as unknown as TypedServices);
  const f={root,get store(){return store;},call:((operation: string,input: unknown)=>services.call(operation,input)) as TypedCall,restart(){store.close();store=(openStore(root) as unknown as TypedStore);services=(createServices(store,new Map()) as unknown as TypedServices);},
  capture:()=>JSON.stringify(tables.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])),
  asset(patch: Record<string, unknown>={}){const id=randomUUID();return store.put('assets',{id,projectId:f.projectId,name:'Fixture',mimeType:'video/mp4',duration:20,width:720,height:1280,hasVideo:true,hasAudio:true,sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`,provenance:'user-import',createdAt:at,...patch});}} as SubtitleFixture;
- f.projectId=(await f.call('project.create',{name:'Manual subtitles'})).id;f.otherId=(await f.call('project.create',{name:'Foreign project'})).id;
+ f.projectId=(await f.call('project.create',{name:'Manual subtitles'})).id;f.otherId=(await foreignProject(t,'Foreign project')).id;
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});return f;
 }
 const request=<T extends Record<string, unknown> = Record<never, never>>(f: SubtitleFixture,timeline: Pick<FixtureTimeline, "revision">,patch: T={} as T)=>({projectId:f.projectId,expectedRevision:timeline.revision,requestId:randomUUID(),...patch});
