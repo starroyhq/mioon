@@ -9,7 +9,7 @@ import {AppError} from '../../../contracts/src/app-error.ts';
 import {isProjectId, PROJECT_CACHE_FILE, PROJECT_DATABASE_NAMES, PROJECT_FILE_EXISTS, PROJECT_HISTORY_FILE} from '../../../contracts/src/project-file.ts';
 import type {ProjectHistoryState, ProjectInvalidReason, ProjectStore as ProjectStoreContract} from '../../../contracts/src/project-file.ts';
 import {installCrossFileTriggers} from './cross-file/install.ts';
-import {isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly, projectFileError} from './errors.ts';
+import {isSqliteBusy, isSqliteCorrupt, isSqliteReadOnly, projectFileError, projectFileMovedError} from './errors.ts';
 import {isHotJournal, isSuperJournalInUse, superJournalsIn} from './journals.ts';
 import type {ProjectFileErrorDetails, ProjectFileErrorReason} from './errors.ts';
 import {
@@ -61,7 +61,12 @@ export interface OpenProjectConnectionOptions {
 
 /** One connection with the local records as `main` and the project file and
  * the cache attached, all three locked until close(). */
-export type ProjectConnection = Omit<ProjectStoreContract<DatabaseSync>, 'root'>;
+export interface ProjectConnection extends Omit<ProjectStoreContract<DatabaseSync>, 'root'> {
+  /** Throws PROJECT_FILE_MOVED once the project file alone was renamed or
+   * moved since the open (see movedAlone). The store calls it before every
+   * write it starts. */
+  throwIfMoved(): void;
+}
 
 export interface CreateProjectFileOptions {
   readonly projectId?: string;
@@ -420,6 +425,31 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
   }
 }
 
+/** lstat that takes any failure for no entry: the moved check does not refuse
+ * a write because it cannot see a path. */
+function lstatOrNothing(file: string): BigIntStats | undefined {
+  try {
+    return lstatSync(file, {bigint: true, throwIfNoEntry: false});
+  } catch {
+    return undefined;
+  }
+}
+
+/** Whether the project file alone was renamed or moved after the open: the
+ * path it was opened at no longer holds that file (by file identity), while
+ * the journal SQLite keeps under that path from the open on
+ * (openProjectJournal) is still there. SQLite looks for the journal beside the
+ * name a database is opened with, so a commit that crashes after such a move
+ * leaves half a transaction in the file at its new path. A folder moved with
+ * the file takes the journal along and SQLite writes on through its open
+ * descriptors, so that is not a move here. At most two lstat calls, which
+ * open neither file; one while the file is in place. */
+function movedAlone(projectFile: string, projectKey: string): boolean {
+  const info = lstatOrNothing(projectFile);
+  if (info && identityOf(info, projectFile) === projectKey) return false;
+  return lstatOrNothing(`${projectFile}-journal`) !== undefined;
+}
+
 /** Opens a project file on one connection: the project file alone first (lock,
  * recovery, checks, project ID), then the copy check, then the local records
  * from `locate` as main with the project file and the cache attached, and
@@ -451,6 +481,9 @@ export function openProjectConnection({projectFile: requested, locate, checkCopy
   let closed = false;
   return {
     db, projectId: identity.projectId, projectFile, projectDir: path.dirname(projectFile), localDir, cacheDir, tempDir, historyState,
+    throwIfMoved(): void {
+      if (movedAlone(projectFile, projectKey)) throw projectFileMovedError(identity.projectId);
+    },
     close(): void {
       if (closed) return;
       closed = true;
@@ -467,14 +500,17 @@ export function openProjectConnection({projectFile: requested, locate, checkCopy
 // Recovering without opening
 
 /** What recoverProjectFile found:
- * - `clean`: no hot journal beside the project file; only its header was read;
+ * - `clean`: no hot journal beside the project file; the project file itself
+ *   was not read, not even its header;
  * - `recovered`: SQLite rolled the hot journal back;
  * - `locked`: another process holds the project file, for example while it
  *   writes; nothing to do here;
  * - `open-here`: this process has the project open; no file was touched;
  * - `missing`: no project file at this path;
  * - `invalid`: not something to recover, with the PROJECT_INVALID reason the
- *   open would report, such as `not-a-project-file` or `read-only`. */
+ *   open would report, such as `not-a-project-file` or `read-only`. Only a
+ *   path that is not a regular file, or a file with a hot journal beside it,
+ *   is found invalid here; any other file is `clean` until it is opened. */
 export type ProjectFileRecovery =
   | {readonly state: 'clean' | 'recovered' | 'locked' | 'open-here' | 'missing'}
   | {readonly state: 'invalid'; readonly reason: ProjectInvalidReason};
@@ -495,7 +531,11 @@ const recoveryOf = (error: unknown): ProjectFileRecovery => {
  * local records; copied to another computer without being opened here first,
  * the file would be taken as committed there. Call it for projects that are
  * not open, for example at startup and when listing recent projects. A project
- * this process has open is recognised by file identity before any file is read. */
+ * this process has open is recognised by file identity before any file is read.
+ * The journal is looked at before the project file: without a hot journal
+ * (none, 0 bytes, or a zero first byte) nothing of the project file is read.
+ * Every listing of recent projects calls this, and a first read of a file that
+ * iCloud has moved off this computer downloads all of it. */
 export function recoverProjectFile(requested: string): ProjectFileRecovery {
   const projectFile = path.resolve(requested);
   let info: BigIntStats | undefined;
@@ -510,8 +550,8 @@ export function recoverProjectFile(requested: string): ProjectFileRecovery {
   if (held?.db.isOpen) return held.kind === 'project' ? {state: 'open-here'} : {state: 'invalid', reason: 'not-a-project-file'};
   let db: DatabaseSync | undefined;
   try {
-    checkHeader(projectFile);
     if (!isHotJournal(`${projectFile}-journal`)) return {state: 'clean'};
+    checkHeader(projectFile);
     db = openDatabase(existingFile(projectFile));
     lock(db);
     return {state: 'recovered'};

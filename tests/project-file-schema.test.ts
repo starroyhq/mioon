@@ -57,12 +57,14 @@ test('generated schema files equal a fresh derivation from the format-72 workspa
 });
 
 test('table placement lists every kept, application and removed table once', () => {
-  assert.deepEqual([CONTENT_TABLES.length, HISTORY_TABLES.length, CACHE_TABLES.length, APP_DATABASE_TABLES.length, REMOVED_TABLES.length], [18, 45, 2, 3, 10]);
+  // The task domain holds the Mock provider's two ledger tables as well.
+  assert.deepEqual([CONTENT_TABLES.length, HISTORY_TABLES.length, CACHE_TABLES.length, APP_DATABASE_TABLES.length, REMOVED_TABLES.length], [18, 45 + 2, 2, 3, 10]);
   assert.deepEqual(Object.entries(HISTORY_TABLES_BY_DOMAIN).map(([domain, tables]) => [domain, tables.length]),
-    [['receipts', 17], ['tasks', 13], ['timelineHistory', 2], ['mio', 13]]);
+    [['receipts', 17], ['tasks', 13 + 2], ['timelineHistory', 2], ['mio', 13]]);
   const all = [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES, ...APP_DATABASE_TABLES, ...REMOVED_TABLES];
-  assert.equal(new Set(all).size, 78);
+  assert.equal(new Set(all).size, 78 + 2);
   assert.equal(databaseOf('jobs'), 'history');
+  assert.deepEqual(['mock_provider_tasks', 'mock_provider_submissions'].map(table => [databaseOf(table), HISTORY_TABLES_BY_DOMAIN.tasks.includes(table)]), [['history', true], ['history', true]]);
   assert.equal(databaseOf('workspace_preferences'), 'app');
   assert.throws(() => databaseOf('schema_version'), /Unknown project-file table/);
   assert.throws(() => databaseOf('no_such_table'), /Unknown project-file table/);
@@ -75,13 +77,17 @@ test('every format-72 object has exactly one destination and the planned counts'
   assert.equal(new Set(objects.map(object => `${object.type}:${object.name}`)).size, objects.length);
   const of = (type: string) => objects.filter(object => object.type === type);
   const fates = (type: string) => Object.fromEntries([...new Set(of(type).map(object => object.fate))].sort().map(fate => [fate, count(of(type), object => object.fate === fate)]));
-  // Format 72: 79 tables plus sqlite_sequence, 187 indexes (59 explicit), 302 triggers, no views.
-  assert.deepEqual([of('table').length, of('index').length, of('trigger').length, objects.length], [80, 187, 302, 569]);
-  assert.equal(count(of('index'), object => object.original !== null), 59);
-  assert.deepEqual(fates('table'), {app: 3, automatic: 1, cache: 2, dropped: 10, 'every-database': 1, history: 45, project: 18});
-  assert.deepEqual(fates('index'), {app: 2, cache: 6, dropped: 19, history: 106, project: 54});
+  // Format 72: 79 tables plus sqlite_sequence, 187 indexes (59 explicit), 302 triggers, no views. The
+  // Mock provider's ledger adds 2 tables and 3 indexes (1 explicit), all kept as they are in the local records.
+  assert.deepEqual([of('table').length, of('index').length, of('trigger').length, objects.length], [80 + 2, 187 + 3, 302, 569 + 5]);
+  assert.equal(count(of('index'), object => object.original !== null), 59 + 1);
+  assert.deepEqual(objects.filter(object => object.table.startsWith('mock_provider_')).map(object => `${object.type}:${object.name}:${object.fate}:${object.rules.join('+') || 'unchanged'}`).sort(), [
+    'index:mock_provider_submissions_request:history:unchanged', 'index:sqlite_autoindex_mock_provider_tasks_1:history:unchanged',
+    'index:sqlite_autoindex_mock_provider_tasks_2:history:unchanged', 'table:mock_provider_submissions:history:unchanged', 'table:mock_provider_tasks:history:unchanged']);
+  assert.deepEqual(fates('table'), {app: 3, automatic: 1, cache: 2, dropped: 10, 'every-database': 1, history: 45 + 2, project: 18});
+  assert.deepEqual(fates('index'), {app: 2, cache: 6, dropped: 19, history: 106 + 3, project: 54});
   const explicit = (fate: string) => count(of('index'), object => object.fate === fate && object.original !== null);
-  assert.deepEqual(KINDS.map(explicit), [19, 33, 3]);
+  assert.deepEqual(KINDS.map(explicit), [19, 33 + 1, 3]);
   // scene_task_state_transitions names shots only in the string literal OLD.kind='shots' and
   // reads no other table, so it stays a persistent history trigger.
   assert.deepEqual(fates('trigger'), {app: 2, cache: 1, dropped: 20, history: 162, project: 91, temp: 26});
@@ -156,7 +162,7 @@ test('each built database holds exactly its derived objects plus the kernel meta
       db.close();
     }
   }
-  assert.deepEqual(KINDS.map(kind => SCHEMA_MANIFEST[kind].entries.length), [225, 319, 11]);
+  assert.deepEqual(KINDS.map(kind => SCHEMA_MANIFEST[kind].entries.length), [225, 319 + 5, 11]);
 });
 
 test('kept tables keep format-72 columns and indexes; only cross-file foreign keys are gone', () => {
@@ -185,7 +191,7 @@ test('kept tables keep format-72 columns and indexes; only cross-file foreign ke
       db.close();
     }
   }
-  assert.equal(compared, 65);
+  assert.equal(compared, 65 + 2);
 });
 
 /** True when removing the deletion exemption with exactly one connective
@@ -233,14 +239,15 @@ test('each database built alone compiles every insert, update and delete of ever
       db.close();
     }
   }
-  assert.equal(tables, 20 + 47 + 3);
+  assert.equal(tables, 20 + 49 + 3);
 });
 
 // Frozen per schema version: a DDL change that regenerates the manifest without
 // raising the database's version fails here.
 const MANIFEST_DIGESTS: Readonly<Record<DatabaseKind, Readonly<Record<number, string>>>> = {
   project: {1: '6e96c3872a938817b65e71750d1e68bd8fa84c7f3f8d92490de22a0e34d649ce'},
-  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243'},
+  // 2: the Mock provider's ledger in the task domain.
+  history: {1: 'e0445f02d867f3aeedc283708f58d30efa7b0465e8987f7f739e8f5580791243', 2: '34ad833f0a676602490ce69b0f8804f79f1b30750b76a9f58d41abeb14dfd7a0'},
   cache: {1: 'be43585ad9045d7ed844c609b9af13829372efb83741b55f4f4f8e7b2f2fd61c'},
 };
 test('building as main or as an attached schema gives the committed manifest', () => {
