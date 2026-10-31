@@ -29,15 +29,19 @@ import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import {fileHash,probe} from '../packages/business/src/media.ts';
 import {validatePng} from '../packages/business/src/images/png.ts';
 import {isFrameTaskResponse,isFrameMutationResponse,isReferenceMutationResponse,isSubjectMutationResponse,isTimelineMutationResponse,schemas} from '@mioon/contracts';
+import {schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 // Local acceptance, not a mocked decoder/renderer. Every media input is a tiny
 // one-second lavfi fixture; provider registries are empty and fetch is forbidden.
 const timeout=120000,sha=(bytes: NonSharedBuffer|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
 const row=(db: DatabaseSync,table: string,id: SQLInputValue)=>({...db.prepare(`SELECT rowid AS savedRowid,* FROM ${table} WHERE id=?`).get(id)});
-const allRows=(db: DatabaseSync)=>Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
+const allRows=(db: DatabaseSync)=>Object.fromEntries(schemaObjects(db).filter(({type})=>type==='table').sort(byName).map(({name})=>[name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
 const changes=(db: DatabaseSync)=>db.prepare('SELECT total_changes() AS n').get()!.n;
 const insert=(db: DatabaseSync,table: string,value: Record<string,SQLInputValue>)=>{const keys=Object.keys(value);db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(value));};
+// The other project is not in this store; write the damaged rows as a corrupt file would hold them.
+const withoutForeignKeys=(db: DatabaseSync,write: () => void)=>{db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 const fixtureMedia=(args: string[])=>run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-n','-filter_threads','1','-filter_complex_threads','1',...args],{timeout:30000});
 async function until<T extends {state?:string;status?:string}>(read: () => T | Promise<T>,done: (value: T) => boolean,label: string){
  const end=Date.now()+45000;let value;
@@ -49,6 +53,13 @@ async function centerPixel(file: string,x: number,y: number){
  const pixels=Buffer.concat(chunks);assert.equal(pixels.length,12);return [...pixels.subarray(0,3)];
 }
 function nearColor(actual: number[],expected: number[]){assert.ok(expected.every((value: number,index: number)=>Math.abs(actual[index]-value)<25),`expected ${expected}, received ${actual}`);}
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext){
+ const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-frame-consumption-foreign-')));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
+ try{return await services.call('project.create',{name:'Foreign synthetic owner'});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t: test.TestContext){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-frame-consumption-'))),providers=new Map<string, import('../packages/business/src/provider-registry.ts').Provider>(),f={root,providers} as unknown as ConsumptionFixture;
  t.mock.method(globalThis,'fetch',()=>{assert.fail('Frame consumption must not use network/provider/model calls');});
@@ -59,7 +70,7 @@ async function fixture(t: test.TestContext){
  f.project=await f.call('project.create',{name:'Real extracted-frame consumers'});
  // This pixel/audio fixture explicitly preserves its historical 720 canvas.
  await f.call('timeline.format.set',{projectId:f.project.id,expectedProjectRevision:f.project.revision,expectedRevision:0,requestId:randomUUID(),presetId:'portrait_720'});
- f.other=await f.call('project.create',{name:'Foreign synthetic owner'});
+ f.other=await foreignProject(t);
  const bytes=await readFile(original),imported=await f.call('asset.import',{projectId:f.project.id,name:'One-second synthetic.mp4',mimeType:'video/mp4',dataBase64:bytes.toString('base64')});
  f.source=f.store.get('assets',imported.id)!;f.sourceFile=path.join(root,f.source.relativePath);f.sourceBytes=bytes;
  assert.equal(f.source.sha256,sha(bytes));assert.deepEqual([f.source.width,f.source.height],[64,48]);assert.ok(Math.abs(f.source.duration-1)<0.04);
@@ -180,9 +191,11 @@ for(const corruption of ['malformed original ACK','hidden mixed legacy owner','r
   db.prepare('UPDATE frame_requests SET response=? WHERE requestId=?').run(JSON.stringify({...JSON.parse(saved!.response as string),private:'PRIVATE_FRAME_SENTINEL'}),frame.input.requestId);
  }else if(corruption==='hidden mixed legacy owner'){
   db.exec('DROP TRIGGER reject_legacy_frame_asset_owner');const projectId=f.other.id,shotId=randomUUID(),jobId=randomUUID(),versionId=randomUUID();
-  insert(db,'shots',{id:shotId,projectId,data:JSON.stringify({id:shotId,projectId,referenceAssetIds:[],private:'PRIVATE_FRAME_SENTINEL'})});
-  insert(db,'jobs',{id:jobId,projectId,data:JSON.stringify({id:jobId,projectId,shotId,versionId,assetId:frame.asset.id,status:'succeeded'})});
-  insert(db,'versions',{id:versionId,projectId,jobId,data:JSON.stringify({id:versionId,projectId,jobId,shotId,assetId:frame.asset.id})});
+  withoutForeignKeys(db,()=>{
+   insert(db,'shots',{id:shotId,projectId,data:JSON.stringify({id:shotId,projectId,referenceAssetIds:[],private:'PRIVATE_FRAME_SENTINEL'})});
+   insert(db,'jobs',{id:jobId,projectId,data:JSON.stringify({id:jobId,projectId,shotId,versionId,assetId:frame.asset.id,status:'succeeded'})});
+   insert(db,'versions',{id:versionId,projectId,jobId,data:JSON.stringify({id:versionId,projectId,jobId,shotId,assetId:frame.asset.id})});
+  });
   db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...frame.asset,provenance:'user-import'}),frame.asset.id);
  }else{
   db.exec('PRAGMA foreign_keys=OFF;PRAGMA ignore_check_constraints=ON;DROP TRIGGER immutable_frame_task_identity;DROP TRIGGER frame_task_state_transitions');
