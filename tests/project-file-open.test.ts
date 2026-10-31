@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import type {ChildProcess} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
-import {copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync} from 'node:fs';
+import {chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../packages/contracts/src/app-error.ts';
-import {isProjectId, PROJECT_FILE_SINGLE_PROJECT, TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
+import {isProjectId, PROJECT_FILE_SINGLE_PROJECT, PROJECT_INVALID_REASONS, TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
 import {createProjectFile, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT} from '../packages/business/src/project-file/connection.ts';
 import type {ProjectConnection, ProjectCopyCheck, ProjectLocation} from '../packages/business/src/project-file/connection.ts';
 import {crossFileTriggerStatements} from '../packages/business/src/project-file/cross-file/install.ts';
@@ -59,13 +59,18 @@ function newProject(t: TestContext): {project: Project; projectId: string} {
   connection.close();
   return {project, projectId};
 }
-/** The AppError `action` throws. A connection it returns instead is closed. */
+/** The AppError `action` throws. A connection it returns instead is closed.
+ * A PROJECT_INVALID reason must be one the contract lists. */
 function appError(action: () => unknown): AppError {
   let result: unknown;
   try {
     result = action();
   } catch (error) {
     assert.ok(error instanceof AppError, `expected an AppError, got ${String(error)}`);
+    if (error.code === 'PROJECT_INVALID') {
+      const {reason} = error.details as {reason: (typeof PROJECT_INVALID_REASONS)[number]};
+      assert.ok(PROJECT_INVALID_REASONS.includes(reason), `reason ${String(reason)} is in PROJECT_INVALID_REASONS`);
+    }
     return error;
   }
   (result as {close?: () => void} | undefined)?.close?.();
@@ -320,6 +325,35 @@ test('files that are not project files are PROJECT_INVALID and leave the local r
   }
   assert.equal(digest(project.historyFile), history);
   assert.equal(digest(project.projectFile), projectBytes);
+});
+
+const NO_PERMISSIONS = process.platform === 'win32' ? 'POSIX permissions only'
+  : process.getuid?.() === 0 ? 'root ignores file permissions' : false;
+test('a read-only project file, or a folder where its journal cannot be created, is PROJECT_INVALID with reason read-only', {skip: NO_PERMISSIONS}, t => {
+  const {project, projectId} = newProject(t);
+  const projectBytes = digest(project.projectFile), history = digest(project.historyFile);
+  // Both pass every check: the last step of the open, a change to page 1 that
+  // is rolled back, is the first write. SQLite opens a 0444 file read-only and
+  // refuses the write (SQLITE_READONLY); in a 0555 folder it cannot create the
+  // journal (SQLITE_READONLY_DIRECTORY).
+  for (const [target, mode] of [[project.projectFile, 0o444], [project.root, 0o555]] as const) {
+    const restore = statSync(target).mode & 0o777;
+    chmodSync(target, mode);
+    try {
+      const error = appError(() => open(project));
+      assert.equal(error.code, 'PROJECT_INVALID');
+      assert.equal(error.status, 422);
+      assert.deepEqual(error.details, {database: 'project', reason: 'read-only', projectId}, mode.toString(8));
+      assert.deepEqual(readdirSync(project.root).sort(), ['.mioon-store', 'project.mioon']);
+    } finally {
+      chmodSync(target, restore);
+    }
+  }
+  const connection = open(project);
+  assert.equal(connection.historyState, 'current');
+  connection.close();
+  assert.equal(digest(project.projectFile), projectBytes);
+  assert.equal(digest(project.historyFile), history);
 });
 
 const EXPLICIT_INDEX = SCHEMA_MANIFEST.project.entries.find(entry => entry.type === 'index' && !entry.name.startsWith('sqlite_autoindex_'))!.name;
