@@ -11,6 +11,7 @@ import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/
 import type {TestContext} from 'node:test';
 import type {WorkspaceStore} from '../packages/business/src/db.ts';
 import {readTimelinePreflightSnapshot,validatePreparedTimelineSources} from '../packages/business/src/timeline-sources.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 
 type PreparedSourceValue = Parameters<typeof validatePreparedTimelineSources>[3] extends Map<string, infer P> ? P : never;
 interface ServiceError {code?: string; message?: string; details?: {mutationOutcome?: boolean; [key: string]: unknown}}
@@ -24,6 +25,16 @@ interface Fixture {
   input: () => Record<string, unknown>; state: () => Record<string, unknown>;
 }
 
+const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=(db: WorkspaceStore['db'],write: () => void)=>{db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: Pick<TestContext,'after'>): Promise<{id: string}>{
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-export-settings-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=openStore(root),services=createServices(store,new Map());
+ try{return await services.call('project.create',{name:'Foreign project'}) as {id:string};}
+ finally{await services.drain();store.close();}
+}
 const settings=()=>structuredClone(TIMELINE_EXPORT_DEFAULT_SETTINGS);
 const available=()=>({status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'});
 const deferred=(): {promise: Promise<void>; resolve: () => void} => {let resolve: () => void = () => {};return {promise:new Promise<void>(r=>{resolve=r;}),resolve:()=>resolve()};};
@@ -32,8 +43,8 @@ async function fixture(t: Pick<TestContext,'after'>,{inspect=async()=>available(
  let probes=0;
  const probeHandler=async(...args: unknown[]): Promise<unknown>=>{probes++;assert.equal(store.db.isTransaction,false);return inspect(...args);};
  const services=createServices(store,new Map(),{exportOptions:{inspect:probeHandler as never}});
- const project=await services.call('project.create',{name:'Export settings tests'}) as {id:string},other=await services.call('project.create',{name:'Foreign project'}) as {id:string};
- const f: Fixture={root,store,services,project,other,get probes(){return probes;},input:(): Record<string, unknown>=>({projectId:project.id,expectedRevision:f.timeline?.revision??1,requestId:randomUUID(),purpose:'export',exportSettings:settings()}),state:(): Record<string, unknown>=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name as string,store.db.prepare(`SELECT * FROM "${name as string}" ORDER BY rowid`).all()]))};
+ const project=await services.call('project.create',{name:'Export settings tests'}) as {id:string},other=await foreignProject(t);
+ const f: Fixture={root,store,services,project,other,get probes(){return probes;},input:(): Record<string, unknown>=>({projectId:project.id,expectedRevision:f.timeline?.revision??1,requestId:randomUUID(),purpose:'export',exportSettings:settings()}),state:(): Record<string, unknown>=>Object.fromEntries(schemaObjects(store.db).filter(({type})=>type==='table').sort(byName).map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]))};
  if(!empty){
   f.timeline=await services.call('timeline.get',{projectId:project.id}) as FixtureTimeline;
   const id=randomUUID(),bytes=Buffer.from('managed image fixture'),relativePath=`media/${id}.png`;await writeFile(path.join(root,relativePath),bytes);
@@ -74,8 +85,8 @@ test('revision and ownership changes during capability await cannot accept or fo
   const pending=f.services.call('timeline.render',input);await entered.promise;
   if(kind==='revision')f.store.put('timelines',{...f.timeline!,revision:f.timeline!.revision+1});
   if(kind==='metadata')f.store.put('assets',{...f.asset!,width:1280,height:720});
-  if(kind==='assetOwner')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.asset!.id);
-  if(kind==='timelineOwner')f.store.db.prepare('UPDATE timelines SET projectId=? WHERE id=?').run(f.other.id,f.timeline!.id);
+  if(kind==='assetOwner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.asset!.id));
+  if(kind==='timelineOwner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE timelines SET projectId=? WHERE id=?').run(f.other.id,f.timeline!.id));
   const before=f.state();gate.resolve();
   await assert.rejects(pending,(e: unknown)=>{
    const error=serviceError(e);

@@ -47,11 +47,18 @@ function spawnWorker(root: string){
  kill(){assert.equal(stopped,null);assert.equal(child.kill('SIGKILL'),true);return deadline(exited.promise,'exact owned child SIGKILL');},
  async close(){if(stopped)return stopped;if(child.connected)child.send({method:'close'});try{return await deadline(exited.promise,'owned worker normal close');}catch(error){if(!stopped){child.kill('SIGKILL');await deadline(exited.promise,'owned worker cleanup');}throw error;}}};
 }
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext){
+ const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-local-shot-text-process-foreign-')));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
+ try{return await services.call('project.create',{name:'Other synthetic project'});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t: test.TestContext){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-local-shot-text-process-'))),workers: ReturnType<typeof spawnWorker>[]=[];let worker: ReturnType<typeof spawnWorker>;
  t.after(async()=>{let safelyClosed=false;try{const results=await Promise.allSettled(workers.map(value=>value.close()));safelyClosed=workers.every(value=>value.stopped);for(const result of results)if(result.status==='rejected')throw result.reason;}finally{if(safelyClosed)await rm(root,{recursive:true,force:true});}});
  const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);let project,shot,second,foreign;
- try{project=await services.call('project.create',{name:'Synthetic shot text crash'});shot=await services.call('shot.create',{projectId:project.id,title:'Saved title',prompt:'Saved prompt',duration:7,aspectRatio:'16:9',parameters:{seed:42}});second=await services.call('shot.create',{projectId:project.id,title:'Second shot',prompt:''});foreign=await services.call('project.create',{name:'Other synthetic project'});}finally{await services.drain();store.close();}
+ try{project=await services.call('project.create',{name:'Synthetic shot text crash'});shot=await services.call('shot.create',{projectId:project.id,title:'Saved title',prompt:'Saved prompt',duration:7,aspectRatio:'16:9',parameters:{seed:42}});second=await services.call('shot.create',{projectId:project.id,title:'Second shot',prompt:''});foreign=await foreignProject(t);}finally{await services.drain();store.close();}
  const f={root,project,shot,second,foreign,get worker(){return worker;},async start(){worker=spawnWorker(root);workers.push(worker);const ready=await deadline(worker.ready,'worker startup');assert.equal(ready.pid,worker.child.pid);assert.equal(ready.dispatches,0);assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(worker.child.pid));return ready;},async restart(){await worker.close();return this.start();},ask:<M extends string>(method:M,input?:unknown)=>worker.ask(method,input),get:(target=shot)=>worker.ask('get',{projectId:project.id,shotId:target.id}),
  put:(value: WorkerEnvelope,raw={title:'原始标题 🎬',prompt:'原始提示\n恢复同一保存请求'},target=shot)=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),baseRevision:target.revision,baseText:{title:target.title,prompt:target.prompt},raw}),
  prepare:(value: WorkerEnvelope)=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:value.draft!.baseRevision,baseText:value.draft!.baseText,draft:{draftId:value.draft!.draftId,revision:value.draftRevision,raw:value.draft!.raw},input:{shotId:value.shotId,expectedRevision:value.draft!.baseRevision,requestId:randomUUID(),patch:structuredClone(value.draft!.raw)}}),

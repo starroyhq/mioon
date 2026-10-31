@@ -18,6 +18,15 @@ import {createJsonRequest} from '../packages/business/src/providers/live-common.
 import {createVeoProvider} from '../packages/business/src/providers/veo.ts';
 import {INPUT_PROFILE_VERSION,getCapabilityProfile,getLegacyCapabilityProfile} from '../packages/contracts/src/index.ts';
 
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=(db: TypedStore['db'],write: () => void)=>{db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext,name: string){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-input-boundary-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
+ try{return await services.call('project.create',{name});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t: test.TestContext,{providerId='mock',date='2026-10-10',image=false}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-input-boundary-')),store=(openStore(root) as TypedStore);
  const env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert-fixture',GEMINI_API_KEY:'inert-fixture',MINIMAX_API_KEY:'inert-fixture'};
@@ -59,14 +68,14 @@ test('new snapshot pins profile, exact region, complete role identity and byte s
 
 for(const [name,mutate,code] of [
  ['missing full saved reference',(f: Awaited<ReturnType<typeof fixture>>)=>f.store.db.prepare('DELETE FROM assets WHERE id=?').run(f.asset.id),'NOT_FOUND'],
- ['foreign relational owner',(f: Awaited<ReturnType<typeof fixture>>)=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.asset.id),'INVALID_REFERENCE_OWNERSHIP'],
+ ['foreign relational owner',(f: Awaited<ReturnType<typeof fixture>>)=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.asset.id)),'INVALID_REFERENCE_OWNERSHIP'],
  ['spoofed JSON identity',(f: Awaited<ReturnType<typeof fixture>>)=>f.store.put('assets',{...f.asset,id:f.asset.id,projectId:f.project.id}),null],
  ['missing size',(f: Awaited<ReturnType<typeof fixture>>)=>{const {sizeBytes,...asset}=f.asset;f.store.put('assets',asset);},'REFERENCE_METADATA_UNAVAILABLE'],
  ['oversize',(f: Awaited<ReturnType<typeof fixture>>)=>f.store.put('assets',{...f.asset,sizeBytes:31*1024*1024}),'REFERENCE_TOO_LARGE'],
  ['unsupported image MIME',(f: Awaited<ReturnType<typeof fixture>>)=>f.store.put('assets',{...f.asset,mimeType:'image/gif'}),'UNSUPPORTED_REFERENCE_MIME'],
  ['oversize metadata row',(f: Awaited<ReturnType<typeof fixture>>)=>f.store.put('assets',{...f.asset,padding:'x'.repeat(66000)}),'INVALID_REFERENCE_METADATA'],
  ] as const) if(code)test(`new submit ${name} has no inserts or POST`,async t=>{
- const f=await fixture(t,{image:true});f.other=await f.services.call('project.create',{name:'Other project'});mutate!(f);
+ const f=await fixture(t,{image:true});f.other=await foreignProject(t,'Other project');mutate!(f);
  await assert.rejects(f.submit(),{code});assert.equal(f.store.list('jobs').length,0);assert.equal(f.posts(),0);
 });
 
@@ -182,10 +191,10 @@ for(const role of ['style_reference','unknown_role'])test(`managed asset explici
 
 const rawGenerationState=(f: Awaited<ReturnType<typeof fixture>>)=>({jobs:f.store.db.prepare('SELECT id,projectId,data FROM jobs ORDER BY id').all(),shots:f.store.db.prepare('SELECT id,projectId,data FROM shots ORDER BY id').all(),events:f.store.db.prepare('SELECT * FROM job_events ORDER BY id').all()});
 for(const target of ['jobs','shots'])test(`POST fence leaves relational ${target} reassignment and events byte-identical`,async t=>{
- const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await f.services.call('project.create',{name:'Other owner'});
+ const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await foreignProject(t,'Other owner');
  const provider=f.providers.get('veo')!,submit=provider!.submit;let afterTamper;
  const log=t.mock.method(console,'error',()=>{});
- f.providers.set('veo',{...provider,submit:async(snapshot,context)=>{await Promise.resolve();f.store.db.prepare(`UPDATE ${target} SET projectId=? WHERE id=?`).run(other.id,target==='jobs'?job.id:f.shot.id);afterTamper=rawGenerationState(f);return submit(snapshot,context);}});
+ f.providers.set('veo',{...provider,submit:async(snapshot,context)=>{await Promise.resolve();withoutForeignKeys(f.store.db,()=>f.store.db.prepare(`UPDATE ${target} SET projectId=? WHERE id=?`).run(other.id,target==='jobs'?job.id:f.shot.id));afterTamper=rawGenerationState(f);return submit(snapshot,context);}});
  await f.tick();await f.stop();assert.deepEqual(rawGenerationState(f),afterTamper);assert.equal(f.posts(),0);
  assert.deepEqual(log.mock.calls.map(call=>call.arguments),[['Skipped invalid local generation record.']]);
 });
@@ -237,17 +246,17 @@ for(const providerId of ['minimax','vidu'])test(`${providerId} invalid server-co
 });
 
 for(const status of ['queued','submitting'])for(const drift of ['relational-owner','json-owner','shot-owner'])test(`${status} startup ${drift} rejection leaves raw jobs and events unchanged`,async t=>{
- const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await f.services.call('project.create',{name:'Unrelated owner'});
+ const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await foreignProject(t,'Unrelated owner');
  const saved=f.store.get('jobs',job.id)!;saved.status=status;f.store.put('jobs',saved);
- if(drift==='relational-owner')f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(other.id,job.id);
+ if(drift==='relational-owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(other.id,job.id));
  else if(drift==='json-owner')f.store.put('jobs',{...saved,projectId:other.id});
- else f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(other.id,f.shot.id);
+ else withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(other.id,f.shot.id));
  const before=rawGenerationState(f),log=t.mock.method(console,'error',()=>{});
  await f.tick();await f.tick();await f.stop();assert.deepEqual(rawGenerationState(f),before);assert.equal(f.posts(),0);
  assert.deepEqual(log.mock.calls.map(call=>call.arguments),[['Skipped invalid local generation record.']]);
 });
 for(const drift of ['deleted-job','json-identity','snapshot','revision','coherent-reassignment'])test(`deferred ${drift} cannot authorize preflight-failure persistence`,async t=>{
- const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await f.services.call('project.create',{name:'Other owner'});
+ const f=await fixture(t,{providerId:'veo',image:true}),job=await f.submit(),other=await foreignProject(t,'Other owner');
  const provider=f.providers.get('veo')!,submit=provider!.submit;let afterTamper;
  const log=t.mock.method(console,'error',()=>{});
  f.providers.set('veo',{...provider,submit:async(snapshot,context)=>{
@@ -258,7 +267,7 @@ for(const drift of ['deleted-job','json-identity','snapshot','revision','coheren
   else if(drift==='revision')f.store.put('jobs',{...saved,revision:saved.revision+1});
   else {
    for(const [table,id] of [['jobs',job.id],['shots',f.shot.id],['assets',f.asset.id]] as const){
-    f.store.put(table,{...f.store.get(table,id),projectId:other.id});f.store.db.prepare(`UPDATE ${table} SET projectId=? WHERE id=?`).run(other.id,id);
+    f.store.put(table,{...f.store.get(table,id),projectId:other.id});withoutForeignKeys(f.store.db,()=>f.store.db.prepare(`UPDATE ${table} SET projectId=? WHERE id=?`).run(other.id,id));
    }
   }
   afterTamper=rawGenerationState(f);return submit(snapshot,context);

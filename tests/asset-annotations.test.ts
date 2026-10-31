@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';import {mkdtemp,rm} from 'node:fs/promise
 import {openStore} from '../packages/business/src/db.ts';import {createServices,canonical} from '../packages/business/src/services.ts';
 import {fork} from 'node:child_process';import {once} from 'node:events';
 import {assetAnnotationSchemas,isAssetAnnotationResponse,isAssetAnnotationListResponse} from '../packages/contracts/src/asset-annotations.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 interface AssetView { id: string; projectId: string }
 interface AnnotationFixture { root: string; readonly store: ReturnType<typeof openStore>; call: (operation: string, input: Record<string, unknown>) => Promise<unknown>; restart(): void; asset(owner?: string): AssetView; input(asset: AssetView, patch?: Record<string, unknown>): Record<string, unknown> & {requestId: string}; project: AssetView }
 async function fixture(t: import('node:test').TestContext): Promise<AnnotationFixture> {
@@ -12,7 +13,10 @@ async function fixture(t: import('node:test').TestContext): Promise<AnnotationFi
  f.project=await f.call('project.create',{name:'annotations'}) as AssetView;return f;
 }
 const list=(f: AnnotationFixture, assets: AssetView[]) => f.call('asset.annotation.list',{projectId:f.project.id,assetIds:assets.map(a=>a.id)}) as Promise<{items: {revision: number; tags: string[]; note: string}[]}>;
-const snapshot=(db: ReturnType<typeof openStore>['db'], omit: string[] = []): Record<string, unknown[]> => Object.fromEntries((db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as {name: string}[]).filter((r: {name: string})=>!omit.includes(r.name)).map((r: {name: string})=>[r.name,(db.prepare(`SELECT * FROM ${r.name} ORDER BY rowid`).all() as Record<string, unknown>[])]));
+const byName=(a: {name: string}, b: {name: string}): number => a.name<b.name?-1:a.name>b.name?1:0;
+const snapshot=(db: ReturnType<typeof openStore>['db'], omit: string[] = []): Record<string, unknown[]> => Object.fromEntries(schemaObjects(db).filter(r=>r.type==='table'&&!r.name.startsWith('sqlite_')).sort(byName).filter((r: {name: string})=>!omit.includes(r.name)).map((r: {name: string})=>[r.name,(db.prepare(`SELECT * FROM ${r.name} ORDER BY rowid`).all() as Record<string, unknown>[])]));
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(db: ReturnType<typeof openStore>['db'], write: () => T): T => {db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 
 test('annotation contract bounds Unicode, canonical tags, literal notes and response identity',()=>{
  const input={projectId:randomUUID(),assetId:randomUUID(),expectedRevision:0,requestId:randomUUID(),tags:['标签','😀'.repeat(40)],note:'😀'.repeat(4000)};
@@ -26,7 +30,8 @@ test('ordered bounded reads are noncreating and all-or-nothing; missing/foreign 
  const f=await fixture(t),assets=Array.from({length:100},()=>f.asset()),before=snapshot(f.store.db),changes=(f.store.db.prepare('SELECT total_changes() n').get() as {n: number}).n;
  const result=await list(f,assets);assert.equal(isAssetAnnotationListResponse(result,{projectId:f.project.id,assetIds:assets.map(a=>a.id)}),true);assert.ok(result.items.every((r: {revision: number; tags: string[]; note: string})=>r.revision===0&&r.tags.length===0&&r.note===''));assert.deepEqual(snapshot(f.store.db),before);assert.equal((f.store.db.prepare('SELECT total_changes() n').get() as {n: number}).n,changes);
  for(const ids of [[],[assets[0].id,assets[0].id],Array.from({length:101},()=>randomUUID())])await assert.rejects(f.call('asset.annotation.list',{projectId:f.project.id,assetIds:ids}),{code:'VALIDATION_ERROR'});
- const foreign=await f.call('project.create',{name:'foreign'}) as AssetView,other=f.asset(foreign.id);
+ // Another project's asset lives in that project's own store: this project has no such asset.
+ const foreign=await fixture(t),other=foreign.asset();
  for(const id of [other.id,randomUUID()])await assert.rejects(f.call('asset.annotation.list',{projectId:f.project.id,assetIds:[assets[0].id,id]}),(e: unknown)=>{const failure=e as {code?: string; details?: Record<string, unknown>};return failure.code==='NOT_FOUND'&&Object.keys(failure.details ?? {}).length===0;});
 });
 
@@ -43,9 +48,9 @@ test('save/clear independent CAS and historical replay survive restart without c
 });
 
 test('ownership drift prevents reads and replay; direct SQL cannot replace or delete state/receipts',async t=>{
- const f=await fixture(t),a=f.asset(),input=f.input(a);await f.call('asset.annotation.set',input);const foreign=await f.call('project.create',{name:'foreign'}) as AssetView;
+ const f=await fixture(t),a=f.asset(),input=f.input(a);await f.call('asset.annotation.set',input);const foreign=(await fixture(t)).project;
  for(const sql of ["DELETE FROM asset_annotations","DELETE FROM asset_annotation_requests","UPDATE asset_annotation_requests SET response='{}'","INSERT OR REPLACE INTO asset_annotations SELECT * FROM asset_annotations","INSERT OR REPLACE INTO asset_annotation_requests SELECT * FROM asset_annotation_requests","UPDATE asset_annotations SET revision=revision"])assert.throws(()=>f.store.db.exec(sql));
- f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(foreign.id,a.id);await assert.rejects(list(f,[a]),{code:'NOT_FOUND'});await assert.rejects(f.call('asset.annotation.set',input),{code:'NOT_FOUND'});
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(foreign.id,a.id));await assert.rejects(list(f,[a]),{code:'NOT_FOUND'});await assert.rejects(f.call('asset.annotation.set',input),{code:'NOT_FOUND'});
 });
 
 test('all four legacy companion keys collide with annotations in both SQL directions',async t=>{

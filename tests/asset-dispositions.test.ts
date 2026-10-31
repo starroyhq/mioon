@@ -24,7 +24,16 @@ import {openStore} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 import {createServices,canonical} from '../packages/business/src/services.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t:test.TestContext):Promise<FixtureProject>{
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-asset-dispositions-foreign-'));
+ t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=openStore(root) as TypedStore,services=createServices(store,new Map()) as TypedServices;
+ try{return await services.call('project.create',{name:'Foreign private project'});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t:test.TestContext,{open=openStore}:{open?:typeof openStore|typeof openLegacyWorkspaceStore}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-asset-dispositions-'));
  let store=open(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
@@ -33,14 +42,18 @@ async function fixture(t:test.TestContext,{open=openStore}:{open?:typeof openSto
   asset(mimeType='video/mp4',projectId=f.project.id){return store.put('assets',{id:randomUUID(),projectId,name:'Private disposition asset',mimeType,duration:2,sha256:'a'.repeat(64),relativePath:'media/fixture',url:'/media/fixture'});},
   input(asset:Pick<DispositionAsset,"projectId"|"id">,patch={}){return {projectId:asset.projectId,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),disposition:'favorite',...patch};},
  } as DispositionFixture;
- f.project=await f.call('project.create',{name:'Asset dispositions'});f.other=await f.call('project.create',{name:'Foreign private project'});
+ f.project=await f.call('project.create',{name:'Asset dispositions'});f.other=await foreignProject(t);
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
 }
-const snapshot=(f: Awaited<ReturnType<typeof fixture>>,omit:string[]=[])=>Object.fromEntries(f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().filter(({name})=>!omit.includes(name as string)).map(({name})=>{
+const byName=(a:{name:string},b:{name:string})=>a.name<b.name?-1:a.name>b.name?1:0;
+// Rows keep the loose type the SQL table listing gave them; tests name the columns they read.
+const snapshot=(f: Awaited<ReturnType<typeof fixture>>,omit:string[]=[]): Record<string,any[]>=>Object.fromEntries(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&!name.startsWith('sqlite_')).sort(byName).filter(({name})=>!omit.includes(name)).map(({name})=>{
  const statement=f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`);statement.setReadBigInts(true);
  return [name,statement.all()];
 }));
 const changes=(f: Awaited<ReturnType<typeof fixture>>)=>f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(f: Awaited<ReturnType<typeof fixture>>,write:()=>T):T=>{f.store.db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}};
 
 function assertReviewed52Migration(f: Awaited<ReturnType<typeof fixture>>,before:Record<string,SqlRow[]>,rawBefore:RawSchemaSnapshot,expectedTargetCount: number){
  const actual=(rawSnapshot(f.store.db) as unknown as RawSchemaSnapshot);actual.objects=withoutReviewedCurrentAgentObjects(actual.objects);const names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter((object: { name: string; })=>names.has(object.name));
@@ -140,7 +153,7 @@ test('schema-valid non-BMP request keys retain existing UTF-16 length semantics 
 });
 
 test('missing and foreign batches fail all-or-nothing uniformly, including exact replay, without foreign JSON decoding',async t=>{
- const f=await fixture(t),asset=f.asset(),foreign=f.asset('video/mp4',f.other.id),input=f.input(asset);await f.call('asset.disposition.set',input);
+ const f=await fixture(t),asset=f.asset(),foreign=withoutForeignKeys(f,()=>f.asset('video/mp4',f.other.id)),input=f.input(asset);await f.call('asset.disposition.set',input);
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{foreign retained secret',foreign.id);
  for(const target of [{projectId:f.project.id,assetId:randomUUID()},{projectId:f.project.id,assetId:foreign.id},{projectId:randomUUID(),assetId:asset.id}]){
   await assert.rejects(f.call('asset.disposition.list',{projectId:target.projectId,assetIds:[target.assetId]}),safeMissing);
@@ -150,7 +163,7 @@ test('missing and foreign batches fail all-or-nothing uniformly, including exact
  for(const assetIds of [[asset.id,foreign.id],[foreign.id,asset.id],[asset.id,randomUUID()]])
   await assert.rejects(f.call('asset.disposition.list',{projectId:f.project.id,assetIds}),safeMissing);
  assert.deepEqual(snapshot(f),before);assert.equal(changes(f),writes);
- replaceAsset(f,asset,{projectId:f.other.id},f.other.id);
+ withoutForeignKeys(f,()=>replaceAsset(f,asset,{projectId:f.other.id},f.other.id));
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{foreign retained secret',asset.id);
  await assert.rejects(f.call('asset.disposition.set',input),safeMissing);
  replaceAsset(f,asset,{projectId:f.other.id});await assert.rejects(read(f,asset),safeMissing);await assert.rejects(f.call('asset.disposition.set',input),safeMissing);
@@ -163,7 +176,9 @@ test('missing and foreign batches fail all-or-nothing uniformly, including exact
 
 test('bounded asset/project identity JSON and malformed saved metadata fail closed without current state disclosure',async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset);await f.call('asset.disposition.set',input);
- const guard=f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE name='agent_target_projects_update_v2'").get()!.sql;
+ // Restore the guard into the database that holds it: an unqualified CREATE TRIGGER lands in main.
+ const trigger=schemaObjects(f.store.db).find(({type,name})=>type==='trigger'&&name==='agent_target_projects_update_v2')!;
+ const guard=trigger.sql!.replace(/^CREATE TRIGGER /u,`CREATE TRIGGER "${trigger.schema}".`);
  const intact=snapshot(f);
  assert.throws(()=>f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run('{retained secret',f.project.id),/malformed JSON/);
  assert.deepEqual(snapshot(f),intact,'the live target guard refuses malformed project JSON atomically');
@@ -172,7 +187,7 @@ test('bounded asset/project identity JSON and malformed saved metadata fail clos
  const corrupt=(table: string,raw:string,id:string)=>{
   if(table==='projects')f.store.db.exec('DROP TRIGGER agent_target_projects_update_v2');
   try{f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(raw,id);}
-  finally{if(table==='projects')f.store.db.exec(guard as string);}
+  finally{if(table==='projects')f.store.db.exec(guard);}
  };
  for(const [table,value] of [['assets',asset],['projects',f.project]] as const){
   for(const damaged of ['{retained secret',JSON.stringify({...value,padding:'x'.repeat(16384)}),JSON.stringify({...value,id:randomUUID()})]){
@@ -187,7 +202,7 @@ test('bounded asset/project identity JSON and malformed saved metadata fail clos
  }
  f.store.db.exec('DROP TRIGGER immutable_asset_disposition_identity; PRAGMA ignore_check_constraints=ON');
  for(const patch of [{projectId:f.other.id},{revision:0},{revision:1.5},{revision:Number.MAX_SAFE_INTEGER+1},{disposition:'private retained secret'}]){
-  for(const [key,value] of Object.entries(patch))f.store.db.prepare(`UPDATE asset_dispositions SET ${key}=? WHERE assetId=?`).run(value,asset.id);
+  withoutForeignKeys(f,()=>{for(const [key,value] of Object.entries(patch))f.store.db.prepare(`UPDATE asset_dispositions SET ${key}=? WHERE assetId=?`).run(value,asset.id);});
   const before=snapshot(f);
   await assert.rejects(read(f,asset),error=>(error as Failure).code==='INVALID_ASSET_DISPOSITION_RECORD'&&noDisclosure(error));
   await assert.rejects(f.call('asset.disposition.set',input),error=>(error as Failure).code==='INVALID_ASSET_DISPOSITION_RECORD'&&noDisclosure(error));
@@ -218,7 +233,10 @@ test('metadata, receipts and trigger-induced reassignment roll back together; sc
  await assert.rejects(f.call('asset.disposition.set',input),/injected receipt failure/);assert.deepEqual(snapshot(f),before);assert.equal(f.store.db.isTransaction,false);
  f.store.db.exec('DROP TRIGGER fail_disposition_receipt');
  f.store.db.exec(`CREATE TRIGGER reassign_after_disposition AFTER INSERT ON asset_disposition_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
- await assert.rejects(f.call('asset.disposition.set',input),safeMissing);assert.deepEqual(snapshot(f),before);
+ // The trigger moves the asset to a project this store does not hold, inside the service's own transaction.
+ f.store.db.exec('PRAGMA foreign_keys=OFF');
+ try{await assert.rejects(f.call('asset.disposition.set',input),safeMissing);}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
+ assert.deepEqual(snapshot(f),before);
  f.store.db.exec('DROP TRIGGER reassign_after_disposition');
  const first=await f.call('asset.disposition.set',input),updated=f.input(asset,{expectedRevision:1,disposition:'neutral'}),saved=snapshot(f);
  f.store.db.exec("CREATE TRIGGER fail_disposition_update_receipt BEFORE INSERT ON asset_disposition_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
@@ -319,7 +337,9 @@ test('duplicate presence and corrupted wrong-table placement fail closed for all
 });
 
 test('v12 upgrade preserves all old records and response bytes and has identical fresh schema invariants on repeated restart',async t=>{
- const f=await fixture(t,{open:openLegacyWorkspaceStore}),asset=f.asset();await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
+ // The legacy seed keeps its second project in this workspace; f.other lives in a store of its own.
+ const f=await fixture(t,{open:openLegacyWorkspaceStore});await f.call('project.create',{name:'Foreign private project'});
+ const asset=f.asset();await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
  await f.call('asset.range.set',{projectId:f.project.id,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),inFrame:0,outFrame:30});
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
  f.store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation',randomUUID(),'old-hash',randomUUID());

@@ -13,6 +13,8 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
+import type {DatabaseSync} from 'node:sqlite';
+import {schemaObjects} from './helpers/project-database.ts';
 
 // Synthetic local assets only. Production renderer, decoder and probe are all
 // the existing installed tools; tests are deliberately serial and resource-capped.
@@ -40,6 +42,15 @@ type ProcessEvent = Parameters<Parameters<typeof onMediaProcess>[0]>[0];
 type MediaEvent = ProcessEvent;
 const hash=(bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex');
 async function sandbox(t: {after(fn: () => unknown): void}): Promise<string> {const root=await mkdtemp(path.join(tmpdir(),'mioon-export-media-'));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: {after(fn: () => unknown): void}): Promise<ProjectShape> {
+ const store=openStore(await sandbox(t)),services=createServices(store,new Map());
+ try{return await services.call('project.create',{name:'Private foreign fixture'}) as ProjectShape;}
+ finally{await services.drain();store.close();}
+}
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=(store: LooseStore,write: () => unknown): void => {store.db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{store.db.exec('PRAGMA foreign_keys=ON');}};
+const byName=(a: {name: string},b: {name: string}): number => a.name<b.name?-1:a.name>b.name?1:0;
 function wave(): Buffer {
  const samples=3*48000,bytes=Buffer.alloc(44+samples*4);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);
  bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(2,22);bytes.writeUInt32LE(48000,24);bytes.writeUInt32LE(192000,28);
@@ -225,12 +236,13 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
 
 async function sourceOwnershipRace(t: {mock: {method(target: object, name: string, fn: (...args: unknown[]) => unknown): void}; after(fn: () => unknown): void}, {mutation, phase='capability'}: {mutation: string; phase?: string}): Promise<void> {
  const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
- const state=(): Record<string, Record<string, unknown>[]>=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name!='exports' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+ const state=(): Record<string, Record<string, unknown>[]>=>Object.fromEntries(schemaObjects(store.db as unknown as DatabaseSync).filter(({type,name})=>type==='table'&&name!=='exports').sort(byName).map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
  try{
-  const project=await services.call<ProjectShape>('project.create',{name:'Synthetic frozen-source race'}),other=await services.call<ProjectShape>('project.create',{name:'Private foreign fixture'});
+  const project=await services.call<ProjectShape>('project.create',{name:'Synthetic frozen-source race'}),other=await foreignProject(t);
   const imported=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
   const asset: AssetShape & Record<string, unknown> = {...store.get('assets',imported.id),provenance:'generated'} as unknown as AssetShape & Record<string, unknown>;store.put('assets',asset);
-  const shot=await services.call<ProjectShape>('shot.create',{projectId:project.id,title:'Synthetic retained lineage'}),foreignShot=await services.call<ProjectShape>('shot.create',{projectId:other.id,title:'Untouched foreign shot'});
+  const shot=await services.call<ProjectShape>('shot.create',{projectId:project.id,title:'Synthetic retained lineage'}),foreignShot={id:randomUUID(),projectId:other.id,title:'Untouched foreign shot'};
+  withoutForeignKeys(store,()=>store.put('shots',foreignShot));
   const jobId=randomUUID(),versionId=randomUUID(),sourceSnapshot={projectId:project.id,shotId:shot.id,referenceAssetIds:[],referenceAssets:[]};
   store.put('jobs',{id:jobId,projectId:project.id,shotId:shot.id,versionId,assetId:asset.id,status:'succeeded',providerId:'mock',requestId:randomUUID(),snapshot:sourceSnapshot});
   store.put('versions',{id:versionId,projectId:project.id,shotId:shot.id,jobId,assetId:asset.id,sha256:asset.sha256,number:1,snapshot:sourceSnapshot});
@@ -260,11 +272,11 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   const move=(): void => {
    if(moved)return;moved=true;
    try{
-    if(mutation==='asset-sql-owner')store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(other.id,asset.id);
+    if(mutation==='asset-sql-owner')withoutForeignKeys(store,()=>store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(other.id,asset.id));
     else if(mutation==='asset-json-owner')patch('assets',asset.id,{projectId:other.id});
-    else if(mutation==='version-sql-owner')store.db.prepare('UPDATE versions SET projectId=? WHERE id=?').run(other.id,versionId);
+    else if(mutation==='version-sql-owner')withoutForeignKeys(store,()=>store.db.prepare('UPDATE versions SET projectId=? WHERE id=?').run(other.id,versionId));
     else if(mutation==='job-lineage')patch('jobs',jobId,{shotId:foreignShot.id});
-    else if(mutation==='shot-sql-owner')store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(other.id,shot.id);
+    else if(mutation==='shot-sql-owner')withoutForeignKeys(store,()=>store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(other.id,shot.id));
     else if(mutation==='asset-hash')patch('assets',asset.id,{sha256:'b'.repeat(64)});
     else if(mutation==='asset-mime')patch('assets',asset.id,{mimeType:'audio/mp4'});
     else if(mutation==='asset-path')patch('assets',asset.id,{relativePath:'media/foreign-owned-unread.wav'});

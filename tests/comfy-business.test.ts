@@ -30,12 +30,19 @@ const configuration={...DEFAULT_COMFY_IMAGE_CONFIGURATION,enabled:true,baseUrl:'
 const memory=()=>{let value: unknown=null;return {load:async()=>structuredClone(value),save:async (next: unknown)=>{value=structuredClone(next);}};};
 const deferred=<T = unknown>()=>{let resolve!: (value?: T | PromiseLike<T>) => void;const promise=new Promise<T>(r=>resolve=(r as (value?: T | PromiseLike<T>) => void));return {promise,resolve};};
 const waitFor=async<T>(read: () => T | Promise<T>,predicate: (value: Awaited<T>) => boolean)=>{const end=Date.now()+5000;while(Date.now()<end){const value=await read();if(predicate(value))return value;await pause(5);}assert.fail('Synthetic Comfy lifecycle did not settle');};
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext){
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-comfy-business-foreign-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
+ try{return await services.call('project.create',{name:'Other'});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t: test.TestContext,{autoRun=true,fault=()=>{},submit,observe}:ComfyFixtureOptions={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-comfy-business-')),persistence=memory();let store=(openStore(root) as TypedStore),settings: Awaited<ReturnType<typeof createComfySettings>>,services: TypedServices;const calls={post:0,get:0};
  const connector={submit:async (args: SubmitArgs)=>{calls.post++;if(submit)return submit(args);args.beforeSubmit();return {state:'submitted',promptId:args.execution.promptId};},observe:async (args: ObserveArgs)=>{calls.get++;if(observe)return observe(args);return completed(args);}};
  async function completed(args: { execution: { filenamePrefix: string; }; }){const bytes=syntheticPng();return {state:'completed',contentVerified:true,candidate:{bytes,mimeType:'image/png',width:512,height:512,byteLength:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),descriptor:{filename:args.execution.filenamePrefix+'_00001_.png',subfolder:'',type:'output'}}};}
  async function create(){settings=await createComfySettings({persistence,reservedPorts:()=>[4318]});services=(createServices(store,new Map(),{env:{},imageOptions:{autoRun,fault,comfySettings:settings,comfyConnector:connector as unknown as ReturnType<typeof createComfyConnector>}}) as TypedServices);}
- await create();await services!.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});const project=await services!.call('project.create',{name:'Comfy synthetic'}),other=await services!.call('project.create',{name:'Other'});
+ await create();await services!.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});const project=await services!.call('project.create',{name:'Comfy synthetic'}),other=await foreignProject(t);
  const f={root,project,other,calls,completed,get store(){return store;},get services(){return services;},get settings(){return settings;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),input:(patch={})=>({projectId:project.id,requestId:randomUUID(),name:'Comfy image',providerId:'comfy-local',model:configuration.model,prompt:'Exact synthetic prompt.',options:COMFY_IMAGE_OPTIONS,...patch}),
   check(){const result={ok:true,baseUrl:configuration.baseUrl,comfyVersion:'0.39.0',checkpoints:[configuration.model],nodeClasses:['CheckpointLoaderSimple','EmptyLatentImage','CLIPTextEncode','KSampler','VAEDecode','SaveImage'],selectedCheckpointAvailable:true};settings.recordCheck(result,settings.clearCheck(result.baseUrl));},
   prepare:(input: unknown)=>services.call('image.review.prepare',{input,settingsRevision:1}),approve:(review: { id: unknown; })=>services.imageApproval({projectId:project.id,reviewId:review.id,expectedRevision:1}),

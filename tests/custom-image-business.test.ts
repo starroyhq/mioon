@@ -19,6 +19,13 @@ const config=(patch?: { baseUrl?: string; model?: string; }|undefined)=>({...str
 const memory=()=>{let value: unknown=null;return {load:async()=>structuredClone(value),save:async (next: unknown)=>{value=structuredClone(next);}};};
 const generation=(projectId: string,patch={})=>({projectId,requestId:randomUUID(),name:'Custom image fixture',providerId:'openai-compatible',model:'custom-fixture-model',prompt:'Exact local synthetic description.',options:{...IMAGE_FIXED_OPTIONS},...patch});
 const reviewInput=(review: { projectId: unknown; id: unknown; })=>({projectId:review.projectId,reviewId:review.id,expectedRevision:1});
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext){
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-custom-image-business-foreign-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
+ try{return await services.call('project.create',{name:'Other local fixture'});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t: test.TestContext,{autoRun=false,generate,beforeSubmit}: {autoRun?:boolean;generate?:(input: unknown,options: {configuration:unknown;beforeDispatch():void})=>Promise<{bytes:Buffer}>;beforeSubmit?:()=>void}={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-custom-image-business-')),customPersistence=memory(),officialPersistence=memory();
  let store=(openStore(root) as TypedStore),customSettings=await createCustomImageSettings({persistence:customPersistence}),settings=await createImageSettings({persistence:officialPersistence}),services: TypedServices,calls: { input: unknown; configuration: unknown; }[]=[];
@@ -26,7 +33,7 @@ async function fixture(t: test.TestContext,{autoRun=false,generate,beforeSubmit}
  const create=()=>(createServices(store,new Map(),{env:{},imageOptions:{autoRun,settings,customSettings,customGateway:gateway as unknown as import('../packages/business/src/images/gateway.ts').Gateways,liveGateway:gateway as unknown as import('../packages/business/src/images/gateway.ts').Gateways}}) as TypedServices);
  services=create();
  await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
- const project=await services.call('project.create',{name:'Custom local fixture'}),other=await services.call('project.create',{name:'Other local fixture'});
+ const project=await services.call('project.create',{name:'Custom local fixture'}),other=await foreignProject(t);
  const f={root,project,other,calls,get store(){return store;},get services(){return services;},get customSettings(){return customSettings;},get settings(){return settings;},call:<O extends string>(operation: O,input: unknown)=>services.call(operation,input),input:(patch?: {}|undefined)=>generation(project.id,patch),
  async configure(configuration=config(),secret: {action:string;storage?:string;value?:string}={action:'replace',storage:'session',value:'custom-synthetic-secret'}){const old=await customSettings.get();return customSettings.put({expectedRevision:old.revision,configuration,secret});},
  async prepare(input: { projectId: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; name: string; providerId: string; model: string; prompt: string; options: { size: "1024x1024"; quality: "low"; outputFormat: "png"; background: "opaque"; n: 1; }; },settingsRevision?: unknown){settingsRevision??=(await customSettings.get()).revision;return services.call('image.review.prepare',{input,settingsRevision});},

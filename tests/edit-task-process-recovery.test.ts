@@ -120,21 +120,25 @@ async function fixture(t: test.TestContext) {
     } finally { await rm(root, {recursive: true, force: true}); }
   });
   const store = (openStore(root) as unknown as TypedStore);
+  // Another project and its asset live in a store of their own: a store holds one project.
+  const otherRoot = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-edit-task-process-other-')));
+  t.after(() => rm(otherRoot, {recursive: true, force: true}));
+  const otherStore = (openStore(otherRoot) as unknown as TypedStore);
   let project, other, source, second, foreign, video, shot;
   try {
     const services = (createServices(store, new Map()) as unknown as TypedServices);
     project = await services.call('project.create', {name: 'Synthetic process recovery'});
-    other = await services.call('project.create', {name: 'Synthetic other project'});
-    const asset = (projectId: string, sha: string, patch: { mimeType?: string; duration?: number; hasAudio?: boolean; }|undefined = {}) => {
+    other = await (createServices(otherStore, new Map()) as unknown as TypedServices).call('project.create', {name: 'Synthetic other project'});
+    const asset = (projectId: string, sha: string, patch: { mimeType?: string; duration?: number; hasAudio?: boolean; }|undefined = {}, owner = store) => {
       const id = randomUUID();
-      return store.put('assets', {id, projectId, name: 'Synthetic metadata only', mimeType: 'image/png',
+      return owner.put('assets', {id, projectId, name: 'Synthetic metadata only', mimeType: 'image/png',
         relativePath: `media/${id}.fixture`, sha256: sha.repeat(64), sizeBytes: 100, duration: 0, width: 64, height: 64,
         hasVideo: true, hasAudio: false, provenance: 'user-import', createdAt: new Date().toISOString(), ...patch});
     };
-    source = asset(project.id, 'a'); second = asset(project.id, 'b'); foreign = asset(other.id, 'c');
+    source = asset(project.id, 'a'); second = asset(project.id, 'b'); foreign = asset(other.id, 'c', {}, otherStore);
     video = asset(project.id, 'd', {mimeType: 'video/mp4', duration: 10, hasAudio: true});
     shot = await services.call('shot.create', {projectId: project.id, title: 'Synthetic shot'});
-  } finally { store.close(); }
+  } finally { store.close(); otherStore.close(); }
   const f = {root, project, other, source, second, foreign, video, shot,
     get worker() { return worker; },
     async start() {
@@ -284,7 +288,7 @@ test('subject acknowledgement committed before process death stays acknowledged 
   assert.deepEqual(f.snapshot(), before); assert.deepEqual(f.snapshot(['edit_tasks']), rows); await noDispatch(f);
 });
 
-test('subject retained keys still conflict with changed input, project and subject operation after process restart', {timeout: 30000}, async t => {
+test('subject retained keys still conflict with changed input and subject operation after process restart; a foreign project is not found', {timeout: 30000}, async t => {
   const f = await fixture(t), input = f.createInput(), prepared = await f.prepare('subject.create', input);
   const applied = await f.ask('execute', execute(prepared));
   await f.ask('acknowledge', acknowledge(applied.task));
@@ -292,7 +296,6 @@ test('subject retained keys still conflict with changed input, project and subje
   const before = f.snapshot([...domainTables, 'edit_tasks']);
   const cases: [string, Record<string,unknown>][] = [
     ['subject.create', {...input, name: 'Different intent'}],
-    ['subject.create', {...input, projectId: f.other.id, assetId: f.foreign.id}],
     ['subject.version.add', {projectId: f.project.id, subjectId: (applied.result)!.id, assetId: f.second.id,
       expectedRevision: 1, requestId: input.requestId}],
     ['subject.binding.set', {projectId: f.project.id, subjectId: (applied.result)!.id, shotId: f.shot.id, role: 'subject',
@@ -303,6 +306,11 @@ test('subject retained keys still conflict with changed input, project and subje
     await assert.rejects(f.rpc(operation, changed), {code: 'IDEMPOTENCY_CONFLICT'});
     assert.deepEqual(f.snapshot([...domainTables, 'edit_tasks']), before);
   }
+  // Another project lives in a store of its own: this store has no such project, so the same key never reaches it.
+  const foreign = {...input, projectId: f.other.id, assetId: f.foreign.id};
+  await assert.rejects(f.prepare('subject.create', foreign), {code: 'EDIT_TASK_NOT_FOUND'});
+  await assert.rejects(f.rpc('subject.create', foreign), {code: 'NOT_FOUND'});
+  assert.deepEqual(f.snapshot([...domainTables, 'edit_tasks']), before);
   assert.deepEqual(await f.rpc('subject.create', input), applied.result); await noDispatch(f);
 });
 

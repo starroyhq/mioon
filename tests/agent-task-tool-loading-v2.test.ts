@@ -76,7 +76,7 @@ for(const protocol of protocols)test(`${protocol}: a stale load receipt survives
  assert.deepEqual(done.steps.find(step=>step.id===stale.id)?.result,stale.result);
 });
 
-for(const protocol of protocols)test(`${protocol}: a note with a stale load receipt succeeds without faulting other project work`,async t=>{
+for(const protocol of protocols)test(`${protocol}: a note with a stale load receipt succeeds without faulting later work`,async t=>{
  const f=await fixture(t,protocol),entered=gate(),release=gate(),note='Keep the colours after upgrading.';
  f.script(async function*(index){
   if(index===1)yield {type:'done',output:output(protocol,[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:['canvas']})])};
@@ -90,9 +90,10 @@ for(const protocol of protocols)test(`${protocol}: a note with a stale load rece
  assert.ok(f.requests[2]!.body.includes(note));assert.ok(done.run.notes?.[0]?.modelStepId);
  assert.deepEqual(visible(f.requests[2]!),f.tools.list().filter(tool=>['core','canvas'].includes(agentTaskToolGroupForName(tool.name)??'')).map(tool=>tool.name));
  assert.deepEqual(done.steps.find(step=>step.id===stale.id)?.result,stale.result);
- const other=object(await f.services.call('project.create',{name:'Unaffected project'})),otherId=String(other.id);
- const next=await f.runtime.send(otherId,{requestId:randomUUID(),text:'Continue unrelated work.',expectedSettingsRevision:(await f.settings.get()).revision});
- await f.runtime.drain();assert.equal(f.runtime.get(otherId,next.run.id).run.status,'completed');
+ // A store holds one project, so another project never shares this runtime;
+ // the runtime that read the stale receipt still runs later unrelated work.
+ const next=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'Continue unrelated work.',expectedSettingsRevision:(await f.settings.get()).revision});
+ await f.runtime.drain();assert.equal(f.runtime.get(f.projectId,next.run.id).run.status,'completed');
 });
 
 for(const protocol of protocols)test(`${protocol}: a load in the same response cannot make an undisclosed edit prepare or request approval`,async t=>{

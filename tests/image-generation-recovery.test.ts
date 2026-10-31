@@ -15,6 +15,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {errorView} from './helpers/test-error.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 
 interface RecoveryInput {projectId: string; name: string; providerId: string; model: string; prompt: string;
   options: Record<string, unknown>; requestId: string; [key: string]: unknown}
@@ -41,13 +42,22 @@ const inputFor = (projectId: string, patch: Record<string, unknown> = {}): Recov
 let pngPromise: Promise<Buffer> | undefined;
 const png = () => pngPromise ??= renderMockImagePng();
 const deferred = (): Deferred => {let resolve: Deferred['resolve'] = () => {}, reject: Deferred['reject'] = () => {}; const promise = new Promise<unknown>((yes, no) => {resolve = yes; reject = no;}); return {promise, resolve, reject};};
-const snapshot = (db: DatabaseSync): string => JSON.stringify(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all()
-  .map(({name}) => [name as string, db.prepare(`SELECT * FROM "${name as string}" ORDER BY rowid`).all()]));
+const byName = (a: {name: string}, b: {name: string}): number => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+const snapshot = (db: DatabaseSync): string => JSON.stringify(schemaObjects(db).filter(({type}) => type === 'table').sort(byName)
+  .map(({name}) => [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
 const count = (db: DatabaseSync, table: string) => (db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as {n: number}).n;
 async function until<T>(check: () => T | false | Promise<T | false>, label: string): Promise<T> {
   const end = Date.now() + 10_000;
   while (Date.now() < end) {const value = await check(); if (value) return value; await pause(5);}
   assert.fail(`Timed out waiting for ${label}`);
+}
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: import('node:test').TestContext): Promise<{id: string}> {
+  const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-recovery-foreign-'));
+  t.after(() => rmSync(root, {recursive: true, force: true}));
+  const store = (openStore(root) as unknown as TypedStore), services = (createServices(store, new Map()) as unknown as TypedServices);
+  try {return await services.call('project.create', {name: 'Foreign project'}) as {id: string};}
+  finally {await services.drain(); store.close();}
 }
 async function fixture(t: import('node:test').TestContext, {autoRun = true, generate}: FixtureOptions = {}): Promise<RecoveryFixture> {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-recovery-'));
@@ -64,7 +74,7 @@ async function fixture(t: import('node:test').TestContext, {autoRun = true, gene
   start();
   t.after(async () => {try {await services!.drain();} finally {store!.close(); rmSync(root, {recursive: true, force: true});}});
   const project = await services!.call('project.create', {name: 'Image recovery project'}) as {id: string};
-  const other = await services!.call('project.create', {name: 'Foreign project'}) as {id: string};
+  const other = await foreignProject(t);
   const f: RecoveryFixture = {root, project, other, get store() {return store!;}, get services() {return services!;}, get calls() {return calls;},
     setFault(fn) {fault = fn;}, input: patch => inputFor(project.id, patch), call: ((op: string, input: unknown) => (services)!.call(op, input)) as RecoveryFixture['call'],
     row: (id: string) => store!.db.prepare('SELECT * FROM image_tasks WHERE id=?').get(id) as Record<string, unknown> | undefined,
@@ -276,11 +286,12 @@ for (const phase of ['after_dispatch_fence', 'after_result_manifest']) test(`act
   `;
   await child(crash, [root, JSON.stringify(input), phase], 73);
   assert.equal(readFileSync(path.join(root, 'synthetic-adapter-calls'), 'utf8'), 'call\n');
-  const evidence = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
+  // Read the evidence through a store that leaves the crashed process's lock for the next owner.
+  const evidence = openStore(root, {lock: false});
   try {
-    const raw = evidence.prepare('SELECT * FROM image_tasks WHERE requestId=?').get(input.requestId);
+    const raw = evidence.db.prepare('SELECT * FROM image_tasks WHERE requestId=?').get(input.requestId);
     assert.equal((raw)!.state, 'dispatching'); assert.equal((raw)!.dispatched, 1); assert.equal((raw)!.stagedReceipt, null);
-    assert.equal(count(evidence, 'assets'), 0); assert.equal(count(evidence, 'image_versions'), 0);
+    assert.equal(count(evidence.db, 'assets'), 0); assert.equal(count(evidence.db, 'image_versions'), 0);
     assert.equal(existsSync(path.join(root, 'image-staging', `${(raw)!.id}.json`)), phase === 'after_result_manifest');
   } finally {evidence.close();}
   // This is a new OS process and exclusive owner, not the original worker's catch path.

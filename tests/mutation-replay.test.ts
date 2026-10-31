@@ -20,7 +20,15 @@ import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspac
 import {createServices,canonical} from '../packages/business/src/services.ts';
 import {createMutationReplay} from '../packages/business/src/mutation-replay.ts';
 import {AppError} from '@mioon/contracts';
+import {schemaObjects} from './helpers/project-database.ts';
 
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext): Promise<FixtureProject> {
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-mutation-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=(openStore(root) as unknown as TypedStore),services=(createServices(store,new Map()) as unknown as TypedServices);
+ try{return await services.call('project.create',{name:'Foreign private project'});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t: test.TestContext,{open=openStore}: {open?: (root: string) => unknown}={}) {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-mutation-'));
  let store=(open(root) as unknown as TypedStore),services=(createServices(store,new Map()) as unknown as TypedServices);
@@ -39,13 +47,19 @@ async function fixture(t: test.TestContext,{open=openStore}: {open?: (root: stri
   },
  } as MutationFixture;
  f.project=await f.call('project.create',{name:'Local mutations'});
- f.other=await f.call('project.create',{name:'Foreign private project'});
+ f.other=await foreignProject(t);
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});
  return f;
 }
+const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 function capture(f: DatabaseFixture,omit: string[]=[]) {
- return Object.fromEntries((f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as {name: string}[])
+ return Object.fromEntries(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&!name.startsWith('sqlite_')).sort(byName)
   .filter(({name})=>!omit.includes(name)).map(({name})=>[name,f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));
+}
+// The other project is not in this store; write the damaged rows as a corrupt file would hold them.
+function withoutForeignKeys<T>(f: DatabaseFixture,write: () => T): T {
+ f.store.db.exec('PRAGMA foreign_keys=OFF');
+ try{return write();}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
 }
 const journal=(f: DatabaseFixture)=>f.store.db.prepare('SELECT * FROM mutation_requests ORDER BY requestId').all() as unknown as MutationReceipt[];
 const changes=(f: DatabaseFixture)=>f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
@@ -138,8 +152,9 @@ test('requestId is never persisted on a node, and text-node asset IDs still requ
  const f=await fixture(t),requestId=key();
  const node=await f.node(f.project.id,{requestId});
  assert.ok(!Object.hasOwn(node,'requestId'));assert.ok(!Object.hasOwn(f.store.get('nodes',node.id)!,'requestId'));
- const foreign=f.asset(f.other.id),before=capture(f);
- for(const type of ['text','image'])await assert.rejects(f.node(f.project.id,{type,assetId:foreign.id,requestId:key()}),{code:'CROSS_PROJECT_REFERENCE'});
+ // Another project's asset lives in that project's own store: this project has no such asset.
+ const g=await fixture(t),foreign=g.asset(g.project.id),before=capture(f);
+ for(const type of ['text','image'])await assert.rejects(f.node(f.project.id,{type,assetId:foreign.id,requestId:key()}),{code:'NOT_FOUND'});
  assert.deepEqual(capture(f),before);
 });
 
@@ -161,7 +176,9 @@ for(const operation of ['shot.create','shot.update','node.create','node.update',
  const id=operation==='shot.reorder'?((input as MutationInput<'shot.reorder'>).shotIds)![0]:response.id;
  const original=f.store.get(table,id) as {projectId: string};
  // Changing both ownership copies must not let the old receipt disclose data.
- corrupt(f,table,id,{projectId:f.other.id},{projectId:f.other.id});
+ // The new owner must exist in this workspace for the receipt to be reached; f.other lives in a store of its own.
+ const other=await f.call('project.create',{name:'Foreign private project'});
+ corrupt(f,table,id,{projectId:other.id},{projectId:other.id});
  const before=capture(f);
  await assert.rejects(f.call(operation,input),error=>['IDEMPOTENCY_CONFLICT','CROSS_PROJECT_REFERENCE'].includes((error as MutationFailure).code)&&!Object.hasOwn((error as MutationFailure).details,'mutationOutcome'));
  assert.deepEqual(capture(f),before);
@@ -186,13 +203,16 @@ test('missing projects and records fail without creating receipts or leaking sav
 });
 
 test('foreign and corrupt asset, shot, version and job relations fail before current record disclosure',async t=>{
- const f=await fixture(t),shot=await f.shot(f.project.id),foreignAsset=f.asset(f.other.id);
+ // Requests name another project's asset and shot, which live in that project's own store: this project has neither.
+ const f=await fixture(t),g=await fixture(t),shot=await f.shot(f.project.id),otherAsset=g.asset(g.project.id);
+ // Saved relations below point at an asset of another project, held in this store as a corrupt file would hold it.
+ const foreignAsset=withoutForeignKeys(f,()=>f.asset(f.other.id));
  const node=await f.node(f.project.id),version=f.version(shot);
  for(const [operation,input] of [
-  ['shot.create',{projectId:f.project.id,title:'Invalid',referenceAssetIds:[foreignAsset.id]}],
-  ['shot.update',{shotId:shot.id,expectedRevision:99,patch:{referenceAssetIds:[foreignAsset.id]}}],
-  ['shot.reorder',{projectId:f.project.id,expectedRevision:1,shotIds:[(await f.shot(f.other.id)).id]}],
- ] as const)await assert.rejects(f.call(operation,{...input,requestId:key()}),error=>(error as MutationFailure).code==='CROSS_PROJECT_REFERENCE'&&!Object.hasOwn((error as MutationFailure).details,'current'));
+  ['shot.create',{projectId:f.project.id,title:'Invalid',referenceAssetIds:[otherAsset.id]}],
+  ['shot.update',{shotId:shot.id,expectedRevision:99,patch:{referenceAssetIds:[otherAsset.id]}}],
+  ['shot.reorder',{projectId:f.project.id,expectedRevision:1,shotIds:[(await g.shot(g.project.id)).id]}],
+ ] as const)await assert.rejects(f.call(operation,{...input,requestId:key()}),error=>(error as MutationFailure).code==='NOT_FOUND'&&!Object.hasOwn((error as MutationFailure).details,'current'));
  const cases: [string, string, Record<string, unknown>, Record<string, import('node:sqlite').SQLInputValue>][]=[
   ['shots',shot.id,{projectId:f.other.id},{}],
   ['shots',shot.id,{referenceAssetIds:[foreignAsset.id]},{}],
@@ -328,7 +348,8 @@ test('mutation replay helper and durable operation constraint cannot expand the 
 
 
 test('foreign version selection preserves legacy INVALID_VERSION without exposing or decoding foreign data',async t=>{
- const f=await fixture(t),shot=await f.shot(f.project.id),other=await f.shot(f.other.id),version=f.version(other);
+ // The foreign shot and version stay in this store, as a corrupt file would hold them, so the test can show they are never decoded.
+ const f=await fixture(t),shot=await f.shot(f.project.id),version=withoutForeignKeys(f,()=>{const other=f.store.put('shots',{id:randomUUID(),projectId:f.other.id,title:'Shot'});return f.version(other);});
  const input={shotId:shot.id,versionId:version.id,expectedRevision:shot.revision};
  const before=capture(f);
  for(const supplied of [input,{...input,requestId:key()}])await assert.rejects(f.call('version.select',supplied),error=>(error as MutationFailure).code==='INVALID_VERSION'&&(error as MutationFailure).status===400&&!Object.hasOwn((error as MutationFailure).details,'current')&&!Object.hasOwn((error as MutationFailure).details,'mutationOutcome'));
