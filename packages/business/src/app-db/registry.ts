@@ -25,7 +25,8 @@ export interface AppProjectRegistry {
   list(): RecentProject[];
   get(projectId: string): RecentProject | null;
   /** Validates with recentProjectSchema; replaces the entry of this project ID
-   * and keeps its place in the order. */
+   * and keeps its place in the order. Another entry with the same file
+   * identity is stale and keeps a file ID of 0 from then on. */
   upsert(entry: RecentProject): void;
   remove(projectId: string): void;
   /** Where the entry's file is now, by its file identity (findMovedProjectFile);
@@ -77,6 +78,20 @@ export function createProjectRegistry(database: AppDatabase, {identity, findMove
       const known = database.statement('SELECT 1 FROM recent_projects WHERE projectId=?').get(parsed.projectId) !== undefined;
       if (!known && Number(database.statement('SELECT count(*) AS n FROM recent_projects').get()?.n) >= MAX_RECENT_PROJECTS) {
         throw appLibraryError('APP_LIBRARY_LIMIT', {limit: MAX_RECENT_PROJECTS});
+      }
+      // One file holds one project, so another registration with this file
+      // identity is stale: file systems such as ext4 give a deleted file's ID
+      // to the next file created, and a project made where another used to be
+      // inherits it. The newest registration wins; the stale one keeps its name
+      // and place for the local records list, with a file ID of 0, which never
+      // matches.
+      if (parsed.fileIdentity.ino !== '0') {
+        const stale = database.statement("SELECT data FROM recent_projects WHERE projectId<>? AND json_extract(data,'$.fileIdentity.dev')=? AND json_extract(data,'$.fileIdentity.ino')=?")
+          .all(parsed.projectId, parsed.fileIdentity.dev, parsed.fileIdentity.ino).map(row => parse(row.data));
+        for (const other of stale) {
+          database.statement('UPDATE recent_projects SET data=? WHERE projectId=?')
+            .run(JSON.stringify({...other, fileIdentity: {dev: other.fileIdentity.dev, ino: '0'}}), other.projectId);
+        }
       }
       database.statement('INSERT INTO recent_projects(projectId,data) VALUES(?,?) ON CONFLICT(projectId) DO UPDATE SET data=excluded.data')
         .run(parsed.projectId, JSON.stringify(parsed));

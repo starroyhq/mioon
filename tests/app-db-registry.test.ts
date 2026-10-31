@@ -226,6 +226,30 @@ test('the registered place holding another registered project is not the origina
   assert.equal(library.registry.copyOf({projectId: film.projectId, projectFile: backup}), place);
 });
 
+test('a newer registration with the same file identity makes the older one stale, as when ext4 reuses a deleted file\'s inode', t => {
+  const {projects, library} = setup(t);
+  const place = path.join(projects, 'Film', 'Film.mioon');
+  const film = registered(library, place);
+  const backup = path.join(projects, 'Backup.mioon');
+  copyFileSync(place, backup);
+  // A project created where Film was, with the file ID a file system that
+  // hands out a deleted file's ID would give it.
+  const other: RecentProject = {...film, projectId: randomUUID(), name: 'Other'};
+  library.registry.upsert(other);
+  const stale = library.registry.get(film.projectId)!;
+  assert.deepEqual(stale.fileIdentity, {dev: film.fileIdentity.dev, ino: '0'});
+  assert.equal(stale.projectFile, place);
+  assert.equal(stale.name, 'Film');
+  assert.deepEqual(library.registry.get(other.projectId)!.fileIdentity, film.fileIdentity);
+  // The file at the place is the other project's: Film's backup is taken as
+  // the moved project, while a copy of the other project is still caught.
+  assert.equal(library.registry.copyOf({projectId: film.projectId, projectFile: backup}), null);
+  assert.equal(library.registry.copyOf({projectId: other.projectId, projectFile: backup}), place);
+  // Registering the other project again leaves the stale entry as it is.
+  library.registry.upsert(other);
+  assert.deepEqual(library.registry.get(film.projectId)!.fileIdentity, {dev: film.fileIdentity.dev, ino: '0'});
+});
+
 // ---------------------------------------------------------------------------
 // Moved projects (plan 8.2)
 
