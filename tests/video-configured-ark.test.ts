@@ -26,6 +26,13 @@ function png(width:number,height:number,fill=0):Buffer {
   return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(Buffer.alloc((width*3+1)*height,fill))),chunk('IEND',Buffer.alloc(0))]);
 }
 interface ManagedAsset {id:string;projectId:string;relativePath:string;mimeType:string;sha256:string;sizeBytes:number;width:number;height:number;[key:string]:unknown}
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t:TestContext,name='Foreign project'){
+  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-configured-ark-foreign-')));t.after(()=>rm(root,{recursive:true,force:true}));
+  const store=openStore(root),services=createServices(store,new Map());
+  try{return row(await services.call('project.create',{name}));}
+  finally{await services.drain();store.close();}
+}
 async function fixture(t:TestContext,inputModes?:VideoInputMode[]){
   const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-configured-ark-'))),store=openStore(root);
   const settings=await createVideoSettings({directory:path.join(root,'video-settings'),privateRoot:root}),providers=createProviderRegistry({db:store.db,root,env:{}});
@@ -35,7 +42,7 @@ async function fixture(t:TestContext,inputModes?:VideoInputMode[]){
   const calls:Array<{url:string;init:RequestInit}> = [];let count=0,worker:ReturnType<typeof startWorker>|null=null;
   const services=createServices(store,providers,{videoSettings:settings,profileNow:()=>Date.UTC(2026,9,20),videoFetch:async(input,init)=>{calls.push({url:String(input),init:init??{}});if(init?.method==='POST')return json({id:`configured-ark-task-${++count}`});return json({id:new URL(String(input)).pathname.split('/').at(-1),status:'running'});}});
   await services.call('workspace.settings.set',{expectedRevision:0,liveGeneration:true});
-  const project=row(await services.call('project.create',{name:'Configured Ark references'})),other=row(await services.call('project.create',{name:'Other project'}));
+  const project=row(await services.call('project.create',{name:'Configured Ark references'})),other=await foreignProject(t,'Other project');
   let assetIndex=0;
   const asset=async({width=360,height=640,projectId=String(project.id)}:{width?:number;height?:number;projectId?:string}={}):Promise<ManagedAsset>=>{
     const id=randomUUID(),bytes=png(width,height,assetIndex++),value:ManagedAsset={id,projectId,name:'Synthetic managed reference',relativePath:`media/${id}.png`,mimeType:'image/png',sha256:hash(bytes),sizeBytes:bytes.length,width,height,provenance:'user-import',createdAt:'2026-10-20T00:00:00.000Z'};
@@ -70,7 +77,11 @@ test('a changed selected last-frame file fails before POST and never falls back 
 });
 
 test('configured Ark rejects a foreign frame selection before queueing any paid job',async t=>{
-  const f=await fixture(t),foreign=await f.asset({projectId:String(f.other.id)}),shot=await f.shot();
+  const f=await fixture(t);
+  // The other project is not in this store; write the selected asset as a corrupt file would hold it.
+  f.store.db.exec('PRAGMA foreign_keys=OFF');
+  let foreign!:ManagedAsset;try{foreign=await f.asset({projectId:String(f.other.id)});}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
+  const shot=await f.shot();
   f.store.put('shots',{...shot,referenceAssetIds:[foreign.id]});
   await assert.rejects(f.services.call('generation.submit',f.input(shot)));assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);
 });
@@ -93,7 +104,8 @@ test('configured Ark subject generation produces verifiable public receipts and 
 });
 
 test('configured Ark revalidates a subject reference file and rejects an unrelated project subject version',async t=>{
-  const f=await fixture(t),foreign=await f.subject(await f.asset({width:480,height:480,projectId:String(f.other.id)})),shot=await f.shot();
+  // Another project lives in a store of its own: its subject version does not exist in this one.
+  const f=await fixture(t),g=await fixture(t),foreign=await g.subject(await g.asset({width:480,height:480})),shot=await f.shot();
   await assert.rejects(f.services.call('generation.submit',f.input(shot,{subjectVersionId:foreign.headVersionId})));assert.equal(f.store.list('jobs').length,0);
   const selected=await f.asset({width:480,height:480}),subject=await f.subject(selected),job=await f.services.call('generation.submit',f.input(shot,{subjectVersionId:subject.headVersionId}))as JobRecord;
   await writeFile(path.join(f.root,selected.relativePath),png(480,480,12));await f.tick();assert.equal(f.job(job.id).status,'failed');assert.equal(row(f.job(job.id).error).code,'REFERENCE_CHANGED');assert.equal(f.posts().length,0);

@@ -25,10 +25,19 @@ function png(fill: string|number|Uint8Array<ArrayBufferLike>|undefined){
  const head=Buffer.alloc(13);head.writeUInt32BE(360);head.writeUInt32BE(640,4);head[8]=8;head[9]=2;
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',head),chunk('IDAT',deflateSync(Buffer.alloc((360*3+1)*640,fill))),chunk('IEND',Buffer.alloc(0))]);
 }
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext,name='Foreign project'){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-frame-pair-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
+ try{return await services.call('project.create',{name});}
+ finally{await services.drain();store.close();}
+}
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(db: TypedStore['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-frame-pair-')),store=(openStore(root) as TypedStore),env:NodeJS.ProcessEnv={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert',GEMINI_API_KEY:'inert',RUNWAYML_API_SECRET:'inert',MINIMAX_API_KEY:'inert',VIDU_API_KEY:'inert',VIDU_OUTPUT_HOSTS:'offline.invalid'};
  const providers=createProviderRegistry({db:store.db,root,env}),services=(createServices(store,providers,{env,profileNow:()=>Date.parse('2026-10-11T12:00:00Z')}) as TypedServices);let worker: Worker,posts=0;
- const call=<O extends string>(op: O,input: unknown)=>services.call(op,input),project=await call('project.create',{name:'Offline frame pair'}),other=await call('project.create',{name:'Other owner'});
+ const call=<O extends string>(op: O,input: unknown)=>services.call(op,input),project=await call('project.create',{name:'Offline frame pair'}),other=await foreignProject(t,'Other owner');
  async function asset<P extends Record<string,unknown> = Record<string,never>>(patch:P={} as P){const bytes=png(store.list('assets').length),id=randomUUID(),record={id,projectId:project.id,name:'Synthetic frame',mimeType:'image/png',relativePath:`media/${id}.png`,sha256:sha(bytes),sizeBytes:bytes.length,width:360,height:640,provenance:'user-import',createdAt:new Date().toISOString(),...patch};store.put('assets',record);await writeFile(path.join(root,record.relativePath),bytes);return record;}
  const first=await asset(),last=await asset(),replacement=await asset();env.ARK_APPROVED_ASSET_SHA256=[first,last,replacement].map(a=>a.sha256).join(',');
  const ark=createArkProvider({root,env,fetchImpl:(async()=>{posts++;return new Response(JSON.stringify({id:'offline-frame-pair'}));}) as unknown as typeof fetch});providers.set('ark',ark as unknown as Provider);
@@ -55,7 +64,7 @@ test('tail save reuses CAS and original journal replay while absent legacy shape
 
 for(const drift of ['foreign-sql','foreign-json','wrong-mime','orphan-frame'])test(`tail create/update reject ${drift} without writing`,async t=>{
  const f=await fixture(t),shot=await f.shot();
- if(drift==='foreign-sql')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.last.id);
+ if(drift==='foreign-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.last.id));
  if(drift==='foreign-json')f.store.put('assets',{...f.last,projectId:f.other.id});
  if(drift==='wrong-mime')f.store.put('assets',{...f.last,mimeType:'video/mp4'});
  if(drift==='orphan-frame')f.store.put('assets',{...f.last,provenance:'extracted-frame'});
@@ -67,7 +76,7 @@ for(const drift of ['foreign-sql','foreign-json','wrong-mime','orphan-frame'])te
 for(const target of ['historical','current'])test(`shot replay validates ${target} tail relations even after later selection`,async t=>{
  const f=await fixture(t),shot=await f.shot(),input={shotId:shot.id,expectedRevision:shot.revision,patch:{lastFrameAssetId:f.last.id},requestId:randomUUID()},saved=await f.call('shot.update',input);
  await f.update(saved,{lastFrameAssetId:f.replacement.id});const changed=target==='historical'?f.last:f.replacement;
- f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,changed.id);const before=bytes(f,'shots',shot.id);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,changed.id));const before=bytes(f,'shots',shot.id);
  await assert.rejects(f.call('shot.update',input));assert.equal(bytes(f,'shots',shot.id),before);
 });
 
@@ -79,7 +88,7 @@ test('first-frame attach/detach and lost ACK replay retain independent tail',asy
  const edited=await f.update(attached.shot,{lastFrameAssetId:f.replacement.id});assert.deepEqual(await f.call('reference.attach',input),attached);
  const remove={projectId:f.project.id,edgeId:attached.edge.id,expectedShotRevision:edited.revision,requestId:randomUUID()},detached=await f.call('reference.detach',remove);
  assert.deepEqual((detached.shot.referenceAssetIds as unknown),[]);assert.equal(detached.shot.lastFrameAssetId,f.replacement.id);assert.deepEqual(await f.call('reference.detach',remove),detached);
- f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.last.id);await assert.rejects(f.call('reference.attach',input),{code:'INVALID_REFERENCE_RECORD'});
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.last.id));await assert.rejects(f.call('reference.attach',input),{code:'INVALID_REFERENCE_RECORD'});
 });
 
 test('tail-only and duplicate saved choices cannot create a generation job',async t=>{
@@ -125,9 +134,9 @@ for(const drift of ['tail-owner','first-metadata','shot-owner','job-snapshot','c
  t.mock.method(console,'error',()=>{});
  f.providers.set('ark',{...provider,submit:(snapshot,context)=>provider!.submit(snapshot,{...context,validateReferenceState:()=>{
   if(++checks===7){
-   if(drift==='tail-owner')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.last.id);
+   if(drift==='tail-owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.last.id));
    if(drift==='first-metadata')f.store.put('assets',{...f.first,sha256:'f'.repeat(64)});
-   if(drift==='shot-owner')f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id);
+   if(drift==='shot-owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id));
    if(drift==='job-snapshot'){const current=f.store.get('jobs',job.id)!;f.store.put('jobs',{...current,snapshot:{...current.snapshot,prompt:'Changed during preparation'}});}
    if(drift==='cancel'){const current=f.store.get('jobs',job.id)!;f.services.saveJob(current,{status:'cancelled',phase:'cancelled',cancelScope:'local_only'});}
    rawAfter=bytes(f,'jobs',job.id);
@@ -155,7 +164,7 @@ test('historical version tail without legacy reference array is ownership checke
  f.store.put('shots',{...shot,selectedVersionId:versionId});
  assert.equal(createOwnedMediaGraphReader(f.store.db,f.project.id).version(versionId,shot.id).id,versionId);
  const dto=await f.call('shot.inspect',{projectId:f.project.id});assert.doesNotMatch(JSON.stringify(dto),/lastFrameAssetId|last_frame/);
- f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.last.id);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,f.last.id));
  await assert.rejects(f.call('shot.inspect',{projectId:f.project.id}),{code:'INSPECTION_UNAVAILABLE'});
 });
 
@@ -179,7 +188,7 @@ async function typedFrame(f: Awaited<ReturnType<typeof fixture>>){
 for(const relation of ['source-owner','source-hash'])test(`typed extracted tail validates full ${relation} lineage on save, replay and queued dispatch`,async t=>{
  const f=await fixture(t),frame=await typedFrame(f),input={projectId:f.project.id,title:'Owned extracted tail',prompt:'Synthetic',duration:4,referenceAssetIds:[f.first.id],lastFrameAssetId:frame.asset.id,requestId:randomUUID()},shot=await f.call('shot.create',input),job=await f.submit(shot);
  assert.equal(createOwnedMediaGraphReader(f.store.db,f.project.id).asset(frame.asset.id).id,frame.asset.id);
- if(relation==='source-owner')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,frame.source.id);else f.store.put('assets',{...frame.source,sha256:'f'.repeat(64)});
+ if(relation==='source-owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,frame.source.id));else f.store.put('assets',{...frame.source,sha256:'f'.repeat(64)});
  const before=bytes(f,'shots',shot.id);await assert.rejects(f.call('shot.create',input),{code:'IMAGE_SOURCE_INVALID'});await assert.rejects(f.update(shot,{title:'Must remain unchanged'}),{code:'IMAGE_SOURCE_INVALID'});assert.equal(bytes(f,'shots',shot.id),before);
  await f.tick();await f.stop();const failed=f.store.get('jobs',job.id)!;assert.equal(failed.status,'failed');assert.equal(failed.error!.code,'IMAGE_SOURCE_INVALID');assert.equal(failed.submissionCount,0);assert.equal((f.providers.get('mock') as ReturnType<typeof createMockProvider>).stats(job.requestId).submissionCount,0);
 });
