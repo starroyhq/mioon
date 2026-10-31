@@ -101,8 +101,7 @@ test('schemaObjects and foreignKeyCheck cover every database on the connection',
 
 test('the server serves a project filled before it started, and inspectProject reads it on the server connection', {timeout: 120_000}, async t => {
   const dataDir = dataDirectory(t);
-  const {projectId, store} = createServerProject(dataDir);
-  store.put('projects', {...(store.get('projects', projectId) as object), name: 'Filled before start'});
+  const {projectId, store} = createServerProject(dataDir, {name: 'Filled before start'});
   store.close();
   let inspectProject!: InspectProject;
   const server = await startServer({dataDir, port: 0, token: TOKEN, inspectProject: inspect => { inspectProject = inspect; }});

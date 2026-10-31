@@ -57,13 +57,15 @@ export function projectDirFor(dataDir: string, projectId: string): string {
  * project before they start the server: write through `store`, call
  * store.close(), then start the server. Today that is the row project.create
  * writes, in the data directory's workspace. The open store holds the
- * workspace lock, so close it before the next call or the server starts. */
-export function createServerProject(dataDir: string): {projectId: string; store: ProjectStore} {
+ * workspace lock, so close it before the next call or the server starts.
+ * Give the project's name as `name`, not a later store.put: after the switch
+ * the server lists the name in the registry, which the store does not update. */
+export function createServerProject(dataDir: string, options?: {name?: string}): {projectId: string; store: ProjectStore} {
   const root = path.resolve(dataDir);
   const workspace = openStore(root);
   try {
     const projectId = randomUUID(), stamp = new Date().toISOString();
-    workspace.tx(() => workspace.put('projects', {id: projectId, name: 'Test project', description: '', revision: 1, createdAt: stamp, updatedAt: stamp}));
+    workspace.tx(() => workspace.put('projects', {id: projectId, name: options?.name ?? 'Test project', description: '', revision: 1, createdAt: stamp, updatedAt: stamp}));
     // Today's workspace keeps all four directories in one.
     const store: ProjectStore = Object.assign(workspace, {
       projectId, projectFile: projectDatabasePath(root), projectDir: root, localDir: root, cacheDir: root, tempDir: root, historyState: 'fresh' as const,
