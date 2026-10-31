@@ -67,7 +67,8 @@ export function systemCacheDirectory({platform, home, env}: SystemCacheInput): s
 export interface DesktopDirectoriesInput extends SystemCacheInput {
   /** identity.appId, e.g. `app.starroy.mioon` (`.dev` on the dev channel). */
   readonly appId: string;
-  /** DesktopPaths.dataDir: `<userData>/workspace`, already private storage. */
+  /** DesktopPaths.dataDir, private storage: `<userData>/data` once the S0
+   * switch changes `dataPaths` in config.ts, `<userData>/workspace` until then. */
   readonly dataDir: string;
   /** Electron's app.getPath('videos'). */
   readonly videosDir: string;

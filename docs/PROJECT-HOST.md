@@ -1,5 +1,5 @@
 # 项目宿主：接口草稿（S0 第一步）
-日期：2026-10-31。状态：草稿，等协调人审接口；S1–S6、S8、R1、V1 在这个接口上开发。
+日期：2026-10-31。状态：草稿。接口和第 7 节的 10 件事已由协调人定下（10-31）；S1–S6、S8、R1、V1 在这个接口上开发。
 
 项目文件 v1 以后，后端同时开着多个项目：每个打开的项目有一个“项目宿主”，里面是这个项目的 store、服务、后台任务循环和 Mio 运行时；应用级的“宿主管理器”负责列出、新建、打开、关闭项目，按 URL 里的项目 ID 把请求交给对应的宿主。
 
@@ -112,7 +112,7 @@ export function projectLocation(directories: AppDirectories, projectId: string):
 
 | | 网页版、无界面服务 | 桌面版 | 桌面版，设了 `MIOON_DESKTOP_USER_DATA` |
 |---|---|---|---|
-| `dataDir` | `startServer` 的 `dataDir`（`cli.ts` 取 `MIOON_DATA_DIR`，默认仓库的 `data/`） | `dataPaths().dataDir`，即 `<userData>/workspace` | `<覆盖目录>/workspace` |
+| `dataDir` | `startServer` 的 `dataDir`（`cli.ts` 取 `MIOON_DATA_DIR`，默认仓库的 `data/`） | `dataPaths().dataDir`，切换时从 `<userData>/workspace` 改成新的 `<userData>/data` | `<覆盖目录>/data` |
 | 新项目默认的上级目录 | `<dataDir>/projects/` | `<videos>/Mioon/`（macOS `~/Movies/Mioon/`，Windows `Videos\Mioon\`） | `<dataDir>/projects/` |
 | 本机记录 `localDir` | `<dataDir>/records/<ID>/` | 同左 | 同左 |
 | 缓存 `cacheDir` | `<dataDir>/cache/projects/<ID>/` | `<系统缓存目录>/<应用 ID>/projects/<ID>/` | `<dataDir>/cache/projects/<ID>/` |
@@ -121,7 +121,8 @@ export function projectLocation(directories: AppDirectories, projectId: string):
 - 系统缓存目录：macOS `~/Library/Caches`，Windows `%LOCALAPPDATA%`（缺失或不是绝对路径时用 `<home>\AppData\Local`），其他系统 `$XDG_CACHE_HOME`（同样要求绝对路径）或 `~/.cache`。
 - 内核按私有目录的规则建这三个本机目录：0700、本人所有、路径里不能有符号链接（`tests/project-host-directories.test.ts` 实测）。所以 macOS 的系统临时目录（经过 `/var` 这个符号链接）不能用，`tempDir` 放在应用数据目录下。
 - `tempDir` 可能和项目目录不在同一个盘上，暂存文件移进项目目录时不能只靠一次改名（`EXDEV`）。
-- 本机记录的文件夹以后不能搬（`PROJECT-FILE.md`“一个连接，三个库”），所以 `dataDir` 的取法要在切换时一次定好。
+- 本机记录的文件夹以后不能搬（`PROJECT-FILE.md`“一个连接，三个库”），所以 `dataDir` 的取法要在切换时一次定好。桌面版定为新的 `<userData>/data/`（第 7 节第 3 条）：切换时改 `config.ts` 的 `dataPaths`；旧的 `workspace/` 里的开发数据不迁移，也不再读。
+- 网页版和无界面服务的 `dataDir` 里有旧的 `workbench.sqlite` 时，启动报错，提示换一个目录或删掉旧文件，不和新布局混在一起。
 - `desktopAppDirectories` 在主进程里算：桌面后端拿不到 `app.getPath`，`supervisor.ts` 的启动消息只有 `dataDir`、`distDir`、`subtitleResourcesDir`、`token`、`nativeAudioPreview`，`utilityEnvironment` 也不转发 `LOCALAPPDATA`、`XDG_CACHE_HOME`。主进程把 `cacheDir`、`projectsDir` 传给后端。Windows 的路径用 `path.win32` 拼，在 macOS 上也能测。
 
 ### 2.2 项目宿主的管理器（`manager.ts`）
@@ -206,7 +207,7 @@ export type ProjectHostEvent =
 - **关闭时按文件身份更新登记**：打开时 `lstat` 记下文件身份，写进登记；关闭时再 `lstat` 打开时的路径，文件不在或身份不同，就调登记表的 `findMoved` 找新位置，找到就改登记。名字和摘要也在这一步更新。
 - **`restore()`**：启动时用。和 `list()` 一样先做恢复，等后台的查找结束，再按后台任务索引逐个 `acquire(id, 'task')`，返回的租约交给 S3，任务结束时释放。除了有未完成任务的项目，启动时不打开任何项目。
 - **`withExclusive(projectId, run)`**：应用级操作（删除、复制、改名、关闭、另存为）取得独占，见 4.2。
-- **`checkMoved(projectId)`**：S0a 遗留问题留出的位置，见 4.6 和第 7 节第 6 条。
+- **`checkMoved(projectId)`**：单独改名或移动 `.mioon` 的检查。定为由内核检查（第 7 节第 6 条）；内核的检查合入以前，宿主把它登记成事务守卫顶上，见 4.6。
 - **`inspectProject`**：受信任的测试接口，见 2.7。
 - **`status(projectId)`**：开着的宿主的状态和各类租约的个数；没开着返回 `null`。`onEvent` 收到打开、打开失败、开始关闭、关闭完成、恢复了热日志、恢复失败这几种事件。
 
@@ -366,7 +367,7 @@ export const STAT_ONLY_MAINTENANCE: KernelMaintenancePort;
 | `tasks…` | `/api/tasks…`（`edit-tasks-http.ts`） | **清单漏列**；projectId 现在在查询参数或请求体里 |
 | `package-preview` | 已在新前缀下（`project-package-http.ts`） | V4 删除 |
 
-新路径的段名由 K2 定，建议保留原来 `/api/` 之后的部分。
+新路径保留原来 `/api/` 之后的部分，例如 `/api/tasks…` 改成 `/api/projects/<id>/tasks…`；`/api/tasks…` 也归 K2（第 7 节第 8 条）。
 
 **应用级**（留在原处）：`/health`、`/api/login`、`/api/rpc`（只收应用级操作，项目级操作发到这里报 `VALIDATION_ERROR`）、`/api/agent/settings`、`/api/agent/diagnostics`、`/api/agent/tasks/v2/policy`、`/policy/requests/<id>`、`/diagnostics/latest`（这三条清单只列了项目的部分）、`/api/images/settings`、`custom-settings`、`comfy-settings`、`comfy-check`、`comfy-availability`、`/api/video-providers/*`、`/api/ui-preferences`、`/opened`、`/api/media-tools/check`、`/api/last-project`（B1、S6 换成最近项目）、`/api/workspace-info`（改成应用信息），以及**清单漏列的** `/api/workspace-preferences/<id>`。新增的最近项目和封面接口归 S6、B1（3.4）。删除、复制、改名、关闭、另存为是应用级操作，接口形状由 S4、S5、S6 定，内部都经 `withExclusive`。
 
@@ -393,16 +394,20 @@ export function isDatabaseMovedError(error: unknown): boolean;                  
 |---|---|---|---|
 | `PROJECT_NOT_FOUND` | 404 | `{projectId}` | 项目没有登记 |
 | `PROJECT_ID_MISMATCH` | 400 | `{projectId}`（URL 里的 ID） | 输入里的 projectId 和 URL 的不一致，在 `rpc` 的处理里沿用 K2 的核对 |
-| `PROJECT_UNAVAILABLE` | 409 | `{projectId, reason}`，`reason` 是 `PROJECT_MISSING`、`PROJECT_LOCKED`、`PROJECT_FORMAT_NEWER`、`PROJECT_INVALID` 之一 | 登记了但打不开；内核的原错误放在 `cause`，带着它的 `details.reason`（例如 `read-only`） |
+| `PROJECT_UNAVAILABLE` | 409 | `{projectId, reason, invalidReason?}`，`reason` 是 `PROJECT_MISSING`、`PROJECT_LOCKED`、`PROJECT_FORMAT_NEWER`、`PROJECT_INVALID` 之一 | 登记了但打不开；内核的原错误放在 `cause`，带着它的 `details.reason`（例如 `read-only`）。`reason` 是 `PROJECT_INVALID` 时，切换后把这个原因也放进 `invalidReason` |
 | `PROJECT_HOST_BUSY` | 409 | `{projectId}` | 独占操作等不到在途请求结束，或运行时忙；什么都没取消 |
 | `PROJECT_HOST_TRANSITION` | 409 | `{projectId}` | 只给测试接口：项目正在打开、关闭或独占 |
 | `PROJECT_HOST_STOPPED` | 503 | `{}` | 后端正在退出 |
 | `PROJECT_LOCATION_INVALID` | 400 | `{projectFile}` | 指定的 `.mioon` 所在的文件夹不存在 |
 | `PROJECT_FILE_MOVED` | 409 | `{projectId}` | 打开期间 `.mioon` 被单独改名或移动，写入被拒绝；宿主正在按新位置重开，重试即可（4.6） |
 
-响应体照现在的 `{ok: false, error: {code, message, details, retryable: false}}`。`/api/projects/` 下解析不出来的路径、宿主不认的路径都报 404 `NOT_FOUND`。契约里 `PROJECT_UNAVAILABLE` 的 `details` 是严格的 `{projectId, reason}`，放不下内核的细分原因，要不要加见第 7 节第 9 条。
+响应体照现在的 `{ok: false, error: {code, message, details, retryable: false}}`。`/api/projects/` 下解析不出来的路径、宿主不认的路径都报 404 `NOT_FOUND`。
 
-**分派顺序**（下一轮写进 `index.ts`）：Host 和 Origin → 令牌 → `parseProjectApiPath` → `acquire(id, 'request')`（自动打开）→ `res.once('close', lease.release)`（租约跟着响应结束，SSE 和文件流也算在途）→ `runtime.handle(request)` → 返回 `false` 时 404。处理中抛出的错误 `isDatabaseMovedError` 为真时，调 `lease.host.relocate()`，再照常回错误。
+K0 的小 PR #108 把两项收进了契约（第 7 节第 6、9 条），切换时宿主跟着改：
+- `PROJECT_FILE_MOVED` 成了契约的错误码（`PROJECT_FILE_ERROR_CODES`），宿主改从契约导入，不再自己定义；
+- `PROJECT_UNAVAILABLE` 的 `details` 可以带 `invalidReason`（`PROJECT_INVALID_REASONS` 之一），只在 `reason` 是 `PROJECT_INVALID` 时出现。`asProjectUnavailable` 把内核的 `details.reason` 抄进去，CLI、MCP 按项目 ID 访问时也能分清只读和损坏。
+
+**分派顺序**（下一轮写进 `index.ts`）：Host 和 Origin → 令牌 → `parseProjectApiPath` → `acquire(id, 'request')`（自动打开）→ `res.once('close', lease.release)`（租约跟着响应结束，SSE 和文件流也算在途）→ `runtime.handle(request)` → 返回 `false` 时 404。处理中抛出的错误 `isDatabaseMovedError` 为真，或者是 `PROJECT_FILE_MOVED` 时，调 `lease.host.relocate()`，再照常回错误。
 
 ### 2.6 `startServer({dataDir})` 的新语义
 
@@ -439,7 +444,7 @@ export interface ClaimedProjectFolder {readonly folder: string; readonly name: s
 export function claimProjectFolder(parentDir: string, folderName: string): ClaimedProjectFolder;
 ```
 
-**决定：**
+**决定**（10-31 定）：
 
 1. 名字按 NFC 规范化；
 2. 去掉首尾的空白和点；
@@ -461,18 +466,18 @@ export function claimProjectFolder(parentDir: string, folderName: string): Claim
 
 ### 3.2 缓存和临时目录
 
-**决定：** 见 2.1 的表。网页版和无界面服务是 `<dataDir>/cache/`、`<dataDir>/tmp/`；桌面版的缓存在系统缓存目录下的 `<应用 ID>/`，临时目录在 `<应用数据目录>/tmp/`；设了 `MIOON_DESKTOP_USER_DATA` 时缓存和新项目都放进 `<dataDir>`。每个项目的 `tempDir` 是 `<应用临时目录>/projects/<项目 ID>/`，这一点偏离了任务卡“`tempDir` 是应用临时目录”的字面写法。
+**决定**（10-31 定）：见 2.1 的表。网页版和无界面服务是 `<dataDir>/cache/`、`<dataDir>/tmp/`；桌面版的应用数据目录换成新的 `<userData>/data/`，缓存在系统缓存目录下的 `<应用 ID>/`，临时目录在 `<应用数据目录>/tmp/`；设了 `MIOON_DESKTOP_USER_DATA` 时缓存和新项目都放进 `<dataDir>`。每个项目的 `tempDir` 是 `<应用临时目录>/projects/<项目 ID>/`，任务卡已按这个写法改了。
 
 **理由：**
 
 - 内核要求三个本机目录是私有目录、路径里没有符号链接，系统临时目录在 macOS 上经过 `/var`，会被拒绝。
-- 桌面版的 `<userData>/workspace` 已经通过私有存储检查，也不和 Chromium 的 `Cache`、`GPUCache`、`Local Storage` 重名，切换时不用改 `config.ts`、`main.ts` 的取法。Electron 的 `app.getPath` 没有 `cache` 这一项，所以缓存目录按平台算。
+- 桌面版不沿用 `<userData>/workspace/`：本机记录的文件夹以后不能搬，换名字只有切换这一次机会；旧的 `workspace/` 里还留着开发数据，分开以后不会被误读或误删。切换时改 `config.ts` 的 `dataPaths`。Electron 的 `app.getPath` 没有 `cache` 这一项，所以缓存目录按平台算。
 - 覆盖 userData 的是测试和冒烟运行，不该碰真实的影片和缓存目录。
 - 每个项目一个暂存子目录：图片、抽帧、拆解的暂存带着崩溃恢复用的回执（`image-storage.ts`），要跨重启保留，也不能被别的项目的清理扫掉；和缓存的 `projects/<ID>/` 对称；`tmp/` 下还能放应用级的暂存，例如 S3 收件箱的媒体。
 
 ### 3.3 自动打开的项目什么时候关
 
-**决定：** 宿主空闲时关闭。空闲指没有任何租约、没有在途请求、运行时不忙，而且宽限期已过。
+**决定**（10-31 定）：宿主空闲时关闭。空闲指没有任何租约、没有在途请求、运行时不忙，而且宽限期已过。
 
 - 宽限期是最后一个请求结束后 60 秒（`DEFAULT_IDLE_CLOSE_MS`），期间来的新请求重新计时。
 - 释放窗口租约会取消宽限：之后只有在窗口释放以后才开始的请求，结束时才重新计宽限。
@@ -490,7 +495,7 @@ export function claimProjectFolder(parentDir: string, folderName: string): Claim
 
 测试用手动时钟逐条验证（`tests/project-host-manager.test.ts`）。
 
-### 3.4 没打开的项目的封面（提案，和 S6 一起定）
+### 3.4 没打开的项目的封面（10-31 定；接口名由 S6、B1 定）
 
 - 宿主在打开时、关闭前，以及打开期间封面素材变了时，把登记摘要里 `cover` 指向的素材缩成长边 512 像素的 JPEG（视频取第 0 秒的帧），存成这个项目缓存目录里的 `cover.jpg`；旁边的 `cover.json` 记素材 ID 和素材指纹。用现有的媒体运行时生成，先写临时文件再改名。
 - 应用级的封面接口只读这两个文件，不打开项目。建议叫 `GET /api/recent-projects/<id>/cover`，名字随 S6、B1 的最近项目接口定。`cover.json` 和登记摘要对不上，或者文件不在时报 404，界面显示占位图。
@@ -557,7 +562,7 @@ macOS、Linux 上能移；Windows 上文件被占用，移不动。
 - **只改名或单独移动 `.mioon` 文件，文件夹不动**（S0a 遗留问题第 1 条）：SQLite 的日志名跟着打开时的文件名，留在原名旁边。之后提交中途崩溃，从新名字打开时找不到这个日志，会得到半个事务。宿主要能发现这种情况，并停写、关掉、在新位置重开：
   - `checkMoved(projectId)` 检查两件事（两次 `lstat`）：打开时路径上的文件不见了或换了文件身份；原路径的 `-journal` 还在。后一条区分了移动文件夹（日志跟着走，写入安全，返回 `false`）和单独移动文件。
   - 发现以后 `relocate`：在连接上登记一个事务守卫（`registerProjectTransactionFence`），之后的 `store.tx` 一律报 `PROJECT_FILE_MOVED`；然后按 4.3 关闭（原因 `relocate`）。关闭时 SQLite 按原路径删掉那个日志，登记按文件身份改到新位置，下一个租约在新位置重开（有测试）。
-  - 由谁在什么时候调 `checkMoved`（宿主还是内核），协调人还没定，见第 7 节第 6 条。
+  - 定为乙（第 7 节第 6 条）：内核在 `store.tx` 开头和 `put` 里做同样的两次 `lstat`，抛 `PROJECT_FILE_MOVED`；宿主收到它或 1032 都调 `relocate`。内核的检查合入以前，切换这一轮先把 `checkMoved` 登记成事务守卫顶上，合入后去掉。
 - **写入遇到 errcode 1032（`SQLITE_READONLY_DBMOVED`）**：这是 S0a 预热万一失效时的退路，处理一样。分派层或运行时调 `host.relocate()` / `context.relocate()`，宿主按上面的流程关掉，下一个租约按文件身份在新位置重开。打开途中恰好被移动的，内核报 `PROJECT_INVALID`，`cause` 是 1032；`acquire` 按文件身份找一次再开。
 - **打开期间项目目录里一直有 0 字节的 `<文件名>.mioon-journal`**：生产代码列项目目录时（L1 给 Mio 列目录、R3、V3 打包、宿主的 `findMoved`），除了以 `.` 开头的条目，也要跳过 `*.mioon-journal`，绝不能拷走或删除。
 
@@ -567,14 +572,14 @@ macOS、Linux 上能移；Windows 上文件被占用，移不动。
 
 | 函数或改动 | 调用时机 | 谁调 | 结果的处理 |
 |---|---|---|---|
-| `recoverProjectFile(projectFile)`，返回 `ProjectFileRecovery` | 启动时（`restore()`）和列最近项目时（`list()`），对每个已登记、本进程没开着、也不在独占操作中的项目调一次。打开项目本身不用先调，打开的第 1 步就是同一件事 | 管理器，经 `KernelMaintenancePort`；S6 的首页走 `list()` | `clean`、`recovered`：可用，`recovered` 发 `recovered` 事件；`locked`：别的进程正在写，不处理，打开时会报 `PROJECT_LOCKED`（12-03b）；`open-here`：当作开着；`missing`：后台按文件身份找新位置，找到改登记、在新位置再调一次，找不到按 12-03 显示；`invalid`：按 `reason` 显示，`read-only` 用只读的文案（S6） |
+| `recoverProjectFile(projectFile)`，返回 `ProjectFileRecovery` | 启动时（`restore()`）和列最近项目时（`list()`），对每个已登记、本进程没开着、也不在独占操作中的项目调一次。打开项目本身不用先调，打开的第 1 步就是同一件事 | 管理器，经 `KernelMaintenancePort`；S6 的首页走 `list()` | `clean`、`recovered`：可用，`recovered` 发 `recovered` 事件；`locked`：别的进程正在写，不处理，打开时会报 `PROJECT_LOCKED`（12-03b）；`open-here`：当作开着；`missing`：后台按文件身份找新位置，找到改登记、在新位置再调一次，找不到按 12-03 显示；`invalid`：按 `reason` 显示，`read-only` 用只读的文案（S6）。切换时内核改成先看 `-journal`，没有热日志就直接返回 `clean`，不读项目文件的头：首页每次列项目都调它，放在 iCloud 里、已被系统移出本机的项目文件一读文件头就会被整个下载回来 |
 | 清掉没用的超级日志 | 内核每次成功打开时自己做 | 内核 | 宿主不接线 |
 | `isSuperJournalInUse`、`superJournalsIn` | B1 算本机记录清单的 `hasSuperJournal` | B1 | 宿主不用 |
-| `read-only` 原因，`PROJECT_INVALID_REASONS` | 打开失败时 `PROJECT_INVALID` 带 `reason`，只读位置报 `read-only` | 管理器、S6 | `acquire` 映射成 `PROJECT_UNAVAILABLE`（`reason: 'PROJECT_INVALID'`），细分原因在 `cause.details.reason`；`openPath` 原样抛内核错误，应用级的 `project.open` 填 `projectOpenFailureSchema`，其中 `PROJECT_INVALID` 现在必填 `reason`，直接取内核的 `details.reason`，`projectFile` 由调用方补，`projectId` 取 `details.projectId`，读不出时取登记或 `null` |
+| `read-only` 原因，`PROJECT_INVALID_REASONS` | 打开失败时 `PROJECT_INVALID` 带 `reason`，只读位置报 `read-only` | 管理器、S6 | `acquire` 映射成 `PROJECT_UNAVAILABLE`（`reason: 'PROJECT_INVALID'`），细分原因在 `cause.details.reason`，#108 合入后也放进 `details.invalidReason`；`openPath` 原样抛内核错误，应用级的 `project.open` 填 `projectOpenFailureSchema`，其中 `PROJECT_INVALID` 现在必填 `reason`，直接取内核的 `details.reason`，`projectFile` 由调用方补，`projectId` 取 `details.projectId`，读不出时取登记或 `null` |
 | `store.tx` 改用 `BEGIN` | 不用接线。只写本机记录的提交（例如 Mio 流式输出）不再碰项目文件、不再建超级日志 | — | — |
 | 打开时把项目文件的日志开着 | 不用接线。打开期间移动项目文件夹，写入照常，关闭时按文件身份更新登记（已实现） | — | — |
 | 退路：写入遇到 1032 | 写入出错时 | 分派层、运行时调 `relocate()` | 见 4.6 |
-| 单独改名或移动 `.mioon` | 待定，见第 7 节第 6 条 | 宿主的 `checkMoved` 或内核 | 见 4.6 |
+| 单独改名或移动 `.mioon` | 内核在 `store.tx` 开头和 `put` 里检查，抛 `PROJECT_FILE_MOVED`（第 7 节第 6 条，定为乙）；内核的检查合入以前，宿主的 `checkMoved` 登记成事务守卫顶上 | 内核；过渡期是宿主 | 收到 `PROJECT_FILE_MOVED` 或 1032 都调 `relocate()`，见 4.6 |
 
 #106 合入以后，`ports.ts` 里镜像的 `ProjectFileRecovery` 改为从内核导入，`reason` 用 `ProjectInvalidReason`；默认的 `STAT_ONLY_MAINTENANCE` 换成内核的 `recoverProjectFile`。
 
@@ -582,11 +587,14 @@ macOS、Linux 上能移；Windows 上文件被占用，移不动。
 
 ### 6.1 要等哪些合入
 
-#105（K0 补充）、S0a（#106）、K2、B1、W1、W2（含 6 个测试辅助函数和旧服务端上的 `inspectProject`）、P1a-2、P1b。R1、S3、S8、V1 不用等，用 2.4 的替身。
+#105（K0 补充）、S0a（#106）、#108（K0 小 PR：`PROJECT_FILE_MOVED`、`invalidReason`）、K2、B1、W1、W2（含 6 个测试辅助函数和旧服务端上的 `inspectProject`）、P1a-2、P1b。R1、S3、S8、V1 不用等，用 2.4 的替身。
 
 ### 6.2 步骤
 
-1. **内核的结构**：Mock 供应商的 `mock_provider_tasks`、`mock_provider_submissions` 和它们的索引收进本机记录的任务领域（`schema/domains/tasks.ts`），提升本机记录的格式版本，用 `node tests/helpers/project-file-schema-derivation.ts --write` 重新生成清单，`tests/project-file-schema.test.ts` 记新的摘要（定下的两处之一）。推导测试改为直接调用旧的建库链，不再经 `db.ts` 的 `openStore`。
+1. **内核**：
+   - 结构：Mock 供应商的 `mock_provider_tasks`、`mock_provider_submissions` 和它们的索引收进本机记录的任务领域（`schema/domains/tasks.ts`），提升本机记录的格式版本，用 `node tests/helpers/project-file-schema-derivation.ts --write` 重新生成清单，`tests/project-file-schema.test.ts` 记新的摘要（定下的两处之一）。推导测试改为直接调用旧的建库链，不再经 `db.ts` 的 `openStore`。
+   - 单独改名或移动 `.mioon`：`store.tx` 开头和 `put` 里各做两次 `lstat`，抛 `PROJECT_FILE_MOVED`（第 7 节第 6 条）。这一项合入以前，由第 6 步的宿主守卫顶上。
+   - `recoverProjectFile` 先看 `-journal`，没有热日志就直接返回 `clean`，不读项目文件的头（第 5 节）。
 2. **`db.ts`**：`openStore(root)` 改由内核按测试布局打开；`registerWorkspaceTransactionFence`、`registerWorkspaceTransactionObserver` 转发到内核的 `registerProjectTransactionFence`、`registerProjectTransactionObserver`；`getWorkspaceRestoreContext`、`ownsStoreLock` 认内核的 store；`validateWorkspaceStorage` 改成应用数据目录的检查。
 3. **业务模块**：
    - 按工作区角色判断功能的地方：`readCurrentWorkspaceRole`、`isWorkspaceRoleSince`、`validateFixedWorkspaceRole`，约 20 个文件 35 处，其中 `validateFixedWorkspaceRole` 有 5 个调用方；内核的连接固定当作现行格式，不再按格式 72 校验。
@@ -608,8 +616,10 @@ macOS、Linux 上能移；Windows 上文件被占用，移不动。
    - `startServer` 加 `cacheDir`、`projectsDir`、`projectInspection`；`/health`、`/api/workspace-info` 改成应用级；
    - 不再调用 `setProjectDeletionCompanions`；
    - 原生预听绑定一个按 projectId 分派的服务；
-   - 写入出错是 1032 时调 `relocate()`；按第 7 节第 6 条的决定接上 `checkMoved`。
-7. **入口**：`cli.ts` 加 `MIOON_PROJECTS_DIR`；`backend.ts`、`supervisor.ts` 转发 `cacheDir`、`projectsDir`；`main.ts` 用 `desktopAppDirectories` 算出这两项传给后端（归庚，约好一小块；`desktop-window-ownership`、`desktop-startup-restart-race` 两个测试要为新符号加桩）。
+   - 写入出错是 1032 或 `PROJECT_FILE_MOVED` 时调 `relocate()`；内核的检查合入以前，在 `composeProjectHost` 里把 `checkMoved` 登记成事务守卫（第 7 节第 6 条）；
+   - `PROJECT_FILE_MOVED` 改从契约导入，`asProjectUnavailable` 把内核的 `details.reason` 抄进 `invalidReason`（#108）；
+   - `startServer` 启动时，`dataDir` 里有旧的 `workbench.sqlite` 就报错，提示换一个目录或删掉旧文件（第 7 节第 3 条）。
+7. **入口**：`cli.ts` 加 `MIOON_PROJECTS_DIR`；`backend.ts`、`supervisor.ts` 转发 `cacheDir`、`projectsDir`；`main.ts` 用 `desktopAppDirectories` 算出这两项传给后端（归庚，约好一小块；`desktop-window-ownership`、`desktop-startup-restart-race` 两个测试要为新符号加桩）；`config.ts` 的 `dataPaths` 把桌面版的应用数据目录改成新的 `<userData>/data`，旧的 `workspace/` 不迁移、不再读（第 7 节第 3 条）。
 8. **测试辅助函数**：W2 的 6 个函数和 `inspectProject` 换成新内核的实现（2.7）；`tests/subtitles-recovery.test.ts` 在同一进程里开第二个 store 的写法（W2 没改的话）。
 9. **验收**：类型检查；清单 7.6 里不用改的 66 个测试不改也能通过；`tests/project-host-*`；CI 全绿。
 
@@ -640,18 +650,21 @@ macOS、Linux 上能移；Windows 上文件被占用，移不动。
 | 同一进程第二次打开报 `PROJECT_LOCKED` | 测试先 `close()`，或放进子进程 | 8 |
 | 打开期间移动、崩溃后没在本机恢复就被拷走 | S0a 的预热和 `recoverProjectFile`，接法见第 5 节；单独改名 `.mioon` 见 4.6 | 5 节 |
 
-## 7. 要协调人拍板的决定
+## 7. 协调人的决定（10-31）
 
-1. **自动关闭的策略**（3.3）：空闲（没有租约、没有在途请求、运行时不忙）而且宽限期已过就关；宽限期是最后一个请求结束后 60 秒；关窗口取消宽限、空闲即关；有未完成的后台任务（`task` 租约）或 Mio 正在跑时不关。
-2. **文件夹命名**（3.1）：NFC；控制字符和 `<>:"/\|?*` 换成 `-`；去掉首尾的空白和点；Windows 设备名前加 `_`；最长 80 个 UTF-8 字节；空名用 `未命名项目`；重名依次加 ` 2` 到 ` 999`；`.mioon` 和文件夹同名。
-3. **目录的取法**（2.1、3.2）：网页版和无界面服务是 `<dataDir>/{projects,records,cache,tmp}`；桌面版的应用数据目录沿用 `dataPaths().dataDir`（`<userData>/workspace`，`records/`、`tmp/` 在它下面），缓存在系统缓存目录下的 `<应用 ID>/`，新项目默认放在 `<videos>/Mioon/`；覆盖 userData 时缓存和项目都放进 `<dataDir>`；每个项目的 `tempDir` 是 `<tmp>/projects/<ID>/`。如果要给桌面版的应用数据目录换一个不带“工作区”的名字，只能在 S0 切换时改一次 `dataPaths`，之后本机记录就不能再搬。
-4. **端口的形状**（2.4）：登记表同步，只有 `findMoved` 是 async；放行设置是存储端口，由调用方交给 Mio；Mio 授权按应用库文件的身份算范围；S3 用 `task` 租约，加上关闭时写索引；V1、V2 用 `afterOpen`、`beforeClose` 钩子；S8 和 R1 都是每个宿主一份的工厂；`list()` 带上 S0a 恢复的结果（`ProjectAvailability`）。
-5. **封面提案**（3.4）：宿主把封面缩成长边 512 像素的 JPEG，存在项目的缓存目录（`cover.jpg` 加 `cover.json`）；应用级的封面接口只读这两个文件、不打开项目，没有就 404、显示占位图；接口名和 S6 一起定。
+下面是当初提的 10 件事，都已定下：第 3 条改了桌面版的应用数据目录，第 6 条定为乙，其余照提案。每条末尾的“定的”是结果。
+
+1. **自动关闭的策略**（3.3）：空闲（没有租约、没有在途请求、运行时不忙）而且宽限期已过就关；宽限期是最后一个请求结束后 60 秒；关窗口取消宽限、空闲即关；有未完成的后台任务（`task` 租约）或 Mio 正在跑时不关。**定的：** 照提案。
+2. **文件夹命名**（3.1）：NFC；控制字符和 `<>:"/\|?*` 换成 `-`；去掉首尾的空白和点；Windows 设备名前加 `_`；最长 80 个 UTF-8 字节；空名用 `未命名项目`；重名依次加 ` 2` 到 ` 999`；`.mioon` 和文件夹同名。**定的：** 照提案。
+3. **目录的取法**（2.1、3.2）：网页版和无界面服务是 `<dataDir>/{projects,records,cache,tmp}`；桌面版的应用数据目录沿用 `dataPaths().dataDir`（`<userData>/workspace`，`records/`、`tmp/` 在它下面），缓存在系统缓存目录下的 `<应用 ID>/`，新项目默认放在 `<videos>/Mioon/`；覆盖 userData 时缓存和项目都放进 `<dataDir>`；每个项目的 `tempDir` 是 `<tmp>/projects/<ID>/`。如果要给桌面版的应用数据目录换一个不带“工作区”的名字，只能在 S0 切换时改一次 `dataPaths`，之后本机记录就不能再搬。**定的：** 桌面版的应用数据目录换成新的 `<userData>/data/`，不沿用 `<userData>/workspace/`，旧的 `workspace/` 不迁移、不再读，S0 切换时改 `dataPaths`；网页版和无界面服务的 `dataDir` 里有旧的 `workbench.sqlite` 时，启动报错。其余照提案。
+4. **端口的形状**（2.4）：登记表同步，只有 `findMoved` 是 async；放行设置是存储端口，由调用方交给 Mio；Mio 授权按应用库文件的身份算范围；S3 用 `task` 租约，加上关闭时写索引；V1、V2 用 `afterOpen`、`beforeClose` 钩子；S8 和 R1 都是每个宿主一份的工厂；`list()` 带上 S0a 恢复的结果（`ProjectAvailability`）。**定的：** 照提案。
+5. **封面提案**（3.4）：宿主把封面缩成长边 512 像素的 JPEG，存在项目的缓存目录（`cover.jpg` 加 `cover.json`）；应用级的封面接口只读这两个文件、不打开项目，没有就 404、显示占位图；接口名和 S6 一起定。**定的：** 照提案，接口名由 S6、B1 定。
 6. **打开期间单独改名或移动 `.mioon` 的检测**（4.6，S0a 遗留问题第 1 条）。两种做法，发现以后的处理一样（停写、关掉、按文件身份找到新位置、重开，即宿主的 `relocate`）：
    - **甲，由宿主检测**：下一轮在 `composeProjectHost` 里把 `checkMoved` 登记成连接的事务守卫，每次 `store.tx` 开头做两次 `lstat`；也可以在分派每个请求之前调。内核不用改。只保护宿主开着的 store；事务之外的 `put` 不经过守卫。
    - **乙，由内核在 `store.tx` 开头检查**：同样两次 `lstat`（微秒级），发现就抛错（建议沿用 `PROJECT_FILE_MOVED` 这个码），`put` 也检查。宿主只处理这一个错误和 1032，都调 `relocate`。内核本来就记着打开时的路径和文件身份，所有经内核的 store 都受保护，包括测试和以后的工具。代价是改变内核的写入行为。
    - **建议乙**：风险来自 SQLite 按打开时的路径给日志命名，是内核这一层的性质，放在写入发生的地方检查，所有调用方都覆盖，宿主也只需要一条处理路径。乙合入之前，下一轮先按甲把 `checkMoved` 登记成守卫，乙合入后去掉。
-7. **按 `workbench.sqlite` 算范围的模块共 8 处**（第 1 节），不止 Mio 授权：应用级的（授权、界面偏好、上次项目、桌面窗口外观、桌面 LUT 恢复）建议都改按应用库文件算；三个草稿模块在 S8 之前改按 `history.db` 算。
-8. **清单第 2 节漏列的路由的归属**（2.5）：`/api/tasks…`（编辑任务）为项目级；`/api/workspace-preferences/<id>`、`/api/agent/tasks/v2/policy`、`/policy/requests/<id>`、`/diagnostics/latest` 为应用级；`/api/agent/diagnostics?projectId=` 留在应用级，存储统计只在项目开着时给；`/api/projects/<id>/package-preview` 随 V4 删除。
-9. **`PROJECT_UNAVAILABLE` 要不要带内核的细分原因**：S0a 以后只读位置报 `PROJECT_INVALID`、`reason: 'read-only'`，界面要换文案；但契约里 `PROJECT_UNAVAILABLE` 的 `details` 是严格的 `{projectId, reason}`，按项目 ID 访问（CLI、MCP、外部 agent）时只能看到 `PROJECT_INVALID`。建议 K0 给它加一个可选的 `invalidReason`（`PROJECT_INVALID_REASONS` 之一），只在 `reason` 是 `PROJECT_INVALID` 时出现。首页走 `list()`，已经带着 `reason`。
-10. **桌面主进程要多传两项给后端**（`cacheDir`、`projectsDir`）：`main.ts` 归庚，需要约一小块改动。
+   - **定的：** 乙。内核的检查合入以前，宿主先按甲顶上。错误码用 `PROJECT_FILE_MOVED`，由 K0 的小 PR #108 收进契约。
+7. **按 `workbench.sqlite` 算范围的模块共 8 处**（第 1 节），不止 Mio 授权：应用级的（授权、界面偏好、上次项目、桌面窗口外观、桌面 LUT 恢复）建议都改按应用库文件算；三个草稿模块在 S8 之前改按 `history.db` 算。**定的：** 照提案。
+8. **清单第 2 节漏列的路由的归属**（2.5）：`/api/tasks…`（编辑任务）为项目级；`/api/workspace-preferences/<id>`、`/api/agent/tasks/v2/policy`、`/policy/requests/<id>`、`/diagnostics/latest` 为应用级；`/api/agent/diagnostics?projectId=` 留在应用级，存储统计只在项目开着时给；`/api/projects/<id>/package-preview` 随 V4 删除。**定的：** 照提案。`/api/tasks…` 归 K2，新地址保留 `/api/` 之后的部分，即 `/api/projects/<id>/tasks…`。
+9. **`PROJECT_UNAVAILABLE` 要不要带内核的细分原因**：S0a 以后只读位置报 `PROJECT_INVALID`、`reason: 'read-only'`，界面要换文案；但契约里 `PROJECT_UNAVAILABLE` 的 `details` 是严格的 `{projectId, reason}`，按项目 ID 访问（CLI、MCP、外部 agent）时只能看到 `PROJECT_INVALID`。建议 K0 给它加一个可选的 `invalidReason`（`PROJECT_INVALID_REASONS` 之一），只在 `reason` 是 `PROJECT_INVALID` 时出现。首页走 `list()`，已经带着 `reason`。**定的：** 加，由 K0 的小 PR #108 收进契约，S0 切换以前合入。
+10. **桌面主进程要多传两项给后端**（`cacheDir`、`projectsDir`）：`main.ts` 归庚，需要约一小块改动。**定的：** 照提案。

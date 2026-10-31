@@ -41,7 +41,7 @@ test('systemCacheDirectory follows each platform and ignores relative variables'
 });
 
 test('desktopAppDirectories puts the cache in the system cache and new projects in Videos/Mioon', () => {
-  const dataDir = '/Users/u/Library/Application Support/app.starroy.mioon/workspace';
+  const dataDir = '/Users/u/Library/Application Support/app.starroy.mioon/data';
   const mac = {platform: 'darwin', home: '/Users/u', env: {}, appId: 'app.starroy.mioon', dataDir, videosDir: '/Users/u/Movies', userDataOverridden: false};
   assert.deepEqual(desktopAppDirectories(mac), {
     dataDir, cacheDir: '/Users/u/Library/Caches/app.starroy.mioon', tempDir: `${dataDir}/tmp`, projectsDir: '/Users/u/Movies/Mioon',
@@ -49,7 +49,7 @@ test('desktopAppDirectories puts the cache in the system cache and new projects 
   assert.deepEqual(desktopAppDirectories({...mac, userDataOverridden: true}), {
     dataDir, cacheDir: `${dataDir}/cache`, tempDir: `${dataDir}/tmp`, projectsDir: `${dataDir}/projects`,
   });
-  const windowsData = 'C:\\Users\\u\\AppData\\Roaming\\app.starroy.mioon\\workspace';
+  const windowsData = 'C:\\Users\\u\\AppData\\Roaming\\app.starroy.mioon\\data';
   assert.deepEqual(desktopAppDirectories({
     platform: 'win32', home: 'C:\\Users\\u', env: {}, appId: 'app.starroy.mioon', dataDir: windowsData, videosDir: 'C:\\Users\\u\\Videos', userDataOverridden: false,
   }), {
