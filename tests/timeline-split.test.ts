@@ -169,16 +169,17 @@ test('split has an exact strict schema with integer absolute-frame bounds and no
 test('split cannot find missing or foreign clips and cannot initialize state on a failed request', async t => {
   const f = await fixture(t), {timeline, clip} = await singleClip(f);
   await rejectAtomic(f, request(f.projectId, timeline, {clipId: randomUUID(), atFrame: 20}), 'CLIP_NOT_FOUND');
-  const otherProject = await f.call('project.create', {name: 'Untouched foreign project'});
-  await rejectAtomic(f, {projectId: otherProject.id, expectedRevision: 1, requestId: randomUUID(), clipId: clip.id, atFrame: 20}, 'CLIP_NOT_FOUND');
-  assert.equal(f.store.db.prepare('SELECT * FROM timelines WHERE projectId=?').get(otherProject.id), undefined);
+  // The other project lives in a store of its own, where this project's clip does not exist.
+  const g = await fixture(t), otherProject = g.projectId;
+  await rejectAtomic(g, {projectId: otherProject, expectedRevision: 1, requestId: randomUUID(), clipId: clip.id, atFrame: 20}, 'CLIP_NOT_FOUND');
+  assert.equal(g.store.db.prepare('SELECT * FROM timelines WHERE projectId=?').get(otherProject), undefined);
   await rejectAtomic(f, {projectId: randomUUID(), expectedRevision: 1, requestId: randomUUID(), clipId: clip.id, atFrame: 20}, 'NOT_FOUND');
-  const foreign = await f.call('timeline.get', {projectId: otherProject.id});
-  const untouched = clone(f.state());
+  const foreign = await g.call('timeline.get', {projectId: otherProject});
+  const untouched = clone(g.state());
   await f.call(operation, request(f.projectId, timeline, {clipId: clip.id, atFrame: 20}));
-  assert.deepEqual(await f.call('timeline.get', {projectId: otherProject.id}), foreign);
-  assert.deepEqual(f.state().timeline_history.filter(row => row.projectId === otherProject.id), untouched.timeline_history.filter(((row) => row.projectId === otherProject.id)));
-  assert.deepEqual(f.state().timeline_history_cursors.filter(row => row.projectId === otherProject.id), untouched.timeline_history_cursors.filter(((row) => row.projectId === otherProject.id)));
+  assert.deepEqual(await g.call('timeline.get', {projectId: otherProject}), foreign);
+  assert.deepEqual(g.state().timeline_history.filter(row => row.projectId === otherProject), untouched.timeline_history.filter(((row) => row.projectId === otherProject)));
+  assert.deepEqual(g.state().timeline_history_cursors.filter(row => row.projectId === otherProject), untouched.timeline_history_cursors.filter(((row) => row.projectId === otherProject)));
 });
 
 test('split allows clip 99 to become 100, then rejects clip 101 without losing a pending redo branch', async t => {
@@ -242,8 +243,9 @@ test('split replays its exact durable response after later edits, clip removal a
   await rejectAtomic(f, {...params, requestId: randomUUID()}, 'REVISION_CONFLICT');
   assert.deepEqual(await f.call(operation, params), response, 'replay comes before stale revision, clip existence and new bounds');
   assert.deepEqual(f.state(), before);
-  const foreign = await f.call('project.create', {name: 'Request IDs are global'});
-  await rejectAtomic(f, {...params, projectId: foreign.id, expectedRevision: 1}, 'IDEMPOTENCY_CONFLICT');
+  // Another project lives in a store of its own; this project's receipt still holds the request ID.
+  const foreign = (await fixture(t)).projectId;
+  await rejectAtomic(f, {...params, projectId: foreign, expectedRevision: 1}, 'IDEMPOTENCY_CONFLICT');
   f.restart();
   assert.deepEqual(await f.call(operation, params), response);
   assert.deepEqual(await f.call('timeline.get', {projectId}), latest);

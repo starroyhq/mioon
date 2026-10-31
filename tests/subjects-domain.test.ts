@@ -9,6 +9,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {schemas,LOCAL_MUTATION_OPERATIONS,isSubjectMutationResponse,isSubjectListResponse} from '@mioon/contracts';
 import {type TestContext} from 'node:test';
 import {errorView} from './helpers/test-error.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 interface SubjectRecord {id: string; projectId: string; revision: number; kind: string; headVersionId: string; name: string; needsReview?: boolean;
   subjectVersionId?: string | null; reviewedHeadVersionId?: string | null; items: SubjectRecord[]; nextCursor?: string | null;
   headVersion: {assetId: string; provenance: Record<string, unknown>; id?: string; number?: number; [key: string]: unknown};
@@ -21,6 +22,16 @@ interface SubjectFixture {root: string; store: ReturnType<typeof openStore>; pro
   add(subject: SubjectRecord, asset: {id: string}, patch?: Record<string, unknown>): Record<string, unknown> & {requestId: string};
   bind(subject: SubjectRecord, shot: SubjectRecord, patch?: Record<string, unknown>): Record<string, unknown> & {requestId: string}}
 
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: TestContext,name='Foreign project'): Promise<SubjectRecord> {
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-subjects-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=openStore(root),services=createServices(store,new Map());
+ try{return await services.call('project.create',{name}) as SubjectRecord;}
+ finally{await services.drain();store.close();}
+}
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(db: ReturnType<typeof openStore>['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
+const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 async function fixture(t: TestContext): Promise<SubjectFixture> {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-subjects-'));let store: ReturnType<typeof openStore> | undefined,services: ReturnType<typeof createServices> | undefined;
  // openStore installs the current subject schema. The historical installer is
@@ -32,10 +43,10 @@ async function fixture(t: TestContext): Promise<SubjectFixture> {
   add(subject: SubjectRecord,asset: {id: string},patch: Record<string, unknown>={}){return {projectId:subject.projectId,subjectId:subject.id,expectedRevision:subject.revision,assetId:asset.id,requestId:randomUUID(),...patch};},
   bind(subject: SubjectRecord,shot: SubjectRecord,patch: Record<string, unknown>={}){return {projectId:subject.projectId,subjectId:subject.id,shotId:shot.id,role:subject.kind==='look'?'style':'subject',subjectVersionId:subject.headVersionId,expectedRevision:0,expectedSubjectRevision:subject.revision,requestId:randomUUID(),...patch};},
  };
- f.project=await f.call<SubjectRecord>('project.create',{name:'Subject domain'});f.other=await f.call<SubjectRecord>('project.create',{name:'Foreign private project'});
+ f.project=await f.call<SubjectRecord>('project.create',{name:'Subject domain'});f.other=await foreignProject(t,'Foreign private project');
  t.after(async()=>{store!.close();await rm(root,{recursive:true,force:true});});return f;
 }
-const snapshot=(f: SubjectFixture,omit: string[]=[])=>Object.fromEntries((f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as unknown as {name: string}[]).filter(({name})=>!omit.includes(name)).map(({name})=>{const s=f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`);s.setReadBigInts(true);return [name,s.all()];}));
+const snapshot=(f: SubjectFixture,omit: string[]=[])=>Object.fromEntries(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&!name.startsWith('sqlite_')).sort(byName).filter(({name})=>!omit.includes(name)).map(({name})=>{const s=f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`);s.setReadBigInts(true);return [name,s.all()];}));
 const count=(f: SubjectFixture,table: string)=>(f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get() as {n: number}).n;
 const missing=(e: unknown)=>{const failure=e as {code?: string; status?: number; details?: Record<string, unknown>}; return failure.code==='NOT_FOUND'&&failure.status===404&&Object.keys(failure.details ?? {}).length===0;};
 const subjectTables: string[]=['subjects','subject_versions','subject_bindings','subject_requests'];
@@ -113,11 +124,12 @@ test('role gates, binding ceiling and absent unlink tombstones do not alter shot
 });
 
 test('foreign and corrupt ownership fail closed before receipt or revision, including later replay',async t=>{
- const f=await fixture(t),a=f.asset(),foreign=f.asset(f.other.id),create=f.create(a),subject=await f.call('subject.create',create),shot=await f.call('shot.create',{projectId:f.project.id,title:'Owned'}),otherShot=await f.call('shot.create',{projectId:f.other.id,title:'Foreign'});
+ // Another project lives in a store of its own: its asset, shot and subject do not exist in this one.
+ const f=await fixture(t),g=await fixture(t),a=f.asset(),foreign=g.asset(),create=f.create(a),subject=await f.call('subject.create',create),shot=await f.call('shot.create',{projectId:f.project.id,title:'Owned'}),otherShot=await g.call('shot.create',{projectId:g.project.id,title:'Foreign'});
  await assert.rejects(f.call('subject.create',f.create(foreign,{projectId:f.project.id})),missing);
  await assert.rejects(f.call('subject.binding.set',f.bind(subject,otherShot)),missing);
- const otherSubject=await f.call('subject.create',f.create(foreign));await assert.rejects(f.call('subject.binding.set',f.bind(subject,shot,{subjectVersionId:otherSubject.headVersionId})),missing);
- f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.other.id,'{foreign private data',a.id);const before=snapshot(f);
+ const otherSubject=await g.call('subject.create',g.create(foreign));await assert.rejects(f.call('subject.binding.set',f.bind(subject,shot,{subjectVersionId:otherSubject.headVersionId})),missing);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.other.id,'{foreign private data',a.id));const before=snapshot(f);
  await assert.rejects(f.call('subject.create',create),missing);await assert.rejects(f.call('subject.list',{projectId:f.project.id}),missing);assert.deepEqual(snapshot(f),before);
  f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id,JSON.stringify({...a,id:randomUUID()}),a.id);
  await assert.rejects(f.call('subject.create',create),{code:'INVALID_SUBJECT_RECORD'});
@@ -128,7 +140,7 @@ test('owned media lineage rejects hidden foreign generated owners and freezes va
  const f=await fixture(t),a=f.asset(),shot=await f.call('shot.create',{projectId:f.project.id,title:'Source'}),jobId=randomUUID(),versionId=randomUUID();
  f.store.put('jobs',{id:jobId,projectId:f.project.id,shotId:shot.id,versionId,assetId:a.id});f.store.put('versions',{id:versionId,projectId:f.project.id,jobId,shotId:shot.id,assetId:a.id,sha256:a.sha256});
  const subject=await f.call('subject.create',f.create(a));assert.deepEqual(subject.headVersion.provenance,{kind:'user-import',versionId,shotId:shot.id,jobId});
- f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,jobId);await assert.rejects(f.call('subject.list',{projectId:f.project.id}),{code:'INVALID_SUBJECT_RECORD'});
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,jobId));await assert.rejects(f.call('subject.list',{projectId:f.project.id}),{code:'INVALID_SUBJECT_RECORD'});
 });
 
 test('shared namespace collisions are reciprocal, immutable history resists delete/update/replace, writes roll back with receipt',async t=>{
@@ -158,7 +170,10 @@ test('corrupt retained responses, oversized rows and post-write owner changes fa
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify(asset),asset.id);f.store.db.exec('PRAGMA ignore_check_constraints=OFF');
  const next=f.asset(),fresh=f.create(next),before=snapshot(f);
  f.store.db.exec(`CREATE TRIGGER reassign_subject_asset AFTER INSERT ON subject_requests BEGIN UPDATE assets SET projectId='${f.other.id}' WHERE id='${next.id}'; END;`);
- await assert.rejects(f.call('subject.create',fresh),missing);assert.deepEqual(snapshot(f),before);
+ // The trigger moves the asset to a project this store does not hold, inside the service's own transaction.
+ f.store.db.exec('PRAGMA foreign_keys=OFF');
+ try{await assert.rejects(f.call('subject.create',fresh),missing);}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
+ assert.deepEqual(snapshot(f),before);
 });
 
 test('version and binding identities enforce relational ownership, frozen JSON and retained monotonic revisions',async t=>{

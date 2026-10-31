@@ -10,6 +10,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 const stamp='2026-10-14T00:00:00.000Z';
 const cube='LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n';
 const domain=(timeline: FixtureTimeline)=>({tracks:timeline.tracks,clips:timeline.clips,durationFrames:timeline.durationFrames});
@@ -18,7 +19,6 @@ async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-colour-business-'));let store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
  t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  const call=<O extends string>(operation: O, input?: unknown) => services.call(operation,input) as Promise<FixtureServiceResult<O>>,projectId=(await call('project.create',{name:'Colour fixture'})).id;
- const foreignId=(await call('project.create',{name:'Other project'})).id;
  const asset=(patch: Record<string, unknown>={})=>{const id=randomUUID();return store.put('assets',{id,projectId,name:'Owned source',mimeType:'video/mp4',duration:10,width:720,height:1280,hasVideo:true,hasAudio:true,
    provenance:'user-import',sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`,createdAt:stamp,...patch});};
  const lut=(owner: unknown=projectId)=>call('lut.import',{projectId:owner,requestId:randomUUID(),name:'Creative.cube',dataBase64:Buffer.from(cube).toString('base64')});
@@ -27,7 +27,7 @@ async function fixture(t: test.TestContext){
  const params=<P extends Record<string,unknown>=Record<never,never>>(timeline: { revision: number; },extra: P={} as P):P & {projectId:string;expectedRevision:number;requestId:string}=>({projectId,expectedRevision:timeline.revision,requestId:randomUUID(),...extra});
  const capture=()=>Object.fromEntries(['timelines','timeline_history','timeline_history_cursors','timeline_requests'].map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
  const add=(timeline: FixtureTimeline,source: { id: unknown; },extra: Record<string, unknown>={})=>call('timeline.clip.add',params(timeline,{assetId:source.id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:60,...extra}));
- return {root,get store(){return store;},get services(){return services;},async restart(){await services.drain();store.close();store=(openStore(root) as FixtureStore);services=(createServices(store,new Map()) as FixtureServices);},call,projectId,foreignId,asset,lut,colour,params,capture,add,timeline:await call('timeline.get',{projectId})};
+ return {root,get store(){return store;},get services(){return services;},async restart(){await services.drain();store.close();store=(openStore(root) as FixtureStore);services=(createServices(store,new Map()) as FixtureServices);},call,projectId,asset,lut,colour,params,capture,add,timeline:await call('timeline.get',{projectId})};
 }
 test('add/update persist exact colour, replay preserves it and ordinary edits do not drop it',async t=>{
  const f=await fixture(t),asset=f.asset(),resource=(await f.lut()).resource,colour=f.colour(asset,resource);
@@ -58,7 +58,8 @@ test('split copies complete source and look exactly, history restores every fiel
  const redo=await f.call('timeline.redo',f.params(undo));assert.deepEqual(domain(redo),domain(split));
 });
 test('wrong source SHA and wrong owned LUT SHA/owner reject atomically before commit',async t=>{
- const f=await fixture(t),asset=f.asset(),resource=(await f.lut()).resource,foreign=(await f.lut(f.foreignId)).resource,base=await f.add(f.timeline,asset),colour=f.colour(asset,resource);
+ // Another project lives in a store of its own: its LUT does not exist in this one.
+ const f=await fixture(t),g=await fixture(t),asset=f.asset(),resource=(await f.lut()).resource,foreign=(await g.lut()).resource,base=await f.add(f.timeline,asset),colour=f.colour(asset,resource);
  for(const [patch,code] of ([[{...colour,source:{...colour.source,assetSha256:'c'.repeat(64)}},'TIMELINE_COLOUR_SOURCE_MISMATCH'],
    [{...colour,look:{...colour.look,resourceSha256:'c'.repeat(64)}},'TIMELINE_COLOUR_LOOK_UNAVAILABLE'],
    [f.colour(asset,foreign),'TIMELINE_COLOUR_LOOK_UNAVAILABLE']] as const)){
@@ -80,8 +81,9 @@ test('corrupt historical colour cannot be applied by undo, and no saved colour i
  const f=await fixture(t),asset=f.asset(),colour=f.colour(asset,(await f.lut()).resource),base=await f.add(f.timeline,asset,{colour});
  const changed=await f.call('timeline.clip.update',f.params(base,{clipId:base.clips[0].id,patch:{name:'Updated'}}));
  const entry=f.store.db.prepare('SELECT id,beforeSnapshot FROM timeline_history ORDER BY position DESC LIMIT 1').get(),saved=JSON.parse((((entry)!.beforeSnapshot) as unknown as Parameters<typeof JSON.parse>[0]));saved.clips[0].colour.source.assetSha256='c'.repeat(64);
- const trigger=(f.store.db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='immutable_timeline_history'").get())!.sql;f.store.db.exec('DROP TRIGGER immutable_timeline_history');
- f.store.db.prepare('UPDATE timeline_history SET beforeSnapshot=? WHERE id=?').run(JSON.stringify(saved),(entry)!.id);f.store.db.exec(((trigger) as unknown as Parameters<typeof f.store.db.exec>[0]));const before=f.capture();
+ // Restore the guard into the database that held it: an unqualified CREATE TRIGGER would go to main.
+ const trigger=schemaObjects(f.store.db).find(({type,name})=>type==='trigger'&&name==='immutable_timeline_history')!;f.store.db.exec('DROP TRIGGER immutable_timeline_history');
+ f.store.db.prepare('UPDATE timeline_history SET beforeSnapshot=? WHERE id=?').run(JSON.stringify(saved),(entry)!.id);f.store.db.exec(trigger.sql!.replace(/^CREATE TRIGGER /u,`CREATE TRIGGER "${trigger.schema}".`));const before=f.capture();
  await assert.rejects(f.call('timeline.undo',f.params(changed)),{code:'INVALID_TIMELINE_SNAPSHOT'});assert.deepEqual(f.capture(),before);assert.deepEqual(f.store.get('timelines',base.id)!.clips[0].colour,colour);
 });
 

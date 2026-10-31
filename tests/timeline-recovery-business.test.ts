@@ -20,6 +20,7 @@ import {createTimelineServices} from '../packages/business/src/timeline.ts';
 import {createTimelineLoudnessApplyServices} from '../packages/business/src/timeline-loudness-apply.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {readyMixLoudness,mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 import type { SQLOutputValue } from 'node:sqlite';
 
 const at='2026-10-10T00:00:00.000Z',clone=<T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -30,6 +31,18 @@ const wrapped=(operation: string)=>['timeline.loudness.apply','timeline.clip.ref
 const sceneOptions={detect:async (input: { beforeSpawn: (arg0?: unknown) => void; signal: unknown; options: unknown; asset: { sha256: unknown; }; })=>{input.beforeSpawn(input.signal);
  return {profileId:'scene-cuts-v1',fps:30,frameCount:300,options:input.options,cuts:[{frame:20,score:.4},{frame:40,score:.5}],segments:[],sourceHash:input.asset.sha256,analysis:{width:256,height:144,decodedFrames:300}};}};
 const tables=(['projects','timelines','assets','shots','jobs','versions','exports','timeline_history','timeline_history_cursors','timeline_requests','timeline_format_requests'] as const);
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext,name='Foreign project'){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-timeline-recovery-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
+ try{return await services.call('project.create',{name});}
+ finally{await services.drain();store.close();}
+}
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(db: FixtureStore['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
+const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
+// Recreate a dropped guard in the database that held it: an unqualified CREATE TRIGGER would go to main.
+const recreate=({schema,sql}: {schema: string; sql: string|null})=>sql!.replace(/^CREATE TRIGGER /u,`CREATE TRIGGER "${schema}".`);
 async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-timeline-recovery-'));
  let store=(openStore(root) as FixtureStore),services=(createServices(store,new Map(),(({sceneOptions}) as unknown as Parameters<typeof createServices>[2])) as FixtureServices),apply!: (arg0?: unknown) => unknown;
@@ -98,7 +111,7 @@ async function fixture(t: test.TestContext){
   target:report.target,snapshotSha256:report.identity.snapshotSha256,candidateDigest:await timelineLoudnessCandidateDigest(report)};};
  connectApply();
  f.projectId=(await f.call('project.create',{name:t.name.slice(0,150)})).id;
- f.otherId=(await f.call('project.create',{name:'Other private project'})).id;
+ f.otherId=(await foreignProject(t,'Other private project')).id;
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
 }
 const params=<P extends Record<string,unknown>=Record<never,never>>(f: Awaited<ReturnType<typeof fixture>>,timeline: FixtureTimeline,fields: P={} as P):P & {projectId:string;expectedRevision:number;requestId:string}=>({projectId:f.projectId,expectedRevision:timeline.revision,requestId:randomUUID(),...fields});
@@ -199,6 +212,8 @@ test('all twenty-four retained responses remain exact after removal, branching, 
  f.store.put('exports',{...(f.store.get('exports',(render as FixtureExport).id)! as FixtureExport),status:'failed',error:{code:'EXPORT_FAILED',message:'Synthetic offline failure',retryable:true},updatedAt:'2026-10-10T01:00:00.000Z'});
  f.restart();const before=f.capture();
  for(const {operation,input,response} of result.receipts){assert.deepEqual(await f.liveCall(((operation) as unknown as Parameters<NonNullable<(typeof f)["liveCall"]>>[0]),input),response);assert.deepEqual(f.capture(),before);}
+ // A store opened without the lock is a second connection: it opens only after the owner's store has closed.
+ f.store.close();
  const independent=(openStore(f.root,{lock:false}) as FixtureStore);try{
   const services=(createServices(independent,new Map()) as FixtureServices);
   for(const {operation,input,response} of result.receipts){
@@ -208,6 +223,7 @@ test('all twenty-four retained responses remain exact after removal, branching, 
    else assert.deepEqual(await services.call(((operation) as unknown as Parameters<NonNullable<(typeof services)["call"]>>[0]),input),response);
   }
  }finally{independent.close();}
+ f.restart();
  assert.deepEqual(f.capture(),before);
 });
 
@@ -220,7 +236,8 @@ test('all twenty-four fresh stale-revision rejections carry only transaction-bac
  await rejected(f,'timeline.seed',params(f,timeline),(({code:'TIMELINE_NOT_EMPTY',proof:true}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
  await rejected(f,'timeline.track.update',params(f,timeline,{trackId:(timeline.tracks.find((x)=>x.kind==='audio'))!.id,patch:{hidden:false}}),(({code:'AUDIO_HIDDEN_UNSUPPORTED',proof:true}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
  await rejected(f,'timeline.clip.remove',params(f,timeline,{clipId:randomUUID()}),(({code:'CLIP_NOT_FOUND'}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
- await rejected(f,'timeline.clip.add',params(f,timeline,{assetId:f.asset({projectId:f.otherId,name:'FOREIGN_SECRET'}).id,trackId:timeline.tracks[0].id,startFrame:1000,durationFrames:1}),(({code:'CROSS_PROJECT_REFERENCE'}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
+ // Another project lives in a store of its own: its asset does not exist in this one.
+ await rejected(f,'timeline.clip.add',params(f,timeline,{assetId:(await fixture(t)).asset({name:'FOREIGN_SECRET'}).id,trackId:timeline.tracks[0].id,startFrame:1000,durationFrames:1}),(({code:'NOT_FOUND'}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
 });
 
 test('legacy initialization and transaction lifecycle failures never manufacture pre-write proof',async t=>{
@@ -241,9 +258,11 @@ test('lost acknowledgements retain proof absence after project, timeline and his
   const f=await fixture(t),{receipts,generated,timeline:initial}=await allReceipts(f);let timeline=initial;
   for(const clip of ([...timeline.clips] as const))timeline=await f.call('timeline.clip.remove',params(f,timeline,{clipId:clip.id}));
   if(corruption==='project identity')f.store.db.prepare("UPDATE projects SET data=json_set(data,'$.id',?,'$.name','FOREIGN_SECRET') WHERE id=?").run(f.otherId,f.projectId);
-  if(corruption==='timeline SQL owner')f.store.db.prepare('UPDATE timelines SET projectId=? WHERE id=?').run(f.otherId,timeline.id);
+  if(corruption==='timeline SQL owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE timelines SET projectId=? WHERE id=?').run(f.otherId,timeline.id));
   if(corruption==='timeline JSON owner')f.store.db.prepare("UPDATE timelines SET data=json_set(data,'$.projectId',?) WHERE id=?").run(f.otherId,timeline.id);
-  if(corruption==='historical source SQL owner')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.otherId,generated.asset.id as string);
+  // A volume-envelope replay first checks the whole workspace, which reports an asset whose project is missing
+  // before any ownership check. So this case still keeps the other project in this store.
+  if(corruption==='historical source SQL owner'){const other=(await f.call('project.create',{name:'Other private project'})).id;f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(other,generated.asset.id as string);}
   if(corruption==='indirect generation owner')f.store.db.prepare("UPDATE jobs SET data=json_set(data,'$.projectId',?,'$.secret','FOREIGN_SECRET') WHERE id=?").run(f.otherId,generated.job.id);
   for(const {operation,input,response} of receipts){
    if(operation==='timeline.format.set'&&['historical source SQL owner','indirect generation owner'].includes(corruption)){
@@ -260,7 +279,7 @@ test('all twenty-four malformed, foreign and semantically corrupt durable receip
   const f=await fixture(t),{receipts}=await allReceipts(f);
   // Lift the receipt guard only while writing each corruption. A missing trigger
   // would itself fail the fixed-profile check that enveloped timelines run first.
-  const guard=(f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='immutable_timeline_responses'").get() as {sql:string}).sql;
+  const guard=recreate(schemaObjects(f.store.db).find(({type,name})=>type==='trigger'&&name==='immutable_timeline_responses')!);
   for(const {operation,input,response} of receipts){
    const changed=clone(response);
    if(corruption==='owner')(wrapped(((operation) as unknown as Parameters<typeof wrapped>[0]))?(changed as {timeline:FixtureTimeline}).timeline:changed as FixtureTimeline).projectId=f.otherId;
@@ -341,7 +360,9 @@ test('every keyed write rolls back receipt failures and post-write owner changes
   }
   else if(corruption==='receipt failure')f.store.db.exec("CREATE TRIGGER fail_timeline_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
   else f.store.db.exec(`CREATE TRIGGER corrupt_timeline_owner AFTER INSERT ON timeline_requests BEGIN UPDATE timelines SET projectId='${f.otherId}' WHERE id='${timeline.id}'; END;`);
-  try{await rejected(f,operation,input);}finally{db.prepare=prepare;}
+  // The corruption moves the timeline to a project this store does not hold, inside the service's own transaction.
+  if(corruption==='timeline owner')db.exec('PRAGMA foreign_keys=OFF');
+  try{await rejected(f,operation,input);}finally{db.prepare=prepare;db.exec('PRAGMA foreign_keys=ON');}
  });
 });
 
@@ -374,12 +395,12 @@ test('forty-two independently bounded source lineages remain editable and render
 test('legacy optional frozen fields remain omitted and replay bytes are never normalized',async t=>{
  const f=await fixture(t),timeline=await populated(f),input=params(f,timeline,{purpose:'preview'}),render=await f.call('timeline.render',input);
  for(const asset of render.snapshot.assets){delete (asset as {hasAudio?: unknown}).hasAudio;delete (asset as {relativePath?: unknown}).relativePath;}
- const protections=f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE name IN ('immutable_timeline_responses','immutable_timeline_render_snapshot') ORDER BY name").all();
+ const protections=schemaObjects(f.store.db).filter(({name})=>['immutable_timeline_responses','immutable_timeline_render_snapshot'].includes(name)).sort(byName);
  f.store.db.exec('DROP TRIGGER immutable_timeline_responses; DROP TRIGGER immutable_timeline_render_snapshot;');
  f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(render),input.requestId);
  f.store.put('exports',render);
  // Synthetic legacy bytes are valid, but current38 requires complete guards.
- for(const protection of protections)f.store.db.exec(((protection.sql) as unknown as Parameters<typeof f.store.db.exec>[0]));
+ for(const protection of protections)f.store.db.exec(recreate(protection));
  const before=f.capture();f.restart();
  assert.deepEqual(await f.call('timeline.render',input),render);assert.deepEqual(f.capture(),before);
 });

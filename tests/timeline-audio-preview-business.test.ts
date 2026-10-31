@@ -21,6 +21,7 @@ import type {TimelineAudioPreviewRuntime as Runtime} from '../packages/business/
 import type {TimelineAudioPreviewDecodeRequest, TimelineAudioPreviewDecodedPcm} from '../packages/business/src/timeline-audio-preview-decoder.ts';
 import type {TimelineRecord} from '../packages/contracts/src/timeline-replacement.ts';
 import type {AudioPreviewPlan, AudioPreviewPlanInput, AudioPreviewSourceInput} from '../packages/contracts/src/timeline-audio-preview.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 type AudioService = ReturnType<typeof createTimelineAudioPreviewServices>;
 type ConsumeOptions = Parameters<AudioService['consumeSource']>[1];
 type Checkpoint = {rows: Record<string, ReturnType<ReturnType<DatabaseSync['prepare']>['all']>>; writes: unknown; files: [string, string][]};
@@ -64,9 +65,18 @@ async function files(root: string) {
   }
   return result.sort(([a], [b]) => a.localeCompare(b));
 }
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: TestContext, name = 'Foreign project') {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-audio-preview-foreign-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const store = openStore(root), services = (createServices(store, new Map()) as TypedServices);
+  try {return await services.call('project.create', {name});}
+  finally {await services.drain(); store.close();}
+}
+const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 async function fixture(t: TestContext, {durationFrames = 60, sourceInFrame = 17, startFrame = 0, clipStartFrame = 0, runtime: overrides = {}}: {durationFrames?: number; sourceInFrame?: number; startFrame?: number; clipStartFrame?: number; runtime?: RuntimeOverrides} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-audio-preview-')), store = openStore(root), services = (createServices(store, new Map()) as TypedServices);
-  const project = await services.call('project.create', {name: 'Owned saved sound'}), foreign = await services.call('project.create', {name: 'Other project'});
+  const project = await services.call('project.create', {name: 'Owned saved sound'}), foreign = await foreignProject(t, 'Other project');
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const id = randomUUID(), bytes = Buffer.alloc(96 * 1024, 7);
   const asset = {id, projectId: project.id, name: 'Owned sound.wav', mimeType: 'audio/wav', relativePath: `media/${id}.wav`,
@@ -84,7 +94,7 @@ async function fixture(t: TestContext, {durationFrames = 60, sourceInFrame = 17,
   t.after(async () => {for (const extra of extras) await extra.drain().catch(() => {}); await audio.drain().catch(() => {});
     await services.drain().catch(() => {}); store.close(); await rm(root, {recursive: true, force: true});});
   const input = {projectId: project.id, timelineId: timeline.id, expectedRevision: timeline.revision, startFrame};
-  const rows = () => Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const rows = () => Object.fromEntries(schemaObjects(store.db).filter(({type}) => type === 'table').sort(byName).map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   const f = {root, store, services, project, foreign, asset, bytes, timeline, input, audio, runtime, extras,
     plan: (value: unknown = input, options?: Parameters<AudioService['handlers']['timeline.audioPreview.plan']>[1]) => audio.handlers['timeline.audioPreview.plan'](value, options),
     sourceInput: (plan: AudioPreviewPlan) => ({...input, clipId: plan.sources[0].clipId, sourceHash: plan.sources[0].sourceHash, planHash: plan.planHash}),
@@ -96,18 +106,20 @@ async function fixture(t: TestContext, {durationFrames = 60, sourceInFrame = 17,
 const replace = (f: {store: ReturnType<typeof openStore>}, table: string, value: {id: string; [key: string]: unknown}) => f.store.db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id);
 function replaceTimelineRawFixture(f: {store: ReturnType<typeof openStore>; timeline: {id: string}},raw: string){
   const db=f.store.db,names=['agent_target_timeline_update_v2','agent_target_timeline_timeline_clip_update_v2','agent_target_timeline_timeline_track_update_v2','agent_target_timeline_timeline_subtitle_update_v2'];
-  const guards=db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names);
+  const current=()=>schemaObjects(db).filter(({name})=>names.includes(name)).sort(byName).map(({schema,name,sql})=>({schema,name,sql}));
+  const guards=current();
   assert.deepEqual(guards.map(value=>value.name),[...names].sort());
   const state=()=>({timeline:db.prepare('SELECT * FROM timelines WHERE id=?').get(f.timeline.id),targets:db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY rowid').all()}),before=state();
   assert.throws(()=>db.prepare('UPDATE timelines SET data=? WHERE id=?').run(raw,f.timeline.id),/malformed JSON/);
   assert.deepEqual(state(),before,'live JSON target guards reject malformed bytes atomically');
   // Write or repair corrupt fixture bytes only; all preview requests retain the
-  // exact original target guards and the zero-source-access assertions.
+  // exact original target guards and the zero-source-access assertions. Each guard
+  // is recreated in the database that held it: an unqualified CREATE TRIGGER would go to main.
   try{
     for(const guard of guards)db.exec(`DROP TRIGGER "${guard.name}"`);
     db.prepare('UPDATE timelines SET data=? WHERE id=?').run(raw,f.timeline.id);
-  }finally{for(const guard of guards)db.exec(guard.sql as string);}
-  assert.deepEqual(db.prepare(`SELECT name,sql FROM sqlite_schema WHERE name IN (${names.map(()=>'?').join(',')}) ORDER BY name`).all(...names),guards);
+  }finally{for(const guard of guards)db.exec(guard.sql!.replace(/^CREATE TRIGGER /u,`CREATE TRIGGER "${guard.schema}".`));}
+  assert.deepEqual(current(),guards);
 }
 
 // Fake PCM and causal runtimes isolate lifecycle/authorization here. Canonical
@@ -171,9 +183,14 @@ test('missing timeline never initializes; corrupt/foreign graph rejects before f
 test('actual native owner proof denies unlocked reader; copied store cannot create another decoder permit', async t => {
   const entered = deferred(), gate = deferred(); let decodes = 0;
   const f = await fixture(t, {runtime: {decode: async (_file, request, options) => {decodes++; entered.resolve(); await gate.promise; options.beforeEffect(); return decoded(request, 96 * 1024);}}});
-  const reader = openStore(f.root, {lock: false}); t.after(() => reader.close());
-  const unauthorized = createTimelineAudioPreviewServices(reader, {runtime: {...f.runtime, ownsLock: () => ownsStoreLock(reader)}}); f.extras.push(unauthorized);
-  await assert.rejects(unauthorized.handlers['timeline.audioPreview.plan'](f.input), {code: 'AUDIO_PREVIEW_OWNER_REQUIRED'});
+  // A store opened without the lock is a second connection: it opens only after the owner's store has closed,
+  // so the reader works on a project of its own and reads through its own connection.
+  const g = await fixture(t); await g.audio.drain(); await g.services.drain(); g.store.close();
+  const reader = openStore(g.root, {lock: false}); t.after(() => reader.close());
+  const unauthorized = createTimelineAudioPreviewServices(reader, {runtime: {...g.runtime,
+    assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(reader)) throw workspaceRestoreError();},
+    readSavedTimeline: projectId => readSaved(reader, projectId), ownsLock: () => ownsStoreLock(reader)}}); g.extras.push(unauthorized);
+  await assert.rejects(unauthorized.handlers['timeline.audioPreview.plan'](g.input), {code: 'AUDIO_PREVIEW_OWNER_REQUIRED'});
   const copied = createTimelineAudioPreviewServices({...f.store}, {runtime: f.runtime}); f.extras.push(copied);
   const source = f.sourceInput(await f.plan()), pending = f.audio.consumeSource(source, {consume: async value => value.sampleFrames}); await entered.promise;
   await assert.rejects(copied.consumeSource(source, {consume: async () => {}}), {code: 'AUDIO_PREVIEW_BUSY'});

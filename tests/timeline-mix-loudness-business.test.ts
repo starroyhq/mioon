@@ -21,6 +21,7 @@ import {installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema} f
 import {exportAudioObservationAdmission} from '../packages/business/src/export-audio-observation.ts';
 import type { BinaryLike } from 'crypto';
 import type { PathLike } from 'fs';
+import {schemaObjects} from './helpers/project-database.ts';
 
 const sha = (bytes: Buffer<ArrayBuffer>|BinaryLike) => createHash('sha256').update(bytes).digest('hex');
 const deferred = <T = unknown>() => {let resolve!: (value?: T | PromiseLike<T | undefined>)=>void; const promise = new Promise<T | undefined>(r => {resolve = r;}); return {resolve, promise};};
@@ -63,9 +64,18 @@ async function files(root: PathLike) {
   }
   return result.sort(([a], [b]) => a.localeCompare(b));
 }
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext, name = 'Foreign project') {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-mix-loudness-foreign-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const store = (openStore(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
+  try {return await services.call('project.create', {name});}
+  finally {await services.drain(); store.close();}
+}
+const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 async function fixture(t: test.TestContext, {durationFrames = 60, runtime: overrides = {}} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-mix-loudness-')), store = (openStore(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
-  const project = await services.call('project.create', {name: 'Owned full timeline loudness'}), foreign = await services.call('project.create', {name: 'Other project'});
+  const project = await services.call('project.create', {name: 'Owned full timeline loudness'}), foreign = await foreignProject(t, 'Other project');
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const id = randomUUID(), bytes = Buffer.alloc(96 * 1024, 7);
   const asset = {id, projectId: project.id, name: 'Owned sound.wav', mimeType: 'audio/wav', relativePath: `media/${id}.wav`,
@@ -82,7 +92,7 @@ async function fixture(t: test.TestContext, {durationFrames = 60, runtime: overr
   t.after(async () => {for (const extra of extras) await extra.drain().catch(() => {}); await mix.drain().catch(() => {});
     await services.drain().catch(() => {}); store.close(); await rm(root, {recursive: true, force: true});});
   const input = inputFor(timeline);
-  const rows = () => Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const rows = () => Object.fromEntries(schemaObjects(store.db).filter(({type}) => type === 'table').sort(byName).map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   return {root, store, services, project, foreign, asset, bytes, timeline, input, mix, runtime, extras,
     call: (value: unknown = input, options?: { signal?: AbortSignal; }|undefined) => mix.handlers['timeline.loudness.prepare'](value, options),
     checkpoint: async () => ({rows: rows(), writes: (store.db.prepare('SELECT total_changes() AS n').get())!.n, files: await files(root)}),
