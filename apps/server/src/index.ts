@@ -71,6 +71,8 @@ import {createVersionComparisonMediaHttp} from './version-comparison-media.ts';
 import {callObservedRpc} from './rpc-observation.ts';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import type {DatabaseSync} from 'node:sqlite';
+import {isAsyncFunction, isPromise} from 'node:util/types';
 import {randomBytes, randomUUID, timingSafeEqual} from 'node:crypto';
 import {createAgentSettings, sanitizeAgentSettingsError, sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
 import type {AgentSettingsService, SettingsContextOptions, SecretCodec, PublicStorage} from '@mioon/business/agent/settings';
@@ -141,6 +143,11 @@ interface AgentSettingsPort {
 }
 interface ImageNetworkSeam {lookup?: ReviewedImageGatewayOptions['lookup']; httpsRequest?: ReviewedImageGatewayOptions['httpsRequest']}
 interface ComfyNetworkSeam {httpRequest: NonNullable<ComfyTransportOptions['httpRequest']>}
+/** Runs `inspect` synchronously on the server's own connection and returns its
+ * result. A project the server does not have fails with PROJECT_NOT_FOUND; an
+ * async callback or a promised result is a TypeError, so the connection is
+ * never held across an await. */
+export type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) => T) => T;
 export interface ServerOptions {
   dataDir?: string;
   port?: number;
@@ -157,6 +164,9 @@ export interface ServerOptions {
   taskGatewayV2?: TaskGateway;
   agentEditFault?: AgentEditFault;
   taskFault?: TaskFault;
+  /** Trusted in-process tests only; never HTTP/environment. Receives this
+   * server's InspectProject once its store is open. */
+  inspectProject?: (inspect: InspectProject) => void;
   localDraftChannel?: LocalDraftChannel;
   nativeAudioPreview?: NativeAudioPreviewAuthority;
   opacityCandidateLaunch?: object;
@@ -236,6 +246,7 @@ async function composeServer({
   taskGatewayV2, // Trusted synthetic v2 QA injection; never HTTP/environment.
   agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
   taskFault, // Trusted durable-edit crash-boundary tests only; never HTTP/environment configuration.
+  inspectProject, // Trusted in-process test inspection only; never HTTP/environment configuration.
   localDraftChannel = 'web', // Trusted desktop build identity only; never HTTP/environment configuration.
   nativeAudioPreview, // Trusted per-utility authority only; never HTTP/environment configuration.
   opacityCandidateLaunch, // Exact one-shot internal dev proof; never payload/environment.
@@ -297,6 +308,14 @@ async function composeServer({
   try {
   candidateDomain = candidate ? createOpacityCandidateDomain(store) : null;
   files = createFileResponses({signal: shutdown.signal});
+  // Test inspection uses this connection, so it never meets the workspace lock.
+  inspectProject?.((projectId, inspect) => {
+    if (isAsyncFunction(inspect)) throw new TypeError('inspectProject requires a synchronous callback');
+    if (!store.get('projects', projectId)) throw new AppError('PROJECT_NOT_FOUND', '项目不存在。', 404, {projectId});
+    const result = inspect(store.db);
+    if (isPromise(result)) { result.catch(() => {}); throw new TypeError('inspectProject requires a synchronous result'); }
+    return result;
+  });
   versionComparisonMedia = createVersionComparisonMediaHttp({db: store.db, root, signal: shutdown.signal,
     readGraph: projectId => createOwnedMediaGraphReader(store.db, projectId), resolvePath: safePath, createFiles: createFileResponses,
     validateFile: file => {
