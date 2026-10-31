@@ -1,7 +1,9 @@
 import {assertAgentGainRequestBudget} from './gain-context-fence.ts';
 import {AGENT_CHAT_LIMITS} from './chat-policy.ts';
 export {CHAT_SYSTEM_INSTRUCTION, AGENT_CHAT_LIMITS} from './chat-policy.ts';
-import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.ts';
+import {agentChatProfile, agentChatAllowsNaturalEof, validateAgentChatProfile} from './model-profiles.ts';
+export {AGENT_CHAT_PROFILES, agentChatProfile, agentChatAllowsNaturalEof} from './model-profiles.ts';
+import {exactObject, MAX_AGENT_SECRET_BYTES} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
 import {agentChatError, errorCode} from './chat-errors.ts';
 import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
@@ -11,41 +13,6 @@ import {toolScope, validateReadTools, readToolRequestFields, readToolMessages, c
 import type {WireMessage, ToolCall, ReadToolState} from './tool-wire.ts';
 import type {AgentGateway, AgentUsage} from './agent-gateway.ts';
 
-// These are explicit text-only profiles, not a vendor-wide compatibility claim.
-// Model aliases/edits remain saveable settings, but unsupported named profiles
-// fail before inference. Sources and region/account caveats: AGENT-PROVIDERS.md.
-interface AgentChatProfile {models: string[] | null; tokenField: 'max_tokens' | 'max_completion_tokens'; fields: Record<string, unknown>}
-function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
-const profiles: Record<string, AgentChatProfile> = {
-  openai: Object.freeze({models: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'], tokenField: 'max_completion_tokens', fields: {store: false}}),
-  deepseek: Object.freeze({models: ['deepseek-flash'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}}),
-  qwen: Object.freeze({models: ['qwen-plus'], tokenField: 'max_tokens', fields: {enable_thinking: false}}),
-  zhipu: Object.freeze({models: ['glm-4.7'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}}),
-  kimi: Object.freeze({models: ['kimi-k2.6'], tokenField: 'max_tokens', fields: {thinking: {type: 'disabled'}}}),
-  minimax: Object.freeze({models: ['MiniMax-M3'], tokenField: 'max_completion_tokens', fields: {thinking: {type: 'disabled'}}}),
-  openrouter: Object.freeze({models: ['openai/gpt-4.1-mini'], tokenField: 'max_tokens', fields: {provider: {require_parameters: true, allow_fallbacks: false}}}),
-  custom: Object.freeze({models: null, tokenField: 'max_tokens', fields: {}}),
-  // Official compatibility docs, checked 2026-10-09: reasoning_effort:'none'
-  // requests false for boolean-thinking models. No model pull/probe/cloud route.
-  ollama: Object.freeze({models: ['qwen3:8b'], tokenField: 'max_tokens', fields: {reasoning_effort: 'none'}}),
-};
-export const AGENT_CHAT_PROFILES: Readonly<Record<string, AgentChatProfile>> = freeze(profiles);
-/** Select request fields before dispatch. A preset without a dedicated profile
- * uses this protocol's generic template; errors never trigger another attempt. */
-export function agentChatProfile(configuration: AgentConfiguration): AgentChatProfile {
-  if (configuration.protocol !== 'chat_completions') throw agentChatError('AGENT_CHAT_VALIDATION');
-  return Object.hasOwn(AGENT_CHAT_PROFILES, configuration.presetId) ? AGENT_CHAT_PROFILES[configuration.presetId] : AGENT_CHAT_PROFILES.custom;
-}
-/** MiniMax recommends the OpenAI SDK, whose SSE iterator accepts natural EOF.
- * Restrict that terminal contract to this exact official non-thinking profile;
- * an edited/custom endpoint or a journaled request for another model cannot opt in. */
-export function agentChatAllowsNaturalEof(configuration: AgentConfiguration, body: Record<string, unknown>): boolean {
-  return configuration.protocol === 'chat_completions' && configuration.presetId === 'minimax' &&
-    configuration.model === 'MiniMax-M3' && body.model === configuration.model && body.stream === true &&
-    object(body.thinking) && Object.keys(body.thinking).length === 1 && body.thinking.type === 'disabled' &&
-    ((configuration.platformId === 'china' && configuration.baseUrl === 'https://api.minimax.cn/v1') ||
-      (configuration.platformId === 'international' && configuration.baseUrl === 'https://api.minimax.io/v1'));
-}
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const wellFormed = (value: string): boolean => Buffer.from(value, 'utf8').toString('utf8') === value;
 function fail(code: string): never { throw agentChatError(code); }
@@ -71,11 +38,7 @@ export function safeUsage(value: unknown): AgentUsage | undefined {
 }
 export interface AgentChatValidationOptions {selfPort?: number; readTools?: unknown}
 export function validateAgentChatConfiguration(configuration: unknown, {selfPort, readTools}: AgentChatValidationOptions = {}): AgentConfiguration {
-  let config: AgentConfiguration;
-  try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return fail('AGENT_CHAT_VALIDATION'); }
-  if (config.protocol !== 'chat_completions') fail('AGENT_CHAT_VALIDATION');
-  const profile = agentChatProfile(config);
-  if (!profile || (profile.models && !profile.models.includes(config.model))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+  const config = validateAgentChatProfile(configuration, {selfPort});
   validateReadTools(config, readTools);
   return config;
 }

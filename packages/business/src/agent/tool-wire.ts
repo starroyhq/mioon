@@ -7,20 +7,16 @@ import {EDIT_TOOL_DEFINITIONS, EDIT_TOOL_LIMITS, EDIT_TOOL_SYSTEM_INSTRUCTION, p
 import {TIMELINE_EDIT_TOOL_DEFINITIONS, TIMELINE_EDIT_TOOL_LIMITS, TIMELINE_EDIT_TOOL_SYSTEM_INSTRUCTION, parseTimelineEditToolArguments} from './timeline-edit-tool-policy.ts';
 import {AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT} from '@mioon/contracts';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_LIMITS, READ_TOOL_SYSTEM_INSTRUCTION, parseReadToolArguments} from './read-tool-policy.ts';
-import type {AgentProtocol} from '../../../contracts/src/agent-protocol.ts';
+import {agentReadToolProfile} from './model-profiles.ts';
+import type {ToolProfile} from './model-profiles.ts';
+export {AGENT_READ_TOOL_PROFILES, agentReadToolProfile} from './model-profiles.ts';
+export type {ToolProfile} from './model-profiles.ts';
+import {toolProtocolError, toolObject, toolString, toolId} from './tool-wire-values.ts';
+export {toolProtocolError, toolObject, toolString, toolId} from './tool-wire-values.ts';
 
 function fail(code: 'AGENT_CHAT_VALIDATION' | 'AGENT_CHAT_PROTOCOL_ERROR' | 'AGENT_CHAT_LIMIT' | 'AGENT_CHAT_TOOLS_UNSUPPORTED' | 'AGENT_CHAT_REASONING_UNSUPPORTED' | 'AGENT_CHAT_PROFILE_UNSUPPORTED'): never {
   throw agentChatError(code);
 }
-export function toolProtocolError(): never { return fail('AGENT_CHAT_PROTOCOL_ERROR'); }
-export const toolObject = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
-const wellFormed = (value: string): boolean => Buffer.from(value, 'utf8').toString('utf8') === value;
-export function toolString(value: unknown, maximum: number): value is string { return typeof value === 'string' && wellFormed(value) && Buffer.byteLength(value) <= maximum; }
-export function toolId(value: unknown): string {
-  if (!toolString(value, 256) || !value || /[\u0000-\u0020\u007f]/u.test(value)) toolProtocolError();
-  return value;
-}
-function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
 
 export interface WireMessage {role: string; content?: unknown; [key: string]: unknown}
 export interface ParsedToolArguments {operation: string; arguments: Record<string, unknown>; dispatchArguments: Record<string, unknown>}
@@ -29,7 +25,6 @@ export interface ToolCallInput {id: unknown; name: unknown; argumentsJson: unkno
 export interface ToolDefinition {name: string; description: string; parameters: unknown; strict: boolean}
 export interface ToolLimits {maxArgumentsBytes: number; maxResultBytes: number; maxToolCalls?: number; maxModelRequests?: number; maxContextBytes: number; maxContinuationBytes?: number}
 export interface ToolScope {definitions: readonly ToolDefinition[]; limits: ToolLimits; instruction: string; parse: (name: unknown, argumentsJson: unknown) => ParsedToolArguments}
-export interface ToolProfile {parallel: boolean; choice: boolean; strict: boolean}
 export interface ToolScopeInput {scope?: string}
 export interface ReadToolState extends ToolScopeInput {
   phase?: 'request' | 'answer';
@@ -40,42 +35,6 @@ export interface ReadToolState extends ToolScopeInput {
 }
 export interface ResponseToolSnapshot {type: 'function_call'; id: string; callId: string; name: string; argumentsJson: string}
 
-// Deliberate function-wire profiles, fixture tested, never live certification.
-// Unsupported controls are omitted rather than relying on them being ignored.
-// DeepSeek Responses documents parallel_tool_calls as ignored (always enabled).
-// Ollama marks CC tool_choice unsupported and omits it for Responses; Zhipu
-// documents only auto. tools:[] and the answer parser enforce the second-round cap.
-export const AGENT_READ_TOOL_PROFILES: Readonly<Record<AgentProtocol, Readonly<Record<string, ToolProfile>>>> = freeze({
-  chat_completions: {
-    openai: {parallel: true, choice: true, strict: true},
-    custom: {parallel: true, choice: true, strict: true},
-    openrouter: {parallel: true, choice: true, strict: true},
-    qwen: {parallel: true, choice: true, strict: false},
-    deepseek: {parallel: false, choice: true, strict: false},
-    zhipu: {parallel: false, choice: false, strict: false},
-    kimi: {parallel: false, choice: true, strict: false},
-    minimax: {parallel: false, choice: false, strict: false},
-    ollama: {parallel: false, choice: false, strict: false},
-  },
-  responses: {
-    openai: {parallel: true, choice: true, strict: true},
-    custom: {parallel: true, choice: true, strict: true},
-    qwen: {parallel: false, choice: true, strict: false},
-    deepseek: {parallel: false, choice: true, strict: false},
-    ollama: {parallel: false, choice: false, strict: false},
-  },
-  anthropic_messages: {
-    anthropic: {parallel: false, choice: true, strict: false},
-    custom: {parallel: false, choice: true, strict: false},
-  },
-});
-/** Presets supply defaults, while protocol selection determines the tool wire
- * format. Dedicated profiles retain their existing field constraints. */
-export function agentReadToolProfile(configuration: AgentConfiguration): ToolProfile {
-  const profiles = AGENT_READ_TOOL_PROFILES[configuration.protocol];
-  if (!profiles) fail('AGENT_CHAT_VALIDATION');
-  return Object.hasOwn(profiles, configuration.presetId) ? profiles[configuration.presetId] : profiles.custom;
-}
 // This selector is internal and closed: callers cannot supply schemas or operations.
 export function toolScope(readTools: ToolScopeInput | undefined): ToolScope {
   if (readTools?.scope !== undefined && !['selected_shot_edit', AGENT_TIMELINE_MOVE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT].includes(readTools.scope)) fail('AGENT_CHAT_VALIDATION');

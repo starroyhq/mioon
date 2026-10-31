@@ -9,6 +9,10 @@ import type { AgentConfiguration, AgentProtocolConfiguration, AgentSettingsSnaps
 import { AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainAvailable, safeAgentTimelineGainPolicy, safeAgentTimelineGainTarget, agentTimelineGainTargetPatch, agentTimelineAvailable, safeAgentTimelinePolicy, safeAgentTimelineTarget, agentEditAvailable, safeAgentEditPolicy, safeAgentEditTarget, agentEditTargetKey, agentInspectionAvailable, agentRunContextMode, agentRunProvenanceEqual, agentRunActivityCompatible, safeAgentInspectionPolicy, safeAgentRunInspection, agentChatOutboundConsent } from './agent-tool-state.ts';
 export { AGENT_TYPED_CONTEXT, AGENT_PROJECT_CONTEXT, AGENT_EDIT_CONTEXT, AGENT_TIMELINE_CONTEXT, AGENT_TIMELINE_GAIN_CONTEXT, agentTimelineGainAvailable, safeAgentTimelineGainPolicy, safeAgentTimelineGainTarget, agentTimelineGainTargetPatch, agentTimelineAvailable, safeAgentTimelinePolicy, safeAgentTimelineTarget, agentEditAvailable, safeAgentEditTarget, agentEditTargetKey, agentInspectionAvailable, agentRunContextMode } from './agent-tool-state.ts';
 export { AGENT_PROTOCOLS, deriveAgentEndpoint };
+import { readAgentChatSSE } from './agent-sse.ts';
+import type { AgentChatFrame } from './agent-sse.ts';
+export { readAgentChatSSE } from './agent-sse.ts';
+export type { AgentChatFrame } from './agent-sse.ts';
 
 export interface AgentChatConfiguration extends AgentProtocolConfiguration { model: string }
 export interface AgentChatRun {
@@ -76,7 +80,6 @@ export interface AgentChatState {
   history: AgentChatHistoryState;
 }
 export interface AgentChatEvent { id: number; type: string; instanceId: string; threadId: string; projectId: string; runId: string; revision: number; text?: string; run?: AgentChatRun }
-export interface AgentChatFrame { id: string; type: string; data: unknown }
 export interface AgentChatReceipt { instanceId: string; requestId?: string }
 export interface AgentChatReceipts {
   get: (projectId: string) => AgentChatReceipt | null;
@@ -108,7 +111,7 @@ const bytes = (value: string): number => new TextEncoder().encode(value).length;
 const statuses: ReadonlySet<string> = new Set(['running', 'completed', 'stopped', 'failed', 'interrupted']);
 export const AGENT_CHAT_PROMPT_BYTES = 8192;
 export const AGENT_CHAT_OUTPUT_BYTES = 128 * 1024;
-const MAX_RUNS = 16, MAX_FRAME = 1024 * 1024, MAX_HISTORY_CURSORS = 32;
+const MAX_RUNS = 16, MAX_HISTORY_CURSORS = 32;
 const codes: ReadonlySet<string> = new Set(['UNAUTHORIZED', 'AGENT_CHAT_STORAGE_LIMIT', 'AGENT_CHAT_STORAGE_UNAVAILABLE', 'AGENT_CHAT_INTERRUPTED', 'AGENT_CHAT_SESSION_EXPIRED', 'AGENT_CHAT_CONVERSATION_CONFLICT', 'AGENT_CHAT_SETTINGS_CONFLICT', 'AGENT_CHAT_CONSENT_REQUIRED', 'AGENT_CHAT_ACTIVE_RUN', 'AGENT_CHAT_IDEMPOTENCY_CONFLICT', 'AGENT_CHAT_RUN_EXPIRED', 'AGENT_CHAT_NOT_FOUND', 'AGENT_CHAT_BUSY', 'AGENT_CHAT_CLOSED', 'AGENT_CHAT_CREDENTIAL_UNAVAILABLE', 'AGENT_CHAT_VALIDATION', 'AGENT_CHAT_LIMIT', 'AGENT_CHAT_PROFILE_UNSUPPORTED', 'AGENT_CHAT_KEY_REQUIRED', 'AGENT_CHAT_NETWORK_DENIED', 'AGENT_CHAT_CONNECT_FAILED', 'AGENT_CHAT_TIMEOUT', 'AGENT_CHAT_ABORTED', 'AGENT_CHAT_HTTP_ERROR', 'AGENT_CHAT_PROTOCOL_ERROR', 'AGENT_CHAT_TRUNCATED', 'AGENT_CHAT_TOOLS_UNSUPPORTED', 'AGENT_CHAT_INSPECTION_UNAVAILABLE', 'AGENT_CHAT_REASONING_UNSUPPORTED', 'AGENT_CHAT_PROVIDER_ERROR', 'AGENT_CHAT_EDIT_UNAVAILABLE', 'AGENT_CHAT_EDIT_CONFLICT', 'AGENT_CHAT_EDIT_NOT_FOUND', 'AGENT_CHAT_EDIT_INVALID', 'AGENT_CHAT_EDIT_STALE', 'AGENT_CHAT_EDIT_RUN_INCOMPLETE', 'AGENT_EDIT_VALIDATION', 'AGENT_EDIT_NOT_FOUND', 'AGENT_EDIT_CONFLICT', 'AGENT_EDIT_RUN_INCOMPLETE', 'AGENT_EDIT_STORAGE_LIMIT', 'AGENT_EDIT_STORAGE_UNAVAILABLE']);
 const failure = (code: unknown): Error => Object.assign(new Error('Agent chat request did not complete.'), { code: typeof code === 'string' && (codes.has(code) || ['NETWORK', 'INVALID_RESPONSE'].includes(code)) ? code : 'NETWORK' });
 
@@ -246,40 +249,6 @@ export function safeAgentChatEvent(value: unknown, frame: AgentChatFrame, projec
   if (value.type === 'delta') result.text = boundedText(value.text, AGENT_CHAT_OUTPUT_BYTES);
   else { result.run = safeAgentChatRun(value.run, projectId, typeof value.threadId === 'string' ? value.threadId : null); const run = result.run; if (run.id !== runId || run.lastEventId !== value.id || (value.type === 'terminal' && run.status === 'running')) throw failure('INVALID_RESPONSE'); }
   return result;
-}
-
-// EventSource cannot surface HTTP failures reliably. This parser uses a bounded,
-// authenticated fetch stream and treats every reconnect as a read, never a POST.
-export async function readAgentChatSSE(body: ReadableStream<Uint8Array> | null | undefined, onFrame: (frame: AgentChatFrame) => void, signal?: AbortSignal): Promise<void> {
-  if (!body || typeof body.getReader !== 'function') throw failure('INVALID_RESPONSE');
-  const reader = body.getReader(), decoder = new TextDecoder('utf-8', { fatal: true });
-  let buffer = '', frame = { id: '', type: '', data: [] as string[] }, frameBytes = 0;
-  const line = (value: string): void => {
-    frameBytes += bytes(value);
-    if (frameBytes > MAX_FRAME) throw failure('INVALID_RESPONSE');
-    if (value === '') {
-      if (frame.data.length) { const data = JSON.parse(frame.data.join('\n')); onFrame({ id: frame.id, type: frame.type || 'message', data }); }
-      frame = { id: '', type: '', data: [] }; frameBytes = 0; return;
-    }
-    if (value.startsWith(':')) return;
-    const colon = value.indexOf(':'), name = colon < 0 ? value : value.slice(0, colon), content = colon < 0 ? '' : value.slice(colon + 1).replace(/^ /, '');
-    if (name === 'id') frame.id = content; else if (name === 'event') frame.type = content; else if (name === 'data') frame.data.push(content);
-  };
-  try {
-    while (!signal?.aborted) {
-      const part = await reader.read();
-      if (part.done) { buffer += decoder.decode(); if (buffer || frame.data.length) throw failure('INVALID_RESPONSE'); return; }
-      buffer += decoder.decode(part.value, { stream: true });
-      if (bytes(buffer) > MAX_FRAME) throw failure('INVALID_RESPONSE');
-      let match: RegExpExecArray | null;
-      while ((match = /\r\n|\r|\n/.exec(buffer))) {
-        // A CR at a chunk boundary might be half of CRLF.
-        if (match[0] === '\r' && match.index === buffer.length - 1) break;
-        line(buffer.slice(0, match.index)); buffer = buffer.slice(match.index + match[0].length);
-        if (signal?.aborted) return;
-      }
-    }
-  } finally { try { await reader.cancel(); } catch {} reader.releaseLock(); }
 }
 
 export function createAgentChatClient({ fetchImpl = (input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init), timeoutMs = 12000 }: { fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>; timeoutMs?: number } = {}): AgentChatClient {

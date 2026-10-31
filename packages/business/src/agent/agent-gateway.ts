@@ -1,8 +1,10 @@
-import {buildAgentChatBody, createChatCompletionGateway, validateAgentChatConfiguration} from './chat-completions.ts';
-import {buildAgentResponsesBody, createResponsesGateway, validateAgentResponsesConfiguration} from './responses.ts';
-import {buildAgentAnthropicBody, createAnthropicMessagesGateway, validateAnthropicMessagesConfiguration} from './anthropic-messages.ts';
+import {buildAgentChatBody, createChatCompletionGateway} from './chat-completions.ts';
+import {buildAgentResponsesBody, createResponsesGateway} from './responses.ts';
+import {buildAgentAnthropicBody, createAnthropicMessagesGateway} from './anthropic-messages.ts';
+import {validateAgentGatewayConfiguration as validateProfileConfiguration} from './model-profiles.ts';
 import {agentChatError} from './chat-errors.ts';
 import type {AgentConfiguration} from './config.ts';
+import {validateReadTools} from './tool-wire.ts';
 import type {ToolCall, WireMessage} from './tool-wire.ts';
 import type {AgentTransportDependencies} from './network-policy.ts';
 
@@ -30,11 +32,9 @@ export interface AgentGatewayValidationOptions {selfPort?: number; readTools?: u
 
 /** Pure preflight, called before acquiring a credential or opening a socket. */
 export function validateAgentGatewayConfiguration(configuration: unknown, options: AgentGatewayValidationOptions = {}): AgentConfiguration {
-  const protocol = (configuration as {protocol?: unknown} | null | undefined)?.protocol;
-  if (protocol === 'chat_completions') return validateAgentChatConfiguration(configuration, options);
-  if (protocol === 'responses') return validateAgentResponsesConfiguration(configuration, options);
-  if (protocol === 'anthropic_messages') return validateAnthropicMessagesConfiguration(configuration, options);
-  throw agentChatError('AGENT_CHAT_VALIDATION');
+  const config = validateProfileConfiguration(configuration, {selfPort: options.selfPort});
+  validateReadTools(config, options.readTools);
+  return config;
 }
 /** Build the exact key-free body for durable request journaling before dispatch. */
 export function buildAgentRequest(options: AgentDispatchOptions): {configuration: AgentConfiguration; body: string} {
