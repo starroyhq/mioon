@@ -27,8 +27,23 @@ import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
 import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import type { BinaryLike } from 'crypto';
 import type { PathLike } from 'fs';
+import {schemaObjects} from './helpers/project-database.ts';
 
 const sha = (bytes: NonSharedBuffer|BinaryLike) => createHash('sha256').update(bytes).digest('hex');
+const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys = (db: DatabaseSync, write: () => void) => {
+  db.exec('PRAGMA foreign_keys=OFF');
+  try {write();} finally {db.exec('PRAGMA foreign_keys=ON');}
+};
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext) {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-sample-peak-foreign-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const store = (openStore(root) as TypedStore), services = (createServices(store, new Map()) as TypedServices);
+  try {return await services.call('project.create', {name: 'Private other project'});}
+  finally {await services.drain(); store.close();}
+}
 const deferred = <T = unknown>() => {let resolve!: (value?: T | PromiseLike<T>) => void; return {promise: new Promise<T>(r => {resolve = (r as (value?: T | PromiseLike<T>) => void);}), resolve};};
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function measurement(seconds = 1, left = 0.5, right = 0.25) {
@@ -47,7 +62,7 @@ async function files(root: string) {
 }
 async function fixture(t: test.TestContext, {named = false, range = false, durationFrames = range ? 90 : 30, exportRange = {startFrame: 30, endFrame: 60}, runtime: overrides = {}}:{named?:boolean;range?:boolean;durationFrames?:number;exportRange?:{startFrame:number;endFrame:number};runtime?:Partial<ExportSamplePeakRuntime>} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-sample-peak-')), store = (openStore(root) as TypedStore), services = (createServices(store, new Map()) as TypedServices);
-  const project = await services.call('project.create', {name: 'Synthetic owned output'}), foreign = await services.call('project.create', {name: 'Private other project'});
+  const project = await services.call('project.create', {name: 'Synthetic owned output'}), foreign = await foreignProject(t);
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const sourceId = randomUUID();
   store.put('assets', {id: sourceId, projectId: project.id, name: 'Original source', mimeType: 'image/png', sha256: 'a'.repeat(64),
@@ -73,7 +88,7 @@ async function fixture(t: test.TestContext, {named = false, range = false, durat
   const extras:ReturnType<typeof createExportSamplePeakServices>[]=[];
   t.after(async () => {for (const extra of extras) await extra.drain().catch(() => {}); await peak.drain().catch(() => {}); await services.drain().catch(() => {}); store.close(); await rm(root, {recursive: true, force: true});});
   const input = {projectId: project.id, exportId: record.id};
-  const rows = () => Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const rows = () => Object.fromEntries(schemaObjects(store.db).filter(({type}) => type === 'table').sort(byName).map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   return {root, store, services, peak, runtime, extras, project, foreign, queued, record, asset, bytes, input, intent,
     call: (arg = input, options?: { signal?: AbortSignal; }|undefined) => peak.handlers['timeline.export.samplePeak'](arg, options), rows,
     unchanged: async (before: { rows: unknown; writes: unknown; files: unknown; }) => {assert.deepEqual(rows(), before.rows); assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n, before.writes); assert.deepEqual(await files(root), before.files);},
@@ -131,9 +146,12 @@ test('strict input, missing/foreign/corrupt ownership and output substitution ar
 
 test('real lock:false readers cannot admit analysis; wrappers on the exact owner DB share one permit', async t => {
   const entered = deferred(), gate = deferred(); const f = await fixture(t, {runtime: {decode: async (_file: unknown, duration: number|undefined, options: { beforeEffect: () => void; }) => {entered.resolve!(); await gate.promise; options.beforeEffect(); return measurement(duration);}}});
-  const auxiliary = (openStore(f.root, {lock: false}) as TypedStore); t.after(() => auxiliary.close());
+  // A lock:false reader opens only after the owning store has closed: one process holds a project once.
+  // It reads a project of its own, so this owner stays open for the shared permit below.
+  const g = await fixture(t); await g.services.drain(); g.store.close();
+  const auxiliary = (openStore(g.root, {lock: false}) as TypedStore); t.after(() => auxiliary.close());
   const unauthorized = createExportSamplePeakServices(auxiliary, {runtime: {...f.runtime, ownsLock: () => ownsStoreLock(auxiliary)}}); f.extras.push(unauthorized);
-  await assert.rejects(unauthorized.handlers['timeline.export.samplePeak'](f.input), {code: 'EXPORT_SAMPLE_PEAK_OWNER_REQUIRED'});
+  await assert.rejects(unauthorized.handlers['timeline.export.samplePeak'](g.input), {code: 'EXPORT_SAMPLE_PEAK_OWNER_REQUIRED'});
   const wrapper = createExportSamplePeakServices({...f.store}, {runtime: f.runtime}); f.extras.push(wrapper);
   const pending = f.call(); await entered.promise;
   const busy = await wrapper.handlers['timeline.export.samplePeak'](f.input); assert.equal(busy.reason!.code, 'BUSY'); assert.equal(busy.checks.bytesHashed, 0);
@@ -166,7 +184,7 @@ test('same-owned metadata/bytes drift discards measurement; foreign owner revoca
     let f: Awaited<ReturnType<typeof fixture>>; f = await fixture(t, {runtime: {decode: async () => {
       if (kind === 'metadata') replace(f, 'assets', {...f.asset, name: 'Changed'});
       if (kind === 'bytes') await writeFile(path.join(f.root, f.asset.relativePath), Buffer.alloc(f.bytes.length, 9));
-      if (kind === 'foreign') f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id, JSON.stringify({...f.asset, projectId: f.foreign.id}), f.asset.id);
+      if (kind === 'foreign') withoutForeignKeys(f.store.db, () => f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id, JSON.stringify({...f.asset, projectId: f.foreign.id}), f.asset.id));
       if (kind === 'lock') await unlink(path.join(f.root, 'server.lock'));
       throw Object.assign(Error('SECRET stderr /private/path'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});

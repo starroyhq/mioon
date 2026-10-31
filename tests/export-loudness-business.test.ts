@@ -25,8 +25,23 @@ import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/busi
 import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
 import {onMediaProcess, spawnMedia, terminateMediaProcesses, waitForMediaProcesses, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {runStreaming} from '../packages/business/src/media-runtime.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 
 const sha = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex');
+const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys = (db: DatabaseSync, write: () => void) => {
+  db.exec('PRAGMA foreign_keys=OFF');
+  try {write();} finally {db.exec('PRAGMA foreign_keys=ON');}
+};
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: TestContext): Promise<{id: string}> {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-loudness-foreign-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const store = openStore(root), services = createServices(store, new Map());
+  try {return await services.call('project.create', {name: 'Other project'}) as {id: string};}
+  finally {await services.drain(); store.close();}
+}
 type Deferred<T = unknown> = {promise: Promise<T>; resolve: (value?: T) => void};
 const deferred = <T = unknown>(): Deferred<T> => {let resolve!: (value?: T) => void; const promise = new Promise<T>(r => {resolve = r as unknown as (value?: T) => void;}); return {promise, resolve};};
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -57,7 +72,7 @@ interface BusinessFixture {root: string; store: ReturnType<typeof openStore>; se
   call(arg?: Record<string, unknown>, options?: {signal?: AbortSignal}): Promise<LoudnessServiceResult>; unchanged(before: FixtureCheckpoint): Promise<void>; checkpoint(): Promise<FixtureCheckpoint>}
 async function fixture(t: TestContext, {named = false, range = false, retainTimeline = false, runtime: overrides = {}}: {named?: boolean; range?: boolean; retainTimeline?: boolean; runtime?: RuntimeOverrides} = {}): Promise<BusinessFixture> {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-loudness-')), store = openStore(root), services = createServices(store, new Map());
-  const project = await services.call('project.create', {name: 'Owned loudness fixture'}) as {id: string}, foreign = await services.call('project.create', {name: 'Other project'}) as {id: string};
+  const project = await services.call('project.create', {name: 'Owned loudness fixture'}) as {id: string}, foreign = await foreignProject(t);
   let timeline = await services.call('timeline.get', {projectId: project.id}) as TimelineFixture;
   const sourceId = randomUUID();
   store.put('assets', {id: sourceId, projectId: project.id, name: 'Original source', mimeType: 'image/png', sha256: 'a'.repeat(64),
@@ -83,7 +98,7 @@ async function fixture(t: TestContext, {named = false, range = false, retainTime
   const loudness = createExportLoudnessServices(store, {runtime} as never), extras: Array<{drain(): Promise<unknown>}> = [];
   t.after(async () => {for (const extra of extras) await extra.drain().catch(() => {}); await loudness.drain().catch(() => {}); await services.drain().catch(() => {}); store.close(); await rm(root, {recursive: true, force: true});});
   const input = {projectId: project.id, exportId: record.id, expectedArtifactSha256: asset.sha256, measurementProfile: EXPORT_LOUDNESS_PROFILE};
-  const rows = (): Record<string, unknown[]> => Object.fromEntries((store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all() as Array<{name: string}>).map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const rows = (): Record<string, unknown[]> => Object.fromEntries(schemaObjects(store.db).filter(({type}) => type === 'table').sort(byName).map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   return {root, store, services, loudness: loudness as never, runtime, extras, project, foreign, timeline, record: record as unknown as {snapshot: unknown} & Record<string, unknown>, asset: asset as Record<string, unknown> & {id: string; relativePath: string; sha256: string}, bytes, input, intent,
     call: (arg: Record<string, unknown> = input, options?: {signal?: AbortSignal}) => loudness.handlers['timeline.export.loudness'](arg as never, options as never) as unknown as Promise<LoudnessServiceResult>,
     unchanged: async (before: FixtureCheckpoint) => {assert.deepEqual(rows(), before.rows); assert.equal((store.db.prepare('SELECT total_changes() AS n').get() as {n: number}).n, before.writes); assert.deepEqual(await files(root), before.files);},
@@ -154,8 +169,11 @@ test('same native database serializes loudness and samplePeak in both directions
 });
 
 test('read-only database wrappers cannot claim the writer observation permit', async t => {
-  const f = await fixture(t), auxiliary = openStore(f.root, {lock: false}); t.after(() => auxiliary.close());
-  const denied = createExportLoudnessServices(auxiliary as never, {runtime: {...f.runtime, ownsLock: () => ownsStoreLock(auxiliary)} as never}); f.extras.push(denied);
+  // A second connection waits until the owning store has closed: one process holds a project once.
+  // With the owner closed, the reader's own connection answers the workspace check.
+  const f = await fixture(t); await f.services.drain(); f.store.close();
+  const auxiliary = openStore(f.root, {lock: false}); t.after(() => auxiliary.close());
+  const denied = createExportLoudnessServices(auxiliary as never, {runtime: {...f.runtime, assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(auxiliary)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(auxiliary)} as never}); f.extras.push(denied);
   await assert.rejects(denied.handlers['timeline.export.loudness'](f.input), {code: 'EXPORT_LOUDNESS_OWNER_REQUIRED'});
 });
 
@@ -184,7 +202,7 @@ test('metadata, same-size byte and path replacement discard measurement; owner r
       if (kind === 'metadata') replace(f, 'assets', {...f.asset, name: 'Changed'});
       if (kind === 'bytes') await writeFile(path.join(f.root, f.asset.relativePath), Buffer.alloc(f.bytes.length, 9));
       if (kind === 'symlink') {await unlink(path.join(f.root, f.asset.relativePath)); await symlink(path.join(f.root, 'secret.mp4'), path.join(f.root, f.asset.relativePath));}
-      if (kind === 'foreign') f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id, JSON.stringify({...f.asset, projectId: f.foreign.id}), f.asset.id);
+      if (kind === 'foreign') withoutForeignKeys(f.store.db, () => f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id, JSON.stringify({...f.asset, projectId: f.foreign.id}), f.asset.id));
       if (kind === 'lock') await unlink(path.join(f.root, 'server.lock'));
       throw Object.assign(Error('PRIVATE decoder diagnostic'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});
