@@ -5,7 +5,7 @@ import { agentAuthorizationReceiptSchema, safeAgentAuthorizationSnapshot } from 
 import type { AgentAuthorizationSnapshot } from '../../../packages/contracts/src/agent-authorization.ts';
 import { deriveAgentEndpoint, safeAgentSettings } from './agent-settings.ts';
 import type { AgentSettingsSnapshot } from './agent-settings.ts';
-import { readAgentChatSSE } from './agent-chat.ts';
+import { readAgentChatSSE } from './agent-sse.ts';
 
 export interface AgentTaskProjectSnapshot { version: 2; instanceId: string; projectId: string; runs: AgentTaskRun[]; policy: AgentTaskPolicy; settings: AgentSettingsSnapshot; authorization: AgentAuthorizationSnapshot; readOnly?: boolean }
 export interface AgentTaskUpload {id: string; name: string; mimeType: string; status: string}

@@ -2,7 +2,8 @@ import {isDeepStrictEqual} from 'node:util';
 import {agentChatError} from './chat-errors.ts';
 import {exactObject} from './config.ts';
 import {parseModelToolArguments} from './model-tool-arguments.ts';
-import {normalizeToolCall, sameToolCall, toolId, toolObject, toolScope, toolString} from './tool-wire.ts';
+import {toolId, toolObject, toolString} from './tool-wire-values.ts';
+import {normalizeToolCall, sameToolCall, toolScope} from './tool-wire.ts';
 import type {ReadToolState, ToolCall, WireMessage} from './tool-wire.ts';
 import type {AgentTaskJson} from '@mioon/contracts/agent-tasks-v2';
 

@@ -1,8 +1,10 @@
 import {assertAgentGainRequestBudget} from './gain-context-fence.ts';
-import {exactObject, parseAgentConfiguration, MAX_AGENT_SECRET_BYTES} from './config.ts';
+import {exactObject, MAX_AGENT_SECRET_BYTES} from './config.ts';
 import type {AgentConfiguration} from './config.ts';
 import {AGENT_CHAT_LIMITS, CHAT_SYSTEM_INSTRUCTION} from './chat-policy.ts';
 import {agentChatError, errorCode} from './chat-errors.ts';
+import {agentResponsesProfile, validateAgentResponsesProfile} from './model-profiles.ts';
+export {AGENT_RESPONSES_PROFILES, agentResponsesProfile} from './model-profiles.ts';
 import {createOpenAiSdkTransport} from './openai-sdk-transport.ts';
 import type {AgentTransportDependencies, AgentTransportStream} from './network-policy.ts';
 import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.ts';
@@ -11,26 +13,9 @@ import {toolScope, validateReadTools, readToolRequestFields, readToolMessages, n
 import type {WireMessage, ReadToolState, ResponseToolSnapshot} from './tool-wire.ts';
 import type {AgentGateway, AgentUsage} from './agent-gateway.ts';
 
-// Documentation-backed, deliberately text-only profiles, not live certification.
 // Qwen cannot disable provider-side truncation. Its documented 1M-token model
 // context is far above this adapter's 32KiB text cap; no native override is sent.
 export const AGENT_RESPONSES_LIMITS = Object.freeze({maxInputBytes: 32 * 1024, maxItems: 64, maxParts: 128, maxIdBytes: 256});
-interface AgentResponsesProfile {models: string[] | null; fields: Record<string, unknown>}
-function freeze<T extends object>(value: T): Readonly<T> { for (const child of Object.values(value as Record<string, unknown>)) if (child && typeof child === 'object') freeze(child as object); return Object.freeze(value); }
-const responseProfiles: Record<string, AgentResponsesProfile> = {
-  openai: {models: ['gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14'], fields: {truncation: 'disabled'}},
-  custom: {models: null, fields: {truncation: 'disabled'}},
-  ollama: {models: ['qwen3:8b'], fields: {reasoning: {effort: 'none'}}},
-  deepseek: {models: ['deepseek-flash'], fields: {reasoning: {effort: 'none'}}},
-  qwen: {models: ['qwen3.8-flash'], fields: {reasoning: {effort: 'none'}}},
-};
-export const AGENT_RESPONSES_PROFILES: Readonly<Record<string, AgentResponsesProfile>> = freeze(responseProfiles);
-/** Unlisted vendor/protocol combinations use the explicitly selected protocol's
- * generic template from the first request, with no error-driven switching. */
-export function agentResponsesProfile(configuration: AgentConfiguration): AgentResponsesProfile {
-  if (configuration.protocol !== 'responses') throw agentChatError('AGENT_CHAT_VALIDATION');
-  return Object.hasOwn(AGENT_RESPONSES_PROFILES, configuration.presetId) ? AGENT_RESPONSES_PROFILES[configuration.presetId] : AGENT_RESPONSES_PROFILES.custom;
-}
 const wellFormed = (value: string): boolean => Buffer.from(value, 'utf8').toString('utf8') === value;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fail(code: string): never { throw agentChatError(code); }
@@ -47,23 +32,9 @@ function rejectFeatures(value: unknown, {responseConfiguration = false, function
   if (!responseConfiguration && present(value.reasoning)) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
   if (['reasoning_content', 'reasoning_details', 'encrypted_content', 'thinking', 'signature', 'continuation', 'previous_response_id', 'phase'].some(key => present(value[key]))) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
 }
-function qwenEndpoint(config: AgentConfiguration): boolean {
-  const fixed: Record<string, string> = {beijing: 'https://dashscope.aliyuncs.com/compatible-mode/v1', singapore: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'};
-  if (Object.hasOwn(fixed, config.platformId)) return config.baseUrl === fixed[config.platformId];
-  if (!config.platformId.startsWith('workspace-')) return false;
-  const region = config.platformId.slice('workspace-'.length), url = new URL(config.baseUrl);
-  return url.protocol === 'https:' && !url.port && url.pathname === '/compatible-mode/v1' &&
-    new RegExp(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.${region}\\.maas\\.aliyuncs\\.com$`).test(url.hostname);
-}
 export interface AgentResponsesValidationOptions {selfPort?: number; readTools?: unknown}
 export function validateAgentResponsesConfiguration(configuration: unknown, {selfPort, readTools}: AgentResponsesValidationOptions = {}): AgentConfiguration {
-  let config: AgentConfiguration;
-  try { config = parseAgentConfiguration(configuration, {selfPort}); } catch { return fail('AGENT_CHAT_VALIDATION'); }
-  if (config.protocol !== 'responses') fail('AGENT_CHAT_VALIDATION');
-  const profile = agentResponsesProfile(config);
-  if (!profile || (profile.models && !profile.models.includes(config.model)) ||
-    (config.presetId === 'deepseek' && config.baseUrl !== 'https://api.deepseek.com') ||
-    (config.presetId === 'qwen' && !qwenEndpoint(config))) fail('AGENT_CHAT_PROFILE_UNSUPPORTED');
+  const config = validateAgentResponsesProfile(configuration, {selfPort});
   validateReadTools(config, readTools);
   return config;
 }
