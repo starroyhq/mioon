@@ -12,9 +12,19 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices,canonical,hash} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {isEditTaskEnvelope} from '@mioon/contracts';
+import {schemaObjects} from './helpers/project-database.ts';
 
 const code=(expected: string)=>(error: { code: string; })=>error.code===expected&&!JSON.stringify(error).includes('PRIVATE');
 const DOMAIN_TABLES=['projects','timelines','timeline_requests','timeline_format_requests','timeline_history','timeline_history_cursors','exports'];
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext,name='Foreign project'){
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-format-recovery-foreign-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
+ try{return await services.call('project.create',{name});}
+ finally{await services.drain();store.close();}
+}
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(db: DatabaseSync,write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 async function fixture(t: test.TestContext){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-format-recovery-'));
  let store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),tasks!: TypedTaskManager,calls=0,fault: (point: string) => void=()=>{},dispatch: ((operation: string,input: Record<string,unknown>,services: TypedServices) => unknown) | undefined;
@@ -41,7 +51,7 @@ async function rejectedUnchanged(f: Awaited<ReturnType<typeof fixture>>,input: u
 }
 function counts(f: Awaited<ReturnType<typeof fixture>>){return Object.fromEntries(['timeline_requests','timeline_format_requests','timeline_history'].map(table=>[table,f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n]));}
 function dropProtection(db: DatabaseSync,table: string){
- for(const {name} of db.prepare("SELECT name FROM sqlite_schema WHERE type='trigger' AND tbl_name=?").all(table))db.exec(`DROP TRIGGER "${(name as string).replaceAll('"','""')}"`);
+ for(const {name} of schemaObjects(db).filter(object=>object.type==='trigger'&&object.tbl_name===table))db.exec(`DROP TRIGGER "${name.replaceAll('"','""')}"`);
 }
 
 test('format intent preparation is durable and noncreating; a matching prepared task is not a dispatch claim',async t=>{
@@ -182,9 +192,9 @@ test('exact format replay survives later formats, project CAS drift, edits and r
 test('current owner and immutable historical format ACK remain mandatory for lost-response recovery',async t=>{
  for(const corruption of ['project owner','timeline owner','receipt revision','receipt dimensions','companion input'])await t.test(corruption,async t=>{
   const f=await fixture(t),input=await f.input(),applied=await f.execute(f.prepare(input));
-  const other=await f.call('project.create',{name:'PRIVATE_OTHER'});
+  const other=await foreignProject(t,'PRIVATE_OTHER');
   if(corruption==='project owner')f.store.db.prepare("UPDATE projects SET data=json_set(data,'$.id',?) WHERE id=?").run(other.id,f.project.id);
-  if(corruption==='timeline owner')f.store.db.prepare('UPDATE timelines SET projectId=? WHERE id=?').run(other.id,(applied.result)!.id);
+  if(corruption==='timeline owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE timelines SET projectId=? WHERE id=?').run(other.id,(applied.result)!.id));
   if(corruption.startsWith('receipt ')){
    dropProtection(f.store.db,'timeline_requests');
    const changed={...applied.result,...(corruption==='receipt revision'?{revision:2}:{width:720,height:720})};

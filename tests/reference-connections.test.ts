@@ -116,7 +116,8 @@ test('legacy decorative edges do not bind, collide with, or detach a typed refer
 test('reference source and target must be existing same-project image node and shot',async t=>{
  const f=await fixture(t),{node,asset}=await f.image(),shot=await f.shot();
  const text=await f.call('node.create',{projectId:f.projectId,type:'text',text:'Not an image',position:{x:0,y:0}});
- const otherProject=(await f.call('project.create',{name:'Other project'})).id,foreign=await f.image(otherProject),otherShot=await f.shot(otherProject);
+ // Another project lives in a store of its own: its image node, asset and shot do not exist in this one.
+ const g=await fixture(t),otherProject=g.projectId,foreign=await g.image(),otherShot=await g.shot();
  for(const patch of [{sourceNodeId:text.id},{sourceNodeId:shot.id},{sourceNodeId:randomUUID()},{targetShotId:node.id},{targetShotId:randomUUID()},{sourceNodeId:foreign.node.id},{targetShotId:otherShot.id},{projectId:otherProject}])await rejectsUnchanged(f,'reference.attach',attach(f,node,shot,patch));
  for(const mimeType of ['video/mp4','audio/wav']){const id=randomUUID(),badAsset=f.store.put('assets',{...f.store.get('assets',asset.id),id,mimeType});const badNode=await f.call('node.create',{projectId:f.projectId,type:mimeType.split('/')[0],assetId:badAsset.id,position:{x:0,y:0}});await rejectsUnchanged(f,'reference.attach',attach(f,badNode,shot));}
  for(const corrupt of [{assetId:randomUUID()},{assetId:foreign.asset.id}]){const invalid=f.store.put('nodes',{...node,id:randomUUID(),...corrupt});await rejectsUnchanged(f,'reference.attach',attach(f,invalid,shot));}
@@ -131,7 +132,8 @@ test('attach checks both expected revisions; detach checks current target revisi
  const bound=await f.call('reference.attach',attach(f,moved,updated));
  await rejectsUnchanged(f,'reference.attach',attach(f,node,bound.shot),'REVISION_CONFLICT');
  await rejectsUnchanged(f,'reference.detach',detach(f,bound.edge,updated),'REVISION_CONFLICT');
- const other=(await f.call('project.create',{name:'Foreign detach'})).id;await rejectsUnchanged(f,'reference.detach',detach(f,bound.edge,bound.shot,{projectId:other}));
+ // Another project lives in a store of its own.
+ const other=(await fixture(t)).projectId;await rejectsUnchanged(f,'reference.detach',detach(f,bound.edge,bound.shot,{projectId:other}));
  const movedAgain=await f.call('node.update',{nodeId:moved.id,expectedRevision:moved.revision,patch:{label:'Later label'}});
  assert.equal(movedAgain.revision,moved.revision+1);assert.equal((await f.call('reference.detach',detach(f,bound.edge,bound.shot))).detached,true);
 });

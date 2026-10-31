@@ -22,6 +22,15 @@ import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 
 const at='2026-10-10T00:00:00.000Z',clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value));
 const tables=['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines','reference_requests','timeline_requests','idempotency'];
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext,name='Foreign project'){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-reference-recovery-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=openStore(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
+ try{return await services.call('project.create',{name});}
+ finally{await services.drain();store.close();}
+}
+// The other project is not in this store; write the damaged row as a corrupt file would hold it.
+const withoutForeignKeys=<T>(db: DatabaseSync,write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 async function fixture(t: test.TestContext,{open=openStore}:{open?:(root:string)=>WorkspaceStore|ReturnType<typeof openLegacyWorkspaceStore>}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-reference-recovery-'));
  let store=open(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
@@ -42,7 +51,7 @@ async function fixture(t: test.TestContext,{open=openStore}:{open?:(root:string)
   },
  } as unknown as RecoveryFixture;
  f.projectId=(await f.call('project.create',{name:'Reference recovery'})).id;
- f.otherId=(await f.call('project.create',{name:'FOREIGN_SECRET'})).id;
+ f.otherId=(await foreignProject(t,'FOREIGN_SECRET')).id;
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
 }
 const attach=(f: Awaited<ReturnType<typeof fixture>>,node: Pick<MediaNode,'id'|'revision'>,shot: Pick<MediaShot,'id'|'revision'>,patch={})=>({projectId:f.projectId,sourceNodeId:node.id,targetShotId:shot.id,expectedSourceRevision:node.revision,expectedShotRevision:shot.revision,requestId:randomUUID(),role:'first_frame',...patch});
@@ -86,6 +95,8 @@ test('lost ACKs, no-op attach, detached historical edges and later rebinding rep
  finally{off();}
  assert.equal(f.changes(),changes);assert.deepEqual(f.capture(),before);assert.deepEqual((events as unknown),[]);
  assert.deepEqual(f.store.db.prepare('SELECT * FROM reference_requests ORDER BY requestId').all(),bytes);
+ // A store opened without the lock is a second connection: it opens only after the owner's store has closed.
+ f.store.close();
  const independent=(openStore(f.root,{lock:false}) as TypedStore);try{
   const service=(createServices(independent,new Map()) as TypedServices);for(const [operation,input,response] of receipts)assert.deepEqual(await service.call(operation,input),response);
  }finally{independent.close();}
@@ -133,7 +144,7 @@ test('SQL owners, JSON owners and stable identities are checked on fresh request
   else if(kind==='shot oversized')f.store.db.prepare('UPDATE shots SET data=? WHERE id=?').run(' '.repeat(100000),shot.id);
   else{
    const [entity,...rest]=kind.split(' '),table=`${entity}s`,field=rest.join(' ');
-   if(field==='SQL owner')f.store.db.prepare(`UPDATE ${table} SET projectId=? WHERE id=?`).run(f.otherId,ids[entity]);
+   if(field==='SQL owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare(`UPDATE ${table} SET projectId=? WHERE id=?`).run(f.otherId,ids[entity]));
    else f.store.db.prepare(`UPDATE ${table} SET data=json_set(data,'$.${field==='id'?'id':'projectId'}',?) WHERE id=?`).run(f.otherId,ids[entity]);
   }
   // A fresh unbound source can choose a different owned asset; the prior edge
@@ -149,16 +160,17 @@ test('indirect current and frozen selected-version, snapshot references and gene
   const f=await fixture(t),{node}=await f.image(),reference=f.asset();let shot=await f.shot();
   const generated=await f.generated(shot,[reference.id]);shot=f.store.get('shots',shot.id)!;
   const input=attach(f,node,shot);if(replay)await f.call('reference.attach',input);
-  const foreign=await f.image({projectId:f.otherId,name:'FOREIGN_SECRET'});
-  if(kind==='reference SQL')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.otherId,reference.id);
+  // The foreign asset and node sit in this store as a corrupt file would hold them; the other project is not here.
+  const foreign=withoutForeignKeys(f.store.db,()=>{const asset=f.asset({projectId:f.otherId,name:'FOREIGN_SECRET'});return {asset,node:f.store.put('nodes',{...node,id:randomUUID(),projectId:f.otherId,assetId:asset.id})};});
+  if(kind==='reference SQL')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.otherId,reference.id));
   if(kind==='reference JSON')f.store.db.prepare("UPDATE assets SET data=json_set(data,'$.projectId',?) WHERE id=?").run(f.otherId,reference.id);
   if(kind.startsWith('version')){
    f.store.db.exec('DROP TRIGGER immutable_versions');
-   if(kind==='version SQL')f.store.db.prepare('UPDATE versions SET projectId=? WHERE id=?').run(f.otherId,generated.version.id);
+   if(kind==='version SQL')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE versions SET projectId=? WHERE id=?').run(f.otherId,generated.version.id));
    if(kind==='version JSON')f.store.db.prepare("UPDATE versions SET data=json_set(data,'$.projectId',?) WHERE id=?").run(f.otherId,generated.version.id);
    if(kind==='version job SQL'){const job=f.store.put('jobs',{...generated.job,id:randomUUID()});f.store.db.prepare('UPDATE versions SET jobId=? WHERE id=?').run(job.id,generated.version.id);}
   }
-  if(kind==='job SQL')f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.otherId,generated.job.id);
+  if(kind==='job SQL')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.otherId,generated.job.id));
   if(kind==='job JSON')f.store.db.prepare("UPDATE jobs SET data=json_set(data,'$.projectId',?) WHERE id=?").run(f.otherId,generated.job.id);
   if(kind==='job shot')f.store.put('jobs',{...generated.job,shotId:randomUUID()});
   if(kind==='snapshot reference')f.store.put('jobs',{...generated.job,snapshot:{...generated.job.snapshot,referenceAssetIds:[foreign.asset.id]}});
@@ -172,18 +184,18 @@ test('historical replay checks frozen selected lineage even after current shot s
  const input=attach(f,node,shot),response=await f.call('reference.attach',input);
  const newer=await f.generated(response.shot);assert.notEqual(newer.version.id,old.version.id);
  assert.deepEqual(await f.call('reference.attach',input),response);
- f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.otherId,old.asset.id);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.otherId,old.asset.id));
  await rejected(f,'reference.attach',input);
 });
 
 test('matching historical keys reject reassigned edges while absent detached edges remain valid',async t=>{
  const f=await fixture(t),{input}=await prepared(f,'reference.attach'),response=await f.call('reference.attach',input);
- f.store.db.prepare('UPDATE edges SET projectId=? WHERE id=?').run(f.otherId,response.edge.id);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE edges SET projectId=? WHERE id=?').run(f.otherId,response.edge.id));
  await rejected(f,'reference.attach',input);
  f.store.db.prepare('UPDATE edges SET projectId=? WHERE id=?').run(f.projectId,response.edge.id);
  const remove=detach(f,response.edge,response.shot),removed=await f.call('reference.detach',remove);
  assert.deepEqual(await f.call('reference.detach',remove),removed);
- const foreign=f.store.put('edges',{...response.edge,projectId:f.otherId});
+ const foreign=withoutForeignKeys(f.store.db,()=>f.store.put('edges',{...response.edge,projectId:f.otherId}));
  await rejected(f,'reference.detach',remove);assert.equal(foreign.id,response.edge.id);
 });
 
@@ -213,9 +225,9 @@ test('combined malformed managed sources and foreign target or snapshot owners n
   const f=await fixture(t),{input,asset,shot}=await prepared(f,operation);
   if(replay)await f.call(operation,input);
   f.store.put('assets',{...asset,relativePath:null});
-  if(kind==='target')f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.otherId,shot.id);
+  if(kind==='target')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.otherId,shot.id));
   else{
-   const generated=await f.generated(f.store.get('shots',shot.id)!),foreign=f.asset({projectId:f.otherId,name:'FOREIGN_SECRET'});
+   const generated=await f.generated(f.store.get('shots',shot.id)!),foreign=withoutForeignKeys(f.store.db,()=>f.asset({projectId:f.otherId,name:'FOREIGN_SECRET'}));
    f.store.put('jobs',{...generated.job,snapshot:{...generated.job.snapshot,referenceAssetIds:[foreign.id]}});
   }
   await rejected(f,operation,input);
@@ -227,7 +239,10 @@ test('receipt insert failures and post-write owner corruption roll back atomical
   const f=await fixture(t),{input,shot}=await prepared(f,operation);
   if(kind==='receipt failure')f.store.db.exec("CREATE TRIGGER fail_reference_receipt BEFORE INSERT ON reference_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
   else f.store.db.exec(`CREATE TRIGGER corrupt_reference_owner AFTER ${kind==='receipt owner'?'INSERT ON reference_requests':'UPDATE ON shots'} BEGIN UPDATE shots SET projectId='${f.otherId}' WHERE id='${shot.id}';END;`);
-  await rejected(f,operation,input,{code:kind==='receipt failure'?null:'INVALID_REFERENCE_RECORD',writes:true});
+  // The trigger moves the shot to a project this store does not hold, inside the service's own transaction.
+  if(kind!=='receipt failure')f.store.db.exec('PRAGMA foreign_keys=OFF');
+  try{await rejected(f,operation,input,{code:kind==='receipt failure'?null:'INVALID_REFERENCE_RECORD',writes:true});}
+  finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
  });
 });
 

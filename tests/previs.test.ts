@@ -175,8 +175,8 @@ test('only the newest four scene saves keep receipts; an older retry is refused,
 
 test('keyframe exports must be image assets of the same project',async t=>{
  const f=await fixture(t),node=await f.create(),image=await f.asset(),video=await f.asset({mimeType:'video/mp4',name:'clip.mp4'});
- const other=await f.call<{id: string}>('project.create',{name:'Other'});
- const foreign=randomUUID();f.store.put('assets',{id:foreign,projectId:other.id,name:'B.png',mimeType:'image/png',provenance:'user-import',sha256:'0'.repeat(64),width:1,height:1,sizeBytes:1,relativePath:`media/${foreign}.png`,url:`/media/${foreign}`,createdAt:new Date().toISOString()});
+ // Another project lives in a store of its own: its image does not exist in this one.
+ const foreign=(await (await fixture(t)).asset({name:'B.png'})).id;
  for(const assetId of [randomUUID(),foreign,video.id])
   await assert.rejects(f.save(node,scene({keyframes:[keyframe('k1',[assetId])]})),{code:'PREVIS_EXPORT_INVALID'},assetId);
  const saved=await f.save(node,scene({keyframes:[keyframe('k1',[image.id])]}));
