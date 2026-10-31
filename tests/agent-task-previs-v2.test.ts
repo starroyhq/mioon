@@ -99,7 +99,8 @@ test('inspect reads a scene without host fields and estimates what each camera f
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'mioon_previs_inspect',input:{nodeId:text.id}}),{code:'PREVIS_NODE_REQUIRED'});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'mioon_previs_inspect',input:{nodeId:node.id,slots:['card']}}),{code:'VALIDATION_ERROR'});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'mioon_previs_inspect',input:{nodeId:node.id,projectId:f.projectId}}),{code:'AGENT_TASK_INVALID_TOOL'});
- const other=await f.call<{id:string}>('project.create',{name:'Other'}),foreign=await f.call<PrevisNodeRecord>('previs.create',{projectId:other.id,position:{x:0,y:0},requestId:randomUUID()});
+ // Another project's node lives in that project's own store: this project has no such node.
+ const other=await fixture(t),foreign=await other.call<PrevisNodeRecord>('previs.create',{projectId:other.projectId,position:{x:0,y:0},requestId:randomUUID()});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'mioon_previs_inspect',input:{nodeId:foreign.id}}),{code:'AGENT_TASK_INVALID_TARGET'});
  const skipped:Array<{kind:string;id:string}>=[];
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'mioon_previs_inspect',input:{nodeId:node.id},beforeTargetRead:target=>{skipped.push(target);throw Object.assign(Error('skipped'),{code:'AGENT_TASK_TARGET_SKIPPED'});}}),{code:'AGENT_TASK_TARGET_SKIPPED'});

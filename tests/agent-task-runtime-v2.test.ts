@@ -428,7 +428,7 @@ test('retention survives an unknown control finish without repeating metadata or
 });
 
 test('default budget is thirty steps and continuation adds exactly another thirty',async t=>{const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?Array.from({length:29},()=>call('mioon_project_inspect')):[])};});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.stepLimit,30);assert.equal(paused.run.stepsUsed,30);assert.equal(f.effects.size,29);await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.budget,60);assert.equal(done.run.stepsUsed,31);assert.equal(f.effects.size,29);assert.equal(f.requests.length,2);});
-for(const reason of ['budget','revocation','audit_failure'] as const)test(reason==='audit_failure'?'an agent audit write failure still stops the worker before unrelated exports':`a queued agent export blocked by ${reason} cannot starve a manual export in another project`,async t=>{
+for(const reason of ['budget','revocation','audit_failure'] as const)test(reason==='audit_failure'?'an agent audit write failure still stops the worker before unrelated exports':`a queued agent export blocked by ${reason} cannot starve a manual export in the same project`,async t=>{
  const f=await fixture(t),source=png({width:16,height:16,rgba:false,pixel:()=>[255,0,0]});
  async function prepareTimeline(projectId:string){
   const asset=object(await f.services.call('asset.import',{projectId,name:'Synthetic source.png',mimeType:'image/png',dataBase64:source.toString('base64')}));
@@ -440,8 +440,8 @@ for(const reason of ['budget','revocation','audit_failure'] as const)test(reason
  f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_timeline_render',{expectedRevision:2,purpose:'export'})])};},{loadGroups:['exports']});
  const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'budget');assert.equal(paused.backgroundPending,true);
  const blocked=object(f.store.list('exports',f.projectId)[0]);assert.equal(blocked.status,'queued');
- const other=object(await f.services.call('project.create',{name:'Independent manual export',timelinePresetId:'landscape_1080'})),otherId=String(other.id);await prepareTimeline(otherId);
- const accepted=object(await f.services.call('timeline.render',{projectId:otherId,expectedRevision:2,requestId:randomUUID(),purpose:'export'}));
+ // A store holds one project, so the manual export is queued in the same project, behind the blocked Mio export.
+ const accepted=object(await f.services.call('timeline.render',{projectId:f.projectId,expectedRevision:2,requestId:randomUUID(),purpose:'export'}));
  assert.equal(f.store.db.prepare('SELECT id FROM exports ORDER BY rowid LIMIT 1').get()?.id,blocked.id,'the paused export is the first worker candidate');
  if(reason==='revocation')await f.revoke();
  if(reason==='audit_failure'){
@@ -454,10 +454,10 @@ for(const reason of ['budget','revocation','audit_failure'] as const)test(reason
   await worker.tick();assert.equal(object(f.store.get('exports',String(accepted.id))).status,reason==='audit_failure'?'queued':'succeeded');
   await worker.tick();assert.deepEqual(f.store.get('exports',String(blocked.id)),blocked,'the paused export was never claimed or started');
   assert.deepEqual(f.runtime.get(f.projectId,sent.run.id),paused);assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(1)+f.loadingEffects);
-  assert.equal(f.store.list('assets',f.projectId).length,1);assert.equal(f.store.list('assets',otherId).length,reason==='audit_failure'?1:2);
-  assert.equal(f.store.list('exports',f.projectId).length,1);assert.equal(f.store.list('exports',otherId).length,1);
+  assert.equal(f.store.list('assets',f.projectId).length,reason==='audit_failure'?1:2);
+  assert.equal(f.store.list('exports',f.projectId).length,2);
   const replay=await f.send('执行测试',sent.run.requestId);assert.equal(replay.run.id,sent.run.id);await worker.tick();assert.equal(f.requests.length,(1)+f.loadingRequests);
-  assert.equal(f.store.list('exports',f.projectId).length,1);assert.equal(f.store.list('exports',otherId).length,1);
+  assert.equal(f.store.list('exports',f.projectId).length,2);
  }finally{await worker.stop();}
 });
 test('read rejection and local approval each respect their independent configured tier',async t=>{for(const tier of ['read_only','local_reversible'] as const){const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,[tier]:'confirm'}});f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[tier==='read_only'?call('mioon_project_inspect'):call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'approved local'}})]:[])};},{loadGroups:tier==='read_only'?[]:['canvas']});const sent=await f.send(),waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const step=waiting.steps.find(item=>item.status==='awaiting_approval');assert.ok(step);await f.action(waiting,tier==='read_only'?'deny':'approve',{stepId:step.id});const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,(tier==='read_only'?0:1)+f.loadingEffects);assert.equal(object(f.store.get('shots',f.first.id)).prompt,tier==='read_only'?'saved first':'approved local');}});

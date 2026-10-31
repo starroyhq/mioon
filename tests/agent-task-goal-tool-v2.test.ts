@@ -118,9 +118,9 @@ test('H4a goal receipts retain host execution fences, cancellation and project o
   const blocked=Object.assign(Error('Synthetic denied execution'),{code:'AGENT_TASK_CONSENT_REQUIRED'});
   await assert.rejects(f.tools.execute(prepared,{...context,beforeEffect:()=>{throw blocked;}}),error=>error===blocked);
   await assert.rejects(f.tools.execute(prepared,{...context,beforeEffect:()=>{},signal:AbortSignal.abort()}),{code:'AGENT_TASK_ABORTED'});
-  const other=await f.services.call('project.create',{name:'Other goal project'});assert.ok(object(other)&&typeof other.id==='string');
-  const otherRun=f.journal.create({requestId:randomUUID(),projectId:other.id,text:'Other run',configuration:{}}).run;
-  await assert.rejects(f.tools.execute(prepared,{...context,runId:otherRun.id,beforeEffect:()=>{}}),{code:'AGENT_TASK_PROJECT_MISMATCH'});
+  // Another project's run lives in that project's own store: this project has no such run.
+  const other=await fixture(t);
+  await assert.rejects(f.tools.execute(prepared,{...context,runId:other.run.id,beforeEffect:()=>{}}),{code:'AGENT_TASK_NOT_FOUND'});
   await assert.rejects(f.tools.execute({...prepared,input:{conditions:[{type:'unreviewed'}]}},{...context,beforeEffect:()=>{}}),{code:'VALIDATION_ERROR'});
   assert.equal(f.journal.run(f.run.id).stepsUsed,0);assert.equal(f.journal.snapshot(f.run.id).changes.length,0);
 });

@@ -25,14 +25,22 @@ function freeze(value: unknown): void {
   Object.freeze(value);
 }
 
+// Another project always lives in its own store; a store holds one project.
+async function foreignProject(t: TestContext): Promise<string> {
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-loudness-binding-v2-foreign-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const store = openStore(root), services = createServices(store, new Map());
+  try {return String(record(await services.call('project.create', {name: 'Foreign synthetic loudness binding'})).id);}
+  finally {await services.drain(); store.close();}
+}
+
 async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-loudness-binding-v2-'));
   const store = openStore(root), services = createServices(store, new Map());
   let disposeTools = () => {};
   t.after(async () => {disposeTools(); await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
   const project = record(await services.call('project.create', {name: 'Synthetic loudness binding'}));
-  const foreign = record(await services.call('project.create', {name: 'Foreign synthetic loudness binding'}));
-  const projectId = String(project.id), foreignProjectId = String(foreign.id);
+  const projectId = String(project.id), foreignProjectId = await foreignProject(t);
   const timeline = record(await services.call('timeline.get', {projectId}));
   const input = timelineMixLoudnessInputSchema.parse({...mixLoudnessInput, projectId,
     expectedRevision: timeline.revision, target: {integratedLufs: -24, truePeakCeilingDbtp: -1}});

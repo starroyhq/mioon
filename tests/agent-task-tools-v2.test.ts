@@ -295,15 +295,16 @@ test('effect fence after intent and immediately before the domain transaction bl
  assert.equal(fences,2);assert.equal((f.store.get('shots',shot.id) as Record<string,unknown>).title,'Before');assert.equal(f.journal.snapshot(f.run.id).changes.length,0);
 });
 test('target ownership is checked before a foreign record can be read or changed',async t=>{
- const f=await fixture(t),other=await f.services.call('project.create',{name:'Foreign'});if(!record(other))throw Error('Invalid project');
- const foreign=await f.services.call('shot.create',{projectId:other.id,title:'Foreign private title'});if(!record(foreign))throw Error('Invalid shot');
+ // Another project's records live in that project's own store: this project has none of them.
+ const f=await fixture(t),other=await fixture(t);
+ const foreign=await other.services.call('shot.create',{projectId:other.projectId,title:'Foreign private title'});if(!record(foreign))throw Error('Invalid shot');
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.update',input:{shotId:foreign.id,expectedRevision:1,patch:{title:'Invalid'}}}),{code:'AGENT_TASK_INVALID_TARGET'});
- const privateJob=f.store.put('jobs',{id:randomUUID(),projectId:other.id,status:'failed',requestId:randomUUID()});
+ const privateJob=other.store.put('jobs',{id:randomUUID(),projectId:other.projectId,status:'failed',requestId:randomUUID()});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'task.disposition.list',input:{targets:[{kind:'generation',taskId:privateJob.id}]}}),{code:'AGENT_TASK_INVALID_TARGET'});
 });
 test('task-only canvas discovery is bounded, project scoped, and enables editing existing nodes',async t=>{
- const f=await fixture(t),own=await f.services.call('node.create',{projectId:f.projectId,type:'text',text:'Owned canvas text',position:{x:10,y:20}}),other=await f.services.call('project.create',{name:'Other canvas'});if(!record(own)||!record(other))throw Error('Invalid fixtures');
- await f.services.call('node.create',{projectId:other.id,type:'text',text:'FOREIGN_CANVAS_NEVER_SEND',position:{x:10,y:20}});
+ const f=await fixture(t),own=await f.services.call('node.create',{projectId:f.projectId,type:'text',text:'Owned canvas text',position:{x:10,y:20}}),other=await fixture(t);if(!record(own))throw Error('Invalid fixtures');
+ await other.services.call('node.create',{projectId:other.projectId,type:'text',text:'FOREIGN_CANVAS_NEVER_SEND',position:{x:10,y:20}});
  const observed=await f.execute('mioon_node_inspect',{limit:1});assert.match(JSON.stringify(observed.outcome.result),/Owned canvas text/);assert.doesNotMatch(JSON.stringify(observed.outcome.result),/FOREIGN_CANVAS/);
  const updated=await f.execute('node.update',{nodeId:own.id,expectedRevision:1,patch:{text:'Updated after discovery'}});assert.equal(updated.step.status,'completed');
  await assert.rejects(f.execute('mioon_edge_inspect',{limit:21}),{code:'AGENT_TASK_INVALID_TOOL'});
@@ -385,8 +386,9 @@ test('selected import rejects symlink staging and enforces the 7 MiB Cube limit'
  await assert.rejects(f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'large.cube',mimeType:'',dataBase64:Buffer.alloc(7*1024*1024+1).toString('base64')}),{code:'INVALID_MEDIA'});
 });
 test('foreign task.wait is rejected before invoking any task status reader',async t=>{
- const f=await fixture(t),other=await f.services.call('project.create',{name:'Foreign task'});if(!record(other)||typeof other.id!=='string')throw Error('Invalid project');
- const id=randomUUID();f.store.put('jobs',{id,projectId:other.id,status:'succeeded',private:'FOREIGN_CONTENT'});
+ // The foreign job lives in another project's own store: this project has no such job.
+ const f=await fixture(t),other=await fixture(t);
+ const id=randomUUID();other.store.put('jobs',{id,projectId:other.projectId,status:'succeeded',private:'FOREIGN_CONTENT'});
  let reads=0;const reader=f.services.handlers['job.get']!;f.services.handlers['job.get']=(input,context)=>{reads++;return reader(input,context);};
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'task.wait',input:{kind:'job',id}}),{code:'AGENT_TASK_INVALID_TARGET'});
  await assert.rejects(f.tools.wait(f.projectId,{kind:'job',id}),{code:'AGENT_TASK_INVALID_TARGET'});assert.equal(reads,0);
