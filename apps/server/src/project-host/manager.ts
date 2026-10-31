@@ -9,11 +9,13 @@ import {isAsyncFunction, isPromise} from 'node:util/types';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
 import {isProjectId, PROJECT_FILE_EXISTS, PROJECT_FILE_EXTENSION} from '../../../../packages/contracts/src/project-file.ts';
 import type {ProjectFileIdentity, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
-import {createProjectFile, openProjectStore, registerProjectTransactionFence} from '../../../../packages/business/src/project-file/index.ts';
+import {createProjectFile, openProjectStore, recoverProjectFile, registerProjectTransactionFence} from '../../../../packages/business/src/project-file/index.ts';
 import type {OpenProjectConnectionOptions, ProjectCopyCheck, ProjectLocation, ProjectStore} from '../../../../packages/business/src/project-file/index.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
-import {asProjectUnavailable, isDatabaseMovedError, projectFileExists, projectHostError, projectNotFound, projectUnavailable} from './errors.ts';
+import {
+  asProjectUnavailable, isDatabaseMovedError, projectFileExists, projectFileMoved, projectHostError, projectNotFound, projectUnavailable,
+} from './errors.ts';
 import {claimProjectFolder} from './folders.ts';
 import type {
   InspectProject, ProjectHost, ProjectHostContext, ProjectHostFactory, ProjectHostRuntime, ProjectHostSummary, ProjectLease, UnfinishedTask,
@@ -22,7 +24,7 @@ import {PROJECT_FOLDER_FALLBACK_NAME, projectFolderName} from './naming.ts';
 import type {
   BackgroundTaskIndexPort, KernelMaintenancePort, ProjectFileIdentityPort, ProjectFileRecovery, ProjectLifecycleHooks, ProjectRegistryPort,
 } from './ports.ts';
-import {createMemoryBackgroundTaskIndex, sameProjectFileIdentity, STAT_ONLY_MAINTENANCE, statProjectFileIdentity} from './stand-ins.ts';
+import {createMemoryBackgroundTaskIndex, sameProjectFileIdentity, statProjectFileIdentity} from './stand-ins.ts';
 import {DEFAULT_BUSY_RECHECK_MS, DEFAULT_IDLE_CLOSE_MS, DEFAULT_REQUEST_DRAIN_MS, PROJECT_LEASE_KINDS} from './types.ts';
 import type {ProjectAvailability, ProjectCloseReason, ProjectHostEvent, ProjectHostState, ProjectHostStatus, ProjectLeaseKind} from './types.ts';
 
@@ -52,7 +54,7 @@ export interface ProjectHostManagerOptions<Runtime extends ProjectHostRuntime> {
   /** S3's index; default an empty memory index. */
   readonly taskIndex?: BackgroundTaskIndexPort;
   readonly hooks?: readonly ProjectLifecycleHooks[];
-  /** S0a's recoverProjectFile; default STAT_ONLY_MAINTENANCE until #106 lands. */
+  /** Default: the kernel's recoverProjectFile (S0a). */
   readonly maintenance?: KernelMaintenancePort;
   /** Idle grace after the last request; default DEFAULT_IDLE_CLOSE_MS. */
   readonly idleCloseMs?: number;
@@ -276,7 +278,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   const identity = options.identity ?? statProjectFileIdentity;
   const taskIndex = options.taskIndex ?? createMemoryBackgroundTaskIndex();
   const hooks = options.hooks ?? [];
-  const maintenance = options.maintenance ?? STAT_ONLY_MAINTENANCE;
+  const maintenance: KernelMaintenancePort = options.maintenance ?? {recoverProjectFile};
   const idleCloseMs = options.idleCloseMs ?? DEFAULT_IDLE_CLOSE_MS;
   const drainTimeoutMs = options.drainTimeoutMs ?? DEFAULT_REQUEST_DRAIN_MS;
   const busyRecheckMs = options.busyRecheckMs ?? DEFAULT_BUSY_RECHECK_MS;
@@ -637,7 +639,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     if (entry.relocating || entries.get(entry.projectId) !== entry) return;
     entry.relocating = true;
     try {
-      registerProjectTransactionFence(entry.store.db, () => { throw projectHostError('PROJECT_FILE_MOVED', {projectId: entry.projectId}); });
+      registerProjectTransactionFence(entry.store.db, () => { throw projectFileMoved(entry.projectId); });
     } catch {}
     if (entry.state === 'open') {
       void closeEntry(entry, 'relocate');

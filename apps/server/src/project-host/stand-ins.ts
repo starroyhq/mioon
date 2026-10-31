@@ -1,17 +1,14 @@
-/** What S0 uses until B1, S3 and S0a land (docs/PROJECT-HOST.md, "需要别的卡提供的端口").
+/** What S0 uses until B1 and S3 land (docs/PROJECT-HOST.md, "需要别的卡提供的端口").
  * Project files, history.db and cache.db are only lstat'ed here, never opened:
  * closing any descriptor of a file this process has open drops its locks. */
 import {lstatSync, readdirSync} from 'node:fs';
-import type {BigIntStats, Dirent, Stats} from 'node:fs';
+import type {BigIntStats, Dirent} from 'node:fs';
 import path from 'node:path';
 import {PROJECT_FILE_EXTENSION} from '../../../../packages/contracts/src/project-file.ts';
 import {backgroundTaskIndexEntrySchema, projectInboxItemSchema, recentProjectSchema} from '../../../../packages/contracts/src/project-registry.ts';
 import type {BackgroundTaskIndexEntry, ProjectFileIdentity, ProjectInboxItem, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
 import type {AgentTaskPolicy} from '../../../../packages/contracts/src/agent-tasks-v2.ts';
-import type {
-  AgentPolicyStorePort, BackgroundTaskIndexPort, KernelMaintenancePort, ProjectFileIdentityPort, ProjectFileRecovery, ProjectInboxPort,
-  ProjectRegistryPort,
-} from './ports.ts';
+import type {AgentPolicyStorePort, BackgroundTaskIndexPort, ProjectFileIdentityPort, ProjectInboxPort, ProjectRegistryPort} from './ports.ts';
 
 /** POSIX dev and ino from a bigint lstat; never opens the file, so it is safe
  * while the project is open. Null when the path is not a regular file. B1
@@ -136,18 +133,3 @@ export function createMemoryAgentPolicyStore(initial: AgentTaskPolicy | null = n
     },
   };
 }
-
-/** Until S0a lands: lstat only, so a missing file is still noticed; it never
- * reads a file and recovers nothing. */
-export const STAT_ONLY_MAINTENANCE: KernelMaintenancePort = Object.freeze({
-  recoverProjectFile: (projectFile: string): ProjectFileRecovery => {
-    let info: Stats | undefined;
-    try {
-      info = lstatSync(projectFile, {throwIfNoEntry: false});
-    } catch (error) {
-      return (error as {code?: unknown} | null | undefined)?.code === 'ENOTDIR' ? {state: 'missing'} : {state: 'invalid', reason: 'unusable'};
-    }
-    if (!info) return {state: 'missing'};
-    return info.isFile() ? {state: 'clean'} : {state: 'invalid', reason: 'not-a-regular-file'};
-  },
-});

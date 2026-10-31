@@ -7,10 +7,10 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {projectFileError} from '../packages/business/src/project-file/index.ts';
-import {projectAddressErrorDetailsSchemas} from '../packages/contracts/src/project-file.ts';
+import {PROJECT_FILE_ERROR_CODES, PROJECT_FILE_MOVED, projectAddressErrorDetailsSchemas} from '../packages/contracts/src/project-file.ts';
 import {
-  asProjectUnavailable, claimProjectFolder, isDatabaseMovedError, numberedProjectFolderName, PROJECT_FOLDER_FALLBACK_NAME, projectFolderName,
-  projectHostError, projectIdMismatch, projectNotFound, projectUnavailable,
+  asProjectUnavailable, claimProjectFolder, isDatabaseMovedError, numberedProjectFolderName, PROJECT_FOLDER_FALLBACK_NAME, PROJECT_HOST_ERROR_CODES,
+  projectFileMoved, projectFolderName, projectHostError, projectIdMismatch, projectNotFound, projectUnavailable,
 } from '../apps/server/src/project-host/index.ts';
 
 const REPOSITORY = fileURLToPath(new URL('../', import.meta.url));
@@ -131,17 +131,32 @@ test('addressing and host errors carry the contract codes, statuses and details'
   assert.equal(unavailable.status, 409);
   assert.deepEqual(projectAddressErrorDetailsSchemas.PROJECT_UNAVAILABLE.parse(unavailable.details), {projectId, reason: 'PROJECT_LOCKED'});
   assert.equal(unavailable.cause, cause);
-  const kernel = projectFileError('PROJECT_INVALID', {database: 'project', reason: 'not-a-project-file'});
-  const mapped = asProjectUnavailable(projectId, kernel) as {code?: unknown; details?: {reason?: unknown}; cause?: unknown};
-  assert.equal(mapped.code, 'PROJECT_UNAVAILABLE');
-  assert.equal(mapped.details?.reason, 'PROJECT_INVALID');
-  assert.equal(mapped.cause, kernel);
+  // PROJECT_INVALID also carries the kernel's reason as invalidReason, so a read-only place is not taken for a damaged file.
+  for (const reason of ['not-a-project-file', 'read-only'] as const) {
+    const kernel = projectFileError('PROJECT_INVALID', {database: 'project', reason});
+    const mapped = asProjectUnavailable(projectId, kernel) as {code?: unknown; status?: unknown; details?: unknown; cause?: unknown};
+    assert.equal(mapped.code, 'PROJECT_UNAVAILABLE');
+    assert.equal(mapped.status, 409);
+    assert.deepEqual(projectAddressErrorDetailsSchemas.PROJECT_UNAVAILABLE.parse(mapped.details), {projectId, reason: 'PROJECT_INVALID', invalidReason: reason});
+    assert.equal(mapped.cause, kernel);
+  }
+  const locked = asProjectUnavailable(projectId, projectFileError('PROJECT_LOCKED', {database: 'project', reason: 'locked'})) as {details?: unknown};
+  assert.deepEqual(projectAddressErrorDetailsSchemas.PROJECT_UNAVAILABLE.parse(locked.details), {projectId, reason: 'PROJECT_LOCKED'});
+  // A cause without a PROJECT_INVALID reason adds nothing.
+  for (const strange of [new Error('x'), {details: {reason: 'locked'}}, {details: null}, null])
+    assert.deepEqual(projectUnavailable(projectId, 'PROJECT_INVALID', strange).details, {projectId, reason: 'PROJECT_INVALID'});
   const other = new Error('x');
   assert.equal(asProjectUnavailable(projectId, other), other);
   const stopped = projectHostError('PROJECT_HOST_STOPPED');
   assert.equal(stopped.code, 'PROJECT_HOST_STOPPED');
   assert.equal(stopped.status, 503);
-  assert.equal(projectHostError('PROJECT_FILE_MOVED').status, 409);
+  // PROJECT_FILE_MOVED is the contract's code, not one of the host's own.
+  const moved = projectFileMoved(projectId);
+  assert.equal(moved.code, PROJECT_FILE_MOVED);
+  assert.equal(moved.status, 409);
+  assert.deepEqual(moved.details, {projectId});
+  assert.ok((PROJECT_FILE_ERROR_CODES as readonly string[]).includes(moved.code));
+  assert.equal((PROJECT_HOST_ERROR_CODES as readonly string[]).includes(PROJECT_FILE_MOVED), false);
 });
 
 test('isDatabaseMovedError recognizes SQLITE_READONLY_DBMOVED, also as the cause of a kernel error', () => {

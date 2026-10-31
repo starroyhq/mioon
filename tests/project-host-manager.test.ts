@@ -6,13 +6,13 @@ import {existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSyn
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
-import {createProjectFile, openProjectStore} from '../packages/business/src/project-file/index.ts';
+import {createProjectFile, openProjectStore, recoverProjectFile} from '../packages/business/src/project-file/index.ts';
 import type {OpenProjectConnectionOptions, ProjectStore} from '../packages/business/src/project-file/index.ts';
 import {projectAddressErrorDetailsSchemas} from '../packages/contracts/src/project-file.ts';
+import type {ProjectInvalidReason} from '../packages/contracts/src/project-file.ts';
 import type {RecentProject} from '../packages/contracts/src/project-registry.ts';
 import {
-  createMemoryBackgroundTaskIndex, createMemoryProjectRegistry, createProjectHostManager, projectLocation, serverAppDirectories, STAT_ONLY_MAINTENANCE,
-  statProjectFileIdentity,
+  createMemoryBackgroundTaskIndex, createMemoryProjectRegistry, createProjectHostManager, projectLocation, serverAppDirectories, statProjectFileIdentity,
 } from '../apps/server/src/project-host/index.ts';
 import type {
   BackgroundTaskIndexPort, KernelMaintenancePort, ManagerClock, ProjectFileRecovery, ProjectHostContext, ProjectHostEvent, ProjectHostFactory,
@@ -205,10 +205,11 @@ test('acquire opens a registered project, records the open and composes the runt
 
 test('acquire maps every way a project cannot be opened', async t => {
   const {dataDir, directories, manager, memory, ev} = await setup(t);
-  const unavailable = (projectId: string, reason: string) => (error: unknown): boolean => {
+  const unavailable = (projectId: string, reason: string, invalidReason?: ProjectInvalidReason) => (error: unknown): boolean => {
     assert.equal(fields(error).code, 'PROJECT_UNAVAILABLE');
     assert.equal(fields(error).status, 409);
-    assert.deepEqual(projectAddressErrorDetailsSchemas.PROJECT_UNAVAILABLE.parse(fields(error).details), {projectId, reason});
+    assert.deepEqual(projectAddressErrorDetailsSchemas.PROJECT_UNAVAILABLE.parse(fields(error).details),
+      invalidReason === undefined ? {projectId, reason} : {projectId, reason, invalidReason});
     assert.equal(manager.status(projectId), null);
     assert.ok(ev.seen.some(event => event.type === 'open-failed' && event.projectId === projectId));
     return true;
@@ -230,7 +231,7 @@ test('acquire maps every way a project cannot be opened', async t => {
   writeFileSync(textFile, 'not a project');
   const text = registration(textFile, 'Notes');
   memory.upsert(text);
-  await assert.rejects(manager.acquire(text.projectId, 'request'), unavailable(text.projectId, 'PROJECT_INVALID'));
+  await assert.rejects(manager.acquire(text.projectId, 'request'), unavailable(text.projectId, 'PROJECT_INVALID', 'not-a-project-file'));
 
   const locked = await manager.create({name: 'Locked'});
   const holder = openProjectStore({projectFile: locked.projectFile, locate: id => projectLocation(directories, id)});
@@ -619,14 +620,14 @@ test('inspectProject runs synchronously on the open connection, or on the projec
   (await opening).release();
 });
 
-/** S0a's recoverProjectFile as a stand-in: chosen results, else the lstat-only default. */
+/** The kernel's recoverProjectFile, recording each call: chosen results for some files, the kernel for the rest. */
 function recoveryRecorder() {
   const results = new Map<string, ProjectFileRecovery>();
   const calls: string[] = [];
   const maintenance: KernelMaintenancePort = {
     recoverProjectFile: projectFile => {
       calls.push(projectFile);
-      return results.get(projectFile) ?? STAT_ONLY_MAINTENANCE.recoverProjectFile(projectFile);
+      return results.get(projectFile) ?? recoverProjectFile(projectFile);
     },
   };
   return {results, calls, maintenance};

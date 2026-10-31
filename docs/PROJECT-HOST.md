@@ -6,7 +6,7 @@
 这份文档定下宿主的接口、生命周期和下一轮切换的计划。不在其中的：
 
 - **S0 的切换本身**：接到 `composeServer`、改 `services.ts` 和 `db.ts`、K1 交接的修改、删旧路径。等接口审过、第一波的卡合入以后另起一轮，见第 6 节。
-- **内核上的改动**（S0a，PR #106）：本分支不实现，只写宿主在什么时候调用，见第 5 节。
+- **内核上的改动**（S0a，PR #106，已合入）：本分支不改内核，只调用它，调用的时机见第 5 节。
 
 约定以 `PROJECT-FILE.md` 为准，本文只引用、不重复。代码在 `apps/server/src/project-host/`：
 
@@ -137,7 +137,7 @@ export interface ProjectHostManagerOptions<Runtime extends ProjectHostRuntime> {
   readonly identity?: ProjectFileIdentityPort;          // 默认 statProjectFileIdentity
   readonly taskIndex?: BackgroundTaskIndexPort;         // 默认空的内存索引
   readonly hooks?: readonly ProjectLifecycleHooks[];    // 默认 []
-  readonly maintenance?: KernelMaintenancePort;         // 默认 STAT_ONLY_MAINTENANCE
+  readonly maintenance?: KernelMaintenancePort;         // 默认是内核的 recoverProjectFile
   readonly idleCloseMs?: number;                        // 默认 DEFAULT_IDLE_CLOSE_MS（60 秒）
   readonly drainTimeoutMs?: number;                     // 默认 DEFAULT_REQUEST_DRAIN_MS（3 秒）
   readonly busyRecheckMs?: number;                      // 默认 DEFAULT_BUSY_RECHECK_MS（1 秒）
@@ -313,9 +313,7 @@ export type MioRuntimeFactory = (context: ProjectHostContext, app: MioAppService
 export interface ProjectDraftsPort {handle(request: ProjectRequest): Promise<boolean>; drain(): Promise<void>}
 export type ProjectDraftsFactory = (context: ProjectHostContext) => ProjectDraftsPort;
 // S0a：内核的恢复函数
-export type ProjectFileRecovery =
-  | {readonly state: 'clean' | 'recovered' | 'locked' | 'open-here' | 'missing'}
-  | {readonly state: 'invalid'; readonly reason: string};
+export type {ProjectFileRecovery};  // 从内核导入；invalid 带 ProjectInvalidReason
 export interface KernelMaintenancePort {recoverProjectFile(projectFile: string): ProjectFileRecovery}
 ```
 
@@ -330,7 +328,6 @@ export function createMemoryProjectRegistry(options?: MemoryProjectRegistryOptio
 export function createMemoryBackgroundTaskIndex(entries?: readonly BackgroundTaskIndexEntry[]): BackgroundTaskIndexPort;
 export function createMemoryProjectInbox(items?: readonly ProjectInboxItem[]): ProjectInboxPort;
 export function createMemoryAgentPolicyStore(initial?: AgentTaskPolicy | null): AgentPolicyStorePort;
-export const STAT_ONLY_MAINTENANCE: KernelMaintenancePort;
 ```
 
 端口都是同步的，只有 `findMoved` 是 async（可能要扫目录）。B1 的应用库用 `node:sqlite`，本来就是同步。端口和替身都用闭包实现、不用 `this`，调用方可以展开再包一层。
@@ -346,7 +343,7 @@ export const STAT_ONLY_MAINTENANCE: KernelMaintenancePort;
 | `ProjectLifecycleHooks` | V1、V2，也给 S3 | `afterOpen`：组装好以后（V2 的打开备份、S3 的收件箱）；`beforeClose`：倒序，排空以后（V1 的关闭时存版本、V2 的关闭备份） | 不注册 |
 | `MioRuntimeFactory`、`MioRuntimePort` | R1 | 工厂里每个宿主建一份；`handle`、`isBusy`、`interrupt`、`drain`、`dispose` 并进宿主的同名方法 | 现在的 `createAgentTaskRuntime` 加 `createAgentTaskHttp`。设置和发送授权也是应用级的，由工厂的闭包带进去 |
 | `ProjectDraftsFactory`、`ProjectDraftsPort` | S8 | 工厂里每个宿主建一份 | 现在的三个 JSON 模块，每个宿主一份，根目录用 `localDir`，范围文件用 `history.db`（6.2 第 4 步） |
-| `KernelMaintenancePort` | S0a | `list()`、`restore()`，见第 5 节 | `STAT_ONLY_MAINTENANCE`：只 `lstat`，文件不在报 `missing`，不是普通文件报 `invalid`，其余报 `clean`；不读文件，也不恢复 |
+| `KernelMaintenancePort` | S0a（#106，已合入） | `list()`、`restore()`，见第 5 节 | 不用替身：默认就是内核的 `recoverProjectFile`，测试可以换成别的 |
 
 ### 2.5 路由
 
@@ -377,14 +374,15 @@ export const STAT_ONLY_MAINTENANCE: KernelMaintenancePort;
 
 ```ts
 export const PROJECT_ADDRESS_ERROR_STATUS: Readonly<Record<ProjectAddressErrorCode, number>>; // NOT_FOUND 404、ID_MISMATCH 400、UNAVAILABLE 409
-export const PROJECT_HOST_ERROR_CODES: readonly ['PROJECT_HOST_BUSY', 'PROJECT_HOST_TRANSITION', 'PROJECT_HOST_STOPPED', 'PROJECT_LOCATION_INVALID', 'PROJECT_FILE_MOVED'];
+export const PROJECT_HOST_ERROR_CODES: readonly ['PROJECT_HOST_BUSY', 'PROJECT_HOST_TRANSITION', 'PROJECT_HOST_STOPPED', 'PROJECT_LOCATION_INVALID'];
 export type ProjectHostErrorCode = typeof PROJECT_HOST_ERROR_CODES[number];
-export const PROJECT_HOST_ERROR_STATUS: Readonly<Record<ProjectHostErrorCode, number>>;      // 409、409、503、400、409
+export const PROJECT_HOST_ERROR_STATUS: Readonly<Record<ProjectHostErrorCode, number>>;      // 409、409、503、400
 export function projectNotFound(projectId: string): AppError;
 export function projectIdMismatch(projectId: string): AppError;
-export function projectUnavailable(projectId: string, reason: ProjectOpenErrorCode, cause?: unknown): AppError;
+export function projectUnavailable(projectId: string, reason: ProjectOpenErrorCode, cause?: unknown): AppError; // PROJECT_INVALID 时把 cause 的 details.reason 放进 invalidReason
 export function asProjectUnavailable(projectId: string, error: unknown): unknown;  // 内核的打开错误映射成 PROJECT_UNAVAILABLE，其余原样
 export function projectHostError(code: ProjectHostErrorCode, details?: Readonly<Record<string, unknown>>): AppError;
+export function projectFileMoved(projectId: string): AppError;                     // 契约的 PROJECT_FILE_MOVED，409，details 是 {projectId}
 export function projectFileExists(projectFile: string): AppError;                   // 应用级新建：内核的 details 加 projectFile
 export const SQLITE_READONLY_DBMOVED = 1032;
 export function isDatabaseMovedError(error: unknown): boolean;                      // 错误本身或内核错误的 cause 是 1032
@@ -394,18 +392,18 @@ export function isDatabaseMovedError(error: unknown): boolean;                  
 |---|---|---|---|
 | `PROJECT_NOT_FOUND` | 404 | `{projectId}` | 项目没有登记 |
 | `PROJECT_ID_MISMATCH` | 400 | `{projectId}`（URL 里的 ID） | 输入里的 projectId 和 URL 的不一致，在 `rpc` 的处理里沿用 K2 的核对 |
-| `PROJECT_UNAVAILABLE` | 409 | `{projectId, reason, invalidReason?}`，`reason` 是 `PROJECT_MISSING`、`PROJECT_LOCKED`、`PROJECT_FORMAT_NEWER`、`PROJECT_INVALID` 之一 | 登记了但打不开；内核的原错误放在 `cause`，带着它的 `details.reason`（例如 `read-only`）。`reason` 是 `PROJECT_INVALID` 时，切换后把这个原因也放进 `invalidReason` |
+| `PROJECT_UNAVAILABLE` | 409 | `{projectId, reason, invalidReason?}`，`reason` 是 `PROJECT_MISSING`、`PROJECT_LOCKED`、`PROJECT_FORMAT_NEWER`、`PROJECT_INVALID` 之一 | 登记了但打不开；内核的原错误放在 `cause`，带着它的 `details.reason`（例如 `read-only`）。`reason` 是 `PROJECT_INVALID` 时，这个原因也放进 `invalidReason` |
 | `PROJECT_HOST_BUSY` | 409 | `{projectId}` | 独占操作等不到在途请求结束，或运行时忙；什么都没取消 |
 | `PROJECT_HOST_TRANSITION` | 409 | `{projectId}` | 只给测试接口：项目正在打开、关闭或独占 |
 | `PROJECT_HOST_STOPPED` | 503 | `{}` | 后端正在退出 |
 | `PROJECT_LOCATION_INVALID` | 400 | `{projectFile}` | 指定的 `.mioon` 所在的文件夹不存在 |
-| `PROJECT_FILE_MOVED` | 409 | `{projectId}` | 打开期间 `.mioon` 被单独改名或移动，写入被拒绝；宿主正在按新位置重开，重试即可（4.6） |
+| `PROJECT_FILE_MOVED` | 409 | `{projectId}` | 契约的码，由 `projectFileMoved` 构造：打开期间 `.mioon` 被单独改名或移动，写入被拒绝；宿主正在按新位置重开，重试即可（4.6） |
 
 响应体照现在的 `{ok: false, error: {code, message, details, retryable: false}}`。`/api/projects/` 下解析不出来的路径、宿主不认的路径都报 404 `NOT_FOUND`。
 
-K0 的小 PR #108 把两项收进了契约（第 7 节第 6、9 条），切换时宿主跟着改：
-- `PROJECT_FILE_MOVED` 成了契约的错误码（`PROJECT_FILE_ERROR_CODES`），宿主改从契约导入，不再自己定义；
-- `PROJECT_UNAVAILABLE` 的 `details` 可以带 `invalidReason`（`PROJECT_INVALID_REASONS` 之一），只在 `reason` 是 `PROJECT_INVALID` 时出现。`asProjectUnavailable` 把内核的 `details.reason` 抄进去，CLI、MCP 按项目 ID 访问时也能分清只读和损坏。
+K0 的小 PR #108 把两项收进了契约（第 7 节第 6、9 条），宿主已经跟着改了：
+- `PROJECT_FILE_MOVED` 是契约的错误码（`PROJECT_FILE_ERROR_CODES`），宿主不再自己定义，也不在 `PROJECT_HOST_ERROR_CODES` 里，由 `projectFileMoved(projectId)` 构造；
+- `PROJECT_UNAVAILABLE` 的 `details` 可以带 `invalidReason`（`PROJECT_INVALID_REASONS` 之一），只在 `reason` 是 `PROJECT_INVALID` 时出现。`projectUnavailable` 这时把 cause 的 `details.reason` 放进去，`asProjectUnavailable` 传的 cause 就是内核的错误；CLI、MCP 按项目 ID 访问时也能分清只读和损坏。
 
 **分派顺序**（下一轮写进 `index.ts`）：Host 和 Origin → 令牌 → `parseProjectApiPath` → `acquire(id, 'request')`（自动打开）→ `res.once('close', lease.release)`（租约跟着响应结束，SSE 和文件流也算在途）→ `runtime.handle(request)` → 返回 `false` 时 404。处理中抛出的错误 `isDatabaseMovedError` 为真，或者是 `PROJECT_FILE_MOVED` 时，调 `lease.host.relocate()`，再照常回错误。
 
@@ -568,26 +566,26 @@ macOS、Linux 上能移；Windows 上文件被占用，移不动。
 
 ## 5. S0a 的内核函数怎样接进来
 
-只写调用的时机，本分支不实现。名字以 PR #106 为准。
+#106 已合入，名字以它为准。本节写宿主在什么时候调用这些内核函数：管理器已经用上 `recoverProjectFile`，分派层的接线在切换这一轮做。
 
 | 函数或改动 | 调用时机 | 谁调 | 结果的处理 |
 |---|---|---|---|
 | `recoverProjectFile(projectFile)`，返回 `ProjectFileRecovery` | 启动时（`restore()`）和列最近项目时（`list()`），对每个已登记、本进程没开着、也不在独占操作中的项目调一次。打开项目本身不用先调，打开的第 1 步就是同一件事 | 管理器，经 `KernelMaintenancePort`；S6 的首页走 `list()` | `clean`、`recovered`：可用，`recovered` 发 `recovered` 事件；`locked`：别的进程正在写，不处理，打开时会报 `PROJECT_LOCKED`（12-03b）；`open-here`：当作开着；`missing`：后台按文件身份找新位置，找到改登记、在新位置再调一次，找不到按 12-03 显示；`invalid`：按 `reason` 显示，`read-only` 用只读的文案（S6）。切换时内核改成先看 `-journal`，没有热日志就直接返回 `clean`，不读项目文件的头：首页每次列项目都调它，放在 iCloud 里、已被系统移出本机的项目文件一读文件头就会被整个下载回来 |
 | 清掉没用的超级日志 | 内核每次成功打开时自己做 | 内核 | 宿主不接线 |
 | `isSuperJournalInUse`、`superJournalsIn` | B1 算本机记录清单的 `hasSuperJournal` | B1 | 宿主不用 |
-| `read-only` 原因，`PROJECT_INVALID_REASONS` | 打开失败时 `PROJECT_INVALID` 带 `reason`，只读位置报 `read-only` | 管理器、S6 | `acquire` 映射成 `PROJECT_UNAVAILABLE`（`reason: 'PROJECT_INVALID'`），细分原因在 `cause.details.reason`，#108 合入后也放进 `details.invalidReason`；`openPath` 原样抛内核错误，应用级的 `project.open` 填 `projectOpenFailureSchema`，其中 `PROJECT_INVALID` 现在必填 `reason`，直接取内核的 `details.reason`，`projectFile` 由调用方补，`projectId` 取 `details.projectId`，读不出时取登记或 `null` |
+| `read-only` 原因，`PROJECT_INVALID_REASONS` | 打开失败时 `PROJECT_INVALID` 带 `reason`，只读位置报 `read-only` | 管理器、S6 | `acquire` 映射成 `PROJECT_UNAVAILABLE`（`reason: 'PROJECT_INVALID'`），细分原因在 `cause.details.reason`，也放进 `details.invalidReason`（#108）；`openPath` 原样抛内核错误，应用级的 `project.open` 填 `projectOpenFailureSchema`，其中 `PROJECT_INVALID` 现在必填 `reason`，直接取内核的 `details.reason`，`projectFile` 由调用方补，`projectId` 取 `details.projectId`，读不出时取登记或 `null` |
 | `store.tx` 改用 `BEGIN` | 不用接线。只写本机记录的提交（例如 Mio 流式输出）不再碰项目文件、不再建超级日志 | — | — |
 | 打开时把项目文件的日志开着 | 不用接线。打开期间移动项目文件夹，写入照常，关闭时按文件身份更新登记（已实现） | — | — |
 | 退路：写入遇到 1032 | 写入出错时 | 分派层、运行时调 `relocate()` | 见 4.6 |
 | 单独改名或移动 `.mioon` | 内核在 `store.tx` 开头和 `put` 里检查，抛 `PROJECT_FILE_MOVED`（第 7 节第 6 条，定为乙）；内核的检查合入以前，宿主的 `checkMoved` 登记成事务守卫顶上 | 内核；过渡期是宿主 | 收到 `PROJECT_FILE_MOVED` 或 1032 都调 `relocate()`，见 4.6 |
 
-#106 合入以后，`ports.ts` 里镜像的 `ProjectFileRecovery` 改为从内核导入，`reason` 用 `ProjectInvalidReason`；默认的 `STAT_ONLY_MAINTENANCE` 换成内核的 `recoverProjectFile`。
+#106 合入以后已改：`ports.ts` 的 `ProjectFileRecovery` 从内核导入，`reason` 是 `ProjectInvalidReason`；管理器默认用内核的 `recoverProjectFile`，只 `lstat` 的替身 `STAT_ONLY_MAINTENANCE` 删掉了。
 
 ## 6. 下一轮的计划（S0 切换）
 
 ### 6.1 要等哪些合入
 
-#105（K0 补充）、S0a（#106）、#108（K0 小 PR：`PROJECT_FILE_MOVED`、`invalidReason`）、K2、B1、W1、W2（含 6 个测试辅助函数和旧服务端上的 `inspectProject`）、P1a-2、P1b。R1、S3、S8、V1 不用等，用 2.4 的替身。
+#105（K0 补充）、#106（S0a）、#108（K0 小 PR）已合入 main，也已合进本分支。还要等 K2、B1、W1、W2（含 6 个测试辅助函数和旧服务端上的 `inspectProject`）、P1a-2、P1b。R1、S3、S8、V1 不用等，用 2.4 的替身。
 
 ### 6.2 步骤
 
@@ -617,7 +615,6 @@ macOS、Linux 上能移；Windows 上文件被占用，移不动。
    - 不再调用 `setProjectDeletionCompanions`；
    - 原生预听绑定一个按 projectId 分派的服务；
    - 写入出错是 1032 或 `PROJECT_FILE_MOVED` 时调 `relocate()`；内核的检查合入以前，在 `composeProjectHost` 里把 `checkMoved` 登记成事务守卫（第 7 节第 6 条）；
-   - `PROJECT_FILE_MOVED` 改从契约导入，`asProjectUnavailable` 把内核的 `details.reason` 抄进 `invalidReason`（#108）；
    - `startServer` 启动时，`dataDir` 里有旧的 `workbench.sqlite` 就报错，提示换一个目录或删掉旧文件（第 7 节第 3 条）。
 7. **入口**：`cli.ts` 加 `MIOON_PROJECTS_DIR`；`backend.ts`、`supervisor.ts` 转发 `cacheDir`、`projectsDir`；`main.ts` 用 `desktopAppDirectories` 算出这两项传给后端（归庚，约好一小块；`desktop-window-ownership`、`desktop-startup-restart-race` 两个测试要为新符号加桩）；`config.ts` 的 `dataPaths` 把桌面版的应用数据目录改成新的 `<userData>/data`，旧的 `workspace/` 不迁移、不再读（第 7 节第 3 条）。
 8. **测试辅助函数**：W2 的 6 个函数和 `inspectProject` 换成新内核的实现（2.7）；`tests/subtitles-recovery.test.ts` 在同一进程里开第二个 store 的写法（W2 没改的话）。

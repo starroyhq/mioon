@@ -10,7 +10,7 @@ export {
 } from './naming.ts';
 export {
   asProjectUnavailable, isDatabaseMovedError, PROJECT_ADDRESS_ERROR_STATUS, PROJECT_HOST_ERROR_CODES, PROJECT_HOST_ERROR_STATUS, projectFileExists,
-  projectHostError, projectIdMismatch, projectNotFound, projectUnavailable, SQLITE_READONLY_DBMOVED,
+  projectFileMoved, projectHostError, projectIdMismatch, projectNotFound, projectUnavailable, SQLITE_READONLY_DBMOVED,
 } from './errors.ts';
 export type {ProjectHostErrorCode} from './errors.ts';
 export {claimProjectFolder} from './folders.ts';
@@ -27,7 +27,7 @@ export type {
 } from './ports.ts';
 export {
   createMemoryAgentPolicyStore, createMemoryBackgroundTaskIndex, createMemoryProjectInbox, createMemoryProjectRegistry, DEFAULT_FIND_MOVED_LIMIT,
-  sameProjectFileIdentity, STAT_ONLY_MAINTENANCE, statProjectFileIdentity,
+  sameProjectFileIdentity, statProjectFileIdentity,
 } from './stand-ins.ts';
 export type {MemoryProjectRegistryOptions} from './stand-ins.ts';
 export {createProjectFiles, createProjectHostManager, SYSTEM_CLOCK} from './manager.ts';

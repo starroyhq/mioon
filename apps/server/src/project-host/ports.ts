@@ -4,6 +4,7 @@
  * objects of closures, so callers may spread and wrap them. */
 import type {AgentTaskPolicy} from '../../../../packages/contracts/src/agent-tasks-v2.ts';
 import type {BackgroundTaskIndexEntry, ProjectFileIdentity, ProjectInboxItem, RecentProject} from '../../../../packages/contracts/src/project-registry.ts';
+import type {ProjectFileRecovery} from '../../../../packages/business/src/project-file/index.ts';
 import type {ProjectHostContext, ProjectRequest} from './host.ts';
 
 // ---------------------------------------------------------------------------
@@ -117,14 +118,12 @@ export type ProjectDraftsFactory = (context: ProjectHostContext) => ProjectDraft
 // ---------------------------------------------------------------------------
 // S0a: kernel maintenance
 
-/** S0a's ProjectFileRecovery, mirrored until #106 lands; then imported from
- * the kernel, with ProjectInvalidReason for `reason`. */
-export type ProjectFileRecovery =
-  | {readonly state: 'clean' | 'recovered' | 'locked' | 'open-here' | 'missing'}
-  | {readonly state: 'invalid'; readonly reason: string};
+/** The kernel's result of recoverProjectFile; `invalid` carries a ProjectInvalidReason. */
+export type {ProjectFileRecovery};
 
-/** S0a's kernel functions the host calls. Removing super-journals no journal
- * needs is part of every successful open in the kernel, so it is not here. */
+/** S0a's kernel functions the host calls; the manager uses the kernel's own
+ * unless a test passes another. Removing super-journals no journal needs is
+ * part of every successful open in the kernel, so it is not here. */
 export interface KernelMaintenancePort {
   /** S0a's recoverProjectFile: step 1 of an open and nothing else. Rolls back a
    * hot journal of a project that is not open here, so the file is complete
