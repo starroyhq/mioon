@@ -11,11 +11,10 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices,hash, type OrdinaryServices} from '../packages/business/src/services.ts';
 import {createEditTasks,safeEditTaskError} from '../packages/business/src/edit-tasks.ts';
 import {DURABLE_EDIT_OPERATIONS,EDIT_TASK_LIMITS,isEditTaskEnvelope,isEditTaskListEnvelope,schemas} from '@mioon/contracts';
-import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
+import type { SQLInputValue } from 'node:sqlite';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 
 const code=(name: string)=>(error: unknown)=>(error as { code: string; }).code===name&&!JSON.stringify((error as { code: string; })).includes('PRIVATE');
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=(db: DatabaseSync,write: () => void)=>{db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: test.TestContext){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-tasks-foreign-'));t.after(()=>rmSync(root,{recursive:true,force:true}));

@@ -15,7 +15,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {errorView} from './helpers/test-error.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 interface RecoveryInput {projectId: string; name: string; providerId: string; model: string; prompt: string;
   options: Record<string, unknown>; requestId: string; [key: string]: unknown}
@@ -160,23 +160,30 @@ for (const variant of ['lock-deleted', 'lock-replaced', 'task-deleted', 'task-re
     const db = f.store.db;
     if (variant === 'lock-deleted') unlinkSync(path.join(f.root, 'server.lock'));
     if (variant === 'lock-replaced') {unlinkSync(path.join(f.root, 'server.lock')); writeFileSync(path.join(f.root, 'server.lock'), '2147483000', {mode: 0o600});}
-    if (!variant.startsWith('lock-')) {
-      db.exec('PRAGMA foreign_keys=OFF; PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_image_task_identity; DROP TRIGGER image_task_state_transitions; DROP TRIGGER immutable_image_group_identity; DROP TRIGGER retain_image_tasks;');
+    const observe = async () => {
+      const before = snapshot(db), changes = db.prepare('SELECT total_changes() AS n').get()!.n;
+      gate.resolve({bytes: await png()});
+      // Give the live worker its normal continuation before Stop, so shutdown is
+      // not the reason an ownership/revision defect appears to be fenced.
+      await pause(100);
+      assert.equal(snapshot(db), before);
+      // Joining the owned worker also rules out a later publication after return.
+      await f.services.drain();
+      assert.equal(snapshot(db), before); assert.equal(db.prepare('SELECT total_changes() AS n').get()!.n, changes);
+    };
+    if (variant.startsWith('lock-')) await observe();
+    else await withoutForeignKeys(db, async () => {
+      // Rows that leave or belong to a project this store does not hold. Foreign
+      // keys stay off until the worker is joined, so a write past the fence shows
+      // in the snapshot instead of failing on a foreign key.
+      db.exec('PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_image_task_identity; DROP TRIGGER image_task_state_transitions; DROP TRIGGER immutable_image_group_identity; DROP TRIGGER retain_image_tasks;');
       if (variant === 'task-deleted') db.prepare('DELETE FROM image_tasks WHERE id=?').run(ack.id);
       if (variant === 'task-reassigned') db.prepare('UPDATE image_tasks SET projectId=? WHERE id=?').run(f.other.id, ack.id);
       if (variant === 'group-reassigned') db.prepare('UPDATE image_groups SET projectId=? WHERE id=?').run(f.other.id, ack.groupId);
       if (variant === 'input-changed') db.prepare('UPDATE image_tasks SET input=? WHERE id=?').run(JSON.stringify({...JSON.parse((f.row(ack.id))!.input as string), prompt: 'Foreign replacement'}), ack.id);
       if (variant === 'revision-advanced') db.prepare('UPDATE image_tasks SET revision=revision+1 WHERE id=?').run(ack.id);
-    }
-    const before = snapshot(db), changes = db.prepare('SELECT total_changes() AS n').get()!.n;
-    gate.resolve({bytes: await png()});
-    // Give the live worker its normal continuation before Stop, so shutdown is
-    // not the reason an ownership/revision defect appears to be fenced.
-    await pause(100);
-    assert.equal(snapshot(db), before);
-    // Joining the owned worker also rules out a later publication after return.
-    await f.services.drain();
-    assert.equal(snapshot(db), before); assert.equal(db.prepare('SELECT total_changes() AS n').get()!.n, changes);
+      await observe();
+    });
     assert.equal(f.calls, 1); assert.deepEqual((readdirSync(path.join(f.root, 'media')) as unknown), []);
     assert.equal(existsSync(path.join(f.root, 'image-staging')), false);
     if (variant.startsWith('lock-')) assert.equal(ownsStoreLock(f.store), false);

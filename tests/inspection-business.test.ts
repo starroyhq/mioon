@@ -12,7 +12,7 @@ import path from 'node:path';
 import {parse} from '@mioon/contracts';
 import {openStore, createServices, createInspectionServices, INSPECTION_OPERATIONS, INSPECTION_LIMITS} from '@mioon/business';
 import type { FixtureProject } from './helpers/strict-timeline-core-types.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const at = '2026-10-09T00:00:00.000Z';
 const unsafe = {relativePath: '/private/secret', path: '/private/path', url: 'https://unsafe.invalid/media', dataBase64: 'PRIVATE_BYTES',
@@ -64,11 +64,6 @@ function update(f:Awaited<ReturnType<typeof fixture>>,table:string,recordId:stri
   const value = {...(f.store.get(table, recordId) as Record<string,unknown>), ...patch};
   const keys = Object.keys(sqlPatch);
   f.store.db.prepare(`UPDATE ${table} SET data=?${keys.map(key => `,${key}=?`).join('')} WHERE id=?`).run(JSON.stringify(value), ...Object.values(sqlPatch), recordId);
-}
-// The other project is not in this store; write the damaged rows as a corrupt file would hold them.
-function withoutForeignKeys<T>(f: Awaited<ReturnType<typeof fixture>>, write: () => T): T {
-  f.store.db.exec('PRAGMA foreign_keys=OFF');
-  try {return write();} finally {f.store.db.exec('PRAGMA foreign_keys=ON');}
 }
 const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 function capture(f: Awaited<ReturnType<typeof fixture>>) {
@@ -219,20 +214,20 @@ test('selected-version and clip chains fail closed for foreign, missing or corru
   for (const scenario of ['foreign-reference', 'missing-reference', 'foreign-version', 'missing-version', 'version-json-project', 'version-sql-project', 'version-job-column',
     'foreign-asset', 'asset-json-project', 'foreign-job', 'job-json-project', 'job-sql-project', 'job-shot', 'job-version', 'version-shot', 'snapshot-reference', 'snapshot-project', 'foreign-clip-asset',
     'clip-generated-corrupt-job', 'spoofed-provenance', 'foreign-reverse-owner', 'duplicate-owner']) await t.test(scenario, async t => {
-    const f = await fixture(t), g = generation(f), foreign = withoutForeignKeys(f, () => generation(f, f.other.id)); let op = 'shot.inspect';
+    const f = await fixture(t), g = generation(f), foreign = withoutForeignKeys(f.store.db, () => generation(f, f.other.id)); let op = 'shot.inspect';
     const tl = timeline(f, [g.a]);
     if (scenario === 'foreign-reference') update(f, 'shots', g.s.id, {referenceAssetIds: [foreign.a.id]});
     if (scenario === 'missing-reference') update(f, 'shots', g.s.id, {referenceAssetIds: [randomUUID()]});
     if (scenario === 'foreign-version') update(f, 'shots', g.s.id, {selectedVersionId: foreign.v.id});
     if (scenario === 'missing-version') update(f, 'shots', g.s.id, {selectedVersionId: randomUUID()});
     if (scenario === 'version-json-project') update(f, 'versions', g.v.id, {projectId: f.other.id});
-    if (scenario === 'version-sql-project') withoutForeignKeys(f, () => update(f, 'versions', g.v.id, {}, {projectId: f.other.id}));
+    if (scenario === 'version-sql-project') withoutForeignKeys(f.store.db, () => update(f, 'versions', g.v.id, {}, {projectId: f.other.id}));
     if (scenario === 'version-job-column') {const newJob = f.store.put('jobs', {...g.j, id: randomUUID()}); update(f, 'versions', g.v.id, {}, {jobId: newJob.id});}
     if (scenario === 'foreign-asset') update(f, 'versions', g.v.id, {assetId: foreign.a.id});
     if (scenario === 'asset-json-project') update(f, 'assets', g.a.id, {projectId: f.other.id});
     if (scenario === 'foreign-job') update(f, 'versions', g.v.id, {jobId: foreign.j.id});
     if (scenario === 'job-json-project') update(f, 'jobs', g.j.id, {projectId: f.other.id});
-    if (scenario === 'job-sql-project') withoutForeignKeys(f, () => update(f, 'jobs', g.j.id, {}, {projectId: f.other.id}));
+    if (scenario === 'job-sql-project') withoutForeignKeys(f.store.db, () => update(f, 'jobs', g.j.id, {}, {projectId: f.other.id}));
     if (scenario === 'job-shot') update(f, 'jobs', g.j.id, {shotId: foreign.s.id});
     if (scenario === 'job-version') update(f, 'jobs', g.j.id, {versionId: foreign.v.id});
     if (scenario === 'version-shot') update(f, 'versions', g.v.id, {shotId: foreign.s.id});
@@ -241,7 +236,7 @@ test('selected-version and clip chains fail closed for foreign, missing or corru
     if (scenario === 'foreign-clip-asset') {update(f, 'timelines', tl.id, {clips: [{...tl.clips[0], assetId: foreign.a.id}]}); op = 'timeline.inspect';}
     if (scenario === 'clip-generated-corrupt-job') {update(f, 'jobs', g.j.id, {projectId: f.other.id}); op = 'timeline.inspect';}
     if (scenario === 'spoofed-provenance') {update(f, 'assets', g.a.id, {provenance: 'user-import'}); update(f, 'jobs', g.j.id, {shotId: foreign.s.id}); op = 'asset.inspect';}
-    if (scenario === 'foreign-reverse-owner') {withoutForeignKeys(f, () => update(f, 'versions', g.v.id, {projectId: f.other.id}, {projectId: f.other.id})); update(f, 'assets', g.a.id, {provenance: 'user-import'}); op = 'asset.inspect';}
+    if (scenario === 'foreign-reverse-owner') {withoutForeignKeys(f.store.db, () => update(f, 'versions', g.v.id, {projectId: f.other.id}, {projectId: f.other.id})); update(f, 'assets', g.a.id, {provenance: 'user-import'}); op = 'asset.inspect';}
     if (scenario === 'duplicate-owner') {update(f, 'versions', foreign.v.id, {assetId: g.a.id}); op = 'asset.inspect';}
     const before = capture(f);
     await assert.rejects(f.call(op), unavailable); assert.deepEqual(capture(f), before);
@@ -249,7 +244,7 @@ test('selected-version and clip chains fail closed for foreign, missing or corru
 });
 
 test('missing and foreign links produce identical non-enumerating errors', async t => {
-  const f = await fixture(t), s = shot(f), foreign = withoutForeignKeys(f, () => asset(f, f.other.id)), errors: ({ code: string; message: string; status: number | undefined; details: Record<string, unknown>; })[] = [];
+  const f = await fixture(t), s = shot(f), foreign = withoutForeignKeys(f.store.db, () => asset(f, f.other.id)), errors: ({ code: string; message: string; status: number | undefined; details: Record<string, unknown>; })[] = [];
   for (const recordId of [randomUUID(), foreign.id]) {
     update(f, 'shots', s.id, {referenceAssetIds: [recordId]});
     try {await f.call('shot.inspect'); assert.fail('Expected rejection');} catch (error) {errors.push({code: (error as Failure).code, message: (error as Failure).message, status: (error as Failure).status, details: (error as Failure).details});}
@@ -306,14 +301,14 @@ test('additive inspection index migration tolerates malformed and huge legacy ve
 
 test('historical connection and optional clip relation IDs are deeply checked without requiring deleted edges', async t => {
   for (const scenario of ['sourceAssetId', 'sourceNodeId', 'foreign-edge', 'edge-foreign-asset', 'edge-foreign-node', 'edge-mismatched-asset', 'deleted-edge', 'clip-aliased-job', 'clip-wrong-shot']) await t.test(scenario, async t => {
-    const f = await fixture(t), g = generation(f), foreign = withoutForeignKeys(f, () => generation(f, f.other.id)), tl = timeline(f, [g.a]);
+    const f = await fixture(t), g = generation(f), foreign = withoutForeignKeys(f.store.db, () => generation(f, f.other.id)), tl = timeline(f, [g.a]);
     const node = f.store.put('nodes', {id: randomUUID(), projectId: f.project.id, assetId: g.a.id});
-    const foreignNode = withoutForeignKeys(f, () => f.store.put('nodes', {id: randomUUID(), projectId: f.other.id, assetId: foreign.a.id}));
+    const foreignNode = withoutForeignKeys(f.store.db, () => f.store.put('nodes', {id: randomUUID(), projectId: f.other.id, assetId: foreign.a.id}));
     const connection = {sourceAssetId: g.a.id, sourceNodeId: node.id, targetShotId: g.s.id, edgeId: randomUUID(), role: 'first_frame'};
     let op = 'shot.inspect';
     if (scenario === 'sourceAssetId') connection.sourceAssetId = foreign.a.id;
     if (scenario === 'sourceNodeId') connection.sourceNodeId = foreignNode.id;
-    if (scenario === 'foreign-edge') withoutForeignKeys(f, () => f.store.put('edges', {id: connection.edgeId, projectId: f.other.id, source: foreignNode.id, target: foreign.s.id}));
+    if (scenario === 'foreign-edge') withoutForeignKeys(f.store.db, () => f.store.put('edges', {id: connection.edgeId, projectId: f.other.id, source: foreignNode.id, target: foreign.s.id}));
     if (scenario.startsWith('edge-')) {
       const extra = asset(f);
       f.store.put('edges', {id: connection.edgeId, projectId: f.project.id, source: scenario === 'edge-foreign-node' ? foreignNode.id : node.id,

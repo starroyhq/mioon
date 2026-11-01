@@ -23,13 +23,13 @@ import {png} from './timeline-image-fixtures.ts';
 
 export const FINGERPRINT_PROTOCOLS = ['chat_completions', 'responses', 'anthropic_messages'] as const;
 export const FINGERPRINT_SCENARIOS = [
-  'single_reply', 'read_edit_roundtrip', 'note_during_reply', 'conflict_skip_replan',
+  'single_reply', 'read_edit_roundtrip', 'note_during_reply', 'conflict_reread',
   'tool_failure_retry', 'unknown_discard_resume', 'conversation_history_trim',
   'attachment_en', 'diagnostic_text', 'diagnostic_read_only', 'diagnostic_catalog',
   'single_reply_ja', 'single_reply_en', 'single_reply_zh_hant',
 ] as const;
 export const OFFICIAL_FINGERPRINT_SCENARIOS = ['official_single_reply', 'official_read_edit_roundtrip'] as const;
-export const FINGERPRINT_PRELOAD_SCENARIOS = ['read_edit_roundtrip', 'conflict_skip_replan', 'tool_failure_retry', 'official_read_edit_roundtrip'] as const;
+export const FINGERPRINT_PRELOAD_SCENARIOS = ['read_edit_roundtrip', 'conflict_reread', 'tool_failure_retry', 'official_read_edit_roundtrip'] as const;
 export type FingerprintScenario = typeof FINGERPRINT_SCENARIOS[number] | typeof OFFICIAL_FINGERPRINT_SCENARIOS[number];
 export interface TaskRequestFingerprint {
   scenario: FingerprintScenario;
@@ -268,26 +268,28 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
       assert.equal(f.requests[0], original);
       assert.match(f.requests[1]!, /NOTE_KEEP_THE_ORIGINAL_COLOUR/u);
     } finally {release.resolve();}
-  } else if (scenario === 'conflict_skip_replan') {
-    const target = {kind: 'shot', id: shotId, revision: f.runtime.journal.targetRevision(projectId, 'shot', shotId)};
-    f.runtime.journal.edit({requestId: randomUUID(), projectId, ownerId: '00000000-0000-4000-8000-000000000004',
-      generation: 1, sequence: 1, action: 'claim', targets: [target]});
-    f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol, index < 3 ? [call('mioon_shot_update', {
-      shotId, expectedRevision: 1, patch: {prompt: 'Must stay untouched'},
-    }, `call_edit_${index}`)] : [])};}));
-    const sent = await f.send(), paused = await f.settle(sent.run.id);
-    assert.equal(paused.run.pauseReason, 'editing');
-    await assert.rejects(f.action(paused, 'resume'), {code: 'AGENT_TASK_SKIP_REQUIRED'});
-    await f.action(paused, 'skip');
-    const done = await f.settle(sent.run.id);
+  } else if (scenario === 'conflict_reread') {
+    // X4: the user saves while the second request is in flight. The stale call is
+    // handed back with the saved value, and the reread edit applies.
+    f.setScript(withCanvasLoad(protocol, async function* (index) {
+      if (index === 1) await f.services.call('shot.update', {shotId, expectedRevision: 1, patch: {prompt: 'User prompt'}});
+      yield {type: 'done', output: output(protocol, index === 1 ? [call('mioon_shot_update', {
+        shotId, expectedRevision: 1, patch: {prompt: 'Stale AI prompt'},
+      }, 'call_edit_stale')] : index === 2 ? [call('mioon_shot_update', {
+        shotId, expectedRevision: 2, patch: {prompt: 'User prompt, refined'},
+      }, 'call_edit_reread')] : [])};
+    }));
+    const done = await finish(f);
     assertCanvasLoaded(done);
-    assert.equal(done.run.status, 'completed');
-    assert.equal(done.run.skippedTargets?.length, 1);
-    assert.equal(done.steps.filter(value => value.error?.code === 'TARGET_SKIPPED').length, 1);
-    assert.match(f.requests[2]!, /TARGET_SKIPPED/u);
-    assert.match(f.requests[3]!, /这一处由用户保留/u);
-    assert.equal(done.changes.length, 0);
-    assert.equal(object(f.store.get('shots', shotId)).prompt, 'Original prompt');
+    const stale = done.steps.find(value => value.toolCall?.id === 'call_edit_stale');
+    assert.equal(stale?.status, 'rejected');
+    assert.equal(stale?.error?.code, 'TARGET_CHANGED');
+    assert.match(f.requests[2]!, /TARGET_CHANGED/u);
+    assert.match(f.requests[2]!, /User prompt/u);
+    assert.match(f.requests[3]!, /User prompt, refined/u);
+    assert.equal(done.changes.length, 1);
+    assert.deepEqual(done.run.skippedTargets, []);
+    assert.equal(object(f.store.get('shots', shotId)).prompt, 'User prompt, refined');
   } else if (scenario === 'tool_failure_retry') {
     f.setScript(withCanvasLoad(protocol, async function* (index) {yield {type: 'done', output: output(protocol, index === 1 ? [call('mioon_shot_update', {
       shotId, expectedRevision: 1, patch: {duration: -1},

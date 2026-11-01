@@ -3,7 +3,7 @@ import {randomUUID} from 'node:crypto';import {mkdtemp,rm} from 'node:fs/promise
 import {openStore} from '../packages/business/src/db.ts';import {createServices,canonical} from '../packages/business/src/services.ts';
 import {fork} from 'node:child_process';import {once} from 'node:events';
 import {assetAnnotationSchemas,isAssetAnnotationResponse,isAssetAnnotationListResponse} from '../packages/contracts/src/asset-annotations.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 interface AssetView { id: string; projectId: string }
 interface AnnotationFixture { root: string; readonly store: ReturnType<typeof openStore>; call: (operation: string, input: Record<string, unknown>) => Promise<unknown>; restart(): void; asset(owner?: string): AssetView; input(asset: AssetView, patch?: Record<string, unknown>): Record<string, unknown> & {requestId: string}; project: AssetView }
 async function fixture(t: import('node:test').TestContext): Promise<AnnotationFixture> {
@@ -15,8 +15,6 @@ async function fixture(t: import('node:test').TestContext): Promise<AnnotationFi
 const list=(f: AnnotationFixture, assets: AssetView[]) => f.call('asset.annotation.list',{projectId:f.project.id,assetIds:assets.map(a=>a.id)}) as Promise<{items: {revision: number; tags: string[]; note: string}[]}>;
 const byName=(a: {name: string}, b: {name: string}): number => a.name<b.name?-1:a.name>b.name?1:0;
 const snapshot=(db: ReturnType<typeof openStore>['db'], omit: string[] = []): Record<string, unknown[]> => Object.fromEntries(schemaObjects(db).filter(r=>r.type==='table'&&!r.name.startsWith('sqlite_')).sort(byName).filter((r: {name: string})=>!omit.includes(r.name)).map((r: {name: string})=>[r.name,(db.prepare(`SELECT * FROM ${r.name} ORDER BY rowid`).all() as Record<string, unknown>[])]));
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: ReturnType<typeof openStore>['db'], write: () => T): T => {db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 
 test('annotation contract bounds Unicode, canonical tags, literal notes and response identity',()=>{
  const input={projectId:randomUUID(),assetId:randomUUID(),expectedRevision:0,requestId:randomUUID(),tags:['标签','😀'.repeat(40)],note:'😀'.repeat(4000)};
@@ -66,7 +64,7 @@ test('all four legacy companion keys collide with annotations in both SQL direct
 });
 
 test('receipt insertion failure rolls back annotation save atomically',async t=>{
- const f=await fixture(t),a=f.asset();f.store.db.exec("CREATE TRIGGER fail_annotation_receipt BEFORE INSERT ON asset_annotation_requests BEGIN SELECT RAISE(ABORT,'sentinel');END;");
+ const f=await fixture(t),a=f.asset();f.store.db.exec("CREATE TEMP TRIGGER fail_annotation_receipt BEFORE INSERT ON asset_annotation_requests BEGIN SELECT RAISE(ABORT,'sentinel');END;");
  const before=snapshot(f.store.db);await assert.rejects(f.call('asset.annotation.set',f.input(a)));assert.deepEqual(snapshot(f.store.db),before);
 });
 

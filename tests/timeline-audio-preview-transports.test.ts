@@ -21,12 +21,14 @@ import {createClient, discoverSchema} from '@mioon/client';
 import {parse, effectAnnotations, operationEffect} from '@mioon/contracts';
 import {AUDIO_PREVIEW_PROFILE, isAudioPreviewPlan, audioPreviewPlanDigestMaterial} from '@mioon/contracts/timeline-audio-preview';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {TIMELINE_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-edit-tool-policy.ts';
 import {TIMELINE_GAIN_EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/timeline-gain-tool-policy.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const operation = 'timeline.audioPreview.plan', toolName = 'timeline_audioPreview_plan';
@@ -112,15 +114,16 @@ async function fileManifest(root: string, relative = ''): Promise<ManifestEntry[
 }
 async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-audio-preview-wire-'));
-  let backend: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync | undefined;
+  let backend: Awaited<ReturnType<typeof startServer>> | undefined, inspect!: InspectProject;
   t.after(async () => {
     const errors: unknown[] = [];
-    for (const cleanup of [() => db?.close(), () => backend && bounded(backend.close(), 'Owned backend cleanup'), () => rm(root, {recursive: true, force: true})]) {
+    for (const cleanup of [() => backend && bounded(backend.close(), 'Owned backend cleanup'), () => rm(root, {recursive: true, force: true})]) {
       try {await cleanup();} catch (error) {errors.push(error);}
     }
     if (errors.length) throw new AggregateError(errors, 'Audio preview fixture cleanup failed');
   });
-  backend = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {throw Error('No model call permitted');}});
+  backend = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {throw Error('No model call permitted');},
+    inspectProject: received => {inspect = received;}});
   const client = createClient({env: environment(backend.url)}) as TypedClient;
   const project = await client.rpc('project.create', {name: '合成声音 🎬 transport parity'});
   const foreign = await client.rpc('project.create', {name: 'Other synthetic project'});
@@ -130,17 +133,22 @@ async function fixture(t: TestContext) {
   timeline = await client.rpc('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks.find(track => track.kind === 'audio')!.id, assetId: asset.id, startFrame: 2, durationFrames: 12,
     sourceInFrame: 3, gain: 0.5, fadeInFrames: 3, fadeOutFrames: 3});
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const savedAsset: Asset = JSON.parse(db.prepare('SELECT data FROM assets WHERE id=?').get(asset.id)!.data as string);
-  const rows = () => Object.fromEntries(db!.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
-    [name, db!.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all()]));
+  // The server holds the project while it runs: read on its own connection.
+  const use = <T>(read: (db: DatabaseSync) => T): T => inspect(project.id, read);
+  const savedAsset: Asset = use(db => JSON.parse(db.prepare('SELECT data FROM assets WHERE id=?').get(asset.id)!.data as string));
+  const rows = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
+    [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all()]));
+  // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
+  const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
   const input = {projectId: project.id, timelineId: timeline.id, expectedRevision: timeline.revision, startFrame: 5};
-  return {root, backend, client, db, project, foreign, timeline, asset, bytes, input,
+  return {root, backend, client, project, foreign, timeline, asset, bytes, input,
     sourceInput: (plan: AudioPreviewPlan) => ({...input, clipId: plan.sources[0].clipId, sourceHash: plan.sources[0].sourceHash, planHash: plan.planHash}),
-    async checkpoint() {return {rows: rows(), version: db!.prepare('PRAGMA data_version').get()!.data_version, files: await fileManifest(root)};},
+    async checkpoint() {return {...use(db => ({rows: rows(db), version: changeMarks(db)})), files: await fileManifest(root)};},
     async unchanged(before: {rows: ReturnType<typeof rows>; version: unknown; files: ManifestEntry[]}) {
-      assert.deepEqual(rows(), before.rows, 'No durable jobs, receipts, history or other database changes');
-      assert.equal(db!.prepare('PRAGMA data_version').get()!.data_version, before.version, 'No database write, including same-value updates');
+      use(db => {
+        assert.deepEqual(rows(db), before.rows, 'No durable jobs, receipts, history or other database changes');
+        assert.deepEqual(changeMarks(db), before.version, 'No database write, including same-value updates');
+      });
       assert.deepEqual(await fileManifest(root), before.files, 'No cache or sidefiles');
       assert.equal(sha(await readFile(path.join(root, savedAsset.relativePath))), sha(bytes), 'Original source bytes unchanged');
       assert.equal(savedAsset.sha256, sha(bytes));

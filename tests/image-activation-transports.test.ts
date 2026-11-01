@@ -10,15 +10,15 @@ import http from 'node:http';
 import {EventEmitter, once} from 'node:events';
 import {Readable} from 'node:stream';
 import {spawn} from 'node:child_process';
-import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID, createHash} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
 import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
@@ -54,12 +54,18 @@ async function cli(args: string[], env: NodeJS.ProcessEnv) {
   assert.deepEqual(result, [0, null], stderr); assert.ok(!stdout.includes(syntheticKey) && !stderr.includes(token));
   const envelope = JSON.parse(stdout); assert.equal(envelope.ok, true, stdout); return envelope.data;
 }
-async function filesContain(directory:string, needle: string) {
-  for (const entry of await readdir(directory, {withFileTypes: true})) {
-    const filename = path.join(directory, entry.name);
-    if (entry.isDirectory() ? await filesContain(filename, needle) : (await readFile(filename)).includes(Buffer.from(needle))) return true;
-  }
-  return false;
+// The same recursive scan, as CommonJS for node -e. It runs in a child process:
+// the server holds workbench.sqlite in this process, and opening and closing the
+// file here would drop the server's SQLite locks.
+const scanFiles = `const fs=require('node:fs'),path=require('node:path'),[directory,needle]=process.argv.slice(1),bytes=Buffer.from(needle);
+const contains=dir=>fs.readdirSync(dir,{withFileTypes:true}).some(entry=>{const file=path.join(dir,entry.name);return entry.isDirectory()?contains(file):fs.readFileSync(file).includes(bytes);});
+process.send(contains(directory),()=>process.disconnect());`;
+async function filesContain(directory:string, needle: string): Promise<boolean> {
+  const child = spawn(process.execPath, ['-e', scanFiles, '--', directory, needle], {stdio: ['ignore', 'ignore', 'inherit', 'ipc'], signal: AbortSignal.timeout(30000)});
+  const found = new Promise<unknown>(resolve => {child.once('message', resolve); child.once('disconnect', () => resolve(undefined));});
+  const [result, [code, signal]] = await Promise.all([found, once(child, 'exit')]);
+  if (code !== 0 || typeof result !== 'boolean') throw Error(`The file scan child failed: ${code ?? signal}`);
+  return result;
 }
 
 // Both production network dependencies are replaced together. Nothing in this
@@ -95,10 +101,12 @@ async function fixture(t: test.TestContext) {
   const png = await renderMockImagePng(), body = Buffer.from(JSON.stringify({created: 1, data: [{b64_json: png.toString('base64')}],
     background: 'opaque', output_format: 'png', quality: 'low', size: '1024x1024', usage: {input_tokens: 2, output_tokens: 3, total_tokens: 5}}));
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-live-wire-')), network = fakeNetwork(body);
-  const options = {dataDir: root, port: 0, token, imageNetwork: network.dependencies};
-  let server = await startServer((options as unknown as Parameters<typeof startServer>[0])), db: DatabaseSync|null = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
+  // Each server that starts hands over its own connection.
+  let inspect!: InspectProject;
+  const options = {dataDir: root, port: 0, token, imageNetwork: network.dependencies, inspectProject: (received: InspectProject) => {inspect = received;}};
+  let server = await startServer((options as unknown as Parameters<typeof startServer>[0]));
   let proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>, dropped: RpcEnvelope<FixtureImageTask>|null = null, proxyCalls = 0;
-  const f = {root, png, network: network.state, get server() {return server;}, get db() {return db;},
+  const f = {root, png, network: network.state, get server() {return server;},
     get env() {return {MIOON_BASE_URL: server.url, MIOON_TOKEN: token};},
     get client() {return (createClient({env: f.env}) as TypedClient);},
     async request(route: string, {method = 'GET', input, raw, authenticated = true, headers = {}, base = server.url}: ActivationRequestOptions = {}) {
@@ -135,11 +143,12 @@ async function fixture(t: test.TestContext) {
       }
       assert.fail(`Image task did not reach ${state}`);
     },
-    snapshot() {
-      return JSON.stringify(['image_groups', 'image_tasks', 'image_versions', 'image_requests', 'image_reviews'].map(name =>
-        [name, db!.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));
+    // The server holds the project while it runs: read on its own connection.
+    snapshot(projectId: string) {
+      return inspect(projectId, db => JSON.stringify(['image_groups', 'image_tasks', 'image_versions', 'image_requests', 'image_reviews'].map(name =>
+        [name, db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()])));
     },
-    async restart() {db!.close(); db = null; await server.close(); server = await startServer((options as unknown as Parameters<typeof startServer>[0])); db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});},
+    async restart() {await server.close(); server = await startServer((options as unknown as Parameters<typeof startServer>[0]));},
     async loseApproval(review:Pick<FixtureImageReview,"projectId"|"id">) {
       proxy = http.createServer(async (request, response) => {
         try {
@@ -156,7 +165,7 @@ async function fixture(t: test.TestContext) {
   };
   t.after(async () => {
     if (proxy) {proxy.closeAllConnections(); await new Promise(resolve => proxy.close(resolve));}
-    db?.close(); await server.close(); await rm(root, {recursive: true, force: true});
+    await server.close(); await rm(root, {recursive: true, force: true});
   });
   // The persisted workspace gate is independent from this synthetic official
   // slot. Opt in without approving a request or changing the fake network.
@@ -191,10 +200,10 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.equal(saved.storage.sessionScope, 'server');
     const persisted = JSON.parse(await readFile(path.join(f.root, 'image-settings/settings.json'), 'utf8'));
     assert.equal(persisted.secret, null); assert.equal(await filesContain(f.root, syntheticKey), false);
-    const before = f.snapshot();
+    const before = f.snapshot(project.id);
     await f.rpc('image.generate', inputFor(project.id), 'IMAGE_REVIEW_REQUIRED');
     await assert.rejects(f.client.rpc('image.generate', {...inputFor(project.id), approved: true}), {code: 'VALIDATION_ERROR'});
-    assert.equal(f.snapshot(), before); assert.equal(f.network.lookups, 0); assert.equal(f.network.posts, 0);
+    assert.equal(f.snapshot(project.id), before); assert.equal(f.network.lookups, 0); assert.equal(f.network.posts, 0);
   });
 
   await t.test('external clients prepare/read pending reviews without an approval tool or provider call', async () => {
@@ -220,12 +229,12 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
   });
 
   await t.test('project, revision and rejected-review substitution fail closed before any POST', async () => {
-    const before = f.snapshot();
+    const before = f.snapshot(project.id);
     await f.approve(review, {projectId: other.id}, 'IMAGE_REVIEW_NOT_FOUND');
     await f.approve(review, {reviewId: randomUUID()}, 'IMAGE_REVIEW_NOT_FOUND');
     await f.approve(review, {expectedRevision: 2}, 'IMAGE_REVIEW_REVISION_CONFLICT');
     await f.rpc('image.review.prepare', {input: {...input, prompt: 'Changed same-key intent'}, settingsRevision: 1}, 'IMAGE_REVIEW_CONFLICT');
-    assert.equal(f.snapshot(), before);
+    assert.equal(f.snapshot(project.id), before);
     const rejected = await f.prepare(inputFor(project.id));
     const response = await f.request('/api/images/reviews/reject', {method: 'POST', input: approvalFor(rejected)});
     assert.equal(response.body.data.state, 'rejected');
@@ -239,7 +248,7 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.equal(accepted.state, 'queued'); finished = await f.settled(accepted);
     assert.equal(f.network.posts, 1); assert.equal(f.network.requests, 1); assert.equal(f.network.lookups, 1);
     assert.deepEqual(f.network.payloads[0], {model: IMAGE_MODELS.openai, prompt: input.prompt, n: 1, quality: 'low', size: '1024x1024', output_format: 'png', background: 'opaque', moderation: 'auto'});
-    const before = f.snapshot();
+    const before = f.snapshot(project.id);
     assert.deepEqual(await f.approve(review), accepted);
     assert.deepEqual(await f.client.rpc('image.generate', input), accepted);
     assert.deepEqual((await f.client.rpc('image.request.get', {projectId: project.id, requestId: input.requestId}))!.response, accepted);
@@ -250,18 +259,18 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     const asset = await fetch(`${f.server.url}/media/${versions.items[0].assetId}`, {headers: {authorization: `Bearer ${token}`}});
     assert.equal(asset.status, 200); const bytes = Buffer.from(await asset.arrayBuffer());
     assert.deepEqual(bytes, f.png); assert.equal(createHash('sha256').update(bytes).digest('hex'), versions.items[0].sha256);
-    assert.equal(f.snapshot(), before); assert.equal(f.network.posts, 1);
+    assert.equal(f.snapshot(project.id), before); assert.equal(f.network.posts, 1);
   });
 
   await t.test('a genuinely lost private approval response recovers the original request key without another POST', async () => {
     const original = inputFor(project.id), prepared = await f.prepare(original), ack = await f.loseApproval(prepared);
     await f.settled(ack); assert.equal(f.network.posts, 2);
-    const before = f.snapshot();
+    const before = f.snapshot(project.id);
     const recovered = await f.client.rpc('image.request.get', {projectId: project.id, requestId: original.requestId});
     assert.deepEqual(recovered!.response, ack);
     const retained = await f.client.rpc('image.review.get', {projectId: project.id, reviewId: prepared.id});
     assert.equal(retained.taskId, ack.id); assert.equal(retained.postAttempts, 1);
-    assert.deepEqual(await f.approve(prepared), ack); assert.equal(f.snapshot(), before); assert.equal(f.network.posts, 2);
+    assert.deepEqual(await f.approve(prepared), ack); assert.equal(f.snapshot(project.id), before); assert.equal(f.network.posts, 2);
   });
 
   await t.test('strict client rejects forged review data without retries or converting it into authorization', async () => {
@@ -294,12 +303,12 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.equal(task.state, 'interrupted_before_dispatch'); assert.equal(task.dispatched, false);
     const retained = await f.client.rpc('image.review.get', {projectId: project.id, reviewId: prepared.id});
     assert.equal(retained.state, 'approved'); assert.equal(retained.postAttempts, 0);
-    const before = f.snapshot(), networkBefore = {...f.network};
+    const before = f.snapshot(project.id), networkBefore = {...f.network};
     assert.deepEqual(await f.approve(prepared), ack); assert.deepEqual(await f.client.rpc('image.generate', original), ack);
     await f.approve(pending, {}, 'IMAGE_SETTINGS_NOT_CONFIGURED');
     await f.client.rpc('image.review.list', {projectId: project.id});
     await f.client.rpc('image.task.list', {projectId: project.id}); await delay(30);
-    assert.equal(f.snapshot(), before); assert.equal(f.network.posts, networkBefore.posts); assert.equal(f.network.requests, networkBefore.requests);
+    assert.equal(f.snapshot(project.id), before); assert.equal(f.network.posts, networkBefore.posts); assert.equal(f.network.requests, networkBefore.requests);
     assert.deepEqual(await f.client.rpc('image.task.get', {projectId: project.id, taskId: accepted.id}), finished);
   });
 
@@ -313,12 +322,12 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.equal(task.state, 'outcome_unknown'); assert.equal(task.dispatched, true);
     const retained = await f.client.rpc('image.review.get', {projectId: project.id, reviewId: prepared.id});
     assert.equal(retained.state, 'dispatched'); assert.equal(retained.postAttempts, 1);
-    const before = f.snapshot(), posts = f.network.posts, requests = f.network.requests;
+    const before = f.snapshot(project.id), posts = f.network.posts, requests = f.network.requests;
     assert.deepEqual(await f.approve(prepared), ack);
     assert.deepEqual((await f.client.rpc('image.request.get', {projectId: project.id, requestId: original.requestId}))!.response, ack);
     assert.deepEqual(await f.prepare(original, 2), retained);
     await f.client.rpc('image.profile.list'); await f.client.rpc('image.review.list', {projectId: project.id}); await delay(30);
-    assert.equal(f.snapshot(), before); assert.equal(f.network.posts, posts); assert.equal(f.network.requests, requests);
+    assert.equal(f.snapshot(project.id), before); assert.equal(f.network.posts, posts); assert.equal(f.network.requests, requests);
     assert.equal((await f.request('/api/images/settings')).body.data.secret.configured, false);
     assert.equal(await filesContain(f.root, syntheticKey), false);
   });

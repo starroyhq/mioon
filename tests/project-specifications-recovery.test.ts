@@ -12,7 +12,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices,canonical,hash} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {isEditTaskEnvelope} from '@mioon/contracts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const code=(expected: string)=>(error: { code: string; })=>error.code===expected&&!JSON.stringify(error).includes('PRIVATE');
 const DOMAIN_TABLES=['projects','timelines','timeline_requests','timeline_format_requests','timeline_history','timeline_history_cursors','exports'];
@@ -23,8 +23,6 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  try{return await services.call('project.create',{name});}
  finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: DatabaseSync,write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 async function fixture(t: test.TestContext){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-format-recovery-'));
  let store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices),tasks!: TypedTaskManager,calls=0,fault: (point: string) => void=()=>{},dispatch: ((operation: string,input: Record<string,unknown>,services: TypedServices) => unknown) | undefined;
@@ -216,7 +214,7 @@ test('current owner and immutable historical format ACK remain mandatory for los
 
 test('format receipt insertion failure rolls back the timeline, both journals and project CAS',async t=>{
  const f=await fixture(t),input=await f.input(),saved=f.prepare(input),before=f.snapshot();
- f.store.db.exec("CREATE TRIGGER reject_format_receipt BEFORE INSERT ON timeline_format_requests BEGIN SELECT RAISE(ABORT,'PRIVATE injected receipt failure');END");
+ f.store.db.exec("CREATE TEMP TRIGGER reject_format_receipt BEFORE INSERT ON timeline_format_requests BEGIN SELECT RAISE(ABORT,'PRIVATE injected receipt failure');END");
  const outcome=await f.execute(saved);assert.equal(outcome.task.status,'unknown');assert.deepEqual(f.snapshot(),before);
  assert.equal(Object.hasOwn(outcome,'result'),false);assert.equal(outcome.task.errorCode,undefined);
  f.store.db.exec('DROP TRIGGER reject_format_receipt');

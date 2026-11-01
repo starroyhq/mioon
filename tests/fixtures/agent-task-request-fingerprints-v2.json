@@ -52,32 +52,32 @@
       "sha256": "61f6088d99bbbd4b5cd8f3c67780eee1bf701a7900ec3f1dcb8ea2beee7c1dc8"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "chat_completions",
       "index": 1,
       "bytes": 20900,
       "sha256": "4742a94e1c7fff3f19aa6ce404e1a16b479f9ebba7385c8d4f334bc964afd4f5"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "chat_completions",
       "index": 2,
       "bytes": 43690,
       "sha256": "9a707f9156f210f1823bb9a9e96bf5ce855de9c3dacb966200716fc4bbc6d9f2"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "chat_completions",
       "index": 3,
-      "bytes": 44177,
-      "sha256": "e692ebd2a813c246170f8dd5a78e4b724b15b8356323d799ec4d845b19a86f20"
+      "bytes": 44862,
+      "sha256": "f432ce05c2a17998d934b713cdc34f2a2e11cf5b5c4954aa6199257b87248ec2"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "chat_completions",
       "index": 4,
-      "bytes": 44664,
-      "sha256": "f2e7c5faa6e71ebca43e0a58a4861541a567d927fc9ea3fa57e32f9bd9ed240c"
+      "bytes": 45639,
+      "sha256": "7388e6f76d4af948b208878b255070cdbffc1076ff6a1f0190e2565bf14c1cb7"
     },
     {
       "scenario": "tool_failure_retry",
@@ -248,32 +248,32 @@
       "sha256": "e309ba56308b86861ab7bcd644bdf9be644b364b13054c4b943cac473e63a604"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "responses",
       "index": 1,
       "bytes": 20688,
       "sha256": "5c456ceeaaef300b2a3ac56c992fdc231fa4c007920554eba5c7c2f995924af0"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "responses",
       "index": 2,
       "bytes": 43366,
       "sha256": "dd736afe96bee0e9c8336918b3e41ebfdff8409d7ae0ce3c5f4570bb785b2b85"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "responses",
       "index": 3,
-      "bytes": 43936,
-      "sha256": "b7c549a3743982f4f9a3c70285ea8bb05e9cb5e22004a033aab1eb49f8f33796"
+      "bytes": 44621,
+      "sha256": "982e2fd8b9ecea31d63bf96fa2fb2dd05d23eb7865ea67f7fd08aeb72c36a536"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "responses",
       "index": 4,
-      "bytes": 44506,
-      "sha256": "7700b617b5bda75de9150800b73f12905e4b71c11ecc5d7e56d141118a277579"
+      "bytes": 45481,
+      "sha256": "2f1c1160b69b2ad666d2f32be1c0f9feb964044d13a50dd63d0a18e4de91438a"
     },
     {
       "scenario": "tool_failure_retry",
@@ -444,32 +444,32 @@
       "sha256": "4d15007033505abc08e834da7e7ef3b747e6ea0816345cd171028d5e5b785791"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "anthropic_messages",
       "index": 1,
       "bytes": 20456,
       "sha256": "c09bf8f84f7476dc7bb10e4f62d0b41c8ac2109069902d97cca9b4e4d00c91bd"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "anthropic_messages",
       "index": 2,
       "bytes": 42832,
       "sha256": "dd3353345c050296a803544dab8cf366ae3d957f846e2423ce5af63a43bc607a"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "anthropic_messages",
       "index": 3,
-      "bytes": 43332,
-      "sha256": "de49cd37ebc20af2c9a0b5d2247b6f711c230e51cc76488bf81a1db479c50669"
+      "bytes": 44017,
+      "sha256": "b494efd1d7963eb83c6dd6a58f3fd9847fc2c65b17f0552ff2d799a14d144b38"
     },
     {
-      "scenario": "conflict_skip_replan",
+      "scenario": "conflict_reread",
       "protocol": "anthropic_messages",
       "index": 4,
-      "bytes": 43832,
-      "sha256": "a529cba999a73ccd5fc0228a5fb06237078d08d25a107b8bb0ab86ec7a482f42"
+      "bytes": 44807,
+      "sha256": "9a7028d1d4a4c54cb3fbbb73bd32f940386a61be732d2ece381e56e6540285ba"
     },
     {
       "scenario": "tool_failure_retry",

@@ -19,6 +19,7 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 
 const at='2026-10-10T00:00:00.000Z',clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value));
 const tables=['projects','assets','shots','nodes','edges','jobs','versions','exports','timelines','reference_requests','timeline_requests','idempotency'];
@@ -29,8 +30,6 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  try{return await services.call('project.create',{name});}
  finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: DatabaseSync,write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 async function fixture(t: test.TestContext,{open=openStore}:{open?:(root:string)=>WorkspaceStore|ReturnType<typeof openLegacyWorkspaceStore>}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-reference-recovery-'));
  let store=open(root) as TypedStore,services=(createServices(store,new Map()) as TypedServices);
@@ -237,12 +236,11 @@ test('combined malformed managed sources and foreign target or snapshot owners n
 test('receipt insert failures and post-write owner corruption roll back atomically without proof',async t=>{
  for(const operation of ['reference.attach','reference.detach'])for(const kind of ['receipt failure','receipt owner','domain owner'])await t.test(`${operation} ${kind}`,async t=>{
   const f=await fixture(t),{input,shot}=await prepared(f,operation);
-  if(kind==='receipt failure')f.store.db.exec("CREATE TRIGGER fail_reference_receipt BEFORE INSERT ON reference_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
-  else f.store.db.exec(`CREATE TRIGGER corrupt_reference_owner AFTER ${kind==='receipt owner'?'INSERT ON reference_requests':'UPDATE ON shots'} BEGIN UPDATE shots SET projectId='${f.otherId}' WHERE id='${shot.id}';END;`);
+  if(kind==='receipt failure')f.store.db.exec("CREATE TEMP TRIGGER fail_reference_receipt BEFORE INSERT ON reference_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
+  else f.store.db.exec(`CREATE TEMP TRIGGER corrupt_reference_owner AFTER ${kind==='receipt owner'?'INSERT ON reference_requests':'UPDATE ON shots'} BEGIN UPDATE shots SET projectId='${f.otherId}' WHERE id='${shot.id}';END;`);
   // The trigger moves the shot to a project this store does not hold, inside the service's own transaction.
-  if(kind!=='receipt failure')f.store.db.exec('PRAGMA foreign_keys=OFF');
-  try{await rejected(f,operation,input,{code:kind==='receipt failure'?null:'INVALID_REFERENCE_RECORD',writes:true});}
-  finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
+  const call=()=>rejected(f,operation,input,{code:kind==='receipt failure'?null:'INVALID_REFERENCE_RECORD',writes:true});
+  await (kind==='receipt failure'?call():withoutForeignKeys(f.store.db,call));
  });
 });
 
@@ -250,7 +248,7 @@ test('trigger-created extra bindings are rejected after domain and receipt write
  for(const operation of ['reference.attach','reference.detach'])for(const when of ['domain','receipt'])await t.test(`${operation} ${when}`,async t=>{
   const f=await fixture(t),{input,node,asset,shot}=await prepared(f,operation),id=randomUUID();
   const edge={id,projectId:f.projectId,source:node.id,target:shot.id,kind:'reference',role:'first_frame',sourceAssetId:asset.id,createdAt:at};
-  f.store.db.exec(`CREATE TRIGGER duplicate_reference AFTER ${when==='receipt'?'INSERT ON reference_requests':'UPDATE ON shots'} BEGIN
+  f.store.db.exec(`CREATE TEMP TRIGGER duplicate_reference AFTER ${when==='receipt'?'INSERT ON reference_requests':'UPDATE ON shots'} BEGIN
    INSERT INTO edges(id,projectId,data) VALUES('${id}','${f.projectId}','${JSON.stringify(edge)}');END;`);
   await rejected(f,operation,input,{writes:true});
  });
@@ -259,7 +257,7 @@ test('trigger-created extra bindings are rejected after domain and receipt write
 test('fresh no-op attach rolls back a receipt-triggered extra binding without releasing its key',async t=>{
  const f=await fixture(t),{input,node}=await prepared(f,'reference.attach'),original=await f.call('reference.attach',input);
  const noop=attach(f,node,original.shot),extra={...original.edge,id:randomUUID()};
- f.store.db.exec(`CREATE TRIGGER duplicate_noop_reference AFTER INSERT ON reference_requests BEGIN
+ f.store.db.exec(`CREATE TEMP TRIGGER duplicate_noop_reference AFTER INSERT ON reference_requests BEGIN
   INSERT INTO edges(id,projectId,data) VALUES('${extra.id}','${f.projectId}','${JSON.stringify(extra)}');END;`);
  // This request writes only its receipt before the trigger fires. Even though
  // no domain write was intended, a failed receipt publication is never proof.
