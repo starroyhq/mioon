@@ -32,6 +32,21 @@ test('local transport failures do not tell the user to change the model connecti
   for (const locale of LOCALES) assert.doesNotMatch(translate(locale, agentTaskErrorKey('NETWORK')), /模型|model|モデル/u);
 });
 
+// X4: a step handed back for reread shows a fixed reason, never the model-facing text.
+test('handed-back conflict steps show fixed reread and editing reasons', () => {
+  assert.equal(agentTaskErrorKey('TARGET_CHANGED'), 'agent.task.error.targetReread');
+  assert.equal(agentTaskErrorKey('TARGET_EDITING'), 'agent.task.error.editing');
+  for (const locale of LOCALES) {
+    for (const code of ['TARGET_CHANGED', 'TARGET_EDITING']) {
+      const text = translate(locale, agentTaskErrorKey(code));
+      assert.notEqual(agentTaskErrorKey(code), 'agent.task.error.generic');
+      assert.ok(text.length > 0);
+      assert.ok(!text.includes(code));
+      assert.doesNotMatch(text, /[。.]$/u);
+    }
+  }
+});
+
 test('new error templates follow the static UI paragraph punctuation rule', () => {
   for (const locale of LOCALES) {
     for (const code of ['AGENT_CHAT_HTTP_ERROR','AGENT_CHAT_TIMEOUT','NETWORK','INVALID_RESPONSE','LOCAL_RECEIPT_UNAVAILABLE',undefined]) {

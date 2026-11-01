@@ -64,7 +64,7 @@ interface EditingHold { count: number; claimed: boolean; timer: ReturnType<typeo
 const holds = new Map<string, EditingHold>();
 /**
  * Holds editing protection of one target while a full-window editor is open
- * (the camera previs editor), so Mio's writes to it pause as for any edit. It
+ * (the camera previs editor), so Mio's writes to it are refused as for any edit. It
  * claims the target unless this window already protects it, and on release
  * gives back only a claim it made. Releasing waits one task, so a StrictMode
  * remount keeps the same claim.

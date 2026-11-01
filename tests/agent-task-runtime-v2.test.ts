@@ -94,6 +94,32 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
   restart(){runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318});},
  };
 }
+type RuntimeFixture=Awaited<ReturnType<typeof fixture>>;
+/** M4's foreground conflict pause, built with public journal operations. X4
+ * hands such conflicts back to the model, but background work and older
+ * versions still leave this state. The run must await approval and the claim
+ * or saved change must already exist. */
+function m4PauseFromApproval(f:RuntimeFixture,runId:string,reason:'conflict'|'editing'):AgentTaskSnapshot{
+ const journal=f.runtime.journal,step=journal.snapshot(runId).steps.find(item=>item.kind==='tool'&&item.status==='awaiting_approval');assert.ok(step);
+ journal.updateStep(runId,step.id,{status:'intent',data:{...object(step.data),conflictTargets:JSON.parse(JSON.stringify(journal.conflictingTargets(f.projectId,step.targets??[]))) as AgentTaskJson}});
+ journal.transition(runId,journal.run(runId).revision,'paused',reason);
+ return f.runtime.get(f.projectId,runId);
+}
+/** The first script request returns `calls`; its first call waits for
+ * approval. Then the conflict appears and the run pauses as M4 paused it.
+ * Later script requests return `script(index)`. */
+async function m4ConflictPause(f:RuntimeFixture,{reason,target,calls,script,protocol='responses',locale,text='执行测试',conflict,ownerId,loadGroups=['canvas']}:{reason:'conflict'|'editing';target:{kind:string;id:string};calls:AgentTaskToolCall[];script?:(index:number)=>AgentTaskToolCall[];protocol?:'chat_completions'|'responses';locale?:typeof AGENT_TASK_LOCALES[number];text?:string;conflict?:()=>Promise<unknown>;ownerId?:string;loadGroups?:readonly AgentTaskLoadableToolGroupId[]}){
+ const modes=f.runtime.policy().modes;f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...modes,local_reversible:'confirm'}});
+ f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?calls:script?.(index)??[])};},{loadGroups});
+ const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text,...(locale?{locale}:{}),expectedSettingsRevision:(await f.settings.get()).revision});
+ const waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');const stepId=waiting.steps.find(item=>item.status==='awaiting_approval')?.id;assert.ok(stepId);
+ f.runtime.journal.updatePolicy({...f.runtime.policy(),modes});
+ let owner:string|undefined;
+ if(reason==='editing'){owner=ownerId??randomUUID();f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:owner,generation:1,sequence:1,action:'claim',targets:[{kind:target.kind,id:target.id,revision:f.runtime.journal.targetRevision(f.projectId,target.kind,target.id)}]});}
+ else if(conflict)await conflict();
+ else await f.services.call('shot.update',{shotId:target.id,expectedRevision:revisionField(f.store.get('shots',target.id)),patch:{prompt:'manual conflict'}});
+ return {sent,paused:m4PauseFromApproval(f,sent.run.id,reason),stepId,...(owner?{ownerId:owner}:{})};
+}
 test('all classified Chat Completions stream failures persist safe diagnostics, execute no tools and never replay',async t=>{
   const frame=(value:unknown)=>`data: ${JSON.stringify(value)}\n\n`,finish=(reason:string)=>frame({choices:[{index:0,delta:{},finish_reason:reason}]});
   for(const reason of ['missing_done','missing_finish','unframed_sse','output_limit','read_failed'] as const){
@@ -293,18 +319,14 @@ test('read and reversible tiers independently require approval and exact duplica
  waiting=await f.wait(sent.run.id,['awaiting_approval']);await f.runtime.drain();const second=waiting.steps.find(step=>step.status==='awaiting_approval');assert.ok(second);assert.equal(second.tier,'local_reversible');assert.equal(f.effects.size,1+f.loadingEffects);
  await f.action(waiting,'deny',{stepId:second.id});const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,1+f.loadingEffects);assert.equal(object(f.store.get('shots',String(f.first.id))).prompt,'saved first');
 });
-test('same target ABA during model wait pauses while another shot edit does not',async t=>{for(const same of [true,false]){const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'AI edit'}})]:[])};},{loadGroups:['canvas']});const sent=await f.send();await entered.promise;const target=same?f.first:f.other;let saved=object(await f.services.call('shot.update',{shotId:target.id,expectedRevision:target.revision,patch:{prompt:'manual edit'}}));if(same)saved=object(await f.services.call('shot.update',{shotId:target.id,expectedRevision:saved.revision,patch:{prompt:target.prompt}}));release.resolve();const end=await f.settle(sent.run.id);assert.equal(end.run.status,same?'paused':'completed');assert.equal(f.effects.size,(same?0:1)+f.loadingEffects);if(same){assert.equal(end.run.pauseReason,'conflict');assert.equal(f.requests.length,(1)+f.loadingRequests);}else assert.equal(object(f.store.get('shots',String(f.other.id))).prompt,'manual edit');}});
-test('unsaved editing claim blocks only its target and skip re-plans after explicit release',async t=>{const f=await fixture(t);const target={kind:'shot',id:String(f.first.id),revision:f.runtime.journal.targetRevision(f.projectId,'shot',String(f.first.id))};f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'runtime-edit-owner',generation:1,sequence:1,action:'claim',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'AI edit'}})])};},{loadGroups:['canvas']});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'editing');assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(1)+f.loadingRequests);f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'runtime-edit-owner',generation:1,sequence:2,action:'release',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses')};},{loadGroups:['canvas']});await f.action(paused,'skip');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.match(f.scriptRequest(2).body,/TARGET_SKIPPED/);});
+test('same target ABA during model wait is handed back for reread while another shot edit still runs',async t=>{for(const same of [true,false]){const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'AI edit'}})]:[])};},{loadGroups:['canvas']});const sent=await f.send();await entered.promise;const target=same?f.first:f.other;let saved=object(await f.services.call('shot.update',{shotId:target.id,expectedRevision:target.revision,patch:{prompt:'manual edit'}}));if(same)saved=object(await f.services.call('shot.update',{shotId:target.id,expectedRevision:saved.revision,patch:{prompt:target.prompt}}));release.resolve();const end=await f.settle(sent.run.id);assert.equal(end.run.status,'completed');assert.equal(f.effects.size,(same?0:1)+f.loadingEffects);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(f.runtime.journal.events(sent.run.id).some(event=>event.type==='run'&&object(event.data).status==='paused'),false);const step=end.steps.find(item=>item.toolCall?.name==='mioon_shot_update');if(same){assert.equal(step?.status,'rejected');assert.equal(step?.error?.code,'TARGET_CHANGED');assert.equal(end.changes.length,0);assert.equal(object(f.store.get('shots',String(f.first.id))).prompt,'saved first');assert.match(f.scriptRequest(2).body,/TARGET_CHANGED/u);}else{assert.equal(step?.status,'completed');assert.equal(object(f.store.get('shots',String(f.other.id))).prompt,'manual edit');}}});
+test('unsaved editing claim is handed back with TARGET_EDITING, keeps the draft and adds no skip list',async t=>{const f=await fixture(t);const target={kind:'shot',id:String(f.first.id),revision:f.runtime.journal.targetRevision(f.projectId,'shot',String(f.first.id))};f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'runtime-edit-owner',generation:1,sequence:1,action:'claim',targets:[target]});f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:f.first.revision,patch:{prompt:'AI edit'}})]:[])};},{loadGroups:['canvas']});const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.skippedTargets,[]);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(2)+f.loadingRequests);const step=done.steps.find(item=>item.toolCall?.name==='mioon_shot_update');assert.equal(step?.status,'rejected');assert.equal(step?.error?.code,'TARGET_EDITING');const error=object(object(step?.result).error);assert.ok(Array.isArray(error.current));assert.equal(object(object(error.current[0]).value).prompt,'saved first');assert.equal(f.runtime.journal.claims(f.projectId).length,1);assert.equal(object(f.store.get('shots',String(f.first.id))).prompt,'saved first');assert.match(f.scriptRequest(2).body,/TARGET_EDITING/u);assert.doesNotMatch(f.scriptRequest(2).body,/TARGET_SKIPPED/u);});
 for(const protocol of ['chat_completions','responses'] as const)for(const legacy of [false,true])for(const reason of ['editing','conflict'] as const)test(`${protocol}: interrupted ${legacy?'legacy restart':'preserved'} ${reason} returns to conflict selection before any old tool can run`,async t=>{
- const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID(),entered=gate(),release=gate();
- if(reason==='editing')f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});
- f.setScript(async function*(index){if(index===1){entered.resolve();await release.promise;}yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'old parameters must not run'}})]:[])};},{loadGroups:['canvas']});
- const sent=await f.send();await entered.promise;
- if(reason==='conflict'){
+ const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID();
+ const {sent,paused}=await m4ConflictPause(f,{reason,target,protocol,ownerId,calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'old parameters must not run'}})],conflict:async()=>{
   const changed=object(await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'manual ABA'}}));
   await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:revisionField(changed),patch:{prompt:f.first.prompt}});
- }
- release.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,reason);
+ }});assert.equal(paused.run.pauseReason,reason);
  if(reason==='editing')f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:2,action:'release',targets:[target]});
  await assert.rejects(f.action(paused,'resume'),{code:'AGENT_TASK_SKIP_REQUIRED'});assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(1)+f.loadingRequests);
  f.restart();let interrupted=f.runtime.get(f.projectId,sent.run.id);assert.equal(interrupted.run.status,'interrupted');
@@ -318,42 +340,39 @@ for(const protocol of ['chat_completions','responses'] as const)for(const legacy
  assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.[0]?.target.id,f.first.id);assert.equal(done.changes.length,0);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.match(f.scriptRequest(2)!.body,/TARGET_SKIPPED/);assert.equal(wakeups,1);assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
 });
 for(const status of ['denied','rejected','completed'] as const)test(`interrupted restart ignores handled ${status} conflict metadata`,async t=>{
- const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.claim({projectId:f.projectId,ownerId:'handled-conflict',targets:[target]});
- f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'handled old parameters'}})]:[])};},{loadGroups:['canvas']});
- const sent=await f.send(),paused=await f.settle(sent.run.id),step=paused.steps.find(item=>item.kind==='tool'&&item.toolCall?.name!==AGENT_TASK_TOOLS_LOAD_NAME);assert.ok(step);assert.equal(paused.run.pauseReason,'editing');f.runtime.journal.releaseClaims(f.projectId,'handled-conflict');
+ const f=await fixture(t);
+ const {sent,paused}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},ownerId:'handled-conflict',calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'handled old parameters'}})]}),step=paused.steps.find(item=>item.kind==='tool'&&item.toolCall?.name!==AGENT_TASK_TOOLS_LOAD_NAME);assert.ok(step);assert.equal(paused.run.pauseReason,'editing');f.runtime.journal.releaseClaims(f.projectId,'handled-conflict');
  if(status==='completed'){f.runtime.journal.markDispatch(sent.run.id,step.id);f.runtime.journal.completeStep(sent.run.id,step.id,{result:{handled:true}});const current=f.runtime.journal.step(step.id);f.runtime.journal.updateStep(sent.run.id,step.id,{data:{...object(current.data),backgroundInvalidated:false}});}
  else f.runtime.journal.updateStep(sent.run.id,step.id,{status,result:{handled:true}});
  const resumed=f.runtime.journal.resume(sent.run.id,f.runtime.journal.run(sent.run.id).revision);f.runtime.journal.transition(sent.run.id,resumed.revision,'paused','user');f.restart();
  await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.deepEqual(done.run.skippedTargets,[]);
 });
 for(const protocol of ['chat_completions','responses'] as const)for(const kind of ['model','tool'] as const)test(`${protocol}: interrupted conflict selection still requires unknown ${kind} result disposition first`,async t=>{
- const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.claim({projectId:f.projectId,ownerId:'unknown-conflict',targets:[target]});
- f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'unknown old parameters'}})]:[])};},{loadGroups:['canvas']});
- const sent=await f.send(),paused=await f.settle(sent.run.id);f.runtime.journal.resume(sent.run.id,paused.run.revision);const uncertain=f.runtime.journal.beginStep(sent.run.id,{kind,...(kind==='tool'?{toolCall:call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'unknown tool must not run'}})}:{})});f.runtime.journal.markDispatch(sent.run.id,uncertain.id);f.runtime.journal.transition(sent.run.id,f.runtime.journal.run(sent.run.id).revision,'paused','editing');f.restart();
+ const f=await fixture(t,protocol);
+ const {sent,paused}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},protocol,ownerId:'unknown-conflict',calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'unknown old parameters'}})]});f.runtime.journal.resume(sent.run.id,paused.run.revision);const uncertain=f.runtime.journal.beginStep(sent.run.id,{kind,...(kind==='tool'?{toolCall:call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'unknown tool must not run'}})}:{})});f.runtime.journal.markDispatch(sent.run.id,uncertain.id);f.runtime.journal.transition(sent.run.id,f.runtime.journal.run(sent.run.id).revision,'paused','editing');f.restart();
  const interrupted=f.runtime.get(f.projectId,sent.run.id),before=f.runtime.journal.snapshot(sent.run.id);await assert.rejects(f.action(interrupted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(1)+f.loadingRequests);
  const disposed=await f.action(interrupted,'resolve_unknown',{stepId:uncertain.id,resolution:'discard'}),selected=await f.action(disposed,'resume');assert.equal(selected.run.status,'paused');assert.equal(selected.run.pauseReason,'editing');assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(f.requests.length,(1)+f.loadingRequests);
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: interrupted conflict recovery preserves an exhausted budget until separate continuation`,async t=>{
- const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:4});f.runtime.journal.claim({projectId:f.projectId,ownerId:'budget-conflict',targets:[target]});
- f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'no budget for old parameters'}})]:[])};},{loadGroups:['canvas']});
- const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');assert.equal(paused.run.stepsUsed,2+f.loadingSteps(paused));assert.equal(paused.run.budget,4);f.runtime.journal.releaseClaims(f.projectId,'budget-conflict');f.restart();
+ const f=await fixture(t,protocol);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:4});
+ const {sent,paused}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},protocol,ownerId:'budget-conflict',calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'no budget for old parameters'}})]});assert.equal(paused.run.pauseReason,'editing');assert.equal(paused.run.stepsUsed,2+f.loadingSteps(paused));assert.equal(paused.run.budget,4);f.runtime.journal.releaseClaims(f.projectId,'budget-conflict');f.restart();
  const selected=await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');assert.equal(selected.run.status,'paused');assert.equal(selected.run.pauseReason,'editing');assert.equal(selected.run.budget,4);assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);
  await f.action(selected,'skip');const budget=await f.settle(sent.run.id);assert.equal(budget.run.status,'paused');assert.equal(budget.run.pauseReason,'budget');assert.equal(budget.run.budget,4);assert.equal(budget.run.skippedTargets?.[0]?.target.id,f.first.id);assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);
  await f.action(budget,'resume');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.budget,8);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(object(f.store.get('shots',f.first.id)).prompt,f.first.prompt);
 });
 test('interrupted conflict recovery and its control receipt roll back together on storage failure',async t=>{
- const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.claim({projectId:f.projectId,ownerId:'atomic-conflict',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never commits'}})])};},{loadGroups:['canvas']});
- const sent=await f.send();await f.settle(sent.run.id);f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id),request={requestId:randomUUID(),expectedRevision:interrupted.run.revision,action:'resume'},before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id);
+ const f=await fixture(t),{sent}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},ownerId:'atomic-conflict',calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never commits'}})]});
+ f.restart();const interrupted=f.runtime.get(f.projectId,sent.run.id),request={requestId:randomUUID(),expectedRevision:interrupted.run.revision,action:'resume'},before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id);
  f.store.db.exec(`CREATE TEMP TRIGGER fail_conflict_recovery_receipt BEFORE INSERT ON agent_task_controls_v2 WHEN NEW.requestId='${request.requestId}' BEGIN SELECT RAISE(ABORT,'synthetic conflict recovery receipt failure');END;`);
  await assert.rejects(f.runtime.action(f.projectId,sent.run.id,request),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});assert.deepEqual(f.runtime.journal.snapshot(sent.run.id),before);assert.deepEqual(f.runtime.journal.events(sent.run.id),events);assert.equal(f.runtime.journal.lookupControl(request.requestId),null);assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);
 });
-test('conflict invalidates the whole old tool batch including a not yet created third call',async t=>{
+test('a handed-back conflict leaves the rest of its batch unexecuted, including a not yet created third call',async t=>{
  const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID();
  f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});
  f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect'),call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'stale call two'}}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'stale call three'}})]:[])};},{loadGroups:['canvas']});
- const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');assert.equal(f.effects.size,(1)+f.loadingEffects);assert.equal(paused.steps.filter(step=>step.kind==='tool').length,2+paused.steps.filter(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME).length);
- f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:2,action:'release',targets:[target]});await f.action(paused,'skip');const done=await f.settle(sent.run.id);
- assert.equal(done.run.status,'completed');assert.equal(f.effects.size,(1)+f.loadingEffects);assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.match(f.scriptRequest(2)!.body,/TARGET_CHANGED/);
+ const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.skippedTargets,[]);assert.equal(f.effects.size,(1)+f.loadingEffects);assert.equal(done.steps.filter(step=>step.kind==='tool').length,2+done.steps.filter(step=>step.toolCall?.name===AGENT_TASK_TOOLS_LOAD_NAME).length);
+ const handed=done.steps.find(step=>step.toolCall?.name==='mioon_shot_update');assert.equal(handed?.status,'rejected');assert.equal(handed?.error?.code,'TARGET_EDITING');assert.equal(f.runtime.journal.claims(f.projectId).length,1);
+ assert.equal(f.requests.length,(2)+f.loadingRequests);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.match(f.scriptRequest(2)!.body,/TARGET_EDITING/);assert.match(f.scriptRequest(2)!.body,/TARGET_CHANGED/);assert.match(f.scriptRequest(2)!.body,/此批旧工具参数已失效/u);
 });
 test('budget pauses retain pending tool calls without invalidating or repeating the batch',async t=>{
  const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:2});
@@ -547,7 +566,16 @@ for(const externalAba of [false,true])test(`persisted compensation chain ${exter
   yield {type:'done',output:output('responses',calls)};
  },{loadGroups:['canvas']});
  const sent=await f.send();let done=await f.settle(sent.run.id);
- if(externalAba){assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'conflict');assert.equal(insertedAba,true);await f.action(done,'skip');done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.changes.length,1);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'AI first');await assert.rejects(f.action(done,'undo_all'),{code:'AGENT_TASK_TARGET_CHANGED'});return;}
+ if(externalAba){
+  // X4: the second request's call is handed back; the third request's reread edit applies.
+  assert.equal(done.run.status,'completed');assert.equal(insertedAba,true);assert.equal(f.runtime.journal.events(sent.run.id).some(event=>event.type==='run'&&object(event.data).status==='paused'),false);
+  assert.deepEqual(done.steps.filter(step=>step.toolCall?.name==='mioon_shot_update').map(step=>[step.status,step.error?.code]),[['completed',undefined],['rejected','TARGET_CHANGED'],['completed',undefined]]);
+  assert.equal(done.changes.length,2);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'AI second');
+  // Whole undo still cannot bridge the external ABA to compensate the first AI change.
+  // The second AI change is undone first; the first one is then refused and stays applied.
+  await assert.rejects(f.action(done,'undo_all'),{code:'AGENT_TASK_TARGET_CHANGED'});
+  assert.deepEqual(f.runtime.journal.snapshot(sent.run.id).changes.map(change=>change.status),['applied','reverted']);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'AI first');return;
+ }
  assert.equal(done.run.status,'completed');assert.equal(done.changes.length,2);const latest=done.changes[1]!;
  await f.action(done,'undo_change',{changeId:latest.id});const reverted=f.runtime.journal.snapshot(sent.run.id).changes[1]!;
  assert.equal(reverted.status,'reverted');assert.ok(reverted.revertedTargets?.length);assert.equal(reverted.revertedTargets[0]?.revisionBefore,latest.targets[0]?.revisionBefore);assert.equal(reverted.revertedTargets[0]?.revisionAfter,latest.targets[0]?.revisionAfter);
@@ -631,9 +659,7 @@ test('diagnostics cannot evict a normal conversation from the recent100 project 
 for(const protocol of ['chat_completions','responses'] as const){
  test(`${protocol}: conflict skip retains the draft, rejects repeated explicit targets and lets another target and a new run proceed`,async t=>{
   const f=await fixture(t,protocol),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID();
-  f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});
-  f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'blocked initial'}}),call('mioon_version_list',{shotId:f.first.id})]:index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'blocked again'}}),call('mioon_version_list',{shotId:f.first.id}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'other allowed'}}),call('mioon_project_inspect')]:[])};},{loadGroups:['canvas']});
-  const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');
+  const {sent,paused}=await m4ConflictPause(f,{reason:'editing',target,protocol,ownerId,calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'blocked initial'}}),call('mioon_version_list',{shotId:f.first.id})],script:index=>index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'blocked again'}}),call('mioon_version_list',{shotId:f.first.id}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'other allowed'}}),call('mioon_project_inspect')]:[]});assert.equal(paused.run.pauseReason,'editing');
   await assert.rejects(f.action(paused,'resume'),{code:'AGENT_TASK_SKIP_REQUIRED'});assert.deepEqual(f.runtime.journal.run(sent.run.id).skippedTargets,[]);
   const request={requestId:randomUUID(),expectedRevision:paused.run.revision,action:'skip'};await f.runtime.action(f.projectId,sent.run.id,request);const done=await f.settle(sent.run.id);
   assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.length,1);assert.equal(done.run.skippedTargets?.[0]?.target.id,f.first.id);assert.equal(done.changes.length,1);assert.equal(done.changes[0]?.operation,'shot.update');assert.equal(f.effects.size,3);assert.equal(f.loadingEffects,1);assert.equal(f.loadingRequests,1);
@@ -678,12 +704,12 @@ test('failed model intent rolls back note binding and cannot submit its request'
  f.store.db.exec("CREATE TEMP TRIGGER fail_note_model_intent BEFORE INSERT ON agent_task_steps_v2 WHEN NEW.position=2 BEGIN SELECT RAISE(ABORT,'synthetic note intent failure');END;");release.resolve();const done=await f.settle(sent.run.id);assert.equal(f.requests.length,1);assert.equal(done.steps.length,1);assert.equal(done.run.notes?.[0]?.modelStepId,undefined);assert.ok(done.run.status!=='completed');assert.equal(done.run.stepsUsed,1);
 });
 test('stopping a conflict never adds skipped targets or releases a user draft',async t=>{
- const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},ownerId=randomUUID();f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});f.setScript(async function*(){yield {type:'done',output:output('responses',[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never'}})])};},{loadGroups:['canvas']});const sent=await f.send(),paused=await f.settle(sent.run.id),stopped=await f.action(paused,'stop');assert.equal(stopped.run.status,'stopped');assert.deepEqual(stopped.run.skippedTargets,[]);assert.equal(f.runtime.journal.claims(f.projectId).length,1);assert.equal(f.effects.size,1);assert.equal(f.loadingEffects,1);assert.equal(f.requests.length,2);
+ const f=await fixture(t),{paused}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never'}})]}),stopped=await f.action(paused,'stop');assert.equal(stopped.run.status,'stopped');assert.deepEqual(stopped.run.skippedTargets,[]);assert.equal(f.runtime.journal.claims(f.projectId).length,1);assert.equal(f.effects.size,1);assert.equal(f.loadingEffects,1);assert.equal(f.requests.length,2);
 });
 
-test('a multi-target conflict skips only the claimed target, and another target can still be changed',async t=>{
+test('a multi-target conflict hands back only the claimed target, and another target can still be changed',async t=>{
  const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)},project=object(f.store.get('projects',f.projectId));f.runtime.journal.claim({projectId:f.projectId,ownerId:'multi-target-user',targets:[target]});
- f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_reorder',{expectedRevision:revisionField(project),shotIds:[f.other.id,f.first.id]})]:index===2?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'unaffected edit'}})]:[])};},{loadGroups:['canvas']});const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');const step=f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.toolCall?.name==='mioon_shot_reorder');assert.ok(step);assert.equal(step.targets?.length,2);await f.action(paused,'skip');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.deepEqual(done.run.skippedTargets?.map(item=>item.target.id),[f.first.id]);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'unaffected edit');assert.equal(done.changes.length,1);
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_reorder',{expectedRevision:revisionField(project),shotIds:[f.other.id,f.first.id]})]:index===2?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'unaffected edit'}})]:[])};},{loadGroups:['canvas']});const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');const step=f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.toolCall?.name==='mioon_shot_reorder');assert.ok(step);assert.equal(step.targets?.length,2);assert.equal(step.status,'rejected');assert.equal(step.error?.code,'TARGET_EDITING');const current=object(object(step.result).error).current;assert.ok(Array.isArray(current));assert.deepEqual(current.map(entry=>[object(entry).kind,object(entry).id]),[['shot',f.first.id]]);assert.deepEqual(done.run.skippedTargets,[]);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'unaffected edit');assert.equal(done.changes.length,1);
 });
 test('failed note receipt rolls back the queued text and event as one transaction',async t=>{
  const f=await fixture(t),entered=gate(),release=gate();f.setScript(async function*(){entered.resolve();await release.promise;yield {type:'done',output:output('responses')};});const sent=await f.send();await entered.promise;const current=f.runtime.get(f.projectId,sent.run.id),request={requestId:randomUUID(),expectedRevision:current.run.revision,action:'note',text:'must not partially save'},before=f.runtime.journal.snapshot(sent.run.id),events=f.runtime.journal.events(sent.run.id);
@@ -695,7 +721,7 @@ test('a bound note in an unknown model request is never automatically resubmitte
 });
 test('skipped-target instructions use the submitted locale in every model continuation',async t=>{
  const expected={'zh-Hans':'这一处由用户保留，本轮不要再改','zh-Hant':'這一處由使用者保留，本輪不要再修改',en:'The user kept this target.',ja:'この対象はユーザーが保持しました。'};
- for(const locale of AGENT_TASK_LOCALES){const f=await fixture(t),target={kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)};f.runtime.journal.claim({projectId:f.projectId,ownerId:'locale-skip-user',targets:[target]});f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never applies'}})]:[])};},{loadGroups:['canvas']});const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic skip locale',locale,expectedSettingsRevision:(await f.settings.get()).revision}),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');await f.action(paused,'skip');assert.equal((await f.settle(sent.run.id)).run.status,'completed');assert.ok(f.scriptRequest(2).body.includes(expected[locale]));assert.equal(f.effects.size,1);assert.equal(f.loadingEffects,1);}
+ for(const locale of AGENT_TASK_LOCALES){const f=await fixture(t),{sent,paused}=await m4ConflictPause(f,{reason:'editing',target:{kind:'shot',id:f.first.id},locale,text:'synthetic skip locale',ownerId:'locale-skip-user',calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'never applies'}})]});assert.equal(paused.run.pauseReason,'editing');await f.action(paused,'skip');assert.equal((await f.settle(sent.run.id)).run.status,'completed');assert.ok(f.scriptRequest(2).body.includes(expected[locale]));assert.equal(f.effects.size,1);assert.equal(f.loadingEffects,1);}
 });
 test('a note accepted during replay of a completed tool is observed before completing the saved final reply',async t=>{
  const f=await fixture(t),enteredFinal=gate(),releaseFinal=gate();f.setScript(async function*(index){if(index===2){enteredFinal.resolve();await releaseFinal.promise;}yield {type:'done',output:output('responses',index===1?[call('mioon_project_inspect')]:[])};});const sent=await f.send();await enteredFinal.promise;await f.action(f.runtime.get(f.projectId,sent.run.id),'pause');releaseFinal.resolve();const paused=await f.settle(sent.run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.steps.filter(step=>step.kind==='model'&&step.status==='completed').length,2);
@@ -726,7 +752,9 @@ async function lateSelectionFixture(t:TestContext,mode:'skip'|'deny'|'unhandled'
 for(const mode of ['skip','deny'] as const)test(`a late ${mode==='skip'?'skipped-target':'denied-background'} result stays recorded without pausing unrelated work`,async t=>{
  const f=await lateSelectionFixture(t,mode);try{
   if(mode==='skip'){
-   await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'manual content kept'}});f.secondRelease.resolve();const paused=await f.settle(f.sent.run.id);assert.equal(paused.run.pauseReason,'conflict');const changes=paused.changes;
+   // X4 hands a foreground conflict back; stop the stale call at approval to reach M4's pause.
+   const modes=f.runtime.policy().modes;f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...modes,local_reversible:'confirm'}});f.secondRelease.resolve();const waiting=await f.settle(f.sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');
+   await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'manual content kept'}});f.runtime.journal.updatePolicy({...f.runtime.policy(),modes});const paused=m4PauseFromApproval(f,f.sent.run.id,'conflict');assert.equal(paused.run.pauseReason,'conflict');const changes=paused.changes;
    const skipped=await f.action(paused,'skip');assert.deepEqual(skipped.changes,changes);assert.equal(skipped.run.skippedTargets?.length,1);await f.thirdEntered.promise;
   }else{
    f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'confirm'}});assert.throws(()=>assertAgentTaskJobEffect(f.store.db,'job',f.jobId),{code:'AGENT_TASK_APPROVAL_REQUIRED'});f.secondRelease.resolve();await f.runtime.drain();const waiting=f.runtime.get(f.projectId,f.sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');await f.action(waiting,'deny',{stepId:f.generationStepId});await f.thirdEntered.promise;assert.equal(object(f.runtime.journal.step(f.generationStepId).data).backgroundDenied,true);
@@ -932,10 +960,7 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  await f.services.call('timeline.track.add',{projectId:f.projectId,requestId:randomUUID(),kind:'video',name:'Kept track',expectedRevision:revisionField(initial)});
  await f.services.call('timeline.clip.add',{projectId:f.projectId,requestId:randomUUID(),assetId,trackId:sourceTrack,expectedRevision:revisionField(readTimeline()),startFrame:0,durationFrames:30});
  const saved=readTimeline();assert.ok(Array.isArray(saved.tracks)&&Array.isArray(saved.clips));const clipId=String(object(saved.clips[0]).id),targetTrack=String(object(saved.tracks.find(value=>object(value).name==='Kept track')).id),timelineRevision=revisionField(saved);
- const target={kind:'timeline_track',id:targetTrack,revision:f.runtime.journal.targetRevision(f.projectId,'timeline_track',targetTrack)};
- f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'kept-track-draft',generation:1,sequence:1,action:'claim',targets:[target]});
- f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_timeline_track_update',{trackId:targetTrack,expectedRevision:timelineRevision,patch:{name:'Never rename'}})]:index===2?[call('mioon_timeline_clip_update',{clipId,expectedRevision:timelineRevision,patch:{trackId:targetTrack}}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:f.other.revision,patch:{prompt:'unrelated target still works'}})]:[])};},{loadGroups:['canvas','editing']});
- const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'editing');await f.action(paused,'skip');const done=await f.settle(sent.run.id);
+ const {sent,paused}=await m4ConflictPause(f,{reason:'editing',target:{kind:'timeline_track',id:targetTrack},protocol,ownerId:'kept-track-draft',loadGroups:['canvas','editing'],calls:[call('mioon_timeline_track_update',{trackId:targetTrack,expectedRevision:timelineRevision,patch:{name:'Never rename'}})],script:index=>index===2?[call('mioon_timeline_clip_update',{clipId,expectedRevision:timelineRevision,patch:{trackId:targetTrack}}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:f.other.revision,patch:{prompt:'unrelated target still works'}})]:[]});assert.equal(paused.run.pauseReason,'editing');await f.action(paused,'skip');const done=await f.settle(sent.run.id);
  assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.length,1);assert.equal(done.run.skippedTargets?.[0]?.target.id,targetTrack);assert.equal(done.changes.length,1);assert.equal(done.changes[0]?.operation,'shot.update');
  const rejected=done.steps.find(step=>step.toolCall?.name==='mioon_timeline_clip_update');assert.equal(rejected?.status,'denied');assert.equal(rejected?.error?.code,'TARGET_SKIPPED');const final=readTimeline();assert.ok(Array.isArray(final.clips));assert.equal(object(final.clips.find(value=>object(value).id===clipId)).trackId,sourceTrack);assert.equal(f.runtime.journal.claims(f.projectId).length,1);assert.equal(f.requests.length,4);assert.equal(f.loadingRequests,1);
 });
@@ -1031,12 +1056,11 @@ test('whole undo preview includes adjacent own changes without mistaking their r
 });
 
 test('retry retains the same run skipped targets and replans only allowed tools',async t=>{
- const f=await fixture(t);f.setScript(async function*(index){
-  if(index===1)await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Manual protected content'}});
-  const next=index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Old conflicting plan'}})]:index===2?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{duration:-1}})]:index===3?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'Must stay skipped after retry'}}),call('mioon_project_inspect')]:[];
-  yield {type:'done',output:output('responses',next)};
- },{loadGroups:['canvas']});
- const sent=await f.send(),paused=await f.settle(sent.run.id);assert.equal(paused.run.pauseReason,'conflict');await f.action(paused,'skip');const failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');assert.equal(failed.run.skippedTargets?.length,1);
+ const f=await fixture(t);
+ const {sent,paused}=await m4ConflictPause(f,{reason:'conflict',target:{kind:'shot',id:f.first.id},calls:[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Old conflicting plan'}})],
+  script:index=>index===2?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{duration:-1}})]:index===3?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'Must stay skipped after retry'}}),call('mioon_project_inspect')]:[],
+  conflict:()=>f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Manual protected content'}})});
+ assert.equal(paused.run.pauseReason,'conflict');await f.action(paused,'skip');const failed=await f.settle(sent.run.id);assert.equal(failed.run.status,'failed');assert.equal(failed.run.skippedTargets?.length,1);
  await f.action(failed,'retry');const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.run.skippedTargets?.length,1);assert.ok(done.steps.some(step=>step.status==='denied'&&step.error?.code==='TARGET_SKIPPED'));assert.equal(object(f.store.get('shots',f.first.id)).prompt,'Manual protected content');assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(f.effects.size,2);assert.equal(f.loadingEffects,1);assert.equal(f.requests.length,5);assert.match(f.scriptRequest(4).body,/TARGET_SKIPPED/);
 });
 test('retry authorization revoked after its intent blocks actual model submission',async t=>{
@@ -1081,4 +1105,87 @@ test('the latest connection test is the newest text diagnostic and reports only 
   const readOnly=await diagnose('read_only');await f.settle(readOnly.run.id);
   assert.equal(f.runtime.latestConnectionTest().test?.runId,failed.run.id,'Other diagnostic profiles are not connection tests');
   const ordinary=await f.send();await f.settle(ordinary.run.id);assert.equal(f.runtime.latestConnectionTest().test?.runId,failed.run.id);
+});
+const runPaused=(f:RuntimeFixture,runId:string):boolean=>f.runtime.journal.events(runId).some(event=>event.type==='run'&&object(event.data).status==='paused');
+for(const protocol of ['chat_completions','responses'] as const)test(`X4: ${protocol}: a prompt saved during the model request is handed back with its value and the reread edit applies without a pause`,async t=>{
+ const f=await fixture(t,protocol),staleId=randomUUID(),rereadId=randomUUID();
+ f.setScript(async function*(index){
+  if(index===1)await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'User prompt'}});
+  yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'Stale AI prompt'}},staleId)]:index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'User prompt, refined'}},rereadId)]:[])};
+ },{loadGroups:['canvas']});
+ const sent=await f.send(),done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(runPaused(f,sent.run.id),false);assert.deepEqual(done.run.skippedTargets,[]);assert.equal(done.changes.length,1);
+ const stale=done.steps.find(step=>step.toolCall?.id===staleId),reread=done.steps.find(step=>step.toolCall?.id===rereadId);
+ assert.equal(stale?.status,'rejected');assert.equal(stale?.error?.code,'TARGET_CHANGED');
+ const error=object(object(stale?.result).error);assert.equal(error.code,'TARGET_CHANGED');assert.match(textField(error,'message'),/目标在你读取后已被修改/u);assert.ok(Array.isArray(error.current));assert.equal(error.current.length,1);assert.equal(error.omittedTargets,undefined);
+ const entry=object(error.current[0]);assert.equal(entry.kind,'shot');assert.equal(entry.id,f.first.id);assert.equal(object(entry.value).prompt,'User prompt');assert.equal(object(entry.value).revision,2);
+ assert.equal(reread?.status,'completed');assert.equal(object(f.store.get('shots',f.first.id)).prompt,'User prompt, refined');
+ assert.match(f.scriptRequest(2).body,/TARGET_CHANGED/u);assert.match(f.scriptRequest(2).body,/User prompt/u);assert.match(f.scriptRequest(3).body,/User prompt, refined/u);
+ assert.equal(f.effects.size,(1)+f.loadingEffects);assert.equal(f.requests.length,(3)+f.loadingRequests);
+});
+test('X4: hand-back and invalidated-batch instructions use the run locale',async t=>{
+ const expected={'zh-Hans':['目标在你读取后已被修改','用户正在手动编辑这一处','此批旧工具参数已失效'],'zh-Hant':['目標在你讀取後已被修改','使用者正在手動編輯這一處','此批舊工具參數已失效'],en:['The target changed after you read it','The user is editing this target','The old tool arguments in this batch are no longer valid'],ja:['読み取った後に対象が変更された','ユーザーがこの対象を手動で編集中','このバッチの古いツール引数は無効になりました']} as const;
+ for(const locale of AGENT_TASK_LOCALES){
+  const [changed,editing,invalidated]=expected[locale],send=async(f:RuntimeFixture)=>(await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 locale',locale,expectedSettingsRevision:(await f.settings.get()).revision})).run.id;
+  const held=await fixture(t);held.runtime.journal.claim({projectId:held.projectId,ownerId:'x4-locale-draft',targets:[{kind:'shot',id:held.first.id,revision:held.runtime.journal.targetRevision(held.projectId,'shot',held.first.id)}]});
+  held.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:held.first.id,expectedRevision:1,patch:{prompt:'held by a draft'}}),call('mioon_shot_update',{shotId:held.other.id,expectedRevision:1,patch:{prompt:'stale batch call'}})]:[])};},{loadGroups:['canvas']});
+  const heldRun=await send(held);assert.equal((await held.settle(heldRun)).run.status,'completed');const heldBody=held.scriptRequest(2).body;
+  assert.ok(heldBody.includes(editing),`${locale}: editing`);assert.ok(heldBody.includes(invalidated),`${locale}: invalidated batch`);assert.equal(object(held.store.get('shots',held.other.id)).prompt,'saved other');
+  const saved=await fixture(t);saved.setScript(async function*(index){
+   if(index===1)await saved.services.call('shot.update',{shotId:saved.first.id,expectedRevision:1,patch:{prompt:'saved during the request'}});
+   yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:saved.first.id,expectedRevision:1,patch:{prompt:'stale'}})]:[])};
+  },{loadGroups:['canvas']});
+  const savedRun=await send(saved);assert.equal((await saved.settle(savedRun)).run.status,'completed');assert.ok(saved.scriptRequest(2).body.includes(changed),`${locale}: changed`);
+ }
+});
+test('X4: currentTargets projects saved values like tool results and returns at most 20',async t=>{
+ const f=await fixture(t),asset=object(await f.services.call('asset.import',{projectId:f.projectId,name:'Synthetic source.png',mimeType:'image/png',dataBase64:png().toString('base64')})),assetId=String(asset.id),missing=randomUUID();
+ const values=f.tools.currentTargets(f.projectId,[{kind:'shot',id:f.first.id},{kind:'asset',id:assetId},{kind:'shot',id:missing}]).map(object);
+ assert.equal(values.length,3);assert.equal(object(values[0]!.value).prompt,'saved first');assert.equal(values[1]!.kind,'asset');assert.equal(object(values[1]!.value).id,assetId);
+ assert.equal(JSON.stringify(values).includes('relativePath'),false);assert.equal(JSON.stringify(values).includes(f.root),false);assert.deepEqual(values[2],{kind:'shot',id:missing,value:null});
+ assert.equal(f.tools.currentTargets(f.projectId,Array.from({length:25},()=>({kind:'shot',id:randomUUID()}))).length,20);
+});
+test('X4: a save after dispatch and before the effect fence is handed back as prevented, never unknown',async t=>{
+ const f=await fixture(t);let saved=false;
+ f.beforeTool(async prepared=>{if(prepared.operation==='shot.update'&&!saved){saved=true;await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'saved at dispatch'}});}});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'AI after dispatch'}})]:[])};},{loadGroups:['canvas']});
+ const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(saved,true);assert.equal(done.run.status,'completed');assert.equal(runPaused(f,sent.run.id),false);
+ const step=f.runtime.journal.snapshot(sent.run.id).steps.find(item=>item.toolCall?.name==='mioon_shot_update');assert.ok(step);
+ assert.equal(step.status,'rejected');assert.equal(step.error?.code,'TARGET_CHANGED');assert.equal(object(step.data).dispatchPrevented,true);
+ const error=object(object(step.result).error);assert.ok(Array.isArray(error.current));assert.equal(object(object(error.current[0]).value).prompt,'saved at dispatch');
+ assert.equal(done.steps.some(item=>item.status==='unknown'),false);assert.equal(done.changes.length,0);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved at dispatch');
+});
+test('X4: a failed batch flag rolls the hand-back back with it and the run fails closed',async t=>{
+ const f=await fixture(t);f.runtime.journal.claim({projectId:f.projectId,ownerId:'x4-atomic-draft',targets:[{kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)}]});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'held by a draft'}}),call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'later batch call'}})]:[])};},{loadGroups:['canvas']});
+ f.store.db.exec("CREATE TEMP TRIGGER fail_x4_batch_flag BEFORE UPDATE ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.kind')='model' AND json_extract(NEW.data,'$.data.toolsInvalidated') IS 1 BEGIN SELECT RAISE(ABORT,'synthetic batch flag failure');END;");
+ try{
+  const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(done.run.pauseReason,'AGENT_TASK_STORAGE_UNAVAILABLE');
+  const step=f.runtime.journal.snapshot(sent.run.id).steps.find(item=>item.toolCall?.name==='mioon_shot_update');assert.ok(step);
+  assert.equal(step.status,'intent');assert.equal(step.result,undefined);assert.equal(step.error,undefined);
+  const source=f.runtime.journal.step(textField(step.data,'sourceModelStepId'));assert.equal(object(source.data).toolsInvalidated,undefined);
+  assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(f.runtime.journal.claims(f.projectId).length,1);
+ }finally{f.store.db.exec('DROP TRIGGER temp.fail_x4_batch_flag');}
+});
+for(const via of ['pause','restart'] as const)for(const held of ['saved','draft'] as const)test(`X4: a pending approval resumed after ${via==='pause'?'a user pause':'a restart'} with a ${held==='saved'?'saved change':'draft'} is handed back and the new plan asks again`,async t=>{
+ const f=await fixture(t),staleId=randomUUID(),nextId=randomUUID();
+ f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
+ const next=held==='saved'?call('mioon_shot_update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'reread after resume'}},nextId):call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'other after resume'}},nextId);
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'stale approval'}},staleId)]:index===2?[next]:[])};},{loadGroups:['canvas']});
+ const sent=await f.send(),waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');assert.equal(waiting.steps.find(step=>step.toolCall?.id===staleId)?.status,'awaiting_approval');
+ if(via==='pause')await f.action(waiting,'pause');else f.restart();
+ assert.equal(f.runtime.get(f.projectId,sent.run.id).run.status,via==='pause'?'paused':'interrupted');
+ if(held==='saved')await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'saved while stopped'}});
+ else f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'x4-resume-draft',generation:1,sequence:1,action:'claim',targets:[{kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)}]});
+ await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const asked=await f.settle(sent.run.id);
+ const stale=asked.steps.find(step=>step.toolCall?.id===staleId),again=asked.steps.find(step=>step.toolCall?.id===nextId);
+ assert.equal(asked.run.status,'awaiting_approval');assert.equal(stale?.status,'rejected');assert.equal(stale?.error?.code,held==='saved'?'TARGET_CHANGED':'TARGET_EDITING');
+ const error=object(object(stale?.result).error);assert.ok(Array.isArray(error.current));assert.equal(error.current.length,1);assert.equal(object(object(error.current[0]).value).prompt,held==='saved'?'saved while stopped':'saved first');
+ // The new plan asks again: the stale call was never approved, and nothing ran yet.
+ assert.equal(again?.status,'awaiting_approval');assert.equal(f.effects.size,(0)+f.loadingEffects);assert.match(f.scriptRequest(2).body,held==='saved'?/TARGET_CHANGED/u:/TARGET_EDITING/u);
+ await f.action(asked,'approve',{stepId:again!.id});const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.deepEqual(done.run.skippedTargets,[]);assert.equal(done.changes.length,1);assert.equal(f.effects.size,(1)+f.loadingEffects);assert.equal(f.requests.length,(3)+f.loadingRequests);
+ assert.deepEqual(f.runtime.journal.events(sent.run.id).filter(event=>event.type==='run'&&object(event.data).status==='paused').map(event=>object(event.data).pauseReason),via==='pause'?['user']:[]);
+ assert.equal(object(f.store.get('shots',f.first.id)).prompt,held==='saved'?'reread after resume':'saved first');
+ if(held==='draft'){assert.equal(object(f.store.get('shots',f.other.id)).prompt,'other after resume');assert.equal(f.runtime.journal.claims(f.projectId).length,1);}
 });

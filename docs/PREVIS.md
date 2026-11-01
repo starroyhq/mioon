@@ -137,7 +137,9 @@ size above it and the camera height and tilt in the corner.
   around, but nothing is saved.
 - While the editor is open it holds the node's editing protection (claimed
   when it opens, given back when it closes unless the user had already started
-  editing the node), so Mio's writes to this previs pause as for any edit.
+  editing the node). As for any edit, a Mio step that writes this previs does
+  not run; Mio gets the saved scene back and continues (see
+  `docs/AGENT-TASKS-V2.md`).
 
 three.js (`three` 0.186.1, MIT) renders the view. It loads only when a previs
 is opened, as a separate chunk; the mannequins and props are built from basic
