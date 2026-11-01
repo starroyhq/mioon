@@ -13,12 +13,7 @@
 
 本片首次Node24定向82／82（新增21项）及另组相关回归73／73通过，无跳过；包括控件、四语言、参数临时性、应用后草稿恢复／Cancel、真实Inspector输入法确认尾部，以及普通40合成库的精确持久化、Undo／Redo与冷重开。Node24 canonical严格类型和Node26辅助默认Web＋development Desktop源码构建通过；冻结64项没有新增差异，独立审查0剩余发现。[命令与证据](evidence/manual-ducking/qualification.json)。未做真实GUI、系统IME或听音，既有正式Node24 Team ID及历史六项兼容限制保留，不声称发布完成。下一功能缺口是基于人声来源的区间分析与候选审核；手动工具不完成自动ducking或对白响度匹配。
 
-2026-10-16 透明度进展：[内部固定 42/43 持久化候选](OPACITY-CANDIDATE-PERSISTENCE.md)
-已接入现有时间线与编辑任务事务，默认 40/41 未启用或迁移。
-[候选 Inspector／四语言／v3 草稿](OPACITY-CANDIDATE-EDITOR.md)、共享renderer、
-preflight及[全新独立42应用入口](OPACITY-CANDIDATE-APPLICATION.md)已接线。
-默认40/41仍不启用；已有42已补[安全重开](OPACITY-CANDIDATE-REOPEN.md)。后续[部分Safari及真实10帧媒体验收](OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)已验证HTTP保存／恢复／历史与实际预览导出；GUI在导入选择器后因工具断连未验。[固定42冷备份→43离线恢复](OPACITY-CANDIDATE-BACKUP-RESTORE.md)及[恢复43独立应用入口](OPACITY-RESTORED-APPLICATION.md)已实现并保留原held／epoch／origin，v3草稿明确排除且源原文保留。43只开放已有片段编辑／Undo／Redo及新render；当前未保存输入和视图仅在窗口内存，正常关闭可丢失；本片124/124定向及另组12/12偏好检查通过，Safari实际Save／Cancel／Undo／Redo、10帧预览／导出／播放及正常关闭重开、HTTP下载和RGB解码已验，完整四语言GUI／IME与打包跨平台另验，
-不能算正式发布或完整画面动画套件。
+2026-10-16 透明度进展（历史）：内部固定 42/43 候选、候选编辑器、全新 42 应用入口和 43 恢复入口已在 #119（P1b，2026-11-02 合入）整条删除。当时的记录留在 `OPACITY-*.md` 历史页，从[内部持久化候选](OPACITY-CANDIDATE-PERSISTENCE.md)开始。
 
 2026-10-14 进展：独立首页及[多项目窗口](MULTIPLE-PROJECT-WINDOWS.md)已交付，
 [时间线声音试听](TIMELINE-AUDIO-PREVIEW.md)已交付最多 20 秒的声音区间，不代表完整视频合成播放。
@@ -133,8 +128,8 @@ PCM，并分别测量时序偏差、幅度差异、缓冲/延迟、长时间漂�
 上限的片段、已在目标 0.1 LU 以内的片段默认不勾选；静音、过短或低于门限、需要的
 增益超出 0–2、所在轨道静音、增益为 0、超过 60 秒和测量失败都单独标出。用户确认
 后，勾选的增益经新操作 `timeline.clip.setGains` 一次写入：一个 revision、一条历史，
-撤销一次全部复原。该操作不测量也不处理媒体，不进持久编辑任务；恢复工作区和
-不透明度候选工作区不开放。2026-10-29 起 Mio 也能用（audio 组，本地可撤销），
+撤销一次全部复原。该操作不测量也不处理媒体，不进持久编辑任务；恢复工作区
+不开放。2026-10-29 起 Mio 也能用（audio 组，本地可撤销），
 先用片段响度测量得到建议增益。只调增益，不做限幅、压缩或动态处理；人工听感
 确认仍待做。
 
@@ -221,7 +216,7 @@ PCM，并分别测量时序偏差、幅度差异、缓冲/延迟、长时间漂�
   几何与上面一致（`out.start<=in.start<out.end<=in.end`，两段在不同轨道）；两条两点
   线性包络在同一事务里写入，单request、单revision、单history，原gain／fades保留并相乘。
   任一片已有非null包络时以`CROSSFADE_ENVELOPE_EXISTS`拒绝。能力边界：不进持久编辑任务
-  （与按切点分割相同，走精确重放），不进不透明度候选工作区，恢复工作区拒绝。首片不是
+  （与按切点分割相同，走精确重放），恢复工作区拒绝。首片不是
   Mio工具；2026-10-29 起开放给 Mio（editing 组，本地可撤销）。
   属性栏音频分组列出可配对的片段、重叠起点和帧数，点击后直接保存；没有派发前
   的候选试听。工作区音量包络证据校验同时修正：包装时间线的回执（分镜同步、按切点分割、

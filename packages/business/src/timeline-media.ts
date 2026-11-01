@@ -108,8 +108,8 @@ function ownedTimelineWork(destination: string,beforeEffect: (()=>void)|undefine
 // inputs at once. PCM intermediate audio avoids encoder delay at segment edges;
 // the final AAC stream is encoded once. H264 video is concatenated losslessly.
 export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<string, RenderAsset>,destination: string,{signal,beforeEncode,beforeStart,beforeEffect,readLut}: RenderTimelineOptions={}): Promise<unknown>{
- const opacity=getTimelineOpacityRenderBinding(snapshot as never,assets as never);
- if(opacity){snapshot=opacity.validationSnapshot as unknown as TimelineSnapshotLike;beforeEffect=opacity.effectFence(beforeEffect) as (()=>void)|undefined;readLut=opacity.readLut as ((value: unknown)=>unknown)|undefined;signal=opacity.signal&&signal&&opacity.signal!==signal?AbortSignal.any([opacity.signal,signal]):opacity.signal??signal;}
+ // Nothing binds an opacity render: a snapshot with an opacity field is refused before any media work.
+ getTimelineOpacityRenderBinding(snapshot as never,assets as never);
  checkMediaEffect(beforeEffect,signal);
  const timeline=snapshot.timeline,tracks=validateTimeline(timeline,assets);
  // Transitions add segment edges and reach into neighbouring clips' ranges.
@@ -193,12 +193,11 @@ export async function renderTimeline(snapshot: TimelineSnapshotLike,assets: Map<
      // scales and places it per frame; others keep the historical chain.
      const plan=clipTransformRenderPlan(clip as never,image?{maxFactor:1}:{}),local=begin-clip.startFrame;
      const layerWidth=plan?.layerWidth??width,layerHeight=plan?.layerHeight??height,transformStage=plan?`,${clipTransformLayerFilters(plan,local)}`:'';
-     const opacityStage=opacity?.filterForSegment(clip.id,begin,frames,image?'premultiplied':'straight')??'';
      if(image){
-      filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}${transformStage}[${label}]`);
+      filters.push(`[${input}:v:0]format=rgba,setsar=1,fps=${FPS},tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}[${label}]`);
      }else{
       const colourInput=colour?`${timelineColourInputFilter(planned!.range as never)},${colourStage!.filter(clip.id)}`:'';
-      filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}${clipTransformCropFilter(plan)}scale=${layerWidth}:${layerHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${layerWidth}:${layerHeight}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${opacityStage?`,${opacityStage}`:''}${transformStage}[${label}]`);
+      filters.push(`[${input}:${asset.videoStreamIndex??'v:0'}]setpts=PTS-STARTPTS,${colourInput}${clipTransformCropFilter(plan)}scale=${layerWidth}:${layerHeight}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1,fps=${FPS},format=rgba,pad=${layerWidth}:${layerHeight}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,tpad=stop_mode=clone:stop_duration=${seconds(frames)},trim=end_frame=${frames},setpts=N/(${FPS}*TB)${transformStage}[${label}]`);
      }
      const placement=`:eof_action=pass:repeatlast=0:shortest=0${colour?':format=rgb':''}${image?':alpha=premultiplied':''}`;
      const position=(shift?: string): string=>plan?clipTransformOverlayPosition(plan,clip.rect,local,shift):shift?`x='${x}+${shift}':y=${y}:eval=frame`:`x=${x}:y=${y}`;

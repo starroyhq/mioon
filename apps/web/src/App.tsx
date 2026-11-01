@@ -2774,7 +2774,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
     if (!data.nodes.some(node => node.id === previsOpen.nodeId)) { setPrevisOpen(null); notify(msg('previs.editor.removed'), 'warning'); }
   }, [previsOpen, data.project?.id, data.nodes]);
   // While the editor is open it protects its node, so a Mio write to this
-  // previs pauses as for any edit (C8 v2). A read-only copy edits nothing.
+  // previs is refused as for any edit (C8 v2). A read-only copy edits nothing.
   const previsProtected = previsOpen && !restored && workspaceOriginScope(workspace) === 'normal' ? previsOpen : null;
   useEffect(() => previsProtected ? holdAgentEditingTarget(previsProtected.projectId, { kind: 'node', id: previsProtected.nodeId, revision: 0 }) : undefined,
     [previsProtected?.projectId, previsProtected?.nodeId]);
