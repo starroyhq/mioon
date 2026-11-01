@@ -18,3 +18,5 @@ export type {MediaDirectoryEntry, MediaFileHandle, MediaFileSystem} from './file
 export {
   isNotDownloaded, mediaMtimeMs, NOT_DOWNLOADED_MIN_BYTES, SAMPLE_RANGE_BYTES, SAMPLE_RANGE_COUNT, SAMPLE_WHOLE_FILE_BYTES, sampleRanges,
 } from './fingerprint.ts';
+export {admitMedia, checkMediaStatus, computeFullSha256, referenceForFile} from './access.ts';
+export type {MediaAccess, MediaFile, MediaStatusReason, MediaStatusResult} from './access.ts';
