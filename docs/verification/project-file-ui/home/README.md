@@ -1,5 +1,7 @@
 # 第 1 组：首页、新建项目、打不开
 
+截图 23 张，都是 PNG，共 460 KB（471,378 字节，`results.json` 里 `bytes` 的和），最大一张 35,133 字节。每种状态只截一张简体中文，另外三种语言由 CI 的渲染测试覆盖。
+
 组件：
 - `RecentProjectsView`、`RecentProjectCard`、`ProjectInboxNotice`（`RecentProjects.tsx`）：12-01；
 - `NewProjectFileDialog`：12-02；

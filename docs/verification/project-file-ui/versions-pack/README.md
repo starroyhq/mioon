@@ -1,5 +1,7 @@
 # 第 3 组：项目菜单、版本历史、恢复前确认、打包
 
+截图 31 张，都是 PNG，共 537 KB（549,577 字节，`results.json` 里 `bytes` 的和），最大一张 34,136 字节。每种状态只截一张简体中文，另外三种语言由 CI 的渲染测试覆盖。
+
 组件：
 - `ProjectFileMenuItems`、`ProjectFileMenu`（`ProjectFileMenu.tsx`）：12-07。`ProjectFileMenuItems` 只渲染菜单项，放进调用方自己的 `DropdownMenuContent`；`ProjectFileMenu` 是顶栏的项目名按钮加上这份菜单；
 - `VersionHistoryDialog`、`versionTitle`：12-08；

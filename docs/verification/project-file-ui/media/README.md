@@ -1,5 +1,7 @@
 # 第 2 组：素材状态、重新指向、项目外位置的确认
 
+截图 18 张，都是 PNG，共 314 KB（321,262 字节，`results.json` 里 `bytes` 的和），最大一张 32,204 字节。每种状态只截一张简体中文，另外三种语言由 CI 的渲染测试覆盖。
+
 组件：
 - `mediaStatusDisplay`（`media-status.ts`）：把 L1 的素材状态换成界面上的状态，含 11-01 代定的两种待确认状态；
 - `MediaStatusBadge`、`MediaStatusNote`、`MediaAttentionBanner`、`mediaStatusTone`（`MediaStatus.tsx`）：12-04；
