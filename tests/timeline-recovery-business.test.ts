@@ -20,7 +20,7 @@ import {createTimelineServices} from '../packages/business/src/timeline.ts';
 import {createTimelineLoudnessApplyServices} from '../packages/business/src/timeline-loudness-apply.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {readyMixLoudness,mixLoudnessInput} from './fixtures/timeline-mix-loudness-fixtures.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 import type { SQLOutputValue } from 'node:sqlite';
 
 const at='2026-10-10T00:00:00.000Z',clone=<T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -38,8 +38,6 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  try{return await services.call('project.create',{name});}
  finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: FixtureStore['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 // Recreate a dropped guard in the database that held it: an unqualified CREATE TRIGGER would go to main.
 const recreate=({schema,sql}: {schema: string; sql: string|null})=>sql!.replace(/^CREATE TRIGGER /u,`CREATE TRIGGER "${schema}".`);
@@ -260,16 +258,19 @@ test('lost acknowledgements retain proof absence after project, timeline and his
   if(corruption==='project identity')f.store.db.prepare("UPDATE projects SET data=json_set(data,'$.id',?,'$.name','FOREIGN_SECRET') WHERE id=?").run(f.otherId,f.projectId);
   if(corruption==='timeline SQL owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE timelines SET projectId=? WHERE id=?').run(f.otherId,timeline.id));
   if(corruption==='timeline JSON owner')f.store.db.prepare("UPDATE timelines SET data=json_set(data,'$.projectId',?) WHERE id=?").run(f.otherId,timeline.id);
-  // A volume-envelope replay first checks the whole workspace, which reports an asset whose project is missing
-  // before any ownership check. So this case still keeps the other project in this store.
-  if(corruption==='historical source SQL owner'){const other=(await f.call('project.create',{name:'Other private project'})).id;f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(other,generated.asset.id as string);}
+  if(corruption==='historical source SQL owner')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.otherId,generated.asset.id as string));
   if(corruption==='indirect generation owner')f.store.db.prepare("UPDATE jobs SET data=json_set(data,'$.projectId',?,'$.secret','FOREIGN_SECRET') WHERE id=?").run(f.otherId,generated.job.id);
+  // The crossfade gives clips volume envelopes, and every later receipt keeps them. Replaying such a receipt checks the
+  // whole workspace first, which finds the asset whose project this store does not hold: an exact earlier code.
+  let enveloped=false;
   for(const {operation,input,response} of receipts){
+   enveloped||=operation==='timeline.clip.crossfade';
    if(operation==='timeline.format.set'&&['historical source SQL owner','indirect generation owner'].includes(corruption)){
     // The pristine format ACK contains no historical asset references. Current
     // project/timeline ownership remains valid after clips have been removed.
     const before=f.capture();assert.deepEqual(await f.call(operation,input),response);assert.deepEqual(f.capture(),before);
-   }else await rejected(f,operation,input,(({code:['TIMELINE_SOURCE_UNAVAILABLE','INVALID_TIMELINE_SNAPSHOT']}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
+   }else await rejected(f,operation,input,(({code:corruption!=='historical source SQL owner'?['TIMELINE_SOURCE_UNAVAILABLE','INVALID_TIMELINE_SNAPSHOT']
+    :enveloped?'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED':'TIMELINE_SOURCE_UNAVAILABLE'}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
   }
  }) as unknown as test.TestFn));
 });

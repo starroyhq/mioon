@@ -11,12 +11,13 @@ import {DatabaseSync} from 'node:sqlite';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {timelineDeliveryContentDisposition} from '@mioon/contracts/timeline-delivery';
 import '@mioon/contracts/timeline-delivery';
-import {openStore} from '../packages/business/src/db.ts';
 import {createServices, type ServiceStore} from '../packages/business/src/services.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {readTimelineExportPreviewMedia, timelineExportPreviewIdentity, timelineExportPreviewResponseHeaders} from '../packages/business/src/timeline-delivery-read.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
+import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const token = 'synthetic-named-delivery-download-token';
@@ -33,11 +34,11 @@ async function manifest(root: string, relative = '') {
 }
 async function fixture(t: test.TestContext, {serve = true, named = false} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-named-download-'));
-  let store: TypedStore|undefined, services: TypedServices|undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync;
+  let store: TypedStore|undefined, services: TypedServices|undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync|undefined, inspect: InspectProject|undefined;
   t.after(async () => {await server?.close(); db?.close(); await services?.drain(); store?.close(); await rm(root, {recursive: true, force: true});});
-  store = (openStore(root) as TypedStore); services = (createServices(store, new Map()) as TypedServices);
-  const project = await services.call('project.create', {name: 'Named delivery project'});
-  const foreign = await services.call('project.create', {name: 'Other project'});
+  const created = createServerProject(root, {name: 'Named delivery project'});
+  store = (created.store as unknown as TypedStore); services = (createServices(store, new Map()) as TypedServices);
+  const project = store.get('projects', created.projectId)!;
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const sourceId = randomUUID();
   store.put('assets', {id: sourceId, projectId: project.id, name: 'Frozen image', mimeType: 'image/png', sha256: 'a'.repeat(64),
@@ -56,23 +57,34 @@ async function fixture(t: test.TestContext, {serve = true, named = false} = {}) 
   // A historical download stays available after edits remove the original clip.
   timeline = await services.call('timeline.clip.remove', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), clipId: timeline.clips[0].id});
   await services.drain(); services = undefined; store.close(); store = undefined;
+  // The server knows the other project too; the tests damage rows to belong to it.
+  const other = createServerProject(root, {name: 'Other project'}), foreign = (other.store as unknown as TypedStore).get('projects', other.projectId)!;
+  other.store.close();
   if (serve) server = await startServer({dataDir: root, port: 0, token,
-    chatGateway: async function* () {assert.fail('Download never calls a model or provider');}});
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  const guards = {isTimelineRenderRecord, readOwnedAsset: (projectId: string, assetId: unknown) => readOwnedTimelineAsset(db, projectId, assetId)};
+    chatGateway: async function* () {assert.fail('Download never calls a model or provider');},
+    inspectProject: received => {inspect = received;}});
+  else db = openProjectDatabase(projectDirFor(root, project.id));
+  // While the server runs, the database is read and damaged on its own connection.
+  const use = <T>(fn: (db: DatabaseSync) => T): T => inspect ? inspect(project.id, fn) : fn(db!);
+  const guardsFor = (db: DatabaseSync) => ({isTimelineRenderRecord, readOwnedAsset: (projectId: string, assetId: unknown) => readOwnedTimelineAsset(db, projectId, assetId)});
   const route = `/media/${assetId}?preview=1&exportId=${record.id}`, url = new URL(route, 'http://127.0.0.1:12345');
-  const rows = () => Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
+  const rows = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
     [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
-  const checkpoint = async () => ({rows: rows(), version: db.prepare('PRAGMA data_version').get()!.data_version, files: await manifest(root)});
-  return {root, db, project, foreign, sourceId, timeline, queued, record, asset, bytes, input, route, url, guards,
-    read: () => readTimelineExportPreviewMedia(db, url, guards), checkpoint,
-    unchanged: async (before: { rows: unknown; version: unknown; files: unknown; }) => {assert.deepEqual(rows(), before.rows); assert.equal(db.prepare('PRAGMA data_version').get()!.data_version, before.version); assert.deepEqual(await manifest(root), before.files);},
+  // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
+  const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
+  const checkpoint = async () => ({...use(db => ({rows: rows(db), version: changeMarks(db)})), files: await manifest(root)});
+  return {root, project, foreign, sourceId, timeline, queued, record, asset, bytes, input, route, url, use,
+    // The test's own connection exists only while no server holds the project.
+    get db() {if (inspect) throw new Error('The server holds the project: use f.use(db => ...)'); return db!;},
+    get guards() {return guardsFor(this.db);},
+    read: () => use(db => readTimelineExportPreviewMedia(db, url, guardsFor(db))), checkpoint,
+    unchanged: async (before: { rows: unknown; version: unknown; files: unknown; }) => {use(db => {assert.deepEqual(rows(db), before.rows); assert.deepEqual(changeMarks(db), before.version);}); assert.deepEqual(await manifest(root), before.files);},
     request: (selected = route, options: RequestInit = {}) => fetch(server!.url + selected, {...options, headers: {authorization: 'Bearer ' + token, ...options.headers}}),
     get server() {return server;}};
 }
 
 function replace(db: DatabaseSync, table: string, value: {id: string} & Record<string, unknown>) {db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id);}
-function allowCorruptFixture(f: Awaited<ReturnType<typeof fixture>>) {f.db.exec('DROP TRIGGER immutable_timeline_render_snapshot; DROP TRIGGER immutable_timeline_responses;');}
+function allowCorruptFixture(f: Awaited<ReturnType<typeof fixture>>) {f.use(db => db.exec('DROP TRIGGER immutable_timeline_render_snapshot; DROP TRIGGER immutable_timeline_responses;'));}
 
 test('exact preview GET HEAD Range supports named and unnamed historical outputs without writes', async t => {
   for (const named of [false, true]) {
@@ -110,25 +122,28 @@ test('preview syntax is exact and unauthorized requests do not disclose bytes', 
 
 test('preview exact ownership requires matching export receipt and owned published asset', async t => {
   const f = await fixture(t); allowCorruptFixture(f);
-  const originalReceipt = f.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response;
+  const originalReceipt = f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response);
+  // Rows that belong to the other project are written as a corrupt file would hold them.
   const changes = [
-    () => f.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id),
-    () => replace(f.db, 'exports', {...f.record, assetId: randomUUID()}),
-    () => replace(f.db, 'exports', {...f.record, purpose: 'preview'}),
-    () => replace(f.db, 'exports', {...f.record, status: 'queued', assetId: null, url: null}),
-    () => f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify({...f.queued, id: randomUUID()}), f.input.requestId),
-    () => f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id),
-    () => replace(f.db, 'assets', {...f.asset, projectId: f.foreign.id}),
-    () => replace(f.db, 'assets', {...f.asset, mimeType: 'audio/wav'}),
-    () => replace(f.db, 'assets', {...f.asset, provenance: 'user-import'}),
-    () => replace(f.db, 'assets', {...f.asset, relativePath: `media/export-${randomUUID()}-${randomUUID()}.mp4`}),
+    (db: DatabaseSync) => withoutForeignKeys(db, () => db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id)),
+    (db: DatabaseSync) => replace(db, 'exports', {...f.record, assetId: randomUUID()}),
+    (db: DatabaseSync) => replace(db, 'exports', {...f.record, purpose: 'preview'}),
+    (db: DatabaseSync) => replace(db, 'exports', {...f.record, status: 'queued', assetId: null, url: null}),
+    (db: DatabaseSync) => db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify({...f.queued, id: randomUUID()}), f.input.requestId),
+    (db: DatabaseSync) => withoutForeignKeys(db, () => db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id)),
+    (db: DatabaseSync) => replace(db, 'assets', {...f.asset, projectId: f.foreign.id}),
+    (db: DatabaseSync) => replace(db, 'assets', {...f.asset, mimeType: 'audio/wav'}),
+    (db: DatabaseSync) => replace(db, 'assets', {...f.asset, provenance: 'user-import'}),
+    (db: DatabaseSync) => replace(db, 'assets', {...f.asset, relativePath: `media/export-${randomUUID()}-${randomUUID()}.mp4`}),
   ];
   for (const mutate of changes) {
-    mutate(); const before = await f.checkpoint(); assert.equal(f.read(), null);
+    f.use(mutate); const before = await f.checkpoint(); assert.equal(f.read(), null);
     const response = await f.request(); assert.equal(response.status, 404); await response.text(); await f.unchanged(before);
-    f.db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.record), f.record.id);
-    f.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.asset), f.asset.id);
-    f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(originalReceipt, f.input.requestId);
+    f.use(db => {
+      db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.record), f.record.id);
+      db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.asset), f.asset.id);
+      db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(originalReceipt, f.input.requestId);
+    });
   }
   assert.ok(f.read());
 });
@@ -138,7 +153,7 @@ test('preview revalidates after open and closes descriptor when ownership change
   let opened = 0, closed = 0, streamed = 0;
   const files = createFileResponses({openFile: async (filename, flags) => {
     const handle = await open(filename, flags); opened++;
-    f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id);
+    withoutForeignKeys(f.db, () => f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id));
     return {stat: () => handle.stat(), close: async () => {closed++; await handle.close();}, createReadStream: options => {streamed++; return handle.createReadStream(options);}};
   }});
   const server = http.createServer(async (req, res) => {
@@ -156,9 +171,11 @@ test('preview revalidates after open and closes descriptor when ownership change
 test('preview rejects foreign reverse owner and keeps frozen receipt in late fence', async t => {
   const f = await fixture(t, {serve: false}), descriptor = f.read(); assert.ok(descriptor);
   const jobId = randomUUID(), versionId = randomUUID();
-  f.db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, f.foreign.id, JSON.stringify({id: jobId, projectId: f.foreign.id}));
-  f.db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(versionId, f.foreign.id, jobId,
-    JSON.stringify({id: versionId, projectId: f.foreign.id, jobId, assetId: f.asset.id}));
+  withoutForeignKeys(f.db, () => {
+    f.db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, f.foreign.id, JSON.stringify({id: jobId, projectId: f.foreign.id}));
+    f.db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(versionId, f.foreign.id, jobId,
+      JSON.stringify({id: versionId, projectId: f.foreign.id, jobId, assetId: f.asset.id}));
+  });
   assert.equal(f.read(), null);
   assert.throws(() => timelineExportPreviewResponseHeaders(f.db, f.url, f.guards, descriptor), {code: 'FILE_UNAVAILABLE'});
   f.db.prepare('DELETE FROM versions WHERE id=?').run(versionId); f.db.prepare('DELETE FROM jobs WHERE id=?').run(jobId);

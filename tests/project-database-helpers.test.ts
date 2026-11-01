@@ -10,7 +10,7 @@ import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {isProjectId} from '../packages/contracts/src/project-file.ts';
-import {createServerProject, foreignKeyCheck, openProjectDatabase, projectDatabasePath, projectDirFor, schemaObjects} from './helpers/project-database.ts';
+import {createServerProject, foreignKeyCheck, openProjectDatabase, projectDatabasePath, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const TOKEN = 'synthetic-project-database-token';
 const PRAGMAS = ['trusted_schema', 'foreign_keys', 'journal_mode', 'synchronous', 'busy_timeout', 'locking_mode'];
@@ -18,6 +18,12 @@ const pragmas = (db: DatabaseSync): Record<string, unknown> =>
   Object.fromEntries(PRAGMAS.map(name => [name, Object.values(db.prepare(`PRAGMA ${name}`).get() ?? {})[0]]));
 const projectName = (db: DatabaseSync, projectId: string): string =>
   (JSON.parse(String(db.prepare('SELECT data FROM projects WHERE id=?').get(projectId)?.data)) as {name: string}).name;
+const foreignKeys = (db: DatabaseSync): unknown => db.prepare('PRAGMA foreign_keys').get()?.foreign_keys;
+// A shot of a project this store does not hold, as a corrupt file would hold it.
+const insertForeignShot = (db: DatabaseSync) => {
+  const shot = {id: randomUUID(), projectId: randomUUID(), title: 'Damaged shot'};
+  return db.prepare('INSERT INTO shots(id,projectId,data) VALUES(?,?,?)').run(shot.id, shot.projectId, JSON.stringify(shot)).changes;
+};
 
 function dataDirectory(t: TestContext): string {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'mioon-project-database-')));
@@ -94,6 +100,71 @@ test('schemaObjects and foreignKeyCheck cover every database on the connection',
     const objects = schemaObjects(db);
     assert.deepEqual(objects.filter(object => object.schema === 'main'), main);
     assert.deepEqual(objects.filter(object => object.schema === 'extra').map(object => object.name), ['child', 'parent']);
+  } finally {
+    store.close();
+  }
+});
+
+test('withoutForeignKeys writes a damaged row that foreign keys refuse outside it, also inside a transaction of its promised write', async t => {
+  const {store} = createServerProject(dataDirectory(t));
+  try {
+    const {db} = store;
+    assert.throws(() => insertForeignShot(db), /FOREIGN KEY constraint failed/);
+    assert.deepEqual(foreignKeyCheck(db), []);
+    assert.equal(withoutForeignKeys(db, () => { assert.equal(foreignKeys(db), 0); return insertForeignShot(db); }), 1);
+    assert.equal(foreignKeys(db), 1);
+    // A service call awaits before its own transaction does the damage.
+    const pending = withoutForeignKeys(db, async () => { await Promise.resolve(); return store.tx(() => insertForeignShot(db)); });
+    assert.equal(foreignKeys(db), 0, 'foreign keys stay off until the promise settles');
+    assert.equal(await pending, 1);
+    assert.equal(foreignKeys(db), 1);
+    // Both shots are there; triggers may add rows of their own that point at the same missing project.
+    const damaged = foreignKeyCheck(db);
+    assert.deepEqual(damaged.filter(({table}) => table === 'shots').map(({parent}) => parent), ['projects', 'projects']);
+    assert.ok(damaged.every(({parent}) => parent === 'projects'), JSON.stringify(damaged));
+    assert.throws(() => insertForeignShot(db), /FOREIGN KEY constraint failed/);
+  } finally {
+    store.close();
+  }
+});
+
+test('withoutForeignKeys restores the previous foreign_keys value after a throw and after an async rejection', async t => {
+  const store = openStore(dataDirectory(t));
+  try {
+    const {db} = store;
+    assert.throws(() => withoutForeignKeys(db, () => { assert.equal(foreignKeys(db), 0); throw new Error('synthetic write failure'); }), /^Error: synthetic write failure$/);
+    assert.equal(foreignKeys(db), 1);
+    const rejected = withoutForeignKeys(db, async () => { await Promise.resolve(); throw new Error('synthetic async failure'); });
+    assert.equal(foreignKeys(db), 0);
+    await assert.rejects(rejected, /^Error: synthetic async failure$/);
+    assert.equal(foreignKeys(db), 1);
+    db.exec('PRAGMA foreign_keys=OFF');
+    assert.equal(withoutForeignKeys(db, () => 'unchanged'), 'unchanged');
+    assert.equal(foreignKeys(db), 0, 'the previous value comes back, not always ON');
+    db.exec('PRAGMA foreign_keys=ON');
+  } finally {
+    store.close();
+  }
+});
+
+test('withoutForeignKeys refuses to start inside a transaction and reports a transaction its write leaves open', t => {
+  const store = openStore(dataDirectory(t));
+  try {
+    const {db} = store;
+    let called = false;
+    db.exec('BEGIN');
+    try {
+      assert.throws(() => withoutForeignKeys(db, () => { called = true; }), {message: /must start outside a transaction/});
+    } finally {
+      db.exec('ROLLBACK');
+    }
+    assert.equal(called, false, 'the write never runs');
+    assert.equal(foreignKeys(db), 1);
+    // SQLite ignores the restoring pragma inside the open transaction: fail loudly instead.
+    assert.throws(() => withoutForeignKeys(db, () => db.exec('BEGIN')), {message: /left a transaction open/});
+    assert.equal(db.isTransaction, true);
+    db.exec('ROLLBACK; PRAGMA foreign_keys=ON;');
+    assert.equal(foreignKeys(db), 1);
   } finally {
     store.close();
   }
