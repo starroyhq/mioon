@@ -22,3 +22,7 @@ export {admitMedia, checkMediaStatus, computeFullSha256, referenceForFile} from 
 export type {MediaAccess, MediaFile, MediaStatusReason, MediaStatusResult} from './access.ts';
 export {MAX_RELINK_ASSETS, outsideProjectLocations, relinkMedia} from './relink.ts';
 export type {MediaAsset, RelinkedMedia, RelinkResult} from './relink.ts';
+export {
+  CLOUD_SYNC_PROVIDERS, cloudSyncProviderOf, inspectLocation, locationFactsOf, mountFor, parseLinuxMountInfo, parseMacMounts, projectFileLocationVerdict,
+} from './location.ts';
+export type {CloudSyncProvider, LocationFacts, MountEntry, ProjectFileLocationVerdict} from './location.ts';
