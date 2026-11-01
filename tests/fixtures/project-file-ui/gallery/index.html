@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-Hans" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project file UI gallery</title>
+    <style>
+      html, body { margin: 0; min-height: 100%; background: var(--wb-bg); }
+      [data-scene-frame][data-capture="page"] { min-height: 100vh; }
+      [data-scene-frame][data-capture="frame"] { display: inline-block; box-sizing: border-box; padding: 16px; background: var(--wb-bg); }
+      [data-scene-frame][data-capture="frame"] > * + * { margin-top: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

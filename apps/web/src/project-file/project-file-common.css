@@ -1,0 +1,42 @@
+/* Project file screens (U1): pieces shared by every group. Workbench variables only, so the light theme follows. */
+.pf-visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pf-mono { font-family: var(--wb-font-mono); font-variant-numeric: tabular-nums; }
+.pf-count { display: inline-flex; flex: none; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 7px; border: 1px solid var(--wb-line); border-radius: 999px; background: var(--wb-card); color: var(--wb-soft); font: 500 var(--wb-text-caption)/1 var(--wb-font-mono); }
+.pf-dot { display: inline-block; flex: none; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+/* Dialogs: no rule above the buttons, large buttons, no empty content area. */
+.pf-dialog .wb-dialog-heading [data-slot="dialog-description"] { line-height: 1.6; overflow-wrap: anywhere; }
+.pf-dialog .wb-dialog-content { padding-bottom: var(--wb-space-3); }
+.pf-dialog .wb-dialog-content:empty { display: none; }
+.pf-dialog .wb-dialog-footer { min-height: 0; padding: var(--wb-space-3) var(--wb-space-5) var(--wb-space-5); border-top: 0; }
+.pf-dialog .wb-dialog-footer .wb-button { height: var(--wb-control-large); min-height: var(--wb-control-large); padding-inline: var(--wb-space-4); font-size: var(--wb-text-body); }
+.pf-dialog .wb-dialog-footer > .pf-footer-note { flex: 1; min-width: 0; margin-right: auto; color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.5; }
+
+/* Form fields. */
+.pf-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pf-field > [data-slot="label"], .pf-field-label { color: var(--wb-soft); font-size: var(--wb-text-label); font-weight: 500; line-height: 1.5; }
+.pf-help { color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; overflow-wrap: anywhere; }
+.pf-check { display: inline-flex; align-items: center; gap: var(--wb-space-2); width: max-content; max-width: 100%; color: var(--wb-text); font-size: var(--wb-text-label); line-height: 1.5; cursor: pointer; }
+.pf-check input { flex: none; width: 14px; height: 14px; margin: 0; accent-color: var(--wb-accent); }
+.pf-label-with-icon { display: inline-flex; align-items: center; gap: 6px; }
+.pf-info { display: inline-flex; color: var(--wb-muted); }
+
+/* Loading, empty and error blocks inside panels and dialogs. */
+.pf-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--wb-space-2); min-height: 160px; padding: var(--wb-space-6); color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; text-align: center; }
+.pf-state strong { color: var(--wb-text); font-size: var(--wb-text-section); font-weight: 600; }
+.pf-state .wb-spinner { width: 18px; height: 18px; }
+.pf-inline-state { display: flex; align-items: center; gap: var(--wb-space-2); color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; }
+.pf-skeleton-line { display: block; width: 60%; height: 10px; border-radius: 4px; background: var(--wb-card); }
+.pf-skeleton-line + .pf-skeleton-line { width: 40%; margin-top: var(--wb-space-2); }
+
+/* Bordered lists of rows (relink, outside locations, pack manifest). */
+.pf-rows { margin: 0; padding: 0; list-style: none; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-panel); }
+.pf-rows > li { display: flex; align-items: center; gap: var(--wb-space-3); min-height: 44px; padding: var(--wb-space-2) var(--wb-space-3); }
+.pf-rows > li + li { border-top: 1px solid var(--wb-line-subtle); }
+.pf-row-main { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.pf-row-title { overflow: hidden; color: var(--wb-text); font-size: var(--wb-text-body); line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.pf-row-detail { overflow: hidden; color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.pf-row-end { display: flex; flex: none; align-items: center; gap: var(--wb-space-2); color: var(--wb-soft); font-size: var(--wb-text-label); }
+.pf-tone-success { color: var(--wb-success); }
+.pf-tone-warning { color: var(--wb-warning); }
+.pf-tone-danger { color: var(--wb-danger); }
