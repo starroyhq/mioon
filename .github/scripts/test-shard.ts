@@ -31,7 +31,6 @@ export const TIMINGS_FILE = '.github/test-timings.json';
  * CI for another reason when sharing CPUs. Add a file only with such evidence.
  */
 export const EXCLUSIVE_TEST_FILES: readonly string[] = Object.freeze([
-  'tests/agent-edit-wire.test.ts', // 100%
   'tests/asset-disposition-transports.test.ts', // 46%
   'tests/desktop-async-secrets.test.ts', // 40%
   'tests/export-settings-capabilities.test.ts', // 70%

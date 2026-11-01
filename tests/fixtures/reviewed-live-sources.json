@@ -2,21 +2,9 @@
   "formatVersion": 1,
   "note": "Sources the frozen-source harnesses depend on that keep changing on main. Each is pinned to its exact reviewed bytes, first at main bbff40e (2026-10-23) when the per-change inverse layers were removed. After reviewing a change to one of them, run node tests/helpers/reviewed-live-sources.ts --update and commit the new pin with the change.",
   "files": {
-    "packages/business/src/agent/chat-errors.ts": {
-      "bytes": 11166,
-      "sha256": "f702ba73dadb32a3d08c43d9512f379b1884c3fbceadd23b0bd7db5838f8480b"
-    },
     "packages/business/src/db.ts": {
       "bytes": 13029,
       "sha256": "62cdf57e6a03cd7dffd98c36138b34100baef80dd1e1a6cfb8a9a2d776e0adf9"
-    },
-    "packages/business/src/image-consumption.ts": {
-      "bytes": 2443,
-      "sha256": "80411c0b5580ba588cf43fd47cbc462a32dc96e6e6a66e4b40555b8e68aa6fa9"
-    },
-    "packages/business/src/inspection.ts": {
-      "bytes": 38131,
-      "sha256": "2b2840b9492eabba651a88a0d6d941f6de0d8b6a9ca7fa20c55f7dcf70e8dbd0"
     },
     "packages/business/src/local-drafts.ts": {
       "bytes": 16893,
@@ -26,17 +14,9 @@
       "bytes": 25581,
       "sha256": "a36330640987f27c4c7f9a1a879858eb7841c3a564b35df483476e8044d77d02"
     },
-    "packages/business/src/timeline-recovery.ts": {
-      "bytes": 25681,
-      "sha256": "7fb99f526d7f544fd0b7fa7461fbcef2c3788c932919afcef8ef9b9d7ca140d9"
-    },
     "packages/business/src/workspace-backup-schema-versions.ts": {
       "bytes": 12201,
       "sha256": "1b1fea86d029f3ca787b483e4b028e3249d74032b77deaef7e4fa3b197a7e8b2"
-    },
-    "packages/business/src/workspace-lock.ts": {
-      "bytes": 2717,
-      "sha256": "d4184d59c91967cfcaa17104e51e5cd55d15f1ea1cf43678025c07f6d2adc463"
     },
     "packages/business/src/workspace-restore-policy.ts": {
       "bytes": 12224,
@@ -58,37 +38,9 @@
       "bytes": 7862,
       "sha256": "bef59f46e26a37ff93bb65a588e6565277e3649448a48c9e985a054aeaa59e74"
     },
-    "packages/contracts/src/generation-input-profiles.ts": {
-      "bytes": 14029,
-      "sha256": "0b3f2b90986a0082066da21c89407709d3ac6efb03db5817d9f5dc61b7d3dac4"
-    },
-    "packages/contracts/src/image-reviews.ts": {
-      "bytes": 12345,
-      "sha256": "8b518c4b4881c7c5aec675c0368d545ec08b595140053de18067d13d033d34c1"
-    },
-    "packages/contracts/src/images.ts": {
-      "bytes": 22413,
-      "sha256": "9fbec00e2d6a812d0774c516e91ff8fb51acae53caace555fdcd47953573a582"
-    },
     "packages/contracts/src/index.ts": {
       "bytes": 52842,
       "sha256": "82a93422ba4f2e9efdd8c4b9c606e586335c428fc1de8113277d557527ad87a2"
-    },
-    "packages/contracts/src/operation-effects.ts": {
-      "bytes": 39532,
-      "sha256": "a6426ca44faea4f4e70f8263e60e8a97fd43a9a45156c3701eb5999c107bdd42"
-    },
-    "packages/contracts/src/private-storage.ts": {
-      "bytes": 23412,
-      "sha256": "83e139126f80988ed5d72adc874cdc4a07cf68333ea82ff3e1eab0d294f03f47"
-    },
-    "packages/contracts/src/subject-generation.ts": {
-      "bytes": 17844,
-      "sha256": "fc3c3c7b5b81425713b21176e453b0598019951702533ca66e511f4a4294a9bb"
-    },
-    "packages/contracts/src/subjects.ts": {
-      "bytes": 7701,
-      "sha256": "f728024366e189185f3235f0fa5cc77509915a55ad27d74f4a2fff2590bb0ec5"
     },
     "packages/contracts/src/timeline-acknowledgement.ts": {
       "bytes": 31098,
@@ -101,14 +53,6 @@
     "packages/contracts/src/timeline-replacement.ts": {
       "bytes": 8972,
       "sha256": "6a5826f0b555c912a8862f76cae8a117f6f2655e9228c60f54e33a3fe2bd99f8"
-    },
-    "packages/contracts/src/workspace-backup.ts": {
-      "bytes": 7831,
-      "sha256": "35d9e9baa4383c8a6889a7c69081883ff81a01ac770d994dbdba6d09374cf886"
-    },
-    "packages/contracts/src/workspace-restore.ts": {
-      "bytes": 5950,
-      "sha256": "0132ed331df92494cb73036c4a84b6984da78becd63c989071ea0c422a32c7d5"
     },
     "packages/contracts/src/workspace-schema-profiles.ts": {
       "bytes": 2372,
