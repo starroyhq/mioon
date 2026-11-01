@@ -15,10 +15,12 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient,discoverSchema,effectAnnotations} from '@mioon/client';
 import {isTimelineExportCapabilitiesResponse,isTimelineMutationResponse,publicValue,resolveTimelineExportDelivery} from '@mioon/contracts';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 
 import type {TestContext} from 'node:test';
 
@@ -96,7 +98,7 @@ const schemaOperation=(value: unknown): SchemaOperation => value as SchemaOperat
 const requestId=(input: Record<string, unknown>): string => input.requestId as string;
 interface WireFixture {
   root: string; project: WireProject; empty: WireProject; source?: WireSource; timeline: WireTimeline;
-  db: DatabaseSync; client: {rpc: <T = unknown>(op: string, input?: Record<string, unknown>)=>Promise<T>}; mcp: Client;
+  use: <T>(read: (db: DatabaseSync)=>T)=>T; client: {rpc: <T = unknown>(op: string, input?: Record<string, unknown>)=>Promise<T>}; mcp: Client;
   checkpoint: ()=>Promise<WireCheckpoint>; unchanged: (before: WireCheckpoint)=>Promise<void>;
   submissions: Array<Record<string, unknown>>; last: ()=>WireLast|undefined;
   lose: ()=>void; malform: (op?: string)=>void; restart: ()=>Promise<void>;
@@ -106,14 +108,15 @@ const record = (value: unknown): Record<string, unknown> => value as Record<stri
 const wireResult = (value: unknown): WireResult => value as WireResult;
 async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean} = {}): Promise<WireFixture> {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-settings-wire-'));
- let backend: Awaited<ReturnType<typeof startServer>>|undefined,proxy: http.Server|undefined,db: DatabaseSync|undefined,drop=false,malformedOperation: string|null=null,last: WireLast|undefined;
+ let backend: Awaited<ReturnType<typeof startServer>>|undefined,proxy: http.Server|undefined,inspect!: InspectProject,drop=false,malformedOperation: string|null=null,last: WireLast|undefined;
  const submissions: Array<Record<string, unknown>>=[];
  t.after(async()=>{
-  const failures: unknown[]=[];for(const cleanup of [async()=>{if(proxy){proxy.closeAllConnections();await bounded(new Promise<void>(resolve=>proxy!.close(()=>resolve())),'Proxy close',5000);}},()=>backend?.close(),()=>db?.close(),()=>rm(root,{recursive:true,force:true})])
+  const failures: unknown[]=[];for(const cleanup of [async()=>{if(proxy){proxy.closeAllConnections();await bounded(new Promise<void>(resolve=>proxy!.close(()=>resolve())),'Proxy close',5000);}},()=>backend?.close(),()=>rm(root,{recursive:true,force:true})])
    try{await cleanup();}catch(error){failures.push(error);}
   if(failures.length)throw new AggregateError(failures,'Export settings fixture cleanup');
  });
- const start=()=>startServer({dataDir:root,port:0,token:TOKEN,chatGateway:async function*(){throw Error('No model or provider call is permitted');}});
+ // Each server that starts hands over its own connection.
+ const start=()=>startServer({dataDir:root,port:0,token:TOKEN,chatGateway:async function*(){throw Error('No model or provider call is permitted');},inspectProject:received=>{inspect=received;}});
  backend=await start();
  proxy=http.createServer(async(req: http.IncomingMessage,res: http.ServerResponse)=>{try{
   const chunks: Buffer[]=[];let bytes=0;for await(const chunk of req as AsyncIterable<Buffer>){bytes+=chunk.length;if(bytes>32768)throw Error('Fixture request cap');chunks.push(chunk);}
@@ -134,17 +137,20 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
   assert.equal(source.sha256,sha(bytes));assert.equal(source.sizeBytes,bytes.length);
   timeline=await direct.rpc<WireTimeline>('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:source.id,trackId:timeline.tracks.find(track=>track.kind==='video')!.id,startFrame:0,durationFrames:3});
  }
- const database=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});db=database;
- const rows=(): Record<string, unknown>=>Object.fromEntries(database.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(value=>{
-  const name=record(value).name as string;return [name,database.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()];}));
- const checkpoint=async(): Promise<WireCheckpoint>=>({rows:rows(),version:record(database.prepare('PRAGMA data_version').get()).data_version,files:await manifest(root)});
- const unchanged=async(before: WireCheckpoint): Promise<void>=>{assert.deepEqual(rows(),before.rows);assert.equal(record(database.prepare('PRAGMA data_version').get()).data_version,before.version);assert.deepEqual(await manifest(root),before.files);};
+ // The server holds the project while it runs: read on its own connection.
+ const use=<T>(read: (db: DatabaseSync)=>T): T=>inspect(project.id,read);
+ const rows=(db: DatabaseSync): Record<string, unknown>=>Object.fromEntries(schemaObjects(db).filter(({type})=>type==='table').map(({name})=>
+  [name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()]));
+ // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
+ const changeMarks=(db: DatabaseSync): unknown[]=>[record(db.prepare('PRAGMA data_version').get()).data_version,record(db.prepare('SELECT total_changes() AS n').get()).n];
+ const checkpoint=async(): Promise<WireCheckpoint>=>({...use(db=>({rows:rows(db),version:changeMarks(db)})),files:await manifest(root)});
+ const unchanged=async(before: WireCheckpoint): Promise<void>=>{use(db=>{assert.deepEqual(rows(db),before.rows);assert.deepEqual(changeMarks(db),before.version);});assert.deepEqual(await manifest(root),before.files);};
  const official=await officialMcp(t,url);
  const raw=async(op: string,input: Record<string, unknown>): Promise<WireResult>=>{
   let response: Response;try{response=await fetch(url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+TOKEN,'content-type':'application/json'},body:JSON.stringify({operation:op,input}),signal:AbortSignal.timeout(30000)});}catch{return {ok:false,data:{},error:{code:'LOST_TRANSPORT'}};}
   const body=record(await response.json());assert.equal(response.ok,body.ok);noPrivate(body);return wireResult(body);
  };
- return {root,project,empty,source,timeline,db:database,client,mcp:official.mcp,checkpoint,unchanged,submissions,
+ return {root,project,empty,source,timeline,use,client,mcp:official.mcp,checkpoint,unchanged,submissions,
   last:()=>last,lose:()=>{drop=true;},malform:(op='timeline.render')=>{malformedOperation=op;},
   restart:async()=>{await backend!.close();backend=await start();},
   transports:[{name:'HTTP',call:raw},{name:'CLI',call:(op: string,input: Record<string, unknown>)=>cli(url,[...op.split('.'),'--input',JSON.stringify(input)]) as unknown as Promise<WireResult>},{name:'MCP',call:official.call as unknown as WireTransport['call']}],
@@ -207,7 +213,7 @@ test('real custom renders recover lost HTTP CLI MCP acknowledgements exactly acr
   assert.equal(w.submissions.length,count+1,'one dispatch only, never automatic resubmission');
   const last=w.last();if(!last)throw Error('missing last transport response');
   const original=wireResult(JSON.parse(last.text));assert.equal(original.ok,true);assert.equal(isTimelineMutationResponse('timeline.render',input,original.data),true);
-  const receipt=w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId(input))?.response as string;
+  const receipt=w.use(db=>db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId(input))?.response) as string;
   assert.deepEqual(publicValue(JSON.parse(receipt)),original.data);
   const completed=await w.finished(String(original.data.id));assert.deepEqual(completed.snapshot.delivery,original.data.snapshot?.delivery);assert.ok(completed.assetId);
   const artifact=(await w.client.rpc<Array<{id: string; width: number; height: number; mimeType: string}>>('asset.list',{projectId:w.project.id})).find(asset=>asset.id===completed.assetId);assert.equal(artifact?.width,360);assert.equal(artifact?.height,640);assert.equal(artifact?.mimeType,'video/mp4');
@@ -221,8 +227,8 @@ test('real custom renders recover lost HTTP CLI MCP acknowledgements exactly acr
    const stale=await transport.call('timeline.render',{...input,requestId:randomUUID()});assert.equal(stale.ok,false);assert.equal(stale.error?.code,'REVISION_CONFLICT');
    assert.deepEqual(events,[],'replay and CAS refusal bypass capability subprocesses');await w.unchanged(before);
   }finally{off();if(previous===undefined)delete process.env.MIOON_FFMPEG_PATH;else process.env.MIOON_FFMPEG_PATH=previous;}
-  assert.equal(w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId(input))?.['response'],receipt);
-  assert.equal(w.db.prepare('SELECT COUNT(*) AS n FROM exports WHERE id=?').get(String(original.data.id))?.['n'],1);
+  assert.equal(w.use(db=>db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId(input))?.['response']),receipt);
+  assert.equal(w.use(db=>db.prepare('SELECT COUNT(*) AS n FROM exports WHERE id=?').get(String(original.data.id))?.['n']),1);
  }
 });
 
@@ -230,8 +236,8 @@ test('malformed render success stays unknown and explicit original request recov
  const w=await wire(t,{media:true}),input={projectId:w.project.id,expectedRevision:w.timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings:settings()};
  const count=w.submissions.length;w.malform();await assert.rejects(w.client.rpc('timeline.render',input),(error: unknown)=>{const failure=error as {code?:string; details?:{requestId?:unknown; submissionMayHaveSucceeded?:boolean}};return failure.code==='BACKEND_PROTOCOL_ERROR'&&failure.details?.requestId===input.requestId&&failure.details?.submissionMayHaveSucceeded===true;});
  assert.equal(w.submissions.length,count+1);const last=w.last();if(!last)throw Error('missing last transport response');const original=wireResult(JSON.parse(last.text));assert.equal(original.ok,true);await w.finished(String(original.data.id));
- const receipt=w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId(input))?.response as string;
+ const receipt=w.use(db=>db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId(input))?.response) as string;
  await w.restart();const before=await w.checkpoint();assert.deepEqual(await w.client.rpc('timeline.render',input),original.data);await w.unchanged(before);
- assert.equal(w.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId(input))?.['response'],receipt);
- assert.equal(w.db.prepare('SELECT COUNT(*) AS n FROM exports WHERE id=?').get(String(original.data.id))?.['n'],1);
+ assert.equal(w.use(db=>db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(requestId(input))?.['response']),receipt);
+ assert.equal(w.use(db=>db.prepare('SELECT COUNT(*) AS n FROM exports WHERE id=?').get(String(original.data.id))?.['n']),1);
 });
