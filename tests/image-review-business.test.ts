@@ -249,7 +249,10 @@ test('review identity, exact canonical intent and reservations cannot be replace
 });
 
 test('non-owner may inspect but cannot prepare, approve, reject or consume a POST fence', t => {
-  const f = fixture(t), input = f.input(), value = f.prepare(input), observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
+  const f = fixture(t), input = f.input(), value = f.prepare(input);
+  // A second connection to the project opens only once the owner has closed it.
+  f.store.close();
+  const observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
   t.after(() => observer.close());
   const service = createImageReviewServices(observer, {getSettings: () => ({revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION})});
   assert.deepEqual(service.handlers['image.review.get']({projectId: f.projectId, reviewId: value.id}), value);

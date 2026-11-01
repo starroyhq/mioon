@@ -25,6 +25,7 @@ import {SCENE_LIMITS,SCENE_MUTATION_OPERATIONS,SCENE_DETECTION_DEFAULTS,schemas,
 import {translate} from '../packages/i18n/src/index.ts';
 import type { BinaryLike } from 'crypto';
 import type { DetectManagedScenesOptions } from '@mioon/business/scene-detection-decoder';
+import {schemaObjects} from './helpers/project-database.ts';
 
 const digest=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
 const code=(expected: string,check: ((arg0: { code: string; }) => unknown)|undefined=()=>true)=>(error: unknown)=>(error as { code: string; details?: {sceneOutcome?: {status: string; operation: string; projectId: string; requestId: string; inputHash: string}} }).code===expected&&!JSON.stringify((error as { code: string; details?: {sceneOutcome?: {status: string; operation: string; projectId: string; requestId: string; inputHash: string}} })).includes('PRIVATE_SENTINEL')&&check((error as { code: string; details?: {sceneOutcome?: {status: string; operation: string; projectId: string; requestId: string; inputHash: string}} }));
@@ -65,7 +66,7 @@ const rows=(db: DatabaseSync)=>JSON.stringify(['scene_tasks','scene_requests','s
 test('schema58 gives ordinary workspaces the three scene tables', t=>{
  const f=fixture(t);
  assert.equal(readCurrentWorkspaceRole(f.store.db),CURRENT_ORDINARY_ROLE);
- assert.deepEqual(f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name GLOB 'scene_*' ORDER BY name").all().map(row=>row.name),['scene_requests','scene_results','scene_tasks']);
+ assert.deepEqual(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&name.startsWith('scene_')).map(({name})=>name).sort(),['scene_requests','scene_results','scene_tasks']);
  assert.equal((f.store.db.prepare('SELECT max(version) AS v FROM schema_version').get())!.v,CURRENT_ORDINARY_SCHEMA);
  // Rows outside the accepted shape cannot be written directly.
  assert.throws(()=>f.store.db.prepare("INSERT INTO scene_tasks(id,projectId,kind,sourceAssetId,requestId,inputHash,input,snapshot,state,revision,started,createdAt,updatedAt) VALUES(?,?,'detect',?,?,?,?,?,'running',1,1,'t','t')")
@@ -229,7 +230,10 @@ test('live progress is reported only while the task runs', async t=>{
 });
 
 test('a non-owner reads without writing and cannot mutate', async t=>{
- const f=fixture(t),ack=await f.call('scene.detect',f.input()),observer=(openStore(f.root,{lock:false}) as unknown as TypedStore),services=(createSceneServices(observer,({detect:()=>assert.fail('read spawned decode')} as SceneServicesOptions)) as SceneHandlerService<'detect'>);
+ const f=fixture(t),ack=await f.call('scene.detect',f.input());
+ // A second connection to the project opens only once the owner has closed it.
+ await f.close();
+ const observer=(openStore(f.root,{lock:false}) as unknown as TypedStore),services=(createSceneServices(observer,({detect:()=>assert.fail('read spawned decode')} as SceneServicesOptions)) as SceneHandlerService<'detect'>);
  t.after(async()=>{await services.drain();observer.close();});assert.equal(ownsStoreLock(observer),false);
  const before=rows(observer.db);
  assert.deepEqual(services.handlers['scene.task.get']({projectId:f.project.id,taskId:ack.id}),ack);

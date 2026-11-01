@@ -29,6 +29,7 @@ import {IMAGE_FIXED_OPTIONS,IMAGE_MODELS,canonicalImageInput as canonical} from 
 import {IMAGE_SETTINGS_READ_CURRENT,IMAGE_SETTINGS_ASSERT_CURRENT} from '../packages/business/src/images/settings.ts';
 import {DEFAULT_IMAGE_CONFIGURATION} from '../packages/contracts/src/image-settings.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
+import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const sha=(bytes: BinaryLike|Buffer<ArrayBuffer>)=>createHash('sha256').update(bytes).digest('hex');
@@ -191,7 +192,7 @@ function injectEdit(f: Awaited<ReturnType<typeof fixture>>,sourceImage: EditSour
  return {id,groupId,assetId,versionId,input,snapshot,receipt,version,sourceImage:{assetId,sha256:asset.sha256,mimeType:'image/png' as const,byteLength:asset.sizeBytes,width:1024,height:1024,name:asset.name,origin:{kind:'synthetic-mock' as const,imageSource:{imageGroupId:groupId,imageTaskId:id,imageVersionId:versionId}}}};
 }
 const importedDescriptor=(f: Awaited<ReturnType<typeof fixture>>)=>({assetId:f.asset.id,sha256:f.asset.sha256,mimeType:'image/png' as const,byteLength:f.bytes.length,width:1024,height:1024,name:f.asset.name,origin:{kind:'user-import' as const}});
-function removeIdentityTriggers(db: DatabaseSync){for(const row of db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND (tbl_name='image_tasks' OR tbl_name='image_versions')").all())db.exec(`DROP TRIGGER "${row.name}"`);db.exec('PRAGMA ignore_check_constraints=ON');}
+function removeIdentityTriggers(db: DatabaseSync){for(const {name} of schemaObjects(db).filter(({type,tbl_name})=>type==='trigger'&&(tbl_name==='image_tasks'||tbl_name==='image_versions')))db.exec(`DROP TRIGGER "${name}"`);db.exec('PRAGMA ignore_check_constraints=ON');}
 
 test('actual edit-source cycle is rejected rather than hidden by pending caches',async t=>{
  const f=await fixture(t,{autoRun:false}),one=injectEdit(f,importedDescriptor(f)),two=injectEdit(f,one.sourceImage);
@@ -212,13 +213,16 @@ test('edit source ancestry is bounded at 32 source tasks',async t=>{
 
 for(const variant of ['sql-owner-reassigned','version-deleted','foreign-extra-receipt'])test(`reverse ${variant} cannot hide an edited output behind an import label`,async t=>{
  const {validateImageConsumption}=await import('../packages/business/src/image-consumption.ts');
- const f=await fixture(t,{autoRun:false}),edited=injectEdit(f,importedDescriptor(f));removeIdentityTriggers(f.store.db);f.store.db.exec('PRAGMA foreign_keys=OFF');
- const asset={...f.store.get('assets',edited.assetId)!,provenance:'user-import'};f.store.put('assets',asset);
- if(variant==='sql-owner-reassigned')f.store.db.prepare('UPDATE image_versions SET assetId=? WHERE id=?').run(randomUUID(),edited.versionId);
- if(variant==='version-deleted')f.store.db.prepare('DELETE FROM image_versions WHERE id=?').run(edited.versionId);
- if(variant==='foreign-extra-receipt'){
-  const foreign=injectEdit(f,importedDescriptor(f));f.store.db.prepare('UPDATE image_tasks SET projectId=?,stagedReceipt=? WHERE id=?').run(f.otherProjectId,canonical({...foreign.receipt,assetId:edited.assetId}),foreign.id);
- }
+ const f=await fixture(t,{autoRun:false}),edited=injectEdit(f,importedDescriptor(f));removeIdentityTriggers(f.store.db);
+ const asset={...f.store.get('assets',edited.assetId)!,provenance:'user-import'};
+ withoutForeignKeys(f.store.db,()=>{
+  f.store.put('assets',asset);
+  if(variant==='sql-owner-reassigned')f.store.db.prepare('UPDATE image_versions SET assetId=? WHERE id=?').run(randomUUID(),edited.versionId);
+  if(variant==='version-deleted')f.store.db.prepare('DELETE FROM image_versions WHERE id=?').run(edited.versionId);
+  if(variant==='foreign-extra-receipt'){
+   const foreign=injectEdit(f,importedDescriptor(f));f.store.db.prepare('UPDATE image_tasks SET projectId=?,stagedReceipt=? WHERE id=?').run(f.otherProjectId,canonical({...foreign.receipt,assetId:edited.assetId}),foreign.id);
+  }
+ });
  assert.throws(()=>createOwnedMediaGraphReader(f.store.db,f.projectId).asset(edited.assetId));
  assert.throws(()=>validateImageConsumption(f.store.db,asset,f.projectId),code('IMAGE_SOURCE_INVALID'));
 });

@@ -29,6 +29,7 @@ import {startServer} from '../apps/server/src/index.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import type { PathLike } from 'fs';
+import {readProjectState} from './helpers/project-state.ts';
 
 const {z} = createRequire(new URL('../packages/contracts/package.json', import.meta.url))('zod');
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -71,8 +72,7 @@ function expectedProfiles({enabled = [true, true, true], models = configurations
 }
 const withRevisions = <T extends {items:object[];liveEnabled:boolean}>(value:T,revisions=[11,22,33]) => ({...clone(value),
   items: value.items.map((item:T["items"][number],index:number) => index ? {...clone(item), settingsRevision: revisions[index - 1]} : clone(item))});
-const rows = (db: DatabaseSync) => JSON.stringify(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all()
-  .map(({name}) => [name, db.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all()]));
+const rows = (db: DatabaseSync) => JSON.stringify(Object.entries(readProjectState(db).tables));
 const changes = (db: DatabaseSync) => db.prepare('SELECT total_changes() AS n').get()!.n;
 function publicOnly(value: unknown, root = '') {
   const text = JSON.stringify(value);

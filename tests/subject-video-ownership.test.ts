@@ -7,6 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {fixture,typedFrame,typedImage,rowBytes} from './helpers/strict-timeline-audio-subject-fixtures.ts';
 import {createOwnedMediaGraphReader,INSPECTION_LIMITS} from '../packages/business/src/inspection.ts';
 import {createSubjectOwnershipReader,SUBJECT_OWNER_COLUMNS,SUBJECT_VERSION_COLUMNS} from '../packages/business/src/subject-ownership.ts';
+import {openProjectDatabase,withoutForeignKeys} from './helpers/project-database.ts';
 
 for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','shot-sql','job-sql','subject-owner','version-owner'])test(`subject ${drift} drift denies exact replay, reads and retry without disclosure`,async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),input=f.input(shot,subject.headVersionId),job=await f.call('generation.submit',input);
@@ -17,8 +18,8 @@ for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','sh
  if(drift==='shot-sql')f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id);
  if(drift==='job-sql')f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,job.id);
  // Schema62 renamed the subject identity guard; drop whichever this workspace carries.
- if(drift==='subject-owner'){f.store.db.exec('PRAGMA foreign_keys=OFF; DROP TRIGGER IF EXISTS immutable_subject_identity; DROP TRIGGER IF EXISTS immutable_subject_identity_v62');f.store.db.prepare('UPDATE subjects SET projectId=? WHERE id=?').run(f.other.id,subject.id);}
- if(drift==='version-owner'){f.store.db.exec('PRAGMA foreign_keys=OFF; PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_subject_versions');f.store.db.prepare('UPDATE subject_versions SET projectId=? WHERE id=?').run(f.other.id,subject.headVersionId);}
+ if(drift==='subject-owner'){f.store.db.exec('DROP TRIGGER IF EXISTS immutable_subject_identity; DROP TRIGGER IF EXISTS immutable_subject_identity_v62');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE subjects SET projectId=? WHERE id=?').run(f.other.id,subject.id));}
+ if(drift==='version-owner'){f.store.db.exec('PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_subject_versions');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE subject_versions SET projectId=? WHERE id=?').run(f.other.id,subject.headVersionId));}
  const before=rowBytes(f,'jobs',job.id);await assert.rejects(f.call('generation.submit',input));await assert.rejects(f.call('job.get',{jobId:job.id}));await assert.rejects(f.call('job.retry',{jobId:job.id,requestId:randomUUID()}));assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.posts(),0);
 });
 
@@ -72,7 +73,6 @@ test('subject ownership rows share supplied budget, bound materialization and us
 });
 
 test('large retained history keeps subject row reads bounded; native read-only reopen does not mutate',async t=>{
- const {DatabaseSync}=await import('node:sqlite'),path=await import('node:path');
  const {assertSubjectGenerationSelection,assertSubjectGenerationRequestVacant}=await import('../packages/business/src/generation-inputs.ts');
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),otherShot=await f.shot(),db=f.store.db;
  f.store.tx(()=>{
@@ -88,8 +88,12 @@ test('large retained history keeps subject row reads bounded; native read-only r
  const reservationPlan=db.prepare("EXPLAIN QUERY PLAN SELECT CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 131072 THEN data END FROM jobs WHERE CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 131072 THEN CASE WHEN json_valid(data) THEN json_extract(data,'$.requestId')=? ELSE 1 END ELSE 1 END LIMIT 2").all(randomUUID()).map(row=>row.detail);assert.ok(reservationPlan.some(detail=>/SCAN jobs/.test((detail as string))));
  const elapsed=performance.now()-started,plans=db.prepare(`EXPLAIN QUERY PLAN SELECT ${SUBJECT_VERSION_COLUMNS} FROM subject_versions WHERE id=? AND projectId=? LIMIT 1`).all(subject.headVersionId,f.project.id).map(row=>row.detail);
  t.diagnostic(JSON.stringify({subjects:2001,subjectVersions:2001,unrelatedEdges:3000,retainedJobs:2000,reservationProbeMs,reservationQueryPlan:reservationPlan,materializedSubjectRows:records,materializedSubjectBytes:readBytes,elapsedMs:elapsed,subjectVersionQueryPlan:plans,edgeTargetQueryLimitation:'guarded JSON target predicate scans; LIMIT bounds materialized candidates only'}));
- const persisted=rowBytes(f,'shots',shot.id),readOnly=new DatabaseSync(path.join(f.root,'workbench.sqlite'),{readOnly:true});
- try{assert.equal((createOwnedMediaGraphReader(readOnly,f.project.id).subjectReference(subject.headVersionId) as import('../packages/contracts/src/subject-generation.ts').SubjectReference).subjectVersionId,subject.headVersionId);assert.equal(readOnly.prepare('SELECT total_changes() AS n').get()!.n,0);assert.equal(readOnly.prepare('SELECT data FROM shots WHERE id=?').get(shot.id)!.data,persisted);}finally{readOnly.close();}
+ const persisted=rowBytes(f,'shots',shot.id);
+ // The test's own connection opens only once the fixture's store has closed;
+ // query_only keeps it as read-only as the native reopen it stands for.
+ await f.services.drain();f.store.close();
+ const readOnly=openProjectDatabase(f.root);
+ try{readOnly.exec('PRAGMA query_only=ON');assert.equal((createOwnedMediaGraphReader(readOnly,f.project.id).subjectReference(subject.headVersionId) as import('../packages/contracts/src/subject-generation.ts').SubjectReference).subjectVersionId,subject.headVersionId);assert.equal(readOnly.prepare('SELECT total_changes() AS n').get()!.n,0);assert.equal(readOnly.prepare('SELECT data FROM shots WHERE id=?').get(shot.id)!.data,persisted);}finally{readOnly.close();}
 });
 
 for(const damage of ['missing','wrong-resource','wrong-hash','oversized-hash'])test(`damaged ${damage} generation receipt cannot disclose or recreate a retained subject request`,async t=>{
