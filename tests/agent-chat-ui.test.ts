@@ -9,6 +9,7 @@ import { transformSync } from 'esbuild';
 import { workspaceOriginScope, type WorkspaceIdentity } from '../apps/web/src/workspace-origin.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
 import { createSettingsNavigationRegistry } from '../apps/web/src/settings-navigation-state.ts';
+import { readAgentChatSSE, type AgentChatFrame } from '../apps/web/src/agent-sse.ts';
 
 const projectId = 'project-one';
 const deferred = () => { let resolve!: (value?: unknown)=>void, reject!: (reason?: unknown)=>void; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -16,6 +17,14 @@ const flush = async () => { for (let i = 0; i < 24; i++) await Promise.resolve()
 const element = (type: ElementType, props: Partial<ElementProps>|null = {}, ...children: Tree[]) => { const properties = { ...props, children: children.length === 1 ? children[0] : children }; return { type, props: properties }; };
 const nodes = (tree: Tree): Element[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const depsEqual = (a: readonly unknown[]|undefined, b: readonly unknown[]|undefined) => a?.length === b?.length && a!.every((value: unknown, i) => Object.is(value, b![i]));
+
+test('SSE parser handles every UTF-8 byte split, CRLF, comments and duplicate frames as data', async () => {
+  const data = { id: 2, type: 'delta', projectId, text: '你好 🎬' }; const wire = new TextEncoder().encode(`: keepalive\r\n\r\nid: 2\r\nevent: delta\r\ndata: ${JSON.stringify(data)}\r\n\r\n`);
+  const frames: AgentChatFrame[] = [], body = new ReadableStream({ start(controller) { for (const byte of wire) controller.enqueue(Uint8Array.of(byte)); controller.close(); } });
+  await readAgentChatSSE(body, value => frames.push(value)); assert.equal(frames.length, 1); assert.equal((frames[0].data as {text:string}).text, '你好 🎬');
+  const broken = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('data: {"x":1}\n')); controller.close(); } });
+  await assert.rejects(readAgentChatSSE(broken, () => assert.fail('incomplete frame dispatched')));
+});
 
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
 const actualFunction = (begin: string, end: string) => { const start = appSource.indexOf(begin), stop = appSource.indexOf(end, start); assert.ok(start >= 0 && stop > start); return appSource.slice(start, stop).trim(); };
