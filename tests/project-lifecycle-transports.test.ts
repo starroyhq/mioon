@@ -13,6 +13,7 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
 import {openStore} from '../packages/business/src/db.ts';
+import {createServerProject} from './helpers/project-database.ts';
 const repo=fileURLToPath(new URL('../',import.meta.url)),run=promisify(execFile);
 
 test('HTTP, CLI and MCP share rename CAS and permanent-delete receipts',{timeout:60000},async (t: test.TestContext)=>{
@@ -34,8 +35,9 @@ test('HTTP, CLI and MCP share rename CAS and permanent-delete receipts',{timeout
 });
 
 test('SIGKILL after the delete commit leaves a durable cleanup manifest that ordinary server startup resumes',{timeout:60000},async (t: test.TestContext)=>{
-  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-project-kill-'))),projectId=randomUUID(),assetId=randomUUID(),requestId=randomUUID(),relativePath=`media/${assetId}.png`,file=path.join(root,relativePath);let store=(openStore(root) as TypedStore);
-  store.put('projects',{id:projectId,name:'Private terminal project',description:'',revision:1,createdAt:'2026-10-19T00:00:00.000Z',updatedAt:'2026-10-19T00:00:00.000Z'});store.put('assets',{id:assetId,projectId,name:'Managed file',relativePath,sha256:'a'.repeat(64),mimeType:'image/png',createdAt:'2026-10-19T00:00:00.000Z'});writeFileSync(file,'exclusive managed bytes',{mode:0o600});store.close();
+  // Deletion bookkeeping is workspace-level and stays as it is for S0; only the project is made where the server finds it.
+  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-project-kill-'))),created=createServerProject(root,{name:'Private terminal project'}),projectId=created.projectId,assetId=randomUUID(),requestId=randomUUID(),relativePath=`media/${assetId}.png`,file=path.join(root,relativePath);let store=(created.store as unknown as TypedStore);
+  store.put('assets',{id:assetId,projectId,name:'Managed file',relativePath,sha256:'a'.repeat(64),mimeType:'image/png',createdAt:'2026-10-19T00:00:00.000Z'});writeFileSync(file,'exclusive managed bytes',{mode:0o600});store.close();
   t.after(()=>rmSync(root,{recursive:true,force:true}));
   const source=`import {existsSync} from 'node:fs';import path from 'node:path';
 import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from './packages/business/src/db.ts';
