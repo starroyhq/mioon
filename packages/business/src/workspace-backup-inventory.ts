@@ -1,6 +1,4 @@
 import {readWorkspaceBackupSchemaVersion} from './workspace-backup-schema-versions.ts';
-import {OPACITY_CANDIDATE_BACKUP_PROFILE} from './opacity-candidate-backup-profile.ts';
-import {OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE} from './opacity-ripple-candidate-backup-profile.ts';
 import {isWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 // All SQL here targets a private disposable copy, never the source workspace or
 // completed payload. Unknown tables/rows are retained byte-for-byte in SQLite.
@@ -20,7 +18,6 @@ export interface BackupIssue {code: string;path?: string}
 export interface BackupInventoryResult {complete: boolean;totalIssues: number;issues: BackupIssue[];truncated: boolean}
 export interface IssueCollector {add(code: string,relative?: string): void;result(): BackupInventoryResult}
 export interface InventoryPlanEntry {relative: string;role: string;identity: Stats;sha256: string|undefined;bytes: number|undefined}
-export interface BackupDatabaseProfile {readSchemaVersion(db: DatabaseSync): number}
 interface DatabaseEntry {path: string;role: string;bytes: number;sha256: string}
 interface BuildInventoryOptions {db: DatabaseSync;source: string;signal?: AbortSignal;check: ()=>void;issues: IssueCollector;databaseEntry: DatabaseEntry}
 export interface BuildInventoryResult {plan: InventoryPlanEntry[];databaseSchemaVersion: number;totalBytes: number}
@@ -45,8 +42,7 @@ export function createIssueCollector(): IssueCollector{
  return {add(code,relative){totalIssues++;if(issues.length<BACKUP_IO_LIMITS.issues){const candidate=relative?.startsWith('payload/')?relative:`payload/${relative}`;issues.push({code,...(typeof candidate==='string'&&/^payload\/(?:media|image-staging|frame-staging|agent-imports)\/[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/.test(candidate)?{path:candidate}:{})});}},
   result:()=>({complete:totalIssues===0,totalIssues,issues:[...issues],truncated:totalIssues>issues.length})};
 }
-export function inspectDatabase(db: DatabaseSync,fixedProfile?: BackupDatabaseProfile): {tables: Map<string,string|null>;version: number}{
- if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
+export function inspectDatabase(db: DatabaseSync): {tables: Map<string,string|null>;version: number}{
  db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
  const checked=db.prepare('PRAGMA quick_check(1)').get();
  if(!checked||Object.values(checked)[0]!=='ok')fail('DATABASE_INVALID');
@@ -58,12 +54,12 @@ export function inspectDatabase(db: DatabaseSync,fixedProfile?: BackupDatabasePr
  if(!tables.has('schema_version')||!tables.has('assets'))fail('DATABASE_INVALID');
  const ordinary=(name: string): void=>{if(tables.has(name)&&/^CREATE\s+VIRTUAL\s+TABLE/i.test(tables.get(name)||''))fail('DATABASE_INVALID');};
  for(const table of ['schema_version','assets','jobs','exports','image_tasks','frame_tasks','image_reviews','image_remote_runs'])ordinary(table);
- const version=fixedProfile?fixedProfile.readSchemaVersion(db):readWorkspaceBackupSchemaVersion(db);
+ const version=readWorkspaceBackupSchemaVersion(db);
  return {tables,version};
 }
 
-export async function buildWorkspaceInventory({db,source,signal,check,issues,databaseEntry}: BuildInventoryOptions,fixedProfile?: BackupDatabaseProfile): Promise<BuildInventoryResult>{
- const {tables,version}=inspectDatabase(db,fixedProfile),plan=new Map<string, InventoryPlanEntry>(),jobs=new Set<string>(),exports=new Set<string>(),budget={count:0};let rows=0,totalBytes=databaseEntry.bytes;
+export async function buildWorkspaceInventory({db,source,signal,check,issues,databaseEntry}: BuildInventoryOptions): Promise<BuildInventoryResult>{
+ const {tables,version}=inspectDatabase(db),plan=new Map<string, InventoryPlanEntry>(),jobs=new Set<string>(),exports=new Set<string>(),budget={count:0};let rows=0,totalBytes=databaseEntry.bytes;
  const consume=(): void=>{checkCancelled(signal);check();if(++rows>MAX_ROWS)fail('LIMIT');};
  const add=(relative: string,role: string,{allowMissing=true,sha256,bytes}: AddOptions={}): InventoryPlanEntry|null=>{
   if(!isWorkspaceBackupPayloadPath(`payload/${relative}`))fail('DATABASE_INVALID');

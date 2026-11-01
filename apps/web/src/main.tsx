@@ -9,9 +9,7 @@ import { ReactFlowProvider } from '@xyflow/react';
 import App, { SettingsConnectionForms } from './App.tsx';
 import DesktopRoot from './DesktopRoot.tsx';
 import { ApiError, rpc } from './api.ts';
-import { schemas, isTimelineRecord, isTimelineMutationResponse, isTimelineRenderRecord, isEditTaskEnvelope, isEditTaskListEnvelope } from '@mioon/contracts';
-import { createEditTaskClient } from './edit-task-client.ts';
-import { createOpacityCandidateApplication } from './opacity-candidate-application.ts';
+import { schemas } from '@mioon/contracts';
 import { workspaceRestoreInspectionSchema } from '../../../packages/contracts/src/workspace-restore.ts';
 import '@xyflow/react/dist/style.css';
 import '@mioon/ui/globals.css';
@@ -26,10 +24,8 @@ import type { LauncherContractChecks, LauncherRpc } from './launcher-state.ts';
 import type { NativeProjectEntryActions } from './native-project-entry.ts';
 import type { ProjectWindowBridge, ProjectWindowContext } from './desktop-window-client.ts';
 
-declare const __MIOON_INTERNAL_OPACITY_CANDIDATE__: boolean;
 type ApiErrorWithDefinitive = ApiError & {readonly definitive?: unknown};
 interface NativeAppProps {
-  opacityApplication?: unknown;
   nativeWindow?: {context: ProjectWindowContext; bridge: ProjectWindowBridge};
   nativeProjectEntry?: NativeProjectEntryActions;
 }
@@ -40,13 +36,9 @@ if (frame) document.documentElement.dataset.desktopFrame = frame;
 
 const launcherContracts: LauncherContractChecks = { parseCreateInput: (value: unknown) => schemas['project.create'].parse(value), parseWorkspaceInspection: (value: unknown) => workspaceRestoreInspectionSchema.parse(value), isDefinitiveCreateRejection: (error: unknown) => error instanceof ApiError && (error as ApiErrorWithDefinitive).definitive === true };
 const launcherRpc = rpc as unknown as LauncherRpc;
-// Vite replaces this literal with false for every ordinary build. The isolated
-// internal build is the only entry that creates the module-owned capability.
-const opacityApplication = __MIOON_INTERNAL_OPACITY_CANDIDATE__ ? createOpacityCandidateApplication({ rpc, createEditTaskClient: createEditTaskClient as unknown as Parameters<typeof createOpacityCandidateApplication>[0]['createEditTaskClient'],
-  schemas, isTimelineRecord, isTimelineMutationResponse, isTimelineRenderRecord, isEditTaskEnvelope, isEditTaskListEnvelope }) : null;
 const renderConnections = (props: LauncherSettingsProps) => <SettingsConnectionForms {...(props as unknown as React.ComponentProps<typeof SettingsConnectionForms>)} />;
 function LocalizedApplication() {
   const { t, renderMessage } = useI18n();
-  return <UiLanguageProvider labels={{ close: t('common.close') }}><TooltipProvider delay={350}><ConfirmationProvider labels={{ title: t('common.confirmTitle'), cancel: t('common.cancel'), continue: t('common.continue') }} renderMessage={renderMessage}><UiPreferencesProvider><ReactFlowProvider>{opacityApplication ? <NativeApp opacityApplication={opacityApplication} /> : <DesktopRoot rpc={launcherRpc} contractChecks={launcherContracts} renderWeb={() => <NativeApp />} renderEditor={(context, bridge, entry) => <NativeApp nativeWindow={{ context, bridge }} nativeProjectEntry={entry} />} renderSettings={renderConnections} />}</ReactFlowProvider></UiPreferencesProvider></ConfirmationProvider></TooltipProvider></UiLanguageProvider>;
+  return <UiLanguageProvider labels={{ close: t('common.close') }}><TooltipProvider delay={350}><ConfirmationProvider labels={{ title: t('common.confirmTitle'), cancel: t('common.cancel'), continue: t('common.continue') }} renderMessage={renderMessage}><UiPreferencesProvider><ReactFlowProvider><DesktopRoot rpc={launcherRpc} contractChecks={launcherContracts} renderWeb={() => <NativeApp />} renderEditor={(context, bridge, entry) => <NativeApp nativeWindow={{ context, bridge }} nativeProjectEntry={entry} />} renderSettings={renderConnections} /></ReactFlowProvider></UiPreferencesProvider></ConfirmationProvider></TooltipProvider></UiLanguageProvider>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><I18nProvider><LocalizedApplication /></I18nProvider></React.StrictMode>);

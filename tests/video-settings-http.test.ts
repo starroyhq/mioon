@@ -1,17 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,realpath,rm,readFile,mkdir,writeFile,access} from 'node:fs/promises';
+import {mkdtemp,realpath,rm,readFile,access} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {createVideoSettings} from '../packages/business/src/video/settings.ts';
 import {createVideoHttp} from '../apps/server/src/video-http.ts';
-import {startServer,createOpacityCandidateRequestApplication} from '../apps/server/src/index.ts';
-import {createFreshOpacityCandidateLaunch} from '../apps/server/src/opacity-candidate-launch.ts';
+import {startServer} from '../apps/server/src/index.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {restoreFixture} from './helpers/workspace-restore-offline-fixture.ts';
-import {request as candidateRequest,restoredApplicationToken} from './helpers/opacity-restored-application-fixture.ts';
 import {defaultVideoModels,VIDEO_SETTINGS_LIMITS} from '../packages/contracts/src/video-providers.ts';
 const SENTINEL='synthetic-video-http-key';
 const configuration=()=>({id:randomUUID(),name:'API connection',providerId:'minimax',region:'global',workspaceId:'',enabled:true,archived:false,outputHosts:[],models:defaultVideoModels('minimax')});
@@ -22,5 +20,3 @@ test('private video settings HTTP returns no secrets and enforces strict CAS and
 test('server authentication and origin gates precede video settings and settings stay outside public RPC',async t=>{const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-server-http-'))),server=await startServer({dataDir:root,port:0});t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true});});const route=server.url+'/api/video-providers/settings';assert.equal((await fetch(route)).status,401);assert.equal((await fetch(route,{headers:{Authorization:`Bearer ${server.token}`,Origin:'https://untrusted.example'}})).status,403);const response:Response=await fetch(route,{method:'PUT',headers:{Authorization:`Bearer ${server.token}`,'content-type':'application/json'},body:JSON.stringify({action:'save',expectedRevision:0,configuration:configuration(),secret:{action:'replace',storage:'session',value:SENTINEL}})});assert.equal(response.status,200);assert.equal((await response.text()).includes(SENTINEL),false);assert.equal((await readFile(path.join(root,'video-settings/settings.json'),'utf8')).includes(SENTINEL),false);const rpc=await fetch(server.url+'/api/rpc',{method:'POST',headers:{Authorization:`Bearer ${server.token}`,'content-type':'application/json'},body:JSON.stringify({operation:'video.settings.get',input:{}})});assert.ok(rpc.status>=400);});
 
 test('restored workspaces refuse the entire private video route family before creating settings',async t=>{const f=await restoreFixture({after:()=>{}},{stages:false});let server:Awaited<ReturnType<typeof startServer>>|undefined;t.after(async()=>{await server?.close();await rm(f.base,{recursive:true,force:true});});await restoreWorkspaceBackup({directory:f.backup,destination:f.destination});server=await startServer({dataDir:f.destination,port:0});for(const route of ['/api/video-providers/settings','/api/video-providers/settings/','/api/video-providers/unknown']){const response:Response=await fetch(server.url+route,{headers:{Authorization:`Bearer ${server.token}`}});assert.equal(response.status,409);assert.equal((await response.json() as {error:{code:string}}).error.code,'RESTORE_OPERATION_UNAVAILABLE');}await assert.rejects(access(path.join(f.destination,'video-settings')));});
-
-test('candidate workspaces refuse private video settings through the real shared request handler',async t=>{const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-video-candidate-'))),workspace=path.join(root,'workspace'),dist=path.join(root,'dist');await mkdir(dist,{mode:0o700});await writeFile(path.join(dist,'mioon-opacity-candidate-entry.json'),JSON.stringify({schemaVersion:1,profileId:'mioon-workspace-v42',entry:'opacity-candidate.html'}));await writeFile(path.join(dist,'opacity-candidate.html'),'<html>isolated candidate</html>');let app:Awaited<ReturnType<typeof createOpacityCandidateRequestApplication>>|undefined;t.after(async()=>{await app?.close();await rm(root,{recursive:true,force:true});});app=await createOpacityCandidateRequestApplication({opacityCandidateLaunch:createFreshOpacityCandidateLaunch(workspace),port:4319,distDir:dist,token:restoredApplicationToken});const response=await candidateRequest(app,'/api/video-providers/settings');assert.equal(response.status,409);assert.equal((response.data as {error:{code:string}}).error.code,'RESTORE_OPERATION_UNAVAILABLE');await assert.rejects(access(path.join(workspace,'video-settings')));});

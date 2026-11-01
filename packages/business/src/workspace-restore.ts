@@ -1,4 +1,3 @@
-import {OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE} from './opacity-ripple-candidate-backup-profile.ts';
 import {isWorkspaceSchemaSince} from '../../contracts/src/workspace-schema-lineage.ts';
 // Local/offline only. Never starts a store, backend, worker or provider; never
 // opens the backup's SQLite. The original DB includes private, unredacted text.
@@ -10,24 +9,16 @@ import {validatePrivateDirectory,validateManagedDirectory,getWindowsManagedFileI
 import {WORKSPACE_BACKUP_LIMITS as limits} from '../../contracts/src/workspace-backup.ts';
 import {workspaceRestoreOfflineResultSchema,workspaceRestorePublicationStatusSchema} from '../../contracts/src/workspace-restore-offline.ts';
 import {withVerifiedWorkspaceBackup,withDisposableDatabase} from './workspace-backup.ts';
-import {OPACITY_CANDIDATE_BACKUP_PROFILE} from './opacity-candidate-backup-profile.ts';
 import {classifyCurrentWorkspaceSchema as classifyWorkspaceSchema,installCurrentWorkspaceRestoreSchema as installWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema as validateWorkspaceRestoreSchema} from './db.ts';
 import {acquireWorkspaceLock} from './workspace-lock.ts';
 import {checkCancelled,sameNode,sameFile,explicitPath,checkSeparate,createDestination,createNewDirectory,checkDirectoryIdentity,
  inspectFile,streamFile,syncDirectory,syncDestinationParent,scanDirectory,removeOwnedDirectory} from './workspace-backup-storage.ts';
 import type {Stats} from 'node:fs';
-import type {VerifiedWorkspaceBackupContext,WorkspaceBackupProfile,WorkspaceBackupResult} from './workspace-backup.ts';
+import type {VerifiedWorkspaceBackupContext,WorkspaceBackupResult} from './workspace-backup.ts';
 
 interface RestoreProfileData {
  [key: string]: unknown;
  schemaVersion: number;profile: string;sourceSchema: number;heldCounts: unknown;workspaceOrigin: string;
-}
-export interface WorkspaceRestoreProfile extends WorkspaceBackupProfile {
- sourceVersion: number;
- restoreResultSchema: {safeParse(value: unknown): {success: boolean}};
- restoreStatusSchema: {safeParse(value: unknown): {success: boolean}};
- installRestore: (db: DatabaseSync, info: Record<string, unknown>)=>RestoreProfileData;
- validateRestore: (db: DatabaseSync)=>RestoreProfileData;
 }
 interface RestoreOptions {directory?: string;destination?: string;signal?: AbortSignal}
 interface InspectExpectedOptions {
@@ -38,9 +29,6 @@ interface InspectPublicationOptions {
  manifestHash?: string;sourceDbHash?: string;signal?: AbortSignal;
 }
 interface RestoreOperationError extends Error {cleanupUnconfirmed?: boolean;publication?: Record<string, unknown>}
-function isFixedRestoreProfile(fixedProfile: WorkspaceRestoreProfile|undefined): boolean{
- return fixedProfile!==undefined&&(fixedProfile===(OPACITY_CANDIDATE_BACKUP_PROFILE as unknown)||fixedProfile===(OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE as unknown));
-}
 
 const messages: Readonly<Record<string,string>>=Object.freeze({
  IO:'The offline restore did not complete. Preserve the incomplete destination; use a different new destination after review.',
@@ -168,22 +156,18 @@ export {publishCandidate as publishOfflineWorkspaceCandidate, checkDestinationAn
  * and validated by the schema constructor. All staged/history bytes are kept.
  * Conservative temporary disk estimate budgets payload + four capped DB-sized
  * copies/journals + 64MiB sidecars; it is not an available-space guarantee. */
-export async function restoreWorkspaceBackup({directory,destination,signal}: RestoreOptions={},fixedProfile?: WorkspaceRestoreProfile): Promise<Record<string,unknown>>{
+export async function restoreWorkspaceBackup({directory,destination,signal}: RestoreOptions={}): Promise<Record<string,unknown>>{
  let lease: {isOwned: ()=>boolean;release: ()=>boolean}|undefined,info: Record<string, unknown>|undefined,linked=false,publicationAttempted=false,result: Record<string,unknown>|undefined,operationError: RestoreOperationError|undefined;
  try{
-  // The extra argument is an internal fixed-version seam, not a caller-owned
-  // constructor or schema selector. Legacy callers retain the original path.
-  if(fixedProfile!==undefined&&!isFixedRestoreProfile(fixedProfile))fail('DATABASE_INVALID');
-  const candidateProfile=isFixedRestoreProfile(fixedProfile);
-  const requireSource=candidateProfile?fixedProfile!.requireSource:requireSupportedOriginalSource;
-  const installRestore=candidateProfile?fixedProfile!.installRestore:installWorkspaceRestoreSchema as unknown as (db: DatabaseSync,info: Record<string,unknown>)=>RestoreProfileData;
-  const validateRestore=candidateProfile?fixedProfile!.validateRestore:validateWorkspaceRestoreSchema as unknown as (db: DatabaseSync)=>RestoreProfileData;
-  const resultSchema=candidateProfile?fixedProfile!.restoreResultSchema:workspaceRestoreOfflineResultSchema;
+  const requireSource=requireSupportedOriginalSource;
+  const installRestore=installWorkspaceRestoreSchema as unknown as (db: DatabaseSync,info: Record<string,unknown>)=>RestoreProfileData;
+  const validateRestore=validateWorkspaceRestoreSchema as unknown as (db: DatabaseSync)=>RestoreProfileData;
+  const resultSchema=workspaceRestoreOfflineResultSchema;
   directory=explicitPath(directory);destination=explicitPath(destination);checkSeparate(directory,destination);checkCancelled(signal);
   if(validatePrivateDirectory(destination,{allowMissing:true}))fail('DESTINATION_EXISTS');
   checkDestinationAncestors(destination);
   return (await withVerifiedWorkspaceBackup<Record<string,unknown>>({directory,signal,inspectDatabaseCopy:requireSource},async source=>{
-   if(candidateProfile?source.manifest.databaseSchemaVersion!==fixedProfile!.sourceVersion:!isWorkspaceSchemaSince(24,source.manifest.databaseSchemaVersion))fail('SOURCE_SCHEMA_UNSUPPORTED');
+   if(!isWorkspaceSchemaSince(24,source.manifest.databaseSchemaVersion))fail('SOURCE_SCHEMA_UNSUPPORTED');
    const sourceDatabase=source.files.find(value=>value.entry.role==='database')!;
    info={restorationId:randomUUID(),workspaceOrigin:randomUUID(),sourceBackupId:source.manifest.backupId,
     manifestHash:source.manifestHash,sourceDbHash:sourceDatabase.entry.sha256,createdAt:new Date().toISOString()};
@@ -247,11 +231,11 @@ export async function restoreWorkspaceBackup({directory,destination,signal}: Res
    result={...binding(info),profile:profile!.profile,sourceSchema:profile!.sourceSchema,databaseSchemaVersion:profile!.schemaVersion,publication:'confirmed',createdAt:info.createdAt,
     fileCount:source.result.fileCount,payloadBytes:source.result.payloadBytes,databaseBytes:candidateIdentity.size,
     additionalDiskBytesEstimate:source.result.payloadBytes+4*limits.databaseBytes+64*1024*1024,
-    inventory:source.manifest.inventory,heldCounts:profile!.heldCounts,...(candidateProfile?fixedProfile!.resultMetadata:{})};
+    inventory:source.manifest.inventory,heldCounts:profile!.heldCounts};
    if(!resultSchema.safeParse(result).success)fail('DATABASE_INVALID');
    publishCandidate(candidate,final,destinationPath,candidateIdentity,check,()=>{publicationAttempted=true;},()=>{linked=true;});
    return result as Record<string,unknown>;
-  },fixedProfile)) as Record<string,unknown>;
+  })) as Record<string,unknown>;
  }catch(cause){
   const uncertain=linked||(publicationAttempted&&(cause as {code?: string})?.code!=='EEXIST');
   operationError=uncertain?error('PUBLICATION_UNCONFIRMED'):safeError(cause);
@@ -269,13 +253,11 @@ export async function restoreWorkspaceBackup({directory,destination,signal}: Res
  * main DB privately and verifies exact supplied provenance. It neither opens a
  * running DB nor repairs a stale lock, two-link publication or SQLite sidecar.
  * Observing guarded bytes now does not prove a previously failed fsync worked. */
-async function inspectExpectedPublication({destination,expected,signal,checkSource=()=>{}}: InspectExpectedOptions,fixedProfile?: WorkspaceRestoreProfile): Promise<{result: Record<string,unknown>;recheck: ()=>void}>{
+async function inspectExpectedPublication({destination,expected,signal,checkSource=()=>{}}: InspectExpectedOptions): Promise<{result: Record<string,unknown>;recheck: ()=>void}>{
  let temporary: string|undefined,temporaryIdentity: Stats|undefined;
  try{
-  if(fixedProfile!==undefined&&!isFixedRestoreProfile(fixedProfile))fail('STATUS_UNAVAILABLE');
-  const candidateProfile=isFixedRestoreProfile(fixedProfile);
-  const validateRestore=candidateProfile?fixedProfile!.validateRestore:validateWorkspaceRestoreSchema as unknown as (db: DatabaseSync)=>RestoreProfileData;
-  const resultSchema=candidateProfile?fixedProfile!.restoreStatusSchema:workspaceRestorePublicationStatusSchema;
+  const validateRestore=validateWorkspaceRestoreSchema as unknown as (db: DatabaseSync)=>RestoreProfileData;
+  const resultSchema=workspaceRestorePublicationStatusSchema;
   destination=explicitPath(destination);checkCancelled(signal);
   const destinationPath=destination as string;
   const rootIdentity=validatePrivateDirectory(destinationPath)!,database=path.join(destinationPath,'workbench.sqlite');
@@ -289,7 +271,7 @@ async function inspectExpectedPublication({destination,expected,signal,checkSour
   const info=await withDisposableDatabase({database,databaseRoot:destinationPath,temporaryParent:temporary,signal,check},db=>validateRestore(db));
   const recheck=(): void=>{check();if(!sameFile(before,inspectFile(database,destinationPath,{private:true,maxBytes:limits.databaseBytes})))fail('STATUS_UNAVAILABLE');};
   recheck();if(!sameBinding(info,expected))fail('STATUS_UNAVAILABLE');
-  const result: Record<string,unknown>={...binding(info),profile:info.profile,sourceSchema:info.sourceSchema,databaseSchemaVersion:info.schemaVersion,publication:'observed_guarded',createdAt:info.createdAt,durability:'not_reconfirmed',heldCounts:info.heldCounts,...(candidateProfile?fixedProfile!.resultMetadata:{})};
+  const result: Record<string,unknown>={...binding(info),profile:info.profile,sourceSchema:info.sourceSchema,databaseSchemaVersion:info.schemaVersion,publication:'observed_guarded',createdAt:info.createdAt,durability:'not_reconfirmed',heldCounts:info.heldCounts};
   if(!resultSchema.safeParse(result).success)fail('STATUS_UNAVAILABLE');return {result,recheck};
  }catch(cause){if((cause as {code?: string})?.code==='WORKSPACE_BACKUP_CANCELLED')throw error('CANCELLED');throw error('STATUS_UNAVAILABLE');}
  finally{if(temporaryIdentity&&temporary)try{removeOwnedDirectory(temporary,temporary,temporaryIdentity);}catch{fail('STATUS_UNAVAILABLE');}}
@@ -298,22 +280,21 @@ async function inspectExpectedPublication({destination,expected,signal,checkSour
 // Exactly one explicit observation mode: known identity, or a fully verified
 // original backup. Discovery after total ACK loss does not mint/adopt an origin
 // for execution; it discloses the already-guarded target's actual provenance.
-export async function inspectWorkspaceRestorePublication({destination,directory,restorationId,sourceBackupId,manifestHash,sourceDbHash,signal}: InspectPublicationOptions={},fixedProfile?: WorkspaceRestoreProfile): Promise<Record<string,unknown>>{
+export async function inspectWorkspaceRestorePublication({destination,directory,restorationId,sourceBackupId,manifestHash,sourceDbHash,signal}: InspectPublicationOptions={}): Promise<Record<string,unknown>>{
  try{
-  if(fixedProfile!==undefined&&!isFixedRestoreProfile(fixedProfile))fail('STATUS_UNAVAILABLE');
-  const requireSource=isFixedRestoreProfile(fixedProfile)?fixedProfile!.requireSource:requireSupportedOriginalSource;
+  const requireSource=requireSupportedOriginalSource;
   if(directory!==undefined){
    if([restorationId,sourceBackupId,manifestHash,sourceDbHash].some(value=>value!==undefined))fail('STATUS_UNAVAILABLE');
    directory=explicitPath(directory);destination=explicitPath(destination);checkSeparate(directory,destination);
    return (await withVerifiedWorkspaceBackup<Record<string,unknown>>({directory,signal,inspectDatabaseCopy:requireSource},async source=>{
     const expected={sourceBackupId:source.manifest.backupId,manifestHash:source.manifestHash,sourceDbHash:source.files.find(value=>value.entry.role==='database')!.entry.sha256};
-    const observation=await inspectExpectedPublication({destination:destination as string,expected,signal,checkSource:source.check},fixedProfile);
+    const observation=await inspectExpectedPublication({destination:destination as string,expected,signal,checkSource:source.check});
     await source.recheck();observation.recheck();return observation.result;
-   },fixedProfile)) as Record<string,unknown>;
+   })) as Record<string,unknown>;
   }
   const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i,hash=/^[a-f0-9]{64}$/;
   if(![restorationId,sourceBackupId].every(value=>typeof value==='string'&&value.length===36&&uuid.test(value))||![manifestHash,sourceDbHash].every(value=>typeof value==='string'&&value.length===64&&hash.test(value)))fail('STATUS_UNAVAILABLE');
-  const observation=await inspectExpectedPublication({destination:destination as string,expected:{restorationId:restorationId as string,sourceBackupId:sourceBackupId as string,manifestHash:manifestHash as string,sourceDbHash:sourceDbHash as string},signal},fixedProfile);
+  const observation=await inspectExpectedPublication({destination:destination as string,expected:{restorationId:restorationId as string,sourceBackupId:sourceBackupId as string,manifestHash:manifestHash as string,sourceDbHash:sourceDbHash as string},signal});
   observation.recheck();return observation.result;
  }catch(cause){if(['WORKSPACE_BACKUP_CANCELLED','WORKSPACE_RESTORE_CANCELLED'].includes((cause as {code?: string})?.code as string))throw error('CANCELLED');throw error('STATUS_UNAVAILABLE');}
 }

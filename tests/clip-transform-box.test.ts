@@ -95,7 +95,7 @@ test('the rendered timeline preview carries the box for visual clips the inspect
   const preview = readFileSync(resolve(root, 'apps/web/src/Preview.tsx'), 'utf8'), app = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
   assert.match(preview, /\{rendered && type === 'video' && transformBox && timeline && <ClipTransformBox box=\{transformBox\} playhead=\{playhead\} timeline=\{timeline\} media=\{media\} mediaKey=\{mediaKey\} \/>\}/);
   assert.match(app, / transformBox=\{clipTransformBox\(\)\} \/>/);
-  assert.match(app, /if \(!view \|\| application \|\| clipInspectorRetained \|\| view\.restored\) return null;/);
+  assert.match(app, /if \(!view \|\| clipInspectorRetained \|\| view\.restored\) return null;/);
   assert.match(app, /track\.id === clip\.trackId && track\.kind === 'video'/);
   assert.match(app, /busy: timelineBusy, onSetTransform: setTimelineClipTransform,/);
   assert.match(app, /disabledReason: clipDirty \|\| clipCompositionPending \? msg\('clip\.transform\.saveFirst'\) : lockedTrackIds\.has\(clip\.trackId\) \? msg\('edit\.track\.lockedHint'\) : null/);

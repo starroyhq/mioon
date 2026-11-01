@@ -3,7 +3,6 @@ import type { TimelineClipLoudnessWireOptions } from './timeline-clip-loudness-r
 import { isTimelineClipLoudnessResponse } from '@mioon/contracts/timeline-clip-loudness';
 import { readLoudnessApplyRpc } from './timeline-loudness-apply-rpc.ts';
 import { isWorkspaceRestoreInspection } from '@mioon/contracts';
-import { readOpacityCandidateClientBinding } from './opacity-candidate-client-binding.ts';
 import { workspaceOriginOptions } from './workspace-origin.ts';
 import { readTimelineMixLoudnessRpc } from './timeline-mix-loudness-rpc.ts';
 import type { TimelineMixLoudnessWireOptions } from './timeline-mix-loudness-rpc.ts';
@@ -14,7 +13,6 @@ export interface RpcOptions {
   readonly signal?: AbortSignal;
   readonly expectedWorkspaceOrigin?: unknown;
   readonly fetcher?: RpcFetcher;
-  readonly opacityBinding?: unknown;
 }
 interface RpcErrorBody {
   readonly code?: unknown;
@@ -44,7 +42,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, expectedWorkspaceOrigin, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args), opacityBinding }: RpcOptions = {}): Promise<T> {
+export async function rpc<T = unknown>(operation: string, input: unknown = {}, { signal, expectedWorkspaceOrigin, fetcher = (...args: Parameters<RpcFetcher>): ReturnType<RpcFetcher> => fetch(...args) }: RpcOptions = {}): Promise<T> {
   const invocation = workspaceOriginOptions(expectedWorkspaceOrigin);
   const mix = (operation === 'timeline.clip.loudness' ? await readTimelineClipLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineClipLoudnessWireOptions) : operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc('/api/rpc', { operation, input, ...invocation }, { signal, fetcher }) : operation === 'timeline.loudness.prepare' ? await readTimelineMixLoudnessRpc(input, { ...invocation, signal, fetch: fetcher } as TimelineMixLoudnessWireOptions) : null) as LoudnessRpcResult | null;
   const response = mix?.response ?? await fetcher('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation, input, ...invocation }), ...(signal ? { signal } : {}) });
@@ -61,8 +59,7 @@ export async function rpc<T = unknown>(operation: string, input: unknown = {}, {
     if (restricted && isRecord(details)) { delete details.mutationOutcome; delete details.frameOutcome; delete details.observation; }
     throw new ApiError(typeof errorBody.message === 'string' && errorBody.message ? errorBody.message : '请求未完成', response.status === 401 ? 'UNAUTHORIZED' : code, details, !restricted && response.status >= 400 && response.status < 500, response.status);
   }
-  const inspectionValidator = readOpacityCandidateClientBinding(opacityBinding)?.isWorkspaceInspection ?? isWorkspaceRestoreInspection;
-  if (operation === 'workspace.restore.inspect' && !inspectionValidator(body.data)) throw new ApiError('工作区身份核对返回无效数据。', 'BACKEND_PROTOCOL_ERROR');
+  if (operation === 'workspace.restore.inspect' && !isWorkspaceRestoreInspection(body.data)) throw new ApiError('工作区身份核对返回无效数据。', 'BACKEND_PROTOCOL_ERROR');
   if (operation === 'timeline.loudness.prepare' && !isTimelineMixLoudnessResponse(body.data, input)) throw new ApiError('整片混音测量响应与本次请求不匹配。', 'BACKEND_PROTOCOL_ERROR');
   if (operation === 'timeline.clip.loudness' && !isTimelineClipLoudnessResponse(body.data, input)) throw new ApiError('Invalid saved-clip loudness response.', 'BACKEND_PROTOCOL_ERROR');
   return body.data as T;

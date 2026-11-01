@@ -32,9 +32,6 @@ async function body(req:IncomingMessage,res:ServerResponse):Promise<unknown>{
   }
   try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));}catch{return invalid();}
 }
-// Fixed restored43 routes reuse these exact bounded transport primitives.
-// They do not add a codec selector or change the ordinary endpoint's grammar.
-export {send as sendLocalDraftHttpResponse, query as readLocalDraftHttpQuery, body as readLocalDraftHttpBody};
 
 /** Invoked only after startServer's existing Host, Origin and authentication
  * checks. No RPC, Agent-tool, provider, file-path or native bridge capability. */
