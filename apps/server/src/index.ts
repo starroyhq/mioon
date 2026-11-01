@@ -151,11 +151,11 @@ export interface ServerOptions {
   imageNetwork?: ImageNetworkSeam;
   comfyNetwork?: ComfyNetworkSeam;
   comfyModule?: ComfyModuleMode;
-  /** Has no effect: nothing reads it since the v1 assistant was removed, and
-   * Mio's model calls go through `taskGatewayV2`. It is still accepted only so
-   * test fixtures that pass a deny-all gateway keep compiling. It will be
-   * deleted: the W2 test rewrites stop passing it, and S0 removes this option
-   * when it rewrites startServer. */
+  /** Has no effect: nothing reads it since the v1 assistant was removed. Mio's
+   * model calls go through the v2 task gateway, which tests replace with
+   * `taskGatewayV2`. It is still accepted only so test fixtures that pass a
+   * deny-all gateway keep compiling. It will be deleted: the W2 test rewrites
+   * stop passing it, and S0 removes this option when it rewrites startServer. */
   chatGateway?: unknown;
   taskGatewayV2?: TaskGateway;
   taskFault?: TaskFault;
