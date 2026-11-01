@@ -15,6 +15,7 @@ import {createVideoSettings} from '../packages/business/src/video/settings.ts';
 import {defaultVideoModels,videoBindingCapabilities,videoInputProfile,validateVideoSnapshot} from '../packages/contracts/src/video-providers.ts';
 import type {VideoConnectionConfiguration,VideoInputMode} from '../packages/contracts/src/video-providers.ts';
 import {isSubjectGenerationResponse,isSubjectGenerationRetryResponse} from '../packages/contracts/src/subject-generation.ts';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 
 const json=(value:unknown)=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}});
 const hash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
@@ -79,8 +80,7 @@ test('a changed selected last-frame file fails before POST and never falls back 
 test('configured Ark rejects a foreign frame selection before queueing any paid job',async t=>{
   const f=await fixture(t);
   // The other project is not in this store; write the selected asset as a corrupt file would hold it.
-  f.store.db.exec('PRAGMA foreign_keys=OFF');
-  let foreign!:ManagedAsset;try{foreign=await f.asset({projectId:String(f.other.id)});}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
+  const foreign=await withoutForeignKeys(f.store.db,()=>f.asset({projectId:String(f.other.id)}));
   const shot=await f.shot();
   f.store.put('shots',{...shot,referenceAssetIds:[foreign.id]});
   await assert.rejects(f.services.call('generation.submit',f.input(shot)));assert.equal(f.store.list('jobs').length,0);assert.equal(f.calls.length,0);

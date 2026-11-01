@@ -24,7 +24,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 import {createServices,canonical} from '../packages/business/src/services.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t:test.TestContext):Promise<FixtureProject>{
@@ -52,8 +52,6 @@ const snapshot=(f: Awaited<ReturnType<typeof fixture>>,omit:string[]=[]): Record
  return [name,statement.all()];
 }));
 const changes=(f: Awaited<ReturnType<typeof fixture>>)=>f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(f: Awaited<ReturnType<typeof fixture>>,write:()=>T):T=>{f.store.db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}};
 
 function assertReviewed52Migration(f: Awaited<ReturnType<typeof fixture>>,before:Record<string,SqlRow[]>,rawBefore:RawSchemaSnapshot,expectedTargetCount: number){
  const actual=(rawSnapshot(f.store.db) as unknown as RawSchemaSnapshot);actual.objects=withoutReviewedCurrentAgentObjects(actual.objects);const names=new Set(currentOrdinary52Delta.objectNames),objects=actual.objects.filter((object: { name: string; })=>names.has(object.name));
@@ -153,7 +151,7 @@ test('schema-valid non-BMP request keys retain existing UTF-16 length semantics 
 });
 
 test('missing and foreign batches fail all-or-nothing uniformly, including exact replay, without foreign JSON decoding',async t=>{
- const f=await fixture(t),asset=f.asset(),foreign=withoutForeignKeys(f,()=>f.asset('video/mp4',f.other.id)),input=f.input(asset);await f.call('asset.disposition.set',input);
+ const f=await fixture(t),asset=f.asset(),foreign=withoutForeignKeys(f.store.db,()=>f.asset('video/mp4',f.other.id)),input=f.input(asset);await f.call('asset.disposition.set',input);
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{foreign retained secret',foreign.id);
  for(const target of [{projectId:f.project.id,assetId:randomUUID()},{projectId:f.project.id,assetId:foreign.id},{projectId:randomUUID(),assetId:asset.id}]){
   await assert.rejects(f.call('asset.disposition.list',{projectId:target.projectId,assetIds:[target.assetId]}),safeMissing);
@@ -163,14 +161,14 @@ test('missing and foreign batches fail all-or-nothing uniformly, including exact
  for(const assetIds of [[asset.id,foreign.id],[foreign.id,asset.id],[asset.id,randomUUID()]])
   await assert.rejects(f.call('asset.disposition.list',{projectId:f.project.id,assetIds}),safeMissing);
  assert.deepEqual(snapshot(f),before);assert.equal(changes(f),writes);
- withoutForeignKeys(f,()=>replaceAsset(f,asset,{projectId:f.other.id},f.other.id));
+ withoutForeignKeys(f.store.db,()=>replaceAsset(f,asset,{projectId:f.other.id},f.other.id));
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{foreign retained secret',asset.id);
  await assert.rejects(f.call('asset.disposition.set',input),safeMissing);
  replaceAsset(f,asset,{projectId:f.other.id});await assert.rejects(read(f,asset),safeMissing);await assert.rejects(f.call('asset.disposition.set',input),safeMissing);
  replaceAsset(f,asset);
  f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project,id:f.other.id}),f.project.id);
  await assert.rejects(read(f,asset),{code:'INVALID_ASSET_DISPOSITION_RECORD'});await assert.rejects(f.call('asset.disposition.set',input),{code:'INVALID_ASSET_DISPOSITION_RECORD'});
- f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id);f.store.db.exec('PRAGMA foreign_keys=ON');
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id));
  await assert.rejects(read(f,asset),safeMissing);await assert.rejects(f.call('asset.disposition.set',input),safeMissing);
 });
 
@@ -202,7 +200,7 @@ test('bounded asset/project identity JSON and malformed saved metadata fail clos
  }
  f.store.db.exec('DROP TRIGGER immutable_asset_disposition_identity; PRAGMA ignore_check_constraints=ON');
  for(const patch of [{projectId:f.other.id},{revision:0},{revision:1.5},{revision:Number.MAX_SAFE_INTEGER+1},{disposition:'private retained secret'}]){
-  withoutForeignKeys(f,()=>{for(const [key,value] of Object.entries(patch))f.store.db.prepare(`UPDATE asset_dispositions SET ${key}=? WHERE assetId=?`).run(value,asset.id);});
+  withoutForeignKeys(f.store.db,()=>{for(const [key,value] of Object.entries(patch))f.store.db.prepare(`UPDATE asset_dispositions SET ${key}=? WHERE assetId=?`).run(value,asset.id);});
   const before=snapshot(f);
   await assert.rejects(read(f,asset),error=>(error as Failure).code==='INVALID_ASSET_DISPOSITION_RECORD'&&noDisclosure(error));
   await assert.rejects(f.call('asset.disposition.set',input),error=>(error as Failure).code==='INVALID_ASSET_DISPOSITION_RECORD'&&noDisclosure(error));
@@ -229,17 +227,16 @@ test('malformed retained responses, lost metadata and deleted assets never expos
 
 test('metadata, receipts and trigger-induced reassignment roll back together; scope denial never releases the pending request',async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset),before=snapshot(f);
- f.store.db.exec("CREATE TRIGGER fail_disposition_receipt BEFORE INSERT ON asset_disposition_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_disposition_receipt BEFORE INSERT ON asset_disposition_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
  await assert.rejects(f.call('asset.disposition.set',input),/injected receipt failure/);assert.deepEqual(snapshot(f),before);assert.equal(f.store.db.isTransaction,false);
  f.store.db.exec('DROP TRIGGER fail_disposition_receipt');
- f.store.db.exec(`CREATE TRIGGER reassign_after_disposition AFTER INSERT ON asset_disposition_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
+ f.store.db.exec(`CREATE TEMP TRIGGER reassign_after_disposition AFTER INSERT ON asset_disposition_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
  // The trigger moves the asset to a project this store does not hold, inside the service's own transaction.
- f.store.db.exec('PRAGMA foreign_keys=OFF');
- try{await assert.rejects(f.call('asset.disposition.set',input),safeMissing);}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
+ await withoutForeignKeys(f.store.db,()=>assert.rejects(f.call('asset.disposition.set',input),safeMissing));
  assert.deepEqual(snapshot(f),before);
  f.store.db.exec('DROP TRIGGER reassign_after_disposition');
  const first=await f.call('asset.disposition.set',input),updated=f.input(asset,{expectedRevision:1,disposition:'neutral'}),saved=snapshot(f);
- f.store.db.exec("CREATE TRIGGER fail_disposition_update_receipt BEFORE INSERT ON asset_disposition_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_disposition_update_receipt BEFORE INSERT ON asset_disposition_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
  await assert.rejects(f.call('asset.disposition.set',updated),/injected update failure/);assert.deepEqual(snapshot(f),saved);assert.deepEqual(await read(f,asset),first);
 });
 

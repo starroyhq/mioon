@@ -17,9 +17,8 @@ import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {createJsonRequest} from '../packages/business/src/providers/live-common.ts';
 import {createVeoProvider} from '../packages/business/src/providers/veo.ts';
 import {INPUT_PROFILE_VERSION,getCapabilityProfile,getLegacyCapabilityProfile} from '../packages/contracts/src/index.ts';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=(db: TypedStore['db'],write: () => void)=>{db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: test.TestContext,name: string){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-input-boundary-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));

@@ -359,11 +359,11 @@ test('every keyed write rolls back receipt failures and post-write owner changes
     }} as unknown as ReturnType<typeof prepare>;
    }) as typeof prepare;
   }
-  else if(corruption==='receipt failure')f.store.db.exec("CREATE TRIGGER fail_timeline_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
-  else f.store.db.exec(`CREATE TRIGGER corrupt_timeline_owner AFTER INSERT ON timeline_requests BEGIN UPDATE timelines SET projectId='${f.otherId}' WHERE id='${timeline.id}'; END;`);
+  else if(corruption==='receipt failure')f.store.db.exec("CREATE TEMP TRIGGER fail_timeline_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
+  else f.store.db.exec(`CREATE TEMP TRIGGER corrupt_timeline_owner AFTER INSERT ON timeline_requests BEGIN UPDATE timelines SET projectId='${f.otherId}' WHERE id='${timeline.id}'; END;`);
   // The corruption moves the timeline to a project this store does not hold, inside the service's own transaction.
-  if(corruption==='timeline owner')db.exec('PRAGMA foreign_keys=OFF');
-  try{await rejected(f,operation,input);}finally{db.prepare=prepare;db.exec('PRAGMA foreign_keys=ON');}
+  const call=()=>rejected(f,operation,input);
+  try{await (corruption==='timeline owner'?withoutForeignKeys(db,call):call());}finally{db.prepare=prepare;}
  });
 });
 

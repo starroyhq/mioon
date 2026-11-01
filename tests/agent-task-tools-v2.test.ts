@@ -88,13 +88,13 @@ test('background generation polling keeps one submission audit and bounded histo
  update({status:'running',phase:'polling',providerJobId:'synthetic-accepted-task',submissionCount:1});
  const before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),revision=f.journal.targetRevision(f.projectId,'job',jobId);
  // A full business-history budget must not block ordinary provider polling.
- f.store.db.exec("CREATE TRIGGER synthetic_poll_history_full BEFORE INSERT ON agent_task_changes_v2 BEGIN SELECT RAISE(ABORT,'synthetic history full');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER synthetic_poll_history_full BEFORE INSERT ON agent_task_changes_v2 BEGIN SELECT RAISE(ABORT,'synthetic history full');END;");
  for(let i=0;i<300;i++)update({progress:i%80,nextPollAt:1000+i});
  assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);
  assert.ok(f.journal.targetRevision(f.projectId,'job',jobId)>revision);assert.equal((f.store.get('jobs',jobId) as Record<string,unknown>).nextPollAt,1299);
  f.store.db.exec('DROP TRIGGER synthetic_poll_history_full');
  const originalJob=f.store.get('jobs',jobId);
- f.store.db.exec("CREATE TRIGGER synthetic_cost_audit_full BEFORE UPDATE ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.cost')='unknown' BEGIN SELECT RAISE(ABORT,'synthetic cost audit full');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER synthetic_cost_audit_full BEFORE UPDATE ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.cost')='unknown' BEGIN SELECT RAISE(ABORT,'synthetic cost audit full');END;");
  assert.throws(()=>update({status:'submission_unknown',phase:'reconciliation_required'}),/synthetic cost audit full/u);
  assert.deepEqual(f.store.get('jobs',jobId),originalJob);assert.deepEqual(f.journal.snapshot(f.run.id),before);
  f.store.db.exec('DROP TRIGGER synthetic_cost_audit_full');
@@ -156,7 +156,7 @@ for(const obstacle of ['unbound_job','foreign_run_job','aba','draft','edge','com
 });
 test('retention audit failure rolls back the change classification, run revision and event atomically',async t=>{
  const f=await acceptedGeneratedShot(t),change=f.created.changes[0]!,before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId);
- f.store.db.exec(`CREATE TRIGGER test_retention_audit BEFORE INSERT ON agent_task_events_v2 WHEN NEW.type='change' AND json_extract(NEW.data,'$.data.id')='${change.id}' AND json_extract(NEW.data,'$.data.reversible')=0 BEGIN SELECT RAISE(ABORT,'synthetic retention audit failure');END;`);
+ f.store.db.exec(`CREATE TEMP TRIGGER test_retention_audit BEFORE INSERT ON agent_task_events_v2 WHEN NEW.type='change' AND json_extract(NEW.data,'$.data.id')='${change.id}' AND json_extract(NEW.data,'$.data.reversible')=0 BEGIN SELECT RAISE(ABORT,'synthetic retention audit failure');END;`);
  assert.throws(()=>f.undo(change),/synthetic retention audit failure/);assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);
 });
 test('all public operations have explicit admission; model cannot acquire administration or raw file authority',async t=>{

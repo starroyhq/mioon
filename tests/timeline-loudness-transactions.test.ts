@@ -16,7 +16,7 @@ import {readTimelinePreflightSnapshot,readTimelineSourceGraph} from '../packages
 import {validateTimeline} from '../packages/business/src/timeline-inputs.ts';
 import {planTimelineMixLoudnessDecode} from '../packages/business/src/timeline-mix-loudness-decoder.ts';
 import {validateManagedSource,verifiedManagedHash} from '../packages/business/src/managed-media.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 interface AssetView {id: string; projectId: string; name: string; mimeType: string; relativePath: string; sha256: string; sizeBytes: number; duration: number; hasAudio: boolean; hasVideo: boolean; width: number; height: number; url: string; createdAt: string}
 interface ClipView {id: string; trackId: string; gain: number; startFrame: number; durationFrames: number; [key: string]: unknown}
 interface TrackView {id: string; kind: string; muted: boolean; [key: string]: unknown}
@@ -45,8 +45,6 @@ async function foreignProject(t: import('node:test').TestContext,name='Foreign p
   try{return await services.call('project.create',{name}) as {id: string};}
   finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: ReturnType<typeof openStore>['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 async function syntheticDecode(timeline: TimelineView,assets: AssetView[],options: {beforeEffect(): void; onPcm(chunk: Buffer): void}): Promise<{sampleRate: number; channels: number} & Record<string, unknown>> {
   const plan=planTimelineMixLoudnessDecode(timeline as never,assets as never),tracks=new Map<string, TrackView>(timeline.tracks.map((track: TrackView)=>[track.id,track]));options.beforeEffect();
   for(let begin=0;begin<plan.sampleFrames;begin+=8192){const length=Math.min(8192,plan.sampleFrames-begin),chunk=Buffer.alloc(length*8);

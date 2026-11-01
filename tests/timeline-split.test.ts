@@ -353,7 +353,7 @@ test('split rolls back timeline, history insertion, redo deletion, cursor and re
   ] as const);
   for (const [target, name] of failures) {
     const before = f.state(), outside = f.outside();
-    f.store.db.exec(`CREATE TRIGGER inject_split_failure ${target} BEGIN SELECT RAISE(ABORT,'injected split ${name} failure'); END;`);
+    f.store.db.exec(`CREATE TEMP TRIGGER inject_split_failure ${target} BEGIN SELECT RAISE(ABORT,'injected split ${name} failure'); END;`);
     try {
       await assert.rejects(f.call(operation, params), new RegExp(`injected split ${name} failure`));
       assert.deepEqual(f.state(), before, `${name} failure restores all persisted edit state`);

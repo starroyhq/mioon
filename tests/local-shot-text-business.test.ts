@@ -18,15 +18,13 @@ import {createLocalShotTextDomain} from '@mioon/business/local-shot-text-domain'
 import {LOCAL_SHOT_TEXT_LIMITS,createLocalShotTextSchemas} from '@mioon/contracts/local-shot-text';
 import {schemas,AppError} from '@mioon/contracts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
 const contract=createLocalShotTextSchemas(value=>schemas['shot.update'].safeParse(value).success);
 const code=(value: string)=>(error: { code: string; message: string|string[]; })=>error.code===value&&!error.message.includes('PRIVATE');
 const authority=(value: { workspaceScope: unknown; instanceId: unknown; projectId: unknown; shotId: unknown; })=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});
 const action=(value: LocalShotTextSupported)=>({...authority(value),intentId:value.intent!.intentId,expectedIntentRevision:value.intentRevision});
 const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=(store: TypedStore,write: () => void)=>{store.db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{store.db.exec('PRAGMA foreign_keys=ON');}};
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: test.TestContext,name: string){
   const root=mkdtempSync(path.join(tmpdir(),'mioon-local-shot-text-foreign-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
@@ -149,9 +147,9 @@ test('relational and JSON ownership checks cover current and historical referenc
     const f=await fixture(t),foreign=await foreignProject(t,'PRIVATE foreign'),assetId=randomUUID();
     f.store.put('assets',{id:assetId,projectId:f.project.id,name:'Reference',mimeType:'image/png',provenance:'user-import'});f.store.put('shots',{...f.shot,referenceAssetIds:[assetId]});
     const prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put())));await f.originalUpdate(f.project.id,prepared.intent!.input);
-    if(kind==='shot-relational')withoutForeignKeys(f.store,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(foreign.id,f.shot.id));
+    if(kind==='shot-relational')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(foreign.id,f.shot.id));
     if(kind==='shot-json')f.store.put('shots',{...f.store.get('shots',f.shot.id),projectId:foreign.id});
-    if(kind==='asset-relational'||kind==='historical-asset'){if(kind==='historical-asset')f.store.put('shots',{...f.store.get('shots',f.shot.id),referenceAssetIds:[]});withoutForeignKeys(f.store,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(foreign.id,assetId));}
+    if(kind==='asset-relational'||kind==='historical-asset'){if(kind==='historical-asset')f.store.put('shots',{...f.store.get('shots',f.shot.id),referenceAssetIds:[]});withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(foreign.id,assetId));}
     assert.throws(f.get,code('LOCAL_SHOT_TEXT_STORAGE_UNAVAILABLE'));assert.equal(f.calls.length,0);
   }
 });
@@ -160,7 +158,7 @@ test('late owner reassignment, lease loss, abort and restored transition cannot 
   for(const kind of ['owner','lease','abort','restored']){
     const f=await fixture(t),controller=new AbortController();let restored=false;f.setGuards({isRestored:()=>restored});f.start({signal:controller.signal});const prepared=f.shotText.prepare(f.prepare(f.shotText.put(f.put()))),gate=Promise.withResolvers<void>(),entered=Promise.withResolvers<void>();
     f.setUpdate(async(projectId: string,input: unknown)=>{const result=await f.originalUpdate(projectId,input);entered.resolve();await gate.promise;return result;});const pending=f.shotText.execute(action(prepared));await entered.promise;
-    if(kind==='owner'){const foreign=await foreignProject(t,'Foreign');withoutForeignKeys(f.store,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(foreign.id,f.shot.id));}
+    if(kind==='owner'){const foreign=await foreignProject(t,'Foreign');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(foreign.id,f.shot.id));}
     if(kind==='lease'){unlinkSync(path.join(f.root,'server.lock'));writeFileSync(path.join(f.root,'server.lock'),'0',{mode:0o600});}
     if(kind==='abort')controller.abort();if(kind==='restored')restored=true;gate.resolve();await assert.rejects(pending);assert.equal(JSON.parse(readFileSync(f.file) as unknown as string).entries[0].intent.outcome.status,'pending');
   }

@@ -9,11 +9,12 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp, realpath, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {isEditTaskEnvelope} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {openProjectDatabase} from './helpers/project-database.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const workerPath = fileURLToPath(new URL('./helpers/edit-task-process-worker.ts', import.meta.url));
@@ -41,7 +42,8 @@ function deadline<T>(promise: Promise<T>, label: string, ms: number|undefined = 
   })]).finally(() => clearTimeout(timer));
 }
 
-interface WorkerReplyMap {prepare: TaskEnvelope<'subject.create'>;get: TaskEnvelope<'subject.create'>; execute: TaskEnvelope<'subject.create'>; reconcile: TaskEnvelope<'subject.create'>; acknowledge: TaskEnvelope<'subject.create'>; list: {items: TaskRecord[]};reconcileStartup: {processed: number;unavailable: number}; observe: {dispatches: unknown[]}; arm: unknown; rpc: unknown}
+type Snapshot = Record<string, Record<string, SQLOutputValue>[]>;
+interface WorkerReplyMap {prepare: TaskEnvelope<'subject.create'>;get: TaskEnvelope<'subject.create'>; execute: TaskEnvelope<'subject.create'>; reconcile: TaskEnvelope<'subject.create'>; acknowledge: TaskEnvelope<'subject.create'>; list: {items: TaskRecord[]};reconcileStartup: {processed: number;unavailable: number}; observe: {dispatches: unknown[]}; arm: unknown; rpc: unknown; snapshot: Snapshot}
 interface WorkerMessage {type: string;id: string;pid: number;startup: {processed: number;unavailable: number};phase: string;elapsedMs: number;resourceUsage: NodeJS.ResourceUsage;message: string;error?: {message: string;code: string};data: unknown}
 interface WorkerExit {code: number | null;signal: NodeJS.Signals | null}
 function startWorker(root: string) {
@@ -86,7 +88,7 @@ function startWorker(root: string) {
       else reply?.resolve(message.data);
     }
   });
-  return {pid: child.pid, ready: ready.promise, exited: exited.promise,
+  return {pid: child.pid, ready: ready.promise, exited: exited.promise, get stopped() { return stopped; },
     startupDiagnostic: () => ({elapsedMs: elapsed(), observations: observations.map(value => ({...value})),
       stdoutBytes, stderrBytes, connected: child.connected, ...exitDetails(child.exitCode, child.signalCode),
       parentResourceUsage: startupResources(process.resourceUsage())}),
@@ -161,14 +163,21 @@ async function fixture(t: test.TestContext) {
     prepare: (operation: string,input: Record<string,unknown>) => worker.ask('prepare', {projectId: input.projectId, operation, input, origin: 'new'}),
     rpc: <O extends string>(operation: O,input: unknown) => worker.ask('rpc', {operation, input}) as Promise<ServiceResponse<O>>,
     createInput: (patch: Record<string, unknown> = {}) => ({projectId: project.id, kind: 'character', name: 'Synthetic hero', assetId: source.id, requestId: randomUUID(), ...patch}),
-    read<T>(fn: (db: DatabaseSync) => T): T {
-      const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-      try { return fn(db); } finally { db.close(); }
+    // A running worker holds the project: it reads the tables on its own connection.
+    // A crash leaves its lock behind, so that evidence is read without taking the
+    // lock; after a clean exit the test opens the project itself. Rows go through
+    // JSON on both paths, so they compare the same.
+    async snapshot(tables: string[]|undefined = domainTables): Promise<Snapshot> {
+      if (!worker.stopped) return worker.ask('snapshot', tables);
+      const read = (db: DatabaseSync): Snapshot => JSON.parse(JSON.stringify(Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]))));
+      if (worker.stopped.signal === 'SIGKILL') {
+        const crashed = openStore(root, {lock: false});
+        try { return read(crashed.db); } finally { crashed.close(); }
+      }
+      const db = openProjectDatabase(root);
+      try { return read(db); } finally { db.close(); }
     },
-    snapshot(tables: string[]|undefined = domainTables) {
-      return this.read(db => Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
-    },
-    receipt(requestId: string) { return this.read(db => db.prepare('SELECT * FROM subject_requests WHERE requestId=?').get(requestId)); },
+    async receipt(requestId: string) { return (await this.snapshot(['subject_requests'])).subject_requests.find(row => row.requestId === requestId); },
     async crash(phase: string,method: keyof WorkerReplyMap,input: unknown) {
       const oldPid = worker.pid;
       await worker.ask('arm', phase);
@@ -188,7 +197,7 @@ async function noDispatch(f: Awaited<ReturnType<typeof fixture>>) {
 
 for (const phase of ['afterPreparePersist', 'afterClaim']) {
   test(`subject ${phase}: process death retains intent but startup, observation and acknowledgement cannot dispatch`, {timeout: 30000}, async t => {
-    const f = await fixture(t), input = f.createInput(), before = f.snapshot();
+    const f = await fixture(t), input = f.createInput(), before = await f.snapshot();
     let prepared;
     if (phase === 'afterPreparePersist') {
       await f.crash(phase, 'prepare', {projectId: f.project.id, operation: 'subject.create', input, origin: 'new'});
@@ -196,10 +205,10 @@ for (const phase of ['afterPreparePersist', 'afterClaim']) {
       prepared = await f.prepare('subject.create', input);
       await f.crash(phase, 'execute', execute(prepared));
     }
-    const [retained] = f.snapshot(['edit_tasks']).edit_tasks;
+    const [retained] = (await f.snapshot(['edit_tasks'])).edit_tasks;
     assert.equal(retained.status, prepared ? 'dispatching' : 'prepared');
     assert.equal(retained.input, JSON.stringify(input));
-    assert.deepEqual(f.snapshot(), before);
+    assert.deepEqual(await f.snapshot(), before);
     assert.deepEqual((await f.start()).startup, {processed: prepared ? 1 : 0, unavailable: 0});
     const current = await f.ask('get', {projectId: f.project.id, taskId: retained.id});
     assert.ok(isEditTaskEnvelope(current));
@@ -209,21 +218,21 @@ for (const phase of ['afterPreparePersist', 'afterClaim']) {
       assert.notEqual(current.instanceId, prepared.instanceId);
       await assert.rejects(f.ask('execute', execute(prepared)), {code: 'EDIT_TASK_STALE_INSTANCE'});
     }
-    const rows = f.snapshot(['edit_tasks']);
+    const rows = await f.snapshot(['edit_tasks']);
     assert.deepEqual((await f.ask('list', {projectId: f.project.id})).items, [current.task]);
     assert.deepEqual(await f.prepare('subject.create', input), current);
     assert.deepEqual(await f.ask('reconcile', action(current.task)), current);
     assert.deepEqual(await f.ask('reconcileStartup'), {processed: 0, unavailable: 0});
     await assert.rejects(f.ask('acknowledge', {...acknowledge(current.task), status: 'applied'}), {code: 'EDIT_TASK_CONFLICT'});
     await noDispatch(f);
-    assert.deepEqual(f.snapshot(), before); assert.deepEqual(f.snapshot(['edit_tasks']), rows);
+    assert.deepEqual(await f.snapshot(), before); assert.deepEqual(await f.snapshot(['edit_tasks']), rows);
     const applied = await f.ask('execute', execute(current));
     assert.equal(applied.task.status, 'applied'); assert.equal(applied.task.requestId, input.requestId);
     assert.deepEqual((await f.ask('observe')).dispatches, [{operation: 'subject.create', input}]);
-    const after = f.snapshot();
+    const after = await f.snapshot();
     assert.equal(after.subjects.length, 1); assert.equal(after.subject_versions.length, 1); assert.equal(after.subject_requests.length, 1);
     assert.deepEqual(await f.ask('execute', execute(current)), applied);
-    assert.deepEqual(f.snapshot(), after);
+    assert.deepEqual(await f.snapshot(), after);
     assert.deepEqual((await f.ask('observe')).dispatches, [{operation: 'subject.create', input}]);
   });
 }
@@ -232,13 +241,13 @@ for (const phase of ['afterBusinessCommit', 'beforeOutcomePersist', 'afterOutcom
   test(`subject ${phase}: lost process reply replays the original result after a newer head without a second create`, {timeout: 30000}, async t => {
     const f = await fixture(t), input = f.createInput(), prepared = await f.prepare('subject.create', input);
     await f.crash(phase, 'execute', execute(prepared));
-    const receipt = f.receipt(input.requestId), original = JSON.parse(receipt!.response as string), committed = f.snapshot();
+    const receipt = await f.receipt(input.requestId), original = JSON.parse(receipt!.response as string), committed = await f.snapshot();
     assert.equal((receipt)!.operation, 'subject.create'); assert.equal((receipt)!.projectId, f.project.id);
     assert.equal(original.revision, 1); assert.equal(committed.subjects.length, 1);
     assert.equal(committed.subject_versions.length, 1); assert.equal(committed.subject_requests.length, 1);
-    assert.equal(f.snapshot(['edit_tasks']).edit_tasks[0].status, phase === 'afterOutcomePersist' ? 'applied' : 'dispatching');
+    assert.equal((await f.snapshot(['edit_tasks'])).edit_tasks[0].status, phase === 'afterOutcomePersist' ? 'applied' : 'dispatching');
     assert.deepEqual((await f.start()).startup, {processed: phase === 'afterOutcomePersist' ? 0 : 1, unavailable: 0});
-    assert.deepEqual(f.snapshot(), committed); await noDispatch(f);
+    assert.deepEqual(await f.snapshot(), committed); await noDispatch(f);
     const current = await f.prepare('subject.create', input);
     assert.equal(current.task.id, prepared.task.id); assert.equal(current.task.digest, prepared.task.digest);
     assert.deepEqual(current.task.input, input); assert.equal(current.task.status, 'applied');
@@ -247,7 +256,7 @@ for (const phase of ['afterBusinessCommit', 'beforeOutcomePersist', 'afterOutcom
     const head = await f.rpc('subject.version.add', {projectId: f.project.id, subjectId: original.id,
       expectedRevision: 1, assetId: f.second.id, requestId: randomUUID()});
     assert.equal(head.revision, 2); assert.notEqual(head.headVersionId, original.headVersionId);
-    const newer = f.snapshot(), rows = f.snapshot(['edit_tasks']);
+    const newer = await f.snapshot(), rows = await f.snapshot(['edit_tasks']);
     assert.deepEqual(await f.ask('get', {projectId: f.project.id, taskId: current.task.id}), current);
     assert.deepEqual((await f.ask('list', {projectId: f.project.id})).items, [current.task]);
     for (let i = 0; i < 2; i++) {
@@ -257,22 +266,22 @@ for (const phase of ['afterBusinessCommit', 'beforeOutcomePersist', 'afterOutcom
       assert.deepEqual(await f.rpc('subject.create', {...input}), original);
     }
     assert.deepEqual((await f.rpc('subject.list', {projectId: f.project.id})).items, [head]);
-    assert.deepEqual(f.receipt(input.requestId), receipt, 'original response bytes must stay immutable');
-    assert.deepEqual(f.snapshot(), newer); assert.deepEqual(f.snapshot(['edit_tasks']), rows); await noDispatch(f);
+    assert.deepEqual(await f.receipt(input.requestId), receipt, 'original response bytes must stay immutable');
+    assert.deepEqual(await f.snapshot(), newer); assert.deepEqual(await f.snapshot(['edit_tasks']), rows); await noDispatch(f);
     assert.equal(newer.subjects.length, 1); assert.equal(newer.subject_versions.length, 2); assert.equal(newer.subject_requests.length, 2);
     const ack = await f.ask('acknowledge', acknowledge(current.task));
     assert.equal(ack.task.acknowledged, true);
     assert.deepEqual(((await f.ask('list', {projectId: f.project.id})).items as unknown), []);
     assert.deepEqual((await f.ask('execute', execute(ack))).result, original);
-    assert.deepEqual(f.snapshot(), newer); await noDispatch(f);
+    assert.deepEqual(await f.snapshot(), newer); await noDispatch(f);
   });
 }
 
 test('subject acknowledgement committed before process death stays acknowledged without redispatch', {timeout: 30000}, async t => {
   const f = await fixture(t), input = f.createInput(), prepared = await f.prepare('subject.create', input);
-  const applied = await f.ask('execute', execute(prepared)), before = f.snapshot();
+  const applied = await f.ask('execute', execute(prepared)), before = await f.snapshot();
   await f.crash('afterAcknowledge', 'acknowledge', acknowledge(applied.task));
-  const rows = f.snapshot(['edit_tasks']);
+  const rows = await f.snapshot(['edit_tasks']);
   assert.equal(rows.edit_tasks[0].acknowledged, 1);
   assert.equal(rows.edit_tasks[0].revision, applied.task.revision + 1);
   assert.deepEqual((await f.start()).startup, {processed: 0, unavailable: 0});
@@ -285,7 +294,7 @@ test('subject acknowledgement committed before process death stays acknowledged 
   assert.deepEqual(await f.ask('acknowledge', acknowledge(current.task)), current);
   assert.deepEqual((await f.ask('execute', execute(current))).result, applied.result);
   assert.deepEqual((await f.ask('reconcile', action(current.task))).result, applied.result);
-  assert.deepEqual(f.snapshot(), before); assert.deepEqual(f.snapshot(['edit_tasks']), rows); await noDispatch(f);
+  assert.deepEqual(await f.snapshot(), before); assert.deepEqual(await f.snapshot(['edit_tasks']), rows); await noDispatch(f);
 });
 
 test('subject retained keys still conflict with changed input and subject operation after process restart; a foreign project is not found', {timeout: 30000}, async t => {
@@ -293,7 +302,7 @@ test('subject retained keys still conflict with changed input and subject operat
   const applied = await f.ask('execute', execute(prepared));
   await f.ask('acknowledge', acknowledge(applied.task));
   await f.restart();
-  const before = f.snapshot([...domainTables, 'edit_tasks']);
+  const before = await f.snapshot([...domainTables, 'edit_tasks']);
   const cases: [string, Record<string,unknown>][] = [
     ['subject.create', {...input, name: 'Different intent'}],
     ['subject.version.add', {projectId: f.project.id, subjectId: (applied.result)!.id, assetId: f.second.id,
@@ -304,13 +313,13 @@ test('subject retained keys still conflict with changed input and subject operat
   for (const [operation, changed] of cases) {
     await assert.rejects(f.prepare(operation, changed), {code: 'EDIT_TASK_CONFLICT'});
     await assert.rejects(f.rpc(operation, changed), {code: 'IDEMPOTENCY_CONFLICT'});
-    assert.deepEqual(f.snapshot([...domainTables, 'edit_tasks']), before);
+    assert.deepEqual(await f.snapshot([...domainTables, 'edit_tasks']), before);
   }
   // Another project lives in a store of its own: this store has no such project, so the same key never reaches it.
   const foreign = {...input, projectId: f.other.id, assetId: f.foreign.id};
   await assert.rejects(f.prepare('subject.create', foreign), {code: 'EDIT_TASK_NOT_FOUND'});
   await assert.rejects(f.rpc('subject.create', foreign), {code: 'NOT_FOUND'});
-  assert.deepEqual(f.snapshot([...domainTables, 'edit_tasks']), before);
+  assert.deepEqual(await f.snapshot([...domainTables, 'edit_tasks']), before);
   assert.deepEqual(await f.rpc('subject.create', input), applied.result); await noDispatch(f);
 });
 
@@ -324,17 +333,17 @@ for (const [operation, inputFor] of sharedOperations) {
     const f = await fixture(t), reserved = randomUUID(), localInput = inputFor(f, reserved);
     const localResult = await f.rpc(operation, localInput);
     await f.restart();
-    const before = f.snapshot([...domainTables, 'edit_tasks']), collision = f.createInput({requestId: reserved});
+    const before = await f.snapshot([...domainTables, 'edit_tasks']), collision = f.createInput({requestId: reserved});
     await assert.rejects(f.prepare('subject.create', collision), {code: 'EDIT_TASK_CONFLICT'});
     await assert.rejects(f.rpc('subject.create', collision), {code: 'IDEMPOTENCY_CONFLICT'});
     assert.deepEqual(await f.rpc(operation, localInput), localResult);
-    assert.deepEqual(f.snapshot([...domainTables, 'edit_tasks']), before); await noDispatch(f);
+    assert.deepEqual(await f.snapshot([...domainTables, 'edit_tasks']), before); await noDispatch(f);
     const input = f.createInput(), applied = await f.ask('execute', execute(await f.prepare('subject.create', input)));
     await f.ask('acknowledge', acknowledge(applied.task));
     await f.restart();
-    const after = f.snapshot([...domainTables, 'edit_tasks']);
+    const after = await f.snapshot([...domainTables, 'edit_tasks']);
     await assert.rejects(f.rpc(operation, inputFor(f, input.requestId)), {code: 'IDEMPOTENCY_CONFLICT'});
     assert.deepEqual(await f.rpc('subject.create', input), applied.result);
-    assert.deepEqual(f.snapshot([...domainTables, 'edit_tasks']), after); await noDispatch(f);
+    assert.deepEqual(await f.snapshot([...domainTables, 'edit_tasks']), after); await noDispatch(f);
   });
 }

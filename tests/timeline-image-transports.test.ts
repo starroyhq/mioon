@@ -15,9 +15,10 @@ import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.ts';
 import {operationEffect} from '../packages/contracts/src/index.ts';
-import {openStore, classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';
@@ -27,6 +28,7 @@ import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
 import {RESTORE_READ_OPERATIONS, RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {png, sha, stamp} from './helpers/timeline-image-fixtures.ts';
+import {createServerProject, schemaObjects} from './helpers/project-database.ts';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport';
 
 const operation = 'timeline.colour.image.inspect';
@@ -178,32 +180,34 @@ async function cli(args: string[], env: { PATH: string; HOME: unknown; TMPDIR: u
   }
 }
 
-function databaseSnapshot(db: { prepare: (arg0: string) => { (): unknown; new(): unknown; all: { (): { name: unknown; }[]; new(): unknown; }; get: { (): { (): unknown; new(): unknown; data_version: unknown; }; new(): unknown; }; }; }) {
-  const rows = db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
-    .map(({name}) => [name, db.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all()]);
-  return {rows, version: db.prepare('PRAGMA data_version').get().data_version};
+// Read on the server's own connection. data_version counts other connections'
+// commits only; total_changes() adds this connection's own writes.
+function databaseSnapshot(db: DatabaseSync) {
+  const rows = schemaObjects(db).filter(({type, name}) => type === 'table' && !name.startsWith('sqlite_'))
+    .map(({name}) => [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all()]);
+  return {rows, version: [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n]};
 }
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-transports-'));
   const audit = path.join(root, 'forbidden-effects.jsonl');
-  let dataDir = path.join(root, 'data'), source32!: { database: unknown; sha256: unknown; directory: unknown; }, server!:Awaited<ReturnType<typeof startServer>>|undefined, db!: DatabaseSync|undefined, mcp!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>|undefined, transport!: Transport|StdioClientTransport|undefined, off!: () => void;
+  let dataDir = path.join(root, 'data'), source32!: { database: unknown; sha256: unknown; directory: unknown; }, server!:Awaited<ReturnType<typeof startServer>>|undefined, inspect!: InspectProject, mcp!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>|undefined, transport!: Transport|StdioClientTransport|undefined, off!: () => void;
   t.after(async () => {
     try { if (mcp) await bounded(mcp.close(), 'Owned image MCP cleanup', 7_000); }
     finally {
       try { await transport?.close(); }
-      finally { off?.(); db?.close(); await server?.close(); await rm(root, {recursive: true, force: true}); }
+      finally { off?.(); await server?.close(); await rm(root, {recursive: true, force: true}); }
     }
   });
   await writeFile(audit, '');
   // Seed only fixture-owned bytes and ordinary saved metadata. No asset import,
   // external provider, FFmpeg launch or production application startup is needed.
-  const store = (openStore(dataDir) as FixtureStore), projectId = input.projectId, otherProjectId = randomUUID();
+  // The project and the other one are registered where the server finds them;
+  // the project ID comes from createServerProject, the asset keeps its fixed ID.
+  const created = createServerProject(dataDir, {name: 'Synthetic image inspection'}), store = (created.store as unknown as FixtureStore), projectId = created.projectId;
   const fixtures = [bytes, png({width: 2, height: 1, rgba: false, tagged: false})];
   const assets: ({ id: string; projectId: string; name: string; mimeType: string; relativePath: string; sizeBytes: number; sha256: string; width: number; height: number; duration: null; hasVideo: boolean; hasAudio: boolean; provenance: string; createdAt: string; })[] = [];
   try {
-    for (const id of ([projectId, otherProjectId] as const)) store.put('projects', {id, name: 'Synthetic image inspection',
-      description: '', revision: 1, createdAt: stamp, updatedAt: stamp});
     for (const [index, content] of fixtures.entries()) {
       const id = index === 0 ? input.assetId : randomUUID();
       const asset = {id, projectId, name: 'Synthetic owned PNG', mimeType: 'image/png', relativePath: `media/${id}.png`,
@@ -213,16 +217,21 @@ async function fixture(t: test.TestContext) {
       store.put('assets', asset); assets.push(asset);
     }
   } finally { store.close(); }
+  const other = createServerProject(dataDir, {name: 'Synthetic image inspection'}), otherProjectId = other.projectId;
+  other.store.close();
   const mediaProcesses: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[] = [], backendEffects: (string)[] = [];
   const denyBackendEffect = (kind: string) => { backendEffects.push(kind); throw Error(`No ${kind} is allowed`); };
   off = onMediaProcess(event => { if (event.type === 'started') mediaProcesses.push(event); });
   const open = async () => {
     server = await startServer({dataDir, distDir: path.join(root, 'unused-dist'), port: 0, token,
       imageNetwork: (({lookup() { denyBackendEffect('provider DNS'); }, httpsRequest() { denyBackendEffect('provider request'); }}) as unknown as ImageNetworkSeam | undefined),
-      chatGateway: async function* () { denyBackendEffect('model request'); }});
-    db = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'), {readOnly: true});
+      chatGateway: async function* () { denyBackendEffect('model request'); },
+      // Each server that starts hands over its own connection.
+      inspectProject: received => { inspect = received; }});
     assert.equal(new URL(server!.url).hostname, '127.0.0.1');
   };
+  // The server holds the project while it runs: read on its own connection.
+  const use = <T>(read: (db: DatabaseSync) => T): T => inspect(projectId, read);
   await open();
   const rpc = async (name?: string, value?: unknown, {authenticated = true, expectedWorkspaceOrigin}:{authenticated?:boolean;expectedWorkspaceOrigin?:string} = {}) => {
     const result = await fetch((server)!.url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
@@ -231,9 +240,10 @@ async function fixture(t: test.TestContext) {
     return {status: result.status, envelope: await result.json()};
   };
   return {root, dataDir, assets, otherProjectId, rpc, mediaProcesses,
+    input: {projectId, assetId: input.assetId}, response: {...response, projectId},
     get client() { return (createClient({env: {MIOON_BASE_URL: (server)!.url, MIOON_TOKEN: token}}) as FixtureClient); },
     get env() { return childEnvironment(root, (server)!.url, audit); },
-    snapshot: () => databaseSnapshot(((db) as unknown as Parameters<typeof databaseSnapshot>[0])),
+    snapshot: () => use(databaseSnapshot),
     async verifyFiles() {
       assert.deepEqual((await readdir(path.join(dataDir, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
       for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(dataDir, asset.relativePath)), fixtures[index]);
@@ -266,9 +276,9 @@ async function fixture(t: test.TestContext) {
     async restore33() {
       if (mcp) { await bounded(mcp.close(), 'Owned image MCP close before restore'); mcp = undefined; }
       await transport?.close(); transport = undefined;
-      const projectRows = (db)!.prepare('SELECT id,data FROM projects ORDER BY id').all();
-      const assetRows = (db)!.prepare('SELECT id,projectId,data FROM assets ORDER BY id').all();
-      (db)!.close(); db = undefined; await server!.close(); server = undefined;
+      const {projectRows, assetRows} = use(db => ({projectRows: db.prepare('SELECT id,data FROM projects ORDER BY id').all(),
+        assetRows: db.prepare('SELECT id,projectId,data FROM assets ORDER BY id').all()}));
+      await server!.close(); server = undefined;
       // Construct the fixed historical schema, never relabel a current database
       // by deleting markers while its newer tables and protections remain.
       const sourceDirectory = path.join(root, 'source32'), sourceDatabase = path.join(sourceDirectory, 'workbench.sqlite');
@@ -316,6 +326,8 @@ async function fixture(t: test.TestContext) {
 test('actual authenticated HTTP, CLI and official MCP preserve image inspection scope; restored33 refuses even an explicit origin',
   {timeout: 60_000}, async t => {
     const f = await fixture(t), before = f.snapshot();
+    // The project ID comes from createServerProject: the requests and the expected response use it.
+    const {input, response} = f;
     const direct = await f.rpc(operation, input);
     assert.equal(direct.status, 200); assert.deepEqual(direct.envelope, {ok: true, data: response});
     assert.deepEqual(await f.client.rpc(operation, input), response);
