@@ -22,10 +22,12 @@ import { RestoreVersionDialog } from '../../../apps/web/src/project-file/Restore
 import type { RestoreVersionDialogProps } from '../../../apps/web/src/project-file/RestoreVersionDialog.tsx';
 import { PackCompleteDialog, PackProjectDialog } from '../../../apps/web/src/project-file/PackProjectDialog.tsx';
 import type { PackCompleteDialogProps, PackProjectDialogProps } from '../../../apps/web/src/project-file/PackProjectDialog.tsx';
+import { ProjectRulesChangeCard, ProjectRulesDialog, ProjectRulesNotice } from '../../../apps/web/src/project-file/ProjectRules.tsx';
+import type { ProjectRulesChangeCardProps, ProjectRulesDialogProps } from '../../../apps/web/src/project-file/ProjectRules.tsx';
 import type { ProjectAvailabilityView } from '../../../apps/web/src/project-file/types.ts';
 import type { MediaStatus } from '../../../packages/contracts/src/media-reference.ts';
 import { COMPARISON, COVER_URLS, HOME, INBOX_ITEMS, MEDIA_THUMBS, NOW, OLDER_VERSIONS, OPEN_FAILURES, OUTSIDE_LOCATIONS, PACK_MANIFEST, PACK_RESULT, PROJECT_IDS, RECENT_PROJECTS, RELINK_MISSING_ROW, RELINK_ROWS,
-  RESTORE_PREVIEW, RESTORE_PREVIEW_MORE, VERSIONS } from './fixtures.ts';
+  RESTORE_PREVIEW, RESTORE_PREVIEW_MORE, RULES_CHANGE, RULES_CHANGE_MIXED, RULES_PATH, RULES_TEXT, VERSIONS } from './fixtures.ts';
 
 /** One state of one U1 component, after a 12-xx preview. The gallery renders
  * scenes for the screenshots; the SSR tests render the same scenes in CI. */
@@ -209,7 +211,42 @@ const versionsPackScenes = group('versions-pack', [
   { id: '12-11-all-copied', design: '12-11', state: 'ready', render: () => packed({ result: { ...PACK_RESULT, missingAssetIds: [] }, missingNames: [] }) },
 ]);
 
-export const scenes: readonly Scene[] = [...homeScenes, ...mediaScenes, ...versionsPackScenes];
+// ---------------------------------------------------------------------------
+// Group 4: project rules (12-12 to 12-14)
+const RULES_MAX_BYTES = 8192;
+/** The rules repeated until they pass the limit. */
+const RULES_TOO_LONG = Array.from({ length: Math.ceil(RULES_MAX_BYTES / new TextEncoder().encode(RULES_TEXT).byteLength) + 1 }, () => RULES_TEXT).join('\n\n');
+/** As in 12-12 the user has added an empty last line, so there is something to save. */
+function rules(patch: Partial<ProjectRulesDialogProps> = {}): ReactElement {
+  return <ProjectRulesDialog open state={{ kind: 'ready', value: { text: RULES_TEXT, exists: true } }} draft={`${RULES_TEXT}\n`} onDraftChange={none} maxBytes={RULES_MAX_BYTES} trust="trusted"
+    path={RULES_PATH} homeDirectory={HOME} save={{ kind: 'idle' }} conflict={false} onSave={none} onEnable={none} onLoadLatest={none} onRetry={none} onClose={none} {...patch} />;
+}
+function card(patch: Partial<ProjectRulesChangeCardProps> = {}): ReactElement {
+  return <ProjectRulesChangeCard change={RULES_CHANGE} state={{ kind: 'pending' }} onAllow={none} onReject={none} {...patch} />;
+}
+const rulesScenes = group('rules', [
+  { id: '12-12', design: '12-12', state: 'ready', render: () => rules() },
+  { id: '12-12-loading', design: '12-12', state: 'loading', render: () => rules({ state: { kind: 'loading' }, draft: '' }) },
+  { id: '12-12-error', design: '12-12', state: 'error', render: () => rules({ state: { kind: 'error', retryable: true }, draft: '' }) },
+  { id: '12-12-new', design: '12-12', state: 'empty', render: () => rules({ state: { kind: 'ready', value: { text: '', exists: false } }, draft: '' }) },
+  { id: '12-12-untrusted', design: '12-12', state: 'ready', render: () => rules({ trust: 'untrusted', draft: RULES_TEXT }) },
+  { id: '12-12-untrusted-edited', design: '12-12', state: 'ready', render: () => rules({ trust: 'untrusted' }) },
+  { id: '12-12-saving', design: '12-12', state: 'working', render: () => rules({ save: { kind: 'working', action: 'save' } }) },
+  { id: '12-12-save-error', design: '12-12', state: 'error', render: () => rules({ save: { kind: 'error', action: 'save' } }) },
+  { id: '12-12-conflict', design: '12-12', state: 'error', render: () => rules({ conflict: true }) },
+  { id: '12-12-too-long', design: '12-12', state: 'error', render: () => rules({ draft: RULES_TOO_LONG }) },
+  { id: '12-13', design: '12-13', state: 'ready', capture: 'frame', frameWidth: 300, render: () => <ProjectRulesNotice enable={{ kind: 'idle' }} onReview={none} onLater={none} /> },
+  { id: '12-13-enabling', design: '12-13', state: 'working', capture: 'frame', frameWidth: 300, render: () => <ProjectRulesNotice enable={{ kind: 'working', action: 'enable' }} onReview={none} onLater={none} /> },
+  { id: '12-13-error', design: '12-13', state: 'error', capture: 'frame', frameWidth: 300, render: () => <ProjectRulesNotice enable={{ kind: 'error', action: 'enable' }} onReview={none} onLater={none} /> },
+  { id: '12-14', design: '12-14', state: 'ready', capture: 'frame', frameWidth: 300, render: () => card() },
+  { id: '12-14-mixed', design: '12-14', state: 'ready', capture: 'frame', frameWidth: 300, render: () => card({ change: RULES_CHANGE_MIXED }) },
+  { id: '12-14-submitting', design: '12-14', state: 'working', capture: 'frame', frameWidth: 300, render: () => card({ state: { kind: 'submitting', decision: 'allow' } }) },
+  { id: '12-14-error', design: '12-14', state: 'error', capture: 'frame', frameWidth: 300, render: () => card({ state: { kind: 'error', decision: 'allow' } }) },
+  { id: '12-14-allowed', design: '12-14', state: 'ready', capture: 'frame', frameWidth: 300, render: () => card({ state: { kind: 'allowed' } }) },
+  { id: '12-14-rejected', design: '12-14', state: 'ready', capture: 'frame', frameWidth: 300, render: () => card({ state: { kind: 'rejected' } }) },
+]);
+
+export const scenes: readonly Scene[] = [...homeScenes, ...mediaScenes, ...versionsPackScenes, ...rulesScenes];
 const seen = new Set<string>();
 for (const scene of scenes) {
   if (seen.has(scene.id)) throw new Error(`Duplicate scene: ${scene.id}`);

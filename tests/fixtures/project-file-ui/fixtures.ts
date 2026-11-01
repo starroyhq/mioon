@@ -144,6 +144,19 @@ export const PACK_RESULT: ProjectPackResult = {
   missingAssetIds: ['d0c0ffee-0000-4000-8000-00000000000c', 'd0c0ffee-0000-4000-8000-00000000000f'],
 };
 
+/** 12-12: the AGENTS.md of UI 走查项目. */
+export const RULES_PATH = `${HOME}/Movies/Mioon/UI 走查项目/AGENTS.md`;
+export const RULES_TEXT = [
+  '画幅与时长', '9:16 竖屏，1080×1920，30fps。每集 90 秒，约 12 个镜头。', '',
+  '风格', '冷色雨夜，街面积水和玻璃上有霓虹反光。手持感镜头，轻微晃动，少用固定机位。主光来自路灯和招牌，整体偏冷，人物肤色保留暖调。', '',
+  '角色', '林夏：28 岁，短发，灰色风衣，左手戴银色手表，说话简短。', '周屿：30 岁，黑色卫衣，总是右手持伞，习惯站在林夏左侧。', '',
+  '禁忌', '不出现真实品牌标识。招牌、屏幕和包装上的文字一律用虚构名称。', '',
+  '做事方式', '生成前先给我看提示词，确认后再提交。字幕每行不超过 16 个字。',
+].join('\n');
+/** 12-14: Mio adds two lines under 做事方式. */
+export const RULES_CHANGE = { section: '做事方式', lines: [{ kind: 'add', text: '生成前先给我看提示词，确认后再提交。' }, { kind: 'add', text: '字幕每行不超过 16 个字。' }] } as const;
+export const RULES_CHANGE_MIXED = { section: '风格', lines: [{ kind: 'remove', text: '手持感镜头，轻微晃动，少用固定机位。' }, { kind: 'add', text: '多用固定机位，转场前停留半秒。' }] } as const;
+
 export const OPEN_FAILURES = {
   missing: { code: 'PROJECT_MISSING', projectFile: PROJECT_FILES.interview, projectId: PROJECT_IDS.interview },
   locked: { code: 'PROJECT_LOCKED', projectFile: PROJECT_FILES.city, projectId: PROJECT_IDS.city },
