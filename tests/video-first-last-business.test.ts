@@ -18,6 +18,7 @@ import {FRAME_PROFILE,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,canonicalFrameInput}
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {getLegacyCapabilityProfile,isReferenceMutationResponse} from '@mioon/contracts';
 import type { BinaryLike } from 'crypto';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 
 const sha=(value: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(value).digest('hex');
 function png(fill: string|number|Uint8Array<ArrayBufferLike>|undefined){
@@ -32,8 +33,6 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  try{return await services.call('project.create',{name});}
  finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: TypedStore['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-frame-pair-')),store=(openStore(root) as TypedStore),env:NodeJS.ProcessEnv={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert',GEMINI_API_KEY:'inert',RUNWAYML_API_SECRET:'inert',MINIMAX_API_KEY:'inert',VIDU_API_KEY:'inert',VIDU_OUTPUT_HOSTS:'offline.invalid'};
  const providers=createProviderRegistry({db:store.db,root,env}),services=(createServices(store,providers,{env,profileNow:()=>Date.parse('2026-10-11T12:00:00Z')}) as TypedServices);let worker: Worker,posts=0;

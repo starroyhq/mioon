@@ -9,7 +9,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {schemas,LOCAL_MUTATION_OPERATIONS,isSubjectMutationResponse,isSubjectListResponse} from '@mioon/contracts';
 import {type TestContext} from 'node:test';
 import {errorView} from './helpers/test-error.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 interface SubjectRecord {id: string; projectId: string; revision: number; kind: string; headVersionId: string; name: string; needsReview?: boolean;
   subjectVersionId?: string | null; reviewedHeadVersionId?: string | null; items: SubjectRecord[]; nextCursor?: string | null;
   headVersion: {assetId: string; provenance: Record<string, unknown>; id?: string; number?: number; [key: string]: unknown};
@@ -29,8 +29,6 @@ async function foreignProject(t: TestContext,name='Foreign project'): Promise<Su
  try{return await services.call('project.create',{name}) as SubjectRecord;}
  finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: ReturnType<typeof openStore>['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 async function fixture(t: TestContext): Promise<SubjectFixture> {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-subjects-'));let store: ReturnType<typeof openStore> | undefined,services: ReturnType<typeof createServices> | undefined;
@@ -171,8 +169,7 @@ test('corrupt retained responses, oversized rows and post-write owner changes fa
  const next=f.asset(),fresh=f.create(next),before=snapshot(f);
  f.store.db.exec(`CREATE TRIGGER reassign_subject_asset AFTER INSERT ON subject_requests BEGIN UPDATE assets SET projectId='${f.other.id}' WHERE id='${next.id}'; END;`);
  // The trigger moves the asset to a project this store does not hold, inside the service's own transaction.
- f.store.db.exec('PRAGMA foreign_keys=OFF');
- try{await assert.rejects(f.call('subject.create',fresh),missing);}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
+ await withoutForeignKeys(f.store.db,()=>assert.rejects(f.call('subject.create',fresh),missing));
  assert.deepEqual(snapshot(f),before);
 });
 

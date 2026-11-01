@@ -11,7 +11,7 @@ import {Worker} from 'node:worker_threads';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import type { SQLInputValue } from 'node:sqlite';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const operation='timeline.clip.replaceSource';
 const clone=<T>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -26,8 +26,6 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  try{return await services.call('project.create',{name});}
  finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: FixtureStore['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-replacement-'));
@@ -285,7 +283,7 @@ test('malformed or oversized replacement receipt hashes are rejected before resp
 
 test('historical replay requires current project, aggregate and every saved source to retain ownership',async t=>{
  const cases=([
-  ['missing project',async(f: Awaited<ReturnType<typeof fixture>>,tl?: unknown,next?: unknown)=>{f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.projectId);}],
+  ['missing project',async(f: Awaited<ReturnType<typeof fixture>>,tl?: unknown,next?: unknown)=>{withoutForeignKeys(f.store.db,()=>f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.projectId));}],
   ['missing timeline',async(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>f.store.db.prepare('DELETE FROM timelines WHERE id=?').run(((((((tl.id) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["run"]>>[0]))],
   ['reassigned timeline',async(f: Awaited<ReturnType<typeof fixture>>,tl: { id: unknown; },next?: unknown)=>withoutForeignKeys(f.store.db,()=>f.update('timelines',((tl.id) as unknown as Parameters<typeof f.update>[1]),{projectId:f.otherId},{projectId:f.otherId}))],
   ['missing saved source',async(f: Awaited<ReturnType<typeof fixture>>,tl: unknown,next: { id: unknown; })=>f.store.db.prepare('DELETE FROM assets WHERE id=?').run(((((((next.id) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["run"]>>[0]))],
@@ -312,11 +310,12 @@ test('durable receipt failures and post-write owner corruption roll back timelin
   if(mode==='hash corruption')f.store.db.exec(`DROP TRIGGER immutable_timeline_responses; CREATE TRIGGER corrupt_replacement_hash AFTER INSERT ON timeline_requests BEGIN UPDATE timeline_requests SET requestHash='${'0'.repeat(64)}' WHERE requestId=NEW.requestId; END;`);
   const before=f.capture([...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests']);
   // These triggers move a row to a project this store does not hold, inside the service's own transaction.
-  const reassigns=mode==='timeline owner'||mode==='asset owner';if(reassigns)f.store.db.exec('PRAGMA foreign_keys=OFF');
-  try{await assert.rejects(f.call(operation,request),error=>{
+  const reassigns=mode==='timeline owner'||mode==='asset owner';
+  const call=()=>assert.rejects(f.call(operation,request),error=>{
    assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details?.mutationOutcome,undefined,'Post-write validation or database errors remain unknown to recovery clients');
    return mode==='receipt failure'?/injected receipt failure/.test((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).message):['TIMELINE_SOURCE_UNAVAILABLE','CLIP_NOT_FOUND','INVALID_TIMELINE_SNAPSHOT','SOURCE_BOUNDS','FADE_AUDIO_UNSUPPORTED'].includes((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code);
-  });}finally{if(reassigns)f.store.db.exec('PRAGMA foreign_keys=ON');}
+  });
+  await (reassigns?withoutForeignKeys(f.store.db,call):call());
   assert.deepEqual(f.capture([...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests']),before);
  });
 });
