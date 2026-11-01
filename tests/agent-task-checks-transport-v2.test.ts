@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import http from 'node:http';
 import {agentTaskCheckSchema,agentTaskChecksSchema,agentTaskChecksInputSchema,AGENT_TASK_CHECK_GROUPS,DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskChecks} from '../packages/contracts/src/agent-tasks-v2.ts';
@@ -20,7 +20,9 @@ import {createAgentTaskHttp} from '../apps/server/src/agent-task-http-v2.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {visibleAgentTaskChecks} from '../apps/web/src/agent-task-checks-state.ts';
+import {createServerProject,openProjectDatabase,projectDirFor,schemaObjects} from './helpers/project-database.ts';
 
 const root=fileURLToPath(new URL('..',import.meta.url)),entry=join(root,'apps/cli/src/index.ts');
 const projectId=randomUUID(),runId=randomUUID(),exportId=randomUUID();
@@ -154,19 +156,22 @@ test('H4b clients and CLI retain optional requirements while host check groups s
 
 async function workspace(){
  const directory=await mkdtemp(join(await realpath(tmpdir()),'mioon-checks-transport-'));
- const source=join(directory,'source'),store=openStore(source),projectId=randomUUID(),foreignProjectId=randomUUID(),now='2026-10-28T00:00:00.000Z';
- for(const id of [projectId,foreignProjectId])store.put('projects',{id,name:'Synthetic checks project',revision:1,createdAt:now,updatedAt:now});
+ const source=join(directory,'source'),{projectId,store}=createServerProject(source,{name:'Synthetic checks project'});
  const journal=createAgentTaskJournal(store),created=journal.create({requestId:randomUUID(),projectId,text:'Synthetic checks',configuration:{protocol:'responses'},policy:structuredClone(DEFAULT_AGENT_TASK_POLICY)}).run;
- const run=journal.transition(created.id,created.revision,'completed');store.close();return {directory,source,projectId,foreignProjectId,run};
+ const run=journal.transition(created.id,created.revision,'completed');store.close();
+ // The server knows the other project too.
+ const foreign=createServerProject(source,{name:'Synthetic checks project'});foreign.store.close();
+ return {directory,source,projectId,foreignProjectId:foreign.projectId,run};
 }
-function dump(root:string):unknown{
- const db=new DatabaseSync(join(root,'workbench.sqlite'),{readOnly:true});try{return db.prepare("SELECT name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row=>({name:row.name,sql:row.sql,...(String(row.sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${String(row.name)}"`).all().map(item=>JSON.stringify(item)).sort()}:{})}));}finally{db.close();}
+function dumpDb(db:DatabaseSync):unknown{
+ return schemaObjects(db).filter(({name})=>!name.startsWith('sqlite_')).map(({name,sql})=>({name,sql,...(String(sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${name}"`).all().map(item=>JSON.stringify(item)).sort()}:{})}));
 }
 test('checks HTTP is authenticated, rejects unknown ownership and parameters, and leaves records unchanged',async t=>{
- const f=await workspace();let models=0,server:Awaited<ReturnType<typeof startServer>>|undefined;
+ const f=await workspace();let models=0,server:Awaited<ReturnType<typeof startServer>>|undefined,inspect!:InspectProject;
  t.after(async()=>{await server?.close();await rm(f.directory,{recursive:true,force:true});});
- server=await startServer({dataDir:f.source,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks cannot request a model');}});
- const prefix=`/api/agent/tasks/v2/${f.projectId}/${f.run.id}`,before=dump(f.source);
+ server=await startServer({dataDir:f.source,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks cannot request a model');},inspectProject:received=>{inspect=received;}});
+ // While the server runs, the database is read on its own connection.
+ const prefix=`/api/agent/tasks/v2/${f.projectId}/${f.run.id}`,before=inspect(f.projectId,dumpDb);
  const request=(suffix='',method='GET',authenticated=true)=>fetch(server!.url+prefix+suffix,{method,headers:authenticated?{authorization:`Bearer ${server!.token}`}:{}});
  assert.equal((await request('/checks','GET',false)).status,401);
  const response=await request('/checks');assert.equal(response.status,200);const body:unknown=await response.json();
@@ -180,17 +185,20 @@ test('checks HTTP is authenticated, rejects unknown ownership and parameters, an
  assert.equal((await fetch(`${server.url}/api/agent/tasks/v2/${f.foreignProjectId}/${f.run.id}/checks`,{headers})).status,404);
  assert.equal((await fetch(`${server.url}/api/agent/tasks/v2/${f.projectId}/${randomUUID()}/checks`,{headers})).status,404);
  const snapshot=await request();const snapshotBody:unknown=await snapshot.json();assert.ok(snapshotBody&&typeof snapshotBody==='object'&&'data'in snapshotBody);assert.equal(snapshotBody.data!==null&&typeof snapshotBody.data==='object'&&Object.hasOwn(snapshotBody.data,'checks'),false);
- assert.equal(models,0);assert.deepEqual(dump(f.source),before);
+ assert.equal(models,0);assert.deepEqual(inspect(f.projectId,dumpDb),before);
 });
 test('checks remain available in a restored read-only server without credentials, recovery or database writes',async t=>{
  const f=await workspace(),backup=join(f.directory,'backup'),restored=join(f.directory,'restored');let server:Awaited<ReturnType<typeof startServer>>|undefined;
  t.after(async()=>{await server?.close();await rm(f.directory,{recursive:true,force:true});});
  await createWorkspaceBackup({source:f.source,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:restored});
- const before=dump(restored);let models=0;
- server=await startServer({dataDir:restored,port:0,taskGatewayV2:async function*(){models++;throw Error('Restored checks cannot request a model');}});
+ // Nobody holds the restored project yet: read it on the test's own connection.
+ const reopened=openProjectDatabase(projectDirFor(restored,f.projectId));let before:unknown;
+ try{before=dumpDb(reopened);}finally{reopened.close();}
+ let models=0,inspect!:InspectProject;
+ server=await startServer({dataDir:restored,port:0,taskGatewayV2:async function*(){models++;throw Error('Restored checks cannot request a model');},inspectProject:received=>{inspect=received;}});
  const client=createAgentClient({env:{MIOON_BASE_URL:server.url,MIOON_TOKEN:server.token}}),result=await client.checks({projectId:f.projectId,runId:f.run.id});
  assert.equal(result.runId,f.run.id);assert.equal(result.runRevision,f.run.revision);assert.deepEqual(result.groups.map(group=>group.id),AGENT_TASK_CHECK_GROUPS);
- assert.equal(models,0);assert.deepEqual(dump(restored),before);
+ assert.equal(models,0);assert.deepEqual(inspect(f.projectId,dumpDb),before);
 });
 
 test('disconnecting a checks observer cancels its local preflight and releases it before the next read',{timeout:10000},async t=>{
