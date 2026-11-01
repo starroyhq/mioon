@@ -143,7 +143,7 @@ test('owned media lineage rejects hidden foreign generated owners and freezes va
 
 test('shared namespace collisions are reciprocal, immutable history resists delete/update/replace, writes roll back with receipt',async t=>{
  const f=await fixture(t),a=f.asset(),input=f.create(a),before=snapshot(f);
- f.store.db.exec("CREATE TRIGGER injected_subject_failure BEFORE INSERT ON subject_requests BEGIN SELECT RAISE(ABORT,'receipt failure'); END;");
+ f.store.db.exec("CREATE TEMP TRIGGER injected_subject_failure BEFORE INSERT ON subject_requests BEGIN SELECT RAISE(ABORT,'receipt failure'); END;");
  await assert.rejects(f.call('subject.create',input),/receipt failure/);assert.deepEqual(snapshot(f),before);f.store.db.exec('DROP TRIGGER injected_subject_failure');
  const subject=await f.call('subject.create',input);
  await assert.rejects(f.call('shot.create',{projectId:f.project.id,title:'collision',requestId:input.requestId}),{code:'IDEMPOTENCY_CONFLICT'});
@@ -167,7 +167,7 @@ test('corrupt retained responses, oversized rows and post-write owner changes fa
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...asset,padding:'x'.repeat(16384)}),asset.id);await assert.rejects(f.call('subject.list',{projectId:f.project.id}),{code:'INVALID_SUBJECT_RECORD'});
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify(asset),asset.id);f.store.db.exec('PRAGMA ignore_check_constraints=OFF');
  const next=f.asset(),fresh=f.create(next),before=snapshot(f);
- f.store.db.exec(`CREATE TRIGGER reassign_subject_asset AFTER INSERT ON subject_requests BEGIN UPDATE assets SET projectId='${f.other.id}' WHERE id='${next.id}'; END;`);
+ f.store.db.exec(`CREATE TEMP TRIGGER reassign_subject_asset AFTER INSERT ON subject_requests BEGIN UPDATE assets SET projectId='${f.other.id}' WHERE id='${next.id}'; END;`);
  // The trigger moves the asset to a project this store does not hold, inside the service's own transaction.
  await withoutForeignKeys(f.store.db,()=>assert.rejects(f.call('subject.create',fresh),missing));
  assert.deepEqual(snapshot(f),before);

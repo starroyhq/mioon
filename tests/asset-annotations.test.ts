@@ -64,7 +64,7 @@ test('all four legacy companion keys collide with annotations in both SQL direct
 });
 
 test('receipt insertion failure rolls back annotation save atomically',async t=>{
- const f=await fixture(t),a=f.asset();f.store.db.exec("CREATE TRIGGER fail_annotation_receipt BEFORE INSERT ON asset_annotation_requests BEGIN SELECT RAISE(ABORT,'sentinel');END;");
+ const f=await fixture(t),a=f.asset();f.store.db.exec("CREATE TEMP TRIGGER fail_annotation_receipt BEFORE INSERT ON asset_annotation_requests BEGIN SELECT RAISE(ABORT,'sentinel');END;");
  const before=snapshot(f.store.db);await assert.rejects(f.call('asset.annotation.set',f.input(a)));assert.deepEqual(snapshot(f.store.db),before);
 });
 

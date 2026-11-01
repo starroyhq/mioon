@@ -301,13 +301,13 @@ test('durable receipt failures and post-write owner corruption roll back timelin
  for(const mode of (['receipt failure','timeline owner','asset owner','source duration','source audio','response corruption','hash corruption'] as const))await t.test(mode,async t=>{
   const f=await fixture(t),timeline=await f.timeline(undefined,{fadeInFrames:2}),next=f.asset(),extra=await f.call('timeline.track.add',params(f,timeline,{kind:'audio'}));
   const current=await f.call('timeline.undo',params(f,extra)),request=replace(f,current,next);
-  if(mode==='receipt failure')f.store.db.exec("CREATE TRIGGER fail_replacement_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
-  if(mode==='timeline owner')f.store.db.exec(`CREATE TRIGGER corrupt_replacement_owner AFTER UPDATE ON timelines BEGIN UPDATE timelines SET projectId='${f.otherId}' WHERE id=NEW.id; END;`);
-  if(mode==='asset owner')f.store.db.exec(`CREATE TRIGGER corrupt_replacement_source AFTER UPDATE ON timelines BEGIN UPDATE assets SET projectId='${f.otherId}' WHERE id='${next.id}'; END;`);
-  if(mode==='source duration')f.store.db.exec(`CREATE TRIGGER corrupt_replacement_duration AFTER UPDATE ON timelines BEGIN UPDATE assets SET data=json_set(data,'$.duration',1) WHERE id='${next.id}'; END;`);
-  if(mode==='source audio')f.store.db.exec(`CREATE TRIGGER corrupt_replacement_audio AFTER UPDATE ON timelines BEGIN UPDATE assets SET data=json_set(data,'$.hasAudio',json('false')) WHERE id='${next.id}'; END;`);
-  if(mode==='response corruption')f.store.db.exec(`CREATE TRIGGER corrupt_replacement_receipt AFTER INSERT ON timeline_requests BEGIN DELETE FROM timeline_requests WHERE requestId=NEW.requestId; END;`);
-  if(mode==='hash corruption')f.store.db.exec(`DROP TRIGGER immutable_timeline_responses; CREATE TRIGGER corrupt_replacement_hash AFTER INSERT ON timeline_requests BEGIN UPDATE timeline_requests SET requestHash='${'0'.repeat(64)}' WHERE requestId=NEW.requestId; END;`);
+  if(mode==='receipt failure')f.store.db.exec("CREATE TEMP TRIGGER fail_replacement_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure'); END;");
+  if(mode==='timeline owner')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_owner AFTER UPDATE ON timelines BEGIN UPDATE timelines SET projectId='${f.otherId}' WHERE id=NEW.id; END;`);
+  if(mode==='asset owner')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_source AFTER UPDATE ON timelines BEGIN UPDATE assets SET projectId='${f.otherId}' WHERE id='${next.id}'; END;`);
+  if(mode==='source duration')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_duration AFTER UPDATE ON timelines BEGIN UPDATE assets SET data=json_set(data,'$.duration',1) WHERE id='${next.id}'; END;`);
+  if(mode==='source audio')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_audio AFTER UPDATE ON timelines BEGIN UPDATE assets SET data=json_set(data,'$.hasAudio',json('false')) WHERE id='${next.id}'; END;`);
+  if(mode==='response corruption')f.store.db.exec(`CREATE TEMP TRIGGER corrupt_replacement_receipt AFTER INSERT ON timeline_requests BEGIN DELETE FROM timeline_requests WHERE requestId=NEW.requestId; END;`);
+  if(mode==='hash corruption')f.store.db.exec(`DROP TRIGGER immutable_timeline_responses; CREATE TEMP TRIGGER corrupt_replacement_hash AFTER INSERT ON timeline_requests BEGIN UPDATE timeline_requests SET requestHash='${'0'.repeat(64)}' WHERE requestId=NEW.requestId; END;`);
   const before=f.capture([...outsideTables,'timelines','timeline_history','timeline_history_cursors','timeline_requests']);
   // These triggers move a row to a project this store does not hold, inside the service's own transaction.
   const reassigns=mode==='timeline owner'||mode==='asset owner';

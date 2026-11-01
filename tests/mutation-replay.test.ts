@@ -100,7 +100,7 @@ for(const operation of LEGACY_OPERATIONS)test(`${operation}: immutable exact res
 
 for(const operation of LEGACY_OPERATIONS)test(`${operation}: journal insertion failure rolls the business mutation back atomically`,async t=>{
  const f=await fixture(t),input=await inputFor(f,operation),before=capture(f);
- f.store.db.exec("CREATE TRIGGER reject_mutation_receipt BEFORE INSERT ON mutation_requests BEGIN SELECT RAISE(ABORT,'injected journal failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER reject_mutation_receipt BEFORE INSERT ON mutation_requests BEGIN SELECT RAISE(ABORT,'injected journal failure');END;");
  await assert.rejects(f.call(operation,input),/injected journal failure/);
  assert.equal(f.store.db.isTransaction,false);assert.deepEqual(capture(f),before);
  f.store.db.exec('DROP TRIGGER reject_mutation_receipt');

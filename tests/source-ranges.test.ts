@@ -202,17 +202,17 @@ test('duplicate receipts and wrong operation/table pairing fail closed before ta
 
 test('range, receipt, and trigger-induced ownership changes roll back together',async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset),before=snapshot(f);
- f.store.db.exec("CREATE TRIGGER fail_range_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_range_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
  await assert.rejects(f.call('asset.range.set',input),/injected receipt failure/);assert.deepEqual(snapshot(f),before);assert.equal(f.store.db.isTransaction,false);
  f.store.db.exec('DROP TRIGGER fail_range_receipt');
  // The post-receipt guard closes even an in-transaction reassignment by a trigger.
- f.store.db.exec(`CREATE TRIGGER reassign_after_receipt AFTER INSERT ON asset_range_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
+ f.store.db.exec(`CREATE TEMP TRIGGER reassign_after_receipt AFTER INSERT ON asset_range_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
  // The trigger moves the asset to a project this store does not hold, inside the service's own transaction.
  await withoutForeignKeys(f.store.db,()=>assert.rejects(f.call('asset.range.set',input),safeMissing));
  assert.deepEqual(snapshot(f),before);
  f.store.db.exec('DROP TRIGGER reassign_after_receipt');
  const first=await f.call('asset.range.set',input),updated=f.input(asset,{expectedRevision:1,inFrame:30,outFrame:60}),saved=snapshot(f);
- f.store.db.exec("CREATE TRIGGER fail_update_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_update_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
  await assert.rejects(f.call('asset.range.set',updated),/injected update failure/);assert.deepEqual(snapshot(f),saved);assert.deepEqual(await read(f,asset),first);
 });
 

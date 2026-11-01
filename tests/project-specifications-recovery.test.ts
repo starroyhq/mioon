@@ -214,7 +214,7 @@ test('current owner and immutable historical format ACK remain mandatory for los
 
 test('format receipt insertion failure rolls back the timeline, both journals and project CAS',async t=>{
  const f=await fixture(t),input=await f.input(),saved=f.prepare(input),before=f.snapshot();
- f.store.db.exec("CREATE TRIGGER reject_format_receipt BEFORE INSERT ON timeline_format_requests BEGIN SELECT RAISE(ABORT,'PRIVATE injected receipt failure');END");
+ f.store.db.exec("CREATE TEMP TRIGGER reject_format_receipt BEFORE INSERT ON timeline_format_requests BEGIN SELECT RAISE(ABORT,'PRIVATE injected receipt failure');END");
  const outcome=await f.execute(saved);assert.equal(outcome.task.status,'unknown');assert.deepEqual(f.snapshot(),before);
  assert.equal(Object.hasOwn(outcome,'result'),false);assert.equal(outcome.task.errorCode,undefined);
  f.store.db.exec('DROP TRIGGER reject_format_receipt');
