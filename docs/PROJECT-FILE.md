@@ -209,8 +209,8 @@
 | `pathForm` | `relative` 或 `absolute` |
 | `path` | 相对路径相对项目目录，一律用 `/`，只有开头可以是 `..`；绝对路径是规范化的 POSIX、盘符或 UNC 路径 |
 | `volume` | 卷名。相对路径为 `null`；绝对路径在知道时填 |
-| `sizeBytes`、`mtimeMs` | 大小、修改时间 |
-| `sampledSha256` | 抽样哈希。抽哪些字节由 L1 定，定了就不再改 |
+| `sizeBytes`、`mtimeMs` | 大小（字节）、修改时间。`mtimeMs` 由 bigint `lstat` 的 `mtimeNs` 换算，精确到微秒：`Number(mtimeNs / 1000n) / 1000`，早于 1970 年的记为 0。一律用 L1 的 `mediaMtimeMs` 算：Node 的数字 `mtimeMs` 末位和它不同，混用会让修改时间永远对不上 |
+| `sampledSha256` | 抽样哈希，规则由 L1 定，定了就不再改：不超过 1 MiB（1 048 576 字节）的文件取整个文件的 SHA-256，这时等于完整哈希；更大的文件取 5 段，每段 64 KiB（65 536 字节），第 i 段（i = 0…4）从 ⌊i × (大小 − 65 536) / 4⌋ 开始，5 段按顺序接起来算一个 SHA-256。5 段覆盖开头、中间和结尾，MP4 的 `moov` 在头在尾都抽得到；每个文件最多读 320 KiB |
 | `fullSha256` | 完整哈希，需要时再算，例如付费生成派发前；没算过为 `null` |
 
 - 后四个字段合称指纹（`mediaFingerprintSchema`）。
