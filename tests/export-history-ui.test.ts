@@ -143,9 +143,8 @@ test('App keeps history in the controlled export dialog with visibility, recover
   const history = app.match(/<ExportHistoryList\s[\s\S]*?\/>/)?.[0];
   assert.ok(history);
   for (const expected of [
-    'fileRecoveryEnabled={!restored && !application}', 'projectId={data.project?.id}',
-    'candidateConnected={online && auth === true && workbenchReady && !loading}', 'opacityApplication={opacityApplication}',
-    'samplePeak={application ? undefined : exportSamplePeak as never}', 'loudness={application ? undefined : exportLoudness as never}',
+    'fileRecoveryEnabled={!restored}', 'projectId={data.project?.id}',
+    'samplePeak={exportSamplePeak as never}', 'loudness={exportLoudness as never}',
     'heldExportIds={data.restore?.heldExportIds}', 'orderedExports={orderedExports}', 'outputAssets={data.assets}',
     'projectName={data.project?.name}', 'timelineRevision={timeline?.revision}',
   ]) assert.ok(history.includes(expected), expected);
@@ -168,7 +167,6 @@ test('history filters actual retained rows locally and a project switch discards
  const mod=({exports:{}} as ElementModule);Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(mod,mod.exports,(name: string)=>{
   if(name==='react')return react;if(name.endsWith('I18nProvider.tsx'))return i18nTestModule();
   if(name.endsWith('export-settings-state.ts'))return settingsState;if(name.endsWith('export-delivery-state.ts'))return deliveryState;if(name.endsWith('export-range-state.ts'))return rangeState;if(name.endsWith('export-display.ts'))return{exportHistoryStatusMessage};
-  if(name.endsWith('opacity-candidate-render-presentation.ts'))return{opacityCandidateRenderPresentation:()=>null};
   if(name==='@mioon/ui/components/button')return{Button:'Button'};if(name==='@mioon/ui/components/badge')return{Badge:'Badge'};
   return{__esModule:true,default:name};
  });

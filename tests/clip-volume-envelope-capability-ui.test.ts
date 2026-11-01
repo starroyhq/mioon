@@ -17,7 +17,6 @@ import { volumeEnvelopeMessages } from '../packages/i18n/src/catalogs/volume-env
 import { i18nTestModule } from './helpers/i18n.ts';
 import { rawVolumeEnvelopeChanged } from '../apps/web/src/clip-volume-envelope-state.ts';
 import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
-import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
 import * as imeSubmitGuard from '../apps/web/src/opacity-ime-submit-guard.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
@@ -81,7 +80,6 @@ function inspector(locale: Locale='en', eligible=true, supported=true){
   if(name.endsWith('clip-draft-state.ts'))return {clipDraftRaw:(clip: {volumeEnvelope?:RawVolumeEnvelope|null})=>({...raw,volumeEnvelope:clip.volumeEnvelope}),clipDraftSource:()=>({}),clipDraftPatch:()=>({})};
   if(name.endsWith('clip-volume-envelope-state.ts'))return {rawVolumeEnvelopeChanged};
   if(name.endsWith('clip-opacity-envelope-state.ts'))return opacityState;
-  if(name.endsWith('clip-opacity-candidate-assembly.ts'))return opacityAssembly;
   if(name.endsWith('opacity-ime-submit-guard.ts'))return imeSubmitGuard;
   if(name.endsWith('clip-audio-role-state.ts'))return {clipAudioRoleChanged:()=>false};
   if(name.endsWith('clip-audio-state.ts'))return {clipAudioIssue:()=>''};

@@ -45,7 +45,7 @@ test('an empty timeline is flagged before Check, and the empty preview offers bu
   // The topbar button stays an always-open entrance to recovery (export-preflight-ui pins its exact source).
   assert.match(app, /<WorkbenchButton variant="primary"[^>]*data-testid="export-timeline" disabled=\{!canOpenExport\} onClick=\{openTimelineExport\}>/);
   assert.match(preflight, /Array\.isArray\(timeline\?\.clips\) && timeline\.clips\.length === 0 && <p className="notice warning" data-testid="preflight-empty-timeline">/);
-  assert.match(app, /<Preview [^]*?canSeed=\{!application && Boolean\(sortedShots\.length && selectedCount === sortedShots\.length\)\} seedBusy=\{timelineBusy\} onSeed=\{\(\) => mutateTimeline\('timeline\.seed', \{\}, timeline\?\.revision\)\}/);
+  assert.match(app, /<Preview [^]*?canSeed=\{Boolean\(sortedShots\.length && selectedCount === sortedShots\.length\)\} seedBusy=\{timelineBusy\} onSeed=\{\(\) => mutateTimeline\('timeline\.seed', \{\}, timeline\?\.revision\)\}/);
   assert.match(preview, /canSeed && onSeed && !timeline\?\.clips\?\.length && <Button[^>]*data-testid="preview-seed-timeline"[^>]*>[^]*?timeline\.preview\.seed/);
 });
 

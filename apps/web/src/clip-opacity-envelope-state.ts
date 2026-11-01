@@ -1,10 +1,9 @@
 import { OPACITY_ENVELOPE_PROFILE, OPACITY_ENVELOPE_LIMITS, validateOpacityEnvelope } from '../../../packages/contracts/src/timeline-opacity-envelope.ts';
 import type { OpacityEnvelope, OpacityEnvelopeClip } from '../../../packages/contracts/src/timeline-opacity-envelope.ts';
-import type { ClipDraftOpacityCandidateEnvelopeRaw } from '../../../packages/contracts/src/local-drafts-opacity-candidate.ts';
 
-/** Candidate form text uses the exact v3 draft contract; it grants no capability. */
+/** Raw keyframe form text is bounded and grants no capability. */
 export const RAW_OPACITY_ENVELOPE_LIMITS = Object.freeze({ frame: 8, opacity: 32, points: OPACITY_ENVELOPE_LIMITS.points });
-export type RawOpacityEnvelope = ClipDraftOpacityCandidateEnvelopeRaw;
+export type RawOpacityEnvelope = { profileId: typeof OPACITY_ENVELOPE_PROFILE; points: { frame: string; opacity: string }[] };
 export type RawOpacityPoint = RawOpacityEnvelope['points'][number];
 export type RawOpacityEnvelopeFields = { opacityEnvelope?: RawOpacityEnvelope | null };
 export type OpacityEnvelopeFields = { opacityEnvelope?: OpacityEnvelope | null };

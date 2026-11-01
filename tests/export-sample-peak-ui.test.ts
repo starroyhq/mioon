@@ -13,7 +13,7 @@ test('App wires one explicit historical-file observer with live project/workspac
   const source = app();
   assert.equal(source.includes('useExportSamplePeak'), true, 'App must wire the explicit history observer');
   assert.match(source, /rpc\('timeline\.export\.samplePeak', input, options as never\)/);
-  assert.match(source, /samplePeak=\{application \? undefined : exportSamplePeak(?: as never)?\}/);
+  assert.match(source, /samplePeak=\{exportSamplePeak(?: as never)?\}/);
 });
 
 import { before } from 'node:test';

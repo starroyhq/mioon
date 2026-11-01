@@ -8,7 +8,6 @@ import * as samplePeakContract from '@mioon/contracts/export-sample-peak';
 import * as loudnessContract from '@mioon/contracts/export-loudness';
 import * as contracts from '@mioon/contracts';
 import {DEFAULT_UI_PREFERENCES} from '../../packages/contracts/src/ui-preferences.ts';
-import * as candidatePresentation from '../../apps/web/src/opacity-candidate-render-presentation.ts';
 export interface UiNode {readonly type: unknown; readonly props: Record<string, unknown> & {children?: unknown}}
 export type UiComponent = (props: Record<string, unknown>) => unknown;
 const element = (type: unknown, props: Record<string, unknown>|null|undefined, ...children: unknown[]): unknown => typeof type === 'function' ? (type as (value: Record<string, unknown>)=>unknown)({ ...props, children }) : ({ type, props: { ...props, children } });
@@ -27,7 +26,6 @@ export function component(file: string): {default: UiComponent; [key: string]: u
       if (key.endsWith('/packages/i18n/src/index.ts')) return i18n;
       if (key === 'react') return react;
       if (key === './UiPreferencesProvider.tsx') return {useUiPreferences:() => ({preferences:DEFAULT_UI_PREFERENCES})};
-      if (key === './opacity-candidate-render-presentation.ts') return candidatePresentation;
       // Keep the exact composition props without pretending an asynchronous
       // file inspection has completed. Its real lifecycle has a separate suite.
       if (key === './ExportFileActions.tsx') return {__esModule:true, default:(props: Record<string, unknown>) => ({type:'ExportFileActions', props})};

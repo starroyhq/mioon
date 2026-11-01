@@ -10,27 +10,24 @@ import { createRequire } from 'node:module';
 import { transformSync } from 'esbuild';
 import * as state from '../apps/web/src/clip-opacity-envelope-state.ts';
 import * as contract from '../packages/contracts/src/timeline-opacity-envelope.ts';
-import { clipDraftOpacityCandidateEnvelopeRawSchema } from '../packages/contracts/src/local-drafts-opacity-candidate.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
 import { validateCatalogs, translate, LOCALES } from '../packages/i18n/src/index.ts';
 import { opacityEnvelopeMessages } from '../packages/i18n/src/catalogs/opacity-envelope.ts';
 
 const envelope = <Point>(points: Point[]): {profileId: typeof contract.OPACITY_ENVELOPE_PROFILE;points: Point[]} => ({ profileId: contract.OPACITY_ENVELOPE_PROFILE, points });
 const raw = (points: readonly (readonly string[])[]) => ({ opacityEnvelope: envelope(points.map(([frame, opacity]) => ({ frame, opacity }))) });
-test('opacity form and v3 raw draft have identical lexical limits while incomplete values cannot Save', () => {
+test('opacity form text keeps its lexical limits while incomplete values cannot Save', () => {
   for (const field of ['frame', 'opacity'] as const) {
     const limit = state.RAW_OPACITY_ENVELOPE_LIMITS[field];
     for (const text of ['', '.', '-', '1e', '1e-', '+.eE-', '9'.repeat(limit)] as const) {
       const value = raw([['0', '1']]).opacityEnvelope; value.points[0][field] = text;
       assert.equal(state.acceptsOpacityEnvelopeText(field, text), true);
       assert.equal(state.isRawOpacityEnvelope(value), true);
-      assert.equal(clipDraftOpacityCandidateEnvelopeRawSchema.safeParse(value).success, true);
     }
     for (const text of ['9'.repeat(limit + 1), '１', '1 2', ' 1', '1\n', 'Infinity', 'NaN', '1,2', '1\0', 'n/10'] as const) {
       const value = raw([['0', '1']]).opacityEnvelope; value.points[0][field] = text;
       assert.equal(state.acceptsOpacityEnvelopeText(field, text), false);
       assert.equal(state.isRawOpacityEnvelope(value), false);
-      assert.equal(clipDraftOpacityCandidateEnvelopeRawSchema.safeParse(value).success, false);
     }
   }
   for (const text of ['', '.', '-', '1e', '1e-'] as const) assert.equal(state.validateRawOpacityEnvelope(raw([[text, text]]), 10).valid, false);
