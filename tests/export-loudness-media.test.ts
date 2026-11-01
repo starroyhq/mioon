@@ -8,19 +8,21 @@ import {deflateSync} from 'node:zlib';
 import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '@mioon/client';
 import {EXPORT_LOUDNESS_PROFILE, isExportLoudnessResponse} from '@mioon/contracts/export-loudness';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment, mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {run, runStreaming, checkMediaEffect} from '../packages/business/src/media-runtime.ts';
 import {withProbePermit} from '../packages/business/src/media-probe.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createExportLoudnessDecoder} from '../packages/business/src/export-loudness-decoder.ts';
 import {floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 
 // These bounded real-media fixtures run only in the parent-owned serial lane.
 // FFmpeg ebur128 is an independent implementation comparison, not certification.
@@ -115,11 +117,13 @@ interface LoudnessReport {status: string; reason?: {message?: string}; measureme
   artifact: {hidden: never} & {snapshotSha256: string; sha256: string; timelineRevision: number; deliveryName: string; exportRange?: {startFrame: number; endFrame: number}}; checks: {bytesHashed: number; audioFullyDecoded: boolean}}
 interface TimelineRow {id: string; revision: number; tracks: Array<{id: string; kind: string}>}
 interface ExportRecordRow {id: string; assetId: string; status: string; timelineRevision: number; error?: unknown}
-interface ExportFixture {root: string; url: string; client: ReturnType<typeof createClient>; project: {id: string}; db: DatabaseSync; rows(): Record<string, unknown[]>; records: ExportRecordRow[]}
+interface ExportFixture {root: string; url: string; client: ReturnType<typeof createClient>; project: {id: string}; use<T>(fn: (db: DatabaseSync) => T): T; rows(): Record<string, unknown[]>; records: ExportRecordRow[]}
+// data_version counts other connections' commits only; total_changes() adds this connection's own writes.
+const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
 async function exported(t: TestContext, {name, silent = false}: {name: string; silent?: boolean}): Promise<ExportFixture> {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-loudness-real-service-')); let backend: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync | undefined;
-  t.after(async () => {db?.close(); await backend?.close(); await rm(root, {recursive: true, force: true});});
-  backend = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {throw Error('No model/provider call permitted');}});
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-loudness-real-service-')); let backend: Awaited<ReturnType<typeof startServer>> | undefined, inspect: InspectProject | undefined;
+  t.after(async () => {await backend?.close(); await rm(root, {recursive: true, force: true});});
+  backend = await startServer({dataDir: root, port: 0, token, inspectProject: received => {inspect = received;}});
   const client = createClient({env: clientEnvironment(backend.url)});
   const project = await client.rpc('project.create', {name}) as {id: string}; let timeline = await client.rpc('timeline.get', {projectId: project.id}) as TimelineRow;
   const pixels = await client.rpc('asset.import', {projectId: project.id, name: 'Synthetic pixels.png', mimeType: 'image/png', dataBase64: png().toString('base64')}) as {id: string};
@@ -149,21 +153,22 @@ async function exported(t: TestContext, {name, silent = false}: {name: string; s
   // A later editable revision is deliberately outside this file observation.
   timeline = await client.rpc('timeline.track.update', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(),
     trackId: timeline.tracks.find(track => track.kind === 'audio')!.id, patch: {muted: true}}) as TimelineRow;
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const rows = (): Record<string, unknown[]> => Object.fromEntries((db as DatabaseSync).prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
-    [name, (db as DatabaseSync).prepare(`SELECT * FROM "${String(name).replaceAll('"', '""')}" ORDER BY rowid`).all()]));
-  return {root, url: backend!.url, client, project, db: db!, rows, records: [full, ranged].filter((value): value is ExportRecordRow => Boolean(value))};
+  // While the server runs, the database is read on its own connection.
+  const use = <T>(fn: (db: DatabaseSync) => T): T => inspect!(project.id, fn);
+  const rows = (): Record<string, unknown[]> => use(db => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
+    [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all()])));
+  return {root, url: backend!.url, client, project, use, rows, records: [full, ranged].filter((value): value is ExportRecordRow => Boolean(value))};
 }
 
 test('real worker full/ranged AAC from 44.1k sources matches independent complete PCM and ebur128 without any observation writes', {timeout: 120000}, async t => {
   const f = await exported(t, {name: '44.1k delivery loudness'});
   for (const record of f.records) {
-    const saved = JSON.parse((f.db.prepare('SELECT data FROM exports WHERE id=?').get(record.id) as {data: string}).data) as {snapshot: {deliveryName: string; exportRange?: {startFrame: number; endFrame: number}}};
-    const asset = JSON.parse((f.db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId) as {data: string}).data) as {relativePath: string};
+    const saved = JSON.parse(f.use(db => db.prepare('SELECT data FROM exports WHERE id=?').get(record.id) as {data: string}).data) as {snapshot: {deliveryName: string; exportRange?: {startFrame: number; endFrame: number}}};
+    const asset = JSON.parse(f.use(db => db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId) as {data: string}).data) as {relativePath: string};
     const file = path.join(f.root, asset.relativePath), sourceBytes = await readFile(file), reference = await independentReference(file);
     const input = {projectId: f.project.id, exportId: record.id, expectedArtifactSha256: hash(sourceBytes), measurementProfile: EXPORT_LOUDNESS_PROFILE,
       target: {integratedLufs: -23, truePeakCeilingDbtp: -1}};
-    const before = {rows: f.rows(), version: (f.db.prepare('PRAGMA data_version').get() as {data_version: number}).data_version, files: await manifest(f.root)};
+    const before = {rows: f.rows(), version: f.use(changeMarks), files: await manifest(f.root)};
     const events: Array<{type: string; kind: string}> = [], off = onMediaProcess(event => events.push(event as {type: string; kind: string})); let report: LoudnessReport;
     try {report = await f.client.rpc('timeline.export.loudness', input) as unknown as LoudnessReport;} finally {off();}
     assert.ok(isExportLoudnessResponse(report as unknown, input)); assert.equal(report.status, 'ready', JSON.stringify(report.reason));
@@ -187,7 +192,7 @@ test('real worker full/ranged AAC from 44.1k sources matches independent complet
         assert.ok(isExportLoudnessResponse(actual as unknown, input), channel); assert.deepEqual(comparable(actual as LoudnessReport), comparable(report), channel);
       }
     }
-    assert.deepEqual(f.rows(), before.rows); assert.equal((f.db.prepare('PRAGMA data_version').get() as {data_version: number}).data_version, before.version);
+    assert.deepEqual(f.rows(), before.rows); assert.deepEqual(f.use(changeMarks), before.version);
     assert.deepEqual(await manifest(f.root), before.files); assert.ok(Buffer.byteLength(JSON.stringify(report)) <= 8192);
     t.diagnostic(JSON.stringify({range: report.artifact.exportRange ?? null, frames: report.measurement.sampleFrames,
       integratedLufs: report.measurement.integratedLufs, referenceLufs: reference.integratedLufs, truePeakDbtp: report.measurement.truePeakDbtp, referenceTruePeakDbtp: reference.truePeakDbtp}));
@@ -196,13 +201,13 @@ test('real worker full/ranged AAC from 44.1k sources matches independent complet
 
 test('actual worker silent export remains digital silence with no finite LUFS or gain recommendation', {timeout: 60000}, async t => {
   const f = await exported(t, {name: 'Silent delivery loudness', silent: true}), record = f.records[0];
-  const asset = JSON.parse((f.db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId) as {data: string}).data) as {sha256: string};
-  const before = {rows: f.rows(), version: (f.db.prepare('PRAGMA data_version').get() as {data_version: number}).data_version, files: await manifest(f.root)};
+  const asset = JSON.parse(f.use(db => db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId) as {data: string}).data) as {sha256: string};
+  const before = {rows: f.rows(), version: f.use(changeMarks), files: await manifest(f.root)};
   const report = await f.client.rpc('timeline.export.loudness', {projectId: f.project.id, exportId: record.id,
     expectedArtifactSha256: asset.sha256, measurementProfile: EXPORT_LOUDNESS_PROFILE, target: {integratedLufs: -23, truePeakCeilingDbtp: -1}}) as unknown as LoudnessReport;
   assert.equal(report.status, 'ready'); assert.equal(report.measurement.state, 'digital_silence');
   assert.equal(report.measurement.integratedLufs, null); assert.equal(report.measurement.truePeakDbtp, null); assert.equal(report.suggestion, null);
-  assert.deepEqual(f.rows(), before.rows); assert.equal((f.db.prepare('PRAGMA data_version').get() as {data_version: number}).data_version, before.version); assert.deepEqual(await manifest(f.root), before.files);
+  assert.deepEqual(f.rows(), before.rows); assert.deepEqual(f.use(changeMarks), before.version); assert.deepEqual(await manifest(f.root), before.files);
 });
 
 test('real strict decoder rejects no-audio, nonnative and ambiguous files without inventing silence', {timeout: 60000}, async t => {

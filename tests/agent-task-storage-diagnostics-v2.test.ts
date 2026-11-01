@@ -6,7 +6,6 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
@@ -19,8 +18,10 @@ import type {AgentTaskStorageSnapshot} from '../packages/contracts/src/agent-tas
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createAgentClient} from '../packages/client/src/agent.ts';
 import {createTestAuthorizations, authorizeTestScope} from './helpers/agent-authorizations.ts';
+import {createServerProject} from './helpers/project-database.ts';
 
 // These lists independently pin the pre-existing SQL quota's two inventories.
 const byteTables = ['agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_changes_v2', 'agent_task_events_v2',
@@ -36,9 +37,8 @@ function retained(db: DatabaseSync) {
 }
 function temporary(t: TestContext) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-agent-storage-diagnostics-v2-'));
-  const store = openStore(root); let cleanup = async () => {};
+  const {projectId, store} = createServerProject(root, {name: 'Synthetic diagnostics'}); let cleanup = async () => {};
   t.after(async () => {await cleanup(); if (store.db.isOpen) store.close(); rmSync(root, {recursive: true, force: true});});
-  const projectId = randomUUID(); store.put('projects', {id: projectId, name: 'Synthetic diagnostics', revision: 1});
   return {root, store, projectId, journal: createAgentTaskJournal(store), beforeClose(value: () => Promise<void>) {cleanup = value;}};
 }
 
@@ -94,20 +94,21 @@ test('real server and management client doctor return only safe aggregate storag
   const run = f.journal.create({projectId: f.projectId, requestId: randomUUID(), text: marker, configuration: {}}).run;
   const model = f.journal.beginStep(run.id, {kind: 'model', request: {body: JSON.stringify({prompt: marker, path: privatePath}), history: []}});
   f.journal.completeStep(run.id, model.id, {result: {text: marker}}); f.journal.transition(run.id, f.journal.run(run.id).revision, 'completed');
-  f.store.close(); let modelRequests = 0;
-  const server = await startServer({dataDir: f.root, port: 0, taskGatewayV2: async function*() {modelRequests++; throw Error('Doctor must never execute a model');}});
-  const db = new DatabaseSync(join(f.root, 'workbench.sqlite'), {readOnly: true});
-  f.beforeClose(async () => {db.close(); await server.close();});
-  const before = retained(db), routes: string[] = [];
+  f.store.close(); let modelRequests = 0, inspect!: InspectProject;
+  const server = await startServer({dataDir: f.root, port: 0, taskGatewayV2: async function*() {modelRequests++; throw Error('Doctor must never execute a model');},
+    inspectProject: received => {inspect = received;}});
+  f.beforeClose(async () => {await server.close();});
+  // While the server runs, the database is read on its own connection.
+  const before = inspect(f.projectId, db => retained(db)), routes: string[] = [];
   const client = createAgentClient({env: {MIOON_BASE_URL: server.url, MIOON_TOKEN: server.token}, fetchImpl: async (url, options) => {
     assert.equal(options?.method, 'GET'); routes.push(new URL(String(url)).pathname); return fetch(url, options);
   }});
   const doctor = await client.doctor({projectId: f.projectId}), second = await client.doctor();
-  assert.ok(doctor.storage); assert.deepEqual(doctor.storage, readAgentTaskStorage(db)); assert.deepEqual(second.storage, doctor.storage);
+  assert.ok(doctor.storage); assert.deepEqual(doctor.storage, inspect(f.projectId, db => readAgentTaskStorage(db))); assert.deepEqual(second.storage, doctor.storage);
   assert.equal(doctor.storage.limits.bytes, 256 * 1024 * 1024); assert.equal(doctor.storage.format, 'model_request_references');
   assert.equal(doctor.verification, 'not_tested'); assert.equal(doctor.projectId, f.projectId); assert.equal(second.projectId, undefined);
   assert.equal(doctor.settings.secret.configured, false); assert.equal(modelRequests, 0);
-  assert.deepEqual(routes, ['/api/agent/diagnostics', '/api/agent/diagnostics']); assert.deepEqual(retained(db), before);
+  assert.deepEqual(routes, ['/api/agent/diagnostics', '/api/agent/diagnostics']); assert.deepEqual(inspect(f.projectId, db => retained(db)), before);
   const serialized = JSON.stringify(doctor);
   for (const denied of [marker, privatePath, f.root, server.token]) assert.equal(serialized.includes(denied), false);
 });
@@ -171,7 +172,7 @@ test('quota and ordinary SQLite write failures roll back note and receipt togeth
     const f = await runtimeFixture(t, item.code ? {code: item.code, message: item.message} : undefined), current = await f.settings.get();
     const run = f.source.create({projectId: f.projectId, requestId: randomUUID(), text: 'Saved original request', configuration: {...current.configuration}, settingsRevision: current.revision}).run;
     const requestId = randomUUID();
-    if (!item.code) f.store.db.exec(`CREATE TRIGGER synthetic_diagnostic_control_failure BEFORE INSERT ON agent_task_controls_v2 WHEN NEW.requestId='${requestId}' BEGIN SELECT RAISE(ABORT,'${item.message}');END;`);
+    if (!item.code) f.store.db.exec(`CREATE TEMP TRIGGER synthetic_diagnostic_control_failure BEFORE INSERT ON agent_task_controls_v2 WHEN NEW.requestId='${requestId}' BEGIN SELECT RAISE(ABORT,'${item.message}');END;`);
     const before = retained(f.store.db), action = {requestId, expectedRevision: run.revision, action: 'note', text: 'MUST_ROLL_BACK_PRIVATE_NOTE'};
     await assert.rejects(f.runtime.action(f.projectId, run.id, action), {code: item.expected});
     assert.deepEqual(retained(f.store.db), before); assert.equal(f.source.lookupControl(requestId), null); assert.equal(f.requests, 0);
@@ -182,7 +183,7 @@ test('quota and ordinary SQLite write failures roll back note and receipt togeth
 
 test('a quota failure after the single model dispatch cannot publish its result or trigger a replacement request', async t => {
   const f = await runtimeFixture(t), current = await f.settings.get();
-  f.store.db.exec("CREATE TRIGGER synthetic_model_completion_quota BEFORE INSERT ON agent_task_events_v2 WHEN NEW.type='step' AND json_extract(NEW.data,'$.data.kind')='model' AND json_extract(NEW.data,'$.data.status')='completed' BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT');END;");
+  f.store.db.exec("CREATE TEMP TRIGGER synthetic_model_completion_quota BEFORE INSERT ON agent_task_events_v2 WHEN NEW.type='step' AND json_extract(NEW.data,'$.data.kind')='model' AND json_extract(NEW.data,'$.data.status')='completed' BEGIN SELECT RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT');END;");
   const sent = await f.runtime.send(f.projectId, {requestId: randomUUID(), expectedSettingsRevision: current.revision, text: 'One synthetic model request'});
   await f.runtime.drain();
   const snapshot = f.source.snapshot(sent.run.id);
