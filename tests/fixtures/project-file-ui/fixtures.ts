@@ -1,3 +1,4 @@
+import type { OutsideProjectLocation } from '../../../packages/contracts/src/media-reference.ts';
 import type { ProjectOpenFailure } from '../../../packages/contracts/src/project-file.ts';
 import type { ProjectInboxItem, RecentProject } from '../../../packages/contracts/src/project-registry.ts';
 
@@ -58,6 +59,36 @@ export const INBOX_ITEMS: readonly ProjectInboxItem[] = [1, 2].map(index => ({
   id: `b0c0ffee-0000-4000-8000-00000000000${index}`, projectId: PROJECT_IDS.interview, taskKind: 'job', taskId: `c0c0ffee-0000-4000-8000-00000000000${index}`,
   receivedAt: `2026-10-21T0${index}:10:00.000Z`, stagedMedia: [{ fileName: `result-${index}.mp4`, mimeType: 'video/mp4', sizeBytes: 18_400_000 * index, sha256: String(index).repeat(64) }],
 }));
+
+/** Media thumbnails for the 12-04 cards: a gradient and an optional disc. */
+function thumb(from: string, to: string, disc?: { readonly x: number; readonly y: number; readonly r: number; readonly fill: string }): string {
+  return svg(160, 90, `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="160" height="90" fill="url(#g)"/>${disc ? `<circle cx="${disc.x}" cy="${disc.y}" r="${disc.r}" fill="${disc.fill}"/>` : ''}`);
+}
+export const MEDIA_THUMBS = {
+  a: thumb('#15383d', '#0d2226', { x: 80, y: 45, r: 20, fill: '#d9ecb4' }),
+  c: thumb('#2a2f52', '#b8735a'),
+  d: thumb('#9fc6e8', '#6d9fd0', { x: 80, y: 42, r: 18, fill: '#f6c424' }),
+  f: thumb('#43302e', '#c9875f', { x: 108, y: 34, r: 22, fill: '#f3dcc0' }),
+  e: thumb('#5d7590', '#2f3f52'),
+  b: thumb('#2c2a4f', '#1c1c36', { x: 92, y: 45, r: 22, fill: '#eeb086' }),
+  g: thumb('#3b3d2a', '#1d1f15', { x: 60, y: 50, r: 16, fill: '#c7d39a' }),
+  h: thumb('#4a2e3f', '#22151d', { x: 100, y: 40, r: 14, fill: '#e59fb5' }),
+} as const;
+
+/** 12-05: scene-c.mp4 was located by hand, which found scene-f.mp4; scene-d.mp4 changed in place. */
+export const RELINK_ROWS = [
+  { assetId: 'd0c0ffee-0000-4000-8000-00000000000c', name: 'scene-c.mp4', mediaKind: 'video', from: '/Volumes/素材盘/拍摄/0912/scene-c.mp4', to: '/Volumes/素材盘-备份/拍摄/0912/scene-c.mp4', outcome: 'picked' },
+  { assetId: 'd0c0ffee-0000-4000-8000-00000000000f', name: 'scene-f.mp4', mediaKind: 'video', from: '/Volumes/素材盘/拍摄/0912/scene-f.mp4', to: '/Volumes/素材盘-备份/拍摄/0912/scene-f.mp4', outcome: 'auto' },
+  { assetId: 'd0c0ffee-0000-4000-8000-00000000000d', name: 'scene-d.mp4', mediaKind: 'video', from: `${HOME}/Movies/Mioon/UI 走查项目/素材/scene-d.mp4`, to: `${HOME}/Movies/Mioon/UI 走查项目/素材/scene-d.mp4`, outcome: 'changed' },
+] as const;
+export const RELINK_MISSING_ROW = { assetId: 'd0c0ffee-0000-4000-8000-000000000010', name: 'voice-over.wav', mediaKind: 'audio', from: '/Volumes/素材盘/录音/voice-over.wav', to: null, outcome: 'missing' } as const;
+
+/** 12-06: three folders outside 访谈剪辑样片's project folder, one of them not on this computer. */
+export const OUTSIDE_LOCATIONS: readonly OutsideProjectLocation[] = [
+  { directory: '/Volumes/素材盘/访谈/0912', volume: '素材盘', assetCount: 12, available: true },
+  { directory: `${HOME}/Music/配乐`, volume: null, assetCount: 3, available: true },
+  { directory: '/Users/lin/Desktop/temp', volume: null, assetCount: 1, available: false },
+];
 
 export const OPEN_FAILURES = {
   missing: { code: 'PROJECT_MISSING', projectFile: PROJECT_FILES.interview, projectId: PROJECT_IDS.interview },

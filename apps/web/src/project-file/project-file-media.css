@@ -1,0 +1,38 @@
+/* Media status (12-04), relink (12-05) and outside locations (12-06). */
+/* Corner chip on a media thumbnail, like the duration chip: dark overlay, coloured text. */
+.pf-media-badge.wb-badge { gap: 4px; padding: 1px 6px; border: 0; border-radius: 4px; background: var(--wb-media-overlay); color: var(--wb-media-text); font-size: var(--wb-text-caption); font-weight: 500; line-height: 1.4; white-space: nowrap; }
+.pf-media-badge.wb-badge[data-tone="danger"] { color: var(--wb-danger); }
+.pf-media-badge.wb-badge[data-tone="warning"] { color: var(--wb-warning); }
+.pf-media-badge .wb-spinner { width: 9px; height: 9px; border-width: 1px; }
+.pf-media-note { display: block; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.4; overflow-wrap: anywhere; }
+.pf-media-note[data-tone="danger"] { color: var(--wb-danger); }
+.pf-media-note[data-tone="warning"] { color: var(--wb-warning); }
+
+.pf-media-banner { display: flex; align-items: center; gap: var(--wb-space-2); min-height: 36px; padding: 4px 4px 4px 10px; border: 1px solid var(--wb-line); border-radius: var(--wb-radius-control); background: var(--wb-card); color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.4; }
+.pf-media-banner > span:not(.wb-spinner) { flex: 1; min-width: 0; }
+.pf-media-banner > svg { flex: none; }
+.pf-media-banner[data-state="loading"] { padding-right: 10px; }
+.pf-media-banner[data-tone="danger"] { border-color: color-mix(in srgb, var(--wb-danger) 45%, transparent); background: var(--wb-danger-subtle); color: var(--wb-text); }
+.pf-media-banner[data-tone="danger"] > svg { color: var(--wb-danger); }
+.pf-media-banner[data-tone="warning"] { border-color: color-mix(in srgb, var(--wb-warning) 40%, transparent); background: var(--wb-warning-subtle); color: var(--wb-text); }
+.pf-media-banner[data-tone="warning"] > svg { color: var(--wb-warning); }
+.pf-media-banner .wb-button { flex: none; gap: 6px; }
+
+.pf-row-icon { flex: none; color: var(--wb-soft); }
+.pf-relink-dialog.wb-dialog[data-slot="dialog-content"] { width: min(640px, calc(100vw - 32px)); }
+.pf-relink-dialog .wb-dialog-content, .pf-outside-dialog .wb-dialog-content { display: flex; flex-direction: column; gap: var(--wb-space-3); }
+.pf-relink-rows > li { align-items: center; padding-block: var(--wb-space-3); }
+.pf-relink-path { display: flex; gap: var(--wb-space-2); min-width: 0; color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.6; }
+.pf-relink-path > span { flex: none; }
+.pf-relink-path > code { min-width: 0; overflow: hidden; color: var(--wb-muted); font-family: var(--wb-font-mono); text-overflow: ellipsis; white-space: nowrap; }
+/* The found-again note keeps its text in the text colour; only the icon is green. */
+.pf-relink-found.wb-alert { color: var(--wb-text); }
+.pf-relink-found.wb-alert .wb-feedback-icon { color: var(--wb-success); }
+.pf-relink-end { flex-direction: column; align-items: flex-end; gap: 6px; }
+.pf-relink-actions { display: flex; gap: 6px; }
+.pf-relink-help { color: var(--wb-soft); }
+
+.pf-outside-body { color: var(--wb-soft); font-size: var(--wb-text-body); line-height: 1.6; }
+.pf-outside-rows > li { min-height: 56px; }
+.pf-outside-rules { display: flex; gap: var(--wb-space-2); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
+.pf-outside-rules > svg { flex: none; margin-top: 2px; }

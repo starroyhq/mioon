@@ -6,8 +6,17 @@ import { NEW_PROJECT_FILE_DEFAULTS, NewProjectFileDialog } from '../../../apps/w
 import type { NewProjectFileDialogProps } from '../../../apps/web/src/project-file/NewProjectFileDialog.tsx';
 import { ProjectOpenFailureDialog } from '../../../apps/web/src/project-file/ProjectOpenFailureDialog.tsx';
 import type { ProjectOpenFailureDialogProps } from '../../../apps/web/src/project-file/ProjectOpenFailureDialog.tsx';
+import { MediaAttentionBanner, MediaStatusBadge, MediaStatusNote, mediaStatusTone } from '../../../apps/web/src/project-file/MediaStatus.tsx';
+import type { MediaAttentionBannerProps } from '../../../apps/web/src/project-file/MediaStatus.tsx';
+import { mediaStatusDisplay } from '../../../apps/web/src/project-file/media-status.ts';
+import type { MediaStatusReason, MediaStatusUi } from '../../../apps/web/src/project-file/media-status.ts';
+import { MediaRelinkDialog } from '../../../apps/web/src/project-file/MediaRelinkDialog.tsx';
+import type { MediaRelinkDialogProps } from '../../../apps/web/src/project-file/MediaRelinkDialog.tsx';
+import { OutsideLocationsDialog } from '../../../apps/web/src/project-file/OutsideLocationsDialog.tsx';
+import type { OutsideLocationsDialogProps } from '../../../apps/web/src/project-file/OutsideLocationsDialog.tsx';
 import type { ProjectAvailabilityView } from '../../../apps/web/src/project-file/types.ts';
-import { COVER_URLS, HOME, INBOX_ITEMS, NOW, OPEN_FAILURES, PROJECT_IDS, RECENT_PROJECTS } from './fixtures.ts';
+import type { MediaStatus } from '../../../packages/contracts/src/media-reference.ts';
+import { COVER_URLS, HOME, INBOX_ITEMS, MEDIA_THUMBS, NOW, OPEN_FAILURES, OUTSIDE_LOCATIONS, PROJECT_IDS, RECENT_PROJECTS, RELINK_MISSING_ROW, RELINK_ROWS } from './fixtures.ts';
 
 /** One state of one U1 component, after a 12-xx preview. The gallery renders
  * scenes for the screenshots; the SSR tests render the same scenes in CI. */
@@ -78,7 +87,62 @@ const homeScenes = group('home', [
   { id: '12-03d-read-only', design: '12-03d', state: 'ready', capture: 'dialog', render: () => cannotOpen({ failure: OPEN_FAILURES.readOnly, onReveal: none }) },
 ]);
 
-export const scenes: readonly Scene[] = [...homeScenes];
+// ---------------------------------------------------------------------------
+// Group 2: media status, relink, outside locations (12-04 to 12-06)
+/** L1's status through the U1 mapping, as S6 will call it. */
+const l1 = (status: MediaStatus, reason: MediaStatusReason, outside: boolean, readable: boolean): MediaStatusUi => mediaStatusDisplay({ status, reason, outside, readable });
+/** One card per badge. The card frame stands in for the media library's own
+ * card (AssetLibrary), which U2 and S6 wire up; the badge, note and tone are U1. */
+const MEDIA_CARDS: readonly { readonly name: string; readonly thumb: string; readonly status: MediaStatusUi }[] = [
+  { name: 'scene-a.mp4', thumb: MEDIA_THUMBS.a, status: l1('online', 'same-stats', false, true) },
+  { name: 'scene-c.mp4', thumb: MEDIA_THUMBS.c, status: l1('missing', 'not-found', false, false) },
+  { name: 'scene-d.mp4', thumb: MEDIA_THUMBS.d, status: l1('changed', 'content', false, true) },
+  { name: 'scene-e.mp4', thumb: MEDIA_THUMBS.e, status: l1('online', 'same-stats', true, false) },
+  { name: 'scene-f.mp4', thumb: MEDIA_THUMBS.f, status: l1('changed', 'unverified', true, false) },
+  { name: 'scene-g.mp4', thumb: MEDIA_THUMBS.g, status: { kind: 'checking' } },
+  { name: 'scene-h.mp4', thumb: MEDIA_THUMBS.h, status: { kind: 'check-failed' } },
+];
+function mediaCards(): ReactElement {
+  return <div className="fixture-media-grid">{MEDIA_CARDS.map(card => <div key={card.name} className="fixture-media-card" data-tone={mediaStatusTone(card.status) ?? undefined} data-status={card.status.kind} data-testid={`fixture-media-${card.status.kind}`}>
+    <span className="fixture-media-thumb"><img src={card.thumb} alt="" /><MediaStatusBadge status={card.status} className="fixture-media-badge" /></span>
+    <span className="fixture-media-name">{card.name}</span>
+    <MediaStatusNote status={card.status} />
+  </div>)}</div>;
+}
+function banner(state: MediaAttentionBannerProps['state']): ReactElement {
+  return <MediaAttentionBanner state={state} onRelink={none} onRetry={none} />;
+}
+function relink(patch: Partial<MediaRelinkDialogProps> = {}): ReactElement {
+  return <MediaRelinkDialog open projectName="UI 走查项目" homeDirectory={HOME} state={{ kind: 'ready', value: { rows: RELINK_ROWS, foundBy: { name: 'scene-c.mp4', count: 1 } } }}
+    apply={{ kind: 'idle' }} onChooseFile={none} onUseNewFile={none} onApply={none} onRetry={none} onClose={none} {...patch} />;
+}
+function outside(patch: Partial<OutsideLocationsDialogProps> = {}): ReactElement {
+  return <>{home()}<OutsideLocationsDialog open projectName="访谈剪辑样片" fromAnotherComputer state={{ kind: 'ready', value: OUTSIDE_LOCATIONS }} rulesUntrusted action={{ kind: 'idle' }}
+    homeDirectory={HOME} onOpenOnly={none} onAllow={none} onRetry={none} onClose={none} {...patch} /></>;
+}
+const mediaScenes = group('media', [
+  { id: '12-04-badges', design: '12-04', state: 'ready', capture: 'frame', frameWidth: 260, render: mediaCards },
+  { id: '12-04-banner', design: '12-04', state: 'ready', capture: 'frame', frameWidth: 260, render: () => banner({ kind: 'ready', value: 3 }) },
+  // Empty: no media need attention and the file is online, so neither the banner nor a badge renders.
+  { id: '12-04-none', design: '12-04', state: 'empty', capture: 'frame', frameWidth: 260, render: () => <>{banner({ kind: 'ready', value: 0 })}<MediaStatusBadge status={l1('online', 'same-content', false, true)} /></> },
+  { id: '12-04-banner-checking', design: '12-04', state: 'loading', capture: 'frame', frameWidth: 260, render: () => banner({ kind: 'loading' }) },
+  { id: '12-04-banner-error', design: '12-04', state: 'error', capture: 'frame', frameWidth: 260, render: () => banner({ kind: 'error', retryable: true }) },
+  { id: '12-05', design: '12-05', state: 'ready', render: () => relink() },
+  { id: '12-05-missing', design: '12-05', state: 'ready', render: () => relink({ state: { kind: 'ready', value: { rows: [...RELINK_ROWS, RELINK_MISSING_ROW], foundBy: { name: 'scene-c.mp4', count: 1 } } } }) },
+  { id: '12-05-searching', design: '12-05', state: 'loading', render: () => relink({ state: { kind: 'loading' } }) },
+  { id: '12-05-empty', design: '12-05', state: 'empty', render: () => relink({ state: { kind: 'ready', value: { rows: [], foundBy: null } } }) },
+  { id: '12-05-error', design: '12-05', state: 'error', render: () => relink({ state: { kind: 'error', retryable: true } }) },
+  { id: '12-05-applying', design: '12-05', state: 'working', render: () => relink({ apply: { kind: 'working', action: 'apply' } }) },
+  { id: '12-05-apply-error', design: '12-05', state: 'error', render: () => relink({ apply: { kind: 'error', action: 'apply' } }) },
+  { id: '12-06', design: '12-06', state: 'ready', render: () => outside() },
+  { id: '12-06-loading', design: '12-06', state: 'loading', render: () => outside({ state: { kind: 'loading' } }) },
+  { id: '12-06-empty', design: '12-06', state: 'empty', render: () => outside({ state: { kind: 'ready', value: [] }, rulesUntrusted: false }) },
+  { id: '12-06-error', design: '12-06', state: 'error', render: () => outside({ state: { kind: 'error', retryable: true } }) },
+  { id: '12-06-no-rules-note', design: '12-06', state: 'ready', render: () => outside({ rulesUntrusted: false }) },
+  { id: '12-06-allowing', design: '12-06', state: 'working', render: () => outside({ action: { kind: 'working', action: 'allow' } }) },
+]);
+
+export const scenes: readonly Scene[] = [...homeScenes, ...mediaScenes];
 const seen = new Set<string>();
 for (const scene of scenes) {
   if (seen.has(scene.id)) throw new Error(`Duplicate scene: ${scene.id}`);
