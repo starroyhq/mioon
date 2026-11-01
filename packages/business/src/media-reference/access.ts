@@ -33,11 +33,11 @@ import {isInsideDirectory, parseLocalPath, referencePathFor, resolveReferencePat
 //    be read; whatever needs only lstat is still reported.
 // Only then is it opened (O_RDONLY | O_NOFOLLOW | O_NONBLOCK). The descriptor's
 // fstat must match the lstat of step 3 (device, file ID, size, modification
-// time) when it is opened and after every read, or the read fails with
-// MEDIA_CHANGED_DURING_READ; and the first 1024 bytes must match the format of
-// the extension before anything else is read. A same-user swap to a hard link
-// of a protected file between the lstat and the open is not caught, as in
-// managed-media.ts.
+// time) when it is opened, after the header is read and after the hashed bytes
+// are read, or the read fails with MEDIA_CHANGED_DURING_READ; and the first
+// 1024 bytes must match the format of the extension before anything else is
+// read. A same-user swap to a hard link of a protected file between the lstat
+// and the open is not caught, as in managed-media.ts.
 
 export interface MediaAccess {
   /** The folder of the `.mioon`, absolute. */
@@ -75,8 +75,8 @@ export interface MediaStatusResult {
   /** Outside the project directory. For a path that names no file here, read
    * from the stored form. */
   readonly outside: boolean;
-  /** Whether the file may be read now: online or changed by its stats, and
-   * inside the project directory or confirmed. */
+  /** Whether the file may be read: a media file inside the project directory
+   * or in a confirmed folder. False when it is missing or not media. */
   readonly readable: boolean;
   /** The reference; after `same-content` with the new `mtimeMs` and no
    * `fullSha256`, since bytes outside the samples may have changed. */
