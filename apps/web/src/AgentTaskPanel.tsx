@@ -15,10 +15,7 @@ import type { AgentTaskReveal } from './agent-task-location.ts';
 import { createAgentTaskCloseReporter } from './native-close-sources.ts';
 import type { NativeCloseSourceRegistry } from './native-close-sources.ts';
 import { deriveAgentEndpoint } from './agent-settings.ts';
-import LegacyHistory from './AgentLegacyHistory.tsx';
 import AgentConversationHistory from './AgentConversationHistory.tsx';
-import {readLegacyConversation} from './agent-conversations.ts';
-import type {LegacyConversation} from './agent-conversations.ts';
 import AgentRetainedEditing from './AgentRetainedEditing.tsx';
 import AgentTaskPolicyMenu from './AgentTaskPolicyMenu.tsx';
 import { AgentTaskAnswerRow, AgentTaskQuestionCard } from './AgentTaskQuestion.tsx';
@@ -57,7 +54,6 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const [undoPreview,setUndoPreview]=useState<{snapshot:AgentTaskSnapshot;selectionKey:string}|null>(null),[undoLoading,setUndoLoading]=useState(false);
   const undoTrigger=useRef<HTMLButtonElement|null>(null),undoCancel=useRef<HTMLButtonElement|null>(null),undoFlight=useRef(false),undoRead=useRef(0);
   const [review, setReview] = useState<AgentTaskAuthorizationReview | null>(null), [historyOpen, setHistoryOpen] = useState(false), [stepsOpen, setStepsOpen] = useState<Record<string,boolean>>({}), [modelMenuOpen, setModelMenuOpen] = useState(false), [following, setFollowing] = useState(true),[composing,setComposing]=useState(false);
-  const [legacyView,setLegacyView]=useState<LegacyConversation|null>(null),[legacyBusy,setLegacyBusy]=useState(false),[legacyError,setLegacyError]=useState(false);
   const [checksAttached,setChecksAttached]=useState(true),checksNavigation=useRef(0);
   const session = useRef<ReturnType<typeof createAgentTaskSession> | null>(null), callbacks = useRef({ onDraftChange, onApplied }); callbacks.current = { onDraftChange, onApplied };
   const reviewed = useRef(onReview); reviewed.current = onReview;
@@ -107,7 +103,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
   const configurationKey = project ? JSON.stringify([project.settings.revision, project.settings.configuration, project.authorization.revision]) : '';
   useLayoutEffect(() => { setReview(null); }, [projectId, configurationKey, locale, state.selectionKey]);
   useLayoutEffect(()=>{undoRead.current++;undoFlight.current=false;setUndoLoading(false);setUndoPreview(null);return()=>{undoRead.current++;undoFlight.current=false;};},[projectId,workspaceScope,nativeCloseRegistry,state.selectionKey,visible]);
-  useLayoutEffect(() => { follow.current = true; setFollowing(true); setLegacyError(false); composition.current=false;setComposing(false); }, [state.selectionKey]);
+  useLayoutEffect(() => { follow.current = true; setFollowing(true); composition.current=false;setComposing(false); }, [state.selectionKey]);
   useLayoutEffect(() => { if(run)setStepsOpen(value=>({...value,[run.id]:!finished(run.status)||run.status==='failed'})); }, [run?.id, run?.status]);
   // A hidden log has no height, so a round loaded behind another dock tab or the history overlay is measured
   // again when it is shown; a following log then opens on the latest content.
@@ -151,12 +147,10 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
     // Visibility and same-conversation reloads do not end a full preflight.
     // Only an actual navigation detaches the checks owner before its read.
     if(id!==current.getState().conversationId)setChecksAttached(false);
-    try{if(await current.selectConversation(id)&&session.current===current){setLegacyView(null);closeHistory();}}
+    try{if(await current.selectConversation(id)&&session.current===current){closeHistory();}}
     finally{if(checksNavigation.current===owner&&session.current===current)setChecksAttached(true);}
   }
-  function selectLegacy(value:LegacyConversation){if(!historyVisible.current||composition.current)return;if(value.projectId===projectId&&session.current?.selectLegacy(value.id)){setLegacyView(value);closeHistory();}}
-  function newConversation(){if(composition.current||session.current?.getState().selectionKey!==state.selectionKey)return;if(session.current?.newConversation()){setLegacyView(null);closeHistory();input.current?.focus();}}
-  async function olderLegacy(){const current=session.current,value=legacyView,key=state.selectionKey;if(!current||!value||legacyBusy)return;setLegacyBusy(true);setLegacyError(false);try{const next=await readLegacyConversation(projectId,value);if(visibility.current&&session.current===current&&current.getState().selectionKey===key&&next)setLegacyView(next);}catch{if(visibility.current&&session.current===current&&current.getState().selectionKey===key)setLegacyError(true);}finally{if(session.current===current)setLegacyBusy(false);}}
+  function newConversation(){if(composition.current||session.current?.getState().selectionKey!==state.selectionKey)return;if(session.current?.newConversation()){closeHistory();input.current?.focus();}}
   const canSend = !blocked && !newBlocked && Boolean(project) && !active && agentTaskPromptValid(state.draft);
   const canNote = !blocked && noteMode && unknown.length===0 && !state.unknownOutcome && queuedNotes<5 && agentTaskPromptValid(state.draft);
   const canAnswer = !blocked && answerMode && agentTaskAnswerTextValid(state.draft);
@@ -295,7 +289,7 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
       {snapshot!==state.snapshot&&(run.status==='interrupted'||unknown.length>0)&&<section className="mio-card">{recoveryFor(snapshot)}</section>}</article>;
   }
   return <section className="agent-panel agent-task-panel mio-panel" data-testid="agent-task-panel" data-phase={state.phase} aria-label={t('agent.task.title')}>
-    <header className="agent-task-heading mio-heading"><h3 title={state.legacy?legacyView?.title:state.conversation?.title}>{(state.legacy?legacyView?.title:state.conversation?.title) || t('agent.panel.newConversation')}</h3><div>
+    <header className="agent-task-heading mio-heading"><h3 title={state.conversation?.title}>{state.conversation?.title || t('agent.panel.newConversation')}</h3><div>
       <WorkbenchTooltip content={composing?t('agent.conversation.blocked.composing'):newBlocked?t(`agent.conversation.blocked.${newBlocked}`):t('agent.panel.newConversation')}><Button variant="icon" aria-label={t('agent.panel.newConversation')} data-testid="agent-task-new-conversation" disabled={!visible||composing||Boolean(newBlocked)} aria-describedby={newBlocked||composing?'mio-new-conversation-blocked':undefined} onClick={newConversation}><Icon name="plus" /></Button></WorkbenchTooltip>
       <WorkbenchTooltip content={t('agent.panel.history')}><Button variant="icon" aria-label={t('agent.panel.history')} ref={historyButton} data-testid="agent-task-history-open" aria-expanded={historyOpen} disabled={!visible || busy} onClick={() => { if (visibility.current) setHistoryOpen(value => !value); }}><Icon name="clock" /></Button></WorkbenchTooltip>
       <WorkbenchTooltip content={t('agent.task.settings')}><Button variant="icon" aria-label={t('agent.task.settings')} data-testid="agent-task-settings" disabled={!visible} onClick={() => { if (visibility.current) onSettings(); }}><Icon name="settings" /></Button></WorkbenchTooltip>
@@ -310,9 +304,8 @@ export default function AgentTaskPanel({ projectId, workspaceScope = 'normal', t
       {(state.rounds.length?state.rounds:state.snapshot?[state.snapshot]:[]).map(renderRound)}
       {/* Project recovery owns its pending-receipt close fence across conversation selection. */}
       <div data-testid="agent-task-retained-owner" hidden={state.legacy} inert={state.legacy}>{!project?.readOnly && <AgentRetainedEditing nativeCloseRegistry={nativeCloseRegistry} projectId={projectId} visible={visible&&!state.legacy} readOnly={false} recovery={state.legacy?null:recovery} targetName={targetName} />}</div>{project?.readOnly && recovery && <section className="mio-card"><strong>{t('agent.panel.recoveryTitle')}</strong>{recovery}</section>}
-      {state.legacy&&legacyView&&<><LegacyHistory conversation={legacyView} busy={legacyBusy} onMore={()=>{void olderLegacy();}} />{legacyError&&<p className="mio-error" role="alert">{t('agent.conversation.loadError')}</p>}</>}
     </div>
-    <AgentConversationHistory open={historyOpen&&visible} projectId={projectId} conversations={state.history.conversations} phase={state.history.phase} nextCursor={state.history.nextCursor} currentId={state.conversationId} currentLegacyId={state.legacy?legacyView?.id:undefined} newConversation={!state.conversationId&&!state.legacy} disabled={!visible||busy||composing||Boolean(state.pending)} selectionError={state.phase==='read_error'} onClose={closeHistory} onSelect={id=>{void selectConversation(id);}} onSelectLegacy={selectLegacy} onMore={()=>{void session.current?.history(state.history.phase!=='error'&&Boolean(state.history.nextCursor));}} />
+    <AgentConversationHistory open={historyOpen&&visible} projectId={projectId} conversations={state.history.conversations} phase={state.history.phase} nextCursor={state.history.nextCursor} currentId={state.conversationId} newConversation={!state.conversationId&&!state.legacy} disabled={!visible||busy||composing||Boolean(state.pending)} selectionError={state.phase==='read_error'} onClose={closeHistory} onSelect={id=>{void selectConversation(id);}} onMore={()=>{void session.current?.history(state.history.phase!=='error'&&Boolean(state.history.nextCursor));}} />
     </div>
     {!historyOpen && !following && <Button variant="ghost" className="mio-latest" data-testid="agent-task-latest" onClick={() => { if (log.current) { follow.current = true; setFollowing(true); log.current.scrollTop = log.current.scrollHeight; } }}>{t('agent.panel.latest')} <Icon name="down" /></Button>}
     <form ref={composer} className="agent-task-composer mio-composer" onSubmit={event => { event.preventDefault(); void send(); }}>

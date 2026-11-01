@@ -576,8 +576,7 @@ These RPC inputs select a project using the existing authenticated local
 connection. The exported `inspectionArgumentSchemas` separately omit `projectId`
 and all authority fields for callers that bind scope outside the arguments;
 `inspectionSchemas` adds only the RPC project ID. Neither schemas nor inspection
-metadata grant access. Built-in Agent inspection uses a separate explicit
-run-consent boundary, described in [bounded Agent reads](AGENT-READ-TOOLS.md).
+metadata grant access.
 
 Legacy `project.get` and `timeline.get` retain their existing responses and can
 create the default empty timeline on first access. They are not read-only. Use
@@ -1032,73 +1031,6 @@ retry permission. Exact stable-request replay behavior is unchanged.
 Zero references means text input; one approved image means first-frame input. Each model controls which mode, MIME types, dimensions, aspect ratios, durations and advanced parameters are accepted. Unsupported inputs fail before creating a job. Seed is not accepted for Ark/Veo/MiniMax/Vidu in this version; inspect each model's `parameters` array.
 
 If an actual downloaded live result differs from the requested ratio by more than 1%, the backend retains the existing task and downloaded file privately, sets `phase=output_review_required` with `OUTPUT_ASPECT_RATIO_MISMATCH`, and publishes no version. Its transport-compatible `status=cancelled` means local publication/waiting is paused, not that the provider failed or was cancelled. Do not submit a replacement or use `job.retry`; inspect/reconcile the same existing task.
-
-## Agent chat and bounded project reads
-
-The authenticated `/api/agent/chat/:projectId` routes retain their snapshot,
-run, Stop, SSE, request-ID lookup and history semantics. Snapshot scope is now
-`chat_and_reviewed_timeline_edits` when the timeline reviewed-edit service is available
-(with legacy shot-only/inspection scopes retained for those injected services). Its `inspection` capability retains
-availability, schema version, catalog hash and the fixed
-two-model-request/one-read/8-KiB limits. The separate `edit` capability publishes
-the selected-shot schema/catalog and text/round limits described below. A separate
-`timelineEdit` capability describes the selected-clip move catalog and limits.
-The independent `timelineGainEdit` capability describes the selected-clip gain
-catalog and 0–2 range; it does not expand either earlier catalog.
-No view/lookup/history route starts inference or inspection.
-
-The existing send envelope remains strict: `requestId`, `instanceId`,
-`expectedSettingsRevision`, `expectedConversationRevision`, `message`, `consent`.
-Typed consent is unchanged: `{destination,protocol,model,context:'typed_chat_only'}`.
-Project-read consent additionally pins `context:'project_inspection'`, `projectId`,
-`schemaVersion`, `catalogHash`, `maxModelRequests`, `maxToolCalls` and
-`maxResultBytes` from the current capability. Extra authority fields are rejected.
-No HTTP endpoint accepts a branded scope, model step ID or executable tool grant.
-
-Inspection runs expose immutable `contextMode`/`provenance` and at most three
-projected `activity` entries. Existing snapshot/delta/terminal SSE types are
-unchanged; step transitions publish committed snapshots. Exact internal model
-bodies, provider output artifacts and credentials are not added to public run
-DTOs. Tool results are bounded inert JSON strings. Older typed runs remain
-readable and typed send requests remain compatible. Full execution/recovery,
-privacy and protocol contract: [Agent read tools](AGENT-READ-TOOLS.md).
-
-## Reviewed Agent shot-edit proposals
-
-The reviewed-edit increment adds a separate `selected_shot_edit` consent mode
-and authenticated proposal review routes. Its only business write is an
-explicitly approved `shot.update` title/prompt patch; creating a proposal does
-not apply it. Discovery is backend-persistent and independent of renderer
-session storage. Endpoint shapes, limits, states and current acceptance status:
-[reviewed selected-shot edits](AGENT-EDITS.md). These review endpoints are not
-business RPC operations or callable model tools.
-
-## Reviewed Agent selected-clip moves
-
-The separate `selected_timeline_clip_move` mode pins one saved clip and its
-timeline revision. Its only proposed patch is `{startFrame}` to the existing
-`timeline.clip.update` operation, after explicit human diff approval. Same-track
-non-overlap, source/duration/audio/geometry preservation and existing CAS/history
-apply. Proposal/recovery routes retain their existing authenticated shapes; no
-new public mutation or model approval endpoint is added. Full consent fields,
-bounded context, discriminated schema24 and historical receipt semantics:
-[reviewed timeline moves](AGENT-TIMELINE-MOVE.md).
-
-## Reviewed Agent selected-clip gain
-
-The separate `selected_timeline_clip_gain` mode permits one finite `{gain}`
-proposal in 0–2 for one saved owned clip with known audio. Consent pins the
-independent `timelineGainEdit` capability, target revision and exact displayed
-`reviewTarget`, including saved gain and track mute. The model receives only
-clip name/gain, track name/kind/mute, known audio presence and gain limits as
-project data. Its one proposal tool cannot choose IDs, approve or execute.
-
-Explicit human approval uses the existing authenticated review routes and exact
-`timeline.clip.update` gain patch, stable key, CAS and undo/redo. Definition v3
-adds no SQL migration or new public API/MCP/CLI authority. Fresh target checks,
-the actual pre-POST fence, 30 KiB complete first request/64 KiB continuation
-bounds, historical acknowledgement, restored holds and pending acceptance:
-[reviewed selected-clip gain](AGENT-TIMELINE-GAIN.md).
 
 ## Saved source ranges
 

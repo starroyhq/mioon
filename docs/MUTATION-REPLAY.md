@@ -5,7 +5,7 @@ Date: 2026-10-09 (UTC). Baseline: `dbf3b93`.
 Status: committed as `2ba58ee` after independent 1,160-test acceptance. This is a
 shared business-service foundation for existing UI, HTTP, CLI and MCP callers.
 That release exposed only the built-in Agent's four approved read operations.
-The later [reviewed-edit increment](AGENT-EDITS.md) separately adds its durable
+The later reviewed-edit increment separately adds its durable
 proposal and approval boundary.
 
 ## Original six operations

@@ -10,7 +10,6 @@ import {getWorkspaceRestoreContext} from '@mioon/business/workspace-restore-sche
 import {isUnavailableRestoredRoute,workspaceRestoreError} from '@mioon/business/workspace-restore-policy';
 import http from 'node:http';
 import type {IncomingMessage, ServerResponse, Server} from 'node:http';
-import {createChatRuntime} from '@mioon/business/agent/chat-runtime';
 import {createAgentTaskRuntime} from '@mioon/business/agent/task-runtime-v2';
 import type {AgentTaskRuntime} from '@mioon/business/agent/task-runtime-v2';
 import {createAgentTaskTools} from '@mioon/business/agent/task-tools-v2';
@@ -30,7 +29,6 @@ import {createExportFileRecovery} from './export-file-recovery.ts';
 import packageMetadata from '../../../package.json' with {type:'json'};
 import {deriveAgentEndpoint} from '../../../packages/contracts/src/agent-protocol.ts';
 import {isRestoredWorkspaceSchemaSince} from '../../../packages/contracts/src/workspace-schema-lineage.ts';
-import {createAgentEditService} from '@mioon/business/agent/edit-proposals';
 import {createEditTasks} from '@mioon/business/edit-tasks';
 import {createLocalDrafts} from '@mioon/business/local-drafts';
 import {createLastProject,readLastProjectTarget} from '@mioon/business/last-project';
@@ -47,8 +45,6 @@ import {createLastProjectHttp} from './last-project-http.ts';
 import {createProjectPackageHttp} from './project-package-http.ts';
 import {createProjectPackageService} from '@mioon/business/project-package/service';
 import {createLocalDeliveryHttp} from './local-delivery-http.ts';
-import {createChatHttp} from './chat-http.ts';
-import type {ChatHttp} from './chat-http.ts';
 import {createEditTasksHttp} from './edit-tasks-http.ts';
 import {createImageHttp} from './image-http.ts';
 import {createVideoHttp} from './video-http.ts';
@@ -95,7 +91,6 @@ type OrdinaryServices = Services;
 type ServiceCall = (operation: string, input: unknown, context?: Record<string, unknown>) => Promise<unknown>;
 type ServiceDrain = () => Promise<void>;
 type EditTasks = ReturnType<typeof createEditTasks>;
-type ChatRuntime = ReturnType<typeof createChatRuntime>;
 type VersionComparisonMedia = ReturnType<typeof createVersionComparisonMediaHttp>;
 type AgentAuthorizations = ReturnType<typeof createAgentAuthorizations>;
 type UiPreferences = ReturnType<typeof createUiPreferences>;
@@ -111,12 +106,8 @@ type LastProject = ReturnType<typeof createLastProject>;
 type ExportFileRecovery = ReturnType<typeof createExportFileRecovery>;
 type WorkspacePreferences = ReturnType<typeof createWorkspacePreferences>;
 type LocalDraftHttpHandler = ReturnType<typeof createLocalDraftHttp>;
-type ChatRuntimeOptions = Parameters<typeof createChatRuntime>[0];
 type EditTasksOptions = Parameters<typeof createEditTasks>[0];
 type TaskFault = NonNullable<EditTasksOptions extends {fault?: infer F} ? F : never>;
-type AgentEditServiceOptions = Parameters<typeof createAgentEditService>[0];
-type AgentEditFault = NonNullable<AgentEditServiceOptions extends {fault?: infer F} ? F : never>;
-type AgentGatewaySeam = ChatRuntimeOptions extends {gateway?: infer G} ? NonNullable<G> : never;
 interface SecretOperationOptions {signal?: AbortSignal | undefined; isActive?: (() => boolean) | undefined}
 interface ImageSecretStorageState {readonly persistentAvailable: boolean; readonly sessionScope: 'server'; readonly reasonCode: 'OS_SECRET_STORE_UNAVAILABLE' | 'LINUX_BASIC_TEXT' | null}
 /** Trusted utility-only codec surface; never supplied from HTTP/environment. */
@@ -129,7 +120,7 @@ interface ImageSecretCodecPort {
 /** Persisted Agent settings surface, whether composed locally or proxied from
  * the trusted desktop main process. It is never HTTP/environment-configurable.
  * The proxy returns already-sanitized values, hence the unknown result types;
- * createChatRuntime re-sanitizes every read at this boundary. */
+ * createAgentTaskRuntime re-sanitizes every read at this boundary. */
 interface AgentSettingsPort {
   get(options?: SettingsContextOptions & {selfPort?: number | undefined}): Promise<unknown>;
   put(input: unknown, options?: SettingsContextOptions & {selfPort?: number | undefined}): Promise<unknown>;
@@ -154,9 +145,13 @@ export interface ServerOptions {
   imageNetwork?: ImageNetworkSeam;
   comfyNetwork?: ComfyNetworkSeam;
   comfyModule?: ComfyModuleMode;
-  chatGateway?: AgentGatewaySeam;
+  /** Has no effect: nothing reads it since the v1 assistant was removed. Mio's
+   * model calls go through the v2 task gateway, which tests replace with
+   * `taskGatewayV2`. It is still accepted only so test fixtures that pass a
+   * deny-all gateway keep compiling. It will be deleted: the W2 test rewrites
+   * stop passing it, and S0 removes this option when it rewrites startServer. */
+  chatGateway?: unknown;
   taskGatewayV2?: TaskGateway;
-  agentEditFault?: AgentEditFault;
   taskFault?: TaskFault;
   /** Trusted in-process tests only; never HTTP/environment. Receives this
    * server's InspectProject once its store is open. */
@@ -225,9 +220,7 @@ async function composeServer({
   imageNetwork, // Trusted synthetic DNS/HTTPS fixture only; never HTTP/environment.
   comfyNetwork, // Trusted synthetic HTTP fixture only; never HTTP/environment.
   comfyModule = 'load', // Trusted launcher/distribution composition, never HTTP/RPC input.
-  chatGateway, // Trusted synthetic QA injection; never configurable through HTTP or environment.
   taskGatewayV2, // Trusted synthetic v2 QA injection; never HTTP/environment.
-  agentEditFault, // Trusted crash-boundary tests only; never HTTP/environment configuration.
   taskFault, // Trusted durable-edit crash-boundary tests only; never HTTP/environment configuration.
   inspectProject, // Trusted in-process test inspection only; never HTTP/environment configuration.
   localDraftChannel = 'web', // Trusted desktop build identity only; never HTTP/environment configuration.
@@ -260,8 +253,8 @@ async function composeServer({
     busy:()=>{throw new AppError('PROJECT_DELETE_BUSY','工作区仍有媒体、请求或文件传输在执行，请结束后再删除项目。',409);}});
   let worker: ReturnType<typeof startWorker> | undefined, server: Server | undefined, agentSettings: AgentSettingsPort | undefined,
     agentAuthorizations: AgentAuthorizations | undefined, uiPreferences: UiPreferences | undefined, imageSettings: ImageSettings | undefined,
-    customImageSettings: CustomImageSettings | undefined, videoSettings: VideoSettings | undefined, comfySettings: ComfySettings | undefined, chatRuntime: ChatRuntime | undefined,
-    chatHttp: ChatHttp | undefined, taskRuntimeV2: AgentTaskRuntime | undefined, taskToolsV2: AgentTaskTools | undefined,
+    customImageSettings: CustomImageSettings | undefined, videoSettings: VideoSettings | undefined, comfySettings: ComfySettings | undefined,
+    taskRuntimeV2: AgentTaskRuntime | undefined, taskToolsV2: AgentTaskTools | undefined,
     taskHttpV2: ReturnType<typeof createAgentTaskHttp> | undefined, agentDiagnosticsHttp:ReturnType<typeof createAgentDiagnosticsHttp>|undefined, editTasks!: EditTasks;
   let services!: Services;
   let serviceCall!: ServiceCall;
@@ -426,12 +419,9 @@ async function composeServer({
         localDrafts.removeProject(projectId);localDelivery.removeProject(projectId);localShotText.removeProject(projectId);uiPreferences!.removeProject(projectId);
       },
     });
-    const editService = createAgentEditService({store: ordinaryStore, services: ordinary, ...(agentEditFault ? {fault: agentEditFault} : {})});
     // The trusted desktop proxy validates and sanitizes these values itself; the
-    // local engine exposes the same dependency. createChatRuntime re-sanitizes reads.
+    // local engine exposes the same dependency. createAgentTaskRuntime re-sanitizes reads.
     const chatSettings = agentSettings as unknown as AgentSettingsService;
-    chatRuntime = createChatRuntime({store: ordinaryStore, agentSettings: chatSettings, authorizations:agentAuthorizations, editService, inspection: ordinary.inspection, ...(chatGateway ? {gateway: chatGateway, mode: 'simulated'} : {}), selfPort: () => listeningPort()});
-    chatHttp = createChatHttp({runtime: chatRuntime});
     taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary});
     taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
@@ -511,7 +501,6 @@ async function composeServer({
         if (await comfyHttp(req,res,url)) return;
         if (await imageHttp(req,res,url)) return;
         if (await videoHttp(req,res,url)) return;
-        if (await chatHttp?.handle(req, res, url)) return;
         if (await taskHttpV2?.handle(req,res,url)) return;
         if (await agentDiagnosticsHttp?.(req,res,url)) return;
         if (await editTasksHttp(req, res, url)) return;
@@ -626,8 +615,6 @@ async function composeServer({
       // Fence all async RPC/worker continuations before taking any child snapshot.
       shutdown.abort();
       // Abort inference and close long-lived SSE BEFORE HTTP drain and SQLite.
-      chatRuntime?.close();
-      chatHttp?.close();
       taskRuntimeV2?.close();taskHttpV2?.close();
       const drain = server ? new Promise<void>((resolve, reject) => server!.close(error => error ? reject(error) : resolve())) : Promise.resolve();
       const forceDrain = setTimeout(() => server?.closeAllConnections(), 3000);
@@ -646,7 +633,6 @@ async function composeServer({
     return {url: `http://127.0.0.1:${actualPort}`, port: actualPort, token, tokenFile, dataDir: root,setBackupDirectory:(directory:string)=>{if(restored||shutdown.signal.aborted)throw workspaceRestoreError();const ordinary=services as OrdinaryServices;ordinary.backups.assertMutationAllowed();return ordinary.configuration.setBackupDirectory(directory);}, close};
   } catch (error) {
     shutdown.abort();
-    chatRuntime?.close(); chatHttp?.close();
     taskRuntimeV2?.close();taskHttpV2?.close();
     const drain = server?.listening ? new Promise<void>(resolve => server!.close(() => resolve())) : Promise.resolve();
     server?.closeAllConnections();

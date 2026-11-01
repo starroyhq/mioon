@@ -13,7 +13,6 @@ import { message } from '../packages/i18n/src/index.ts';
 import {agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion} from '../apps/web/src/agent-tasks-v2.ts';
 import * as questions from '../apps/web/src/agent-task-questions.ts';
 import * as reviews from '../apps/web/src/agent-task-reviews.ts';
-import {AGENT_TASK_STATUSES} from '../packages/contracts/src/agent-tasks-v2.ts';
 const nodes=(value: Tree): Element[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
 const source=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',import.meta.url),'utf8');
 const projectId='11111111-1111-4111-8111-111111111111',stepId='22222222-2222-4222-8222-222222222222';
@@ -210,19 +209,6 @@ test('conflict comparison shares target, current and planned rows before its exp
 
 test('background conflicts use the host-marked completed step rather than guessing from later completed tools',()=>{
  const h=harness({status:'paused'});try{h.state.snapshot!.run.pauseReason='conflict';const blocked=h.state.snapshot!.steps[0];blocked.approvalRequired=false;blocked.status='completed';blocked.display={operation:'generation.submit',targets:[{kind:'shot',id:stepId,name:'Original blocked scene'}],targetCount:1,fields:[{targetIndex:0,property:'durationSeconds',unit:'seconds',after:4}],conflict:true};h.state.snapshot!.steps.push({...blocked,id:'later-step',display:{...blocked.display,conflict:undefined,targets:[{kind:'shot',id:projectId,name:'Unrelated later scene'}]}});h.render();const text=renderedText(h.find('agent-task-paused'));assert.ok(text.includes('Original blocked scene'));assert.ok(!text.includes('Unrelated later scene'));assert.ok(text.includes(translate('zh-Hans','agent.panel.originalPlan')));}finally{h.unmount();}
-});
-
-test('the selected legacy conversation is read-only and never exposes proposal JSON or raw status names',()=>{
-  const legacySource=readFileSync(new URL('../apps/web/src/AgentLegacyHistory.tsx',import.meta.url),'utf8');
-  assert.doesNotMatch(legacySource,/createAgentChatClient|createAgentEditsClient|\.apply\(|\.reject\(|\.start\(|\.stop\(/u);
-  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
-    const react={createElement:(type: string,props: Partial<ElementProps>|null,...children: Tree[])=>({type,props:{...props,children}})};(react as typeof react & {default?: unknown}).default=react;const module: Module={exports:{}};
-    Function('module','exports','require',transformSync(legacySource,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
-      if(id==='react')return react;if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(locale)};if(id.includes('workbench-controls'))return{WorkbenchButton:'button'};if(id.includes('contracts/src/agent-tasks-v2'))return{AGENT_TASK_STATUSES};if(id==='./agent-task-presentation.ts')return{taskOperationTitle:presentation.taskOperationTitle};if(id==='./agent-edits.ts')return{agentEditStatusDescriptor:()=>message('agent.proposal.state.applied')};throw Error('Unexpected import '+id);
-    });
-    const conversation={runs:[{id:'old-run',userText:'Earlier question',assistantText:'Earlier reply',status:'completed'}],proposals:[{id:'old-proposal',operation:'shot.update',status:'applied',diff:{secret:'PRIVATE_DIFF_MUST_STAY_HIDDEN',targetId:'PRIVATE_TARGET'}}],chatCursor:null,editCursor:null};
-    const tree: Tree=module.exports.default!({conversation});const text=renderedText(tree);assert.match(text,/Earlier question.*Earlier reply/u);assert.ok(text.includes(translate(locale,'agent.task.status.completed')));assert.ok(text.includes(presentation.taskOperationTitle('shot.update',locale)));assert.doesNotMatch(text,/PRIVATE_|shot\.update|\bcompleted\b/u);assert.ok(!nodes(tree).some((node)=>node.type==='pre'||node.type==='badge'));
-  }
 });
 
 test('selecting legacy history keeps the project recovery owner mounted without exposing its controls or a restored-workspace label',()=>{

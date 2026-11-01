@@ -11,7 +11,7 @@ import {agentTaskExplicitTargets,agentTaskChangeWasModified,projectAgentTaskUndo
 import {setAgentTaskEffectGate,resumeAgentTaskJobs,stopAgentTaskJobs} from './task-effects-v2.ts';
 import {AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentCredentialResult,sanitizeAgentSettingsResult} from './settings.ts';
 import type {AgentSettingsService} from './settings.ts';
-import type {ChatAuthorizations} from './chat-runtime.ts';
+import type {ChatAuthorizations} from './authorization-gate.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';

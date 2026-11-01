@@ -97,8 +97,6 @@ const textSites = {
   'tests/float-checked-export-transports.test.mjs': 2,
   // CLI JSON/stdout, CLI stderr and SDK stderr; each has continuous decoding before data.
   'tests/export-sample-peak-transports.test.mjs': 3,
-  // One explicit loop listener covers stdout JSON and stderr text, both decoded before data.
-  'tests/agent-timeline-gain-preservation.test.mjs': 1,
   'tests/selected-range-transports.test.mjs': 2,
   'tests/local-shot-text-process-recovery.test.mjs': 2,
   'tests/local-delivery-process-recovery.test.mjs': 2,
@@ -115,12 +113,10 @@ const textSites = {
   "tests/workspace-origin-transports.test.mjs": 2,
   "tests/workspace-backup-cli.test.mjs": 2,
   "tests/workspace-backup-inspection-transports.test.mjs": 3,
-  "tests/agent-chat-durable-crash.test.mjs": 1,
   // The v2 crash harness collects only continuously decoded child stderr.
   'tests/agent-task-crash-v2.test.ts': 1,
   'tests/agent-task-goal-repair-v2.test.ts': 1,
   "tests/agent-edit-scope.test.mjs": 1,
-  "tests/agent-tool-journal-crash.test.mjs": 2,
   "tests/asset-disposition-transports.test.mjs": 2,
   "tests/asset-dispositions.test.mjs": 1,
   "tests/cli-mcp-key-recovery-transport.test.mjs": 3,

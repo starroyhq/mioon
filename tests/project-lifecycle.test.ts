@@ -1,6 +1,5 @@
 import {CURRENT_ORDINARY_SCHEMA} from './helpers/workspace-schema-current.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
-import type {TypedRuntime,RuntimeSnapshot} from './helpers/strict-agent-workspace-types.ts';
 import type {OrdinaryLocalDrafts,OrdinaryLocalDelivery} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 type TypedLifecycle=Omit<ReturnType<typeof createProjectLifecycleServices>,'handlers'>&{handlers:{[O in 'project.rename'|'project.delete']:(input:unknown)=>ServiceResponse<O>}};
@@ -21,10 +20,9 @@ import {createLocalShotText} from '../packages/business/src/local-shot-text.ts';
 import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-recovery.ts';
 import {projectRenameInputSchema,projectDeleteInputSchema} from '../packages/contracts/src/project-lifecycle.ts';
 import {schemas} from '@mioon/contracts';
-import {IMAGE_MODELS,IMAGE_FIXED_OPTIONS,deriveAgentEndpoint} from '@mioon/contracts';
+import {IMAGE_MODELS,IMAGE_FIXED_OPTIONS} from '@mioon/contracts';
 import {setTimeout as pause} from 'node:timers/promises';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
-import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
 import type { LocalDeliveryEnvelope,LocalDeliveryExecution } from '@mioon/contracts/local-delivery';
@@ -162,12 +160,22 @@ test('another project’s terminal image state is not parsed as a JSON payload o
 });
 
 test('completed chat journals are removed with correct shared quota accounting while global grants remain',{timeout:30000},async t=>{
-  const f=await fixture(t),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});let snapshot:Awaited<ReturnType<typeof settings.get>>|RuntimeSnapshot=await settings.get();await settings.put({expectedRevision:0,configuration:snapshot.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_PROJECT_DELETE_KEY'}});
-  const authorizations=createTestAuthorizations(f.store,settings);await authorizeTestScope(authorizations);const runtime=(createChatRuntime({store:f.store,agentSettings:settings,authorizations,mode:'simulated',selfPort:()=>4318,gateway:async function*(){yield {type:'delta',text:'Completed synthetic answer'};yield {type:'done',finishReason:'stop'};}}) as unknown as TypedRuntime);t.after(async()=>{runtime.close();await settings.close();});
+  const f=await fixture(t),settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}});const snapshot=await settings.get();await settings.put({expectedRevision:0,configuration:snapshot.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_PROJECT_DELETE_KEY'}});
+  const authorizations=createTestAuthorizations(f.store,settings);await authorizeTestScope(authorizations);t.after(async()=>{await settings.close();});
+  // The v1 chat runtime is gone but its journal tables stay until the workspace
+  // database is retired. Write one completed journal per project and charge the
+  // shared quota the way project deletion refunds it: row bytes plus the thread.
+  let runs=0,bytes=0;
   for(const project of [f.project,f.other]){
-    snapshot=await runtime.snapshot(project.id);const input={requestId:randomUUID(),instanceId:snapshot.instanceId,expectedSettingsRevision:snapshot.settings.revision,expectedConversationRevision:snapshot.revision,message:'Only this typed project message',consent:{destination:deriveAgentEndpoint(snapshot.settings.configuration),protocol:snapshot.settings.configuration.protocol,model:snapshot.settings.configuration.model,context:'typed_chat_only'}},sent=await runtime.send(project.id,input);
-    const deadline=Date.now()+5000;while(runtime.get(project.id,sent.run.id,sent.instanceId).run.status==='running'&&Date.now()<deadline)await pause(5);assert.equal(runtime.get(project.id,sent.run.id,sent.instanceId).run.status,'completed');
+    const threadId=randomUUID(),requestId=randomUUID(),runId=randomUUID(),message='Only this typed project message';
+    const run={id:runId,projectId:project.id,threadId,requestId,status:'completed',userText:message,assistantText:'Completed synthetic answer',lastEventId:1,modelRequestId:randomUUID(),modelRequestState:'completed',modelRequestStartedAt:stamp,configuration:snapshot.configuration,createdAt:stamp,updatedAt:stamp};
+    f.store.db.prepare('INSERT INTO agent_chat_threads VALUES(?,?,?,?)').run(threadId,project.id,1,2);
+    f.store.db.prepare('INSERT INTO agent_chat_requests VALUES(?,?,?,?,?,?,?)').run(requestId,project.id,threadId,runId,'synthetic-fingerprint',JSON.stringify({message}),1024);
+    f.store.db.prepare('INSERT INTO agent_chat_runs VALUES(?,?,?,?,?,?,?,?)').run(runId,project.id,threadId,requestId,1,'completed',JSON.stringify(run),1024);
+    f.store.db.prepare('INSERT INTO agent_chat_events VALUES(?,?,?,?)').run(runId,1,JSON.stringify({type:'done',finishReason:'stop'}),1024);
+    runs++;bytes+=3*1024+Buffer.byteLength(JSON.stringify({id:threadId,projectId:project.id,revision:0,nextPosition:1}));
   }
+  f.store.db.prepare('UPDATE agent_chat_quota SET runs=?,bytes=?,reservedBytes=0 WHERE id=1').run(runs,bytes);
   const before=f.store.db.prepare('SELECT * FROM agent_chat_quota').get(),grants=readFileSync(path.join(f.root,'agent-authorizations-v1.json'));
   assert.equal(f.lifecycle.handlers!['project.delete'](f.removeInput()).cleanup,'complete');
   const after=f.store.db.prepare('SELECT * FROM agent_chat_quota').get();assert.equal(after!.runs,1);assert.equal(after!.reservedBytes,0);assert.ok((after!.bytes as number)>0&&(after!.bytes as number)<(before!.bytes as number));assert.equal(f.store.db.prepare('SELECT count(*) n FROM agent_chat_runs WHERE projectId=?').get(f.project.id)!.n,0);assert.equal(f.store.db.prepare('SELECT count(*) n FROM agent_chat_runs WHERE projectId=?').get(f.other.id)!.n,1);assert.deepEqual(readFileSync(path.join(f.root,'agent-authorizations-v1.json')),grants);

@@ -26,7 +26,7 @@ SDK 调用经过项目受控网络传输，继续执行派发前授权、凭据�
 
 ```sh
 node --test tests/agent-anthropic-*.test.ts
-node --test tests/client-agent.test.ts tests/agent-task-storage-diagnostics-v2.test.ts tests/agent-timeline-gain-preservation.test.ts
+node --test tests/client-agent.test.ts tests/agent-task-storage-diagnostics-v2.test.ts
 pnpm typecheck
 pnpm build
 pnpm desktop:build
