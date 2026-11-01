@@ -30,4 +30,3 @@ export function originalRows(db: DatabaseSync, table: string, fields: readonly s
   const statement = db.prepare(`SELECT rowid AS originalRowid,${fields.map(quote).join(',')} FROM main.${quote(table)} ${where} ORDER BY rowid`);
   statement.setReadBigInts(true); return statement.all();
 }
-

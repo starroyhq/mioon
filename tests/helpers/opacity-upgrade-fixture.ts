@@ -61,4 +61,3 @@ export function copyFrozenUpgradeFixtureDatabase(source: string, seeded: {readon
     return logicalTables(db);
   } finally {db.close(); fs.chmodSync(file, 0o600);}
 }
-
