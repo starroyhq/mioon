@@ -20,3 +20,5 @@ export {
 } from './fingerprint.ts';
 export {admitMedia, checkMediaStatus, computeFullSha256, referenceForFile} from './access.ts';
 export type {MediaAccess, MediaFile, MediaStatusReason, MediaStatusResult} from './access.ts';
+export {MAX_RELINK_ASSETS, outsideProjectLocations, relinkMedia} from './relink.ts';
+export type {MediaAsset, RelinkedMedia, RelinkResult} from './relink.ts';
