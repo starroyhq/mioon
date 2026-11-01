@@ -53,6 +53,8 @@ mioon agent task checks --input '{"projectId":"PROJECT_UUID","runId":"RUN_UUID",
 
 `agent task history` 返回标题、更新时间、最后一轮状态、变化条数及轮次数，`cursor` 只用于原项目。`agent task conversation` 的成员 cursor 同时绑定项目与对话，不能跨对话复用。旧 v2 执行各自作为单轮对话；v1 仍按原只读接口读取。诊断运行不进入列表、历史或普通对话上下文，其原始审计记录仍能按 runId／requestId 查询。
 
+X4 起，工具步骤在执行前遇到目标冲突或手动编辑时不暂停：这一步不执行，当前保存的值交回 Mio（见 `docs/AGENT-TASKS-V2.md`）。只有后台工作发现的冲突、工具提交一部分以后才发现的冲突，以及旧版本留下的冲突暂停，才需要下面的 `skip`。
+
 `agent task skip` 只用于目标冲突或手动编辑导致的暂停：保留实际冲突目标，本轮之后显式涉及它的工具都返回 `TARGET_SKIPPED`，不产生 Change，也不释放用户草稿。其他目标和新一轮不受跳过名单限制。普通 `resume` 不能绕过此选择，会返回 `AGENT_TASK_SKIP_REQUIRED`；预算和用户暂停仍使用 `resume`。重启中断前还有未处理冲突时，`resume` 只恢复到冲突暂停，随后必须明确 `skip` 或 `stop`；未知结果仍须先按原 `resolve-unknown` 边界处置。选择 `stop` 不写跳过记录。
 
 补充说明属于当前轮，不创建新轮、不增加步骤。已持久化的模型 intent 和已发出的请求不会被改写；最终回复期间到达的补充说明会在同一 Run 预算内继续下一模型步骤，预算不足时保留排队记录，等待明确继续。结束后再发送应使用同对话的 `send`。note/skip 响应丢失后，只查询原 `agent task action-lookup`；回执中的 `result.state=rejected` 是已确定的拒绝，不能换请求 ID 自动重发。
