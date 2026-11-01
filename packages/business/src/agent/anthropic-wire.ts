@@ -8,9 +8,10 @@ import type {ReadToolState, ToolCall, WireMessage} from './tool-wire.ts';
 import type {AgentTaskJson} from '@mioon/contracts/agent-tasks-v2';
 
 export type AnthropicTextBlock = {type: 'text'; text: string};
+export type AnthropicThinkingBlock = {type: 'thinking'; thinking: string; signature: string} | {type: 'redacted_thinking'; data: string};
 export type AnthropicToolUseBlock = {type: 'tool_use'; id: string; name: string; input: Record<string, AgentTaskJson>};
 export type AnthropicToolResultBlock = {type: 'tool_result'; tool_use_id: string; content: string};
-export type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock;
+export type AnthropicContentBlock = AnthropicTextBlock | AnthropicThinkingBlock | AnthropicToolUseBlock;
 export type AnthropicMessage = {role: 'user' | 'assistant'; content: string | (AnthropicContentBlock | AnthropicToolResultBlock)[]};
 const MAX_ARGUMENT_BYTES = 32 * 1024;
 function invalid(): never {throw agentChatError('AGENT_CHAT_VALIDATION');}
@@ -23,9 +24,10 @@ function objectInput(value: unknown): Record<string, AgentTaskJson> {
   try {return parseModelToolArguments(JSON.stringify(value), MAX_ARGUMENT_BYTES);} catch {return invalid();}
 }
 
-/** Normalize only the implemented text/client-tool subset. No tool is executed
- * here, and native tool results must settle the preceding assistant calls in
- * their original order before another model request can be constructed. */
+/** Normalize only the implemented text/client-tool subset, plus assistant
+ * thinking retained from a thinking request. No tool is executed here, and
+ * native tool results must settle the preceding assistant calls in their
+ * original order before another model request can be constructed. */
 export function anthropicMessages(history: readonly unknown[]): {system?: string; messages: AnthropicMessage[]} {
   if (!Array.isArray(history) || !history.length) invalid();
   let system: string | undefined;
@@ -55,6 +57,15 @@ export function anthropicMessages(history: readonly unknown[]): {system?: string
         if (role === 'user' && resultIndex !== pending.length) invalid();
         textSeen = true;
         content.push({type: 'text', text: text(block.text)});
+      } else if (exactObject(block, ['type', 'thinking', 'signature']) && block.type === 'thinking' && role === 'assistant') {
+        // Retained thinking returns unchanged, in order and signed, within its round.
+        const signature = text(block.signature);
+        if (!signature) invalid();
+        content.push({type: 'thinking', thinking: text(block.thinking), signature});
+      } else if (exactObject(block, ['type', 'data']) && block.type === 'redacted_thinking' && role === 'assistant') {
+        const data = text(block.data);
+        if (!data) invalid();
+        content.push({type: 'redacted_thinking', data});
       } else if (exactObject(block, ['type', 'id', 'name', 'input']) && block.type === 'tool_use' && role === 'assistant') {
         const id = toolId(block.id), name = toolId(block.name);
         if (seen.has(id)) invalid();
