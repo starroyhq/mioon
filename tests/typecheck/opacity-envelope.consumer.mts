@@ -4,7 +4,6 @@ import {
 } from '../../packages/contracts/src/timeline-opacity-envelope.ts';
 import {createTimelineOpacityCandidateContracts, type OpacityCandidateContext} from '../../packages/contracts/src/timeline-opacity-candidate.ts';
 import {captureWorkspaceOpacityCandidateProfile, type WorkspaceOpacityCandidateProfile} from '../../packages/contracts/src/workspace-opacity-candidate.ts';
-import {clipDraftOpacityCandidateDiskV3Schema} from '../../packages/contracts/src/local-drafts-opacity-candidate.ts';
 
 type IsAny<T> = 0 extends (1 & T) ? true : false;
 const exactProfile: 'mioon-clip-linear-opacity-v1' = OPACITY_ENVELOPE_PROFILE;
@@ -32,5 +31,4 @@ const workspace: WorkspaceOpacityCandidateProfile = captureWorkspaceOpacityCandi
 workspace.schemaVersion = 44;
 // @ts-expect-error historical source40 is not an opacity restored43 source
 const oldPair: WorkspaceOpacityCandidateProfile = {schemaVersion: 43, sourceSchema: 40, profile: 'restored-local-v10'};
-const diskVersion: 3 = clipDraftOpacityCandidateDiskV3Schema.parse({}).version;
-void [exactLimit, nonAny, value, wrong, oldPair, diskVersion];
+void [exactLimit, nonAny, value, wrong, oldPair];

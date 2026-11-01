@@ -112,7 +112,7 @@ test('the controls render the frame, keyframes, static parts and the disabled st
 
 test('the inspector offers transforms on visual clips of editable workspaces only', () => {
   const inspector = readFileSync(resolve(root, 'apps/web/src/TimelineInspector.tsx'), 'utf8'), app = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
-  assert.match(inspector, /\{kind !== 'audio' && onSetTransform && <ClipTransformControls /);
-  assert.match(app, /onSetTransform=\{application \|\| clipInspectorRetained \|\| displayedClipInspector\.restored \? undefined : setTimelineClipTransform\}/);
+  assert.match(inspector, /\{kind !== 'audio' && <InspectorGroup groupKey="visual"(?:(?!<\/InspectorGroup>)[^])*?\{onSetTransform && <ClipTransformControls /);
+  assert.match(app, /onSetTransform=\{clipInspectorRetained \|\| displayedClipInspector\.restored \? undefined : setTimelineClipTransform\}/);
   assert.match(app, /mutateTimeline\('timeline\.clip\.setTransform', \{ clipId, transform \}/);
 });

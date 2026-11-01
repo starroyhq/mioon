@@ -76,8 +76,8 @@ test('the controls render the cut, the room, the saved transition and the disabl
 
 test('the inspector offers transitions on visual clips and App keeps the user told', () => {
   const inspector = readFileSync(resolve(root, 'apps/web/src/TimelineInspector.tsx'), 'utf8'), app = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
-  assert.match(inspector, /\{kind !== 'audio' && onSetTransition && <ClipTransitionControls /);
-  assert.match(app, /onSetTransition=\{application \|\| clipInspectorRetained \|\| displayedClipInspector\.restored \? undefined : setTimelineClipTransition\}/);
+  assert.match(inspector, /\{kind !== 'audio' && <InspectorGroup groupKey="visual"(?:(?!<\/InspectorGroup>)[^])*?\{onSetTransition && <ClipTransitionControls /);
+  assert.match(app, /onSetTransition=\{clipInspectorRetained \|\| displayedClipInspector\.restored \? undefined : setTimelineClipTransition\}/);
   assert.match(app, /mutateTimeline\('timeline\.clip\.setTransition', \{ clipId, transition \}/);
   assert.match(app, /maxFrames: clipTransitionRoom\(timeline\.clips, clip, sources\)/);
   // Another edit that drops a transition says so; undo, redo and the transition edit itself do not.

@@ -109,7 +109,7 @@ test('actual host binds selected saved clip and shared RPC; comparison/source ov
   assert.match(app, /savedClipLoudnessFields\(saved, dataRef.current!.assets, editing.selectedClipId\)/);
   assert.match(app, /clipLoudnessEpoch.current\+\+/); assert.match(app, /!previewAssetRef.current && !comparisonIdRef.current && !webSettingsOpen/);
   assert.match(app, /loudnessContext=\{clipLoudnessContext(?: as never)?\}/); assert.match(app, /loudnessInvocation=\{\(\) => pinNewWorkspaceIntent\(\{\}, workspaceRef.current\)\}/);
-  assert.match(inspector, /<ClipAudioControls[^>]*\/>/); assert.match(inspector, /\{!opacity && loudnessContext && <ClipLoudnessObservation/);
+  assert.match(inspector, /<ClipAudioControls[^>]*\/>/); assert.match(inspector, /\{loudnessContext && <ClipLoudnessObservation/);
   assert.match(inspector, /clipLoudnessDraftContext\(pass\(scopedContext\(\)\) as never, draftController\.getState\(\), visible\)/);
   assert.match(inspector, /rpc\('timeline.clip.loudness', input, options\)/);
   assert.match(api, /readTimelineClipLoudnessRpc\(input, \{ \.\.\.invocation, signal, fetch: fetcher \} as TimelineClipLoudnessWireOptions\)/);

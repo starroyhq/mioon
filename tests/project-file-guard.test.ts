@@ -19,7 +19,6 @@ const ALLOWED_OPENERS = [
   'packages/business/src/project-file/**',
   'packages/business/src/db.ts',
   'packages/business/src/workspace-*.ts',
-  'packages/business/src/opacity-*.ts',
   'apps/desktop/scripts/migration-restore-guard.ts',
   'packages/business/src/app-db/**',
 ];
@@ -95,7 +94,7 @@ test('detectOpeners finds every construction of DatabaseSync, also through alias
 
 test('the allow-list matches by prefix and wildcard, whether or not the entries exist', () => {
   for (const allowed of ['packages/business/src/project-file/connection.ts', 'packages/business/src/project-file/cross-file/install.ts',
-    'packages/business/src/db.ts', 'packages/business/src/workspace-restore.ts', 'packages/business/src/opacity-upgrade.ts',
+    'packages/business/src/db.ts', 'packages/business/src/workspace-restore.ts',
     'apps/desktop/scripts/migration-restore-guard.ts', 'packages/business/src/app-db/connection.ts']) {
     assert.ok(isAllowed(allowed), allowed);
   }

@@ -12,7 +12,6 @@ import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
-import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import {generationParameters} from '../apps/web/src/generation-settings.ts';
@@ -89,7 +88,6 @@ function createHarness(file: string, exportName = 'default') {
     './PreviewPlaybackControls.tsx': { default: 'PreviewPlaybackControls', __esModule: true },
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
     './preview-playback.ts': previewPlayback,
-    './opacity-candidate-render-presentation.ts': candidatePresentation,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
     './image-generation.ts': {imageEditSourceIssueDescriptor},
     './source-range-state.ts': sourceRanges,

@@ -18,7 +18,6 @@ import { assetKind } from './Timeline.tsx';
 import { useWorkspaceVisibility } from './workspace-visibility.tsx';
 import { exportHistoryDelivery } from './export-settings-state.ts';
 import { sourceFrameCount, sourcePositionFrame, sourceSeekMatchesTime, SOURCE_RANGE_FPS } from './source-range-state.ts';
-import { opacityCandidateRenderPresentation } from './opacity-candidate-render-presentation.ts';
 import type { AppAsset, AppTimeline, AppTimelineClip } from './App.tsx';
 import type { TimelineAudioPreviewView } from './use-timeline-audio-preview.ts';
 import type {MenuPlaybackControl} from './desktop-menu-client.ts';
@@ -77,9 +76,6 @@ export interface PreviewProps {
   /** Opens shot detection for the source video; the reason disables it when set. */
   onDetectScenes?: () => unknown;
   sceneDetectIssue?: import('../../../packages/i18n/src/index.ts').DisplayMessage | null;
-  opacityApplication?: unknown;
-  heldExportIds?: readonly string[];
-  candidateConnected?: boolean;
   /** The selected visual clip's transform box over the rendered timeline preview. */
   transformBox?: PreviewTransformBox | null;
 }
@@ -113,7 +109,7 @@ export function SourceFrameCaptureControl({ captureKey, inspect, subscribe, onCa
   return <div className="source-frame-capture"><Button type="button" variant="outline" size="sm" data-testid="source-frame-capture" disabled={captureBusy || submitting || ready?.key !== captureKey || !ready?.intent} onClick={capture}>{t('timeline.preview.capture')}</Button><span className="input-hint">{t('timeline.preview.captureHint')}</span></div>;
 }
 
-export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false, onDetectScenes, sceneDetectIssue = null, opacityApplication = null, heldExportIds = [], candidateConnected = false, transformBox = null }: PreviewProps): React.ReactElement {
+export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onBeforePlay, audioPreview, onRegisterMediaPause, visible = true, kind, onKind, asset, clip, timeline, job, pendingJob, playhead, onSeek, sourceScope, sourcePosition = 0, sourceSeek, onSourcePosition, onRender, busy, onCanvas, onImport, onSeed, canSeed = false, seedBusy = false, onCaptureFrame, captureBusy = false, onDetectScenes, sceneDetectIssue = null, transformBox = null }: PreviewProps): React.ReactElement {
   const { t, renderMessage } = useI18n();
   const {preferences} = useUiPreferences();
   const media = useRef<HTMLMediaElement | null>(null);
@@ -122,11 +118,9 @@ export default function Preview({ onRegisterMenuPlayback, onMenuStateChange, onB
   visible = visible && ancestorVisible;
   const visibleRef = useRef<boolean>(visible);
   const rendered = kind === 'timeline';
-  const candidate = opacityApplication !== null;
-  const candidateOutput = candidate && rendered ? opacityCandidateRenderPresentation(opacityApplication, job, {projectId: timeline?.projectId, timelineId: timeline?.id, connected: candidateConnected, heldExportIds}) as {previewHref?: string; downloadHref?: string} | null : null;
-  const ready = candidate ? Boolean(candidateOutput?.previewHref) : Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
+  const ready = Boolean(job && ['succeeded','completed','ready'].includes(job.status) && (job.url || job.assetId));
   const stale = Boolean(ready && job!.timelineRevision !== timeline?.revision);
-  const url = rendered ? ready ? candidate ? candidateOutput?.previewHref ?? '' : (job!.url || `/media/${job!.assetId}`) : '' : assetUrl(asset);
+  const url = rendered ? ready ? (job!.url || `/media/${job!.assetId}`) : '' : assetUrl(asset);
   const type: string = rendered ? 'video' : assetKind(asset);
   const mediaKey = `${kind}:${type}:${url}:${rendered ? job?.id || job?.timelineRevision : asset?.id || ''}:${clip?.id || ''}:${!rendered && !clip ? sourceScope || '' : ''}:${!rendered ? asset?.sha256 || '' : ''}`;
   const activeMedia = useRef<MediaBinding | null>(null);

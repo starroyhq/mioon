@@ -114,7 +114,6 @@ const textSites = {
   "tests/helpers/workspace-restore-offline-fixture.ts": 2,
   "tests/workspace-origin-transports.test.mjs": 2,
   "tests/workspace-backup-cli.test.mjs": 2,
-  "tests/opacity-candidate-backup-cli.test.mjs": 2,
   "tests/workspace-backup-inspection-transports.test.mjs": 3,
   "tests/agent-chat-durable-crash.test.mjs": 1,
   // The v2 crash harness collects only continuously decoded child stderr.
@@ -189,7 +188,6 @@ const textSites = {
   'tests/timeline-loudness-apply-transports.test.mjs': 3,
   // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.
   'tests/timeline-mix-loudness-real-transports.test.mjs': 1,
-  'tests/opacity-upgrade-cli.test.mjs': 2,
   'tests/timeline-audio-role-transports.test.mjs': 5,
   'tests/timeline-ripple-transports.test.mjs': 2,
   // Project-file kernel children: the crash writer's stdout progress lines and the

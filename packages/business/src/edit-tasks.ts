@@ -4,9 +4,6 @@ import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {getWorkspaceRestoreContext as legacyRestoreContext} from './workspace-restore-schema.ts';
 import {refuseRestoredTask as legacyRefuseTask,safeWorkspaceRestoreError,assertWorkspaceRestoreOrigin as legacyAssertOrigin,assertRestoreRequestVacant as legacyRequestVacant} from './workspace-restore-policy.ts';
 import {withRestoreTaskInvocation as legacyTaskInvocation} from './workspace-restore-invocation.ts';
-import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
-import {createOpacityCandidateDomain} from './opacity-candidate-domain.ts';
-import {isOpacityCandidateServicesForStore} from './opacity-candidate-services.ts';
 import {randomUUID} from 'node:crypto';
 import {withTimelineFormatTaskDispatch} from './timeline-format-task-context.ts';
 import {isProxy} from 'node:util/types';
@@ -117,26 +114,20 @@ function prepareFields(value: unknown): {projectId: string;operation: string;inp
  * service outside a coordinator transaction. No model/RPC capability is added. */
 export function createEditTasks({store, services, fault = () => {}, limits = {}}: EditTaskDeps) {
  if (!store?.db || typeof store.tx !== 'function' || typeof services?.call !== 'function' || typeof fault !== 'function') corrupt();
- const opacity=getOpacityCandidateAssembly(store),domain=opacity?createOpacityCandidateDomain(store):null;
- if(opacity&&!isOpacityCandidateServicesForStore(store,services))corrupt();
- const restored=opacity?opacity.getRestoreContext():legacyRestoreContext(store);
+ const restored=legacyRestoreContext(store);
  const refuseRestoredTask=(target: unknown,taskId?: string,projectId?: string): void=>{
-  if(opacity){opacity.refuseTask(taskId,projectId);return;}
   legacyRefuseTask(target as never,taskId,projectId);
  };
  const assertWorkspaceRestoreOrigin=(target: unknown,context: Record<string,unknown>): unknown=>{
-  if(opacity)return opacity.assertOrigin(context);
   return legacyAssertOrigin(target as never,context);
  };
  const assertRestoreRequestVacant=(target: unknown,operation: string,input: Record<string,unknown>): void=>{
-  if(opacity){opacity.assertRequestVacant(operation,input);return;}
   legacyRequestVacant(target as never,operation,input);
  };
  const withRestoreTaskInvocation=(target: unknown,row: EditTaskRow,options: {signal?: AbortSignal},callback: ()=>unknown): unknown=>{
-  if(opacity)return opacity.withTaskInvocation(row,options,callback);
   return legacyTaskInvocation(target as never,row as never,options,callback);
  };
- const createTimelineRecoveryBoundary=(target: DatabaseSync,input: Record<string,unknown>): TimelineRecoveryBoundary=>domain?domain.boundary(input) as unknown as TimelineRecoveryBoundary:legacyTimelineBoundary(target,input as TimelineRecoveryInput);
+ const createTimelineRecoveryBoundary=(target: DatabaseSync,input: Record<string,unknown>): TimelineRecoveryBoundary=>legacyTimelineBoundary(target,input as TimelineRecoveryInput);
  const select=`SELECT ${columns}${restored?',executionEpoch':''} FROM edit_tasks`;
  const {db} = store, bounds: Record<string,number> = {...EDIT_TASK_LIMITS,...limits};
  for (const key of Object.keys(EDIT_TASK_LIMITS)) if (!integer(bounds[key]) || bounds[key] > (EDIT_TASK_LIMITS as Readonly<Record<string,number>>)[key]) invalid();
@@ -144,7 +135,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  let life = lifetimes.get(db); if (!life) { life = {instanceId:randomUUID(), active:new Set<string|null>()}; lifetimes.set(db,life); }
  const {instanceId} = life, active = new Set<Promise<unknown>>(), lifetime=new AbortController(); let closing = false;
  const open = (): void => { if (closing) corrupt(); };
- const owner = (): void => { if (!(opacity?opacity.ownsLock():ownsStoreLock(store))) fail('EDIT_TASK_OWNER_REQUIRED'); };
+ const owner = (): void => { if (!ownsStoreLock(store)) fail('EDIT_TASK_OWNER_REQUIRED'); };
  const inject = (label: string): void => { const result = fault(label); if (result && typeof (result as PromiseLike<unknown>).then === 'function') { (result as PromiseLike<unknown> & {catch?: (callback: ()=>void)=>unknown}).catch?.(()=>{}); corrupt(); } };
  const guarded = <T>(fn: ()=>T): T => { try { return fn(); } catch (error) { throw editTaskError((error as {code?: string})?.code as string); } };
  const readOnly = <T>(fn: ()=>T): T => {
@@ -154,14 +145,12 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
  const project = (projectId: string): void => { if (!uuid(projectId)) invalid(); if (!db.prepare('SELECT 1 FROM projects WHERE id=?').get(projectId)) fail('EDIT_TASK_NOT_FOUND'); createOwnedMediaGraphReader(db,projectId); };
  function parseIntent(operation: string, input: unknown, projectId: string): PreparedIntent {
   if (!DURABLE_EDIT_OPERATIONS.includes(operation) || !uuid(projectId)) invalid();
-  let exact: Record<string, unknown>&{projectId?: unknown;requestId?: unknown};
-  if(domain){try{exact=domain.captureIntent(operation,input).input as Record<string, unknown>;}catch{invalid();}}
-  else exact=plain(input,0,{nodes:0},envelopeArrayPath(operation)) as Record<string, unknown>;
+  const exact: Record<string, unknown>&{projectId?: unknown;requestId?: unknown}=plain(input,0,{nodes:0},envelopeArrayPath(operation)) as Record<string, unknown>;
   const text = JSON.stringify(exact);
   if (Buffer.byteLength(text) > bounds.inputBytes) fail('EDIT_TASK_LIMIT');
   const schema=(schemas as Record<string,{safeParse(value: unknown):{success: boolean}}>)[operation];
-  if (exact.projectId !== projectId || !domain&&!schema.safeParse(exact).success) invalid();
-  if(!domain){assertTimelineAudioRoleWorkspace(db,exact);assertTimelineVolumeEnvelopeWorkspace(db,exact);}
+  if (exact.projectId !== projectId || !schema.safeParse(exact).success) invalid();
+  assertTimelineAudioRoleWorkspace(db,exact);assertTimelineVolumeEnvelopeWorkspace(db,exact);
   return {input:exact as Record<string,unknown>&{projectId:string;requestId:string},text,requestId:exact.requestId as string,digest:hash({operation,input:exact}),lane:editTaskLane(operation) as string};
  }
  function decode(row: EditTaskRow|undefined, projectId: string): DecodedTask {
@@ -174,7 +163,7 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
   const task: TaskRecord = {id:row.id,projectId:row.projectId,operation:row.operation,input,requestId:row.requestId,digest:row.digest,lane:row.lane,
    status:row.status,revision:row.revision,createdAt:row.createdAt,updatedAt:row.updatedAt,acknowledged:row.acknowledged===1,origin:row.origin,
    ...(row.errorCode===null?{}:{errorCode:row.errorCode})};
-  if (!(domain?domain.isTask(task):isEditTask(task)) || !integer(row.position) || row.bytes!==EDIT_TASK_LIMITS.rowBytes || ![0,1].includes(row.acknowledged as number) ||
+  if (!isEditTask(task) || !integer(row.position) || row.bytes!==EDIT_TASK_LIMITS.rowBytes || ![0,1].includes(row.acknowledged as number) ||
       intent.digest!==row.digest || intent.requestId!==row.requestId || intent.lane!==row.lane ||
       (row.claim===null)!==(row.claimInstance===null) || row.claim!==null&&(!uuid(row.claim)||!uuid(row.claimInstance)) ||
       (row.status==='applied')!==(row.receiptDigest!==null) || row.receiptDigest!==null&&!digest(row.receiptDigest) ||
@@ -277,11 +266,10 @@ export function createEditTasks({store, services, fault = () => {}, limits = {}}
    open();owner();
    // Private storage59 preserves captured history only; do not persist a new
    // executable intent before the shared domain dispatch can reject it.
-   if(restored&&!opacity&&readCurrentWorkspaceRole(db)==='storage-private-59-evidence')refuseRestoredTask(store);
-   let args: {projectId: string;operation: string;input: Record<string,unknown>;origin: string};
-   if(domain){try{args=domain.capturePrepare(input) as unknown as typeof args;}catch{invalid();}}else args=prepareFields(input);
+   if(restored&&readCurrentWorkspaceRole(db)==='storage-private-59-evidence')refuseRestoredTask(store);
+   const args: {projectId: string;operation: string;input: Record<string,unknown>;origin: string}=prepareFields(input);
    if(!['new','legacy_session'].includes(args.origin))invalid();
-   if(restored&&args.operation==='timeline.clip.rippleRemove'&&(opacity?!opacity.rippleRemove:!isRestoredWorkspaceSchemaSince(44,restored.schemaVersion)))refuseRestoredTask(store);
+   if(restored&&args.operation==='timeline.clip.rippleRemove'&&!isRestoredWorkspaceSchemaSince(44,restored.schemaVersion))refuseRestoredTask(store);
    const intent=parseIntent(args.operation,args.input,args.projectId);
    if(restored){project(args.projectId);assertWorkspaceRestoreOrigin(store,context);if(args.origin!=='new')refuseRestoredTask(store);assertRestoreRequestVacant(store,args.operation,intent.input);if(args.operation==='timeline.loudness.apply')refuseRestoredTask(store);}
    const result=store.tx(()=>{

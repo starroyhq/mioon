@@ -19,9 +19,9 @@ const source=['imageEditScope','isImageEditIntentCurrent','openImageEdit'].map(n
 const id=(n: number)=>`f1000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const asset=()=>({id:id(2),projectId:id(1),name:'original.png',mimeType:'image/png',sha256:'a'.repeat(64),provenance:'user-import',sizeBytes:100,width:512,height:512});
 interface EntryIntent {projectId: string; epoch: number; [key: string]: unknown}
-interface EntryEnv {[key: string]: unknown; application: unknown; restored: boolean; online: boolean; auth: boolean; loading: boolean; showImage: boolean; webSettingsOpen: boolean; imageDraft: {current: unknown}; currentProject: {current: string}; projectEpoch: {current: number}; navigationEpoch: {current: number}; panelIntent: {current: number}; workspaceRef: {current: {id: string}}; clipDraftRef: {current: null | {hasPendingComposition?: () => boolean}}; imageEditIntentRef: {current: null | EntryIntent}; dataRef: {current: {assets: Record<string, unknown>[]}}}
+interface EntryEnv {[key: string]: unknown; restored: boolean; online: boolean; auth: boolean; loading: boolean; showImage: boolean; webSettingsOpen: boolean; imageDraft: {current: unknown}; currentProject: {current: string}; projectEpoch: {current: number}; navigationEpoch: {current: number}; panelIntent: {current: number}; workspaceRef: {current: {id: string}}; clipDraftRef: {current: null | {hasPendingComposition?: () => boolean}}; imageEditIntentRef: {current: null | EntryIntent}; dataRef: {current: {assets: Record<string, unknown>[]}}}
 function harness(): {env: EntryEnv; calls: unknown[][]; openImageEdit: (value: unknown) => Promise<boolean>; isImageEditIntentCurrent: (value: unknown) => boolean} {
- const calls: unknown[][]=[],env: EntryEnv={application:null,restored:false,online:true,auth:true,loading:false,showImage:false,webSettingsOpen:false,imageDraft:{current:true},
+ const calls: unknown[][]=[],env: EntryEnv={restored:false,online:true,auth:true,loading:false,showImage:false,webSettingsOpen:false,imageDraft:{current:true},
   currentProject:{current:id(1)},projectEpoch:{current:1},navigationEpoch:{current:2},panelIntent:{current:3},workspaceRef:{current:{id:'workspace'}},
   clipDraftRef:{current:null},imageEditIntentRef:{current:null},dataRef:{current:{assets:[asset()]}},captureImageEditIntent,imageEditIntentSource,
   workspaceOriginScope:(value: {id: string})=>value.id,requestId:()=>id(3),projectSessionReady:()=>true,msg:(key: string)=>({key}),
@@ -41,5 +41,5 @@ test('image edit entry presents a source-bound intent while leaving the existing
 test('image edit entry respects rejection, changed ownership and disconnected/composing admission',async()=>{
  const rejected=harness();rejected.env.guardNavigation=async()=>false;assert.equal(await rejected.openImageEdit(asset()),false);assert.equal(rejected.env.imageEditIntentRef.current,null);assert.equal(rejected.env.showImage,false);
  const changed=harness();changed.env.guardNavigation=async()=>{changed.env.navigationEpoch.current++;return true;};assert.equal(await changed.openImageEdit(asset()),false);assert.equal(changed.env.showImage,false);
- for(const patch of [{online:false},{auth:false},{restored:true},{application:{}},{clipDraftRef:{current:{hasPendingComposition:()=>true}}}]){const h=harness();Object.assign(h.env,patch);assert.equal(await h.openImageEdit(asset()),false);assert.equal(h.calls.length,0);}
+ for(const patch of [{online:false},{auth:false},{restored:true},{clipDraftRef:{current:{hasPendingComposition:()=>true}}}]){const h=harness();Object.assign(h.env,patch);assert.equal(await h.openImageEdit(asset()),false);assert.equal(h.calls.length,0);}
 });
