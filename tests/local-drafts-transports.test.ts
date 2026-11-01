@@ -13,6 +13,7 @@ interface ReadyMessage {type:'ready';pid:number;url:string}
 type ProcessMessage=ReadyMessage|{type:'reply';id:string;data:unknown}|{type:'fatal';message:string};
 type ExitInfo={code:number|null;signal:NodeJS.Signals|null};
 type SqlRow=Record<string,SQLOutputValue>;
+type Snapshot=Record<string,SqlRow[]>;
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,6 +36,7 @@ import {createTimelineRecoveryBoundary} from '../packages/business/src/timeline-
 import {acquireWorkspaceLock} from '../packages/business/src/workspace-lock.ts';
 import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
 import {syntheticPng} from './helpers/runway-unknown-fixture.ts';
+import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects} from './helpers/project-database.ts';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const workerPath = fileURLToPath(new URL('./fixtures/local-drafts-process.ts', import.meta.url));
@@ -104,11 +106,11 @@ function startProcess(root: string, auditPath: string) {
   child.send({type: 'start', root, token}, error => { if (error) rejectPending(error); });
   return {child, ready: ready.promise, exited: exited.promise,
     diagnostic: () => ({pid: child.pid, outputBytes, output, exitCode: child.exitCode, signalCode: child.signalCode}),
-    async ask<K extends "arm"|"observe">(type:K, fields:Record<string,unknown> = {}) {
+    async ask<K extends "arm"|"observe"|"snapshot">(type:K, fields:Record<string,unknown> = {}) {
       assert.equal(stopped, undefined, 'fixture IPC cannot contact a stopped child');
       const id = randomUUID(), reply = Promise.withResolvers(); pending.set(id, reply);
       child.send({type, id, ...fields}, error => { if (error) reply.reject(error); });
-      try { return await deadline(reply.promise, 'fixture IPC') as K extends 'arm'?{armed:string}:{phases:string[]}; } finally { pending.delete(id); }
+      try { return await deadline(reply.promise, 'fixture IPC') as K extends 'arm'?{armed:string}:K extends 'observe'?{phases:string[]}:Snapshot; } finally { pending.delete(id); }
     },
     async close() {
       if (stopped) return stopped;
@@ -141,12 +143,11 @@ async function fixture(t: test.TestContext) {
     ]) { try { await cleanup(); } catch (error) { failures.push(error); } }
     if (failures.length) throw new AggregateError(failures, 'Owned local-drafts fixture cleanup failed');
   });
-  const store = (openStore(root) as TypedStore);
-  let project:FixtureProject,other:FixtureProject,source:FixtureAsset,sourceRelativePath:string,timeline:FixtureTimeline;
+  const created = createServerProject(root, {name: 'Synthetic local clip draft'}), store = (created.store as unknown as TypedStore);
+  let project:FixtureProject,source:FixtureAsset,sourceRelativePath:string,timeline:FixtureTimeline;
   try {
     const services = (createServices(store, new Map()) as TypedServices);
-    project = await services.call('project.create', {name: 'Synthetic local clip draft'});
-    other = await services.call('project.create', {name: 'FOREIGN_DRAFT_PROJECT_MUST_NOT_LEAK'});
+    project = store.get('projects', created.projectId)!;
     // Exercise the real importer and its ownership/hash lineage, using a shared
     // inert PNG. No hand-written asset rows or fake generated-source lineage.
     source = await services.call('asset.import', {projectId: project.id, name: 'Synthetic imported pixel.png',
@@ -159,6 +160,9 @@ async function fixture(t: test.TestContext) {
       requestId: randomUUID(), assetId: source.id, trackId: timeline.tracks[0].id,
       startFrame: 0, durationFrames: 90, name: 'Original saved clip'});
   } finally { store.close(); }
+  // The server knows the other project too, so the tests can show its name never leaks.
+  const foreign = createServerProject(root, {name: 'FOREIGN_DRAFT_PROJECT_MUST_NOT_LEAK'}), other = (foreign.store as unknown as TypedStore).get('projects', foreign.projectId)!;
+  foreign.store.close();
   const key = {projectId: project.id, timelineId: timeline.id, clipId: timeline.clips[0].id};
   const start = async () => {
     backend = startProcess(root, auditPath); processes.push(backend);
@@ -211,13 +215,22 @@ async function fixture(t: test.TestContext) {
       await start();
       assert.notEqual(url, oldUrl); assert.notEqual(backend.child.pid, oldPid);
     },
+    // The test's own connection, only once the owned backend has exited. A crash
+    // leaves its lock behind, so that evidence is read without taking the lock.
     read<R>(fn:(db:DatabaseSync)=>R) {
-      const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
+      if (backend.child.exitCode === null && backend.child.signalCode === null) throw new Error('A running backend holds the project');
+      if (backend.child.signalCode === 'SIGKILL') {
+        const crashed = openStore(root, {lock: false});
+        try { return fn(crashed.db); } finally { crashed.close(); }
+      }
+      const db = openProjectDatabase(projectDirFor(root, project.id));
       try { return fn(db); } finally { db.close(); }
     },
-    snapshot() {
-      return this.read((db: DatabaseSync) => Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
-        .map(({name}) => [name, db.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all()])));
+    // Every table but SQLite's own: a running backend reads them on its own connection.
+    async snapshot(): Promise<Snapshot> {
+      if (backend.child.exitCode === null && backend.child.signalCode === null) return backend.ask('snapshot', {projectId: project.id});
+      return this.read((db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type, name}) => type === 'table' && !name.startsWith('sqlite_'))
+        .map(({name}) => [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))])));
     },
     async noEffects() {
       assert.equal(await readFile(auditPath, 'utf8'), '', 'draft work attempted no network/provider/media action');
@@ -242,7 +255,7 @@ const safeError = (result: WireResponse|undefined, f: Awaited<ReturnType<typeof 
 };
 
 test('clip drafts survive SIGKILL/new port with exact raw text; authenticated rediscovery stays read-only', {timeout: 30000}, async t => {
-  const f = await fixture(t), before = f.snapshot(), sidecar = path.join(f.root, 'local-drafts-v1.json');
+  const f = await fixture(t), before = await f.snapshot(), sidecar = path.join(f.root, 'local-drafts-v1.json');
   const initial = await f.draft();
   assert.equal(initial.revision, 0); assert.equal(initial.draft, null); assert.equal(initial.targetStatus, 'matching');
   assert.deepEqual(((await f.list()).items as unknown), []);
@@ -252,7 +265,7 @@ test('clip drafts survive SIGKILL/new port with exact raw text; authenticated re
   const input = write(f, initial, raw);
   const saved = await f.data('/api/local-drafts/clip', {method: 'PUT', input});
   assert.equal(saved.revision, 1); assert.deepEqual(saved.draft!.raw, raw); assert.deepEqual(saved.draft!.source, input.source);
-  assert.deepEqual(f.snapshot(), before, 'draft persistence cannot touch any main database table');
+  assert.deepEqual(await f.snapshot(), before, 'draft persistence cannot touch any main database table');
   assert.equal((await stat(sidecar)).mode & 0o777, 0o600);
   const bytes = await readFile(sidecar), diskBefore = await stat(sidecar);
   assert.equal(bytes.includes(Buffer.from(token)), false);
@@ -268,13 +281,13 @@ test('clip drafts survive SIGKILL/new port with exact raw text; authenticated re
     assert.deepEqual((await f.list()).items.map((item: { key: unknown; name: unknown; }) => ({key: item.key, name: item.name})), [{key: f.key, name: raw.name}]);
   }
   assert.ok(f.requests.every(value => value.method === 'GET'));
-  assert.deepEqual(f.snapshot(), before); assert.deepEqual(await readFile(sidecar), bytes);
+  assert.deepEqual(await f.snapshot(), before); assert.deepEqual(await readFile(sidecar), bytes);
   assert.equal((await stat(sidecar)).mtimeMs, diskBefore.mtimeMs);
   await f.noEffects();
 });
 
 test('concurrent windows and lost PUT/DELETE acknowledgements use strict CAS across process crashes', {timeout: 30000}, async t => {
-  const f = await fixture(t), initial = await f.draft(), before = f.snapshot();
+  const f = await fixture(t), initial = await f.draft(), before = await f.snapshot();
   const candidates = ['window α', 'window β'].map(name => write(f, initial, rawClip(f, {name})));
   const outcomes = await Promise.all(candidates.map(input => f.request('/api/local-drafts/clip', {method: 'PUT', input})));
   assert.equal(outcomes.filter(value => value.status === 200).length, 1);
@@ -304,11 +317,11 @@ test('concurrent windows and lost PUT/DELETE acknowledgements use strict CAS acr
   safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input: {...replay, ...authority(current)}}), f, 'LOCAL_DRAFT_CONFLICT', 409);
   assert.deepEqual(((await f.list()).items as unknown), []);
   assert.deepEqual(f.requests.map(value => value.method), ['PUT', 'DELETE']);
-  assert.deepEqual(f.snapshot(), before); await f.noEffects();
+  assert.deepEqual(await f.snapshot(), before); await f.noEffects();
 });
 
 test('local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bodies and project isolation', {timeout: 30000}, async t => {
-  const f = await fixture(t), initial = await f.draft(), input = write(f, initial), before = f.snapshot();
+  const f = await fixture(t), initial = await f.draft(), input = write(f, initial), before = await f.snapshot();
   const routes = [
     {route: clipRoute(f.key)}, {route: listRoute(f.project.id)},
     {route: '/api/local-drafts/clip', method: 'PUT', input},
@@ -354,7 +367,7 @@ test('local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bod
   const saved = await f.data('/api/local-drafts/clip', {method: 'PUT', input, authenticated: false, headers: {cookie, origin: f.url}});
   assert.equal(saved.revision, 1); assert.deepEqual(((await f.list(f.other.id)).items as unknown), []);
   assert.equal((await f.data(clipRoute({...f.key, projectId: f.other.id}))).draft, null);
-  assert.deepEqual(f.snapshot(), before); await f.noEffects();
+  assert.deepEqual(await f.snapshot(), before); await f.noEffects();
 });
 
 test('a real cold schema-26 backup excludes populated local drafts and preserves the source sidecar exactly', {timeout: 30000}, async t => {
@@ -431,10 +444,10 @@ test('a real cold schema-26 backup excludes populated local drafts and preserves
 
 for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteAcknowledgement']) {
   test(`durable clip Save at ${phase} preserves draft and reuses the original request key after crash`, {timeout: 30000}, async t => {
-    const f = await fixture(t), baseline = f.snapshot(), initial = await f.draft();
+    const f = await fixture(t), baseline = await f.snapshot(), initial = await f.draft();
     const raw = rawClip(f, {name: 'Explicitly saved 🎬', startFrame: '12', gain: '0.75'});
     const savedDraft = await f.data('/api/local-drafts/clip', {method: 'PUT', input: write(f, initial, raw)});
-    assert.deepEqual(f.snapshot(), baseline, 'the raw draft is durable before business preparation begins');
+    assert.deepEqual(await f.snapshot(), baseline, 'the raw draft is durable before business preparation begins');
     await f.noEffects();
     const input = {projectId: f.project.id, clipId: f.key.clipId, expectedRevision: f.timeline.revision,
       requestId: randomUUID(), patch: {name: raw.name, startFrame: Number(raw.startFrame), gain: Number(raw.gain)}};
@@ -455,7 +468,7 @@ for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteA
       }
     }
     if (phase !== 'lostExecuteAcknowledgement') assert.deepEqual(await deadline(f.backend.exited, 'armed SIGKILL'), {code: null, signal: 'SIGKILL'});
-    const interrupted = f.snapshot(), [retained] = interrupted.edit_tasks;
+    const interrupted = await f.snapshot(), [retained] = interrupted.edit_tasks;
     assert.equal(interrupted.edit_tasks.length, 1); assert.equal(retained.requestId, input.requestId);
     assert.deepEqual(JSON.parse(retained.input as string), input);
     assert.equal(interrupted.timeline_requests.length, baseline.timeline_requests.length + (phase === 'afterPreparePersist' ? 0 : 1));
@@ -467,9 +480,9 @@ for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteA
     assert.equal(current.task.requestId, input.requestId); assert.deepEqual(current.task.input, input);
     assert.notEqual(current.instanceId, oldTaskInstance);
     assert.equal(current.task.status, phase === 'afterPreparePersist' ? 'prepared' : 'applied');
-    const observed = f.snapshot();
+    const observed = await f.snapshot();
     await f.draft(); await f.list(); await f.data<{instanceId:string}>('/api/tasks?projectId=' + f.project.id);
-    assert.deepEqual(f.snapshot(), observed);
+    assert.deepEqual(await f.snapshot(), observed);
     await f.noEffects();
     const stale = await f.request(taskRoute(retained.id, 'execute'), {method: 'POST', input: {...taskAction(f, current), instanceId: oldTaskInstance}});
     assert.equal(stale.status, 409); assert.equal(stale.body.error!.code, 'EDIT_TASK_STALE_INSTANCE');
@@ -479,10 +492,10 @@ for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteA
     assert.equal(applied.task.status, 'applied'); assert.equal(applied.task.requestId, input.requestId);
     assert.equal(applied.result.revision, f.timeline.revision + 1);
     if (originalResult) assert.deepEqual(applied.result, originalResult);
-    const committed = f.snapshot();
+    const committed = await f.snapshot();
     assert.equal(committed.timeline_requests.length, baseline.timeline_requests.length + 1);
     assert.equal(committed.timeline_history.length, baseline.timeline_history.length + 1);
-    const timeline = committed.timelines.map(rowData).find((value: { id: string; }) => value.id === f.timeline.id);
+    const timeline = committed.timelines.map(rowData).find((value: { id: string; }) => value.id === f.timeline.id)!;
     assert.equal(timeline.revision, f.timeline.revision + 1);
     assert.deepEqual(timeline.clips[0], {...f.timeline.clips[0], ...input.patch});
     assert.equal(committed.jobs.length, baseline.jobs.length); assert.equal(committed.versions.length, baseline.versions.length);
@@ -491,10 +504,10 @@ for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteA
     const replayPrepared = await f.prepare(input);
     assert.equal(replayPrepared.task.id, applied.task.id);
     assert.deepEqual((await f.data<TaskEnvelope>(taskRoute(applied.task.id, 'execute'), {method: 'POST', input: taskAction(f, replayPrepared)})).result, applied.result);
-    assert.deepEqual(f.snapshot(), committed, 'same-key prepare/execute cannot create a new timeline revision or task');
+    assert.deepEqual(await f.snapshot(), committed, 'same-key prepare/execute cannot create a new timeline revision or task');
     const retainedDraft = await f.draft(); assert.deepEqual(retainedDraft.draft, savedDraft.draft);
     const discarded = await f.data('/api/local-drafts/clip', {method: 'DELETE', input: discard(retainedDraft)});
-    assert.equal(discarded.draft, null); assert.deepEqual(f.snapshot(), committed);
+    assert.equal(discarded.draft, null); assert.deepEqual(await f.snapshot(), committed);
     assert.equal(await readFile(path.join(f.root, 'synthetic-forbidden-effects.jsonl'), 'utf8'), '');
   });
 }

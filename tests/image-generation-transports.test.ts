@@ -1,6 +1,5 @@
 import type {FixtureProject,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {FixtureImageTask,FixtureImageVersion,ServiceResponse} from './helpers/strict-service-responses.ts';
-import type {ChildProcess} from 'node:child_process';
 import type {TypedStore, TypedServices, TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,11 +10,12 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
-import {openStore} from '../packages/business/src/db.ts';
+import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {createClient} from '../packages/client/src/index.ts';
@@ -24,6 +24,7 @@ import {IMAGE_FIXED_OPTIONS, IMAGE_LIMITS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIO
   isImageListResponse} from '../packages/contracts/src/images.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {createServerProject, schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -36,21 +37,13 @@ const inputFor = <T extends Record<string,unknown> = {}>(projectId: string, chan
   options: {...IMAGE_FIXED_OPTIONS}, requestId: randomUUID(), ...changes});
 
 // No inherited provider credential, activation flag, custom endpoint or proxy is
-// passed to these owned synthetic processes. Only loopback HTTP is exercised.
+// passed to the owned CLI and MCP processes. Only loopback HTTP is exercised.
 function environment(extra: NodeJS.ProcessEnv = {}) {
   const env = {...process.env};
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GEMINI_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
   return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
-}
-
-async function stopOwned(child: ChildProcess) {
-  if (!child || child.exitCode !== null || child.signalCode) return;
-  const ended = once(child, 'close');
-  child.kill('SIGTERM');
-  const timer = setTimeout(() => child.kill('SIGKILL'), 5_000);
-  try { await ended; } finally { clearTimeout(timer); }
 }
 
 function noPrivate(value: unknown, root: string) {
@@ -91,54 +84,44 @@ async function cli(args: string[], env: NodeJS.ProcessEnv, expectedError?: strin
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-wire-'));
-  const store = (openStore(root) as TypedStore);
+  const created = createServerProject(root, {name: 'Image transport acceptance'}), store = (created.store as unknown as TypedStore);
   let project:FixtureProject,other:FixtureProject,queued:FixtureImageTask,dispatched:FixtureImageTask;
   try {
     const services = (createServices(store, createProviderRegistry({db: store.db, root, env: {}}),
       {env: {}, imageOptions: {autoRun: false}}) as TypedServices);
-    project = await services.call('project.create', {name: 'Image transport acceptance'});
-    other = await services.call('project.create', {name: 'Foreign image project'});
+    project = store.get('projects', created.projectId)!;
     queued = await services.call('image.generate', inputFor(project.id, {name: 'Before-dispatch restart fixture'}));
     dispatched = await services.call('image.generate', inputFor(project.id, {name: 'Dispatched restart fixture'}));
     // A synthetic dispatch fence with no durable output, never a real request.
     store.db.prepare("UPDATE image_tasks SET state='dispatching',dispatched=1,revision=revision+1 WHERE id=?").run(dispatched.id);
     await services.drain();
   } finally { store.close(); }
+  // The server knows the other project too: requests below name it.
+  const foreign = createServerProject(root, {name: 'Foreign image project'});
+  other = (foreign.store as unknown as TypedStore).get('projects', foreign.projectId)!; foreign.store.close();
 
-  let child: ReturnType<typeof spawn>, db: DatabaseSync|null, url: string, port = 0, proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>, proxyUrl:string, dropped: {ok:boolean;data:FixtureImageTask}|undefined, dropNext = false;
-  let stderr = '', stdout = '';
+  // The backend runs in this process, so the test reads the database on the backend's
+  // own connection. The workspace has no image settings: live generation stays disabled.
+  let server: Awaited<ReturnType<typeof startServer>>|undefined, inspect: InspectProject|undefined, url: string, port = 0, proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>, proxyUrl:string, dropped: {ok:boolean;data:FixtureImageTask}|undefined, dropNext = false;
   const proxyRequests: (unknown)[] = [];
   async function start() {
-    stdout = ''; stderr = '';
-    child = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {
-      cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: String(port)}),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stdout!.setEncoding('utf8').on('data', (chunk: string) => { stdout = (stdout + chunk).slice(-20_000); });
-    child.stderr!.setEncoding('utf8').on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-20_000); });
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      assert.equal(child.exitCode, null, stdout + stderr);
-      assert.equal(child.signalCode, null, stdout + stderr);
-      url = /Mioon ready at (http:\/\/127\.0\.0\.1:\d+)/.exec(stdout)?.[1]!;
-      if (url) { port = Number(new URL(url).port); return; }
-      await pause(20);
-    }
-    throw Error('Owned image backend did not start: ' + stdout + stderr);
+    server = await startServer({dataDir: root, port, token, inspectProject: received => {inspect = received;}});
+    url = server.url; port = server.port;
   }
   t.after(async () => {
     if (proxy) { proxy.closeAllConnections(); await new Promise<void>(resolve => proxy.close(resolve as (error?:Error)=>void)); }
-    db?.close(); await stopOwned(child); await rm(root, {recursive: true, force: true});
+    await server?.close(); await rm(root, {recursive: true, force: true});
   });
   await start();
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const snapshot = () => Object.fromEntries(db!.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
-    [name, db!.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))]));
-  const checkpoint = () => ({rows: snapshot(), version: db!.prepare('PRAGMA data_version').get()!.data_version});
-  const unchanged = (before: { rows: unknown; version: unknown; }, label: string) => {
-    assert.deepEqual(snapshot(), before.rows, label + ': no persisted row changed');
-    assert.equal(db!.prepare('PRAGMA data_version').get()!.data_version, before.version, label + ': no write transaction committed');
-  };
+  const snapshot = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
+    [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))]));
+  // data_version counts other connections' commits only; total_changes() adds the backend connection's own writes.
+  const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
+  const checkpoint = () => inspect!(project.id, db => ({rows: snapshot(db), version: changeMarks(db)}));
+  const unchanged = (before: { rows: unknown; version: unknown; }, label: string) => inspect!(project.id, db => {
+    assert.deepEqual(snapshot(db), before.rows, label + ': no persisted row changed');
+    assert.deepEqual(changeMarks(db), before.version, label + ': no write transaction committed');
+  });
   proxy = http.createServer(async (request, response) => {
     try {
       const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
@@ -183,7 +166,7 @@ async function fixture(t: test.TestContext) {
     get url() { return url; }, get proxyUrl() { return proxyUrl; }, get dropped() { return dropped; }, proxyRequests,
     get env() { return {MIOON_BASE_URL: url, MIOON_TOKEN: token}; },
     dropAcknowledgement() { dropNext = true; },
-    async restart() { db!.close(); db = null; await stopOwned(child); await start(); db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true}); },
+    async restart() { await server!.close(); server = undefined; inspect = undefined; await start(); },
   };
 }
 

@@ -1,6 +1,5 @@
 import type {FixtureProject,FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {FixtureImageTask,FixtureImageVersion,ServiceResponse} from './helpers/strict-service-responses.ts';
-import type {ChildProcess} from 'node:child_process';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices, TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
@@ -12,10 +11,12 @@ import {mkdtemp, rm, readFile, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
+import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
@@ -25,6 +26,7 @@ import {IMAGE_FIXED_OPTIONS, IMAGE_LIMITS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIO
   isImageListResponse} from '../packages/contracts/src/images.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {createServerProject, schemaObjects} from './helpers/project-database.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'image-edit-transport-synthetic-local-token';
@@ -36,21 +38,13 @@ const inputFor = <T extends Record<string,unknown> = {}>(projectId: string, chan
   options: {...IMAGE_FIXED_OPTIONS}, requestId: randomUUID(), ...changes});
 
 // No inherited provider credential, activation flag, custom endpoint or proxy is
-// passed to these owned synthetic processes. Only loopback HTTP is exercised.
+// passed to the owned CLI and MCP processes. Only loopback HTTP is exercised.
 function environment(extra: NodeJS.ProcessEnv = {}) {
   const env = {...process.env};
   for (const key of Object.keys(env)) {
     if (/^(?:MIOON_|RUNWAY|ARK_|VEO_|GEMINI_|GOOGLE_|MINIMAX_|VIDU_|OPENAI_|ANTHROPIC_|AZURE_|AWS_|NODE_OPTIONS$|HTTPS?_PROXY$|ALL_PROXY$)/i.test(key)) delete env[key];
   }
   return {...env, MIOON_ENABLE_LIVE_PROVIDER: '0', ...extra};
-}
-
-async function stopOwned(child: ChildProcess) {
-  if (!child || child.exitCode !== null || child.signalCode) return;
-  const ended = once(child, 'close');
-  child.kill('SIGTERM');
-  const timer = setTimeout(() => child.kill('SIGKILL'), 5_000);
-  try { await ended; } finally { clearTimeout(timer); }
 }
 
 function noPrivate(value: unknown, root: string) {
@@ -93,11 +87,11 @@ async function cli(args: string[], env: NodeJS.ProcessEnv, expectedError?: strin
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-edit-wire-'));
-  let store = (openStore(root) as TypedStore), project:FixtureProject, other:FixtureProject, queued:FixtureImageTask, dispatched:FixtureImageTask, source:{input:ReturnType<typeof inputFor>;ack:FixtureImageTask;task:FixtureImageTask;version:FixtureImageVersion;asset:FixtureAsset;bytes:Buffer};
+  const created = createServerProject(root, {name: 'Image edit transport acceptance'});
+  let store = (created.store as unknown as TypedStore), project:FixtureProject, other:FixtureProject, queued:FixtureImageTask, dispatched:FixtureImageTask, source:{input:ReturnType<typeof inputFor>;ack:FixtureImageTask;task:FixtureImageTask;version:FixtureImageVersion;asset:FixtureAsset;bytes:Buffer};
   try {
     const services = (createServices(store, createProviderRegistry({db: store.db, root, env: {}}), {env: {}}) as TypedServices);
-    project = await services.call('project.create', {name: 'Image edit transport acceptance'});
-    other = await services.call('project.create', {name: 'Foreign image edit project'});
+    project = store.get('projects', created.projectId)!;
     const input = inputFor(project.id, {name: 'Original Mock T2I source'});
     const ack = await services.call('image.generate', input);
     let task;
@@ -114,6 +108,7 @@ async function fixture(t: test.TestContext) {
     source = {input, ack, task:task!, version, asset, bytes: await readFile(path.join(root, asset.relativePath))};
     await services.drain();
   } finally { store.close(); }
+  // The queued edits need other image options, so this second fill reopens the project's store.
   store = (openStore(root) as TypedStore);
   try {
     const services = (createServices(store, createProviderRegistry({db: store.db, root, env: {}}), {env: {}, imageOptions: {autoRun: false}}) as TypedServices);
@@ -124,41 +119,33 @@ async function fixture(t: test.TestContext) {
     store.db.prepare("UPDATE image_tasks SET state='dispatching',dispatched=1,revision=revision+1 WHERE id=?").run(dispatched.id);
     await services.drain();
   } finally { store.close(); }
+  // The server knows the other project too: requests below name it.
+  const foreign = createServerProject(root, {name: 'Foreign image edit project'});
+  other = (foreign.store as unknown as TypedStore).get('projects', foreign.projectId)!; foreign.store.close();
 
-  let child: ReturnType<typeof spawn>, db: DatabaseSync|null, url: string, port = 0, proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>, proxyUrl:string, dropped: {ok:boolean;data:FixtureImageTask}|undefined, dropNext = false;
-  let stderr = '', stdout = '';
+  // The backend runs in this process, so the test reads the database on the backend's
+  // own connection. The workspace has no image settings: live editing stays disabled.
+  let server: Awaited<ReturnType<typeof startServer>>|undefined, inspect: InspectProject|undefined, url: string, port = 0, proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>, proxyUrl:string, dropped: {ok:boolean;data:FixtureImageTask}|undefined, dropNext = false;
   const proxyRequests: (unknown)[] = [];
   async function start() {
-    stdout = ''; stderr = '';
-    child = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {
-      cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: String(port)}),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    child.stdout!.setEncoding('utf8').on('data', (chunk: string) => { stdout = (stdout + chunk).slice(-20_000); });
-    child.stderr!.setEncoding('utf8').on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-20_000); });
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      assert.equal(child.exitCode, null, stdout + stderr);
-      assert.equal(child.signalCode, null, stdout + stderr);
-      url = /Mioon ready at (http:\/\/127\.0\.0\.1:\d+)/.exec(stdout)?.[1]!;
-      if (url) { port = Number(new URL(url).port); return; }
-      await pause(20);
-    }
-    throw Error('Owned image backend did not start: ' + stdout + stderr);
+    server = await startServer({dataDir: root, port, token, inspectProject: received => {inspect = received;}});
+    url = server.url; port = server.port;
   }
   t.after(async () => {
     if (proxy) { proxy.closeAllConnections(); await new Promise<void>(resolve => proxy.close(resolve as (error?:Error)=>void)); }
-    db?.close(); await stopOwned(child); await rm(root, {recursive: true, force: true});
+    await server?.close(); await rm(root, {recursive: true, force: true});
   });
   await start();
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const snapshot = () => Object.fromEntries(db!.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
-    [name, db!.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))]));
-  const checkpoint = () => ({rows: snapshot(), version: db!.prepare('PRAGMA data_version').get()!.data_version});
-  const unchanged = (before: { rows: unknown; version: unknown; }, label: string) => {
-    assert.deepEqual(snapshot(), before.rows, label + ': no persisted row changed');
-    assert.equal(db!.prepare('PRAGMA data_version').get()!.data_version, before.version, label + ': no write transaction committed');
-  };
+  const read = <T>(fn: (db: DatabaseSync) => T): T => inspect!(project.id, fn);
+  const snapshot = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
+    [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))]));
+  // data_version counts other connections' commits only; total_changes() adds the backend connection's own writes.
+  const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
+  const checkpoint = () => read(db => ({rows: snapshot(db), version: changeMarks(db)}));
+  const unchanged = (before: { rows: unknown; version: unknown; }, label: string) => read(db => {
+    assert.deepEqual(snapshot(db), before.rows, label + ': no persisted row changed');
+    assert.deepEqual(changeMarks(db), before.version, label + ': no write transaction committed');
+  });
   proxy = http.createServer(async (request, response) => {
     try {
       const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
@@ -200,15 +187,15 @@ async function fixture(t: test.TestContext) {
     throw Error('Mock image did not complete');
   }
   return {root, project, other, queued, dispatched, source, rpc, succeeded, checkpoint, unchanged,
-    retainedSource() { return {asset: db!.prepare('SELECT * FROM assets WHERE id=?').get(source.asset.id),
-      task: db!.prepare('SELECT * FROM image_tasks WHERE id=?').get(source.ack.id),
-      version: db!.prepare('SELECT * FROM image_versions WHERE id=?').get(source.version.id),
-      request: db!.prepare('SELECT * FROM image_requests WHERE requestId=?').get(source.input.requestId),
-      group: db!.prepare('SELECT * FROM image_groups WHERE id=?').get(source.ack.groupId)}; },
+    retainedSource() { return read(db => ({asset: db.prepare('SELECT * FROM assets WHERE id=?').get(source.asset.id),
+      task: db.prepare('SELECT * FROM image_tasks WHERE id=?').get(source.ack.id),
+      version: db.prepare('SELECT * FROM image_versions WHERE id=?').get(source.version.id),
+      request: db.prepare('SELECT * FROM image_requests WHERE requestId=?').get(source.input.requestId),
+      group: db.prepare('SELECT * FROM image_groups WHERE id=?').get(source.ack.groupId)})); },
     get url() { return url; }, get proxyUrl() { return proxyUrl; }, get dropped() { return dropped; }, proxyRequests,
     get env() { return {MIOON_BASE_URL: url, MIOON_TOKEN: token}; },
     dropAcknowledgement() { dropNext = true; },
-    async restart() { db!.close(); db = null; await stopOwned(child); await start(); db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true}); },
+    async restart() { await server!.close(); server = undefined; inspect = undefined; await start(); },
   };
 }
 
