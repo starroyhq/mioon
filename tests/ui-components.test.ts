@@ -251,7 +251,7 @@ test('installed Base UI components render semantic controls with real runtime de
 // This scan historically covered renderer .jsx sources. These typed components
 // already existed at the migration baseline and are outside this extraction gate;
 // newly migrated renderer components remain covered below.
-const preExistingTypedRenderer = new Set(['ClipLutControls.tsx', 'ClipOpacityEnvelopeControls.tsx',
+const preExistingTypedRenderer = new Set(['ClipLutControls.tsx',
   'ClipVolumeEnvelopeControls.tsx', 'CompactNodePlayer.tsx', 'ExportFileActions.tsx', 'ExportPreview.tsx',
   'ExportWorkflow.tsx', 'InspectorGroup.tsx', 'LanguageControl.tsx', 'LookPackControls.tsx', 'ProjectHome.tsx',
   'SettingsVideoTools.tsx', 'SettingsWorkspace.tsx', 'VersionComparison.tsx']);

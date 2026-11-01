@@ -10,7 +10,6 @@ import { createClipDraftController, type ClipDraftCapture, type ClipDraftContext
 import { touchesLockedTrack } from '../apps/web/src/timeline-track-locks.ts';
 
 import { lenientFunction, stripSourceTypes } from './helpers/eval-source.ts';
-import type { OpacityEnvelopeComposition,RawOpacityEnvelope } from '../apps/web/src/clip-opacity-envelope-state.ts';
 import type { VolumeEnvelopeComposition,RawVolumeEnvelope } from '../apps/web/src/clip-volume-envelope-state.ts';
 import type { EditorCloseOwnerSnapshot } from '../apps/web/src/editor-window-close.ts';
 const Function = lenientFunction;
