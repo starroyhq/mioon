@@ -1,0 +1,54 @@
+/* Project menu (12-07), version history (12-08) and the restore confirmation (12-09). */
+.pf-menu-trigger.wb-button { gap: 6px; padding-inline: var(--wb-space-2); color: var(--wb-text); font-size: var(--wb-text-body); font-weight: 500; }
+.pf-menu-trigger.wb-button[data-popup-open] { background: var(--wb-hover); }
+.pf-menu-trigger.wb-button svg { width: 14px; height: 14px; color: var(--wb-soft); }
+.pf-menu-trigger-name { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.pf-menu[data-slot="dropdown-menu-content"] { width: 260px; max-height: min(var(--available-height), 520px); padding: 4px; font-family: inherit; }
+.pf-menu-sub[data-slot="dropdown-menu-sub-content"] { width: 220px; }
+.pf-menu :is([data-slot="dropdown-menu-item"], [data-slot="dropdown-menu-sub-trigger"]) { min-height: 28px; gap: 10px; padding: 4px 8px; color: var(--wb-text); font-size: var(--wb-text-body); }
+.pf-menu :is([data-slot="dropdown-menu-item"], [data-slot="dropdown-menu-sub-trigger"]) > svg:first-child { width: 15px; height: 15px; color: var(--wb-soft); }
+.pf-menu [data-slot="dropdown-menu-sub-trigger"] > svg:last-child { width: 14px; height: 14px; color: var(--wb-muted); }
+.pf-menu-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-menu-shortcut[data-slot="dropdown-menu-shortcut"] { color: var(--wb-muted); font: 400 var(--wb-text-caption)/1 var(--wb-font-mono); letter-spacing: 0; }
+.pf-menu [data-slot="dropdown-menu-separator"] { margin: 4px -4px; background: var(--wb-line-subtle); }
+.pf-menu-state { display: flex; align-items: center; gap: var(--wb-space-2); min-height: 28px; padding: 4px 8px; color: var(--wb-muted); font-size: var(--wb-text-label); }
+.pf-menu-state .wb-spinner { width: 12px; height: 12px; }
+
+.pf-versions-dialog .wb-dialog-heading { padding-right: 200px; }
+.pf-versions-save.wb-button { position: absolute; top: 18px; right: 52px; gap: 6px; }
+.pf-versions-save.wb-button svg { width: 14px; height: 14px; }
+.pf-versions-dialog .wb-dialog-content { display: flex; min-height: 0; padding: 0; overflow: hidden; }
+.pf-versions-dialog .wb-dialog-content > .pf-state { flex: 1; }
+.pf-versions-dialog .wb-dialog-footer { min-height: 40px; padding: 10px var(--wb-space-5); border-top: 1px solid var(--wb-line-subtle); }
+.pf-versions-body { display: flex; flex: 1; min-height: 0; }
+.pf-versions-list { flex: none; width: 345px; overflow-y: auto; padding: 0 8px 12px; border-right: 1px solid var(--wb-line-subtle); }
+.pf-versions-day h3 { padding: 6px 8px 4px; color: var(--wb-muted); font-size: var(--wb-text-caption); font-weight: 500; line-height: 1.5; }
+.pf-versions-day ul { margin: 0; padding: 0; list-style: none; }
+.pf-version-row.wb-button { display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: auto; min-height: 52px; padding: 8px 10px; border: 0; border-radius: var(--wb-radius-card); color: var(--wb-text); text-align: left; white-space: normal; }
+.pf-version-row.wb-button[data-selected], .pf-version-row.wb-button[data-selected]:not(:disabled):hover { background: var(--wb-selected); }
+.pf-version-icon { display: inline-flex; flex: none; color: var(--wb-soft); }
+.pf-version-icon svg { width: 16px; height: 16px; }
+.pf-version-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+.pf-version-title { overflow: hidden; color: var(--wb-text); font-size: var(--wb-text-body); font-weight: 500; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.pf-version-meta, .pf-version-detail-meta { display: flex; flex-wrap: wrap; color: var(--wb-muted); font-size: var(--wb-text-caption); font-weight: 400; line-height: 1.5; }
+.pf-version-meta > span + span::before, .pf-version-detail-meta > span + span::before { content: "·"; margin: 0 6px; }
+.pf-version-manual.wb-badge { flex: none; }
+.pf-versions-empty { display: flex; flex-direction: column; gap: 6px; padding: var(--wb-space-4) 10px; color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.6; }
+.pf-versions-empty strong { color: var(--wb-text); font-size: var(--wb-text-body); }
+.pf-version-detail { display: flex; flex: 1; flex-direction: column; gap: var(--wb-space-3); min-width: 0; padding: 4px var(--wb-space-6) var(--wb-space-5) var(--wb-space-5); overflow-y: auto; }
+.pf-version-detail-title { color: var(--wb-text); font-size: 16px; font-weight: 600; line-height: 1.4; }
+.pf-version-detail-meta { margin-top: -8px; color: var(--wb-soft); font-size: var(--wb-text-label); }
+.pf-version-compare-title { margin-top: 4px; color: var(--wb-muted); font-size: var(--wb-text-label); font-weight: 500; }
+.pf-version-diff > li { min-height: 56px; }
+.pf-version-diff .pf-row-detail { white-space: normal; }
+.pf-version-note { display: flex; gap: var(--wb-space-2); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
+.pf-version-note > svg { flex: none; margin-top: 3px; }
+.pf-version-actions { display: flex; justify-content: flex-end; gap: var(--wb-space-2); margin-top: auto; padding-top: var(--wb-space-3); }
+.pf-version-actions .wb-button { height: var(--wb-control-large); min-height: var(--wb-control-large); gap: 6px; padding-inline: var(--wb-space-4); font-size: var(--wb-text-body); }
+.pf-version-actions .wb-button svg { width: 14px; height: 14px; }
+
+.pf-restore-dialog.wb-dialog[data-slot="dialog-content"] { width: min(480px, calc(100vw - 32px)); }
+.pf-restore-dialog .wb-dialog-content { display: flex; flex-direction: column; gap: var(--wb-space-3); }
+.pf-restore-body { color: var(--wb-soft); font-size: var(--wb-text-body); line-height: 1.6; }
+.pf-restore-changes > li { min-height: 56px; }
+.pf-restore-state { min-height: 120px; }

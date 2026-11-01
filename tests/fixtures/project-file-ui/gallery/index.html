@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-Hans" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Project file UI gallery</title>
+    <style>
+      html, body { margin: 0; min-height: 100%; background: var(--wb-bg); }
+      [data-scene-frame][data-capture="page"] { min-height: 100vh; }
+      [data-scene-frame][data-capture="frame"] { display: inline-block; box-sizing: border-box; padding: 16px; background: var(--wb-bg); }
+      [data-scene-frame][data-capture="frame"] > * + * { margin-top: 12px; }
+      /* Stand-in for the media library card around the U1 badge (12-04). */
+      .fixture-media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 8px; }
+      .fixture-media-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+      .fixture-media-thumb { position: relative; display: block; aspect-ratio: 16 / 9; overflow: hidden; border: 1.5px solid transparent; border-radius: 6px; background: var(--wb-panel); }
+      .fixture-media-thumb > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .fixture-media-card[data-tone="danger"] .fixture-media-thumb { border-color: var(--wb-danger); }
+      .fixture-media-card[data-tone="warning"] .fixture-media-thumb { border-color: var(--wb-warning); }
+      .fixture-media-badge { position: absolute; right: 4px; bottom: 4px; }
+      .fixture-media-name { overflow: hidden; color: var(--wb-text); font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+      .fixture-media-card[data-tone="danger"] .fixture-media-name { color: var(--wb-danger); }
+      .fixture-media-card[data-tone="warning"] .fixture-media-name { color: var(--wb-warning); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

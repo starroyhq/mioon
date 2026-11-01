@@ -1,0 +1,48 @@
+/* Project rules (12-12), the notice in the Mio panel (12-13) and Mio's change card (12-14). Laid out like project-notes.css. */
+.pf-rules-dialog.wb-dialog[data-slot="dialog-content"] { width: min(720px, calc(100vw - 32px)); }
+.pf-rules-dialog .wb-dialog-content { display: flex; flex-direction: column; gap: var(--wb-space-2); }
+.pf-rules-dialog textarea.pf-rules-text {
+  field-sizing: fixed; flex: none; height: min(370px, calc(100dvh - 300px)); min-height: 160px; resize: none;
+  padding: var(--wb-space-3) var(--wb-space-4); border: 1px solid var(--wb-line-strong); border-radius: var(--wb-radius-card);
+  background: var(--wb-bg); color: var(--wb-text); font-family: var(--wb-font-sans); font-size: var(--wb-text-body); line-height: 1.75;
+  box-shadow: none; overflow-wrap: anywhere;
+}
+.pf-rules-dialog textarea.pf-rules-text::placeholder { color: var(--wb-muted); }
+.pf-rules-dialog textarea.pf-rules-text[data-slot="textarea"]:focus,
+.pf-rules-dialog textarea.pf-rules-text[data-slot="textarea"]:focus-visible { outline: none; border-color: var(--wb-accent-line); box-shadow: 0 0 0 1px var(--wb-accent-line); }
+.pf-rules-dialog textarea.pf-rules-text[readonly] { color: var(--wb-soft); }
+.pf-rules-dialog textarea.pf-rules-text[aria-invalid="true"] { border-color: var(--wb-danger); box-shadow: none; }
+.pf-rules-count { align-self: flex-end; color: var(--wb-muted); font-family: var(--wb-font-mono); font-size: var(--wb-text-caption); line-height: 1.5; }
+.pf-rules-count[data-over] { color: var(--wb-danger); }
+.pf-rules-problem { color: var(--wb-danger); font-size: var(--wb-text-caption); line-height: 1.5; }
+.pf-rules-dialog .wb-dialog-footer > .pf-rules-file { display: flex; flex-direction: column; gap: 2px; }
+.pf-rules-path { display: flex; align-items: center; gap: var(--wb-space-2); min-width: 0; }
+.pf-rules-path > svg { flex: none; }
+.pf-rules-path > .pf-mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-rules-path > .wb-badge { flex: none; }
+.pf-rules-status-note { color: var(--wb-muted); font-size: var(--wb-text-caption); line-height: 1.5; }
+
+.pf-rules-notice { display: flex; gap: var(--wb-space-2); padding: var(--wb-space-3); border: 1px solid color-mix(in srgb, var(--wb-warning) 35%, transparent); border-radius: var(--wb-radius-card); background: var(--wb-warning-subtle); color: var(--wb-text); }
+.pf-rules-notice-icon { flex: none; margin-top: 2px; color: var(--wb-warning); }
+.pf-rules-notice-body { display: flex; flex: 1; flex-direction: column; gap: var(--wb-space-2); min-width: 0; font-size: var(--wb-text-label); line-height: 1.6; }
+.pf-rules-notice-error { color: var(--wb-danger); font-size: var(--wb-text-caption); }
+.pf-rules-notice-actions { display: flex; gap: var(--wb-space-2); }
+
+.pf-rules-card { display: flex; flex-direction: column; gap: var(--wb-space-3); padding: var(--wb-space-3); border: 1px solid var(--wb-line); border-radius: var(--wb-radius-card); background: var(--wb-card); color: var(--wb-text); }
+.pf-rules-card-heading { display: flex; align-items: center; gap: var(--wb-space-2); }
+.pf-rules-card-heading > svg { flex: none; color: var(--wb-soft); }
+.pf-rules-card-heading h3 { flex: 1; min-width: 0; font-size: var(--wb-text-body); font-weight: 600; line-height: 1.5; }
+.pf-rules-diff { padding: var(--wb-space-2) var(--wb-space-3); border-radius: var(--wb-radius-control); background: var(--wb-input); font-size: var(--wb-text-label); line-height: 1.7; }
+.pf-rules-diff-heading { color: var(--wb-muted); font-size: var(--wb-text-caption); overflow-wrap: anywhere; }
+.pf-rules-diff-heading > span + span::before { content: "·"; margin: 0 6px; }
+.pf-rules-diff ul { margin: 2px 0 0; padding: 0; list-style: none; }
+.pf-rules-diff li { overflow-wrap: anywhere; }
+.pf-rules-diff li[data-kind="add"] { color: var(--wb-success); }
+.pf-rules-diff li[data-kind="remove"] { color: var(--wb-danger); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--wb-danger) 55%, transparent); }
+.pf-rules-diff-sign { display: inline-block; width: 1em; font-family: var(--wb-font-mono); }
+.pf-rules-card-note { display: flex; gap: var(--wb-space-2); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
+.pf-rules-card-note > svg { flex: none; margin-top: 3px; }
+.pf-rules-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--wb-space-2); }
+.pf-rules-card-actions .wb-button { gap: 6px; }
+.pf-rules-card-actions .wb-button svg { width: 14px; height: 14px; }
+.pf-rules-card-result { color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; }
