@@ -22,6 +22,7 @@ import {createFrameServices,safeFrameServiceError, type FrameStore} from '../pac
 import {AppError} from '@mioon/contracts';
 import {spawnMedia,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const digest=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex'),error=(code: string)=>(cause: { code: string; })=>cause.code===code&&!JSON.stringify(cause).includes('PRIVATE_SENTINEL');
@@ -35,7 +36,7 @@ const bytes=png();
 const provenance=(asset: { sha256: unknown; },requestedFrame: number)=>({profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,sourceFrame:requestedFrame,fps:30,sourceHash:asset.sha256,
  probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:4,height:2,rotation:0,sarNumerator:1,sarDenominator:1}});
 const count=(db: DatabaseSync,table: string)=>db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n;
-const rows=(db: DatabaseSync)=>JSON.stringify(db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+const rows=(db: DatabaseSync)=>JSON.stringify(schemaObjects(db).filter(({type})=>type==='table').map(({name})=>[name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
 async function until<T>(fn: () => T | Promise<T>,label: unknown){const end=Date.now()+10000;while(Date.now()<end){const result=await fn();if(result)return result;await pause(5);}assert.fail(`Timed out: ${label}`);}
 function fixture(t:test.TestContext,{autoRun=true,decode}:{autoRun?:boolean;decode?:RecoveryDecoder}={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-frame-recovery-'));let store:TypedStore,services: TypedFrameServices,calls=0,fault:FrameFault=()=>{};

@@ -18,6 +18,7 @@ import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
 import {createFrameServices} from '../packages/business/src/frames.ts';
 import {validatePng} from '../packages/business/src/images/png.ts';
 import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,isFrameTaskResponse,isFrameRequestResponse,isFrameListResponse} from '../packages/contracts/src/frame-extraction.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const digest=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
@@ -31,7 +32,7 @@ function png(width=4,height=2){
 const bytes=png();
 const outcome=(input: FixtureFrameInput)=>({bytes,provenance:{profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,sourceFrame:input.requestedFrame,fps:30,sourceHash:input.asset.sha256,
  probe:{streamIndex:0,timeBaseNumerator:1,timeBaseDenominator:15360,width:4,height:2,rotation:0,sarNumerator:1,sarDenominator:1}}});
-const rows=(db: DatabaseSync)=>JSON.stringify(db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+const rows=(db: DatabaseSync)=>JSON.stringify(schemaObjects(db).filter(({type})=>type==='table').map(({name})=>[name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
 const count=(db: DatabaseSync,table: string)=>db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n;
 const total=(db: DatabaseSync)=>db.prepare('SELECT total_changes() AS n').get()!.n;
 function privateFree(value: { projectId: string; requestId: string; operation: "frame.extract"|"frame.task.cancelQueued"|"frame.task.recoverResult"; response?: unknown; }|null){assert.doesNotMatch(JSON.stringify(value),/PRIVATE_SENTINEL|"(?:relativePath|snapshot|stagedReceipt|canonicalInput|bytes|path)"\s*:/);}
@@ -79,7 +80,10 @@ test('bounded PNG publication owns a new asset and preserves original, legacy hi
 });
 
 test('nonowner GET/list/request reads perform zero writes or storage creation',async t=>{
- const f=fixture(t),ack=await f.call('frame.extract',f.input()),observer=(openStore(f.root,{lock:false}) as TypedStore),services=(createFrameServices(observer,{decode:()=>assert.fail('read spawned decode')}) as TypedFrameServices);
+ const f=fixture(t),ack=await f.call('frame.extract',f.input());
+ // A second connection to the project opens only once the owner has closed it.
+ await f.services.drain();f.store.close();
+ const observer=(openStore(f.root,{lock:false}) as TypedStore),services=(createFrameServices(observer,{decode:()=>assert.fail('read spawned decode')}) as TypedFrameServices);
  t.after(async()=>{await services.drain();observer.close();});assert.equal(ownsStoreLock(observer),false);
  const before=rows(observer.db),changes=total(observer.db),files=readdirSync(f.root).sort();
  for(const [op,input] of [['frame.task.get',{projectId:f.project.id,taskId:ack.id}],['frame.task.list',{projectId:f.project.id}],['frame.request.get',{projectId:f.project.id,requestId:ack.requestId}]] as const)privateFree(await services.handlers[op](input));
