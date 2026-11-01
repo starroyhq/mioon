@@ -26,3 +26,5 @@ export {
   CLOUD_SYNC_PROVIDERS, cloudSyncProviderOf, inspectLocation, locationFactsOf, mountFor, parseLinuxMountInfo, parseMacMounts, projectFileLocationVerdict,
 } from './location.ts';
 export type {CloudSyncProvider, LocationFacts, MountEntry, ProjectFileLocationVerdict} from './location.ts';
+export {DEFAULT_LIST_LIMIT, listProjectMedia, MAX_LIST_SCAN, probeMediaDuration} from './listing.ts';
+export type {ProbeDuration, ProjectMediaEntry, ProjectMediaListing} from './listing.ts';
