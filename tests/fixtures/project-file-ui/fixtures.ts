@@ -1,4 +1,6 @@
 import type { OutsideProjectLocation } from '../../../packages/contracts/src/media-reference.ts';
+import type { ProjectPackResult, ProjectRestorePreview, ProjectVersionSummary } from '../../../packages/contracts/src/project-versions.ts';
+import { message } from '../../../packages/i18n/src/index.ts';
 import type { ProjectOpenFailure } from '../../../packages/contracts/src/project-file.ts';
 import type { ProjectInboxItem, RecentProject } from '../../../packages/contracts/src/project-registry.ts';
 
@@ -89,6 +91,58 @@ export const OUTSIDE_LOCATIONS: readonly OutsideProjectLocation[] = [
   { directory: `${HOME}/Music/配乐`, volume: null, assetCount: 3, available: true },
   { directory: '/Users/lin/Desktop/temp', volume: null, assetCount: 1, available: false },
 ];
+
+/** 12-08: the versions of UI 走查项目, newest first, as in the preview. */
+function version(index: number, trigger: ProjectVersionSummary['trigger'], createdAt: string, name: string | null = null): ProjectVersionSummary {
+  const id = `e0c0ffee-0000-4000-8000-0000000000${String(index).padStart(2, '0')}`;
+  return { id, projectId: PROJECT_IDS.ui, trigger, name, mioRunId: trigger === 'mio-turn' ? `f0c0ffee-0000-4000-8000-0000000000${String(index).padStart(2, '0')}` : null, contentSequence: 400 - index * 20, createdAt };
+}
+export const VERSIONS = [
+  { summary: version(1, 'mio-turn', '2026-10-21T06:20:00.000Z'), mioTurn: 3, conversationTitle: '把雨夜段落剪紧一点' },
+  { summary: version(2, 'manual', '2026-10-21T05:05:00.000Z', '定稿前') },
+  { summary: version(3, 'mio-turn', '2026-10-21T03:40:00.000Z'), mioTurn: 2, conversationTitle: '把雨夜段落剪紧一点' },
+  { summary: version(4, 'daily-open', '2026-10-21T01:12:00.000Z') },
+  { summary: version(5, 'manual', '2026-10-20T10:30:00.000Z', '初剪完成') },
+  { summary: version(6, 'mio-turn', '2026-10-20T08:02:00.000Z'), mioTurn: 1, conversationTitle: '粗剪' },
+] as const;
+/** The other triggers, on earlier days. */
+export const OLDER_VERSIONS = [
+  { summary: version(7, 'restore', '2026-10-20T02:00:00.000Z') },
+  { summary: version(8, 'bulk-change', '2026-10-14T07:30:00.000Z') },
+  { summary: version(9, 'daily-open', '2026-10-14T01:05:00.000Z') },
+  { summary: version(10, 'manual', '2026-10-12T09:00:00.000Z') },
+  { summary: version(11, 'mio-turn', '2025-12-30T09:00:00.000Z') },
+] as const;
+/** 12-08: Mio round 3 compared with current. */
+export const COMPARISON = [
+  { area: 'timeline', details: [message('projectFile.versions.diff.clipsTrimmed', { count: 5 }), message('projectFile.versions.diff.clipsRemoved', { count: 1 })] },
+  { area: 'shots', details: [message('projectFile.versions.diff.shotsDescription', { count: 2 })] },
+  { area: 'subtitles', details: [message('projectFile.versions.diff.subtitlesAdded', { count: 3 })] },
+] as const;
+/** 12-09: what restoring Mio round 3 takes back. */
+export const RESTORE_PREVIEW: ProjectRestorePreview = {
+  version: VERSIONS[0].summary,
+  manualChanges: [
+    { kind: 'timeline_clip', id: 'clip-scene-b', name: 'scene-b.mp4', fields: [{ property: 'durationFrames', before: 210, after: 180 }] },
+    { kind: 'timeline_subtitle', id: 'subtitle-2', name: '镜头缓慢推进', fields: [{ property: 'subtitleText', before: '镜头推进', after: '镜头缓慢推进' }] },
+  ],
+  manualChangeCount: 2, supersededMioChanges: 3,
+};
+export const RESTORE_PREVIEW_MORE: ProjectRestorePreview = {
+  ...RESTORE_PREVIEW,
+  manualChanges: [...RESTORE_PREVIEW.manualChanges, { kind: 'shot', id: 'shot-4', name: '雨夜街道', fields: [{ property: 'description', before: '街道', after: '雨后的城市街道' }, { property: 'durationSeconds', before: 4, after: 6 }] }],
+  manualChangeCount: 7,
+};
+
+/** 12-10 and 12-11: packing UI 走查项目 onto the desktop; two media files are missing. */
+export const PACK_FOLDER = `${HOME}/Desktop/UI 走查项目（打包）`;
+export const PACK_MANIFEST = {
+  destination: PACK_FOLDER, projectFile: { name: 'UI 走查项目.mioon', sizeBytes: 2_100_000 }, assets: { count: 21, sizeBytes: 4_100_000_000, outsideCount: 6 }, rulesFile: true, missing: 2,
+} as const;
+export const PACK_RESULT: ProjectPackResult = {
+  directory: PACK_FOLDER, projectFile: `${PACK_FOLDER}/UI 走查项目.mioon`, rulesFileCopied: true, copiedAssets: 21, copiedBytes: 4_100_000_000,
+  missingAssetIds: ['d0c0ffee-0000-4000-8000-00000000000c', 'd0c0ffee-0000-4000-8000-00000000000f'],
+};
 
 export const OPEN_FAILURES = {
   missing: { code: 'PROJECT_MISSING', projectFile: PROJECT_FILES.interview, projectId: PROJECT_IDS.interview },

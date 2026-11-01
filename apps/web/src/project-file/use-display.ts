@@ -7,14 +7,17 @@ import { byteSize, dayBucket, sameYear } from './format.ts';
 export function useProjectFileDisplay() {
   const { t, formatDate, formatNumber } = useI18n();
   return useMemo(() => ({
-    /** `Today 14:32`, `Yesterday 21:08`, `October 14`; with the year when it differs. */
-    when(iso: string, now: Date): string {
+    /** `Today 14:32`, `Yesterday 21:08`, `October 14`; with the year when it
+     * differs. `withTime` adds the time to earlier days too. */
+    when(iso: string, now: Date, withTime = false): string {
       const bucket = dayBucket(iso, now);
+      const time: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
       if (bucket !== 'earlier') {
-        const time = formatDate(iso, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-        return bucket === 'today' ? t('projectFile.common.today', { time }) : t('projectFile.common.yesterday', { time });
+        const clock = formatDate(iso, time);
+        return bucket === 'today' ? t('projectFile.common.today', { time: clock }) : t('projectFile.common.yesterday', { time: clock });
       }
-      return formatDate(iso, sameYear(iso, now) ? { month: 'long', day: 'numeric' } : { year: 'numeric', month: 'long', day: 'numeric' });
+      const day: Intl.DateTimeFormatOptions = sameYear(iso, now) ? { month: 'long', day: 'numeric' } : { year: 'numeric', month: 'long', day: 'numeric' };
+      return formatDate(iso, withTime ? { ...day, ...time } : day);
     },
     clock(iso: string): string { return formatDate(iso, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); },
     bytes(value: number): string {

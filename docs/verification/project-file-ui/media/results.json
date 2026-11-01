@@ -73,7 +73,7 @@
       "capture": "page",
       "file": "12-05.png",
       "format": "png",
-      "bytes": 22699,
+      "bytes": 22718,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -85,7 +85,7 @@
       "capture": "page",
       "file": "12-05-missing.png",
       "format": "png",
-      "bytes": 25607,
+      "bytes": 25668,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -133,7 +133,7 @@
       "capture": "page",
       "file": "12-05-applying.png",
       "format": "png",
-      "bytes": 22418,
+      "bytes": 22436,
       "width": 1440,
       "height": 900,
       "errors": []
@@ -145,7 +145,7 @@
       "capture": "page",
       "file": "12-05-apply-error.png",
       "format": "png",
-      "bytes": 24804,
+      "bytes": 24826,
       "width": 1440,
       "height": 900,
       "errors": []

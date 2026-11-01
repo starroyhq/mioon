@@ -114,6 +114,21 @@ export function aspectLabel(width: number, height: number): string {
   return `${Math.round(width) / divisor}:${Math.round(height) / divisor}`;
 }
 
+/** An Electron accelerator as menus show it: symbols in the order ⌃⌥⇧⌘ on a
+ * Mac (`Alt+CmdOrCtrl+S` → `⌥⌘S`), `Ctrl+Alt+Shift+` names elsewhere
+ * (`Ctrl+Alt+S`). Same spelling as the shortcut list in the settings. */
+export function shortcutLabel(accelerator: string, platform: HostPlatform): string {
+  const parts = accelerator.split('+');
+  const key = (parts.pop() ?? '').toUpperCase();
+  const modifiers = new Set(parts.map(part => part.toLowerCase()));
+  const has = (...names: readonly string[]) => names.some(name => modifiers.has(name));
+  const either = has('cmdorctrl', 'commandorcontrol'), mac = platform === 'mac';
+  const control = has('ctrl', 'control') || either && !mac, command = has('cmd', 'command') || either && mac;
+  const alt = has('alt', 'option'), shift = has('shift');
+  if (mac) return `${control ? '⌃' : ''}${alt ? '⌥' : ''}${shift ? '⇧' : ''}${command ? '⌘' : ''}${key}`;
+  return [...control ? ['Ctrl'] : [], ...alt ? ['Alt'] : [], ...shift ? ['Shift'] : [], key].join('+');
+}
+
 export function revealLabelKey(platform: HostPlatform): 'projectPackage.revealFinder' | 'projectPackage.revealExplorer' | 'projectPackage.revealFiles' {
   return platform === 'mac' ? 'projectPackage.revealFinder' : platform === 'windows' ? 'projectPackage.revealExplorer' : 'projectPackage.revealFiles';
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { aspectLabel, byteSize, clockTime, dayBucket, displayPath, fileNameOf, folderOf, lastSeenLabel, projectFilePathPreview, projectNameProblem, revealLabelKey, sameYear, stemOf } from '../apps/web/src/project-file/format.ts';
+import { aspectLabel, byteSize, clockTime, dayBucket, displayPath, fileNameOf, folderOf, lastSeenLabel, projectFilePathPreview, projectNameProblem, revealLabelKey, sameYear, shortcutLabel, stemOf } from '../apps/web/src/project-file/format.ts';
 
 test('file name, stem and folder for POSIX, drive and UNC paths', () => {
   const cases = [
@@ -66,6 +66,21 @@ test('days are local calendar days, across a month and a year boundary', () => {
   assert.equal(sameYear(new Date(2026, 11, 31, 23, 0).toISOString(), newYear), false);
   assert.equal(sameYear(new Date(2027, 0, 1, 0, 0).toISOString(), newYear), true);
   assert.equal(dayBucket('not a date', now), 'earlier');
+});
+
+test('shortcuts use Mac symbols in ⌃⌥⇧⌘ order and Ctrl names elsewhere', () => {
+  const cases = [
+    ['CmdOrCtrl+N', '⌘N', 'Ctrl+N'],
+    ['CmdOrCtrl+O', '⌘O', 'Ctrl+O'],
+    ['Alt+CmdOrCtrl+S', '⌥⌘S', 'Ctrl+Alt+S'],
+    ['Shift+CmdOrCtrl+S', '⇧⌘S', 'Ctrl+Shift+S'],
+    ['CmdOrCtrl+Shift+e', '⇧⌘E', 'Ctrl+Shift+E'],
+    ['Shift+Alt+Ctrl+CmdOrCtrl+K', '⌃⌥⇧⌘K', 'Ctrl+Alt+Shift+K'],
+  ] as const;
+  for (const [accelerator, mac, other] of cases) {
+    assert.equal(shortcutLabel(accelerator, 'mac'), mac, accelerator);
+    for (const platform of ['windows', 'linux', 'web'] as const) assert.equal(shortcutLabel(accelerator, platform), other, `${accelerator}/${platform}`);
+  }
 });
 
 test('clock time, aspect ratio and the reveal label', () => {

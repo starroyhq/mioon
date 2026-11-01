@@ -37,6 +37,10 @@
 .pf-row-title { overflow: hidden; color: var(--wb-text); font-size: var(--wb-text-body); line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .pf-row-detail { overflow: hidden; color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .pf-row-end { display: flex; flex: none; align-items: center; gap: var(--wb-space-2); color: var(--wb-soft); font-size: var(--wb-text-label); }
+.pf-row-icon { display: inline-flex; flex: none; color: var(--wb-soft); }
+.pf-row-icon.pf-tone-success { color: var(--wb-success); }
+.pf-row-icon.pf-tone-warning { color: var(--wb-warning); }
+.pf-row-icon.pf-tone-danger { color: var(--wb-danger); }
 .pf-tone-success { color: var(--wb-success); }
 .pf-tone-warning { color: var(--wb-warning); }
 .pf-tone-danger { color: var(--wb-danger); }

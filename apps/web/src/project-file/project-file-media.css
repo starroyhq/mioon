@@ -18,7 +18,6 @@
 .pf-media-banner[data-tone="warning"] > svg { color: var(--wb-warning); }
 .pf-media-banner .wb-button { flex: none; gap: 6px; }
 
-.pf-row-icon { flex: none; color: var(--wb-soft); }
 .pf-relink-dialog.wb-dialog[data-slot="dialog-content"] { width: min(640px, calc(100vw - 32px)); }
 .pf-relink-dialog .wb-dialog-content, .pf-outside-dialog .wb-dialog-content { display: flex; flex-direction: column; gap: var(--wb-space-3); }
 .pf-relink-rows > li { align-items: center; padding-block: var(--wb-space-3); }

@@ -14,9 +14,18 @@ import { MediaRelinkDialog } from '../../../apps/web/src/project-file/MediaRelin
 import type { MediaRelinkDialogProps } from '../../../apps/web/src/project-file/MediaRelinkDialog.tsx';
 import { OutsideLocationsDialog } from '../../../apps/web/src/project-file/OutsideLocationsDialog.tsx';
 import type { OutsideLocationsDialogProps } from '../../../apps/web/src/project-file/OutsideLocationsDialog.tsx';
+import { ProjectFileMenu } from '../../../apps/web/src/project-file/ProjectFileMenu.tsx';
+import type { ProjectFileMenuProps } from '../../../apps/web/src/project-file/ProjectFileMenu.tsx';
+import { CURRENT_VERSION, VersionHistoryDialog } from '../../../apps/web/src/project-file/VersionHistoryDialog.tsx';
+import type { VersionHistoryDialogProps } from '../../../apps/web/src/project-file/VersionHistoryDialog.tsx';
+import { RestoreVersionDialog } from '../../../apps/web/src/project-file/RestoreVersionDialog.tsx';
+import type { RestoreVersionDialogProps } from '../../../apps/web/src/project-file/RestoreVersionDialog.tsx';
+import { PackCompleteDialog, PackProjectDialog } from '../../../apps/web/src/project-file/PackProjectDialog.tsx';
+import type { PackCompleteDialogProps, PackProjectDialogProps } from '../../../apps/web/src/project-file/PackProjectDialog.tsx';
 import type { ProjectAvailabilityView } from '../../../apps/web/src/project-file/types.ts';
 import type { MediaStatus } from '../../../packages/contracts/src/media-reference.ts';
-import { COVER_URLS, HOME, INBOX_ITEMS, MEDIA_THUMBS, NOW, OPEN_FAILURES, OUTSIDE_LOCATIONS, PROJECT_IDS, RECENT_PROJECTS, RELINK_MISSING_ROW, RELINK_ROWS } from './fixtures.ts';
+import { COMPARISON, COVER_URLS, HOME, INBOX_ITEMS, MEDIA_THUMBS, NOW, OLDER_VERSIONS, OPEN_FAILURES, OUTSIDE_LOCATIONS, PACK_MANIFEST, PACK_RESULT, PROJECT_IDS, RECENT_PROJECTS, RELINK_MISSING_ROW, RELINK_ROWS,
+  RESTORE_PREVIEW, RESTORE_PREVIEW_MORE, VERSIONS } from './fixtures.ts';
 
 /** One state of one U1 component, after a 12-xx preview. The gallery renders
  * scenes for the screenshots; the SSR tests render the same scenes in CI. */
@@ -142,7 +151,65 @@ const mediaScenes = group('media', [
   { id: '12-06-allowing', design: '12-06', state: 'working', render: () => outside({ action: { kind: 'working', action: 'allow' } }) },
 ]);
 
-export const scenes: readonly Scene[] = [...homeScenes, ...mediaScenes];
+// ---------------------------------------------------------------------------
+// Group 3: project menu, versions, packing (12-07 to 12-11)
+const recentMenu = RECENT_PROJECTS.slice(0, 5).map(project => ({ projectId: project.projectId, name: project.name }));
+/** The menu opened from the project name in the top bar, placed where the top bar has it. */
+function menu(patch: Partial<ProjectFileMenuProps> = {}): ReactElement {
+  return <div style={{ padding: '8px 0 0 140px' }}><ProjectFileMenu projectName="UI 走查项目" open platform="mac" recent={{ kind: 'ready', value: recentMenu }}
+    onNewProject={none} onOpen={none} onOpenRecent={none} onRetryRecent={none} onSaveVersion={none} onVersionHistory={none} onSaveAs={none} onPack={none} onReveal={none} onRules={none}
+    onExportStoryboard={none} viewItems={null} {...patch} /></div>;
+}
+function history(patch: Partial<VersionHistoryDialogProps> = {}): ReactElement {
+  return <VersionHistoryDialog open projectName="UI 走查项目" now={NOW} versions={{ kind: 'ready', value: VERSIONS }} selected={VERSIONS[0].summary.id} onSelect={none}
+    comparison={{ kind: 'ready', value: COMPARISON }} retention={{ recent: 20, days: 7 }} onSaveVersion={none} onCompare={none} onRestore={none} onRetry={none} onRetryComparison={none} onClose={none} {...patch} />;
+}
+/** As in 12-09, the confirmation opens over the version history. */
+function restore(patch: Partial<RestoreVersionDialogProps> = {}): ReactElement {
+  return <>{history()}<RestoreVersionDialog open version={VERSIONS[0]} now={NOW} preview={{ kind: 'ready', value: RESTORE_PREVIEW }} restore={{ kind: 'idle' }} onRestore={none} onRetry={none} onClose={none} {...patch} /></>;
+}
+function pack(patch: Partial<PackProjectDialogProps> = {}): ReactElement {
+  return <PackProjectDialog open projectName="UI 走查项目" homeDirectory={HOME} manifest={{ kind: 'ready', value: PACK_MANIFEST }} pack={{ kind: 'idle' }} onChooseDestination={none} onRelink={none}
+    onPack={none} onRetry={none} onClose={none} {...patch} />;
+}
+function packed(patch: Partial<PackCompleteDialogProps> = {}): ReactElement {
+  return <PackCompleteDialog open result={PACK_RESULT} missingNames={['scene-c.mp4', 'scene-f.mp4']} platform="mac" homeDirectory={HOME} onReveal={none} onClose={none} {...patch} />;
+}
+const versionsPackScenes = group('versions-pack', [
+  { id: '12-07', design: '12-07', state: 'ready', render: () => menu() },
+  { id: '12-07-recent', design: '12-07', state: 'ready', render: () => menu({ recentOpen: true }) },
+  { id: '12-07-recent-loading', design: '12-07', state: 'loading', render: () => menu({ recentOpen: true, recent: { kind: 'loading' } }) },
+  { id: '12-07-recent-empty', design: '12-07', state: 'empty', render: () => menu({ recentOpen: true, recent: { kind: 'ready', value: [] } }) },
+  { id: '12-07-recent-error', design: '12-07', state: 'error', render: () => menu({ recentOpen: true, recent: { kind: 'error', retryable: true } }) },
+  { id: '12-07-disabled', design: '12-07', state: 'ready', render: () => menu({ disabledItems: new Set(['saveVersion', 'saveAs', 'rules'] as const) }) },
+  { id: '12-07-web', design: '12-07', state: 'ready', render: () => menu({ platform: 'web', onReveal: undefined, onSaveAs: undefined }) },
+  { id: '12-07-windows', design: '12-07', state: 'ready', render: () => menu({ platform: 'windows' }) },
+  { id: '12-08', design: '12-08', state: 'ready', render: () => history() },
+  { id: '12-08-current', design: '12-08', state: 'ready', render: () => history({ selected: CURRENT_VERSION }) },
+  { id: '12-08-older', design: '12-08', state: 'ready', render: () => history({ versions: { kind: 'ready', value: OLDER_VERSIONS }, selected: OLDER_VERSIONS[1].summary.id, comparison: { kind: 'ready', value: [] } }) },
+  { id: '12-08-loading', design: '12-08', state: 'loading', render: () => history({ versions: { kind: 'loading' } }) },
+  { id: '12-08-empty', design: '12-08', state: 'empty', render: () => history({ versions: { kind: 'ready', value: [] }, selected: CURRENT_VERSION }) },
+  { id: '12-08-error', design: '12-08', state: 'error', render: () => history({ versions: { kind: 'error', retryable: true } }) },
+  { id: '12-08-detail-loading', design: '12-08', state: 'loading', render: () => history({ comparison: { kind: 'loading' } }) },
+  { id: '12-08-detail-error', design: '12-08', state: 'error', render: () => history({ comparison: { kind: 'error', retryable: true } }) },
+  { id: '12-09', design: '12-09', state: 'ready', render: () => restore() },
+  { id: '12-09-more', design: '12-09', state: 'ready', render: () => restore({ preview: { kind: 'ready', value: RESTORE_PREVIEW_MORE } }) },
+  { id: '12-09-loading', design: '12-09', state: 'loading', render: () => restore({ preview: { kind: 'loading' } }) },
+  { id: '12-09-empty', design: '12-09', state: 'empty', render: () => restore({ preview: { kind: 'ready', value: { ...RESTORE_PREVIEW, manualChanges: [], manualChangeCount: 0, supersededMioChanges: 0 } } }) },
+  { id: '12-09-error', design: '12-09', state: 'error', render: () => restore({ preview: { kind: 'error', retryable: true } }) },
+  { id: '12-09-restoring', design: '12-09', state: 'working', render: () => restore({ restore: { kind: 'working', action: 'restore' } }) },
+  { id: '12-09-restore-error', design: '12-09', state: 'error', render: () => restore({ restore: { kind: 'error', action: 'restore' } }) },
+  { id: '12-10', design: '12-10', state: 'ready', render: () => pack() },
+  { id: '12-10-loading', design: '12-10', state: 'loading', render: () => pack({ manifest: { kind: 'loading' } }) },
+  { id: '12-10-empty', design: '12-10', state: 'empty', render: () => pack({ manifest: { kind: 'ready', value: { ...PACK_MANIFEST, assets: { count: 0, sizeBytes: 0, outsideCount: 0 }, rulesFile: false, missing: 0 } } }) },
+  { id: '12-10-read-error', design: '12-10', state: 'error', render: () => pack({ manifest: { kind: 'error', retryable: true } }) },
+  { id: '12-10-packing', design: '12-10', state: 'working', render: () => pack({ pack: { kind: 'packing', progress: 42 } }) },
+  { id: '12-10-error', design: '12-10', state: 'error', render: () => pack({ pack: { kind: 'error' } }) },
+  { id: '12-11', design: '12-11', state: 'ready', render: () => packed() },
+  { id: '12-11-all-copied', design: '12-11', state: 'ready', render: () => packed({ result: { ...PACK_RESULT, missingAssetIds: [] }, missingNames: [] }) },
+]);
+
+export const scenes: readonly Scene[] = [...homeScenes, ...mediaScenes, ...versionsPackScenes];
 const seen = new Set<string>();
 for (const scene of scenes) {
   if (seen.has(scene.id)) throw new Error(`Duplicate scene: ${scene.id}`);
