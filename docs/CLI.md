@@ -53,7 +53,7 @@ mioon agent task checks --input '{"projectId":"PROJECT_UUID","runId":"RUN_UUID",
 
 `agent task history` 返回标题、更新时间、最后一轮状态、变化条数及轮次数，`cursor` 只用于原项目。`agent task conversation` 的成员 cursor 同时绑定项目与对话，不能跨对话复用。旧 v2 执行各自作为单轮对话；v1 仍按原只读接口读取。诊断运行不进入列表、历史或普通对话上下文，其原始审计记录仍能按 runId／requestId 查询。
 
-X4 起，工具步骤在执行前遇到目标冲突或手动编辑时不暂停：这一步不执行，当前保存的值交回 Mio（见 `docs/AGENT-TASKS-V2.md`）。只有后台工作发现的冲突、工具提交一部分以后才发现的冲突，以及旧版本留下的冲突暂停，才需要下面的 `skip`。
+X4 起，工具步骤在执行前遇到目标冲突或手动编辑时不暂停：这一步不执行，当前保存的值交回 Mio（见 `docs/AGENT-TASKS-V2.md`）。只有后台工作发现的冲突、工具提交一部分以后才发现的冲突，以及旧版本留下的冲突暂停，才需要下面的 `skip`。前台审批时目标已变，`approve` 仍返回原错误码 `AGENT_TASK_TARGET_CHANGED` 或 `AGENT_TASK_TARGET_CLAIMED`，但这一轮不暂停：这一步没有执行，Mio 会按当前内容重新规划，不用 `skip`。
 
 `agent task skip` 只用于目标冲突或手动编辑导致的暂停：保留实际冲突目标，本轮之后显式涉及它的工具都返回 `TARGET_SKIPPED`，不产生 Change，也不释放用户草稿。其他目标和新一轮不受跳过名单限制。普通 `resume` 不能绕过此选择，会返回 `AGENT_TASK_SKIP_REQUIRED`；预算和用户暂停仍使用 `resume`。重启中断前还有未处理冲突时，`resume` 只恢复到冲突暂停，随后必须明确 `skip` 或 `stop`；未知结果仍须先按原 `resolve-unknown` 边界处置。选择 `stop` 不写跳过记录。
 
