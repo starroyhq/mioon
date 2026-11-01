@@ -309,8 +309,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(closed)return null;const failure=code(error);
       if(storageError(error))failStorage(error);
       // X4: a step that meets a conflict before it runs is handed back, not paused.
+      // This includes a pending approval re-entered after a pause or restart.
       // A partly committed (completed) step keeps the conflict pause below.
-      if((failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED')&&['intent','dispatch_started'].includes(journal.step(step.id).status))
+      if((failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED')&&['intent','awaiting_approval','dispatch_started'].includes(journal.step(step.id).status))
         return handBackConflict(runId,step.id,failure,conflicts.length?conflicts:journal.conflictingTargets(run.projectId,journal.step(step.id).targets??prepared?.targets??[]));
       if(['AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED','AGENT_TASK_PAUSED','AGENT_TASK_ABORTED','ABORT_ERR'].includes(failure)){
         if(journal.step(step.id).status==='dispatch_started')journal.dispatchPrevented(runId,step.id,failure==='AGENT_TASK_APPROVAL_REQUIRED'?'awaiting_approval':'intent');

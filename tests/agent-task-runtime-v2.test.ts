@@ -1167,3 +1167,25 @@ test('X4: a failed batch flag rolls the hand-back back with it and the run fails
   assert.equal(f.requests.length,(1)+f.loadingRequests);assert.equal(f.effects.size,(0)+f.loadingEffects);assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');assert.equal(f.runtime.journal.claims(f.projectId).length,1);
  }finally{f.store.db.exec('DROP TRIGGER temp.fail_x4_batch_flag');}
 });
+for(const via of ['pause','restart'] as const)for(const held of ['saved','draft'] as const)test(`X4: a pending approval resumed after ${via==='pause'?'a user pause':'a restart'} with a ${held==='saved'?'saved change':'draft'} is handed back and the new plan asks again`,async t=>{
+ const f=await fixture(t),staleId=randomUUID(),nextId=randomUUID();
+ f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
+ const next=held==='saved'?call('mioon_shot_update',{shotId:f.first.id,expectedRevision:2,patch:{prompt:'reread after resume'}},nextId):call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'other after resume'}},nextId);
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'stale approval'}},staleId)]:index===2?[next]:[])};},{loadGroups:['canvas']});
+ const sent=await f.send(),waiting=await f.settle(sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');assert.equal(waiting.steps.find(step=>step.toolCall?.id===staleId)?.status,'awaiting_approval');
+ if(via==='pause')await f.action(waiting,'pause');else f.restart();
+ assert.equal(f.runtime.get(f.projectId,sent.run.id).run.status,via==='pause'?'paused':'interrupted');
+ if(held==='saved')await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'saved while stopped'}});
+ else f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId:'x4-resume-draft',generation:1,sequence:1,action:'claim',targets:[{kind:'shot',id:f.first.id,revision:f.runtime.journal.targetRevision(f.projectId,'shot',f.first.id)}]});
+ await f.action(f.runtime.get(f.projectId,sent.run.id),'resume');const asked=await f.settle(sent.run.id);
+ const stale=asked.steps.find(step=>step.toolCall?.id===staleId),again=asked.steps.find(step=>step.toolCall?.id===nextId);
+ assert.equal(asked.run.status,'awaiting_approval');assert.equal(stale?.status,'rejected');assert.equal(stale?.error?.code,held==='saved'?'TARGET_CHANGED':'TARGET_EDITING');
+ const error=object(object(stale?.result).error);assert.ok(Array.isArray(error.current));assert.equal(error.current.length,1);assert.equal(object(object(error.current[0]).value).prompt,held==='saved'?'saved while stopped':'saved first');
+ // The new plan asks again: the stale call was never approved, and nothing ran yet.
+ assert.equal(again?.status,'awaiting_approval');assert.equal(f.effects.size,(0)+f.loadingEffects);assert.match(f.scriptRequest(2).body,held==='saved'?/TARGET_CHANGED/u:/TARGET_EDITING/u);
+ await f.action(asked,'approve',{stepId:again!.id});const done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.deepEqual(done.run.skippedTargets,[]);assert.equal(done.changes.length,1);assert.equal(f.effects.size,(1)+f.loadingEffects);assert.equal(f.requests.length,(3)+f.loadingRequests);
+ assert.deepEqual(f.runtime.journal.events(sent.run.id).filter(event=>event.type==='run'&&object(event.data).status==='paused').map(event=>object(event.data).pauseReason),via==='pause'?['user']:[]);
+ assert.equal(object(f.store.get('shots',f.first.id)).prompt,held==='saved'?'reread after resume':'saved first');
+ if(held==='draft'){assert.equal(object(f.store.get('shots',f.other.id)).prompt,'other after resume');assert.equal(f.runtime.journal.claims(f.projectId).length,1);}
+});
