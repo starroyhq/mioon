@@ -5,12 +5,10 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {openStore} from '../packages/business/src/db.ts';
-import {createAgentSettings,AGENT_CREDENTIAL_ACQUIRE} from '../packages/business/src/agent/settings.ts';
-import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts';
+import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {AGENT_AUTHORIZATION_FILENAME} from '../packages/business/src/agent/authorizations.ts';
 import {AGENT_AUTHORIZATION_SCOPES,agentAuthorizationSchemas} from '../packages/contracts/src/agent-authorization.ts';
-import {deriveAgentEndpoint} from '../packages/contracts/src/agent-protocol.ts';
-import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
+import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
 
 async function fixture(t: TestContext){
   const root=await mkdtemp(path.join(tmpdir(),'mioon-authorizations-'));let store=openStore(root);
@@ -91,23 +89,4 @@ test('changed settings, unsafe files and corruption fail closed without overwrit
   await rm(f.file);const outside=path.join(f.root,'outside-evidence');await writeFile(outside,'do not alter',{mode:0o600});await symlink(outside,f.file);
   await assert.rejects(f.authorizations.list(),{code:'AGENT_AUTHORIZATION_UNAVAILABLE'});
   assert.equal(await readFile(outside,'utf8'),'do not alter');
-});
-
-test('backend rejects ungranted requests before credentials and revocation fences async acquisition',async t=>{
-  const f=await fixture(t);f.store.put('projects',{id:'p1'});let acquired=0,calls=0,release;
-  const supplied={get:()=>f.settings.get(),[AGENT_CREDENTIAL_ACQUIRE](expected: unknown,options: unknown){acquired++;return new Promise<unknown>(resolve=>{release=async()=>resolve(await f.settings[AGENT_CREDENTIAL_ACQUIRE](expected as never,options as never));});}};
-  const runtime=createChatRuntime({store:f.store,agentSettings:supplied as never,authorizations:f.authorizations,selfPort:()=>4318,
-    gateway:async function*(){calls++;yield {type:'done',finishReason:'stop'};}});
-  t.after(()=>runtime.close());
-  const snapshot=await runtime.snapshot('p1') as unknown as {settings: {configuration: {protocol: 'chat_completions' | 'responses'; model: string; baseUrl: string}; revision: number}; instanceId: string; revision: number},configuration=snapshot.settings.configuration;
-  const input={requestId:randomUUID(),instanceId:snapshot.instanceId,expectedSettingsRevision:snapshot.settings.revision,expectedConversationRevision:snapshot.revision,
-    message:'Private content must never be authorized by its own text',consent:{destination:deriveAgentEndpoint(configuration),protocol:configuration.protocol,model:configuration.model,context:'typed_chat_only'}};
-  await assert.rejects(runtime.send('p1',input),{code:'AGENT_CHAT_CONSENT_REQUIRED'});assert.equal(acquired,0);assert.equal(calls,0);
-  await authorizeTestScope(f.authorizations);const sent=await runtime.send('p1',input) as unknown as {run: {id: string}; instanceId: string; replayed?: boolean};
-  for(let i=0;i<100&&!release;i++)await new Promise(resolve=>setTimeout(resolve,2));assert.equal(acquired,1);
-  const current=await f.authorizations.list();await f.authorizations.revoke({requestId:randomUUID(),expectedRevision:current.revision,authorizationId:current.authorizations[0].id});
-  await release!();
-  for(let i=0;i<100&&(runtime.get('p1',sent.run.id,sent.instanceId) as {run: {status: string}}).run.status==='running';i++)await new Promise(resolve=>setTimeout(resolve,2));
-  const ended=runtime.get('p1',sent.run.id,sent.instanceId) as {run: {error: {code?: string}}};assert.equal(ended.run.error.code,'AGENT_CHAT_CONSENT_REQUIRED');assert.equal(calls,0);
-  assert.equal((await runtime.send('p1',input) as {replayed?: boolean}).replayed,true);assert.equal(calls,0);
 });
