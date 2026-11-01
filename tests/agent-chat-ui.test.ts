@@ -5,6 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { stripSourceTypes } from './helpers/eval-source.ts';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { workspaceOriginScope, type WorkspaceIdentity } from '../apps/web/src/workspace-origin.ts';
 import { projectOpenAttempt, canPublishProjectOpen, projectResponseMatches, projectOpenFailureKind } from '../apps/web/src/project-open-state.ts';
@@ -24,6 +26,25 @@ test('SSE parser handles every UTF-8 byte split, CRLF, comments and duplicate fr
   await readAgentChatSSE(body, value => frames.push(value)); assert.equal(frames.length, 1); assert.equal((frames[0].data as {text:string}).text, '你好 🎬');
   const broken = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('data: {"x":1}\n')); controller.close(); } });
   await assert.rejects(readAgentChatSSE(broken, () => assert.fail('incomplete frame dispatched')));
+});
+test('real shared Input preserves accessible native checkbox markup, checked state and disabling', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const fixture = `
+    import React from 'react';
+    import { renderToStaticMarkup } from 'react-dom/server';
+    import { Input } from './src/components/input.tsx';
+    import { Label } from './src/components/label.tsx';
+    export const html = renderToStaticMarkup(<Label htmlFor="consent-runtime"><Input id="consent-runtime" data-testid="agent-chat-consent" type="checkbox" checked disabled onChange={() => {}} />Confirm sending typed chat</Label>);
+  `;
+  const script = `
+    import { build } from 'esbuild';
+    import assert from 'node:assert/strict';
+    const { outputFiles } = await build({ stdin: { contents: ${JSON.stringify(fixture)}, loader: 'tsx', resolveDir: ${JSON.stringify(root + '/packages/ui')} }, bundle: true, format: 'esm', platform: 'browser', write: false, define: { 'process.env.NODE_ENV': '\"production\"' } });
+    const { html } = await import('data:text/javascript;base64,' + Buffer.from(outputFiles[0].text).toString('base64'));
+    for (const expected of ['for="consent-runtime"', 'id="consent-runtime"', 'data-slot="input"', 'type="checkbox"', 'checked=""', 'disabled=""', 'Confirm sending typed chat']) assert.ok(html.includes(expected), 'Missing shared checkbox markup: ' + expected);
+    process.stdout.write('Shared consent checkbox verified'); process.exit(0);
+  `;
+  assert.match((execFileSync(process.execPath, ['--input-type=module'], { cwd: root, input: script, encoding: 'utf8', timeout: 30000 }) as string), /Shared consent checkbox verified/);
 });
 
 const appSource = readFileSync(new URL('../apps/web/src/App.tsx', import.meta.url), 'utf8');
