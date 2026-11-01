@@ -282,6 +282,7 @@ schemaObjects(db: DatabaseSync): SchemaObject[]           // 主库和挂载库�
 projectDirFor(dataDir: string, projectId: string): string // 取代直接拼 <dataDir>/media/…
 createServerProject(dataDir: string, options?: {name?: string}): {projectId: string; store: ProjectStore<DatabaseSync>}
 foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及用临时触发器模拟的跨文件关系
+withoutForeignKeys<T>(db: DatabaseSync, write: () => T): T // 只在这次写入前后关外键，写坏数据用
 ```
 
 - `SchemaObject`、`ForeignKeyViolation` 两个类型定义在 `project-file.ts`。新内核上的 `schemaObjects`、`foreignKeyCheck` 由 K1 实现（`packages/business/src/project-file/cross-file/inspect.ts`），W2 在旧存储上实现同样的签名。
@@ -289,6 +290,7 @@ foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及�
 - `openProjectDatabase` 设置和内核相同的 pragma，建同样的连接级临时触发器，否则经这个连接写入时会绕过跨文件约束和目标修订触发器。store 或服务端还占着这个项目时拒绝打开；旧存储上也执行这条规则，例如发现 `server.lock` 存在就拒绝。
 - `createServerProject` 给“先填库、再起服务”的测试用：按服务端的布局建一个已登记的项目，返回 `{projectId, store}`。写完先 `store.close()`，再 `startServer({dataDir})`。切换以后，服务端只认登记过的项目，看不到在 `dataDir` 本身建的 store。
   - 项目名用 `name` 选项给，不要建好以后再用 `store.put` 改名。切换以后，服务端的项目列表读的是登记里的名字；测试自己关掉的 store 不会更新登记，所以事后改的名字在列表里看不到。
+- `withoutForeignKeys` 给要写坏数据的测试用，例如一行属于或指向这个 store 里没有的项目；测试不再自己开关 `PRAGMA foreign_keys`。切换以后，本机记录指向项目文件的关系由临时触发器检查，这个 pragma 管不到，S0 只换这一个函数的实现。它必须在事务外开始；`write` 返回 Promise 时，等它结束再打开外键，所以能包住一次在自己的事务里篡改的 service 调用。
 - 查结构按名字找对象，不按库名断言。旧存储上的对象都在 `main` 里；切换以后，内容表在 `project`，本机记录在 `main`。
 
 ### 测试里怎样访问库

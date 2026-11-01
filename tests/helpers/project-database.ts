@@ -8,6 +8,7 @@ import {randomUUID} from 'node:crypto';
 import {lstatSync} from 'node:fs';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
+import {isPromise} from 'node:util/types';
 import {isProjectId} from '../../packages/contracts/src/project-file.ts';
 import type {ForeignKeyViolation} from '../../packages/contracts/src/project-file.ts';
 import {openStore} from '../../packages/business/src/db.ts';
@@ -89,4 +90,36 @@ export function foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[] {
     }
   }
   return violations;
+}
+
+const foreignKeys = (db: DatabaseSync): number => Number(db.prepare('PRAGMA foreign_keys').get()?.foreign_keys);
+
+/** Runs `write` with foreign keys off, so a test can write a damaged row the
+ * way a corrupt file would hold it, e.g. a row that belongs to or points at a
+ * project this store does not hold. Tests call this rather than switch the
+ * pragma themselves: after the switch the relations from the local-records
+ * tables to the project file are temporary triggers, which
+ * PRAGMA foreign_keys=OFF does not reach, so S0 reimplements only this
+ * function and callers do not change.
+ * It must start outside a transaction, where SQLite ignores the pragma. When
+ * `write` returns a promise, foreign keys stay off until it settles, so a test
+ * can wrap a whole service call whose own transaction does the damage. The
+ * previous foreign_keys value comes back whatever happened. */
+export function withoutForeignKeys<T>(db: DatabaseSync, write: () => T): T {
+  if (db.isTransaction) throw new Error('withoutForeignKeys must start outside a transaction: SQLite ignores PRAGMA foreign_keys inside one.');
+  const previous = foreignKeys(db);
+  const restore = (): void => {
+    db.exec(`PRAGMA foreign_keys=${previous}`);
+    if (foreignKeys(db) !== previous) throw new Error('withoutForeignKeys could not restore foreign_keys: the write left a transaction open.');
+  };
+  const failed = (error: unknown): never => {
+    try { restore(); } catch (restoreError) { throw new AggregateError([error, restoreError], 'The write failed and foreign_keys was not restored.'); }
+    throw error;
+  };
+  db.exec('PRAGMA foreign_keys=OFF');
+  let result: T;
+  try { result = write(); } catch (error) { return failed(error); }
+  if (isPromise(result)) return result.then(value => { restore(); return value; }, failed) as T;
+  restore();
+  return result;
 }
