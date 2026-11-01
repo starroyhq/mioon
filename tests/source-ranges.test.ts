@@ -17,7 +17,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 import {createServices,canonical} from '../packages/business/src/services.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 interface RangeAsset {id: string; projectId: string; name: string; mimeType: string; duration: unknown; sha256: string; relativePath: string; url: string}
 interface RangeFixture {root: string; store: TypedStore; project: FixtureProject; other: FixtureProject; call: TypedCall; restart(): void; asset(mimeType?: string,duration?: unknown,projectId?: string): RangeAsset; input(asset: RangeAsset,patch?: Record<string, unknown>): {projectId: string;assetId: string;expectedRevision: number;requestId: string;inFrame: number;outFrame: number}}
@@ -28,8 +28,6 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  try{return await services.call('project.create',{name});}
  finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: TypedStore['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 async function fixture(t: test.TestContext,{open=openStore as (root: string) => unknown}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-source-ranges-'));
@@ -170,7 +168,7 @@ test('missing and foreign reads/writes are uniform; exact replay revalidates bot
  replaceAsset(f,asset);
  f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project,id:f.other.id}),f.project.id);
  await assert.rejects(read(f,asset),{code:'INVALID_SOURCE_RANGE_RECORD'});await assert.rejects(f.call('asset.range.set',input),{code:'INVALID_SOURCE_RANGE_RECORD'});
- f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id);f.store.db.exec('PRAGMA foreign_keys=ON');
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id));
  await assert.rejects(read(f,asset),safeMissing);await assert.rejects(f.call('asset.range.set',input),safeMissing);
 });
 
@@ -204,18 +202,17 @@ test('duplicate receipts and wrong operation/table pairing fail closed before ta
 
 test('range, receipt, and trigger-induced ownership changes roll back together',async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset),before=snapshot(f);
- f.store.db.exec("CREATE TRIGGER fail_range_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_range_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
  await assert.rejects(f.call('asset.range.set',input),/injected receipt failure/);assert.deepEqual(snapshot(f),before);assert.equal(f.store.db.isTransaction,false);
  f.store.db.exec('DROP TRIGGER fail_range_receipt');
  // The post-receipt guard closes even an in-transaction reassignment by a trigger.
- f.store.db.exec(`CREATE TRIGGER reassign_after_receipt AFTER INSERT ON asset_range_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
+ f.store.db.exec(`CREATE TEMP TRIGGER reassign_after_receipt AFTER INSERT ON asset_range_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
  // The trigger moves the asset to a project this store does not hold, inside the service's own transaction.
- f.store.db.exec('PRAGMA foreign_keys=OFF');
- try{await assert.rejects(f.call('asset.range.set',input),safeMissing);}finally{f.store.db.exec('PRAGMA foreign_keys=ON');}
+ await withoutForeignKeys(f.store.db,()=>assert.rejects(f.call('asset.range.set',input),safeMissing));
  assert.deepEqual(snapshot(f),before);
  f.store.db.exec('DROP TRIGGER reassign_after_receipt');
  const first=await f.call('asset.range.set',input),updated=f.input(asset,{expectedRevision:1,inFrame:30,outFrame:60}),saved=snapshot(f);
- f.store.db.exec("CREATE TRIGGER fail_update_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_update_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
  await assert.rejects(f.call('asset.range.set',updated),/injected update failure/);assert.deepEqual(snapshot(f),saved);assert.deepEqual(await read(f,asset),first);
 });
 
@@ -329,7 +326,7 @@ test('revision overflow and lost or malformed asset rows never expose retained r
  assert.deepEqual(snapshot(f),before);
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{broken',asset.id);
  await assert.rejects(read(f,asset),{code:'INVALID_SOURCE_RANGE_RECORD'});await assert.rejects(f.call('asset.range.set',input),{code:'INVALID_SOURCE_RANGE_RECORD'});
- f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare('DELETE FROM assets WHERE id=?').run(asset.id);f.store.db.exec('PRAGMA foreign_keys=ON');
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('DELETE FROM assets WHERE id=?').run(asset.id));
  await assert.rejects(read(f,asset),safeMissing);await assert.rejects(f.call('asset.range.set',input),safeMissing);
 });
 

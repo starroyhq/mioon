@@ -10,12 +10,13 @@ import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {timelineDeliveryContentDisposition} from '@mioon/contracts/timeline-delivery';
-import {openStore} from '../packages/business/src/db.ts';
 import {createServices, type ServiceStore} from '../packages/business/src/services.ts';
 import {readOwnedTimelineAsset} from '../packages/business/src/timeline-sources.ts';
 import {readTimelineDeliveryDownload, timelineDeliveryDownloadIdentity, timelineDeliveryResponseHeaders} from '../packages/business/src/timeline-delivery-read.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
+import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 import type { FixtureSnapshot } from './helpers/strict-timeline-core-types.ts';
 
@@ -33,11 +34,11 @@ async function manifest(root: string, relative = '') {
 }
 async function fixture(t: test.TestContext, {serve = true} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-named-download-'));
-  let store: TypedStore|undefined, services: TypedServices|undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync;
+  let store: TypedStore|undefined, services: TypedServices|undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync|undefined, inspect: InspectProject|undefined;
   t.after(async () => {await server?.close(); db?.close(); await services?.drain(); store?.close(); await rm(root, {recursive: true, force: true});});
-  store = (openStore(root) as TypedStore); services = (createServices(store, new Map()) as TypedServices);
-  const project = await services.call('project.create', {name: 'Named delivery project'});
-  const foreign = await services.call('project.create', {name: 'Other project'});
+  const created = createServerProject(root, {name: 'Named delivery project'});
+  store = (created.store as unknown as TypedStore); services = (createServices(store, new Map()) as TypedServices);
+  const project = store.get('projects', created.projectId)!;
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const sourceId = randomUUID();
   store.put('assets', {id: sourceId, projectId: project.id, name: 'Frozen image', mimeType: 'image/png', sha256: 'a'.repeat(64),
@@ -56,23 +57,34 @@ async function fixture(t: test.TestContext, {serve = true} = {}) {
   // A historical download stays available after edits remove the original clip.
   timeline = await services.call('timeline.clip.remove', {projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), clipId: timeline.clips[0].id});
   await services.drain(); services = undefined; store.close(); store = undefined;
+  // The server knows the other project too; the tests damage rows to belong to it.
+  const other = createServerProject(root, {name: 'Other project'}), foreign = (other.store as unknown as TypedStore).get('projects', other.projectId)!;
+  other.store.close();
   if (serve) server = await startServer({dataDir: root, port: 0, token,
-    chatGateway: async function* () {assert.fail('Download never calls a model or provider');}});
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-  const guards = {isTimelineRenderRecord, readOwnedAsset: (projectId: string, assetId: unknown) => readOwnedTimelineAsset(db, projectId, assetId)};
+    chatGateway: async function* () {assert.fail('Download never calls a model or provider');},
+    inspectProject: received => {inspect = received;}});
+  else db = openProjectDatabase(projectDirFor(root, project.id));
+  // While the server runs, the database is read and damaged on its own connection.
+  const use = <T>(fn: (db: DatabaseSync) => T): T => inspect ? inspect(project.id, fn) : fn(db!);
+  const guardsFor = (db: DatabaseSync) => ({isTimelineRenderRecord, readOwnedAsset: (projectId: string, assetId: unknown) => readOwnedTimelineAsset(db, projectId, assetId)});
   const route = `/media/${assetId}?download=1&exportId=${record.id}`, url = new URL(route, 'http://127.0.0.1:12345');
-  const rows = () => Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
+  const rows = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
     [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
-  const checkpoint = async () => ({rows: rows(), version: db.prepare('PRAGMA data_version').get()!.data_version, files: await manifest(root)});
-  return {root, db, project, foreign, sourceId, timeline, queued, record, asset, bytes, input, route, url, guards,
-    read: () => readTimelineDeliveryDownload(db, url, guards), checkpoint,
-    unchanged: async (before: { rows: unknown; version: unknown; files: unknown; }) => {assert.deepEqual(rows(), before.rows); assert.equal(db.prepare('PRAGMA data_version').get()!.data_version, before.version); assert.deepEqual(await manifest(root), before.files);},
+  // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
+  const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
+  const checkpoint = async () => ({...use(db => ({rows: rows(db), version: changeMarks(db)})), files: await manifest(root)});
+  return {root, project, foreign, sourceId, timeline, queued, record, asset, bytes, input, route, url, use,
+    // The test's own connection exists only while no server holds the project.
+    get db() {if (inspect) throw new Error('The server holds the project: use f.use(db => ...)'); return db!;},
+    get guards() {return guardsFor(this.db);},
+    read: () => use(db => readTimelineDeliveryDownload(db, url, guardsFor(db))), checkpoint,
+    unchanged: async (before: { rows: unknown; version: unknown; files: unknown; }) => {use(db => {assert.deepEqual(rows(db), before.rows); assert.deepEqual(changeMarks(db), before.version);}); assert.deepEqual(await manifest(root), before.files);},
     request: (selected = route, options: RequestInit = {}) => fetch(server!.url + selected, {...options, headers: {authorization: 'Bearer ' + token, ...options.headers}}),
     get server() {return server;}};
 }
 
 function replace(db: DatabaseSync, table: string, value: {id: string} & Record<string, unknown>) {db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(value), value.id);}
-function allowCorruptFixture(f: Awaited<ReturnType<typeof fixture>>) {f.db.exec('DROP TRIGGER immutable_timeline_render_snapshot; DROP TRIGGER immutable_timeline_responses;');}
+function allowCorruptFixture(f: Awaited<ReturnType<typeof fixture>>) {f.use(db => db.exec('DROP TRIGGER immutable_timeline_render_snapshot; DROP TRIGGER immutable_timeline_responses;'));}
 
 test('real named media GET HEAD ranges and later historical edits retain immutable naming without writes', async t => {
   const f = await fixture(t), before = await f.checkpoint();
@@ -92,8 +104,7 @@ test('real named media GET HEAD ranges and later historical edits retain immutab
   assert.equal(f.timeline.clips.length, 0); assert.equal(f.read()!.relativePath, f.asset.relativePath);
   await f.unchanged(before);
   // The download proof does not require a current timeline or source bytes.
-  f.db.prepare('DELETE FROM timelines WHERE id=?').run(f.timeline.id);
-  f.db.prepare('DELETE FROM assets WHERE id=?').run(f.sourceId);
+  f.use(db => {db.prepare('DELETE FROM timelines WHERE id=?').run(f.timeline.id); db.prepare('DELETE FROM assets WHERE id=?').run(f.sourceId);});
   const afterDeletion = await f.checkpoint(), response = await f.request();
   assert.equal(response.status, 200); assert.equal(response.headers.get('content-disposition'), expected); await response.arrayBuffer(); await f.unchanged(afterDeletion);
 });
@@ -116,50 +127,55 @@ test('named request syntax is exact and authentication precedes descriptor discl
 
 test('foreign or corrupt export, receipt, project and output rows are opaque and read-only', async t => {
   const f = await fixture(t); allowCorruptFixture(f);
-  const originalReceipt = f.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response;
-  const corrupt: [string, () => unknown][] = [
-    ['export relational project', () => f.db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id)],
-    ['export JSON identity', () => f.db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify({...f.record, id: randomUUID()}), f.record.id)],
-    ['export foreign JSON project', () => replace(f.db, 'exports', {...f.record, projectId: f.foreign.id})],
-    ['export URL', () => replace(f.db, 'exports', {...f.record, url: `/media/${randomUUID()}`})],
-    ['not succeeded', () => replace(f.db, 'exports', {...f.record, status: 'failed', assetId: null, url: null, error: {code: 'FAILED', message: 'failed'}})],
-    ['preview purpose', () => replace(f.db, 'exports', {...f.record, purpose: 'preview'})],
-    ['missing frozen name', () => {const value = clone(f.record); delete value.snapshot.deliveryName; replace(f.db, 'exports', value);}],
-    ['changed frozen name', () => {const value = clone(f.record); value.snapshot.deliveryName = 'Other'; replace(f.db, 'exports', value);}],
-    ['receipt progressed', () => f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(f.record), f.input.requestId)],
-    ['receipt different identity', () => f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify({...f.queued, id: randomUUID()}), f.input.requestId)],
-    ['receipt changed name', () => {const value = JSON.parse((originalReceipt as string)); value.snapshot.deliveryName = 'Other'; f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(value), f.input.requestId);}],
-    ['receipt hash malformed', () => f.db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run('invalid', f.input.requestId)],
-    ['project JSON identity', () => f.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project, id: f.foreign.id}), f.project.id)],
-    ['asset relational owner', () => f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id)],
-    ['asset JSON owner', () => replace(f.db, 'assets', {...f.asset, projectId: f.foreign.id})],
-    ['asset JSON identity', () => f.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...f.asset, id: randomUUID()}), f.asset.id)],
-    ['asset wrong MIME', () => replace(f.db, 'assets', {...f.asset, mimeType: 'image/png'})],
-    ['asset wrong URL', () => replace(f.db, 'assets', {...f.asset, url: '/media/' + randomUUID()})],
-    ['asset wrong provenance', () => replace(f.db, 'assets', {...f.asset, provenance: 'user-import'})],
-    ['oversized export', () => f.db.prepare('UPDATE exports SET data=? WHERE id=?').run(' '.repeat(4 * 1024 * 1024 + 1), f.record.id)],
-    ['oversized receipt', () => f.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(' '.repeat(4 * 1024 * 1024 + 1), f.input.requestId)],
-    ['oversized output', () => f.db.prepare('UPDATE assets SET data=? WHERE id=?').run(' '.repeat(16 * 1024 + 1), f.asset.id)],
+  const originalReceipt = f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response);
+  // Rows that belong to the other project are written as a corrupt file would hold them.
+  const corrupt: [string, (db: DatabaseSync) => unknown][] = [
+    ['export relational project', db => withoutForeignKeys(db, () => db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id))],
+    ['export JSON identity', db => db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify({...f.record, id: randomUUID()}), f.record.id)],
+    ['export foreign JSON project', db => replace(db, 'exports', {...f.record, projectId: f.foreign.id})],
+    ['export URL', db => replace(db, 'exports', {...f.record, url: `/media/${randomUUID()}`})],
+    ['not succeeded', db => replace(db, 'exports', {...f.record, status: 'failed', assetId: null, url: null, error: {code: 'FAILED', message: 'failed'}})],
+    ['preview purpose', db => replace(db, 'exports', {...f.record, purpose: 'preview'})],
+    ['missing frozen name', db => {const value = clone(f.record); delete value.snapshot.deliveryName; replace(db, 'exports', value);}],
+    ['changed frozen name', db => {const value = clone(f.record); value.snapshot.deliveryName = 'Other'; replace(db, 'exports', value);}],
+    ['receipt progressed', db => db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(f.record), f.input.requestId)],
+    ['receipt different identity', db => db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify({...f.queued, id: randomUUID()}), f.input.requestId)],
+    ['receipt changed name', db => {const value = JSON.parse((originalReceipt as string)); value.snapshot.deliveryName = 'Other'; db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(JSON.stringify(value), f.input.requestId);}],
+    ['receipt hash malformed', db => db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run('invalid', f.input.requestId)],
+    ['project JSON identity', db => db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project, id: f.foreign.id}), f.project.id)],
+    ['asset relational owner', db => withoutForeignKeys(db, () => db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id))],
+    ['asset JSON owner', db => replace(db, 'assets', {...f.asset, projectId: f.foreign.id})],
+    ['asset JSON identity', db => db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...f.asset, id: randomUUID()}), f.asset.id)],
+    ['asset wrong MIME', db => replace(db, 'assets', {...f.asset, mimeType: 'image/png'})],
+    ['asset wrong URL', db => replace(db, 'assets', {...f.asset, url: '/media/' + randomUUID()})],
+    ['asset wrong provenance', db => replace(db, 'assets', {...f.asset, provenance: 'user-import'})],
+    ['oversized export', db => db.prepare('UPDATE exports SET data=? WHERE id=?').run(' '.repeat(4 * 1024 * 1024 + 1), f.record.id)],
+    ['oversized receipt', db => db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run(' '.repeat(4 * 1024 * 1024 + 1), f.input.requestId)],
+    ['oversized output', db => db.prepare('UPDATE assets SET data=? WHERE id=?').run(' '.repeat(16 * 1024 + 1), f.asset.id)],
   ];
-  const requestHash = f.db.prepare('SELECT requestHash FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.requestHash;
+  const requestHash = f.use(db => db.prepare('SELECT requestHash FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.requestHash);
   let opaque;
   for (const [label, mutate] of corrupt) {
-    mutate(); const before = await f.checkpoint(); assert.equal(f.read(), null, label);
+    f.use(mutate); const before = await f.checkpoint(); assert.equal(f.read(), null, label);
     const response = await f.request(); assert.equal(response.status, 404, label); assert.equal(response.headers.get('content-disposition'), null, label);
     const body = await response.text(); opaque ??= body; assert.equal(body, opaque, label); await f.unchanged(before);
-    f.db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.record), f.record.id);
-    f.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.asset), f.asset.id);
-    f.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify(f.project), f.project.id);
-    f.db.prepare('UPDATE timeline_requests SET response=?,requestHash=? WHERE requestId=?').run(originalReceipt, requestHash, f.input.requestId);
+    f.use(db => {
+      db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.record), f.record.id);
+      db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id, JSON.stringify(f.asset), f.asset.id);
+      db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify(f.project), f.project.id);
+      db.prepare('UPDATE timeline_requests SET response=?,requestHash=? WHERE requestId=?').run(originalReceipt, requestHash, f.input.requestId);
+    });
   }
   assert.ok(f.read());
 });
 
 test('existing safe output graph rejects foreign reverse owners without consulting current source clips', async t => {
   const f = await fixture(t), jobId = randomUUID(), versionId = randomUUID();
-  f.db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, f.foreign.id, JSON.stringify({id: jobId, projectId: f.foreign.id}));
-  f.db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(versionId, f.foreign.id, jobId,
-    JSON.stringify({id: versionId, projectId: f.foreign.id, jobId, assetId: f.asset.id}));
+  f.use(db => withoutForeignKeys(db, () => {
+    db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, f.foreign.id, JSON.stringify({id: jobId, projectId: f.foreign.id}));
+    db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(versionId, f.foreign.id, jobId,
+      JSON.stringify({id: versionId, projectId: f.foreign.id, jobId, assetId: f.asset.id}));
+  }));
   const before = await f.checkpoint(); assert.equal(f.read(), null);
   const response = await f.request(); assert.equal(response.status, 404); assert.equal(response.headers.get('content-disposition'), null); await response.text(); await f.unchanged(before);
 });
@@ -180,7 +196,7 @@ test('bounded descriptor proof is repeated after file open and releases the fd o
   let opened = 0, closed = 0, streamed = 0;
   const files = createFileResponses({openFile: async (filename, flags) => {
     const handle = await open(filename, flags); opened++;
-    f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id);
+    withoutForeignKeys(f.db, () => f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id));
     return {stat: () => handle.stat(), close: async () => {closed++; await handle.close();}, createReadStream: options => {streamed++; return handle.createReadStream(options);}};
   }});
   const server = http.createServer(async (req, res) => {
@@ -223,35 +239,37 @@ test('pre-header change fence includes frozen receipt and snapshot even when saf
 test('named download binds the exact worker output path and rejects swapped same-project export artifacts', async t => {
   const f = await fixture(t); allowCorruptFixture(f);
   const secondId = randomUUID(), secondAssetId = randomUUID(), secondRequestId = randomUUID();
-  const firstReceipt = JSON.parse((f.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response as string));
+  const firstReceipt = JSON.parse((f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response) as string));
   const secondReceipt = {...clone(firstReceipt), id: secondId, requestId: secondRequestId};
   secondReceipt.snapshot.deliveryName = 'Second owned delivery';
   const secondAsset = {...f.asset, id: secondAssetId, relativePath: `media/export-${secondId}-${randomUUID()}.mp4`, url: `/media/${secondAssetId}`};
   await writeFile(path.join(f.root, secondAsset.relativePath), Buffer.from('second owned output'), {mode: 0o600});
   const second = {...clone(f.record), id: secondId, requestId: secondRequestId, snapshot: clone(secondReceipt.snapshot), assetId: secondAssetId, url: secondAsset.url};
-  f.db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)').run(secondId, f.project.id, JSON.stringify(second));
-  f.db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(secondAssetId, f.project.id, JSON.stringify(secondAsset));
-  f.db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)').run(secondRequestId, 'd'.repeat(64), JSON.stringify(secondReceipt));
+  f.use(db => {
+    db.prepare('INSERT INTO exports(id,projectId,data) VALUES(?,?,?)').run(secondId, f.project.id, JSON.stringify(second));
+    db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(secondAssetId, f.project.id, JSON.stringify(secondAsset));
+    db.prepare('INSERT INTO timeline_requests(requestId,requestHash,response) VALUES(?,?,?)').run(secondRequestId, 'd'.repeat(64), JSON.stringify(secondReceipt));
+  });
   const secondRoute = `/media/${secondAssetId}?download=1&exportId=${secondId}`;
   for (const route of [f.route, secondRoute]) {const response = await f.request(route); assert.equal(response.status, 200); await response.arrayBuffer();}
   // Each asset and each frozen receipt independently belongs to this project;
   // only the cross-export output substitution is wrong.
-  assert.ok(readOwnedTimelineAsset(f.db, f.project.id, f.asset.id));
-  assert.ok(readOwnedTimelineAsset(f.db, f.project.id, secondAssetId));
+  assert.ok(f.use(db => readOwnedTimelineAsset(db, f.project.id, f.asset.id)));
+  assert.ok(f.use(db => readOwnedTimelineAsset(db, f.project.id, secondAssetId)));
   const swapped = {...f.record, assetId: secondAssetId, url: secondAsset.url};
   assert.equal(isTimelineRenderRecord(swapped, {...f.input, exportId: f.record.id}), true);
-  replace(f.db, 'exports', swapped);
+  f.use(db => replace(db, 'exports', swapped));
   const before = await f.checkpoint();
   const response = await f.request(`/media/${secondAssetId}?download=1&exportId=${f.record.id}`);
   assert.equal(response.status, 404); assert.equal(response.headers.get('content-disposition'), null); await response.text(); await f.unchanged(before);
   // Generic legacy managed-media downloads retain their preexisting policy.
   const legacy = await f.request(`/media/${secondAssetId}?download`);
   assert.equal(legacy.status, 200); assert.equal(legacy.headers.get('content-disposition'), 'attachment; filename="mioon.mp4"'); await legacy.arrayBuffer();
-  replace(f.db, 'exports', f.record);
+  f.use(db => replace(db, 'exports', f.record));
   for (const relativePath of [`media/export-${f.record.id}-${randomUUID()}.mp4\n`, `media/export-${f.record.id}-${randomUUID()}.mp4/../x.mp4`,
     `media/../media/export-${f.record.id}-${randomUUID()}.mp4`, `media/export-${secondId}-${randomUUID()}.mp4`,
     `media/export-${f.record.id}-not-a-uuid.mp4`, `/media/export-${f.record.id}-${randomUUID()}.mp4`]) {
-    replace(f.db, 'assets', {...f.asset, relativePath}); assert.equal(f.read(), null, relativePath);
+    f.use(db => replace(db, 'assets', {...f.asset, relativePath})); assert.equal(f.read(), null, relativePath);
   }
-  replace(f.db, 'assets', f.asset); assert.ok(f.read(), 'unchanged worker-produced path remains available');
+  f.use(db => replace(db, 'assets', f.asset)); assert.ok(f.read(), 'unchanged worker-produced path remains available');
 });

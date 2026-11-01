@@ -184,7 +184,7 @@ test('manual generation references keep working without invented connection prov
 test('durable response failures roll back attach and detach together with their shot changes',async t=>{
  const f=await fixture(t),{node}=await f.image(),shot=await f.shot();
  const state=()=>({domain:f.state(),requests:f.store.db.prepare('SELECT * FROM reference_requests ORDER BY requestId').all()});
- const fail=()=>f.store.db.exec("CREATE TRIGGER fail_reference_response BEFORE INSERT ON reference_requests BEGIN SELECT RAISE(ABORT,'injected reference response failure');END;");
+ const fail=()=>f.store.db.exec("CREATE TEMP TRIGGER fail_reference_response BEFORE INSERT ON reference_requests BEGIN SELECT RAISE(ABORT,'injected reference response failure');END;");
  fail();let before=state();await assert.rejects(f.call('reference.attach',attach(f,node,shot)),/injected reference response failure/);assert.deepEqual(state(),before);f.store.db.exec('DROP TRIGGER fail_reference_response');
  const bound=await f.call('reference.attach',attach(f,node,shot));fail();before=state();await assert.rejects(f.call('reference.detach',detach(f,bound.edge,bound.shot)),/injected reference response failure/);assert.deepEqual(state(),before);f.store.db.exec('DROP TRIGGER fail_reference_response');
  assert.throws(()=>f.store.db.prepare('UPDATE reference_requests SET response=?').run('{}'),/immutable/);

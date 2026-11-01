@@ -13,6 +13,8 @@ import {createLocalShotTextDomain} from '../../packages/business/src/local-shot-
 import {createLocalShotText} from '../../packages/business/src/local-shot-text.ts';
 import {schemas,AppError} from '@mioon/contracts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+import {schemaObjects, withoutForeignKeys} from '../helpers/project-database.ts';
+import type {DatabaseSync} from 'node:sqlite';
 
 type Store = ReturnType<typeof openStore>
 type Services = ReturnType<typeof createServices>
@@ -33,6 +35,14 @@ export function shotTextForStore(store: Store, services: Services, {fault=()=>{}
    const saved=store.db.prepare('SELECT * FROM mutation_requests WHERE requestId=?').get(input.requestId) as {operation: string; response: string}|undefined;assert.ok(saved,'Real shot commit requires immutable shared receipt');assert.equal(saved.operation,'shot.update');assert.deepEqual(JSON.parse(saved.response),response);afterCommit();return response;}}} as never);
  return {local,calls};
 }
+/** Every schema object, by type and name, and every table's rows, read on the
+ * given connection: the worker's own while it holds the project, the test's
+ * once the worker has exited. Rows are plain objects, as they cross IPC. */
+export function readShotTextState(db: DatabaseSync){
+ const objects=schemaObjects(db);
+ return {schema:objects.map(({type,name,tbl_name,sql})=>({type,name,tbl_name,sql})),
+  tables:Object.fromEntries(objects.filter(({type})=>type==='table').map(({name})=>[name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all().map(row=>({...row}))]))};
+}
 async function main(){
  const [root,...extra]=process.argv.slice(2);assert.ok(root&&path.isAbsolute(root));assert.equal(extra.length,0);const send=process.send?.bind(process);assert.ok(send);
  const store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});let armed: string|null=null,inOutcome=false,closing=false;const dispatches: {projectId: string; input: unknown}[]=[];
@@ -46,6 +56,7 @@ async function main(){
   if(method==='arm'){assert.ok(typeof input==='string'&&['beforePersist','afterDirectorySync','beforeDispatch','afterBusinessReceiptCommit','beforeOutcomePersist','afterOutcomePersist'].includes(input as never));armed=String(input);inOutcome=false;data={armed};}
   else if(method==='identity')data={instanceId};
   else if(method==='observe')data={dispatches:structuredClone(dispatches)};
+  else if(method==='snapshot')data=readShotTextState(store.db);
   else if(method==='rpc'){assert.equal(input.operation,'shot.update');data=await services.call(String(input.operation),input.input as never);}
   else if(method==='executeBoth')data=await Promise.all([local.execute(input as never),local.recover(input as never)]);
   else if(method==='corruptReceipt'){
@@ -56,7 +67,7 @@ async function main(){
    else store.db.exec('DROP TRIGGER immutable_mutation_requests');
    if(input.kind==='response'){const response=JSON.parse(prior.response) as Record<string, unknown>;response.prompt='CORRUPTED_HISTORICAL_AFTERTEXT';store.db.prepare('UPDATE mutation_requests SET response=? WHERE requestId=?').run(JSON.stringify(response),String(input.requestId));}
    // The foreign project lives in a store of its own; write the damaged owner as a corrupt file would hold it.
-   else if(input.kind==='owner'){store.db.exec('PRAGMA foreign_keys=OFF');try{store.db.prepare('UPDATE mutation_requests SET projectId=? WHERE requestId=?').run(String(input.foreignProjectId),String(input.requestId));}finally{store.db.exec('PRAGMA foreign_keys=ON');}}
+   else if(input.kind==='owner')withoutForeignKeys(store.db,()=>store.db.prepare('UPDATE mutation_requests SET projectId=? WHERE requestId=?').run(String(input.foreignProjectId),String(input.requestId)));
    else if(input.kind==='canonical')store.db.prepare('UPDATE mutation_requests SET canonicalInput=? WHERE requestId=?').run('{}',String(input.requestId));
    else if(input.kind==='duplicate')store.db.prepare('INSERT INTO asset_range_requests(requestId,operation,projectId,canonicalInput,response) VALUES(?,?,?,?,?)').run(prior.requestId,'asset.range.set',prior.projectId,prior.canonicalInput,prior.response);
    else throw Error('Unknown corruption');data={corrupted:input.kind};

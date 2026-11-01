@@ -145,8 +145,9 @@ const textSites = {
   "tests/http-file-shutdown.test.mjs": 2,
   "tests/image-activation-transports.test.mjs": 2,
   "tests/image-generation-recovery.test.mjs": 2,
-  "tests/image-generation-transports.test.mjs": 5,
-  "tests/image-edit-transports.test.mjs": 5,
+  // The backend runs in process; the CLI stdout/stderr and MCP stderr remain.
+  "tests/image-generation-transports.test.mjs": 3,
+  "tests/image-edit-transports.test.mjs": 3,
   "tests/image-profile-discovery.test.mjs": 3,
   "tests/inspection-wire.test.mjs": 3,
   "tests/integration.test.mjs": 2,

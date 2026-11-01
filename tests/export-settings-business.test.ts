@@ -11,7 +11,7 @@ import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/
 import type {TestContext} from 'node:test';
 import type {WorkspaceStore} from '../packages/business/src/db.ts';
 import {readTimelinePreflightSnapshot,validatePreparedTimelineSources} from '../packages/business/src/timeline-sources.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 type PreparedSourceValue = Parameters<typeof validatePreparedTimelineSources>[3] extends Map<string, infer P> ? P : never;
 interface ServiceError {code?: string; message?: string; details?: {mutationOutcome?: boolean; [key: string]: unknown}}
@@ -26,8 +26,6 @@ interface Fixture {
 }
 
 const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=(db: WorkspaceStore['db'],write: () => void)=>{db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: Pick<TestContext,'after'>): Promise<{id: string}>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-settings-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));

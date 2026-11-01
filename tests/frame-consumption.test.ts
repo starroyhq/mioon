@@ -29,7 +29,7 @@ import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import {fileHash,probe} from '../packages/business/src/media.ts';
 import {validatePng} from '../packages/business/src/images/png.ts';
 import {isFrameTaskResponse,isFrameMutationResponse,isReferenceMutationResponse,isSubjectMutationResponse,isTimelineMutationResponse,schemas} from '@mioon/contracts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 // Local acceptance, not a mocked decoder/renderer. Every media input is a tiny
@@ -40,8 +40,6 @@ const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.na
 const allRows=(db: DatabaseSync)=>Object.fromEntries(schemaObjects(db).filter(({type})=>type==='table').sort(byName).map(({name})=>[name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
 const changes=(db: DatabaseSync)=>db.prepare('SELECT total_changes() AS n').get()!.n;
 const insert=(db: DatabaseSync,table: string,value: Record<string,SQLInputValue>)=>{const keys=Object.keys(value);db.prepare(`INSERT INTO ${table}(${keys.join(',')}) VALUES(${keys.map(()=>'?').join(',')})`).run(...Object.values(value));};
-// The other project is not in this store; write the damaged rows as a corrupt file would hold them.
-const withoutForeignKeys=(db: DatabaseSync,write: () => void)=>{db.exec('PRAGMA foreign_keys=OFF');try{write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 const fixtureMedia=(args: string[])=>run('ffmpeg',['-hide_banner','-loglevel','error','-nostdin','-n','-filter_threads','1','-filter_complex_threads','1',...args],{timeout:30000});
 async function until<T extends {state?:string;status?:string}>(read: () => T | Promise<T>,done: (value: T) => boolean,label: string){
  const end=Date.now()+45000;let value;
@@ -198,8 +196,8 @@ for(const corruption of ['malformed original ACK','hidden mixed legacy owner','r
   });
   db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...frame.asset,provenance:'user-import'}),frame.asset.id);
  }else{
-  db.exec('PRAGMA foreign_keys=OFF;PRAGMA ignore_check_constraints=ON;DROP TRIGGER immutable_frame_task_identity;DROP TRIGGER frame_task_state_transitions');
-  db.prepare('UPDATE frame_tasks SET projectId=? WHERE id=?').run(f.other.id,frame.task.id);
+  db.exec('PRAGMA ignore_check_constraints=ON;DROP TRIGGER immutable_frame_task_identity;DROP TRIGGER frame_task_state_transitions');
+  withoutForeignKeys(db,()=>db.prepare('UPDATE frame_tasks SET projectId=? WHERE id=?').run(f.other.id,frame.task.id));
  }
  await assertConsumerRejections(f,frame,prepared);
 });

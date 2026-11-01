@@ -18,7 +18,7 @@ import {createTimelinePreflightServices,timelineSnapshotHash} from '../packages/
 import {readTimelinePreflightSnapshot} from '../packages/business/src/timeline-sources.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: test.TestContext,name='Foreign project'){
@@ -27,8 +27,6 @@ async function foreignProject(t: test.TestContext,name='Foreign project'){
  try{return await services.call('project.create',{name});}
  finally{await services.drain();store.close();}
 }
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys=<T>(db: FixtureStore['db'],write: () => T): T=>{db.exec('PRAGMA foreign_keys=OFF');try{return write();}finally{db.exec('PRAGMA foreign_keys=ON');}};
 const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 async function fixture(t: test.TestContext,{empty=false}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-export-range-'));let store=(openStore(root) as FixtureStore),probes=0,services!: FixtureServices;

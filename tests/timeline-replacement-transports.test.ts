@@ -21,8 +21,8 @@ import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '../packages/client/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {createServerProject, openProjectDatabase, projectDirFor, withoutForeignKeys} from './helpers/project-database.ts';
 import type { ChildProcessByStdio } from 'child_process';
 import type { Readable } from 'stream';
 
@@ -128,27 +128,32 @@ test('replacement CLI and official MCP discover one strict schema with a require
 
 async function backendFixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-replacement-transports-'));
-  const store = (openStore(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
-  const projectId = (await services.call('project.create', {name: 'Replacement transport parity'})).id;
-  const foreignProjectId = (await services.call('project.create', {name: 'Foreign synthetic scope'})).id;
+  const created = createServerProject(root, {name: 'Replacement transport parity'}), projectId = created.projectId;
+  let store = (created.store as unknown as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
   function asset(mimeType: string, extra: {provenance?: string; duration?: number; hasAudio?: boolean; projectId?: string;} = {}) {
     const id = randomUUID();
     return store.put('assets', {id, projectId, name: `Synthetic ${mimeType}`, mimeType, duration: mimeType.startsWith('image/') ? 0 : 8, width: 720, height: 1280, hasVideo: !mimeType.startsWith('audio/'), hasAudio: !mimeType.startsWith('image/'), provenance: 'user-import', sizeBytes: 128, sha256: 'a'.repeat(64), relativePath: `media/${id}.fixture`, url: `/media/${id}`, createdAt: '2026-10-10T00:00:00.000Z', ...extra});
   }
-  const assets = {
+  const owned = {
     video: asset('video/mp4'), replacement: asset('video/webm'), generated: asset('video/mp4', {provenance: 'synthetic-mock'}),
     laterGenerated: asset('video/mp4', {provenance: 'synthetic-mock'}), short: asset('video/mp4', {duration: 2}),
     silent: asset('video/mp4', {hasAudio: false}), audio: asset('audio/wav'), otherAudio: asset('audio/mpeg'),
-    image: asset('image/png'), otherImage: asset('image/jpeg'), foreign: asset('video/mp4', {projectId: foreignProjectId}),
+    image: asset('image/png'), otherImage: asset('image/jpeg'),
   };
   const shot = await services.call('shot.create', {projectId, title: 'Synthetic immutable versions'});
-  const foreignShot = await services.call('shot.create', {projectId: foreignProjectId, title: 'Foreign versions'});
   function version(shot: MediaShot, asset: { id: unknown; projectId?: unknown; name?: string; mimeType?: unknown; duration?: number; width?: number; height?: number; hasVideo?: boolean; hasAudio?: boolean; provenance?: string; sizeBytes?: number; sha256: unknown; relativePath?: string; url: unknown; createdAt?: string; }, number: number) {
     const jobId = randomUUID(), id = randomUUID();
     store.put('jobs', {id: jobId, projectId: shot.projectId, shotId: shot.id, status: 'succeeded', providerId: 'mock', requestId: randomUUID(), revision: 1, submissionCount: 1, versionId: id});
     return store.put('versions', {id, projectId: shot.projectId, shotId: shot.id, jobId, number, providerId: 'mock', assetId: asset.id, sha256: asset.sha256, url: asset.url});
   }
-  const versions = {generated: version(shot, assets.generated, 1), later: version(shot, assets.laterGenerated, 2), foreign: version(foreignShot, assets.foreign, 1)};
+  const generated = version(shot, owned.generated, 1), later = version(shot, owned.laterGenerated, 2);
+  store.close();
+  // Another registered project, with its asset, shot and version in a store of its own.
+  const foreignProject = createServerProject(root, {name: 'Foreign synthetic scope'}), foreignProjectId = foreignProject.projectId;
+  store = (foreignProject.store as unknown as FixtureStore); services = (createServices(store, new Map()) as FixtureServices);
+  const assets = {...owned, foreign: asset('video/mp4', {projectId: foreignProjectId})};
+  const foreignShot = await services.call('shot.create', {projectId: foreignProjectId, title: 'Foreign versions'});
+  const versions = {generated, later, foreign: version(foreignShot, assets.foreign, 1)};
   // Synthetic metadata only; every timeline mutation below uses real transports.
   // Succeeded jobs cannot trigger provider work and no media files are needed.
   store.close();
@@ -176,12 +181,15 @@ async function backendFixture(t: test.TestContext) {
     throw Error(`Backend did not start: ${stdout}\n${stderr}`);
   }
   await start();
+  // The backend process holds the project while it runs: the test opens it only after the process has exited.
+  const stopped = async <T>(fn: (db: DatabaseSync) => T): Promise<T> => {
+    await stop();
+    const db = openProjectDatabase(projectDirFor(root, projectId));
+    try { return fn(db); } finally { db.close(); }
+  };
+  const rows = (db: DatabaseSync, tables: readonly string[]) => Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   return {root, url, projectId, foreignProjectId, assets, shot, versions, get pid() { return backend.pid; }, restart: async (editFixture?: (arg0: DatabaseSync) => void) => {
-      await stop();
-      if (editFixture) {
-        const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
-        try { editFixture(db); } finally { db.close(); }
-      }
+      if (editFixture) await stopped(editFixture); else await stop();
       await start();
     },
     async http(name: string, input: { projectId: unknown; expectedRevision?: unknown; requestId?:string; }, expectedError?: undefined) {
@@ -191,10 +199,11 @@ async function backendFixture(t: test.TestContext) {
       assert.equal(body.ok, !expectedError, JSON.stringify(body));
       if (expectedError) { assert.equal(body.error.code, expectedError); return body.error; } return body.data;
     },
-    storage(tables: string[]|undefined = ['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests']) {
-      const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-      try { return Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])); }
-      finally { db.close(); }
+    // Timeline storage and the tables outside it, read between a stop and a start of the backend on the same port.
+    async storage() {
+      const state = await stopped(db => ({timeline: rows(db, ['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests']), outside: rows(db, outsideTables)}));
+      await start();
+      return state;
     },
   };
 }
@@ -226,12 +235,12 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   timeline = await mcp.call('timeline_clip_add', request(projectId, timeline, {trackId: timeline.tracks[2].id, assetId: assets.audio.id, startFrame: 10, sourceInFrame: 20, durationFrames: 100, fadeInFrames: 0, gain: 0.75}));
   const audioClipId = timeline.clips[2].id, initial = timeline, saved: {input:{projectId:string;requestId:string}&Record<string,unknown>;response:FixtureTimeline}[] = [];
   const firstInput = request(projectId, timeline, {clipId, assetId: assets.replacement.id});
-  let outside = backend.storage(outsideTables);
+  let outside = (await backend.storage()).outside;
   const concurrent = await Promise.all(transports.map(({call}) => call(operation, ((firstInput) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))));
   concurrent.forEach(result => assert.deepEqual(result, concurrent[0]));
   timeline = concurrent[0]; saved.push({input: firstInput, response: timeline});
   assertReplacement(initial, timeline, clipId, assets.replacement.id);
-  assert.deepEqual(backend.storage(outsideTables), outside);
+  assert.deepEqual((await backend.storage()).outside, outside);
   assert.equal((await backend.http('timeline.history.get', {projectId})).length, 4, 'three adds and one replacement; repeated calls add no history');
   const undo = await command('timeline.undo', request(projectId, timeline));
   assert.deepEqual(editable(((undo) as unknown as Parameters<NonNullable<typeof editable>>[0])), editable(initial));
@@ -245,22 +254,22 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   timeline = await command(operation, withoutRequestId, undefined, ['--request-id', requestId]);
   assertReplacement(before, timeline, clipId, assets.generated.id, versions.generated);
   saved.push({input: explicitInput, response: timeline});
-  assert.deepEqual(backend.storage(outsideTables), outside);
+  assert.deepEqual((await backend.storage()).outside, outside);
 
   // Local canvas replay keys and timeline replay keys are separate namespaces.
   // Reusing this string for selection is allowed, but never repoints the clip.
   let selected = await command('version.select', {shotId: shot.id, versionId: versions.later.id, expectedRevision: shot.revision, requestId: firstInput.requestId});
   assert.deepEqual(await backend.http('timeline.get', {projectId}), timeline);
   assert.equal(timeline.clips.find((clip: { id: unknown; }) => clip.id === clipId).versionId, versions.generated.id);
-  outside = backend.storage(outsideTables); before = timeline;
+  outside = (await backend.storage()).outside; before = timeline;
   const assetOnlyInput = request(projectId, timeline, {clipId, assetId: assets.laterGenerated.id});
   timeline = await mcp.call(toolName, assetOnlyInput);
   assertReplacement(before, timeline, clipId, assets.laterGenerated.id);
   saved.push({input: assetOnlyInput, response: timeline});
-  assert.deepEqual(backend.storage(outsideTables), outside);
+  assert.deepEqual((await backend.storage()).outside, outside);
   selected = (await mcp.call('version_select', {shotId: shot.id, versionId: versions.generated.id, expectedRevision: selected.revision, requestId: randomUUID()}) as unknown as typeof selected);
   assert.deepEqual(await backend.http('timeline.get', {projectId}), timeline, 'later selection cannot move asset-only generated clips either');
-  outside = backend.storage(outsideTables);
+  outside = (await backend.storage()).outside;
 
   for (const [call, id, asset] of ([[backend.http, imageClipId, assets.otherImage], [command, audioClipId, assets.otherAudio]] as const)) {
     before = timeline;
@@ -268,7 +277,7 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
     timeline = await (call as import('./helpers/strict-timeline-transport-types.ts').TransportCall)(operation, input); assertReplacement(before, timeline, id, asset.id);
     saved.push({input, response: timeline});
   }
-  assert.deepEqual(backend.storage(outsideTables), outside);
+  assert.deepEqual((await backend.storage()).outside, outside);
   const cases = ([
     [request(projectId, timeline, {clipId, assetId: assets.laterGenerated.id}), 'SOURCE_UNCHANGED'],
     [request(projectId, timeline, {clipId, assetId: assets.laterGenerated.id, versionId: versions.later.id}), 'SOURCE_UNCHANGED'],
@@ -288,7 +297,7 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
     [{...firstInput, projectId: backend.foreignProjectId}, 'IDEMPOTENCY_CONFLICT'],
     [{...firstInput, requestId: randomUUID()}, 'REVISION_CONFLICT'],
   ] as const);
-  const beforeErrors = backend.storage(), outsideErrors = backend.storage(outsideTables);
+  const {timeline: beforeErrors, outside: outsideErrors} = await backend.storage();
   for (const [input, code] of cases) {
     const errors: import('./helpers/strict-timeline-audio-types.ts').Failure[] = [];
     for (const {call} of transports) errors.push(await call(operation, ((((input) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>), ((code) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[2]>)));
@@ -305,8 +314,9 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
     await call('timeline.clip.update', ((request(projectId, timeline, {clipId, patch: {assetId: assets.video.id}})) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>), (((('VALIDATION_ERROR') as unknown as Parameters<typeof call>[2])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[2]>));
     await call('timeline.undo', (({...firstInput, clipId: undefined, assetId: undefined}) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>), (('IDEMPOTENCY_CONFLICT') as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[2]>));
   }
-  assert.deepEqual(backend.storage(), beforeErrors);
-  assert.deepEqual(backend.storage(outsideTables), outsideErrors);
+  const afterErrors = await backend.storage();
+  assert.deepEqual(afterErrors.timeline, beforeErrors);
+  assert.deepEqual(afterErrors.outside, outsideErrors);
 
   let dropResponse = true, sent = 0, committed!:FixtureTimeline;
   const client = (createClient({env, fetchImpl: async (...args) => {
@@ -323,15 +333,16 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
   assert.deepEqual(await client.rpc(operation, uncertainInput), committed); assert.equal(sent, 2);
   saved.push({input: uncertainInput, response: committed});
   for (const {call} of transports) assert.deepEqual(await call(operation, ((uncertainInput) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), committed);
-  const persisted = backend.storage(), persistedOutside = backend.storage(outsideTables), pid = backend.pid;
+  const {timeline: persisted, outside: persistedOutside} = await backend.storage(), pid = backend.pid;
   await backend.restart(); assert.notEqual(backend.pid, pid);
   for (const {name, call} of transports) {
     assert.deepEqual(await call('timeline.get', (({projectId}) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), timeline, `${name} observes the same restarted timeline`);
     for (const record of saved as {input:{projectId:unknown;expectedRevision?:unknown;requestId?:string};response:unknown}[]) assert.deepEqual(await call(operation, record.input), record.response, `${name} replays each historical replacement exactly`);
     assert.deepEqual((await call('project.get', (({projectId}) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
   }
-  assert.deepEqual(backend.storage(), persisted, 'restart/replay never rewrites timeline, history, cursor or immutable response bytes');
-  assert.deepEqual(backend.storage(outsideTables), persistedOutside, 'restart/replay cannot alter generation, versions, source assets or exports');
+  const replayed = await backend.storage();
+  assert.deepEqual(replayed.timeline, persisted, 'restart/replay never rewrites timeline, history, cursor or immutable response bytes');
+  assert.deepEqual(replayed.outside, persistedOutside, 'restart/replay cannot alter generation, versions, source assets or exports');
   for (const {input} of saved) assert.equal(persisted.timeline_requests.filter(row => row.requestId === input.requestId).length, 1);
 
   // A later definite 4xx is not proof that an earlier lost-ack mutation failed.
@@ -346,7 +357,7 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
     malformed.clips.find((clip: { id: unknown; }) => clip.id === clipId).assetId = assets.video.id;
     installReceipt(db as DatabaseSync, JSON.stringify(malformed));
   });
-  let deniedState = backend.storage();
+  let deniedState = (await backend.storage()).timeline;
   let deniedBackendError;
   for (const {name, call} of transports) {
     const error = await call(operation, ((uncertainInput) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>), (((('INVALID_TIMELINE_SNAPSHOT') as unknown as Parameters<typeof call>[2])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[2]>));
@@ -354,13 +365,15 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
     if (name === 'HTTP') deniedBackendError = error;
     else assertClientRecoveryError(error, deniedBackendError, {operation, input: uncertainInput});
   }
-  assert.deepEqual(backend.storage(), deniedState);
+  assert.deepEqual((await backend.storage()).timeline, deniedState);
   await backend.restart((((db: { prepare: (arg0: string) => { (): unknown; new(): unknown; run: { (arg0: unknown,arg1: string): void; new(): unknown; }; }; }) => {
     installReceipt(db as unknown as DatabaseSync, (((receipt)!.response) as unknown as Parameters<NonNullable<typeof installReceipt>>[1]));
-    db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(backend.foreignProjectId, assets.generated.id);
+    // The asset is moved to the other project as a corrupt file would hold it.
+    withoutForeignKeys(db as unknown as DatabaseSync, () => db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(backend.foreignProjectId, assets.generated.id));
   }) as unknown as Parameters<typeof backend.restart>[0]));
-  deniedState = backend.storage();
-  const deniedOutside = backend.storage(outsideTables);
+  const denied = await backend.storage();
+  deniedState = denied.timeline;
+  const deniedOutside = denied.outside;
   for (const {name, call} of transports) {
     const error = await call(operation, ((uncertainInput) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>), (((('TIMELINE_SOURCE_UNAVAILABLE') as unknown as Parameters<typeof call>[2])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[2]>));
     if (name === 'HTTP') {
@@ -368,6 +381,7 @@ test('replacement HTTP, CLI and official MCP preserve fixed sources, exact repla
       deniedBackendError = error;
     } else assertClientRecoveryError(error, deniedBackendError, {operation, input: uncertainInput});
   }
-  assert.deepEqual(backend.storage(), deniedState);
-  assert.deepEqual(backend.storage(outsideTables), deniedOutside);
+  const afterDenied = await backend.storage();
+  assert.deepEqual(afterDenied.timeline, deniedState);
+  assert.deepEqual(afterDenied.outside, deniedOutside);
 });
