@@ -10,8 +10,6 @@ import type {AgentAuthorizations} from './agent/authorizations.ts';
 import {createProjectHomeServices} from './project-home.ts';
 import {createProjectLifecycleServices} from './project-lifecycle.ts';
 import {validateManagedFile,validateManagedDirectory} from '@mioon/contracts/private-storage';
-import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
-import {createOpacityCandidateServices} from './opacity-candidate-services.ts';
 import {readTimelineVolumeEnvelopeCapability} from './timeline-volume-envelope-capability.ts';
 import {assertTimelineAudioRoleWorkspace} from './workspace-schema-dispatch.ts';
 import {readTimelineAudioRoleCapability} from './timeline-audio-role-business.ts';
@@ -88,7 +86,7 @@ import {validateImageConsumption} from './image-consumption.ts';
 import {awaitProvider,boundedShutdown,checkpoint} from './operation-lifecycle.ts';
 
 export type ServiceRow=Record<string, unknown>;
-/** Minimum identity shared by ordinary and verified candidate stores. */
+/** Minimum store identity accepted by createServices and startWorker. */
 export interface ServiceStore { readonly db: DatabaseSync; readonly root: string }
 export interface HandlerCallContext { readonly signal?: AbortSignal; readonly expectedWorkspaceOrigin?: unknown; readonly [key: string]: unknown }
 export interface ServiceHandlerContext { readonly signal?: AbortSignal | null; readonly expectedWorkspaceOrigin?: unknown; readonly [key: string]: unknown }
@@ -113,7 +111,7 @@ export interface CreateServicesOptions {
 type AudioPreviewService=ReturnType<typeof createTimelineAudioPreviewCoordinator>;
 type ProjectLifecycleService=ReturnType<typeof createProjectLifecycleServices>;
 type InspectionService=ReturnType<typeof createInspectionServices>;
-/** Ordinary (non-candidate) backend surface returned by createServices. */
+/** Ordinary backend surface returned by createServices. */
 export interface OrdinaryServices {
  handlers: ServiceHandlers;
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
@@ -192,9 +190,6 @@ export function canonical(v: unknown): string {return JSON.stringify(v,(_key: st
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
  {env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
- if(getOpacityCandidateAssembly(inputStore))return createOpacityCandidateServices(inputStore,{signal:ownerSignal}) as unknown as OrdinaryServices;
- // Ordinary/candidate stores expose the same workspace surface; candidate
- // table-name narrowing stays inside its own verified assembly.
  const store: WorkspaceStore = inputStore as unknown as WorkspaceStore;
  const restored=getWorkspaceRestoreContext(store);
  const restoredReads=restored?createRestoredReadServices(store as unknown as Parameters<typeof createRestoredReadServices>[0],{signal:ownerSignal}):null;

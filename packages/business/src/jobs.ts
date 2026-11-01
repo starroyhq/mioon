@@ -1,9 +1,5 @@
 import {registerExportActivity,isCancelledExport,exportStage} from './export-controls.ts';
-import {getOpacityCandidateAssembly} from './opacity-candidate-store.ts';
 import {assertAgentTaskJobEffect,withAgentTaskJobOrigin,recordAgentTaskJobDispatch,allowAgentTaskJobTargetMutation,isAgentTaskEffectBlocked,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
-import {isOpacityCandidateServicesForStore} from './opacity-candidate-services.ts';
-import {matchesOpacityCandidateExport,claimOpacityCandidateExport,recoverOpacityCandidateExport,isOpacityCandidateExportClaim,revokeOpacityCandidateExportClaim,prepareOpacityCandidateRenderInputs} from './opacity-candidate-render-authority.ts';
-import {bindTimelineOpacityRenderAttempt} from './timeline-opacity-render-binding.ts';
 import {isFloatTimelineExport,claimFloatTimelineExport,sameFloatTimelineAttempt,requeueFloatTimelineExport,createFloatTimelineAttemptRegistry,ownedFloatTimelineMeasurement,bindFloatTimelineMeasurement,bindFloatTimelineFailure,assertFloatTimelineExportRead} from './timeline-float-outcome.ts';
 import {createTimelineColourLutReader,verifyTimelineColourLuts} from './timeline-colour-lut.ts';
 import {requiresPreparedTimelineExportIdentity,hasSelectedTimelineExportRange,timelineExportRangeEffectError} from './timeline-export-range.ts';
@@ -58,11 +54,8 @@ const arrayValue=(value: unknown): unknown[]=>Array.isArray(value)?value:[];
 const isThenable=(value: unknown): value is PromiseLike<unknown>=>value!==null&&(typeof value==='object'||typeof value==='function')&&typeof (value as {then?: unknown}).then==='function';
 
 export function startWorker(inputStore: ServiceStore,services: Services,providers: ReadonlyMap<string,Provider>,{signal:ownerSignal}: {signal?: AbortSignal}={}): Worker {
- // Ordinary and verified candidate stores expose the same workspace surface.
  const store: JobsStore=inputStore as unknown as JobsStore;
- const opacity=getOpacityCandidateAssembly(inputStore);
- if(opacity&&!isOpacityCandidateServicesForStore(store,services as never))throw Object.assign(Error('The candidate worker requires its exact owned services.'),{code:'OPACITY_CANDIDATE_STORE_REQUIRED'});
- const restored=opacity?opacity.getRestoreContext():getWorkspaceRestoreContext(inputStore);
+ const restored=getWorkspaceRestoreContext(inputStore);
  const {list,get,put,tx,root}=store;
  let stopped=Boolean(ownerSignal?.aborted),cycle: Promise<void>|null=null,stopping: Promise<void>|undefined,shutdownFailure: unknown;
  const operations=new Set<AbortController>(),floatClaims=createFloatTimelineAttemptRegistry();
@@ -90,15 +83,15 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const value=record as ExportRecord;
   if(value.id!==row.id||value.projectId!==row.projectId)return invalidExport();
   if(value.mode==='timeline'&&property(property(value.snapshot,'timeline'),'projectId')!==row.projectId)return invalidExport();
-  try{if(opacity){if(!matchesOpacityCandidateExport(store,record as never))return invalidExport();}else assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch{return invalidExport();}
+  try{assertFloatTimelineExportRead(store.db,record,{isTimelineRenderRecord,readOwnedAsset:(projectId: string,assetId: string)=>readOwnedTimelineAsset(store.db,projectId,assetId)});}catch{return invalidExport();}
   return value;
  }
- const workerExports=(): ExportRecord[]=>store.db.prepare(`SELECT ${exportColumns} FROM exports${restored?" WHERE id IN (SELECT exportId FROM workspace_restore_export_origins WHERE workspaceOrigin=?) AND CASE WHEN json_valid(data) THEN json_extract(data,'$.status') END IN ('queued','running') ORDER BY id":''}`).all(...(restored?[restored.workspaceOrigin]:[])).map(row=>decodeExport(row as Record<string,unknown>)).filter((value): value is ExportRecord=>Boolean(value&&(!restored||(opacity?matchesOpacityCandidateExport(store,value):matchesRestoredExport(store,value as never)))));
+ const workerExports=(): ExportRecord[]=>store.db.prepare(`SELECT ${exportColumns} FROM exports${restored?" WHERE id IN (SELECT exportId FROM workspace_restore_export_origins WHERE workspaceOrigin=?) AND CASE WHEN json_valid(data) THEN json_extract(data,'$.status') END IN ('queued','running') ORDER BY id":''}`).all(...(restored?[restored.workspaceOrigin]:[])).map(row=>decodeExport(row as Record<string,unknown>)).filter((value): value is ExportRecord=>Boolean(value&&(!restored||matchesRestoredExport(store,value as never))));
  const workerExport=(id: string): ExportRecord|null=>decodeExport(store.db.prepare(`SELECT ${exportColumns} FROM exports WHERE id=?`).get(id) as Record<string,unknown>|undefined);
  // Custom delivery adds an awaited capability step. Preserve the complete
  // immutable acceptance identity across every existing async/publication fence;
  // a replaced snapshot must never be restored by publishing an older copy.
- const customExport=(e: ExportRecord): boolean=>Boolean(opacity)||requiresPreparedTimelineExportIdentity(e)||Boolean(e.snapshot&&isRecord(e.snapshot)&&Object.hasOwn(e.snapshot,'colourPlan'));
+ const customExport=(e: ExportRecord): boolean=>requiresPreparedTimelineExportIdentity(e)||Boolean(e.snapshot&&isRecord(e.snapshot)&&Object.hasOwn(e.snapshot,'colourPlan'));
  const exportIdentity=(e: ExportRecord): string=>JSON.stringify(Object.fromEntries(['id','projectId','requestId','mode','purpose','timelineRevision','snapshot','createdAt'].map(key=>[key,e[key]])));
  // A removed delivery field must not disguise an accepted custom export as
  // a historical legacy job before the worker's first observation. The bounded
@@ -112,7 +105,6 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  }
  function customReceiptMatches(e: ExportRecord): boolean {
   try{
-   if(opacity)return matchesOpacityCandidateExport(store,e as never);
    const input={projectId:e.projectId,requestId:e.requestId,expectedRevision:e.timelineRevision,purpose:e.purpose,...timelineRenderDeliveryFields(e.snapshot)};
    if(typeof input.requestId!=='string'||input.requestId.length<8||input.requestId.length>200)return false;
    const receipt=readTimelineReceipt(store.db,input as never,'timeline.render');
@@ -123,10 +115,9 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
  }
  const currentOwnedExport=(e: ExportRecord,{cleanupOnly=false}: {cleanupOnly?: boolean}={}): ExportRecord|null=>{
   const latest=workerExport(e.id);
-  if(opacity){if(!matchesOpacityCandidateExport(store,e as never)||!matchesOpacityCandidateExport(store,latest as never)||exportIdentity(e)!==exportIdentity(latest as ExportRecord)||!cleanupOnly&&e.status==='running'&&!isOpacityCandidateExportClaim(store,e as never))return null;}
-  else if(restored&&(!matchesRestoredExport(store,e as never)||!matchesRestoredExport(store,latest as never)||restoreExportIdentity(e as never)!==restoreExportIdentity(latest as never)))return null;
+  if(restored&&(!matchesRestoredExport(store,e as never)||!matchesRestoredExport(store,latest as never)||restoreExportIdentity(e as never)!==restoreExportIdentity(latest as never)))return null;
   if(!latest||latest.mode!==e.mode||latest.id!==e.id||latest.projectId!==e.projectId)return null;
-  if((opacity||hasTimelineDeliveryIdentity(e)||hasTimelineDeliveryIdentity(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
+  if((hasTimelineDeliveryIdentity(e)||hasTimelineDeliveryIdentity(latest)||receiptHasDelivery(e))&&(exportIdentity(latest)!==exportIdentity(e)||!customReceiptMatches(e)))return null;
   if(!cleanupOnly&&!sameFloatTimelineAttempt(e,latest as never))return null;
   return latest;
  };
@@ -142,8 +133,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    const latest=table==='exports'?workerExport(id):recordValue(get(table,id)) as (JobRecord&Record<string,unknown>)|null;
    const status=stringValue(property(latest,'status'));
    if(!latest||status===undefined||['succeeded','cancelled'].includes(status)||table==='exports'&&(property(latest,'mode')!==mode||property(latest,'projectId')!==projectId))return;
-   if(opacity&&(table!=='exports'||!matchesOpacityCandidateExport(store,latest as never)))return;
-   else if(restored&&!opacity&&(table!=='exports'||!matchesRestoredExport(store,latest as never)))return;
+   if(restored&&(table!=='exports'||!matchesRestoredExport(store,latest as never)))return;
    if(table==='exports'&&isFloatTimelineExport(latest)&&(!attempt||!sameFloatTimelineAttempt(attempt,latest)))return;
    const error=mediaPauseError(table,status);
    if(property(property(latest,'error'),'code')===error.code&&property(property(latest,'error'),'message')===error.message)return;
@@ -153,9 +143,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(table==='exports')tx(apply);else apply();
  };
  const safeError=(e: unknown,code='PROVIDER_ERROR'): {code: string; message: string; retryable: boolean}=>({code:stringValue(property(e,'code'))||code,message:property(e,'uncertain')?'供应商可能已受理。正在对账，不会自动重新提交。':String(property(e,'message')||'任务操作失败').replace(/(?:Bearer\s+|sk-)[A-Za-z0-9_\-.]+/gi,'[redacted]').slice(0,600),retryable:true});
- for(const j of restored||opacity?[]:list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&job.status==='submitting')services.saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});}
+ for(const j of restored?[]:list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&job.status==='submitting')services.saveGenerationGuarded(job,{status:'submission_unknown',phase:'recovering_submit',error:{code:'SUBMISSION_UNKNOWN',message:'服务在提交期间中断；先对账，绝不盲目重新提交',retryable:true}});}
  for(const e of workerExports())if(e.status==='running')tx(()=>{
-  if(opacity){recoverOpacityCandidateExport(store,e as never,now());return;}
   const current=currentOwnedExport(e);if(current?.status==='running')put('exports',{...(isFloatTimelineExport(current)?requeueFloatTimelineExport(current):current),status:'queued',updatedAt:now()});
  });
 
@@ -346,7 +335,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   }
   let e: ExportRecord=original;
   if(!exportUuid(e.id)||!exportUuid(e.projectId)){invalidExport();return;}
-  const claimed=tx(()=>{const current=currentOwnedExport(original);if(current?.status!=='queued')return null;if(opacity)return claimOpacityCandidateExport(store,current as never,now());const claimedRecord=isFloatTimelineExport(current)?claimFloatTimelineExport(current,now()):{...current,status:'running',updatedAt:now()};put('exports',claimedRecord);return isFloatTimelineExport(current)?claimedRecord:current;});
+  const claimed=tx(()=>{const current=currentOwnedExport(original);if(current?.status!=='queued')return null;const claimedRecord=isFloatTimelineExport(current)?claimFloatTimelineExport(current,now()):{...current,status:'running',updatedAt:now()};put('exports',claimedRecord);return isFloatTimelineExport(current)?claimedRecord:current;});
   if(!claimed)return;
   e=claimed as unknown as ExportRecord;
   floatClaims.remember(signal,e);
@@ -356,26 +345,25 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   const colourExport=Boolean(e.snapshot&&isRecord(e.snapshot)&&Object.hasOwn(e.snapshot,'colourPlan'));
   const readLut=colourExport?createTimelineColourLutReader(store.db,e.projectId):undefined;
   const agentBound=!!agentTaskJobBinding(store.db,'export',e.id);
-  const fencedAttempt=opacity||restored||floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=restored?workspaceRestoreError:timelineExportRangeEffectError;
-  let preparedAssets: Map<string, unknown>|undefined,opacityBinding: ReturnType<typeof bindTimelineOpacityRenderAttempt>|undefined,linkedOutput=false,publicationAccepted=false,
+  const fencedAttempt=restored||floatExport||hasSelectedTimelineExportRange(e.snapshot)||colourExport,effectError=restored?workspaceRestoreError:timelineExportRangeEffectError;
+  let preparedAssets: Map<string, unknown>|undefined,linkedOutput=false,publicationAccepted=false,
    outputIdentity: {dev: number; ino: number; isFile(): boolean; nlink: number}|undefined,outputHandle: Awaited<ReturnType<typeof open>>|undefined,claimLive=true,validateSources: (()=>void)|undefined,
    floatMeasurement: ReturnType<typeof ownedFloatTimelineMeasurement>|undefined,terminationUnconfirmed=false,renderStarted=false,blockedGate=false;
   const beforeStart=():void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}renderStarted=true;}};
   const beforeEffect=(): void=>{if(agentBound&&!renderStarted){try{assertAgentTaskJobEffect(store.db,'export',e.id);}catch(error){if(isAgentTaskEffectBlocked(error))blockedGate=true;throw error;}}if(!claimLive||stopped||signal.aborted||currentOwnedExport(e)?.status!=='running')throw effectError();validateSources?.();if(outputIdentity){let actual;try{actual=lstatSync(linkedOutput?file:part);}catch{throw effectError();}if(!actual.isFile()||actual.dev!==outputIdentity.dev||actual.ino!==outputIdentity.ino)throw effectError();}};
-  const checkCustomSources=(): void=>{if(opacity)opacityBinding?.assert();else if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});};
+  const checkCustomSources=(): void=>{if(customExport(e))validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});};
   try {
    beforeEffect?.();
    // Every cancellable export owns its staging inode, including legacy
    // delivery without an opt-in profile. A late cancel may land after link.
    outputHandle=await open(part,'wx');outputIdentity=await outputHandle.stat();beforeEffect?.();
    if(e.mode==='timeline') {
-    if(!opacity&&!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
-    const assets=opacity?await prepareOpacityCandidateRenderInputs(store as never,e,{signal,beforeEffect}):await prepareTimelineInputs(e.snapshot as never,{root,projectId:e.projectId,signal,
+    if(!isTimelineExportSnapshot(e.snapshot,{purpose:e.purpose}))throw Object.assign(Error('Invalid timeline export delivery profile'),{code:'INVALID_TIMELINE_SNAPSHOT'});
+    const assets=await prepareTimelineInputs(e.snapshot as never,{root,projectId:e.projectId,signal,
      beforeEffect,readLut:readLut as never,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,e.projectId,id) as never;},validateLinks:(timeline: unknown)=>{beforeEffect?.();return validateFrozenTimelineSourceGraph(store.db,e.projectId,timeline as never);}});checkpoint(signal);
     if(currentOwnedExport(e)?.status!=='running')return;
     if(customExport(e)||restored)preparedAssets=assets as unknown as Map<string, unknown>;
-    if(opacity){opacityBinding=bindTimelineOpacityRenderAttempt(store as never,e as never,assets,{signal});validateSources=()=>opacityBinding?.assert();}
-    else if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
+    if(fencedAttempt)validateSources=()=>validatePreparedTimelineSources(store.db,e.projectId,e.snapshot as never,preparedAssets as never,{root});
     const rendered=await (exportStage(store,e.id,'encoding'),renderTimeline(e.snapshot as never,assets as never,part,{signal,beforeEffect,...(agentBound?{beforeStart}:{}),readLut:readLut as never,...(customExport(e)?{beforeEncode:()=>{if(currentOwnedExport(e)?.status!=='running')throw Object.assign(Error('The frozen export changed during local capability checking.'),{code:'INVALID_TIMELINE_SNAPSHOT'});checkCustomSources();}}:{})}));checkpoint(signal);
     if(floatExport)floatMeasurement=ownedFloatTimelineMeasurement(rendered);
    } else {
@@ -437,9 +425,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    tx(failExport);
   } finally {
    claimLive=false;
-   opacityBinding?.close();
    const cleanup=async(): Promise<void>=>{
-   const unpublished=(): boolean=>{const latest=currentOwnedExport(e,{cleanupOnly:Boolean(opacity)||floatExport});const status=stringValue(property(latest,'status'));return Boolean(latest&&exportIdentity(latest)===exportIdentity(e)&&status!==undefined&&['queued','running','failed'].includes(status)&&latest.assetId===null&&latest.url===null);};
+   const unpublished=(): boolean=>{const latest=currentOwnedExport(e,{cleanupOnly:floatExport});const status=stringValue(property(latest,'status'));return Boolean(latest&&exportIdentity(latest)===exportIdentity(e)&&status!==undefined&&['queued','running','failed'].includes(status)&&latest.assetId===null&&latest.url===null);};
    if(outputIdentity){try{const actual=await lstat(part).catch(()=>null);if(actual?.isFile()&&actual.dev===outputIdentity.dev&&actual.ino===outputIdentity.ino&&unpublished())await unlink(part).catch(()=>{});}catch{/* an uncertain read preserves the part file */}}
    // An uncertain commit, hostile replacement, foreign export, changed inode,
    // or failed cleanup never licenses removing an unknown/published output.
@@ -454,9 +441,8 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
    }
    if(outputHandle)await outputHandle.close().catch(()=>{});
    };
-   if((opacity||floatExport||colourExport)&&terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
+   if((floatExport||colourExport)&&terminationUnconfirmed)void waitForMediaProcesses({signal}).then(cleanup).catch(()=>{});
    else await cleanup();
-   if(opacity)revokeOpacityCandidateExportClaim(store as never,e as never);
   }
  }
 
@@ -487,7 +473,7 @@ export function startWorker(inputStore: ServiceStore,services: Services,provider
   if(cycle)return cycle;
   cycle=(async()=>{
    try {
-    for(const j of restored||opacity?[]:list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status))await advance(job,processJob as WorkerOperation);}
+    for(const j of restored?[]:list('jobs')){const job=recordValue(j) as JobRecord|null;if(job&&!stopped&&typeof job.status==='string'&&['queued','running','downloading','submission_unknown'].includes(job.status))await advance(job,processJob as WorkerOperation);}
     if(stopped)return;
     for(const e of workerExports())if(!stopped&&e.status==='queued')await advance(e,processExport as unknown as WorkerOperation);
    } catch(error) {console.error('Worker cycle failed:',stringValue(property(error,'code'))||String(property(error,'name')));}

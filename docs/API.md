@@ -884,7 +884,7 @@ workspaces.
   volume-envelope workspace and size rejections keep their own proofs.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger and unavailable in restored and opacity-candidate workspaces.
+edit-task ledger and unavailable in restored workspaces.
 Mio uses it as the local reversible tool `mioon_timeline_clip_crossfade` in the
 `editing` group: both clips are the step's targets, the step records one change,
 and undoing that change restores both clips.
@@ -910,7 +910,7 @@ one `{clipId,previousGain,gain}` change per item, in request order.
   not-applied proofs binding `operation`, `projectId` and `requestId`.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger and unavailable in restored and opacity-candidate workspaces.
+edit-task ledger and unavailable in restored workspaces.
 Mio uses it as the local reversible tool `mioon_timeline_clip_setGains` in the
 `audio` group, after measuring the clips with `timeline.clip.loudness`: every
 listed clip is a target of the step, the step records one change, and undoing
@@ -955,7 +955,7 @@ returns `{operation,requestId,timeline,clipId,previousTransform,transform}`.
   Older ordinary and restored roles refuse any persisted transform.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
+edit-task ledger, unavailable in restored workspaces, and
 not a Mio tool in this version. `timeline.inspect` lists each clip's transform
 (keyframes, rotation and crop), so Mio reads it.
 The model, rendering and editor are described in
@@ -1003,7 +1003,7 @@ removes the cut's transition.
   Older ordinary and restored roles refuse any persisted transition.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
+edit-task ledger, unavailable in restored workspaces, and
 not a Mio tool in this version. `timeline.inspect` lists each clip's
 `transitionIn` (kind and frames), so Mio reads it.
 The model, rendering and editor are described in

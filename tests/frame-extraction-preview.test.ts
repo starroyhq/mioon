@@ -1,6 +1,5 @@
 import type {HookSlot,ElementProps} from './helpers/strict-timeline-audio-harness-types.ts';
 import type {FrameCaptureIntent,FrameTask} from '../apps/web/src/frame-extraction.ts';
-import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
 type PreviewComponent=(props:Record<string,unknown>)=>ElementTree;
 type PreviewHook=HookSlot & {fn?:()=>unknown};
 type EffectQueue=[PreviewHook[],number][];
@@ -17,14 +16,8 @@ import { transformSync } from 'esbuild';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as ranges from '../apps/web/src/source-range-state.ts';
 import { createFrameExtractionController, frameCaptureBusy } from '../apps/web/src/frame-extraction.ts';
-import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
-import {createOpacityCandidateApplication} from '../apps/web/src/opacity-candidate-application.ts';
 import * as contracts from '@mioon/contracts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
-import {rpc} from '../apps/web/src/api.ts';
-import {createEditTaskClient} from '../apps/web/src/edit-task-client.ts';
-import {createOpacityRenderSnapshotPlan} from '../packages/contracts/src/timeline-opacity-render-candidate.ts';
-import {row as outputRow} from './helpers/strict-export-sample-peak-types.ts';
 
 // Execute Preview and its real capture control with controlled media properties.
 // This tests component/event wiring, not browser decoder or native FFmpeg output.
@@ -48,7 +41,7 @@ const h = { visible: true, readyState: 2, duration: 10 } as CapturedHarness1;
     useLayoutEffect: (fn: () => void | (()=>void), deps: readonly unknown[] | undefined) => effect(layouts, fn, deps), useEffect: (fn: () => void | (()=>void), deps: readonly unknown[] | undefined) => effect(effects, fn, deps),
   }; (react as typeof react & {default: unknown}).default = react;
   const module = ({ exports: {} } as ElementModule & {exports:{SourceFrameCaptureControl:PreviewComponent}});
-  Function('require', 'module', 'exports', code)((id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './opacity-candidate-render-presentation.ts' ? candidatePresentation : id === './api.ts' ? { assetUrl: (asset: { url: unknown; }) => asset?.url || '', statusText: String } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', code)((id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl: (asset: { url: unknown; }) => asset?.url || '', statusText: String } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const renderComponent = (name: string, component: PreviewComponent, properties: Record<string,unknown>) => { if (!components.has(name)) components.set(name, []); active = components.get(name)!; cursor = 0; return component(properties); };
   const cleanup = (name: string) => { components.get(name)?.forEach((slot: PreviewHook) => slot.cleanup?.()); components.delete(name); };
   const flush = (queue: EffectQueue) => { for (const [slots, index] of queue) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn!() as PreviewHook['cleanup']; } };
@@ -189,18 +182,4 @@ test('hash-only source replacement remounts decoded media and requires fresh rea
   element.readyState = 2; element.currentTime = 1.25; h.fire('onLoadedData'); assert.equal(h.button()!.props.disabled, false);
   await h.button()!.props.onClick(); assert.deepEqual(calls, [{ sourceScope: p.sourceScope, sourceAssetId: p.asset.id, sourceHash: 'c'.repeat(64), sourceFrame: 37 }]);
   h.unmount();
-});
-
-test('candidate exact output player revokes retained play handlers on held, disconnect and application replacement', () => {
-  const job = outputRow() as FixtureExport & {snapshot:FixtureExport['snapshot'] & {opacityPlan?:ReturnType<typeof createOpacityRenderSnapshotPlan>}};job.snapshot.timeline.clips[0].opacityEnvelope = {profileId:'mioon-clip-linear-opacity-v1',points:[{frame:0,opacity:0},{frame:60,opacity:1}]};
-  job.snapshot.opacityPlan = createOpacityRenderSnapshotPlan(job.snapshot, 'export');
-  const opacityApplication = createOpacityCandidateApplication({...contracts,rpc,createEditTaskClient} as unknown as Parameters<typeof createOpacityCandidateApplication>[0], () => {throw Error('no presentation fetch');});
-  for (const revoke of [{heldExportIds:[job.id]}, {candidateConnected:false}, {opacityApplication:{...opacityApplication}}]) {
-    const h = harness(), calls: ("play")[] = [], p = props({kind:'timeline', timeline:job.snapshot.timeline, job, opacityApplication, candidateConnected:true, onBeforePlay:()=>calls.push('play')});
-    h.render(p);const player = h.media(), element = player!.props.ref.current;
-    assert.equal(player!.props.src, `/media/${job.assetId}?preview=1&exportId=${job.id}`);
-    h.render({...p,...revoke});assert.equal(h.media(), undefined);
-    element.paused = false;player!.props.onPlay({currentTarget:element});player!.props.onPlaying({currentTarget:element});
-    assert.equal(element.paused, true);assert.deepEqual((calls as unknown), []);h.unmount();
-  }
 });

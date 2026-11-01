@@ -332,7 +332,7 @@ test('restored web requests normalize to General and cannot activate model pages
   assert.equal((forms)!.props.connectionsAvailable, false); assert.equal((forms)!.props.registry, h.registry);
   (forms)!.props.onSelect('custom'); (forms)!.props.onPage('comfy');
   assert.equal(h.controllers[0].page, 'general'); assert.deepEqual((h.registry.capture() as unknown), []);
-  const app = source('App.tsx'); assert.match(app, /connectionsAvailable=\{!application && !restored\}/u);
+  const app = source('App.tsx'); assert.match(app, /connectionsAvailable=\{!restored\}/u);
   h.unmount();
 });
 
@@ -377,7 +377,7 @@ test('actual App Ctrl+B and undo handlers work before settings opens and after c
   assert.ok(guards >= 0); const start = app.lastIndexOf('    const onKeyDown = (event: KeyboardEvent) => {', guards), end = app.indexOf("    window.addEventListener('keydown', onKeyDown);", guards);
   assert.ok(start >= 0 && end > start);
   const settings = modalElement({ role: 'dialog', hidden: '' }), confirmation = modalElement({ role: 'alertdialog', 'data-closed': '' });
-  const calls: unknown[] = [], env = { nativeMenuBridge: null as object | null, application:null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
+  const calls: unknown[] = [], env = { nativeMenuBridge: null as object | null, viewRef: { current: { activeMode: 'editing' } }, document: modalDocument([settings, confirmation]),
     hasOpenWorkbenchModal, timelineSplitActionForKey, timelineHistoryActionForKey, splitState: { canSplit: true }, historyState: { canUndo: true, canRedo: true },
     splitTimelineClip: () => calls.push('split'), changeTimelineHistory: (direction: unknown) => calls.push(direction),
   };

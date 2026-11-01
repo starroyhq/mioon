@@ -87,7 +87,7 @@ test('header actions and native settings remain reachable without locale or resi
   assert.match(delivery, /<TabsTrigger[^>]+value="history"[^>]+data-testid="delivery-page-history"/);
   assert.match(app, /setShowExports\(page === 'history'\)/);
   assert.match(app, /data-testid="export-timeline" disabled=\{!canOpenExport\} onClick=\{openTimelineExport\}/u);
-  assert.match(app, /data-testid="export-button" disabled=\{Boolean\(application\) \|\| !data\.shots\.length \|\| selectedCount !== data\.shots\.length \|\| busy\.export\}/u);
+  assert.match(app, /data-testid="export-button" disabled=\{!data\.shots\.length \|\| selectedCount !== data\.shots\.length \|\| busy\.export\}/u);
   const settingsCss = readFileSync(new URL('../apps/web/src/project-home.css', import.meta.url), 'utf8');
   assert.match(settingsCss, /\.project-home-settings-window > \.project-home-settings \{[^}]*flex: 1 1 auto;[^}]*min-height: 0;[^}]*overflow-y: auto;/u);
   const css = readFileSync(new URL('../apps/web/src/styles.css', import.meta.url), 'utf8');

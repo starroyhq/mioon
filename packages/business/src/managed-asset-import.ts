@@ -1,5 +1,5 @@
-/** Shared managed byte import pipeline. Candidate application assembly supplies
- * its existing owner fence; it never supplies a codec or filesystem adapter. */
+/** Shared managed byte import pipeline. The caller supplies its existing owner
+ * fence; it never supplies a codec or filesystem adapter. */
 import {createRequire} from 'node:module';
 import {randomUUID, createHash} from 'node:crypto';
 import {lstatSync} from 'node:fs';

@@ -31,15 +31,12 @@ test('a pin refuses added, changed and removed bytes and unlisted files', () => 
 });
 
 test('every reviewed live source is a dependency of a frozen-source harness', () => {
-  // Pins exist only for sources the opacity, agent-gain and restore-integrity
-  // harnesses read; anything else is not frozen evidence and needs no pin.
-  const opacity = json('opacity-current-ts-runtime-map.json').mapping as Record<string, {currentPath: string}>;
-  const opacityManifest = json('opacity-envelope-frozen-baseline.json').sha256 as Record<string, string>;
+  // Pins exist only for sources the agent-gain and restore-integrity harnesses
+  // read; anything else is not frozen evidence and needs no pin.
   const gain = json('agent-gain-ts-migration-map.json').mapping as Record<string, {currentPath: string}>;
   const guard = json('workspace-restore-integrity/frozen-sources.json') as {fixedDependencyClosure: Record<string, unknown>; constructorSources: Record<string, unknown>};
   const guardMap = json('workspace-restore-integrity/ts-migration-map.json').entries as Record<string, {currentPath: string}>;
   const used = new Set([
-    ...Object.keys(opacityManifest).map(file => opacity[file]?.currentPath ?? file),
     ...Object.values(gain).map(entry => entry.currentPath),
     ...[...Object.keys(guard.fixedDependencyClosure), ...Object.keys(guard.constructorSources)].map(file => guardMap[file]?.currentPath ?? file),
   ]);

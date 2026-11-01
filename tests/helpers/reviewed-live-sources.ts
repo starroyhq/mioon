@@ -4,9 +4,9 @@ import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-/** Reviewed live sources: files the frozen-source harnesses (opacity candidate,
- * agent gain preservation, restore integrity) depend on but that keep changing
- * on main. Each is pinned to its exact current bytes in
+/** Reviewed live sources: files the frozen-source harnesses (agent gain
+ * preservation, restore integrity) depend on but that keep changing on main.
+ * Each is pinned to its exact current bytes in
  * tests/fixtures/reviewed-live-sources.json. Changing one is allowed but must be
  * explicit: review the change, then run
  *   node tests/helpers/reviewed-live-sources.ts --update

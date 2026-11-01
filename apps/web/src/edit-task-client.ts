@@ -26,8 +26,7 @@ export interface EditTaskClient {
   reconcile(input: EditTaskExecuteInput, options?: EditTaskRequestOptions): Promise<EditTaskEnvelope>;
   acknowledge(input: EditTaskExecuteInput, options?: EditTaskRequestOptions): Promise<EditTaskEnvelope>;
 }
-export interface CreateEditTaskClientOptions {fetcher?: typeof fetch; opacityBinding?: unknown}
-export interface EditTaskClientValidation {readonly validateTaskEnvelope: typeof validateTaskEnvelope; readonly validateTaskList: typeof validateTaskList}
+export interface CreateEditTaskClientOptions {fetcher?: typeof fetch}
 const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
 const errorCode=(error: unknown): string|undefined=>typeof property(error,'code')==='string'?property(error,'code') as string:undefined;
@@ -60,15 +59,9 @@ function checkTaskList(value: unknown,projectId: string,{pendingOnly}: Required<
   return envelope;
 }
 
-import {readOpacityCandidateClientBinding} from './opacity-candidate-client-binding.ts';
-const clientValidation = new WeakMap<object,EditTaskClientValidation>();
-export function editTaskClientValidation(client: object): EditTaskClientValidation {
-  return clientValidation.get(client) ?? {validateTaskEnvelope, validateTaskList};
-}
-export function createEditTaskClient({ fetcher = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetch(...args), opacityBinding }: CreateEditTaskClientOptions = {}): EditTaskClient {
-  const selected = readOpacityCandidateClientBinding(opacityBinding);
-  const validateEnvelope = selected ? (value: unknown, expected: TaskExpectation = {}): EditTaskEnvelope => checkTaskEnvelope(value, expected, selected.isTaskEnvelope) : (value: unknown, expected: TaskExpectation = {}): EditTaskEnvelope => checkTaskEnvelope(value, expected, isEditTaskEnvelope);
-  const validateList = selected ? (value: unknown, projectId: string, options: TaskListOptions = {}): EditTaskListEnvelope => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, selected.isTaskList) : (value: unknown, projectId: string, options: TaskListOptions = {}): EditTaskListEnvelope => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, isEditTaskListEnvelope);
+export function createEditTaskClient({ fetcher = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetch(...args) }: CreateEditTaskClientOptions = {}): EditTaskClient {
+  const validateEnvelope = (value: unknown, expected: TaskExpectation = {}): EditTaskEnvelope => checkTaskEnvelope(value, expected, isEditTaskEnvelope);
+  const validateList = (value: unknown, projectId: string, options: TaskListOptions = {}): EditTaskListEnvelope => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, isEditTaskListEnvelope);
   async function request(path: string,body: Record<string,unknown>|undefined,options: EditTaskRequestOptions = {}): Promise<unknown> {
     const invocation = workspaceOriginOptions(options.expectedWorkspaceOrigin);
     const loudness = options.operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, body ? { ...body, ...invocation } : undefined, { fetcher }) : null;
@@ -93,6 +86,5 @@ export function createEditTaskClient({ fetcher = (...args: Parameters<typeof fet
     async reconcile({ taskId, ...body }: EditTaskExecuteInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(`${endpoint(taskId)}/reconcile`, body, options), { ...body, taskId }); },
     async acknowledge({ taskId, ...body }: EditTaskExecuteInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(`${endpoint(taskId)}/acknowledge`, body, options), { ...body, taskId }); },
   };
-  if (selected) clientValidation.set(client, Object.freeze({validateTaskEnvelope: validateEnvelope, validateTaskList: validateList}));
   return client;
 }

@@ -84,7 +84,7 @@ test('the marks render their spans and the quick-add buttons say why they wait',
 
 test('App adds from the timeline only where the inspector could, and selects the incoming clip after', () => {
   const app = readFileSync(resolve(root, 'apps/web/src/App.tsx'), 'utf8');
-  assert.match(app, /onAddTransition=\{application \|\| restored \? undefined : addTimelineTransition\}/);
+  assert.match(app, /onAddTransition=\{restored \? undefined : addTimelineTransition\}/);
   assert.match(app, /transitionAddBlocked=\{clipDirty \|\| clipCompositionPending \? msg\('clip\.transition\.saveFirst'\) : null\}/);
   assert.match(app, /if \(await setTimelineClipTransition\(clipId, transition\) && viewRef\.current!\.editing\.selectedClipId !== clipId\) await selectClip\(clipId, false\);/);
 });
