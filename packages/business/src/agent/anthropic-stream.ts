@@ -3,7 +3,8 @@ import {parseAgentSse, AGENT_SSE_LIMITS} from './sse.ts';
 import {parseModelToolArguments} from './model-tool-arguments.ts';
 import type {AgentTaskJson} from '@mioon/contracts/agent-tasks-v2';
 
-export type AnthropicContentBlock = {type: 'text'; text: string} | {type: 'tool_use'; id: string; name: string; input: Record<string, AgentTaskJson>};
+export type AnthropicContentBlock = {type: 'text'; text: string} | {type: 'thinking'; thinking: string; signature: string} | {type: 'redacted_thinking'; data: string} |
+  {type: 'tool_use'; id: string; name: string; input: Record<string, AgentTaskJson>};
 export interface AnthropicCompletion {
   text: string;
   content: AnthropicContentBlock[];
@@ -20,11 +21,16 @@ export interface AnthropicStreamOptions {
    * keep required, bounded usage validation unless they explicitly opt in. */
   usageMode?: 'required' | 'optional';
   onUsage?: (raw: unknown) => void;
+  /** Only a request that enabled thinking admits thinking blocks. They are kept
+   * in their original order for this round's continuation, never as text. */
+  thinking?: boolean;
 }
 export type AnthropicStreamItem = {type: 'delta'; text: string} | {type: 'done'; completion: AnthropicCompletion};
 interface TextBlock {type: 'text'; text: string; closed: boolean}
 interface ToolBlock {type: 'tool_use'; id: string; name: string; argumentsJson: string; initialInput: boolean; closed: boolean}
-type Block = TextBlock | ToolBlock;
+interface ThinkingBlock {type: 'thinking'; thinking: string; signature: string; closed: boolean}
+interface RedactedThinkingBlock {type: 'redacted_thinking'; data: string; closed: boolean}
+type Block = TextBlock | ToolBlock | ThinkingBlock | RedactedThinkingBlock;
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fail(code = 'AGENT_CHAT_PROTOCOL_ERROR'): never { throw agentChatError(code); }
 function text(value: unknown, maximum: number): string {
@@ -48,11 +54,11 @@ interface TokenUsage {input: number; cacheCreation: number; cacheRead: number; o
 function serviceTier(value: unknown): void {
   if (value != null && !['standard', 'priority', 'batch'].includes(value as string)) fail();
 }
-function usageCapabilities(value: Record<string, unknown>): void {
+function usageCapabilities(value: Record<string, unknown>, thinking: boolean): void {
   if (value.output_tokens_details != null) {
     if (!object(value.output_tokens_details)) fail();
     fields(value.output_tokens_details, ['thinking_tokens']);
-    if (count(value.output_tokens_details.thinking_tokens)) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
+    if (count(value.output_tokens_details.thinking_tokens) && !thinking) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
   }
   if (value.server_tool_use != null) {
     if (!object(value.server_tool_use)) fail();
@@ -60,10 +66,10 @@ function usageCapabilities(value: Record<string, unknown>): void {
     if (count(value.server_tool_use.web_fetch_requests) || count(value.server_tool_use.web_search_requests)) fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
   }
 }
-function usageMetadata(value: Record<string, unknown>, start: boolean): void {
+function usageMetadata(value: Record<string, unknown>, start: boolean, thinking: boolean): void {
   fields(value, ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens', 'output_tokens_details', 'server_tool_use', 'service_tier',
     ...(start ? ['cache_creation', 'inference_geo', 'speed'] : [])]);
-  usageCapabilities(value);
+  usageCapabilities(value, thinking);
   if (value.cache_creation != null) {
     if (!object(value.cache_creation)) fail();
     fields(value.cache_creation, ['ephemeral_1h_input_tokens', 'ephemeral_5m_input_tokens']);
@@ -73,9 +79,9 @@ function usageMetadata(value: Record<string, unknown>, start: boolean): void {
   serviceTier(value.service_tier);
   if (value.speed != null && !['standard', 'fast'].includes(value.speed as string)) fail();
 }
-function inputUsage(value: unknown): TokenUsage {
+function inputUsage(value: unknown, thinking: boolean): TokenUsage {
   if (!object(value)) fail();
-  usageMetadata(value, true);
+  usageMetadata(value, true, thinking);
   const usage = {input: count(value.input_tokens), cacheCreation: count(value.cache_creation_input_tokens ?? 0), cacheRead: count(value.cache_read_input_tokens ?? 0), output: count(value.output_tokens)};
   promptTokens(usage);
   return usage;
@@ -99,7 +105,7 @@ function refusalDetails(value: unknown, reason: unknown): void {
  * released only after all blocks, message_stop and a clean framed EOF. The SDK
  * neither accumulates/executes tools nor reconnects this bounded raw stream. */
 export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, options: AnthropicStreamOptions): AsyncGenerator<AnthropicStreamItem, void, undefined> {
-  const optionalUsage = options.usageMode === 'optional';
+  const optionalUsage = options.usageMode === 'optional', thinking = options.thinking === true;
   let started = false, stopped = false, sawFinalUsage = false, outputBytes = 0, toolCount = 0;
   let stopReason: AnthropicCompletion['stopReason'] | undefined, usage: TokenUsage | undefined;
   const blocks: Block[] = [], toolIds = new Set<string>();
@@ -132,8 +138,8 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
       // message itself. Validate it without retaining it or granting abilities.
       serviceTier(message.service_tier);
       if (optionalUsage) {
-        if (object(message.usage)) usageCapabilities(message.usage);
-      } else usage = inputUsage(message.usage);
+        if (object(message.usage)) usageCapabilities(message.usage, thinking);
+      } else usage = inputUsage(message.usage, thinking);
       options.onUsage?.(message.usage);
       started = true;
       continue;
@@ -143,7 +149,7 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
       fields(value, ['type', 'index', 'content_block']);
       if (stopReason || value.index !== blocks.length || !object(value.content_block)) fail();
       const block = value.content_block;
-      if (block.type === 'thinking' || block.type === 'redacted_thinking') fail('AGENT_CHAT_REASONING_UNSUPPORTED');
+      if (!thinking && (block.type === 'thinking' || block.type === 'redacted_thinking')) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
       if (block.type === 'text') {
         fields(block, ['type', 'text', 'citations']);
         if (block.citations != null && (!Array.isArray(block.citations) || block.citations.length)) fail();
@@ -167,6 +173,17 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
         if (Buffer.byteLength(argumentsJson) > options.maxArgumentBytes) fail('AGENT_CHAT_LIMIT');
         addBytes(argumentsJson); toolIds.add(callId);
         blocks.push({type: 'tool_use', id: callId, name, argumentsJson, initialInput, closed: false});
+      } else if (block.type === 'thinking') {
+        fields(block, ['type', 'thinking', 'signature']);
+        const initial = text(block.thinking, options.maxOutputBytes), signature = block.signature === undefined ? '' : text(block.signature, options.maxOutputBytes);
+        addBytes(initial); addBytes(signature);
+        blocks.push({type: 'thinking', thinking: initial, signature, closed: false});
+      } else if (block.type === 'redacted_thinking') {
+        fields(block, ['type', 'data']);
+        const data = text(block.data, options.maxOutputBytes);
+        if (!data) fail();
+        addBytes(data);
+        blocks.push({type: 'redacted_thinking', data, closed: false});
       } else fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
       continue;
     }
@@ -174,18 +191,24 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
       fields(value, ['type', 'index', 'delta']);
       if (stopReason || !object(value.delta)) fail();
       const block = openBlock(value.index), delta = value.delta;
-      if (delta.type === 'thinking_delta' || delta.type === 'signature_delta') fail('AGENT_CHAT_REASONING_UNSUPPORTED');
+      if (!thinking && (delta.type === 'thinking_delta' || delta.type === 'signature_delta')) fail('AGENT_CHAT_REASONING_UNSUPPORTED');
       if (block.type === 'text') {
         fields(delta, ['type', 'text']);
         if (delta.type !== 'text_delta') fail();
         const part = text(delta.text, options.maxOutputBytes); addBytes(part); block.text += part;
         if (part) yield {type: 'delta', text: part};
-      } else {
+      } else if (block.type === 'tool_use') {
         fields(delta, ['type', 'partial_json']);
         if (delta.type !== 'input_json_delta' || block.initialInput) fail();
         const part = text(delta.partial_json, options.maxArgumentBytes); addBytes(part); block.argumentsJson += part;
         if (Buffer.byteLength(block.argumentsJson) > options.maxArgumentBytes) fail('AGENT_CHAT_LIMIT');
-      }
+      } else if (block.type === 'thinking' && delta.type === 'thinking_delta') {
+        fields(delta, ['type', 'thinking']);
+        const part = text(delta.thinking, options.maxOutputBytes); addBytes(part); block.thinking += part;
+      } else if (block.type === 'thinking' && delta.type === 'signature_delta') {
+        fields(delta, ['type', 'signature']);
+        const part = text(delta.signature, options.maxOutputBytes); addBytes(part); block.signature += part;
+      } else fail();
       continue;
     }
     if (value.type === 'content_block_stop') {
@@ -203,10 +226,10 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
       if (optionalUsage) {
         // Counts may be absent or malformed, but usage cannot advertise an
         // unsupported thinking/server-tool capability and bypass its gate.
-        if (object(value.usage)) usageCapabilities(value.usage);
+        if (object(value.usage)) usageCapabilities(value.usage, thinking);
       } else {
         if (!object(value.usage)) fail();
-        usageMetadata(value.usage, false);
+        usageMetadata(value.usage, false, thinking);
         const nextTokens = count(value.usage.output_tokens);
         if (!usage || nextTokens < usage.output) fail();
         usage.output = nextTokens;
@@ -248,6 +271,12 @@ export async function* streamAnthropicMessages(body: AsyncIterable<Uint8Array>, 
   const toolCalls: AnthropicCompletion['toolCalls'] = [];
   const content: AnthropicContentBlock[] = blocks.map(block => {
     if (block.type === 'text') return {type: 'text', text: block.text};
+    if (block.type === 'redacted_thinking') return {type: 'redacted_thinking', data: block.data};
+    if (block.type === 'thinking') {
+      // Continuation must return the signature that lets the provider verify this block.
+      if (!block.signature) { if (stopReason === 'max_tokens') throw agentChatStreamError('output_limit'); fail(); }
+      return {type: 'thinking', thinking: block.thinking, signature: block.signature};
+    }
     const argumentsJson = block.argumentsJson || '{}';
     let input: Record<string, AgentTaskJson>;
     try { input = parseModelToolArguments(argumentsJson, options.maxArgumentBytes); }
