@@ -27,15 +27,10 @@ import {boundedShutdown} from '../packages/business/src/operation-lifecycle.ts';
 import {workspaceRestoreError, RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import type { BinaryLike } from 'crypto';
 import type { PathLike } from 'fs';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const sha = (bytes: NonSharedBuffer|BinaryLike) => createHash('sha256').update(bytes).digest('hex');
 const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-// The other project is not in this store; write the damaged row as a corrupt file would hold it.
-const withoutForeignKeys = (db: DatabaseSync, write: () => void) => {
-  db.exec('PRAGMA foreign_keys=OFF');
-  try {write();} finally {db.exec('PRAGMA foreign_keys=ON');}
-};
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-sample-peak-foreign-'));

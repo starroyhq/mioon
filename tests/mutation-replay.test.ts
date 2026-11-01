@@ -100,7 +100,7 @@ for(const operation of LEGACY_OPERATIONS)test(`${operation}: immutable exact res
 
 for(const operation of LEGACY_OPERATIONS)test(`${operation}: journal insertion failure rolls the business mutation back atomically`,async t=>{
  const f=await fixture(t),input=await inputFor(f,operation),before=capture(f);
- f.store.db.exec("CREATE TRIGGER reject_mutation_receipt BEFORE INSERT ON mutation_requests BEGIN SELECT RAISE(ABORT,'injected journal failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER reject_mutation_receipt BEFORE INSERT ON mutation_requests BEGIN SELECT RAISE(ABORT,'injected journal failure');END;");
  await assert.rejects(f.call(operation,input),/injected journal failure/);
  assert.equal(f.store.db.isTransaction,false);assert.deepEqual(capture(f),before);
  f.store.db.exec('DROP TRIGGER reject_mutation_receipt');
@@ -317,7 +317,7 @@ test('missing indirect version, asset or job records reject fresh writes and ret
   await f.call('version.select',input);
   const version=f.store.get('versions',input.versionId);
   const [table,id]=relation==='version'?['versions',(version)!.id]:relation==='asset'?['assets',(version)!.assetId]:['jobs',(version)!.jobId];
-  f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare(`DELETE FROM ${table} WHERE id=?`).run(id);f.store.db.exec('PRAGMA foreign_keys=ON');
+  withoutForeignKeys(f.store.db,()=>f.store.db.prepare(`DELETE FROM ${table} WHERE id=?`).run(id));
   const before=capture(f);
   await assert.rejects(f.call('version.select',input),error=>(error as MutationFailure).code==='NOT_FOUND'&&!Object.hasOwn((error as MutationFailure).details,'mutationOutcome'));
   await assert.rejects(f.call('version.select',{...input,requestId:key()}),{code:'NOT_FOUND'});
@@ -330,7 +330,7 @@ test('retained responses require the original project still to exist and to reta
  corrupt(f,'projects',f.project.id,{id:f.other.id});
  await assert.rejects(f.call('node.create',input),error=>(error as MutationFailure).code==='INVALID_MUTATION_RECORD'&&!Object.hasOwn((error as MutationFailure).details,'mutationOutcome'));
  corrupt(f,'projects',f.project.id,f.project);
- f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id);f.store.db.exec('PRAGMA foreign_keys=ON');
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id));
  const before=capture(f);
  await assert.rejects(f.call('node.create',input),error=>(error as MutationFailure).code==='NOT_FOUND'&&!Object.hasOwn((error as MutationFailure).details,'mutationOutcome'));
  assert.deepEqual(capture(f),before);

@@ -100,7 +100,7 @@ test('frozen render snapshots bind exact subtitle state and font without reading
 
 test('receipt failure rolls back cue, revision, history, redo branch and key without a false not-applied proof',async t=>{
  const f=await fixture(t);let timeline=await populated(f);timeline=await add(f,timeline);timeline=await f.call('timeline.undo',request(f,timeline));
- f.store.db.exec("CREATE TRIGGER fail_subtitle_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END");const before=f.capture();
+ f.store.db.exec("CREATE TEMP TRIGGER fail_subtitle_receipt BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END");const before=f.capture();
  await assert.rejects(add(f,timeline),error=>{assert.equal((error as SubtitleFailure).details?.mutationOutcome,undefined);return /injected receipt failure/.test((error as SubtitleFailure).message);});assert.equal(f.capture(),before);
  f.store.db.exec('DROP TRIGGER fail_subtitle_receipt');timeline=await f.call('timeline.redo',request(f,timeline));assert.equal((timeline.subtitles)!.cues.length,1);
 });
