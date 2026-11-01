@@ -10,13 +10,14 @@ import {mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '@mioon/client';
 import {isExportSamplePeakResponse,EXPORT_SAMPLE_PEAK_ALGORITHM} from '@mioon/contracts/export-sample-peak';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {mediaEnvironment,mediaExecutable} from '../packages/business/src/media-environment.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const execute=promisify(execFile),repo=fileURLToPath(new URL('..',import.meta.url));
@@ -78,9 +79,9 @@ async function independentPcm(file: string){
 }
 
 test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-peak observations with no data or file mutation',{timeout:120000},async (t: test.TestContext)=>{
-  const root=await mkdtemp(path.join(tmpdir(),'mioon-sample-peak-real-wire-'));let backend: Awaited<ReturnType<typeof startServer>>,db: DatabaseSync;
-  t.after(async()=>{db?.close();await backend?.close();await rm(root,{recursive:true,force:true});});
-  backend=await startServer({dataDir:root,port:0,token,chatGateway:async function*(){throw Error('No model or provider call permitted');}});
+  const root=await mkdtemp(path.join(tmpdir(),'mioon-sample-peak-real-wire-'));let backend: Awaited<ReturnType<typeof startServer>>,inspect!: InspectProject;
+  t.after(async()=>{await backend?.close();await rm(root,{recursive:true,force:true});});
+  backend=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});
   const client=(createClient({env:environment(backend.url)}) as TypedClient);
   const project=await client.rpc('project.create',{name:'Synthetic final-export parity'});
   let timeline=await client.rpc('timeline.get',{projectId:project.id});
@@ -94,15 +95,17 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
   let record;const deadline=Date.now()+40000;
   while(Date.now()<deadline){record=await client.rpc('export.get',{exportId:queued.id});if(['succeeded','failed'].includes(record.status))break;await pause(25);}
   assert.equal(record?.status,'succeeded',JSON.stringify(record?.error));
-  db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});
-  const asset=JSON.parse((db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId)!.data as string));
+  // While the server runs, the database is read on its own connection.
+  const asset=JSON.parse(inspect(project.id,db=>db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId)!.data as string));
   const file=path.join(root,asset.relativePath),bytes=await readFile(file),actualSha=sha(bytes),reference=await independentPcm(file);
   assert.equal(actualSha,asset.sha256);assert.equal(bytes.length,asset.sizeBytes);
   assert.ok(reference.peaks[0]>0&&reference.peaks[1]>reference.peaks[0]);
   const input={projectId:project.id,exportId:record.id},mcp=await official(t,backend.url);
-  const rows=()=>Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>
-    [name,db.prepare(`SELECT * FROM "${(name as string).replaceAll('"','""')}" ORDER BY rowid`).all()]));
-  const before={rows:rows(),version:db.prepare('PRAGMA data_version').get()!.data_version,files:await manifest(root)};
+  const rows=()=>inspect(project.id,db=>Object.fromEntries(schemaObjects(db).filter(({type})=>type==='table').map(({name})=>
+    [name,db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()])));
+  // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
+  const changeMarks=()=>inspect(project.id,db=>[db.prepare('PRAGMA data_version').get()!.data_version,db.prepare('SELECT total_changes() AS n').get()!.n]);
+  const before={rows:rows(),version:changeMarks(),files:await manifest(root)};
   const http=async()=>{const response=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});
     assert.equal(response.status,200);const body=await response.json();assert.equal(body.ok,true);return body.data;};
   const reports: ExportSamplePeakResponse[]=[];
@@ -115,7 +118,7 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
     assert.deepEqual(report.measurement.channelPeaks.map((channel: { peakLinear: unknown; })=>channel.peakLinear),reference.peaks);
     assert.equal(report.measurement.peakLinear,Math.max(...reference.peaks));assert.ok(Math.abs(report.measurement.decodedDurationSeconds-0.1)<=0.1);
     assert.ok(Buffer.byteLength(JSON.stringify(report))<=8192);
-    assert.deepEqual(rows(),before.rows,name+' changed database records or receipts');assert.equal(db.prepare('PRAGMA data_version').get()!.data_version,before.version,name+' performed a database write');
+    assert.deepEqual(rows(),before.rows,name+' changed database records or receipts');assert.deepEqual(changeMarks(),before.version,name+' performed a database write');
     assert.deepEqual(await manifest(root),before.files,name+' changed managed files or wrote cache/sidefiles');
   }
   const comparable=({checkedAt,...report}: ExportSamplePeakResponse)=>report;
