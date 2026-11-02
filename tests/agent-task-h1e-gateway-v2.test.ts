@@ -72,21 +72,20 @@ async function exchange(protocol:AgentConfiguration['protocol'],frames:string,bo
 
 test('H1e Chat Completions requests ask for usage only on documentation-backed presets',()=>{
   const supported=new Set(['openai','qwen','deepseek']);
-  // X2: models with a documented maximum output send 16384; the rest keep 4096.
-  const documentedOutput=new Set(['openai','deepseek','zhipu','kimi','minimax','openrouter']);
+  // Chat Completions keeps 4096 even when the documented model limit is larger.
   for(const preset of AGENT_PRESETS){
     const platform=preset.platforms.find(item=>item.baseUrl)||preset.platforms[0]!;
     const config:AgentConfiguration={presetId:preset.id,platformId:platform.id,baseUrl:platform.baseUrl||'https://compatible.example.com/v1',model:platform.model||'fixture-model',protocol:'chat_completions'};
     const body=JSON.parse(buildTaskModelRequest(config,[{role:'user',content:'合成编译'}],[])) as Record<string,unknown>;
     assert.deepEqual(body.stream_options,supported.has(preset.id)?{include_usage:true}:undefined,preset.id);
     assert.equal(body.max_tokens??body.max_completion_tokens,agentModelTokenLimits(config).outputTokens,preset.id);
-    assert.equal(body.max_tokens??body.max_completion_tokens,documentedOutput.has(preset.id)?16384:4096,preset.id);
+    assert.equal(body.max_tokens??body.max_completion_tokens,4096,preset.id);
   }
   for(const protocol of ['responses','anthropic_messages'] as const){
     const body=JSON.parse(buildTaskModelRequest(configuration(protocol),[{role:'user',content:'合成编译'}],[])) as Record<string,unknown>;
     assert.equal(body.stream_options,undefined);
     assert.equal(body.max_tokens??body.max_output_tokens,agentModelTokenLimits(configuration(protocol)).outputTokens,protocol);
-    assert.equal(body.max_tokens??body.max_output_tokens,16384,protocol);
+    assert.equal(body.max_tokens??body.max_output_tokens,protocol==='anthropic_messages'?16384:4096,protocol);
   }
 });
 test('H1e Chat Completions usage requests require the documented official origin and base path',()=>{

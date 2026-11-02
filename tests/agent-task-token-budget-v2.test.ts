@@ -44,28 +44,50 @@ function fullCatalog(t:TestContext){
   return tools.list();
 }
 
-test('each documented model has its checked token limits; the output limit is at most 16384 and below the window',()=>{
+test('profiles retain documented capacity separately from protocol output limits',()=>{
   const table:Record<string,AgentModelTokenLimits>={
     ...Object.fromEntries(Object.entries(AGENT_CHAT_PROFILES).map(([id,profile])=>[`chat_completions/${id}`,limits(profile)])),
     ...Object.fromEntries(Object.entries(AGENT_RESPONSES_PROFILES).map(([id,profile])=>[`responses/${id}`,limits(profile)])),
     ...Object.fromEntries(Object.entries(AGENT_MESSAGES_TOKEN_LIMITS).map(([id,entry])=>[`anthropic_messages/${id}`,limits(entry)])),
   };
   assert.deepEqual(table,{
-    'chat_completions/openai':{contextTokens:1047576,outputTokens:16384},
-    'chat_completions/deepseek':{contextTokens:1000000,outputTokens:16384},
+    'chat_completions/openai':{contextTokens:1047576,outputTokens:4096},
+    'chat_completions/deepseek':{contextTokens:1000000,outputTokens:4096},
     'chat_completions/qwen':unknown,
-    'chat_completions/zhipu':{contextTokens:200000,outputTokens:16384},
-    'chat_completions/kimi':{contextTokens:262144,outputTokens:16384},
-    'chat_completions/minimax':{contextTokens:1000000,outputTokens:16384},
-    'chat_completions/openrouter':{contextTokens:1047576,outputTokens:16384},
+    'chat_completions/zhipu':{contextTokens:200000,outputTokens:4096},
+    'chat_completions/kimi':{contextTokens:262144,outputTokens:4096},
+    'chat_completions/minimax':{contextTokens:1000000,outputTokens:4096},
+    'chat_completions/openrouter':{contextTokens:1047576,outputTokens:4096},
     'chat_completions/custom':unknown,
     'chat_completions/ollama':unknown,
-    'responses/openai':{contextTokens:1047576,outputTokens:16384},
+    'responses/openai':{contextTokens:1047576,outputTokens:4096},
     'responses/custom':unknown,
     'responses/ollama':unknown,
-    'responses/deepseek':{contextTokens:1000000,outputTokens:16384},
+    'responses/deepseek':{contextTokens:1000000,outputTokens:4096},
     'responses/qwen':{contextTokens:1000000,outputTokens:4096},
     'anthropic_messages/anthropic':{contextTokens:200000,outputTokens:16384},
+  });
+  const maximums={
+    ...Object.fromEntries(Object.entries(AGENT_CHAT_PROFILES).map(([id,profile])=>[`chat_completions/${id}`,profile.maxOutputTokens])),
+    ...Object.fromEntries(Object.entries(AGENT_RESPONSES_PROFILES).map(([id,profile])=>[`responses/${id}`,profile.maxOutputTokens])),
+    ...Object.fromEntries(Object.entries(AGENT_MESSAGES_TOKEN_LIMITS).map(([id,profile])=>[`anthropic_messages/${id}`,profile.maxOutputTokens])),
+  };
+  assert.deepEqual(maximums,{
+    'chat_completions/openai':32768,
+    'chat_completions/deepseek':393216,
+    'chat_completions/qwen':null,
+    'chat_completions/zhipu':128000,
+    'chat_completions/kimi':null,
+    'chat_completions/minimax':null,
+    'chat_completions/openrouter':32768,
+    'chat_completions/custom':null,
+    'chat_completions/ollama':null,
+    'responses/openai':32768,
+    'responses/custom':null,
+    'responses/ollama':null,
+    'responses/deepseek':393216,
+    'responses/qwen':null,
+    'anthropic_messages/anthropic':64000,
   });
   assert.equal(AGENT_DEFAULT_OUTPUT_TOKENS,4096);assert.equal(AGENT_OUTPUT_TOKEN_CEILING,16384);
   for(const [label,entry] of Object.entries(table)){
@@ -95,11 +117,11 @@ test('task requests send each model output limit in its protocol field',()=>{
   const history:AgentTaskJson[]=[{role:'user',content:'合成请求'}];
   const body=(configuration:AgentConfiguration):Record<string,unknown>=>JSON.parse(buildTaskModelRequest(configuration,history,[],4318)) as Record<string,unknown>;
   const cases:[AgentConfiguration,string,number][]=[
-    [DEFAULT_AGENT_CONFIGURATION,'max_completion_tokens',16384],
-    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses'},'max_output_tokens',16384],
+    [DEFAULT_AGENT_CONFIGURATION,'max_completion_tokens',4096],
+    [{...DEFAULT_AGENT_CONFIGURATION,protocol:'responses'},'max_output_tokens',4096],
     [presetConfiguration('anthropic','anthropic_messages'),'max_tokens',16384],
-    [presetConfiguration('deepseek','chat_completions'),'max_tokens',16384],
-    [presetConfiguration('minimax','chat_completions'),'max_completion_tokens',16384],
+    [presetConfiguration('deepseek','chat_completions'),'max_tokens',4096],
+    [presetConfiguration('minimax','chat_completions'),'max_completion_tokens',4096],
     [presetConfiguration('ollama','chat_completions'),'max_tokens',4096],
     [presetConfiguration('ollama','responses'),'max_output_tokens',4096],
     [presetConfiguration('ollama','anthropic_messages'),'max_tokens',4096],
@@ -111,7 +133,7 @@ test('task requests send each model output limit in its protocol field',()=>{
   }
   assert.deepEqual(body(presetConfiguration('anthropic','anthropic_messages')).thinking,{type:'disabled'},'the catalog Messages model keeps thinking off');
 });
-test('a required Messages model thinks within max_tokens and keeps 4096 tokens for the answer',()=>{
+test('a required Messages model applies the answer reserve and minimum thinking budget within max_tokens',()=>{
   assert.equal(ANTHROPIC_MIN_THINKING_BUDGET_TOKENS,1024);assert.equal(AGENT_THINKING_ANSWER_TOKENS,4096);
   assert.deepEqual(agentAnthropicThinkingFields('required',4096),{thinking:{type:'enabled',budget_tokens:1024}},'an unknown model keeps the smallest budget');
   assert.deepEqual(agentAnthropicThinkingFields('required',16384),{thinking:{type:'enabled',budget_tokens:12288}});

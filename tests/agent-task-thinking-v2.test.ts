@@ -39,6 +39,7 @@ function thinkingBody(configuration:AgentConfiguration,messages:readonly AgentTa
   else if(configuration.protocol==='responses')body.reasoning={effort:'medium'};
   else Object.assign(body,agentAnthropicThinkingFields('required',body.max_tokens as number));
   assert.equal(agentRequestThinks(configuration,body),true);
+  if(configuration.protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,4096,'thinking keeps the protocol output limit');
   return JSON.stringify(body);
 }
 async function loopback(t:TestContext,protocol:Protocol,responses:string[]){
@@ -70,11 +71,13 @@ test('thinking tiers follow each preset profile, and every task request keeps th
     assert.equal(tier,protocol==='anthropic_messages'||optionalPresets[protocol].includes(preset.id)?'optional':'unsupported',label);
     const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
     assert.equal(agentRequestThinks(configuration,body),false,`${label} sends its documented off switch`);
+    if(protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,4096,label);
     if(protocol==='anthropic_messages')assert.deepEqual(body.thinking,{type:'disabled'});
     // Only an optional model's off switch can be lifted; an unsupported or
     // unverified model never admits thinking, whatever the request contains.
     const off=offSwitch(configuration),lifted=Object.fromEntries(Object.entries(body).filter(([key])=>!Object.hasOwn(off,key)));
     assert.equal(agentRequestThinks(configuration,lifted),tier==='optional',label);
+    if(protocol!=='anthropic_messages')assert.equal(lifted.max_tokens??lifted.max_completion_tokens??lifted.max_output_tokens,4096,`${label} keeps its output limit when thinking is requested`);
     combinations++;
   }
   assert.ok(combinations>=30);

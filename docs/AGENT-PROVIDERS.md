@@ -149,38 +149,55 @@ Sources: [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility
 
 ## Task output and context limits
 
-Checked 2026-11-02 against the official pages listed below.
+2026-11-02 核对，来源见本节链接。profile 分别记录文档给出的上下文窗口、最大输出，以及本次请求实际发送的输出上限；文档最大输出不等于请求上限。
 
-Each Mio task request sends an output limit chosen for its model: the documented maximum output, capped at 16,384 tokens. A model without a documented maximum sends 4,096. So does every preset/protocol combination without a dedicated profile, including custom endpoints. A dedicated Chat Completions or Responses profile rejects other model names before dispatch; a Messages model name outside the table sends 4,096. Kimi and MiniMax list no separate maximum output; input plus output must fit the context window.
+- **Chat Completions、Responses：** 所有 preset、开思考的请求和自定义连接都保持 4,096 token。
+- **Messages：** `anthropic` 小表中的确切模型取 `min(文档最大输出, 16384)`；表外模型和其他组合保持 4,096。专用 Chat Completions、Responses profile 仍在发送前拒绝未支持的模型名，不因此改协议或回退。
 
-| Protocol · preset | Model | Context window (tokens) | Documented maximum output | Mio output limit |
+| 协议 · preset | 模型 | 上下文窗口（token） | 文档最大输出 | Mio 请求输出上限 |
 |---|---|---:|---:|---:|
-| Chat Completions, Responses · OpenAI | `gpt-4.1-mini`, `gpt-4.1-mini-2025-04-14` | 1,047,576 | 32,768 | 16,384 |
-| Chat Completions · OpenRouter | `openai/gpt-4.1-mini` | 1,047,576 (OpenAI model page) | 32,768 | 16,384 |
-| Chat Completions, Responses · DeepSeek | `deepseek-flash` | 1,000,000 | 393,216 | 16,384 |
-| Chat Completions · Zhipu | `glm-4.7` | 200,000 | 128,000 | 16,384 |
-| Chat Completions · Kimi | `kimi-k2.6` | 262,144 | not listed; fits the window | 16,384 |
-| Chat Completions · MiniMax | `MiniMax-M3` | 1,000,000 (input plus output) | not listed; fits the window | 16,384 |
+| Chat Completions, Responses · OpenAI | `gpt-4.1-mini`, `gpt-4.1-mini-2025-04-14` | 1,047,576 | 32,768 | 4,096 |
+| Chat Completions · OpenRouter | `openai/gpt-4.1-mini` | 1,047,576（沿用 OpenAI 模型文档） | 32,768 | 4,096 |
+| Chat Completions, Responses · DeepSeek | `deepseek-flash` | 1,000,000 | 393,216 | 4,096 |
+| Chat Completions · Zhipu | `glm-4.7` | 200,000 | 128,000 | 4,096 |
+| Chat Completions · Kimi | `kimi-k2.6` | 262,144 | 未单列；输入加输出须在窗口内 | 4,096 |
+| Chat Completions · MiniMax | `MiniMax-M3` | 1,000,000（输入加输出） | 未单列；输入加输出须在窗口内 | 4,096 |
 | Messages · Anthropic | `claude-haiku-4-5`, `claude-haiku-4-5-20251001` | 200,000 | 64,000 | 16,384 |
-| Responses · Qwen | `qwen3.8-flash` | 1,000,000 | not documented | 4,096 |
-| Chat Completions · Qwen | `qwen-plus` | unknown (not on the official page) | not documented | 4,096 |
-| All protocols · Ollama | `qwen3:8b` | unknown (set by the local server) | — | 4,096 |
-| All protocols · custom and other combinations | any | unknown | — | 4,096 |
+| Responses · Qwen | `qwen3.8-flash` | 1,000,000 | 暂无已核对数字 | 4,096 |
+| Chat Completions · Qwen | `qwen-plus` | 未知 | 暂无已核对数字 | 4,096 |
+| 所有协议 · Ollama | `qwen3:8b` | 未知，由本地服务设置 | — | 4,096 |
+| 所有协议 · custom 及其他组合 | 任意 | 未知 | — | 4,096 |
 
-Why 16,384: one tool argument may be 32 KiB, about 8K–11K tokens, which does not fit in 4,096. At up to about 5 bytes per token, a 16,384-token reply is under 80 KiB, below the 128 KiB output byte cap. So the token limit normally ends a reply first, and the byte caps remain a backstop. A larger limit, such as Haiku's 64,000, would let the shared 128 KiB Messages byte counter end replies first.
+### 按协议选择上限的原因
 
-A Messages model that cannot disable thinking sends `max_tokens` equal to its output limit and `budget_tokens = max(1024, output limit − 4096)`, so the answer keeps at least 4,096 tokens. That is 16,384 / 12,288 for Haiku and 4,096 / 1,024 for an unknown model. No catalog model requires thinking today.
+Chat Completions、Responses 的长回复仍受每条流 **1 MiB、8,192 个 SSE 事件、单事件 64 KiB 和 120 秒总期限**约束。假设每个事件 250–330 字节、约一个 token，则 `1,048,576 ÷ (250–330) ≈ 3,178–4,194` 个事件，约在 3K–4K token 触及字节上限。这是分块假设下的估算，不是所有模型的实际截断点；只把输出上限放大，不能保证更长的回复通过。[OpenAI 速率限制指南](https://developers.openai.com/api/docs/guides/rate-limits#reduce-the-max_tokens-to-match-the-size-of-your-completions)还说明，请求计数取 `max_tokens` 与按请求字符数估算的 token 较大者。例如原估算约 5K 的请求改设 16,384，会把该计数抬到 16,384；本轮保持 4,096。
 
-Token budgets:
+Messages 取 16,384，给较长的工具参数留出输出额度：单个参数限 32 KiB，假设每 token 3–4 字节，约需 8K–11K token。16,384 token 的解码内容在同一假设下约 48–64 KiB，可处于共用的 128 KiB 输出计数内，但工具参数、思考、签名和实际编码都会影响剩余额度。[Anthropic 的 OTPM](https://platform.claude.com/docs/en/api/rate-limits)按实际产生的输出 token 计数，`max_tokens` 不参与 OTPM 计算；提高请求上限本身不增加 OTPM 预留，实际多生成的 token 仍消耗额度和费用。
 
-- Mioon estimates tokens as UTF-8 bytes divided by 3, rounded up. It uses no tokenizer, `count_tokens` endpoint or reported usage, so request assembly stays deterministic and offline. A CJK character (3 bytes) counts as one token. JSON and English average more than 3 bytes per token, so the estimate errs high for them. It is an estimate, not a bound for every tokenizer. Reported usage is only recorded.
-- When the window is known, a request whose estimate plus its output limit exceeds the window fails with `AGENT_CHAT_LIMIT` before dispatch.
-- History then also has a token budget: the window, minus the output limit, minus the estimated rest of the request (instructions, tool catalog and protocol fields). Compaction and trimming of earlier runs must satisfy both the byte budget and the token budget, with the same high and low water marks. An unknown window keeps only the byte budget.
-- With the current catalog these token checks never bind before the byte caps. The smallest known window is 200,000 tokens. A 512 KiB request estimates 174,763 tokens and, with a 16,384-token output, needs 191,147. With every tool group loaded, the history token budget also stays above the 43,691 tokens that 128 KiB of history estimates to.
+**Messages 也不能保证完整输出 16,384 token。** 它同样经过上述 SSE 和总期限检查。按[官方 `text_delta` 事件形状](https://platform.claude.com/docs/en/build-with-claude/streaming)，使用紧凑 JSON、LF 换行、索引 0 时，空内容事件包装为 115 字节。继续假设每 token 3 字节：
 
-The byte caps do not change: 128 KiB of history and 512 KiB per request. Every model step stores its complete request, and Mio history shares a workspace-wide limit of 20,000 rows / 256 MiB, so a large window does not raise them.
+- 每事件 4 token：`4,096 × 115 + 16,384 × 3 = 520,192` 字节，另加控制事件，字节与事件额度可以容纳。
+- 每事件 1 token：`16,384 × 115 + 16,384 × 3 = 1,933,312` 字节，且事件超过 16,384，先触发限制。
+- 每事件 2 token：仅 delta 已占满 8,192 个事件，加入开始、结束等控制事件便超限。思考、工具 JSON 和签名的包装还会增加流量。
+- 即使其他额度够用，`16,384 ÷ 120 ≈ 136.5 token/s` 也是完成回复所需的最低平均速度；连接、首字延迟和其他开销会提高要求。单事件仍不得超过 64 KiB。
 
-Sources: [OpenAI gpt-4.1-mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini), [DeepSeek models and pricing](https://api-docs.deepseek.com/quick_start/pricing), [DeepSeek Chat API](https://api-docs.deepseek.com/api/create-chat-completion/), [GLM-4.7](https://docs.bigmodel.cn/cn/guide/models/text/glm-4.7), [Kimi models](https://platform.kimi.ai/docs/models), [Kimi pricing](https://platform.kimi.ai/docs/pricing/chat), [Kimi Chat API](https://platform.kimi.ai/docs/api/chat), [MiniMax API overview](https://platform.minimax.io/docs/api-reference/api-overview), [Claude Haiku 4.5](https://platform.claude.com/docs/en/models/haiku-4-5/overview), [Qwen text generation models](https://www.alibabacloud.com/help/en/model-studio/text-generation-model), [Ollama FAQ](https://docs.ollama.com/faq), [Ollama context length](https://docs.ollama.com/context-length).
+这些是透明的容量估算，不是实测分块或吞吐；官方协议不保证固定 token/事件。X2 保留 Messages 16,384 的请求配置，不扩大 SSE 或期限。X3 的多工具回复必须一起评估 SSE 额度、总期限与输出上限。
+
+### 思考与 token 预算
+
+Messages 的“必须思考”档发送 `max_tokens = 输出上限`、`budget_tokens = max(1024, 输出上限 − 4096)`。以 Haiku 的上限代入为 16,384 / 12,288；未知模型为 4,096 / 1,024。4,096 是回答预留目标，未知模型受最小思考预算约束后只剩 3,072。当前目录没有必须思考的模型，也没有生产开启思考的请求。
+
+本轮不统一各协议思考内容的字节计数器。当前没有开启思考的生产请求，统一计数不改变现有结果；Chat Completions、Responses 的长流还先受上述传输额度约束。首次加入思考模型时，再按实测检查计数方式，不以“token 上限必先到”为依据。
+
+- Mioon 以 UTF-8 字节数除以 3、向上取整估算 token，不调用 tokenizer、`count_tokens` 或用量接口，请求装配保持确定、离线。一个 3 字节汉字计作一个 token；JSON 和英语平均每 token 字节较多时会高估。这不是对所有 tokenizer 的保证，供应商用量只记录。
+- 窗口已知时，若请求估算加本协议输出上限超过窗口，在发送前报 `AGENT_CHAT_LIMIT`。
+- 历史 token 预算等于窗口减去输出上限，再减去其余请求（指令、工具目录和协议字段）的估算。压缩及跨轮裁剪同时满足字节与 token 预算，高低水位不变；窗口未知时只按字节限制。
+- 当前目录中 token 检查不会先于字节上限收紧。最小已知窗口为 200,000；512 KiB 请求估算为 174,763 token，即使加最大的 16,384 也只需 191,147。加载全部工具组后，历史 token 预算仍高于 128 KiB 历史对应的 43,691 token。
+- Ollama 的上下文继续按未知处理，不从模型名猜测；应先在本地服务调大上下文，OpenAI 兼容接口不负责调整它。`qwen-plus` 的窗口和最大输出、`qwen3.8-flash` 的最大输出保持未知，拿到已核对的官方数字后再改。
+
+字节上限不变：历史 128 KiB、单次请求 512 KiB。每个模型步骤仍保存完整请求，整个工作区的 Mio 历史共用 20,000 行 / 256 MiB 存储额度；较大的模型窗口不会放大这些额度。
+
+模型与上下文来源：[OpenAI gpt-4.1-mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini)、[DeepSeek 模型与价格](https://api-docs.deepseek.com/quick_start/pricing)、[DeepSeek Chat API](https://api-docs.deepseek.com/api/create-chat-completion/)、[GLM-4.7](https://docs.bigmodel.cn/cn/guide/models/text/glm-4.7)、[Kimi 模型](https://platform.kimi.ai/docs/models)、[Kimi 价格](https://platform.kimi.ai/docs/pricing/chat)、[Kimi Chat API](https://platform.kimi.ai/docs/api/chat)、[MiniMax API 概览](https://platform.minimax.io/docs/api-reference/api-overview)、[Claude Haiku 4.5](https://platform.claude.com/docs/en/models/haiku-4-5/overview)、[Qwen 文本模型](https://www.alibabacloud.com/help/en/model-studio/text-generation-model)、[Ollama FAQ](https://docs.ollama.com/faq)、[Ollama 上下文长度](https://docs.ollama.com/context-length)。
 
 ## Capability test suite
 
