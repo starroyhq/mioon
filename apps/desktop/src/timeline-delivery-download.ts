@@ -4,7 +4,9 @@ import type {BrowserWindow, DownloadItem, Event, SaveDialogOptions, WebContents}
 import {parseTimelineDeliveryContentDisposition} from '@mioon/contracts/timeline-delivery';
 
 const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
-const mediaPath = new RegExp(`^/media/(${UUID})$`, 'i');
+/** Managed media at its project's address, or at the legacy `/media/` path
+ * that S0 removes. The asset ID is the last group either way. */
+const mediaPath = new RegExp(`^(?:/api/projects/${UUID})?/media/(${UUID})$`, 'i');
 const responseBinding = new RegExp(`^(.*); mioon-export-id="(${UUID})"; mioon-asset-id="(${UUID})"$`, 'i');
 const MAX_HEADER_BYTES = 2048;
 const MAX_URL_BYTES = 2048;
