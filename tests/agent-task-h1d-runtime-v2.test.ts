@@ -112,7 +112,7 @@ for(const protocol of protocols)test(`${protocol}: own writes stay fresh and sub
   const f=await fixture(t,protocol);
   f.setScript(async function*(){yield {type:'done',output:output(protocol,[],'Completed final answer')};});
   const completed=await f.send('Completed request'),complete=await f.settle(completed.run.id),conversationId=complete.run.conversationId;
-  f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_tools_load',{groups:['canvas']})]:index===2?[call('mioon_shot_update',{shotId:f.shotId,expectedRevision:1,patch:{prompt:'Own edit'}})]:[],'Reverted answer must not become an assistant answer')};});
+  f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_tools_load',{names:['mioon_shot_update']})]:index===2?[call('mioon_shot_update',{shotId:f.shotId,expectedRevision:1,patch:{prompt:'Own edit'}})]:[],'Reverted answer must not become an assistant answer')};});
   const edited=await f.send('Reverted request',{conversationId}),own=await f.settle(edited.run.id);
   assert.equal(own.run.status,'completed');assert.equal(own.changes.length,1);assert.equal(object(f.store.get('shots',f.shotId)).prompt,'Own edit');
   assert.ok(models(own).every(step=>host(history(step),TASK_STALE_TARGETS_KIND).length===0));

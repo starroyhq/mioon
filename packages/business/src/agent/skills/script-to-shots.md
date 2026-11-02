@@ -19,7 +19,7 @@ summary.ja: 台本、小説の一節、シーン構成をショットに分け�
 
 ## 读模型允许的时长
 
-- 每个镜头的时长必须是所用模型允许的值。先用 mioon_tools_load 加载 video 组，再调用 provider.list，找到所用模型，读它的 durations（单位秒）。
+- 每个镜头的时长必须是所用模型允许的值。先用 mioon_tools_load 的 names 加载 mioon_provider_list，再调用 provider.list，找到所用模型，读它的 durations（单位秒）。
 - 只能用 durations 里列出的值。不要套用其他模型的时长，也不要按经验写一个时长。
 - 用户没有指定模型时，用 provider.list 里可用的模型，并在回复里说明按哪个模型的时长拆分；有多个可用模型且时长不同时，用 mioon_ask 让用户选。
 - 用户换了模型，就重新读新模型的 durations，再按新的时长重新拆。
@@ -42,7 +42,7 @@ summary.ja: 台本、小説の一節、シーン構成をショットに分け�
 
 ## 写入画板
 
-- 加载 canvas 组。先用 shot.inspect 看已有镜头，避免重复创建；不要删除或改写用户已有的镜头，除非用户要求。
+- 用 mioon_tools_load 的 names 加载 mioon_shot_create。先用 shot.inspect 看已有镜头，避免重复创建；不要删除或改写用户已有的镜头，除非用户要求。
 - 用 shot.create 按顺序逐个创建。镜头较多时分批创建，每批完成后再继续。
 - 创建镜头不会生成视频。生成需要用户另行要求，并按正常流程确认。
 

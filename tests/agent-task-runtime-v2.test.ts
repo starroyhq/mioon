@@ -45,7 +45,7 @@ function shot(value:unknown){const row=object(value);return {id:String(row.id),r
 function gate(){let resolve=()=>{};const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};}
 type Script=(index:number,request:TaskModelRequest)=>AsyncGenerator<TaskModelItem,void,undefined>;
 function output(protocol:'chat_completions'|'responses',calls:AgentTaskToolCall[]=[],text='完成'):TaskModelOutput{return {text,toolCalls:calls,providerOutput:protocol==='responses'?calls.map(call=>({type:'function_call',call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'})):{role:'assistant',content:text,tool_calls:calls.map(call=>({id:call.id,type:'function',function:{name:call.name,arguments:JSON.stringify(call.arguments)}}))}};}
-const call=(name:string,args:AgentTaskToolCall['arguments']={},id=randomUUID()):AgentTaskToolCall=>({id,name,arguments:args});
+const call=(name:string,args:AgentTaskToolCall['arguments']={},id:AgentTaskToolCall['id']=randomUUID()):AgentTaskToolCall=>({id,name,arguments:args});
 function desktopSettingsBridge(settings:AgentSettingsService,selfPort:number){
  const requests:Array<{operation:string;selfPort:unknown}>=[];
  const port=Object.assign(new EventEmitter(),{postMessage(message:unknown){const value=object(message);if(value.type==='agent-settings-request')requests.push({operation:String(value.operation),selfPort:value.selfPort});queueMicrotask(()=>broker.handle(message));}});
@@ -76,7 +76,7 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
  const gateway=async function*(request:TaskModelRequest){
   requests.push(request);const visible=sourceTaskModelToolNames(protocol,{body:request.body});
   const missing=loadGroups.filter(group=>!agentTaskToolNamesForGroup(group).every(name=>visible.includes(name)));
-  if(missing.length&&visible.includes(AGENT_TASK_TOOLS_LOAD_NAME)){loadingRequests++;yield {type:'done' as const,output:output(protocol,[call(AGENT_TASK_TOOLS_LOAD_NAME,{groups:[...missing]})])};return;}
+  if(missing.length&&visible.includes(AGENT_TASK_TOOLS_LOAD_NAME)){loadingRequests++;yield {type:'done' as const,output:output(protocol,[call(AGENT_TASK_TOOLS_LOAD_NAME,{names:missing.flatMap(agentTaskToolNamesForGroup)})])};return;}
   scriptRequestIndexes.push(requests.length-1);yield*script(scriptRequestIndexes.length,request);
  };
  let runtime=createAgentTaskRuntime({store,agentSettings:runtimeSettings,authorizations,tools,gateway,selfPort:()=>4318});
@@ -735,20 +735,48 @@ test('a note accepted during replay of a completed tool is observed before compl
  await f.action(paused,'resume');const done=await f.settle(sent.run.id);assert.ok(injected,'The completed-tool replay yielded to the queued note');await injected;assert.equal(done.run.status,'completed');assert.equal(done.run.notes?.length,1);assert.ok(done.run.notes?.[0]?.modelStepId);assert.equal(f.requests.length,3);assert.match(f.requests[2]!.body,/NOTE_AT_COMPLETED_TOOL_YIELD/);
 });
 
-async function lateSelectionFixture(t:TestContext,mode:'skip'|'deny'|'unhandled'){
+async function lateSelectionFixture(t:TestContext,mode:'skip'|'deny'|'unhandled',{holdAcceptedGeneration=false,sourceSuffix=false}:{holdAcceptedGeneration?:boolean;sourceSuffix?:boolean}={}){
  let submissions=0;const provider:Provider={id:'mock',capabilities:{models:['mock-motion-v1'],inputModes:['text'],aspectRatios:['9:16'],durations:[2],mock:true,configured:true,enabled:true},async submit(){submissions++;throw Error('No provider submission is allowed in this test');},async reconcile(){return null;},async poll(){return {status:'running'};},async download(){throw Error('No media download is allowed in this test');}};
- const f=await fixture(t,'responses',new Map([['mock',provider]])),secondEntered=gate(),secondRelease=gate(),thirdEntered=gate(),thirdRelease=gate();
+ const f=await fixture(t,'responses',new Map([['mock',provider]])),secondEntered=gate(),secondRelease=gate(),thirdEntered=gate(),thirdRelease=gate(),generationEntered=gate(),generationRelease=gate();
+ // Hold only the return to the executor: the normal admission transaction has
+ // already saved the completed generation step and its original job binding.
+ if(holdAcceptedGeneration){const execute=f.tools.execute;f.tools.execute=async(prepared,context)=>{const result=await execute(prepared,context);if(prepared.operation==='generation.submit'){generationEntered.resolve();await generationRelease.promise;}return result;};}
  f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'direct'},acknowledgePaid:true});
  f.setScript(async function*(index){if(index===2){secondEntered.resolve();await secondRelease.promise;}if(mode!=='unhandled'&&index===3){thirdEntered.resolve();await thirdRelease.promise;}
-  const calls=index===1?[call('mioon_generation_submit',{shotId:f.first.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'})]:mode==='skip'&&index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'stale automatic edit'}})]:index===(mode==='skip'?3:2)?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'other target continues'}})]:[];
+  const calls=index===1?[call('mioon_generation_submit',{shotId:f.first.id,expectedRevision:1,providerId:'mock',model:'mock-motion-v1'}),...(sourceSuffix?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'old batch suffix must not execute'}},'old-batch-suffix')]:[])]:mode==='skip'&&index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'stale automatic edit'}})]:index===(mode==='skip'?3:2)?[call('mioon_shot_update',{shotId:f.other.id,expectedRevision:1,patch:{prompt:'other target continues'}})]:[];
   yield {type:'done',output:output('responses',calls)};
  },{loadGroups:['canvas','video']});
- const sent=await f.send();await secondEntered.promise;const job=f.store.list('jobs',f.projectId)[0] as JobRecord,step=f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.toolCall?.name==='mioon_generation_submit');assert.ok(step);
+ const sent=await f.send();await (holdAcceptedGeneration?generationEntered.promise:secondEntered.promise);const job=f.store.list('jobs',f.projectId)[0] as JobRecord,step=f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.toolCall?.name==='mioon_generation_submit');assert.ok(step);
  // Model a previously submitted job through its normal local result boundary.
  // No worker, provider transport or FFmpeg process is started.
  withAgentTaskJobOrigin(f.store.db,'job',job.id,()=>f.services.saveJob(job,{status:'running',phase:'polling',providerJobId:'synthetic-known-submitted-job',submissionCount:1,progress:25}));
- return {...f,sent,jobId:job.id,generationStepId:step.id,secondRelease,thirdRelease,thirdEntered,get submissions(){return submissions;},release(){secondRelease.resolve();thirdRelease.resolve();}};
+ return {...f,sent,jobId:job.id,generationStepId:step.id,secondEntered,secondRelease,thirdRelease,thirdEntered,generationRelease,get submissions(){return submissions;},release(){generationRelease.resolve();secondRelease.resolve();thirdRelease.resolve();}};
 }
+test('a denied background approval invalidates its live source batch before the next tool and preserves later work',async t=>{
+ const f=await lateSelectionFixture(t,'deny',{holdAcceptedGeneration:true,sourceSuffix:true});
+ try{
+  const accepted=f.runtime.journal.step(f.generationStepId),sourceId=object(accepted.data).sourceModelStepId;assert.equal(typeof sourceId,'string');assert.equal(accepted.status,'completed');
+  assert.equal(f.runtime.journal.snapshot(f.sent.run.id).steps.some(step=>step.toolCall?.id==='old-batch-suffix'),false);
+  f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:f.runtime.policy().revision,stepLimit:30,modes:{...f.runtime.policy().modes,paid:'confirm'}});
+  assert.throws(()=>assertAgentTaskJobEffect(f.store.db,'job',f.jobId),{code:'AGENT_TASK_APPROVAL_REQUIRED'});
+  const waiting=f.runtime.get(f.projectId,f.sent.run.id);assert.equal(waiting.run.status,'awaiting_approval');assert.equal(waiting.steps.find(step=>step.id===f.generationStepId)?.approvalRequired,true);
+  const request={requestId:randomUUID(),expectedRevision:waiting.run.revision,action:'deny',stepId:f.generationStepId};
+  await f.runtime.action(f.projectId,f.sent.run.id,request);
+  const invalidated=f.runtime.journal.step(sourceId as string);assert.equal(object(invalidated.data).toolsInvalidated,true);assert.equal(object(invalidated.data).toolsInvalidatedReason,'user_rejected');
+  f.generationRelease.resolve();await f.secondEntered.promise;
+  const afterSource=f.runtime.get(f.projectId,f.sent.run.id);
+  assert.equal(afterSource.steps.some(step=>step.toolCall?.id==='old-batch-suffix'),false,'the live executor must read the saved batch decision before preparing its suffix');
+  assert.equal(object(f.store.get('shots',f.other.id)).prompt,'saved other');
+  assert.ok(f.scriptRequest(2).body.includes('USER_REJECTED'),'the next model sees why its old suffix was not executed');
+  assert.equal([...f.effects.values()].filter(operation=>operation==='generation.submit').length,1,'the accepted prefix is not dispatched twice');
+  await f.runtime.action(f.projectId,f.sent.run.id,request);
+  f.secondRelease.resolve();await f.thirdEntered.promise;
+  assert.equal(object(f.store.get('shots',f.other.id)).prompt,'other target continues','a later independent model keeps its own execution scope');
+  f.thirdRelease.resolve();const done=await f.settle(f.sent.run.id);assert.equal(done.run.status,'completed');assert.equal(done.steps.find(step=>step.id===f.generationStepId)?.status,'completed');
+  assert.equal(object(f.runtime.journal.step(f.generationStepId).data).backgroundDenied,true);assert.equal(f.submissions,0);
+  assert.equal([...f.effects.values()].filter(operation=>operation==='generation.submit').length,1);assert.equal([...f.effects.values()].filter(operation=>operation==='shot.update').length,1);
+ }finally{f.release();await f.runtime.drain();}
+});
 for(const mode of ['skip','deny'] as const)test(`a late ${mode==='skip'?'skipped-target':'denied-background'} result stays recorded without pausing unrelated work`,async t=>{
  const f=await lateSelectionFixture(t,mode);try{
   if(mode==='skip'){

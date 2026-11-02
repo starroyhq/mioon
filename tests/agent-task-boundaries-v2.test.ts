@@ -32,7 +32,7 @@ async function fixture(t:TestContext,protocol:'chat_completions'|'responses'='re
  const tools=createAgentTaskTools({store,services});let modelRequests=0,firstCalls:AgentTaskToolCall[]=[];
  const gateway:TaskGateway=async function*(){
   modelRequests++;
-  const calls=modelRequests===1?[{id:'load_canvas',name:'mioon_tools_load',arguments:{groups:['canvas']}}]:modelRequests===2?firstCalls:[];
+  const calls=modelRequests===1?[{id:'load_canvas',name:'mioon_tools_load',arguments:{names:['mioon_shot_update']}}]:modelRequests===2?firstCalls:[];
   yield {type:'done',output:output(protocol,calls)};
  };
  const runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
@@ -67,7 +67,7 @@ for(const conflict of ['aba','claim'] as const)test(`approval after target ${con
  }else f.runtime.journal.edit({requestId:randomUUID(),projectId:f.projectId,ownerId,generation:1,sequence:1,action:'claim',targets:[target]});
  // The approval itself is still rejected with a durable receipt; a new plan needs a new approval.
  const request={requestId:randomUUID(),expectedRevision:waiting.run.revision,action:'approve',stepId:approval.id};
- // The CLI prints this message: the step did not run and Mio replans, nothing paused.
+ // The HTTP response returns this message: the step did not run and Mio replans, nothing paused.
  await assert.rejects(f.runtime.action(f.projectId,waiting.run.id,request),conflict==='aba'?{code:'AGENT_TASK_TARGET_CHANGED',message:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',handedBack:true}:{code:'AGENT_TASK_TARGET_CLAIMED',message:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。',handedBack:true});
  assert.equal(record(f.runtime.journal.lookupControl(request.requestId)?.result).state,'rejected');
  await f.runtime.drain();const done=f.runtime.get(f.projectId,waiting.run.id);

@@ -28,7 +28,7 @@ for(const protocol of GOAL_PROTOCOLS){
   const checks=await f.runtime.checks(f.projectId,done.run.id);assert.equal(checks.requirements?.[0]?.status,'failed');
  });
  test(`${protocol}: one repair can satisfy the declared goal through an ordinary reversible tool`,async t=>{
-  const f=await fixture(t,protocol);f.plan(index=>index===1?[setCountGoal(2)]:index===3?[goalCall('mioon_tools_load',{groups:['canvas']})]:index===4?[goalCall('mioon_shot_create',{title:'Second shot from repair',duration:2,prompt:'Local repair only'})]:[]);
+  const f=await fixture(t,protocol);f.plan(index=>index===1?[setCountGoal(2)]:index===3?[goalCall('mioon_tools_load',{names:['mioon_shot_create']})]:index===4?[goalCall('mioon_shot_create',{title:'Second shot from repair',duration:2,prompt:'Local repair only'})]:[]);
   const done=await f.send();assert.equal(done.run.status,'completed');assert.equal(done.run.stepsUsed,8);assert.equal(f.bodies.length,5);assert.equal(f.store.list('shots',f.projectId).length,2);
   assert.equal((await f.runtime.checks(f.projectId,done.run.id)).requirements?.[0]?.status,'passed');
   const edit=done.steps.find(step=>step.toolCall?.name==='mioon_shot_create')!;assert.equal(edit.status,'completed');assert.equal(edit.tier,'local_reversible');assert.ok(edit.repair);
@@ -75,7 +75,7 @@ for(const protocol of GOAL_PROTOCOLS){
  for(const mixed of [false,true])test(`${protocol}: ${mixed?'an unmet requirement beside pending generation repairs once':'pending generation alone does not trigger a repair'}`,async t=>{
   const f=await fixture(t,protocol),policy=f.runtime.policy();f.runtime.updatePolicy({requestId:randomUUID(),expectedRevision:policy.revision,stepLimit:30,modes:{...policy.modes,paid:'direct'},acknowledgePaid:true});
   const shot=record(f.store.list('shots',f.projectId)[0]);
-  f.plan(index=>index===1?[goalCall('mioon_goal_set',{conditions:[{type:'generation_completed'},...(mixed?[{type:'shot_count',min:2,max:2}]:[])]}),goalCall('mioon_tools_load',{groups:['video']})]:index===2?[goalCall('mioon_generation_submit',{shotId:String(shot.id),expectedRevision:Number(shot.revision),providerId:'mock',model:'mock-motion-v1'})]:[]);
+  f.plan(index=>index===1?[goalCall('mioon_goal_set',{conditions:[{type:'generation_completed'},...(mixed?[{type:'shot_count',min:2,max:2}]:[])]}),goalCall('mioon_tools_load',{names:['mioon_generation_submit']})]:index===2?[goalCall('mioon_generation_submit',{shotId:String(shot.id),expectedRevision:Number(shot.revision),providerId:'mock',model:'mock-motion-v1'})]:[]);
   const done=await f.send();assert.equal(done.run.status,'completed');assert.equal(f.bodies.length,mixed?4:3);
   const checks=await f.runtime.checks(f.projectId,done.run.id);assert.equal(checks.requirements?.[0]?.status,'pending');assert.equal(markers(f.runtime.journal.snapshot(done.run.id).steps).length,mixed?1:0);
   const job=record(f.store.list('jobs',f.projectId)[0]);assert.equal(job.status,'queued','no worker or provider is dispatched by host checks');
@@ -98,7 +98,7 @@ for(const protocol of GOAL_PROTOCOLS){
   assert.equal(markers(f.runtime.journal.snapshot(done.run.id).steps).length,1);
  });
  test(`${protocol}: tools in the repair retain their provenance and paid work still requires confirmation`,async t=>{
-  const f=await fixture(t,protocol);f.plan(index=>index===1?[setCountGoal(2)]:index===3?[goalCall('mioon_tools_load',{groups:['images']})]:index===4?[goalCall('mioon_image_generate',{name:'Needs confirmation',prompt:'Synthetic approval test',providerId:'mock',model:'mock-image-v1',options:{size:'1024x1024',quality:'low',background:'opaque',outputFormat:'png',n:1}})]:[]);
+  const f=await fixture(t,protocol);f.plan(index=>index===1?[setCountGoal(2)]:index===3?[goalCall('mioon_tools_load',{names:['mioon_image_generate']})]:index===4?[goalCall('mioon_image_generate',{name:'Needs confirmation',prompt:'Synthetic approval test',providerId:'mock',model:'mock-image-v1',options:{size:'1024x1024',quality:'low',background:'opaque',outputFormat:'png',n:1}})]:[]);
   const waiting=await f.send();assert.equal(waiting.run.status,'awaiting_approval');assert.equal(f.bodies.length,4);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get()!.n,0);
   const paid=waiting.steps.find(step=>step.status==='awaiting_approval')!;assert.equal(paid.tier,'paid');assert.ok(paid.repair);assert.ok(waiting.steps.find(step=>step.toolCall?.name==='mioon_tools_load')?.repair);
   const done=await f.action(waiting.run.id,'deny',{stepId:paid.id});assert.equal(done.run.status,'completed');assert.equal(markers(f.runtime.journal.snapshot(done.run.id).steps).length,1);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get()!.n,0);
