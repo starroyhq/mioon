@@ -6,6 +6,7 @@ import {openStore} from '../../packages/business/src/db.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createEditTasks} from '../../packages/business/src/edit-tasks.ts';
 import {onMediaProcess} from '../../packages/business/src/media-processes.ts';
+import {readProjectState} from './project-state.ts';
 const root=process.argv[2];
 if(!root)throw Error('Usage: timeline-loudness-process-worker <root>');
 const taskMethods: ReadonlySet<string>=new Set(['prepare','get','list','execute','reconcile','reconcileStartup']);
@@ -35,6 +36,7 @@ try{
       let data: unknown;
       if(message.method==='arm'){if(message.input!=='afterBusinessCommit')throw Error('Unsupported phase');armed=true;data={armed};}
       else if(message.method==='observe')data={dispatches,media,liveMediaCount:liveMedia.size};
+      else if(message.method==='snapshot')data=readProjectState(store!.db);
       else if(message.method==='rpc'){
         const rpcInput=message.input as Record<string, unknown> & {operation?: string; input?: unknown};
         if(!operations.has(String(rpcInput.operation)))throw Error('Unsupported operation');
