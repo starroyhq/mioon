@@ -19,7 +19,10 @@ const images = read('packages/contracts/src/images.ts');
 const reviews = read('packages/contracts/src/image-reviews.ts');
 const inspection = read('packages/contracts/src/inspection.ts');
 const preflight = read('packages/contracts/src/export-preflight.ts');
+const projectAddressing = read('packages/contracts/src/project-addressing.ts');
 const quotedWords = (source: string) => [...source.matchAll(/'([^']+)'/gu)].map(match => match[1]);
+const entityAddressedOperations = new Set(quotedWords(projectAddressing.match(/export const ENTITY_ADDRESSED_OPERATIONS = Object\.freeze\(\[([\s\S]*?)\] as const\)/u)![1]));
+const transportProjectIdPattern = new RegExp(client.match(/const projectId = \{type: 'string', pattern: '([^']+)'\}/u)![1], 'u');
 const valueOptions = new Set(quotedWords(cliArguments.match(/const valueOptions = new Set\(\[([^\]]+)\]\)/u)![1]));
 const switches = new Set(quotedWords(cliArguments.match(/const switches = new Set\(\[([^\]]+)\]\)/u)![1]));
 const watchOperations = quotedWords(cli.match(/const watch = \[([^\]]+)\]\.includes/u)![1]);
@@ -133,6 +136,18 @@ function fieldsFor(operation: string) {
   if (operation.startsWith('image.')) return shape(images, `'${operation}':z.object(`, {page: imagePage});
   return shape(contracts, `'${operation}':z.object(`);
 }
+function assertCliShape(operation: string, input: Record<string, unknown>) {
+  let businessInput = input;
+  if (entityAddressedOperations.has(operation)) {
+    assert.ok(input && typeof input === 'object' && !Array.isArray(input), operation);
+    assert.ok(Object.hasOwn(input, 'projectId'), `${operation}: missing transport projectId`);
+    const {projectId, ...entityInput} = input;
+    assert.ok(typeof projectId === 'string', `${operation}: transport projectId must be a string`);
+    assert.match(projectId, transportProjectIdPattern, `${operation}: transport projectId must be a lowercase UUID`);
+    businessInput = entityInput;
+  }
+  assertShape(businessInput, fieldsFor(operation), operation);
+}
 const catalogKeys = (source: string) => [...source.matchAll(/^\s*'([\w.]+)':/gmu)].map(match => match[1]);
 const publicOperations = new Set([
   ...catalogKeys(contracts.slice(contracts.indexOf('export const schemas='), contracts.indexOf('// A new operation'))),
@@ -171,11 +186,41 @@ test('literal draft fields follow current source shapes without third-party runt
     // local file at real execution time. No file is opened in this static test.
     const input = item.operation === 'asset.import' && item.options.file
       ? {...item.input, name:'example.png', mimeType:'image/png', dataBase64:''} : item.input;
-    assertShape(input, fieldsFor(item.operation), item.operation);
+    assertCliShape(item.operation, input);
     if (item.operation === 'image.review.prepare') assertShape(input.input, generateFields, 'nested generation');
+  }
+  for (const item of examples.filter(item => watchOperations.includes(item.operation) || item.operation === 'export.download')) {
+    const operation = item.operation.replace(/\.(?:watch|download)$/u, '.get');
+    assertCliShape(operation, item.input);
   }
   assert.throws(() => assertShape({...example('image.review.prepare').input, requestId:'wrong-level'}, fieldsFor('image.review.prepare'), 'prepare'), /unknown field requestId/u);
   assert.throws(() => assertShape({projectId:'x', versionId:'x'}, fieldsFor('version.list'), 'version'), /unknown field projectId/u);
+});
+
+test('entity-addressed CLI drafts require transport projectId without weakening business field checks', () => {
+  assert.deepEqual([...entityAddressedOperations].sort(), [
+    'edge.delete', 'export.get', 'generation.submit', 'job.cancel', 'job.get', 'job.reconcile',
+    'job.retry', 'node.update', 'shot.update', 'version.list', 'version.select',
+  ].sort());
+  const projectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  for (const operation of entityAddressedOperations) {
+    const fields = fieldsFor(operation);
+    // This reader checks field shape only; values remain covered by the actual
+    // contract suites. Exercise the address exception against every strict shape.
+    const businessInput = Object.fromEntries(Object.entries(fields).filter(([, required]) => required).map(([key]) => [key, 'draft']));
+    assert.equal(Object.hasOwn(fields, 'projectId'), false, operation);
+    assertCliShape(operation, {projectId, ...businessInput});
+    assert.throws(() => assertCliShape(operation, businessInput), /missing transport projectId/u);
+    for (const invalid of [undefined, null, 42, '', 'not-a-uuid', projectId.toUpperCase()]) {
+      assert.throws(() => assertCliShape(operation, {...businessInput, projectId: invalid}), /transport projectId/u);
+    }
+    assert.throws(() => assertCliShape(operation, {projectId, ...businessInput, unexpected:true}), /unknown field unexpected/u);
+    for (const key of Object.keys(businessInput)) {
+      const missing = {...businessInput};
+      delete missing[key];
+      assert.throws(() => assertCliShape(operation, {projectId, ...missing}), new RegExp(`missing ${key}`, 'u'));
+    }
+  }
 });
 
 test('read/write labels agree with the actual effect catalog, including lazy reads and preflight', () => {
