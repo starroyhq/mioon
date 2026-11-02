@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FloatRenderResult,ProbeJson} from './helpers/strict-timeline-media-result-types.ts';
 import type {CliResult,McpData,WireResult} from './helpers/strict-timeline-transport-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -125,20 +127,20 @@ async function exactPcm(root: string, {name, rate, channels, fadeInFrames, fadeO
 async function httpFixture(root: string) {
   const server = await startServer({dataDir: path.join(root, 'server'), port: 0, token,
     chatGateway: async function* () { throw Error('Audio fade acceptance must never call a model'); }});
-  async function request<O extends string,I=Record<string,never>,B extends boolean=false>(operation:O, input: I = {} as I, expectFailure: B = false as B):Promise<B extends true ? Failure : ServiceResponse<O>> {
-    const response = await fetch(server.url + '/api/rpc', {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${token}`}, body: JSON.stringify({operation, input})});
+  async function request<O extends string,I=Record<string,never>,B extends boolean=false>(operation:O, input: I = {} as I, expectFailure: B = false as B, entityProjectId?: string):Promise<B extends true ? Failure : ServiceResponse<O>> {
+    const response = await fetch(server.url + rpcPathFor(operation, input, entityProjectId), {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${token}`}, body: JSON.stringify({operation, input})});
     const body = await response.json();
     records.http.push((({operation, input: (input as {dataBase64?:string}).dataBase64 ? {...input, dataBase64: `[${((input as {dataBase64?:string}).dataBase64)!.length} characters]`} : input, status: response.status, ...(body.ok ? {} : {error: body.error})}) as unknown as Parameters<typeof records.http.push>[0]));
     if (expectFailure) { assert.equal(body.ok, false); return body.error; }
     assert.equal(response.status, 200, `${operation}: ${JSON.stringify(body)}`); assert.equal(body.ok, true);
     return body.data;
   }
-  async function finish(id: unknown, name: string) {
+  async function finish(id: unknown, name: string, projectId: string) {
     const deadline = Date.now() + 90_000;
     let job;
-    do { job = await request('export.get', {exportId: id}); if (['failed', 'succeeded'].includes(job.status)) break; await pause(80); } while (Date.now() < deadline);
+    do { job = await request('export.get', {exportId: id}, false, projectId); if (['failed', 'succeeded'].includes(job.status)) break; await pause(80); } while (Date.now() < deadline);
     assert.equal(job.status, 'succeeded', JSON.stringify(job));
-    const response = await fetch(server.url + job.url, {headers: {authorization: `Bearer ${token}`}});
+    const response = await fetch(server.url + projectMediaPath(job.projectId, job.assetId!), {headers: {authorization: `Bearer ${token}`}});
     assert.equal(response.status, 200);
     const bytes = Buffer.from(await response.arrayBuffer()), file = path.join(evidence, name);
     await writeFile(file, bytes);
@@ -208,8 +210,8 @@ async function queuedAcceptance(root: string) {
     const fadedTimeline = structuredClone(timeline);
     const fadedRequested = await f.request('timeline.render', (({projectId: project.id, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'preview'}) as unknown as Parameters<NonNullable<(typeof f)["request"]>>[1]));
     assert.deepEqual(fadedRequested.snapshot.timeline, fadedTimeline);
-    const dry = await f.finish(dryRequested.id, 'queued-before-fades.mp4');
-    const faded = await f.finish(fadedRequested.id, 'queued-with-fades.mp4');
+    const dry = await f.finish(dryRequested.id, 'queued-before-fades.mp4', project.id);
+    const faded = await f.finish(fadedRequested.id, 'queued-with-fades.mp4', project.id);
     const dryPcm = await decode(dry.file), fadedPcm = await decode(faded.file);
     assert.equal(dryPcm.length, fadedPcm.length); assert.ok(fadedPcm.length >= 192000 * 8);
     const probes = [await probeOutput(dry.file), await probeOutput(faded.file)];
@@ -262,7 +264,7 @@ async function queuedAcceptance(root: string) {
 
     for (const {input, response} of editInputs) assert.deepEqual(await f.request('timeline.clip.update', ((input) as unknown as Parameters<typeof f.request>[1])), response, 'Fade mutation replay retains its historical response');
     assert.deepEqual(await f.request('timeline.render', ((dryInput) as unknown as Parameters<typeof f.request>[1])), dryRequested, 'Original queued request replays exactly after fade edits and splits');
-    const originalAgain = await f.finish(dryRequested.id, 'queued-before-fades.mp4');
+    const originalAgain = await f.finish(dryRequested.id, 'queued-before-fades.mp4', project.id);
     assert.equal(originalAgain.sha256, dry.sha256);
     assert.deepEqual(originalAgain.job.snapshot, dryRequested.snapshot);
     assert.deepEqual(await f.request('timeline.get', (({projectId: project.id}) as unknown as Parameters<NonNullable<(typeof f)["request"]>>[1])), timeline, 'Historical replays must not change the current timeline');

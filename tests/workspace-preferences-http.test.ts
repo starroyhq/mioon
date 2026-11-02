@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -51,7 +52,7 @@ async function backend(t: test.TestContext) {
       return {status: response.status, headers: response.headers, body: await response.json()};
     },
     async rpc(operation: string, input = {}) {
-      const response = await this.request('/api/rpc', {method: 'POST', input: {operation, input}});
+      const response = await this.request(rpcPathFor(operation,input), {method: 'POST', input: {operation, input}});
       assert.equal(response.status, 200, JSON.stringify(response.body)); return response.body.data;
     },
     inspect() {

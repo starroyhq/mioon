@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectApiPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -66,18 +68,18 @@ async function fixture(t: TestContext,options: {dropAck?: boolean; hold?: boolea
       const response=await fetch(server.url+route,{method,redirect:'error',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/json',...(authenticated?{Authorization:`Bearer ${token}`}:{ }),...headers},...(input===undefined?{}:{body:JSON.stringify(input)})});
       const body=await response.json();publicOnly(body,root);return {status:response.status,body};
     },
-    async rpc(operation: string,input: Record<string, unknown>={}){const value=await f.request('/api/rpc',{method:'POST',input:{operation,input}});assert.equal(value.status,200,JSON.stringify(value.body));assert.equal(value.body.ok,true);return value.body.data;},
+    async rpc(operation: string,input: Record<string, unknown>={}){const value=await f.request(rpcPathFor(operation,input),{method:'POST',input:{operation,input}});assert.equal(value.status,200,JSON.stringify(value.body));assert.equal(value.body.ok,true);return value.body.data;},
     async configure(){
       const check=await f.request('/api/images/comfy-check',{method:'POST',input:{baseUrl:comfy.baseUrl}});assert.equal(check.status,200,JSON.stringify(check.body));assert.deepEqual(check.body.data.checkpoints,[model]);
       const configuration={...DEFAULT_COMFY_IMAGE_CONFIGURATION,enabled:true,baseUrl:comfy.baseUrl,model};
       const saved=await f.request('/api/images/comfy-settings',{method:'PUT',input:{expectedRevision:0,configuration}});assert.equal(saved.status,200,JSON.stringify(saved.body));assert.equal(saved.body.data.readiness.checked,true);return saved.body.data;
     },
-    async approve(review: {projectId: string; id: string}){const result=await f.request('/api/images/reviews/approve',{method:'POST',input:{projectId:review.projectId,reviewId:review.id,expectedRevision:1}});assert.equal(result.status,200,JSON.stringify(result.body));return result.body.data;},
+    async approve(review: {projectId: string; id: string}){const result=await f.request(projectApiPath(review.projectId,'images', 'reviews', 'approve'),{method:'POST',input:{projectId:review.projectId,reviewId:review.id,expectedRevision:1}});assert.equal(result.status,200,JSON.stringify(result.body));return result.body.data;},
     task(ack: {projectId: string; id: string}){return f.rpc('image.task.get',{projectId:ack.projectId,taskId:ack.id});},
     remote(ack: {projectId: string; id: string}){return f.rpc('image.task.remote.get',{projectId:ack.projectId,taskId:ack.id});},
     async until<T>(read: () => Promise<T>, predicate: (value: T) => boolean): Promise<T>{const end=Date.now()+10000;let value: T|undefined;while(Date.now()<end){value=await read();if(predicate(value as T))return value as T;await pause(10);}assert.fail(`Synthetic local state did not settle: ${JSON.stringify(value)}`);},
     async asset(task: {projectId: string; groupId: string}){const versions=await f.rpc('image.version.list',{projectId:task.projectId,groupId:task.groupId});assert.equal(versions.items.length,1);const version=versions.items[0];
-      const response=await fetch(`${server.url}/media/${version.assetId}`,{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});assert.equal(response.status,200);const bytes=Buffer.from(await response.arrayBuffer());
+      const response=await fetch(server.url+projectMediaPath(task.projectId,version.assetId),{headers:{Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(10000)});assert.equal(response.status,200);const bytes=Buffer.from(await response.arrayBuffer());
       assert.deepEqual(bytes,comfy.png);assert.equal(version.sha256,sha(bytes));assert.equal(version.width,512);assert.equal(version.height,512);assert.equal(version.providerId,'comfy-local');assert.equal(version.isMock,false);
       assert.deepEqual(await readFile(path.join(root,'media',`${version.assetId}.png`)),bytes);return version;},
     async restart(){await server.close();server=await startServer({dataDir:root,port:0,token});},

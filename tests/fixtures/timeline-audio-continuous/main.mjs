@@ -19,7 +19,8 @@ import {createTimelineAudioContinuousServices} from '../../../packages/business/
 import {createTimelineAudioContinuousDecoder} from '../../../packages/business/src/timeline-audio-continuous-decoder.ts';
 import {createSavedTimelineAudioReader} from '../../../packages/business/src/timeline-audio-preview-coordinator.ts';
 import {createTimelineAudioContinuousHttp} from '../../../apps/server/src/timeline-audio-continuous-http.ts';
-import {projectRouteTarget} from '../../../apps/server/src/project-routes.ts';
+import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
+import {CONTINUOUS_AUDIO_ENDPOINT} from '../../../packages/contracts/src/timeline-audio-continuous.ts';
 import {createNativeAudioPreviewAuthority} from '../../../packages/business/src/native-audio-preview.ts';
 import {createNativeAudioPreviewHost,createNativeAudioPreviewSigningIdentity} from '../../../apps/desktop/src/native-audio-preview-host.ts';
 import {NATIVE_AUDIO_CHANNEL} from '../../../packages/contracts/src/native-audio-preview.ts';
@@ -64,13 +65,15 @@ app.whenReady().then(async()=>{
         const origin=`http://127.0.0.1:${server.address().port}`;
         if(req.headers.host!==new URL(origin).host||req.headers.origin&&req.headers.origin!==origin){res.writeHead(403).end();return;}
         let url=new URL(req.url,origin);
-        // Serve a project address at the route it replaces, as the server does.
-        const scoped=projectRouteTarget(url.pathname);
-        if(scoped){const query=req.url.search(/[?#]/u);req.url=scoped.pathname+(query<0?'':req.url.slice(query));url=new URL(req.url,origin);}
+        // This shell accepts only its two public project endpoints. The HTTP
+        // adapter still receives its internal canonical path.
+        const scoped=parseProjectApiPath(url.pathname);
+        const continuous=scoped?.kind==='other'&&scoped.segments.length===2&&scoped.segments[0]==='timeline-audio-preview'&&scoped.segments[1]==='continuous';
+        if(scoped?.kind==='rpc'||continuous){const query=req.url.search(/[?#]/u);req.url=(scoped.kind==='rpc'?'/api/rpc':CONTINUOUS_AUDIO_ENDPOINT)+(query<0?'':req.url.slice(query));url=new URL(req.url,origin);}
         res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'");
         if(url.pathname.startsWith('/api/')&&!(req.headers.cookie??'').split(';').map(value=>value.trim()).includes(`mioon_session=${token}`)){res.writeHead(401).end();return;}
-        if(await http(req,res,url))return;
-        if(url.pathname==='/api/rpc'&&req.method==='POST'){
+        if(continuous&&await http(req,res,url))return;
+        if(scoped?.kind==='rpc'&&req.method==='POST'){
           let text='';for await(const bytes of req){text+=bytes;if(Buffer.byteLength(text)>4096)throw Error('Synthetic RPC input exceeded bound');}
           const value=JSON.parse(text);if(value.operation!=='timeline.audioPreview.continuousPlan')throw Error('Synthetic RPC operation denied');
           const data=await service.handlers[value.operation](value.input);res.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({ok:true,data}));return;

@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { translate } from '../packages/i18n/src/index.ts';
 import { mediaUrl } from '../apps/web/src/api.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 const code = transformSync(readFileSync(new URL('../apps/web/src/ExportPreview.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 function harness(locale = 'en') {
   const hooks:HookSlot[] = [], pending:(()=>void)[] = [], events = new Map(); let cursor = 0, tree:PreviewTree, ownerCalls = 0, registered: (() => unknown)|null,workflowStep=1,formal:{record:FormalRecord;enabled:boolean;projectId?:string|null}={record:null,enabled:false};
@@ -32,7 +33,7 @@ function harness(locale = 'en') {
     return null;
   };
   let element: { src: unknown; paused?: boolean; pauseCount?: number; playCount?: number; currentTime?: number; duration?: number; play?: () => Promise<void>; pause?: () => void; getAttribute?: () => unknown; }|null = null;
-  const props = { result: { phase: 'succeeded', record: { id: 'exact-export', snapshot: {} }, stale: false, url: '/media/exact?preview=1&exportId=exact-export' }, visible: true,
+  const props = { result: { phase: 'succeeded', record: { id: 'exact-export', snapshot: {} }, stale: false, url: projectMediaPath('f1000000-0000-4000-8000-000000000001','f1000000-0000-4000-8000-000000000002') + '?preview=1&exportId=exact-export' }, visible: true,
     canSelect: true, canGenerate: true, canCheck: true, onCheck() {}, onSelect() {}, onGenerate() {}, onRangeChange() {}, rangeDraft: null, preflightState: null,
     onBeforePlay: () => ownerCalls++, onRegisterMediaPause(pause:()=>unknown) { registered = pause; return () => { registered = null; }; } };
   function render(patch = {}) {

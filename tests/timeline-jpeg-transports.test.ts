@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -229,7 +230,7 @@ async function fixture(t: import('node:test').TestContext): Promise<TransportFix
   await open();
   const rpc = async (name: string, value: Record<string, unknown>, {authenticated = true, expectedWorkspaceOrigin}: {authenticated?: boolean; expectedWorkspaceOrigin?: string} = {}): Promise<{status: number; envelope: WireEnvelope}> => {
     assert.ok(server);
-    const result = await fetch(server.url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
+    const result = await fetch(server.url + projectRpcPath(projectId), {method: 'POST', signal: AbortSignal.timeout(5_000),
       headers: {'content-type': 'application/json', ...(authenticated ? {authorization: `Bearer ${token}`} : {})},
       body: JSON.stringify({operation: name, input: value, ...(expectedWorkspaceOrigin ? {expectedWorkspaceOrigin} : {})})});
     return {status: result.status, envelope: await result.json() as WireEnvelope};

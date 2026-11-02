@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -240,7 +241,7 @@ test('the server serves a project filled before it started, and inspectProject r
   let running = true;
   t.after(async () => { if (running) await server.close(); });
   const rpc = async (operation: string, input: unknown): Promise<unknown> => {
-    const response = await fetch(`${server.url}/api/rpc`, {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json'}, body: JSON.stringify({operation, input})});
+    const response = await fetch(server.url + rpcPathFor(operation, input), {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json'}, body: JSON.stringify({operation, input})});
     const body = await response.json() as {ok: boolean; data: unknown};
     assert.equal(response.status, 200, JSON.stringify(body));
     return body.data;

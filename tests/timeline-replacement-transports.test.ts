@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
@@ -193,7 +194,7 @@ async function backendFixture(t: test.TestContext) {
       await start();
     },
     async http(name: string, input: { projectId: unknown; expectedRevision?: unknown; requestId?:string; }, expectedError?: undefined) {
-      const response = await fetch(url + '/api/rpc', {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation: name, input})});
+      const response = await fetch(url + rpcPathFor(name, input), {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation: name, input})});
       const body = await response.json();
       assert.equal(response.status, expectedError ? errorStatus(expectedError) : 200, JSON.stringify(body));
       assert.equal(body.ok, !expectedError, JSON.stringify(body));

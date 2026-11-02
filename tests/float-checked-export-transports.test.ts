@@ -1,4 +1,5 @@
 import {isEntityAddressedOperation} from '../packages/contracts/src/project-addressing.ts';
+import {projectApiPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
@@ -155,7 +156,7 @@ test('actual transports bind v2 profile/name/range preflight and preserve origin
       assert.equal(stale.ok, false); assert.equal(stale.error.code, 'PREFLIGHT_STALE');
     }
     await f.unchanged(before);
-    f.lose('/api/rpc'); const submissions = f.submissions.length;
+    f.lose(projectRpcPath(f.project.id)); const submissions = f.submissions.length;
     if (transport.name === 'HTTP') await assert.rejects(transport.call('timeline.render', input));
     else assert.equal((await transport.call('timeline.render', input)).error.details.submissionMayHaveSucceeded, true);
     assert.equal(f.submissions.length, submissions + 1, 'no retry after the lost acknowledgement');
@@ -189,9 +190,9 @@ test('durable private delivery intent binds exact v2 input and blocks profile re
   assert.equal((pending.intent)!.outcome.status, 'pending'); assert.deepEqual((pending.intent)!.input, prepare.input);
   const bytes = await readFile(f.file), state = await f.checkpoint();
   const changed = {...f.prepare(pending, {exportSettings: structuredClone(SETTINGS)}), intentId: randomUUID()};
-  const refusal = await f.request('/api/local-delivery/prepare', {method: 'POST', input: changed});
+  const refusal = await f.request(projectApiPath(f.project.id, 'local-delivery', 'prepare'), {method: 'POST', input: changed});
   assert.equal(refusal.status, 409); assert.deepEqual(await readFile(f.file), bytes); await f.unchanged(state);
-  f.lose('/api/local-delivery/execute'); await assert.rejects(f.local('/execute', action(((pending) as unknown as Parameters<NonNullable<typeof action>>[0]))));
+  f.lose(projectApiPath(f.project.id, 'local-delivery', 'execute')); await assert.rejects(f.local('/execute', action(((pending) as unknown as Parameters<NonNullable<typeof action>>[0]))));
   const accepted = ((f.observations.at(-1))!.body as import('./helpers/strict-timeline-transport-types.ts').RpcEnvelope<import('./helpers/strict-timeline-selected-range-types.ts').DeliveryExecution>).data, receipt = f.receipt(prepare.input.requestId);
   assert.equal((accepted.response)!.snapshot.delivery!.exportSettings.profileId, PROFILE);
   assert.equal(f.dispatches.length, 1); assert.deepEqual(f.dispatches[0], prepare.input);
@@ -227,7 +228,7 @@ test('HTTP CLI MCP expose one bounded terminal report while exact ACK remains qu
       const parts = []; let bytes = 0;
       for await (const part of request) {bytes += part.length; if (bytes > 32768) throw Error('Fixture request bound'); parts.push(part);}
       submissions++;
-      const upstream = await fetch(f.url + '/api/rpc', {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'},
+      const upstream = await fetch(f.url + request.url, {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'},
         body: Buffer.concat(parts), signal: AbortSignal.timeout(15_000)});
       const body = await upstream.json(); response.writeHead(upstream.status, {'content-type': 'application/json'});
       response.end(JSON.stringify(body.ok ? {ok: true, data: mutate(body.data)} : body));

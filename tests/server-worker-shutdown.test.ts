@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -14,7 +16,7 @@ const token='synthetic-q3-server-shutdown-token';
 type ServerHandle = Awaited<ReturnType<typeof startServer>>;
 interface RpcResult {status: number; ok?: boolean; error?: {code?: string}; data?: unknown}
 async function rpc(server: ServerHandle, operation: string, input: Record<string, unknown> = {}): Promise<RpcResult> {
- const response=await fetch(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});
+ const response=await fetch(server.url+rpcPathFor(operation,input),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});
  return {status:response.status,...await response.json() as Omit<RpcResult,'status'>};
 }
 
@@ -50,7 +52,7 @@ test('shutdown fences a partial HTTP RPC body before it can start a new import o
  const body=JSON.stringify({operation:'asset.import',input:{projectId:project.id,name:'Late.png',mimeType:'image/png',dataBase64:syntheticPng.toString('base64')}});
  const connected=deferred() as unknown as {promise: Promise<unknown>; resolve: (value?: unknown) => void; reject: (error?: unknown) => void};
  const reply=new Promise<{status: number | undefined; body: {error: {code?: string}}}>((resolve,reject)=>{
-  const req=http.request(server.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','content-length':Buffer.byteLength(body)}},res=>{
+  const req=http.request(server.url+projectRpcPath(project.id),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json','content-length':Buffer.byteLength(body)}},res=>{
    const chunks: Buffer[]=[];res.on('data',(chunk: Buffer)=>chunks.push(chunk));res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(Buffer.concat(chunks).toString()) as {error: {code?: string}}}));
   });
   req.on('error',reject);req.on('socket',socket=>socket.once('connect',()=>connected.resolve(req)));

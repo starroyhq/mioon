@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {CliResult,McpData,WireResult,TestTool,SchemaNode} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
@@ -44,15 +46,15 @@ test('ripple HTTP durable tasks, actual CLI and official MCP agree on strict sch
  assert.ok(url,'owned backend starts before deadline');
  const connection={...env,MIOON_BASE_URL:url,MIOON_TOKEN:token};
  async function post(route: string,body: { operation?: unknown; input?: unknown; projectId?: unknown; origin?: string; digest?: unknown; instanceId?: unknown; }){const response=await fetch(url+route,{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(body)});const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));assert.equal(result.ok,true);return result.data;}
- const http=(op: string,input: { projectId: unknown; expectedRevision: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; clipId?: unknown; })=>post('/api/rpc',{operation:op,input});
+ const http=(op: string,input: { projectId: unknown; expectedRevision: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; clipId?: unknown; })=>post(rpcPathFor(op,input),{operation:op,input});
  async function cli(op: string,input?: { clipId: unknown; projectId: unknown; expectedRevision: unknown; requestId: `${string}-${string}-${string}-${string}-${string}`; }|undefined){const args=op==='schema'?['schema',operation]:[...op.split('.'),'--input',JSON.stringify(input)];const output=await execute(process.execPath,[path.join(repo,'apps/cli/src/index.ts'),...args],{cwd:repo,env:((connection) as unknown as NodeJS.ProcessEnv | undefined),timeout:15000,maxBuffer:4*1024*1024});assert.ok(!output.stdout.includes(token));const body=JSON.parse(output.stdout);assert.equal(body.ok,true);return body.data;}
  const mcp=new Client({name:'ripple-tests',version:'1.0.0'},{capabilities:{}}),transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env:((connection) as unknown as Record<string, string> | undefined),stderr:'pipe'});
  (transport.stderr as import('node:stream').Readable|null)?.resume();t.after(()=>mcp.close());await mcp.connect(transport);
  const schema=await cli('schema'),tool=((await mcp.listTools() as {tools:TestTool[]})).tools.find(item=>item.name==='timeline_clip_rippleRemove');
  assert.ok(tool);assert.deepEqual(tool.inputSchema,schema.inputSchema);assert.equal((tool.annotations)!.idempotentHint,true);assert.equal(tool.inputSchema.additionalProperties,false);
- const intent={...request(timeline),clipId},prepared=await post('/api/tasks/prepare',{projectId,operation,input:intent,origin:'new'});
+ const intent={...request(timeline),clipId},prepared=await post(projectApiPath(projectId,'tasks','prepare'),{projectId,operation,input:intent,origin:'new'});
  assert.equal(prepared.task.status,'prepared');assert.equal(prepared.task.operation,operation);
- const done=await post(`/api/tasks/${prepared.task.id}/execute`,{projectId,digest:prepared.task.digest,instanceId:prepared.instanceId});
+ const done=await post(projectApiPath(projectId,'tasks',prepared.task.id,'execute'),{projectId,digest:prepared.task.digest,instanceId:prepared.instanceId});
  assert.equal(done.task.status,'applied');timeline=done.result;assert.equal((timeline.clips.find((c)=>c.id===following))!.startFrame,20);
  assert.deepEqual(await cli(operation,intent),timeline,'CLI replays the exact durable result without a second ripple');
  timeline=await http('timeline.undo',request(timeline));assert.equal((timeline.clips.find((c)=>c.id===following))!.startFrame,30);

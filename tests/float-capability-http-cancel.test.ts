@@ -1,6 +1,7 @@
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
 import type {TypedStore as FixtureStore, TypedServices as FixtureServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import path from 'node:path';
@@ -85,7 +86,7 @@ async function fixture(t: test.TestContext){
   },
   async newExplicitProbe(){
    restoreTool();assert.equal(await(await fetch(this.url+'/health')).text(),'healthy');
-   const response=await fetch(this.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'timeline.export.capabilities',input})});
+   const response=await fetch(this.url+projectRpcPath(input.projectId),{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'timeline.export.capabilities',input})});
    const body=await response.json();assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.ok,true);assert.equal(body.data.status,'available',JSON.stringify(body));
    assert.equal(requests.length,2,'Only the caller\'s new explicit probe is issued');assert.equal(rows(),beforeRows);assert.deepEqual(await stableFiles(root),beforeFiles);
    assert.equal(store.list('exports').length,0);assert.equal(store.list('assets').filter(asset=>asset.provenance==='export').length,0);
@@ -96,7 +97,7 @@ async function fixture(t: test.TestContext){
 
 test('real HTTP disconnect aborts active v2 capability MOV child, cleans owned staging and permits a fresh explicit proof',{timeout:20000},async t=>{
  if(process.platform==='win32'){t.skip('POSIX installed executable fixture; no native Windows claim');return;}
- const f=await fixture(t),request=http.request(f.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'}});request.on('error',()=>{});
+ const f=await fixture(t),request=http.request(f.url+projectRpcPath(f.input.projectId),{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'}});request.on('error',()=>{});
  request.end(JSON.stringify({operation:'timeline.export.capabilities',input:f.input}));await bounded(f.holding,'Active capability MOV child');
  assert.equal((await readdir(f.root)).filter(name=>name.startsWith('.timeline-float-proof-')).length,1);request.destroy();
  await f.finishCancellation();await f.newExplicitProbe();

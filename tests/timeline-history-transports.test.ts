@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureHistory, FixtureTimeline, FixtureHistoryEntry} from './helpers/strict-timeline-core-types.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
@@ -183,8 +185,8 @@ async function backendFixture(t: test.TestContext) {
     throw Error(`Backend did not start: ${stdout}\n${stderr}`);
   }
   await start();
-  async function http<N extends string,I extends Record<string,unknown>=Record<string,never>,E extends string|undefined=undefined>(operation?: N, input: I = {} as I, expectedError?: E, expectedStatus: unknown = 409):Promise<WireResult<ServiceResponse<N>,E>> {
-    const response = await fetch(url + '/api/rpc', {
+  async function http<N extends string,I extends Record<string,unknown>=Record<string,never>,E extends string|undefined=undefined>(operation?: N, input: I = {} as I, expectedError?: E, expectedStatus: unknown = 409, addressProjectId?: string):Promise<WireResult<ServiceResponse<N>,E>> {
+    const response = await fetch(url + (addressProjectId ? projectRpcPath(addressProjectId) : rpcPathFor(operation as string, input)), {
       method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'},
       body: JSON.stringify({operation, input}),
     });
@@ -271,7 +273,11 @@ test('timeline edit history round-trips HTTP, CLI and official MCP with durable 
     }
     assert.deepEqual((await backend.storage(projectId)), before, 'read-only history and failed empty traversal have zero persisted side effects');
     for (const operation of operations) {
-      for (const input of invalidInputs(operation, ((projectId) as unknown as Parameters<NonNullable<typeof invalidInputs>>[1]))) await backend.http(operation, input, 'VALIDATION_ERROR', 400);
+      for (const input of invalidInputs(operation, ((projectId) as unknown as Parameters<NonNullable<typeof invalidInputs>>[1]))) {
+        // The URL names the registered project; the raw invalid body is unchanged.
+        const code = (input as {projectId?: unknown}).projectId === 'not-a-uuid' ? 'PROJECT_ID_MISMATCH' : 'VALIDATION_ERROR';
+        await backend.http(operation, input, code, 400, projectId);
+      }
     }
     assert.deepEqual((await backend.storage(projectId)), before, 'strict HTTP validation also leaves every history table untouched');
     current = await backend.http('timeline.get', query);

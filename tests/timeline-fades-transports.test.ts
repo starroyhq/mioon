@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
@@ -177,7 +178,7 @@ async function backendFixture(t: test.TestContext) {
   await start();
   return {projectId, assets, get url() { return url; }, get pid() { return backend.pid; }, restart: async () => { await stop(); await start(); },
     async http(operation: string, input: { projectId: unknown; }, expectedError?: string|string[]|undefined) {
-      const response = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
+      const response = await fetch(url + rpcPathFor(operation, input), {method: 'POST', redirect: 'error', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
       const body = await response.json();
       assert.equal(response.status, !expectedError ? 200 : expectedError.includes('CONFLICT') ? 409 : 400, JSON.stringify(body));
       assert.equal(body.ok, !expectedError, JSON.stringify(body));

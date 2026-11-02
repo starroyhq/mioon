@@ -4,6 +4,8 @@ import type {CliResult,McpData} from './helpers/strict-timeline-transport-types.
 interface CommandResult<T=unknown> {code:number|null;signal:NodeJS.Signals|null;stdout:string;stderr:string;body:{ok:boolean;data:T;error:RootFailure}}
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import {spawn, execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -70,8 +72,8 @@ function failed(result:CommandResult<unknown>, exit: number, errorCode?: string|
   assert.ok(!result.stderr.includes(token));
   return result.body.error;
 }
-async function rpc<O extends string>(service:{url:string;token:string},operation:O,input: {jobId?:unknown;projectId?:unknown}={}):Promise<CommandData<O>> {
-  const response = await fetch(service.url + '/api/rpc', {method:'POST', headers:{authorization:`Bearer ${service.token}`, 'content-type':'application/json'}, body:JSON.stringify({operation,input})});
+async function rpc<O extends string>(service:{url:string;token:string},operation:O,input: {jobId?:unknown;projectId?:unknown}={},projectId?:string):Promise<CommandData<O>> {
+  const response = await fetch(service.url + rpcPathFor(operation,input,projectId), {method:'POST', headers:{authorization:`Bearer ${service.token}`, 'content-type':'application/json'}, body:JSON.stringify({operation,input})});
   const body = await response.json();
   assert.equal(body.ok, true, JSON.stringify(body));
   return body.data;
@@ -232,8 +234,9 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     assert.equal((await callMcp('timeline_render', exportRequest)).id, queued.id);
     const rendered = await command('export.watch', {projectId:project.id, exportId:queued.id}, ['--timeout-ms','45000','--interval-ms','50']);
     assert.equal(rendered.status, 'succeeded');
+    assert.ok(rendered.assetId, 'a successful export has a managed asset');
     assert.equal((await callMcp('export_get', {projectId:project.id, exportId:queued.id})).assetId, rendered.assetId);
-    const media = await fetch(service.url + rendered.url, {headers:{authorization:`Bearer ${token}`}});
+    const media = await fetch(service.url + projectMediaPath(project.id, rendered.assetId), {headers:{authorization:`Bearer ${token}`}});
     assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'video/mp4');
     const file = path.join(root, 'verified-export.mp4'); await writeFile(file, Buffer.from(await media.arrayBuffer()));
     const probe = JSON.parse((await exec(process.env.MIOON_FFPROBE_PATH || 'ffprobe', ['-v','error','-show_streams','-show_format','-of','json',file])).stdout);
@@ -265,7 +268,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     const replay = await command('generation.submit', input);
     const existing = (await callMcp('job_list', {projectId:project.id})).filter((item: { requestId: string; }) => item.requestId === input.requestId);
     assert.equal(existing.length, 1); assert.equal(replay.id, existing[0].id);
-    await until(() => rpc(service, 'job.get', {jobId:replay.id}), (value: { submissionCount: number; }) => value.submissionCount === 1, 'provider submit did not start');
+    await until(() => rpc(service, 'job.get', {jobId:replay.id}, project.id), (value: { submissionCount: number; }) => value.submissionCount === 1, 'provider submit did not start');
     assert.equal(inspect(project.id, db => db.prepare('SELECT COUNT(*) AS n FROM mock_provider_submissions WHERE request_id=?').get(input.requestId)!.n), 1);
     const payloads = proxy.requests.filter(item => item.operation === 'generation.submit' && item.input.requestId === input.requestId);
     assert.equal(payloads.length, 2, 'a lost response must not cause a hidden HTTP resubmission');
@@ -280,7 +283,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     observer.child.kill('SIGINT');
     failed(await observer.result, 130);
     assert.ok(proxy.requests.slice(watchStart).every(item => item.operation !== 'job.cancel'), 'stopping a watch never cancels a durable job');
-    const pending = await rpc(service, 'job.get', {jobId:replay.id});
+    const pending = await rpc(service, 'job.get', {jobId:replay.id}, project.id);
     assert.equal(pending.status, 'running'); assert.equal(pending.cancelScope, null);
   });
 

@@ -5,6 +5,8 @@ interface ActivationRequestOptions{method?:string;input?:unknown;raw?:BodyInit;a
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectApiPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {EventEmitter, once} from 'node:events';
@@ -117,13 +119,13 @@ async function fixture(t: test.TestContext) {
       return {status: response.status, headers: response.headers, body: result};
     },
     async rpc<O extends string>(operation:O, input = {}, expectedCode?: string|undefined) {
-      const response = await f.request('/api/rpc', {method: 'POST', input: {operation, input}});
+      const response = await f.request(expectedCode === 'UNKNOWN_OPERATION' ? '/api/rpc' : rpcPathFor(operation, input), {method: 'POST', input: {operation, input}});
       assert.equal(response.body.ok, !expectedCode, JSON.stringify(response.body));
       if (expectedCode) assert.equal(response.body.error.code, expectedCode); else assert.equal(response.status, 200);
       return response.body.data as ServiceResponse<O>;
     },
     async approve(review:Pick<FixtureImageReview,"projectId"|"id">, patch = {}, expectedCode?: string|undefined) {
-      const response = await f.request('/api/images/reviews/approve', {method: 'POST', input: {...approvalFor(review), ...patch}});
+      const response = await f.request(projectApiPath(review.projectId, 'images', 'reviews', 'approve'), {method: 'POST', input: {...approvalFor(review), ...patch}});
       assert.equal(response.body.ok, !expectedCode, JSON.stringify(response.body));
       if (expectedCode) assert.equal(response.body.error.code, expectedCode); else assert.ok(isImageTaskResponse(response.body.data));
       return response.body.data;
@@ -153,13 +155,13 @@ async function fixture(t: test.TestContext) {
       proxy = http.createServer(async (request, response) => {
         try {
           proxyCalls++; const chunks:Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
-          const upstream = await fetch(server.url + '/api/images/reviews/approve', {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${token}`}, body: Buffer.concat(chunks)});
+          const upstream = await fetch(server.url + projectApiPath(review.projectId, 'images', 'reviews', 'approve'), {method: 'POST', headers: {'content-type': 'application/json', authorization: `Bearer ${token}`}, body: Buffer.concat(chunks)});
           dropped = await upstream.json(); response.destroy();
         } catch {response.destroy();}
       });
       await new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve));
       const base = `http://127.0.0.1:${(proxy.address()! as import('node:net').AddressInfo).port}`;
-      await assert.rejects(f.request('/api/images/reviews/approve', {method: 'POST', input: approvalFor(review), base}));
+      await assert.rejects(f.request(projectApiPath(review.projectId, 'images', 'reviews', 'approve'), {method: 'POST', input: approvalFor(review), base}));
       assert.equal(proxyCalls, 1); assert.equal(dropped?.ok, true); publicOnly(dropped, root); return dropped.data;
     },
   };
@@ -178,12 +180,12 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
   const project = await f.rpc('project.create', {name: 'Synthetic live-image boundary'}), other = await f.rpc('project.create', {name: 'Foreign project'});
   let review:FixtureImageReview,input:ReturnType<typeof inputFor>,accepted:FixtureImageTask,finished:FixtureImageTask,pending:FixtureImageReview;
   await t.test('private routes require local authentication and reject wrong origin, methods, query, media type and body size', async () => {
-    for (const route of ['/api/images/settings', '/api/images/reviews/approve', '/api/images/reviews/reject']) {
+    for (const route of ['/api/images/settings', projectApiPath(project.id, 'images', 'reviews', 'approve'), projectApiPath(project.id, 'images', 'reviews', 'reject')]) {
       const method = route.endsWith('settings') ? 'GET' : 'POST', body = method === 'POST' ? {} : undefined;
       assert.equal((await f.request(route, {method, input: body, authenticated: false})).status, 401);
       assert.equal((await f.request(route, {method, input: body, headers: {origin: 'https://untrusted.invalid'}})).status, 403);
     }
-    const route = '/api/images/reviews/approve';
+    const route = projectApiPath(project.id, 'images', 'reviews', 'approve');
     assert.equal((await f.request(route)).status, 405);
     assert.equal((await f.request(`${route}?unexpected=1`, {method: 'POST', input: {}})).status, 400);
     assert.equal((await f.request(route, {method: 'POST', input: {}, headers: {'content-type': 'text/plain'}})).status, 400);
@@ -230,13 +232,13 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
 
   await t.test('project, revision and rejected-review substitution fail closed before any POST', async () => {
     const before = f.snapshot(project.id);
-    await f.approve(review, {projectId: other.id}, 'IMAGE_REVIEW_NOT_FOUND');
+    await f.approve(review, {projectId: other.id}, 'PROJECT_ID_MISMATCH');
     await f.approve(review, {reviewId: randomUUID()}, 'IMAGE_REVIEW_NOT_FOUND');
     await f.approve(review, {expectedRevision: 2}, 'IMAGE_REVIEW_REVISION_CONFLICT');
     await f.rpc('image.review.prepare', {input: {...input, prompt: 'Changed same-key intent'}, settingsRevision: 1}, 'IMAGE_REVIEW_CONFLICT');
     assert.equal(f.snapshot(project.id), before);
     const rejected = await f.prepare(inputFor(project.id));
-    const response = await f.request('/api/images/reviews/reject', {method: 'POST', input: approvalFor(rejected)});
+    const response = await f.request(projectApiPath(rejected.projectId, 'images', 'reviews', 'reject'), {method: 'POST', input: approvalFor(rejected)});
     assert.equal(response.body.data.state, 'rejected');
     await f.approve(rejected, {}, 'IMAGE_REVIEW_REVISION_CONFLICT');
     assert.equal(f.network.posts, 0); assert.equal(f.network.lookups, 0);
@@ -256,7 +258,7 @@ test('reviewed live-image boundary through actual local HTTP, strict client, CLI
     assert.equal(retained.state, 'dispatched'); assert.equal(retained.postAttempts, 1); assert.equal(retained.taskId, accepted.id);
     const versions = await f.client.rpc('image.version.list', {projectId: project.id, groupId: accepted.groupId});
     assert.equal(versions.items.length, 1); assert.equal(versions.items[0].isMock, false);
-    const asset = await fetch(`${f.server.url}/media/${versions.items[0].assetId}`, {headers: {authorization: `Bearer ${token}`}});
+    const asset = await fetch(f.server.url + projectMediaPath(project.id, versions.items[0].assetId), {headers: {authorization: `Bearer ${token}`}});
     assert.equal(asset.status, 200); const bytes = Buffer.from(await asset.arrayBuffer());
     assert.deepEqual(bytes, f.png); assert.equal(createHash('sha256').update(bytes).digest('hex'), versions.items[0].sha256);
     assert.equal(f.snapshot(project.id), before); assert.equal(f.network.posts, 1);

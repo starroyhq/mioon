@@ -1,6 +1,7 @@
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import {randomUUID, createHash} from 'node:crypto';
 import {mkdtemp, writeFile, readFile, readdir, rm, unlink, open} from 'node:fs/promises';
@@ -67,7 +68,9 @@ async function fixture(t: test.TestContext, {serve = true, named = false} = {}) 
   // While the server runs, the database is read and damaged on its own connection.
   const use = <T>(fn: (db: DatabaseSync) => T): T => inspect ? inspect(project.id, fn) : fn(db!);
   const guardsFor = (db: DatabaseSync) => ({isTimelineRenderRecord, readOwnedAsset: (projectId: string, assetId: unknown) => readOwnedTimelineAsset(db, projectId, assetId)});
-  const route = `/media/${assetId}?preview=1&exportId=${record.id}`, url = new URL(route, 'http://127.0.0.1:12345');
+  const route = `${projectMediaPath(project.id, assetId)}?preview=1&exportId=${record.id}`;
+  // Business readers receive the server's route-local URL after project routing.
+  const url = new URL(`/media/${assetId}?preview=1&exportId=${record.id}`, 'http://127.0.0.1:12345');
   const rows = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
     [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   // data_version counts other connections' commits only; total_changes() adds this connection's own writes.

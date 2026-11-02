@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -125,7 +126,7 @@ for(const protocol of protocols)test(`${protocol}: real HTTP, SSE and CLI status
     void route.handle(req,res,url).then(handled=>{if(!handled){res.writeHead(404);res.end();}}).catch(()=>{res.destroy();});
   });
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
-  const address=server.address();assert.ok(address&&typeof address!=='string');const base=`http://127.0.0.1:${address.port}`,path=`/api/agent/tasks/v2/${f.projectId}/${sent.run.id}`;
+  const address=server.address();assert.ok(address&&typeof address!=='string');const base=`http://127.0.0.1:${address.port}`,path=projectApiPath(f.projectId,'agent','tasks','v2',sent.run.id);
   try{
     const status=await fetch(base+path,{headers:{Authorization:`Bearer ${token}`}}),value:unknown=await status.json();assert.equal(status.status,200);assertPublic(object(value).data);
     const controller=new AbortController(),stream=await fetch(base+path+'/events?after=0',{headers:{Authorization:`Bearer ${token}`},signal:controller.signal});assert.equal(stream.status,200);const reader=stream.body!.getReader();

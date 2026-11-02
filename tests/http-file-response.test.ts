@@ -1,6 +1,7 @@
 import type {RootFailure} from './helpers/strict-root-error-types.ts';
 import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import net from 'node:net';
@@ -40,7 +41,7 @@ async function actual(t: test.TestContext) {
   t.after(async () => { await service.close(); await rm(root, {recursive: true, force: true}); });
   return {root, file, distDir, get service() {return service;}, bytes, id, projectId,
     async restart() {await service.close(); service = await startServer(options);},
-    request: (route: string = `/media/${id}`, options: RequestInit|undefined = {}) => fetch(service.url + route, {...options, headers: {authorization: `Bearer ${token}`, ...options.headers}})};
+    request: (route: string = projectMediaPath(projectId, id), options: RequestInit|undefined = {}) => fetch(service.url + route, {...options, headers: {authorization: `Bearer ${token}`, ...options.headers}})};
 }
 interface TestReadHandle {stat(): Promise<{isFile(): boolean; size: number}>; createReadStream(options?: CreateReadStreamOptions): Readable; close(): Promise<void>}
 interface Tracking {opens: number; closes: number; streams: number; lastStream: Readable}
@@ -88,8 +89,8 @@ test('actual media full/HEAD/range/cache/auth and static fallback contracts rema
   for (const range of ['bytes=', 'bytes=99-', 'bytes=4-3', 'bytes=-0', 'bytes=0-1,3-4', 'bytes=9007199254740992-']) {
     response = await f.request(undefined, {headers: {range}}); assert.equal(response.status, 416, range); assert.equal(await response.text(), '');
   }
-  response = await f.request(`/media/${f.id}?download`); assert.equal(response.headers.get('content-disposition'), 'attachment; filename="mioon.mp4"'); await response.arrayBuffer();
-  response = await fetch(f.service.url + `/media/${f.id}`); assert.equal(response.status, 401);
+  response = await f.request(projectMediaPath(f.projectId, f.id) + '?download'); assert.equal(response.headers.get('content-disposition'), 'attachment; filename="mioon.mp4"'); await response.arrayBuffer();
+  response = await fetch(f.service.url + projectMediaPath(f.projectId, f.id)); assert.equal(response.status, 401);
   response = await f.request(undefined, {headers: {origin: 'https://invalid.example'}}); assert.equal(response.status, 403);
   response = await f.request('/entry.js'); assert.match(response.headers.get('content-type')!, /javascript/); assert.equal(response.headers.get('cache-control'), 'no-cache'); await response.text();
   response = await f.request('/missing-route'); assert.match(response.headers.get('content-type')!, /text\/html/); assert.match(await response.text(), /synthetic renderer/);

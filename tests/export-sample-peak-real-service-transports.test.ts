@@ -1,6 +1,7 @@
 import type {ExportSamplePeakResponse} from '@mioon/contracts/export-sample-peak';
 import type {TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
@@ -106,7 +107,7 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
   // data_version counts other connections' commits only; total_changes() adds this connection's own writes.
   const changeMarks=()=>inspect(project.id,db=>[db.prepare('PRAGMA data_version').get()!.data_version,db.prepare('SELECT total_changes() AS n').get()!.n]);
   const before={rows:rows(),version:changeMarks(),files:await manifest(root)};
-  const http=async()=>{const response=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});
+  const http=async()=>{const response=await fetch(backend.url+rpcPathFor(operation,input),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});
     assert.equal(response.status,200);const body=await response.json();assert.equal(body.ok,true);return body.data;};
   const reports: ExportSamplePeakResponse[]=[];
   for(const [name,call] of [['HTTP',http],['CLI',()=>cli(backend.url,input)],['MCP',()=>mcp(input)]] as const){

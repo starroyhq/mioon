@@ -1,4 +1,5 @@
-import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectRpcPath,projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type {WorkspaceServices as FixtureServices,WorkspaceClient as FixtureClient} from './helpers/strict-workspace-boundary-types.ts';
 import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
 import test from 'node:test';
@@ -75,7 +76,7 @@ async function fixture(t: test.TestContext){
  });proxy.listen(0,'127.0.0.1');await once(proxy,'listening');
  const url=`http://127.0.0.1:${(proxy.address() as import('node:net').AddressInfo).port}`,env={...mediaEnvironment(),MIOON_BASE_URL:url,MIOON_TOKEN:token,MIOON_ENABLE_LIVE_PROVIDER:'0'};
  const raw=async<Route extends string>(route: Route,input?:Record<string,unknown>)=>{try{const response=await fetch(url+route,{method:input===undefined?'GET':'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},...(input===undefined?{}:{body:JSON.stringify(input)}),signal:AbortSignal.timeout(10000)});return await response.json();}catch{return {ok:false,error:{code:'LOST_TRANSPORT'}};}};
- const rpc=(operation: unknown,input: unknown,selected=origin)=>raw('/api/rpc',{operation,input,...(selected===undefined?{}:{expectedWorkspaceOrigin:selected})});
+ const rpc=(operation: unknown,input: unknown,selected=origin)=>raw(rpcPathFor(String(operation),input,project.id),{operation,input,...(selected===undefined?{}:{expectedWorkspaceOrigin:selected})});
  mcp=new Client({name:'restore-real-transport',version:'1.0.0'},{capabilities:{}});
  const transport=new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts'),'--workspace-origin',origin],cwd:repo,env,stderr:'pipe'});
  await mcp.connect(transport);(transport.stderr as import('node:stream').Readable|null)?.resume();
@@ -90,7 +91,7 @@ test('restored actual HTTP, CLI and official MCP edit once, retain lost acknowle
  const f=await fixture(t);let timeline=f.timeline;
  for(const transport of f.transports){
   const before=f.requests.length,input={projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),kind:'audio',name:`新 ${transport.name} · 中文`};
-  f.drop(transport.name==='HTTP'?'/api/rpc':projectRpcPath(f.project.id));const lost=await transport.call('timeline.track.add',input);assert.equal(lost.ok,false);assert.equal(f.requests.length,before+1,'no hidden retry');
+  f.drop(projectRpcPath(f.project.id));const lost=await transport.call('timeline.track.add',input);assert.equal(lost.ok,false);assert.equal(f.requests.length,before+1,'no hidden retry');
   const accepted=f.observed.at(-1)!.body;assert.equal(accepted.ok,true);const receipt=f.db((db)=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(input.requestId));
   await f.restart();const replay=await transport.call('timeline.track.add',input);assert.deepEqual(replay,accepted);timeline=replay.data;
   assert.deepEqual(f.db((db)=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(input.requestId)),receipt);
@@ -103,12 +104,12 @@ test('restored actual HTTP, CLI and official MCP edit once, retain lost acknowle
 
 test('restored durable new lane coexists with captured pending; dropped execution ACK is rediscovered without inherited execution',{timeout:60000},async t=>{
  const f=await fixture(t),input={projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),kind:'audio',name:'新持久意图'};
- const prepared=await f.raw('/api/tasks/prepare',{projectId:f.project.id,operation:'timeline.track.add',input,origin:'new',expectedWorkspaceOrigin:f.origin});assert.equal(prepared.ok,true,JSON.stringify(prepared));
- const value=prepared.data;assert.equal(value.restore.held,false);const route=`/api/tasks/${value.task.id}/execute`,execute={projectId:f.project.id,digest:value.task.digest,instanceId:value.instanceId,expectedWorkspaceOrigin:f.origin};
+ const prepared=await f.raw(projectApiPath(f.project.id,'tasks','prepare'),{projectId:f.project.id,operation:'timeline.track.add',input,origin:'new',expectedWorkspaceOrigin:f.origin});assert.equal(prepared.ok,true,JSON.stringify(prepared));
+ const value=prepared.data;assert.equal(value.restore.held,false);const route=projectApiPath(f.project.id,'tasks',value.task.id,'execute'),execute={projectId:f.project.id,digest:value.task.digest,instanceId:value.instanceId,expectedWorkspaceOrigin:f.origin};
  f.drop(route);assert.equal((await f.raw(route,(execute as unknown as Parameters<typeof f.raw>[1]))).ok,false);assert.equal(f.observed.at(-1)!.body.data.task.status,'applied');
- await f.restart();const current=await f.raw(`/api/tasks/${value.task.id}?projectId=${f.project.id}`);assert.equal(current.data.task.status,'applied');assert.equal(current.data.task.id,value.task.id);assert.equal(current.data.restore.held,false);
- const duplicate=await f.raw('/api/tasks/prepare',{projectId:f.project.id,operation:'timeline.track.add',input,origin:'new',expectedWorkspaceOrigin:f.origin});assert.equal(duplicate.data.task.id,value.task.id);
- const held=await f.raw(`/api/tasks/${f.pending.task.id}/reconcile`,{projectId:f.project.id,digest:f.pending.task.digest,expectedWorkspaceOrigin:f.origin});assert.equal(held.error.code,'RESTORED_RECORD_HELD');
+ await f.restart();const current=await f.raw(projectApiPath(f.project.id,'tasks',value.task.id)+`?projectId=${f.project.id}`);assert.equal(current.data.task.status,'applied');assert.equal(current.data.task.id,value.task.id);assert.equal(current.data.restore.held,false);
+ const duplicate=await f.raw(projectApiPath(f.project.id,'tasks','prepare'),{projectId:f.project.id,operation:'timeline.track.add',input,origin:'new',expectedWorkspaceOrigin:f.origin});assert.equal(duplicate.data.task.id,value.task.id);
+ const held=await f.raw(projectApiPath(f.project.id,'tasks',f.pending.task.id,'reconcile'),{projectId:f.project.id,digest:f.pending.task.digest,expectedWorkspaceOrigin:f.origin});assert.equal(held.error.code,'RESTORED_RECORD_HELD');
  assert.equal((f.db((db)=>db.prepare('SELECT count(*) n FROM timeline_requests WHERE requestId=?').get(input.requestId)) as {n:number}).n,1);
  assert.equal(f.mediaStarts(),0);f.assertPreserved();
 });
@@ -116,7 +117,7 @@ test('restored durable new lane coexists with captured pending; dropped executio
 test('restored origin is an explicit mismatch guard across real authenticated routes, never provider or Agent authority',{timeout:60000},async t=>{
  const f=await fixture(t),input={projectId:f.project.id,title:'未批准新来源',requestId:randomUUID()};
  for(const [context,code] of [[{},'RESTORE_WORKSPACE_ORIGIN_REQUIRED'],[{expectedWorkspaceOrigin:randomUUID()},'RESTORE_WORKSPACE_ORIGIN_MISMATCH']] as const){
-  const result=await f.raw('/api/rpc',{operation:'shot.create',input,...context});assert.equal(result.error.code,code);
+  const result=await f.raw(projectRpcPath(f.project.id),{operation:'shot.create',input,...context});assert.equal(result.error.code,code);
  }
  for(const route of ['/api/agent/settings','/api/images/settings','/api/images/custom-settings','/api/images/comfy-settings'] as const){const result=await f.raw(route);assert.equal(result.error.code,'RESTORE_OPERATION_UNAVAILABLE');}
  assert.equal((await f.rpc('job.retry',{jobId:(f.db((db)=>db.prepare('SELECT id FROM jobs LIMIT 1').get()) as {id:string}).id,requestId:randomUUID()})).error.code,'RESTORED_RECORD_HELD');

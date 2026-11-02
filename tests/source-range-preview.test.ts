@@ -6,10 +6,10 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as ranges from '../apps/web/src/source-range-state.ts';
-import { mediaUrl } from '../apps/web/src/api.ts';
+import { assetUrl, mediaUrl } from '../apps/web/src/api.ts';
 
 
-interface PreviewAsset {id: string; name: string; url: string; duration: number; mimeType: string; width?: number; height?: number}
+interface PreviewAsset {id: string; projectId: string; name: string; url: string; duration: number; mimeType: string; width?: number; height?: number}
 interface PreviewProps {
  visible: boolean; kind: string; asset: PreviewAsset; playhead: number; onSeek(frame: number): unknown;
  sourceScope: string; sourcePosition: number; onSourcePosition(frame: number, scope: string): unknown;
@@ -44,7 +44,7 @@ function harness() {
   const react = { createElement: (type: string, props: Record<string, unknown>, ...children: PreviewTree[]) => ({ type, props: { ...props, children } }), useRef: (value: unknown) => { const i = cursor++; return slots[i] ||= { current: value } as PreviewHook; }, useEffect: (fn: PreviewHook['fn'], deps: readonly unknown[]) => effect(effects, fn, deps), useLayoutEffect: (fn: PreviewHook['fn'], deps: readonly unknown[]) => effect(layouts, fn, deps) };
   (react as typeof react & {default: typeof react}).default = react;
   const module = { exports: {} as {default(props: PreviewProps): PreviewTree} };
-  const require = (id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl: (asset: PreviewAsset | null) => asset?.url || '', statusText: (value: unknown) => value, mediaUrl } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) });
+  const require = (id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl, statusText: (value: unknown) => value, mediaUrl } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', code)(require, module, module.exports);
   const flush = (queue: number[]) => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].fn(); } };
   h.render = props => {
@@ -62,7 +62,9 @@ function harness() {
   h.unmount = () => { for (const slot of slots) slot.cleanup?.(); for (const element of elements.values()) element.isConnected = false; };
   return h;
 }
-const props = (patch: Partial<PreviewProps> = {}) => ({ visible: true, kind: 'source', asset: { id: 'source-a', name: 'Source', url: '/media/a', duration: 1200, mimeType: 'video/mp4' }, playhead: 800, onSeek: () => {}, sourceScope: 'project-a:1:source-a:1', sourcePosition: 0, onSourcePosition: () => {}, ...patch });
+const sourceProjectId = '00000000-0000-4000-8000-0000000000a1', otherSourceProjectId = '00000000-0000-4000-8000-0000000000a2';
+const sourceAssetId = '00000000-0000-4000-8000-0000000000a3', otherSourceAssetId = '00000000-0000-4000-8000-0000000000a4';
+const props = (patch: Partial<PreviewProps> = {}) => ({ visible: true, kind: 'source', asset: { id: sourceAssetId, projectId: sourceProjectId, name: 'Source', url: '/media/a', duration: 1200, mimeType: 'video/mp4' }, playhead: 800, onSeek: () => {}, sourceScope: `${sourceProjectId}:1:${sourceAssetId}:1`, sourcePosition: 0, onSourcePosition: () => {}, ...patch });
 
 test('audio source shows the project format without substituting it for a completed snapshot format', () => {
   const timeline = { width: 1080, height: 1920, fps: 30, revision: 4, durationFrames: 300 };
@@ -122,7 +124,7 @@ test('hidden callbacks cannot play, seek, or publish; reopening pauses and prese
 test('project/asset epochs and source replacement reject old callbacks and obsolete seek requests', () => {
   const h = harness(), positions: [number, string][] = [], p = props({ onSourcePosition: (frame, scope) => positions.push([frame, scope]) });
   h.render(p); const old = h.media(), oldElement = old.props.ref.current;
-  const next = { ...p, sourceScope: 'project-b:1:source-a:2', sourceSeek: { scope: p.sourceScope, id: 1, frame: 500 } };
+  const next = { ...p, asset: {...p.asset, projectId: otherSourceProjectId}, sourceScope: `${otherSourceProjectId}:1:${sourceAssetId}:2`, sourceSeek: { scope: p.sourceScope, id: 1, frame: 500 } };
   h.render(next); const element = h.media().props.ref.current; positions.length = 0;
   assert.notEqual(element, oldElement); assert.equal(oldElement.src, null); assert.equal(oldElement.loads, 1); assert.equal(element.currentTime, 0);
   oldElement.currentTime = 8; oldElement.paused = false;
@@ -145,8 +147,8 @@ test('native source pause publishes the actual newer frame, while hidden pause r
   h.render(p); const node = h.media(), element = node.props.ref.current;
   element.paused = false; element.currentTime = 2; node.props.onTimeUpdate({ currentTarget: element }); assert.equal(positions.at(-1), 60);
   element.currentTime = 2.499; element.paused = true; node.props.onPause({ currentTarget: element }); assert.equal(positions.at(-1), 74);
-  const controller = ranges.createSourceRangeController({ read: async () => ({ id: p.asset.id, assetId: p.asset.id, projectId: 'project-a', revision: 0, range: null, sourceFrameCount: 36000, fps: 30 }), save: async () => null });
-  controller.setContext({ scope: p.sourceScope, projectId: 'project-a', asset: p.asset });
+  const controller = ranges.createSourceRangeController({ read: async () => ({ id: p.asset.id, assetId: p.asset.id, projectId: sourceProjectId, revision: 0, range: null, sourceFrameCount: 36000, fps: 30 }), save: async () => null });
+  controller.setContext({ scope: p.sourceScope, projectId: sourceProjectId, asset: p.asset });
   controller.position(positions.at(-1)!, p.sourceScope); assert.equal(controller.getState().position, 74);
   h.visible = false; h.render(p); const before = positions.length; element.currentTime = 3; node.props.onPause({ currentTarget: element }); assert.equal(positions.length, before);
 });
@@ -221,7 +223,7 @@ test('source replacement cannot reuse an old quantized seek intent or accept its
   h.render({ ...p, sourceSeek: { scope: p.sourceScope, id: 1, frame: 56 } });
   const old = h.media(), oldElement = old.props.ref.current; old.props.onSeeked({ currentTarget: oldElement });
   assert.deepEqual(positions.at(-1), [56, p.sourceScope]);
-  const next = { ...p, sourceScope: 'project-a:1:source-b:2', asset: { ...p.asset, id: 'source-b', url: '/media/b' } };
+  const next = { ...p, sourceScope: `${sourceProjectId}:1:${otherSourceAssetId}:2`, asset: { ...p.asset, id: otherSourceAssetId, url: '/media/b' } };
   h.render(next); const element = h.media().props.ref.current;
   element.currentTime = 1.866666; h.media().props.onSeeked({ currentTarget: element });
   assert.deepEqual(positions.at(-1), [55, next.sourceScope]);
@@ -330,7 +332,7 @@ for (const kind of ['video', 'audio']) {
     assert.equal(element.currentTime, 5, 'an unacknowledged token is still pending after media replacement');
     h.media().props.onSeeked({ currentTarget: element });
     assert.deepEqual(positions, [[150, p.sourceScope]]);
-    const next = { ...p, sourceScope: 'project-b:1:source-b:2', asset: { ...p.asset, id: 'source-b', url: '/media/b' }, sourceSeek: requested.sourceSeek };
+    const next = { ...p, sourceScope: `${otherSourceProjectId}:1:${otherSourceAssetId}:2`, asset: { ...p.asset, id: otherSourceAssetId, projectId: otherSourceProjectId, url: '/media/b' }, sourceSeek: requested.sourceSeek };
     h.render(next); const newElement = h.media().props.ref.current; positions.length = 0;
     oldElement.currentTime = 5;
     for (const name of ['onLoadedMetadata', 'onSeeked', 'onPause'] as const) old.props[name]({ currentTarget: oldElement });

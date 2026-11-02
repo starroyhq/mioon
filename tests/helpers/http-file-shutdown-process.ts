@@ -1,6 +1,7 @@
 // Test-only isolated filesystem/response seams for newly created synthetic files.
 // Production constructors, HTTP routing and shutdown deadlines stay unchanged.
 import http from 'node:http';
+import {projectMediaPath} from '../../packages/contracts/src/project-file.ts';
 import type {Server as HttpServer, ServerResponse, ClientRequest, IncomingMessage} from 'node:http';
 import type {Socket} from 'node:net';
 import type {PathLike} from 'node:fs';
@@ -123,7 +124,7 @@ const requests: ClientRequest[] = [];
 try {
   service = await startServer({dataDir: dataRoot, port: 0, token});
   function request(target: FixtureTarget, method = 'GET'): ClientRequest {
-    const req = http.get(`${service!.url}/media/${target.id}`, {method, agent: false, headers: {authorization: `Bearer ${token}`}}, (res: IncomingMessage) => {
+    const req = http.get(service!.url + projectMediaPath(projectId, target.id), {method, agent: false, headers: {authorization: `Bearer ${token}`}}, (res: IncomingMessage) => {
       res.on('error', () => {}); res.resume();
     });
     req.on('error', () => {}); requests.push(req); return req;
@@ -143,7 +144,7 @@ try {
     for (let index = 0; index < FILE_RESPONSE_LIMITS.active; index++) request(targets[0]);
     await until(() => state.intercepted === FILE_RESPONSE_LIMITS.active, 'Synthetic open seam was not reached');
     requests[0]?.destroy(); await delay(30);
-    const busy = await fetch(`${service!.url}/media/${targets[0]!.id}`, {
+    const busy = await fetch(service!.url + projectMediaPath(projectId, targets[0]!.id), {
       headers: {authorization: `Bearer ${token}`, connection: 'close'}, signal: AbortSignal.timeout(1000)});
     const busyBody = await busy.json() as {error?: {code?: string}};
     if (busy.status !== 503 || busyBody.error?.code !== 'FILE_RESPONSE_BUSY') throw Error('Pending descriptor slot was released before observation');

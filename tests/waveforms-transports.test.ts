@@ -1,3 +1,4 @@
+import {projectRpcPath,isProjectId} from '../packages/contracts/src/project-file.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {CliResult,McpData,TestTool,SchemaNode} from './helpers/strict-timeline-transport-types.ts';
@@ -203,7 +204,7 @@ if(serverMode){
   };
   const env = () => ({...baseEnv, MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_WAVEFORM_WIRE_ORIGIN: url});
   async function request(operation?: unknown, input?: unknown, expectedError?: string|undefined, base: string|undefined = url, authorization: string = `Bearer ${TOKEN}`) {
-    const response = await fetch(base + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
+    const response = await fetch(base + projectRpcPath(isProjectId((input as {projectId?:unknown}|null)?.projectId)?(input as {projectId:string}).projectId:IDS.project), {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
       headers: (({'content-type': 'application/json', ...(authorization ? {authorization} : {})}) as unknown as HeadersInit | undefined), body: JSON.stringify({operation, input})});
     const raw = await response.text(), envelope = JSON.parse(raw); noPrivate(raw);
     assert.equal(envelope.ok, !expectedError, raw);
@@ -285,7 +286,7 @@ async function lossProxy(t: test.TestContext, backend: Awaited<ReturnType<typeof
     try {
       const chunks = []; for await (const chunk of request) chunks.push(chunk);
       const bytes = Buffer.concat(chunks), submitted = JSON.parse(((bytes) as unknown as Parameters<typeof JSON.parse>[0]));
-      const upstream = await fetch(backend.url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
+      const upstream = await fetch(backend.url + request.url!, {method: 'POST', signal: AbortSignal.timeout(5_000),
         headers: (({authorization: request.headers.authorization, 'content-type': 'application/json'}) as unknown as HeadersInit | undefined), body: bytes});
       const raw = await upstream.text(); captured = {raw, envelope: JSON.parse(raw), submitted};
       assert.equal(upstream.status, 200, raw); response.destroy();

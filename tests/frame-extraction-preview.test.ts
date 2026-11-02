@@ -18,7 +18,7 @@ import * as ranges from '../apps/web/src/source-range-state.ts';
 import { createFrameExtractionController, frameCaptureBusy } from '../apps/web/src/frame-extraction.ts';
 import * as contracts from '@mioon/contracts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
-import {mediaUrl} from '../apps/web/src/api.ts';
+import {assetUrl, mediaUrl} from '../apps/web/src/api.ts';
 
 // Execute Preview and its real capture control with controlled media properties.
 // This tests component/event wiring, not browser decoder or native FFmpeg output.
@@ -42,7 +42,7 @@ const h = { visible: true, readyState: 2, duration: 10 } as CapturedHarness1;
     useLayoutEffect: (fn: () => void | (()=>void), deps: readonly unknown[] | undefined) => effect(layouts, fn, deps), useEffect: (fn: () => void | (()=>void), deps: readonly unknown[] | undefined) => effect(effects, fn, deps),
   }; (react as typeof react & {default: unknown}).default = react;
   const module = ({ exports: {} } as ElementModule & {exports:{SourceFrameCaptureControl:PreviewComponent}});
-  Function('require', 'module', 'exports', code)((id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl: (asset: { url: unknown; }) => asset?.url || '', statusText: String, mediaUrl } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
+  Function('require', 'module', 'exports', code)((id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl, statusText: String, mediaUrl } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) }), module, module.exports);
   const renderComponent = (name: string, component: PreviewComponent, properties: Record<string,unknown>) => { if (!components.has(name)) components.set(name, []); active = components.get(name)!; cursor = 0; return component(properties); };
   const cleanup = (name: string) => { components.get(name)?.forEach((slot: PreviewHook) => slot.cleanup?.()); components.delete(name); };
   const flush = (queue: EffectQueue) => { for (const [slots, index] of queue) { slots[index].cleanup?.(); slots[index].cleanup = slots[index].fn!() as PreviewHook['cleanup']; } };
@@ -70,14 +70,14 @@ const h = { visible: true, readyState: 2, duration: 10 } as CapturedHarness1;
   h.unmount = () => { for (const name of [...components.keys()]) cleanup(name); for (const element of elements.values()) element.isConnected = false; };
   return h;
 }
-const props = (patch = {}) => ({ visible: true, kind: 'source', asset: { id: 'source-a', projectId: 'project-a', name: 'Source', url: '/media/a', duration: 10, mimeType: 'video/mp4', sha256: 'a'.repeat(64) }, playhead: 1000, onSeek: () => {}, sourceScope: 'project-a:source-a:1', sourcePosition: 0, onSourcePosition: () => {}, onCaptureFrame: () => {}, ...patch });
+const props = (patch = {}) => ({ visible: true, kind: 'source', asset: { id: '00000000-0000-4000-8000-000000000002', projectId: '00000000-0000-4000-8000-000000000001', name: 'Source', url: '/media/a', duration: 10, mimeType: 'video/mp4', sha256: 'a'.repeat(64) }, playhead: 1000, onSeek: () => {}, sourceScope: 'project-a:source-a:1', sourcePosition: 0, onSourcePosition: () => {}, onCaptureFrame: () => {}, ...patch });
 
 test('capture reads actual paused currentTime, freezes source/hash/frame and ignores controller and timeline playheads', async () => {
   const calls: FrameCaptureIntent[] = [], h = harness(), p = props({ onCaptureFrame: (value: FrameCaptureIntent) => calls.push(value) }); h.render(p);
   const element = h.media()!.props.ref.current; element.currentTime = 2.499; h.fire('onPause');
   h.render({ ...p, sourcePosition: 200, playhead: 9000 }); assert.equal(h.button()!.props.disabled, false);
   await h.button()!.props.onClick();
-  assert.deepEqual(calls, [{ sourceScope: p.sourceScope, sourceAssetId: 'source-a', sourceHash: 'a'.repeat(64), sourceFrame: 74 }]);
+  assert.deepEqual(calls, [{ sourceScope: p.sourceScope, sourceAssetId: p.asset.id, sourceHash: 'a'.repeat(64), sourceFrame: 74 }]);
   assert.equal(Object.isFrozen(calls[0]), true); element.currentTime = 4; assert.equal(calls[0].sourceFrame, 74);
 });
 
@@ -120,13 +120,13 @@ test('exclusive EOF and unknown source duration cannot be captured', async () =>
 test('old source/readiness handlers and hidden previews cannot submit against a new binding', async () => {
   const calls: FrameCaptureIntent[] = [], h = harness(), p = props({ onCaptureFrame: (value: FrameCaptureIntent) => calls.push(value) }); h.render(p);
   const oldMedia = h.media(), oldElement = oldMedia!.props.ref.current, oldClick = h.button()!.props.onClick;
-  const next = { ...p, sourceScope: 'project-a:source-b:2', asset: { ...p.asset, id: 'source-b', url: '/media/b', sha256: 'b'.repeat(64) } }; h.readyState = 0; h.render(next);
+  const next = { ...p, sourceScope: 'project-a:source-b:2', asset: { ...p.asset, id: '00000000-0000-4000-8000-000000000003', url: '/media/b', sha256: 'b'.repeat(64) } }; h.readyState = 0; h.render(next);
   oldElement.readyState = 2; oldElement.paused = true;
   for (const name of ['onLoadedData', 'onCanPlay', 'onPause', 'onPlay', 'onSeeking', 'onSeeked', 'onEmptied']) (oldMedia!.props[name] as (event:{currentTarget:FakeMedia})=>unknown)({ currentTarget: oldElement });
   await oldClick(); assert.deepEqual((calls as unknown), []); assert.equal(h.button()!.props.disabled, true);
   h.media()!.props.ref.current.readyState = 2; h.fire('onLoadedData'); const currentClick = h.button()!.props.onClick;
   h.visible = false; h.render(next); await currentClick(); assert.deepEqual((calls as unknown), []);
-  h.visible = true; h.render(next); await h.button()!.props.onClick(); assert.equal(calls[0].sourceAssetId, 'source-b');
+  h.visible = true; h.render(next); await h.button()!.props.onClick(); assert.equal(calls[0].sourceAssetId, next.asset.id);
   const retained = h.button()!.props.onClick; h.unmount(); await retained(); assert.equal(calls.length, 1);
 });
 
@@ -174,7 +174,7 @@ test('hash-only source replacement remounts decoded media and requires fresh rea
   const next = { ...p, asset: { ...p.asset, sha256: 'c'.repeat(64) } }; h.render(next);
   const element = h.media()!.props.ref.current;
   assert.notEqual(element, oldElement, 'a new source digest cannot reuse old decoded pixels');
-  assert.equal(element.src, p.asset.url, 'ID, URL and scope intentionally stay unchanged');
+  assert.equal(element.src, mediaUrl(p.asset.projectId, p.asset.id), 'ID, media address and scope intentionally stay unchanged');
   assert.equal(oldElement.src, null); assert.equal(h.button()!.props.disabled, true);
   oldElement.readyState = 2; oldElement.currentTime = 7;
   for (const name of ['onLoadedMetadata', 'onLoadedData', 'onCanPlay', 'onPause', 'onSeeked']) (oldMedia!.props[name] as (event:{currentTarget:FakeMedia})=>unknown)({ currentTarget: oldElement });
