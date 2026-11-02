@@ -9,6 +9,7 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createClient, workspaceOriginOptions } from '@mioon/client';
+import { rpcPathFor } from '../packages/contracts/src/project-addressing.ts';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { ChildProcessByStdio } from 'child_process';
@@ -78,11 +79,12 @@ async function fixture(t: test.TestContext) {
   let revealed = origin; const requests: {operation:string;expectedWorkspaceOrigin?:unknown}[] = [], children: ChildProcessByStdio<null,Readable,Readable>[] = [];
   const server = http.createServer(async (req, res) => {
     try {
-      assert.equal(req.url, '/api/rpc'); assert.equal(req.method, 'POST');
+      assert.equal(req.method, 'POST');
       assert.equal(req.headers.authorization, `Bearer ${env.MIOON_TOKEN}`);
       req.setEncoding('utf8');
       let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 8192) throw Error('oversize test body'); }
       const body = JSON.parse((raw as string)); requests.push(body);
+      assert.equal(req.url, rpcPathFor(body.operation, body.input));
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ ok: true, data: body.operation === 'workspace.restore.inspect' ? inspection(revealed) : result }));
     } catch { res.destroy(); }
