@@ -22,7 +22,7 @@ type SubjectProviders = Omit<Map<string, Provider>, 'get'> & {
   get(id: string): Provider | undefined;
 };
 export interface SubjectVideoFixture {
-  root: string; store: TypedStore; services: TypedServices; call: TypedCall; project: FixtureProject; other: FixtureProject;
+  root: string; store: TypedStore; services: TypedServices; call: TypedCall; project: FixtureProject; other: {id: string};
   env: NodeJS.ProcessEnv; providers: SubjectProviders;
   asset(patch?: Record<string, unknown>): Promise<SubjectAsset>;
   subject(asset: Pick<SubjectAsset, 'id' | 'projectId'>, kind?: string): Promise<SubjectResponse>;

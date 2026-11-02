@@ -22,7 +22,8 @@ export async function fixture(t){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-subject-video-')),store=openStore(root),env={MIOON_ENABLE_LIVE_PROVIDER:'1',ARK_API_KEY:'inert-offline'};
  const providers=createProviderRegistry({db:store.db,root,env});let asOf=Date.parse('2026-10-11T12:00:00Z'),worker,posts=0;
  const services=createServices(store,providers,{env,profileNow:()=>asOf}),call=(op,input)=>services.call(op,input);
- const project=await call('project.create',{name:'Subject video offline'}),other=await call('project.create',{name:'Other private project'});
+ // Another host's project is absent from this store, not a second project row.
+ const project=await call('project.create',{name:'Subject video offline'}),other={id:randomUUID()};
  async function asset(patch={}){const width=patch.width??480,height=patch.height??480,bytes=png(width,height,store.list('assets').length),id=randomUUID(),record={id,projectId:project.id,name:'Synthetic subject image',mimeType:'image/png',relativePath:`media/${id}.png`,sha256:sha(bytes),sizeBytes:bytes.length,width,height,provenance:'user-import',createdAt:'2026-10-11T00:00:00.000Z',...patch};store.put('assets',record);await writeFile(path.join(root,record.relativePath),bytes);return record;}
  function ark({hook,reply}={}){env.ARK_APPROVED_ASSET_SHA256=store.list('assets').map(a=>a.sha256).join(',');const provider=createArkProvider({root,env,fetchImpl:async(url,options)=>{posts++;return reply?reply(url,options):new Response(JSON.stringify({id:'offline-subject-video'}));}});providers.set('ark',hook?{...provider,submit:(snapshot,context)=>hook(provider,snapshot,context)}:provider);return provider;}
  const subject=(a,kind='product')=>call('subject.create',{projectId:a.projectId,assetId:a.id,kind,name:'Synthetic subject',requestId:randomUUID()});
