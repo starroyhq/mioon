@@ -138,7 +138,8 @@ test('explicit subject video input shares strict HTTP/CLI/MCP, historical recove
   assert.equal(isSubjectGenerationResponse('generation.submit',input,job,{projectId:f.project.id}),true);
   assert.deepEqual(job.snapshot.subjectReference,{subjectVersionId:subject.headVersionId,subjectName:subject.name,subjectKind:'product',subjectVersion:subject.headVersion});
   assert.deepEqual(job.snapshot.referenceBindings,[{role:'subject_reference',assetId:f.first.id,sha256:f.first.sha256}]);assert.deepEqual((job.snapshot.referenceConnections as unknown),[]);
-  const replay=await bridge.call('generation.submit',input);assert.equal(replay.id,job.id);assert.deepEqual(replay.snapshot,job.snapshot);
+  // MCP and CLI give the shot's project beside the exact original input.
+  const replay=await bridge.call('generation.submit',{projectId:f.project.id,...input});assert.equal(replay.id,job.id);assert.deepEqual(replay.snapshot,job.snapshot);
   const until=Date.now()+10_000;while((await f.submissions())===0&&Date.now()<until)await sleep(20);assert.equal(await f.submissions(),1);
  });
  await t.test('head and shot changes never replace the selected historical version or original key',async()=>{
@@ -153,7 +154,7 @@ test('explicit subject video input shares strict HTTP/CLI/MCP, historical recove
  });
  await t.test('backend recreation rediscovers original pinned input and one submission, without changing original files',async()=>{
   await bridge.client.close();await f.restart();
-  const replay=(await runCli(['generation','submit','--input',JSON.stringify(input)],f.env)).data;
+  const replay=(await runCli(['generation','submit','--input',JSON.stringify({projectId:f.project.id,...input})],f.env)).data;
   assert.equal(replay.id,job.id);assert.deepEqual(replay.snapshot,job.snapshot);assert.equal(await f.submissions(),1);
   const current=await f.rpc('project.get',{projectId:f.project.id});assert.equal(current.jobs.length,1);assert.deepEqual(current.jobs[0].snapshot,job.snapshot);
   await f.original();assert.equal(await readFile(path.join(f.root,'wire-audit.jsonl'),'utf8'),'','The guard recorded no forbidden outbound or process action');

@@ -42,7 +42,8 @@ test('actual HTTP, CLI and official MCP expose identical dated profiles and reje
  for(const provider of discovery.data as {inputProfiles: unknown[]; profileEvaluationDate: string; inputProfileEvaluations: {evaluatedAsOf: string}[]}[]){assert.equal(provider.inputProfiles.length,1);assert.match(provider.profileEvaluationDate,/^\d{4}-\d{2}-\d{2}$/);assert.equal(provider.inputProfileEvaluations[0]!.evaluatedAsOf,provider.profileEvaluationDate);}
  const input: Record<string, unknown>={shotId:shot.id,expectedRevision:shot.revision,providerId:'mock',requestId:randomUUID()},failure=await http('generation.submit',input);
  assert.equal(failure.ok,false);assert.equal(failure.error?.code,'REFERENCE_TOO_LARGE');
- assert.deepEqual(await cli(['generation','submit','--input',JSON.stringify(input)],env),failure);assert.deepEqual(await mcp('generation_submit',input),failure);
+ // CLI and MCP give the shot's project beside the shared input.
+ assert.deepEqual(await cli(['generation','submit','--input',JSON.stringify({projectId:project.id,...input})],env),failure);assert.deepEqual(await mcp('generation_submit',{projectId:project.id,...input}),failure);
  assert.deepEqual((await http('job.list',{projectId:project.id})).data,[]);
  assert.ok(!JSON.stringify(discovery).includes(token)&&!JSON.stringify(failure).includes('relativePath'));
  // A configured Wan model is discoverable through every transport, while the
@@ -54,7 +55,7 @@ test('actual HTTP, CLI and official MCP expose identical dated profiles and reje
  assert.equal(directory.ok,true);assert.deepEqual(await cli(['video','connection','list'],env),directory);assert.deepEqual(await mcp('video_connection_list'),directory);
  const wanInput={shotId:shot.id,expectedRevision:shot.revision,providerId:'wan',requestId:randomUUID(),connectionId:connection.id,configurationRevision:1,modelEntryId:connection.models[0]!.id,videoInput:{version:1,mode:'text',images:[],prompt:'No network generation.'},parameters:{durationSeconds:-1,aspectRatio:'adaptive',resolution:'480P',generateAudio:false,promptExtend:false,watermark:true}};
  const disabled=await http('generation.submit',wanInput);assert.equal(disabled.error?.code,'LIVE_GENERATION_DISABLED');
- assert.deepEqual(await cli(['generation','submit','--input',JSON.stringify(wanInput)],env,3),disabled);assert.deepEqual(await mcp('generation_submit',wanInput),disabled);
+ assert.deepEqual(await cli(['generation','submit','--input',JSON.stringify({projectId:project.id,...wanInput})],env,3),disabled);assert.deepEqual(await mcp('generation_submit',{projectId:project.id,...wanInput}),disabled);
  const schema=await cli(['schema','generation.submit'],env);assert.match(JSON.stringify(schema),/videoInput/);assert.match(JSON.stringify(schema),/durationSeconds/);
  assert.deepEqual((await http('job.list',{projectId:project.id})).data,[]);
 });

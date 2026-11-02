@@ -1,3 +1,4 @@
+import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 import type {SQLOutputValue} from 'node:sqlite';
 interface InspectionEvidence extends Record<string,unknown>{cases:{operation:string;arguments:Record<string,unknown>;expectedError:string|null;resultDigest:string;resultBytes:number}[];zeroWrites:{label:string;tables:SQLOutputValue[];snapshotSha256:string;dataVersionUnchanged:boolean}[];schemas:unknown[];failures:{section:string|undefined;message:string}[]}
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
@@ -125,10 +126,12 @@ async function backendFixture(t: test.TestContext) {
   const storage = async () => { const {rows} = await read(); return Object.fromEntries(tables.map(table => [table, rows[table]])); };
   const version = async () => (await read()).version;
   async function http(operation: unknown, input: unknown, expectedError?: unknown) {
-    const response = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error',
+    const projectId = (input as {projectId?: unknown} | null | undefined)?.projectId;
+    const resource = isProjectId(projectId) ? projectRpcPath(projectId) : '/api/rpc';
+    const response = await fetch(url + resource, {method: 'POST', redirect: 'error',
       headers: {authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
     const body = await response.json();
-    assert.equal(response.status, expectedError ? expectedError === 'INSPECTION_UNAVAILABLE' ? 404 : 400 : 200, JSON.stringify(body));
+    assert.equal(response.status, expectedError ? ['INSPECTION_UNAVAILABLE', 'PROJECT_NOT_FOUND'].includes(String(expectedError)) ? 404 : 400 : 200, JSON.stringify(body));
     assert.equal(body.ok, !expectedError, JSON.stringify(body));
     if (expectedError) assert.equal(body.error.code, expectedError, JSON.stringify(body));
     return body;
@@ -216,6 +219,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     assert.deepEqual(await cli(operation, input, error), http, `${operation} CLI/HTTP envelope parity`);
     assert.deepEqual(await mcp.call(toolName(operation), input, error), http, `${operation} official MCP/HTTP envelope parity`);
     if (!error) assertSafe(http.data);
+    else if (error === 'PROJECT_NOT_FOUND') assert.deepEqual(http.error.details, {projectId: input.projectId});
     else if (error !== 'VALIDATION_ERROR') assert.deepEqual(http.error.details, {}, 'inspection failures expose no record or project metadata');
     report.cases.push({operation, arguments: {...input, ...(input.cursor ? {cursor: '<signed cursor>'} : {})}, expectedError: error || null,
       resultDigest: digest(http), resultBytes: Buffer.byteLength(JSON.stringify(http))});
@@ -358,13 +362,16 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
     const summary = await parity('project.inspect', {projectId: IDS.absentTimeline});
     assert.equal(summary.counts.timelines, 0);
     const missingErrors: (unknown)[] = [];
-    for (const operation of operations) missingErrors.push(await parity(operation, {projectId: IDS.missing}, 'INSPECTION_UNAVAILABLE'));
-    for (const error of missingErrors) assert.deepEqual(error, missingErrors[0]);
+    for (const operation of operations) {
+      const missingProject = await parity(operation, {projectId: IDS.missing}, 'PROJECT_NOT_FOUND');
+      assert.deepEqual(missingProject.details, {projectId: IDS.missing});
+    }
     for (const [operation, projectId] of [
       ['shot.inspect', IDS.foreignReference], ['shot.inspect', IDS.foreignSelection], ['timeline.inspect', IDS.foreignClip],
       ['asset.inspect', IDS.mismatchedAsset], ['shot.inspect', IDS.mismatchedShot], ['timeline.inspect', IDS.mismatchedTimeline],
       ['shot.inspect', IDS.foreignVersionAsset], ['shot.inspect', IDS.foreignVersionJob],
-    ] as const) assert.deepEqual(await parity(operation, {projectId}, 'INSPECTION_UNAVAILABLE'), missingErrors[0]);
+    ] as const) missingErrors.push(await parity(operation, {projectId}, 'INSPECTION_UNAVAILABLE'));
+    for (const error of missingErrors) assert.deepEqual(error, missingErrors[0]);
     await unchanged('Absent and corrupt project inspection');
     assert.equal(await backend.audit(), '');
   });

@@ -6,6 +6,7 @@ import {nativeAudioConfigSchema,nativeAudioProofSchema,nativeAudioProofMaterial,
   NATIVE_AUDIO_PCM_PATH,NATIVE_AUDIO_LEASE_HEADER,NATIVE_AUDIO_PROOF_HEADER,NATIVE_AUDIO_SIGNATURE_HEADER} from '@mioon/contracts/native-audio-preview';
 import type {NativeAudioCommand,NativeAudioReply,NativeAudioConfig,NativeAudioLease,NativeAudioOwner,NativeAudioProof} from '@mioon/contracts/native-audio-preview';
 import {nativeAudioRequestSchema,NATIVE_AUDIO_EVENT} from './native-audio-preview-protocol.ts';
+import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 import type {NativeAudioAcquireResult,NativeAudioEvent} from './native-audio-preview-protocol.ts';
 
 export interface NativeAudioFrame {readonly url:string;isDestroyed?():boolean;readonly detached?:boolean}
@@ -231,19 +232,22 @@ export function createNativeAudioPreviewHost(options:Options){
         if(name===NATIVE_AUDIO_PROOF_HEADER.toLowerCase()||name===NATIVE_AUDIO_SIGNATURE_HEADER.toLowerCase())continue;headers[key]=value;
       }
       let url:URL;try{url=new URL(details.url);}catch{return {cancel:true};}
-      if(!url.pathname.startsWith('/api/timeline-audio-preview'))return {cancel:false,requestHeaders:headers};
+      // The project address serves the same routes; its project must be the input's.
+      const scoped=parseProjectApiPath(url.pathname),addressed=scoped?.kind==='other'&&scoped.segments[0]==='timeline-audio-preview'?scoped:null;
+      const pathname=addressed?`/api/${addressed.segments.join('/')}`:url.pathname;
+      if(!pathname.startsWith('/api/timeline-audio-preview'))return {cancel:false,requestHeaders:headers};
       const record=active,document=details.webContents&&!destroyedContents.has(details.webContents)?options.ownerForContents(details.webContents):null;
-      const cleanup=details.method==='DELETE'&&url.pathname===CONTINUOUS_AUDIO_ENDPOINT;
+      const cleanup=details.method==='DELETE'&&pathname===CONTINUOUS_AUDIO_ENDPOINT;
       if(!record||(!cleanup&&record.phase!=='active')||!document||!cleanup&&!admissionAllowed(document)||!trusted(document,details.frame)||!sameNativeAudioOwner(record.lease.owner,document)||claimedLease!==record.lease.leaseId||
         url.origin!==options.origin||url.username||url.password||url.hash||details.resourceType!=='xhr'||details.url.length>2048)return {cancel:true};
       if(!Number.isSafeInteger(details.id)||details.id<0)return {cancel:true};
       if('sessionId' in record.lease){
-        if(url.pathname!==CONTINUOUS_AUDIO_ENDPOINT||details.method!=='GET'&&details.method!=='DELETE')return {cancel:true};
+        if(pathname!==CONTINUOUS_AUDIO_ENDPOINT||details.method!=='GET'&&details.method!=='DELETE')return {cancel:true};
         const raw=Object.fromEntries(url.searchParams),parsed=continuousAudioBlockInputSchema.safeParse({...raw,
           expectedRevision:Number(raw.expectedRevision),startFrame:Number(raw.startFrame),generation:Number(raw.generation),sequence:Number(raw.sequence),blockStartFrame:Number(raw.blockStartFrame)});
         if(!parsed.success||url.search.slice(1)!==continuousAudioQuery(parsed.data))return {cancel:true};
         const input=parsed.data,expected=record.lease.input;
-        if(input.projectId!==expected.projectId||input.timelineId!==expected.timelineId||input.expectedRevision!==expected.expectedRevision||
+        if(addressed&&addressed.projectId!==input.projectId||input.projectId!==expected.projectId||input.timelineId!==expected.timelineId||input.expectedRevision!==expected.expectedRevision||
           input.startFrame!==expected.startFrame||input.planHash!==record.lease.planHash||input.sessionId!==record.lease.sessionId)return {cancel:true};
         let signed=record.proofs.get(details.id);
         if(signed&&(signed.query!==url.search||signed.method!==details.method))return {cancel:true};
@@ -261,11 +265,11 @@ export function createNativeAudioPreviewHost(options:Options){
         headers[NATIVE_AUDIO_PROOF_HEADER]=signed.proof;headers[NATIVE_AUDIO_SIGNATURE_HEADER]=signed.signature;
         return {cancel:false,requestHeaders:headers};
       }
-      if(url.pathname!==NATIVE_AUDIO_PCM_PATH||details.method!=='GET')return {cancel:true};
+      if(pathname!==NATIVE_AUDIO_PCM_PATH||details.method!=='GET')return {cancel:true};
       const raw=Object.fromEntries(url.searchParams),parsed=audioPreviewSourceInputSchema.safeParse({...raw,expectedRevision:Number(raw.expectedRevision),startFrame:Number(raw.startFrame)});
       if(!parsed.success||url.search.slice(1)!==nativeAudioSourceQuery(parsed.data))return {cancel:true};
       const input=parsed.data,expected=record.lease.input;
-      if(input.projectId!==expected.projectId||input.timelineId!==expected.timelineId||input.expectedRevision!==expected.expectedRevision||input.startFrame!==expected.startFrame||input.planHash!==record.lease.planHash)return {cancel:true};
+      if(addressed&&addressed.projectId!==input.projectId||input.projectId!==expected.projectId||input.timelineId!==expected.timelineId||input.expectedRevision!==expected.expectedRevision||input.startFrame!==expected.startFrame||input.planHash!==record.lease.planHash)return {cancel:true};
       let signed=record.proofs.get(details.id);
       if(signed&&(signed.query!==url.search||signed.method!==details.method))return {cancel:true};
       if(!signed){

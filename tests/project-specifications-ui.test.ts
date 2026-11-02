@@ -29,6 +29,7 @@ import * as removalState from '../apps/web/src/timeline-removal.ts';
 import * as viewGeometry from '../apps/web/src/timeline-view-geometry.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
+import { mediaUrl } from '../apps/web/src/api.ts';
 const Function = lenientFunction;
 const id = (n: number) => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);
@@ -218,7 +219,7 @@ test('retained format panel callbacks cannot edit, reset, read or submit a revis
 });
 
 test('actual preview labels legacy frozen job dimensions, never the new current timeline', () => {
-  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: () => '成功' }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String } }).default;
+  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: () => '成功', mediaUrl }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String } }).default;
   const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080', 9), job: { id: id(7), status: 'succeeded', url: '/media/old', timelineRevision: 1, snapshot: { timeline: timeline('square_720', 1) } }, playhead: 30 });
   const label = nodes(tree).find((node: ElementNode) => node.props.className === 'edit-preview-format');
   assert.match(textOf(label), /720 × 720 · 30 fps/); assert.doesNotMatch(textOf(label), /1920/);
@@ -227,7 +228,7 @@ test('actual preview labels legacy frozen job dimensions, never the new current 
 });
 
 test('actual monitor header and preflight summary use their own saved dimensions', () => {
-  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '' }, './Timeline.tsx': { assetKind: () => 'video' } }).default;
+  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', mediaUrl }, './Timeline.tsx': { assetKind: () => 'video' } }).default;
   const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080'), playhead: 0 });
   assert.equal(textOf(nodes(tree).find((node: ElementNode) => node.props.className === 'edit-preview-format')), '1920 × 1080 · 30 fps');
   const Panel = component('TimelineExportPreflight.tsx').default;

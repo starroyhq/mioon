@@ -1,5 +1,6 @@
 import { TIMELINE_CLIP_LOUDNESS_LIMITS, timelineClipLoudnessInputSchema } from '@mioon/contracts/timeline-clip-loudness';
 import { readTimelineClipLoudnessEnvelope } from '@mioon/client/timeline-clip-loudness';
+import { projectRpcPath } from '../../../packages/contracts/src/project-file.ts';
 
 export interface TimelineClipLoudnessWireOptions {
   readonly signal?: AbortSignal;
@@ -37,7 +38,7 @@ export async function readTimelineClipLoudnessRpc(rawInput: unknown, options: Ti
     if (controller.signal.aborted) throw cancelled();
     let response: Response;
     try {
-      response = await observe((options.fetch ?? fetch)('/api/rpc', { method: 'POST', credentials: 'same-origin',
+      response = await observe((options.fetch ?? fetch)(projectRpcPath(parsed.data.projectId), { method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operation: 'timeline.clip.loudness', input: parsed.data,
           ...(options.expectedWorkspaceOrigin ? { expectedWorkspaceOrigin: options.expectedWorkspaceOrigin } : {}) }), signal: controller.signal }).then(value => {
           if (controller.signal.aborted) { void value.body?.cancel().catch(() => {}); throw cancelled(); }

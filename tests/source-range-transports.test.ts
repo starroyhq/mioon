@@ -1,3 +1,4 @@
+import {projectRpcPath, isProjectId} from '../packages/contracts/src/project-file.ts';
 import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMessage,WireData,WireEnvelope,WireCall} from './helpers/strict-timeline-wire-response-types.ts';
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
@@ -138,13 +139,15 @@ async function fixture(t: test.TestContext) {
   };
   const env = () => ({MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_RANGE_WIRE_ALLOWED_ORIGIN: url, MIOON_RANGE_WIRE_AUDIT: auditPath});
   async function request<O extends string>(operation: O, input?: unknown, expectedError?: string|undefined, base: string|undefined = url, authorization: string = `Bearer ${TOKEN}`):Promise<{raw:string;envelope:WireEnvelope<O>}> {
-    const response = await fetch(base + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
+    const projectId = (input as {projectId?: unknown} | null | undefined)?.projectId;
+    const resource = isProjectId(projectId) ? projectRpcPath(projectId) : '/api/rpc';
+    const response = await fetch(base + resource, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
       headers: {'content-type': 'application/json', ...(authorization ? {authorization} : {})}, body: JSON.stringify({operation, input})});
     const raw = await response.text(), envelope = JSON.parse(raw); noPrivate(raw);
     assert.equal(envelope.ok, !expectedError, raw);
     if (expectedError) {
       assert.equal(envelope.error.code, expectedError, raw);
-      const status = expectedError === 'UNAUTHORIZED' ? 401 : expectedError === 'NOT_FOUND' ? 404 :
+      const status = expectedError === 'UNAUTHORIZED' ? 401 : ['NOT_FOUND', 'PROJECT_NOT_FOUND'].includes(expectedError) ? 404 :
         ['REVISION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_SOURCE_RANGE_RECORD'].includes(expectedError) ? 409 : 400;
       assert.equal(response.status, status, raw);
     } else assert.equal(response.status, 200, raw);
@@ -360,9 +363,14 @@ test('saved source ranges have exact HTTP, real CLI and official MCP semantics w
     const before = (await backend.checkpoint());
     for (const operation of operations) {
       const set = operation.endsWith('.set'), fields = set ? {expectedRevision: 0, requestId: 'source-range-no-target', inFrame: 0, outFrame: 1} : {};
+      const unregistered = {...target, projectId: RANGE_IDS.missing, ...fields};
+      const missingProject = await backend.http(operation, unregistered, 'PROJECT_NOT_FOUND');
+      assert.deepEqual(missingProject.error.details, {projectId: RANGE_IDS.missing});
+      assert.deepEqual(await backend.cli(operation, unregistered, 'PROJECT_NOT_FOUND'), missingProject);
+      assert.deepEqual(await backend.mcp(operation, unregistered, 'PROJECT_NOT_FOUND'), missingProject);
       let absent;
       for (const scope of [{...target, assetId: RANGE_IDS.missing}, {...target, assetId: IDS.otherAsset},
-        {...target, projectId: RANGE_IDS.missing}, {projectId: RANGE_IDS.corruptProject, assetId: RANGE_IDS.mismatchedOwner}]) {
+        {projectId: RANGE_IDS.corruptProject, assetId: RANGE_IDS.mismatchedOwner}]) {
         const input = {...scope, ...fields}, result = await backend.http(operation, input, 'NOT_FOUND');
         assert.deepEqual(result.error.details, {}, 'scope failures reveal no record or definite-not-applied claim');
         if (absent) assert.deepEqual(result, absent, 'missing, foreign and mismatched JSON owner are uniformly safe');

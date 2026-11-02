@@ -4,7 +4,7 @@ import http from 'node:http';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
 import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
 import {AGENT_CHAT_PROFILES,AGENT_RESPONSES_PROFILES,agentAnthropicThinkingFields,agentChatProfile,agentModelThinkingTier,agentRequestThinks,agentResponsesProfile} from '../packages/business/src/agent/model-profiles.ts';
-import {ANTHROPIC_MESSAGES_FIELDS,ANTHROPIC_THINKING_FIELDS} from '../packages/business/src/agent/anthropic-protocol.ts';
+import {ANTHROPIC_MESSAGES_FIELDS} from '../packages/business/src/agent/anthropic-protocol.ts';
 import {anthropicMessages} from '../packages/business/src/agent/anthropic-wire.ts';
 import {buildTaskModelRequest,createTaskGateway,taskContinuation,TASK_MODEL_LIMITS} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskModelItem,TaskModelOutput} from '../packages/business/src/agent/task-gateway-v2.ts';
@@ -37,8 +37,9 @@ function thinkingBody(configuration:AgentConfiguration,messages:readonly AgentTa
   const body=JSON.parse(buildTaskModelRequest(configuration,[...messages],definitions,4318)) as Record<string,unknown>;
   if(configuration.protocol==='chat_completions')body.reasoning_effort='medium';
   else if(configuration.protocol==='responses')body.reasoning={effort:'medium'};
-  else Object.assign(body,ANTHROPIC_THINKING_FIELDS);
+  else Object.assign(body,agentAnthropicThinkingFields('required',body.max_tokens as number));
   assert.equal(agentRequestThinks(configuration,body),true);
+  if(configuration.protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,4096,'thinking keeps the protocol output limit');
   return JSON.stringify(body);
 }
 async function loopback(t:TestContext,protocol:Protocol,responses:string[]){
@@ -70,23 +71,29 @@ test('thinking tiers follow each preset profile, and every task request keeps th
     assert.equal(tier,protocol==='anthropic_messages'||optionalPresets[protocol].includes(preset.id)?'optional':'unsupported',label);
     const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
     assert.equal(agentRequestThinks(configuration,body),false,`${label} sends its documented off switch`);
+    if(protocol!=='anthropic_messages')assert.equal(body.max_tokens??body.max_completion_tokens??body.max_output_tokens,4096,label);
     if(protocol==='anthropic_messages')assert.deepEqual(body.thinking,{type:'disabled'});
     // Only an optional model's off switch can be lifted; an unsupported or
     // unverified model never admits thinking, whatever the request contains.
     const off=offSwitch(configuration),lifted=Object.fromEntries(Object.entries(body).filter(([key])=>!Object.hasOwn(off,key)));
     assert.equal(agentRequestThinks(configuration,lifted),tier==='optional',label);
+    if(protocol!=='anthropic_messages')assert.equal(lifted.max_tokens??lifted.max_completion_tokens??lifted.max_output_tokens,4096,`${label} keeps its output limit when thinking is requested`);
     combinations++;
   }
   assert.ok(combinations>=30);
 });
-test('Messages turns thinking on only for a required model, with the smallest manual budget below max_tokens',()=>{
-  for(const tier of ['unsupported','optional'] as const)assert.equal(agentAnthropicThinkingFields(tier),ANTHROPIC_MESSAGES_FIELDS);
-  assert.equal(agentAnthropicThinkingFields('required'),ANTHROPIC_THINKING_FIELDS);
-  assert.deepEqual(ANTHROPIC_THINKING_FIELDS,{thinking:{type:'enabled',budget_tokens:1024}});
-  const configuration=presetConfiguration('anthropic','anthropic_messages'),body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>;
-  assert.ok(ANTHROPIC_THINKING_FIELDS.thinking.budget_tokens<(body.max_tokens as number),'thinking tokens count toward max_tokens');
-  assert.deepEqual(body.tool_choice,{type:'auto',disable_parallel_tool_use:true},'thinking accepts only automatic tool choice');
-  assert.equal(agentRequestThinks(configuration,{...body,...ANTHROPIC_THINKING_FIELDS}),true);
+test('Messages turns thinking on only for a required model, with a manual budget below max_tokens',()=>{
+  for(const tier of ['unsupported','optional'] as const)for(const output of [4096,16384])assert.equal(agentAnthropicThinkingFields(tier,output),ANTHROPIC_MESSAGES_FIELDS);
+  // An unknown model keeps the smallest documented budget. A documented output
+  // limit keeps 4096 tokens for the answer and gives the rest to thinking.
+  for(const [configuration,maxTokens,budgetTokens] of [[presetConfiguration('ollama','anthropic_messages'),4096,1024],[presetConfiguration('anthropic','anthropic_messages'),16384,12288]] as const){
+    const body=JSON.parse(buildTaskModelRequest(configuration,history,definitions,4318)) as Record<string,unknown>,fields=agentAnthropicThinkingFields('required',body.max_tokens as number);
+    assert.equal(body.max_tokens,maxTokens,configuration.presetId);
+    assert.deepEqual(fields,{thinking:{type:'enabled',budget_tokens:budgetTokens}},configuration.presetId);
+    assert.ok(budgetTokens<maxTokens,'thinking tokens count toward max_tokens');
+    assert.deepEqual(body.tool_choice,{type:'auto',disable_parallel_tool_use:true},'thinking accepts only automatic tool choice');
+    assert.equal(agentRequestThinks(configuration,{...body,...fields}),true);
+  }
 });
 
 test('Chat Completions: a thinking request keeps reasoning_content out of text and returns it with its tool call in this round',async t=>{

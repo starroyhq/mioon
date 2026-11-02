@@ -6,6 +6,9 @@ import type {ExportOutput} from '../../../packages/contracts/src/export-controls
 import type {ExportFileStatus} from '../../../packages/contracts/src/export-file-recovery.ts';
 import {useI18n} from './i18n/I18nProvider.tsx';
 import {useWorkspaceVisibility} from './workspace-visibility.tsx';
+import {projectApiPath, projectRpcPath} from '../../../packages/contracts/src/project-file.ts';
+/** The export-file route at the project's address; empty for an invalid ID. */
+const exportFilesPath = (projectId: string): string => { try { return projectApiPath(projectId, 'export-files'); } catch { return ''; } };
 
 interface Props {projectId: string; exportId: string; downloadHref: string; disabled?: boolean; output?: ExportOutput | null; detailed?: boolean}
 interface Owner {projectId: string; exportId: string; url: string; downloadHref: string; disabled: boolean; visible: boolean}
@@ -13,7 +16,7 @@ interface Selection {owner: Owner; status: ExportFileStatus; input: HTMLInputEle
 
 export default function ExportFileActions({projectId, exportId, downloadHref, disabled = false, output = null, detailed = false}: Props) {
   const {t} = useI18n(), visible = useWorkspaceVisibility();
-  const url = `/api/export-files?projectId=${encodeURIComponent(projectId)}&exportId=${encodeURIComponent(exportId)}`;
+  const url = `${exportFilesPath(projectId)}?projectId=${encodeURIComponent(projectId)}&exportId=${encodeURIComponent(exportId)}`;
   const owner = useMemo<Owner>(() => ({projectId, exportId, url, downloadHref, disabled, visible}), [projectId, exportId, url, downloadHref, disabled, visible, output?.assetId, output?.sha256, output?.fileLocation, output?.sizeBytes]);
   const [resolvedOutput,setResolvedOutput]=useState<{owner:Owner;value:ExportOutput}|null>(null),[locationBusy,setLocationBusy]=useState(false);
   const [observation, setObservation] = useState<{owner: Owner; status: ExportFileStatus} | null>(null);
@@ -97,7 +100,7 @@ export default function ExportFileActions({projectId, exportId, downloadHref, di
       const checkedStatus=currentStatus.current;if(checkedStatus?.status!=='present')return;
       const locationTicket={owner};locationFlight.current=locationTicket;setLocationBusy(true);
       try{
-        const response=await fetch('/api/rpc',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'export.output.get',input:{projectId:owner.projectId,exportId:owner.exportId}})});
+        const response=await fetch(projectRpcPath(owner.projectId),{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'export.output.get',input:{projectId:owner.projectId,exportId:owner.exportId}})});
         const raw:unknown=await response.json();
         if(!response.ok||!raw||typeof raw!=='object'||!('ok' in raw)||raw.ok!==true||!('data' in raw))throw new Error('Output unavailable.');
         const value=exportOutputSchema.parse(raw.data);

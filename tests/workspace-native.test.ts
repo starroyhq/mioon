@@ -5,7 +5,9 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import type {TestContext} from 'node:test';
-import {createWorkspaceNativeHost} from '../apps/desktop/src/workspace-native-host.ts';
+import http from 'node:http';
+import {createWorkspaceNativeHost,readNativeBackendMetadata} from '../apps/desktop/src/workspace-native-host.ts';
+import {projectApiPath,projectMediaPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {createWorkspaceNativeBridges} from '../apps/desktop/src/workspace-native-preload.ts';
 import {createWorkspaceNativeBroker} from '../apps/desktop/src/workspace-native-broker.ts';
 import {workspaceNativeRequestSchema} from '../packages/contracts/src/workspace-native.ts';
@@ -62,4 +64,15 @@ test('private utility broker is bounded to one current backend and ignores malfo
  broker.handle({type:'workspace-native:reply',requestId:request.requestId,ok:true,settings:settings('/private/approved')});assert.deepEqual(await pending,settings('/private/approved'));
  const late=broker.setBackupDirectory('/private/later');current=false;broker.handle({type:'workspace-native:reply',requestId:(sent[1] as {requestId:string}).requestId,ok:true,settings:settings('/private/later')});broker.close();await assert.rejects(late,code);
  await assert.rejects(broker.setBackupDirectory('/private/again'),code);
+});
+test('backend metadata reads go only to the app RPC, workspace information or one project RPC',async(t:TestContext)=>{
+ const seen:string[]=[];const server=http.createServer((req,res)=>{seen.push(String(req.url));res.setHeader('content-type','application/json');res.end(JSON.stringify({ok:true,data:{read:req.url}}));});
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise<void>(resolve=>{server.closeAllConnections();server.close(()=>resolve());}));
+ const address=server.address();assert.ok(address&&typeof address==='object');const base=`http://127.0.0.1:${address.port}`,project=randomUUID();
+ const read=(resource:string)=>readNativeBackendMetadata({base,token:'t'.repeat(64),resource,input:{operation:'export.output.get',input:{}},signal:new AbortController().signal,check:()=>{}});
+ assert.deepEqual(await read(projectRpcPath(project)),{read:projectRpcPath(project)});
+ assert.deepEqual(await read('/api/rpc'),{read:'/api/rpc'});
+ for(const resource of ['/api/tasks',projectApiPath(project,'tasks'),projectMediaPath(project,randomUUID()),`/api/projects/${project}/rpc/x`,'https://example.invalid/api/rpc'])
+  await assert.rejects(read(resource),{code:'WORKSPACE_NATIVE_UNAVAILABLE'},resource);
+ assert.deepEqual(seen,[projectRpcPath(project),'/api/rpc'],'refused resources never reach HTTP');
 });

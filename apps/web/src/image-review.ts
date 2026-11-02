@@ -1,6 +1,7 @@
 import { ApiError } from './api.ts';
 import { canonicalImageInput, isImageMutationResponse, isImageReviewResponse } from '@mioon/contracts';
 import type { ImageReviewResponse } from '@mioon/contracts';
+import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 const failure = (): ApiError => new ApiError('图像审批请求未确认。', 'NETWORK');
@@ -22,7 +23,7 @@ export function createImageReviewClient({ fetchImpl = (input: RequestInfo | URL,
     if (signal?.aborted) controller.abort();
     const input = { projectId: review.projectId, reviewId: review.id, expectedRevision: review.revision };
     const transport = (async () => {
-      const response = await fetchImpl(`/api/images/reviews/${action}`, { method: 'POST', credentials: 'same-origin', cache: 'no-store', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+      const response = await fetchImpl(projectApiPath(review.projectId, 'images', 'reviews', action), { method: 'POST', credentials: 'same-origin', cache: 'no-store', signal: controller.signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
       let envelope: unknown; try { envelope = await response.json(); } catch { throw failure(); }
       const envelopeRecord = isRecord(envelope) ? envelope : {}, errorRecord = isRecord(envelopeRecord.error) ? envelopeRecord.error : {};
       if (!response.ok || envelopeRecord.ok !== true) {

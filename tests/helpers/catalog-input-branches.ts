@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import {schemas} from '@mioon/contracts';
 import {jsonSchema} from '../../packages/client/src/index.ts';
+import {isEntityAddressedOperation} from '../../packages/contracts/src/project-addressing.ts';
+
+const PROJECT_ADDRESS = {type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'};
+/** CLI and MCP take an entity-addressed operation's project as a required
+ * `projectId` beside its shared input. Checks that address and returns the
+ * schema without it, which must then equal the contract exactly. */
+function withoutProjectAddress(operation: string, schema: unknown): unknown {
+  if (!isEntityAddressedOperation(operation)) return schema;
+  const {properties, required, ...rest} = schema as {properties: Record<string, unknown>; required: string[]};
+  assert.deepEqual(properties.projectId, PROJECT_ADDRESS, `${operation} project address`);
+  assert.equal(required[0], 'projectId', `${operation} requires its project address`);
+  const {projectId: _address, ...own} = properties;
+  return {...rest, properties: own, required: required.slice(1)};
+}
 
 interface ZodDefLike {readonly typeName?: string; readonly schema?: ZodLike; readonly options?: readonly ZodLike[]; readonly unknownKeys?: string; readonly [key: string]: unknown}
 interface ZodLike {readonly _def: ZodDefLike; readonly shape?: Record<string, ZodLike>; safeParse(value: unknown): {success: boolean}}
@@ -60,7 +74,7 @@ function resolved(value: unknown, root: unknown, references: Set<string> = new S
 
 export function assertOperationInputBranches(definition: CatalogOperationDefinition): CatalogOperationBranchResult {
   assert.ok(Object.hasOwn(schemas, definition.operation), `Unknown catalog operation ${definition.operation}`);
-  const root = definition.inputSchema, leaves: {properties: Record<string, unknown>; required: string[]}[] = [];
+  const root = withoutProjectAddress(definition.operation, definition.inputSchema), leaves: {properties: Record<string, unknown>; required: string[]}[] = [];
   function compare(actual: unknown, expected: ObjectShape, label: string): void {
     const actualObject = actual as Record<string, unknown>;
     assert.equal(actualObject.type, 'object', `${label} object input`);

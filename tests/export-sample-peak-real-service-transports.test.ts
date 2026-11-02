@@ -93,7 +93,7 @@ test('real succeeded named/ranged export has identical HTTP, CLI and MCP sample-
   const exportRange={startFrame:1,endFrame:4},deliveryName='交付 样本峰值 parity';
   const queued=await client.rpc('timeline.render',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',deliveryName,exportRange});
   let record;const deadline=Date.now()+40000;
-  while(Date.now()<deadline){record=await client.rpc('export.get',{exportId:queued.id});if(['succeeded','failed'].includes(record.status))break;await pause(25);}
+  while(Date.now()<deadline){record=await client.rpc('export.get',{exportId:queued.id},{projectId:project.id});if(['succeeded','failed'].includes(record.status))break;await pause(25);}
   assert.equal(record?.status,'succeeded',JSON.stringify(record?.error));
   // While the server runs, the database is read on its own connection.
   const asset=JSON.parse(inspect(project.id,db=>db.prepare('SELECT data FROM assets WHERE id=?').get(record.assetId)!.data as string));

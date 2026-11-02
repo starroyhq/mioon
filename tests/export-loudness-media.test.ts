@@ -143,7 +143,7 @@ async function exported(t: TestContext, {name, silent = false}: {name: string; s
       deliveryName: exportRange ? '选区响度文件' : '完整响度文件', ...(exportRange ? {exportRange} : {})}) as {id: string};
     let record: ExportRecordRow | undefined; const deadline = Date.now() + 40000;
     while (Date.now() < deadline) {
-      record = await client.rpc('export.get', {exportId: queued.id}) as ExportRecordRow;
+      record = await client.rpc('export.get', {exportId: queued.id}, {projectId: project.id}) as ExportRecordRow;
       if (['succeeded', 'failed'].includes(record.status)) break;
       await pause(25);
     }

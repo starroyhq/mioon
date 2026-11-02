@@ -15,8 +15,8 @@ import type {ChatAuthorizations} from './authorization-gate.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
-import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
-import type {TaskGateway,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
+import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskModelHistoryBudget,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
+import type {TaskGateway,TaskHistoryBudget,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {taskModelUsage} from './task-usage-v2.ts';
 import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
 import type {TaskModelContextFragment} from './task-context-v2.ts';
@@ -448,8 +448,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         }else{
           // Capture once: the hint and the immutable request must describe the
           // very same revision boundary, including across later replay.
-          const current=journal.snapshot(runId),baseline=journal.revisionSnapshot(run.projectId);
-          const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:runTools(run),replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic}});
+          const current=journal.snapshot(runId),baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run);
+          // History is budgeted against this request's own tool catalog.
+          const budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic});
+          const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});
           body=buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});
           model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(baseline),...(resumeModel?{previousModelStepId:resumeModel.id}:{}),...(repairSource?{goalRepairSourceModelStepId:repairSource}:{})}},pendingNotes.map(note=>note.requestId));
         }
@@ -555,7 +557,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const historyRuns=diagnostic||!conversationId?undefined:journal.modelContextRuns(projectId,conversationId).reverse();
     const projectOverview=diagnostic?undefined:collectTaskProjectOverview(store,projectId),projectNotes=diagnostic?undefined:collectTaskProjectNotes(store,projectId);
     const attachments=uploads.map(id=>{const row=store.db.prepare('SELECT id,name,mimeType FROM agent_task_imports_v2 WHERE id=? AND projectId=?').get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
-    const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,attachments});
+    // Earlier runs are trimmed to the first request's budget: core tools plus
+    // attachment imports. That request still validates the profile and reports
+    // its error, so an unsupported configuration keeps the byte budget here.
+    let budget:Readonly<TaskHistoryBudget>|undefined;
+    if(historyRuns?.length)try{budget=taskModelHistoryBudget(configuration(dummy),selectTaskModelTools(toolset().list(),undefined,{steps:[],attachments:uploads}),locale,selfPort(),{toolLoading:true});}catch(error){if(!code(error).startsWith('AGENT_CHAT_'))throw error;}
+    const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,attachments,budget});
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
     const created=journal.create({projectId,...(conversationId?{conversationId}:{}),...(conversationModes?{conversationModes}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
@@ -587,7 +594,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     // Reject known overflow in the control transaction, before acknowledging
     // the note. Future model/tool output remains subject to the original caps.
     // This is only a capacity probe: it never submits or changes a saved intent.
-    try{const config=configuration(run),baseline=journal.revisionSnapshot(run.projectId),{history,tools:definitions}=assembleModelInput({context,text:run.text,notes:run.notes,tools:runTools(run),replay:{protocol:config.protocol,fragments,steps:snapshot.steps,changes:snapshot.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic}});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});}
+    try{const config=configuration(run),baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run),budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic}),{history,tools:definitions}=assembleModelInput({context,text:run.text,notes:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:snapshot.steps,changes:snapshot.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});}
     catch(error){if(code(error)==='AGENT_CHAT_LIMIT')throw agentTaskFailure('AGENT_TASK_NOTE_CAPACITY');throw error;}
   }
   async function action(projectId:string,runId:string,input:unknown):Promise<AgentTaskSnapshot>{

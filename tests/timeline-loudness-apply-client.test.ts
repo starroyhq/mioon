@@ -6,6 +6,7 @@ import {readTimelineLoudnessApplyEnvelope,TIMELINE_LOUDNESS_APPLY_WIRE_BYTES} fr
 import {readLoudnessApplyRpc} from '../apps/web/src/timeline-loudness-apply-rpc.ts';
 import {loudnessApplyFixture} from './fixtures/timeline-loudness-apply.ts';
 const op='timeline.loudness.apply',env={MIOON_TOKEN:'synthetic-loudness-apply-test-token'};
+const PROJECT='22222222-2222-4222-8222-222222222222';
 const success=(data: unknown): Response => Response.json({ok:true,data});
 test('shared discovery declares a durable local mutation without supplier or file effects',async()=>{
  const {input,response}=await loudnessApplyFixture();assert.deepEqual(schemas[op].parse(input),input);
@@ -54,7 +55,7 @@ test('336KiB reader rejects declared/body/error overflow and invalid UTF8 withou
 test('renderer new-operation deadline and abort mean unknown, cancel read, never resend',async()=>{
  for(const mode of ['abort','timeout']){
   const abort=new AbortController();let calls=0,cancelled=0,entered!: () => void,retired!: () => void;const ready=new Promise<void>(r=>{entered=r;}),closed=new Promise<void>(r=>{retired=r;});
-  const promise=readLoudnessApplyRpc('/api/rpc',{operation:op,input:{}},{signal:abort.signal,timeoutMs:mode==='timeout'?10:1000,
+  const promise=readLoudnessApplyRpc(`/api/projects/${PROJECT}/rpc`,{operation:op,input:{}},{signal:abort.signal,timeoutMs:mode==='timeout'?10:1000,
    fetcher:async()=>{calls++;return new Response(new ReadableStream({start(){entered();},cancel(){cancelled++;retired();}}));}});
   await ready;if(mode==='abort')abort.abort();
   await assert.rejects(promise,{code:mode==='abort'?'OPERATION_CANCELLED':'TIMEOUT'});
@@ -64,14 +65,16 @@ test('renderer new-operation deadline and abort mean unknown, cancel read, never
 });
 test('deadline covers noncooperative fetch and cancels its late body',async()=>{
  let resolve: ((value: Response) => void) | undefined,calls=0,cancelled=0;const delayed=new Promise<Response>(r=>{resolve=r;});
- const pending=readLoudnessApplyRpc('/api/tasks/prepare',{operation:op},{timeoutMs:10,fetcher:(()=>{calls++;return delayed;}) as never});
+ const pending=readLoudnessApplyRpc(`/api/projects/${PROJECT}/tasks/prepare`,{operation:op},{timeoutMs:10,fetcher:(()=>{calls++;return delayed;}) as never});
  await assert.rejects(pending,{code:'TIMEOUT'});const finish=resolve;assert.ok(finish);finish(new Response(new ReadableStream({cancel(){cancelled++;}})));
  await new Promise<void>(r=>{setImmediate(r);});assert.equal(calls,1);assert.equal(cancelled,1);
 });
 test('new bounded transport refuses arbitrary endpoint and retains fixed authenticated task route',async()=>{
- for(const path of ['https://external.invalid/api/rpc','/api/assets','/api/rpc?secret=x','/api/tasks/../../rpc'])
+ // Only the project's own addresses; the legacy paths are refused too.
+ for(const path of ['https://external.invalid/api/rpc','/api/assets','/api/rpc?secret=x','/api/tasks/../../rpc','/api/rpc','/api/tasks/prepare',`/api/projects/${PROJECT}/rpc?secret=x`])
   await assert.rejects(readLoudnessApplyRpc(path,{}),{code:'VALIDATION'});
- let observed: {url: string; options: RequestInit} | undefined;const path='/api/tasks/11111111-1111-4111-8111-111111111111?projectId=22222222-2222-4222-8222-222222222222';
+ await assert.rejects(readLoudnessApplyRpc(`/api/projects/${PROJECT}/tasks/11111111-1111-4111-8111-111111111111?projectId=33333333-3333-4333-8333-333333333333`,undefined),{code:'VALIDATION'});
+ let observed: {url: string; options: RequestInit} | undefined;const path=`/api/projects/${PROJECT}/tasks/11111111-1111-4111-8111-111111111111?projectId=${PROJECT}`;
  const result=await readLoudnessApplyRpc(path,undefined,{fetcher:(async(url: string, options?: RequestInit)=>{observed={url,options:options ?? {}};return success({});}) as never});
  assert.deepEqual(result.body,{ok:true,data:{}});assert.ok(observed);assert.equal(observed.options.method,'GET');assert.equal(observed.options.credentials,'same-origin');assert.equal('body'in observed.options,false);
 });
