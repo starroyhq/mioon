@@ -61,6 +61,8 @@ import type {FileResponses} from './file-response.ts';
 import {createOwnedMediaGraphReader} from '@mioon/business/inspection';
 import {createVersionComparisonMediaHttp} from './version-comparison-media.ts';
 import {callObservedRpc} from './rpc-observation.ts';
+import {assertProjectRpc, projectIdMismatch, projectNotFound, projectRouteTarget} from './project-routes.ts';
+import type {ProjectAddress} from './project-routes.ts';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
@@ -84,7 +86,7 @@ import type {WorkspaceInfo} from '../../../packages/contracts/src/workspace-info
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 type LocalDraftChannel = WorkspaceInfo['channel'];
-type HttpHandler = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<boolean>;
+type HttpHandler = (req: IncomingMessage, res: ServerResponse, url: URL, address?: ProjectAddress) => Promise<boolean>;
 type Services = ReturnType<typeof createServices>;
 type OrdinaryServices = Services;
 /** Cross-path transport surface shared by the ordinary and restored services. */
@@ -449,7 +451,7 @@ async function composeServer({
         res.setHeader('Referrer-Policy', 'no-referrer');
         res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'");
         if (!hosts.has(req.headers.host ?? '') || (req.headers.origin && !origins.has(req.headers.origin))) return json(res, 403, {ok: false, error: {code: 'ORIGIN_REJECTED', message: '本地来源校验失败'}});
-        const url = new URL(String(req.url), `http://127.0.0.1:${actualPort}`);
+        let url = new URL(String(req.url), `http://127.0.0.1:${actualPort}`);
         if (url.pathname === '/health') return json(res, 200, {ok: true, service: 'mioon', version: packageMetadata.version, sqlite: field(store.db.prepare('select sqlite_version() v').get(), 'v')});
         if (url.pathname === '/api/login' && req.method === 'POST') {
           const input = jsonObject(await body(req, 4096));
@@ -461,6 +463,18 @@ async function composeServer({
         if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/')) {
           if (!auth(req)) return json(res, 401, {ok: false, error: {code: 'UNAUTHORIZED', message: '请使用本地访问令牌登录'}});
           deletionGate.track(res);
+        }
+        // A project-scoped address is served by the path it replaces, so the
+        // gates below and each route's exact request checks see that path.
+        let address: ProjectAddress | undefined;
+        const scoped = projectRouteTarget(url.pathname);
+        if (scoped) {
+          if (!store.get('projects', scoped.projectId)) throw projectNotFound(scoped.projectId);
+          if (url.searchParams.getAll('projectId').some(value => value !== scoped.projectId)) throw projectIdMismatch(scoped.projectId);
+          const raw = String(req.url), query = raw.search(/[?#]/u);
+          req.url = scoped.pathname + (query < 0 ? '' : raw.slice(query));
+          url = new URL(req.url, `http://127.0.0.1:${actualPort}`);
+          address = {projectId: scoped.projectId};
         }
         const restoredTaskHistory=isRestoredWorkspaceSchemaSince(52,restored?.schemaVersion)&&(url.pathname==='/api/agent/tasks/v2'||url.pathname.startsWith('/api/agent/tasks/v2/'));
         if(restored&&(!restoredTaskHistory&&isUnavailableRestoredRoute(url.pathname,req.method ?? '')||/^\/api\/video-providers(?:\/|$)/u.test(url.pathname)))throw workspaceRestoreError();
@@ -499,17 +513,17 @@ async function composeServer({
           throw new AppError('VALIDATION_ERROR','无效的备份请求',400);
         }
         if (await comfyHttp(req,res,url)) return;
-        if (await imageHttp(req,res,url)) return;
+        if (await imageHttp(req,res,url,address)) return;
         if (await videoHttp(req,res,url)) return;
-        if (await taskHttpV2?.handle(req,res,url)) return;
+        if (await taskHttpV2?.handle(req,res,url,address)) return;
         if (await agentDiagnosticsHttp?.(req,res,url)) return;
-        if (await editTasksHttp(req, res, url)) return;
-        if (await localDraftHttp(req, res, url)) return;
+        if (await editTasksHttp(req, res, url, address)) return;
+        if (await localDraftHttp(req, res, url, address)) return;
         if (await projectPackageHttp(req, res, url)) return;
         if (await lastProjectHttp(req, res, url)) return;
-        if (await localDeliveryHttp(req, res, url)) return;
+        if (await localDeliveryHttp(req, res, url, address)) return;
         if (await exportFileRecovery.handle(req,res,url)) return;
-        if (await localShotTextHttp(req, res, url)) return;
+        if (await localShotTextHttp(req, res, url, address)) return;
         if (await continuousAudioHttp(req, res, url)) return;
         if (await audioPreviewHttp(req, res, url)) return;
         checkpoint(shutdown.signal);
@@ -554,6 +568,7 @@ async function composeServer({
           const input = jsonObject(await body(req));
           checkpoint(shutdown.signal);
           if (typeof input.operation !== 'string') return json(res, 400, {ok: false, error: {code: 'VALIDATION_ERROR', message: '缺少 operation'}});
+          if (address) assertProjectRpc(store.db, address, input.operation, input.input || {});
           deletionGate.rpc(res,input.operation,input.input);
           const data = await callObservedRpc(req, res, {call: serviceCall}, input.operation, input.input || {},Object.hasOwn(input,'expectedWorkspaceOrigin')?{expectedWorkspaceOrigin:input.expectedWorkspaceOrigin}:{});
           if (res.destroyed || res.writableEnded) return;
@@ -567,7 +582,8 @@ async function composeServer({
           const delivery = named && !preview ? readTimelineDeliveryDownload(store.db, url, deliveryGuards) : null;
           const rawAsset = preview || named ? null : store.get('assets', url.pathname.slice(7));
           const asset = preview ? playback : named ? delivery : rawAsset;
-          if (!asset) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '素材不存在'}});
+          // Another project's media answers exactly as missing media does.
+          if (!asset || address && field(asset, 'projectId') !== address.projectId) return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '素材不存在'}});
           const relativePath = field(asset, 'relativePath'), mimeType = field(asset, 'mimeType');
           if (typeof relativePath !== 'string' || typeof mimeType !== 'string') return json(res, 404, {ok: false, error: {code: 'NOT_FOUND', message: '素材不存在'}});
           let file;
