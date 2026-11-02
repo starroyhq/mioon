@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import ts from 'typescript';
 
 const REPOSITORY = fileURLToPath(new URL('../', import.meta.url));
 const SCANNED = ['apps', 'packages', 'scripts', 'server'];
@@ -67,6 +68,48 @@ function sourceFiles(directory: string): string[] {
   return files;
 }
 const relativePath = (file: string): string => path.relative(REPOSITORY, file).split(path.sep).join('/');
+
+const HELD_FILES = path.join(REPOSITORY, 'packages/business/src/project-file/held-files.ts');
+const CONNECTION = path.join(REPOSITORY, 'packages/business/src/project-file/connection.ts');
+const IDENTITY_READS = new Set(['isProjectDatabase', 'isProjectFileHeld']);
+/** Named imports preserve the read-only business boundary. A namespace,
+ * dynamic import, require or re-export could otherwise expose registration
+ * functions under an alias, including through the package's wildcard export. */
+function heldFileRegistryViolations(source: string, file: string): string[] {
+  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+  const violations: string[] = [];
+  const isLeaf = (specifier: ts.Expression): boolean => {
+    if (!ts.isStringLiteralLike(specifier)) return false;
+    if (specifier.text === '@mioon/business/project-file/held-files' || specifier.text === '@mioon/business/project-file/held-files.ts') return true;
+    return path.resolve(path.dirname(file), specifier.text) === HELD_FILES;
+  };
+  const refuse = (node: ts.Node): void => {violations.push(`${parsed.getLineAndCharacterOfPosition(node.getStart(parsed)).line + 1}: ${node.getText(parsed)}`);};
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) && isLeaf(node.moduleSpecifier)) {
+      const clause = node.importClause;
+      if (clause?.isTypeOnly || file === CONNECTION) return;
+      const bindings = clause?.namedBindings;
+      if (clause?.name || !bindings || !ts.isNamedImports(bindings) || bindings.elements.some(item => !item.isTypeOnly && !IDENTITY_READS.has((item.propertyName ?? item.name).text))) refuse(node);
+      return;
+    }
+    if (ts.isExportDeclaration(node) && node.moduleSpecifier && isLeaf(node.moduleSpecifier)) {
+      if (node.isTypeOnly) return;
+      if (!node.exportClause || !ts.isNamedExports(node.exportClause) || node.exportClause.elements.some(item => !item.isTypeOnly && !IDENTITY_READS.has((item.propertyName ?? item.name).text))) refuse(node);
+      return;
+    }
+    if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && node.expression.text === 'require') && node.arguments[0] && isLeaf(node.arguments[0])) {
+      if (file !== CONNECTION) refuse(node);
+      return;
+    }
+    if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference) && node.moduleReference.expression && isLeaf(node.moduleReference.expression)) {
+      if (!node.isTypeOnly && file !== CONNECTION) refuse(node);
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  return violations;
+}
 
 test('detectOpeners finds every construction of DatabaseSync, also through aliases', () => {
   const positives = [
@@ -134,4 +177,41 @@ test('the kernel imports db.ts and services.ts only as types', () => {
   }
   assert.deepEqual(offenders, [], 'S0 makes db.ts open its stores through the kernel, so the kernel may not load db.ts or services.ts');
   assert.ok(typeOnly > 0, 'store.ts takes WorkspaceStore from db.ts as a type');
+});
+
+test('only the kernel connection can import live-file registration, including aliases and re-exports', () => {
+  const business = path.join(REPOSITORY, 'packages/business/src/zz-registry-probe.ts');
+  const leaf = './project-file/held-files.ts';
+  for (const source of [
+    `import {registerProjectFiles} from '${leaf}';`,
+    `import {releaseProjectFiles as release} from '${leaf}';`,
+    `import {projectFileOwnerKind} from '${leaf}';`,
+    `import * as registry from '${leaf}';`,
+    `import registry from '${leaf}';`,
+    `export {registerProjectFiles as register} from '${leaf}';`,
+    `export * from '${leaf}';`,
+    `const registry = await import('${leaf}');`,
+    `const registry = require('${leaf}');`,
+    `import registry = require('${leaf}');`,
+    "import {registerProjectFiles} from '@mioon/business/project-file/held-files';",
+  ]) assert.equal(heldFileRegistryViolations(source, business).length, 1, source);
+  for (const source of [
+    `import {isProjectDatabase as isProjectLayout, isProjectFileHeld} from '${leaf}';`,
+    `export {isProjectDatabase} from '${leaf}';`,
+    `import type * as Identity from '${leaf}';`,
+  ]) assert.deepEqual(heldFileRegistryViolations(source, business), [], source);
+  assert.deepEqual(heldFileRegistryViolations("import {projectFileOwnerKind, registerProjectFiles, releaseProjectFiles} from './held-files.ts';", CONNECTION), []);
+  assert.equal(heldFileRegistryViolations("export {registerProjectFiles} from './held-files.ts';", CONNECTION).length, 1);
+});
+
+test('production code exposes only read-only project identities outside the connection lifecycle', () => {
+  const offenders: string[] = [];
+  for (const top of SCANNED) {
+    const directory = path.join(REPOSITORY, top);
+    if (!existsSync(directory)) continue;
+    for (const file of sourceFiles(directory)) {
+      for (const violation of heldFileRegistryViolations(readFileSync(file, 'utf8'), file)) offenders.push(`${relativePath(file)}:${violation}`);
+    }
+  }
+  assert.deepEqual(offenders, [], 'Only project-file/connection.ts may own the live-file registry; business code receives read-only identity queries');
 });

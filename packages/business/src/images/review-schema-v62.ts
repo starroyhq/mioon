@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 // Schema62 adds edit intent v5: an output size from the model's edit profile and
@@ -80,6 +81,7 @@ const IMAGE_EDIT_REVIEW_V62_BRANCH = `
           ))`;
 
 export function migrateSizedImageEditReviewSchema(db: DatabaseSync): void {
+ if(isProjectLayout(db))throw new TypeError('Legacy workspace schema installers cannot run on project databases.');
   if (!db.isTransaction) throw new Error('Sized image edit review migration requires a transaction');
   const existing = db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get() as {sql: string} | undefined;
   if (!existing) throw new Error('Sized image edit review migration requires schema23');

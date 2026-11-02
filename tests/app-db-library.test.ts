@@ -250,6 +250,23 @@ test('the held library query matches hard links without opening or unlocking the
   assert.equal(isAppLibraryHeld(identity), false);
 });
 
+test('the held library query binds a file identity to its exact live connection', t => {
+  const root = scratch(t), first = open(t, path.join(root, 'first')), second = open(t, path.join(root, 'second'));
+  const identity = first.projectFileIdentity(first.databaseFile);
+  assert.ok(identity);
+  assert.equal(isAppLibraryHeld(identity), true);
+  assert.equal(isAppLibraryHeld(identity, first.db), true);
+  assert.equal(isAppLibraryHeld(identity, second.db), false, 'another held app connection cannot prove this file ownership');
+  assert.equal(isAppLibraryHeld({dev: identity.dev, ino: '0'}, first.db), false);
+  first.close();
+  assert.equal(isAppLibraryHeld(identity, first.db), false);
+  const again = open(t, path.join(root, 'first'));
+  assert.deepEqual(again.projectFileIdentity(again.databaseFile), identity);
+  assert.equal(isAppLibraryHeld(identity), true);
+  assert.equal(isAppLibraryHeld(identity, first.db), false, 'a replaced connection cannot revive the old handle authority');
+  assert.equal(isAppLibraryHeld(identity, again.db), true);
+});
+
 test('a failed library open leaves its identity unheld and can be repaired and reopened', t => {
   const dataDir = path.join(scratch(t), 'data');
   const first = openAppLibrary({dataDir});

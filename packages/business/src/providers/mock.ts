@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import { createHash, randomUUID } from 'node:crypto';
 import {throwIfMediaAborted} from '../media-processes.ts';
 import {run} from '../media-runtime.ts';
@@ -51,7 +52,7 @@ async function runFfmpeg(args: string[], signal?: AbortSignal): Promise<void> {
 /** A durable simulated provider ledger, intentionally independent of application jobs. */
 export function createMockProvider({ db, root, now = Date.now }: MockProviderFactoryOptions) {
   if (!db?.prepare || !root) throw new TypeError('Mock provider requires a SQLite database and managed root.');
-  db.exec(`
+  if(!isProjectLayout(db))db.exec(`
     CREATE TABLE IF NOT EXISTS mock_provider_tasks (
       provider_job_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,
       snapshot_json TEXT NOT NULL, snapshot_hash TEXT NOT NULL, scenario TEXT NOT NULL,

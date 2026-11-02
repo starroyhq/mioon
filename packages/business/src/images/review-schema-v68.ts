@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 // Schema68 lets a storyboard keyframe be the source of an edit (intent v5).
@@ -30,6 +31,7 @@ const SCENE_KEYFRAME_TAIL = `              AND json_extract(canonicalIntent,'$.s
           ))`;
 
 export function migrateSceneKeyframeEditReviewSchema(db: DatabaseSync): void {
+ if(isProjectLayout(db))throw new TypeError('Legacy workspace schema installers cannot run on project databases.');
   if (!db.isTransaction) throw new Error('Storyboard keyframe edit review migration requires a transaction');
   const existing = db.prepare("SELECT sql FROM sqlite_schema WHERE type='table' AND name='image_reviews'").get() as {sql: string} | undefined;
   if (!existing) throw new Error('Storyboard keyframe edit review migration requires schema62');

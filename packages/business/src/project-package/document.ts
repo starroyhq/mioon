@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import {randomUUID,createHash} from 'node:crypto';
 import {statSync,createReadStream,renameSync,copyFileSync,unlinkSync,readFileSync,constants} from 'node:fs';
 import type {WorkspaceStore} from '../db.ts';
@@ -131,6 +132,7 @@ export function findProjectPackageReceipt(store:WorkspaceStore,receipt:ProjectPa
  return store.get('projects',row.resourceId)?{projectId:row.resourceId}:null;
 }
 export function createProjectFromDocument(store:WorkspaceStore,{document,files,name,move,receipt}:{document:ProjectDocument;files:ReadonlyMap<string,string>;name:string;move:boolean;receipt?:ProjectPackageReceipt}):{projectId:string;jobIds:string[]}{
+  if(isProjectLayout(store.db))throw new TypeError('Legacy project package imports cannot run on project databases.');
  const ids=new Map<string,string>(),fresh=(id:string):string=>{const key=id.toLowerCase();let value=ids.get(key);if(!value){value=randomUUID();ids.set(key,value);}return value;};
  // Every UUID-shaped string is an id or embeds one (paths, URLs), so a single
  // textual pass rewrites all references consistently and leaves no old ids.

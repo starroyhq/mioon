@@ -1,10 +1,12 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {isProxy} from 'node:util/types';
 import type {DatabaseSync} from 'node:sqlite';
 import {LUT_RESOURCE_LIMITS} from '../../contracts/src/lut-resources.ts';
 import {isLookPackInspectInput,lookPackInspectResponseSchema} from '../../contracts/src/look-pack-inspection.ts';
 import type {LookPackInspection} from '../../contracts/src/look-pack.ts';
 import type {LookPackInspectInput,LookPackInspectResponse} from '../../contracts/src/look-pack-inspection.ts';
-import {lutResourceError,lutHash,parseLutBytes,readLutResource} from './lut-resource-validation.ts';
+import {lutResourceError,lutHash,parseLutBytes} from './lut-resource-validation.ts';
+import {readLutResource} from './project-lut-reader.ts';
 import {isLookPackBytes,parseLookPackBytes} from './look-pack.ts';
 
 export interface LookPackInspectRuntime {ownsLock():boolean;assertReadable():void}
@@ -20,7 +22,7 @@ export function createLookPackInspectionServices(store:{db:DatabaseSync},{runtim
     const owned=():void=>{runtime.assertReadable();if(signal?.aborted||context.signal?.aborted||!runtime.ownsLock())throw lutResourceError('LUT_OWNER_REQUIRED',503);};
     owned();const input=assertLookPackInspectInput(value);
     const projectOwned=():void=>{
-      const project=db.prepare("SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM main.projects WHERE id=?").get(input.projectId);
+      const project=db.prepare(`SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 16384 THEN data END AS data FROM ${isProjectLayout(db)?'project':'main'}.projects WHERE id=?`).get(input.projectId);
       if(!project)throw lutResourceError('LUT_NOT_FOUND',404);
       let projectData:unknown;
       try{if(typeof project.data!=='string')throw Error();projectData=JSON.parse(project.data);}catch{throw lutResourceError();}
@@ -28,7 +30,7 @@ export function createLookPackInspectionServices(store:{db:DatabaseSync},{runtim
     };
     projectOwned();
     const resource=readLutResource(db,input.projectId,input.lutId);
-    const cell=db.prepare(`SELECT CASE WHEN typeof(content)='blob' AND length(content) BETWEEN 1 AND ${LUT_RESOURCE_LIMITS.sourceBytes} THEN content END AS content FROM main.project_lut_resources WHERE projectId=? AND id=?`).get(input.projectId,input.lutId);
+    const cell=db.prepare(`SELECT CASE WHEN typeof(content)='blob' AND length(content) BETWEEN 1 AND ${LUT_RESOURCE_LIMITS.sourceBytes} THEN content END AS content FROM ${isProjectLayout(db)?'project':'main'}.project_lut_resources WHERE projectId=? AND id=?`).get(input.projectId,input.lutId);
     const bytes=cell?.content;
     if(!(bytes instanceof Uint8Array)||bytes.length!==resource.sizeBytes||lutHash(bytes)!==resource.sha256)throw lutResourceError();
     const cube=parseLutBytes(bytes);

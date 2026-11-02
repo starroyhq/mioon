@@ -6,6 +6,13 @@ import type {DatabaseSync} from 'node:sqlite';
 
 type PreferencesRow = {revision: number;state: string};
 interface PreferencesStore {db: DatabaseSync;tx: <T>(callback: ()=>T)=>T;get: (table: string,id: string)=>unknown}
+/** App-level persistence selected only by the trusted server composition.
+ * Registration is checked without acquiring a project's connection. */
+export interface ApplicationWorkspacePreferences {
+  readonly db:DatabaseSync;
+  tx<T>(callback:()=>T):T;
+  hasProject(projectId:string):boolean;
+}
 
 // This is a renderer-only whitelist, deliberately separate from operation
 // schemas and project/timeline records. Free text and request recovery IDs do
@@ -108,11 +115,11 @@ export function parseWorkspacePreferencesState(value: unknown): Record<string, u
   };
 }
 
-export function createWorkspacePreferences(store: PreferencesStore) {
-  const {db, tx} = store;
+export function createWorkspacePreferences(store: PreferencesStore, {application}: {application?:ApplicationWorkspacePreferences} = {}) {
+  const {db, tx} = application ?? store;
   const requireProject = (projectId: string): void => {
     id(projectId, ['projectId'], false);
-    if (!store.get('projects', projectId)) throw new AppError('NOT_FOUND', '找不到项目', 404, {projectId});
+    if (application ? !application.hasProject(projectId) : !store.get('projects', projectId)) throw new AppError('NOT_FOUND', '找不到项目', 404, {projectId});
   };
   const current = (projectId: string): PreferencesRow|undefined => db.prepare('SELECT revision,state FROM workspace_preferences WHERE projectId=?').get(projectId) as PreferencesRow|undefined;
   // Normalize legacy v1 records in memory, without changing their stored bytes
@@ -132,7 +139,7 @@ export function createWorkspacePreferences(store: PreferencesStore) {
       if (Buffer.byteLength(state) > MAX_WORKSPACE_PREFERENCES_BYTES) invalid(['state'], 'Preferences are too large');
       const identity=freezeRestoreInput({projectId,expectedRevision,state});
       const apply=()=>tx(() => {
-        refuseRestoredOperation(store as never,'workspace.preferences.put',identity);
+        if(!application)refuseRestoredOperation(store as never,'workspace.preferences.put',identity);
         requireProject(projectId);
         const previous = current(projectId), revision = previous?.revision ?? 0;
         // Only an exact retry of the most recent accepted write is replayable.
@@ -146,7 +153,7 @@ export function createWorkspacePreferences(store: PreferencesStore) {
         else db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, next.revision, state);
         return result(projectId, next);
       });
-      if(!getWorkspaceRestoreContext(store))return apply();
+      if(application||!getWorkspaceRestoreContext(store))return apply();
       assertWorkspaceRestoreOrigin(store as never,context as unknown as {expectedWorkspaceOrigin?: unknown});
       return withRestoreInvocation(store as never,'workspace.preferences.put',identity,{signal:context.signal},apply);
     },

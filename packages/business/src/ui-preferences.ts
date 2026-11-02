@@ -5,6 +5,8 @@ import {calculateWorkspaceScope} from '../../contracts/src/workspace-scope.ts';
 import {DEFAULT_UI_PREFERENCES,UI_PREFERENCES_LIMITS,uiPreferencesPutSchema,uiPreferencesDiskSchema,normalizeUiPreferences,uiPreferencesSchema,uiPreferencesProjectIdSchema,uiPreferencesOpenedAtSchema} from '../../contracts/src/ui-preferences.ts';
 import type {UiPreferences,UiPreferencesResponse} from '../../contracts/src/ui-preferences.ts';
 import type {LocalDraftStorage} from './local-drafts.ts';
+import type {AppDocumentStore} from './app-db/stores.ts';
+import {validateCompanionScope} from './companion-scope.ts';
 
 export const UI_PREFERENCES_FILENAME='ui-preferences-v1.json';
 const errors={
@@ -23,6 +25,7 @@ export class UiPreferencesError extends Error{
 function fail(code:Code):never{throw new UiPreferencesError(code);}
 interface Options{
   root:string;channel?:'web'|'production'|'development';storage:LocalDraftStorage;signal?:AbortSignal;
+  databaseFile?:string;documents?:Pick<AppDocumentStore,'read'|'write'>;
   guards:{ownsLock():boolean;isReadOnly():boolean;hasProject(projectId:string):boolean};now?:()=>string;
 }
 interface Disk{
@@ -40,12 +43,12 @@ function plain(value:unknown,depth=0):void{
 
 /** Synchronous private companion writes share the backend's workspace lock.
  * Global appearance never lives in a project's layout/CAS record. */
-export function createUiPreferences({root,channel='web',storage,guards,signal,now=()=>new Date().toISOString()}:Options){
+export function createUiPreferences({root,channel='web',storage,guards,signal,now=()=>new Date().toISOString(),databaseFile,documents}:Options){
   if(!path.isAbsolute(root)||!['web','production','development'].includes(channel))fail('UI_PREFERENCES_VALIDATION');
   const file=path.join(root,UI_PREFERENCES_FILENAME);let establishedScope:string|undefined;
   function owned():void{if(signal?.aborted||!guards.ownsLock())fail('UI_PREFERENCES_UNAVAILABLE');}
   function scope():string{
-    owned();const directory=storage.validatePrivateDirectory(root),db=storage.validateManagedFile(path.join(root,'workbench.sqlite'),{root});
+    owned();const {directory,db}=validateCompanionScope(root,storage,databaseFile);
     if(!directory||!db)fail('UI_PREFERENCES_UNAVAILABLE');
     const current=calculateWorkspaceScope({root,channel,directory,db});
     if(establishedScope!==undefined&&establishedScope!==current)fail('UI_PREFERENCES_SCOPE_MISMATCH');establishedScope=current;return current;
@@ -53,9 +56,10 @@ export function createUiPreferences({root,channel='web',storage,guards,signal,no
   function safe<T>(fn:()=>T):T{try{return fn();}catch(error){if(error instanceof UiPreferencesError)throw error;throw new UiPreferencesError('UI_PREFERENCES_UNAVAILABLE');}}
   function read():Disk{
     const workspaceScope=scope(),empty:Disk={version:1,workspaceScope,revision:0,preferences:{...DEFAULT_UI_PREFERENCES},recentOpened:{},recoveredDefaults:false};
-    const bytes=storage.readPrivateFile(file,{root,allowMissing:true,private:true,maxBytes:UI_PREFERENCES_LIMITS.fileBytes});
+    const document=documents?.read(UI_PREFERENCES_FILENAME);
+    const bytes=documents?(document===null?null:Buffer.from(document as string,'utf8')):storage.readPrivateFile(file,{root,allowMissing:true,private:true,maxBytes:UI_PREFERENCES_LIMITS.fileBytes});
     if(bytes===null)return empty;
-    if(!Buffer.isBuffer(bytes))fail('UI_PREFERENCES_UNAVAILABLE');
+    if(!Buffer.isBuffer(bytes)||bytes.length>UI_PREFERENCES_LIMITS.fileBytes)fail('UI_PREFERENCES_UNAVAILABLE');
     let value:unknown;try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{return {...empty,recoveredDefaults:true};}
     if(value&&typeof value==='object'&&!Array.isArray(value)){
       const metadata=value as Record<string,unknown>;
@@ -78,7 +82,9 @@ export function createUiPreferences({root,channel='web',storage,guards,signal,no
     owned();if(guards.isReadOnly())fail('UI_PREFERENCES_READ_ONLY');if(disk.workspaceScope!==scope())fail('UI_PREFERENCES_SCOPE_MISMATCH');
     const {recoveredDefaults:_recovered,...saved}=disk,bytes=JSON.stringify(saved);
     if(Buffer.byteLength(bytes)>UI_PREFERENCES_LIMITS.fileBytes)fail('UI_PREFERENCES_LIMIT');
-    storage.writePrivateFileAtomic(file,bytes,{root,private:true,maxBytes:UI_PREFERENCES_LIMITS.fileBytes});owned();scope();
+    if(documents)documents.write(UI_PREFERENCES_FILENAME,bytes);
+    else storage.writePrivateFileAtomic(file,bytes,{root,private:true,maxBytes:UI_PREFERENCES_LIMITS.fileBytes});
+    owned();scope();
   }
   return {
     get():UiPreferencesResponse{return safe(()=>response(read()));},

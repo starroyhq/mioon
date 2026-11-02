@@ -20,6 +20,8 @@ import {
 import type {DatabaseKind} from './schema/databases.ts';
 import {compareManifest, readSchemaManifest} from './schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from './schema/manifest.ts';
+import {projectFileOwnerKind, registerProjectFiles, releaseProjectFiles} from './held-files.ts';
+export {isProjectDatabase, isProjectFileHeld} from './held-files.ts';
 
 const HISTORY = PROJECT_DATABASE_NAMES.history;
 const PROJECT = PROJECT_DATABASE_NAMES.project;
@@ -107,24 +109,8 @@ const existingFile = (file: string): string => `${pathToFileURL(file).href}?mode
  * Closing any other descriptor of such a file drops this process's POSIX locks
  * on it (SQLite's own connections share them safely), so the kernel never
  * reads a held file with fs: a second open fails before touching it. */
-const heldFiles = new Map<string, {readonly db: DatabaseSync; readonly kind: DatabaseKind}>();
 const identityOf = (info: BigIntStats, file: string): string => info.ino ? `${info.dev}:${info.ino}` : `path:${file}`;
 type HeldFile = readonly [key: string, kind: DatabaseKind];
-
-/** Whether this process still holds this project, history or cache file.
- * The caller supplies its lstat identity, so aliases and hard links match
- * without opening another descriptor and dropping SQLite's POSIX locks.
- * File ID 0 conveys no identity; the kernel's path fallback is not exposed. */
-export function isProjectFileHeld(identity: ProjectFileIdentity): boolean {
-  return identity.ino !== '0' && heldFiles.get(`${identity.dev}:${identity.ino}`)?.db.isOpen === true;
-}
-
-/** Only a live connection registered by a successful kernel open qualifies.
- * Store fields or another SQLite connection cannot establish ownership. */
-export function isProjectDatabase(db: DatabaseSync): boolean {
-  for (const held of heldFiles.values()) if (held.db === db && held.db.isOpen) return true;
-  return false;
-}
 
 // ---------------------------------------------------------------------------
 // Creating
@@ -489,15 +475,15 @@ export function openProjectConnection({projectFile: requested, locate, checkCopy
   if (!info) throw projectFileError('PROJECT_MISSING', describe('project', 'missing'));
   if (!info.isFile()) throw invalid('project', 'not-a-regular-file');
   const projectKey = identityOf(info, projectFile);
-  const held = heldFiles.get(projectKey);
-  if (held?.db.isOpen) throw held.kind === 'project' ? projectFileError('PROJECT_LOCKED', describe('project', 'locked')) : invalid('project', 'not-a-project-file');
+  const held = projectFileOwnerKind(projectKey);
+  if (held !== undefined) throw held === 'project' ? projectFileError('PROJECT_LOCKED', describe('project', 'locked')) : invalid('project', 'not-a-project-file');
   const identity = inspectProjectFile(projectFile);
   checkCopy?.({projectId: identity.projectId, projectFile});
   const location = locate(identity.projectId);
   const localDir = path.resolve(location.localDir), cacheDir = path.resolve(location.cacheDir), tempDir = path.resolve(location.tempDir);
   for (const directory of [localDir, cacheDir, tempDir]) ensurePrivateDirectory(directory, {create: true});
   const {db, held: files, historyState} = attachDatabases(projectFile, projectKey, identity, path.join(localDir, PROJECT_HISTORY_FILE), path.join(cacheDir, PROJECT_CACHE_FILE));
-  for (const [key, kind] of files) heldFiles.set(key, {db, kind});
+  registerProjectFiles(db, files);
   removeUnusedSuperJournals(localDir);
   let closed = false;
   return {
@@ -511,7 +497,7 @@ export function openProjectConnection({projectFile: requested, locate, checkCopy
       try {
         db.close();
       } finally {
-        for (const [key] of files) if (heldFiles.get(key)?.db === db) heldFiles.delete(key);
+        releaseProjectFiles(db, files);
       }
     },
   };
@@ -567,8 +553,8 @@ export function recoverProjectFile(requested: string): ProjectFileRecovery {
   }
   if (!info) return {state: 'missing'};
   if (!info.isFile()) return {state: 'invalid', reason: 'not-a-regular-file'};
-  const held = heldFiles.get(identityOf(info, projectFile));
-  if (held?.db.isOpen) return held.kind === 'project' ? {state: 'open-here'} : {state: 'invalid', reason: 'not-a-project-file'};
+  const held = projectFileOwnerKind(identityOf(info, projectFile));
+  if (held !== undefined) return held === 'project' ? {state: 'open-here'} : {state: 'invalid', reason: 'not-a-project-file'};
   let db: DatabaseSync | undefined;
   try {
     if (!isHotJournal(`${projectFile}-journal`)) return {state: 'clean'};

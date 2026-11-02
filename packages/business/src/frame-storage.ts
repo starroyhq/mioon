@@ -5,6 +5,7 @@ import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePri
 import {FRAME_LIMITS,FRAME_PROFILE_ID,FRAME_SELECTION_RULE,frameReceiptSchema,canonicalFrameInput as canonical} from '../../contracts/src/frame-extraction.ts';
 import {validatePng as validatePngBytes} from './images/png.ts';
 import type {PngMetadata} from './images/png.ts';
+import {storeDirectories} from './store-layout.ts';
 
 export interface FrameSourceSnapshot {
  readonly assetId: string;
@@ -79,14 +80,14 @@ const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&
  * PNG never authorizes recovery. Reads do not repair storage or make directories.
  * Every path is derived from an accepted task or a strictly validated receipt. */
 export function createFrameStorage(store: {readonly root: string},{validatePng}: {readonly validatePng: (bytes: unknown,options?: {width?: unknown; height?: unknown; signal?: AbortSignal; opaque?: boolean})=>Promise<PngMetadata>}): FrameStorage {
- const root=store.root,directory=path.join(root,'frame-staging');
- function syncDirectory(value: string): void {
-  const before=validateManagedDirectory(value,{root});let fd;
+ const {projectDir:root,tempDir:stagingRoot}=storeDirectories(store),directory=path.join(stagingRoot,'frame-staging');
+ function syncDirectory(value: string,ownerRoot=root): void {
+  const before=validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
    fd=openSync(value,constants.O_RDONLY|constants.O_NOFOLLOW);const opened=fstatSync(fd);
    if(!opened.isDirectory()||before.dev!==opened.dev||before.ino!==opened.ino)throw failure();
-   fsyncSync(fd);const after=validateManagedDirectory(value,{root});if(!after||after.dev!==opened.dev||after.ino!==opened.ino)throw failure();
+   fsyncSync(fd);const after=validateManagedDirectory(value,{root:ownerRoot});if(!after||after.dev!==opened.dev||after.ino!==opened.ino)throw failure();
   }finally{if(fd!==undefined)closeSync(fd);}
  }
  function paths(task: FrameStorageTask): {png: string; receipt: string} {
@@ -103,8 +104,8 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
   return receipt;
  }
  function readReceipt(task: FrameStorageTask): FrameReceipt | null {
-  if(!validateManagedDirectory(directory,{root,allowMissing:true,private:true}))return null;
-  const raw=readPrivateFile(paths(task).receipt,{root,allowMissing:true,maxBytes:FRAME_LIMITS.receiptBytes,encoding:'utf8'});
+  if(!validateManagedDirectory(directory,{root:stagingRoot,allowMissing:true,private:true}))return null;
+  const raw=readPrivateFile(paths(task).receipt,{root:stagingRoot,allowMissing:true,maxBytes:FRAME_LIMITS.receiptBytes,encoding:'utf8'});
   if(raw===null)return null;if(typeof raw!=='string')throw failure();
   let value: unknown;try{value=JSON.parse(raw);}catch{throw failure();}return validateReceipt(task,value);
  }
@@ -112,7 +113,7 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
   check();validateReceipt(task,receipt);
   // The complete manifest remains required even after final media publication.
   const manifest=readReceipt(task);if(!manifest||canonical(manifest)!==canonical(receipt))throw failure();
-  const final=path.join(root,'media',`${receipt.assetId}.png`),staged=readPrivateFile(paths(task).png,{root,allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
+  const final=path.join(root,'media',`${receipt.assetId}.png`),staged=readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
   const bytes=staged??readPrivateFile(final,{root,allowMissing:true,maxBytes:FRAME_LIMITS.resultBytes});
   if(!bytes||typeof bytes==='string'||bytes.length!==receipt.byteLength||digest(bytes)!==receipt.sha256)throw failure();
   await validatePng(bytes,{width:receipt.width,height:receipt.height,opaque:true,signal});check();
@@ -130,9 +131,9 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
    sourceAssetId:source.assetId,sourceHash:source.sha256,sourceFrame:task.snapshot.requested.sourceFrame,fps:30,
    profileId:FRAME_PROFILE_ID,selectionRule:FRAME_SELECTION_RULE,assetId:randomUUID(),sha256:digest(bytes),mimeType:'image/png',width,height,byteLength:bytes.length,
    probe:structuredClone(isRecord(provenance.probe)?provenance.probe:{})};
-  validateReceipt(task,receipt);check();ensurePrivateDirectory(directory,{create:true});validateManagedDirectory(directory,{root,private:true});syncDirectory(root);check();
-  writePrivateFileAtomic(paths(task).png,bytes,{root,maxBytes:FRAME_LIMITS.resultBytes,replace:false});syncDirectory(directory);check();
-  writePrivateFileAtomic(paths(task).receipt,canonical(receipt),{root,maxBytes:FRAME_LIMITS.receiptBytes,replace:false});syncDirectory(directory);return receipt;
+  validateReceipt(task,receipt);check();ensurePrivateDirectory(directory,{create:true});validateManagedDirectory(directory,{root:stagingRoot,private:true});syncDirectory(stagingRoot,stagingRoot);check();
+  writePrivateFileAtomic(paths(task).png,bytes,{root:stagingRoot,maxBytes:FRAME_LIMITS.resultBytes,replace:false});syncDirectory(directory,stagingRoot);check();
+  writePrivateFileAtomic(paths(task).receipt,canonical(receipt),{root:stagingRoot,maxBytes:FRAME_LIMITS.receiptBytes,replace:false});syncDirectory(directory,stagingRoot);return receipt;
  }
  async function publish(task: FrameStorageTask,receipt: FrameReceipt,check: ()=>void,{signal}: {readonly signal?: AbortSignal}={}): Promise<FramePublishedResult> {
   const {bytes,final}=await verify(task,receipt,check,{signal});check();
@@ -141,6 +142,6 @@ export function createFrameStorage(store: {readonly root: string},{validatePng}:
   else{check();writePrivateFileAtomic(final,bytes,{root,maxBytes:FRAME_LIMITS.resultBytes,replace:false});}
   syncDirectory(path.dirname(final));check();return {relativePath:`media/${receipt.assetId}.png`,sizeBytes:receipt.byteLength};
  }
- function discardStagedPng(task: FrameStorageTask,check: ()=>void): void {check();removePrivateFile(paths(task).png,{root,maxBytes:FRAME_LIMITS.resultBytes});}
+ function discardStagedPng(task: FrameStorageTask,check: ()=>void): void {check();removePrivateFile(paths(task).png,{root:stagingRoot,maxBytes:FRAME_LIMITS.resultBytes});}
  return {stage,readReceipt,validateReceipt,verify,publish,discardStagedPng};
 }

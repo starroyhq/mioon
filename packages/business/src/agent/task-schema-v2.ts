@@ -1,11 +1,20 @@
 import {agentTaskRunSchema,agentTaskStepSchema,agentTaskChangeSchema,agentTaskEventSchema,agentTaskReceiptSchema,agentTaskPolicySchema} from '../../../contracts/src/agent-tasks-v2.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {validateAgentTaskModelRequestReferences} from './task-model-requests-v2.ts';
+import {isProjectDatabase} from '../project-file/held-files.ts';
+
+/** These definitions and validators describe a single legacy workspace. The
+ * project kernel installs and validates its own three-schema manifest and TEMP
+ * target triggers; legacy restoration must never rewrite that live structure. */
+function legacyWorkspace(db:DatabaseSync):void{
+ if(isProjectDatabase(db))throw new TypeError('Agent task workspace schema operations do not accept project databases');
+}
 
 export const AGENT_TASK_TABLES=Object.freeze(['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_target_revisions_v2','agent_task_edit_claims_v2','agent_task_edit_owners_v2','agent_task_edit_receipts_v2','agent_task_job_origins_v2','agent_task_imports_v2'] as const);
 const revisions='agent_task_target_revisions_v2';
 function bump(project:string,kind:string,id:string):string{return `INSERT INTO ${revisions}(projectId,kind,targetId,revision) VALUES(${project},'${kind}',${id},1) ON CONFLICT(projectId,kind,targetId) DO UPDATE SET revision=revision+1;`;}
 export function installAgentTaskDefinitionsV2(db:DatabaseSync):void{
+ legacyWorkspace(db);
  db.exec(`CREATE TABLE agent_task_runs_v2(id TEXT PRIMARY KEY NOT NULL,projectId TEXT NOT NULL REFERENCES projects(id),requestId TEXT NOT NULL UNIQUE,digest TEXT NOT NULL CHECK(length(digest)=64),status TEXT NOT NULL,revision INTEGER NOT NULL CHECK(typeof(revision)='integer' AND revision BETWEEN 0 AND 9007199254740991),data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=2097152));
  CREATE INDEX agent_task_runs_project_v2 ON agent_task_runs_v2(projectId);
  CREATE TABLE agent_task_steps_v2(id TEXT PRIMARY KEY NOT NULL,runId TEXT NOT NULL REFERENCES agent_task_runs_v2(id),projectId TEXT NOT NULL REFERENCES projects(id),position INTEGER NOT NULL,status TEXT NOT NULL,data TEXT NOT NULL CHECK(json_valid(data) AND length(CAST(data AS BLOB))<=2097152),UNIQUE(runId,position));
@@ -52,6 +61,7 @@ export function installAgentTaskDefinitionsV2(db:DatabaseSync):void{
 }/* installAgentTaskDefinitionsV2 */
 export interface AgentTaskRowValidationOptions {allowConversations?:boolean;allowInteractions?:boolean;allowRequestReferences?:boolean;allowAnswers?:boolean;maxBytes?:number}
 export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false,allowInteractions=false,allowRequestReferences=false,allowAnswers=false,maxBytes=64*1024*1024}:AgentTaskRowValidationOptions={}):void{
+ legacyWorkspace(db);
  for(const table of ['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2'])if(db.prepare(`SELECT 1 FROM ${table} WHERE NOT json_valid(data) OR length(CAST(data AS BLOB))>2097152 LIMIT 1`).get())throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  const invalid=():never=>{throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});};
  if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>256*1024*1024)invalid();
@@ -79,6 +89,7 @@ export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=fals
 /** Restoration freezes captured revision evidence while its legacy local
  * editing capability continues independently of the disabled v2 harness. */
 export function dropAgentTaskTargetTriggersV2(db:DatabaseSync):void{
+ legacyWorkspace(db);
  for(const row of db.prepare("SELECT name FROM main.sqlite_schema WHERE type='trigger' AND name GLOB 'agent_target_*_v2'").all()){
   if(typeof row.name!=='string'||!/^agent_target_[a-z_]+_v2$/u.test(row.name))throw new Error('Invalid target trigger identity');
   db.exec(`DROP TRIGGER "${row.name}"`);
