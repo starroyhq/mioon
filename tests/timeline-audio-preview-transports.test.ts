@@ -1,3 +1,4 @@
+import {projectApiPath, projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {TestContext} from 'node:test';
 import type {Readable} from 'node:stream';
 import type {OperationDefinition} from '@mioon/client';
@@ -155,9 +156,9 @@ async function fixture(t: TestContext) {
     },
   };
 }
-const pcmUrl = (base: string, input: object) => `${base}/api/timeline-audio-preview/pcm?${new URLSearchParams(input as unknown as Record<string, string>)}`;
+const pcmUrl = (base: string, input: object) => `${base}${projectApiPath((input as {projectId: string}).projectId, 'timeline-audio-preview', 'pcm')}?${new URLSearchParams(input as unknown as Record<string, string>)}`;
 async function rpc(url: string, input: unknown) {
-  const response = await fetch(url + '/api/rpc', {method: 'POST', headers: {authorization: 'Bearer ' + token, 'content-type': 'application/json'},
+  const response = await fetch(url + projectRpcPath((input as {projectId: string}).projectId), {method: 'POST', headers: {authorization: 'Bearer ' + token, 'content-type': 'application/json'},
     body: JSON.stringify({operation, input}), signal: AbortSignal.timeout(15000)});
   return {response, body: await response.json() as RpcEnvelope<AudioPreviewPlan>};
 }
@@ -236,7 +237,7 @@ test('real fixed PCM endpoint rejects unauthorized, foreign, stale, malformed an
     ['repeated query', validUrl + '&startFrame=5', null, 400, 'AUDIO_PREVIEW_INVALID_INPUT'],
     ['noncanonical integer', pcmUrl(f.backend.url, {...input, startFrame: '05'}), null, 400, 'AUDIO_PREVIEW_INVALID_INPUT'],
     ['missing field', pcmUrl(f.backend.url, Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'clipId'))), null, 400, 'AUDIO_PREVIEW_INVALID_INPUT'],
-    ['path-selected endpoint', f.backend.url + '/api/timeline-audio-preview/pcm/private.wav?' + new URLSearchParams(input as unknown as Record<string, string>), null, 404, 'NOT_FOUND'],
+    ['path-selected endpoint', f.backend.url + projectApiPath(f.project.id, 'timeline-audio-preview', 'pcm', 'private.wav') + '?' + new URLSearchParams(input as unknown as Record<string, string>), null, 404, 'NOT_FOUND'],
     ['wrong method', validUrl, {method: 'POST', headers: {authorization: 'Bearer ' + token}}, 405, 'METHOD_NOT_ALLOWED'],
     ['body-bearing GET', validUrl, {method: 'GET', headers: {authorization: 'Bearer ' + token, 'content-length': '1'}}, 400, 'AUDIO_PREVIEW_INVALID_INPUT'],
   ];

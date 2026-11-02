@@ -1,4 +1,6 @@
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -55,7 +57,7 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
     return {status: response.status, body: envelope(await response.json())};
   }
   async function rpc(operation: string, input: Record<string, unknown> = {}) {
-    const response = await http('/api/rpc', 'POST', {operation, input}); assert.equal(response.status, 200, JSON.stringify(response.body)); return data(response.body);
+    const response = await http(rpcPathFor(operation, input), 'POST', {operation, input}); assert.equal(response.status, 200, JSON.stringify(response.body)); return data(response.body);
   }
   async function cli(operation: string, input: Record<string, unknown> = {}) {
     const child = spawn(process.execPath, [path.join(repo, 'apps/cli/src/index.ts'), ...operation.split('.'), '--input', JSON.stringify(input)], {cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe']});
@@ -108,7 +110,7 @@ test('Anthropic settings, targets and scoped authority stay consistent across re
   await grant('mcp', 'typed_chat_only'); await grant('cli', 'project_agent');
 
   const project = await rpc('project.create', {name: 'Offline native protocol authority'}); assert.ok(object(project) && typeof project.id === 'string');
-  const projectId = project.id, prefix = `/api/agent/tasks/v2/${projectId}`;
+  const projectId = project.id, prefix = projectApiPath(projectId, 'agent', 'tasks', 'v2');
   const beforeAttempt = await targets();
   attemptedGrant = {requestId: randomUUID(), expectedRevision: beforeAttempt.revision, expectedSettingsRevision: beforeAttempt.currentTarget.settingsRevision,
     destination: beforeAttempt.currentTarget.destination, model: beforeAttempt.currentTarget.model, scope: 'project_inspection'};

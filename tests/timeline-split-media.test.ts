@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
 import type {McpData,WireResult} from './helpers/strict-timeline-transport-types.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -68,22 +70,22 @@ async function fixture(t: test.TestContext) {
     await pause(40);
   }
   assert.ok(ready, `Backend startup timed out: ${records.server.stderr}`);
-  async function rpc<N extends string,I extends Record<string,unknown>=Record<string,never>,E extends string|undefined=undefined>(operation: N, input: I = {} as I):Promise<WireResult<ServiceResponse<N>,E>> {
-    const response = await fetch(base + '/api/rpc', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation, input }) });
+  async function rpc<N extends string,I extends Record<string,unknown>=Record<string,never>,E extends string|undefined=undefined>(operation: N, input: I = {} as I, entityProjectId?: string):Promise<WireResult<ServiceResponse<N>,E>> {
+    const response = await fetch(base + rpcPathFor(operation,input,entityProjectId), { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation, input }) });
     const body = await response.json();
     records.http.push((({ operation, input: (input as {dataBase64?:string}).dataBase64 ? { ...input, dataBase64: `[${((input as {dataBase64?:string}).dataBase64)!.length} base64 characters]` } : input, status: response.status, body }) as unknown as Parameters<typeof records.http.push>[0]));
     assert.equal(response.status, 200, `${operation}: ${JSON.stringify(body)}`);
     assert.equal(body.ok, true, JSON.stringify(body));
     return body.data;
   }
-  async function render(projectId: unknown, timeline: { revision: unknown; }, name: string) {
+  async function render(projectId: string, timeline: { revision: unknown; }, name: string) {
     const requested = await rpc('timeline.render', { projectId, expectedRevision: timeline.revision, requestId: randomUUID(), purpose: 'export' });
     assert.deepEqual(requested.snapshot.timeline, timeline);
     let job = requested;
     const deadline = Date.now() + 180_000;
-    while (!['failed', 'succeeded'].includes(job.status) && Date.now() < deadline) { await pause(100); job = await rpc('export.get', { exportId: requested.id }) as FixtureExport; }
+    while (!['failed', 'succeeded'].includes(job.status) && Date.now() < deadline) { await pause(100); job = await rpc('export.get', { exportId: requested.id }, projectId) as FixtureExport; }
     assert.equal(job.status, 'succeeded', JSON.stringify(job));
-    const response = await fetch(base + job.url, { headers: { authorization: `Bearer ${token}` } });
+    const response = await fetch(base + projectMediaPath(job.projectId,job.assetId!), { headers: { authorization: `Bearer ${token}` } });
     assert.equal(response.status, 200);
     const file = path.join(evidence, name), bytes = Buffer.from(await response.arrayBuffer());
     await writeFile(file, bytes);

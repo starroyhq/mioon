@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {TestCatalog as DiscoverySchemaResult} from './helpers/strict-timeline-transport-types.ts';
 import type {TestOperationDefinition as OperationDefinition} from './helpers/strict-timeline-transport-types.ts';
@@ -234,7 +235,7 @@ async function fixture(t: test.TestContext) {
   const use = <T>(read: (db: DatabaseSync) => T): T => inspect(projectId, read);
   await open();
   const rpc = async (name?: string, value?: unknown, {authenticated = true, expectedWorkspaceOrigin}:{authenticated?:boolean;expectedWorkspaceOrigin?:string} = {}) => {
-    const result = await fetch((server)!.url + '/api/rpc', {method: 'POST', signal: AbortSignal.timeout(5_000),
+    const result = await fetch((server)!.url + projectRpcPath(projectId), {method: 'POST', signal: AbortSignal.timeout(5_000),
       headers: {'content-type': 'application/json', ...(authenticated ? {authorization: `Bearer ${token}`} : {})},
       body: JSON.stringify({operation: name, input: value, ...(expectedWorkspaceOrigin ? {expectedWorkspaceOrigin} : {})})});
     return {status: result.status, envelope: await result.json()};

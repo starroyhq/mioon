@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -54,7 +55,7 @@ test('settings HTTP keeps token/cookie auth, rejects hostile host/origin, disall
 test('web settings store metadata only, survive restart, expire keys, preserve business content and stay absent from RPC', async t => {
   const f = await fixture(t), marker = 'SYNTHETIC_AGENT_HTTP_SECRET_DO_NOT_PERSIST';
   const project = (await f.request('/api/rpc', {method: 'POST', payload: {operation: 'project.create', input: {name: 'Synthetic existing project'}}})).body.data;
-  const before = (await f.request('/api/rpc', {method: 'POST', payload: {operation: 'project.get', input: {projectId: project.id}}})).body;
+  const before = (await f.request(projectRpcPath(project.id), {method: 'POST', payload: {operation: 'project.get', input: {projectId: project.id}}})).body;
   const initial = await f.request();
   assert.equal(initial.headers.get('cache-control'), 'no-store');
   assert.equal(initial.body.data.presets.length, 10);
@@ -70,7 +71,7 @@ test('web settings store metadata only, survive restart, expire keys, preserve b
   await f.restart();
   const restarted = (await f.request()).body.data;
   assert.equal(restarted.revision, 1); assert.equal(restarted.secret.configured, false); assert.equal(restarted.storage.sessionScope, 'server');
-  assert.deepEqual((await f.request('/api/rpc', {method: 'POST', payload: {operation: 'project.get', input: {projectId: project.id}}})).body, before);
+  assert.deepEqual((await f.request(projectRpcPath(project.id), {method: 'POST', payload: {operation: 'project.get', input: {projectId: project.id}}})).body, before);
   for (const operation of ['agent.settings.get', 'agent.settings.put', 'agent.secret.get'] as const) {
     const response = await f.request('/api/rpc', {method: 'POST', payload: {operation, input: {}}});
     assert.equal(response.status, 404); assert.equal(response.body.error.code, 'UNKNOWN_OPERATION');

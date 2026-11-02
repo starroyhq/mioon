@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {Readable} from 'node:stream';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -190,7 +191,7 @@ async function fixture(t: import('node:test').TestContext): Promise<WireFixture>
   };
   const env = (): Record<string, string> => ({MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_DISPOSITION_WIRE_ALLOWED_ORIGIN: url, MIOON_DISPOSITION_WIRE_AUDIT: auditPath});
   async function request(operation: string, input: Record<string, unknown>, expectedError?: string, base: string = url, authorization = `Bearer ${TOKEN}`): Promise<{raw: string; envelope: EnvelopeView}> {
-    const response = await fetch(base + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
+    const response = await fetch(base + rpcPathFor(operation, input, IDS.project), {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
       headers: {'content-type': 'application/json', ...(authorization ? {authorization} : {})}, body: JSON.stringify({operation, input})});
     const raw = await response.text(), envelope = JSON.parse(raw) as EnvelopeView; noPrivate(raw);
     assert.equal(envelope.ok, !expectedError, raw);

@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {FixtureExport} from './helpers/strict-timeline-core-types.ts';
@@ -184,7 +186,7 @@ async function fixture(t: test.TestContext) {
       }
       const raw = Buffer.concat(chunks).toString('utf8'), body = JSON.parse(raw);
       submissions.push(body);
-      const upstream = await fetch(backend.url + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
+      const upstream = await fetch(backend.url + request.url!, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
         headers: {authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json'}, body: raw});
       const bytesOut = await responseBytes(upstream), text = bytesOut.toString('utf8');
       observed.push({body, text, status: upstream.status});
@@ -216,7 +218,7 @@ async function fixture(t: test.TestContext) {
   };
   official = await officialMcp(t, url);
   const raw = async (operation: unknown, input: unknown) => {
-    const response = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
+    const response = await fetch(url + rpcPathFor(String(operation),input,project.id), {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
       headers: {authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
     const body = JSON.parse((await responseBytes(response)).toString('utf8'));
     assert.equal(response.ok, body.ok); noPrivate(body); return body;
@@ -339,10 +341,12 @@ test('actual HTTP CLI and official MCP preserve named and omitted delivery ident
     }
   });
   const completed = await w.finished(original!.data.id);
+  assert.ok(completed.assetId, 'a successful named render publishes an asset');
+  const completedAssetId = completed.assetId;
   assert.deepEqual(completed.snapshot, original!.data.snapshot);
   const artifact = (await w.client.rpc('asset.list', {projectId: w.project.id})).find(asset => asset.id === completed.assetId);
   assert.equal(artifact!.mimeType, 'video/mp4');
-  const downloadPath = `/media/${completed.assetId}?download=1&exportId=${completed.id}`;
+  const downloadPath = projectMediaPath(w.project.id,completedAssetId)+`?download=1&exportId=${completed.id}`;
   const downloaded = await w.media(downloadPath); assert.equal(downloaded.response.status, 200);
   assert.equal(downloaded.response.headers.get('content-type'), 'video/mp4');
   assert.equal(sha256(downloaded.bytes), artifact!.sha256);
@@ -357,10 +361,12 @@ test('actual HTTP CLI and official MCP preserve named and omitted delivery ident
   assert.equal(Object.hasOwn(legacy.data.snapshot, 'delivery'), false);
   const legacyReceipt = w.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(legacyInput.requestId)!.response);
   const legacyCompleted = await w.finished(legacy.data.id);
-  const legacyDownload = await w.media(`/media/${legacyCompleted.assetId}?download=1`);
+  assert.ok(legacyCompleted.assetId, 'a successful omitted-name render publishes an asset');
+  const legacyAssetId = legacyCompleted.assetId;
+  const legacyDownload = await w.media(projectMediaPath(w.project.id,legacyAssetId)+'?download=1');
   assert.equal(legacyDownload.response.status, 200);
   assert.equal(legacyDownload.response.headers.get('content-disposition'), 'attachment; filename="mioon.mp4"');
-  assert.equal((await w.media(`/media/${legacyCompleted.assetId}?download=1&exportId=${legacyCompleted.id}`)).response.status, 404);
+  assert.equal((await w.media(projectMediaPath(w.project.id,legacyAssetId)+`?download=1&exportId=${legacyCompleted.id}`)).response.status, 404);
 
   // Later timeline changes remove even the original source clip, while the
   // source asset remains owned and the historical frozen render stays readable.
@@ -401,7 +407,7 @@ test('actual HTTP CLI and official MCP preserve named and omitted delivery ident
     assert.equal(denied.response.status, 401); assert.equal(denied.response.headers.get('content-disposition'), null);
     for (const relative of [downloadPath + '&filename=caller.mp4', downloadPath + '&deliveryName=caller',
       downloadPath + `&exportId=${completed.id}`, downloadPath.replace('download=1', 'download=0'),
-      `/media/${w.source.id}?download=1&exportId=${completed.id}`, `/media/${completed.assetId}?download=1&exportId=${randomUUID()}`]) {
+      projectMediaPath(w.project.id,w.source.id)+`?download=1&exportId=${completed.id}`, projectMediaPath(w.project.id,completedAssetId)+`?download=1&exportId=${randomUUID()}`]) {
       const rejected = await w.media(relative); assert.equal(rejected.response.status, 404, relative);
       assert.equal(rejected.response.headers.get('content-disposition'), null);
       assert.notDeepEqual(rejected.bytes, downloaded.bytes);

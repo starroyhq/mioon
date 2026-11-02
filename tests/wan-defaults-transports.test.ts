@@ -76,8 +76,8 @@ async function fixture(t: TestContext, scenario: Scenario) {
       assert.equal(request.headers.authorization, `Bearer ${token}`);
       let raw=''; for await(const chunk of request) {raw+=String(chunk); if (Buffer.byteLength(raw)>16384) throw Error('Request overflow');}
       const body = JSON.parse(raw) as {operation:string; input:Record<string,unknown>}; captured.push(body);
-      // Raw HTTP posts to the legacy /api/rpc; the clients use the operation's own address.
-      assert.ok(request.url === '/api/rpc' || request.url === rpcPathFor(body.operation, body.input, project.id as string), request.url);
+      // All external transports use the operation's project address.
+      assert.equal(request.url, rpcPathFor(body.operation, body.input, project.id as string));
       const data = await services.call(body.operation, body.input);
       response.writeHead(200, {'content-type':'application/json'}); response.end(JSON.stringify({ok:true, data}));
     } catch(error) {
@@ -92,7 +92,7 @@ async function fixture(t: TestContext, scenario: Scenario) {
   const env: Record<string,string> = Object.fromEntries(['PATH','SystemRoot','WINDIR','TMPDIR','TEMP','TMP'].flatMap(key=>process.env[key]===undefined?[]:[[key,process.env[key] as string]]));
   Object.assign(env, {MIOON_BASE_URL:url, MIOON_TOKEN:token, MIOON_ENABLE_LIVE_PROVIDER:'0'});
   const httpSubmit = async(input:Record<string,unknown>): Promise<JobRecord>=>{
-    const response = await fetch(url+'/api/rpc', {method:'POST', headers:{authorization:`Bearer ${token}`, 'content-type':'application/json'},
+    const response = await fetch(url+rpcPathFor('generation.submit',input,project.id as string), {method:'POST', headers:{authorization:`Bearer ${token}`, 'content-type':'application/json'},
       body:JSON.stringify({operation:'generation.submit',input}), signal:AbortSignal.timeout(10000)});
     const body = await response.json() as Envelope; assert.equal(body.ok,true,JSON.stringify(body)); assert.equal(response.status,200); return body.data!;
   };

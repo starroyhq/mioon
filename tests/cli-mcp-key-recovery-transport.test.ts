@@ -80,7 +80,7 @@ async function fixture(t: TestContext, label: string, {business = false}: {busin
       requests.push(body);
       let status = mode?.status ?? 200, value = mode?.body;
       if (backend && !mode?.body) {
-        const upstream = await fetch(`${backend.url}/api/rpc`, {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: raw, signal: AbortSignal.timeout(5000)});
+        const upstream = await fetch(backend.url + request.url, {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: raw, signal: AbortSignal.timeout(5000)});
         status = upstream.status; value = await upstream.json();
       }
       wire.push({operation: body.operation, inputHash: hash(body.input), status, body: value});
@@ -146,7 +146,7 @@ async function fixture(t: TestContext, label: string, {business = false}: {busin
     const value = await response.json() as {ok?: boolean; data?: Record<string, unknown>}; assert.equal(value.ok, true); return value.data as Record<string, unknown>;
   }
   return {token, requests, wire, report, syntheticSecret() {const value = `synthetic-session-${randomBytes(32).toString('hex')}`; sensitive.push(value); return value;}, set(value: FaultMode) {mode = value;}, call, raw,
-    rpc: (operation: string, input: Record<string, unknown> = {}) => raw('/api/rpc', {operation, input})};
+    rpc: (operation: string, input: Record<string, unknown> = {}) => raw(rpcPathFor(operation, input), {operation, input})};
 }
 
 function uncertain(envelope: CallEnvelope, operation: string, requestId: string): void {

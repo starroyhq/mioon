@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -114,7 +115,7 @@ test('A3 official MCP SDK stdio initialize/list/call controls durable HTTP proje
   state = await call('project_get', { projectId: project.id }); assert.equal(state.shots.length, 3); assert.equal(state.versions.length, 4); assert.equal(state.shots.find(shot => shot.id === s1.id)?.selectedVersionId, versions[1].id); assert.equal(state.shots.find(shot => shot.id === s1.id)?.prompt, editedAgain.prompt);
   const exported = await call<{id: string}>('export_create', { projectId: project.id, requestId: randomUUID() });
   const end = Date.now() + 50_000; let finalExport: {status?: string; [key: string]: unknown} = {}; do { finalExport = await call('export_get', { projectId: project.id, exportId: exported.id }); if (['succeeded', 'failed'].includes(finalExport.status as string)) break; await pause(200); } while (Date.now() < end); assert.equal(finalExport.status, 'succeeded', JSON.stringify(finalExport));
-  const http = await fetch(base + '/api/rpc', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation: 'project.get', input: { projectId: project.id } }) }); const httpBody = await http.json() as {ok?: boolean; data?: unknown}; assert.equal(httpBody.ok, true); const mcpState = await call('project_get', { projectId: project.id }); assert.deepEqual(httpBody.data, mcpState);
+  const http = await fetch(base + projectRpcPath(project.id), { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ operation: 'project.get', input: { projectId: project.id } }) }); const httpBody = await http.json() as {ok?: boolean; data?: unknown}; assert.equal(httpBody.ok, true); const mcpState = await call('project_get', { projectId: project.id }); assert.deepEqual(httpBody.data, mcpState);
   assert.ok(traffic.some(record => record.direction === 'client-to-server' && record.message.method === 'initialize'));
   assert.ok(traffic.some(record => record.direction === 'client-to-server' && record.message.method === 'notifications/initialized'));
   assert.ok(traffic.some(record => record.direction === 'client-to-server' && record.message.method === 'tools/list'));

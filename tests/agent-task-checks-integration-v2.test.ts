@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -47,7 +48,7 @@ for(const restored of [false,true])test(`${restored?'restored':'ordinary'} check
   server=await startServer({dataDir:root,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks must not request a model');},inspectProject:received=>{inspect=received;}});
   // While the server runs, the database is read on its own connection.
   const before=inspect(saved.projectId,dumpDb),read=async(preflight=false)=>{
-   const response=await fetch(`${server!.url}/api/agent/tasks/v2/${saved.projectId}/${saved.runId}/checks${preflight?'?preflight=1':''}`,{headers:{Authorization:`Bearer ${server!.token}`}});
+   const response=await fetch(`${server!.url}${projectApiPath(saved.projectId,'agent','tasks','v2',saved.runId,'checks')}${preflight?'?preflight=1':''}`,{headers:{Authorization:`Bearer ${server!.token}`}});
    assert.equal(response.status,200);const envelope=object(await response.json());assert.equal(envelope.ok,true);return agentTaskChecksSchema.parse(envelope.data);
   };
   const lightweight=await read(),defaultItems=lightweight.groups.find(group=>group.id==='timeline')!.items;

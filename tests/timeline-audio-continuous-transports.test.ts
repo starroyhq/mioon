@@ -1,3 +1,4 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile} from 'node:child_process';
@@ -13,7 +14,7 @@ import {createClient, discoverSchema} from '@mioon/client';
 import {operationEffect} from '@mioon/contracts';
 import {AUDIO_PREVIEW_PROFILE} from '@mioon/contracts/timeline-audio-preview';
 import {startServer} from '../apps/server/src/index.ts';
-import {continuousAudioQuery, CONTINUOUS_AUDIO_ENDPOINT, CONTINUOUS_AUDIO_PROFILE} from '../packages/contracts/src/timeline-audio-continuous.ts';
+import {continuousAudioQuery, CONTINUOUS_AUDIO_PROFILE} from '../packages/contracts/src/timeline-audio-continuous.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess, hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
@@ -73,7 +74,7 @@ test('real HTTP RPC, CLI and official MCP expose the same strict read-only conti
   assert.deepEqual(events, [], 'Planning/discovery do not probe or decode');
   assert.ok(!JSON.stringify(plan).includes(root)); assert.ok(!stderr.includes(token));
   const block = {...input, planHash: plan.planHash, sessionId: randomUUID(), generation: 3, sequence: 5, blockStartFrame: 0};
-  const endpoint = `${backend.url}${CONTINUOUS_AUDIO_ENDPOINT}?${continuousAudioQuery(block)}`;
+  const endpoint = `${backend.url}${projectApiPath(project.id, 'timeline-audio-preview', 'continuous')}?${continuousAudioQuery(block)}`;
   const denied = await fetch(endpoint); assert.equal(denied.status, 401); await denied.arrayBuffer();
   const response = await fetch(endpoint, {headers: {authorization: 'Bearer ' + token}, signal: AbortSignal.timeout(15000)});
   assert.equal(response.status, 200); assert.equal(response.headers.get('x-mioon-audio-profile'), CONTINUOUS_AUDIO_PROFILE);
@@ -87,7 +88,7 @@ test('real HTTP RPC, CLI and official MCP expose the same strict read-only conti
   const legacyPlan = await client.rpc('timeline.audioPreview.plan', input) as LegacyPlanWire;
   const legacySource = legacyPlan.sources[0];
   const legacyInput = {...input, clipId: legacySource.clipId, sourceHash: legacySource.sourceHash, planHash: legacyPlan.planHash};
-  const legacyEndpoint = `${backend.url}/api/timeline-audio-preview/pcm?${new URLSearchParams(legacyInput as unknown as Record<string, string>)}`;
+  const legacyEndpoint = `${backend.url}${projectApiPath(project.id, 'timeline-audio-preview', 'pcm')}?${new URLSearchParams(legacyInput as unknown as Record<string, string>)}`;
   await t.test('the real service facade keeps V1 busy until the continuous session retires', async () => {
     const busy = await fetch(legacyEndpoint, {headers: {authorization: 'Bearer ' + token}, signal: AbortSignal.timeout(15000)});
     assert.equal(busy.status, 429);

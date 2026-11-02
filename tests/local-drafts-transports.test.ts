@@ -1,3 +1,5 @@
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {OrdinaryDraftEnvelope as ClipDraftEnvelope,OrdinaryDraftList as ClipDraftList,OrdinaryLocalDrafts} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {ClipDraftKey} from '@mioon/contracts/local-drafts';
 import type {EditTask} from '../packages/contracts/src/edit-tasks.ts';
@@ -41,9 +43,9 @@ import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects} 
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const workerPath = fileURLToPath(new URL('./fixtures/local-drafts-process.ts', import.meta.url));
 const token = 'synthetic-local-drafts-http-process-token';
-const clipRoute = (key: ClipDraftKey) => '/api/local-drafts/clip?' + new URLSearchParams(key);
-const listRoute = (projectId: string) => '/api/local-drafts?projectId=' + projectId;
-const taskRoute = (id: unknown, action = '') => `/api/tasks/${id}${action ? '/' + action : ''}`;
+const clipRoute = (key: ClipDraftKey) => projectApiPath(key.projectId,'local-drafts','clip')+'?' + new URLSearchParams(key);
+const listRoute = (projectId: string) => projectApiPath(projectId,'local-drafts')+'?projectId=' + projectId;
+const taskRoute = (projectId:string,id: unknown, action = '') => projectApiPath(projectId,'tasks',String(id),...(action?[action]:[]));
 const authority = (value: { workspaceScope: unknown; instanceId: unknown; }) => ({workspaceScope: value.workspaceScope, instanceId: value.instanceId});
 const discard = (value: ClipDraftEnvelope) => ({...authority(value), ...value.key, expectedRevision: value.revision});
 const taskAction = (f: Awaited<ReturnType<typeof fixture>>, value:TaskEnvelope) => ({projectId: f.project.id, digest: value.task.digest, instanceId: value.instanceId});
@@ -202,8 +204,8 @@ async function fixture(t: test.TestContext) {
     get: () => request(url, clipRoute(key)),
     async draft() { const value = await this.data(clipRoute(key)); assert.ok(clipDraftEnvelopeSchema.safeParse(value).success); return value; },
     async list(projectId = project.id) { const value = await this.data<ClipDraftList>(listRoute(projectId)); assert.ok(clipDraftListSchema.safeParse(value).success); return value; },
-    rpc<O extends string>(operation: O, input: unknown) { return this.data<ServiceResponse<O>>('/api/rpc', {method: 'POST', input: {operation, input}}); },
-    prepare(input: { projectId: string; clipId: string; expectedRevision: number; requestId: `${string}-${string}-${string}-${string}-${string}`; patch: { name: unknown; startFrame: number; gain: number; }; }) { return this.data<TaskEnvelope>('/api/tasks/prepare', {method: 'POST', input: {projectId: project.id, operation: 'timeline.clip.update', input, origin: 'new'}}); },
+    rpc<O extends string>(operation: O, input: unknown) { return this.data<ServiceResponse<O>>(rpcPathFor(operation,input,project.id), {method: 'POST', input: {operation, input}}); },
+    prepare(input: { projectId: string; clipId: string; expectedRevision: number; requestId: `${string}-${string}-${string}-${string}-${string}`; patch: { name: unknown; startFrame: number; gain: number; }; }) { return this.data<TaskEnvelope>(projectApiPath(project.id,'tasks','prepare'), {method: 'POST', input: {projectId: project.id, operation: 'timeline.clip.update', input, origin: 'new'}}); },
     async restart() {
       const oldUrl = url, oldPid = backend.child.pid;
       if (backend.child.exitCode === null && backend.child.signalCode === null) await backend.kill();
@@ -249,7 +251,7 @@ const write = (f: Awaited<ReturnType<typeof fixture>>, envelope:ClipDraftEnvelop
 const safeError = (result: WireResponse|undefined, f: Awaited<ReturnType<typeof fixture>>, code: string, status = 400) => {
   assert.equal(result!.status, status, JSON.stringify(result!.body)); assert.equal(result!.body.ok, false);
   if (code) assert.equal(result!.body.error.code, code);
-  assert.equal(result!.body.error.retryable, false); assert.deepEqual(result!.body.error.details, {});
+  assert.equal(result!.body.error.retryable, false); assert.deepEqual(result!.body.error.details, code === 'PROJECT_ID_MISMATCH' ? {projectId: f.project.id} : {});
   for (const value of [token, f.root, 'FOREIGN_DRAFT_PROJECT_MUST_NOT_LEAK', 'SECRET_FIELD_MUST_NOT_PERSIST'])
     assert.equal(JSON.stringify(result!.body).includes(value), false);
 };
@@ -263,7 +265,7 @@ test('clip drafts survive SIGKILL/new port with exact raw text; authenticated re
   const raw = rawClip(f, {name: '  未保存 🎬  ', startFrame: '-', durationFrames: '', sourceInFrame: '1e',
     gain: ' 0.50 ', rect: {x: '', y: '-.', width: '003.00', height: '1e+'}, fadeInFrames: '', fadeOutFrames: '-'});
   const input = write(f, initial, raw);
-  const saved = await f.data('/api/local-drafts/clip', {method: 'PUT', input});
+  const saved = await f.data(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input});
   assert.equal(saved.revision, 1); assert.deepEqual(saved.draft!.raw, raw); assert.deepEqual(saved.draft!.source, input.source);
   assert.deepEqual(await f.snapshot(), before, 'draft persistence cannot touch any main database table');
   assert.equal((await stat(sidecar)).mode & 0o777, 0o600);
@@ -274,8 +276,8 @@ test('clip drafts survive SIGKILL/new port with exact raw text; authenticated re
   const restored = await f.draft();
   assert.notEqual(restored.instanceId, saved.instanceId); assert.equal(restored.workspaceScope, saved.workspaceScope);
   assert.deepEqual(restored.draft, saved.draft); assert.equal(restored.revision, 1);
-  safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input}), f, 'LOCAL_DRAFT_STALE_INSTANCE', 409);
-  safeError(await f.request('/api/local-drafts/clip', {method: 'DELETE', input: discard(saved)}), f, 'LOCAL_DRAFT_STALE_INSTANCE', 409);
+  safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input}), f, 'LOCAL_DRAFT_STALE_INSTANCE', 409);
+  safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'DELETE', input: discard(saved)}), f, 'LOCAL_DRAFT_STALE_INSTANCE', 409);
   for (let count = 0; count < 3; count++) {
     assert.deepEqual((await f.viaProxy(clipRoute(f.key))).body.data, restored);
     assert.deepEqual((await f.list()).items.map((item: { key: unknown; name: unknown; }) => ({key: item.key, name: item.name})), [{key: f.key, name: raw.name}]);
@@ -289,32 +291,32 @@ test('clip drafts survive SIGKILL/new port with exact raw text; authenticated re
 test('concurrent windows and lost PUT/DELETE acknowledgements use strict CAS across process crashes', {timeout: 30000}, async t => {
   const f = await fixture(t), initial = await f.draft(), before = await f.snapshot();
   const candidates = ['window α', 'window β'].map(name => write(f, initial, rawClip(f, {name})));
-  const outcomes = await Promise.all(candidates.map(input => f.request('/api/local-drafts/clip', {method: 'PUT', input})));
+  const outcomes = await Promise.all(candidates.map(input => f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input})));
   assert.equal(outcomes.filter(value => value.status === 200).length, 1);
   safeError(outcomes.find(value => value.status !== 200), f, 'LOCAL_DRAFT_CONFLICT', 409);
   const winner = outcomes.find(value => value.status === 200)!.body.data!;
   const next = write(f, winner, rawClip(f, {name: 'newer window, lost ACK 🎞️'}));
-  f.lose('/api/local-drafts/clip');
-  await assert.rejects(f.viaProxy('/api/local-drafts/clip', {method: 'PUT', input: next}));
+  f.lose(projectApiPath(f.project.id,'local-drafts','clip'));
+  await assert.rejects(f.viaProxy(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: next}));
   const accepted = f.observed.at(-1)!.body.data as ClipDraftEnvelope;
   assert.equal(accepted.revision, 2);
-  safeError(await f.request('/api/local-drafts/clip', {method: 'DELETE', input: discard(winner)}), f, 'LOCAL_DRAFT_CONFLICT', 409);
+  safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'DELETE', input: discard(winner)}), f, 'LOCAL_DRAFT_CONFLICT', 409);
   await f.restart();
   const recovered = await f.draft();
   assert.deepEqual(recovered.draft, accepted.draft);
   const replay = {...next, ...authority(recovered)};
-  assert.deepEqual(await f.data('/api/local-drafts/clip', {method: 'PUT', input: replay}), recovered);
-  safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input: {...replay, raw: rawClip(f)}}), f, 'LOCAL_DRAFT_CONFLICT', 409);
+  assert.deepEqual(await f.data(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: replay}), recovered);
+  safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: {...replay, raw: rawClip(f)}}), f, 'LOCAL_DRAFT_CONFLICT', 409);
   const deletion = discard(recovered);
-  f.lose('/api/local-drafts/clip');
-  await assert.rejects(f.viaProxy('/api/local-drafts/clip', {method: 'DELETE', input: deletion}));
+  f.lose(projectApiPath(f.project.id,'local-drafts','clip'));
+  await assert.rejects(f.viaProxy(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'DELETE', input: deletion}));
   const tombstone = f.observed.at(-1)!.body.data as ClipDraftEnvelope;
   assert.equal(tombstone.revision, 3); assert.equal(tombstone.draft, null);
   await f.restart();
   const current = await f.draft();
   assert.equal(current.revision, 3); assert.equal(current.draft, null);
-  assert.deepEqual(await f.data('/api/local-drafts/clip', {method: 'DELETE', input: {...deletion, ...authority(current)}}), current);
-  safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input: {...replay, ...authority(current)}}), f, 'LOCAL_DRAFT_CONFLICT', 409);
+  assert.deepEqual(await f.data(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'DELETE', input: {...deletion, ...authority(current)}}), current);
+  safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: {...replay, ...authority(current)}}), f, 'LOCAL_DRAFT_CONFLICT', 409);
   assert.deepEqual(((await f.list()).items as unknown), []);
   assert.deepEqual(f.requests.map(value => value.method), ['PUT', 'DELETE']);
   assert.deepEqual(await f.snapshot(), before); await f.noEffects();
@@ -324,8 +326,8 @@ test('local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bod
   const f = await fixture(t), initial = await f.draft(), input = write(f, initial), before = await f.snapshot();
   const routes = [
     {route: clipRoute(f.key)}, {route: listRoute(f.project.id)},
-    {route: '/api/local-drafts/clip', method: 'PUT', input},
-    {route: '/api/local-drafts/clip', method: 'DELETE', input: {...discard(initial), expectedRevision: 1}},
+    {route: projectApiPath(f.project.id,'local-drafts','clip'), method: 'PUT', input},
+    {route: projectApiPath(f.project.id,'local-drafts','clip'), method: 'DELETE', input: {...discard(initial), expectedRevision: 1}},
   ];
   for (const entry of routes) {
     for (const headers of [{}, {authorization: 'Bearer wrong'}]) {
@@ -350,21 +352,21 @@ test('local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bod
     {...input, raw: {...input.raw, rect: {...input.raw.rect, path: 'SECRET_FIELD_MUST_NOT_PERSIST'}}},
     {...input, raw: {...input.raw, fadeInFrames: true}}, {...input, raw: []},
   ];
-  for (const value of invalidInputs) safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input: value}), f, 'LOCAL_DRAFT_VALIDATION');
+  for (const value of invalidInputs) safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: value}), f, value.projectId==='bad'?'PROJECT_ID_MISMATCH':'LOCAL_DRAFT_VALIDATION');
   for (const raw of ['{', 'null', '[]', 'true', '{"__proto__":{}}', JSON.stringify(input).replace('"gain":1', '"gain":1e400')])
-    safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', raw}), f, 'LOCAL_DRAFT_VALIDATION');
+    safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', raw}), f, 'LOCAL_DRAFT_VALIDATION');
   for (const headers of [{'content-type': 'text/plain'}, {'content-encoding': 'gzip'}])
-    safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input, headers}), f, 'LOCAL_DRAFT_VALIDATION');
-  for (const chunked of [false, true]) safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', chunked,
+    safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input, headers}), f, 'LOCAL_DRAFT_VALIDATION');
+  for (const chunked of [false, true]) safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', chunked,
     raw: JSON.stringify(input) + ' '.repeat(LOCAL_DRAFT_LIMITS.httpBytes)}), f, 'LOCAL_DRAFT_LIMIT', 413);
   for (const route of [clipRoute(f.key) + '&extra=1', clipRoute(f.key) + '&projectId=' + f.project.id,
     listRoute(f.project.id) + '&extra=1', listRoute(f.project.id) + '&projectId=' + f.project.id])
     safeError(await f.request(route), f, 'LOCAL_DRAFT_VALIDATION');
-  assert.equal((await f.request('/api/local-drafts/clip', {method: 'POST', input})).status, 405);
-  safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input: {...input, workspaceScope: 'f'.repeat(64)}}), f, 'LOCAL_DRAFT_SCOPE_MISMATCH', 409);
-  safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input: {...input, instanceId: randomUUID()}}), f, 'LOCAL_DRAFT_STALE_INSTANCE', 409);
-  safeError(await f.request('/api/local-drafts/clip', {method: 'PUT', input: {...input, source: {...input.source, assetId: randomUUID()}}}), f, 'LOCAL_DRAFT_CONFLICT', 409);
-  const saved = await f.data('/api/local-drafts/clip', {method: 'PUT', input, authenticated: false, headers: {cookie, origin: f.url}});
+  assert.equal((await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'POST', input})).status, 405);
+  safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: {...input, workspaceScope: 'f'.repeat(64)}}), f, 'LOCAL_DRAFT_SCOPE_MISMATCH', 409);
+  safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: {...input, instanceId: randomUUID()}}), f, 'LOCAL_DRAFT_STALE_INSTANCE', 409);
+  safeError(await f.request(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: {...input, source: {...input.source, assetId: randomUUID()}}}), f, 'LOCAL_DRAFT_CONFLICT', 409);
+  const saved = await f.data(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input, authenticated: false, headers: {cookie, origin: f.url}});
   assert.equal(saved.revision, 1); assert.deepEqual(((await f.list(f.other.id)).items as unknown), []);
   assert.equal((await f.data(clipRoute({...f.key, projectId: f.other.id}))).draft, null);
   assert.deepEqual(await f.snapshot(), before); await f.noEffects();
@@ -372,7 +374,7 @@ test('local draft HTTP keeps token/cookie/origin auth, exact fields, bounded bod
 
 test('a real cold schema-26 backup excludes populated local drafts and preserves the source sidecar exactly', {timeout: 30000}, async t => {
   const seed = await fixture(t), initial = await seed.draft();
-  const saved = await seed.data('/api/local-drafts/clip', {method: 'PUT', input: write(seed, initial,
+  const saved = await seed.data(projectApiPath(seed.project.id,'local-drafts','clip'), {method: 'PUT', input: write(seed, initial,
     rawClip(seed, {name: 'LOCAL_DRAFT_EXCLUDED_FROM_BACKUP_🎬', startFrame: '-', gain: ''}))});
   assert.equal(saved.revision, 1); await seed.noEffects();
   await seed.backend.close!();
@@ -446,13 +448,13 @@ for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteA
   test(`durable clip Save at ${phase} preserves draft and reuses the original request key after crash`, {timeout: 30000}, async t => {
     const f = await fixture(t), baseline = await f.snapshot(), initial = await f.draft();
     const raw = rawClip(f, {name: 'Explicitly saved 🎬', startFrame: '12', gain: '0.75'});
-    const savedDraft = await f.data('/api/local-drafts/clip', {method: 'PUT', input: write(f, initial, raw)});
+    const savedDraft = await f.data(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'PUT', input: write(f, initial, raw)});
     assert.deepEqual(await f.snapshot(), baseline, 'the raw draft is durable before business preparation begins');
     await f.noEffects();
     const input = {projectId: f.project.id, clipId: f.key.clipId, expectedRevision: f.timeline.revision,
       requestId: randomUUID(), patch: {name: raw.name, startFrame: Number(raw.startFrame), gain: Number(raw.gain)}};
     let prepared, originalResult;
-    const oldTaskInstance = (await f.data<{instanceId:string}>('/api/tasks?projectId=' + f.project.id)).instanceId;
+    const oldTaskInstance = (await f.data<{instanceId:string}>(projectApiPath(f.project.id,'tasks') + '?projectId=' + f.project.id)).instanceId;
     if (phase === 'afterPreparePersist') {
       await f.backend.ask('arm', {phase});
       await assert.rejects(f.prepare(input));
@@ -460,9 +462,9 @@ for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteA
       prepared = await f.prepare(input);
       if (phase === 'afterBusinessCommit') {
         await f.backend.ask('arm', {phase});
-        await assert.rejects(f.request(taskRoute(prepared.task.id, 'execute'), {method: 'POST', input: taskAction(f, prepared)}));
+        await assert.rejects(f.request(taskRoute(f.project.id,prepared.task.id, 'execute'), {method: 'POST', input: taskAction(f, prepared)}));
       } else {
-        const route = taskRoute(prepared.task.id, 'execute'); f.lose(route);
+        const route = taskRoute(f.project.id,prepared.task.id, 'execute'); f.lose(route);
         await assert.rejects(f.viaProxy(route, {method: 'POST', input: taskAction(f, prepared)}));
         originalResult = (f.observed.at(-1)!.body.data as TaskEnvelope).result;
       }
@@ -476,19 +478,19 @@ for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteA
     const restoredDraft = await f.draft();
     assert.deepEqual(restoredDraft.draft, savedDraft.draft);
     assert.equal(restoredDraft.targetStatus, phase === 'afterPreparePersist' ? 'matching' : 'changed');
-    const current = await f.data<TaskEnvelope>(taskRoute(retained.id) + '?projectId=' + f.project.id);
+    const current = await f.data<TaskEnvelope>(taskRoute(f.project.id,retained.id) + '?projectId=' + f.project.id);
     assert.equal(current.task.requestId, input.requestId); assert.deepEqual(current.task.input, input);
     assert.notEqual(current.instanceId, oldTaskInstance);
     assert.equal(current.task.status, phase === 'afterPreparePersist' ? 'prepared' : 'applied');
     const observed = await f.snapshot();
-    await f.draft(); await f.list(); await f.data<{instanceId:string}>('/api/tasks?projectId=' + f.project.id);
+    await f.draft(); await f.list(); await f.data<{instanceId:string}>(projectApiPath(f.project.id,'tasks') + '?projectId=' + f.project.id);
     assert.deepEqual(await f.snapshot(), observed);
     await f.noEffects();
-    const stale = await f.request(taskRoute(retained.id, 'execute'), {method: 'POST', input: {...taskAction(f, current), instanceId: oldTaskInstance}});
+    const stale = await f.request(taskRoute(f.project.id,retained.id, 'execute'), {method: 'POST', input: {...taskAction(f, current), instanceId: oldTaskInstance}});
     assert.equal(stale.status, 409); assert.equal(stale.body.error!.code, 'EDIT_TASK_STALE_INSTANCE');
     // Only this explicit durable task action can turn a persisted raw draft into
     // a saved timeline edit. Rediscovery above used GETs and never dispatched.
-    const applied = await f.data<TaskEnvelope>(taskRoute(retained.id, 'execute'), {method: 'POST', input: taskAction(f, current)});
+    const applied = await f.data<TaskEnvelope>(taskRoute(f.project.id,retained.id, 'execute'), {method: 'POST', input: taskAction(f, current)});
     assert.equal(applied.task.status, 'applied'); assert.equal(applied.task.requestId, input.requestId);
     assert.equal(applied.result.revision, f.timeline.revision + 1);
     if (originalResult) assert.deepEqual(applied.result, originalResult);
@@ -503,10 +505,10 @@ for (const phase of ['afterPreparePersist', 'afterBusinessCommit', 'lostExecuteA
     assert.ok(receipt);
     const replayPrepared = await f.prepare(input);
     assert.equal(replayPrepared.task.id, applied.task.id);
-    assert.deepEqual((await f.data<TaskEnvelope>(taskRoute(applied.task.id, 'execute'), {method: 'POST', input: taskAction(f, replayPrepared)})).result, applied.result);
+    assert.deepEqual((await f.data<TaskEnvelope>(taskRoute(f.project.id,applied.task.id, 'execute'), {method: 'POST', input: taskAction(f, replayPrepared)})).result, applied.result);
     assert.deepEqual(await f.snapshot(), committed, 'same-key prepare/execute cannot create a new timeline revision or task');
     const retainedDraft = await f.draft(); assert.deepEqual(retainedDraft.draft, savedDraft.draft);
-    const discarded = await f.data('/api/local-drafts/clip', {method: 'DELETE', input: discard(retainedDraft)});
+    const discarded = await f.data(projectApiPath(f.project.id,'local-drafts','clip'), {method: 'DELETE', input: discard(retainedDraft)});
     assert.equal(discarded.draft, null); assert.deepEqual(await f.snapshot(), committed);
     assert.equal(await readFile(path.join(f.root, 'synthetic-forbidden-effects.jsonl'), 'utf8'), '');
   });

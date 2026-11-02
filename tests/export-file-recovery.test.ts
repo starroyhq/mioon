@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm,symlink} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -17,7 +18,7 @@ test('missing export recovery verifies original bytes, never overwrites and pres
  const record={id,projectId:project.id,requestId,status:'succeeded',orderedVersionIds:[versionId],snapshot:[{versionId,shotId,assetId:sourceId,sha256:'b'.repeat(64)}],assetId,url:asset.url,error:null,createdAt:stamp,updatedAt:stamp};
  store.put('assets',asset);store.put('exports',record);store.db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('export',requestId,hash({projectId:project.id,requestId}),id);await services.drain();store.close();
  let server=await startServer({dataDir:root,port:0,token});t.after(async()=>{await server.close();await rm(root,{recursive:true,force:true});});
- const route=()=>`${server.url}/api/export-files?projectId=${project.id}&exportId=${id}`;
+ const route=()=>`${server.url}${projectApiPath(project.id,'export-files')}?projectId=${project.id}&exportId=${id}`;
  const get=async()=>{const response=await fetch(route(),{headers:{authorization:`Bearer ${token}`}});const value=await response.json();assert.equal(response.status,200,JSON.stringify(value));return value.data;};
  const post=async (body: Buffer)=>fetch(route(),{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/octet-stream'},body: body as BodyInit});
  assert.equal((await fetch(route())).status,401);assert.equal((await get()).status,'missing');

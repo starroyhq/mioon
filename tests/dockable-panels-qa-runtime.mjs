@@ -1,3 +1,4 @@
+import {parseProjectApiPath} from '../packages/contracts/src/project-file.ts';
 /** Disposable own-cloud acceptance fixture. The production server, auth and CSP
  * remain unchanged; one exact synthetic request can be held/rejected/dropped. */
 import http from 'node:http';
@@ -55,7 +56,7 @@ if(process.argv.includes('--serve')){
  await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));await writeFile(path.join(runtime,'server.json'),JSON.stringify({url:origin,pid:process.pid,workspace:fixture.workspace}));
  const inbox=path.join(qaRoot,'api-mailbox');await mkdir(inbox,{recursive:true});let probeBusy=false;
  const timer=setInterval(async()=>{if(probeBusy||closing)return;probeBusy=true;try{for(const file of(await readdir(inbox)).filter(n=>n.endsWith('.request.json'))){const pathname=path.join(inbox,file),req=JSON.parse(await readFile(pathname,'utf8'));await unlink(pathname);let result;
-  try{if(!/^\/api\/(rpc|workspace-preferences\/[0-9a-f-]+)$/.test(req.pathname))throw Error('Out-of-scope QA route');if(req.pathname==='/api/rpc'&&!['project.get','timeline.history.get'].includes(JSON.parse(req.options.body).operation))throw Error('Only read-only domain verifier operations allowed');const response=await fetch(origin+req.pathname,{...req.options,headers:{authorization:'Bearer '+token,'content-type':'application/json'},signal:AbortSignal.timeout(12000)});result={status:response.status,...await response.json()};}catch(error){result={probeError:error.message};}await writeFile(path.join(inbox,file.replace('.request.json','.result.json')),JSON.stringify(result));
+  try{const rpc=parseProjectApiPath(req.pathname)?.kind==='rpc';if(!rpc&&!/^\/api\/workspace-preferences\/[0-9a-f-]+$/.test(req.pathname))throw Error('Out-of-scope QA route');if(rpc&&!['project.get','timeline.history.get'].includes(JSON.parse(req.options.body).operation))throw Error('Only read-only domain verifier operations allowed');const response=await fetch(origin+req.pathname,{...req.options,headers:{authorization:'Bearer '+token,'content-type':'application/json'},signal:AbortSignal.timeout(12000)});result={status:response.status,...await response.json()};}catch(error){result={probeError:error.message};}await writeFile(path.join(inbox,file.replace('.request.json','.result.json')),JSON.stringify(result));
  }}finally{probeBusy=false;}},25);timer.unref();console.log('DOCKABLE_PANELS_QA_READY '+origin);
  const close=async()=>{if(closing)return;closing=true;clearInterval(timer);server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await backend.close();};process.on('SIGTERM',close);process.on('SIGINT',close);
 }

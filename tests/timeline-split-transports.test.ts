@@ -1,3 +1,4 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {FixtureTimeline} from './helpers/strict-timeline-core-types.ts';
 import type {TransportCall,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {WireResult} from './helpers/strict-timeline-transport-types.ts';
@@ -139,7 +140,7 @@ async function backendFixture(t: test.TestContext) {
   await start();
   return {root, url, projectId, assetId, get pid() { return backend.pid; }, restart: async () => { await stop(); await start(); },
     async http(name: string, input: { projectId: unknown; expectedRevision?: unknown; requestId?: `${string}-${string}-${string}-${string}-${string}`; }, expectedError?: string|string[]|undefined) {
-      const response = await fetch(url + '/api/rpc', {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation: name, input})});
+      const response = await fetch(url + rpcPathFor(name, input), {method: 'POST', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation: name, input})});
       const body = await response.json();
       const status = !expectedError ? 200 : expectedError.includes('CONFLICT') ? 409 : expectedError === 'CLIP_NOT_FOUND' || expectedError === 'NOT_FOUND' ? 404 : 400;
       assert.equal(response.status, status, JSON.stringify(body)); assert.equal(body.ok, !expectedError, JSON.stringify(body));

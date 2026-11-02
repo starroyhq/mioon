@@ -2,6 +2,8 @@ import type {FixtureProject,FixtureAsset} from './helpers/strict-timeline-core-t
 import type {FixtureImageTask,FixtureImageVersion,ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {TypedStore, TypedServices, TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {isAppLevelOperation, inputProjectId} from '../packages/contracts/src/project-addressing.ts';
+import {isProjectId, projectRpcPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
@@ -128,7 +130,7 @@ async function fixture(t: test.TestContext) {
       const body = Buffer.concat(chunks);
       const operation = JSON.parse(body as unknown as string).operation;
       proxyRequests.push(operation);
-      const upstream = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error',
+      const upstream = await fetch(url + request.url, {method: 'POST', redirect: 'error',
         headers: {'content-type': 'application/json', authorization: request.headers.authorization!}, body,
         signal: AbortSignal.timeout(10_000)});
       const bytes = Buffer.from(await upstream.arrayBuffer());
@@ -141,7 +143,8 @@ async function fixture(t: test.TestContext) {
   await new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve));
   proxyUrl = `http://127.0.0.1:${(proxy.address() as import('node:net').AddressInfo).port}`;
   async function rpc(operation: string, input:unknown = {}, error?: string, base = url) {
-    const response = await fetch(base + '/api/rpc', {method: 'POST', redirect: 'error',
+    const named = inputProjectId(operation, input);
+    const response = await fetch(base + (isAppLevelOperation(operation) ? '/api/rpc' : projectRpcPath(isProjectId(named) ? named : project.id)), {method: 'POST', redirect: 'error',
       headers: {'content-type': 'application/json', authorization: `Bearer ${token}`},
       body: JSON.stringify({operation, input}), signal: AbortSignal.timeout(10_000)});
     const result = await response.json();
@@ -291,7 +294,7 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
     assert.ok(isImageListResponse('image.version.list', {projectId: f.project.id, groupId: accepted.groupId}, versions));
     assert.equal(versions.items.length, 1); version = versions.items[0];
     assert.equal(version.id, finished.versionId); assert.equal(version.isMock, true);
-    const response = await fetch(f.url + '/media/' + version.assetId, {headers: {authorization: `Bearer ${token}`}});
+    const response = await fetch(f.url + projectMediaPath(f.project.id, version.assetId), {headers: {authorization: `Bearer ${token}`}});
     assert.equal(response.status, 200); assert.equal(response.headers.get('content-type'), 'image/png');
     bytes = Buffer.from(await response.arrayBuffer());
     assert.deepEqual(bytes.subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
@@ -314,7 +317,7 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
     await parity('image.version.list', {projectId: f.project.id, groupId: accepted.groupId});
     await parity('image.profile.list');
     assert.deepEqual((await parity('image.generate', original)).data, accepted);
-    const response = await fetch(f.url + '/media/' + version.assetId, {headers: {authorization: `Bearer ${token}`}});
+    const response = await fetch(f.url + projectMediaPath(f.project.id, version.assetId), {headers: {authorization: `Bearer ${token}`}});
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytes);
     f.unchanged(before, 'restart rediscovery/exact replay/media retrieval');
   });

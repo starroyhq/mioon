@@ -1,3 +1,5 @@
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,13 +34,13 @@ test('three 1080 presets cross HTTP/CLI/MCP and produce native/downscaled/previe
   const env={...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',MIOON_BASE_URL:backend.url,MIOON_TOKEN:token};
   t.after(async()=>{await mcp.close();await backend.close();await rm(root,{recursive:true,force:true});});
   await mcp.connect(new StdioClientTransport({command:process.execPath,args:[path.join(repo,'apps/mcp/src/index.ts')],cwd:repo,env,stderr:'ignore'}));
-  const http=async<O extends string>(operation: O,input: Record<string, unknown>): Promise<ServiceResponse<O>>=>{const response=await fetch(backend.url+'/api/rpc',{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});const body=await response.json();assert.equal(body.ok,true,JSON.stringify(body));return body.data;};
+  const http=async<O extends string>(operation: O,input: Record<string, unknown>,entityProjectId?:string): Promise<ServiceResponse<O>>=>{const response=await fetch(backend.url+rpcPathFor(operation,input,entityProjectId),{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({operation,input})});const body=await response.json();assert.equal(body.ok,true,JSON.stringify(body));return body.data;};
   const cli=async<O extends string>(operation: O,input: Record<string, unknown>): Promise<ServiceResponse<O>>=>{const result=await exec(process.execPath,['apps/cli/src/index.ts',...operation.split('.'),'--input',JSON.stringify(input)],{cwd:repo,env,timeout:35000});const body=JSON.parse(result.stdout);assert.equal(body.ok,true);return body.data;};
   const tool=async<O extends string>(operation: O,input: Record<string, unknown>): Promise<ServiceResponse<O>>=>{const result=await mcp.callTool({name:operation.replaceAll('.','_'),arguments:input},undefined,{timeout:35000});const body=JSON.parse((result.content as {type: string; text: string}[]).find((item: { type: string; })=>item.type==='text')!.text);assert.equal(body.ok,true,JSON.stringify(body));return body.data;};
-  const finish=async(id: unknown)=>{const end=Date.now()+60000;while(Date.now()<end){const result=await http('export.get',{exportId:id});if(result.status==='failed')assert.fail(JSON.stringify(result.error));if(result.status==='succeeded')return result;await new Promise(resolve=>setTimeout(resolve,30));}assert.fail('Local render timed out');};
+  const finish=async(id: unknown,projectId:string)=>{const end=Date.now()+60000;while(Date.now()<end){const result=await http('export.get',{exportId:id},projectId);if(result.status==='failed')assert.fail(JSON.stringify(result.error));if(result.status==='succeeded')return result;await new Promise(resolve=>setTimeout(resolve,30));}assert.fail('Local render timed out');};
   let firstFile;
-  const verify=async(render: { id: unknown; },width: number,height: number,frames: number|undefined=3)=>{
-    const completed=await finish(render.id),response=await fetch(backend.url+completed.url,{headers:{authorization:'Bearer '+token}});assert.equal(response.status,200);
+  const verify=async(projectId:string,render: { id: unknown; },width: number,height: number,frames: number|undefined=3)=>{
+    const completed=await finish(render.id,projectId),response=await fetch(backend.url+projectMediaPath(projectId,completed.assetId!),{headers:{authorization:'Bearer '+token}});assert.equal(response.status,200);
     const file=path.join(root,completed.id+'.mp4');await writeFile(file,Buffer.from(await response.arrayBuffer()));
     const result=await exec('ffprobe',['-v','error','-count_frames','-show_streams','-show_format','-of','json',file],{timeout:20000});
     const probe=JSON.parse(result.stdout),video=probe.streams.find((stream: { codec_type: string; })=>stream.codec_type==='video');
@@ -60,10 +62,10 @@ test('three 1080 presets cross HTTP/CLI/MCP and produce native/downscaled/previe
       const preflight=await http('timeline.export.preflight',{projectId:project.id,expectedRevision:timeline.revision,exportSettings});assert.equal(preflight.status,'ready');assert.equal(preflight.summary!.width,width);
       const render=await call('timeline.render',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings});
       const scale=resolution==='native'?1:Number(resolution.slice(6))/1080;
-      await verify(render,width*scale,height*scale);
+      await verify(project.id,render,width*scale,height*scale);
     }
-    await verify(await http('timeline.render',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'preview'}),width,height);
-    await verify(await http('timeline.render',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportRange:{startFrame:0,endFrame:2}}),width,height,2);
+    await verify(project.id,await http('timeline.render',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'preview'}),width,height);
+    await verify(project.id,await http('timeline.render',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',exportRange:{startFrame:0,endFrame:2}}),width,height,2);
   }
   const output=path.join(root,'storyboard.mp4');await stitch([firstFile!],output);
   const probe=JSON.parse((await exec('ffprobe',['-v','error','-show_streams','-of','json',output],{timeout:20000})).stdout);

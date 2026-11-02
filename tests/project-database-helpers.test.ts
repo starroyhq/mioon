@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -9,7 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {openStore} from '../packages/business/src/db.ts';
-import {isProjectId, projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {isProjectId} from '../packages/contracts/src/project-file.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {findHeldAppProjectFile} from '../packages/business/src/app-db/connection.ts';
 import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
@@ -421,7 +422,8 @@ test('the server serves a project filled before it started, and inspectProject r
   let running = true;
   t.after(async () => { if (running) await server.close(); });
   const rpc = async (operation: string, input: unknown): Promise<unknown> => {
-    const response = await fetch(`${server.url}${operation === 'project.list' ? '/api/rpc' : projectRpcPath(projectId)}`, {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json'}, body: JSON.stringify({operation, input})});
+    const response = await fetch(server.url + rpcPathFor(operation, input), {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json'}, body: JSON.stringify({operation, input})});
+
     const body = await response.json() as {ok: boolean; data: unknown};
     assert.equal(response.status, 200, JSON.stringify(body));
     return body.data;

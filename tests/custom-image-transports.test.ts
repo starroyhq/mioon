@@ -3,6 +3,8 @@ import type {RequestOptions} from 'node:https';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
+import {projectApiPath, projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {EventEmitter, once} from 'node:events';
@@ -166,7 +168,7 @@ async function fixture(t: test.TestContext) {
       const body = await response.json(); publicOnly(body, root); return {status: response.status, body};
     },
     async rpc<O extends string>(operation: O, input:unknown = {}, expectedCode?: string|undefined) {
-      const response = await f.request('/api/rpc', {method: 'POST', input: {operation, input}});
+      const response = await f.request(expectedCode === 'UNKNOWN_OPERATION' ? '/api/rpc' : rpcPathFor(operation, input), {method: 'POST', input: {operation, input}});
       assert.equal(response.body.ok, !expectedCode, JSON.stringify(response.body));
       if (expectedCode) assert.equal(response.body.error.code, expectedCode); else assert.equal(response.status, 200);
       return response.body.data as ServiceResponse<O>;
@@ -181,7 +183,7 @@ async function fixture(t: test.TestContext) {
     async prepare(input: { providerId: "openai-compatible"|"mock"|"openai"; model: string; options: { size: "1024x1024"; quality: "low"; outputFormat: "png"; background: "opaque"; n: 1; }; projectId: string; name: string; requestId: string; prompt: string; groupId?: string|undefined; expectedRevision?: number|undefined; }|{ providerId: "comfy-local"; model: string; options: { size: "512x512"; n: 1; steps: 20; cfg: 8; sampler: "euler"; scheduler: "normal"; denoise: 1; }; projectId: string; name: string; requestId: string; prompt: string; groupId?: string|undefined; expectedRevision?: number|undefined; }|{ providerId: "mock"|"openai"; model: string; options: { size: string; quality: "low"; outputFormat: "png"; background: "opaque"; n: 1; }; projectId: string; name: string; requestId: string; prompt: string; purpose: "edit"; inputImage: { assetId: string; sha256: string; }; groupId?: string|undefined; expectedRevision?: number|undefined; }, settingsRevision = 1) {return f.client.rpc('image.review.prepare', {input, settingsRevision});},
     async approve(review: FixtureImageReview, expectedCode?: string|undefined, patch = {}) {
       network.trace('approval-start', {providerId: review.input.providerId});
-      const response = await f.request('/api/images/reviews/approve', {method: 'POST', input: {...approvalFor(review), ...patch}});
+      const response = await f.request(projectApiPath(review.projectId, 'images', 'reviews', 'approve'), {method: 'POST', input: {...approvalFor(review), ...patch}});
       network.trace('approval-ack', {providerId: review.input.providerId, ok: response.body.ok});
       assert.equal(response.body.ok, !expectedCode, JSON.stringify(response.body));
       if (expectedCode) assert.equal(response.body.error.code, expectedCode); else assert.ok(isImageTaskResponse(response.body.data));
@@ -230,7 +232,7 @@ async function fixture(t: test.TestContext) {
     async asset(task: FixtureImageTask) {
       const versions = await f.client.rpc('image.version.list', {projectId: task.projectId, groupId: task.groupId});
       assert.equal(versions.items.length, 1); const version = versions.items[0];
-      const response = await fetch(`${server.url}/media/${version.assetId}`, {headers: {authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10000)});
+      const response = await fetch(server.url + projectMediaPath(task.projectId, version.assetId), {headers: {authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10000)});
       assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer());
       assert.equal(createHash('sha256').update(bytes).digest('hex'), version.sha256); return {version, bytes};
     },
@@ -239,7 +241,7 @@ async function fixture(t: test.TestContext) {
       let calls = 0, dropped: {ok:boolean;data:FixtureImageTask}|undefined;
       const proxy = await localServer(async (request: http.IncomingMessage, response: http.ServerResponse) => {
         try {
-          calls++; assert.equal(request.url, '/api/images/reviews/approve');
+          calls++; assert.equal(request.url, projectApiPath(review.projectId, 'images', 'reviews', 'approve'));
           const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
           const upstream = await fetch(server.url + request.url, {method: 'POST',
             headers: {'content-type': 'application/json', authorization: `Bearer ${token}`}, body: Buffer.concat(chunks), signal: AbortSignal.timeout(10000)});
@@ -247,7 +249,7 @@ async function fixture(t: test.TestContext) {
         } catch {response.destroy();}
       });
       try {
-        await assert.rejects(f.request('/api/images/reviews/approve', {method: 'POST', input: approvalFor(review), base: proxy.url}));
+        await assert.rejects(f.request(projectApiPath(review.projectId, 'images', 'reviews', 'approve'), {method: 'POST', input: approvalFor(review), base: proxy.url}));
         assert.equal(calls, 1); assert.equal(dropped?.ok, true); publicOnly(dropped, root); return dropped!.data;
       } finally {await proxy.close();}
     },
@@ -270,7 +272,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
   await t.test('custom settings and private review actions require authentication; no public approval or settings operation exists', async () => {
     for (const [route, method, input] of [
       ['/api/images/custom-settings', 'GET'], ['/api/images/custom-settings', 'PUT', {}],
-      ['/api/images/reviews/approve', 'POST', {}], ['/api/images/reviews/reject', 'POST', {}],
+      [projectApiPath(project.id, 'images', 'reviews', 'approve'), 'POST', {}], [projectApiPath(project.id, 'images', 'reviews', 'reject'), 'POST', {}],
     ] as const) {
       assert.equal((await f.request(route, {method, input, authenticated: false})).status, 401);
       assert.equal((await f.request(route, {method, input, headers: {origin: 'https://untrusted.example.test'}})).status, 403);
@@ -359,7 +361,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
 
   await t.test('private rejection and immutable same-key intent do not authorize a custom POST', async () => {
     const counts = f.counts(), rejected = await f.prepare(inputFor(project.id));
-    const result = await f.request('/api/images/reviews/reject', {method: 'POST', input: approvalFor(rejected)});
+    const result = await f.request(projectApiPath(rejected.projectId, 'images', 'reviews', 'reject'), {method: 'POST', input: approvalFor(rejected)});
     assert.equal(result.body.data.state, 'rejected');
     await f.approve(rejected, 'IMAGE_REVIEW_REVISION_CONFLICT');
     await f.approve(customReview, 'IMAGE_REVIEW_REVISION_CONFLICT', {expectedRevision: 2});
