@@ -6,7 +6,7 @@ import {readTimelineDeliveryDownload, readTimelineExportPreviewMedia, timelineDe
 import {readOwnedTimelineAsset} from '@mioon/business/timeline-sources';
 import {boundedShutdown} from '@mioon/business/operation-lifecycle';
 import type {AppLibrary} from '@mioon/business/app-db/index';
-import {createProjectHomeServices} from '@mioon/business/project-home';
+import {createProjectHomeServices,readProjectCover} from '@mioon/business/project-home';
 import {createProjectServiceApplication} from '@mioon/business/project-service-application';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import type {ServerOptions} from '../index.ts';
@@ -72,7 +72,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     const {id: _id, name, lastOpenedAt: _opened, cover, ...rest} = value;
     return {name, summary: {...rest, cover: cover ? {assetId: cover.assetId, mimeType: cover.mimeType} : null}};
   };
-  const cover = createProjectCoverPublisher({store, summarize: summary, signal: shutdown.signal});
+  const cover = createProjectCoverPublisher({store, readCover:()=>readProjectCover(store,projectId), signal: shutdown.signal});
   const removeCoverObserver = registerProjectTransactionObserver(store.db, () => cover.refresh());
   cover.refresh();
   const unfinishedTasks = (): readonly UnfinishedTask[] => {
@@ -140,7 +140,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     return false;
   }
   return {project, handle, summarize: summary, unfinishedTasks,
-    isBusy: () => files.isBusy() || cover.isBusy() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || !deletionGate.isQuiescent(),
+    isBusy: () => files.isBusy() || cover.isRendering() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || !deletionGate.isQuiescent(),
     interrupt: () => { shutdown.abort(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },
     drain: async () => { await boundedShutdown(Promise.all([worker.stop(), project.taskRuntimeV2?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
     dispose: () => { removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },

@@ -1,5 +1,6 @@
 import {lstatSync, readdirSync} from 'node:fs';
 import path from 'node:path';
+import {isAsyncFunction} from 'node:util/types';
 import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
 import {validateWorkspaceStorage} from '@mioon/business/application-storage';
 import {AppError} from '../../../../packages/contracts/src/app-error.ts';
@@ -35,10 +36,17 @@ const metadata = (file: string): ApplicationFileMetadata | undefined => {
 };
 const generation = (info: ApplicationFileMetadata): bigint => typeof info.birthtimeNs === 'bigint' && info.birthtimeNs > 0n ? info.birthtimeNs : 0n;
 
+/** One synchronous recovery sweep; do not create/move private files in its
+ * callback. A snapshot must never be retained across an await. */
+export interface ApplicationFileGuard {
+  (file: string): void;
+  withSnapshot<T>(inspect: () => T): T;
+}
+
 /** Remember identities as private files appear, including files subsequently
  * renamed outside the app directory. Metadata only: never open/close a live DB.
  * The default projects subtree is deliberately exempt. */
-export function createApplicationFileGuard(directories: AppDirectories, {metadata: readMetadata = metadata}: ApplicationFileGuardOptions = {}): (file: string) => void {
+export function createApplicationFileGuard(directories: AppDirectories, {metadata: readMetadata = metadata}: ApplicationFileGuardOptions = {}): ApplicationFileGuard {
   // A deleted private inode may be reused for a newly created project on ext4.
   // Birth time survives rename/hard links, unlike ctime, and distinguishes that
   // new generation when both observations provide it. Unknown time stays
@@ -47,23 +55,30 @@ export function createApplicationFileGuard(directories: AppDirectories, {metadat
   const {dataDir, projectsDir, cacheDir, tempDir} = directories;
   const protectedRoots = [path.join(dataDir, 'records'), cacheDir, tempDir];
   const refresh = (): void => {
-    let count = 0;
-    const visit = (file: string, depth: number): void => {
-      if (within(projectsDir, file) || depth > 32) return;
-      if (++count > 100_000) throw new AppError('PROJECT_LOCATION_INVALID', '应用私有目录过大，无法验证项目位置。', 400);
+    // Directory timestamps are not entry versions: even positive ns values can
+    // stay equal across creation or same-size replacement in one filesystem
+    // clock tick. Enumerate synchronously; only a recovery sweep may share this
+    // scan. There is no count/depth cutoff that loses private identities.
+    const pending = [dataDir, ...protectedRoots.filter(root => !within(dataDir, root))];
+    const visited = new Set<string>();
+    while (pending.length) {
+      const file = pending.pop()!;
+      if (visited.has(file) || within(projectsDir, file)) continue;
+      visited.add(file);
       const info = readMetadata(file);
-      if (!info || info.isSymbolicLink()) return;
+      if (!info || info.isSymbolicLink()) continue;
       if (info.isFile()) {
         if (info.ino !== 0n) identities.set(`${info.dev}:${info.ino}`, generation(info));
-      } else if (info.isDirectory()) for (const name of readdirSync(file)) visit(path.join(file, name), depth + 1);
-    };
-    visit(dataDir, 0);
-    for (const root of protectedRoots) if (!within(dataDir, root)) visit(root, 0);
+      } else if (info.isDirectory()) {
+        for (const name of readdirSync(file)) pending.push(path.join(file, name));
+      }
+    }
   };
   refresh();
-  return (requested: string): void => {
+  let snapshotDepth = 0;
+  const guard = (requested: string): void => {
     const file = path.resolve(requested);
-    refresh();
+    if (snapshotDepth === 0) refresh();
     const privatePath = protectedRoots.some(root => within(root, file)) || within(dataDir, file) && !within(projectsDir, file);
     const info = readMetadata(file), previous = info?.isFile() && info.ino !== 0n ? identities.get(`${info.dev}:${info.ino}`) : undefined;
     const current = info?.isFile() ? generation(info) : undefined;
@@ -72,4 +87,19 @@ export function createApplicationFileGuard(directories: AppDirectories, {metadat
       throw new AppError('PROJECT_LOCATION_INVALID', '不能把应用私有文件作为项目打开。', 400);
     }
   };
+  guard.withSnapshot = <T>(inspect: () => T): T => {
+    if (typeof inspect !== 'function' || isAsyncFunction(inspect)) throw new TypeError('Application file snapshots require a synchronous callback');
+    if (snapshotDepth === 0) refresh();
+    snapshotDepth++;
+    try {
+      const result = inspect();
+      if (result !== null && (typeof result === 'object' || typeof result === 'function') && typeof (result as {then?: unknown}).then === 'function') {
+        // Observe rejection without allowing the snapshot to outlive this call.
+        Promise.resolve(result).catch(() => {});
+        throw new TypeError('Application file snapshots require a synchronous callback');
+      }
+      return result;
+    } finally {snapshotDepth--;}
+  };
+  return guard;
 }

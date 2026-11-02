@@ -1,29 +1,31 @@
 import {runStreaming} from '@mioon/business/media-runtime';
 import {resolveProjectMediaFile} from '@mioon/business/project-media-storage';
 import type {ProjectStore} from '@mioon/business/project-file/index';
-import type {ProjectHostSummary} from './host.ts';
+import type {ProjectSummary} from '../../../../packages/contracts/src/project-home.ts';
 import {PROJECT_COVER_LIMITS, writeProjectCover, readProjectCoverCache} from './covers.ts';
 
 /** Optional, bounded cache work owned by the already-open project. Rendering
  * failures leave a cache miss; they do not turn a project read into a media job.
  * The last failure is retained for trusted diagnostics and tests. */
-export function createProjectCoverPublisher({store, summarize, signal, render = runStreaming}: {
-  store: ProjectStore; summarize: () => ProjectHostSummary | null; signal: AbortSignal; render?: typeof runStreaming;
+export function createProjectCoverPublisher({store, readCover, signal, render = runStreaming, refreshDelayMs = 2000}: {
+  store: ProjectStore; readCover: () => ProjectSummary['cover']; signal: AbortSignal; render?: typeof runStreaming; refreshDelayMs?: number;
 }) {
-  let pending = false, active: Promise<void> | undefined, lastFailure: unknown;
-  const refresh = (): void => {
-    if (signal.aborted) return;
-    pending = true;
-    if (active) return;
-    active = Promise.resolve().then(async () => {
-      while (pending && !signal.aborted) {
-        pending = false;
+  if(!Number.isSafeInteger(refreshDelayMs)||refreshDelayMs<0)throw new TypeError('Invalid cover refresh delay');
+  let pending = false, active: Promise<void> | undefined, timer:ReturnType<typeof setTimeout>|undefined,lastFailure: unknown;
+  const cancelTimer=():void=>{if(timer!==undefined){clearTimeout(timer);timer=undefined;}};
+  const schedule=():void=>{if(timer!==undefined||active||signal.aborted)return;timer=setTimeout(()=>{timer=undefined;start();},refreshDelayMs);timer.unref();};
+  const start = (): void => {
+    if(active)return;
+    if(signal.aborted){pending=false;return;}
+    pending=false;
+    active=Promise.resolve().then(async()=>{
         try {
-          const cover = summarize()?.summary?.cover;
-          if (!cover) continue;
+          signal.throwIfAborted();
+          const cover = readCover();
+          if (!cover) return;
           const asset = store.get('assets', cover.assetId) as {projectId?: unknown; relativePath?: unknown; sha256?: unknown; mimeType?: unknown} | undefined;
-          if (!asset || asset.projectId !== store.projectId || asset.mimeType !== cover.mimeType || typeof asset.relativePath !== 'string' || typeof asset.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(asset.sha256)) continue;
-          if (readProjectCoverCache(store.cacheDir, {...cover, sourceSha256: asset.sha256}) !== null) continue;
+          if (!asset || asset.projectId !== store.projectId || asset.mimeType !== cover.mimeType || typeof asset.relativePath !== 'string' || typeof asset.sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(asset.sha256)) return;
+          if (readProjectCoverCache(store.cacheDir, {...cover, sourceSha256: asset.sha256}) !== null) return;
           const relativePath = asset.relativePath, sourceSha256 = asset.sha256;
           const source = resolveProjectMediaFile(store, relativePath);
           const fence = (): void => {
@@ -37,14 +39,20 @@ export function createProjectCoverPublisher({store, summarize, signal, render = 
             '-vf', 'scale=512:512:force_original_aspect_ratio=decrease', '-f', 'image2pipe', '-c:v', 'mjpeg', 'pipe:1'],
           {signal, timeout: 15_000, maxStdoutBytes: PROJECT_COVER_LIMITS.jpegBytes, beforeSpawn: fence, beforeEffect: fence, onStdout: chunk => {chunks.push(Buffer.from(chunk));}});
           fence();
-          const current = summarize()?.summary?.cover;
-          if (!current || current.assetId !== cover.assetId || current.mimeType !== cover.mimeType) continue;
-          writeProjectCover({cacheDir: store.cacheDir, source: {...cover, sourceSha256}, jpeg: Buffer.concat(chunks)});
+          const current = readCover();
+          if (!current || current.assetId !== cover.assetId || current.mimeType !== cover.mimeType) return;
+          writeProjectCover({cacheDir: store.cacheDir, source: {assetId:cover.assetId,mimeType:cover.mimeType,sourceSha256}, jpeg: Buffer.concat(chunks)});
           lastFailure = undefined;
         } catch (error) { lastFailure = error; }
-      }
-    }).finally(() => {active = undefined; if (pending && !signal.aborted) refresh();});
+    }).finally(() => {active = undefined; if (pending && !signal.aborted) schedule();});
   };
-  return {refresh, isBusy: () => pending || active !== undefined,
-    drain: async (): Promise<void> => {while (active) await active;}, lastFailure: () => lastFailure};
+  const refresh=():void=>{if(signal.aborted)return;pending=true;schedule();};
+  signal.addEventListener('abort',()=>{cancelTimer();pending=false;},{once:true});
+  // Queued refreshes can be cancelled before an exclusive close. Only an
+  // admitted read/render must keep its live owner busy until drain confirms it.
+  return {refresh, isBusy: () => pending || active !== undefined,isRendering:()=>active!==undefined,
+    drain: async (): Promise<void> => {
+      cancelTimer();
+      while(pending||active){if(!active)start();if(active)await active;cancelTimer();}
+    }, lastFailure: () => lastFailure};
 }

@@ -161,6 +161,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     manager = createProjectHostManager({directories, registry: library.registry, identity: library.projectFileIdentity, taskIndex: library.taskIndex,
       openStore: options => { assertProjectFile(options.projectFile); return openProjectStore(options); },
       maintenance: {recoverProjectFile: file => { assertProjectFile(file); return recoverProjectFile(file); }},
+      recoverySnapshot: recover => assertProjectFile.withSnapshot(recover),
       factory: async context => { const runtime = await composeHostedProject(context, appLibrary, app, options, selfPort, listeningPort); opened.set(context.projectId, runtime); return runtime; },
       onEvent: event => { if ((event.type === 'closed' || event.type === 'open-failed') && event.projectId !== null) opened.delete(event.projectId); },
     });
@@ -182,6 +183,9 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
     const rpc = createApplicationRpc({library, app, manager, directories, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries: () => {
         for (const [id, runtime] of opened) {
+          // A closing runtime can remain indexed while findMoved awaits I/O,
+          // after its native store has already closed. Keep its cached summary.
+          if (projects.status(id)?.state !== 'open') continue;
           const entry = appLibrary.registry.get(id), summary = runtime.summarize?.();
           if (entry && summary) appLibrary.registry.upsert({...entry, name: summary.name, summary: summary.summary});
         }
@@ -237,8 +241,12 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (await appAgentHttp(req, res, url)) return;
         if (url.pathname === '/api/agent/diagnostics') {
           const id = url.searchParams.get('projectId');
-          const active = id === null ? undefined : opened.get(id);
-          await (active?.project.agentDiagnosticsHttp ?? appDiagnostics)(req, res, url); return;
+          // The synchronous lease admission must not wait for an exclusive
+          // close and then reopen a project merely for diagnostics.
+          const lease = id !== null && projects.status(id)?.state === 'open' ? projects.tryAcquireOpen(id, 'request') : null;
+          try { await (lease?.host.runtime.project.agentDiagnosticsHttp ?? appDiagnostics)(req, res, url); }
+          finally { lease?.release(); }
+          return;
         }
         if (url.pathname === '/api/agent/settings') {
           try {

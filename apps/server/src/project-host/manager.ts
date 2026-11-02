@@ -57,6 +57,9 @@ export interface ProjectHostManagerOptions<Runtime extends ProjectHostRuntime> {
   readonly hooks?: readonly ProjectLifecycleHooks[];
   /** Default: the kernel's recoverProjectFile (S0a). */
   readonly maintenance?: KernelMaintenancePort;
+  /** One synchronous private-file snapshot for a recovery sweep. Later
+   * asynchronous moved-file searches take a fresh snapshot themselves. */
+  readonly recoverySnapshot?: (recover: () => void) => void;
   /** Idle grace after the last request; default DEFAULT_IDLE_CLOSE_MS. */
   readonly idleCloseMs?: number;
   /** Default DEFAULT_REQUEST_DRAIN_MS. */
@@ -115,6 +118,9 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
    * open. PROJECT_NOT_FOUND when not registered, PROJECT_UNAVAILABLE when it
    * cannot be opened. */
   acquire(projectId: string, kind: ProjectLeaseKind): Promise<ProjectLease<Runtime>>;
+  /** Synchronously borrows only an already-open, unpaused host. Never waits
+   * for an exclusive operation or opens a project for an application read. */
+  tryAcquireOpen(projectId: string, kind: ProjectLeaseKind): ProjectLease<Runtime> | null;
   /** Closes the host now, revoking its leases; requests in flight get
    * DEFAULT_REQUEST_DRAIN_MS first. Rejects with the first failed step. */
   close(projectId: string): Promise<void>;
@@ -599,10 +605,14 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
 
   /** Every registered project this process does not have open, once. */
   function sweep(): void {
-    for (const registration of registry.list()) {
-      if (entries.has(registration.projectId) || exclusive.has(registration.projectId)) continue;
-      recover(registration);
-    }
+    const recoverAll = (): void => {
+      for (const registration of registry.list()) {
+        if (entries.has(registration.projectId) || exclusive.has(registration.projectId)) continue;
+        recover(registration);
+      }
+    };
+    if (options.recoverySnapshot) options.recoverySnapshot(recoverAll);
+    else recoverAll();
   }
 
   /** Moves the registration of a missing project to where its file identity
@@ -697,6 +707,15 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         throw failure;
       }
     }
+  }
+
+  function tryAcquireOpen(projectId: string, kind: ProjectLeaseKind): ProjectLease<Runtime> | null {
+    checkProjectId(projectId);
+    checkLeaseKind(kind);
+    assertRunning();
+    if (exclusive.has(projectId)) return null;
+    const entry = entries.get(projectId);
+    return entry?.state === 'open' && !entry.paused ? grant(entry, kind) : null;
   }
 
   /** What an open by path waits for: an exclusive operation, an open or a close of this project ID. */
@@ -873,5 +892,5 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     return Object.freeze({projectId, state: entry.state, paused: entry.paused, leases: Object.freeze(leases)});
   }
 
-  return Object.freeze({list, create, openPath, acquire, close, closeAll, withExclusive, restore, inspectProject, status});
+  return Object.freeze({list, create, openPath, acquire, tryAcquireOpen, close, closeAll, withExclusive, restore, inspectProject, status});
 }

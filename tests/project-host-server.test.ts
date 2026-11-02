@@ -1,11 +1,16 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
-import {mkdtempSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, realpathSync, renameSync, rmSync, writeFileSync} from 'node:fs';
+import promises from 'node:fs/promises';
+import {syncBuiltinESMExports} from 'node:module';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import type {DatabaseSync} from 'node:sqlite';
-import {startServer, type InspectProject} from '../apps/server/src/index.ts';
+import {startServer, type InspectProject, type ServerOptions} from '../apps/server/src/index.ts';
+import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {DEFAULT_REQUEST_DRAIN_MS} from '../apps/server/src/project-host/types.ts';
+import {setTimeout as pause} from 'node:timers/promises';
 import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
 import {createServerProject, openProjectDatabase} from './helpers/project-database.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
@@ -23,7 +28,7 @@ const token = 'project-host-server-synthetic-token';
 const jpeg = Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9]);
 const latest: AgentDiagnosticSummary = {completedAt: '2026-11-02T00:00:00.000Z', status: 'completed', protocol: 'responses', model: 'synthetic-host-diagnostic', errorCode: null};
 interface WireBody<T> {ok: boolean; data?: T; error?: {code: string; message: string; details?: unknown; retryable?: boolean}}
-interface Seed {projectId: string; root: string; assetId: string; shotId: string; shotRevision: number; summary: ProjectSummary}
+interface Seed {projectId: string; root: string; projectFile: string; assetId: string; shotId: string; shotRevision: number; summary: ProjectSummary}
 
 async function seed(dataDir: string, name: string): Promise<Seed> {
   const created = createServerProject(dataDir, {name}), store = created.store;
@@ -44,11 +49,11 @@ async function seed(dataDir: string, name: string): Promise<Seed> {
     library.registry.upsert({...library.registry.get(created.projectId)!, name: title,
       summary: {...rest, cover: {assetId, mimeType: 'image/png'}}});
     writeProjectCover({cacheDir: store.cacheDir, source: {assetId, mimeType: 'image/png', sourceSha256: sha256}, jpeg});
-    return {projectId: created.projectId, root: store.projectDir, assetId, shotId: shot.id, shotRevision: shot.revision, summary};
+    return {projectId: created.projectId, root: store.projectDir, projectFile: store.projectFile, assetId, shotId: shot.id, shotRevision: shot.revision, summary};
   } finally {await services.drain(); store.close(); library.close();}
 }
 
-async function fixture(t: TestContext) {
+async function fixture(t: TestContext, options: Pick<ServerOptions, 'agentSettings'> = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-project-host-server-'));
   let server: Awaited<ReturnType<typeof startServer>> | undefined;
   const outside: DatabaseSync[] = [];
@@ -58,7 +63,7 @@ async function fixture(t: TestContext) {
   try {library.tx(() => library.documents.write('agent-diagnostic-summary-v1.json', JSON.stringify(latest)));}
   finally {library.close();}
   let inspect!: InspectProject;
-  server = await startServer({dataDir: root, port: 0, token, inspectProject: received => {inspect = received;}});
+  server = await startServer({...options, dataDir: root, port: 0, token, inspectProject: received => {inspect = received;}});
   const fetchOwned = (route: string, options: RequestInit = {}) => fetch(server!.url + route, {...options, headers: {authorization: `Bearer ${token}`, ...options.headers}});
   const json = async <T = unknown>(route: string, options: {method?: string; input?: unknown} = {}) => {
     const response = await fetchOwned(route, {method: options.method ?? 'GET', ...(options.input === undefined ? {} :
@@ -71,6 +76,26 @@ async function fixture(t: TestContext) {
   };
   const holdClosed = (project: Seed): DatabaseSync => {const db = openProjectDatabase(project.root); outside.push(db); return db;};
   return {root, a, b, json, rpc, fetch: fetchOwned, native: (projectId: string) => inspect(projectId, db => db), holdClosed};
+}
+
+function managerTimers(t: TestContext) {
+  const original = globalThis.setTimeout, grace: number[] = [], drain = Promise.withResolvers<void>();
+  t.mock.method(globalThis, 'setTimeout', (...args: Parameters<typeof original>) => {
+    const timer = original(...args), stack = new Error().stack?.replaceAll('\\', '/') ?? '';
+    if (stack.includes('/project-host/manager.ts')) {
+      const delay = args[1] ?? 0;
+      if (delay > 30_000 && delay <= 60_000) grace.push(Date.now() + delay);
+      if (delay === DEFAULT_REQUEST_DRAIN_MS) drain.resolve();
+    }
+    return timer;
+  });
+  return {grace, drain: drain.promise};
+}
+
+async function waitForIdleTimer(timers: ReturnType<typeof managerTimers>) {
+  const deadline = performance.now() + 6000;
+  while (!timers.grace.length && performance.now() < deadline) await pause(10);
+  assert.ok(timers.grace.length, 'the real host became idle and scheduled its existing grace');
 }
 
 async function assertClosedApplicationReads(f: Awaited<ReturnType<typeof fixture>>, projects: Seed[]) {
@@ -175,4 +200,116 @@ test('application rename closes its original native host; global policy and cach
   // the renamed project, while B keeps its original live owner.
   const reopened = await f.rpc<{project: {name: string}}>(f.a.projectId, 'project.get', {projectId: f.a.projectId});
   assert.equal(reopened.project.name, 'Renamed A'); assert.notEqual(f.native(f.a.projectId), oldA); assert.equal(f.native(f.b.projectId), activeB);
+});
+
+test('home summaries and diagnostics use application state while close awaits moved-file discovery after native close', {timeout: 15_000}, async t => {
+  const f = await fixture(t), timers = managerTimers(t);
+  await f.rpc(f.a.projectId, 'project.get', {projectId: f.a.projectId});
+  await waitForIdleTimer(timers);
+  const native = f.native(f.a.projectId), prepare = native.prepare.bind(native);
+  let closedReads = 0;
+  t.mock.method(native, 'prepare', (sql: string) => {
+    if (!native.isOpen) closedReads++;
+    return prepare(sql);
+  });
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const opendir = promises.opendir.bind(promises);
+  let waiting = false;
+  const directoryRead = t.mock.method(promises, 'opendir', async (...args: Parameters<typeof promises.opendir>) => {
+    if (!waiting && String(args[0]) === f.a.root && !native.isOpen) {
+      waiting = true; entered.resolve(); await release.promise;
+    }
+    return opendir(...args);
+  });
+  syncBuiltinESMExports();
+  const moved = path.join(f.a.root, 'moved.mioon');
+  renameSync(f.a.projectFile, moved);
+  const renamed = f.rpc<{name: string}>(null, 'project.rename', {projectId: f.a.projectId,
+    expectedRevision: f.a.summary.revision, requestId: randomUUID(), name: 'After discovery'});
+  void renamed.catch(() => {});
+  try {
+    await Promise.race([entered.promise, renamed.then(() => { throw new Error('Rename completed without awaiting moved-file discovery'); })]);
+    assert.equal(native.isOpen, false, 'the real native connection closes before registry discovery awaits');
+    const listed = await f.rpc<ProjectSummary[]>(null, 'project.summary.list');
+    assert.equal(listed.length, 2);
+    assert.equal(listed.find(project => project.id === f.a.projectId)!.name, f.a.summary.name,
+      'a closing project retains its registered summary until discovery settles');
+    const diagnostic = await f.json<{projectId: string; catalog: {valid: boolean}; storage?: unknown}>(`/api/agent/diagnostics?projectId=${f.a.projectId}`);
+    assert.equal(diagnostic.status, 200);
+    assert.equal(diagnostic.body.data!.projectId, f.a.projectId);
+    assert.equal(diagnostic.body.data!.catalog.valid, true);
+    assert.equal(diagnostic.body.data!.storage, undefined, 'closing projects use application diagnostics without acquiring a host');
+    assert.equal(native.isOpen, false);
+    assert.equal(closedReads, 0, 'neither request invokes a runtime whose database has closed');
+  } finally {
+    release.resolve(); directoryRead.mock.restore(); syncBuiltinESMExports();
+    await renamed;
+  }
+  assert.equal((await f.rpc<ProjectSummary[]>(null, 'project.summary.list')).find(project => project.id === f.a.projectId)!.name, 'After discovery');
+});
+
+test('home summary refresh does not reset idle grace and diagnostic error paths release their request lease', {timeout: 15_000}, async t => {
+  const f = await fixture(t), timers = managerTimers(t);
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  await f.rpc(f.a.projectId, 'project.get', {projectId: f.a.projectId});
+  await waitForIdleTimer(timers);
+  const initial = timers.grace.at(-1)!, count = timers.grace.length;
+  now += 30_000;
+  for (let index = 0; index < 3; index++) assert.equal((await f.rpc<ProjectSummary[]>(null, 'project.summary.list')).length, 2);
+  assert.equal(timers.grace.length, count, 'home refresh takes no request lease or new idle timer');
+  assert.equal(timers.grace.at(-1), initial);
+  const invalid = await f.json(`/api/agent/diagnostics?projectId=${f.a.projectId}&unknown=1`);
+  assert.equal(invalid.status, 400); assert.equal(invalid.body.error!.code, 'AGENT_TASK_INVALID');
+  assert.equal(timers.grace.length, count + 1, 'the admitted diagnostic lease is released even on a validation error');
+  assert.equal(timers.grace.at(-1), now + 60_000);
+  now += 10_000;
+  const malformed = await f.json('/api/agent/diagnostics?projectId=bad');
+  assert.equal(malformed.status, 400); assert.equal(malformed.body.error!.code, 'AGENT_TASK_INVALID');
+  assert.equal(timers.grace.length, count + 1, 'invalid project IDs preserve the handler validation and never enter lease admission');
+});
+
+test('an open diagnostic keeps its real database alive across settings await and releases before exclusive close', {timeout: 15_000}, async t => {
+  const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let gated = false;
+  const f = await fixture(t, {agentSettings: {
+    async get(options) {if (gated) {gated = false; entered.resolve(); await release.promise;} return settings.get(options);},
+    put: (...args) => settings.put(...args), close: () => settings.close(),
+  }});
+  t.after(() => settings.close());
+  const timers = managerTimers(t);
+  await f.rpc(f.a.projectId, 'project.get', {projectId: f.a.projectId});
+  await waitForIdleTimer(timers);
+  const native = f.native(f.a.projectId);
+  gated = true;
+  const diagnostic = f.json<{storage: unknown}>(`/api/agent/diagnostics?projectId=${f.a.projectId}`);
+  await entered.promise;
+  let settled = false;
+  const renamed = f.rpc(null, 'project.rename', {projectId: f.a.projectId, requestId: randomUUID(),
+    expectedRevision: f.a.summary.revision, name: 'After diagnostic'}).finally(() => {settled = true;});
+  void renamed.catch(() => {});
+  try {
+    await Promise.race([timers.drain, renamed.then(() => {throw new Error('Exclusive close skipped the live diagnostic request');})]);
+    assert.equal(settled, false);
+    assert.equal(native.isOpen, true, 'normal close drains the real diagnostic request before touching its database');
+  } finally {release.resolve();}
+  const response = await diagnostic;
+  assert.equal(response.status, 200);
+  assert.ok(response.body.data!.storage, 'the admitted open-host diagnostic reads its original live storage');
+  await renamed;
+  assert.equal(native.isOpen, false, 'finally released the lease, allowing the existing exclusive close to finish');
+});
+
+test('one open project summary failure still rejects the whole home list', async t => {
+  const f = await fixture(t);
+  await f.rpc(f.a.projectId, 'project.get', {projectId: f.a.projectId});
+  await f.rpc(f.b.projectId, 'project.get', {projectId: f.b.projectId});
+  const db = f.native(f.a.projectId), saved = db.prepare('SELECT data FROM shots WHERE id=?').get(f.a.shotId)!.data as string;
+  db.prepare('UPDATE shots SET data=? WHERE id=?').run(JSON.stringify({...JSON.parse(saved), id: randomUUID()}), f.a.shotId);
+  try {
+    const result = await f.json('/api/rpc', {method: 'POST', input: {operation: 'project.summary.list', input: {}}});
+    assert.equal(result.status, 409); assert.equal(result.body.error!.code, 'PROJECT_SUMMARY_UNAVAILABLE');
+    assert.equal(result.body.data, undefined, 'another valid project is not returned as a partial successful list');
+  } finally {db.prepare('UPDATE shots SET data=? WHERE id=?').run(saved, f.a.shotId);}
 });
