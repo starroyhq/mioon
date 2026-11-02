@@ -86,6 +86,7 @@ function readRegular(file: string, options: RulesFileReadOptions, validateText =
     while (length < bytes.length) {
       checkSignal(options.signal);
       const count = readSync(fd, bytes, length, bytes.length - length, length);
+      checkSignal(options.signal);
       if (count === 0) break;
       length += count;
     }
@@ -96,13 +97,28 @@ function readRegular(file: string, options: RulesFileReadOptions, validateText =
     if (length > maxBytes || after.size > BigInt(maxBytes)) throw new RulesFailure('too_large');
     if (after.size !== BigInt(length)) throw new RulesFailure('changed');
     const actual = bytes.subarray(0, length);
+    // Filesystems may coalesce timestamps for a same-inode, equal-size rewrite.
+    // Metadata alone cannot prove that the bytes read still belong to this view.
+    const verified = Buffer.alloc(maxBytes + 1);
+    let verifiedLength = 0;
+    while (verifiedLength < verified.length) {
+      checkSignal(options.signal);
+      const count = readSync(fd, verified, verifiedLength, verified.length - verifiedLength, verifiedLength);
+      checkSignal(options.signal);
+      if (count === 0) break;
+      verifiedLength += count;
+    }
+    const verifiedInfo = fstatSync(fd, {bigint: true}), verifiedPath = stat(file);
+    if (!verifiedInfo.isFile() || !verifiedPath?.isFile() || !sameVersion(expected, identity(verifiedInfo))
+      || !sameVersion(expected, identity(verifiedPath)) || verifiedInfo.size !== BigInt(verifiedLength)
+      || length !== verifiedLength || !actual.equals(verified.subarray(0, verifiedLength))) throw new RulesFailure('changed');
     let text = '';
     if (validateText) {
       try {text = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(actual);}
       catch {throw new RulesFailure('invalid_utf8');}
       if (rulesTextProblem(text)) throw new RulesFailure('invalid_text');
     }
-    return {text, hash: createHash('sha256').update(actual).digest('hex'), identity: identity(after)};
+    return {text, hash: createHash('sha256').update(actual).digest('hex'), identity: identity(verifiedInfo)};
   } finally {closeSync(fd);}
 }
 

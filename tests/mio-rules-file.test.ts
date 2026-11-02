@@ -27,6 +27,30 @@ function fixture(t: test.TestContext) {
 }
 function names(dir: string): string[] {return readdirSync(dir).sort();}
 
+/** Deterministic ext4-style metadata coalescing; the file bytes really change. */
+function freezeFileMetadata(file: string, afterRead?: (position: number, count: number) => void): () => void {
+  const originalLstat = fs.lstatSync, originalFstat = fs.fstatSync, originalRead = fs.readSync;
+  const lstatDescriptor = Object.getOwnPropertyDescriptor(fs, 'lstatSync')!;
+  const before = originalLstat(file, {bigint: true});
+  const isFile = (value: unknown): boolean => value !== null && typeof value === 'object'
+    && 'dev' in value && 'ino' in value && String(value.dev) === String(before.dev) && String(value.ino) === String(before.ino);
+  Object.defineProperty(fs, 'lstatSync', {value: ((...args: unknown[]) => {
+    const value: unknown = Reflect.apply(originalLstat, fs, args);
+    return isFile(value) ? before : value;
+  }) as typeof fs.lstatSync});
+  fs.fstatSync = ((...args: unknown[]) => {
+    const value: unknown = Reflect.apply(originalFstat, fs, args);
+    return isFile(value) ? before : value;
+  }) as typeof fs.fstatSync;
+  fs.readSync = ((...args: unknown[]) => {
+    const count: number = Reflect.apply(originalRead, fs, args);
+    if (isFile(originalFstat(Number(args[0]), {bigint: true}))) afterRead?.(Number(args[4]), count);
+    return count;
+  }) as typeof fs.readSync;
+  syncBuiltinESMExports();
+  return () => {Object.defineProperty(fs, 'lstatSync', lstatDescriptor); fs.fstatSync = originalFstat; fs.readSync = originalRead; syncBuiltinESMExports();};
+}
+
 test('read is fixed to the project AGENTS.md and missing does not discover parent rules', t => {
   const f = fixture(t); writeFileSync(path.join(f.root, 'AGENTS.md'), 'Parent private rules');
   assert.equal(readRulesFile(f.projectDir).status, 'missing');
@@ -90,6 +114,54 @@ test('read rejects same-inode rewrites and a replaced project directory', t => {
     if (phase === 'directory_checked') {renameSync(f.projectDir, `${f.projectDir}.old`); mkdirSync(f.projectDir); writeFileSync(f.target, 'replacement');}
   }});
   assert.deepEqual(result, {status: 'error', code: 'changed'});
+});
+
+for (const artifact of [false, true]) {
+  test(`bounded verification rejects equal-size rewrites with identical inode, mtime and ctime (artifact=${artifact})`, t => {
+    const f = fixture(t), file = artifact ? f.artifact(f.candidateName) : f.target;
+    writeFileSync(file, 'same size');
+    const before = statSync(file, {bigint: true}), positions: number[] = [];
+    const restore = freezeFileMetadata(file, (position, count) => {if (count > 0) positions.push(position);});
+    try {
+      const options = {onPhase: (phase: string) => {if (phase === 'file_read') writeFileSync(file, 'new bytes');}};
+      const result = artifact ? inspectRulesArtifact(f.projectDir, f.candidateName, options) : readRulesFile(f.projectDir, options);
+      assert.deepEqual(result, {status: 'error', code: 'changed'});
+      assert.equal(statSync(file, {bigint: true}).ino, before.ino);
+      assert.deepEqual(fs.lstatSync(file, {bigint: true}), before);
+      assert.deepEqual(positions, [0, 0], 'both bounded passes use the same descriptor from offset zero');
+    } finally {restore();}
+    assert.equal(readFileSync(file, 'utf8'), 'new bytes');
+  });
+}
+
+test('same-metadata candidate rewrite is detected before publishing or losing the captured original', t => {
+  const f = fixture(t); writeFileSync(f.target, 'before');
+  const candidate = f.artifact(f.candidateName);
+  let restore = () => {}, changed = false;
+  try {
+    const result = publishRulesFile(f.projectDir, f.input({expectedExists: true, expectedHash: hash('before'), onPhase: phase => {
+      if (phase === 'before_publish') restore = freezeFileMetadata(candidate, (position, count) => {
+        if (!changed && position === 0 && count > 0) {changed = true; writeFileSync(candidate, 'new bytes\r\n');}
+      });
+    }}));
+    assert.equal(changed, true); assert.equal(result.status, 'unknown');
+    assert.equal(result.code, 'changed'); assert.ok(!names(f.projectDir).includes('AGENTS.md'));
+  } finally {restore();}
+  assert.equal(readFileSync(f.artifact(f.backupName), 'utf8'), 'before');
+  assert.equal(readFileSync(candidate, 'utf8'), 'new bytes\r\n');
+});
+
+test('closing during the verification pass prevents all later reads', t => {
+  const f = fixture(t); writeFileSync(f.target, 'same size');
+  const controller = new AbortController(); let firstPasses = 0, afterCloseReads = 0;
+  const restore = freezeFileMetadata(f.target, (position, count) => {
+    if (controller.signal.aborted) afterCloseReads++;
+    if (position === 0 && count > 0 && ++firstPasses === 2) controller.abort();
+  });
+  try {
+    assert.deepEqual(readRulesFile(f.projectDir, {signal: controller.signal}), {status: 'error', code: 'aborted'});
+    assert.equal(firstPasses, 2); assert.equal(afterCloseReads, 0);
+  } finally {restore();}
 });
 
 test('read and write share the plain-text control validator without changing bytes', t => {
