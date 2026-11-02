@@ -1,3 +1,5 @@
+import {createMioUserRules} from '@mioon/business/agent/mio-user-rules';
+import {handleUserRulesHttp} from './mio-rules-http.ts';
 import {MAX_WORKSPACE_PREFERENCES_BYTES} from '@mioon/business';
 import {MAX_AGENT_SETTINGS_BYTES} from '@mioon/business/agent/config';
 import type {PublicStorage, SecretCodec, SettingsContextOptions} from '@mioon/business/agent/settings';
@@ -179,6 +181,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       return result;
     });
     if (token === undefined) { token = randomBytes(32).toString('hex'); writePrivateFileAtomic(tokenFile, token, {root, maxBytes: 4098, replace: false}); }
+    const userRules=createMioUserRules(library,{signal:shutdown.signal});
     const appAgentHttp = (await import('./application-agent-http.ts')).createApplicationAgentHttp(library, shutdown.signal);
     const rpc = createApplicationRpc({library, app, manager, directories, signal: shutdown.signal, providerList: () => createProviderCatalog({root, env: createProjectServiceEnvironment(appLibrary)}).list(),
       imageProfiles: input => listImageProfiles(app.profileDependencies, input as never), refreshSummaries: () => {
@@ -239,6 +242,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (url.pathname.startsWith('/api/projects/')) return notFound(res);
         if (await covers(req, res, url)) return;
         if (await appAgentHttp(req, res, url)) return;
+        if (await handleUserRulesHttp({req,res,url,rules:userRules,signal:shutdown.signal})) return;
         if (url.pathname === '/api/agent/diagnostics') {
           const id = url.searchParams.get('projectId');
           // The synchronous lease admission must not wait for an exclusive

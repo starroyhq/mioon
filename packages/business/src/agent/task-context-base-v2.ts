@@ -4,6 +4,7 @@ const object=(value:unknown):value is Record<string,unknown>=>value!==null&&type
 const historyType='mio.context.history-round';
 const overviewType='mio.context.project-overview';
 const notesType='mio.context.project-notes';
+const rulesType='mio.context.rules-snapshot';
 const message=(value:unknown):value is AgentTaskJson=>object(value)&&['user','assistant'].includes(String(value.role))&&typeof value.content==='string';
 const exactKeys=(value:Record<string,unknown>,second:string):boolean=>Object.keys(value).length===2&&Object.hasOwn(value,'type')&&Object.hasOwn(value,second);
 
@@ -24,6 +25,11 @@ export function taskContextProjectNotes(value:AgentTaskJson):AgentTaskJson {
   if(!message(value)||!object(value)||value.role!=='user')throw new TypeError('Invalid project notes.');
   return {type:notesType,message:value};
 }
+/** Native rules are a pinned host-owned group, never inferred from user prose. */
+export function taskContextRulesSnapshot(value:AgentTaskJson):AgentTaskJson {
+  if(!message(value)||!object(value)||value.role!=='user')throw new TypeError('Invalid frozen rules.');
+  return {type:rulesType,message:value};
+}
 
 export interface TaskBaseContextParts {before:AgentTaskJson[];past:AgentTaskJson[][];current:AgentTaskJson[]}
 
@@ -35,19 +41,21 @@ export function taskBaseContextParts(context:readonly AgentTaskJson[]):TaskBaseC
   if(!object(last)||last.role!=='user'||typeof last.content!=='string')return {before:[...context],past:[],current:[]};
   let first=0;const before:AgentTaskJson[]=[];
   if(object(context[0])&&context[0].role==='system'){before.push(context[0]);first=1;}
-  const middle=context.slice(first,-1),past:AgentTaskJson[][]=[],overview:AgentTaskJson[]=[],notes:AgentTaskJson[]=[];
-  if(middle.some(item=>object(item)&&[historyType,overviewType,notesType].includes(String(item.type)))){
+  const middle=context.slice(first,-1),past:AgentTaskJson[][]=[],overview:AgentTaskJson[]=[],notes:AgentTaskJson[]=[],rules:AgentTaskJson[]=[];
+  if(middle.some(item=>object(item)&&[historyType,overviewType,notesType,rulesType].includes(String(item.type)))){
     for(const item of middle){
       if(!object(item))throw new TypeError('Invalid structured base context.');
-      if(item.type===historyType&&exactKeys(item,'messages')&&Array.isArray(item.messages)&&item.messages.length>=2&&item.messages.every(message)&&!overview.length&&!notes.length){
+      if(item.type===historyType&&exactKeys(item,'messages')&&Array.isArray(item.messages)&&item.messages.length>=2&&item.messages.every(message)&&!overview.length&&!notes.length&&!rules.length){
         past.push([...item.messages]);
-      }else if(item.type===overviewType&&exactKeys(item,'message')&&message(item.message)&&object(item.message)&&item.message.role==='user'&&!overview.length&&!notes.length){
+      }else if(item.type===overviewType&&exactKeys(item,'message')&&message(item.message)&&object(item.message)&&item.message.role==='user'&&!overview.length&&!notes.length&&!rules.length){
         overview.push(item.message);
-      }else if(item.type===notesType&&exactKeys(item,'message')&&message(item.message)&&object(item.message)&&item.message.role==='user'&&!notes.length){
+      }else if(item.type===notesType&&exactKeys(item,'message')&&message(item.message)&&object(item.message)&&item.message.role==='user'&&!notes.length&&!rules.length){
         notes.push(item.message);
+      }else if(item.type===rulesType&&exactKeys(item,'message')&&message(item.message)&&object(item.message)&&item.message.role==='user'&&!notes.length&&!rules.length){
+        rules.push(item.message);
       }else throw new TypeError('Invalid structured base context.');
     }
-    return {before,past,current:[...overview,...notes,last]};
+    return {before,past,current:[...overview,...notes,...rules,last]};
   }
   const group:AgentTaskJson[]=[];
   for(const item of middle){

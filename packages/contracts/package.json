@@ -19,6 +19,7 @@
     "./agent-task-storage": "./src/agent-task-storage.ts",
     "./mio-run-usage": "./src/mio-run-usage.ts",
     "./mio-storage": "./src/mio-storage.ts",
+    "./mio-rules": "./src/mio-rules.ts",
     "./agent-timeline-gain": "./src/agent-timeline-gain.ts",
     "./timeline-audio-preview": "./src/timeline-audio-preview.ts",
     "./timeline-audio-continuous": "./src/timeline-audio-continuous.ts",

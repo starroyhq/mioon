@@ -1,3 +1,4 @@
+import {createMioProjectRules} from '@mioon/business/agent/mio-rules';
 import { createProviderRegistry,createServices,createWorkspacePreferences,startWorker } from '@mioon/business';
 import { createAgentAuthorizations } from '@mioon/business/agent/authorizations';
 import type { AgentSettingsService } from '@mioon/business/agent/settings';
@@ -84,7 +85,7 @@ type LocalDraftHttpHandler = ReturnType<typeof createLocalDraftHttp>;
 
 /** Trusted application-owned ports, never HTTP or environment configuration.
  * The app library remains on its own connection; it is not attached here. */
-export type ProjectApplication = Pick<AppLibrary, 'dataDir' | 'databaseFile' | 'documents' | 'agentPolicy' | 'db' | 'tx' | 'registry'>;
+export type ProjectApplication = Pick<AppLibrary, 'dataDir' | 'databaseFile' | 'documents' | 'agentPolicy' | 'db' | 'tx' | 'registry' | 'rulesTrust' | 'userRules' | 'receipts'>;
 /** Startup failed before a runtime could be returned, and its private work
  * could not be confirmed settled. The store owner must retain SQLite/locks,
  * just as it does after boundedShutdown rejects during a normal close. */
@@ -145,6 +146,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
   let imageSettings: ImageSettings | undefined, customImageSettings: CustomImageSettings | undefined, videoSettings: VideoSettings | undefined, comfySettings: ComfySettings | undefined;
   let taskRuntimeV2: ReturnType<typeof createAgentTaskRuntime> | undefined, taskToolsV2: ReturnType<typeof createAgentTaskTools> | undefined;
   let taskHttpV2: ReturnType<typeof createAgentTaskHttp> | undefined, agentDiagnosticsHttp: ReturnType<typeof createAgentDiagnosticsHttp> | undefined;
+  let projectRules: ReturnType<typeof createMioProjectRules> | undefined;
   let editTasks: ReturnType<typeof createEditTasks> | undefined;
   let worker: ReturnType<typeof startWorker> | undefined;
   const closeSettings = async (): Promise<void> => {
@@ -282,12 +284,13 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     // The trusted desktop proxy validates and sanitizes these values itself; the
     // local engine exposes the same dependency. createAgentTaskRuntime re-sanitizes reads.
     const chatSettings = agentSettings as unknown as AgentSettingsService;
-    taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary,...(application?{policyStore:application.agentPolicy}:{})});
+    if(isProjectStore(store)&&application)projectRules=createMioProjectRules({store,application,signal:shutdown.signal,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
+    taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary,...(projectRules?{rules:projectRules}:{}),...(application?{policyStore:application.agentPolicy}:{})});
     taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,...(application?{policyStore:application.agentPolicy,onDiagnosticCompleted:summary=>application.tx(()=>{
       const raw=application.documents.read('agent-diagnostic-summary-v1.json');
       const previous=raw===null?null:agentDiagnosticSummarySchema.parse(JSON.parse(raw));
       if(previous===null||previous.completedAt<=summary.completedAt)application.documents.write('agent-diagnostic-summary-v1.json',JSON.stringify(summary));
-    })}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
+    })}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,...(projectRules?{rules:projectRules}:{}),selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
     agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:projectId=>isProjectStore(store)?projectId===store.projectId?readMioStorage(store.db):undefined:readAgentTaskStorage(store.db)});
     }
@@ -304,12 +307,12 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
       localDrafts, lastProject, localDelivery, localShotText,
       editTasks, workspacePreferences, imageHttp, comfyHttp, videoHttp, editTasksHttp, localDraftHttp, lastProjectHttp, projectPackageHttp,
       localDeliveryHttp, exportFileRecovery, localShotTextHttp, audioPreviewHttp, continuousAudioHttp,
-      taskToolsV2, taskRuntimeV2, taskHttpV2, agentDiagnosticsHttp, closeSettings,
+      taskToolsV2, taskRuntimeV2, taskHttpV2, agentDiagnosticsHttp, projectRules, closeSettings,
       startWorker: () => worker ??= startWorker(store, services, providers, {signal: shutdown.signal}),
     };
   } catch (error) {
     shutdown.abort();
-    taskRuntimeV2?.close(); taskHttpV2?.close();
+    projectRules?.close(); taskRuntimeV2?.close(); taskHttpV2?.close();
     try {
       const results = await boundedShutdown(Promise.allSettled([
         () => taskRuntimeV2?.drain(), () => serviceDrain(), () => editTasks?.drain(), closeSettings,

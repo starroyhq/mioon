@@ -24,12 +24,12 @@ function assertCounters(db:DatabaseSync):void{
 test('every content table has an atomic delta/check trigger and no trigger scans retained tables',t=>{
  const f=fixture(t),tables=HISTORY_TABLES_BY_DOMAIN.mio.filter(name=>name!=='mio_storage_counters');
  const triggers=f.db.prepare("SELECT name,sql FROM sqlite_master WHERE type='trigger' AND name GLOB 'quota_mio_*'").all();
- assert.equal(tables.length,18);assert.equal(triggers.length,54);
+ assert.equal(tables.length,19);assert.equal(triggers.length,57);
  for(const table of tables)for(const operation of ['insert','update','delete']){
   const item=triggers.find(row=>row.name===`quota_${table}_${operation}`);assert.ok(item);
   const sql=String(item.sql);assert.doesNotMatch(sql,/\b(?:sum|count)\s*\(/iu);
   assert.match(sql,/UPDATE mio_storage_counters SET bytes=/u);
-  assert.equal(/AGENT_TASK_STORAGE_LIMIT/u.test(sql),!['mio_edit_claims','mio_edit_owners','mio_edit_receipts','mio_process_target_revisions'].includes(table));
+  assert.equal(/AGENT_TASK_STORAGE_LIMIT/u.test(sql),!['mio_edit_claims','mio_edit_owners','mio_edit_receipts','mio_process_target_revisions','mio_rule_writes'].includes(table));
  }
  assert.deepEqual({...f.db.prepare('SELECT * FROM mio_storage_counters').get()},{singleton:1,bytes:0,rows:1});
  assertCounters(f.db);

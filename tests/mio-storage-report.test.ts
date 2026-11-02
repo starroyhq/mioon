@@ -11,7 +11,7 @@ test('K1 stress report archives all thirty real runtime steps and reconstructs e
   assert.equal(round.status, 'completed'); assert.equal(round.stepsUsed, 30);
   assert.equal(round.models.length, 15); assert.equal(round.tools.length, 15);
   assert.ok(round.tools.every(tool => tool.resultBytes === 20480));
-  assert.equal(round.retained.tables.length, 19);
+  assert.equal(round.retained.tables.length, 20);
   assert.equal(project.cold.usage.rows, 1);
   assert.deepEqual(round.retained.tables.find(table => table.name === 'mio_storage_counters'), {name: 'mio_storage_counters', rows: 0, bytes: 0, countedBytes: true, countedRows: true, quotaGuard: 'row_only'});
   assert.equal(round.retained.bytes, round.retained.tables.reduce((n, table) => n + table.bytes, 0));
