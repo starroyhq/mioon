@@ -5,6 +5,7 @@ import path from 'node:path';
 import {LOCAL_DELIVERY_LIMITS,createLocalDeliverySchemas} from '@mioon/contracts/local-delivery';
 import type {LocalDeliveryRenderInput,LocalDeliveryDraftValue,LocalDeliveryIntent,LocalDeliverySlot,LocalDeliveryDisk,LocalDeliveryEnvelope,LocalDeliveryExecution,LocalDeliveryExecute} from '@mioon/contracts/local-delivery';
 import type {LocalDraftStorage} from './local-drafts.ts';
+import {validateCompanionScope} from './companion-scope.ts';
 
 export const LOCAL_DELIVERY_FILENAME='local-delivery-v1.json';
 const messages={
@@ -66,6 +67,7 @@ export interface LocalDeliveryGuards{
 export type LocalDeliveryFaultPoint='beforePersist'|'afterPersist'|'beforeDirectorySync'|'afterDirectorySync'|'beforeDispatch'|'afterDispatch'|'beforeOutcomePersist';
 export interface LocalDeliveryOptions{
   root:string;channel?:'web'|'production'|'development';guards:LocalDeliveryGuards;storage:LocalDraftStorage;signal?:AbortSignal;
+  databaseFile?:string;
   fault?:(point:LocalDeliveryFaultPoint)=>void;
 }
 const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as const;
@@ -73,7 +75,7 @@ const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as c
 /** Local title and one immutable latest export intention per project. This is
  * deliberately not an operation journal, renderer settlement API or RPC tool.
  * A pending reservation is durable before the single fixed service can run. */
-export function createLocalDelivery({root,channel='web',guards,storage,signal,fault=()=>{}}:LocalDeliveryOptions){
+export function createLocalDelivery({root,channel='web',guards,storage,signal,fault=()=>{},databaseFile}:LocalDeliveryOptions){
   if(!path.isAbsolute(root)||!['web','production','development'].includes(channel))fail('LOCAL_DELIVERY_VALIDATION');
   const schemas=createLocalDeliverySchemas(guards.isRenderInput),file=path.join(root,LOCAL_DELIVERY_FILENAME),instanceId=randomUUID();
   const flights=new Map<string,{intentId:string;revision:number;promise:Promise<LocalDeliveryExecution>}>();
@@ -83,7 +85,7 @@ export function createLocalDelivery({root,channel='web',guards,storage,signal,fa
   function owned():void{if(guards.isRestored())fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');if(signal?.aborted)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');if(guards.ownsLock()!==true)fail('LOCAL_DELIVERY_OWNER_REQUIRED');}
   function active():boolean{if(guards.isRestored())return false;owned();return true;}
   function identity():string{
-    const directory=storage.validatePrivateDirectory(root),db=storage.validateManagedFile(path.join(root,'workbench.sqlite'),{root});
+    const {directory,db}=validateCompanionScope(root,storage,databaseFile);
     if(!directory||!db)fail('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
     const current=createHash('sha256').update(JSON.stringify([channel,path.resolve(root),String(directory.dev),String(directory.ino),String(db.dev),String(db.ino),db.birthtimeMs??null])).digest('hex');
     if(scope!==undefined&&scope!==current)fail('LOCAL_DELIVERY_SCOPE_MISMATCH');scope=current;return current;

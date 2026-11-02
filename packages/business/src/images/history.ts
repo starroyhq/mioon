@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from '../project-file/held-files.ts';
 import {randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {AppError,parse,IMAGE_LIMITS,imageSchemas,isImageMutationResponse,imageRequestResponseSchema} from '@mioon/contracts';
 import {createImageOwnershipReader} from '../image-ownership.ts';
@@ -68,6 +69,7 @@ export function createImageHistoryReaders({db}: {db: DatabaseSync}): ImageHistor
   const secret = randomBytes(32);
   const reviewBinding = (value: {row: {projectId: string; id: string}; input: unknown}): unknown => validateImageTaskReview(db, value.row.projectId, value.row.id, value.input);
   const schemaPresent = (): boolean => {
+    if (isProjectLayout(db)) return true;
     const present = Number((db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('image_groups','image_tasks','image_versions','image_requests')").get() as {n: number}).n);
     if (present === 4) return true;
     if (present || db.prepare('SELECT 1 FROM schema_version WHERE version=16').get()) invalid();

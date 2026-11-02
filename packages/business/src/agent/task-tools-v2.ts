@@ -8,6 +8,8 @@ import {isTimelineMixLoudnessResponse} from '@mioon/contracts/timeline-mix-loudn
 import {isTimelineLoudnessApplicableReport,timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
 import type {OperationName} from '@mioon/contracts';
 import type {WorkspaceStore} from '../db.ts';
+import type {AgentPolicyStore} from '../app-db/stores.ts';
+import {hasStoreTable,isProjectLayout,storeDirectories} from '../store-layout.ts';
 import {registerWorkspaceTransactionObserver,registerWorkspaceTransactionFence} from '../db.ts';
 import type {OrdinaryServices} from '../services.ts';
 import type {AgentTaskTier,AgentTaskTarget,AgentTaskJson,AgentTaskChange} from '../../../contracts/src/agent-tasks-v2.ts';
@@ -175,7 +177,7 @@ function snapshot(store:WorkspaceStore,projectId:string):Snapshot{
   const value:unknown=JSON.parse(String(row.data));if(!object(value)||value.id!==row.id||value.projectId!==projectId)fail('AGENT_TASK_INVALID_TARGET','项目记录无法验证');insert(kind,String(row.id),table,value);
  }
  for(const [table,descriptor] of Object.entries(extraTables)){
-  if(!store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table))continue;
+  if(!hasStoreTable(store.db,table))continue;
   for(const row of store.db.prepare(`SELECT * FROM ${table} WHERE projectId=?`).all(projectId))insert(descriptor.kind,String(row[descriptor.id]),table,{...row});
  }
  const timeline=store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
@@ -323,8 +325,10 @@ function transactionResult(operation:string,projectId:string,value:unknown):Agen
 }
 
 const previsWrite=(operation:string):boolean=>operation==='previs.create'||operation==='previs.scene.set';
-export function createAgentTaskTools({store,services}:{store:WorkspaceStore;services:OrdinaryServices}){
+export function createAgentTaskTools({store,services,policyStore}:{store:WorkspaceStore;services:OrdinaryServices;policyStore?:AgentPolicyStore}){
  const {db}=store;
+ const importRoot=storeDirectories(store).localDir,importDirectory=isProjectLayout(db)?'imports':'agent-imports';
+ const journal=createAgentTaskJournal(store,{policyStore});
  // Mio reads back a previs node it created or saved the way it reads one, with framing.
  const taskResult=(operation:string,projectId:string,value:unknown):AgentTaskJson=>previsWrite(operation)&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):transactionResult(operation,projectId,value);
  const preparedOrigins=new WeakMap<AgentTaskEffectOrigin,PreparedAgentTaskTool>();
@@ -349,7 +353,6 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(origin.recorded){if(!origin.appendChangesInside)throw Error('Late task changes require a durable origin recorder');origin.appendChangesInside(captured);}
   else{origin.recordInside(taskResult(active.operation,active.projectId,result),captured);origin.recorded=true;}
  });
- const journal=createAgentTaskJournal(store);
  const removeDispatchRecorder=setAgentTaskJobDispatchRecorder(db,binding=>{const step=journal.step(binding.stepId);if(step.cost!=='submitted')journal.updateStep(binding.runId,binding.stepId,{cost:'submitted'});});
  const removeTargetGate=setAgentTaskJobTargetGate(db,(binding,target)=>{
   let expected:AgentTaskTarget|undefined;
@@ -682,7 +685,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const sha256=createHash('sha256').update(bytes).digest('hex');
   const previous=db.prepare('SELECT * FROM agent_task_imports_v2 WHERE requestId=?').get(input.requestId);
   if(previous){if(previous.projectId!==input.projectId||previous.sha256!==sha256||previous.name!==input.name||previous.mimeType!==mimeType)fail('AGENT_TASK_REQUEST_CONFLICT','文件选择请求已用于其他内容');return {id:String(previous.id),handle:String(previous.id),name:String(previous.name),mimeType:String(previous.mimeType),status:String(previous.status)};}
-  const id=randomUUID(),relativePath=`agent-imports/${id}.bin`;ensurePrivateDirectory(path.join(store.root,'agent-imports'),{create:true});writePrivateFileAtomic(path.join(store.root,relativePath),bytes,{root:store.root,maxBytes:limit,replace:false});
+  const id=randomUUID(),relativePath=`${importDirectory}/${id}.bin`;ensurePrivateDirectory(path.join(importRoot,importDirectory),{create:true});writePrivateFileAtomic(path.join(importRoot,relativePath),bytes,{root:importRoot,maxBytes:limit,replace:false});
   store.tx(()=>db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,assetId,createdAt) VALUES(?,?,?,?,?,?,?,'selected',NULL,?)").run(id,input.projectId,input.requestId,input.name,mimeType,relativePath,sha256,new Date().toISOString()));
   return {id,handle:id,name:input.name,mimeType,status:'selected'};
  }
@@ -693,9 +696,9 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(isLut&&typeof row.resourceId==='string'){return {result:projectResult(await services.call('lut.inspect',{projectId:prepared.projectId,lutId:row.resourceId})),changes:[],recorded:false};}
   if(row.assetId){const asset=owned('assets',row.assetId,prepared.projectId);return {result:projectResult(asset),changes:[],recorded:false};}
   if(row.status!=='selected')fail('AGENT_TASK_UNKNOWN_RESULT','该文件导入结果未知，请先查询原任务');
-  if(typeof row.relativePath!=='string'||row.relativePath!==`agent-imports/${String(row.id)}.bin`)fail('AGENT_TASK_INVALID_TARGET','文件选择记录无法验证');
+  if(typeof row.relativePath!=='string'||row.relativePath!==`${importDirectory}/${String(row.id)}.bin`)fail('AGENT_TASK_INVALID_TARGET','文件选择记录无法验证');
   context.beforeEffect();
-  const bytes=readPrivateFile(path.join(store.root,row.relativePath),{root:store.root,maxBytes:(isLut?7:30)*1024*1024});if(!Buffer.isBuffer(bytes)||createHash('sha256').update(bytes).digest('hex')!==row.sha256)fail('AGENT_TASK_INVALID_TARGET','已选文件内容发生变化');
+  const bytes=readPrivateFile(path.join(importRoot,row.relativePath),{root:importRoot,maxBytes:(isLut?7:30)*1024*1024});if(!Buffer.isBuffer(bytes)||createHash('sha256').update(bytes).digest('hex')!==row.sha256)fail('AGENT_TASK_INVALID_TARGET','已选文件内容发生变化');
   store.tx(()=>{context.beforeEffect();const changed=db.prepare("UPDATE agent_task_imports_v2 SET status='importing' WHERE id=? AND projectId=? AND status='selected'").run(handle,prepared.projectId);if(changed.changes!==1)fail('AGENT_TASK_UNKNOWN_RESULT','该文件导入已受理');});
   origin.importHandle=handle;
   context.beforeEffect();const value=await services.call(isLut?'lut.import':'asset.import',{projectId:prepared.projectId,name:row.name,...(isLut?{requestId:context.requestId}:{mimeType:row.mimeType}),dataBase64:bytes.toString('base64')},{signal:context.signal});

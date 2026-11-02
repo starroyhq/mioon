@@ -2,14 +2,17 @@ import type {DatabaseSync} from 'node:sqlite';
 import {AGENT_TASK_STORAGE_TABLES,agentTaskStorageSnapshotSchema} from '@mioon/contracts/agent-task-storage';
 import type {AgentTaskStorageSnapshot} from '@mioon/contracts/agent-task-storage';
 import {readCurrentWorkspaceRole,isWorkspaceRoleSince,isPrivateStorageWorkspaceRole} from '../workspace-schema-dispatch.ts';
+import {isProjectLayout,hasStoreTable} from '../store-layout.ts';
 
 /** Read only aggregate counts from fixed local table names. No request, prompt,
  * credential, path or provider data crosses this management diagnostic. */
 export function readAgentTaskStorage(db:DatabaseSync):AgentTaskStorageSnapshot {
  // Model request references exist from schema60 on and in private storage.
- const role=readCurrentWorkspaceRole(db),references=isWorkspaceRoleSince(role,60)||isPrivateStorageWorkspaceRole(role);
+ const projectLayout=isProjectLayout(db),role=projectLayout?undefined:readCurrentWorkspaceRole(db),references=projectLayout||role!==undefined&&(isWorkspaceRoleSince(role,60)||isPrivateStorageWorkspaceRole(role));
  const limits={bytes:references?268435456:67108864,rows:20000,rowBytes:2097152,eventPageBytes:8388608} as const;
- const available=!!db.prepare("SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='agent_task_runs_v2'").get();
+ // The legacy response counts app-global policy among eleven workspace tables.
+ // A project connection cannot supply those app counts; keep that response unavailable.
+ const available=!projectLayout&&hasStoreTable(db,'agent_task_runs_v2');
  const tables=available?AGENT_TASK_STORAGE_TABLES.map(name=>{
   const countedRows=name!=='agent_task_edit_receipts_v2',countedBytes=!['agent_task_job_origins_v2','agent_task_imports_v2'].includes(name);
   const value=db.prepare(`SELECT count(*) AS rows,${countedBytes?'coalesce(sum(length(CAST(data AS BLOB))),0)':'0'} AS bytes FROM ${name}`).get();

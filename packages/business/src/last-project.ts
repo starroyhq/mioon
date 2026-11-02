@@ -6,6 +6,8 @@ import path from 'node:path';
 import {LAST_PROJECT_LIMITS,lastProjectPutSchema,lastProjectDiskSchema} from '@mioon/contracts/last-project';
 import type {LastProjectEnvelope,LastProjectDisk,LastProjectPut} from '@mioon/contracts/last-project';
 import type {LocalDraftStorage} from './local-drafts.ts';
+import type {AppDocumentStore} from './app-db/stores.ts';
+import {validateCompanionScope} from './companion-scope.ts';
 
 export const LAST_PROJECT_FILENAME='last-project-v1.json';
 const messages={
@@ -62,10 +64,11 @@ export function readLastProjectTarget(db:ProjectDatabase,projectId:string):{id:s
 export interface LastProjectGuards{ownsLock():boolean;isRestored():boolean;readProject(projectId:string):unknown}
 export interface LastProjectOptions{
   root:string;channel?:'web'|'production'|'development';guards:LastProjectGuards;storage:LocalDraftStorage;signal?:AbortSignal;
+  databaseFile?:string;documents?:Pick<AppDocumentStore,'read'|'write'>;
   fault?:(point:'beforePersist'|'afterPersist'|'beforeDirectorySync'|'afterDirectorySync')=>void;
 }
 const unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'} as const;
-export function createLastProject({root,channel='web',guards,storage,signal,fault=()=>{}}:LastProjectOptions){
+export function createLastProject({root,channel='web',guards,storage,signal,fault=()=>{},databaseFile,documents}:LastProjectOptions){
   if(!path.isAbsolute(root)||!['web','production','development'].includes(channel))fail('LAST_PROJECT_VALIDATION');
   const file=path.join(root,LAST_PROJECT_FILENAME),instanceId=randomUUID();let scope:string|undefined;
   function guarded<T>(fn:()=>T):T{try{return fn();}catch(error){if(error instanceof LastProjectError)throw error;fail('LAST_PROJECT_STORAGE_UNAVAILABLE');}}
@@ -76,7 +79,7 @@ export function createLastProject({root,channel='web',guards,storage,signal,faul
   }
   function owned():void{checkpoint();if(!guards.ownsLock())fail('LAST_PROJECT_OWNER_REQUIRED');}
   function identity():string{
-    const directory=storage.validatePrivateDirectory(root),db=storage.validateManagedFile(path.join(root,'workbench.sqlite'),{root});
+    const {directory,db}=validateCompanionScope(root,storage,databaseFile);
     if(!directory||!db)fail('LAST_PROJECT_STORAGE_UNAVAILABLE');
     // Keep exactly the existing local-draft identity: trusted build channel,
     // canonical private root identity and existing SQLite identity.
@@ -84,7 +87,8 @@ export function createLastProject({root,channel='web',guards,storage,signal,faul
     if(scope!==undefined&&scope!==current)fail('LAST_PROJECT_SCOPE_MISMATCH');scope=current;return current;
   }
   function read():LastProjectDisk|null{
-    const workspaceScope=identity(),bytes=storage.readPrivateFile(file,{root,allowMissing:true,private:true,maxBytes:LAST_PROJECT_LIMITS.fileBytes});
+    const workspaceScope=identity(),document=documents?.read(LAST_PROJECT_FILENAME);
+    const bytes=documents?(document===null?null:Buffer.from(document as string,'utf8')):storage.readPrivateFile(file,{root,allowMissing:true,private:true,maxBytes:LAST_PROJECT_LIMITS.fileBytes});
     if(bytes===null)return null;
     if(!Buffer.isBuffer(bytes)||bytes.length>LAST_PROJECT_LIMITS.fileBytes)fail('LAST_PROJECT_STORAGE_UNAVAILABLE');
     let value:unknown;try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{fail('LAST_PROJECT_STORAGE_UNAVAILABLE');}
@@ -108,6 +112,12 @@ export function createLastProject({root,channel='web',guards,storage,signal,faul
     owned();identity();
     try{
       fault('beforeDirectorySync');owned();identity();
+      if(documents){
+        // The app library's synchronous write commits with SQLite FULL sync;
+        // there is no companion rename to acknowledge with a directory fsync.
+        documents.read(LAST_PROJECT_FILENAME);
+        fault('afterDirectorySync');owned();identity();return;
+      }
       const expected=storage.validatePrivateDirectory(root);if(!expected)fail('LAST_PROJECT_STORAGE_UNAVAILABLE');
       const fd=openSync(root,constants.O_RDONLY|constants.O_NOFOLLOW);
       try{
@@ -124,7 +134,9 @@ export function createLastProject({root,channel='web',guards,storage,signal,faul
     fault('beforePersist');owned();if(disk.workspaceScope!==identity())fail('LAST_PROJECT_SCOPE_MISMATCH');
     let published=false;
     try{
-      storage.writePrivateFileAtomic(file,contents,{root,private:true,maxBytes:LAST_PROJECT_LIMITS.fileBytes});published=true;
+      if(documents)documents.write(LAST_PROJECT_FILENAME,contents);
+      else storage.writePrivateFileAtomic(file,contents,{root,private:true,maxBytes:LAST_PROJECT_LIMITS.fileBytes});
+      published=true;
       fault('afterPersist');confirmPublished();
     }catch(error){if(published)fail('LAST_PROJECT_SAVE_UNCERTAIN');throw error;}
   }

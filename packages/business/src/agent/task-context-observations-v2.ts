@@ -1,3 +1,4 @@
+import {hasStoreTable} from '../store-layout.ts';
 import type {AgentTaskChange,AgentTaskJson,AgentTaskLocale,AgentTaskStep,AgentTaskTarget} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
 import {PROJECT_NOTES_MAX_BYTES,projectNotesValid} from '../../../contracts/src/project-lifecycle.ts';
@@ -45,7 +46,7 @@ const backgroundTables=[
  * load media, start workers, or decode full task/request rows. Table existence
  * only accommodates older restored formats whose scene table does not exist. */
 export function collectTaskProjectOverview(store:Pick<WorkspaceStore,'db'>,projectId:string):TaskProjectOverview{
-  const tables=new Set(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('jobs','exports','image_tasks','frame_tasks','scene_tasks')").all().map(row=>String(row.name)));
+  const tables=new Set(backgroundTables.filter(item=>hasStoreTable(store.db,item.table)).map(item=>item.table));
   const background=backgroundTables.filter(item=>tables.has(item.table)).map(item=>`(SELECT count(*) FROM ${item.table} b WHERE b.projectId=p.id AND ${item.state} NOT IN (${item.terminal}))`).join('+')||'0';
   const row=store.db.prepare(`WITH asset_counts AS (SELECT count(*) total,
     sum(CASE WHEN lower(json_extract(data,'$.mimeType')) LIKE 'image/%' THEN 1 ELSE 0 END) image,

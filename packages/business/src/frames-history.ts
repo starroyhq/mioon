@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
@@ -70,6 +71,7 @@ type FrameReader={frameTask(id: string): FrameTaskView};
 export function createFrameHistoryReaders({db}: {db: DatabaseSync}): FrameHistoryReaders {
  const secret=randomBytes(32);
  function schemaPresent(): boolean {
+  if(isProjectLayout(db))return true;
   const n=db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('frame_tasks','frame_requests')").get()?.n;
   if(n===2)return true;if(n||db.prepare('SELECT 1 FROM schema_version WHERE version=20').get())invalid();return false;
  }
