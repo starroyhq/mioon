@@ -2,6 +2,7 @@ import { createDesktopLutRecoveryHost } from './lut-recovery-host.ts';
 import { createDesktopLutRecoveryStore } from './lut-recovery-store.ts';
 import { CLIP_LUT_RECOVERY_CHANNEL } from '../../../packages/contracts/src/clip-lut-recovery.ts';
 import { calculateWorkspaceScope } from '../../../packages/contracts/src/workspace-scope.ts';
+import { projectRpcPath } from '../../../packages/contracts/src/project-file.ts';
 import { ensurePrivateDirectory, validatePrivateDirectory, validateManagedFile, readPrivateFile, removePrivateFile, writePrivateFileAtomic, createPrivateTemporaryDirectory } from '@mioon/contracts/private-storage';
 import type {ReadPrivateFileOptions} from '@mioon/contracts/private-storage';
 import { createAppLanguageHost } from './app-language-host.ts';
@@ -510,7 +511,7 @@ async function start(): Promise<DesktopStartReport> {
     });
 
     const nativeBackendCurrent=()=>{if(!ownsWindowContext(context)||backend!==ownedBackend||ownedBackend.state!=='running'||!quitRouter.allowsWindows||context.incident.failed||backendExitObserved)throw new Error('Native workspace action is unavailable.');};
-    const nativeRead=(resource:'/api/rpc'|'/api/workspace-info',input?:object)=>readNativeBackendMetadata({base:started.url,token,resource,input,signal:context.startup.signal,check:nativeBackendCurrent});
+    const nativeRead=(resource:string,input?:object)=>readNativeBackendMetadata({base:started.url,token,resource,input,signal:context.startup.signal,check:nativeBackendCurrent});
     workspaceNativeHost=createWorkspaceNativeHost<IpcMainInvokeEvent>({
       ownerForEvent:event=>{
         const owner=windowHost?.ownerForContents(event.sender),window=windowHost?.windowForContents(event.sender);
@@ -521,7 +522,7 @@ async function start(): Promise<DesktopStartReport> {
       setBackupDirectory:directory=>{nativeBackendCurrent();return ownedBackend.setBackupDirectory(directory);},
       readSettings:async()=>workspaceSettingsSchema.parse(await nativeRead('/api/rpc',{operation:'workspace.settings.get',input:{}})),
       readWorkspaceRoot:async()=>workspaceInfoSchema.parse(await nativeRead('/api/workspace-info')).dataDirectory,
-      readExport:identity=>nativeRead('/api/rpc',{operation:'export.output.get',input:identity}),
+      readExport:identity=>nativeRead(projectRpcPath(identity.projectId),{operation:'export.output.get',input:identity}),
       openPath:file=>shell.openPath(file),revealPath:file=>shell.showItemInFolder(file),restart,
       chooseSaveFile:async suggestedName=>{const result=await dialog.showSaveDialog({title:nt('native.saveProjectFile'),defaultPath:path.join(app.getPath('documents'),suggestedName),filters:[{name:nt('native.projectFileFilter'),extensions:['mioon']}],properties:['showOverwriteConfirmation','createDirectory']});return result.canceled||!result.filePath?null:result.filePath;},
       fetchProjectPackage:exportId=>{nativeBackendCurrent();return fetch(new URL(`/api/project-packages/exports/${exportId}/download`,started.url),{headers:{authorization:`Bearer ${token}`},redirect:'error',signal:context.startup.signal});},

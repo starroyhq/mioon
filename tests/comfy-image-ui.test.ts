@@ -35,7 +35,7 @@ import * as navigation from '../apps/web/src/settings-navigation-state.ts';
 import { COMFY_IMAGE_OPTIONS, COMFY_IMAGE_POLICY, DEFAULT_COMFY_IMAGE_CONFIGURATION, canonicalImageInput, isImageReviewResponse } from '@mioon/contracts';
 import { buildComfyWorkflow, hashComfyWorkflow } from '../packages/business/src/comfy/workflow.ts';
 import { createComfyImageSettingsSession, createComfyImageSettingsClient, comfyImageSettingsCanSave } from '../apps/web/src/comfy-image-settings.ts';
-import { ApiError, rpc } from '../apps/web/src/api.ts';
+import { ApiError, mediaUrl, rpc } from '../apps/web/src/api.ts';
 import { createComfyObservationSession, comfyCanObserve } from '../apps/web/src/comfy-image-observation.ts';
 import { createImageGenerationSession, imageCanGenerate, imageReviewCanApprove, type ImageGenerationSessionOptions } from '../apps/web/src/image-generation.ts';
 
@@ -252,6 +252,7 @@ test('actual Comfy composer prepares first and stale hidden approval handlers ne
     if (name === './ComfyImageDetails.tsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
     if (name === './image-settings.ts') return { createImageSettingsClient: () => legacyClient };
     if (name === './comfy-image-settings.ts') return { ...settingsLogic, createComfyImageSettingsClient: () => localClient };
+    if (name === './api.ts') return { mediaUrl };
     throw Error(name);
   }, { projectId, projectName: '本地测试项目', api: f.api, storage: f.storage, reviewClient: f.reviewClient, settingsClient: legacyClient, customSettingsClient: legacyClient, comfySettingsClient: localClient });
   ui.render(); await flush(); ui.render(); ui.click('image-provider-comfy'); ui.change('image-generation-name', input().name); ui.change('image-generation-prompt', input().prompt); assert.equal(ui.find('image-generate')!.props.type, 'button'); assert.equal(ui.find('image-generate')!.props.disabled, false); assert.match(JSON.stringify(ui.find('image-fixed-options')), /512/); assert.doesNotMatch(JSON.stringify(ui.find('image-fixed-options')), /low|1024/);
@@ -270,7 +271,7 @@ test('observation rejection proof with wrong or absent HTTP status stays uncerta
 
 test('browser RPC preserves actual HTTP status without changing legacy ApiError construction', async () => {
   const original = globalThis.fetch;
-  try { globalThis.fetch = (async () => ({ ok: false, status: 500, json: async () => ({ ok: false, error: { code: 'COMFY_REMOTE_REVISION_CONFLICT', message: 'safe', details: {} } }) })) as unknown as typeof fetch; await assert.rejects(rpc('image.task.observeRemote', {}), error => error instanceof ApiError && error.status === 500 && error.definitive === false); assert.equal(Object.hasOwn(new ApiError('legacy', 'NETWORK'), 'status'), false); }
+  try { globalThis.fetch = (async () => ({ ok: false, status: 500, json: async () => ({ ok: false, error: { code: 'COMFY_REMOTE_REVISION_CONFLICT', message: 'safe', details: {} } }) })) as unknown as typeof fetch; await assert.rejects(rpc('image.task.observeRemote', { projectId }), error => error instanceof ApiError && error.status === 500 && error.definitive === false); assert.equal(Object.hasOwn(new ApiError('legacy', 'NETWORK'), 'status'), false); }
   finally { globalThis.fetch = original; }
 });
 
@@ -389,11 +390,12 @@ test('actual unavailable-module composer retains old preview/details/recovery an
       if (name === './ComfyImageDetails.tsx') return { ComfyImageReviewDetails: 'ComfyImageReviewDetails', ComfyImageTaskDetails: 'ComfyImageTaskDetails' };
       if (name === './image-settings.ts') return { createImageSettingsClient: () => legacyClient };
       if (name === './comfy-image-settings.ts') return settingsLogic;
+      if (name === './api.ts') return { mediaUrl };
       throw Error(name);
     }, { projectId, api: f.api, storage: f.storage, reviewClient: f.reviewClient, settingsClient: legacyClient, customSettingsClient: legacyClient, comfySettingsClient: localClient });
     ui.render(); await flush(); ui.render(); ui.click('image-provider-comfy'); ui.change('image-generation-name', 'New'); ui.change('image-generation-prompt', 'New prompt');
     assert.equal(ui.find('image-comfy-module')!.props['data-state'], status?.state || 'unknown'); assert.equal(ui.find('image-generate')!.props.disabled, true); assert.equal(ui.find('image-review-approve')!.props.disabled, true); assert.equal(ui.find('image-observe-remote')!.props.disabled, true);
-    assert.equal(ui.find('image-recover-result')!.props.disabled, false); assert.equal(ui.find('image-refresh')!.props.disabled, false); assert.equal(ui.find('image-version-preview')!.props.src, `/media/${historicalVersion().assetId}`); assert.ok(nodes(ui.render()).some((node: ElementNode) => node.type === 'ComfyImageTaskDetails'));
+    assert.equal(ui.find('image-recover-result')!.props.disabled, false); assert.equal(ui.find('image-refresh')!.props.disabled, false); assert.equal(ui.find('image-version-preview')!.props.src, `/api/projects/${projectId}/media/${historicalVersion().assetId}`); assert.ok(nodes(ui.render()).some((node: ElementNode) => node.type === 'ComfyImageTaskDetails'));
     ui.click('image-generate'); ui.click('image-review-approve'); ui.click('image-observe-remote'); await flush(); assert.equal(f.approvals.length, 0); assert.equal(f.calls.some(([op]) => ['image.generate', 'image.review.prepare', 'image.task.observeRemote'].includes(op)), false);
     ui.unmount(); f.session.dispose();
   }

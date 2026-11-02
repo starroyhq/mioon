@@ -18,6 +18,7 @@ import {createNativeAudioPreviewBridge} from '../apps/desktop/src/native-audio-p
 import {createNativeAudioPreviewAdmission} from '../apps/web/src/native-audio-preview-adapter.ts';
 import {nativeAudioProofMaterial,NATIVE_AUDIO_LEASE_HEADER,NATIVE_AUDIO_PROOF_HEADER,NATIVE_AUDIO_SIGNATURE_HEADER} from '../packages/contracts/src/native-audio-preview.ts';
 import {continuousAudioQuery,CONTINUOUS_AUDIO_ENDPOINT,CONTINUOUS_AUDIO_PROFILE,CONTINUOUS_AUDIO_LIMITS} from '../packages/contracts/src/timeline-audio-continuous.ts';
+import {projectRouteTarget} from '../apps/server/src/project-routes.ts';
 import type { IncomingMessage } from 'http';
 
 const uuid=()=>randomUUID(),hash='a'.repeat(64),tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -77,6 +78,21 @@ test('continuous native ownership retains one 96 MiB lease across blocks and see
   assert.equal(f.commands.filter(command=>command.type==='native-audio:reserve').length,1);
   assert.equal(f.events.filter(event=>event.event.type==='revoke').length,0);
   assert.equal(f.signed(a,grant!.lease!,f.block(request,{generation:1,sequence:4,blockStartFrame:120})).result.cancel,true,'Old seek generation cannot consume the next request');
+  await f.dispatch(a,{action:'cancel',contextId:a.contextId,actionId:request.actionId});
+  await f.acknowledge(a,request,grant!.lease!);await f.host.shutdown();
+  assert.deepEqual(f.retireCalls,[request.sessionId]);
+});
+
+test('continuous blocks at the input project address sign and are admitted at the route the server maps them to',async()=>{
+  const f=fixture(),a=f.owner(),b=f.owner(),request=f.request(a),grant=await f.dispatch(a,request),input=f.block(request);
+  const at=(project:string)=>`http://127.0.0.1:12345/api/projects/${project}/timeline-audio-preview/continuous?${continuousAudioQuery(input)}`;
+  assert.equal(f.signed(a,grant!.lease!,input,{url:at(b.projectId)}).result.cancel,true,'the address names another project than the input');
+  const call=f.signed(a,grant!.lease!,input,{url:at(input.projectId)});assert.equal(call.result.cancel,false);
+  const target=projectRouteTarget(call.url.pathname);assert.deepEqual(target,{projectId:input.projectId,pathname:CONTINUOUS_AUDIO_ENDPOINT});
+  // The server serves the address at the route it replaces, request URL included.
+  const mapped=new URL(target!.pathname+call.url.search,call.url.origin);
+  const {admission,response}=f.accept({...call,request:{...call.request!,url:mapped.pathname+mapped.search},url:mapped},input);
+  admission.onResourceSettlement(Promise.resolve());admission.finish();response.close();await tick();
   await f.dispatch(a,{action:'cancel',contextId:a.contextId,actionId:request.actionId});
   await f.acknowledge(a,request,grant!.lease!);await f.host.shutdown();
   assert.deepEqual(f.retireCalls,[request.sessionId]);

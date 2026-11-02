@@ -122,7 +122,7 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   const queued = await call('timeline_render', renderArgs); assert.equal(queued.mode, 'timeline'); assert.equal(queued.timelineRevision, timeline.revision); assert.equal(queued.purpose, 'preview');
   assert.deepEqual(queued.snapshot.timeline, timeline);
   let rendered; const renderDeadline = Date.now() + 40_000;
-  do { rendered = await call('export_get', { exportId: queued.id }); if (['succeeded', 'failed'].includes(rendered.status)) break; await pause(100); } while (Date.now() < renderDeadline);
+  do { rendered = await call('export_get', { projectId, exportId: queued.id }); if (['succeeded', 'failed'].includes(rendered.status)) break; await pause(100); } while (Date.now() < renderDeadline);
   assert.equal(rendered.status, 'succeeded', JSON.stringify(rendered));
   assert.deepEqual(await call('timeline_render', renderArgs), queued, 'render replay remains the original queued response even after success');
   const firstPid = backend.pid; const preRestart = await call('project_get', { projectId });
@@ -140,9 +140,9 @@ test('timeline official SDK protocol exercises strict tools, shared HTTP state, 
   const seededProject = await call('project_create', { name: 'SDK explicit seed' });
   const reference = await call('asset_import', { projectId: seededProject.id, name: 'seed.png', mimeType: 'image/png', dataBase64: (await readFile(imageFile)).toString('base64') });
   const shot = await call('shot_create', { projectId: seededProject.id, title: 'Explicitly seeded shot', referenceAssetIds: [reference.id], duration: 2 });
-  const generated = await call('generation_submit', { shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' });
+  const generated = await call('generation_submit', { projectId: seededProject.id, shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock' });
   let generation; const jobDeadline = Date.now() + 40_000;
-  do { generation = await call('job_get', { jobId: generated.id }); if (['succeeded', 'failed'].includes(generation.status)) break; await pause(100); } while (Date.now() < jobDeadline);
+  do { generation = await call('job_get', { projectId: seededProject.id, jobId: generated.id }); if (['succeeded', 'failed'].includes(generation.status)) break; await pause(100); } while (Date.now() < jobDeadline);
   assert.equal(generation.status, 'succeeded', JSON.stringify(generation));
   const empty = await call('timeline_get', { projectId: seededProject.id }); assert.equal(empty.clips.length, 0, 'generation must not silently populate the timeline');
   const seedArgs = { projectId: seededProject.id, expectedRevision: empty.revision, requestId: randomUUID() };

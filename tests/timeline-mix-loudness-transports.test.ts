@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import type {CliResult,McpData,WireResult,TestTool,SchemaNode} from './helpers/strict-timeline-transport-types.ts';
 import type {TestCatalog as DiscoverySchemaResult} from './helpers/strict-timeline-transport-types.ts';
 import type {TestOperationDefinition as OperationDefinition} from './helpers/strict-timeline-transport-types.ts';
@@ -54,7 +55,7 @@ async function fixture(t: test.TestContext,request: {projectId?: string; expecte
   const server=http.createServer(async(req,res)=>{
     if(req.url==='/health'){res.end('healthy');return;}
     try{
-      assert.equal(req.url,'/api/rpc');assert.equal(req.method,'POST');
+      assert.ok(req.url==='/api/rpc'||req.url===projectRpcPath(input.projectId));assert.equal(req.method,'POST');
       assert.equal(req.headers.authorization,'Bearer '+token);
       let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>8192)throw Error('Request overflow');}
       const body=JSON.parse(raw);calls.push(body);const parsed=parse(body.operation,body.input);

@@ -23,7 +23,7 @@ test('range is explicitly bounded to 1–300 integer frames inside saved duratio
 });
 test('exact request/export/asset produces only dedicated preview URL, never a supplied row URL', () => {
   const f = fixture();
-  assert.equal(f.result().url, `/media/${f.record.assetId}?preview=1&exportId=${f.record.id}`);
+  assert.equal(f.result().url, `/api/projects/${projectId}/media/${f.record.assetId}?preview=1&exportId=${f.record.id}`);
   assert.equal((f.result([row(11), f.record]).record as {id:string}).id, f.record.id);
   for (const patch of [{ id: id(99) }, { projectId: id(99) }, { url: 'https://attacker.invalid/video' }, { assetId: id(99) }, { timelineRevision: 5 }]) {
     assert.equal(f.result([{ ...f.record, ...patch }] as never[]).url, null);

@@ -4,7 +4,9 @@ import {readFileSync} from 'node:fs';
 import {transformSync} from 'esbuild';
 import {message} from '../packages/i18n/src/index.ts';
 import {i18nTestModule} from './helpers/i18n.ts';
+import {mediaUrl} from '../apps/web/src/api.ts';
 const source=readFileSync(new URL('../apps/web/src/ExportWorkflow.tsx',import.meta.url),'utf8');
+const PROJECT='e1000000-0000-4000-8000-000000000001',ASSET='e1000000-0000-4000-8000-000000000002';
 interface UiNode {readonly type?: unknown; readonly props: Record<string, any> & {children?: unknown}}
 type Render = (props: Record<string, unknown>) => unknown;
 const nodes=(tree: unknown): UiNode[]=>Array.isArray(tree)?tree.flatMap(nodes):tree&&typeof tree==='object'?[tree as UiNode,...nodes((tree as UiNode).props?.children)]:[];
@@ -16,7 +18,7 @@ function harness(initial: Record<string, unknown> = {}) {
   useMemo(fn:()=>unknown,deps:unknown[]){const i=cursor++,old=slots[i] as {deps:unknown[];value:unknown}|undefined;if(!old||deps.some((value,n)=>!Object.is(value,old.deps[n])))slots[i]={deps,value:fn()};return (slots[i] as {value:unknown}).value;},
   useRef(value: unknown){const i=cursor++;return slots[i]??=( {current:value} );},useState(value: unknown){const i=cursor++;if(!(i in slots))slots[i]=typeof value==='function'?(value as ()=>unknown)():value;return[slots[i],(next: unknown)=>{slots[i]=typeof next==='function'?(next as (current: unknown)=>unknown)(slots[i]):next;}];},
   useEffect(run: ()=>unknown,deps: unknown[]){const i=cursor++,before=slots[i] as unknown[]|undefined;if(before&&deps.every((value,n)=>Object.is(value,before[n])))return;slots[i]=deps;effects.push(()=>{cleanups.get(i)?.();const cleanup=run();if(typeof cleanup==='function')cleanups.set(i,cleanup as ()=>void);});}};
- const mod: {exports: {default: Render; ExportWorkflowSection: Render}}={exports:{default:()=>null,ExportWorkflowSection:()=>null}};Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code)(mod,mod.exports,(name: string)=>name==='react'?react:name.endsWith('I18nProvider.tsx')?i18nTestModule():name.endsWith('workspace-visibility.tsx')?{useWorkspaceVisibility:()=>visible}:name.endsWith('workbench-confirm')?{useConfirmation:()=>confirmation}:name.endsWith('packages/i18n/src/index.ts')?{message}:name.endsWith('ExportFileActions.tsx')?{default:'ExportFileActions'}:name.endsWith('.css')?{}:{WorkbenchButton:'Button',WorkbenchProgress:'Progress',WorkbenchIcon:'WorkbenchIcon'});
+ const mod: {exports: {default: Render; ExportWorkflowSection: Render}}={exports:{default:()=>null,ExportWorkflowSection:()=>null}};Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs',jsx:'transform'}).code)(mod,mod.exports,(name: string)=>name==='react'?react:name.endsWith('I18nProvider.tsx')?i18nTestModule():name.endsWith('workspace-visibility.tsx')?{useWorkspaceVisibility:()=>visible}:name.endsWith('workbench-confirm')?{useConfirmation:()=>confirmation}:name.endsWith('packages/i18n/src/index.ts')?{message}:name.endsWith('ExportFileActions.tsx')?{default:'ExportFileActions'}:name==='./api.ts'?{mediaUrl}:name.endsWith('.css')?{}:{WorkbenchButton:'Button',WorkbenchProgress:'Progress',WorkbenchIcon:'WorkbenchIcon'});
  return{calls,setConfirmation(fn:()=>Promise<boolean>){confirmation=fn;},setVisible(value:boolean){visible=value;},unmount(){for(const fn of cleanups.values())fn();},render(patch: Record<string, unknown> = {}){props={...props,...patch};cursor=0;let tree=mod.exports.default(props);for(const run of effects.splice(0))run();cursor=0;tree=mod.exports.default(props);return tree;},section(step: number,values: unknown): UiNode{context=step;return mod.exports.ExportWorkflowSection({steps:values,children:'retained'}) as UiNode;}};
 }
 test('workflow opens passively and latest check phase fences retained next handlers',()=>{
@@ -49,7 +51,7 @@ test('a shared sample-export lock blocks admission without becoming a formal exp
 });
 test('pending and completed exports show their bound result without automatically checking or resubmitting',()=>{
  const h=harness({phase:'ready',attempted:true,pendingExport:true});let tree=h.render();assert.equal(find(tree,'export-workflow').props['data-step'],4);assert.deepEqual(h.calls,[]);find(tree,'export-workflow-tasks').props.onClick();assert.deepEqual(h.calls,['tasks']);
- tree=h.render({pendingExport:false,record:{id:'export-1',status:'succeeded',url:'/media/export-1'}});assert.equal(find(tree,'export-workflow').props['data-step'],5);assert.ok(find(tree,'export-workflow-download'));assert.equal(find(tree,'export-workflow-result').props.hidden,false);
+ tree=h.render({pendingExport:false,record:{id:'export-1',projectId:PROJECT,status:'succeeded',assetId:ASSET,url:`/media/${ASSET}`}});assert.equal(find(tree,'export-workflow').props['data-step'],5);assert.equal(find(tree,'export-workflow-download').props.href,mediaUrl(PROJECT,ASSET));assert.equal(find(tree,'export-workflow-result').props.hidden,false);
  assert.equal(find(h.render({downloadEnabled:false}),'export-workflow-download'),undefined,'held and candidate output cannot acquire a new download authority');
  assert.deepEqual(h.calls,['tasks']);
 });
@@ -96,7 +98,8 @@ test('an old cancel button cannot target a replacement export and project change
 
 
 test('restored completion preserves existing download authority without enabling file recovery or native actions',()=>{
- const h=harness({projectId:'p',record:{id:'e',status:'succeeded',url:'/media/original'},downloadEnabled:true,fileRecoveryEnabled:false});const tree=h.render();
- const actions=nodes(tree).find(node=>node.props.exportId==='e'&&node.props.downloadHref==='/media/original');assert.ok(actions);assert.equal(actions.props.disabled,true);
+ const h=harness({projectId:PROJECT,record:{id:'e',status:'succeeded',assetId:ASSET,url:`/media/${ASSET}`},downloadEnabled:true,fileRecoveryEnabled:false});const tree=h.render();
+ // The output downloads at its project's address, not at the stored url.
+ const actions=nodes(tree).find(node=>node.props.exportId==='e'&&node.props.downloadHref===`/api/projects/${PROJECT}/media/${ASSET}`);assert.ok(actions);assert.equal(actions.props.disabled,true);
  const hidden=h.render({downloadEnabled:false});assert.equal(nodes(hidden).some(node=>node.props.exportId==='e'&&typeof node.props.downloadHref==='string'),false);
 });

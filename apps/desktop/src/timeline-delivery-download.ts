@@ -2,8 +2,11 @@ import { nativeText } from './app-language-text.ts';
 import path from 'node:path';
 import type {BrowserWindow, DownloadItem, Event, SaveDialogOptions, WebContents} from 'electron';
 import {parseTimelineDeliveryContentDisposition} from '@mioon/contracts/timeline-delivery';
+import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 
 const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
+/** The legacy path keeps its existing UUID spelling policy. Project addresses
+ * use the shared parser's canonical lowercase project and asset IDs. */
 const mediaPath = new RegExp(`^/media/(${UUID})$`, 'i');
 const responseBinding = new RegExp(`^(.*); mioon-export-id="(${UUID})"; mioon-asset-id="(${UUID})"$`, 'i');
 const MAX_HEADER_BYTES = 2048;
@@ -24,16 +27,18 @@ export function timelineDownloadIdentity(value: unknown, origin: string): Downlo
   let url: URL;
   try { url = new URL(value); } catch { return null; }
   const matched = mediaPath.exec(url.pathname);
-  if (url.origin !== origin || url.username || url.password || url.hash || !matched) return null;
+  const scoped = parseProjectApiPath(url.pathname);
+  const assetId = scoped?.kind === 'media' ? scoped.assetId : matched?.[1];
+  if (url.origin !== origin || url.username || url.password || url.hash || !assetId) return null;
   const keys = [...url.searchParams.keys()];
-  if (keys.length === 0) return {assetId: matched[1], exportId: null};
+  if (keys.length === 0) return {assetId, exportId: null};
   if (keys.length === 1 && keys[0] === 'download' && ['', '1'].includes(url.searchParams.get('download') ?? '')) {
-    return {assetId: matched[1], exportId: null};
+    return {assetId, exportId: null};
   }
   const exportId = url.searchParams.get('exportId');
   if (keys.length !== 2 || keys.filter(key => key === 'download').length !== 1 || keys.filter(key => key === 'exportId').length !== 1 ||
       url.searchParams.get('download') !== '1' || !exportId || exportId.length !== 36 || !new RegExp(`^${UUID}$`, 'i').test(exportId)) return null;
-  return {assetId: matched[1], exportId};
+  return {assetId, exportId};
 }
 
 /** Consume the actual response header, not Chromium's suggested filename (which

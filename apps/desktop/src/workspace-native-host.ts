@@ -6,12 +6,15 @@ import {ensurePrivateDirectory,validatePrivateDirectory,validateManagedFile,getW
 import {workspaceNativeRequestSchema} from '../../../packages/contracts/src/workspace-native.ts';
 import {workspaceSettingsSchema,type WorkspaceSettings} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {exportOutputSchema,type ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
+import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 interface Owner {projectId?:string;isCurrent():boolean}
 interface Options<E>{ownerForEvent(event:E):Owner|null;chooseDirectory():Promise<string|null>;setBackupDirectory(directory:string):Promise<unknown>;readSettings():Promise<WorkspaceSettings>;readWorkspaceRoot():Promise<string>;readExport(identity:{projectId:string;exportId:string}):Promise<unknown>;openPath(file:string):Promise<string>;revealPath(file:string):void;restart():Promise<boolean>;chooseSaveFile?(suggestedName:string):Promise<string|null>;fetchProjectPackage?(exportId:string):Promise<Response>}
 const unavailable=()=>Object.assign(new Error('Native workspace action is unavailable.'),{code:'WORKSPACE_NATIVE_UNAVAILABLE'});
 const same=(a:{dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number},b:{dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number})=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
-/** Fixed authenticated metadata reads for the current backend lifetime. */
-export async function readNativeBackendMetadata({base,token,resource,input,signal,check}:{base:string;token:string;resource:'/api/rpc'|'/api/workspace-info';input?:object;signal:AbortSignal;check:()=>void}):Promise<unknown> {
+/** Fixed authenticated metadata reads for the current backend lifetime: the
+ * app-level RPC, workspace information, or one project's RPC. */
+export async function readNativeBackendMetadata({base,token,resource,input,signal,check}:{base:string;token:string;resource:string;input?:object;signal:AbortSignal;check:()=>void}):Promise<unknown> {
+ if(resource!=='/api/rpc'&&resource!=='/api/workspace-info'&&parseProjectApiPath(resource)?.kind!=='rpc')throw unavailable();
  check();const response=await fetch(new URL(resource,base),{method:input?'POST':'GET',headers:{authorization:`Bearer ${token}`,...(input?{'content-type':'application/json'}:{})},...(input?{body:JSON.stringify(input)}:{}),redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(15000)])});
  const reader=response.body?.getReader();if(!reader)throw unavailable();let content='',bytes=0;const decoder=new TextDecoder('utf-8',{fatal:true});
  try{for(;;){const next=await reader.read();if(next.done)break;check();bytes+=next.value.byteLength;if(bytes>256*1024)throw unavailable();content+=decoder.decode(next.value,{stream:true});}content+=decoder.decode();}

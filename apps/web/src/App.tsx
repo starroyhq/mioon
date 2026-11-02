@@ -1339,7 +1339,7 @@ export default function App({ nativeWindow = null, nativeProjectEntry = null }: 
       }
       invalidateHistory();
       dispatched = true;
-      const result = await rpc(operation, input, invocation as never);
+      const result = await rpc(operation, input, { ...invocation, projectId } as never);
       invalidateHistory();
       if (mutation) validateMutationResponse(stored as never, result);
       if (timeline && !isTimelineMutationResponse(operation, input, result)) throw Object.assign(localizedError(msg('shell.error.timelineAcknowledgement')), { code: 'BACKEND_PROTOCOL_ERROR' });

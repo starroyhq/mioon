@@ -47,7 +47,7 @@ test('real apply undo redo and explicit float-v2 export remeasure the final AAC 
  async function render(exportSettings?: Record<string, unknown>): Promise<RenderOutput> {
   const input={projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(exportSettings?{exportSettings}:{})};
   const queued=await client.rpc('timeline.render',input) as {id: string};let result: RenderOutput['result'] | undefined;
-  for(const deadline=Date.now()+40000;Date.now()<deadline;){result=await client.rpc('export.get',{exportId:queued.id}) as RenderOutput['result'];if(['succeeded','failed'].includes(result.status))break;await pause(25);}
+  for(const deadline=Date.now()+40000;Date.now()<deadline;){result=await client.rpc('export.get',{exportId:queued.id},{projectId:project.id}) as RenderOutput['result'];if(['succeeded','failed'].includes(result.status))break;await pause(25);}
   assert.ok(result);assert.equal(result.status,'succeeded',JSON.stringify(result.error));
   const saved=record(result.id) as {snapshot: Record<string, unknown>},assetValue=asset(result.assetId) as {relativePath: string; sha256: string},file=path.join(root,assetValue.relativePath),raw=await readFile(file);
   const output={...assetValue};

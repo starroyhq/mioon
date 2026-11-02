@@ -280,7 +280,7 @@ test('actual authenticated HTTP, CLI and official MCP inspect JPEG without chang
       const rejected = await f.rpc(operation, {...ownedInput, ...extra});
       assert.equal(rejected.status, 400); assert.equal(rejected.envelope.error?.code, 'VALIDATION_ERROR');
     }
-    await assert.rejects(f.client.rpc(operation, {...ownedInput, projectId: f.otherProjectId}), {code: 'TIMELINE_COLOUR_SOURCE_UNSUPPORTED'});
+    await assert.rejects(f.client.rpc(operation, {...ownedInput, projectId: f.otherProjectId}), {code: 'PROJECT_NOT_FOUND'});
     await assert.rejects(f.client.rpc(pngOperation, ownedInput), {code: 'TIMELINE_COLOUR_SOURCE_UNSUPPORTED'});
     assert.equal(f.mediaProcesses.length, decodedBeforeRejections, 'denials do not launch the decoder');
 

@@ -162,7 +162,7 @@ test('restored branch stays unsupported while controller makes no sidecar writes
 
 test('client uses fixed same-origin endpoints and classifies only exact refusal code/status pairs', async () => {
   const calls: {url: RequestInfo | URL; init: RequestInit | undefined}[] = [], client = createLocalDeliveryClient({ isRenderInput: inputValid, fetcher: (async (url: string, init: RequestInit | undefined) => { calls.push({ url, init }); return new Response(JSON.stringify({ ok: true, data: empty() }), { status: 200 }); }) as unknown as typeof fetch });
-  await client.get(projectId); assert.equal(calls[0].url, `/api/local-delivery?projectId=${projectId}`); assert.equal(calls[0].init!.method, 'GET'); assert.equal(calls[0].init!.credentials, 'same-origin'); assert.equal(calls[0].init!.cache, 'no-store');
+  await client.get(projectId); assert.equal(calls[0].url, `/api/projects/${projectId}/local-delivery?projectId=${projectId}`); assert.equal(calls[0].init!.method, 'GET'); assert.equal(calls[0].init!.credentials, 'same-origin'); assert.equal(calls[0].init!.cache, 'no-store');
   assert.equal(localDeliveryFailure(new LocalDeliveryRequestError('full', 'LOCAL_DELIVERY_CAPACITY', 507)).kind, 'refused'); assert.equal(localDeliveryFailure(new LocalDeliveryRequestError('full', 'LOCAL_DELIVERY_CAPACITY', 500)).kind, 'unknown');
   assert.equal(localDeliveryFailure(new LocalDeliveryRequestError('stale', 'LOCAL_DELIVERY_STALE_INSTANCE', 409)).kind, 'conflict');
   const invalid = createLocalDeliveryClient({ isRenderInput: inputValid, fetcher: (async () => new Response(JSON.stringify({ ok: true, data: empty(), extra: true }), { status: 200 })) as unknown as typeof fetch }); await assert.rejects(invalid.get(projectId), { code: 'LOCAL_DELIVERY_PROTOCOL_UNKNOWN' });

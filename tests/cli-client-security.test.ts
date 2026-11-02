@@ -50,7 +50,7 @@ test('watch deadline bounds a hanging get and never dispatches job.cancel', asyn
   });
   const client = createClient({env:{MIOON_BASE_URL:base, MIOON_TOKEN_FILE:tokenFile}});
   const start = Date.now();
-  await assert.rejects(client.watch('job', {jobId:randomUUID()}, {timeoutMs:100,intervalMs:20}), {code:'WATCH_TIMEOUT',exitCode:5});
+  await assert.rejects(client.watch('job', {jobId:randomUUID()}, {timeoutMs:100,intervalMs:20,projectId:randomUUID()}), {code:'WATCH_TIMEOUT',exitCode:5});
   assert.ok(Date.now() - start < 1500, 'watch must not inherit the full 30-second HTTP timeout');
   assert.deepEqual(operations, ['job.get']);
 });
@@ -63,7 +63,7 @@ test('RPC and download refuse redirects without forwarding credentials or keepin
   const env = {MIOON_BASE_URL:base,MIOON_TOKEN_FILE:tokenFile};
   await assert.rejects(createClient({env}).rpc('project.list'), {code:'BACKEND_UNAVAILABLE'});
   const output = path.join(root, 'must-not-remain.mp4');
-  await assert.rejects(downloadAsset({assetId:randomUUID()},output,{env}), {code:'BACKEND_UNAVAILABLE'});
+  await assert.rejects(downloadAsset({projectId:randomUUID(),assetId:randomUUID()},output,{env}), {code:'BACKEND_UNAVAILABLE'});
   assert.equal(redirectedRequests, 0);
   await assert.rejects(readFile(output), {code:'ENOENT'});
 });
@@ -74,7 +74,7 @@ test('interrupted media stream closes only the client and removes its partial ou
   const ready = new Promise<void>(resolve => {started = resolve;});
   const base = await fixture(t, (_req: http.IncomingMessage, res: http.ServerResponse) => {res.writeHead(200,{'content-type':'video/mp4'});res.write(Buffer.alloc(16));started();});
   const controller = new AbortController(), output = path.join(root,'interrupted.mp4');
-  const result = downloadAsset({assetId:randomUUID()},output,{env:{MIOON_BASE_URL:base,MIOON_TOKEN_FILE:tokenFile},signal:controller.signal});
+  const result = downloadAsset({projectId:randomUUID(),assetId:randomUUID()},output,{env:{MIOON_BASE_URL:base,MIOON_TOKEN_FILE:tokenFile},signal:controller.signal});
   const rejected = assert.rejects(result, {code:'INTERRUPTED',exitCode:130});
   await ready; controller.abort(); await rejected;
   await assert.rejects(readFile(output), {code:'ENOENT'});

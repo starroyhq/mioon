@@ -1,7 +1,7 @@
 import type {HookSlot,ElementProps} from './helpers/strict-timeline-audio-harness-types.ts';
 type PreviewTree=PreviewNode|string|number|boolean|null|undefined|PreviewTree[];
 interface PreviewNode{type:unknown;props:ElementProps&{ref:{current:unknown};src:unknown;onPlay(...args:unknown[]):unknown;onPlaying(...args:unknown[]):unknown;onLoadedMetadata(...args:unknown[]):unknown};children:PreviewTree[]}
-type FormalRecord={id:string;status:string;url?:string}|null;
+type FormalRecord={id:string;status:string;url?:string;assetId?:string}|null;
 import type {ElementModule} from './helpers/strict-timeline-audio-harness-types.ts';
 import type {ElementTree} from './helpers/strict-timeline-audio-harness-types.ts';
 import test from 'node:test';
@@ -9,9 +9,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { translate } from '../packages/i18n/src/index.ts';
+import { mediaUrl } from '../apps/web/src/api.ts';
 const code = transformSync(readFileSync(new URL('../apps/web/src/ExportPreview.tsx', import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs' }).code;
 function harness(locale = 'en') {
-  const hooks:HookSlot[] = [], pending:(()=>void)[] = [], events = new Map(); let cursor = 0, tree:PreviewTree, ownerCalls = 0, registered: (() => unknown)|null,workflowStep=1,formal:{record:FormalRecord;enabled:boolean}={record:null,enabled:false};
+  const hooks:HookSlot[] = [], pending:(()=>void)[] = [], events = new Map(); let cursor = 0, tree:PreviewTree, ownerCalls = 0, registered: (() => unknown)|null,workflowStep=1,formal:{record:FormalRecord;enabled:boolean;projectId?:string|null}={record:null,enabled:false};
   const document = { visibilityState: 'visible', addEventListener: (key: unknown, value: unknown) => events.set(key, value), removeEventListener: (key: unknown) => events.delete(key) };
   const window = { addEventListener: (key: unknown, value: unknown) => events.set(key, value), removeEventListener: (key: unknown) => events.delete(key) };
   const effect = (fn:()=>void|(()=>void), deps: unknown[]) => {
@@ -23,7 +24,7 @@ function harness(locale = 'en') {
     useState(initial: unknown) { const index = cursor++; hooks[index] ||= { value: initial }; return [hooks[index].value, (next: unknown) => { hooks[index].value = typeof next === 'function' ? next(hooks[index].value) : next; }]; },
     useEffect: effect, useLayoutEffect: effect };
   const module={exports:{}} as {exports:{default(props:Record<string,unknown>):PreviewTree}};
-  Function('module', 'exports', 'require', 'document', 'window', code)(module, module.exports, (name: string) => name === 'react' ? react : name.includes('I18nProvider') ? { useI18n: () => ({ t: (key: unknown, params: { readonly [x: string]: string|number; }) => (translate as (locale:Parameters<typeof translate>[0],key:Parameters<typeof translate>[1],params?:Readonly<Record<string,string|number>>)=>string)((locale as unknown as Parameters<typeof translate>[0]), (key as unknown as Parameters<typeof translate>[1]), params) }) } : name.endsWith('ExportWorkflow.tsx')?{useExportWorkflowStep:()=>workflowStep,useExportWorkflowMedia:()=>formal}:name.includes('button') ? { Button: 'button' } : { __esModule: true, default: 'summary' }, document, window);
+  Function('module', 'exports', 'require', 'document', 'window', code)(module, module.exports, (name: string) => name === 'react' ? react : name.includes('I18nProvider') ? { useI18n: () => ({ t: (key: unknown, params: { readonly [x: string]: string|number; }) => (translate as (locale:Parameters<typeof translate>[0],key:Parameters<typeof translate>[1],params?:Readonly<Record<string,string|number>>)=>string)((locale as unknown as Parameters<typeof translate>[0]), (key as unknown as Parameters<typeof translate>[1]), params) }) } : name.endsWith('ExportWorkflow.tsx')?{useExportWorkflowStep:()=>workflowStep,useExportWorkflowMedia:()=>formal}:name.includes('button') ? { Button: 'button' } : name === './api.ts' ? { mediaUrl } : { __esModule: true, default: 'summary' }, document, window);
   const find = (node: PreviewTree, predicate: (node:PreviewNode)=>boolean) :PreviewNode|null => {
     if (!node || typeof node !== 'object') return null;
     if (predicate((node as PreviewNode))) return (node as PreviewNode);
@@ -44,7 +45,7 @@ function harness(locale = 'en') {
     while (pending.length) pending.shift()!();
     return video;
   }
-  return { render, props,setWorkflow(step:number,record:FormalRecord=null,enabled=false){workflowStep=step;formal={record,enabled};}, find:(predicate:(node:PreviewNode)=>boolean) => find(tree, predicate), ownerCalls: () => ownerCalls, element: () => element, document, events, pause: () => registered?.(), unmount: () => { hooks.forEach(hook => hook.cleanup?.()); hooks[0].current = null; } };
+  return { render, props,setWorkflow(step:number,record:FormalRecord=null,enabled=false,projectId:string|null=null){workflowStep=step;formal={record,enabled,projectId};}, find:(predicate:(node:PreviewNode)=>boolean) => find(tree, predicate), ownerCalls: () => ownerCalls, element: () => element, document, events, pause: () => registered?.(), unmount: () => { hooks.forEach(hook => hook.cleanup?.()); hooks[0].current = null; } };
 }
 test('actual TSX guards both play events and reciprocal pause without autoplay', () => {
   const h = harness(), video = h.render(), element = h.element();
@@ -79,8 +80,10 @@ test('close/reopen only changes player presentation and all four locales render 
 
 test('step-specific preview never labels a sample as a running or completed formal output',()=>{
  const h=harness();h.setWorkflow(4,{id:'formal',status:'running'},false);assert.equal(h.render(),null);
- h.setWorkflow(5,{id:'formal',status:'succeeded',url:'/media/formal-immutable-output'},true);let video=h.render();assert.equal(video!.props.src,'/media/formal-immutable-output');assert.equal(video!.props.controls,undefined);assert.equal(video!.props.autoPlay,undefined);
- h.setWorkflow(5,{id:'formal',status:'succeeded',url:'/media/formal-immutable-output'},false);assert.equal(h.render(),null,'held output cannot borrow the sample URL');h.unmount();
+ // The formal output plays at its project's address, never at the stored url.
+ const formalProject='f0000000-0000-4000-8000-000000000001',formalAsset='f0000000-0000-4000-8000-000000000002';
+ h.setWorkflow(5,{id:'formal',status:'succeeded',url:'/media/formal-immutable-output',assetId:formalAsset},true,formalProject);let video=h.render();assert.equal(video!.props.src,`/api/projects/${formalProject}/media/${formalAsset}`);assert.equal(video!.props.controls,undefined);assert.equal(video!.props.autoPlay,undefined);
+ h.setWorkflow(5,{id:'formal',status:'succeeded',url:'/media/formal-immutable-output',assetId:formalAsset},false,formalProject);assert.equal(h.render(),null,'held output cannot borrow the sample URL');h.unmount();
 });
 test('custom player controls play and seek only their exact visible media owner',async()=>{
  const h=harness();let video=h.render(),element=h.element();video!.props.onLoadedMetadata({currentTarget:element});h.render();

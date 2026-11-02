@@ -13,6 +13,30 @@ node apps/cli/src/index.ts project create --input '{"name":"Agent video study"}'
 
 Use IDs from actual responses. All business operations are available as space-separated words (`timeline track add`) or `rpc timeline.track.add`; `--input` is a JSON object. Inspect `schema <operation>` for exact required fields instead of guessing. `--input-file` can hold larger requests; keep local request files private when they include sensitive user material.
 
+Project-level operations use `/api/projects/{projectId}/rpc`; app-level operations
+keep `/api/rpc`. CLI JSON and MCP arguments must add the owning project's
+lowercase UUID `projectId` for these 11 entity-addressed operations:
+`edge.delete`, `export.get`, `generation.submit`, `job.cancel`, `job.get`,
+`job.reconcile`, `job.retry`, `node.update`, `shot.update`, `version.list`, and
+`version.select`. The client removes this transport field before sending the
+unchanged business input; direct HTTP callers provide the project in the URL.
+Other project operations retain their existing project fields, with nested
+`input.projectId` for `image.review.prepare`. CLI and MCP discovery include the
+required address field. Do not guess the project from an entity or recent window.
+
+CLI `job watch` / `export watch` require `{projectId,jobId}` /
+`{projectId,exportId}`; `asset download` / `export download` require
+`{projectId,assetId}` / `{projectId,exportId}`. Preserve the complete original JSON,
+including this project identity, for recovery. There is no `--project` option.
+For example, replace both illustrative UUIDs with the actual selected records:
+
+```sh
+node apps/cli/src/index.ts version list --input '{"projectId":"11111111-1111-4111-8111-111111111111","shotId":"55555555-5555-4555-8555-555555555555"}'
+```
+
+Address errors and retained legacy routes are documented in
+[API addressing](../../../docs/API.md#按项目寻址).
+
 - Projects/assets: `project create/list/get/inspect`, `asset import/list/inspect`, `asset range get/set`, `asset disposition list/set`. Import uses `--file <explicit-local-file>` and JSON `projectId`; the client reads and uploads bytes.
 - Canvas/shots: `shot create/update/reorder/inspect`, `node create/update`, `edge create/delete`.
 - Generation reference: `reference attach/detach` (MCP `reference_attach` / `reference_detach`). Generic canvas edges are visual-only and do not send any image or prompt.
@@ -20,9 +44,9 @@ Use IDs from actual responses. All business operations are available as space-se
 - Results: `version list/select`.
 - Reference-film scenes: `scene detect`, `scene task get/list/cancel`, `scene request get`, `scene result get`, `scene cuts save`, `scene shots create/undo` (storyboard from chosen segments).
 - Timeline: `timeline get/inspect`, `timeline history get`, `timeline undo/redo`, `timeline track add/update`, `timeline clip add/update/remove/split`, `timeline clip refreshSources`, `timeline shots append`, `timeline clip splitAtScenes`, `timeline clip crossfade`, `timeline clip setGains`, `timeline clip setTransform`, `timeline clip setTransition`, `timeline seed`, `timeline render`.
-- Export: `export create/get`; local convenience commands include `job watch`, `export watch` and `export download`.
+- Export: `export create/get`; local convenience commands include `job watch`, `export watch`, `asset download` and `export download`.
 
-MCP tool names replace dots with underscores: `generation_submit`, `timeline_clip_add`, etc. These are actual SDK tools whose schemas use the same contracts as HTTP and CLI. MCP sends ordinary `asset_import` with bytes, not a local path. Use CLI for local-file conveniences and bounded watch/download when the MCP host cannot read or save files directly.
+MCP tool names replace dots with underscores: `generation_submit`, `timeline_clip_add`, etc. These are actual SDK tools sharing the HTTP business contracts and the CLI project-address fields described above. MCP sends ordinary `asset_import` with bytes, not a local path. Use CLI for local-file conveniences and bounded watch/download when the MCP host cannot read or save files directly; watch/download wrappers are not MCP tools.
 
 ## Local ComfyUI operations
 

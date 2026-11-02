@@ -2,6 +2,8 @@ import type {IncomingMessage,ServerResponse} from 'node:http';
 import {LOCAL_DELIVERY_LIMITS} from '@mioon/contracts/local-delivery';
 import type {LocalDeliveryEnvelope,LocalDeliveryExecution} from '@mioon/contracts/local-delivery';
 import {LocalDeliveryError,safeLocalDeliveryError} from '@mioon/business/local-delivery';
+import {rejectProjectMismatch} from './project-routes.ts';
+import type {ProjectAddress} from './project-routes.ts';
 
 export interface LocalDeliveryHttpService{
   get(input:unknown):LocalDeliveryEnvelope;put(input:unknown):LocalDeliveryEnvelope;
@@ -34,7 +36,7 @@ async function body(req:IncomingMessage,res:ServerResponse):Promise<unknown>{
 /** Call only after startServer's Host, Origin and authentication gates. No RPC,
  * Agent, native bridge, arbitrary operation or renderer outcome input exists. */
 export function createLocalDeliveryHttp({delivery,signal}:{delivery:LocalDeliveryHttpService;signal?:AbortSignal}){
-  return async(req:IncomingMessage,res:ServerResponse,url:URL):Promise<boolean>=>{
+  return async(req:IncomingMessage,res:ServerResponse,url:URL,address?:ProjectAddress):Promise<boolean>=>{
     if(!/^\/api\/local-delivery(?:\/|$)/u.test(url.pathname))return false;
     try{
       if(Buffer.byteLength(req.url||'')>LOCAL_DELIVERY_LIMITS.urlBytes)throw new LocalDeliveryError('LOCAL_DELIVERY_LIMIT');
@@ -47,6 +49,7 @@ export function createLocalDeliveryHttp({delivery,signal}:{delivery:LocalDeliver
       if(req.method==='GET')result=delivery.get(query(url,['projectId']));
       else{
         query(url,[]);const input=await body(req,res);
+        if(rejectProjectMismatch(res,address,input))return true;
         if(signal?.aborted)throw new LocalDeliveryError('LOCAL_DELIVERY_STORAGE_UNAVAILABLE');
         if(route==='/draft')result=req.method==='PUT'?delivery.put(input):delivery.discard(input);
         else if(route==='/prepare')result=delivery.prepare(input);

@@ -2,6 +2,8 @@ import type {IncomingMessage,ServerResponse} from 'node:http';
 import {LOCAL_DRAFT_LIMITS} from '@mioon/contracts/local-drafts';
 import type {ClipDraftEnvelope,ClipDraftList} from '@mioon/contracts/local-drafts';
 import {LocalDraftError,safeLocalDraftError} from '@mioon/business/local-drafts';
+import {rejectProjectMismatch} from './project-routes.ts';
+import type {ProjectAddress} from './project-routes.ts';
 
 export interface LocalDraftHttpService {
   get(input:unknown):ClipDraftEnvelope;
@@ -36,7 +38,7 @@ async function body(req:IncomingMessage,res:ServerResponse):Promise<unknown>{
 /** Invoked only after startServer's existing Host, Origin and authentication
  * checks. No RPC, Agent-tool, provider, file-path or native bridge capability. */
 export function createLocalDraftHttp({drafts,signal}:{drafts:LocalDraftHttpService;signal?:AbortSignal}){
-  return async(req:IncomingMessage,res:ServerResponse,url:URL):Promise<boolean>=>{
+  return async(req:IncomingMessage,res:ServerResponse,url:URL,address?:ProjectAddress):Promise<boolean>=>{
     if(!/^\/api\/local-drafts(?:\/|$)/u.test(url.pathname))return false;
     try{
       if(Buffer.byteLength(req.url||'')>LOCAL_DRAFT_LIMITS.urlBytes)throw new LocalDraftError('LOCAL_DRAFT_LIMIT');
@@ -51,6 +53,7 @@ export function createLocalDraftHttp({drafts,signal}:{drafts:LocalDraftHttpServi
       if(req.method==='GET')result=clip?drafts.get(query(url,['projectId','timelineId','clipId'])):drafts.list(query(url,['projectId']));
       else{
         query(url,[]);const input=await body(req,res);
+        if(rejectProjectMismatch(res,address,input))return true;
         if(signal?.aborted)throw new LocalDraftError('LOCAL_DRAFT_STORAGE_UNAVAILABLE');
         result=req.method==='PUT'?drafts.put(input):drafts.discard(input);
       }

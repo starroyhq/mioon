@@ -1,5 +1,6 @@
 import { createLocalDeliverySchemas, LOCAL_DELIVERY_LIMITS } from '@mioon/contracts/local-delivery';
 import type { LocalDeliveryDraftPut, LocalDeliveryDraftDelete, LocalDeliveryPrepare, LocalDeliveryExecute, LocalDeliveryEnvelope, LocalDeliveryExecution } from '@mioon/contracts/local-delivery';
+import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
 
 export type LocalDeliveryFailureKind = 'refused' | 'conflict' | 'unknown';
 export interface LocalDeliveryFailure { code: string; status: number | null; kind: LocalDeliveryFailureKind }
@@ -68,7 +69,11 @@ export function createLocalDeliveryClient({ isRenderInput, fetcher = (...args) =
   }
   async function perform(method: 'GET' | 'PUT' | 'DELETE' | 'POST', path: string, input: unknown, signal: AbortSignal, limit: number, expiresAt: number): Promise<unknown> {
     let response: Response;
-    try { response = await fetcher(`/api/local-delivery${path}`, { method, credentials: 'same-origin', cache: 'no-store', signal, ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }) }); }
+    // The project of a read is in its query, that of a write in its input.
+    let route: string;
+    try { route = projectApiPath(String(path.startsWith('?') ? new URLSearchParams(path).get('projectId') : object(input) ? input.projectId : ''), 'local-delivery'); }
+    catch { throw new LocalDeliveryRequestError('Invalid local delivery input.', 'LOCAL_DELIVERY_LOCAL_VALIDATION', 400); }
+    try { response = await fetcher(`${route}${path}`, { method, credentials: 'same-origin', cache: 'no-store', signal, ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }) }); }
     catch { throw new LocalDeliveryRequestError('本地交付请求未收到确认。不会自动重试，原请求结果可能仍待确认。', 'LOCAL_DELIVERY_NETWORK_UNKNOWN'); }
     if (signal.aborted || Date.now() >= expiresAt) {
       if (response.body) void response.body.cancel().catch(() => {});

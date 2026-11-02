@@ -7,6 +7,8 @@ import * as deliveryContract from '@mioon/contracts/timeline-delivery';
 import * as samplePeakContract from '@mioon/contracts/export-sample-peak';
 import * as loudnessContract from '@mioon/contracts/export-loudness';
 import * as contracts from '@mioon/contracts';
+import * as projectFile from '../../packages/contracts/src/project-file.ts';
+import {mediaUrl} from '../../apps/web/src/api.ts';
 import {DEFAULT_UI_PREFERENCES} from '../../packages/contracts/src/ui-preferences.ts';
 export interface UiNode {readonly type: unknown; readonly props: Record<string, unknown> & {children?: unknown}}
 export type UiComponent = (props: Record<string, unknown>) => unknown;
@@ -36,7 +38,8 @@ export function component(file: string): {default: UiComponent; [key: string]: u
       if (key === '@mioon/contracts/export-sample-peak') return samplePeakContract;
       if (key === '@mioon/contracts/export-loudness') return loudnessContract;
       if (key === '@mioon/contracts') return contracts;
-      if (key === './api.js') return { statusText: String };
+      if (key.endsWith('/packages/contracts/src/project-file.ts')) return projectFile;
+      if (key === './api.js' || key === './api.ts') return { statusText: String, mediaUrl };
       if (key === './icons.jsx') return { __esModule: true, default: 'Icon' };
       if (key.endsWith('.css')) return {};
       if (key.startsWith('@mioon/ui/')) return { Button: 'Button', Input: 'Input', Label: 'Label', Badge: 'Badge', WorkbenchButton:'Button', WorkbenchProgress:'Progress', WorkbenchIcon:'Icon' };

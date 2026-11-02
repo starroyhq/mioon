@@ -1,5 +1,6 @@
 import { clipDraftEnvelopeSchema, clipDraftWriteSchema, clipDraftDeleteSchema, LOCAL_DRAFT_LIMITS } from '../../../packages/contracts/src/local-drafts.ts';
 import type { ClipDraftClient, ClipDraftDelete, ClipDraftEnvelope, ClipDraftKey, ClipDraftRead, ClipDraftWrite } from './clip-draft-state.ts';
+import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
 
 export type ClipDraftFailureKind = 'refused' | 'conflict' | 'unknown';
 export interface ClipDraftFailure { code: string; status: number | null; kind: ClipDraftFailureKind }
@@ -21,7 +22,6 @@ export function clipDraftFailure(error: unknown): ClipDraftFailure {
     : { code: 'LOCAL_DRAFT_RESPONSE_UNKNOWN', status: null, kind: 'unknown' };
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
-const endpoint = '/api/local-drafts/clip';
 const protocolError = (status: number) => new ClipDraftRequestError('本地草稿服务返回无效确认；未替换当前输入。', 'LOCAL_DRAFT_PROTOCOL_UNKNOWN', status);
 const timeoutError = () => new ClipDraftRequestError('本地草稿请求超时，结果仍待确认。中断连接不会取消草稿保存或删除。', 'LOCAL_DRAFT_TIMEOUT_UNKNOWN');
 async function boundedJSON(response: Response, signal: AbortSignal, expiresAt: number): Promise<unknown> {
@@ -84,6 +84,9 @@ export function createClipDraftClient(fetcher: typeof fetch = (...args) => fetch
   async function perform(method: 'GET' | 'PUT' | 'DELETE', input: ClipDraftKey | ClipDraftWrite | ClipDraftDelete, signal: AbortSignal, expiresAt: number): Promise<ClipDraftRead> {
     if (bytes(input) > LOCAL_DRAFT_LIMITS.httpBytes) throw new ClipDraftRequestError('Local draft input exceeds the size limit.', 'LOCAL_DRAFT_LIMIT', 413);
     const query = method === 'GET' ? `?${new URLSearchParams(Object.fromEntries(Object.entries(input).map(([key, value]) => [key, String(value)])))}` : '';
+    let endpoint: string;
+    try { endpoint = projectApiPath(input.projectId, 'local-drafts', 'clip'); }
+    catch { throw new ClipDraftRequestError('Invalid local draft input.', 'LOCAL_DRAFT_VALIDATION', 400); }
     let response: Response;
     try { response = await fetcher(endpoint + query, { method, credentials: 'same-origin', cache: 'no-store', signal, ...(method === 'GET' ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) }) }); }
     catch {

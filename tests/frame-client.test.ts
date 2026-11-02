@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {createHash, randomUUID} from 'node:crypto';
 import {createClient} from '../packages/client/src/index.ts';
 import {FRAME_MUTATION_OPERATIONS, FRAME_LIMITS, canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 
 const env = {MIOON_BASE_URL:'http://127.0.0.1:4318', MIOON_TOKEN:'synthetic-frame-client-token'};
 const timestamp = '2026-10-11T00:00:00.000Z';
@@ -32,8 +33,9 @@ function fixture(operation = 'frame.extract') {
 function harness(respond: (context:{call:number;options:RequestInit|undefined}) => {status:number;ok:boolean;json:()=>Promise<unknown>}) {
   const calls: (unknown)[] = [];
   const client = (createClient({env, fetchImpl:(async (url: string, options: RequestInit | undefined) => {
-    assert.equal(url, env.MIOON_BASE_URL + '/api/rpc'); assert.equal(options!.method, 'POST'); assert.equal(options!.redirect, 'error');
-    calls.push(JSON.parse(options!.body as string)); return respond({call:calls.length, options}) as unknown as Response;
+    const body = JSON.parse(options!.body as string) as {input: {projectId: string}};
+    assert.equal(url, env.MIOON_BASE_URL + projectRpcPath(body.input.projectId)); assert.equal(options!.method, 'POST'); assert.equal(options!.redirect, 'error');
+    calls.push(body); return respond({call:calls.length, options}) as unknown as Response;
   }) as unknown as typeof fetch}) as TypedClient);
   return {client, calls};
 }

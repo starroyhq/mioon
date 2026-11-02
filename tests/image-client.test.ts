@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createClient} from '../packages/client/src/index.ts';
+import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIONS} from '../packages/contracts/src/images.ts';
 import {errorView} from './helpers/test-error.ts';
 
@@ -42,7 +43,8 @@ function fixture(operation: string, {existingGroup = false}: {existingGroup?: bo
 function harness(respond: Respond): {client: ReturnType<typeof createClient>; calls: {operation: string; input: unknown}[]} {
   const calls: {operation: string; input: unknown}[] = [];
   const client = createClient({env, fetchImpl: (async (url: string, options: RequestInit) => {
-    assert.equal(url, 'http://127.0.0.1:4318/api/rpc');
+    const body = JSON.parse(String(options.body)) as {operation: string; input: unknown};
+    assert.equal(url, 'http://127.0.0.1:4318' + rpcPathFor(body.operation, body.input));
     assert.equal(options.method, 'POST'); assert.equal(options.redirect, 'error');
     calls.push(JSON.parse(String(options.body)));
     return respond({url, options, call: calls.length});
