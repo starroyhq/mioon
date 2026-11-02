@@ -40,8 +40,9 @@ import {buildDatabase, schemaStatements, SCHEMA_VERSION_TABLE_SQL, CACHE_SCHEMA_
 import type {DatabaseKind} from '../../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../../packages/business/src/project-file/schema/manifest-check.ts';
 import type {ManifestEntry} from '../../packages/business/src/project-file/schema/manifest-check.ts';
-import {APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, databaseOf} from '../../packages/business/src/project-file/schema/tables.ts';
+import {APP_DATABASE_TABLES, CACHE_TABLES, CONTENT_TABLES, HISTORY_TABLES, HISTORY_TABLES_BY_DOMAIN, LEGACY_MIO_TABLES, databaseOf} from '../../packages/business/src/project-file/schema/tables.ts';
 import type {TablePlacement} from '../../packages/business/src/project-file/schema/tables.ts';
+import {MIO_SCHEMA} from '../../packages/business/src/project-file/schema/domains/mio.ts';
 
 export const REPOSITORY = fileURLToPath(new URL('../../', import.meta.url));
 const COMMAND = 'node tests/helpers/project-file-schema-derivation.ts';
@@ -451,7 +452,7 @@ export const DOMAIN_FILES = Object.freeze([
   {file: 'receipts', constant: 'RECEIPT_SCHEMA', database: 'history', owner: '丙', tables: HISTORY_TABLES_BY_DOMAIN.receipts, about: 'request receipts in the local history database'},
   {file: 'tasks', constant: 'TASK_SCHEMA', database: 'history', owner: '丙', tables: HISTORY_TABLES_BY_DOMAIN.tasks, about: 'jobs and tasks in the local history database'},
   {file: 'timeline-history', constant: 'TIMELINE_HISTORY_SCHEMA', database: 'history', owner: '丙', tables: HISTORY_TABLES_BY_DOMAIN.timelineHistory, about: 'timeline undo history in the local history database'},
-  {file: 'mio', constant: 'MIO_SCHEMA', database: 'history', owner: '己', tables: HISTORY_TABLES_BY_DOMAIN.mio, about: 'Mio task records in the local history database'},
+  {file: 'mio', constant: 'MIO_SCHEMA', database: 'history', owner: '己', tables: LEGACY_MIO_TABLES, about: 'Mio task records in the local history database'},
   {file: 'cache', constant: 'CACHE_SCHEMA', database: 'cache', owner: '丁', tables: CACHE_TABLES, about: 'rebuildable data in the cache database'},
 ] as const);
 export type DomainFile = (typeof DOMAIN_FILES)[number]['file'];
@@ -480,7 +481,7 @@ export function deriveFromFormat72(format72: Format72 = readFormat72()): Derivat
   if (format72.version !== 72) throw new Error(`Expected the fixed format-72 workspace, received format ${format72.version}`);
   const tableObjects = format72.objects.filter(object => object.type === 'table');
   const known = new Set(tableObjects.map(object => object.name).filter(name => name !== 'schema_version' && name !== 'sqlite_sequence'));
-  for (const table of [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES]) if (!known.has(table)) throw new Error(`Format 72 has no table ${table}`);
+  for (const table of DOMAIN_FILES.flatMap(domain => [...domain.tables])) if (!known.has(table)) throw new Error(`Format 72 has no table ${table}`);
   const placementOf = (table: string): TablePlacement => databaseOf(table);
   const schemaOf = (table: string): string | undefined => {
     const lower = table.toLowerCase();
@@ -654,7 +655,7 @@ function renderConvertedTriggers(derivation: Derivation): string {
     '// Format-72 triggers that read or write a table in another database of the project, as connection-level',
     '// TEMP triggers. The ON table and tables read after FROM/JOIN carry their schema on the kernel connection',
     '// (content tables project., history tables main., cache tables cache.); write targets stay unqualified.',
-    '// Target-revision triggers on process tables also lost the project-deletion exemption.',
+    '// Process target-revision triggers are ordinary history triggers in the C-owned Mio domain.',
     'export interface ConvertedTempTrigger {',
     '  readonly name: string;',
     '  readonly table: string;',
@@ -674,7 +675,8 @@ function renderManifest(derivation: Derivation): string {
     "import type {SchemaManifest} from './manifest-check.ts';",
     'export const SCHEMA_MANIFEST: Readonly<Record<DatabaseKind, SchemaManifest>> = Object.freeze({'];
   for (const kind of ['project', 'history', 'cache'] as const) {
-    const entries = buildManifest(kind, schemaStatements(kind, derivedDomainStatements(derivation, kind)));
+    const statements = DOMAIN_FILES.filter(domain => domain.database === kind).flatMap(domain => domain.file === 'mio' ? MIO_SCHEMA : derivation.domains[domain.file]);
+    const entries = buildManifest(kind, schemaStatements(kind, statements));
     lines.push(`  ${kind}: {version: ${VERSIONS[kind]}, entries: Object.freeze([`,
       ...entries.map(entry => `    {type: ${json(entry.type)}, name: ${json(entry.name)}, tbl_name: ${json(entry.tbl_name)}, sha256: ${json(entry.sha256)}},`),
       '  ])},');
@@ -683,13 +685,27 @@ function renderManifest(derivation: Derivation): string {
   return lines.join('\n');
 }
 
+const PROCESS_REVISION_TRIGGER = /^agent_target_(?:jobs|exports|image_tasks|frame_tasks)_(?:insert|update|delete)_v2$/;
+/** The format-72 derivation remains a frozen S0 profile. Only generated current
+ * constraints and manifests overlay the C-owned R1 domain. */
+export function currentCrossFileRelations(derivation: Derivation): readonly RelationData[] {
+  const legacy = new Set(LEGACY_MIO_TABLES);
+  const relations = derivation.relations.filter(relation => !legacy.has(relation.child.table)).map(relation => ({...relation}));
+  const mioTables = HISTORY_TABLES_BY_DOMAIN.mio.filter(table => !['mio_blobs','mio_requests','mio_events','mio_storage_counters'].includes(table));
+  for (const table of mioTables) relations.push({index: 0, child: {schema: 'main', table, columns: ['projectId'], nullable: [false]}, parent: {schema: 'project', table: 'projects', columns: ['id']}, originallyDeferred: false});
+  relations.push({index:0,child:{schema:'main',table:'mio_imports',columns:['assetId'],nullable:[true]},parent:{schema:'project',table:'assets',columns:['id']},originallyDeferred:false});
+  let nextIndex=Math.max(...derivation.relations.map(relation=>relation.index));
+  return relations.map(relation=>relation.index===0?{...relation,index:++nextIndex}:relation);
+}
+
 const KERNEL = 'packages/business/src/project-file';
 /** Repository-relative path -> exact file text of every generated file. */
 export function renderDerivedFiles(derivation: Derivation = deriveFromFormat72()): Map<string, string> {
   const files = new Map<string, string>();
-  for (const domain of DOMAIN_FILES) files.set(`${KERNEL}/schema/domains/${domain.file}.ts`, renderDomain(domain, derivation.domains[domain.file], derivation));
-  files.set(`${KERNEL}/cross-file/relations.ts`, renderRelations(derivation));
-  files.set(`${KERNEL}/cross-file/converted-triggers.ts`, renderConvertedTriggers(derivation));
+  for (const domain of DOMAIN_FILES.filter(domain => domain.file !== 'mio')) files.set(`${KERNEL}/schema/domains/${domain.file}.ts`, renderDomain(domain, derivation.domains[domain.file], derivation));
+  const current = {...derivation, relations: currentCrossFileRelations(derivation), convertedTriggers: derivation.convertedTriggers.filter(trigger => !PROCESS_REVISION_TRIGGER.test(trigger.name))};
+  files.set(`${KERNEL}/cross-file/relations.ts`, renderRelations(current));
+  files.set(`${KERNEL}/cross-file/converted-triggers.ts`, renderConvertedTriggers(current));
   files.set(`${KERNEL}/schema/manifest.ts`, renderManifest(derivation));
   return files;
 }
@@ -870,14 +886,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         mkdirSync(path.dirname(path.join(REPOSITORY, file)), {recursive: true});
         writeFileSync(path.join(REPOSITORY, file), text);
       }
-      process.stdout.write(`Wrote ${files.size} derived files.\n`);
+      process.stdout.write(`Wrote ${files.size} generated files from fixed format-72 domains and the current Mio schema.\n`);
     } else {
       const stale = staleDerivedFiles(files);
       if (stale.length) {
-        process.stderr.write(`Derived project-file schema files differ from a fresh format-72 derivation:\n${stale.map(file => `  ${file}\n`).join('')}Run \`${COMMAND} --write\`.\n`);
+        process.stderr.write(`Generated project-file schema files differ from fixed format-72 domains and the current Mio schema:\n${stale.map(file => `  ${file}\n`).join('')}Run \`${COMMAND} --write\`.\n`);
         process.exitCode = 1;
       } else {
-        process.stdout.write(`All ${files.size} derived files match format 72.\n`);
+        process.stdout.write(`All ${files.size} generated files match fixed format-72 domains and the current Mio schema.\n`);
       }
     }
   }

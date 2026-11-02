@@ -61,18 +61,22 @@ export function installAgentTaskDefinitionsV2(db:DatabaseSync):void{
  for(const table of quotaTables)for(const event of ['INSERT','UPDATE'])db.exec(`CREATE TRIGGER agent_quota_${table}_${event.toLowerCase()} AFTER ${event} ON ${table} BEGIN SELECT CASE WHEN ${counts}>20000 OR ${bytes}>67108864 THEN RAISE(ABORT,'AGENT_TASK_STORAGE_LIMIT') END;END;`);
 }/* installAgentTaskDefinitionsV2 */
 export interface AgentTaskRowValidationOptions {allowConversations?:boolean;allowInteractions?:boolean;allowRequestReferences?:boolean;allowAnswers?:boolean;maxBytes?:number}
-export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false,allowInteractions=false,allowRequestReferences=false,allowAnswers=false,maxBytes=64*1024*1024}:AgentTaskRowValidationOptions={}):void{
+export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=false,allowInteractions=false,allowRequestReferences=false,allowAnswers=false,maxBytes}:AgentTaskRowValidationOptions={}):void{
  const kernel=isProjectDatabase(db),context=kernel?agentTaskRowValidationContext(db):undefined;
  if(kernel&&!context)throw new TypeError('Project Agent task row validation requires a live application context');
- const database=(table:string):DatabaseSync=>context&&(table==='agent_task_policy_v2'||table==='agent_task_policy_requests_v2')?context.application:db;
+ // Fixed workspace-profile flags do not describe the native Mio format. The
+ // exact project/application adapter validates its current canonical rows.
+ if(context){context.validateRows({maxBytes});return;}
+ maxBytes??=64*1024*1024;
+ const database=(_table:string):DatabaseSync=>db;
  for(const table of ['agent_task_runs_v2','agent_task_steps_v2','agent_task_changes_v2','agent_task_events_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_policy_v2','agent_task_policy_requests_v2','agent_task_edit_receipts_v2'])if(database(table).prepare(`SELECT 1 FROM ${table} WHERE NOT json_valid(data) OR length(CAST(data AS BLOB))>2097152 LIMIT 1`).get())throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
  const invalid=():never=>{throw Object.assign(new Error('Invalid Agent task record'),{code:'RESTORE_SCHEMA_UNSUPPORTED'});};
  if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>256*1024*1024)invalid();
  const families=[['agent_task_runs_v2',agentTaskRunSchema],['agent_task_steps_v2',agentTaskStepSchema],['agent_task_changes_v2',agentTaskChangeSchema],['agent_task_events_v2',agentTaskEventSchema],['agent_task_controls_v2',agentTaskReceiptSchema],['agent_task_control_states_v2',agentTaskReceiptSchema],['agent_task_policy_v2',agentTaskPolicySchema]] as const;
  let records=0,bytes=0;
  for(const [table,schema] of families)for(const row of database(table).prepare(`SELECT *,length(CAST(data AS BLOB)) AS bytes FROM ${table} LIMIT 20001`).iterate()){
-  // App-global policy is still validated, but does not consume a project's
-  // private execution history quota. Legacy workspace accounting is unchanged.
+  // This branch retains captured workspace accounting. Native project/B1
+  // accounting was dispatched through its exact owner before this loop.
   if(typeof row.data!=='string'||database(table)===db&&(++records>20000||(bytes+=Number(row.bytes))>maxBytes))invalid();
   const parsed=schema.safeParse(JSON.parse(String(row.data)));if(!parsed.success)invalid();const value=parsed.data as unknown as Record<string,unknown>;if(table==='agent_task_runs_v2'&&(!allowConversations&&Object.hasOwn(value,'conversationId')||!allowInteractions&&(Object.hasOwn(value,'notes')||Object.hasOwn(value,'skippedTargets'))))invalid();
   // Questions waiting for an answer first appear in schema66.
@@ -83,8 +87,7 @@ export function validateAgentTaskRowsV2(db:DatabaseSync,{allowConversations=fals
   if(table==='agent_task_changes_v2'&&(Object.hasOwn(value,'modifiedAfter')||Object.hasOwn(value,'undoDisposition')))invalid();
   for(const key of ['id','projectId','runId','stepId','status','position','sequence','type','requestId'])if(Object.hasOwn(row,key)&&Object.hasOwn(value,key)&&row[key]!==value[key])invalid();
  }
- if(context?!context.foreignKeysValid():db.prepare('PRAGMA foreign_key_check').get())invalid();
- if(context&&db.prepare('SELECT 1 FROM project.project_file p LEFT JOIN main.history_state h ON h.singleton=p.singleton WHERE h.projectId IS NOT p.projectId OR h.seenContentSequence IS NOT p.contentSequence LIMIT 1').get())invalid();
+ if(db.prepare('PRAGMA foreign_key_check').get())invalid();
  for(const table of ['agent_task_steps_v2','agent_task_changes_v2','agent_task_controls_v2','agent_task_control_states_v2','agent_task_events_v2','agent_task_job_origins_v2'])if(db.prepare(`SELECT 1 FROM ${table} t JOIN agent_task_runs_v2 r ON r.id=t.runId WHERE t.projectId IS NOT r.projectId LIMIT 1`).get())invalid();
  for(const table of ['agent_task_changes_v2','agent_task_job_origins_v2'])if(db.prepare(`SELECT 1 FROM ${table} t JOIN agent_task_steps_v2 s ON s.id=t.stepId WHERE t.runId IS NOT s.runId OR t.projectId IS NOT s.projectId LIMIT 1`).get())invalid();
  if(db.prepare("SELECT 1 FROM agent_task_edit_claims_v2 WHERE typeof(revision)!='integer' OR revision NOT BETWEEN 0 AND 9007199254740991 LIMIT 1").get())invalid();

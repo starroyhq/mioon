@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, realpath, rm} from 'node:fs/promises';
@@ -60,7 +61,7 @@ async function fixture(t: TestContext) {
   }};
   const tools = createAgentTaskTools({store, services: localServices}), journal = createAgentTaskJournal(store);
   disposeTools = () => tools.dispose();
-  const run = journal.create({projectId: own.projectId, requestId: randomUUID(), text: 'Synthetic loudness target regression', configuration: {}}).run;
+  const run = journal.create({projectId: own.projectId, requestId: randomUUID(), text: 'Synthetic loudness target regression', configuration: mioFixtureConfiguration}).run;
   const inputs: Record<string, Record<string, unknown>> = {
     'timeline.loudness.prepare': {expectedRevision: 17, ...profiles, target},
     'timeline.loudness.apply': {expectedRevision: 17, ...profiles, target, snapshotSha256: own.hash, candidateDigest: `timeline-loudness-candidate-v1:${own.hash}`},
@@ -89,7 +90,7 @@ test('all loudness target objects prepare as configuration while preserving expo
 test('loudness prepare reaches the local execution boundary with its complete target and no business mutations', async t => {
   const f = await fixture(t), input = f.inputs['timeline.loudness.prepare']!;
   const prepared = f.tools.prepare({projectId: f.own.projectId, operation: 'mioon_timeline_loudness_prepare', input});
-  const step = f.journal.beginStep(f.run.id, {kind: 'tool', tier: prepared.risk, targets: prepared.targets, toolCall: {id: randomUUID(), name: 'mioon_timeline_loudness_prepare', arguments: input as AgentTaskJson}});
+  const step = beginFixtureToolStep(f.journal,f.run.id, { tier: prepared.risk, targets: prepared.targets, toolCall: {id: randomUUID(), name: 'mioon_timeline_loudness_prepare', arguments: input as AgentTaskJson}});
   f.journal.markDispatch(f.run.id, step.id);
   const timeline = structuredClone(record(f.store.get('timelines', f.own.timelineId)));
   const result = await f.tools.execute(prepared, {runId: f.run.id, stepId: step.id, requestId: step.id, beforeEffect: () => f.journal.assertTargets(f.own.projectId, prepared.targets), recordInside: (result, changes) => f.journal.completeStepInside(f.run.id, step.id, {result, changes})});

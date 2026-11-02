@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
@@ -25,7 +26,7 @@ async function fixture(t:TestContext){
  const call=async<T=Row>(operation:string,input:unknown):Promise<T>=>await services.call(operation,input) as T;
  const projectId=(await call<{id:string}>('project.create',{name:'Audio tools'})).id;
  const journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
- const run=journal.create({requestId:randomUUID(),projectId,text:'synthetic audio task',configuration:{}}).run;
+ const run=journal.create({requestId:randomUUID(),projectId,text:'synthetic audio task',configuration:mioFixtureConfiguration}).run;
  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  const name=(operation:string)=>tools.list().find(tool=>tool.operation===operation)!.name;
  const timeline=()=>call<Timeline>('timeline.get',{projectId});
@@ -54,7 +55,7 @@ async function fixture(t:TestContext){
  const prepare=(operation:string,input:Row)=>tools.prepare({projectId,operation:name(operation),input});
  async function execute(operation:string,input:Row){
   const prepared=prepare(operation,input);
-  const step=journal.beginStep(run.id,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:name(operation),arguments:JSON.parse(JSON.stringify(input)) as AgentTaskJson}});
+  const step=beginFixtureToolStep(journal,run.id,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:name(operation),arguments:JSON.parse(JSON.stringify(input)) as AgentTaskJson}});
   journal.markDispatch(run.id,step.id);
   const outcome=await tools.execute(prepared,{runId:run.id,stepId:step.id,requestId:step.id,beforeEffect:()=>journal.assertTargets(projectId,prepared.targets),
    recordInside:(result,changes)=>journal.completeStepInside(run.id,step.id,{result,changes}),appendChangesInside:changes=>journal.appendChangesInside(run.id,step.id,changes)});
@@ -122,7 +123,7 @@ test('a refused crossfade is not applied, a clip changed after planning stops it
  // while the model's timeline revision going stale is no conflict of its own.
  const moved=await f.pair(300),planned={expectedRevision:(await f.timeline()).revision,outgoingClipId:moved.a.id,incomingClipId:moved.b.id},early=f.prepare(CROSSFADE,planned);
  await f.call('timeline.clip.update',{projectId:f.projectId,expectedRevision:planned.expectedRevision,clipId:moved.b.id,patch:{gain:0.8},requestId:randomUUID()});
- const blocked=f.journal.beginStep(f.run.id,{kind:'tool',tier:early.risk,targets:early.targets,toolCall:{id:randomUUID(),name:'mioon_timeline_clip_crossfade',arguments:planned as unknown as AgentTaskJson}});
+ const blocked=beginFixtureToolStep(f.journal,f.run.id,{tier:early.risk,targets:early.targets,toolCall:{id:randomUUID(),name:'mioon_timeline_clip_crossfade',arguments:planned as unknown as AgentTaskJson}});
  f.journal.markDispatch(f.run.id,blocked.id);
  await assert.rejects(f.tools.execute(early,{runId:f.run.id,stepId:blocked.id,requestId:blocked.id,beforeEffect:()=>f.journal.assertTargets(f.projectId,early.targets),recordInside:()=>assert.fail('nothing to record')}),{code:'AGENT_TASK_TARGET_CHANGED'});
  assert.deepEqual(await f.clip(moved.a.id),moved.a,'nothing was written');
@@ -131,7 +132,7 @@ test('a refused crossfade is not applied, a clip changed after planning stops it
  // An unknown save: absent receipt proves nothing ran; a present one keeps the step for inspection.
  const fresh=await f.pair(600),input={expectedRevision:(await f.timeline()).revision,outgoingClipId:fresh.a.id,incomingClipId:fresh.b.id};
  const prepared=f.prepare(CROSSFADE,input);
- const step=f.journal.beginStep(f.run.id,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:'mioon_timeline_clip_crossfade',arguments:input as unknown as AgentTaskJson}});
+ const step=beginFixtureToolStep(f.journal,f.run.id,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:'mioon_timeline_clip_crossfade',arguments:input as unknown as AgentTaskJson}});
  f.journal.markDispatch(f.run.id,step.id);f.journal.updateStep(f.run.id,step.id,{status:'unknown'});
  assert.deepEqual(f.tools.recoverLocalUnknown(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id}),{outcome:'not_applied',reason:'atomic_receipt_absent'});
  await f.call(CROSSFADE,{projectId:f.projectId,...input,requestId:step.id});

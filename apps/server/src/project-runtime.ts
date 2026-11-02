@@ -5,6 +5,7 @@ import { createAgentSettings,sanitizeAgentSettingsResult } from '@mioon/business
 import { createAgentSettingsFile } from '@mioon/business/agent/settings-file';
 import { createAgentTaskRuntime } from '@mioon/business/agent/task-runtime-v2';
 import { readAgentTaskStorage } from '@mioon/business/agent/task-storage-v2';
+import { readMioStorage } from '@mioon/business/agent/mio-storage';
 import { createAgentTaskTools } from '@mioon/business/agent/task-tools-v2';
 import type { AppLibrary } from '@mioon/business/app-db/index';
 import { isAppLibraryHeld, projectFileIdentity } from '@mioon/business/app-db/index';
@@ -288,7 +289,7 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
       if(previous===null||previous.completedAt<=summary.completedAt)application.documents.write('agent-diagnostic-summary-v1.json',JSON.stringify(summary));
     })}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
-    agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:()=>readAgentTaskStorage(store.db)});
+    agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:projectId=>isProjectStore(store)?projectId===store.projectId?readMioStorage(store.db):undefined:readAgentTaskStorage(store.db)});
     }
     // Restored task histories exist from source schema52 on.
     if(restored&&isRestoredWorkspaceSchemaSince(52,restored.schemaVersion)){

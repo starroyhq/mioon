@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,20 +27,20 @@ function item(value:Awaited<ReturnType<typeof readAgentTaskChecks>>,type:AgentTa
 async function fixture(t:TestContext,{imageAutoRun=false}:{imageAutoRun?:boolean}={}){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-checks-')),store=openStore(root),services=createServices(store,new Map(),{imageOptions:{autoRun:imageAutoRun},frameOptions:{autoRun:false},sceneOptions:{autoRun:false}}),removeGate=setAgentTaskEffectGate(store.db,()=>{});
  const project=object(await services.call('project.create',{name:'Checks project'})),projectId=String(project.id),journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
- const snapshot=journal.create({projectId,requestId:randomUUID(),text:'Checks only',configuration:{}}),runId=snapshot.run.id;
+ const snapshot=journal.create({projectId,requestId:randomUUID(),text:'Checks only',configuration:mioFixtureConfiguration}),runId=snapshot.run.id;
  const source=(name='Source.mp4',bytes:Buffer=Buffer.from('SYNTHETIC_MANAGED_SOURCE'),mimeType='video/mp4')=>{
   const id=randomUUID(),relativePath=`media/${id}.${mimeType==='image/png'?'png':'mp4'}`;writeFileSync(join(root,relativePath),bytes,{mode:0o600});
   return store.put('assets',{id,projectId,name,mimeType,relativePath,sizeBytes:bytes.length,sha256:sha(bytes),width:64,height:64,duration:2,provenance:'user-import',createdAt:new Date().toISOString(),url:`/media/${id}`});
  };
  const step=(name:string,args:AgentTaskJson={},result?:AgentTaskJson,status:'completed'|'failed'|'unknown'|'awaiting_approval'='completed')=>{
-  const value=journal.beginStep(runId,{kind:'tool',toolCall:{id:randomUUID(),name,arguments:args}});if(status==='unknown')journal.markDispatch(runId,value.id);journal.updateStep(runId,value.id,{status,...(result===undefined?{}:{result})});return journal.step(value.id);
+  const value=beginFixtureToolStep(journal,runId,{toolCall:{id:randomUUID(),name,arguments:args}});if(status==='unknown')journal.markDispatch(runId,value.id);journal.updateStep(runId,value.id,{status,...(result===undefined?{}:{result})});return journal.step(value.id);
  };
  const tool=async(name:string,args:AgentTaskJson={})=>{
-  const value=journal.beginStep(runId,{kind:'tool',toolCall:{id:randomUUID(),name,arguments:args}}),prepared=tools.prepare({projectId,operation:name,input:args});journal.markDispatch(runId,value.id);
+  const value=beginFixtureToolStep(journal,runId,{toolCall:{id:randomUUID(),name,arguments:args}}),prepared=tools.prepare({projectId,operation:name,input:args});journal.markDispatch(runId,value.id);
   const outcome=await tools.execute(prepared,{runId,stepId:value.id,requestId:value.id,beforeEffect:()=>{},recordInside:(result,changes)=>{journal.completeStepInside(runId,value.id,{result,changes});},appendChangesInside:changes=>{journal.appendChangesInside(runId,value.id,changes);}});
   if(journal.step(value.id).status!=='completed')journal.completeStep(runId,value.id,{result:outcome.result,changes:outcome.changes});return journal.step(value.id);
  };
- const origin=(kind:string,id:string,stepId:string,operation:string)=>store.db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run(kind,id,runId,stepId,projectId,stepId,operation);
+ const origin=(kind:string,id:string,stepId:string,operation:string)=>store.db.prepare('INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)').run(kind,id,runId,stepId,projectId,stepId,operation);
  const snapshotNow=()=>journal.snapshot(runId);
  const read=(preflight?:AgentTaskChecksPreflight,options:{includePreflight?:boolean}={})=>readAgentTaskChecks(store,snapshotNow(),{preflight,...options});
  t.after(async()=>{await services.drain();removeGate();tools.dispose();store.close();rmSync(root,{recursive:true,force:true});});

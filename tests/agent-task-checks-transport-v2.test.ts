@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import {startLegacyAgentTaskHttp} from './helpers/legacy-agent-task-http-fixture.ts';
 import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {openServerTestStore} from '../packages/business/src/project-file/test-store.ts';
@@ -211,7 +212,7 @@ test('checks remain available in a restored read-only server without credentials
 
 test('disconnecting a checks observer cancels its local preflight and releases it before the next read',{timeout:10000},async t=>{
  const f=await workspace(),store=openServerTestStore({projectFile:f.projectFile,locate:id=>projectLocation(serverAppDirectories(f.source),id)},f.source),journal=createAgentTaskJournal(store),timelineId=randomUUID();
- const run=journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Synthetic preflight cancellation',configuration:{}}).run,saved=journal.beginStep(run.id,{kind:'tool'});
+ const run=journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Synthetic preflight cancellation',configuration:mioFixtureConfiguration}).run,saved=beginFixtureToolStep(journal,run.id,{});
  journal.markDispatch(run.id,saved.id);
  journal.completeStep(run.id,saved.id,{change:{projectId:f.projectId,operation:'timeline.format.set',targets:[{kind:'timeline',id:f.projectId,revision:1}],before:null,after:null,reversible:true}});
  journal.transition(run.id,journal.run(run.id).revision,'completed');

@@ -19,7 +19,10 @@ import {
 } from './schema/databases.ts';
 import type {DatabaseKind} from './schema/databases.ts';
 import {compareManifest, readSchemaManifest} from './schema/manifest-check.ts';
+import type {SchemaManifest} from './schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from './schema/manifest.ts';
+import {clearProjectProcessRevisions, HISTORY_UPGRADES} from './schema/history-upgrades.ts';
+import type {HistoryUpgrade} from './schema/history-upgrades.ts';
 import {projectFileOwnerKind, registerProjectFiles, releaseProjectFiles} from './held-files.ts';
 export {isProjectDatabase, isProjectFileHeld} from './held-files.ts';
 
@@ -196,20 +199,32 @@ function inTransaction(db: DatabaseSync, write: () => void): void {
 /** Version, identity, journal mode and structure manifest of one database on
  * the connection. A newer version is reported before any other mismatch: a
  * newer Mioon may have changed the structure. */
-function checkStructure(db: DatabaseSync, schema: string, kind: DatabaseKind, projectId?: string): void {
+function checkStructure(db: DatabaseSync, schema: string, kind: DatabaseKind, projectId?: string, expected: SchemaManifest = SCHEMA_MANIFEST[kind]): void {
   if (pragmaValue(db, `${schema}.application_id`) !== APPLICATION_IDS[kind]) throw invalid(kind, 'application-id', projectId);
   const definition = db.prepare(`SELECT sql FROM ${schema}.sqlite_master WHERE type='table' AND name='schema_version'`).get();
   if (definition?.sql !== SCHEMA_VERSION_TABLE_SQL) throw invalid(kind, 'schema-version', projectId);
   const versions = db.prepare(`SELECT max(version) AS version,count(*) AS count FROM ${schema}.schema_version`).get();
-  const supported = SUPPORTED_VERSIONS[kind];
-  if (typeof versions?.version === 'number' && versions.version > supported) {
-    throw projectFileError('PROJECT_FORMAT_NEWER', {...describe(kind, 'format-newer', projectId), formatVersion: versions.version, supportedFormatVersion: supported});
+  if (typeof versions?.version === 'number' && versions.version > SUPPORTED_VERSIONS[kind]) {
+    throw projectFileError('PROJECT_FORMAT_NEWER', {...describe(kind, 'format-newer', projectId), formatVersion: versions.version, supportedFormatVersion: SUPPORTED_VERSIONS[kind]});
   }
-  if (versions?.count !== 1 || versions.version !== supported) throw invalid(kind, 'schema-version', projectId);
+  if (versions?.count !== 1 || versions.version !== expected.version) throw invalid(kind, 'schema-version', projectId);
   if (pragmaValue(db, `${schema}.journal_mode`) !== 'delete') throw invalid(kind, 'journal-mode', projectId);
-  const {missing, unexpected, changed} = compareManifest(readSchemaManifest(db, schema), SCHEMA_MANIFEST[kind].entries);
+  const {missing, unexpected, changed} = compareManifest(readSchemaManifest(db, schema), expected.entries);
   const differences = [...missing.map(name => `missing ${name}`), ...unexpected.map(name => `unexpected ${name}`), ...changed.map(name => `changed ${name}`)];
   if (differences.length) throw projectFileError('PROJECT_INVALID', {...describe(kind, 'schema', projectId), differences});
+}
+
+/** An older history is accepted only for one reviewed version/manifest pair.
+ * This merely identifies the transition: no table is changed before the
+ * project is attached, locked and checked for external content changes. */
+function checkHistoryStructure(db: DatabaseSync, projectId: string): HistoryUpgrade | undefined {
+  const definition = db.prepare(`SELECT sql FROM ${HISTORY}.sqlite_master WHERE type='table' AND name='schema_version'`).get();
+  const version = definition?.sql === SCHEMA_VERSION_TABLE_SQL
+    ? db.prepare(`SELECT max(version) AS version,count(*) AS count FROM ${HISTORY}.schema_version`).get()
+    : undefined;
+  const upgrade = version?.count === 1 ? HISTORY_UPGRADES.find(candidate => candidate.from.version === version.version && candidate.toVersion === HISTORY_SCHEMA_VERSION) : undefined;
+  checkStructure(db, HISTORY, 'history', projectId, upgrade?.from);
+  return upgrade;
 }
 
 interface ProjectIdentity {
@@ -382,9 +397,10 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     opened = db;
     lock(db);
     const fresh = isEmpty(db, HISTORY);
+    let upgrade: HistoryUpgrade | undefined;
     if (!fresh) {
       if (pragmaValue(db, 'encoding') !== 'UTF-8') throw invalid('history', 'encoding', projectId);
-      checkStructure(db, HISTORY, 'history', projectId);
+      upgrade = checkHistoryStructure(db, projectId);
       const states = db.prepare(`SELECT projectId,seenContentSequence FROM ${HISTORY}.history_state`).all();
       if (states.length !== 1 || typeof states[0].seenContentSequence !== 'number') throw invalid('history', 'metadata', projectId);
       if (states[0].projectId !== projectId) throw invalid('history', 'project-mismatch', projectId);
@@ -396,18 +412,38 @@ function attachDatabases(projectFile: string, projectKey: string, identity: Proj
     checkStructure(db, PROJECT, 'project', projectId);
     const current = readProjectIdentity(db, PROJECT);
     if (current.projectId !== projectId) throw invalid('project', 'project-mismatch', projectId);
-    if (fresh) {
-      database = 'history';
-      inTransaction(db, () => {
-        buildDatabase(db, 'history', HISTORY);
-        db.prepare(`INSERT INTO ${HISTORY}.history_state VALUES(1,?,?)`).run(projectId, current.contentSequence);
-      });
-    }
     database = 'cache';
     attachCache(db, cacheFile);
     for (const [schema, kind] of [[HISTORY, 'history'], [PROJECT, 'project'], [CACHE, 'cache']] as const) {
       database = kind;
       configure(db, schema);
+    }
+    // Mio accounting needs DELETE triggers for REPLACE's implicit old row.
+    // The kernel's trigger writes are acyclic; legacy workspace/app openers
+    // do not share this connection setting.
+    db.exec('PRAGMA recursive_triggers=ON');
+    database = 'history';
+    if (upgrade) {
+      const seen = sequenceOf(db, `SELECT seenContentSequence FROM ${HISTORY}.history_state`);
+      // The host must resolve file-older/file-newer first. Resetting seen here
+      // would conceal that external change and authorize a stale Mio basis.
+      if (seen !== current.contentSequence) throw invalid('history', 'metadata', projectId);
+      const transition = upgrade;
+      inTransaction(db, () => {
+        transition.apply(db);
+        if(transition.clearLegacyProcessRevisions)clearProjectProcessRevisions(db, projectId);
+        db.exec(`UPDATE ${HISTORY}.schema_version SET version=${transition.toVersion}`);
+        checkStructure(db, HISTORY, 'history', projectId);
+        checkStructure(db, PROJECT, 'project', projectId);
+      });
+    } else if (fresh) {
+      inTransaction(db, () => {
+        buildDatabase(db, 'history', HISTORY);
+        db.prepare(`INSERT INTO ${HISTORY}.history_state VALUES(1,?,?)`).run(projectId, current.contentSequence);
+        clearProjectProcessRevisions(db, projectId);
+        checkStructure(db, HISTORY, 'history', projectId);
+        checkStructure(db, PROJECT, 'project', projectId);
+      });
     }
     database = 'project';
     if (pragmaValue(db, 'busy_timeout') !== 0) throw new Error('The busy timeout must be 0');
@@ -463,7 +499,8 @@ function movedAlone(projectFile: string, projectKey: string): boolean {
  * last the project file's journal kept open (openProjectJournal). Every
  * failure closes what was opened and leaves no lock behind. Once open, unused
  * super-journals beside the local records are deleted. Opening does not
- * change the seen content sequence or the project file. */
+ * change the seen content sequence or the project file, except the reviewed
+ * pre-release Mio reset's one-time cleanup of local-process revision rows. */
 export function openProjectConnection({projectFile: requested, locate, checkCopy}: OpenProjectConnectionOptions): ProjectConnection {
   const projectFile = path.resolve(requested);
   let info: BigIntStats | undefined;

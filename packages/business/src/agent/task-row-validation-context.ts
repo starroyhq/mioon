@@ -6,6 +6,7 @@ export interface AgentTaskRowValidationContext {
   readonly application: DatabaseSync;
   readonly assertAvailable: () => void;
   readonly foreignKeysValid: () => boolean;
+  readonly validateRows: (options: {readonly maxBytes?: number}) => void;
 }
 const contexts = new WeakMap<DatabaseSync, AgentTaskRowValidationContext>();
 

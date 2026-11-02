@@ -6,7 +6,9 @@ import {resolve, join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {parseArgs} from 'node:util';
 import {mock} from 'node:test';
-import {openStore} from '../../packages/business/src/db.ts';
+// Preserve the historical 13-table rewrite baseline. Native R1 storage is
+// measured separately by mio-storage-report.ts with the same workload.
+import {openLegacyWorkspaceStore as openStore} from '../../packages/business/src/db.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
@@ -127,7 +129,7 @@ export function contextReportScenario(options: ContextReportOptions = {}): Conte
   }
   return {toolRounds: positiveInteger(options.toolRounds ?? 14, 'toolRounds', 14), replyBytes: positiveInteger(options.replyBytes ?? 30 * 1024, 'replyBytes', TASK_MODEL_LIMITS.outputBytes), deltaBytes: positiveInteger(options.deltaBytes ?? 3 * 1024, 'deltaBytes', TASK_MODEL_LIMITS.outputBytes), stepLimit: 30, ...streaming};
 }
-function modelOutput(protocol: AgentProtocol, text: string, calls: AgentTaskToolCall[], index: number, usage?: ReportTokenUsage | null): TaskModelOutput {
+export function modelOutput(protocol: AgentProtocol, text: string, calls: AgentTaskToolCall[], index: number, usage?: ReportTokenUsage | null): TaskModelOutput {
   let providerOutput: AgentTaskJson;
   if (protocol === 'chat_completions') {
     providerOutput = {role: 'assistant', content: text, ...(calls.length ? {tool_calls: calls.map(call => ({id: call.id, type: 'function', function: {name: call.name, arguments: JSON.stringify(call.arguments)}}))} : {})};
@@ -148,7 +150,7 @@ function tableGrowth(before: AgentTaskStorageSnapshot, after: AgentTaskStorageSn
   });
 }
 const equivalentRuns = (remaining: number, growth: number): number | null => growth > 0 ? Math.floor(remaining / growth) : null;
-function advanceStreamingClock(milliseconds: number): void {
+export function advanceStreamingClock(milliseconds: number): void {
   // A single MockTimers.tick(400) invokes a 250 ms callback at Date.now()=400.
   // Millisecond ticks let scheduled flushes run at their actual fake deadline.
   for (let elapsed = 0; elapsed < milliseconds; elapsed++) mock.timers.tick(1);

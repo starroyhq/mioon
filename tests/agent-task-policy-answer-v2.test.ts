@@ -167,15 +167,15 @@ test('a conversation policy saves, replays and clears its own modes under its re
  assert.throws(()=>f.setPolicy(conversationId,0,null),{code:'AGENT_TASK_REVISION_CONFLICT'});
  const cleared=f.setPolicy(conversationId,1,null);
  assert.equal(cleared.revision,2);assert.equal(cleared.override,null);assert.deepEqual(cleared.effective,global.modes);
- const row=f.store.db.prepare('SELECT revision,data FROM agent_task_conversation_policies_v2 WHERE conversationId=?').get(conversationId)!;
+ const row=f.store.db.prepare('SELECT revision,data FROM mio_conversation_policies WHERE conversationId=?').get(conversationId)!;
  assert.equal(row.revision,2);assert.equal(JSON.parse(String(row.data)).modes,null,'a cleared override keeps its row so the revision keeps counting');
  assert.throws(()=>f.runtime.conversationPolicy(f.projectId,randomUUID()),{code:'AGENT_TASK_NOT_FOUND'});
  assert.throws(()=>f.setPolicy(randomUUID(),0,STEP),{code:'AGENT_TASK_NOT_FOUND'});
  assert.throws(()=>f.runtime.setConversationPolicy(f.projectId,conversationId,{requestId:randomUUID(),expectedRevision:2,modes:{...STEP,read_only:'sometimes'}}),{code:'AGENT_TASK_INVALID'});
- assert.throws(()=>f.store.db.prepare('UPDATE agent_task_conversation_policies_v2 SET revision=1,data=json_set(data,\'$.revision\',1) WHERE conversationId=?').run(conversationId),/revisions only advance/u);
- assert.throws(()=>f.store.db.prepare('DELETE FROM agent_task_conversation_policies_v2').run(),/must be retained/u);
- assert.throws(()=>f.store.db.prepare("UPDATE agent_task_conversation_policy_requests_v2 SET inputHash=inputHash").run(),/immutable/u);
- assert.throws(()=>f.store.db.prepare('DELETE FROM agent_task_conversation_policy_requests_v2').run(),/must be retained/u);
+ assert.throws(()=>f.store.db.prepare('UPDATE mio_conversation_policies SET revision=1,data=json_set(data,\'$.revision\',1) WHERE conversationId=?').run(conversationId),/revisions only advance/u);
+ assert.throws(()=>f.store.db.prepare('DELETE FROM mio_conversation_policies').run(),/must be retained/u);
+ assert.throws(()=>f.store.db.prepare("UPDATE mio_conversation_policy_requests SET inputHash=inputHash").run(),/immutable/u);
+ assert.throws(()=>f.store.db.prepare('DELETE FROM mio_conversation_policy_requests').run(),/must be retained/u);
 });
 
 test('moving paid work to direct needs acknowledgement, also when clearing to a direct global policy',async t=>{

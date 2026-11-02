@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import {startLegacyAgentTaskHttp} from './helpers/legacy-agent-task-http-fixture.ts';
 import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
@@ -33,8 +34,8 @@ async function savedTimeline(root:string,legacy=false){
   store.put('timelines',{id:timelineId,projectId,revision:1,fps:30,width:720,height:1280,durationFrames:30,createdAt:stamp,updatedAt:stamp,
    tracks:[{id:trackId,kind:'audio',name:'Audio',orderIndex:0,hidden:false,muted:false}],
    clips:[{id:randomUUID(),trackId,assetId:asset.id,name:'checks.wav',startFrame:0,durationFrames:30,sourceInFrame:0,rect:{x:0,y:0,width:720,height:1280},gain:1}]});
-  const journal=createAgentTaskJournal(store),run=journal.create({projectId,requestId:randomUUID(),text:'Synthetic saved timeline edit',configuration:{}}).run;
-  const step=journal.beginStep(run.id,{kind:'tool',toolCall:{id:'saved_timeline',name:'mioon_timeline_clip_add',arguments:{}},targets:[{kind:'timeline',id:timelineId,revision:1}]});
+  const journal=createAgentTaskJournal(store),run=journal.create({projectId,requestId:randomUUID(),text:'Synthetic saved timeline edit',configuration:mioFixtureConfiguration}).run;
+  const step=beginFixtureToolStep(journal,run.id,{toolCall:{id:'saved_timeline',name:'mioon_timeline_clip_add',arguments:{}},targets:[{kind:'timeline',id:timelineId,revision:1}]});
   journal.markDispatch(run.id,step.id);journal.completeStep(run.id,step.id,{result:{id:timelineId,revision:1},change:{projectId,operation:'timeline.clip.add',targets:[{kind:'timeline',id:timelineId,revision:1}],before:null,after:null,reversible:false}});
   journal.transition(run.id,journal.run(run.id).revision,'completed');
   return {projectId,runId:run.id,timelineId,relativePath,projectDir:created?.store.projectDir??root};

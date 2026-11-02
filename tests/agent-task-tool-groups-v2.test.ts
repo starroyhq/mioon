@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -21,11 +22,11 @@ async function fixture(t:TestContext){
   const root=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-tool-groups-')),store=openStore(root),services=createServices(store,new Map());
   const project=await services.call('project.create',{name:'Tool group fixture'});assert.ok(object(project)&&typeof project.id==='string');
   const projectId=project.id,journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
-  const run=journal.create({requestId:randomUUID(),projectId,text:'Offline tool loading',configuration:{}}).run;
+  const run=journal.create({requestId:randomUUID(),projectId,text:'Offline tool loading',configuration:mioFixtureConfiguration}).run;
   t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
   async function load(groups:string[],{runId=run.id,complete=true,beforeEffect=()=>{}}:{runId?:string;complete?:boolean;beforeEffect?:()=>void}={}){
     const input={groups},prepared=tools.prepare({projectId,operation:AGENT_TASK_TOOLS_LOAD_NAME,input,toolLoadMode:'groups'});
-    const step=journal.beginStep(runId,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:AGENT_TASK_TOOLS_LOAD_NAME,arguments:input}});
+    const step=beginFixtureToolStep(journal,runId,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:AGENT_TASK_TOOLS_LOAD_NAME,arguments:input}});
     journal.markDispatch(runId,step.id);
     const outcome=await tools.execute(prepared,{runId,stepId:step.id,requestId:step.id,beforeEffect,recordInside:(result,changes)=>journal.completeStepInside(runId,step.id,{result,changes})});
     if(complete)journal.completeStep(runId,step.id,{result:outcome.result,changes:outcome.changes});
@@ -82,10 +83,10 @@ test('loading adds only newly completed groups without domain changes and remain
   assert.deepEqual((await f.load(['canvas','images'])).outcome.result,{groups:[],tools:[]});
   const additional=await f.load(['video','canvas']);assert.ok(object(additional.outcome.result));assert.deepEqual(additional.outcome.result.groups,['video']);
   assert.deepEqual(loadedAgentTaskToolGroups(f.journal.snapshot(f.run.id).steps),['canvas','video','images']);
-  assert.equal(f.journal.snapshot(f.run.id).changes.length,0);assert.equal(f.journal.run(f.run.id).stepsUsed,3);
+  assert.equal(f.journal.snapshot(f.run.id).changes.length,0);assert.equal(f.journal.run(f.run.id).stepsUsed,6,'three canonical model sources and three loader steps');assert.deepEqual(f.journal.snapshot(f.run.id).steps.map(step=>step.kind),['model','tool','model','tool','model','tool']);
   assert.deepEqual(f.store.get('projects',f.projectId),projectBefore);
   f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'completed');
-  const next=f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'New run',configuration:{}}).run;
+  const next=f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'New run',configuration:mioFixtureConfiguration}).run;
   assert.deepEqual((await f.load(['canvas'],{runId:next.id})).outcome.result,{groups:['canvas'],tools:f.tools.list().filter(tool=>agentTaskToolGroupForName(tool.name)==='canvas').map(tool=>tool.name)});
 });
 
@@ -178,7 +179,7 @@ test('completed names loads add only requested tools, repeat as empty and leave 
   const f=await fixture(t),before=structuredClone(f.store.get('projects',f.projectId));let fences=0;
   const load=async(names:string[],complete=true)=>{
     const input={names},prepared=f.tools.prepare({projectId:f.projectId,operation:AGENT_TASK_TOOLS_LOAD_NAME,input});
-    const step=f.journal.beginStep(f.run.id,{kind:'tool',tier:prepared.risk,toolCall:{id:randomUUID(),name:AGENT_TASK_TOOLS_LOAD_NAME,arguments:input}});
+    const step=beginFixtureToolStep(f.journal,f.run.id,{tier:prepared.risk,toolCall:{id:randomUUID(),name:AGENT_TASK_TOOLS_LOAD_NAME,arguments:input}});
     f.journal.markDispatch(f.run.id,step.id);
     const outcome=await f.tools.execute(prepared,{runId:f.run.id,stepId:step.id,requestId:step.id,beforeEffect:()=>{fences++;},recordInside:(result,changes)=>f.journal.completeStepInside(f.run.id,step.id,{result,changes})});
     if(complete)f.journal.completeStep(f.run.id,step.id,{result:outcome.result,changes:outcome.changes});
@@ -191,7 +192,7 @@ test('completed names loads add only requested tools, repeat as empty and leave 
   assert.deepEqual(loadedAgentTaskToolNames(f.journal.snapshot(f.run.id).steps),['mioon_shot_update']);
   assert.deepEqual((await load(['mioon_shot_update'])).outcome.result,{names:[]});
   assert.deepEqual((await load(['mioon_shot_update','mioon_image_generate'])).outcome.result,{names:['mioon_image_generate']});
-  assert.equal(fences,3);assert.equal(f.journal.run(f.run.id).stepsUsed,3);assert.deepEqual(f.store.get('projects',f.projectId),before);
+  assert.equal(fences,3);assert.equal(f.journal.run(f.run.id).stepsUsed,6,'three canonical model sources and three loader steps');assert.deepEqual(f.journal.snapshot(f.run.id).steps.map(step=>step.kind),['model','tool','model','tool','model','tool']);assert.deepEqual(f.store.get('projects',f.projectId),before);
   assert.ok(!loadedAgentTaskToolNames(f.journal.snapshot(f.run.id).steps).includes('mioon_shot_create'));
 });
 

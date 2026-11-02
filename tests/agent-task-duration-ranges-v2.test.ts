@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -83,13 +84,13 @@ test('H4b actual checks return duration bounds from the saved receipt without wr
  const root=await mkdtemp(join(await realpath(tmpdir()),'mioon-duration-ranges-')),store=openStore(root),services=createServices(store,new Map()),tools=createAgentTaskTools({store,services}),projectId=store.projectId,stamp='2026-10-29T00:00:00.000Z';
  t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(root,{recursive:true,force:true});});
  store.put('projects',{id:projectId,name:'Synthetic range checks',revision:1,createdAt:stamp,updatedAt:stamp});
- const journal=createAgentTaskJournal(store),runId=journal.create({projectId,requestId:randomUUID(),text:'Duration limits',configuration:{}}).run.id;
+ const journal=createAgentTaskJournal(store),runId=journal.create({projectId,requestId:randomUUID(),text:'Duration limits',configuration:mioFixtureConfiguration}).run.id;
  const args:AgentTaskJson={conditions:[{type:'duration',maxSeconds:30},{type:'duration',minSeconds:1}]};
  const prepared=tools.prepare({projectId,operation:'mioon_goal_set',input:args});assert.equal(prepared.risk,'read_only');assert.deepEqual(prepared.targets,[]);
  assert.equal(await tools.parameterFeedback({projectId,operation:'mioon_goal_set',input:args}),null);
  assert.ok(await tools.parameterFeedback({projectId,operation:'mioon_goal_set',input:{conditions:[{type:'duration',seconds:30,maxSeconds:30}]}}));
  assert.throws(()=>tools.prepare({projectId,operation:'mioon_goal_set',input:{conditions:[{type:'duration',minSeconds:31,maxSeconds:30}]}}),{code:'VALIDATION_ERROR'});
- const tool=journal.beginStep(runId,{kind:'tool',toolCall:{id:randomUUID(),name:'mioon_goal_set',arguments:args}});journal.markDispatch(runId,tool.id);
+ const tool=beginFixtureToolStep(journal,runId,{toolCall:{id:randomUUID(),name:'mioon_goal_set',arguments:args}});journal.markDispatch(runId,tool.id);
  const outcome=await tools.execute(prepared,{runId,stepId:tool.id,requestId:tool.id,beforeEffect:()=>{},recordInside:(result,changes)=>journal.completeStepInside(runId,tool.id,{result,changes})});
  assert.deepEqual(outcome.result,args);assert.deepEqual(outcome.changes,[]);assert.equal(outcome.recorded,false);journal.completeStep(runId,tool.id,{result:outcome.result});
  const before=store.db.prepare('SELECT total_changes() count').get()!.count,actual=await readAgentTaskChecks(store,journal.snapshot(runId));

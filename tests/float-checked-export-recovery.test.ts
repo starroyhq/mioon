@@ -28,7 +28,7 @@ import {createTimelineFloatAudioAccumulator} from '../packages/business/src/time
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement, bindFloatTimelineFailure, ownedFloatTimelineMeasurement,
   floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
 import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
-import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const PROFILE = 'mp4_h264_float_checked_v2';
@@ -378,7 +378,7 @@ test('v2 current export and project readers reject foreign attempt, snapshot, re
   f.store.db.prepare('DELETE FROM exports WHERE id=?').run(forgedId);
 
   const other = await fixture(t), changedOwner = {...stripped, projectId: other.project.id};
-  withoutForeignKeys(f.store.db, () => f.store.db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(other.project.id, JSON.stringify(changedOwner), accepted.id));
+  withoutProcessTargetRevisions(f.store.db, ['exports'], () => withoutForeignKeys(f.store.db, () => f.store.db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(other.project.id, JSON.stringify(changedOwner), accepted.id)));
   const before = f.state();
   await assert.rejects(f.services.call('export.get', {exportId: accepted.id}), badSnapshot,
     'matching export identity still detects stripped v2 when its relational and JSON project were changed');

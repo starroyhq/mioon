@@ -14,6 +14,13 @@ export const CONTENT_TABLES: readonly string[] = Object.freeze([
   'project_lut_resources', 'agent_task_target_revisions_v2',
 ]);
 
+export const LEGACY_MIO_TABLES: readonly string[] = Object.freeze([
+    'agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_events_v2', 'agent_task_changes_v2', 'agent_task_controls_v2',
+    'agent_task_control_states_v2', 'agent_task_imports_v2', 'agent_task_job_origins_v2', 'agent_task_edit_claims_v2',
+    'agent_task_edit_owners_v2', 'agent_task_edit_receipts_v2', 'agent_task_conversation_policies_v2',
+    'agent_task_conversation_policy_requests_v2',
+]);
+
 export const HISTORY_TABLES_BY_DOMAIN: Readonly<Record<HistoryDomain, readonly string[]>> = Object.freeze({
   receipts: Object.freeze([
     'idempotency', 'mutation_requests', 'project_mutation_requests', 'asset_annotation_requests', 'asset_disposition_requests',
@@ -31,10 +38,11 @@ export const HISTORY_TABLES_BY_DOMAIN: Readonly<Record<HistoryDomain, readonly s
   ]),
   timelineHistory: Object.freeze(['timeline_history', 'timeline_history_cursors']),
   mio: Object.freeze([
-    'agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_events_v2', 'agent_task_changes_v2', 'agent_task_controls_v2',
-    'agent_task_control_states_v2', 'agent_task_imports_v2', 'agent_task_job_origins_v2', 'agent_task_edit_claims_v2',
-    'agent_task_edit_owners_v2', 'agent_task_edit_receipts_v2', 'agent_task_conversation_policies_v2',
-    'agent_task_conversation_policy_requests_v2',
+    'mio_conversations','mio_runs','mio_entries','mio_blobs','mio_steps','mio_requests',
+    'mio_changes','mio_controls','mio_control_states','mio_imports','mio_job_origins',
+    'mio_edit_claims','mio_edit_owners','mio_edit_receipts','mio_conversation_policies',
+    'mio_conversation_policy_requests','mio_events','mio_process_target_revisions',
+    'mio_storage_counters',
   ]),
 });
 
@@ -59,12 +67,12 @@ export const REMOVED_TABLES: readonly string[] = Object.freeze([
 const placements = new Map<string, TablePlacement>();
 for (const [placement, tables] of [
   ['project', CONTENT_TABLES], ['history', HISTORY_TABLES], ['cache', CACHE_TABLES],
-  ['app', APP_DATABASE_TABLES], ['removed', REMOVED_TABLES],
+  ['app', APP_DATABASE_TABLES], ['removed', REMOVED_TABLES], ['history', LEGACY_MIO_TABLES],
 ] as const) {
   for (const table of tables) placements.set(table, placement);
 }
 
-/** Placement of a format-72 table; throws for any table the layout does not know. */
+/** Placement of a current or fixed format-72 table; throws for any table the layout does not know. */
 export function databaseOf(table: string): TablePlacement {
   const placement = placements.get(table);
   if (placement === undefined) throw new Error(`Unknown project-file table: ${table}`);

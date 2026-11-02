@@ -278,9 +278,9 @@ test('installed connection-level triggers are exactly the generated statements',
   const db = kernelConnection();
   try {
     const statements = crossFileTriggerStatements();
-    // 26 converted format-72 triggers + 4 per relation + the content-sequence copy.
+    // 14 converted format-72 triggers + 4 per relation + the content-sequence copy.
     // scene_task_state_transitions reads no other database, so it is not among them.
-    assert.deepEqual([CONVERTED_TEMP_TRIGGERS.length, CROSS_FILE_RELATIONS.length, statements.length], [26, 55, 247]);
+    assert.deepEqual([CONVERTED_TEMP_TRIGGERS.length, CROSS_FILE_RELATIONS.length, statements.length], [14, 57, 243]);
     const stored = db.prepare("SELECT type,name,tbl_name,sql FROM temp.sqlite_master ORDER BY rowid").all();
     assert.ok(stored.every(row => row.type === 'trigger'));
     assert.deepEqual(stored.map(row => row.sql), statements.map(storedText));
@@ -289,7 +289,7 @@ test('installed connection-level triggers are exactly the generated statements',
       ...CROSS_FILE_RELATIONS.flatMap(relation => ['child_insert', 'child_update', 'parent_delete', 'parent_update'].map(event => `${relationConstraintName(relation)}_${event}`)),
       'project_file_seen_sequence',
     ]);
-    assert.deepEqual(stored.slice(26, -1).map(row => row.tbl_name), CROSS_FILE_RELATIONS.flatMap(relation => [relation.child.table, relation.child.table, relation.parent.table, relation.parent.table]));
+    assert.deepEqual(stored.slice(14, -1).map(row => row.tbl_name), CROSS_FILE_RELATIONS.flatMap(relation => [relation.child.table, relation.child.table, relation.parent.table, relation.parent.table]));
     assert.equal(statements.at(-1), SEEN_SEQUENCE_TRIGGER);
     assert.equal(SEEN_SEQUENCE_TRIGGER, 'CREATE TEMP TRIGGER project_file_seen_sequence AFTER UPDATE OF contentSequence ON project.project_file BEGIN UPDATE history_state SET seenContentSequence=NEW.contentSequence;END');
     const jobs = CROSS_FILE_RELATIONS.find(relation => relation.child.table === 'jobs')!;
@@ -321,7 +321,7 @@ test('converted triggers restore to their format-72 text', () => {
     }
     assert.equal(sql, originals.get(trigger.name), trigger.name);
   }
-  assert.equal(restored, 12);
+  assert.equal(restored, 0);
 });
 
 test('with all three databases attached and the triggers installed, every write to every table compiles', () => {
@@ -342,7 +342,7 @@ test('with all three databases attached and the triggers installed, every write 
     db.close();
   }
   // main also holds the Mock provider's two ledger tables.
-  assert.equal(tables, 47 + 2 + 20 + 3);
+  assert.equal(tables, 47 + 2 + 6 + 20 + 3);
 });
 
 test('real tables: cross-file keys, process-entity revisions and the content sequence', () => {
@@ -352,12 +352,12 @@ test('real tables: cross-file keys, process-entity revisions and the content seq
     assert.deepEqual(sequences(db), {file: 2, seen: 2});
     assert.deepEqual(sqliteError(() => db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, elsewhere, '{}')), {message: FOREIGN_KEY_MESSAGE, errcode: 1811});
     db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, projectId, '{}');
-    const revision = () => plain(db.prepare("SELECT projectId,kind,targetId,revision FROM project.agent_task_target_revisions_v2 WHERE kind='job'").get());
+    const revision = () => plain(db.prepare("SELECT projectId,kind,targetId,revision FROM main.mio_process_target_revisions WHERE kind='job'").get());
     assert.deepEqual(revision(), {projectId, kind: 'job', targetId: jobId, revision: 1});
     db.prepare('UPDATE jobs SET data=? WHERE id=?').run('{"status":"done"}', jobId);
     assert.deepEqual(revision(), {projectId, kind: 'job', targetId: jobId, revision: 2});
-    // Process-entity revisions live in the project file, so job writes advance its content sequence too.
-    assert.deepEqual(sequences(db), {file: 4, seen: 4});
+    // Process revisions are local records, so job progress leaves project content unchanged.
+    assert.deepEqual(sequences(db), {file: 2, seen: 2});
     assert.deepEqual(sqliteError(() => db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(elsewhere, jobId)), {message: FOREIGN_KEY_MESSAGE, errcode: 1811});
 
     db.prepare('INSERT INTO timeline_history_cursors(projectId,position) VALUES(?,0)').run(projectId);
@@ -368,8 +368,8 @@ test('real tables: cross-file keys, process-entity revisions and the content seq
     db.prepare('DELETE FROM jobs WHERE id=?').run(jobId);
     assert.deepEqual(deleteProject(), {message: FOREIGN_KEY_MESSAGE, errcode: 1811}, 'timeline_history_cursors still refers to it');
     db.prepare('DELETE FROM timeline_history_cursors').run();
-    // What remains is the project file's own foreign key from its target revisions.
-    assert.deepEqual(deleteProject(), {message: FOREIGN_KEY_MESSAGE, errcode: 787});
+    // Local process-revision tombstones still belong to this project.
+    assert.deepEqual(deleteProject(), {message: FOREIGN_KEY_MESSAGE, errcode: 1811});
 
     const waveform = (owner: string) => db.prepare('INSERT INTO waveform_cache(cacheKey,projectId,sourceSha256,algorithm,status,attemptId,data,bytes,reservedBytes) VALUES(?,?,?,?,?,?,?,?,?)')
       .run(randomUUID().replaceAll('-', '').padEnd(64, '0'), owner, 'a'.repeat(64), 'peaks-v1', 'ready', randomUUID(), '{}', 1, 0);
@@ -416,16 +416,16 @@ test('foreignKeyCheck reports orphans written around the triggers; schemaObjects
     assert.deepEqual([...new Set(objects.map(object => object.schema))], ['main', 'temp', 'project', 'cache']);
     const of = (schema: string) => objects.filter(object => object.schema === schema);
     assert.deepEqual([of('main').length, of('project').length, of('cache').length, of('temp').length],
-      [SCHEMA_MANIFEST.history.entries.length, SCHEMA_MANIFEST.project.entries.length, SCHEMA_MANIFEST.cache.entries.length, 246]);
+      [SCHEMA_MANIFEST.history.entries.length, SCHEMA_MANIFEST.project.entries.length, SCHEMA_MANIFEST.cache.entries.length, 242]);
     for (const schema of ['main', 'temp', 'project', 'cache']) {
       const keys = of(schema).map(object => [object.type, object.name] as const);
       assert.deepEqual(keys, [...keys].sort((x, y) => x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0), `${schema} is sorted by type and name`);
     }
-    const targetRevisions = of('temp').filter(object => /^agent_target_(?:jobs|exports|image_tasks|frame_tasks)_(?:insert|update|delete)_v2$/.test(object.name));
+    const targetRevisions = of('main').filter(object => /^agent_target_(?:jobs|exports|image_tasks|frame_tasks)_(?:insert|update|delete)_v2$/.test(object.name));
     assert.equal(targetRevisions.length, 12);
     assert.ok(targetRevisions.every(object => object.type === 'trigger' && object.sql?.startsWith(`CREATE TRIGGER ${object.name} AFTER `)));
     assert.equal(objects.find(object => object.schema === 'main' && object.name === 'jobs')?.sql, 'CREATE TABLE jobs(id TEXT PRIMARY KEY,projectId TEXT NOT NULL,data TEXT NOT NULL)');
-    assert.equal(objects.filter(object => object.name === 'agent_target_jobs_insert_v2').map(object => object.schema).join(), 'temp');
+    assert.equal(objects.filter(object => object.name === 'agent_target_jobs_insert_v2').map(object => object.schema).join(), 'main');
   } finally {
     db.close();
   }
@@ -435,9 +435,9 @@ test('installCrossFileTriggers is idempotent and refuses a connection it cannot 
   const db = kernelConnection();
   try {
     const count = () => Number(db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE type='trigger'").get()?.n);
-    assert.equal(count(), 247);
+    assert.equal(count(), 243);
     installCrossFileTriggers(db);
-    assert.equal(count(), 247);
+    assert.equal(count(), 243);
     db.exec('CREATE TEMP TRIGGER extra AFTER INSERT ON main.jobs BEGIN SELECT 1;END');
     assert.throws(() => installCrossFileTriggers(db), /partly installed: unexpected extra$/);
   } finally {

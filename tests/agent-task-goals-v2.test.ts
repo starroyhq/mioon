@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -121,9 +122,9 @@ test('H4a export geometry requires the latest exact H3 binding, artifact and rec
 
 async function fixture(t:TestContext){
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-goal-checks-')),store=openStore(root),services=createServices(store,new Map()),gate=setAgentTaskEffectGate(store.db,()=>{});
- const projectId=String(record(await services.call('project.create',{name:'Goal observation'})).id),journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services}),runId=journal.create({projectId,requestId:randomUUID(),text:'Goals',configuration:{}}).run.id;
- const declare=(conditions:AgentTaskGoalCondition[])=>{const args=json({conditions}),tool=journal.beginStep(runId,{kind:'tool',toolCall:{id:randomUUID(),name:'mioon_goal_set',arguments:args}});journal.markDispatch(runId,tool.id);journal.completeStep(runId,tool.id,{result:args});return journal.step(tool.id);};
- const execute=async(name:string,args:AgentTaskJson)=>{const tool=journal.beginStep(runId,{kind:'tool',toolCall:{id:randomUUID(),name,arguments:args}}),prepared=tools.prepare({projectId,operation:name,input:args});journal.markDispatch(runId,tool.id);const outcome=await tools.execute(prepared,{runId,stepId:tool.id,requestId:tool.id,beforeEffect:()=>{},recordInside:(result,changes)=>journal.completeStepInside(runId,tool.id,{result,changes}),appendChangesInside:changes=>journal.appendChangesInside(runId,tool.id,changes)});if(journal.step(tool.id).status!=='completed')journal.completeStep(runId,tool.id,{result:outcome.result,changes:outcome.changes});return journal.step(tool.id);};
+ const projectId=String(record(await services.call('project.create',{name:'Goal observation'})).id),journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services}),runId=journal.create({projectId,requestId:randomUUID(),text:'Goals',configuration:mioFixtureConfiguration}).run.id;
+ const declare=(conditions:AgentTaskGoalCondition[])=>{const args=json({conditions}),tool=beginFixtureToolStep(journal,runId,{toolCall:{id:randomUUID(),name:'mioon_goal_set',arguments:args}});journal.markDispatch(runId,tool.id);journal.completeStep(runId,tool.id,{result:args});return journal.step(tool.id);};
+ const execute=async(name:string,args:AgentTaskJson)=>{const tool=beginFixtureToolStep(journal,runId,{toolCall:{id:randomUUID(),name,arguments:args}}),prepared=tools.prepare({projectId,operation:name,input:args});journal.markDispatch(runId,tool.id);const outcome=await tools.execute(prepared,{runId,stepId:tool.id,requestId:tool.id,beforeEffect:()=>{},recordInside:(result,changes)=>journal.completeStepInside(runId,tool.id,{result,changes}),appendChangesInside:changes=>journal.appendChangesInside(runId,tool.id,changes)});if(journal.step(tool.id).status!=='completed')journal.completeStep(runId,tool.id,{result:outcome.result,changes:outcome.changes});return journal.step(tool.id);};
  t.after(async()=>{await services.drain();gate();tools.dispose();store.close();rmSync(root,{recursive:true,force:true});});
  return {root,store,services,projectId,journal,runId,declare,execute,read:()=>readAgentTaskChecks(store,journal.snapshot(runId))};
 }
@@ -166,7 +167,7 @@ test('H4a malformed saved timeline stays pending and diagnostic reads expose no 
 });
 test('H4a actual generation requirement follows host task and publication observations',async t=>{
  const f=await fixture(t),shot=record(await f.services.call('shot.create',{projectId:f.projectId,title:'One'})),jobId=randomUUID();
- const source=f.journal.beginStep(f.runId,{kind:'tool',toolCall:{id:randomUUID(),name:'mioon_generation_submit',arguments:{shotId:String(shot.id)}}});
+ const source=beginFixtureToolStep(f.journal,f.runId,{toolCall:{id:randomUUID(),name:'mioon_generation_submit',arguments:{shotId:String(shot.id)}}});
  f.journal.markDispatch(f.runId,source.id);f.journal.completeStep(f.runId,source.id,{result:{id:jobId}});
  const saved={id:jobId,projectId:f.projectId,requestId:source.id,shotId:shot.id,status:'running',providerId:'mock',model:'mock-v1',progress:50,revision:1};f.store.put('jobs',saved);
  f.declare([{type:'generation_completed'}]);assert.equal((await f.read()).requirements?.[0]?.status,'pending');

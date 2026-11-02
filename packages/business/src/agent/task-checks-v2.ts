@@ -7,6 +7,7 @@ import {agentTaskChecksSchema} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskCheck,AgentTaskChecks,AgentTaskCheckValues,AgentTaskCheckGroup,AgentTaskCheckReason} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskSnapshot,AgentTaskStep} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
+import {readMioTargetRevision} from './mio-target-revisions.ts';
 import {createOwnedMediaGraphReader} from '../inspection.ts';
 import {validateManagedSource} from '../managed-media.ts';
 import {freezeStoryboardOutputGeometry,storyboardOutputGeometry} from '../storyboard-output.ts';
@@ -77,7 +78,7 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
  const groups:AgentTaskChecks['groups']=[{id:'export_render',items:[]},{id:'generation',items:[]},{id:'timeline',items:[]},{id:'decomposition_frames',items:[]}];
  const revision=(kind:Target['kind'],id:string,fallback=0):number=>{
   if(kind==='run')return run.revision;
-  const saved=store.db.prepare('SELECT revision FROM agent_task_target_revisions_v2 WHERE projectId=? AND kind=? AND targetId=?').get(projectId,kind,id)?.revision;
+  const saved=readMioTargetRevision(store.db,projectId,kind,id);
   return integer(saved)?saved:integer(fallback)?fallback:0;
  };
  const basis=(target:Target,fallback=0):Basis=>[{kind:target.kind,id:target.id,revision:revision(target.kind,target.id,fallback)}];
@@ -91,8 +92,8 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
  };
  const reason=(status:AgentTaskCheck['status'],code:AgentTaskCheckReason,params?:AgentTaskCheckValues):Pick<AgentTaskCheck,'status'|'reason'>=>({status,reason:{code,...(params?{params}:{})}});
  const origins:Origin[]=[],boundSteps=new Set<string>();
- const hasOrigins=hasStoreTable(store.db,'agent_task_job_origins_v2');
- if(hasOrigins)for(const source of store.db.prepare('SELECT kind,jobId,stepId,operation,requestId FROM agent_task_job_origins_v2 WHERE projectId=? AND runId=? ORDER BY stepId,kind,jobId').all(projectId,run.id)){
+ const hasOrigins=hasStoreTable(store.db,mioTable(store.db,'origins'));
+ if(hasOrigins)for(const source of store.db.prepare(`SELECT kind,jobId,stepId,operation,requestId FROM ${mioTable(store.db,'origins')} WHERE projectId=? AND runId=? ORDER BY stepId,kind,jobId`).all(projectId,run.id)){
   const step=typeof source.stepId==='string'?steps.get(source.stepId):undefined,description=step?.toolCall?operations[step.toolCall.name]:undefined;
   if(!step||!description||description.kind!==source.kind||typeof source.operation!=='string'||`mioon_${source.operation.replaceAll('.','_')}`!==step.toolCall?.name||source.requestId!==step.id||!uuid(source.jobId))continue;
   origins.push({kind:description.kind,id:source.jobId,step,operation:source.operation,requestId:step.id});boundSteps.add(step.id);
@@ -241,3 +242,4 @@ export async function readAgentTaskChecks(store:WorkspaceStore,snapshot:AgentTas
  }
  signal?.throwIfAborted();return agentTaskChecksSchema.parse({projectId,runId:run.id,runRevision:run.revision,groups,...(requirements===undefined?{}:{requirements})});
 }
+import {mioTable} from './mio-table-layout.ts';

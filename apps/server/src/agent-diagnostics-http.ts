@@ -5,6 +5,7 @@ import type {ChatAuthorizations} from '@mioon/business/agent/authorization-gate'
 import type {AgentTaskTools} from '@mioon/business/agent/task-tools-v2';
 import type {AgentTaskPolicy} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskStorageSnapshot} from '@mioon/contracts/agent-task-storage';
+import type {MioStorageSnapshot} from '@mioon/contracts/mio-storage';
 import {agentTaskFailure} from '@mioon/business/agent/task-runtime-v2';
 
 const route='/api/agent/diagnostics';
@@ -33,7 +34,7 @@ export function inspectAgentTaskCatalog(tools:Pick<AgentTaskTools,'list'>|undefi
 }
 interface Dependencies {
   settings:{get(...args:Parameters<AgentSettingsService['get']>):Promise<unknown>};authorizations:Pick<ChatAuthorizations,'snapshot'>;
-  tools:Pick<AgentTaskTools,'list'>|undefined;policy:()=>AgentTaskPolicy;selfPort:()=>number;hasProject:(id:string)=>boolean;storage?:()=>AgentTaskStorageSnapshot;
+  tools:Pick<AgentTaskTools,'list'>|undefined;policy:()=>AgentTaskPolicy;selfPort:()=>number;hasProject:(id:string)=>boolean;storage?:(projectId?:string)=>AgentTaskStorageSnapshot|MioStorageSnapshot|undefined;
 }
 /** Enclosing server enforces loopback Host/Origin and local bearer auth. This
  * management route is deliberately absent from the model and RPC catalogs. */
@@ -47,9 +48,10 @@ export function createAgentDiagnosticsHttp(deps:Dependencies){
       if(keys.length>1||keys.some(key=>key!=='projectId')||projectId!==null&&!/^[a-f0-9-]{36}$/u.test(projectId))throw agentTaskFailure('AGENT_TASK_INVALID');
       if(projectId!==null&&!deps.hasProject(projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
       const settings=sanitizeAgentSettingsResult(await deps.settings.get({selfPort:deps.selfPort()}));
-      reply(200,{ok:true,data:{version:1,settings,policy:deps.policy(),authorization:deps.authorizations.snapshot(settings.configuration),catalog:inspectAgentTaskCatalog(deps.tools),...(deps.storage?{storage:deps.storage()}:{}),...(projectId!==null?{projectId}:{}),verification:'not_tested'}});
+      const storage=deps.storage?.(projectId??undefined);
+      reply(200,{ok:true,data:{version:1,settings,policy:deps.policy(),authorization:deps.authorizations.snapshot(settings.configuration),catalog:inspectAgentTaskCatalog(deps.tools),...(storage?{storage}:{}),...(projectId!==null?{projectId}:{}),verification:'not_tested'}});
     }catch(error){
-      const failure=agentTaskFailure(object(error)&&['AGENT_TASK_INVALID','AGENT_TASK_NOT_FOUND'].includes(String(error.code))?String(error.code):'AGENT_TASK_STORAGE_UNAVAILABLE');
+      const failure=agentTaskFailure(object(error)&&['AGENT_TASK_INVALID','AGENT_TASK_NOT_FOUND','AGENT_TASK_STORAGE_CORRUPT'].includes(String(error.code))?String(error.code):'AGENT_TASK_STORAGE_UNAVAILABLE');
       reply(failure.status,{ok:false,error:{code:failure.code,message:failure.message,details:{},retryable:false}});
     }
     return true;

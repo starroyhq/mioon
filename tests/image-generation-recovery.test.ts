@@ -15,7 +15,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng} from '../packages/business/src/images/png.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {errorView} from './helpers/test-error.ts';
-import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
 interface RecoveryInput {projectId: string; name: string; providerId: string; model: string; prompt: string;
   options: Record<string, unknown>; requestId: string; [key: string]: unknown}
@@ -178,7 +178,8 @@ for (const variant of ['owner-root', 'owner-directory', 'task-deleted', 'task-re
       // in the snapshot instead of failing on a foreign key.
       db.exec('PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_image_task_identity; DROP TRIGGER image_task_state_transitions; DROP TRIGGER immutable_image_group_identity; DROP TRIGGER retain_image_tasks;');
       if (variant === 'task-deleted') db.prepare('DELETE FROM image_tasks WHERE id=?').run(ack.id);
-      if (variant === 'task-reassigned') db.prepare('UPDATE image_tasks SET projectId=? WHERE id=?').run(f.other.id, ack.id);
+      if (variant === 'task-reassigned') withoutProcessTargetRevisions(db, ['image_tasks'], () =>
+        db.prepare('UPDATE image_tasks SET projectId=? WHERE id=?').run(f.other.id, ack.id));
       if (variant === 'group-reassigned') db.prepare('UPDATE image_groups SET projectId=? WHERE id=?').run(f.other.id, ack.groupId);
       if (variant === 'input-changed') db.prepare('UPDATE image_tasks SET input=? WHERE id=?').run(JSON.stringify({...JSON.parse((f.row(ack.id))!.input as string), prompt: 'Foreign replacement'}), ack.id);
       if (variant === 'revision-advanced') db.prepare('UPDATE image_tasks SET revision=revision+1 WHERE id=?').run(ack.id);

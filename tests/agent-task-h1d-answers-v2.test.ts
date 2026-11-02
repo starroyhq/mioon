@@ -19,6 +19,8 @@ import type {AgentProtocol} from '../packages/contracts/src/agent-protocol.ts';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskRun,AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
+import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
+import {beginFixtureToolStep} from './helpers/mio-model-fixture.ts';
 
 const protocols=['chat_completions','responses','anthropic_messages'] as const;
 const locales=['zh-Hans','zh-Hant','en','ja'] as const;
@@ -42,11 +44,12 @@ function createRun(f:Fixture,text:string,conversationId?:string,diagnostic=false
 function note(f:Fixture,runId:string,text:string):void{f.store.tx(()=>f.journal.appendNoteInside(runId,randomUUID(),text));}
 function model(f:Fixture,runId:string,text:string){
  const requests=f.journal.run(runId).notes?.filter(item=>item.modelStepId===undefined).map(item=>item.requestId)??[];
- const step=f.journal.beginModelStep(runId,{request:{body:privatePayload.repeat(6000),history:[]}},requests);
- return f.journal.completeStep(runId,step.id,{result:{text,toolCalls:[],providerOutput:{privatePayload:privatePayload.repeat(6000)}}});
+ const history:AgentTaskJson[]=[{role:'user',content:f.journal.run(runId).text}],body=JSON.stringify({model:'synthetic',input:history,metadata:{privatePayload:privatePayload.repeat(6000)}});
+ const step=f.journal.beginModelStep(runId,{request:{body,history}},requests);f.journal.markDispatch(runId,step.id);
+ return f.journal.completeStep(runId,step.id,{result:{text,toolCalls:[],providerOutput:[{type:'message',role:'assistant',content:[{type:'output_text',text}],privatePayload:privatePayload.repeat(6000)}]}});
 }
 function ask(f:Fixture,runId:string,arguments_:AgentTaskJson,result?:AgentTaskJson){
- const step=f.journal.beginStep(runId,{kind:'tool',tier:'read_only',toolCall:{id:randomUUID(),name:'mioon_ask',arguments:arguments_}});
+ const step=beginFixtureToolStep(f.journal,runId,{tier:'read_only',toolCall:{id:randomUUID(),name:'mioon_ask',arguments:arguments_}});
  f.journal.updateStep(runId,step.id,{status:'awaiting_answer'});
  return result===undefined?f.journal.step(step.id):f.journal.updateStep(runId,step.id,{status:'completed',result});
 }
@@ -106,10 +109,13 @@ test('only canonical valid answers contribute history; malformed choices and for
 
 test('narrow answers query reads no historical model originals, scopes note anchors and makes no writes',t=>{
  const f=fixture(t),foreign=createRun(f,'OTHER_CONVERSATION');model(f,foreign.id,'FOREIGN_MODEL');end(f,foreign.id,'completed');const foreignModel=f.journal.snapshot(foreign.id).steps[0]!;
- const seed=answeredRun(f),run=f.journal.run(seed.run.id);f.store.db.prepare("UPDATE agent_task_runs_v2 SET data=json_set(data,'$.notes[3].modelStepId',?) WHERE id=?").run(foreignModel.id,run.id);
- const prepare=f.store.db.prepare,statements:string[]=[];f.store.db.prepare=(sql:string)=>{statements.push(sql);return prepare.call(f.store.db,sql);};t.after(()=>{f.store.db.prepare=prepare;});f.journal.snapshot=()=>{throw Error('Cross-run snapshot hydration is forbidden');};
+ const seed=answeredRun(f),run=f.journal.run(seed.run.id),store=f.store;assert.ok(isProjectStore(store));
+ store.tx(()=>createMioRecords(store).appendEntry({id:randomUUID(),runId:run.id,kind:'host_state',createdAt:new Date().toISOString(),payload:{json:{type:'notes_bound',modelStepId:foreignModel.id,requestIds:[run.notes![3]!.requestId]}}}));
+ const prepare=f.store.db.prepare,statements:string[]=[],originalReads:string[]=[];
+ f.store.db.prepare=(sql:string)=>{statements.push(sql);return new Proxy(prepare.call(f.store.db,sql),{get(target,key){const member=Reflect.get(target,key,target),originalTable=/\b(?:mio_entries|mio_blobs|mio_requests|mio_changes)\b/iu.test(sql);if((key==='get'||key==='all')&&originalTable)return (...args:unknown[])=>{const result:unknown=Reflect.apply(member,target,args);if(JSON.stringify(result)?.includes(privatePayload.repeat(10)))originalReads.push(sql);return result;};if(key==='iterate'&&originalTable)return function*(...args:unknown[]){const rows:Iterable<unknown>=Reflect.apply(member,target,args);for(const row of rows){if(JSON.stringify(row)?.includes(privatePayload.repeat(10)))originalReads.push(sql);yield row;}};return typeof member==='function'?member.bind(target):member;}});};
+ t.after(()=>{f.store.db.prepare=prepare;});f.journal.snapshot=()=>{throw Error('Cross-run snapshot hydration is forbidden');};
  const before=Number(prepare.call(f.store.db,'SELECT total_changes() n').get()!.n),{historyRuns}=assemble(f,seed.run),inputs=historyRuns[0]!.historyInputs!;
- assert.deepEqual(inputs.at(-1),{kind:'note',text:seed.notes[3]!});assert.ok(!statements.some(sql=>/SELECT\s+(?:\w+\.)?data\s+FROM\s+agent_task_steps_v2/iu.test(sql)));assert.ok(!statements.some(sql=>sql.includes('$.request')||sql.includes('$.providerOutput')));assert.ok(!JSON.stringify(historyRuns).includes('FOREIGN_MODEL'));assert.equal(Number(prepare.call(f.store.db,'SELECT total_changes() n').get()!.n),before);
+ assert.deepEqual(inputs.at(-1),{kind:'note',text:seed.notes[3]!});assert.ok(!statements.some(sql=>/SELECT\s+(?:\w+\.)?data\s+FROM\s+agent_task_steps_v2/iu.test(sql)));assert.ok(!statements.some(sql=>/SELECT\s+(?:\w+\.)?\*\s+FROM\s+mio_requests\b/iu.test(sql)),'Historical context must not hydrate frozen model requests');assert.equal(originalReads.length,0,`Historical original content entered JavaScript through: ${originalReads[0]}`);assert.ok(!statements.some(sql=>sql.includes('$.request')));assert.ok(!JSON.stringify(historyRuns).includes('FOREIGN_MODEL'));assert.equal(Number(prepare.call(f.store.db,'SELECT total_changes() n').get()!.n),before);
 });
 
 function continuation(protocol:AgentProtocol):TaskModelOutput{

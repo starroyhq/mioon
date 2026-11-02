@@ -6,6 +6,7 @@ import type {ProjectStore} from '../project-file/store.ts';
 import {testStoreApplicationDirectory} from '../project-file/test-store.ts';
 import {foreignKeyCheck} from '../project-file/cross-file/inspect.ts';
 import {registerAgentTaskRowValidationContext} from './task-row-validation-context.ts';
+import {validateMioProjectRows} from './mio-project-row-validation.ts';
 
 const bindings = new WeakMap<DatabaseSync, {readonly store: ProjectStore; readonly library: AppLibrary; readonly release: () => void; references: number}>();
 
@@ -31,8 +32,9 @@ export function bindAgentTaskRowValidation(store: ProjectStore, library: AppLibr
   let binding = bindings.get(store.db);
   if (binding && (binding.store !== store || binding.library !== library)) throw new TypeError('Agent task row validation is bound to another application');
   if (!binding) {
-    const release = registerAgentTaskRowValidationContext(store.db, {application: library.db, assertAvailable,
-      foreignKeysValid: () => foreignKeyCheck(store.db).length === 0 && library.db.prepare('PRAGMA main.foreign_key_check').get() === undefined});
+    const foreignKeysValid = (): boolean => foreignKeyCheck(store.db).length === 0 && library.db.prepare('PRAGMA main.foreign_key_check').get() === undefined;
+    const release = registerAgentTaskRowValidationContext(store.db, {application: library.db, assertAvailable, foreignKeysValid,
+      validateRows: options => validateMioProjectRows(store, library.db, foreignKeysValid, options)});
     binding = {store, library, release, references: 0};
     bindings.set(store.db, binding);
   }

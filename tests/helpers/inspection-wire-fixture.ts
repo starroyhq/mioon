@@ -107,6 +107,7 @@ export async function seedInspectionStore(root: string): Promise<void> {
   const {createServerProject,withoutForeignKeys}=await import('./project-database.ts');
   const {openAppLibrary}=await import('../../packages/business/src/app-db/index.ts');
   const {createAgentTaskJournal}=await import('../../packages/business/src/agent/task-journal-v2.ts');
+  const {beginFixtureModelStep}=await import('./mio-model-fixture.ts');
   const {DEFAULT_AGENT_TASK_POLICY}=await import('../../packages/contracts/src/agent-tasks-v2.ts');
   const stores=new Map<string,ReturnType<typeof createServerProject>['store']>();
   let library:ReturnType<typeof openAppLibrary>|undefined;
@@ -193,7 +194,7 @@ export async function seedInspectionStore(root: string): Promise<void> {
     // B1 policy/receipt rows replace the old nonempty-history privacy sentinels.
     const journal=createAgentTaskJournal(owner(IDS.project),{policyStore:library.agentPolicy});
     const run=journal.create({requestId:uuid(911),projectId:IDS.project,text:PRIVATE,configuration:{protocol:'chat_completions',model:'synthetic-model'}}).run;
-    const step=journal.beginStep(run.id,{kind:'model'});journal.completeStep(run.id,step.id,{result:{privateFixture:PRIVATE}});
+    const model=beginFixtureModelStep(journal,run.id);model.complete(PRIVATE);
     journal.appendEvent(run.id,'text',{text:PRIVATE});journal.transition(run.id,journal.run(run.id).revision,'completed');
   } finally {for(const store of stores.values())store.close();library?.close();}
 }

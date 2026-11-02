@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
 import {AGENT_TASK_ORDINARY_SCHEMAS,CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA} from './helpers/workspace-schema-current.ts';
@@ -22,9 +23,9 @@ function downgrade52(root:string){downgrade54(root);const db=new DatabaseSync(jo
 test('conversation creation is host-owned, fail-closed for unknown/foreign IDs and grouped with exact counts',()=>{const f=fixture();try{
  const first=completed(f,'  First line\n\u202esecond line  '),next=completed(f,'Next prompt',first.conversationId);assert.ok(first.conversationId);assert.equal(next.conversationId,first.conversationId);assert.notEqual(first.conversationId,first.id);
  const foreign=randomUUID(),before=f.journal.list(f.projectId).length;
- for(const [projectId,conversationId] of [[f.projectId,randomUUID()],[foreign,first.conversationId]] as const)assert.throws(()=>f.journal.create({requestId:randomUUID(),projectId,conversationId,text:'must not create',configuration:{}}),{code:projectId===foreign?'PROJECT_NOT_FOUND':'AGENT_TASK_NOT_FOUND'});
+ for(const [projectId,conversationId] of [[f.projectId,randomUUID()],[foreign,first.conversationId]] as const)assert.throws(()=>f.journal.create({requestId:randomUUID(),projectId,conversationId,text:'must not create',configuration:{}}),{code:'AGENT_TASK_NOT_FOUND'});
  assert.equal(f.journal.list(f.projectId).length,before);const history=f.journal.history(f.projectId);assert.equal(history.conversations.length,1);const group=history.conversations[0]!;assert.equal(group.title,'First line second line');assert.equal(group.lastRunId,next.id);assert.equal(group.lastRunStatus,'completed');assert.equal(group.runCount,2);assert.equal(group.changeCount,0);
- assert.throws(()=>f.store.db.prepare("UPDATE agent_task_runs_v2 SET data=json_set(data,'$.conversationId',?) WHERE id=?").run(randomUUID(),first.id),/conversation identity is immutable/u);
+ assert.throws(()=>f.store.db.prepare("UPDATE mio_runs SET conversationId=? WHERE id=?").run(randomUUID(),first.id),/Mio evidence is immutable/u);
 }finally{f.close();}});
 
 test('conversation history and member pages use scoped cursors without overlap; diagnostics never join either',()=>{const f=fixture();try{
@@ -33,7 +34,7 @@ test('conversation history and member pages use scoped cursors without overlap; 
  assert.equal(f.journal.history(f.projectId).conversations.length,2);assert.throws(()=>f.journal.conversation(f.projectId,diagnostic.conversationId!),{code:'AGENT_TASK_NOT_FOUND'});
  const page=f.journal.history(f.projectId,{limit:1});assert.ok(page.nextCursor);const older=f.journal.history(f.projectId,{limit:1,cursor:page.nextCursor});assert.equal(older.nextCursor,null);assert.equal(new Set([...page.conversations,...older.conversations].map(item=>item.id)).size,2);
  const members=f.journal.conversation(f.projectId,first.conversationId!,{limit:2});assert.ok(members.nextCursor);const middle=f.journal.conversation(f.projectId,first.conversationId!,{limit:2,cursor:members.nextCursor});assert.ok(middle.nextCursor);const last=f.journal.conversation(f.projectId,first.conversationId!,{limit:2,cursor:middle.nextCursor});assert.equal(last.nextCursor,null);assert.equal(new Set([...members.runs,...middle.runs,...last.runs].map(run=>run.id)).size,5);
- assert.throws(()=>f.journal.conversation(f.projectId,second.conversationId!,{cursor:members.nextCursor!}),{code:'AGENT_TASK_INVALID'});assert.throws(()=>f.journal.history(randomUUID(),{cursor:page.nextCursor!}),{code:'AGENT_TASK_INVALID'});
+ assert.throws(()=>f.journal.conversation(f.projectId,second.conversationId!,{cursor:members.nextCursor!}),{code:'AGENT_TASK_INVALID'});assert.throws(()=>f.journal.history(randomUUID(),{cursor:page.nextCursor!}),{code:'AGENT_TASK_NOT_FOUND'});
 }finally{f.close();}});
 
 test('conversation member pagination retains rounds older than the project recent100 snapshot',()=>{const f=fixture();try{
@@ -60,10 +61,10 @@ for(const sourceVersion of AGENT_TASK_ORDINARY_SCHEMAS)test(`schema${sourceVersi
 }finally{f.close();rmSync(backup,{recursive:true,force:true});rmSync(restored,{recursive:true,force:true});}});
 
 test('conversation metadata counts actual Changes and rejects identity edits before row publication',()=>{const f=fixture();try{
- const created=f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'One durable change',configuration:{}}),step=f.journal.beginStep(created.run.id,{kind:'model'});
- f.journal.completeStep(created.run.id,step.id,{result:{done:true},change:{projectId:f.projectId,operation:'local.test',targets:[],before:null,after:null,reversible:false}});const latest=f.journal.run(created.run.id);f.journal.transition(latest.id,latest.revision,'completed');
+ const created=f.journal.create({requestId:randomUUID(),projectId:f.projectId,text:'One durable change',configuration:mioFixtureConfiguration}),step=beginFixtureToolStep(f.journal,created.run.id,{});
+ f.journal.markDispatch(created.run.id,step.id);f.journal.completeStep(created.run.id,step.id,{result:{done:true},change:{projectId:f.projectId,operation:'local.test',targets:[],before:null,after:null,reversible:false}});const latest=f.journal.run(created.run.id);f.journal.transition(latest.id,latest.revision,'completed');
  const group=f.journal.history(f.projectId).conversations[0]!;assert.equal(group.changeCount,1);assert.equal(group.runCount,1);
- const old=f.journal.run(created.run.id);assert.throws(()=>f.store.db.prepare('INSERT INTO agent_task_runs_v2(id,projectId,requestId,digest,status,revision,data) VALUES(?,?,?,?,?,?,?)').run(randomUUID(),f.projectId,randomUUID(),'a'.repeat(64),'completed',1,JSON.stringify({...old,id:randomUUID(),conversationId:undefined})),/conversation identity is required/u);assert.equal(f.journal.list(f.projectId).length,1);
+ assert.throws(()=>f.store.db.prepare('INSERT INTO mio_runs SELECT ?,projectId,NULL,?,digest,status,revision,stepLimit,budget,stepsUsed,locale,configurationBlobHash,settingsRevision,rulesSnapshotHash,usageSummary,createdAt,updatedAt FROM mio_runs WHERE id=?').run(randomUUID(),randomUUID(),created.run.id),/NOT NULL constraint failed: mio_runs.conversationId/u);assert.equal(f.journal.list(f.projectId).length,1);
 }finally{f.close();}});
 
 test('same-millisecond sends and clock rollback retain first/last, pagination, context and receipt identity after the current backup restores',async t=>{const f=fixture(openLegacyWorkspaceStore),backup=f.root+'-backup',restored=f.root+'-restored';try{

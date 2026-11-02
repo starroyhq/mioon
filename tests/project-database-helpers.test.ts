@@ -20,7 +20,7 @@ import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/pro
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {mutateProjectRecord} from '../packages/business/src/project-record-mutations.ts';
 import {testStoreForConnection} from '../packages/business/src/project-file/test-store.ts';
-import {createServerProject, foreignKeyCheck, openProjectDatabase, projectDatabasePath, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {createServerProject, foreignKeyCheck, openProjectDatabase, projectDatabasePath, projectDirFor, schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 
 const TOKEN = 'synthetic-project-database-token';
 const PRAGMAS = ['trusted_schema', 'foreign_keys', 'journal_mode', 'synchronous', 'busy_timeout', 'locking_mode'];
@@ -441,14 +441,16 @@ test('withoutForeignKeys preserves fault, target revision and seen-sequence trig
 
 test('withoutForeignKeys reports both write and restore failures without hiding a conflicting TEMP trigger', t => {
   const store = openStore(dataDirectory(t)), failure = new Error('Synthetic write failure');
+  const row=store.db.prepare("SELECT name FROM temp.sqlite_master WHERE type='trigger' AND name GLOB 'project_file_fk_*_child_insert' ORDER BY name LIMIT 1").get();
+  assert.ok(row&&typeof row.name==='string');const name=row.name;
   try {
     assert.throws(() => withoutForeignKeys(store.db, () => {
-      store.db.exec('CREATE TEMP TRIGGER project_file_fk_01_child_insert BEFORE INSERT ON project.shots BEGIN SELECT 1;END');
+      store.db.exec(`CREATE TEMP TRIGGER ${name} BEFORE INSERT ON project.shots BEGIN SELECT 1;END`);
       throw failure;
     }), error => error instanceof AggregateError && error.errors[0] === failure && /already exists/.test(String(error.errors[1])));
     assert.equal(foreignKeys(store.db), 1);
     assert.equal(store.db.isTransaction, false);
-    assert.equal(store.db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE name='project_file_fk_01_child_insert'").get()?.n, 1);
+    assert.equal(store.db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE name=?").get(name)?.n, 1);
     assert.throws(() => withoutForeignKeys(store.db, () => 1), /exact kernel relation triggers/);
   } finally { store.close(); }
 });
@@ -585,4 +587,55 @@ test('the assembled application configuration acknowledges only its own committe
     formatVersion: 1, revision: saved.revision, liveGeneration: true,
     automaticBackup: before.automaticBackup, backupIntervalHours: before.backupIntervalHours, backupLocation: before.backupLocation,
   });
+});
+
+
+test('process corruption injection suspends only selected derived revisions and restores the production guards', t => {
+  const {store}=createServerProject(dataDirectory(t));
+  try {
+    const {db}=store,before=schemaObjects(db),guards=()=>db.prepare("SELECT name,sql FROM main.sqlite_master WHERE type='trigger' AND (name LIKE 'project_mio_%' OR name LIKE 'row_mio_%' OR name LIKE 'quota_%') ORDER BY name").all(),protectedBefore=guards();
+    const id=randomUUID(),foreign=randomUUID(),insert=()=>db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(id,foreign,JSON.stringify({id,projectId:foreign,status:'queued'}));
+    withoutForeignKeys(db,()=>{
+      assert.throws(insert,/Mio record belongs to another project/);
+      assert.equal(withoutProcessTargetRevisions(db,['jobs'],()=>{
+        assert.deepEqual(guards(),protectedBefore);
+        assert.throws(()=>db.prepare("INSERT INTO mio_process_target_revisions(projectId,kind,targetId,revision) VALUES(?,'job',?,1)").run(foreign,id),/Mio record belongs to another project/);
+        return Number(insert().changes);
+      }),1);
+      assert.throws(()=>db.prepare("UPDATE jobs SET data=json_set(data,'$.status','running') WHERE id=?").run(id),/Mio record belongs to another project/,'derived revision enforcement is restored before a consumer can run');
+    });
+    assert.equal(db.prepare('SELECT projectId FROM jobs WHERE id=?').get(id)?.projectId,foreign);
+    assert.deepEqual(schemaObjects(db),before);assert.deepEqual(guards(),protectedBefore);assert.equal(db.isTransaction,false);assert.equal(foreignKeys(db),1);
+  } finally {store.close();}
+});
+
+test('process corruption injection restores exact DDL after throws and rejects asynchronous, nested and unknown writes', t => {
+  const {store}=createServerProject(dataDirectory(t));
+  try {
+    const {db}=store,before=schemaObjects(db),failure=new Error('Synthetic corrupt seed failed');
+    assert.throws(()=>withoutProcessTargetRevisions(db,['exports'],()=>{throw failure;}),error=>error===failure);
+    assert.deepEqual(schemaObjects(db),before);
+    let called=false;
+    assert.throws(()=>withoutProcessTargetRevisions(db,['jobs'],async()=>{called=true;}),/rejects asynchronous/);assert.equal(called,false);
+    assert.throws(()=>withoutProcessTargetRevisions(db,['jobs'],()=>Promise.resolve()),/rejects asynchronous/);
+    assert.throws(()=>withoutProcessTargetRevisions(db,['jobs'],()=>({then(){}})),/rejects asynchronous/);
+    assert.throws(()=>withoutProcessTargetRevisions(db,['jobs'],()=>withoutProcessTargetRevisions(db,['exports'],()=>1)),/unnested synchronous/);
+    assert.throws(()=>withoutProcessTargetRevisions(db,[],()=>1),/Invalid process/);
+    assert.throws(()=>withoutProcessTargetRevisions(db,['jobs','jobs'],()=>1),/Invalid process/);
+    assert.throws(()=>withoutProcessTargetRevisions(db,['shots' as 'jobs'],()=>1),/Invalid process/);
+    assert.throws(()=>withoutProcessTargetRevisions(db,['jobs'],()=>db.exec('BEGIN')),/restoration failed/);
+    assert.deepEqual(schemaObjects(db),before);assert.equal(db.isTransaction,false);
+  } finally {store.close();}
+});
+
+test('process corruption injection retains both failures and refuses altered derived trigger SQL', t => {
+  const {store}=createServerProject(dataDirectory(t));
+  try {
+    const {db}=store,failure=new Error('Synthetic write failure'),name='agent_target_jobs_insert_v2';
+    assert.throws(()=>withoutProcessTargetRevisions(db,['jobs'],()=>{
+      db.exec(`CREATE TRIGGER ${name} AFTER INSERT ON jobs BEGIN SELECT 1;END`);throw failure;
+    }),error=>error instanceof AggregateError&&error.errors[0]===failure&&/already exists/.test(String(error.errors[1])));
+    assert.equal(db.isTransaction,false);assert.equal(foreignKeys(db),1);
+    assert.throws(()=>withoutProcessTargetRevisions(db,['jobs'],()=>1),/Missing exact process revision trigger/);
+  } finally {store.close();}
 });

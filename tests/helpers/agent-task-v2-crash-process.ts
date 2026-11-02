@@ -17,7 +17,7 @@ const trace=(kind:string)=>appendFileSync(path.join(root,'trace.jsonl'),JSON.str
 const crash=()=>{trace(boundary);process.kill(process.pid,'SIGKILL');};
 const store=openStore(root);let ready=false;const originalTx=store.tx;
 store.tx=fn=>{const value=originalTx(fn);if(ready){
- if(boundary==='model_intent'&&store.db.prepare("SELECT 1 FROM agent_task_steps_v2 WHERE position=1 AND status='intent'").get())crash();
+ if(boundary==='model_intent'&&store.db.prepare("SELECT 1 FROM mio_steps WHERE position=1 AND status='intent'").get())crash();
  if(boundary==='tool_after_commit'&&store.db.prepare("SELECT 1 FROM shots WHERE json_extract(data,'$.title')='After atomic AI edit'").get())crash();
  if(boundary==='generation_accept'&&store.db.prepare('SELECT 1 FROM image_tasks LIMIT 1').get())crash();
  if(boundary==='result_commit'&&store.db.prepare("SELECT 1 FROM image_tasks WHERE state='succeeded' LIMIT 1").get())crash();

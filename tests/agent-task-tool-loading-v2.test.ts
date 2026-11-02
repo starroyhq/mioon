@@ -61,7 +61,7 @@ async function fixture(t:TestContext,protocol:AgentProtocol='responses'){
   async sendLegacy(){
    const saved=await settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Continue the frozen group-loader intent.'}],body=legacyLoaderRequest(saved.configuration,context,selectTaskModelTools(base.list()));
    const created=runtime.journal.create({projectId,requestId:randomUUID(),text:'Continue the frozen group-loader intent.',configuration:{...saved.configuration},settingsRevision:saved.revision,context});
-   runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history:context},data:{baseline:runtime.journal.revisionSnapshot(projectId).map(({kind,id,revision})=>({kind,id,revision}))}});
+   runtime.journal.beginModelStep(created.run.id,{request:{body,history:context},data:{baseline:runtime.journal.revisionSnapshot(projectId).map(({kind,id,revision})=>({kind,id,revision}))}},[]);
    runtime.close();runtime=createAgentTaskRuntime({store,agentSettings:settings,authorizations,tools,gateway,selfPort:()=>4318});
    return runtime.action(projectId,created.run.id,{requestId:randomUUID(),expectedRevision:runtime.get(projectId,created.run.id).run.revision,action:'resume'});
   },
@@ -181,7 +181,7 @@ for(const protocol of protocols)test(`${protocol}: a legacy full-catalog unsent 
  const f=await fixture(t,protocol),settings=await f.settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Legacy full-catalog request.'}];
  const original=buildTaskModelRequest(settings.configuration,context,f.tools.list().filter(tool=>tool.name!==AGENT_TASK_TOOLS_LOAD_NAME),4318);
  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Legacy full-catalog request.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
- const model=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body:original,history:context},data:{baseline:f.runtime.journal.revisionSnapshot(f.projectId).map(({kind,id,revision})=>({kind,id,revision}))}});
+ const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body:original,history:context},data:{baseline:f.runtime.journal.revisionSnapshot(f.projectId).map(({kind,id,revision})=>({kind,id,revision}))}},[]);
  f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:1,patch:{title:'Legacy disclosed edit'}})]:[])};});
  f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const done=await f.settle(created.run.id);
  assert.equal(done.run.status,'completed');assert.equal(f.requests[0]!.body,original);assert.equal(object(f.runtime.journal.step(model.id).request).body,original);
@@ -193,7 +193,7 @@ for(const protocol of protocols)test(`${protocol}: a real zero-tool legacy inten
  const f=await fixture(t,protocol),settings=await f.settings.get(),context:AgentTaskJson[]=[{role:'user',content:'Legacy text-only request.'}];
  const original=buildTaskModelRequest(settings.configuration,context,[],4318);assert.deepEqual(sourceTaskModelToolNames(protocol,{body:original}),[]);
  const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Legacy text-only request.',configuration:{...settings.configuration},settingsRevision:settings.revision,context});
- const model=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body:original,history:context},data:{baseline:[]}});
+ const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body:original,history:context},data:{baseline:[]}},[]);
  f.script(async function*(index){yield {type:'done',output:output(protocol,index===1?[call('mioon_shot_update',{shotId:String(f.shot.id),expectedRevision:1,patch:{title:'Never prepared'}})]:[])};});
  f.restart();await f.action(f.runtime.get(f.projectId,created.run.id),'resume');const done=await f.settle(created.run.id);
  assert.equal(done.run.status,'completed');assert.equal(f.requests[0]!.body,original);assert.equal(object(f.runtime.journal.step(model.id).request).body,original);

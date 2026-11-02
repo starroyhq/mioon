@@ -1,4 +1,6 @@
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
+import {createAgentClient} from '../packages/client/src/agent.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,realpath,rm,readdir} from 'node:fs/promises';
@@ -21,6 +23,23 @@ import {agentTaskToolNamesForGroup} from '../packages/business/src/agent/task-to
 import type {AgentTaskLoadableToolGroupId} from '../packages/business/src/agent/task-tool-groups-v2.ts';
 
 const object=(value:unknown):value is Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
+
+test('the real K2 server serves usage only at the authenticated read-only project subresource',async t=>{
+ const reported={inputTokens:80,outputTokens:4,cacheReadTokens:20,cacheWriteTokens:0};
+ const f=await fixture(t,'chat_completions',async function*(request){request.beforeSubmit?.();yield {type:'done',output:{text:'Private passive counters',toolCalls:[],providerOutput:{role:'assistant',content:'Private passive counters'},usage:reported}};});
+ await f.authorize();
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'Read usage without provider access',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);
+ const snapshot=agentTaskSnapshotSchema.parse(sent.data);await f.settle(snapshot.run.id);
+ const client=createAgentClient({env:{MIOON_BASE_URL:f.server.url,MIOON_TOKEN:f.server.token}}),count=f.models;
+ const usage=await client.usage({projectId:f.projectId,runId:snapshot.run.id});mioRunUsageSchema.parse(usage);assert.deepEqual(usage.knownTotals,reported);assert.equal(usage.dispatchedModelSteps,1);assert.equal(usage.cacheReadRate,0.25);
+ const url=`${f.prefix}/${snapshot.run.id}/usage`;
+ assert.equal((await f.request(url,'GET',undefined,false)).status,401);
+ assert.equal((await f.request(url,'POST',{})).status,405);
+ assert.equal((await f.request(url+'?unexpected=1')).status,400);
+ assert.equal((await f.request(projectApiPath(f.projectId,'agent','tasks','v2',randomUUID(),'usage'))).status,404);
+ const forbidden=await fetch(f.server.url+url,{headers:{Authorization:`Bearer ${f.server.token}`,Origin:'http://foreign.invalid'}});assert.equal(forbidden.status,403);
+ assert.equal(f.models,count);
+});
 async function cliSnapshot(url:string,token:string,projectId:string,runId:string):Promise<AgentTaskSnapshot>;
 async function cliSnapshot(url:string,token:string,projectId:string,conversationId:string,command:'history'):Promise<AgentTaskHistoryPage>;
 async function cliSnapshot(url:string,token:string,projectId:string,conversationId:string,command:'conversation'):Promise<AgentTaskConversationPage>;

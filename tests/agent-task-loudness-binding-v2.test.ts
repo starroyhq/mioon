@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp, realpath, rm} from 'node:fs/promises';
@@ -58,11 +59,11 @@ async function fixture(t: TestContext) {
   }};
   const tools = createAgentTaskTools({store, services: localServices}), journal = createAgentTaskJournal(store);
   disposeTools = () => tools.dispose();
-  const run = journal.create({projectId, requestId: randomUUID(), text: 'Synthetic loudness candidate binding', configuration: {}}).run;
+  const run = journal.create({projectId, requestId: randomUUID(), text: 'Synthetic loudness candidate binding', configuration: mioFixtureConfiguration}).run;
   async function execute(operation = 'timeline.loudness.prepare', toolInput: Record<string, unknown> = argumentsValue) {
     const prepared = tools.prepare({projectId, operation, input: toolInput});
     const name = `mioon_${operation.replaceAll('.', '_')}`;
-    const step = journal.beginStep(run.id, {kind: 'tool', tier: prepared.risk, targets: prepared.targets,
+    const step = beginFixtureToolStep(journal,run.id, { tier: prepared.risk, targets: prepared.targets,
       toolCall: {id: randomUUID(), name, arguments: toolInput as AgentTaskJson}});
     journal.markDispatch(run.id, step.id);
     const outcome = await tools.execute(prepared, {runId: run.id, stepId: step.id, requestId: step.id,

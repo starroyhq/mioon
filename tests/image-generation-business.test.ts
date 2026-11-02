@@ -8,6 +8,7 @@ import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {readMioStorage} from '../packages/business/src/agent/mio-storage.ts';
 import {renderMockImagePng, validatePng} from '../packages/business/src/images/png.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {schemaObjects} from './helpers/project-database.ts';
@@ -111,9 +112,12 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   const asset = f.store.put('assets', {id: randomUUID(), projectId: f.project.id, name: 'Existing import',
     mimeType: 'image/png', provenance: 'user-import', sha256: 'a'.repeat(64), createdAt: new Date().toISOString()});
   const job = f.store.put('jobs', {id: randomUUID(), projectId: f.project.id, status: 'queued', privateMarker: 'legacy video'});
-  const unchangedNames = tables(f.store.db).filter(name => !name.startsWith('image_') && name !== 'assets' && name !== 'agent_task_target_revisions_v2' && name !== 'project_file' && name !== 'history_state');
+  // R1 keeps process revisions in history; verify their exact contribution
+  // separately while every other retained Mio record stays unchanged.
+  const unchangedNames = tables(f.store.db).filter(name => !name.startsWith('image_') && name !== 'assets' && name !== 'agent_task_target_revisions_v2' && name !== 'project_file' && name !== 'history_state' && name !== 'mio_process_target_revisions' && name !== 'mio_storage_counters');
   const sequenceBefore = Number(f.store.db.prepare('SELECT contentSequence AS n FROM project.project_file').get()!.n);
   const ledgerBefore = f.store.db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY projectId,kind,targetId').all();
+  const processesBefore = f.store.db.prepare('SELECT * FROM mio_process_target_revisions ORDER BY projectId,kind,targetId').all(), storageBefore = readMioStorage(f.store.db);
   const before = rows(f.store.db, unchangedNames), originalAsset = JSON.stringify(f.store.get('assets', asset.id));
   const firstInput = f.input(), firstAck = await f.call('image.generate', firstInput) as unknown as TaskView, first = await settled(f, firstAck.id) as unknown as TaskView;
   let group = await f.call('image.group.get', {projectId: f.project.id, groupId: first.groupId}) as GroupView;
@@ -136,8 +140,15 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   const ledgerAfter = f.store.db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY projectId,kind,targetId').all();
   for (const entry of ledgerBefore) assert.deepEqual(ledgerAfter.find(next => next.projectId===entry.projectId && next.kind===entry.kind && next.targetId===entry.targetId),entry,'image generation leaves all prior target revisions unchanged');
   const imageEntries = ledgerAfter.filter(entry => !ledgerBefore.some(prior => prior.projectId===entry.projectId && prior.kind===entry.kind && prior.targetId===entry.targetId));
-  assert.equal(imageEntries.length,7,'two image tasks, two image versions, two immutable assets and one group are audited');
-  for (const entry of imageEntries) {assert.equal(entry.projectId,f.project.id);assert.ok(['image_task','image_group','image_version','asset'].includes(String(entry.kind)));assert.ok(Number(entry.revision)>0);}
+  assert.equal(imageEntries.length,5,'two image versions, two immutable assets and one group remain in the content revision ledger');
+  for (const entry of imageEntries) {assert.equal(entry.projectId,f.project.id);assert.ok(['image_group','image_version','asset'].includes(String(entry.kind)));assert.ok(Number(entry.revision)>0);}
+  const processesAfter = f.store.db.prepare('SELECT * FROM mio_process_target_revisions ORDER BY projectId,kind,targetId').all();
+  for (const prior of processesBefore) assert.deepEqual(processesAfter.find(entry => entry.projectId === prior.projectId && entry.kind === prior.kind && entry.targetId === prior.targetId), prior);
+  const taskRevisions = processesAfter.filter(entry => !processesBefore.some(prior => entry.projectId === prior.projectId && entry.kind === prior.kind && entry.targetId === prior.targetId));
+  assert.deepEqual(taskRevisions.map(entry => ({...entry})), [first, second].map(task => ({projectId: f.project.id, kind: 'image_task', targetId: task.id, revision: task.revision})).sort((a,b) => a.targetId.localeCompare(b.targetId)));
+  const storageAfter = readMioStorage(f.store.db), revisionBytes = [first,second].reduce((sum,task) => sum + Buffer.byteLength(f.project.id + 'image_task' + task.id),0);
+  assert.deepEqual(storageAfter.usage, {bytes: storageBefore.usage.bytes + revisionBytes, rows: storageBefore.usage.rows + 2});
+  assert.deepEqual({...f.store.db.prepare('SELECT bytes,rows FROM mio_storage_counters WHERE singleton=1').get()}, storageAfter.usage);
   assert.deepEqual(f.store.get('jobs', job.id), job); assert.equal(f.calls, 2);
   for (const projection of f.projections) assert.deepEqual(Object.keys(projection).sort(), ['model', 'options', 'prompt', 'providerId']);
   for (const version of versions.items) {

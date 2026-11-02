@@ -18,7 +18,7 @@ import {readTimelineExportPreviewMedia, timelineExportPreviewIdentity, timelineE
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
-import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 import {dataFileSnapshot,databaseFiles} from './helpers/data-file-snapshot.ts';
@@ -126,7 +126,7 @@ test('preview exact ownership requires matching export receipt and owned publish
   const originalReceipt = f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response);
   // Rows that belong to the other project are written as a corrupt file would hold them.
   const changes = [
-    (db: DatabaseSync) => withoutForeignKeys(db, () => db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id)),
+    (db: DatabaseSync) => withoutProcessTargetRevisions(db, ['exports'], () => withoutForeignKeys(db, () => db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id))),
     (db: DatabaseSync) => replace(db, 'exports', {...f.record, assetId: randomUUID()}),
     (db: DatabaseSync) => replace(db, 'exports', {...f.record, purpose: 'preview'}),
     (db: DatabaseSync) => replace(db, 'exports', {...f.record, status: 'queued', assetId: null, url: null}),
@@ -172,14 +172,14 @@ test('preview revalidates after open and closes descriptor when ownership change
 test('preview rejects foreign reverse owner and keeps frozen receipt in late fence', async t => {
   const f = await fixture(t, {serve: false}), descriptor = f.read(); assert.ok(descriptor);
   const jobId = randomUUID(), versionId = randomUUID();
-  withoutForeignKeys(f.db, () => {
+  withoutProcessTargetRevisions(f.db, ['jobs'], () => withoutForeignKeys(f.db, () => {
     f.db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, f.foreign.id, JSON.stringify({id: jobId, projectId: f.foreign.id}));
     f.db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(versionId, f.foreign.id, jobId,
       JSON.stringify({id: versionId, projectId: f.foreign.id, jobId, assetId: f.asset.id}));
-  });
+  }));
   assert.equal(f.read(), null);
   assert.throws(() => timelineExportPreviewResponseHeaders(f.db, f.url, f.guards, descriptor), {code: 'FILE_UNAVAILABLE'});
-  f.db.prepare('DELETE FROM versions WHERE id=?').run(versionId); f.db.prepare('DELETE FROM jobs WHERE id=?').run(jobId);
+  f.db.prepare('DELETE FROM versions WHERE id=?').run(versionId); withoutProcessTargetRevisions(f.db, ['jobs'], () => f.db.prepare('DELETE FROM jobs WHERE id=?').run(jobId));
   assert.ok(f.read()); allowCorruptFixture(f);
   f.db.prepare('UPDATE timeline_requests SET requestHash=? WHERE requestId=?').run('b'.repeat(64), f.input.requestId);
   // A still-valid graph is not enough to reuse an old open-file observation.

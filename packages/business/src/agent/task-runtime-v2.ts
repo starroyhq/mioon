@@ -4,6 +4,10 @@ import {deriveAgentEndpoint} from '@mioon/contracts';
 import {agentTaskControlSchema,agentTaskConversationPolicySetSchema,agentTaskDiagnosticSchema,agentTaskLocaleSchema,agentTaskQuestionSchema,agentTaskSendSchema,agentTaskTargetSchema,DEFAULT_AGENT_TASK_LOCALE,DEFAULT_AGENT_TASK_POLICY} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
+import {mioTable} from './mio-table-layout.ts';
+import {readAgentTaskRunUsage,readMioRunUsage} from './mio-run-usage.ts';
+import {isProjectStore} from '../project-file/store.ts';
+import {createMioProjectJournal} from './mio-journal-factory.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
 import {hasStoreTable} from '../store-layout.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
@@ -165,13 +169,14 @@ interface Active {controller:AbortController;promise:Promise<void>;restartReques
 export interface AgentTaskRuntimeOptions {store:WorkspaceStore;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;policyStore?:AgentPolicyStore;readOnly?:boolean;assertMutationAllowed?:()=>void;checksPreflight?:AgentTaskChecksPreflight;onDiagnosticCompleted?:(summary:AgentDiagnosticSummary)=>void}
 /** SQLite owns progress. Process-local state is only cancellation and a single
  * current executor; opening this runtime never restarts an interrupted run. */
-export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:sourceJournal=createAgentTaskJournal(store,{policyStore}),readOnly=false,assertMutationAllowed,checksPreflight,onDiagnosticCompleted}:AgentTaskRuntimeOptions){
+export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:injectedJournal,readOnly=false,assertMutationAllowed,checksPreflight,onDiagnosticCompleted}:AgentTaskRuntimeOptions){
+  const sourceJournal:AgentTaskJournal=injectedJournal??(isProjectStore(store)?createMioProjectJournal(store,policyStore):createAgentTaskJournal(store,{policyStore}));
   const instanceId=randomUUID(),active=new Map<string,Active>();let closed=false,storageFaulted=false,storageFailureCode='AGENT_TASK_STORAGE_UNAVAILABLE';
   function failStorage(error:unknown):never {storageFaulted=true;storageFailureCode=storageFailure(error);for(const entry of active.values())entry.controller.abort();throw agentTaskFailure(storageFailureCode);}
   // A SQLite failure is an audit failure, including when it occurs in a domain
   // transaction callback. Never turn it into an ordinary failed tool result.
   const journal=new Proxy(sourceJournal,{get(target,property,receiver){const value:unknown=Reflect.get(target,property,receiver);if(typeof value!=='function')return value;return (...args:unknown[]):unknown=>{try{return Reflect.apply(value,target,args);}catch(error){if(storageError(error))failStorage(error);throw error;}};}});
-  const hasTables=hasStoreTable(store.db,'agent_task_runs_v2');
+  const hasTables=hasStoreTable(store.db,mioTable(store.db,'runs'));
   if(!readOnly)journal.recover();
   const checkOpen=():void=>{if(closed)throw agentTaskFailure('AGENT_TASK_CLOSED');};
   function mutable():void {checkOpen();if(readOnly)throw agentTaskFailure('AGENT_TASK_READ_ONLY');if(storageFaulted)throw agentTaskFailure(storageFailureCode);assertMutationAllowed?.();}
@@ -484,11 +489,14 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           }
           retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results});resumeModel=model;
         }
-        run=fence(runId);const originalBody=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:undefined;
+        run=fence(runId);
+        if(pendingModel&&journal.prepareModelStep)pendingModel=journal.prepareModelStep(runId,pendingModel.id);
+        const originalBody=pendingModel&&record(pendingModel.request)&&typeof pendingModel.request.body==='string'?pendingModel.request.body:undefined;
         let body:string,model:AgentTaskStep;
         if(pendingModel&&originalBody!==undefined){
           // A durable intent owns its exact request and already-bound notes.
-          // Even a capacity-changing upgrade must not reconstruct this input.
+          // A known assembler upgrade above may replace only a provably unsent
+          // intent. Every other replay retains its original frozen input.
           body=originalBody;model=pendingModel;
         }else{
           // Capture once: the hint and the immutable request must describe the
@@ -498,7 +506,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           const budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic});
           const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});
           body=buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});
-          model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(baseline),...(resumeModel?{previousModelStepId:resumeModel.id}:{}),...(repairSource?{goalRepairSourceModelStepId:repairSource}:{})}},pendingNotes.map(note=>note.requestId));
+          model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(baseline),assemblyModelStepIds:[...new Set(fragments.flatMap(fragment=>fragment.modelStepId?[fragment.modelStepId]:[]))],...(resumeModel?{previousModelStepId:resumeModel.id}:{}),...(repairSource?{goalRepairSourceModelStepId:repairSource}:{})}},pendingNotes.map(note=>note.requestId));
         }
         const knownTools=run.diagnostic?undefined:toolset().list();
         journal.markDispatch(runId,model.id);inflight=model.id;let output:TaskModelOutput|null=null,pending='',lastFlush=Date.now();
@@ -610,7 +618,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(conversationModes?.paid==='direct'&&journal.policy().modes.paid!=='direct'&&parsedPolicy?.success&&parsedPolicy.data?.acknowledgePaid!==true)throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
     const historyRuns=diagnostic||!conversationId?undefined:journal.modelContextRuns(projectId,conversationId).reverse();
     const projectOverview=diagnostic?undefined:collectTaskProjectOverview(store,projectId),projectNotes=diagnostic?undefined:collectTaskProjectNotes(store,projectId);
-    const attachments=uploads.map(id=>{const row=store.db.prepare('SELECT id,name,mimeType FROM agent_task_imports_v2 WHERE id=? AND projectId=?').get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
+    const attachments=uploads.map(id=>{const row=store.db.prepare(`SELECT id,name,mimeType FROM ${mioTable(store.db,'imports')} WHERE id=? AND projectId=?`).get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
     // Earlier runs are trimmed to the first request's budget: core tools plus
     // attachment imports. That request still validates the profile and reports
     // its error, so an unsupported configuration keeps the byte budget here.
@@ -693,7 +701,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         const steps=journal.snapshot(runId).steps,last=steps.at(-1);
         if(steps.some(step=>step.status==='unknown'||step.status==='dispatch_started'))throw agentTaskFailure('AGENT_TASK_UNKNOWN_RESULT');
         if(run.status!=='failed'||!last||last.status!=='failed'||request.stepId!==undefined&&request.stepId!==last.id)throw agentTaskFailure('AGENT_TASK_STATE_CONFLICT');
-        if(store.db.prepare("SELECT 1 FROM agent_task_runs_v2 WHERE projectId=? AND id<>? AND status IN ('accepted','running','paused','awaiting_approval','awaiting_answer','interrupted') LIMIT 1").get(projectId,runId))throw agentTaskFailure('AGENT_TASK_BUSY');
+        if(store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'runs')} WHERE projectId=? AND id<>? AND status IN ('accepted','running','paused','awaiting_approval','awaiting_answer','interrupted') LIMIT 1`).get(projectId,runId))throw agentTaskFailure('AGENT_TASK_BUSY');
         authorize(run);
         if(last.kind==='model')journal.updateStep(runId,last.id,{data:{...(record(last.data)?last.data:{}),retryRequested:true}});
         else {
@@ -798,7 +806,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     }
   }
   return {journal,instanceId,readOnly,snapshot,send,action,
-    isBusy:()=>active.size>0||hasTables&&!!store.db.prepare("SELECT 1 FROM agent_task_runs_v2 WHERE status IN ('accepted','running') LIMIT 1").get(),
+    isBusy:()=>active.size>0||hasTables&&!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'runs')} WHERE status IN ('accepted','running') LIMIT 1`).get(),
     history:(projectId:string,cursor?:string)=>{checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return hasTables?journal.history(projectId,{cursor}):{conversations:[],nextCursor:null};},
     /** The settings page's connection test: the newest text diagnostic in the workspace, without its text or reply. */
     latestConnectionTest:()=>{checkOpen();const found=hasTables?journal.latestDiagnostic('text'):null;if(!found)return {test:null};
@@ -808,10 +816,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     conversation:(projectId:string,conversationId:string,cursor?:string)=>{checkOpen();if(!hasTables||!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const page=journal.conversation(projectId,conversationId,{cursor});return {...page,runs:page.runs.map(run=>{const {context,...summary}=run;return summary;})};},
     timelineRevision:(projectId:string)=>{checkOpen();const row=store.db.prepare("SELECT json_extract(data,'$.revision') AS revision FROM timelines WHERE projectId=?").get(projectId);return row?Number(row.revision):null;},
     get:(projectId:string,id:string)=>{owned(projectId,id);return safeSnapshot(journal.snapshot(id),store);},
+    usage:(projectId:string,id:string)=>{owned(projectId,id);return isProjectStore(store)?readMioRunUsage(store,id):readAgentTaskRunUsage(store,id);},
     checks:(projectId:string,id:string,{preflight=false,signal}:{preflight?:boolean;signal?:AbortSignal}={})=>{owned(projectId,id);return readAgentTaskChecks(store,journal.snapshot(id),{preflight:checksPreflight,includePreflight:preflight,signal});},
     lookup:(projectId:string,requestId:string)=>{checkOpen();const found=hasTables?journal.lookupRequest(projectId,requestId):null;return {found:!!found,...(found?{snapshot:safeSnapshot(found,store)}:{})};},
     lookupAction:(projectId:string,id:string,requestId:string)=>{owned(projectId,id);const found=journal.lookupControl(requestId);if(found&&found.runId!==id)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {found:!!found,...(found?{snapshot:safeSnapshot(journal.snapshot(id),store),receipt:found}:{})};},
-    lookupImport:(projectId:string,requestId:string)=>{mutable();const row=store.db.prepare('SELECT id,name,mimeType,status FROM agent_task_imports_v2 WHERE projectId=? AND requestId=?').get(projectId,requestId);return row?{id:String(row.id),name:String(row.name),mimeType:String(row.mimeType),status:String(row.status)}:null;},
+    lookupImport:(projectId:string,requestId:string)=>{mutable();const row=store.db.prepare(`SELECT id,name,mimeType,status FROM ${mioTable(store.db,'imports')} WHERE projectId=? AND requestId=?`).get(projectId,requestId);return row?{id:String(row.id),name:String(row.name),mimeType:String(row.mimeType),status:String(row.status)}:null;},
     events:(projectId:string,id:string,after=0)=>{owned(projectId,id);return {sequence:journal.eventSequence(id,after),snapshot:safeSnapshot(journal.snapshot(id),store)};},
     conversationPolicy:(projectId:string,conversationId:string)=>{checkOpen();if(!hasTables)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return journal.conversationPolicy(projectId,conversationId);},
     setConversationPolicy:(projectId:string,conversationId:string,input:unknown)=>{

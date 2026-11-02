@@ -1,3 +1,4 @@
+import {beginFixtureToolStep,mioFixtureConfiguration} from './helpers/mio-model-fixture.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -30,11 +31,11 @@ async function fixture(t:TestContext){
   const directory=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-goal-tool-')),store=openStore(directory),services=createServices(store,new Map());
   const project=await services.call('project.create',{name:'Offline host goal fixture'});assert.ok(object(project)&&typeof project.id==='string');
   const projectId=project.id,journal=createAgentTaskJournal(store),tools=createAgentTaskTools({store,services});
-  const run=journal.create({requestId:randomUUID(),projectId,text:'Declare local checkable requirements',configuration:{}}).run;
+  const run=journal.create({requestId:randomUUID(),projectId,text:'Declare local checkable requirements',configuration:mioFixtureConfiguration}).run;
   t.after(async()=>{tools.dispose();await services.drain();store.close();await rm(directory,{recursive:true,force:true});});
   async function set(input:AgentTaskJson,{beforeEffect=()=>{}}:{beforeEffect?:()=>void}={}){
     const prepared=tools.prepare({projectId,operation:AGENT_TASK_GOAL_SET_TOOL,input});
-    const step=journal.beginStep(run.id,{kind:'tool',tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:AGENT_TASK_GOAL_SET_TOOL,arguments:input}});
+    const step=beginFixtureToolStep(journal,run.id,{tier:prepared.risk,targets:prepared.targets,toolCall:{id:randomUUID(),name:AGENT_TASK_GOAL_SET_TOOL,arguments:input}});
     journal.markDispatch(run.id,step.id);
     const outcome=await tools.execute(prepared,{runId:run.id,stepId:step.id,requestId:step.id,beforeEffect,recordInside:(result,changes)=>journal.completeStepInside(run.id,step.id,{result,changes})});
     journal.completeStep(run.id,step.id,{result:outcome.result,changes:outcome.changes});
@@ -105,11 +106,11 @@ test('H4a host goal execution consumes one read-only step and later declarations
   const first=await f.set({conditions:[{type:'duration',seconds:8}]},{beforeEffect:()=>{fences++;}});
   assert.equal(fences,1);assert.equal(first.outcome.recorded,false);assert.deepEqual(first.outcome.changes,[]);
   assert.deepEqual(first.outcome.result,{conditions:[{type:'duration',seconds:8,toleranceSeconds:0}]});assert.equal(first.step.tier,'read_only');assert.equal(first.step.status,'completed');
-  assert.equal(f.journal.run(f.run.id).stepsUsed,1);assert.deepEqual(f.store.get('projects',f.projectId),projectBefore);
+  assert.equal(f.journal.run(f.run.id).stepsUsed,2,'one canonical model source and one read-only tool');assert.deepEqual(f.store.get('projects',f.projectId),projectBefore);
   const next=await f.set({conditions:[{type:'shot_count',min:2,max:2}]});
   assert.deepEqual(latestAgentTaskGoals(f.journal.snapshot(f.run.id).steps),{stepId:next.step.id,conditions:[{type:'shot_count',min:2,max:2}]});
   const clear=await f.set({conditions:[]});assert.deepEqual(latestAgentTaskGoals(f.journal.snapshot(f.run.id).steps),{stepId:clear.step.id,conditions:[]});
-  assert.equal(f.journal.run(f.run.id).stepsUsed,3);assert.equal(f.journal.snapshot(f.run.id).changes.length,0);assert.deepEqual(f.store.get('projects',f.projectId),projectBefore);
+  assert.equal(f.journal.run(f.run.id).stepsUsed,6);assert.deepEqual(f.journal.snapshot(f.run.id).steps.map(step=>step.kind),['model','tool','model','tool','model','tool']);assert.equal(f.journal.snapshot(f.run.id).changes.length,0);assert.deepEqual(f.store.get('projects',f.projectId),projectBefore);
 });
 
 test('H4a goal receipts retain host execution fences, cancellation and project ownership',async t=>{

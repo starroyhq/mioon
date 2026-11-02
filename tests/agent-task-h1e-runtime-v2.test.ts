@@ -1,4 +1,7 @@
+import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {mioRunUsageSchema} from '../packages/contracts/src/mio-run-usage.ts';
 import test from 'node:test';
 import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
@@ -61,8 +64,8 @@ for(const protocol of protocols)test(`${protocol}: measured usage is private and
   const sent=await f.send(),done=await f.settle(sent.run.id),models=modelSteps(done);
   assert.equal(done.run.status,'completed');assert.equal(models.length,2);assert.equal(done.steps.filter(step=>step.kind==='tool'&&step.status==='completed').length,1);
   for(const model of models){assert.deepEqual(object(model.result).usage,usage);assert.equal(Object.hasOwn(object(object(model.result).usage),'rawProviderMetadata'),false);}
-  const completed=f.runtime.journal.events(sent.run.id).filter(event=>event.type==='step'&&object(event.data).kind==='model'&&object(event.data).status==='completed');
-  assert.equal(completed.length,2);for(const event of completed)assert.deepEqual(object(object(event.data).result).usage,usage);
+  assert.ok(isProjectStore(f.store));const records=createMioRecords(f.store),completed=records.entries(sent.run.id).filter(entry=>entry.kind==='model_output');
+  assert.equal(completed.length,2);for(const entry of completed)assert.deepEqual(object(records.payload(entry)).usage,usage);assert.ok(f.runtime.journal.events(sent.run.id).every(event=>event.type==='invalidate'&&event.data===null));
   const frozen=models.map(model=>structuredClone(model.request));
   for(const body of f.requests)assert.doesNotMatch(body,/inputTokens|cacheReadTokens|PRIVATE_PASSIVE_USAGE/u);
   const safe=f.runtime.get(f.projectId,sent.run.id);assertPublic(safe);assert.equal(safe.run.context,undefined);assert.ok(safe.steps.every(step=>step.request===undefined&&step.data===undefined));assertPublic(f.runtime.lookup(f.projectId,sent.run.requestId));
@@ -100,7 +103,7 @@ for(const protocol of protocols)test(`${protocol}: missing and malformed optiona
 for(const protocol of protocols)test(`${protocol}: recovery sends the frozen original intent and stores only its observed completion usage`,async t=>{
   const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Frozen pre-H1e request'}],body=buildTaskModelRequest(settings.configuration,history,[],4318);
   const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Frozen pre-H1e request',configuration:{...settings.configuration},settingsRevision:settings.revision,context:[taskResponseLanguageContext('en')]});
-  const model=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history},data:{baseline:[]}}),frozen=structuredClone(model.request);
+  const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body,history},data:{baseline:[]}},[]),frozen=structuredClone(model.request);
   f.setScript(async function*(){yield {type:'done',output:{...output(protocol),usage:{inputTokens:0,outputTokens:0,cacheReadTokens:0,cacheWriteTokens:0}}};});
   f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.run.status,'interrupted');
   await f.action(interrupted,'resume');const done=await f.settle(created.run.id);
@@ -111,24 +114,26 @@ for(const protocol of protocols)test(`${protocol}: recovery sends the frozen ori
 for(const protocol of protocols)test(`${protocol}: an interrupted dispatched request still has unknown outcome and no invented usage`,async t=>{
   const f=await fixture(t,protocol),settings=await f.settings.get(),history=[{role:'user',content:'Unknown exchange'}],body=buildTaskModelRequest(settings.configuration,history,[],4318);
   const created=f.runtime.journal.create({projectId:f.projectId,requestId:randomUUID(),text:'Unknown exchange',configuration:{...settings.configuration},settingsRevision:settings.revision,context:[]});
-  const model=f.runtime.journal.beginStep(created.run.id,{kind:'model',request:{body,history}});f.runtime.journal.markDispatch(created.run.id,model.id);
+  const model=f.runtime.journal.beginModelStep(created.run.id,{request:{body,history}},[]);f.runtime.journal.markDispatch(created.run.id,model.id);
   f.restart();const interrupted=f.runtime.get(f.projectId,created.run.id);assert.equal(interrupted.steps[0]?.status,'unknown');
   await assert.rejects(f.action(interrupted,'resume'),{code:'AGENT_TASK_UNKNOWN_RESULT'});assert.equal(f.requests.length,0);assert.equal(f.runtime.journal.step(model.id).result,undefined);assertPublic(f.runtime.get(f.projectId,created.run.id));
 });
 
-for(const protocol of protocols)test(`${protocol}: real HTTP, SSE and CLI status expose no private usage`,async t=>{
+for(const protocol of protocols)test(`${protocol}: status and SSE keep usage private while the separate read exposes only the exact usage DTO`,async t=>{
   const f=await fixture(t,protocol);f.setScript(async function*(){yield {type:'done',output:{...output(protocol),usage:{inputTokens:87654,outputTokens:7,cacheReadTokens:86400,cacheWriteTokens:0}}};});
   const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(object(modelSteps(done)[0]!.result).usage!==undefined,true);
   const route=createAgentTaskHttp({runtime:f.runtime}),token=randomUUID(),server=createServer((req,res)=>{
     if(req.headers.authorization!==`Bearer ${token}`){res.writeHead(401);res.end();return;}
     // The CLI uses the project's address; serve it as the server does, at the route it replaces.
     const url=new URL(req.url??'/','http://127.0.0.1'),scoped=projectRouteTarget(url.pathname);if(scoped)url.pathname=scoped.pathname;
-    void route.handle(req,res,url).then(handled=>{if(!handled){res.writeHead(404);res.end();}}).catch(()=>{res.destroy();});
+    void route.handle(req,res,url,scoped?{projectId:scoped.projectId}:undefined).then(handled=>{if(!handled){res.writeHead(404);res.end();}}).catch(()=>{res.destroy();});
   });
   await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
   const address=server.address();assert.ok(address&&typeof address!=='string');const base=`http://127.0.0.1:${address.port}`,path=projectApiPath(f.projectId,'agent','tasks','v2',sent.run.id);
   try{
     const status=await fetch(base+path,{headers:{Authorization:`Bearer ${token}`}}),value:unknown=await status.json();assert.equal(status.status,200);assertPublic(object(value).data);
+    const response=await fetch(base+path+'/usage',{headers:{Authorization:`Bearer ${token}`}});assert.equal(response.status,200);
+    const usage=mioRunUsageSchema.parse(object(await response.json()).data);assert.deepEqual(usage.knownTotals,{inputTokens:87654,outputTokens:7,cacheReadTokens:86400,cacheWriteTokens:0});assert.equal(usage.runId,sent.run.id);
     const controller=new AbortController(),stream=await fetch(base+path+'/events?after=0',{headers:{Authorization:`Bearer ${token}`},signal:controller.signal});assert.equal(stream.status,200);const reader=stream.body!.getReader();
     try{const frame=await reader.read();assert.equal(frame.done,false);const wire=new TextDecoder().decode(frame.value);assert.match(wire,/event: changed/u);assert.doesNotMatch(wire,/usage|inputTokens|outputTokens|cacheReadTokens|cacheWriteTokens/u);}
     finally{controller.abort();await reader.cancel().catch(()=>{});}

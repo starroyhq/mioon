@@ -222,7 +222,7 @@ test('scoped inspection is read-only and identical over actual HTTP, CLI, and of
   assert.ok(backend.tables.length >= 20, 'the snapshot covers business, timeline, reference, workspace and chat journals');
   for (const table of ['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines',
     'timeline_requests', 'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events',
-    'app:workspace_preferences', 'agent_task_runs_v2', 'agent_task_steps_v2', 'agent_task_events_v2', 'app:agent_task_policy_v2', 'app:agent_task_policy_requests_v2']) {
+    'app:workspace_preferences', 'mio_runs', 'mio_steps', 'mio_events', 'mio_entries', 'mio_requests', 'mio_blobs', 'mio_storage_counters', 'app:agent_task_policy_v2', 'app:agent_task_policy_requests_v2']) {
     assert.ok(initial[table]?.length > 0, `${table} has sentinel rows, not just an empty-table write check`);
   }
   const cli = (operation: string, input: Record<string,unknown>, error?: string|undefined) => runCli([...operation.split('.'), '--input', JSON.stringify(input)], backend.env, error, t.signal);

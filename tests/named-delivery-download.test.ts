@@ -17,7 +17,7 @@ import {readTimelineDeliveryDownload, timelineDeliveryDownloadIdentity, timeline
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
-import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {createServerProject, openProjectDatabase, projectDirFor, schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 import type { FixtureSnapshot } from './helpers/strict-timeline-core-types.ts';
 
@@ -129,7 +129,7 @@ test('foreign or corrupt export, receipt, project and output rows are opaque and
   const originalReceipt = f.use(db => db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId)!.response);
   // Rows that belong to the other project are written as a corrupt file would hold them.
   const corrupt: [string, (db: DatabaseSync) => unknown][] = [
-    ['export relational project', db => withoutForeignKeys(db, () => db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id))],
+    ['export relational project', db => withoutProcessTargetRevisions(db, ['exports'], () => withoutForeignKeys(db, () => db.prepare('UPDATE exports SET projectId=? WHERE id=?').run(f.foreign.id, f.record.id)))],
     ['export JSON identity', db => db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify({...f.record, id: randomUUID()}), f.record.id)],
     ['export foreign JSON project', db => replace(db, 'exports', {...f.record, projectId: f.foreign.id})],
     ['export URL', db => replace(db, 'exports', {...f.record, url: `/media/${randomUUID()}`})],
@@ -170,11 +170,11 @@ test('foreign or corrupt export, receipt, project and output rows are opaque and
 
 test('existing safe output graph rejects foreign reverse owners without consulting current source clips', async t => {
   const f = await fixture(t), jobId = randomUUID(), versionId = randomUUID();
-  f.use(db => withoutForeignKeys(db, () => {
+  f.use(db => withoutProcessTargetRevisions(db, ['jobs'], () => withoutForeignKeys(db, () => {
     db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, f.foreign.id, JSON.stringify({id: jobId, projectId: f.foreign.id}));
     db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(versionId, f.foreign.id, jobId,
       JSON.stringify({id: versionId, projectId: f.foreign.id, jobId, assetId: f.asset.id}));
-  }));
+  })));
   const before = await f.checkpoint(); assert.equal(f.read(), null);
   const response = await f.request(); assert.equal(response.status, 404); assert.equal(response.headers.get('content-disposition'), null); await response.text(); await f.unchanged(before);
 });

@@ -3,7 +3,7 @@ import {PROJECT_FILE_SINGLE_PROJECT} from '../../../../contracts/src/project-fil
 import type {PROJECT_DATABASE_NAMES} from '../../../../contracts/src/project-file.ts';
 import {CACHE_SCHEMA} from './domains/cache.ts';
 import {CONTENT_SCHEMA} from './domains/content.ts';
-import {MIO_SCHEMA} from './domains/mio.ts';
+import {MIO_SCHEMA,initializeMioStorageCounters} from './domains/mio.ts';
 import {RECEIPT_SCHEMA} from './domains/receipts.ts';
 import {TASK_SCHEMA} from './domains/tasks.ts';
 import {TIMELINE_HISTORY_SCHEMA} from './domains/timeline-history.ts';
@@ -19,8 +19,8 @@ export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
  * schema/manifest.ts (`node tests/helpers/project-file-schema-derivation.ts --write`)
  * and recording the new manifest digest in tests/project-file-schema.test.ts. */
 export const PROJECT_FILE_SCHEMA_VERSION = 1;
-/** 2: the Mock provider's two ledger tables in the task domain. */
-export const HISTORY_SCHEMA_VERSION = 2;
+/** 3 replaced development task tables; 4 adds lossless incremental Mio counters. */
+export const HISTORY_SCHEMA_VERSION = 4;
 export const CACHE_SCHEMA_VERSION = 1;
 
 /** SQLite header `application_id` values: 'MioP', 'MioH' and 'MioC'. */
@@ -98,6 +98,9 @@ export function buildDatabase(db: DatabaseSync, kind: DatabaseKind, schema: stri
     if (!CREATE_PREFIX.test(sql)) throw new Error(`Schema statement cannot be qualified: ${sql.slice(0, 60)}`);
     db.exec(sql.replace(CREATE_PREFIX, `CREATE $1 ${schema}.`));
   }
+  // Historical format-72 derivation supplies its own domain statements and
+  // must keep that frozen profile, without adding current Mio metadata.
+  if(kind==='history'&&statements.some(sql=>sql.startsWith('CREATE TABLE mio_storage_counters(')))initializeMioStorageCounters(db,schema);
   db.exec(`PRAGMA ${schema}.application_id=${APPLICATION_IDS[kind]}`);
   db.prepare(`INSERT INTO ${schema}.schema_version VALUES(?)`).run(SCHEMA_VERSIONS[kind]);
 }

@@ -12,7 +12,7 @@ import path from 'node:path';
 import {parse} from '@mioon/contracts';
 import {openStore, createServices, createInspectionServices, INSPECTION_OPERATIONS, INSPECTION_LIMITS} from '@mioon/business';
 import type { FixtureProject } from './helpers/strict-timeline-core-types.ts';
-import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import {openLegacyWorkspaceStore as openHistoricalWorkspaceStore} from '../packages/business/src/db.ts';
 
 const at = '2026-10-09T00:00:00.000Z';
@@ -215,7 +215,7 @@ test('selected-version and clip chains fail closed for foreign, missing or corru
   for (const scenario of ['foreign-reference', 'missing-reference', 'foreign-version', 'missing-version', 'version-json-project', 'version-sql-project', 'version-job-column',
     'foreign-asset', 'asset-json-project', 'foreign-job', 'job-json-project', 'job-sql-project', 'job-shot', 'job-version', 'version-shot', 'snapshot-reference', 'snapshot-project', 'foreign-clip-asset',
     'clip-generated-corrupt-job', 'spoofed-provenance', 'foreign-reverse-owner', 'duplicate-owner']) await t.test(scenario, async t => {
-    const f = await fixture(t), g = generation(f), foreign = withoutForeignKeys(f.store.db, () => generation(f, f.other.id)); let op = 'shot.inspect';
+    const f = await fixture(t), g = generation(f), foreign = withoutForeignKeys(f.store.db, () => withoutProcessTargetRevisions(f.store.db, ['jobs'], () => generation(f, f.other.id))); let op = 'shot.inspect';
     const tl = timeline(f, [g.a]);
     if (scenario === 'foreign-reference') update(f, 'shots', g.s.id, {referenceAssetIds: [foreign.a.id]});
     if (scenario === 'missing-reference') update(f, 'shots', g.s.id, {referenceAssetIds: [randomUUID()]});
@@ -228,7 +228,7 @@ test('selected-version and clip chains fail closed for foreign, missing or corru
     if (scenario === 'asset-json-project') update(f, 'assets', g.a.id, {projectId: f.other.id});
     if (scenario === 'foreign-job') update(f, 'versions', g.v.id, {jobId: foreign.j.id});
     if (scenario === 'job-json-project') update(f, 'jobs', g.j.id, {projectId: f.other.id});
-    if (scenario === 'job-sql-project') withoutForeignKeys(f.store.db, () => update(f, 'jobs', g.j.id, {}, {projectId: f.other.id}));
+    if (scenario === 'job-sql-project') withoutForeignKeys(f.store.db, () => withoutProcessTargetRevisions(f.store.db, ['jobs'], () => update(f, 'jobs', g.j.id, {}, {projectId: f.other.id})));
     if (scenario === 'job-shot') update(f, 'jobs', g.j.id, {shotId: foreign.s.id});
     if (scenario === 'job-version') update(f, 'jobs', g.j.id, {versionId: foreign.v.id});
     if (scenario === 'version-shot') update(f, 'versions', g.v.id, {shotId: foreign.s.id});
@@ -304,7 +304,7 @@ test('additive inspection index migration tolerates malformed and huge legacy ve
 
 test('historical connection and optional clip relation IDs are deeply checked without requiring deleted edges', async t => {
   for (const scenario of ['sourceAssetId', 'sourceNodeId', 'foreign-edge', 'edge-foreign-asset', 'edge-foreign-node', 'edge-mismatched-asset', 'deleted-edge', 'clip-aliased-job', 'clip-wrong-shot']) await t.test(scenario, async t => {
-    const f = await fixture(t), g = generation(f), foreign = withoutForeignKeys(f.store.db, () => generation(f, f.other.id)), tl = timeline(f, [g.a]);
+    const f = await fixture(t), g = generation(f), foreign = withoutForeignKeys(f.store.db, () => withoutProcessTargetRevisions(f.store.db, ['jobs'], () => generation(f, f.other.id))), tl = timeline(f, [g.a]);
     const node = f.store.put('nodes', {id: randomUUID(), projectId: f.project.id, assetId: g.a.id});
     const foreignNode = withoutForeignKeys(f.store.db, () => f.store.put('nodes', {id: randomUUID(), projectId: f.other.id, assetId: foreign.a.id}));
     const connection = {sourceAssetId: g.a.id, sourceNodeId: node.id, targetShotId: g.s.id, edgeId: randomUUID(), role: 'first_frame'};

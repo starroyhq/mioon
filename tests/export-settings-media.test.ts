@@ -15,7 +15,6 @@ import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
-import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 
 // Synthetic local assets only. Production renderer, decoder and probe are all
 // the existing installed tools; tests are deliberately serial and resource-capped.
@@ -317,11 +316,13 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   if(publicationPhase)assert.equal(linkedBeforeTx,true,'ownership changed after this task linked its output and immediately before the real publication transaction');
   assert.ok(afterMutation);
   const isAcceptedExport=(row: Record<string, unknown>)=>row.projectId===project.id&&row.kind==='export'&&row.targetId===accepted.id;
-  assert.equal(afterMutation.agent_task_target_revisions_v2.filter(isAcceptedExport).length,1);
+  assert.equal(afterMutation.mio_process_target_revisions.filter(isAcceptedExport).length,1);
   // Failing this accepted export persists one terminal status transition. Its
   // exact target advances once; every source, foreign target and receipt stays fixed.
   const currentState=state();
-  const expectedState={...afterMutation,...expectedContentMetadata(afterMutation,currentState),agent_task_target_revisions_v2:afterMutation.agent_task_target_revisions_v2.map(row=>
+  // The failed export is local process bookkeeping. Its revision advances in
+  // history; portable content metadata and all other retained rows stay fixed.
+  const expectedState={...afterMutation,mio_process_target_revisions:afterMutation.mio_process_target_revisions.map(row=>
    isAcceptedExport(row)?Object.assign(Object.create(Object.getPrototypeOf(row)),row,{revision:Number(row.revision)+1}):row)};
   assert.deepEqual(currentState,expectedState,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
   // 01a83cb applies the owned-output inode fence to every export. A replaced

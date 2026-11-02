@@ -29,7 +29,7 @@ import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import {fileHash,probe} from '../packages/business/src/media.ts';
 import {validatePng} from '../packages/business/src/images/png.ts';
 import {isFrameTaskResponse,isFrameMutationResponse,isReferenceMutationResponse,isSubjectMutationResponse,isTimelineMutationResponse,schemas} from '@mioon/contracts';
-import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys, withoutProcessTargetRevisions} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 // Local acceptance, not a mocked decoder/renderer. Every media input is a tiny
@@ -189,15 +189,15 @@ for(const corruption of ['malformed original ACK','hidden mixed legacy owner','r
   db.prepare('UPDATE frame_requests SET response=? WHERE requestId=?').run(JSON.stringify({...JSON.parse(saved!.response as string),private:'PRIVATE_FRAME_SENTINEL'}),frame.input.requestId);
  }else if(corruption==='hidden mixed legacy owner'){
   db.exec('DROP TRIGGER reject_legacy_frame_asset_owner');const projectId=f.other.id,shotId=randomUUID(),jobId=randomUUID(),versionId=randomUUID();
-  withoutForeignKeys(db,()=>{
+  withoutProcessTargetRevisions(db,['jobs'],()=>withoutForeignKeys(db,()=>{
    insert(db,'shots',{id:shotId,projectId,data:JSON.stringify({id:shotId,projectId,referenceAssetIds:[],private:'PRIVATE_FRAME_SENTINEL'})});
    insert(db,'jobs',{id:jobId,projectId,data:JSON.stringify({id:jobId,projectId,shotId,versionId,assetId:frame.asset.id,status:'succeeded'})});
    insert(db,'versions',{id:versionId,projectId,jobId,data:JSON.stringify({id:versionId,projectId,jobId,shotId,assetId:frame.asset.id})});
-  });
+  }));
   db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...frame.asset,provenance:'user-import'}),frame.asset.id);
  }else{
   db.exec('PRAGMA ignore_check_constraints=ON;DROP TRIGGER immutable_frame_task_identity;DROP TRIGGER frame_task_state_transitions');
-  withoutForeignKeys(db,()=>db.prepare('UPDATE frame_tasks SET projectId=? WHERE id=?').run(f.other.id,frame.task.id));
+  withoutProcessTargetRevisions(db,['frame_tasks'],()=>withoutForeignKeys(db,()=>db.prepare('UPDATE frame_tasks SET projectId=? WHERE id=?').run(f.other.id,frame.task.id)));
  }
  await assertConsumerRejections(f,frame,prepared);
 });

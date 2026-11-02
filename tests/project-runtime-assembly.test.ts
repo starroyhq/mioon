@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
+import {createServer as createHttpServer} from 'node:http';
+import {createAgentClient} from '../packages/client/src/agent.ts';
+import {mioStorageSnapshotSchema} from '../packages/contracts/src/mio-storage.ts';
 import path from 'node:path';
 import {composeProjectRuntime, ProjectRuntimeCleanupError, type ProjectRuntime, type ProjectRuntimeOptions} from '../apps/server/src/project-runtime.ts';
 import {createProjectDeletionGate} from '../apps/server/src/project-deletion-gate.ts';
@@ -111,6 +114,18 @@ test('the same factory assembles a real kernel with independent app policy, docu
   assert.deepEqual(foreignKeyCheck(f.store.db), []);
   assert.equal(existsSync(path.join(f.store.root, 'workbench.sqlite')), false);
   assert.equal(existsSync(path.join(library.dataDir, 'workbench.sqlite')), false);
+  const token=randomUUID(),http=createHttpServer((req,res)=>{
+    if(req.headers.authorization!==`Bearer ${token}`){res.writeHead(401);res.end();return;}
+    void runtime.agentDiagnosticsHttp!(req,res,new URL(req.url??'/','http://127.0.0.1')).then(handled=>{if(!handled){res.writeHead(404);res.end();}}).catch(()=>res.destroy());
+  });
+  await new Promise<void>(resolve=>http.listen(0,'127.0.0.1',resolve));
+  try{
+    const address=http.address();assert.ok(address&&typeof address!=='string');
+    const client=createAgentClient({env:{MIOON_BASE_URL:`http://127.0.0.1:${address.port}`,MIOON_TOKEN:token}}),changes=f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+    const doctor=await client.doctor({projectId:project.id});assert.ok(doctor.storage);const storage=mioStorageSnapshotSchema.parse(doctor.storage);
+    assert.equal(storage.projectId,project.id);assert.equal(storage.tables.length,19);assert.equal((await client.doctor()).storage,undefined);
+    assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,changes);
+  }finally{await new Promise<void>(resolve=>http.close(()=>resolve()));}
   const worker = f.startWorker(); assert.equal(runtime.startWorker(), worker);
   await f.close();
 });
