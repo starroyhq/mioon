@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import net from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
-import { DatabaseSync } from 'node:sqlite';
+import { createProjectStorageReader } from './fixtures/project-server-process.ts';
 import type { BinaryLike } from 'crypto';
 import type { ChildProcessByStdio } from 'child_process';
 import type { Readable } from 'stream';
@@ -47,9 +47,11 @@ async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-v2-media-'));
   const port = await freePort(), base = `http://127.0.0.1:${port}`;
   let child!: ChildProcessByStdio<null,Readable,Readable>;
+  let read!: ReturnType<typeof createProjectStorageReader>;
   async function start() {
     const processRecord = { action: 'start', at: new Date().toISOString(), port, root, stdout: '', stderr: '' };
-    child = spawn(process.execPath, ['server/index.ts'], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], { cwd: repo, env: { ...process.env, PORT: String(port), MIOON_DATA_DIR: root, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0', RUNWAYML_API_SECRET: '' }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] }) as typeof child;
+    read = createProjectStorageReader(child);
     (processRecord as typeof processRecord & {pid:(number | undefined)}).pid = child.pid; records.processes.push(((processRecord) as unknown as Parameters<typeof records.processes.push>[0]));
     child.stdout.setEncoding('utf8').on('data', bytes => processRecord.stdout += bytes); child.stderr.setEncoding('utf8').on('data', bytes => processRecord.stderr += bytes);
     child.on('close', (code, signal) => Object.assign(processRecord, { exitCode: code, signal }));
@@ -90,10 +92,7 @@ async function fixture(t: test.TestContext) {
     assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer());
     const file = path.join(evidence, name); await writeFile(file, bytes); return file;
   }
-  function inspect<T>(fn:(db:DatabaseSync)=>T,writable=false):T {
-    const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), { readOnly: !writable });
-    try { return fn(db); } finally { db.close(); }
-  }
+  const storage = async (projectId: string) => (await read(projectId)).rows;
   async function importFile(projectId: unknown, name: string, mimeType?: unknown) {
     return rpc('asset.import', { projectId, name, mimeType, dataBase64: (await readFile(path.join(root, name))).toString('base64') });
   }
@@ -113,7 +112,7 @@ async function fixture(t: test.TestContext) {
     await stop(); (records as typeof records & {finishedAt:(string)}).finishedAt = new Date().toISOString(); (records as typeof records & {result:("passed" | "failed_or_incomplete")}).result = records.checks.length && records.checks.every(c => ((c as typeof c & {result:("passed" | "failed_or_incomplete")}) as unknown as {result:("passed" | "failed_or_incomplete")}).result === 'passed') ? 'passed' : 'failed_or_incomplete';
     await writeFile(path.join(evidence, 'acceptance.json'), JSON.stringify(records, null, 2)); await rm(root, { recursive: true, force: true });
   });
-  await start(); return { root, base, start, stop, rpc, exportUntil, finish, download, inspect, importFile, project };
+  await start(); return { root, base, start, stop, rpc, exportUntil, finish, download, storage, importFile, project };
 }
 
 async function check<T extends object>(t:test.TestContext,name:string,fn:()=>Promise<T>) {
@@ -308,7 +307,7 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
   await check(t, 'worker verifies actual source bytes against frozen hashes before rendering', async () => {
     const p = await f.project('V2 source bytes tamper guard'), red = await f.importFile(p.id, 'red.png', 'image/png');
     await p.mutate('timeline.clip.add', { trackId: (p.timeline.tracks.find((track) => track.kind === 'video'))!.id, assetId: red.id, startFrame: 0, durationFrames: 30 });
-    const rawAsset = (f.inspect((((db: { prepare: (arg0: string) => { (): unknown; new(): unknown; get: { (arg0?: unknown): { (): unknown; new(): unknown; data: string; }; new(): unknown; }; }; }) => JSON.parse(db.prepare('SELECT data FROM assets WHERE id=?').get(red.id).data)) as unknown as Parameters<typeof f.inspect>[0])) as FixtureAsset);
+    const rawAsset = JSON.parse((await f.storage(p.id)).assets.find(row => row.id === red.id)!.data as string) as FixtureAsset;
     await writeFile(path.join(f.root, rawAsset.relativePath), await readFile(path.join(f.root, 'blue.png')));
     const job = await p.render(), failed = await f.exportUntil(job.id, (((j: { status: string; }) => ['succeeded', 'failed'].includes(j.status)) as unknown as Parameters<typeof f.exportUntil>[1])) as FixtureExport;
     assert.equal(failed.status, 'failed', JSON.stringify(failed)); assert.equal((failed.assetId as unknown), null); assert.equal((failed.url as unknown), null); assert.match((failed.error)!.message, /hash|bytes|snapshot|哈希|快照|校验/i);
@@ -326,7 +325,7 @@ test('multitrack v2 real-media rendering acceptance', { timeout: 600_000 }, asyn
     await pause(2500); await f.start();
     const recovered = await f.finish(queued.id); assert.equal(recovered.id, queued.id); assert.deepEqual(recovered.snapshot, queued.snapshot);
     const file = await f.download(((recovered) as unknown as Parameters<NonNullable<(typeof f)["download"]>>[0]), 'recovered-running.mp4'); await probeOutput(file, 300);
-    const duplicates = f.inspect((((db: { prepare: (arg0: string) => { (): unknown; new(): unknown; get: { (arg0?: unknown): { (): unknown; new(): unknown; n: unknown; }; new(): unknown; }; }; }) => db.prepare('SELECT COUNT(*) AS n FROM exports WHERE id=?').get(queued.id).n) as unknown as Parameters<typeof f.inspect>[0])); assert.equal(duplicates, 1);
+    const duplicates = (await f.storage(p.id)).exports.filter(row => row.id === queued.id).length; assert.equal(duplicates, 1);
     return { exportId: recovered.id, recoveredFrom: 'running', restart: 'actual SIGKILL and new HTTP backend process', outputFrames: 300 };
   });
 

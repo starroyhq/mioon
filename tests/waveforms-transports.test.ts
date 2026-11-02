@@ -15,7 +15,8 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
+import {openProjectDatabase,projectDirFor} from './helpers/project-database.ts';
+import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
@@ -24,7 +25,7 @@ import {discoverSchema} from '../packages/client/src/index.ts';
 import {parse, operationEffect, isWaveformResponse, WAVEFORM_ALGORITHM, WAVEFORM_MAX_POINTS} from '../packages/contracts/src/index.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {IDS, TOKEN, NOW, uuid, snapshot, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
+import {IDS, TOKEN, NOW, uuid, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const target = {projectId: IDS.project, assetId: IDS.asset};
@@ -52,12 +53,12 @@ async function stopOwned(child: import("node:child_process").ChildProcess) {
   const timer = setTimeout(() => child.kill('SIGKILL'), 5_000);
   try { await bounded(ended, 'Owned child cleanup', 8_000); } finally { clearTimeout(timer); }
 }
-function launch(t: { after: (arg0: () => Promise<void>) => void; }, args: unknown[]|readonly string[], env: { PORT?: string; MIOON_WAVEFORM_WIRE_GATE?: string; MIOON_DATA_DIR: string; MIOON_WAVEFORM_WIRE_AUDIT: string; MIOON_WAVEFORM_WIRE_MEDIA: string; MIOON_BASE_URL?: unknown; MIOON_TOKEN?: string; MIOON_WAVEFORM_WIRE_ORIGIN?: unknown; }) {
-  const child = spawn(process.execPath, ((args) as unknown as Parameters<typeof spawn>[1]), {cwd: repo, env: ((environment(((env) as unknown as Parameters<typeof environment>[0]))) as unknown as NodeJS.ProcessEnv | undefined), stdio: ['ignore', 'pipe', 'pipe']});
+function launch(t: { after: (arg0: () => Promise<void>) => void; }, args: unknown[]|readonly string[], env: { PORT?: string; MIOON_WAVEFORM_WIRE_GATE?: string; MIOON_DATA_DIR: string; MIOON_WAVEFORM_WIRE_AUDIT: string; MIOON_WAVEFORM_WIRE_MEDIA: string; MIOON_BASE_URL?: unknown; MIOON_TOKEN?: string; MIOON_WAVEFORM_WIRE_ORIGIN?: unknown; }, ipc=false) {
+  const child = spawn(process.execPath, ((args) as unknown as Parameters<typeof spawn>[1]), {cwd: repo, env: ((environment(((env) as unknown as Parameters<typeof environment>[0]))) as unknown as NodeJS.ProcessEnv | undefined), stdio: ['ignore', 'pipe', 'pipe', ...(ipc ? ['ipc' as const] : [])]});
   let stdout = '', stderr = '', failure!: Error;
   // JSON descriptions may cross pipe chunks inside a UTF-8 character.
-  child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
-  for (const [name, stream] of ([['stdout', child.stdout], ['stderr', child.stderr]] as const)) stream.setEncoding('utf8').on('data', (chunk: string) => {
+  child.stdout!.setEncoding('utf8'); child.stderr!.setEncoding('utf8');
+  for (const [name, stream] of ([['stdout', child.stdout!], ['stderr', child.stderr!]] as const)) stream.setEncoding('utf8').on('data', (chunk: string) => {
     if (name === 'stdout') stdout += chunk; else stderr += chunk;
     if (stdout.length + stderr.length > 512 * 1024) { failure = Error('Owned child exceeded bounded output'); child.kill('SIGKILL'); }
   });
@@ -102,11 +103,11 @@ function syntheticWav() {
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-waveform-wire-'));
-  let run!:ReturnType<typeof launch>, url!: string, port = 0, db!: DatabaseSync;
+  let run!:ReturnType<typeof launch>, url!: string, port = 0, read!:ReturnType<typeof createProjectStorageReader>;
   const cleanups: (() => Promise<unknown>)[] = [];
   t.after(async () => {
     const failures = [];
-    for (const cleanup of ([...cleanups.reverse(), () => stopOwned(((run?.child) as unknown as Parameters<typeof stopOwned>[0])), () => db?.close(), () => rm(root, {recursive: true, force: true})] as const)) {
+    for (const cleanup of ([...cleanups.reverse(), () => stopOwned(((run?.child) as unknown as Parameters<typeof stopOwned>[0])), () => rm(root, {recursive: true, force: true})] as const)) {
       try { await cleanup(); } catch (error) { failures.push(error); }
     }
     if (failures.length) throw new AggregateError(failures, 'Owned waveform fixture cleanup failed');
@@ -154,30 +155,43 @@ if(serverMode){
   };
   syncBuiltinESMExports();
   const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.ts')).href)});
-  const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:Number(process.env.PORT || 0),token:${JSON.stringify(TOKEN)},
-    chatGateway:async function*(){deny('model gateway');}});
+  const {readProjectState,changeMarks} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/project-state.ts')).href)});
+  let inspect;
+  const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:Number(process.env.PORT || 0),token:${JSON.stringify(TOKEN)},inspectProject:received=>{inspect=received;}});
+  if(process.connected)process.on('message',message=>{
+    if(typeof message?.id !== 'string')return;
+    let reply;
+    try{
+      if(message.type!=='storage'||typeof message.projectId!=='string'||Object.keys(message).some(key=>!['type','id','projectId'].includes(key)))throw Error('Unsupported waveform storage question');
+      if(!inspect)throw Error('The server has not handed over its connection');
+      const data=inspect(message.projectId,db=>({rows:readProjectState(db).tables,version:changeMarks(db)}));
+      reply={type:'reply',id:message.id,data};
+    }catch(error){reply={type:'reply',id:message.id,error:{code:error?.code??'FIXTURE_ERROR',message:String(error?.message??error)}};}
+    if(process.connected)process.send?.(reply);
+  });
   process.stdout.write(JSON.stringify({ready:true,url:server.url,pid:process.pid})+'\\n');
   let closing;
-  const close = () => closing ??= server.close().catch(()=>{process.exitCode=1;});
-  process.on('SIGTERM',close); process.on('SIGINT',close);
+  const close = () => closing ??= server.close().catch(()=>{process.exitCode=1;}).finally(()=>{if(process.connected)process.disconnect();});
+  process.on('SIGTERM',close); process.on('SIGINT',close); process.once('disconnect',close);
 }
 `);
   const baseEnv = {MIOON_DATA_DIR: dataDir, MIOON_WAVEFORM_WIRE_AUDIT: auditPath, MIOON_WAVEFORM_WIRE_MEDIA: mediaAudit};
   async function start(gated: boolean|undefined = false) {
-    run = launch(t, [helper, 'waveform-server'], {...baseEnv, PORT: String(port), MIOON_WAVEFORM_WIRE_GATE: gated ? '1' : '0'});
+    run = launch(t, [helper, 'waveform-server'], {...baseEnv, PORT: String(port), MIOON_WAVEFORM_WIRE_GATE: gated ? '1' : '0'}, true);
+    read = createProjectStorageReader(run.child);
     const ready = await run.ready(); url = ready.url; port = Number(new URL(url).port);
     assert.equal(new URL(url).hostname, '127.0.0.1');
     assert.equal((await fetch(url + '/health', {signal: AbortSignal.timeout(5_000)})).status, 200);
     return ready.pid;
   }
   await start(true);
-  db = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'), {readOnly: true});
-  const storage = () => snapshot(db), version = () => (db.prepare('PRAGMA data_version').get())!.data_version;
+  const storage = async () => (await read(IDS.project)).rows;
   const audit = async () => (await readFile(mediaAudit, 'utf8')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const checkpoint = async () => ({rows: storage(), version: version(), audit: await audit()});
+  const checkpoint = async () => ({...await read(IDS.project), audit: await audit()});
   const unchanged = async (before: { rows: unknown; version: unknown; audit: unknown; }, label?: unknown) => {
-    assert.deepEqual(storage(), before.rows, `${label}: all persisted rows remain unchanged`);
-    assert.equal(version(), before.version, `${label}: no equal-value SQLite commit`);
+    const current=await read(IDS.project);
+    assert.deepEqual(current.rows, before.rows, `${label}: all persisted rows remain unchanged`);
+    assert.deepEqual(current.version, before.version, `${label}: no equal-value SQLite commit`);
     assert.deepEqual(await audit(), before.audit, `${label}: no media probe/decode`);
   };
   const env = () => ({...baseEnv, MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_WAVEFORM_WIRE_ORIGIN: url});
@@ -227,7 +241,7 @@ if(serverMode){
     async restart({crashRow = false} = {}) {
       await stopOwned(((run.child) as unknown as Parameters<typeof stopOwned>[0]));
       if (crashRow) {
-        const writer = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'));
+        const writer = openProjectDatabase(projectDirFor(dataDir,IDS.project));
         try { assert.equal(writer.prepare("UPDATE waveform_cache SET status='running',data='{}',reservedBytes=393216 WHERE projectId=? AND sourceSha256=?").run(IDS.project, sha256).changes, 1); }
         finally { writer.close(); }
       }
@@ -318,7 +332,7 @@ test('waveform contracts are strict, bounded and validate only safe public respo
 });
 
 test('waveforms have project-scoped HTTP, real CLI and official MCP parity across loss, restart and explicit retry', {timeout: 120_000}, async t => {
-  const backend = await fixture(t), drop = await lossProxy(t, ((backend) as unknown as Parameters<NonNullable<typeof lossProxy>>[1])), baseline = backend.storage();
+  const backend = await fixture(t), drop = await lossProxy(t, ((backend) as unknown as Parameters<NonNullable<typeof lossProxy>>[1])), baseline = await backend.storage();
   let attempt!: unknown, ready!:ServiceResponse<'asset.waveform.get'>;
   const all = async (operation: string, input?: unknown, expectedError?: string|undefined) => {
     const result = await backend.http(operation, input, expectedError);
@@ -378,7 +392,7 @@ test('waveforms have project-scoped HTTP, real CLI and official MCP parity acros
     const records = await backend.audit();
     assert.equal(records.filter(row => row.event === 'start' && row.kind === 'ffmpeg').length, 1);
     assert.equal(records.filter(row => row.event === 'start' && row.kind === 'ffprobe').length, 1);
-    onlyWaveformWrites(baseline, backend.storage());
+    onlyWaveformWrites(baseline, await backend.storage());
   });
 
   await t.test('real backend restart reconciles an unfinished crash row without automatically decoding', async () => {
@@ -446,7 +460,7 @@ test('waveforms have project-scoped HTTP, real CLI and official MCP parity acros
     const before = await backend.checkpoint();
     assert.deepEqual((await all('asset.waveform.get', target)).data, ready);
     await backend.unchanged(before, 'retained ready cache read after restart');
-    onlyWaveformWrites(baseline, backend.storage());
+    onlyWaveformWrites(baseline, await backend.storage());
     assert.deepEqual(await backend.originalBytes(), backend.wav, 'source bytes remain unchanged');
     assert.deepEqual(await readdir(path.join(backend.dataDir, 'media')), [`${PRIVATE}.wav`], 'no waveform output media file');
     assert.equal(await backend.denials(), '', 'no network/provider/model or forbidden subprocess attempt');

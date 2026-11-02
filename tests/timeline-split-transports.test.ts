@@ -5,7 +5,7 @@ import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {CliResult,McpData,TestTool,SchemaNode} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
-import type {TypedStore as FixtureStore, TypedServices as FixtureServices, TypedClient as FixtureClient} from './helpers/strict-service-responses.ts';
+import type {TypedClient as FixtureClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertClientRecoveryError} from './recovery-transport-assertions.mjs';
@@ -15,13 +15,12 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '../packages/client/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import type { ChildProcessByStdio } from 'child_process';
 import type { Readable } from 'stream';
 
@@ -108,11 +107,12 @@ test('split CLI and official MCP expose one strict offline schema and reject mal
 async function backendFixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-split-transports-'));
   // Only seed synthetic metadata before startup. All timeline writes use real transports.
-  const store = (openStore(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
-  const projectId = (await services.call('project.create', {name: 'Split transport parity'})).id, assetId = randomUUID();
+  const {projectId, store} = createServerProject(root, {name: 'Split transport parity'});
+  const assetId = randomUUID();
   store.put('assets', {id: assetId, projectId, name: 'Synthetic video', mimeType: 'video/mp4', duration: 8, width: 720, height: 1280, sha256: 'a'.repeat(64), relativePath: `media/${assetId}.fixture`});
   store.close();
   let backend!: ChildProcessByStdio<null,Readable,Readable>, url!: string, port = 0;
+  let read!: ReturnType<typeof createProjectStorageReader>;
   async function stop() {
     if (!backend || backend.exitCode !== null || backend.signalCode) return;
     const child = backend, ended = once(child, 'exit'); child.kill('SIGTERM');
@@ -122,7 +122,8 @@ async function backendFixture(t: test.TestContext) {
   t.after(async () => { await stop(); await rm(root, {recursive: true, force: true}); });
   async function start() {
     let stdout = '', stderr = '', spawnError;
-    backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe']});
+    backend = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe', 'ipc']}) as typeof backend;
+    read = createProjectStorageReader(backend);
     backend.once('error', error => spawnError = error);
     backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
     const deadline = Date.now() + 20000;
@@ -144,10 +145,9 @@ async function backendFixture(t: test.TestContext) {
       assert.equal(response.status, status, JSON.stringify(body)); assert.equal(body.ok, !expectedError, JSON.stringify(body));
       if (expectedError) { assert.equal(body.error.code, expectedError); return body.error; } return body.data;
     },
-    storage() {
-      const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-      try { return Object.fromEntries(['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests'].map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])); }
-      finally { db.close(); }
+    async storage(projectId: string) {
+      const {rows} = await read(projectId);
+      return Object.fromEntries(['timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests'].map(table => [table, rows[table]]));
     },
   };
 }
@@ -197,14 +197,14 @@ test('split HTTP, CLI, MCP and shared client agree on durable results, errors, u
     [{...firstInput, atFrame: 51}, 'IDEMPOTENCY_CONFLICT'],
     [{...firstInput, requestId: randomUUID()}, 'REVISION_CONFLICT'],
   ] as const);
-  const beforeErrors = backend.storage();
+  const beforeErrors = (await backend.storage(projectId));
   for (const [input, code] of cases) {
     const errors: import('./helpers/strict-timeline-audio-types.ts').Failure[] = [];
     for (const {call} of transports) errors.push(await call(operation, ((((input) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>), ((code) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[2]>)));
     errors.slice(1).forEach(error => assertClientRecoveryError(error, errors[0], {operation, input}));
     if (code === 'REVISION_CONFLICT') assert.deepEqual(errors[0].details.current, timeline);
   }
-  assert.deepEqual(backend.storage(), beforeErrors);
+  assert.deepEqual((await backend.storage(projectId)), beforeErrors);
 
   let dropResponse = true, sent = 0, committed;
   const client = (createClient({env, fetchImpl: async (...args) => {
@@ -219,13 +219,13 @@ test('split HTTP, CLI, MCP and shared client agree on durable results, errors, u
   assert.deepEqual(timeline, committed); assert.equal((timeline as unknown as FixtureTimeline).revision, uncertainInput.expectedRevision + 1);
   assert.deepEqual(await client.rpc(operation, uncertainInput), committed);
   assert.equal(sent, 2); saved.push({input: uncertainInput, response: ((committed) as unknown as FixtureTimeline)});
-  const persisted = backend.storage(), pid = backend.pid;
+  const persisted = (await backend.storage(projectId)), pid = backend.pid;
   await backend.restart(); assert.notEqual(backend.pid, pid);
   for (const {name, call} of transports) {
     assert.deepEqual(await call('timeline.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), timeline, `${name} sees the same restarted timeline`);
     for (const record of saved as {input:unknown;response:unknown}[]) assert.deepEqual(await call(operation, record.input), record.response, `${name} replays old split responses exactly`);
     assert.deepEqual((await call('project.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
   }
-  assert.deepEqual(backend.storage(), persisted, 'replay after process restart cannot change timeline, journal, cursor or saved response bytes');
+  assert.deepEqual((await backend.storage(projectId)), persisted, 'replay after process restart cannot change timeline, journal, cursor or saved response bytes');
   assert.equal(persisted.timeline_requests.filter(row => row.requestId === firstInput.requestId).length, 1);
 });

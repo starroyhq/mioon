@@ -6,7 +6,7 @@ import type {ServiceResponse} from './helpers/strict-service-responses.ts';
 import type {CliResult,McpData,TestTool,SchemaNode} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 type StrictIntersection<T> = (T extends unknown ? (value: T)=>void : never) extends ((value: infer I)=>void) ? I : never;
-import type {TypedStore as FixtureStore, TypedServices as FixtureServices, TypedClient as FixtureClient} from './helpers/strict-service-responses.ts';
+import type {TypedClient as FixtureClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertClientRecoveryError} from './recovery-transport-assertions.mjs';
@@ -16,13 +16,12 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient} from '../packages/client/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import type { ChildProcessByStdio } from 'child_process';
 import type { Readable } from 'stream';
@@ -143,25 +142,26 @@ test('fade CLI and official MCP schemas are optional, strict, offline and retain
 async function backendFixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-fades-transports-'));
   // Synthetic metadata only: no source files, provider keys, FFmpeg or rendering.
-  const store = (openStore(root) as FixtureStore), services = (createServices(store, new Map()) as FixtureServices);
-  const projectId = (await services.call('project.create', {name: 'Fade transport parity'})).id;
+  const {projectId, store} = createServerProject(root, {name: 'Fade transport parity'});
   const assets:Record<string,string> = {};
   for (const [name, mimeType, hasAudio] of ([['video', 'video/mp4', true], ['audio', 'audio/wav', true], ['silent', 'video/mp4', false], ['unknown', 'video/mp4', undefined], ['image', 'image/png', true]] as const)) {
     const id = randomUUID(); assets[name] = id;
     store.put('assets', {id, projectId, name: `Synthetic ${name}`, mimeType, duration: 30, width: 720, height: 1280, sha256: 'a'.repeat(64), relativePath: `media/${id}.fixture`, ...(hasAudio === undefined ? {} : {hasAudio})});
   }
   store.close();
-  let backend!: ChildProcessByStdio<null,Readable,Readable>, url!: string, port = 0, readOnly!: DatabaseSync;
+  let backend!: ChildProcessByStdio<null,Readable,Readable>, url!: string, port = 0;
+  let read!: ReturnType<typeof createProjectStorageReader>;
   async function stop() {
     if (!backend || backend.exitCode !== null || backend.signalCode) return;
     const child = backend, ended = once(child, 'exit'); child.kill('SIGTERM');
     const timeout = setTimeout(() => child.kill('SIGKILL'), 10000);
     try { await ended; } finally { clearTimeout(timeout); }
   }
-  t.after(async () => { readOnly?.close(); await stop(); await rm(root, {recursive: true, force: true}); });
+  t.after(async () => { await stop(); await rm(root, {recursive: true, force: true}); });
   async function start() {
     let stdout = '', stderr = '', spawnError;
-    backend = spawn(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe']});
+    backend = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, PORT: String(port), MIOON_TOKEN: token}), stdio: ['ignore', 'pipe', 'pipe', 'ipc']}) as typeof backend;
+    read = createProjectStorageReader(backend);
     backend.once('error', error => spawnError = error);
     backend.stdout.setEncoding('utf8').on('data', bytes => stdout += bytes); backend.stderr.setEncoding('utf8').on('data', bytes => stderr += bytes);
     const deadline = Date.now() + 20000;
@@ -175,8 +175,6 @@ async function backendFixture(t: test.TestContext) {
     throw Error(`Backend did not start: ${stdout}\n${stderr}`);
   }
   await start();
-  readOnly = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const tables = readOnly.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(row => row.name);
   return {projectId, assets, get url() { return url; }, get pid() { return backend.pid; }, restart: async () => { await stop(); await start(); },
     async http(operation: string, input: { projectId: unknown; }, expectedError?: string|string[]|undefined) {
       const response = await fetch(url + '/api/rpc', {method: 'POST', redirect: 'error', headers: {authorization: `Bearer ${token}`, 'content-type': 'application/json'}, body: JSON.stringify({operation, input})});
@@ -185,8 +183,8 @@ async function backendFixture(t: test.TestContext) {
       assert.equal(body.ok, !expectedError, JSON.stringify(body));
       if (expectedError) { assert.equal(body.error.code, expectedError); return body.error; } return body.data;
     },
-    storage: () => Object.fromEntries(tables.map(table => [table, readOnly.prepare(`SELECT * FROM "${(table as string).replaceAll('"', '""')}" ORDER BY rowid`).all()])),
-    version: () => (readOnly.prepare('PRAGMA data_version').get())!.data_version,
+    storage: async (projectId: string) => (await read(projectId)).rows,
+    version: async (projectId: string) => (await read(projectId)).version,
   };
 }
 
@@ -229,7 +227,7 @@ test('fades agree across real HTTP, CLI and official MCP with atomic errors, spl
   timeline = remember('timeline.clip.add', ((add) as unknown as Parameters<NonNullable<typeof remember>>[1]), concurrent[0]);
   const clipId = (timeline.clips.find((clip) => clip.startFrame === 60))!.id;
   assert.equal(timeline.revision, add.expectedRevision + 1);
-  assert.equal(backend.storage().timeline_requests.filter((row: { requestId: string; }) => row.requestId === add.requestId).length, 1);
+  assert.equal((await backend.storage(projectId)).timeline_requests.filter(row => row.requestId === add.requestId).length, 1);
 
   const addAudio = request(projectId, timeline, {trackId: audioTrack, assetId: assets.audio, startFrame: 0, durationFrames: 120, fadeInFrames: 12});
   const {requestId: audioKey, ...audioWithoutKey} = addAudio;
@@ -258,13 +256,13 @@ test('fades agree across real HTTP, CLI and official MCP with atomic errors, spl
     ['timeline.clip.update', {...update, patch: {...update.patch, fadeOutFrames: 22}}, 'IDEMPOTENCY_CONFLICT'],
     ['timeline.clip.update', {...update, requestId: randomUUID()}, 'REVISION_CONFLICT'],
   ];
-  const beforeErrors = backend.storage(), beforeErrorsVersion = backend.version();
+  const beforeErrors = (await backend.storage(projectId)), beforeErrorsVersion = (await backend.version(projectId));
   for (const [operation, input, code] of invalid) {
     const error = await parity(((operation) as unknown as Parameters<NonNullable<typeof parity>>[0]), ((input) as unknown as Parameters<NonNullable<typeof parity>>[1]), ((code) as unknown as Parameters<NonNullable<typeof parity>>[2]));
     if (code === 'REVISION_CONFLICT') assert.deepEqual(error.details.current, timeline);
   }
-  assert.deepEqual(backend.storage(), beforeErrors, 'rejected fade writes change no table or saved response bytes');
-  assert.equal(backend.version(), beforeErrorsVersion, 'errors do not commit even equal-valued writes');
+  assert.deepEqual((await backend.storage(projectId)), beforeErrors, 'rejected fade writes change no table or saved response bytes');
+  assert.deepEqual((await backend.version(projectId)), beforeErrorsVersion, 'errors do not commit even equal-valued writes');
   const retryInvalid = invalid[0][1];
   const corrected = {...(retryInvalid as Record<string, unknown>), patch: {fadeInFrames: 15}};
   timeline = remember('timeline.clip.update', ((corrected) as unknown as Parameters<NonNullable<typeof remember>>[1]), await parity('timeline.clip.update', corrected));
@@ -278,9 +276,9 @@ test('fades agree across real HTTP, CLI and official MCP with atomic errors, spl
   const afterSplit = timeline;
   timeline = (await command('timeline.undo', request(projectId, timeline)) as unknown as typeof timeline);
   assert.deepEqual(editable(timeline), editable(beforeSplit));
-  const redoBranch = backend.storage(), redoVersion = backend.version();
+  const redoBranch = (await backend.storage(projectId)), redoVersion = (await backend.version(projectId));
   await parity('timeline.clip.split', request(projectId, timeline, {clipId, atFrame: 74}), 'SPLIT_FADE_BOUNDS');
-  assert.deepEqual(backend.storage(), redoBranch, 'rejection preserves the redo branch'); assert.equal(backend.version(), redoVersion);
+  assert.deepEqual((await backend.storage(projectId)), redoBranch, 'rejection preserves the redo branch'); assert.deepEqual((await backend.version(projectId)), redoVersion);
   timeline = await mcp.call('timeline_redo', request(projectId, timeline));
   assert.deepEqual(editable(timeline), editable(afterSplit));
   const splitOut = request(projectId, timeline, {clipId: (right)!.id, atFrame: 159});
@@ -301,11 +299,11 @@ test('fades agree across real HTTP, CLI and official MCP with atomic errors, spl
     assert.equal(Object.hasOwn(clip, 'fadeOutFrames'), false, 'one-sided fade split preserves the absent other field');
   }
 
-  const beforeInspect = backend.storage(), inspectVersion = backend.version();
+  const beforeInspect = (await backend.storage(projectId)), inspectVersion = (await backend.version(projectId));
   const inspected = await parity('timeline.inspect', {projectId});
   keys(((inspected) as unknown as Parameters<NonNullable<typeof keys>>[0]), ['id', 'revision', 'fps', 'width', 'height', 'durationFrames', 'tracks', 'clips']);
   for (const clip of (inspected)!.clips) keys(clip, ['id', 'trackId', 'assetId', 'name', 'startFrame', 'durationFrames', 'sourceInFrame', 'rect', 'gain']);
-  assert.deepEqual(backend.storage(), beforeInspect); assert.equal(backend.version(), inspectVersion);
+  assert.deepEqual((await backend.storage(projectId)), beforeInspect); assert.deepEqual((await backend.version(projectId)), inspectVersion);
 
   let dropResponse = true, sent = 0, committed;
   const client = (createClient({env, fetchImpl: async (...args) => {
@@ -322,13 +320,13 @@ test('fades agree across real HTTP, CLI and official MCP with atomic errors, spl
   assert.equal((timeline as FixtureTimeline).clips.find((clip: { id: string; }) => clip.id === clipId)!.fadeInFrames, 0, 'explicit zero is persisted');
   const later = request(projectId, timeline, {clipId, patch: {name: 'Later edit after recovered fades'}});
   timeline = (await command('timeline.clip.update', ((later) as unknown as Parameters<NonNullable<typeof command>>[1])) as unknown as typeof timeline);
-  const persisted = backend.storage(), pid = backend.pid;
+  const persisted = (await backend.storage(projectId)), pid = backend.pid;
   await backend.restart(); assert.notEqual(backend.pid, pid);
   for (const {name, call} of transports) {
     assert.deepEqual(await call('timeline.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>)), timeline, `${name} sees the restarted current timeline`);
     for (const record of saved) assert.deepEqual(await call(((record.operation) as unknown as Parameters<typeof call>[0]), record.input), record.response, `${name} returns exact historical fade results after restart`);
     assert.deepEqual((await call('project.get', (((({projectId}) as unknown as Parameters<typeof call>[1])) as unknown as StrictIntersection<Parameters<NonNullable<typeof call>>[1]>))).timeline, timeline);
   }
-  assert.deepEqual(backend.storage(), persisted, 'restart and exact replay preserve all saved rows and legacy absence');
+  assert.deepEqual((await backend.storage(projectId)), persisted, 'restart and exact replay preserve all saved rows and legacy absence');
   assert.equal(persisted.jobs.length, 0); assert.equal(persisted.exports.length, 0, 'transport acceptance never starts providers or render workers');
 });

@@ -20,7 +20,6 @@ import {mkdtemp, readFile, readdir, rm, unlink, writeFile} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
@@ -30,7 +29,8 @@ import {parse, schemas, operationEffect, exportPreflightSchemas, exportPreflight
   isExportPreflightResponse, EXPORT_PREFLIGHT_LIMITS} from '../packages/contracts/src/index.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {IDS, TOKEN, NOW, uuid, snapshot, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
+import {IDS, TOKEN, NOW, uuid, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
+import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import type { BinaryLike } from 'crypto';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -63,11 +63,11 @@ async function stopOwned(child: import("node:child_process").ChildProcess) {
   const timer = setTimeout(() => child.kill('SIGKILL'), 5_000);
   try { await bounded(ended, 'Owned child cleanup', 8_000); } finally { clearTimeout(timer); }
 }
-function launch(t: { after: (arg0: () => Promise<void>) => void; }, args: unknown[]|readonly string[], env: { MIOON_DATA_DIR: string; MIOON_PREFLIGHT_WIRE_AUDIT: string; MIOON_PREFLIGHT_WIRE_MEDIA: string; MIOON_BASE_URL?: unknown; MIOON_TOKEN?: string; MIOON_PREFLIGHT_WIRE_ORIGIN?: unknown; }) {
-  const child = spawn(process.execPath, ((args) as unknown as Parameters<typeof spawn>[1]), {cwd: repo, env: ((environment(((env) as unknown as Parameters<typeof environment>[0]))) as unknown as NodeJS.ProcessEnv | undefined), stdio: ['ignore', 'pipe', 'pipe']});
+function launch(t: { after: (arg0: () => Promise<void>) => void; }, args: unknown[]|readonly string[], env: { MIOON_DATA_DIR: string; MIOON_PREFLIGHT_WIRE_AUDIT: string; MIOON_PREFLIGHT_WIRE_MEDIA: string; MIOON_BASE_URL?: unknown; MIOON_TOKEN?: string; MIOON_PREFLIGHT_WIRE_ORIGIN?: unknown; }, ipc=false) {
+  const child = spawn(process.execPath, ((args) as unknown as Parameters<typeof spawn>[1]), {cwd: repo, env: ((environment(((env) as unknown as Parameters<typeof environment>[0]))) as unknown as NodeJS.ProcessEnv | undefined), stdio: ['ignore', 'pipe', 'pipe', ...(ipc ? ['ipc' as const] : [])]});
   let stdout = '', stderr = '', failure!: Error;
-  child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; enforceOutput(); });
-  child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; enforceOutput(); });
+  child.stdout!.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; enforceOutput(); });
+  child.stderr!.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; enforceOutput(); });
   function enforceOutput() { if (stdout.length + stderr.length > 512 * 1024) { failure = Error('Owned child exceeded bounded output'); child.kill('SIGKILL'); } }
   child.on('error', (error?) => { failure = (error as unknown as typeof failure); });
   const finished = new Promise<{ code: number | null | undefined; signal: NodeJS.Signals | null | undefined; }>(resolve => child.once('close', (code?, signal?) => resolve({code, signal})));
@@ -122,10 +122,10 @@ async function fileManifest(root: string, relative: string|undefined = '') {
 
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-preflight-wire-')), dataDir = path.join(root, 'data');
-  let run!:ReturnType<typeof launch>, db!: DatabaseSync, client!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>;
+  let run!:ReturnType<typeof launch>, client!: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>;
   t.after(async () => {
     const failures = [];
-    for (const cleanup of ([() => client && bounded(client.close(), 'Official MCP cleanup', 7_000), () => stopOwned(((run?.child) as unknown as Parameters<typeof stopOwned>[0])), () => db?.close(), () => rm(root, {recursive: true, force: true})] as const)) {
+    for (const cleanup of ([() => client && bounded(client.close(), 'Official MCP cleanup', 7_000), () => stopOwned(((run?.child) as unknown as Parameters<typeof stopOwned>[0])), () => rm(root, {recursive: true, force: true})] as const)) {
       try { await cleanup(); } catch (error) { failures.push(error); }
     }
     if (failures.length) throw new AggregateError(failures, 'Owned preflight fixture cleanup failed');
@@ -187,22 +187,36 @@ if(process.argv[2] === 'preflight-server'){
   };
   syncBuiltinESMExports();
   const {startServer} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'apps/server/src/index.ts')).href)});
-  const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:${JSON.stringify(TOKEN)},chatGateway:async function*(){deny('model gateway');}});
+  const {readProjectState,changeMarks} = await import(${JSON.stringify(pathToFileURL(path.join(repo, 'tests/helpers/project-state.ts')).href)});
+  let inspect;
+  const server = await startServer({dataDir:process.env.MIOON_DATA_DIR,port:0,token:${JSON.stringify(TOKEN)},inspectProject:received=>{inspect=received;}});
+  if(process.connected)process.on('message',message=>{
+    if(typeof message?.id !== 'string')return;
+    let reply;
+    try{
+      if(message.type!=='storage'||typeof message.projectId!=='string'||Object.keys(message).some(key=>!['type','id','projectId'].includes(key)))throw Error('Unsupported preflight storage question');
+      if(!inspect)throw Error('The server has not handed over its connection');
+      const data=inspect(message.projectId,db=>({rows:readProjectState(db).tables,version:changeMarks(db)}));
+      reply={type:'reply',id:message.id,data};
+    }catch(error){reply={type:'reply',id:message.id,error:{code:error?.code??'FIXTURE_ERROR',message:String(error?.message??error)}};}
+    if(process.connected)process.send?.(reply);
+  });
   process.stdout.write(JSON.stringify({ready:true,url:server.url,pid:process.pid})+'\\n');
-  let closing; const close = () => closing ??= server.close().catch(()=>{process.exitCode=1;});
-  process.on('SIGTERM',close); process.on('SIGINT',close);
+  let closing; const close = () => closing ??= server.close().catch(()=>{process.exitCode=1;}).finally(()=>{if(process.connected)process.disconnect();});
+  process.on('SIGTERM',close); process.on('SIGINT',close); process.once('disconnect',close);
 }
 `);
   const baseEnv = {MIOON_DATA_DIR: dataDir, MIOON_PREFLIGHT_WIRE_AUDIT: auditPath, MIOON_PREFLIGHT_WIRE_MEDIA: mediaAudit};
-  run = launch(t, [helper, 'preflight-server'], baseEnv);
+  run = launch(t, [helper, 'preflight-server'], baseEnv, true);
   const {url} = await run.ready(); assert.equal(new URL(url).hostname, '127.0.0.1');
-  db = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'), {readOnly: true});
+  const read = createProjectStorageReader(run.child);
   const env = {...baseEnv, MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_PREFLIGHT_WIRE_ORIGIN: url};
   const audit = async () => (await readFile(mediaAudit, 'utf8')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const checkpoint = async () => ({rows: snapshot(db), version: (db.prepare('PRAGMA data_version').get())!.data_version, files: await fileManifest(dataDir)});
+  const checkpoint = async () => ({...await read(IDS.project), files: await fileManifest(dataDir)});
   const unchanged = async (before: { rows: unknown; version: unknown; files: unknown; }, label?: unknown) => {
-    assert.deepEqual(snapshot(db), before.rows, `${label}: no persisted changes, exports or cache writes`);
-    assert.equal((db.prepare('PRAGMA data_version').get())!.data_version, before.version, `${label}: no equal-value SQLite commit`);
+    const current=await read(IDS.project);
+    assert.deepEqual(current.rows, before.rows, `${label}: no persisted changes, exports or cache writes`);
+    assert.deepEqual(current.version, before.version, `${label}: no equal-value SQLite commit`);
     assert.deepEqual(await fileManifest(dataDir), before.files, `${label}: no output/source/cache file writes`);
   };
   const validateEnvelope = (envelope: { ok: unknown; error: { code: unknown; }; data: unknown; }, expectedError?: string|undefined) => {
@@ -240,7 +254,8 @@ if(process.argv[2] === 'preflight-server'){
     const envelope = JSON.parse(blocks[0].text); assert.deepEqual(result.structuredContent, envelope);
     assert.equal(Boolean(result.isError), Boolean(expectedError)); return (validateEnvelope(envelope, ((expectedError) as unknown as Parameters<NonNullable<typeof validateEnvelope>>[1])) as WireResult<McpData<O,I>,E>);
   }
-  return {http, cli, cliArgs, mcp, client, checkpoint, unchanged, audit, saved, db,
+  return {http, cli, cliArgs, mcp, client, checkpoint, unchanged, audit, saved,
+    receipt:async(requestId:string)=>(await read(IDS.project)).rows.timeline_requests.find(row=>row.requestId===requestId)?.response,
     totalBytes: wav.length + png.length, removeSource: () => unlink(path.join(dataDir, wavPath)),
     denials: async () => (await readFile(auditPath, 'utf8')).trim()};
 }
@@ -400,7 +415,7 @@ test('preflight agrees across actual HTTP, CLI and official MCP without export/c
   const beforeReplay = await backend.audit();
   for (const {call} of transports) for (const saved of backend.saved) {
     assert.deepEqual(await call('timeline.render', saved.request), saved.response, 'exact legacy/digest replay wins over stale revision and missing media');
-    assert.equal((backend.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(saved.request.requestId))!.response, saved.raw, 'historical response bytes remain intact');
+    assert.equal(await backend.receipt(saved.request.requestId), saved.raw, 'historical response bytes remain intact');
   }
   for (const {call} of transports) await call('timeline.render', {...backend.saved[0].request, preflightSnapshotHash: reports[0].snapshotHash}, 'IDEMPOTENCY_CONFLICT');
   assert.deepEqual(await backend.audit(), beforeReplay, 'historical replay and changed reuse do not probe or render');

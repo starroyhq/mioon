@@ -6,14 +6,16 @@ import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import type {Readable} from 'node:stream';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient, discoverSchema, effectAnnotations} from '../packages/client/src/index.ts';
 import {operationEffect} from '../packages/contracts/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {createServerProject,schemaObjects} from './helpers/project-database.ts';
+import {changeMarks} from './helpers/project-state.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {READ_TOOL_DEFINITIONS, READ_TOOL_OPERATIONS, parseReadToolArguments} from '../packages/business/src/agent/read-tool-policy.ts';
 import {RESTORE_READ_OPERATIONS, RESTORE_LOCAL_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
@@ -181,33 +183,31 @@ async function cli(args: string[], env: Record<string, string | undefined>): Pro
 }
 
 function databaseSnapshot(db: DatabaseSync): {rows: [string, Record<string, unknown>[]][]; version: unknown} {
-  const rows = (db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as {name: string}[])
+  const rows = schemaObjects(db).filter(({type,name})=>type==='table'&&!name.startsWith('sqlite_')).sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0)
     .map(({name}: {name: string}): [string, Record<string, unknown>[]] => [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all() as Record<string, unknown>[]]);
-  return {rows, version: (db.prepare('PRAGMA data_version').get() as {data_version: unknown}).data_version};
+  return {rows, version: changeMarks(db)};
 }
 
-interface TransportFixture {root: string; dataDir: string; assets: AssetFixture[]; otherProjectId: string; rpc(name: string, value: Record<string, unknown>, options?: {authenticated?: boolean; expectedWorkspaceOrigin?: string}): Promise<{status: number; envelope: WireEnvelope}>; readonly mediaProcesses: {type?: string; kind?: string}[]; readonly client: ReturnType<typeof createClient>; readonly env: Record<string, string>; snapshot(): {rows: [string, Record<string, unknown>[]][]; version: unknown}; verifyFiles(): Promise<void>; connectMcp(): Promise<{client: Client; call(name: string, value: Record<string, unknown>): Promise<WireEnvelope>}>}
+interface TransportFixture {root: string; dataDir: string; projectId: string; assets: AssetFixture[]; otherProjectId: string; rpc(name: string, value: Record<string, unknown>, options?: {authenticated?: boolean; expectedWorkspaceOrigin?: string}): Promise<{status: number; envelope: WireEnvelope}>; readonly mediaProcesses: {type?: string; kind?: string}[]; readonly client: ReturnType<typeof createClient>; readonly env: Record<string, string>; snapshot(): {rows: [string, Record<string, unknown>[]][]; version: unknown}; verifyFiles(): Promise<void>; connectMcp(): Promise<{client: Client; call(name: string, value: Record<string, unknown>): Promise<WireEnvelope>}>}
 async function fixture(t: import('node:test').TestContext): Promise<TransportFixture> {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-jpeg-transports-'));
   const dataDir = path.join(root, 'data'), audit = path.join(root, 'forbidden-effects.jsonl');
-  let server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync | undefined, mcp: Client | undefined, transport: StdioClientTransport | undefined, off: (() => void) | undefined;
+  let server: Awaited<ReturnType<typeof startServer>> | undefined, inspect!: InspectProject, mcp: Client | undefined, transport: StdioClientTransport | undefined, off: (() => void) | undefined;
   t.after(async () => {
     try { if (mcp) await bounded(mcp.close(), 'Owned image MCP cleanup', 7_000); }
     finally {
       try { await transport?.close(); }
-      finally { off?.(); db?.close(); await server?.close(); await rm(root, {recursive: true, force: true}); }
+      finally { off?.(); await server?.close(); await rm(root, {recursive: true, force: true}); }
     }
   });
   await writeFile(audit, '');
   // Seed only fixture-owned bytes and ordinary saved metadata. No asset import,
   // external provider or production application startup is needed. The JPEG
   // operation itself must run its bounded local decoder.
-  const store = openStore(dataDir), projectId = input.projectId as string, otherProjectId = randomUUID();
+  const {store,projectId} = createServerProject(dataDir,{name:'Synthetic image inspection'}), otherProjectId = randomUUID();
   const fixtures = [bytes, pillowJfifFixture('420')];
   const assets: AssetFixture[] = [];
   try {
-    for (const id of [projectId, otherProjectId]) store.put('projects', {id, name: 'Synthetic image inspection',
-      description: '', revision: 1, createdAt: stamp, updatedAt: stamp} as never);
     for (const [index, content] of fixtures.entries()) {
       const id = index === 0 ? input.assetId : randomUUID();
       const asset: AssetFixture = {id, projectId, name: 'Synthetic owned JFIF JPEG', mimeType: 'image/jpeg', relativePath: `media/${id}.jpg`,
@@ -223,8 +223,7 @@ async function fixture(t: import('node:test').TestContext): Promise<TransportFix
   const open = async () => {
     server = await startServer({dataDir, distDir: path.join(root, 'unused-dist'), port: 0, token,
       imageNetwork: {lookup() { denyBackendEffect('provider DNS'); }, httpsRequest() { denyBackendEffect('provider request'); }},
-      chatGateway: async function* () { denyBackendEffect('model request'); }} as never);
-    db = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'), {readOnly: true});
+      inspectProject: (received: InspectProject) => {inspect=received;}} as never);
     assert.ok(server);assert.equal(new URL(server.url).hostname, '127.0.0.1');
   };
   await open();
@@ -235,10 +234,10 @@ async function fixture(t: import('node:test').TestContext): Promise<TransportFix
       body: JSON.stringify({operation: name, input: value, ...(expectedWorkspaceOrigin ? {expectedWorkspaceOrigin} : {})})});
     return {status: result.status, envelope: await result.json() as WireEnvelope};
   };
-  return {root, dataDir, assets, otherProjectId, rpc, mediaProcesses: mediaProcesses as {type?: string; kind?: string}[],
+  return {root, dataDir, projectId, assets, otherProjectId, rpc, mediaProcesses: mediaProcesses as {type?: string; kind?: string}[],
     get client() { assert.ok(server);return createClient({env: {MIOON_BASE_URL: server.url, MIOON_TOKEN: token}}); },
     get env() { assert.ok(server);return childEnvironment(root, server.url, audit); },
-    snapshot: () => { assert.ok(db);return databaseSnapshot(db); },
+    snapshot: () => { assert.ok(inspect);return inspect(projectId,databaseSnapshot); },
     async verifyFiles() {
       assert.deepEqual((await readdir(path.join(dataDir, 'media'))).sort(), assets.map(asset => path.basename(asset.relativePath)).sort());
       for (const [index, asset] of assets.entries()) assert.deepEqual(await readFile(path.join(dataDir, asset.relativePath)), fixtures[index]);
@@ -268,39 +267,39 @@ async function fixture(t: import('node:test').TestContext): Promise<TransportFix
 }
 test('actual authenticated HTTP, CLI and official MCP inspect JPEG without changing rows or managed files',
   {timeout: 60_000}, async t => {
-    const f = await fixture(t), before = f.snapshot();
-    const direct = await f.rpc(operation, input);
-    assert.equal(direct.status, 200); assert.deepEqual(direct.envelope, {ok: true, data: response});
-    assert.deepEqual(await f.client.rpc(operation, input), response);
-    const other = await f.client.rpc(operation, {projectId: input.projectId, assetId: f.assets[1]!.id}) as JpegResponseView;
+    const f = await fixture(t), ownedInput={...input,projectId:f.projectId}, expectedResponse={...response,projectId:f.projectId}, before = f.snapshot();
+    const direct = await f.rpc(operation, ownedInput);
+    assert.equal(direct.status, 200); assert.deepEqual(direct.envelope, {ok: true, data: expectedResponse});
+    assert.deepEqual(await f.client.rpc(operation, ownedInput), expectedResponse);
+    const other = await f.client.rpc(operation, {projectId: ownedInput.projectId, assetId: f.assets[1]!.id}) as JpegResponseView;
     assert.equal(other.status, 'needs_interpretation'); assert.equal(other.evidence.colourTag, 'untagged');
     assert.equal(other.evidence.sampling, '420'); assert.equal(other.evidence.sha256, f.assets[1].sha256);
     const decodedBeforeRejections = f.mediaProcesses.length;
-    assert.equal((await f.rpc(operation, input, {authenticated: false})).status, 401);
+    assert.equal((await f.rpc(operation, ownedInput, {authenticated: false})).status, 401);
     for (const extra of [{path: '/tmp/not-authorized.jpg'}, {requestId: 'not-a-mutation'}, {dataBase64: bytes.toString('base64')}]) {
-      const rejected = await f.rpc(operation, {...input, ...extra});
+      const rejected = await f.rpc(operation, {...ownedInput, ...extra});
       assert.equal(rejected.status, 400); assert.equal(rejected.envelope.error?.code, 'VALIDATION_ERROR');
     }
-    await assert.rejects(f.client.rpc(operation, {...input, projectId: f.otherProjectId}), {code: 'TIMELINE_COLOUR_SOURCE_UNSUPPORTED'});
-    await assert.rejects(f.client.rpc(pngOperation, input), {code: 'TIMELINE_COLOUR_SOURCE_UNSUPPORTED'});
+    await assert.rejects(f.client.rpc(operation, {...ownedInput, projectId: f.otherProjectId}), {code: 'PROJECT_NOT_FOUND'});
+    await assert.rejects(f.client.rpc(pngOperation, ownedInput), {code: 'TIMELINE_COLOUR_SOURCE_UNSUPPORTED'});
     assert.equal(f.mediaProcesses.length, decodedBeforeRejections, 'denials do not launch the decoder');
 
-    const command = await cli(['timeline', 'colour', 'jpeg', 'inspect', '--input', JSON.stringify(input)], f.env);
+    const command = await cli(['timeline', 'colour', 'jpeg', 'inspect', '--input', JSON.stringify(ownedInput)], f.env);
     assert.equal(command.code, 0); assert.deepEqual(command.envelope, direct.envelope);
     const schema = await cli(['schema', operation], f.env);
     assert.equal(schema.code, 0); assert.deepEqual(schema.envelope.data, discoverSchema({operation}));
-    const invalidFile = await cli(['timeline', 'colour', 'jpeg', 'inspect', '--input', JSON.stringify(input),
+    const invalidFile = await cli(['timeline', 'colour', 'jpeg', 'inspect', '--input', JSON.stringify(ownedInput),
       '--file', path.join(f.root, 'not-readable-and-not-authorized.jpg')], f.env);
     assert.equal(invalidFile.code, 2); assert.equal(invalidFile.envelope.error?.code, 'VALIDATION_ERROR');
-    const invalidInput = await cli(['rpc', operation, '--input', JSON.stringify({...input, path: '/private/source.jpg'})], f.env);
+    const invalidInput = await cli(['rpc', operation, '--input', JSON.stringify({...ownedInput, path: '/private/source.jpg'})], f.env);
     assert.equal(invalidInput.code, 2); assert.equal(invalidInput.envelope.error?.code, 'VALIDATION_ERROR');
 
     const mcp = await f.connectMcp(), listed = await bounded(mcp.client.listTools(), 'Owned JPEG MCP discovery');
     const tool = listed.tools.find(item => item.name === 'timeline_colour_jpeg_inspect');
     assert.ok(tool); assert.deepEqual(tool.inputSchema, (discoverSchema({operation}) as unknown as DiscoveryView).inputSchema);
     assert.deepEqual(tool.annotations, effectAnnotations(operationEffect(operation)));
-    assert.deepEqual(await mcp.call(tool.name, input), direct.envelope);
-    assert.equal((await mcp.call(tool.name, {...input, path: '/private/source.jpg'})).error?.code, 'VALIDATION_ERROR');
+    assert.deepEqual(await mcp.call(tool.name, ownedInput), direct.envelope);
+    assert.equal((await mcp.call(tool.name, {...ownedInput, path: '/private/source.jpg'})).error?.code, 'VALIDATION_ERROR');
     assert.deepEqual((await mcp.call('mioon_schema', {operation})).data, discoverSchema({operation}) as unknown as DiscoveryView);
     assert.deepEqual(f.snapshot(), before, 'all inspections and denials preserve every row and the SQLite commit version');
     await f.verifyFiles();
