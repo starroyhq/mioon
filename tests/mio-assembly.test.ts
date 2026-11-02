@@ -11,6 +11,7 @@ import {assembleRequest, createMioAssembly} from '../packages/business/src/agent
 import {buildTaskModelRequest, taskContinuation, taskResponseLanguageContext} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskModelOutput, TaskToolDefinition} from '../packages/business/src/agent/task-gateway-v2.ts';
 import type {AgentConfiguration} from '../packages/business/src/agent/config.ts';
+import {AGENT_PRESETS} from '../packages/business/src/agent/presets.ts';
 import type {AgentTaskJson, AgentTaskLocale} from '../packages/contracts/src/agent-tasks-v2.ts';
 
 const at = '2026-11-02T08:00:00.000Z';
@@ -24,13 +25,15 @@ function frozen<T>(value: T): T {
   if (value !== null && typeof value === 'object') { Object.values(value).forEach(frozen); Object.freeze(value); }
   return value;
 }
-function setup(t: TestContext, protocol: typeof protocols[number] = 'chat_completions', locale: AgentTaskLocale = 'zh-Hans') {
+function setup(t: TestContext, protocol: typeof protocols[number] = 'chat_completions', locale: AgentTaskLocale = 'zh-Hans', official = false) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-r1-assembly-'));
   let store = openStore(root), records = createMioRecords(store);
   t.after(() => { store.close(); rmSync(root, {recursive: true, force: true}); });
   store.put('projects', {id: store.projectId, name: 'Mio assembly synthetic project'});
   const conversationId = randomUUID(), runId = randomUUID();
-  const configuration: AgentConfiguration = {presetId: 'ollama', platformId: 'local', protocol, model: 'qwen3:8b', baseUrl: `http://127.0.0.1:11434${protocol === 'anthropic_messages' ? '' : '/v1'}`};
+  const platform = AGENT_PRESETS.find(preset => preset.id === 'anthropic')!.platforms.find(platform => platform.id === 'global')!;
+  const configuration: AgentConfiguration = official ? {presetId: 'anthropic', platformId: platform.id, protocol, model: platform.model, baseUrl: platform.baseUrl}
+    : {presetId: 'ollama', platformId: 'local', protocol, model: 'qwen3:8b', baseUrl: `http://127.0.0.1:11434${protocol === 'anthropic_messages' ? '' : '/v1'}`};
   const context: AgentTaskJson[] = [taskResponseLanguageContext(locale), {role: 'user', content: text}];
   store.tx(() => {
     const configurationBlobHash = records.putBlob(JSON.stringify(configuration), at);
@@ -39,12 +42,12 @@ function setup(t: TestContext, protocol: typeof protocols[number] = 'chat_comple
     records.appendEntry({id: randomUUID(), runId, kind: 'user_message', createdAt: at, payload: {json: {text}}});
     records.appendEntry({id: randomUUID(), runId, kind: 'host_hint', createdAt: at, payload: {json: {type: 'run_context', context}}});
   });
-  function begin(history = context, version: 1 | 2 = 2) {
+  function begin(history = context, version: 1 | 2 = 2, data: AgentTaskJson = {baseline: []}) {
     const assembly = createMioAssembly(records, {now: () => at, assemblerVersion: version}), stepId = randomUUID();
     const body = buildTaskModelRequest(configuration, history, tools, 9080, {toolLoading: true});
     const saved = store.tx(() => {
       records.createStep({id: stepId, runId, kind: 'model', createdAt: at});
-      const input = assembly.freeze(runId, stepId, {request: {body, history}, data: {baseline: []}}, []);
+      const input = assembly.freeze(runId, stepId, {request: {body, history}, data}, []);
       return records.beginRequest(input);
     });
     return {saved, body, history, assembly};
@@ -225,4 +228,53 @@ test('a clipped escaped tool view references a frozen canonical slice instead of
   const reference = view.history.array.at(-1)!.object.find(([key]) => key === 'content')![1].concat!.find(node => node.slice);
   assert.ok(reference); reference.slice = [0, Number.MAX_SAFE_INTEGER];
   assert.throws(() => assembleRequest(2, altered), code('AGENT_TASK_STORAGE_CORRUPT'));
+});
+
+for (const reused of [false, true]) test(`Messages cache wrapping retains exact output/result identity across equal text/args (${reused ? 'reused' : 'distinct'} call IDs)`, t => {
+  const f = setup(t, 'anthropic_messages', 'en', true), first = f.begin();
+  const result: AgentTaskJson = {value: 'Two different calls have exactly equal result bytes.'};
+  function finish(requestId: string, callId: string) {
+    const outputId = randomUUID(), resultId = randomUUID();
+    const argumentsValue: AgentTaskJson = {echo: {type: 'tool_use', id: 'a_business_data_field', input: {}}};
+    const output: TaskModelOutput = {text: 'Same assistant text for both different model turns.', toolCalls: [{id: callId, name: 'mioon_project_inspect', arguments: argumentsValue}],
+      providerOutput: {role: 'assistant', content: [{type: 'text', text: 'Same assistant text for both different model turns.'}, {type: 'tool_use', id: callId, name: 'mioon_project_inspect', input: argumentsValue}]}};
+    f.store.tx(() => {
+      f.records.markDispatched(requestId, at);
+      f.records.completeModelRequest(requestId, {entryId: outputId, at, output: {protocol: 'anthropic_messages', providerOutput: output.providerOutput}});
+      const step = f.records.createStep({id: randomUUID(), runId: f.runId, kind: 'tool', sourceEntryId: outputId, sourceCallIndex: 0, createdAt: at});
+      f.records.updateStep(step.id, 'intent', {status: 'dispatch_started', updatedAt: at});
+      f.records.appendEntry({id: resultId, runId: f.runId, kind: 'tool_result', createdAt: at, payload: {json: result}});
+      f.records.updateStep(step.id, 'dispatch_started', {status: 'completed', resultEntryId: resultId, updatedAt: at});
+    });
+    return {outputId, resultId, continuation: taskContinuation('anthropic_messages', output, [{callId, result}])};
+  }
+  const a = finish(first.saved.id, 'first_or_reused_call');
+  const second = f.begin([...f.context, ...a.continuation], 2, {assemblyModelStepIds: [first.saved.stepId]});
+  const b = finish(second.saved.id, reused ? 'first_or_reused_call' : 'second_distinct_call');
+  function refs(value: unknown, ids = new Set<string>()): Set<string> {
+    if (value && typeof value === 'object') {
+      if ('source' in value && typeof value.source === 'string') ids.add(value.source);
+      Object.values(value).forEach(child => refs(child, ids));
+    }
+    return ids;
+  }
+  const data: AgentTaskJson = {assemblyModelStepIds: [first.saved.stepId, second.saved.stepId]};
+  // Messages requires a final user message and unique call IDs in the retained
+  // wire history. A reused ID is legal here only after the earlier group was
+  // compacted out; its canonical source must still be the later model step.
+  const histories = reused ? [[...f.context, ...b.continuation]] : [[...f.context, ...a.continuation, ...b.continuation], [...f.context, ...b.continuation]];
+  for (const history of histories) {
+    const sent = f.begin(history, 2, data), body = JSON.parse(sent.body) as {messages: {content: {cache_control?: unknown}[]}[]};
+    assert.ok(body.messages.at(-1)!.content.some(block => block.cache_control));
+    const descriptor = sent.saved.inputManifest.parameters as {wireHistory: {array: unknown[]}};
+    const last = refs(descriptor.wireHistory.array.at(-1));
+    assert.ok(last.has(b.resultId));
+    assert.equal(last.has(a.outputId), false); assert.equal(last.has(a.resultId), false);
+    const lastModel = refs(descriptor.wireHistory.array.at(-2));
+    assert.ok(lastModel.has(b.outputId)); assert.equal(lastModel.has(a.outputId), false);
+    assert.deepEqual(sent.assembly.hydrate(sent.saved), {body: sent.body, history});
+  }
+  const wrongModel = f.records.steps(f.runId).find(step => step.kind === 'tool')!;
+  assert.throws(() => f.begin(f.context, 2, {assemblyModelStepIds: [wrongModel.id]}), code('AGENT_TASK_STORAGE_CORRUPT'));
+  assert.throws(() => f.begin([...f.context, ...b.continuation], 2, {assemblyModelStepIds: []}), code('AGENT_TASK_STORAGE_CORRUPT'));
 });

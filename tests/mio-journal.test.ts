@@ -346,3 +346,31 @@ test('terminal history projection and serialized conversation context match the 
   assert.deepEqual(f.journal.contextRuns(projectId, conversationId!).map(run => run.id), legacy.contextRuns(projectId, conversationId!).map(run => run.id));
   for (const locale of ['zh-Hans', 'zh-Hant', 'en', 'ja'] as const) assert.equal(JSON.stringify(assembleRunContext({locale, text: 'next round', historyRuns: [...actual].reverse()})), JSON.stringify(assembleRunContext({locale, text: 'next round', historyRuns: [...expected].reverse()})));
 });
+
+test('one snapshot validates each source request once, while later calls revalidate blobs and observe new notes', t => {
+  const f = fixture(t), run = f.start(), call = {id: 'read-source', name: 'mioon_project_get', arguments: {}};
+  const response = model(f, run.id, [call]); response.complete();
+  const tool = f.journal.beginStep(run.id, {kind: 'tool', toolCall: call, data: {sourceModelStepId: response.step.id}});
+  f.journal.markDispatch(run.id, tool.id); f.journal.completeStep(run.id, tool.id, {result: {saved: true}});
+  let validations = 0; const assembly = createMioAssembly(f.records);
+  const journal = createMioJournal(f.store, {policy: () => structuredClone(DEFAULT_AGENT_TASK_POLICY), assembly: {...assembly, hydrate(request) {validations++; return assembly.hydrate(request);}}});
+  const before = f.store.db.prepare('SELECT total_changes() AS count').get()!.count;
+  assert.equal(journal.snapshot(run.id).steps.length, 2); assert.equal(validations, 1);
+  assert.equal(journal.snapshot(run.id).steps.length, 2); assert.equal(validations, 2);
+  assert.equal(f.store.db.prepare('SELECT total_changes() AS count').get()!.count, before);
+  f.store.tx(() => journal.appendNoteInside(run.id, randomUUID(), 'newly committed note'));
+  assert.equal(journal.snapshot(run.id).run.notes?.at(-1)?.text, 'newly committed note'); assert.equal(validations, 3);
+  const request = f.records.request(f.records.step(response.step.id).currentRequestId!), sha256 = request.inputManifest.toolsBlobHash;
+  // Simulate externally corrupted evidence in this disposable database. The
+  // rollback restores both its immutable trigger and bytes after the check.
+  assert.throws(() => f.store.tx(() => {
+    f.store.db.exec('DROP TRIGGER main.immutable_mio_blobs');
+    f.store.db.prepare('UPDATE mio_blobs SET content=?,bytes=? WHERE sha256=?').run('[1]', 3, sha256);
+    const readChanges = f.store.db.prepare('SELECT total_changes() AS count').get()!.count;
+    assert.throws(() => journal.snapshot(run.id), {code: 'AGENT_TASK_STORAGE_CORRUPT'});
+    assert.equal(f.store.db.prepare('SELECT total_changes() AS count').get()!.count, readChanges);
+    throw Error('restore disposable corruption');
+  }), /restore disposable corruption/u);
+  assert.equal(validations, 4);
+  assert.equal(journal.snapshot(run.id).steps.length, 2); assert.equal(validations, 5);
+});

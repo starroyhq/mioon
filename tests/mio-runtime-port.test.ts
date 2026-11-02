@@ -4,8 +4,12 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {createMioRuntimePort} from '../packages/business/src/agent/mio-runtime.ts';
+import {createMioRuntime, createMioRuntimePort} from '../packages/business/src/agent/mio-runtime.ts';
 import {createMioTestFixture, mioTestPolicy} from './helpers/mio-runtime-fixture.ts';
+import {openStore} from '../packages/business/src/project-file/index.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
+import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
 
 function gate() {let resolve = () => {}; const promise = new Promise<void>(done => {resolve = done;}); return {promise, resolve};}
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -97,5 +101,39 @@ for (const reject of [false, true]) test(`a transport without drain retains its 
     assert.equal(fixture.store.db.isOpen, true);
   } finally {
     release.resolve(); port.dispose(); await port.drain().catch(() => {}); await fixture.close(); rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test('runtime factories share the real application policy CAS and receipts across independent kernel hosts', async () => {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-r1-runtime-policy-'));
+  const library = openAppLibrary({dataDir: path.join(root, 'app')}), a = openStore(path.join(root, 'a')), b = openStore(path.join(root, 'b'));
+  const settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
+  const first = createMioRuntime({store: a, policyStore: library.agentPolicy, agentSettings: settings, authorizations: createTestAuthorizations(a, settings), selfPort: () => 4318});
+  const second = createMioRuntime({store: b, policyStore: library.agentPolicy, agentSettings: settings, authorizations: createTestAuthorizations(b, settings), selfPort: () => 4318});
+  try {
+    const requestId = randomUUID(), input = {requestId, expectedRevision: 0, stepLimit: 12, modes: {...first.policy().modes}};
+    const saved = first.updatePolicy(input);
+    assert.equal(saved.revision, 1); assert.deepEqual(second.policy(), saved);
+    assert.deepEqual(second.updatePolicy(input), saved);
+    assert.equal(library.db.prepare('SELECT count(*) AS count FROM agent_task_policy_requests_v2').get()!.count, 1);
+    const staleId = randomUUID();
+    assert.throws(() => second.updatePolicy({...input, requestId: staleId}), {code: 'AGENT_TASK_REVISION_CONFLICT'});
+    assert.equal(library.agentPolicy.readRequest(staleId), null);
+    assert.throws(() => a.tx(() => {
+      first.updatePolicy({...input, requestId: randomUUID(), expectedRevision: 1, stepLimit: 14});
+      throw new Error('Rollback of a project transaction');
+    }), /Rollback of a project transaction/u);
+    assert.equal(second.policy().stepLimit, 14); assert.equal(second.policy().revision, 2);
+    for (const store of [a, b]) {
+      assert.equal(store.db.prepare("SELECT 1 FROM main.sqlite_schema WHERE name='agent_task_policy_v2'").get(), undefined);
+      assert.equal(store.db.prepare('PRAGMA database_list').all().some(row => row.file === library.databaseFile), false);
+    }
+    const paid = {...input, requestId: randomUUID(), expectedRevision: 2, modes: {...saved.modes, paid: 'direct'}};
+    assert.throws(() => second.updatePolicy(paid), {code: 'AGENT_TASK_APPROVAL_REQUIRED'});
+    assert.equal(library.agentPolicy.readRequest(paid.requestId), null);
+    assert.equal(second.updatePolicy({...paid, acknowledgePaid: true}).modes.paid, 'direct');
+  } finally {
+    first.dispose(); second.dispose(); await Promise.all([first.drain(), second.drain()]);
+    await settings.close(); a.close(); b.close(); library.close(); rmSync(root, {recursive: true, force: true});
   }
 });

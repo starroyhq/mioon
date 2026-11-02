@@ -5,6 +5,8 @@ import {agentTaskControlSchema,agentTaskConversationPolicySetSchema,agentTaskDia
 import type {AgentTaskJson,AgentTaskLocale,AgentTaskSnapshot,AgentTaskStep,AgentTaskTarget,AgentTaskRun} from '@mioon/contracts/agent-tasks-v2';
 import type {WorkspaceStore} from '../db.ts';
 import {mioTable} from './mio-table-layout.ts';
+import {isProjectStore} from '../project-file/store.ts';
+import {createMioProjectJournal} from './mio-journal-factory.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
 import {hasStoreTable} from '../store-layout.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
@@ -163,7 +165,8 @@ interface Active {controller:AbortController;promise:Promise<void>;restartReques
 export interface AgentTaskRuntimeOptions {store:WorkspaceStore;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;policyStore?:AgentPolicyStore;readOnly?:boolean;assertMutationAllowed?:()=>void;checksPreflight?:AgentTaskChecksPreflight}
 /** SQLite owns progress. Process-local state is only cancellation and a single
  * current executor; opening this runtime never restarts an interrupted run. */
-export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore,journal:sourceJournal=createAgentTaskJournal(store,{policyStore}),readOnly=false,assertMutationAllowed,checksPreflight}:AgentTaskRuntimeOptions){
+export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore,journal:injectedJournal,readOnly=false,assertMutationAllowed,checksPreflight}:AgentTaskRuntimeOptions){
+  const sourceJournal:AgentTaskJournal=injectedJournal??(isProjectStore(store)?createMioProjectJournal(store,policyStore):createAgentTaskJournal(store,{policyStore}));
   const instanceId=randomUUID(),active=new Map<string,Active>();let closed=false,storageFaulted=false,storageFailureCode='AGENT_TASK_STORAGE_UNAVAILABLE';
   function failStorage(error:unknown):never {storageFaulted=true;storageFailureCode=storageFailure(error);for(const entry of active.values())entry.controller.abort();throw agentTaskFailure(storageFailureCode);}
   // A SQLite failure is an audit failure, including when it occurs in a domain

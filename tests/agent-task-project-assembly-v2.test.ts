@@ -9,14 +9,19 @@ import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createWorkspaceConfiguration} from '../packages/business/src/workspace-configuration.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
+import type {AgentPolicyStore} from '../packages/business/src/app-db/stores.ts';
+import type {ProjectStore} from '../packages/business/src/project-file/store.ts';
+import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
+import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
-import {createAgentTaskRuntime} from '../packages/business/src/agent/task-runtime-v2.ts';
+import {createMioRuntime} from '../packages/business/src/agent/mio-runtime.ts';
 import {createAgentSettings} from '../packages/business/src/agent/settings.ts';
 import {collectTaskProjectOverview} from '../packages/business/src/agent/task-context-observations-v2.ts';
 import {agentTaskJobBinding} from '../packages/business/src/agent/task-effects-v2.ts';
 import {readAgentTaskStorage} from '../packages/business/src/agent/task-storage-v2.ts';
 import {installAgentTaskDefinitionsV2, validateAgentTaskRowsV2, dropAgentTaskTargetTriggersV2} from '../packages/business/src/agent/task-schema-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
+import type {AgentTaskToolCall, AgentTaskJson} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
 
 function fixture(t: TestContext) {
@@ -31,11 +36,24 @@ function fixture(t: TestContext) {
   return {root, library, first, second};
 }
 
+/** Keep P2's real application CAS implementation, while project execution
+ * history uses R1 records. Constructing the policy façade reads no old Mio row. */
+function projectJournal(store: ProjectStore, policyStore: AgentPolicyStore) {
+  const policy = createAgentTaskJournal(store, {policyStore});
+  return createMioJournal(store, {policy: () => policy.policy(), lookupPolicy: requestId => policy.lookupPolicy(requestId), updatePolicy: (input, requestId) => policy.updatePolicy(input, requestId)});
+}
+function beginSyntheticModel(journal: ReturnType<typeof projectJournal>, runId: string, tool?: {call: AgentTaskToolCall; parameters: AgentTaskJson}) {
+  const history: AgentTaskJson[] = [{role: 'user', content: journal.run(runId).text}];
+  const body = JSON.stringify({model: 'synthetic', stream: true, messages: history, ...(tool ? {tools: [{type: 'function', function: {name: tool.call.name, parameters: tool.parameters}}]} : {})});
+  const baseline = JSON.parse(JSON.stringify(journal.revisionSnapshot(journal.run(runId).projectId))) as AgentTaskJson;
+  return journal.beginModelStep(runId, {request: {body, history}, data: {baseline}}, []);
+}
+
 test('real project journals share only injected app policy, preserving CAS, replay and project transactions', t => {
   const {library, first, second} = fixture(t);
   assert.throws(() => createAgentTaskJournal(first), {code: 'AGENT_TASK_POLICY_STORE_REQUIRED'});
   const policyStore = library.agentPolicy;
-  const a = createAgentTaskJournal(first, {policyStore}), b = createAgentTaskJournal(second, {policyStore});
+  const a = projectJournal(first, policyStore), b = projectJournal(second, policyStore);
   assert.deepEqual(a.policy(), DEFAULT_AGENT_TASK_POLICY);
   const requestId = randomUUID(), input = {...a.policy(), stepLimit: 12};
   const saved = a.updatePolicy(input, requestId);
@@ -53,11 +71,16 @@ test('real project journals share only injected app policy, preserving CAS, repl
   // A project rollback cannot undo a separately committed app-global policy.
   assert.throws(() => first.tx(() => {a.updatePolicy({...saved, stepLimit: 14}, randomUUID()); throw Error('project rollback');}), /project rollback/);
   assert.equal(b.policy().stepLimit, 14);
-  const run = a.create({projectId: first.projectId, requestId: randomUUID(), text: 'Synthetic model step', configuration: {}}).run;
-  const model = a.beginStep(run.id, {kind: 'model', request: {synthetic: true}});
-  assert.deepEqual(a.events(run.id).find(event => event.type === 'step')?.data, model);
-  const stored = first.db.prepare("SELECT data FROM agent_task_events_v2 WHERE type='step'").get();
-  assert.match(String(stored?.data), /mioon-model-request-ref\/1/u);
+  const run = a.create({projectId: first.projectId, requestId: randomUUID(), text: 'Synthetic model step', configuration: {protocol: 'chat_completions', model: 'synthetic'}}).run;
+  const model = beginSyntheticModel(a, run.id);
+  assert.deepEqual(a.snapshot(run.id).steps, [model]);
+  const events = a.events(run.id); assert.ok(events.length > 0);
+  assert.ok(events.every(event => event.type === 'invalidate' && event.data === null));
+  assert.equal(a.eventSequence(run.id), events.at(-1)?.sequence);
+  assert.deepEqual(first.db.prepare('PRAGMA main.table_info(mio_events)').all().map(row => row.name), ['runId', 'sequence', 'createdAt']);
+  const records = createMioRecords(first), stored = records.request(records.step(model.id).currentRequestId!);
+  assert.equal(stored.originalBody, (model.request as {body: string}).body);
+  assert.ok(stored.inputManifest.entryIds.includes(records.entries(run.id).find(entry => entry.kind === 'user_message')!.id));
   assert.equal(a.conversationPolicies(), true);
   assert.deepEqual(foreignKeyCheck(first.db), []);
 });
@@ -75,7 +98,7 @@ test('the app policy port checks the expected revision inside its own transactio
 
 test('policy CAS refuses an outer application transaction without changing policy or its receipt', t => {
   const {library, first} = fixture(t), store = library.agentPolicy;
-  const journal = createAgentTaskJournal(first, {policyStore: store});
+  const journal = projectJournal(first, store);
   const before = journal.updatePolicy({...structuredClone(DEFAULT_AGENT_TASK_POLICY), stepLimit: 12}, randomUUID());
   const requestId = randomUUID(), receipts = library.db.prepare('SELECT * FROM agent_task_policy_requests_v2 ORDER BY requestId').all();
   library.tx(() => {
@@ -99,8 +122,8 @@ test('policy CAS refuses an outer application transaction without changing polic
 test('runtime policy injection retains explicit paid confirmation and rejects stale policy edits', async t => {
   const {library, first} = fixture(t), settings = await createAgentSettings({persistence: {load: async () => null, save: async () => {}}});
   t.after(() => settings.close());
-  const runtime = createAgentTaskRuntime({store: first, policyStore: library.agentPolicy, agentSettings: settings,
-    authorizations: createTestAuthorizations(() => ({...first}), settings), selfPort: () => 4318});
+  const runtime = createMioRuntime({store: first, policyStore: library.agentPolicy, agentSettings: settings,
+    authorizations: createTestAuthorizations(first, settings), selfPort: () => 4318});
   t.after(() => runtime.close());
   const input = {requestId: randomUUID(), expectedRevision: 0, stepLimit: 30, modes: {...runtime.policy().modes, paid: 'direct'}};
   assert.throws(() => runtime.updatePolicy(input), {code: 'AGENT_TASK_APPROVAL_REQUIRED'});
@@ -150,14 +173,20 @@ test('project tools snapshot all eight attached content families and stage attac
   assert.ok(staged !== null && typeof staged === 'object' && !Array.isArray(staged));
   assert.equal(readFileSync(path.join(store.localDir, 'imports', `${staged.id}.bin`), 'utf8'), 'synthetic private bytes');
   assert.equal(existsSync(path.join(store.projectDir, 'agent-imports')), false);
-  assert.equal(db.prepare('SELECT relativePath FROM agent_task_imports_v2 WHERE requestId=?').get(requestId)?.relativePath, `imports/${staged.id}.bin`);
+  assert.equal(db.prepare('SELECT relativePath FROM mio_imports WHERE requestId=?').get(requestId)?.relativePath, `imports/${staged.id}.bin`);
   const cube = 'LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n';
   const selected = await tools.stageImport({projectId, requestId: randomUUID(), name: 'synthetic.cube', mimeType: '', dataBase64: Buffer.from(cube).toString('base64')});
   assert.ok(selected !== null && typeof selected === 'object' && !Array.isArray(selected));
-  const journal = createAgentTaskJournal(store, {policyStore: library.agentPolicy});
-  const run = journal.create({projectId, requestId: randomUUID(), text: 'Import selected local cube', configuration: {}}).run;
+  const journal = projectJournal(store, library.agentPolicy);
+  const run = journal.create({projectId, requestId: randomUUID(), text: 'Import selected local cube', configuration: {protocol: 'chat_completions', model: 'synthetic'}}).run;
   const prepared = tools.prepare({projectId, operation: 'lut.importSelected', input: {handle: selected.id}});
-  const step = journal.beginStep(run.id, {kind: 'tool', tier: prepared.risk, targets: prepared.targets});
+  assert.equal(typeof selected.id, 'string');
+  const call: AgentTaskToolCall = {id: 'import-selected-cube', name: 'mioon_lut_import_selected', arguments: {handle: selected.id}};
+  const definition = tools.list().find(tool => tool.name === call.name); assert.ok(definition);
+  const model = beginSyntheticModel(journal, run.id, {call, parameters: definition.parameters as AgentTaskJson});
+  journal.markDispatch(run.id, model.id);
+  journal.completeStep(run.id, model.id, {result: {text: '', toolCalls: [call as unknown as AgentTaskJson], providerOutput: {role: 'assistant', content: null, tool_calls: [{id: call.id, type: 'function', function: {name: call.name, arguments: JSON.stringify(call.arguments)}}]}}});
+  const step = journal.beginStep(run.id, {kind: 'tool', toolCall: call, data: {sourceModelStepId: model.id}, tier: prepared.risk, targets: prepared.targets});
   journal.markDispatch(run.id, step.id);
   const outcome = await tools.execute(prepared, {runId: run.id, stepId: step.id, requestId: step.id,
     beforeEffect: () => journal.assertTargets(projectId, prepared.targets),
@@ -166,11 +195,11 @@ test('project tools snapshot all eight attached content families and stage attac
   });
   if (!outcome.recorded) journal.completeStep(run.id, step.id, {result: outcome.result, changes: outcome.changes});
   assert.equal(journal.step(step.id).status, 'completed');
-  assert.equal(db.prepare('SELECT status FROM agent_task_imports_v2 WHERE id=?').get(String(selected.id))?.status, 'imported');
+  assert.equal(db.prepare('SELECT status FROM mio_imports WHERE id=?').get(String(selected.id))?.status, 'imported');
   assert.equal(db.prepare('SELECT count(*) AS n FROM project.project_lut_resources').get()?.n, 1);
   const jobId = randomUUID();
   store.put('jobs', {id: jobId, projectId, shotId, status: 'queued'});
-  store.tx(() => db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)')
+  store.tx(() => db.prepare('INSERT INTO mio_job_origins(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)')
     .run('job', jobId, run.id, step.id, projectId, step.id, 'generation.submit'));
   assert.equal(collectTaskProjectOverview(store, projectId).counts.pendingBackground, 1);
   assert.equal(journal.snapshot(run.id).backgroundPending, true);
@@ -179,10 +208,19 @@ test('project tools snapshot all eight attached content families and stage attac
   assert.deepEqual(foreignKeyCheck(db), []);
 });
 
-test('legacy workspace schema entry points leave kernel project and TEMP target triggers intact', t => {
+test('legacy workspace schema entry points leave content TEMP and history process target triggers intact', t => {
   const {first} = fixture(t), before = schemaObjects(first.db);
   assert.ok(before.some(row => row.schema === 'project' && row.name.startsWith('agent_target_')));
-  assert.ok(before.some(row => row.schema === 'temp' && row.name.startsWith('agent_target_')));
+  assert.ok(before.some(row => row.schema === 'temp' && row.name === 'subject_variant_version_binding'));
+  assert.ok(before.some(row => row.schema === 'temp' && row.name === 'scene_result_identity'));
+  for (const table of ['jobs', 'exports', 'image_tasks', 'frame_tasks']) for (const operation of ['insert', 'update', 'delete']) {
+    const name = `agent_target_${table}_${operation}_v2`;
+    assert.ok(before.some(row => row.schema === 'main' && row.name === name));
+    assert.equal(before.some(row => row.schema === 'project' && row.name === name), false);
+    assert.equal(before.some(row => row.schema === 'temp' && row.name === name), false);
+  }
+  assert.ok(before.some(row => row.schema === 'project' && row.name === 'agent_target_shots_update_v2'));
+  assert.ok(before.some(row => row.schema === 'project' && row.name === 'agent_target_subjects_update_v2'));
   for (const legacy of [installAgentTaskDefinitionsV2, validateAgentTaskRowsV2, dropAgentTaskTargetTriggersV2]) {
     assert.throws(() => legacy(first.db), {name: 'TypeError', message: 'Agent task workspace schema operations do not accept project databases'});
   }

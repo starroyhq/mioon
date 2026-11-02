@@ -29,6 +29,7 @@ import type {AgentTaskJournal} from './task-journal-v2.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import {createMioRecords} from './mio-records.ts';
 import {createMioJournal} from './mio-journal.ts';
+import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {createMioAssembly} from './mio-assembly.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
 import {createPrevisReaders,prunePrevisThumbnails} from '../previs.ts';
@@ -350,7 +351,7 @@ const previsWrite=(operation:string):boolean=>operation==='previs.create'||opera
 export function createAgentTaskTools({store,services,policyStore,journal:injectedJournal}:{store:WorkspaceStore;services:OrdinaryServices;policyStore?:AgentPolicyStore;journal?:AgentTaskJournal}){
  const {db}=store;
  const importRoot=storeDirectories(store).localDir,importDirectory=isProjectLayout(db)?'imports':'agent-imports';
- const journal=injectedJournal??(isProjectStore(store)?createMioJournal(store,{policy:()=>{throw Object.assign(Error('Mio policy was not supplied to the tool journal'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});},assembly:createMioAssembly(createMioRecords(store))}):createAgentTaskJournal(store,{policyStore}));
+ const journal=injectedJournal??(isProjectStore(store)?policyStore?createMioProjectJournal(store,policyStore):createMioJournal(store,{policy:()=>{throw Object.assign(Error('Mio policy was not supplied to the tool journal'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});},assembly:createMioAssembly(createMioRecords(store))}):createAgentTaskJournal(store,{policyStore}));
  // Mio reads back a previs node it created or saved the way it reads one, with framing.
  const taskResult=(operation:string,projectId:string,value:unknown):AgentTaskJson=>previsWrite(operation)&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):transactionResult(operation,projectId,value);
  const preparedOrigins=new WeakMap<AgentTaskEffectOrigin,PreparedAgentTaskTool>();

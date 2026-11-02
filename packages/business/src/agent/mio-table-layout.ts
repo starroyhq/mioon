@@ -12,6 +12,5 @@ const tables = {
 /** Both layouts are fixed by their opener. Callers select a known table name;
  * no marker probing, SQL rewriting or compatibility tables are involved. */
 export function mioTable(db: unknown, kind: keyof typeof tables): string {
-  return tables[kind][db instanceof DatabaseSync && isProjectDatabase(db) ? 1 : 0];
+  return tables[kind][isProjectDatabase(db) ? 1 : 0];
 }
-import {DatabaseSync} from 'node:sqlite';

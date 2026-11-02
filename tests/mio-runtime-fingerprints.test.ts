@@ -5,10 +5,13 @@ import {createProjectFile, isProjectStore, openStore} from '../packages/business
 import {createMioRecords} from '../packages/business/src/agent/mio-records.ts';
 import {createMioAssembly} from '../packages/business/src/agent/mio-assembly.ts';
 import {createMioRuntime} from '../packages/business/src/agent/mio-runtime.ts';
+import {createMioJournal} from '../packages/business/src/agent/mio-journal.ts';
+import {createAgentTaskTools} from '../packages/business/src/agent/task-tools-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {
   collectTaskRequestFingerprints, readTaskRequestFingerprintFixture,
 } from './helpers/agent-task-request-fingerprints-v2.ts';
+import {createMioTestAppPorts} from './helpers/mio-runtime-app-ports.ts';
 
 const projectId = '00000000-0000-4000-8000-000000000001';
 const readPolicy = {
@@ -23,6 +26,12 @@ test('K1 Mio entries retain all 99 raw request fingerprints and rebuild sent byt
     openStore(root) {
       createProjectFile(path.join(root, 'project.mioon'), {projectId});
       return openStore(root);
+    },
+    createFixturePorts: createMioTestAppPorts,
+    createTools(options) {
+      assert.ok(isProjectStore(options.store));
+      const journal = createMioJournal(options.store, {...readPolicy, assembly: createMioAssembly(createMioRecords(options.store))});
+      return createAgentTaskTools({...options, journal});
     },
     createRuntime(options) {
       assert.ok(isProjectStore(options.store));

@@ -55,6 +55,7 @@ export interface TaskRequestFingerprintHarness {
     close: () => void;
   };
   createRuntime?: (options: AgentTaskRuntimeOptions) => ReturnType<typeof createAgentTaskRuntime>;
+  createTools?: (options: Parameters<typeof createAgentTaskTools>[0]) => ReturnType<typeof createAgentTaskTools>;
   stageAttachment?: (store: WorkspaceStore, input: {
     id: string; projectId: string; requestId: string; name: string; mimeType: string;
     relativePath: string; sha256: string; createdAt: string;
@@ -188,7 +189,7 @@ async function fixture(protocol: AgentProtocol, official = false, harness: TaskR
   }});
   const authorizations = ports?.createAuthorizations(settings) ?? createTestAuthorizations(() => store, settings);
   await authorizeTestScope(authorizations, 'project_agent');
-  const tools = createAgentTaskTools({store, services}), requests: string[] = [], intents: {runId: string; stepId: string}[] = [];
+  const tools = (harness.createTools ?? createAgentTaskTools)({store, services}), requests: string[] = [], intents: {runId: string; stepId: string}[] = [];
   let script: Script = async function* () {yield {type: 'done', output: output(protocol)};};
   const gateway: TaskGateway = async function* (request) {
     request.beforeSubmit?.();

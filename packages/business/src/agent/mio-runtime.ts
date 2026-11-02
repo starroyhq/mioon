@@ -1,6 +1,7 @@
 import type {AgentTaskRuntimeOptions} from './task-runtime-v2.ts';
 import {createAgentTaskRuntime} from './task-runtime-v2.ts';
 import type {AgentTaskJournal} from './task-journal-v2.ts';
+import {createMioProjectJournal} from './mio-journal-factory.ts';
 import {isProjectStore} from '../project-file/store.ts';
 import type {ProjectStore} from '../project-file/store.ts';
 import {createMioRecords} from './mio-records.ts';
@@ -12,19 +13,20 @@ import {createMioJournal} from './mio-journal.ts';
 export type MioPolicyPort = Pick<AgentTaskJournal, 'policy' | 'lookupPolicy' | 'updatePolicy'>;
 export interface MioRuntimeOptions extends Omit<AgentTaskRuntimeOptions, 'store'> {
   readonly store: ProjectStore;
-  readonly policy: MioPolicyPort;
+  readonly policy?: MioPolicyPort;
 }
 
 /** One executor and cancellation scope per host. The caller drains the runtime
  * before closing its store; disposing the runtime never closes that store. */
-export function createMioRuntime({store, policy, journal, ...options}: MioRuntimeOptions) {
+export function createMioRuntime({store, policy, policyStore, journal, ...options}: MioRuntimeOptions) {
   if (!isProjectStore(store)) throw Object.assign(new Error('A live kernel project store is required.'), {code: 'AGENT_TASK_STORAGE_UNAVAILABLE'});
-  const source = journal ?? createMioJournal(store, {
+  if (!policy && !policyStore) throw Object.assign(new Error('The application policy port is required.'), {code: 'AGENT_TASK_POLICY_STORE_REQUIRED'});
+  const source = journal ?? (policy ? createMioJournal(store, {
     assembly: createMioAssembly(createMioRecords(store)),
     policy: () => policy.policy(),
     lookupPolicy: id => policy.lookupPolicy(id),
     updatePolicy: (input, id) => policy.updatePolicy(input, id),
-  });
+  }) : createMioProjectJournal(store, policyStore));
   const runtime = createAgentTaskRuntime({...options, store, journal: source});
   return {...runtime, interrupt: () => runtime.close(), dispose: () => runtime.close()};
 }
@@ -61,7 +63,7 @@ export function createMioRuntimePort<Request>(options: MioRuntimeOptions & {
       void pending.then(() => requests.delete(pending), () => requests.delete(pending));
       return pending;
     },
-    isBusy: (): boolean => requests.size > 0 || runtime.isBusy(),
+    isBusy: (): boolean => !disposed && (requests.size > 0 || runtime.isBusy()),
     interrupt,
     async drain(): Promise<void> {
       // Both scopes must settle before the host closes the shared connection.

@@ -46,12 +46,52 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   const {db, projectId} = store, records = createMioRecords(store);
   const assembly = options.assembly ?? createMioAssembly(records);
   const contextAssembly = createMioAssembly(records);
-  const transact = <T>(apply: () => T): T => db.isTransaction ? apply() : store.tx(apply);
-  const inside = (): void => { if (!db.isTransaction) fail('AGENT_TASK_TRANSACTION_REQUIRED'); };
+  interface ProjectionCache {
+    entries: Map<string, MioEntry[]>; payloads: Map<string, AgentTaskJson>; blobs: Map<string, string>;
+    requests: Map<string, AgentTaskJson>; outputs: Map<string, AgentTaskJson>; contexts: Map<string, AgentTaskJson[]>;
+  }
+  let projectionDepth = 0, projectionCache: ProjectionCache | undefined;
+  const invalidateProjection = (): void => { projectionCache = undefined; };
+  const readCache = (): ProjectionCache | undefined => projectionDepth === 0 ? undefined : projectionCache ??= {
+    entries: new Map(), payloads: new Map(), blobs: new Map(), requests: new Map(), outputs: new Map(), contexts: new Map(),
+  };
+  function project<Args extends unknown[], Result>(read: (...args: Args) => Result): (...args: Args) => Result {
+    return (...args) => {
+      const outermost = projectionDepth === 0; projectionDepth++;
+      try { return read(...args); } finally { projectionDepth--; if (outermost) invalidateProjection(); }
+    };
+  }
+  // One synchronous public read validates a source once even if several step
+  // projections need it. Never retain that validation across another call or
+  // a mutation; a subsequent read must detect changed or missing evidence.
+  const transact = <T>(apply: () => T): T => {
+    invalidateProjection();
+    try { return db.isTransaction ? apply() : store.tx(apply); } finally { invalidateProjection(); }
+  };
+  const inside = (): void => { if (!db.isTransaction) fail('AGENT_TASK_TRANSACTION_REQUIRED'); invalidateProjection(); };
   const own = (id: string): void => { if (id !== projectId) fail('AGENT_TASK_NOT_FOUND'); };
-  const payload = (entry: MioEntry): AgentTaskJson => records.payload(entry);
+  const entries = (runId: string): MioEntry[] => {
+    const cache = readCache(), cached = cache?.entries.get(runId); if (cached !== undefined) return cached;
+    const value = records.entries(runId); cache?.entries.set(runId, value); return value;
+  };
+  const payload = (entry: MioEntry): AgentTaskJson => {
+    const cache = readCache(), cached = cache?.payloads.get(entry.id); if (cached !== undefined) return cached;
+    const value = records.payload(entry); cache?.payloads.set(entry.id, value); return value;
+  };
+  const blob = (sha256: string): string => {
+    const cache = readCache(), cached = cache?.blobs.get(sha256); if (cached !== undefined) return cached;
+    const value = records.blob(sha256); cache?.blobs.set(sha256, value); return value;
+  };
+  const requestProjection = (request: MioRequest): AgentTaskJson => {
+    const cache = readCache(), cached = cache?.requests.get(request.id); if (cached !== undefined) return cached;
+    const value = assembly.hydrate(request); cache?.requests.set(request.id, value); return value;
+  };
+  const contextProjection = (entryId: string, view: AgentTaskJson): AgentTaskJson[] => {
+    const cache = readCache(), cached = cache?.contexts.get(entryId); if (cached !== undefined) return cached;
+    const value = contextAssembly.hydrateContext(view); cache?.contexts.set(entryId, value); return value;
+  };
   function content(runId: string, kind: MioEntry['kind']): Array<{entry: MioEntry; value: Record<string, AgentTaskJson>}> {
-    return records.entries(runId).filter(entry => entry.kind === kind).map(entry => {
+    return entries(runId).filter(entry => entry.kind === kind).map(entry => {
       const value = payload(entry); if (!object(value)) return fail('AGENT_TASK_STORAGE_CORRUPT'); return {entry, value};
     });
   }
@@ -69,7 +109,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function run(id: string): AgentTaskRun {
     const value = records.run(id), first = content(id, 'user_message')[0]?.value;
     if (!first || typeof first.text !== 'string' || value.configurationBlobHash === null) return fail('AGENT_TASK_STORAGE_CORRUPT');
-    const metadata = content(id, 'host_hint').find(item => item.value.type === 'run_context')?.value;
+    const contextEntry = content(id, 'host_hint').find(item => item.value.type === 'run_context'), metadata = contextEntry?.value;
     const state = content(id, 'host_state').filter(item => item.value.type === 'run_state').at(-1)?.value;
     const bindings = new Map<string, string>();
     for (const item of content(id, 'host_state')) if (item.value.type === 'notes_bound' && typeof item.value.modelStepId === 'string' && Array.isArray(item.value.requestIds)) for (const requestId of item.value.requestIds) if (typeof requestId === 'string') bindings.set(requestId, item.value.modelStepId);
@@ -79,11 +119,12 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     });
     const skippedTargets = content(id, 'host_state').filter(item => item.value.type === 'skipped_targets').flatMap(item => Array.isArray(item.value.items) ? item.value.items as unknown as AgentTaskSkippedTarget[] : []);
     return {id, projectId, conversationId: value.conversationId, requestId: value.requestId, text: first.text, notes, skippedTargets, status: value.status, revision: value.revision, stepLimit: value.stepLimit, budget: value.budget, stepsUsed: value.stepsUsed,
-      configuration: decode<AgentTaskJson>(records.blob(value.configurationBlobHash)), ...(value.settingsRevision === null ? {} : {settingsRevision: value.settingsRevision}),
-      ...(metadata?.contextView === undefined ? {} : {context: contextAssembly.hydrateContext(metadata.contextView)}), ...(metadata?.attachments === undefined ? {} : {attachments: metadata.attachments as string[]}), ...(metadata?.diagnostic === undefined ? {} : {diagnostic: metadata.diagnostic as unknown as AgentTaskRun['diagnostic']}),
+      configuration: decode<AgentTaskJson>(blob(value.configurationBlobHash)), ...(value.settingsRevision === null ? {} : {settingsRevision: value.settingsRevision}),
+      ...(metadata?.contextView === undefined || contextEntry === undefined ? {} : {context: contextProjection(contextEntry.entry.id, metadata.contextView)}), ...(metadata?.attachments === undefined ? {} : {attachments: metadata.attachments as string[]}), ...(metadata?.diagnostic === undefined ? {} : {diagnostic: metadata.diagnostic as unknown as AgentTaskRun['diagnostic']}),
       createdAt: value.createdAt, updatedAt: value.updatedAt, ...(typeof state?.reason === 'string' ? {pauseReason: state.reason} : {})};
   }
   function output(entryId: string): AgentTaskJson {
+    const cache = readCache(), cached = cache?.outputs.get(entryId); if (cached !== undefined) return cached;
     const saved = payload(records.entry(entryId)); if (!object(saved)) return fail('AGENT_TASK_STORAGE_CORRUPT');
     const provider = saved.providerOutput; let text = ''; const toolCalls: AgentTaskJson[] = [];
     if (saved.protocol === 'chat_completions' && object(provider)) {
@@ -99,7 +140,7 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
     } else return fail('AGENT_TASK_STORAGE_CORRUPT');
     const source = db.prepare("SELECT currentRequestId FROM mio_steps WHERE resultEntryId=? AND projectId=? AND kind='model'").get(entryId, projectId);
     if (!source || typeof source.currentRequestId !== 'string') return fail('AGENT_TASK_STORAGE_CORRUPT');
-    const request = assembly.hydrate(records.request(source.currentRequestId));
+    const request = requestProjection(records.request(source.currentRequestId));
     if (!object(request) || typeof request.body !== 'string') return fail('AGENT_TASK_STORAGE_CORRUPT');
     const body = decode<Record<string, AgentTaskJson>>(request.body), definitions = Array.isArray(body.tools) ? body.tools : [];
     const declaresExplanation = (schema: AgentTaskJson | undefined, depth = 0): boolean => {
@@ -119,7 +160,8 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       const args = call.arguments;
       return {...call, arguments: (!definition || declaresExplanation(schema)) && object(args) ? Object.fromEntries(Object.entries(args).filter(([key]) => key !== '_mio_step')) : args!};
     });
-    return {text, toolCalls: projectedCalls, providerOutput: provider!, ...(saved.usage === undefined ? {} : {usage: saved.usage})};
+    const value = {text, toolCalls: projectedCalls, providerOutput: provider!, ...(saved.usage === undefined ? {} : {usage: saved.usage})};
+    cache?.outputs.set(entryId, value); return value;
   }
   function step(id: string): AgentTaskStep {
     const value = records.step(id), meta = object(value.data) ? value.data : {};
@@ -131,15 +173,15 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
       if (!object(model) || !Array.isArray(model.toolCalls)) return fail('AGENT_TASK_STORAGE_CORRUPT');
       const projected = model.toolCalls[value.sourceCallIndex];
       if (!object(projected) || projected.id !== raw.id || projected.name !== raw.name || projected.arguments === undefined) return fail('AGENT_TASK_STORAGE_CORRUPT');
-      call = {id: raw.id, name: raw.name, arguments: projected.arguments};
+      call = {id: raw.id, name: raw.name, arguments: structuredClone(projected.arguments)};
     }
     const explanation = call && value.sourceEntryId ? taskToolExplanation(output(value.sourceEntryId) as unknown as TaskModelOutput, call.id) : undefined;
     const partial = value.partialText === null ? null : meta.partialEncoding === 'json' ? decode<string>(value.partialText) : value.partialText;
     const text = partial ?? (value.kind === 'model' && value.status === 'completed' && object(result) && typeof result.text === 'string' ? result.text : explanation);
     return {id, runId: value.runId, position: value.position, kind: value.kind, status: value.status, createdAt: value.createdAt, updatedAt: value.updatedAt,
       ...(value.tier === null ? {} : {tier: value.tier}), ...(call ? {toolCall: call} : {}), ...(result === undefined ? {} : {result}),
-      ...(value.currentRequestId === null ? {} : {request: assembly.hydrate(records.request(value.currentRequestId))}),
-      ...(meta.request === undefined ? {} : {request: meta.request}), ...(meta.data === undefined && meta.baselineBlobHash === undefined ? {} : {data: typeof meta.baselineBlobHash === 'string' ? {...(object(meta.data) ? meta.data : {}), baseline: decode<AgentTaskJson>(records.blob(meta.baselineBlobHash))} : meta.data}),
+      ...(value.currentRequestId === null ? {} : {request: requestProjection(records.request(value.currentRequestId))}),
+      ...(meta.request === undefined ? {} : {request: meta.request}), ...(meta.data === undefined && meta.baselineBlobHash === undefined ? {} : {data: typeof meta.baselineBlobHash === 'string' ? {...(object(meta.data) ? meta.data : {}), baseline: decode<AgentTaskJson>(blob(meta.baselineBlobHash))} : meta.data}),
       ...(controls.targets === undefined ? {} : {targets: controls.targets as unknown as AgentTaskTarget[]}), ...(controls.error === undefined ? {} : {error: controls.error as unknown as AgentTaskStep['error']}), ...(controls.cost === undefined ? {} : {cost: controls.cost as AgentTaskStep['cost']}),
       ...(text === undefined ? {} : {text})};
   }
@@ -521,17 +563,17 @@ export function createMioJournal(store: ProjectStore, options: MioJournalOptions
   function markChangeSupersededInside(id: string): AgentTaskChange { inside(); const value = change(id); if (!value.reversible || value.status !== 'applied') fail('AGENT_TASK_NOT_REVERSIBLE'); return saveChange({...value, status: 'superseded'}); }
   function markChangeRetainedInside(id: string, reason: string): AgentTaskChange { inside(); const value = change(id); if (!value.reversible || value.status !== 'applied' || value.operation !== 'shot.create') fail('AGENT_TASK_NOT_REVERSIBLE'); return saveChange({...value, reversible: false, summary: `${value.summary ?? value.operation}（${reason}）`}); }
   return {
-    expireClaims, markClaimsUncertain, edit, conversationPolicy, setConversationPolicy, effectiveModes, sentConversationModesMatch, conversationPolicies: () => true,
-    lookupRequest: (id, requestId) => { own(id); const row = db.prepare('SELECT id FROM mio_runs WHERE projectId=? AND requestId=?').get(id, requestId); return row ? snapshot(String(row.id)) : null; },
+    expireClaims, markClaimsUncertain, edit, conversationPolicy: project(conversationPolicy), setConversationPolicy, effectiveModes, sentConversationModesMatch, conversationPolicies: () => true,
+    lookupRequest: (id, requestId) => project(() => { own(id); const row = db.prepare('SELECT id FROM mio_runs WHERE projectId=? AND requestId=?').get(id, requestId); return row ? snapshot(String(row.id)) : null; })(),
     lookupEdit: requestId => records.editReceipt(requestId)?.data ?? null,
-    create, conversation, conversationSummary, contextRuns, modelContextRuns, requestConversationId, snapshot, hasPendingBackground, history,
-    latestDiagnostic: profile => { const value = allRuns().filter(item => item.diagnostic?.profile === profile).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).at(0); return value ? snapshot(value.id) : null; },
-    list: (id, {excludeDiagnostics = false} = {}) => { own(id); return allRuns().filter(item => !excludeDiagnostics || !item.diagnostic).reverse().slice(0, 100); },
+    create, conversation: project(conversation), conversationSummary: project(conversationSummary), contextRuns: project(contextRuns), modelContextRuns: project(modelContextRuns), requestConversationId: project(requestConversationId), snapshot: project(snapshot), hasPendingBackground, history: project(history),
+    latestDiagnostic: profile => project(() => { const value = allRuns().filter(item => item.diagnostic?.profile === profile).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).at(0); return value ? snapshot(value.id) : null; })(),
+    list: (id, {excludeDiagnostics = false} = {}) => project(() => { own(id); return allRuns().filter(item => !excludeDiagnostics || !item.diagnostic).reverse().slice(0, 100); })(),
     events, eventSequence: (runId, after = 0) => records.events(runId, after).at(-1)?.sequence ?? after,
-    run, step, transition, beginStep, beginModelStep, prepareModelStep, appendNoteInside, skipTargetsInside, updateStep, dispatchPrevented, markDispatch, completeStepInside, appendChangesInside,
+    run: project(run), step: project(step), transition, beginStep, beginModelStep, prepareModelStep, appendNoteInside, skipTargetsInside, updateStep, dispatchPrevented, markDispatch, completeStepInside, appendChangesInside,
     completeStep: (runId, stepId, input) => transact(() => completeStepInside(runId, stepId, input)), appendText, appendEvent,
     control, performControl, rejectControl, beginControl, finishControl, lookupControl, resume, recover, policy,
-    updatePolicy: (input, requestId) => options.updatePolicy ? options.updatePolicy(input, requestId) : fail('AGENT_TASK_STORAGE_UNAVAILABLE'), lookupPolicy: requestId => options.lookupPolicy ? options.lookupPolicy(requestId) : fail('AGENT_TASK_STORAGE_UNAVAILABLE'),
+    updatePolicy: (input, requestId) => { invalidateProjection(); try { return options.updatePolicy ? options.updatePolicy(input, requestId) : fail('AGENT_TASK_STORAGE_UNAVAILABLE'); } finally { invalidateProjection(); } }, lookupPolicy: requestId => options.lookupPolicy ? options.lookupPolicy(requestId) : fail('AGENT_TASK_STORAGE_UNAVAILABLE'),
     targetRevision, revisionSnapshot: id => { own(id); return readMioTargetRevisions(db, id); }, assertTargets, conflictingTargets, claims, claim, releaseClaims,
     markChangeRevertedInside, markChangeRetainedInside, markChangeSupersededInside,
   };

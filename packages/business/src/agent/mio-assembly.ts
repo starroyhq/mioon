@@ -21,9 +21,16 @@ type Descriptor =
   | {object: [string, Descriptor][]}
   | {concat: Descriptor[]};
 interface Reference {source: string; path: Path; encoding?: 'json'; slice?: [number, number]}
-interface Candidate {reference: Reference; kind: string}
-interface SourceIndex {values: Map<string, Candidate[]>; strings: Map<string, {text: string; candidate: Candidate}[]>}
-interface Source {id: string; payload: AgentTaskJson; sha256: string; kind?: string}
+interface Candidate {reference: Reference; kind: string; modelSource?: string}
+interface SourceIndex {
+  values: Map<string, Candidate[]>;
+  strings: Map<string, {text: string; candidate: Candidate}[]>;
+  modelCalls: Map<string, Candidate[]>;
+  resultCalls: Map<string, Candidate[]>;
+  modelOrder: string[];
+  strictModels: boolean;
+}
+interface Source {id: string; payload: AgentTaskJson; sha256: string; kind?: string; callId?: string; modelSource?: string}
 interface FrozenEnvelope {
   version: 1;
   keys: string[];
@@ -68,16 +75,59 @@ function validVersion(version: number): void { if (version !== 1 && version !== 
  * copied into another per-request transcript. Literal nodes describe only the
  * deterministic host/protocol wrapping and compacted views. Every such view
  * retains its exact source range rather than being recomputed from live state. */
-function describe(value: AgentTaskJson, sources: SourceIndex, cursors = new Map<string, number>(), role = ''): Descriptor {
+function modelCallIds(value: AgentTaskJson): string[] {
+  if (!object(value)) return [];
+  if (value.type === 'function_call' && typeof value.call_id === 'string') return [value.call_id];
+  if (value.type === 'tool_use' && typeof value.id === 'string') return [value.id];
+  if (value.role !== 'assistant') return [];
+  if (Array.isArray(value.tool_calls)) return value.tool_calls.flatMap(call => object(call) && typeof call.id === 'string' ? [call.id] : []);
+  return Array.isArray(value.content) ? value.content.flatMap(modelCallIds) : [];
+}
+function describe(value: AgentTaskJson, sources: SourceIndex, cursors = new Map<string, number>(), role = '', preferredSource?: string): Descriptor {
   const currentRole = object(value) ? typeof value.role === 'string' ? value.role : value.type === 'function_call_output' || value.type === 'tool_result' ? 'tool' : value.type === 'function_call' || value.type === 'tool_use' ? 'assistant' : role : role;
   const choose = (items: readonly Candidate[], key: string): Reference => {
     const kinds = currentRole === 'user' ? ['user_message', 'note'] : currentRole === 'assistant' ? ['model_output'] : currentRole === 'tool' ? ['tool_result', 'answer'] : [];
-    const preferred = items.filter(item => kinds.includes(item.kind)), pool = preferred.length ? preferred : items;
+    const kindMatches = items.filter(item => kinds.includes(item.kind)), pool = kindMatches.length ? kindMatches : items;
     const cursorKey = `${currentRole}:${key}`, cursor = cursors.get(cursorKey) ?? 0;
     cursors.set(cursorKey, cursor + 1); return pool[Math.min(cursor, pool.length - 1)]!.reference;
   };
+  if (object(value)) {
+    const calls = modelCallIds(value);
+    const resultId = currentRole === 'tool' ? value.tool_call_id ?? value.call_id ?? value.tool_use_id : undefined;
+    const groups = calls.length ? calls.map(id => (sources.modelCalls.get(id) ?? []).filter(candidate => !sources.strictModels || sources.modelOrder.includes(candidate.reference.source))) : typeof resultId === 'string' ? [sources.resultCalls.get(resultId) ?? []] : [];
+    // Once a carrier is bound, its business arguments may themselves contain
+    // fields named type/id/call_id. Those are data, not another provider call.
+    const businessData = preferredSource !== undefined && groups.length > 0 && groups.every(group => !group.some(candidate => candidate.reference.source === preferredSource));
+    if (!businessData && calls.length && sources.strictModels && groups.some(group => !group.length)) return fail();
+    if (!businessData && groups.length && groups.every(group => group.length)) {
+      let candidates = groups[0]!.filter(candidate => groups.every(group => group.some(item => item.reference.source === candidate.reference.source)));
+      if (!candidates.length) return fail();
+      if (!preferredSource || !candidates.some(candidate => candidate.reference.source === preferredSource)) {
+        if (calls.length && sources.modelOrder.length) {
+          const current = cursors.get('model-current'), currentId = current === undefined ? undefined : sources.modelOrder[current];
+          const withinCurrent = currentId && candidates.find(candidate => candidate.reference.source === currentId);
+          const seen = currentId && calls.some(id => cursors.has(`seen-model-call:${currentId}:${id}`));
+          const next = cursors.get('model-next') ?? 0;
+          // Responses emits one item per call; a Messages/Chat message owns its
+          // entire batch. Distinct batches may legitimately reuse a call ID.
+          if (withinCurrent && !seen && value.role !== 'assistant') preferredSource = currentId;
+          else {
+            const index = sources.modelOrder.findIndex((id, index) => index >= next && candidates.some(candidate => candidate.reference.source === id));
+            if (index < 0) return fail();
+            preferredSource = sources.modelOrder[index]; cursors.set('model-current', index); cursors.set('model-next', index + 1);
+          }
+          for (const id of calls) cursors.set(`seen-model-call:${preferredSource}:${id}`, 1);
+        } else {
+          const current = cursors.get('model-current'), currentId = current === undefined ? undefined : sources.modelOrder[current];
+          if (typeof resultId === 'string' && currentId) { const matching = candidates.filter(candidate => candidate.modelSource === currentId); if (matching.length) candidates = matching; }
+          preferredSource = choose(candidates, `call-identity:${calls.join(',') || String(resultId)}`).source;
+        }
+      }
+    }
+  }
   const key = encoded(value);
   let matches = sources.values.get(key);
+  if (preferredSource) matches = matches?.filter(item => item.reference.source === preferredSource);
   // A copied message object in an older context is a view of an action. Bind
   // user/assistant actions to their own canonical entries instead of accepting
   // that older equal object and thereby losing a later action's identity.
@@ -87,14 +137,25 @@ function describe(value: AgentTaskJson, sources: SourceIndex, cursors = new Map<
   }
   const saved = matches?.length ? choose(matches, key) : undefined;
   if (saved) return {source: saved.source, path: [...saved.path], ...(saved.encoding ? {encoding: saved.encoding} : {})};
-  if (Array.isArray(value)) return {array: value.map(item => describe(item, sources, cursors, role))};
+  if (Array.isArray(value)) {
+    if (sources.modelOrder.length && !cursors.has('model-next')) {
+      let groups = 0, responseGroup = false;
+      for (const item of value) if (object(item)) {
+        if (item.role === 'assistant' && modelCallIds(item).length) { groups++; responseGroup = false; }
+        else if (item.type === 'function_call') { if (!responseGroup) groups++; responseGroup = true; }
+        else if (item.role === 'user' || item.role === 'tool' || item.type === 'function_call_output') responseGroup = false;
+      }
+      if (groups) cursors.set('model-next', Math.max(0, sources.modelOrder.length - groups));
+    }
+    return {array: value.map(item => describe(item, sources, cursors, role, preferredSource))};
+  }
   if (object(value)) {
-    return {object: Object.entries(value).map(([key, item]) => [key, describe(item, sources, cursors, currentRole)])};
+    return {object: Object.entries(value).map(([key, item]) => [key, describe(item, sources, cursors, currentRole, preferredSource)])};
   }
   if (typeof value === 'string' && value.length >= 16) {
     const parts: Descriptor[] = []; let literal = '', cursor = 0;
     while (cursor < value.length) {
-      const candidates = (sources.strings.get(value.slice(cursor, cursor + 16)) ?? []).map(item => {
+      const candidates = (sources.strings.get(value.slice(cursor, cursor + 16)) ?? []).filter(item => !preferredSource || item.candidate.reference.source === preferredSource).map(item => {
         let length = 16;
         while (length < item.text.length && cursor + length < value.length && item.text[length] === value[cursor + length]) length++;
         return {...item, length};
@@ -111,8 +172,8 @@ function describe(value: AgentTaskJson, sources: SourceIndex, cursors = new Map<
   }
   return {value};
 }
-function sourceIndex(sources: readonly Source[]): SourceIndex {
-  const result: SourceIndex = {values: new Map(), strings: new Map()}; let nodes = 0;
+function sourceIndex(sources: readonly Source[], modelOrder: string[] = [], strictModels = false): SourceIndex {
+  const result: SourceIndex = {values: new Map(), strings: new Map(), modelCalls: new Map(), resultCalls: new Map(), modelOrder, strictModels}; let nodes = 0;
   const addString = (text: string, candidate: Candidate): void => {
     if (text.length < 16) return;
     const key = text.slice(0, 16), values = result.strings.get(key) ?? [];
@@ -151,7 +212,16 @@ function sourceIndex(sources: readonly Source[]): SourceIndex {
       visit(item, source, [...path, key], kind);
     }
   };
-  for (const source of sources) visit(source.payload, source.id, [], source.kind ?? '');
+  for (const source of sources) {
+    visit(source.payload, source.id, [], source.kind ?? '');
+    const candidate = {reference: {source: source.id, path: []}, kind: source.kind ?? '', ...(source.modelSource ? {modelSource: source.modelSource} : {})};
+    if (source.kind === 'model_output' && object(source.payload)) {
+      const provider = source.payload.providerOutput;
+      const ids = Array.isArray(provider) ? provider.flatMap(modelCallIds) : provider === undefined ? [] : modelCallIds(provider);
+      for (const id of ids) { const candidates = result.modelCalls.get(id) ?? []; candidates.push(candidate); result.modelCalls.set(id, candidates); }
+    }
+    if (source.callId) { const candidates = result.resultCalls.get(source.callId) ?? []; candidates.push(candidate); result.resultCalls.set(source.callId, candidates); }
+  }
   for (const values of result.strings.values()) values.sort((a, b) => b.text.length - a.text.length);
   return result;
 }
@@ -240,9 +310,24 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
   const newId = options.newId ?? randomUUID, now = options.now ?? (() => new Date().toISOString());
   const assemblerVersion = options.assemblerVersion ?? MIO_ASSEMBLER_VERSION;
   validVersion(assemblerVersion);
+  function source(id: string, stepCache: Map<string, ReturnType<MioRecords['steps']>>): Source {
+    const entry = records.entry(id), payload = records.payload(entry);
+    const result: Source = {id, kind: entry.kind, payload, sha256: hash(encoded(payload))};
+    if (entry.kind === 'tool_result' || entry.kind === 'answer') {
+      let steps = stepCache.get(entry.runId);
+      if (!steps) { steps = records.steps(entry.runId); stepCache.set(entry.runId, steps); }
+      const owner = steps.find(step => step.resultEntryId === entry.id && step.kind === 'tool');
+      if (owner?.sourceEntryId !== null && owner?.sourceEntryId !== undefined && owner.sourceCallIndex !== null) {
+        result.callId = records.sourceCall(owner.sourceEntryId, owner.sourceCallIndex).id;
+        result.modelSource = owner.sourceEntryId;
+      }
+    }
+    return result;
+  }
   function loadSources(ids: readonly string[]): Source[] {
     if (ids.length > 20000 || new Set(ids).size !== ids.length) return fail();
-    return ids.map(id => { const entry = records.entry(id), payload = records.payload(entry); return {id, kind: entry.kind, payload, sha256: hash(encoded(payload))}; });
+    const stepCache = new Map<string, ReturnType<MioRecords['steps']>>();
+    return ids.map(id => source(id, stepCache));
   }
   function contextSources(view: AgentTaskJson): Source[] {
     if (!object(view) || view.version !== 1 || !Array.isArray(view.sources) || !own(view, 'context')) return fail();
@@ -277,7 +362,21 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
     if (!object(configuration) || !['chat_completions', 'responses', 'anthropic_messages'].includes(String(configuration.protocol))) return fail();
     const protocol = configuration.protocol as MioRequest['protocol'], historyField = protocol === 'responses' ? 'input' : 'messages';
     if (!Array.isArray(body[historyField]) || body.tools !== undefined && !Array.isArray(body.tools)) return fail();
-    const entries: (Source & {kind: string; runId: string})[] = [], visited = new Set<string>(), boundNotes = new Set(noteIds);
+    const entries: (Source & {kind: string; runId: string})[] = [], visited = new Set<string>(), boundNotes = new Set(noteIds), stepCache = new Map<string, ReturnType<MioRecords['steps']>>();
+    const modelSteps = object(input.data) ? input.data.assemblyModelStepIds : undefined, modelOrder: string[] = [], allowedOutputs = new Set<string>();
+    if (modelSteps !== undefined) {
+      if (!Array.isArray(modelSteps) || !modelSteps.every(id => typeof id === 'string') || new Set(modelSteps).size !== modelSteps.length) return fail();
+      for (const id of modelSteps) {
+        const step = records.step(String(id)); if (step.runId !== runId || step.kind !== 'model') return fail();
+        if (step.resultEntryId !== null) {
+          const output = records.entry(step.resultEntryId); if (output.kind !== 'model_output' || output.runId !== runId) return fail();
+          allowedOutputs.add(output.id);
+          const saved = records.payload(output), provider = object(saved) ? saved.providerOutput : undefined;
+          const calls = Array.isArray(provider) ? provider.flatMap(modelCallIds) : provider === undefined ? [] : modelCallIds(provider);
+          if (calls.length) modelOrder.push(output.id);
+        } else if (step.status === 'completed') return fail();
+      }
+    }
     const runEntries = records.entries(runId);
     for (const entry of runEntries) if (entry.kind === 'host_state') {
       const saved = records.payload(entry);
@@ -292,7 +391,8 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
       // An unbound note is a later user action, even when its text happens to
       // equal an earlier message. It cannot become an input by value matching.
       if (entry.runId === runId && entry.kind === 'note' && (!object(payload) || typeof payload.requestId !== 'string' || !boundNotes.has(payload.requestId))) return;
-      entries.push({id, kind: entry.kind, runId: entry.runId, payload, sha256: hash(encoded(payload))});
+      if (entry.runId === runId && entry.kind === 'model_output' && modelSteps !== undefined && !allowedOutputs.has(entry.id)) return;
+      entries.push({...source(id, stepCache), kind: entry.kind, runId: entry.runId});
       if (entry.kind === 'host_hint' && object(payload) && payload.type === 'run_context' && payload.contextView !== undefined) for (const source of contextSources(payload.contextView)) add(source.id);
     };
     // Prior action identities precede this run's actions even though the new
@@ -303,10 +403,13 @@ export function createMioAssembly(records: MioRecords, options: {newId?: () => s
       if (object(saved) && saved.type === 'run_context' && saved.contextView !== undefined) for (const source of contextSources(saved.contextView)) add(source.id);
     }
     for (const entry of runEntries) if (entry.kind !== 'request_reassembled') add(entry.id);
-    const index = sourceIndex(entries), fields: JsonObject = {};
+    const index = sourceIndex(entries, modelOrder, modelSteps !== undefined), fields: JsonObject = {};
     for (const [key, value] of Object.entries(body)) if (key !== historyField && key !== 'tools') Object.defineProperty(fields, key, {value, enumerable: true, configurable: true, writable: true});
     const envelope: FrozenEnvelope = {version: 1, keys: Object.keys(body), historyField, fields, hasTools: own(body, 'tools')};
     const history = describe(request.history, index), wireHistory = describe(body[historyField]!, index), selected = referencedSources(history, wireHistory);
+    // These are the exact provider sources given to the compactor, including
+    // a prefix represented by a host summary rather than raw continuation.
+    for (const id of allowedOutputs) selected.add(id);
     const noteEntryIds = entries.filter(entry => entry.runId === runId && entry.kind === 'note' && object(entry.payload) && typeof entry.payload.requestId === 'string' && noteIds.includes(entry.payload.requestId)).map(entry => entry.id);
     for (const id of noteEntryIds) selected.add(id);
     // Preserve current user-action identity and the frozen host observation,
