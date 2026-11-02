@@ -163,13 +163,10 @@ test('same native database serializes loudness and samplePeak in both directions
   });
 });
 
-test('read-only database wrappers cannot claim the writer observation permit', async t => {
-  // A second connection waits until the owning store has closed: one process holds a project once.
-  // With the owner closed, the reader's own connection answers the workspace check.
-  const f = await fixture(t); await f.services.drain(); f.store.close();
-  const auxiliary = openStore(f.root, {lock: false}); t.after(() => auxiliary.close());
-  const denied = createExportLoudnessServices(auxiliary as never, {runtime: {...f.runtime, assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(auxiliary)) throw workspaceRestoreError();}, ownsLock: () => ownsStoreLock(auxiliary)} as never}); f.extras.push(denied);
-  await assert.rejects(denied.handlers['timeline.export.loudness'](f.input), {code: 'EXPORT_LOUDNESS_OWNER_REQUIRED'});
+test('the kernel rejects a second project connection before it can claim an observation permit', async t => {
+  const f = await fixture(t), before = await f.checkpoint();
+  assert.throws(() => openStore(f.root), {code: 'PROJECT_LOCKED'});
+  await f.unchanged(before);
 });
 
 test('cancellation retains nonsettled hash and cross-operation admission until exact underlying work settles', async t => {
@@ -198,11 +195,11 @@ test('metadata, same-size byte and path replacement discard measurement; owner r
       if (kind === 'bytes') await writeFile(path.join(f.root, f.asset.relativePath), Buffer.alloc(f.bytes.length, 9));
       if (kind === 'symlink') {await unlink(path.join(f.root, f.asset.relativePath)); await symlink(path.join(f.root, 'secret.mp4'), path.join(f.root, f.asset.relativePath));}
       if (kind === 'foreign') withoutForeignKeys(f.store.db, () => f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id, JSON.stringify({...f.asset, projectId: f.foreign.id}), f.asset.id));
-      if (kind === 'lock') await unlink(path.join(f.root, 'server.lock'));
+      if (kind === 'lock') f.store.close();
       throw Object.assign(Error('PRIVATE decoder diagnostic'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});
     if (kind === 'foreign') await assert.rejects(f.call(), {code: 'EXPORT_LOUDNESS_UNAVAILABLE'});
-    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'EXPORT_LOUDNESS_OWNER_REQUIRED'});
+    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'EXPORT_LOUDNESS_UNAVAILABLE'});
     else {const result = await f.call(); assert.equal((result as LoudnessServiceResult).reason.code, 'ARTIFACT_CHANGED'); assert.equal(result.measurement, null); assert.ok(!JSON.stringify(result).includes('PRIVATE'));}
   });
 });
@@ -248,14 +245,14 @@ test('restored denial occurs before payload getters or any file/media adapter', 
 
 test('actual restored-v1 composition denies loudness before parsing valid or hostile payloads', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-loudness-'));
-  let store = openStore(root), services = createServices(store, new Map());
+  let store = openLegacyWorkspaceStore(root), services = createServices(store, new Map());
   const project = await services.call('project.create', {name: 'Restored loudness owner'}) as {id: string};
   await services.drain(); store.close();
   const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
   const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
     manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
   try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = openStore(root);
+  store = openLegacyWorkspaceStore(root);
   services = createServices(store, new Proxy(new Map(), {get() {throw Error('Must not inspect providers');}}));
   let media = 0, getters = 0; const off = onMediaProcess(() => {media++;});
   t.after(async () => {off(); await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});

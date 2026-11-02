@@ -5,7 +5,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID,createHash} from 'node:crypto';
-import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.ts';
+import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {initializeOpacityLegacyThrough40} from '../packages/business/src/workspace-opacity-legacy.ts';
 

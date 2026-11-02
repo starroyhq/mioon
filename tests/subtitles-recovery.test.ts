@@ -14,6 +14,7 @@ import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {prepareTimelineInputs} from '../packages/business/src/timeline-sources.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {isEditTaskEnvelope,TIMELINE_SUBTITLE_PROFILE_ID,TIMELINE_SUBTITLE_FONT_SHA256} from '@mioon/contracts';
+import {openProjectDatabase} from './helpers/project-database.ts';
 type SubtitleTimeline = Omit<FixtureTimeline,'subtitles'> & {subtitles: {profileId: string; cues: {id: string; text: string; startFrame: number; durationFrames: number; fontFile?: string}[]}};
 type SubtitleEnvelope = Omit<TaskEnvelope,'result'> & {result: SubtitleTimeline};
 type SubtitleTasks = Omit<TypedTaskManager,'get'|'execute'|'prepare'> & {get(input: unknown): SubtitleEnvelope; prepare(input: unknown): SubtitleEnvelope; execute(input: unknown): Promise<SubtitleEnvelope>};
@@ -59,10 +60,11 @@ test('definitive subtitle rejection retains task terminal state and original key
  f.ack(applied.task);const next=f.prepare('timeline.subtitle.add',{...input,requestId:randomUUID(),durationFrames:1});assert.equal((await f.execute(next)).task.status,'applied');
 });
 
-test('independent connections race under the one shared timeline revision fence',async t=>{
- const f=await fixture(t),timeline=await populated(f),reader=(openStore(f.root,{lock:false}) as unknown as TypedStore);t.after(()=>reader.close());const second=(createServices(reader,new Map()) as unknown as TypedServices);
+test('one project host serializes competing subtitle requests under its timeline revision fence',async t=>{
+ const f=await fixture(t),timeline=await populated(f);
+ assert.throws(()=>openProjectDatabase(f.root),{code:'PROJECT_LOCKED'});
  const first=request(f,timeline,{text:'one',startFrame:0,durationFrames:30}),other=request(f,timeline,{text:'two',startFrame:30,durationFrames:30});
- const outcomes=await Promise.allSettled([f.call('timeline.subtitle.add',first),second.call('timeline.subtitle.add',other)]);assert.equal(outcomes.filter(value=>value.status==='fulfilled').length,1);
+ const outcomes=await Promise.allSettled([f.call('timeline.subtitle.add',first),f.call('timeline.subtitle.add',other)]);assert.equal(outcomes.filter(value=>value.status==='fulfilled').length,1);
  assert.equal((outcomes.find(value=>value.status==='rejected'))!.reason.code,'REVISION_CONFLICT');assert.equal(((await f.call('timeline.get',{projectId:f.projectId})).subtitles)!.cues.length,1);
 });
 

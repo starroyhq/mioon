@@ -6,7 +6,7 @@ import {mkdtemp, mkdir, writeFile, readFile, readdir, rm, stat, chmod, truncate}
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {workspaceBackupResultSchema} from '../packages/contracts/src/workspace-backup.ts';
 import type {TestContext} from 'node:test';
 

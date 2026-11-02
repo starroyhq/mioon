@@ -134,11 +134,18 @@ export function createImageOwnershipReader(db: DatabaseSync,projectId: string,{c
  }
  function version(id: string,asset?: Json | null): ImageVersionResponse {
   const cached=versions.get(id);if(cached){assetMatches(cached,asset);return cached;}
-  const value=rawVersion(id),owner=group(value.groupId),source=task(value.taskId),receipt=source.receipt;
+  const value=rawVersion(id),owner=group(value.groupId);
+  // Portable content retains task IDs, but another computer's local history
+  // is absent. A present local task must still pass every original check.
+  const portable=isProjectLayout(db)&&!db.prepare('SELECT 1 FROM image_tasks WHERE id=? LIMIT 1').get(value.taskId);
+  if(!portable){
+  const source=task(value.taskId),receipt=source.receipt;
   if(source.row.groupId!==value.groupId||source.row.state!=='succeeded'||source.row.versionId!==value.id||!receipt||receipt.versionId!==value.id||receipt.assetId!==value.assetId||value.number>owner.revision||owner.headVersionId===null)reject();
   for(const key of ['sha256','mimeType','width','height','byteLength','isMock'])if(property(value,key)!==property(receipt,key))reject();
   validateImageTaskReview(db,projectId,source.row.id,source.input,{consume});
   if(value.providerId!==source.snapshot.providerId||value.model!==source.snapshot.model||!same(value.options,source.snapshot.options)||!same(imageEditFields(value),imageEditFields(source.snapshot)))reject();
+  }
+  if(value.number>owner.revision||owner.headVersionId===null)reject();
   const head=owner.headVersionId===value.id?value:rawVersion(owner.headVersionId);
   if(head.groupId!==value.groupId||head.number<value.number||head.number>owner.revision)reject();
   if(owner.activeTaskId!==null)task(owner.activeTaskId,{shallow:true});

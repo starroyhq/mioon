@@ -8,6 +8,8 @@ import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePri
 import {validatePng as validatePngBytes} from './images/png.ts';
 import type {PngMetadata} from './images/png.ts';
 import {storeDirectories} from './store-layout.ts';
+import {isProjectStore} from './project-file/store.ts';
+import {projectMediaDirectory,readProjectMediaFile,writeProjectMediaFileAtomic} from './project-media-storage.ts';
 
 export interface ImageStorageSnapshot {
  readonly providerId?: string;
@@ -58,7 +60,11 @@ const uuid=(value: unknown): boolean=>typeof value==='string'&&/^[a-f0-9]{8}-[a-
 export function createImageStorage(store: {readonly root: string; readonly db: import('node:sqlite').DatabaseSync},
  {validatePng}: {readonly validatePng: (bytes: unknown,options?: {width?: unknown; height?: unknown; signal?: AbortSignal; opaque?: boolean})=>Promise<PngMetadata>}): ImageStorage {
  const {projectDir:root,tempDir:stagingRoot}=storeDirectories(store),directory=path.join(stagingRoot,'image-staging');
- function syncDirectory(value: string,ownerRoot=root): void {
+ const mediaRoot=isProjectStore(store)?projectMediaDirectory(store):root;
+ const relative=(file:string):string=>path.relative(root,file).split(path.sep).join('/');
+ const readMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').ReadPrivateFileOptions,'root'>)=>isProjectStore(store)?readProjectMediaFile(store,relative(file),options):readPrivateFile(file,{root,...options});
+ const writeMedia=(file:string,bytes:Buffer,options:Omit<import('@mioon/contracts/private-storage').WritePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))writeProjectMediaFileAtomic(store,relative(file),bytes,options);else writePrivateFileAtomic(file,bytes,{root,...options});};
+ function syncDirectory(value: string,ownerRoot=mediaRoot): void {
   const before=validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
@@ -91,7 +97,7 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
   validateReceipt(task,receipt);check();
   const final=path.join(root,'media',`${receipt.assetId}.png`);
   const staged=readPrivateFile(paths(task).png,{root:stagingRoot,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
-  const bytes=staged??readPrivateFile(final,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
+  const bytes=staged??readMedia(final,{allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   if(!bytes||typeof bytes==='string'||bytes.length!==receipt.byteLength||digest(bytes)!==receipt.sha256)throw failure();
   await validatePng(bytes,{...dimensions(task),opaque:true});check();
   return {bytes,final};
@@ -120,9 +126,9 @@ export function createImageStorage(store: {readonly root: string; readonly db: i
  }
  async function publish(task: ImageStorageTask,receipt: ImageReceipt,check: ()=>void): Promise<ImagePublishedResult> {
   const {bytes,final}=await verifiedBytes(task,receipt,check);
-  const existing=readPrivateFile(final,{root,allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
+  const existing=readMedia(final,{allowMissing:true,maxBytes:IMAGE_LIMITS.resultBytes});
   if(existing){if(typeof existing==='string'||existing.length!==receipt.byteLength||digest(existing)!==receipt.sha256)throw failure();}
-  else{check();writePrivateFileAtomic(final,bytes,{root,maxBytes:IMAGE_LIMITS.resultBytes,replace:false});}
+  else{check();writeMedia(final,bytes,{maxBytes:IMAGE_LIMITS.resultBytes,replace:false});}
   syncDirectory(path.dirname(final));
   return {relativePath:`media/${receipt.assetId}.png`,sizeBytes:receipt.byteLength};
  }

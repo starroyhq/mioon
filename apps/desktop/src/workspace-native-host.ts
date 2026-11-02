@@ -7,14 +7,18 @@ import {workspaceNativeRequestSchema} from '../../../packages/contracts/src/work
 import {workspaceSettingsSchema,type WorkspaceSettings} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {exportOutputSchema,type ExportOutput} from '../../../packages/contracts/src/export-controls.ts';
 import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
+import {isProjectFileHeld} from '@mioon/business/project-file/held-files';
+import {isAppLibraryHeld} from '@mioon/business/app-db/connection';
+import {projectFileIdentity} from '@mioon/business/app-db/identity';
 interface Owner {projectId?:string;isCurrent():boolean}
-interface Options<E>{ownerForEvent(event:E):Owner|null;chooseDirectory():Promise<string|null>;setBackupDirectory(directory:string):Promise<unknown>;readSettings():Promise<WorkspaceSettings>;readWorkspaceRoot():Promise<string>;readExport(identity:{projectId:string;exportId:string}):Promise<unknown>;openPath(file:string):Promise<string>;revealPath(file:string):void;restart():Promise<boolean>;chooseSaveFile?(suggestedName:string):Promise<string|null>;fetchProjectPackage?(exportId:string):Promise<Response>}
+interface Options<E>{ownerForEvent(event:E):Owner|null;chooseDirectory():Promise<string|null>;setBackupDirectory(directory:string):Promise<unknown>;readSettings():Promise<WorkspaceSettings>;readWorkspaceRoot(projectId:string):Promise<string>;readExport(identity:{projectId:string;exportId:string}):Promise<unknown>;openPath(file:string):Promise<string>;revealPath(file:string):void;restart():Promise<boolean>;chooseSaveFile?(suggestedName:string):Promise<string|null>;fetchProjectPackage?(exportId:string):Promise<Response>}
 const unavailable=()=>Object.assign(new Error('Native workspace action is unavailable.'),{code:'WORKSPACE_NATIVE_UNAVAILABLE'});
 const same=(a:{dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number},b:{dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number})=>a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
 /** Fixed authenticated metadata reads for the current backend lifetime: the
  * app-level RPC, workspace information, or one project's RPC. */
 export async function readNativeBackendMetadata({base,token,resource,input,signal,check}:{base:string;token:string;resource:string;input?:object;signal:AbortSignal;check:()=>void}):Promise<unknown> {
- if(resource!=='/api/rpc'&&resource!=='/api/workspace-info'&&parseProjectApiPath(resource)?.kind!=='rpc')throw unavailable();
+ const route=parseProjectApiPath(resource),projectInfo=route?.kind==='other'&&route.segments.length===1&&route.segments[0]==='workspace-info';
+ if(resource!=='/api/rpc'&&resource!=='/api/workspace-info'&&resource!=='/api/ui-preferences'&&route?.kind!=='rpc'&&!projectInfo)throw unavailable();
  check();const response=await fetch(new URL(resource,base),{method:input?'POST':'GET',headers:{authorization:`Bearer ${token}`,...(input?{'content-type':'application/json'}:{})},...(input?{body:JSON.stringify(input)}:{}),redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(15000)])});
  const reader=response.body?.getReader();if(!reader)throw unavailable();let content='',bytes=0;const decoder=new TextDecoder('utf-8',{fatal:true});
  try{for(;;){const next=await reader.read();if(next.done)break;check();bytes+=next.value.byteLength;if(bytes>256*1024)throw unavailable();content+=decoder.decode(next.value,{stream:true});}content+=decoder.decode();}
@@ -23,13 +27,18 @@ export async function readNativeBackendMetadata({base,token,resource,input,signa
  if(!response.ok||!value||typeof value!=='object'||!('ok' in value)||value.ok!==true||!('data' in value))throw unavailable();return value.data;
 }
 async function verifyExport(root:string,output:ExportOutput,check:()=>void) {
- validatePrivateDirectory(root);if(!path.isAbsolute(output.fileLocation)||path.resolve(output.fileLocation)!==output.fileLocation||path.dirname(output.fileLocation)!==path.join(root,'media'))throw unavailable();
- const identity=validateManagedFile(output.fileLocation,{root})!;if(identity.size!==output.sizeBytes)throw unavailable();
- if(process.platform==='win32'){await verifyWindowsExport(root,output,identity,check);return;}
+ if(!path.isAbsolute(root)||path.resolve(root)!==root||!path.isAbsolute(output.fileLocation)||path.resolve(output.fileLocation)!==output.fileLocation||path.dirname(output.fileLocation)!==path.join(root,'media'))throw unavailable();
+ // A project's ordinary folder may be 0755; only its media child is private.
+ // The private policy still walks and checks every ancestor before opening.
+ const media=path.join(root,'media');validatePrivateDirectory(media);
+ const identity=validateManagedFile(output.fileLocation,{root:media})!;if(identity.size!==output.sizeBytes)throw unavailable();
+ const fileId=projectFileIdentity(output.fileLocation);
+ if(!fileId||isProjectFileHeld(fileId)||isAppLibraryHeld(fileId))throw unavailable();
+ if(process.platform==='win32'){await verifyWindowsExport(media,output,identity,check);return;}
  const fd=openSync(output.fileLocation,constants.O_RDONLY|constants.O_NOFOLLOW);if(!same(identity,fstatSync(fd))){closeSync(fd);throw unavailable();}
  const stream=createReadStream(output.fileLocation,{fd,autoClose:true,highWaterMark:1024*1024}),hash=createHash('sha256');let bytes=0;
  try{for await(const chunk of stream){check();bytes+=chunk.length;if(bytes>output.sizeBytes)throw unavailable();hash.update(chunk);}}finally{stream.destroy();}
- check();const after=validateManagedFile(output.fileLocation,{root});if(!after||!same(identity,after)||bytes!==output.sizeBytes||hash.digest('hex')!==output.sha256)throw unavailable();
+ check();const after=validateManagedFile(output.fileLocation,{root:media});if(!after||!same(identity,after)||bytes!==output.sizeBytes||hash.digest('hex')!==output.sha256)throw unavailable();
 }
 /** Windows has no CRT descriptor for a verified file: the ACL backend's handle
  * reads it, yielding between chunks, and full file identities replace dev/ino. */
@@ -93,7 +102,7 @@ export function createWorkspaceNativeHost<E>(options:Options<E>) {
    }
    const identity=request.identity,output=exportOutputSchema.parse(await options.readExport(identity));check();
    if(output.projectId!==identity.projectId||output.exportId!==identity.exportId)throw unavailable();
-   const root=await options.readWorkspaceRoot();check();await verifyExport(root,output,check);check();
+   const root=await options.readWorkspaceRoot(identity.projectId);check();await verifyExport(root,output,check);check();
    if(request.action==='openExport')return (await options.openPath(output.fileLocation))==='';
    options.revealPath(output.fileLocation);return true;
   }finally{busy=false;}

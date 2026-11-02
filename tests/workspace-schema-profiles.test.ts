@@ -12,7 +12,7 @@ import * as fixedInputs from '../packages/business/src/workspace-schema-v24-cons
 import {mkdtempSync, realpathSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore, getWorkspaceRestoreContext, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {initializeLegacyWorkspaceSchema, initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createMockProvider} from '../packages/business/src/providers/mock.ts';
 import {classifyWorkspaceSchema, installWorkspaceRestoreSchema, validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';

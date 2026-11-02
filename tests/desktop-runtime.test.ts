@@ -11,8 +11,8 @@ import { dataPaths, utilityEnvironment, readToolConfig, saveToolConfig, validate
 
 test('desktop data location is stable and independent of working directory', () => {
   assert.deepEqual(dataPaths('/home/u/.config'), { userData: '/home/u/.config/app.starroy.mioon.dev',
-    dataDir: '/home/u/.config/app.starroy.mioon.dev/workspace', configFile: '/home/u/.config/app.starroy.mioon.dev/desktop-config.json' });
-  assert.equal(dataPaths('/x', '/explicit').dataDir, '/explicit/workspace');
+    dataDir: '/home/u/.config/app.starroy.mioon.dev/data', configFile: '/home/u/.config/app.starroy.mioon.dev/desktop-config.json' });
+  assert.equal(dataPaths('/x', '/explicit').dataDir, '/explicit/data');
   assert.throws(() => dataPaths('/x', './relative'));
 });
 
@@ -79,10 +79,11 @@ test('supervisor starts only a bundled utility and stops gracefully without host
   const supervisor = new BackendSupervisor({ fork: ((file: string, args: string[], opts: Record<string, unknown>) => {
     assert.equal(file, '/app/backend.cjs'); assert.deepEqual(args, []); options = opts; return child;
   }) as unknown as SupervisorOptions['fork'], modulePath: '/app/backend.cjs', environment: { MIOON_FFMPEG_PATH: '/bin/ffmpeg' } });
-  const ready = await supervisor.start({ dataDir: '/data', distDir: '/app/web', token: 'private' } as Parameters<typeof supervisor.start>[0]);
+  const ready = await supervisor.start({ dataDir: '/data', cacheDir: '/cache', projectsDir: '/films', distDir: '/app/web', token: 'private' } as Parameters<typeof supervisor.start>[0]);
   assert.equal(ready.url, 'http://127.0.0.1:49123'); assert.equal(supervisor.state, 'running');
   assert.equal(options?.allowLoadingUnsignedLibraries, false); assert.equal(options?.stdio, 'ignore');
   assert.deepEqual(options?.execArgv, []); assert.equal(child.messages[0]?.token, 'private');
+  assert.equal(child.messages[0]?.cacheDir, '/cache'); assert.equal(child.messages[0]?.projectsDir, '/films');
   await supervisor.stop(); assert.equal(supervisor.state, 'stopped');
   assert.equal(child.messages.at(-1)?.type, 'stop');
 });

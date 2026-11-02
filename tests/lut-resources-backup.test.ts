@@ -2,7 +2,7 @@ import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
 import {AGENT_TASK_ORDINARY_SCHEMAS,CURRENT_ORDINARY_SCHEMA} from './helpers/workspace-schema-current.ts';
 import test from 'node:test';import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync,readFileSync,readdirSync,lstatSync,writeFileSync} from 'node:fs';import path from 'node:path';import os from 'node:os';import {createHash} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';import {createServices} from '../packages/business/src/services.ts';
+import {openLegacyWorkspaceStore as openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';import {createServices} from '../packages/business/src/services.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {isWorkspaceBackupPayloadPath} from '../packages/contracts/src/workspace-backup.ts';
 import {classifyWorkspaceSchemaV52V53} from '../packages/business/src/workspace-restore-schema-v53.ts';

@@ -14,6 +14,9 @@ import {setAgentTaskEffectGate,resumeAgentTaskJobs,stopAgentTaskJobs} from './ta
 import {AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentCredentialResult,sanitizeAgentSettingsResult} from './settings.ts';
 import type {AgentSettingsService} from './settings.ts';
 import type {ChatAuthorizations} from './authorization-gate.ts';
+import {agentDiagnosticSummarySchema} from '../../../contracts/src/agent-diagnostic-summary.ts';
+import type {AgentDiagnosticSummary} from '../../../contracts/src/agent-diagnostic-summary.ts';
+import {testProjectAppLibrary} from '../project-service-application.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
@@ -159,10 +162,10 @@ function safeSnapshot(value:AgentTaskSnapshot,store:WorkspaceStore):AgentTaskSna
   copy.changes=copy.changes.map(change=>{Object.assign(change,undoPreview.get(change.id));change.display=projectAgentTaskChangeDisplay(change);change.before=null;change.after=null;delete change.undo;return change;});return copy;
 }
 interface Active {controller:AbortController;promise:Promise<void>;restartRequested:boolean}
-export interface AgentTaskRuntimeOptions {store:WorkspaceStore;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;policyStore?:AgentPolicyStore;readOnly?:boolean;assertMutationAllowed?:()=>void;checksPreflight?:AgentTaskChecksPreflight}
+export interface AgentTaskRuntimeOptions {store:WorkspaceStore;agentSettings:AgentSettingsService;authorizations:ChatAuthorizations;tools?:AgentTaskTools;selfPort:()=>number;gateway?:TaskGateway;journal?:AgentTaskJournal;policyStore?:AgentPolicyStore;readOnly?:boolean;assertMutationAllowed?:()=>void;checksPreflight?:AgentTaskChecksPreflight;onDiagnosticCompleted?:(summary:AgentDiagnosticSummary)=>void}
 /** SQLite owns progress. Process-local state is only cancellation and a single
  * current executor; opening this runtime never restarts an interrupted run. */
-export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore,journal:sourceJournal=createAgentTaskJournal(store,{policyStore}),readOnly=false,assertMutationAllowed,checksPreflight}:AgentTaskRuntimeOptions){
+export function createAgentTaskRuntime({store,agentSettings,authorizations,tools,selfPort,gateway=createTaskGateway(),policyStore=testProjectAppLibrary(store)?.agentPolicy,journal:sourceJournal=createAgentTaskJournal(store,{policyStore}),readOnly=false,assertMutationAllowed,checksPreflight,onDiagnosticCompleted}:AgentTaskRuntimeOptions){
   const instanceId=randomUUID(),active=new Map<string,Active>();let closed=false,storageFaulted=false,storageFailureCode='AGENT_TASK_STORAGE_UNAVAILABLE';
   function failStorage(error:unknown):never {storageFaulted=true;storageFailureCode=storageFailure(error);for(const entry of active.values())entry.controller.abort();throw agentTaskFailure(storageFailureCode);}
   // A SQLite failure is an audit failure, including when it occurs in a domain
@@ -575,7 +578,16 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       // recovery and fence this runtime; never retry an executor automatically.
       storageFaulted=true;if(storageError(error))storageFailureCode=storageFailure(error);for(const task of active.values())task.controller.abort();
     };
-    entry.promise=execute(runId,controller.signal).catch(failClosed).finally(()=>{if(active.get(runId)===entry)active.delete(runId);if(entry.restartRequested&&!closed&&!storageFaulted&&journal.run(runId).status==='running')queueMicrotask(()=>launch(runId));}).catch(failClosed);
+    entry.promise=execute(runId,controller.signal).catch(failClosed).finally(()=>{
+      if(active.get(runId)===entry)active.delete(runId);
+      const run=journal.run(runId);
+      if(onDiagnosticCompleted&&run.diagnostic?.profile==='text'&&terminal(run)){
+        const config=record(run.configuration)?run.configuration:{};
+        onDiagnosticCompleted(agentDiagnosticSummarySchema.parse({completedAt:run.updatedAt,status:run.status,
+          protocol:config.protocol,model:config.model,errorCode:run.status==='failed'&&typeof run.pauseReason==='string'&&/^[A-Z][A-Z0-9_]{0,79}$/u.test(run.pauseReason)?run.pauseReason:null}));
+      }
+      if(entry.restartRequested&&!closed&&!storageFaulted&&run.status==='running')queueMicrotask(()=>launch(runId));
+    }).catch(failClosed);
   }
   async function snapshot(projectId:string){checkOpen();if(!store.get('projects',projectId))throw agentTaskFailure('AGENT_TASK_NOT_FOUND');const settings=sanitizeAgentSettingsResult(await agentSettings.get({selfPort:selfPort()}));return {version:2 as const,instanceId,projectId,readOnly,runs:(hasTables?journal.list(projectId,{excludeDiagnostics:true}):[]).map(run=>{const {context,...summary}=run;return summary;}),policy:hasTables?journal.policy():structuredClone(DEFAULT_AGENT_TASK_POLICY),settings,authorization:authorizations.snapshot(settings.configuration)};}
   async function send(projectId:string,input:unknown):Promise<AgentTaskSnapshot>{

@@ -13,6 +13,7 @@ import {workspaceNativeUtilityRequestSchema} from '../../../packages/contracts/s
 import {workspaceSettingsSchema} from '../../../packages/contracts/src/workspace-configuration.ts';
 import {createBackendLease, BACKEND_LEASE_TIMING} from './backend-lease.ts';
 import {initializeDesktopPrivateStorage} from '../../../packages/node-host/src/private-storage-bootstrap.ts';
+import path from 'node:path';
 
 /** Fixed diagnostic categories only; never a native error message or path. */
 type ExitDiagnosticReason = 'startup-failed' | 'unhandled-rejection' | 'uncaught-exception' | 'stop-requested'
@@ -103,6 +104,9 @@ process.parentPort.on('message', ({ data }) => {
     try {
       // Windows storage opens only through the helper main verified and named.
       initializeDesktopPrivateStorage(process.env.MIOON_DESKTOP_PRIVATE_STORAGE_HELPER ?? '');
+      for (const name of ['dataDir', 'cacheDir', 'projectsDir'] as const) {
+        if (typeof data[name] !== 'string' || !path.isAbsolute(data[name])) throw new TypeError('Invalid backend application directory');
+      }
       // A missing/locked OS vault disables persistent Images writes; it never
       // turns them into plaintext writes or prevents unrelated editing startup.
       try { await imageSecretCodec.refreshStorage(); } catch { /* Fail-closed cached availability. */ }
@@ -111,7 +115,7 @@ process.parentPort.on('message', ({ data }) => {
       // A desktop utility without the fixed public-key gate must never fall
       // back to the ordinary Web PCM lane because main wiring was incomplete.
       nativeAudioPreview = createNativeAudioPreviewAuthority(data.nativeAudioPreview);
-      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
+      server = await startServer({ comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE), dataDir: data.dataDir, cacheDir:data.cacheDir, projectsDir:data.projectsDir, port: 0, distDir: data.distDir, token: data.token, agentSettings, imageSecretCodec, videoSecretCodec, nativeAudioPreview, localDraftChannel: __MIOON_DESKTOP_CHANNEL__ });
       if (!closing) process.parentPort!.postMessage({ type: 'ready', url: server.url,
         runtime: { electron: process.versions.electron, node: process.versions.node, sqlite: process.versions.sqlite, pid: process.pid } });
     } catch (error) {

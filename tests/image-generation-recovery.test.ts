@@ -152,14 +152,14 @@ for (const phase of ['after_dispatch_fence', 'after_result_manifest', 'after_res
     assert.equal(count(f.store.db, 'image_versions'), 1);
   });
 
-for (const variant of ['lock-deleted', 'lock-replaced', 'task-deleted', 'task-reassigned', 'group-reassigned', 'input-changed', 'revision-advanced'])
+for (const variant of ['owner-root', 'owner-directory', 'task-deleted', 'task-reassigned', 'group-reassigned', 'input-changed', 'revision-advanced'])
   test(`await boundary fences ${variant} and prevents foreign writes or late private file publication`, async t => {
     const gate = deferred(), entered = deferred();
     const f = await fixture(t, {generate: async (_input, {beforeDispatch}) => {beforeDispatch(); entered.resolve(); return gate.promise;}});
     const ack = await f.call('image.generate', f.input()); await entered.promise;
     const db = f.store.db;
-    if (variant === 'lock-deleted') unlinkSync(path.join(f.root, 'server.lock'));
-    if (variant === 'lock-replaced') {unlinkSync(path.join(f.root, 'server.lock')); writeFileSync(path.join(f.root, 'server.lock'), '2147483000', {mode: 0o600});}
+    if (variant === 'owner-root') {Object.defineProperty(f.store,'root',{value:`${f.root}/lost-owner`});t.after(()=>Object.defineProperty(f.store,'root',{value:f.root}));}
+    if (variant === 'owner-directory') {Object.defineProperty(f.store,'projectDir',{value:`${f.root}/lost-owner`});t.after(()=>Object.defineProperty(f.store,'projectDir',{value:f.root}));}
     const observe = async () => {
       const before = snapshot(db), changes = db.prepare('SELECT total_changes() AS n').get()!.n;
       gate.resolve({bytes: await png()});
@@ -171,7 +171,7 @@ for (const variant of ['lock-deleted', 'lock-replaced', 'task-deleted', 'task-re
       await f.services.drain();
       assert.equal(snapshot(db), before); assert.equal(db.prepare('SELECT total_changes() AS n').get()!.n, changes);
     };
-    if (variant.startsWith('lock-')) await observe();
+    if (variant.startsWith('owner-')) await observe();
     else await withoutForeignKeys(db, async () => {
       // Rows that leave or belong to a project this store does not hold. Foreign
       // keys stay off until the worker is joined, so a write past the fence shows
@@ -185,9 +185,9 @@ for (const variant of ['lock-deleted', 'lock-replaced', 'task-deleted', 'task-re
       await observe();
     });
     assert.equal(f.calls, 1); assert.deepEqual((readdirSync(path.join(f.root, 'media')) as unknown), []);
-    assert.equal(existsSync(path.join(f.root, 'image-staging')), false);
-    if (variant.startsWith('lock-')) assert.equal(ownsStoreLock(f.store), false);
-    if (variant === 'lock-replaced') assert.equal(readFileSync(path.join(f.root, 'server.lock'), 'utf8'), '2147483000');
+    assert.equal(existsSync(path.join(f.root,'.mioon-store','tmp','image-staging')), false);
+    if (variant.startsWith('owner-')) assert.equal(ownsStoreLock(f.store), false);
+
   });
 
 for (const dispatched of [false, true]) test(`bounded Stop joins a noncooperative generator and fences late callbacks (${dispatched ? 'after' : 'before'} dispatch)`, async t => {
@@ -227,7 +227,7 @@ for (const variant of ['staged-symlink', 'directory-symlink', 'final-conflict', 
     const f = await fixture(t);
     f.setFault(label => {if (label === 'after_result_receipt') throw Error('synthetic result pause');});
     const ack = await f.call('image.generate', f.input()), local = await state(f, ack.id, 'local_result_error'); f.setFault(() => {});
-    const row = f.row(ack.id), receipt = JSON.parse((row)!.stagedReceipt as string), directory = path.join(f.root, 'image-staging');
+    const row = f.row(ack.id), receipt = JSON.parse((row)!.stagedReceipt as string), directory = path.join(f.root,'.mioon-store','tmp','image-staging');
     const external = mkdtempSync(path.join(tmpdir(), 'mioon-image-foreign-')); t.after(() => rmSync(external, {recursive: true, force: true}));
     const foreign = path.join(external, `${ack.id}.png`), foreignBytes = Buffer.from('PRIVATE_SENTINEL retained foreign file');
     writeFileSync(foreign, foreignBytes, {mode: 0o600});
@@ -294,12 +294,12 @@ for (const phase of ['after_dispatch_fence', 'after_result_manifest']) test(`act
   await child(crash, [root, JSON.stringify(input), phase], 73);
   assert.equal(readFileSync(path.join(root, 'synthetic-adapter-calls'), 'utf8'), 'call\n');
   // Read the evidence through a store that leaves the crashed process's lock for the next owner.
-  const evidence = openStore(root, {lock: false});
+  const evidence = openStore(root);
   try {
     const raw = evidence.db.prepare('SELECT * FROM image_tasks WHERE requestId=?').get(input.requestId);
     assert.equal((raw)!.state, 'dispatching'); assert.equal((raw)!.dispatched, 1); assert.equal((raw)!.stagedReceipt, null);
     assert.equal(count(evidence.db, 'assets'), 0); assert.equal(count(evidence.db, 'image_versions'), 0);
-    assert.equal(existsSync(path.join(root, 'image-staging', `${(raw)!.id}.json`)), phase === 'after_result_manifest');
+    assert.equal(existsSync(path.join(root,'.mioon-store','tmp','image-staging', `${(raw)!.id}.json`)), phase === 'after_result_manifest');
   } finally {evidence.close();}
   // This is a new OS process and exclusive owner, not the original worker's catch path.
   const recover = childImports + `
@@ -329,6 +329,6 @@ for (const phase of ['after_dispatch_fence', 'after_result_manifest']) test(`act
   } else {
     assert.equal(result.initial.state, 'local_result_error'); assert.equal(result.initial.stagedReceipt, true);
     assert.equal(result.errorCode, null); assert.equal(result.final.state, 'succeeded'); assert.equal(result.versions, 1);
-    assert.ok(existsSync(path.join(root, 'image-staging', `${result.final.id}.json`)), 'durable manifest is retained after recovery');
+    assert.ok(existsSync(path.join(root,'.mioon-store','tmp','image-staging', `${result.final.id}.json`)), 'durable manifest is retained after recovery');
   }
 });

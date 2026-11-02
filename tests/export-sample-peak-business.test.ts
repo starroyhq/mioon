@@ -139,14 +139,9 @@ test('strict input, missing/foreign/corrupt ownership and output substitution ar
   assert.equal(reads, 0); assert.equal(decodes, 0);
 });
 
-test('real lock:false readers cannot admit analysis; wrappers on the exact owner DB share one permit', async t => {
+test('the kernel rejects a second project connection; wrappers on the exact owner DB share one permit', async t => {
   const entered = deferred(), gate = deferred(); const f = await fixture(t, {runtime: {decode: async (_file: unknown, duration: number|undefined, options: { beforeEffect: () => void; }) => {entered.resolve!(); await gate.promise; options.beforeEffect(); return measurement(duration);}}});
-  // A lock:false reader opens only after the owning store has closed: one process holds a project once.
-  // It reads a project of its own, so this owner stays open for the shared permit below.
-  const g = await fixture(t); await g.services.drain(); g.store.close();
-  const auxiliary = (openStore(g.root, {lock: false}) as TypedStore); t.after(() => auxiliary.close());
-  const unauthorized = createExportSamplePeakServices(auxiliary, {runtime: {...f.runtime, ownsLock: () => ownsStoreLock(auxiliary)}}); f.extras.push(unauthorized);
-  await assert.rejects(unauthorized.handlers['timeline.export.samplePeak'](g.input), {code: 'EXPORT_SAMPLE_PEAK_OWNER_REQUIRED'});
+  assert.throws(() => openStore(f.root), {code: 'PROJECT_LOCKED'});
   const wrapper = createExportSamplePeakServices({...f.store}, {runtime: f.runtime}); f.extras.push(wrapper);
   const pending = f.call(); await entered.promise;
   const busy = await wrapper.handlers['timeline.export.samplePeak'](f.input); assert.equal(busy.reason!.code, 'BUSY'); assert.equal(busy.checks.bytesHashed, 0);
@@ -180,11 +175,11 @@ test('same-owned metadata/bytes drift discards measurement; foreign owner revoca
       if (kind === 'metadata') replace(f, 'assets', {...f.asset, name: 'Changed'});
       if (kind === 'bytes') await writeFile(path.join(f.root, f.asset.relativePath), Buffer.alloc(f.bytes.length, 9));
       if (kind === 'foreign') withoutForeignKeys(f.store.db, () => f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id, JSON.stringify({...f.asset, projectId: f.foreign.id}), f.asset.id));
-      if (kind === 'lock') await unlink(path.join(f.root, 'server.lock'));
+      if (kind === 'lock') f.store.close();
       throw Object.assign(Error('SECRET stderr /private/path'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});
     if (kind === 'foreign') await assert.rejects(f.call(), {code: 'EXPORT_SAMPLE_PEAK_UNAVAILABLE'});
-    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'EXPORT_SAMPLE_PEAK_OWNER_REQUIRED'});
+    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'EXPORT_SAMPLE_PEAK_UNAVAILABLE'});
     else {const result = await f.call(); assert.equal(result.status, 'stale'); assert.equal(result.reason.code, 'ARTIFACT_CHANGED'); assert.equal(result.measurement, null); assert.ok(!JSON.stringify(result).includes('SECRET'));}
   });
 });
@@ -227,14 +222,14 @@ test('restored denial catalogue and service boundary reject before touching payl
 
 test('actual restored-v1 shared service denies valid and hostile payloads before getters, bytes, or local processes', async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-peak-'));
-  let store = (openStore(root) as TypedStore), services = (createServices(store, new Map()) as TypedServices);
+  let store = (openLegacyWorkspaceStore(root) as TypedStore), services = (createServices(store, new Map()) as TypedServices);
   const project = await services.call('project.create', {name: 'Restored output owner'});
   await services.drain(); store.close();
   const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
   const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
     manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
   try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = (openStore(root) as TypedStore);
+  store = (openLegacyWorkspaceStore(root) as TypedStore);
   services = (createServices(store, new Proxy(new Map(), {get() {throw Error('Must not inspect a provider');}})) as TypedServices);
   let media = 0, getters = 0; const off = onMediaProcess(() => {media++;});
   t.after(async () => {off(); await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});

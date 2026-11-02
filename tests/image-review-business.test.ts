@@ -33,8 +33,8 @@ type ReviewFixture = {root: string; projectId: string; otherProjectId: string; s
 function fixture(t: import('node:test').TestContext, options: Record<string, unknown> = {}): ReviewFixture {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-review-'));
   let store = (openStore(root) as unknown as TypedStore), settings = {revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION};
-  store.tx(() => migrateImageReviewSchema(store.db));
-  const projectId = randomUUID(), otherProjectId = randomUUID();
+  assert.equal(store.db.prepare("SELECT 1 FROM main.sqlite_schema WHERE type='table' AND name='image_reviews'").get()?.["1"], 1);
+  const projectId = String(store.db.prepare('SELECT projectId FROM project.project_file').get()!.projectId), otherProjectId = randomUUID();
   store.put('projects', {id: projectId, name: 'Review fixture'});
   const getSettings = () => settings;
   let reviews = createImageReviewServices(store, {getSettings, ...options});
@@ -219,8 +219,7 @@ test('bounded retained capacity rejects new review but exact existing intent rem
   const before = rows(f.store.db);
   assert.throws(() => f.prepare(f.input()), code('IMAGE_REVIEW_CAPACITY'));
   assert.deepEqual(f.prepare(input), first); assert.equal(rows(f.store.db), before);
-  f.store.put('projects', {id: f.otherProjectId, name: 'Review fixture'});
-  const foreign = f.prepare(generation(f.otherProjectId)); assert.equal(foreign.projectId, f.otherProjectId);
+  const other = fixture(t); const foreign = other.prepare(other.input()); assert.equal(foreign.projectId, other.projectId); assert.notEqual(other.store.db, f.store.db);
 });
 
 for (const corruption of ['canonical-input', 'intent-hash', 'oversized-intent', 'state', 'reservation']) {
@@ -251,15 +250,15 @@ test('review identity, exact canonical intent and reservations cannot be replace
 
 test('non-owner may inspect but cannot prepare, approve, reject or consume a POST fence', t => {
   const f = fixture(t), input = f.input(), value = f.prepare(input);
-  // A second connection to the project opens only once the owner has closed it.
-  f.store.close();
-  const observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
-  t.after(() => observer.close());
-  const service = createImageReviewServices(observer, {getSettings: () => ({revision: 1, enabled: true, destination: IMAGE_REVIEW_DESTINATION})});
+  assert.throws(() => openStore(f.root), {code: 'PROJECT_LOCKED'});
+  const observer = f.store, service = f.reviews, before = rows(f.store.db), count = changes(f.store.db);
+  Object.defineProperty(observer, 'root', {value: `${f.root}/lost-owner`});
+  t.after(() => Object.defineProperty(observer, 'root', {value: f.root}));
   assert.deepEqual(service.handlers['image.review.get']({projectId: f.projectId, reviewId: value.id}), value);
   assert.throws(() => service.handlers['image.review.prepare']({input: f.input(), settingsRevision: 1}), code('IMAGE_OWNER_REQUIRED'));
   assert.throws(() => service.reject(f.approval(value)), code('IMAGE_OWNER_REQUIRED'));
   observer.tx(() => assert.throws(() => service.authorizeAcceptance(input, randomUUID(), f.approval(value)), code('IMAGE_OWNER_REQUIRED')));
+  assert.equal(rows(f.store.db), before); assert.equal(changes(f.store.db), count);
 });
 
 test('async settings hooks and thenables cannot authorize acceptance or a POST', t => {

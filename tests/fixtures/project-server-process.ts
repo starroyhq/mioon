@@ -55,6 +55,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     agentSecretCodecFactory: createHeadlessAgentSecretCodec,
     comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE),
     dataDir, port: Number(process.env.PORT || 4318),
+    cacheDir: process.env.MIOON_CACHE_DIR,
+    projectsDir: process.env.MIOON_PROJECTS_DIR,
     distDir: process.env.MIOON_DIST_DIR || path.join(root, 'apps/web/dist'),
     token: process.env.MIOON_TOKEN,
     inspectProject: received => { inspect = received; },

@@ -7,19 +7,19 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {Worker} from 'node:worker_threads';
-import {openStore, type WorkspaceStore} from '../packages/business/src/db.ts';
+import {openStore, openLegacyWorkspaceStore as openHistoricalWorkspaceStore, type WorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
+import {openProjectDatabase} from './helpers/project-database.ts';
 import type { SQLInputValue } from 'node:sqlite';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const domain = (timeline: FixtureTimeline) => clone({tracks:timeline.tracks, clips:timeline.clips, durationFrames:timeline.durationFrames});
 const unrelated = (['projects','assets','shots','nodes','edges','jobs','versions','exports'] as const);
-async function fixture(t: test.TestContext,{open=openStore}={}) {
+async function fixture(t: test.TestContext,{open=openStore,reopen=openStore}: {open?: (root:string)=>WorkspaceStore;reopen?: (root:string)=>WorkspaceStore}={}) {
  const root=await mkdtemp(path.join(tmpdir(),'mioon-history-'));
  let store=open(root), services=(createServices(store,new Map()) as FixtureServices);
  const _strictFixtureBase={root,get store(){return store;}, call:<O extends string>(operation: O, input?: unknown) => services.call(operation,input) as Promise<FixtureServiceResult<O>>,
-  restart(){store.close();store=(openStore(root) as FixtureStore);services=(createServices(store,new Map()) as FixtureServices);},
+  restart(){store.close();store=reopen(root);services=(createServices(store,new Map()) as FixtureServices);},
   asset(projectId?: string,mimeType: string='image/png') {const id=randomUUID();return store.put('assets',{id,projectId,name:'Local synthetic fixture',mimeType,duration:2,width:720,height:1280,sha256:'a'.repeat(64),relativePath:`media/${id}.fixture`});},
   capture(){return Object.fromEntries(unrelated.map(table=>[table,clone(store.list(table))]));},
   state(projectId: SQLInputValue){return {timeline:store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId),history:store.db.prepare('SELECT * FROM timeline_history WHERE projectId=? ORDER BY position').all(projectId),cursor:store.db.prepare('SELECT * FROM timeline_history_cursors WHERE projectId=?').get(projectId),requests:store.db.prepare('SELECT * FROM timeline_requests ORDER BY requestId').all()};}
@@ -140,17 +140,14 @@ test('history duplicates apply once and competing fresh revisions conflict atomi
  await rejectAtomic(f,'timeline.redo',((params) as unknown as Parameters<NonNullable<typeof rejectAtomic>>[2]),'REVISION_CONFLICT');
 });
 
-test('independent SQLite connections serialize duplicate undo requests without double traversal',async t=>{
+test('one project host serializes duplicate undo requests without a second connection or double traversal',async t=>{
  const f=await fixture(t),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
  for(let i=0;i<2;i++)timeline=await f.call('timeline.track.update',input(projectId,timeline,{trackId:timeline.tracks[0].id,patch:{name:`Step ${i}`}}));
  const params=input(projectId,timeline);
- const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});try{parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({result:await createServices(store,new Map()).call('timeline.undo',workerData.input)});}catch(error){parentPort.postMessage({error:error.code||error.message});}finally{store.close();}});}catch(error){store.close();throw error;}})();`;
- const workers=Array.from({length:4},()=>new Worker(source,{eval:true,workerData:{root:f.root,input:params,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
- t.after(()=>Promise.all(workers.map(worker=>worker.terminate())));
- await Promise.all(workers.map(worker=>new Promise<{result:FixtureTimeline;error:Error & {code:string};response:FixtureTimeline}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));
- const results=workers.map(worker=>new Promise<{result:FixtureTimeline;error:Error & {code:string};response:FixtureTimeline}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));workers.forEach(worker=>worker.postMessage('go'));
- const responses=await Promise.all(results);responses.forEach(response=>{assert.ok(!response.error,response.error as unknown as string);assert.deepEqual(response.result,responses[0].result);});
- assert.equal(responses[0].result.revision,timeline.revision+1);assert.equal((await f.call('timeline.history.get',{projectId})).cursor,1);
+ assert.throws(()=>openProjectDatabase(f.root),{code:'PROJECT_LOCKED'});
+ const responses=await Promise.all(Array.from({length:4},()=>f.call('timeline.undo',params)));
+ responses.forEach(response=>assert.deepEqual(response,responses[0]));
+ assert.equal(responses[0]!.revision,timeline.revision+1);assert.equal((await f.call('timeline.history.get',{projectId})).cursor,1);
 });
 
 test('failed durable-response commit rolls back snapshots, branch removal, cursor and timeline together',async t=>{
@@ -166,7 +163,7 @@ test('failed durable-response commit rolls back snapshots, branch removal, curso
 });
 
 test('additive migration preserves legacy timeline and response bytes, using legacy state as first undo baseline',async t=>{
- const f=await fixture(t,{open:((openLegacyWorkspaceStore) as unknown as ((root: string, { lock }?: { lock?: boolean; }) => WorkspaceStore) | undefined)}),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
+ const f=await fixture(t,{open:openLegacyWorkspaceStore as unknown as (root:string)=>WorkspaceStore,reopen:openHistoricalWorkspaceStore}),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
  const params=input(projectId,timeline,{kind:'audio',name:'Legacy audio'});timeline=await f.call('timeline.track.add',params);
  const before=(f.store.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId))!.data;
  const responses=f.store.db.prepare('SELECT * FROM timeline_requests').all(),outside=f.capture();
@@ -179,23 +176,23 @@ test('additive migration preserves legacy timeline and response bytes, using leg
 });
 
 test('project history, cursor, request identities and state remain isolated',async t=>{
- const f=await fixture(t),first=f.projectId,second=(await f.call('project.create',{name:'Other project'})).id;
- let a=await f.call('timeline.get',{projectId:first}),b=await f.call('timeline.get',{projectId:second});
- a=await f.call('timeline.track.add',input(first,a,{kind:'video'}));b=await f.call('timeline.track.add',input(second,b,{kind:'audio'}));
- const untouched=f.state(second),params=input(first,a);a=await f.call('timeline.undo',params);
- assert.deepEqual(f.state(second).timeline,untouched.timeline);assert.deepEqual(f.state(second).history,untouched.history);assert.deepEqual(f.state(second).cursor,untouched.cursor);
- await rejectAtomic(f,'timeline.undo',(({...params,projectId:second,expectedRevision:b.revision}) as unknown as Parameters<NonNullable<typeof rejectAtomic>>[2]),'IDEMPOTENCY_CONFLICT');
- assert.equal((await f.call('timeline.history.get',{projectId:first})).cursor,0);assert.equal((await f.call('timeline.history.get',{projectId:second})).cursor,1);
- b=await f.call('timeline.undo',input(second,b));assert.equal(b.tracks.length,3);assert.equal(a.tracks.length,3);
+ const f=await fixture(t),other=await fixture(t),first=f.projectId,second=other.projectId;
+ let a=await f.call('timeline.get',{projectId:first}),b=await other.call('timeline.get',{projectId:second});
+ a=await f.call('timeline.track.add',input(first,a,{kind:'video'}));b=await other.call('timeline.track.add',input(second,b,{kind:'audio'}));
+ const untouched=other.state(second),params=input(first,a);a=await f.call('timeline.undo',params);
+ assert.deepEqual(other.state(second).timeline,untouched.timeline);assert.deepEqual(other.state(second).history,untouched.history);assert.deepEqual(other.state(second).cursor,untouched.cursor);
+ assert.equal((await f.call('timeline.history.get',{projectId:first})).cursor,0);assert.equal((await other.call('timeline.history.get',{projectId:second})).cursor,1);
+ const firstState=f.state(first),otherInput={...params,projectId:second,expectedRevision:b.revision};
+ b=await other.call('timeline.undo',otherInput);assert.equal(b.tracks.length,3);assert.equal(a.tracks.length,3);
+ assert.deepEqual(await other.call('timeline.undo',otherInput),b,'the same request key has its own receipt in the other project');
+ assert.deepEqual(f.state(first),firstState);
 });
 
-test('history metadata and project snapshots stay coherent during independent SQLite undo/redo writes',async t=>{
+test('history metadata and project snapshots stay coherent during interleaved requests on the exclusive project host',async t=>{
  const f=await fixture(t),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
  timeline=await f.call('timeline.track.add',input(projectId,timeline,{kind:'audio'}));
- const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});const services=createServices(store,new Map());try{parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{let timeline=await services.call('timeline.get',{projectId:workerData.projectId});for(let i=0;i<120;i++){timeline=await services.call(i%2===0?'timeline.undo':'timeline.redo',{projectId:workerData.projectId,expectedRevision:timeline.revision,requestId:'snapshot-race-'+i});}parentPort.postMessage({done:true});}catch(error){parentPort.postMessage({error:error.code||error.message});}finally{store.close();}});}catch(error){store.close();throw error;}})();`;
- const worker=new Worker(source,{eval:true,workerData:{root:f.root,projectId,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}});
- t.after(()=>worker.terminate());await new Promise<{result:FixtureTimeline;error:{code:string};response:FixtureTimeline}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);});
- const done=new Promise<{result:FixtureTimeline;error:{code:string};response:FixtureTimeline}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);});worker.postMessage('go');
+ assert.throws(()=>openProjectDatabase(f.root),{code:'PROJECT_LOCKED'});
+ const done=(async()=>{let current=timeline;for(let i=0;i<120;i++)current=await f.call(i%2===0?'timeline.undo':'timeline.redo',{projectId,expectedRevision:current.revision,requestId:'snapshot-race-'+i});})();
  for(let index=0;index<160;index++){
   const history=await f.call('timeline.history.get',{projectId});
   assert.equal(history.cursor,(history.revision)!%2===0?1:0);assert.equal(history.length,1);
@@ -204,5 +201,5 @@ test('history metadata and project snapshots stay coherent during independent SQ
   const project=await f.call('project.get',{projectId});assert.equal(project.timeline.revision,project.timelineHistory.revision);
   assert.equal(project.timeline.tracks.length,3+project.timelineHistory.cursor);
  }
- const result=await done;assert.ok(!result.error,result.error as unknown as string);assert.equal((await f.call('timeline.get',{projectId})).revision,122);
+ await done;assert.equal((await f.call('timeline.get',{projectId})).revision,122);
 });

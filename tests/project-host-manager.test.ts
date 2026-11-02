@@ -473,7 +473,7 @@ test('a project moved while open is found by file identity when it closes', asyn
   const moved = path.join(dataDir, 'projects', 'Film moved');
   renameSync(path.dirname(film.projectFile), moved);
   // The journal moved with its folder: writes stay safe and the host stays open.
-  assert.equal(manager.checkMoved(film.projectId), false);
+  assert.doesNotThrow(() => store.tx(() => {}));
   store.tx(() => store.put('projects', {id: store.projectId, name: 'Film, moved'}));
   assert.equal(manager.status(film.projectId)?.state, 'open');
   const closed = ev.once('closed', film.projectId);
@@ -688,11 +688,12 @@ test('a .mioon renamed on its own while open is refused writes, closed and reope
   store.tx(() => store.put('projects', {id: store.projectId, name: 'Film'}));
   const journal = `${film.projectFile}-journal`;
   assert.ok(existsSync(journal));
-  assert.equal(manager.checkMoved(film.projectId), false);
+  assert.doesNotThrow(() => store.tx(() => {}));
   const renamed = path.join(path.dirname(film.projectFile), 'Renamed.mioon');
   renameSync(film.projectFile, renamed);
   const closed = ev.once('closed', film.projectId);
-  assert.equal(manager.checkMoved(film.projectId), true);
+  assert.throws(() => store.tx(() => {}), {code: 'PROJECT_FILE_MOVED', status: 409});
+  window.host.relocate();
   assert.equal(manager.status(film.projectId)?.state, 'closing');
   assert.throws(() => store.tx(() => store.put('projects', {id: store.projectId, name: 'Again'})), {code: 'PROJECT_FILE_MOVED', status: 409});
   const event = await closed;

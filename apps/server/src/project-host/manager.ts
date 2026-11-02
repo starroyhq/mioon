@@ -20,6 +20,7 @@ import {claimProjectFolder} from './folders.ts';
 import type {
   InspectProject, ProjectHost, ProjectHostContext, ProjectHostFactory, ProjectHostRuntime, ProjectHostSummary, ProjectLease, UnfinishedTask,
 } from './host.ts';
+import {ProjectHostCleanupError} from './host.ts';
 import {PROJECT_FOLDER_FALLBACK_NAME, projectFolderName} from './naming.ts';
 import type {
   BackgroundTaskIndexPort, KernelMaintenancePort, ProjectFileIdentityPort, ProjectFileRecovery, ProjectLifecycleHooks, ProjectRegistryPort,
@@ -128,14 +129,6 @@ export interface ProjectHostManager<Runtime extends ProjectHostRuntime = Project
    * waits for the search of missing ones, then reopens the projects in the
    * task index with a task lease. */
   restore(): Promise<RestoreResult<Runtime>>;
-  /** The slot for S0a's open question (docs/PROJECT-HOST.md, "要拍板的决定"):
-   * true when the open project file is no longer at the path it was opened at
-   * while the journal SQLite keeps under that path is still there, that is,
-   * the `.mioon` was renamed or moved without its folder. Two lstats. The host
-   * then refuses writes (a transaction fence), closes, finds the file by
-   * identity, and the next lease reopens it there. False when the project is
-   * not open, or its folder moved with the journal. */
-  checkMoved(projectId: string): boolean;
   readonly inspectProject: InspectProject;
   status(projectId: string): ProjectHostStatus | null;
 }
@@ -252,6 +245,7 @@ interface HostEntry<Runtime extends ProjectHostRuntime> {
   ready: Promise<void>;
   /** Set when the close begins; resolves when it has finished. */
   closed: Promise<void> | null;
+  closeFailure?: unknown;
   /** End of the idle grace; 0 when no grace runs. */
   graceUntil: number;
   /** Request leases up to this grant started before the last window closed and
@@ -379,7 +373,11 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         registry.upsert(entry.registration);
       }
     } catch (error) {
-      await discard(entry);
+      if (error instanceof ProjectHostCleanupError) {
+        entry.closeFailure = error;
+        entry.state = 'closing';
+        entry.closed = Promise.resolve();
+      } else await discard(entry, error);
       emit({type: 'open-failed', projectId: entry.projectId, error});
       throw error;
     }
@@ -389,12 +387,16 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
 
   /** Undoes a failed open; no lease was granted. The entry stays until the
    * store is closed, so a retry waits instead of meeting the lock. */
-  async function discard(entry: HostEntry<Runtime>): Promise<void> {
+  async function discard(entry: HostEntry<Runtime>, openingError: unknown): Promise<void> {
     entry.controller.abort();
     const {runtime} = entry;
     if (runtime) {
       try { runtime.interrupt(); } catch {}
-      try { await runtime.drain(); } catch {}
+      try { await runtime.drain(); } catch (error) {
+        const failure = new ProjectHostCleanupError([openingError, error], 'Failed project opening could not drain safely');
+        entry.closeFailure = failure; entry.state = 'closing'; entry.closed = Promise.resolve();
+        throw failure;
+      }
       try { runtime.dispose(); } catch {}
     }
     try { entry.store.close(); } catch {}
@@ -518,7 +520,12 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     try { runtime.interrupt(); } catch (error) { errors.push(error); }
     if (!(await waitForRequests(entry, drainTimeoutMs))) revoke(entry, 'request');
     revoke(entry);
-    try { await runtime.drain(); } catch (error) { errors.push(error); }
+    try { await runtime.drain(); } catch (error) {
+      // No verified drain means late publishers may still own this database.
+      // Keep the closing slot and lock; subsequent work reports the failure.
+      entry.closeFailure = error;
+      errors.push(error); finish(); return errors;
+    }
     for (const hook of [...hooks].reverse()) {
       try { await hook.beforeClose?.(entry.context); } catch (error) { errors.push(error); }
     }
@@ -563,7 +570,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       if (entry.state === 'open') return closeEntry(entry, reason);
       if (entry.state === 'closing') {
         await entry.closed;
-        return [];
+        return entry.closeFailure === undefined ? [] : [entry.closeFailure];
       }
       try { await entry.ready; } catch { return []; }
     }
@@ -648,19 +655,6 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     }
   }
 
-  function checkMoved(projectId: string): boolean {
-    const entry = entries.get(projectId);
-    if (!entry || entry.state === 'closing') return false;
-    const projectFile = entry.store.projectFile;
-    if (sameProjectFileIdentity(identityOrNull(projectFile), entry.identity)) return false;
-    let journal: Stats | undefined;
-    try { journal = lstatSync(`${projectFile}-journal`, {throwIfNoEntry: false}); } catch { journal = undefined; }
-    // Without the journal at the old path the folder moved with it: writes stay safe.
-    if (!journal) return false;
-    relocate(entry);
-    return true;
-  }
-
   // -------------------------------------------------------------------------
   // The manager
 
@@ -677,6 +671,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
       }
       const entry = entries.get(projectId);
       if (entry) {
+        if (entry.closeFailure !== undefined) throw entry.closeFailure;
         if (entry.state === 'open') return grant(entry, kind);
         await (entry.state === 'opening' ? entry.ready : entry.closed);
         continue;
@@ -875,5 +870,5 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
     return Object.freeze({projectId, state: entry.state, paused: entry.paused, leases: Object.freeze(leases)});
   }
 
-  return Object.freeze({list, create, openPath, acquire, close, closeAll, withExclusive, restore, checkMoved, inspectProject, status});
+  return Object.freeze({list, create, openPath, acquire, close, closeAll, withExclusive, restore, inspectProject, status});
 }

@@ -8,6 +8,7 @@ import {validateManagedFile} from '@mioon/contracts/private-storage';
 import {throwIfMediaAborted} from './media-processes.ts';
 import {checkMediaEffect} from './media-runtime.ts';
 import type {MediaEffectFence} from './media-runtime.ts';
+import {registeredProjectMediaFile} from './project-media-storage.ts';
 
 export interface ManagedMediaError extends Error { code: string }
 /** The subset of stat identity used for exact descriptor/pathname comparison. */
@@ -41,7 +42,7 @@ export function validateManagedSource(root: string, asset: ManagedAssetReference
   relative.split('/').some(part=>!part||part==='.'||part==='..')||!relative.startsWith('media/'))throw fault('MANAGED_SOURCE_INVALID');
  const file=path.resolve(root,relative),media=path.join(root,'media');
  if(!file.startsWith(media+path.sep))throw fault('MANAGED_SOURCE_INVALID');
- let info: Stats | null;try{info=validateManagedFile(file,{root});}catch{throw fault('MANAGED_SOURCE_INVALID');}
+ let info: Stats | null;try{info=registeredProjectMediaFile(root,relative)?.info??validateManagedFile(file,{root});}catch{throw fault('MANAGED_SOURCE_INVALID');}
  if(!info)throw fault('MANAGED_SOURCE_INVALID');
  if(info.size>maxBytes)throw fault('MANAGED_SOURCE_LIMIT');
  return {file,info};

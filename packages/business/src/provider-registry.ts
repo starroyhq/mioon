@@ -1,5 +1,5 @@
 import {INPUT_PROFILE_VERSION,getCapabilityProfile,getGenerationProfileRegion,evaluateCapabilityLifecycle} from '@mioon/contracts';
-import {createMockProvider} from './providers/mock.ts';
+import {createMockProvider,createMockProviderCapabilities} from './providers/mock.ts';
 import {createRunwayProvider} from './providers/runway.ts';
 import {createArkProvider} from './providers/ark.ts';
 import {createVeoProvider} from './providers/veo.ts';
@@ -74,6 +74,7 @@ export interface Provider {
   download(providerJobId: string, destination: string, context: ProviderContext): Promise<unknown>;
   cancel?(providerJobId: string, context: ProviderContext): Promise<unknown>;
 }
+export type ProviderMetadata=Pick<Provider,'id'|'capabilities'>;
 type CapabilityProfile=NonNullable<ReturnType<typeof getCapabilityProfile>>;
 
 export const providerSettings = Object.freeze({
@@ -112,7 +113,7 @@ export function registerInputProfileWrapper<T>(wrapper: T,source: unknown): T {
 export const profileDate=()=>new Date().toISOString().slice(0,10);
 // Keep the previous argument positions for embedded callers; readiness no
 // longer depends on environment count limits or historical job totals.
-export function normalizedCapabilities(provider: Provider,_env: NodeJS.ProcessEnv=process.env,_used=0,{asOf=profileDate(),requireInputProfiles=usesInputProfiles(provider)}: {asOf?: string; requireInputProfiles?: boolean}={}) {
+export function normalizedCapabilities(provider: ProviderMetadata,_env: NodeJS.ProcessEnv=process.env,_used=0,{asOf=profileDate(),requireInputProfiles=usesInputProfiles(provider)}: {asOf?: string; requireInputProfiles?: boolean}={}) {
  const c=provider.capabilities,settings=providerSetting(provider.id),inputModes=c.inputModes||['image'];
  const modelCapabilities: readonly ProviderModelCapability[]=c.modelCapabilities||c.models.map(model=>({
   id:typeof model==='string'?model:model.id,name:typeof model==='string'?model:model.name,
@@ -145,4 +146,15 @@ export function createProviderRegistry({db,root,env=process.env}: {db: DatabaseS
  const adapters: {id: string; provider: Provider}[]=[createMockProvider({db,root}),createRunwayProvider({root,env}),createArkProvider({root,env}),createVeoProvider({root,env}),createMinimaxProvider({root,env}),createViduProvider({root,env})].map(provider=>({id: provider.id, provider: provider as unknown as Provider}));
  const registry=new Map<string, Provider>(adapters.map(entry=>{profileProviders.add(handle(entry.provider) as object);return [entry.id,entry.provider] as const;}));
  profileRegistries.add(registry);return registry;
+}
+
+/** Application discovery needs no project connection or Mock ledger. Live
+ * factories perform no I/O at construction; retain only their public metadata,
+ * never any submit/poll/download methods or their mutable caches. */
+export function createProviderCatalog({root,env=process.env}: {root:string;env?:NodeJS.ProcessEnv}) {
+ const entries: ProviderMetadata[]=[{id:'mock',capabilities:createMockProviderCapabilities()},
+  ...[createRunwayProvider({root,env}),createArkProvider({root,env}),createVeoProvider({root,env}),createMinimaxProvider({root,env}),createViduProvider({root,env})]
+   .map(({id,capabilities})=>({id,capabilities}))];
+ for(const entry of entries)profileProviders.add(entry);
+ return Object.freeze({list:()=>{const asOf=profileDate();return structuredClone(entries.map(entry=>normalizedCapabilities(entry,env,0,{asOf,requireInputProfiles:true})));}});
 }

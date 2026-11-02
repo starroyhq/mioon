@@ -135,6 +135,16 @@ const h = { calls, props: defaults({ onPage: (value: unknown) => calls.push(['pa
   return h;
 }
 function showForm(h:HomeHarness) { find(h.render(), 'project-home-create-toggle').props.onClick(); return h.render(); }
+
+componentTest('home renders image and video source covers through the application JPEG cache endpoint',()=>{
+  const projectId='11111111-1111-4111-8111-111111111111',assetId='22222222-2222-4222-8222-222222222222';
+  for(const mimeType of ['image/png','video/mp4']) {
+    const h=harness({projects:[{id:projectId,name:'Cached cover',updatedAt:'2026-11-02T00:00:00.000Z',cover:{assetId,mimeType,url:`/api/project-covers/${projectId}`}}]});
+    const tree=h.render(),images=nodes(tree).filter(node=>node.type==='img');
+    assert.equal(images.length,1);assert.equal(images[0].props.src,`/api/project-covers/${projectId}`);
+    assert.equal(nodes(tree).some(node=>node.type==='video'),false);assert.deepEqual(h.calls,[]);h.unmount();
+  }
+});
 function fill(h:HomeHarness, name = '  新的故事  ', description = '  简短说明  ') {
   const tree = h.render();
   find(tree, 'project-home-name').props.onChange({ target: { value: name } });

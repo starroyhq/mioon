@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID,randomBytes} from 'node:crypto';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {LOCAL_SHOT_TEXT_FILENAME} from '../packages/business/src/local-shot-text.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';

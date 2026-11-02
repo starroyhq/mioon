@@ -2,6 +2,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import type {WorkspaceStore} from '../db.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
+import {testProjectAppLibrary} from '../project-service-application.ts';
 import {isProjectLayout,hasStoreTable} from '../store-layout.ts';
 import {readCurrentWorkspaceRole,isWorkspaceRoleSince,isPrivateStorageWorkspaceRole} from '../workspace-schema-dispatch.ts';
 import {referenceAgentTaskEventRequest,hydrateAgentTaskEventRequest,AGENT_TASK_EVENT_PAGE_BYTES} from './task-model-requests-v2.ts';
@@ -22,7 +23,7 @@ export type AgentTaskChangeInput=Omit<AgentTaskChange,'id'|'runId'|'stepId'|'cre
 export interface AgentTaskStepInput extends Pick<AgentTaskStep,'kind'> {request?:AgentTaskJson;data?:AgentTaskJson;toolCall?:AgentTaskStep['toolCall'];targets?:AgentTaskTarget[];tier?:AgentTaskStep['tier']}
 export interface AgentTaskControlRecord {requestId:string;runId:string;expectedRevision:number;action:string;stepId?:string;changeId?:string;resolution?:string;text?:string;undoChangeIds?:string[]}
 export interface AgentTaskJournalOptions {policyStore?:AgentPolicyStore}
-export function createAgentTaskJournal(store:WorkspaceStore,{policyStore}:AgentTaskJournalOptions={}){
+export function createAgentTaskJournal(store:WorkspaceStore,{policyStore=testProjectAppLibrary(store)?.agentPolicy}:AgentTaskJournalOptions={}){
  const {db}=store;
  const projectLayout=isProjectLayout(db);
  if(projectLayout&&!policyStore)fail('AGENT_TASK_POLICY_STORE_REQUIRED');

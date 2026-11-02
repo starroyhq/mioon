@@ -240,7 +240,8 @@ test('the latest connection test reads the same newest text diagnostic over HTTP
  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'PRIVATE_CONNECTION_TEST_TEXT',expectedSettingsRevision:(await f.settings.get()).revision,diagnostic:{profile:'text'}});assert.equal(sent.status,200);
  const done=await f.settle((sent.data as AgentTaskSnapshot).run.id,['completed','failed','stopped']);assert.equal(done.run.status,'completed');
  const latest=agentTaskConnectionTestResponseSchema.parse((await f.request(route)).data);
- assert.equal(latest.test?.runId,done.run.id);assert.equal(latest.test?.projectId,f.projectId);assert.equal(latest.test?.status,'completed');
+ assert.equal(latest.test?.status,'completed');assert.equal(latest.test?.protocol,'chat_completions');assert.equal(latest.test?.errorCode,null);
+ assert.deepEqual(Object.keys(latest.test!).sort(),['completedAt','errorCode','model','protocol','status']);assert.ok(Number.isFinite(Date.parse(latest.test!.completedAt)));
  const entry=fileURLToPath(new URL('../apps/cli/src/index.ts',import.meta.url)),child=spawn(process.execPath,[entry,'agent','diagnose','latest','--input','{}'],{env:{...process.env,MIOON_BASE_URL:f.server.url,MIOON_TOKEN:f.server.token,MIOON_ENABLE_LIVE_PROVIDER:'0'},stdio:['ignore','pipe','pipe']});
  let stdout='';child.stdout.setEncoding('utf8').on('data',(chunk:string)=>{stdout+=chunk;});
  const code=await new Promise<number|null>((resolve,reject)=>{const timer=setTimeout(()=>{child.kill('SIGKILL');reject(Error('Synthetic CLI read timed out'));},15000);child.once('error',reject);child.once('close',value=>{clearTimeout(timer);resolve(value);});});

@@ -11,7 +11,6 @@ import { WorkbenchIcon } from '@mioon/ui/components/workbench-icons';
 import { Dialog } from '@mioon/ui/components/dialog';
 import { WorkbenchButton, WorkbenchDialogContent } from '@mioon/ui/components/workbench-controls';
 import type { ProjectSummary } from '../../../packages/contracts/src/project-home.ts';
-import { mediaUrl } from './api.ts';
 import { Textarea } from '@mioon/ui/components/textarea';
 
 export interface ProjectHomeProject {
@@ -244,7 +243,7 @@ export default function ProjectHome({ projects, phase, openingName, error, notic
               {projects.map(project => <li key={project.id}><article className="project-home-card">
                 {projectMenu && <div className="project-home-card-menu">{projectMenu(project)}</div>}
                 <Button type="button" variant="ghost" className="project-home-card-open" data-testid={`project-home-open-${project.id}`} aria-label={t('projects.openNamed', { name: project.name })} disabled={locked} onClick={() => { if (canAct()) onOpen(project.id); }}>
-                  <span className="project-home-cover">{project.cover ? project.cover.mimeType.startsWith('image/') ? <img src={mediaUrl(project.id, project.cover.assetId)} alt="" loading="lazy" /> : <video src={mediaUrl(project.id, project.cover.assetId)} muted playsInline preload="metadata" tabIndex={-1} aria-hidden="true" /> : <ProjectSymbol size={32} />}{justImported.includes(project.id) ? <span className="project-home-just-imported" data-testid={`project-home-just-imported-${project.id}`}>{t('projectPackage.home.justImported')}</span> : project.lastOpenedAt && <span className="project-home-recent">{t('projects.recent')}</span>}{project.durationFrames !== undefined && <span className="project-home-duration">{Math.floor(project.durationFrames / (project.fps || 30) / 60).toString().padStart(2, '0')}:{Math.floor(project.durationFrames / (project.fps || 30) % 60).toString().padStart(2, '0')}</span>}</span>
+                  <span className="project-home-cover">{project.cover ? <img src={`/api/project-covers/${project.id}`} alt="" loading="lazy" /> : <ProjectSymbol size={32} />}{justImported.includes(project.id) ? <span className="project-home-just-imported" data-testid={`project-home-just-imported-${project.id}`}>{t('projectPackage.home.justImported')}</span> : project.lastOpenedAt && <span className="project-home-recent">{t('projects.recent')}</span>}{project.durationFrames !== undefined && <span className="project-home-duration">{Math.floor(project.durationFrames / (project.fps || 30) / 60).toString().padStart(2, '0')}:{Math.floor(project.durationFrames / (project.fps || 30) % 60).toString().padStart(2, '0')}</span>}</span>
                   <span className="project-home-card-title">{project.name}<small>{project.width && project.height ? project.width === project.height ? '1:1' : project.width > project.height ? '16:9' : '9:16' : ''}</small></span>
                   <span className="project-home-card-info">{project.shotCount !== undefined && <span>{t('redesign.projects.shots', { count: project.shotCount })} · </span>}<ProjectTime value={project.updatedAt} /></span>
                 </Button>

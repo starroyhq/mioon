@@ -15,7 +15,7 @@ import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/works
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {createWorkspaceRestoreProfileV27} from '../packages/business/src/workspace-restore-schema-v27.ts';
 import {classifyWorkspaceSchema as classifyHistorical,detectWorkspaceRestoreEvidence as detectHistorical,installWorkspaceRestoreSchema as installHistorical} from '../packages/business/src/workspace-restore-schema.ts';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup,inspectWorkspaceRestorePublication} from '../packages/business/src/workspace-restore.ts';
 import {inspectWorkspaceBackup} from '../packages/business/src/backup-readiness.ts';

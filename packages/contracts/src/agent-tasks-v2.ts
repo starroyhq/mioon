@@ -1,4 +1,6 @@
 import {z} from 'zod';
+import {agentDiagnosticSummarySchema} from './agent-diagnostic-summary.ts';
+import type {AgentDiagnosticSummary} from './agent-diagnostic-summary.ts';
 
 export const AGENT_TASK_TIERS=Object.freeze(['read_only','local_reversible','local_irreversible','paid'] as const);
 export const AGENT_TASK_STATUSES=Object.freeze(['accepted','running','paused','awaiting_approval','completed','failed','stopped','interrupted','reverted','awaiting_answer'] as const);
@@ -117,10 +119,10 @@ export const agentTaskEventSchema:z.ZodType<AgentTaskEvent>=z.object({runId:id,s
 export const agentTaskReceiptSchema:z.ZodType<AgentTaskReceipt>=z.object({requestId,runId:id,action:z.string(),revision,result:json}).strict();
 
 export const agentTaskConversationSchema:z.ZodType<AgentTaskConversation>=z.object({id,projectId:id,title:z.string().min(1).max(120),createdAt:z.string(),updatedAt:z.string(),lastRunId:id,lastRunStatus:z.enum(AGENT_TASK_STATUSES),changeCount:revision,runCount:revision}).strict();
-/** Latest text diagnostic in the workspace, shown as the settings page's connection test. Only identity,
- * timing and outcome are exposed; the test text, model reply and credentials never are. */
-export interface AgentTaskConnectionTest {runId:string;projectId:string;status:AgentTaskStatus;createdAt:string;updatedAt:string;protocol:string;baseUrl:string;model:string;failureCode?:string}
-export const agentTaskConnectionTestSchema:z.ZodType<AgentTaskConnectionTest>=z.object({runId:id,projectId:id,status:z.enum(AGENT_TASK_STATUSES),createdAt:z.string().datetime(),updatedAt:z.string().datetime(),protocol:z.string().min(1).max(64),baseUrl:z.string().min(1).max(2048),model:z.string().min(1).max(200),failureCode:z.string().regex(/^[A-Z][A-Z0-9_]{0,79}$/u).optional()}).strict();
+/** Completed application-level diagnostic summary. Reading it never needs
+ * a project/run identity, endpoint, test text, model reply or credentials. */
+export type AgentTaskConnectionTest=AgentDiagnosticSummary;
+export const agentTaskConnectionTestSchema=agentDiagnosticSummarySchema;
 export const agentTaskConnectionTestResponseSchema=z.object({test:agentTaskConnectionTestSchema.nullable()}).strict();
 export const agentTaskHistoryPageSchema:z.ZodType<AgentTaskHistoryPage>=z.object({conversations:z.array(agentTaskConversationSchema).max(100),nextCursor:z.string().max(512).nullable()}).strict();
 export const agentTaskConversationPageSchema:z.ZodType<AgentTaskConversationPage>=z.object({conversation:agentTaskConversationSchema,runs:z.array(agentTaskRunSchema).max(100),nextCursor:z.string().max(512).nullable()}).strict();

@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import {detectWorkspaceRestoreEvidence} from '../packages/business/src/workspace-restore-schema.ts';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {inspectWorkspaceSchemaMarkerRole} from '../packages/business/src/workspace-schema-profile.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';

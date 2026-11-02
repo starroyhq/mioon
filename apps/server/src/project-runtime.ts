@@ -43,6 +43,7 @@ import type { IncomingMessage,ServerResponse } from 'node:http';
 import path from 'node:path';
 import packageMetadata from '../../../package.json' with { type: 'json' };
 import { deriveAgentEndpoint } from '../../../packages/contracts/src/agent-protocol.ts';
+import {agentDiagnosticSummarySchema} from '../../../packages/contracts/src/agent-diagnostic-summary.ts';
 import { isRestoredWorkspaceSchemaSince } from '../../../packages/contracts/src/workspace-schema-lineage.ts';
 import { createAgentDiagnosticsHttp } from './agent-diagnostics-http.ts';
 import { createAgentTaskHttp } from './agent-task-http-v2.ts';
@@ -59,6 +60,7 @@ import { createLocalShotTextHttp } from './local-shot-text-http.ts';
 import type { createProjectDeletionGate } from './project-deletion-gate.ts';
 import { createProjectPackageHttp } from './project-package-http.ts';
 import type { ProjectAddress } from './project-routes.ts';
+import {ProjectHostCleanupError} from './project-host/host.ts';
 import { createTimelineAudioContinuousHttp } from './timeline-audio-continuous-http.ts';
 import { createTimelineAudioPreviewHttp } from './timeline-audio-preview-http.ts';
 import { createVideoHttp } from './video-http.ts';
@@ -84,7 +86,7 @@ export type ProjectApplication = Pick<AppLibrary, 'dataDir' | 'databaseFile' | '
 /** Startup failed before a runtime could be returned, and its private work
  * could not be confirmed settled. The store owner must retain SQLite/locks,
  * just as it does after boundedShutdown rejects during a normal close. */
-export class ProjectRuntimeCleanupError extends AggregateError {
+export class ProjectRuntimeCleanupError extends ProjectHostCleanupError {
   constructor(startupError: unknown, cleanupError: unknown) {
     super([startupError, cleanupError], 'Project startup and cleanup could not finish safely', {cause: startupError});
   }
@@ -278,7 +280,11 @@ export async function composeProjectRuntime({store, shutdown, deletionGate, base
     // local engine exposes the same dependency. createAgentTaskRuntime re-sanitizes reads.
     const chatSettings = agentSettings as unknown as AgentSettingsService;
     taskToolsV2=createAgentTaskTools({store:ordinaryStore,services:ordinary,...(application?{policyStore:application.agentPolicy}:{})});
-    taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,...(application?{policyStore:application.agentPolicy}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
+    taskRuntimeV2=createAgentTaskRuntime({store:ordinaryStore,...(application?{policyStore:application.agentPolicy,onDiagnosticCompleted:summary=>application.tx(()=>{
+      const raw=application.documents.read('agent-diagnostic-summary-v1.json');
+      const previous=raw===null?null:agentDiagnosticSummarySchema.parse(JSON.parse(raw));
+      if(previous===null||previous.completedAt<=summary.completedAt)application.documents.write('agent-diagnostic-summary-v1.json',JSON.stringify(summary));
+    })}:{}),agentSettings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,selfPort:()=>listeningPort(),assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed(),checksPreflight:(input,{signal}={})=>ordinary.call('timeline.export.preflight',input,{signal:signal?AbortSignal.any([shutdown.signal,signal]):shutdown.signal}),...(taskGatewayV2?{gateway:taskGatewayV2}:{})});
     taskHttpV2=createAgentTaskHttp({runtime:taskRuntimeV2,tools:taskToolsV2,assertMutationAllowed:()=>ordinary.backups.assertMutationAllowed()});
     agentDiagnosticsHttp=createAgentDiagnosticsHttp({settings:chatSettings,authorizations:agentAuthorizations!,tools:taskToolsV2,policy:()=>taskRuntimeV2!.policy(),selfPort:()=>listeningPort(),hasProject:id=>!!store.get('projects',id),storage:()=>readAgentTaskStorage(store.db)});
     }

@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {writeSync} from 'node:fs';
 import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
+import type {WorkspaceStore} from '../../packages/business/src/db.ts';
 import {createServices,canonical} from '../../packages/business/src/services.ts';
 import {createLocalMutationServices} from '../../packages/business/src/local-mutations.ts';
 import {validateImageConsumption} from '../../packages/business/src/image-consumption.ts';
@@ -16,7 +17,7 @@ import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validate
 import {schemaObjects, withoutForeignKeys} from '../helpers/project-database.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
-type Store = ReturnType<typeof openStore>
+type Store = WorkspaceStore
 type Services = ReturnType<typeof createServices>
 export interface ShotTextFixtureOptions {fault?: (point: string)=>void; afterCommit?: ()=>void; dispatches?: {projectId: string; input: unknown}[]}
 export function shotTextForStore(store: Store, services: Services, {fault=()=>{},afterCommit=()=>{},dispatches=[]}: ShotTextFixtureOptions = {}) {

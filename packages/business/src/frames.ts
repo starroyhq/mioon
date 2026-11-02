@@ -31,6 +31,7 @@ export interface FrameServicesOptions {
  fault?: FrameFault;
 }
 export interface FrameService {
+ readonly isBusy: ()=>boolean;
  readonly handlers: Readonly<Record<string,(input: unknown,context?: {signal?: AbortSignal|null})=>unknown>>;
  readonly drain: ()=>Promise<void>;
 }
@@ -76,6 +77,8 @@ const stageTask=(value: FrameTaskView): FrameStorageTask=>({...value.row,snapsho
 /** Local-only, single-owner extraction. The immutable ACK is committed before
  * any work is queued. Startup and historical replay never enter the work queue.
  * This module has no provider, model, settings, network, or generic tool seam. */
+// S0: Global counters describe this one project connection. The original
+// queuedPerProject=2 and retained per-project limits remain unchanged.
 export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode=decodeManagedFrame as unknown as (options?: DecodeManagedFrameOptions)=>Promise<DecodedManagedFrame>,autoRun=true,fault=noop}: FrameServicesOptions={}): FrameService {
  if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const old=owners.get(store.db);
@@ -331,6 +334,6 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   })(),'FRAME_STOP_TIMEOUT');draining=result;void result.catch(()=>{if(draining===result)draining=undefined;});return result;
  }
  Object.assign(handlers,history.handlers);
- const service: FrameService={handlers,drain};registration.service=service;owners.set(db,registration);
+ const service: FrameService={handlers,drain,isBusy:()=>active.size>0||pending.size>0||preparations.size>0};registration.service=service;owners.set(db,registration);
  try{reconcile();}catch(cause){owners.delete(db);throw cause;}return service;
 }

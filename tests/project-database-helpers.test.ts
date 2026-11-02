@@ -5,11 +5,16 @@ import {randomUUID} from 'node:crypto';
 import {lstatSync, mkdtempSync, realpathSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import type {DatabaseSync} from 'node:sqlite';
+import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
 import {openStore} from '../packages/business/src/db.ts';
-import {isProjectId} from '../packages/contracts/src/project-file.ts';
+import {isProjectId, projectRpcPath} from '../packages/contracts/src/project-file.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {findHeldAppProjectFile} from '../packages/business/src/app-db/connection.ts';
+import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
+import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
+import {mutateProjectRecord} from '../packages/business/src/project-record-mutations.ts';
 import {createServerProject, foreignKeyCheck, openProjectDatabase, projectDatabasePath, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const TOKEN = 'synthetic-project-database-token';
@@ -145,21 +150,27 @@ test('schemaObjects and foreignKeyCheck cover every database on the connection',
   try {
     const {db} = store;
     assert.deepEqual(foreignKeyCheck(db), []);
-    const main = db.prepare('SELECT type,name,tbl_name,sql FROM main.sqlite_master ORDER BY type,name').all()
-      .map(row => ({schema: 'main', type: String(row.type), name: String(row.name), tbl_name: String(row.tbl_name), sql: typeof row.sql === 'string' ? row.sql : null}));
-    assert.ok(main.some(object => object.type === 'table' && object.name === 'projects'));
+    const content = db.prepare('SELECT type,name,tbl_name,sql FROM project.sqlite_master ORDER BY type,name').all()
+      .map(row => ({schema: 'project', type: String(row.type), name: String(row.name), tbl_name: String(row.tbl_name), sql: typeof row.sql === 'string' ? row.sql : null}));
+    assert.ok(content.some(object => object.type === 'table' && object.name === 'projects'));
     db.exec("ATTACH ':memory:' AS extra; CREATE TABLE extra.parent(id INTEGER PRIMARY KEY); CREATE TABLE extra.child(parentId INTEGER REFERENCES parent(id));");
     const orphan = randomUUID();
-    db.exec('PRAGMA foreign_keys=OFF');
-    db.prepare('INSERT INTO workspace_preferences VALUES(?,1,?)').run(orphan, '{}');
-    db.exec('INSERT INTO extra.child VALUES(7); PRAGMA foreign_keys=ON;');
-    const rowid = Number(db.prepare('SELECT rowid FROM workspace_preferences WHERE projectId=?').get(orphan)?.rowid);
+    withoutForeignKeys(db, () => {
+      db.prepare('INSERT INTO shots(id,projectId,data) VALUES(?,?,?)').run(orphan, randomUUID(), JSON.stringify({id: orphan}));
+      db.exec('INSERT INTO extra.child VALUES(7)');
+    });
+    const rowid = Number(db.prepare('SELECT rowid FROM shots WHERE id=?').get(orphan)?.rowid);
+    const revisionRowid = Number(db.prepare("SELECT rowid FROM agent_task_target_revisions_v2 WHERE kind='shot' AND targetId=?").get(orphan)?.rowid);
     assert.deepEqual(foreignKeyCheck(db), [
-      {schema: 'main', table: 'workspace_preferences', rowid, parent: 'projects', parentSchema: 'main', constraint: 'fk:0'},
+      {schema: 'project', table: 'shots', rowid, parent: 'projects', parentSchema: 'project', constraint: 'fk:0'},
+      {schema: 'project', table: 'agent_task_target_revisions_v2', rowid: revisionRowid, parent: 'projects', parentSchema: 'project', constraint: 'fk:0'},
       {schema: 'extra', table: 'child', rowid: 1, parent: 'parent', parentSchema: 'extra', constraint: 'fk:0'},
     ]);
     const objects = schemaObjects(db);
-    assert.deepEqual(objects.filter(object => object.schema === 'main'), main);
+    assert.deepEqual(objects.filter(object => object.schema === 'project'), content);
+    assert.ok(objects.some(object => object.schema === 'main' && object.name === 'jobs'));
+    assert.ok(objects.some(object => object.schema === 'cache' && object.name === 'waveform_cache'));
+    assert.ok(objects.some(object => object.schema === 'temp' && object.name === 'project_file_seen_sequence'));
     assert.deepEqual(objects.filter(object => object.schema === 'extra').map(object => object.name), ['child', 'parent']);
   } finally {
     store.close();
@@ -193,12 +204,15 @@ test('withoutForeignKeys restores the previous foreign_keys value after a throw 
   const store = openStore(dataDirectory(t));
   try {
     const {db} = store;
+    const before = schemaObjects(db);
     assert.throws(() => withoutForeignKeys(db, () => { assert.equal(foreignKeys(db), 0); throw new Error('synthetic write failure'); }), /^Error: synthetic write failure$/);
     assert.equal(foreignKeys(db), 1);
+    assert.deepEqual(schemaObjects(db), before);
     const rejected = withoutForeignKeys(db, async () => { await Promise.resolve(); throw new Error('synthetic async failure'); });
     assert.equal(foreignKeys(db), 0);
     await assert.rejects(rejected, /^Error: synthetic async failure$/);
     assert.equal(foreignKeys(db), 1);
+    assert.deepEqual(schemaObjects(db), before);
     db.exec('PRAGMA foreign_keys=OFF');
     assert.equal(withoutForeignKeys(db, () => 'unchanged'), 'unchanged');
     assert.equal(foreignKeys(db), 0, 'the previous value comes back, not always ON');
@@ -223,12 +237,179 @@ test('withoutForeignKeys refuses to start inside a transaction and reports a tra
     assert.equal(foreignKeys(db), 1);
     // SQLite ignores the restoring pragma inside the open transaction: fail loudly instead.
     assert.throws(() => withoutForeignKeys(db, () => db.exec('BEGIN')), {message: /left a transaction open/});
-    assert.equal(db.isTransaction, true);
-    db.exec('ROLLBACK; PRAGMA foreign_keys=ON;');
+    assert.equal(db.isTransaction, false);
     assert.equal(foreignKeys(db), 1);
   } finally {
     store.close();
   }
+});
+
+test('openProjectDatabase close releases all kernel owners, rejects native reopen and leaves a new owner intact', t => {
+  const root = dataDirectory(t), store = openStore(root);
+  const files = [store.projectFile, path.join(store.localDir, 'history.db'), path.join(store.cacheDir, 'cache.db')];
+  store.close();
+  const db = openProjectDatabase(root);
+  const identities = files.map(file => {
+    const info = lstatSync(file, {bigint: true});
+    return {dev: String(info.dev), ino: String(info.ino)};
+  });
+  assert.equal(isProjectDatabase(db), true);
+  assert.ok(identities.every(identity => isProjectFileHeld(identity)));
+  db.close();
+  assert.equal(isProjectDatabase(db), false);
+  assert.ok(identities.every(identity => !isProjectFileHeld(identity)));
+  assert.throws(() => db.open(), /Reopen project databases through/);
+  const reopened = openProjectDatabase(root);
+  try {
+    db.close();
+    assert.equal(isProjectDatabase(reopened), true);
+    assert.ok(identities.every(identity => isProjectFileHeld(identity)));
+    assert.throws(() => openProjectDatabase(root), {code: 'PROJECT_LOCKED'});
+  } finally { reopened.close(); }
+  assert.ok(identities.every(identity => !isProjectFileHeld(identity)));
+});
+
+test('projectDirFor borrows the real held app registry and follows its registered path without opening the project', t => {
+  const dataDir = dataDirectory(t), created = createServerProject(dataDir, {name: 'Named layout'});
+  const {projectId, store} = created, root = store.projectDir;
+  store.close();
+  assert.equal(findHeldAppProjectFile(dataDir, projectId), undefined);
+  const library = openAppLibrary({dataDir});
+  try {
+    assert.equal(findHeldAppProjectFile(dataDir, projectId), store.projectFile);
+    assert.equal(findHeldAppProjectFile(dataDir, randomUUID()), null);
+    assert.equal(projectDirFor(dataDir, projectId), root);
+    assert.throws(() => projectDirFor(dataDir, randomUUID()), {code: 'PROJECT_NOT_FOUND'});
+    const db = openProjectDatabase(root);
+    db.close();
+    assert.equal(library.db.isOpen, true, 'lookup never closes the borrowed library');
+  } finally { library.close(); }
+  assert.equal(findHeldAppProjectFile(dataDir, projectId), undefined);
+});
+
+test('project row initialization proves the real store and never replaces existing content', t => {
+  const store = openStore(dataDirectory(t));
+  try {
+    ensureProjectRow(store, {name: 'Original'});
+    const before = store.get('projects', store.projectId);
+    ensureProjectRow(store, {name: 'Must not overwrite'});
+    assert.deepEqual(store.get('projects', store.projectId), before);
+    assert.throws(() => ensureProjectRow({...store}, {name: 'Copied capability'}), /live kernel store/);
+  } finally { store.close(); }
+  assert.throws(() => ensureProjectRow(store, {name: 'Closed capability'}), /live kernel store/);
+});
+
+test('project initialization commits its description and preset atomically and rolls back either failure', t => {
+  const store = openStore(dataDirectory(t)), now = () => new Date('2026-11-02T00:00:00.000Z');
+  try {
+    assert.throws(() => ensureProjectRow(store, {name: 'Invalid preset', description: 'Must roll back', timelinePresetId: 'invalid', now}), {code: 'VALIDATION_ERROR'});
+    assert.deepEqual(store.list('projects'), []);
+    assert.deepEqual(store.list('timelines'), []);
+    store.db.exec("CREATE TEMP TRIGGER fixture_init_fail BEFORE INSERT ON project.timelines BEGIN SELECT RAISE(ABORT,'synthetic timeline initialization failure');END");
+    assert.throws(() => ensureProjectRow(store, {name: 'Fault', timelinePresetId: 'square_1080', now}), /synthetic timeline initialization failure/);
+    assert.deepEqual(store.list('projects'), []);
+    assert.deepEqual(store.list('timelines'), []);
+    store.db.exec('DROP TRIGGER temp.fixture_init_fail');
+    ensureProjectRow(store, {name: 'Atomic project', description: 'Initial notes', timelinePresetId: 'square_1080', now});
+    assert.deepEqual(store.get('projects', store.projectId), {id: store.projectId, name: 'Atomic project', description: 'Initial notes', revision: 1, createdAt: now().toISOString(), updatedAt: now().toISOString()});
+    const timeline = store.list('timelines')[0] as {projectId: string; width: number; height: number; tracks: unknown[]};
+    assert.equal(timeline.projectId, store.projectId);
+    assert.equal(timeline.width, 1080);
+    assert.equal(timeline.height, 1080);
+    assert.equal(timeline.tracks.length, 3);
+    assert.deepEqual(foreignKeyCheck(store.db), []);
+  } finally { store.close(); }
+});
+
+test('kernel project record edits share the original revision and exact receipt contract without old lifecycle DDL', t => {
+  const store = openStore(dataDirectory(t)), other = openStore(dataDirectory(t));
+  try {
+    ensureProjectRow(store, {name: 'Original'});
+    ensureProjectRow(other, {name: 'Other'});
+    const structure = schemaObjects(store.db), rename = {projectId: store.projectId, requestId: randomUUID(), expectedRevision: 1, name: 'Renamed'};
+    const renamed = mutateProjectRecord(store, 'project.rename', rename);
+    const notes = {projectId: store.projectId, requestId: randomUUID(), expectedRevision: 2, notes: 'Saved notes'};
+    const saved = mutateProjectRecord(store, 'project.notes.set', notes);
+    assert.equal(saved.revision, 3);
+    assert.equal(saved.notes, notes.notes);
+    assert.deepEqual(mutateProjectRecord(store, 'project.rename', rename), renamed);
+    assert.deepEqual(mutateProjectRecord(store, 'project.notes.set', notes), saved);
+    assert.throws(() => mutateProjectRecord(store, 'project.notes.set', {...notes, notes: 'Changed input'}), {code: 'IDEMPOTENCY_CONFLICT'});
+    assert.throws(() => mutateProjectRecord(store, 'project.notes.set', {...notes, requestId: randomUUID()}), {code: 'REVISION_CONFLICT'});
+    assert.throws(() => mutateProjectRecord(store, 'project.rename', {...rename, projectId: other.projectId}), {code: 'NOT_FOUND'});
+    assert.equal(other.db.prepare('SELECT count(*) AS n FROM project_mutation_requests').get()?.n, 0);
+    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project_mutation_requests').get()?.n, 2);
+    store.db.exec("CREATE TEMP TRIGGER fixture_mutation_fail BEFORE INSERT ON main.project_mutation_requests BEGIN SELECT RAISE(ABORT,'synthetic project receipt failure');END");
+    assert.throws(() => mutateProjectRecord(store, 'project.notes.set', {...notes, requestId: randomUUID(), expectedRevision: 3, notes: 'Must roll back'}), /synthetic project receipt failure/);
+    assert.deepEqual(store.get('projects', store.projectId), saved);
+    assert.equal(store.db.prepare('SELECT count(*) AS n FROM project_mutation_requests').get()?.n, 2);
+    store.db.exec('DROP TRIGGER temp.fixture_mutation_fail');
+    const cleared = mutateProjectRecord(store, 'project.notes.set', {...notes, requestId: randomUUID(), expectedRevision: 3, notes: ' \n\t'});
+    assert.equal(cleared.revision, 4);
+    assert.equal(Object.hasOwn(cleared, 'notes'), false);
+    assert.deepEqual(schemaObjects(store.db), structure);
+    assert.throws(() => mutateProjectRecord({...store}, 'project.rename', rename), /live kernel store/);
+  } finally { store.close(); other.close(); }
+});
+
+test('withoutForeignKeys preserves fault, target revision and seen-sequence triggers and restores exact TEMP definitions', t => {
+  const {store, projectId} = createServerProject(dataDirectory(t));
+  try {
+    const {db} = store, id = randomUUID();
+    db.exec("CREATE TEMP TRIGGER fixture_shot_fault BEFORE UPDATE ON project.shots BEGIN SELECT RAISE(ABORT,'synthetic shot fault');END");
+    const before = schemaObjects(db);
+    withoutForeignKeys(db, () => {
+      assert.equal(db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE name LIKE 'project_file_fk_%'").get()?.n, 0);
+      assert.equal(db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE name='fixture_shot_fault'").get()?.n, 1);
+      db.prepare('INSERT INTO shots(id,projectId,data) VALUES(?,?,?)').run(id, projectId, JSON.stringify({id, projectId, title: 'Real shot'}));
+      assert.equal(db.prepare("SELECT revision FROM agent_task_target_revisions_v2 WHERE projectId=? AND kind='shot' AND targetId=?").get(projectId, id)?.revision, 1);
+      assert.equal(db.prepare('SELECT seenContentSequence AS n FROM history_state').get()?.n, db.prepare('SELECT contentSequence AS n FROM project.project_file').get()?.n);
+      assert.throws(() => withoutForeignKeys(db, () => 1), /cannot overlap/);
+    });
+    assert.deepEqual(schemaObjects(db), before);
+    assert.throws(() => db.prepare('UPDATE shots SET data=data WHERE id=?').run(id), /synthetic shot fault/);
+    assert.throws(() => insertForeignShot(db), /FOREIGN KEY constraint failed/);
+    const beforeLeakedTransaction = schemaObjects(db);
+    assert.throws(() => withoutForeignKeys(db, () => db.exec('BEGIN')), /left a transaction open/);
+    assert.equal(db.isTransaction, false);
+    assert.equal(foreignKeys(db), 1);
+    assert.deepEqual(schemaObjects(db), beforeLeakedTransaction);
+  } finally { store.close(); }
+});
+
+test('withoutForeignKeys reports both write and restore failures without hiding a conflicting TEMP trigger', t => {
+  const store = openStore(dataDirectory(t)), failure = new Error('Synthetic write failure');
+  try {
+    assert.throws(() => withoutForeignKeys(store.db, () => {
+      store.db.exec('CREATE TEMP TRIGGER project_file_fk_01_child_insert BEFORE INSERT ON project.shots BEGIN SELECT 1;END');
+      throw failure;
+    }), error => error instanceof AggregateError && error.errors[0] === failure && /already exists/.test(String(error.errors[1])));
+    assert.equal(foreignKeys(store.db), 1);
+    assert.equal(store.db.isTransaction, false);
+    assert.equal(store.db.prepare("SELECT count(*) AS n FROM temp.sqlite_master WHERE name='project_file_fk_01_child_insert'").get()?.n, 1);
+    assert.throws(() => withoutForeignKeys(store.db, () => 1), /exact kernel relation triggers/);
+  } finally { store.close(); }
+});
+
+test('withoutForeignKeys temporarily suspends only cross-file FK enforcement and foreignKeyCheck reports its orphan', t => {
+  const store = openStore(dataDirectory(t));
+  try {
+    const {db} = store, projectId = randomUUID(), requestId = randomUUID();
+    const insert = (): void => { db.prepare('INSERT INTO mutation_requests(requestId,operation,projectId,canonicalInput,response) VALUES(?,?,?,?,?)').run(requestId, 'shot.update', projectId, '{}', '{}'); };
+    assert.throws(insert, /FOREIGN KEY constraint failed/);
+    withoutForeignKeys(db, insert);
+    const rowid = Number(db.prepare('SELECT rowid FROM mutation_requests WHERE requestId=?').get(requestId)?.rowid);
+    assert.deepEqual(foreignKeyCheck(db), [{schema: 'main', table: 'mutation_requests', rowid, parent: 'projects', parentSchema: 'project', constraint: 'project_file_fk_33'}]);
+    assert.throws(() => db.prepare('UPDATE mutation_requests SET projectId=? WHERE requestId=?').run(randomUUID(), requestId), /FOREIGN KEY constraint failed/);
+  } finally { store.close(); }
+});
+
+test('foreignKeyCheck retains native checks for an explicit non-project memory connection', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec('PRAGMA foreign_keys=OFF;CREATE TABLE parent(id INTEGER PRIMARY KEY);CREATE TABLE child(parentId INTEGER REFERENCES parent(id));INSERT INTO child VALUES(7);');
+    assert.deepEqual(foreignKeyCheck(db), [{schema: 'main', table: 'child', rowid: 1, parent: 'parent', parentSchema: 'main', constraint: 'fk:0'}]);
+  } finally { db.close(); }
 });
 
 test('the server serves a project filled before it started, and inspectProject reads it on the server connection', {timeout: 120_000}, async t => {
@@ -240,7 +421,7 @@ test('the server serves a project filled before it started, and inspectProject r
   let running = true;
   t.after(async () => { if (running) await server.close(); });
   const rpc = async (operation: string, input: unknown): Promise<unknown> => {
-    const response = await fetch(`${server.url}/api/rpc`, {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json'}, body: JSON.stringify({operation, input})});
+    const response = await fetch(`${server.url}${operation === 'project.list' ? '/api/rpc' : projectRpcPath(projectId)}`, {method: 'POST', headers: {authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json'}, body: JSON.stringify({operation, input})});
     const body = await response.json() as {ok: boolean; data: unknown};
     assert.equal(response.status, 200, JSON.stringify(body));
     return body.data;

@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { AGENT_CONNECTION_TEST_TEXT, agentConnectionTestMatches, chooseAgentConnectionTestProject, createAgentConnectionTestSession } from '../apps/web/src/agent-connection-test.ts';
 import type { AgentConnectionTestDependencies, AgentConnectionTestState } from '../apps/web/src/agent-connection-test.ts';
 import type { AgentTaskProjectSnapshot } from '../apps/web/src/agent-tasks-v2.ts';
+import {agentTaskConnectionTestResponseSchema} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type { AgentTaskConnectionTest, AgentTaskSnapshot, AgentTaskStatus } from '../packages/contracts/src/agent-tasks-v2.ts';
 
 const projectA = '00000000-0000-4000-8000-00000000000a', projectB = '00000000-0000-4000-8000-00000000000b', runId = '00000000-0000-4000-8000-0000000000aa';
-const configuration = { presetId: 'deepseek', platformId: 'global', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', protocol: 'chat_completions' };
+const configuration = { presetId: 'deepseek', platformId: 'global', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', protocol: 'chat_completions' as const };
 const at = '2026-10-26T01:02:03.000Z';
 type Client = NonNullable<AgentConnectionTestDependencies['client']>;
 type SendInput = Parameters<Client['send']>[1];
@@ -18,7 +19,7 @@ function project(projectId: string, { authorized = true, revision = 3 }: { autho
 function run(status: AgentTaskStatus, projectId = projectA): AgentTaskSnapshot {
   return { run: { id: runId, projectId, requestId: 'request-1', text: AGENT_CONNECTION_TEST_TEXT, status, revision: 1, stepLimit: 30, budget: 30, stepsUsed: 1, configuration, createdAt: at, updatedAt: at }, steps: [], changes: [] } as unknown as AgentTaskSnapshot;
 }
-const stored = (status: AgentTaskStatus, extra: Partial<AgentTaskConnectionTest> = {}): AgentTaskConnectionTest => ({ runId, projectId: projectA, status, createdAt: at, updatedAt: at, protocol: configuration.protocol, baseUrl: configuration.baseUrl, model: configuration.model, ...extra });
+const stored = (status: AgentTaskConnectionTest['status'], extra: Partial<AgentTaskConnectionTest> = {}): AgentTaskConnectionTest => ({status,completedAt:at,protocol:configuration.protocol,model:configuration.model,errorCode:null,...extra});
 
 function harness({ snapshots = [project(projectA)], reads = [run('running'), run('completed')], send, lookup, latest = [null, stored('completed')], projects = [{ id: projectA, updatedAt: at }], recentOpened = {} }:
   { snapshots?: AgentTaskProjectSnapshot[]; reads?: AgentTaskSnapshot[]; send?: (input: SendInput) => Promise<AgentTaskSnapshot>; lookup?: Client['lookup']; latest?: (AgentTaskConnectionTest | null)[]; projects?: { id: string; updatedAt: string }[]; recentOpened?: Record<string, string> } = {}) {
@@ -44,9 +45,10 @@ test('the test runs in the current project, else the most recently opened, else 
   assert.equal(chooseAgentConnectionTestProject({ recentOpened: {}, projects: [] }), null);
 });
 
-test('a stored result describes the saved connection only when protocol, address and model all match', () => {
+test('a minimal summary compares only protocol and model and never claims endpoint identity', () => {
   assert.equal(agentConnectionTestMatches(stored('completed'), configuration), true);
-  for (const change of [{ protocol: 'responses' }, { baseUrl: 'https://other.example.com' }, { model: 'other-model' }]) assert.equal(agentConnectionTestMatches(stored('completed'), { ...configuration, ...change }), false);
+  for (const change of [{ protocol: 'responses' }, { model: 'other-model' }]) assert.equal(agentConnectionTestMatches(stored('completed'), { ...configuration, ...change }), false);
+  assert.equal(agentConnectionTestMatches(stored('completed'), {...configuration,baseUrl:'https://other.example.com'}),true,'endpoint is deliberately absent from the global summary');
   assert.equal(agentConnectionTestMatches(null, configuration), false);
 });
 
@@ -91,11 +93,19 @@ test('an unconfirmed send reads its receipt once and follows the accepted run, n
   assert.equal(missing.calls.send.length, 1); assert.equal(missing.calls.lookup, 1); assert.equal(missing.session.getState().error, 'NETWORK'); assert.equal(missing.session.getState().phase, 'idle');
 });
 
-test('a test still running elsewhere is followed on load, and a disposed session stops reading', async () => {
-  const f = harness({ latest: [stored('running'), stored('completed')] });
-  await f.session.load(); assert.equal(f.calls.read, 2); assert.equal(f.session.getState().latest?.status, 'completed');
+test('loading the global completed summary never opens a project, and disposal still stops a local diagnostic', async () => {
+  const f = harness({ latest: [stored('completed')] });
+  await f.session.load(); assert.equal(f.calls.read, 0); assert.equal(f.calls.list.length,0);assert.equal(f.session.getState().latest?.status, 'completed');
   const reads: AgentTaskSnapshot[] = Array.from({ length: 10 }, () => run('running'));
   const g = harness({ reads, latest: [null] }); await g.session.load();
   const started = g.session.start({ settingsRevision: 3 }); g.session.dispose(); await started;
   assert.ok(g.calls.read <= 1); assert.equal(g.calls.send.length <= 1, true);
+});
+
+test('global diagnostic response permits exactly the five safe summary fields',()=>{
+ const summary=stored('failed',{errorCode:'PROVIDER_FAILED'});assert.deepEqual(agentTaskConnectionTestResponseSchema.parse({test:summary}),{test:summary});
+ for(const extra of [{runId},{projectId:projectA},{baseUrl:configuration.baseUrl},{createdAt:at},{updatedAt:at},{failureCode:'PROVIDER_FAILED'}])
+  assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,...extra}}).success,false);
+ assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:{...summary,status:'running'}}).success,false);
+ assert.equal(agentTaskConnectionTestResponseSchema.safeParse({test:null}).success,true);
 });

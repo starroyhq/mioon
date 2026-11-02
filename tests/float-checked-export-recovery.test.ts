@@ -16,7 +16,8 @@ import path from 'node:path';
 import {DatabaseSync, type SQLOutputValue} from 'node:sqlite';
 import {isTimelineRenderRecord, publicValue} from '@mioon/contracts';
 import {isTimelineExportAudioOutcome} from '@mioon/contracts/timeline-export-float';
-import {installCurrentWorkspaceRestoreSchema, openStore} from '../packages/business/src/db.ts';
+import {installCurrentWorkspaceRestoreSchema, openStore, openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {isProjectDatabase} from '../packages/business/src/project-file/held-files.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createServices, type OrdinaryServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -27,7 +28,7 @@ import {createTimelineFloatAudioAccumulator} from '../packages/business/src/time
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement, bindFloatTimelineFailure, ownedFloatTimelineMeasurement,
   floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
 import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const PROFILE = 'mp4_h264_float_checked_v2';
@@ -37,7 +38,7 @@ const plain = <T>(value:T):T => JSON.parse(JSON.stringify(value));
 const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 // Rows keep the loose type the SQL table listing gave them; tests name the columns they read.
 const rows = (db: DatabaseSync): Record<string, any[]> => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').sort(byName)
-  .map(({name}) => [name, plain(db.prepare(`SELECT rowid AS __rowid__,* FROM "${name}" ORDER BY rowid`).all())]));
+  .map(({schema,name}) => [isProjectDatabase(db) ? `${schema}.${name}` : name, plain(db.prepare(`SELECT rowid AS __rowid__,* FROM "${schema}"."${name}" ORDER BY rowid`).all())]));
 const badSnapshot = (error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; }) => (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code === 'INVALID_TIMELINE_SNAPSHOT';
 const receipt = (f: Awaited<ReturnType<typeof fixture>>, input: { requestId: unknown; }) => f.store.db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(((((input.requestId) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["get"]>>[0]));
 
@@ -57,9 +58,10 @@ function measurement(peak: number|undefined = 0.5, frames: number|undefined = 3)
   for (let offset = 0; offset < samples.length; offset += 4) samples.writeFloatLE(peak, offset);
   accumulator.write(samples); return accumulator.finish();
 }
-async function fixture(t: test.TestContext, {gain = 1} = {}) {
+async function fixture(t: test.TestContext, {gain = 1, legacy = false} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-float-recovery-'));
-  let store = (openStore(root) as FixtureStore), checks = 0, inspect:(input?:unknown,context?:unknown)=>Promise<{status:string;code:string}> = async () => {checks++; return {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'};};
+  const open = legacy ? openLegacyWorkspaceStore : openStore;
+  let store = (open(root) as FixtureStore), checks = 0, inspect:(input?:unknown,context?:unknown)=>Promise<{status:string;code:string}> = async () => {checks++; return {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'};};
   let services = (createServices(store, new Map(), {exportOptions: {inspect: (...args) => inspect(...args)}}) as FixtureServices);
   const _strictFixtureBase = {root, get store() {return store;}, get services() {return services;}, get checks() {return checks;},
     input: <P extends Record<string,unknown>=Record<never,never>>(extra: P = {} as P):P & {projectId:string;expectedRevision:number;requestId:string} => ({projectId: f.project.id, expectedRevision: (f.timeline)!.revision, requestId: randomUUID(), purpose: 'export', exportSettings: settings(), ...extra}),
@@ -67,12 +69,13 @@ async function fixture(t: test.TestContext, {gain = 1} = {}) {
     async restart({restore = false} = {}) {
       await services.drain(); store.close();
       if (restore) {
+        assert.equal(legacy, true, 'workspace restore fixtures must opt into the explicit historical opener');
         const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};
         const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
         try {installCurrentWorkspaceRestoreSchema(db, metadata); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
         (f as typeof f & {context:({ expectedWorkspaceOrigin: `${string}-${string}-${string}-${string}-${string}`; })}).context = {expectedWorkspaceOrigin: metadata.workspaceOrigin};
       }
-      store = (openStore(root) as FixtureStore); services = (createServices(store, new Map(), {exportOptions: {inspect: (...args) => inspect(...args)}}) as FixtureServices);
+      store = (open(root) as FixtureStore); services = (createServices(store, new Map(), {exportOptions: {inspect: (...args) => inspect(...args)}}) as FixtureServices);
     },
   };
  const f = _strictFixtureBase as typeof _strictFixtureBase & {project: FixtureProject; timeline?: FixtureTimeline};
@@ -123,73 +126,80 @@ async function storyboardFixture(f: Awaited<ReturnType<typeof fixture>>, project
 test('storyboard and float timeline request keys remain separate in both orders and across projects', async t => {
   for (const crossProject of ([false, true] as const)) for (const timelineFirst of ([false, true] as const)) {
     await t.test(`crossProject=${crossProject}, timelineFirst=${timelineFirst}`, async t => {
-      const f = await fixture(t), projectId = crossProject
-        ? (await f.services.call('project.create', {name: 'Independent storyboard owner'})).id : f.project.id;
-      await f.services.call('timeline.get', {projectId});
-      await storyboardFixture(f, projectId);
+      const f = await fixture(t), owner = crossProject ? await fixture(t) : f, projectId = owner.project.id;
+      const capture = () => [f.state(), ...(owner === f ? [] : [owner.state()])];
+      await owner.services.call('timeline.get', {projectId});
+      await storyboardFixture(owner, projectId);
       const requestId = randomUUID(), input = f.input({requestId}), legacyInput = {projectId, requestId};
       let legacy, accepted;
       if (timelineFirst) {
         accepted = await f.services.call('timeline.render', input);
-        legacy = await f.services.call('export.create', legacyInput);
+        legacy = await owner.services.call('export.create', legacyInput);
       } else {
-        legacy = await f.services.call('export.create', legacyInput);
+        legacy = await owner.services.call('export.create', legacyInput);
         accepted = await f.services.call('timeline.render', input);
       }
       assert.notEqual(legacy.id, accepted.id); assert.equal(legacy.requestId, accepted.requestId);
-      const saved = receipt(f, input), legacyReceipt = plain(f.store.db.prepare("SELECT * FROM idempotency WHERE scope='export' AND requestId=?").get(requestId));
+      const saved = receipt(f, input), legacyReceipt = plain(owner.store.db.prepare("SELECT * FROM idempotency WHERE scope='export' AND requestId=?").get(requestId));
       terminal(f, accepted);
       const outputId = randomUUID();
-      f.store.put('assets', {id: outputId, projectId, name: 'Historical storyboard output', mimeType: 'video/mp4',
+      owner.store.put('assets', {id: outputId, projectId, name: 'Historical storyboard output', mimeType: 'video/mp4',
         relativePath: `media/export-${legacy.id}-${randomUUID()}.mp4`, sha256: 'a'.repeat(64), sizeBytes: 20,
         width: 720, height: 1280, duration: 0.1, hasAudio: true, provenance: 'export', createdAt: new Date().toISOString()});
       for (const status of (['queued', 'succeeded', 'failed'] as const)) {
         const current:FixtureStoryboardExport = {...legacy, status, assetId: status === 'succeeded' ? outputId : null,
           url: status === 'succeeded' ? `/media/${outputId}` : null, error: status === 'failed' ? {code: 'SYNTHETIC_FAILURE', message: 'Known failure', retryable: false} : null};
-        f.store.put('exports', current);
-        f.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify(current, null, 2), legacy.id);
-        const before = f.state();
-        assert.deepEqual(await f.services.call('export.get', {exportId: legacy.id}), publicValue(current));
-        assert.deepEqual(await f.services.call('export.create', legacyInput), current, 'legacy replay retains its existing current-record semantics');
+        owner.store.put('exports', current);
+        owner.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify(current, null, 2), legacy.id);
+        const before = capture();
+        assert.deepEqual(await owner.services.call('export.get', {exportId: legacy.id}), publicValue(current));
+        assert.deepEqual(await owner.services.call('export.create', legacyInput), current, 'legacy replay retains its existing current-record semantics');
         assert.deepEqual(await f.services.call('timeline.render', input), accepted, 'timeline replay remains its exact queued ACK');
-        await f.services.call('project.get', {projectId});
+        await owner.services.call('project.get', {projectId});
         await f.services.call('project.get', {projectId: f.project.id});
-        assert.deepEqual(f.state(), before, 'reading/replaying either namespace cannot mutate either record');
+        assert.deepEqual(capture(), before, 'reading/replaying either namespace cannot mutate either record');
       }
-      await f.restart();
-      assert.equal((await f.services.call('export.get', {exportId: legacy.id})).status, 'failed');
+      await f.restart(); if (owner !== f) await owner.restart();
+      assert.equal((await owner.services.call('export.get', {exportId: legacy.id})).status, 'failed');
       assert.deepEqual(receipt(f, input), saved);
-      assert.deepEqual(plain(f.store.db.prepare("SELECT * FROM idempotency WHERE scope='export' AND requestId=?").get(requestId)), legacyReceipt);
+      assert.deepEqual(plain(owner.store.db.prepare("SELECT * FROM idempotency WHERE scope='export' AND requestId=?").get(requestId)), legacyReceipt);
+      if (owner !== f) {
+        // Receipt collision checks are local to one kernel. Give the other
+        // project's storyboard its own real same-key float receipt too.
+        const localFloat = await owner.services.call('timeline.render', owner.input({requestId}));
+        assert.notEqual(localFloat.id, accepted.id);
+        terminal(owner, localFloat);
+      }
       // A same-key receipt mismatch is not a generic legacy exemption: the
       // independent old receipt must still prove this project/request/resource.
-      const originalLegacyRow = f.store.db.prepare('SELECT * FROM exports WHERE id=?').get(legacy.id);
+      const originalLegacyRow = owner.store.db.prepare('SELECT * FROM exports WHERE id=?').get(legacy.id);
       for (const change of ([
-        () => f.store.db.prepare("UPDATE idempotency SET requestHash=? WHERE scope='export' AND requestId=?").run('f'.repeat(64), requestId),
-        () => f.store.db.prepare("UPDATE idempotency SET resourceId=? WHERE scope='export' AND requestId=?").run(randomUUID(), requestId),
-        () => f.store.db.prepare("UPDATE idempotency SET scope='unrelated' WHERE scope='export' AND requestId=?").run(requestId),
-        () => f.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify({...f.store.get('exports', legacy.id), projectId: randomUUID()}), legacy.id),
+        () => owner.store.db.prepare("UPDATE idempotency SET requestHash=? WHERE scope='export' AND requestId=?").run('f'.repeat(64), requestId),
+        () => owner.store.db.prepare("UPDATE idempotency SET resourceId=? WHERE scope='export' AND requestId=?").run(randomUUID(), requestId),
+        () => owner.store.db.prepare("UPDATE idempotency SET scope='unrelated' WHERE scope='export' AND requestId=?").run(requestId),
+        () => owner.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify({...owner.store.get('exports', legacy.id), projectId: randomUUID()}), legacy.id),
       ] as const)) {
-        change(); const before = f.state();
-        await assert.rejects(f.services.call('export.get', {exportId: legacy.id}), badSnapshot);
-        assert.deepEqual(f.state(), before);
-        f.store.db.prepare('DELETE FROM idempotency WHERE requestId=?').run(requestId);
-        f.store.db.prepare('INSERT INTO idempotency(scope,requestId,requestHash,resourceId) VALUES(?,?,?,?)')
+        change(); const before = capture();
+        await assert.rejects(owner.services.call('export.get', {exportId: legacy.id}), badSnapshot);
+        assert.deepEqual(capture(), before);
+        owner.store.db.prepare('DELETE FROM idempotency WHERE requestId=?').run(requestId);
+        owner.store.db.prepare('INSERT INTO idempotency(scope,requestId,requestHash,resourceId) VALUES(?,?,?,?)')
           .run((legacyReceipt)!.scope, (legacyReceipt)!.requestId, (legacyReceipt)!.requestHash, (legacyReceipt)!.resourceId);
-        f.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run((originalLegacyRow)!.data, legacy.id);
+        owner.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run((originalLegacyRow)!.data, legacy.id);
       }
       const float = (f.store.get('exports', accepted.id)! as FixtureExport);
       f.store.put('exports', {...float, renderAttemptId: randomUUID()});
       await assert.rejects(f.services.call('export.get', {exportId: accepted.id}), badSnapshot, 'stale float report still fails closed');
-      assert.equal((await f.services.call('export.get', {exportId: legacy.id})).status, 'failed', 'unrelated legacy record is not a float-report authority');
+      assert.equal((await owner.services.call('export.get', {exportId: legacy.id})).status, 'failed', 'unrelated legacy record is not a float-report authority');
       f.store.put('exports', float!);
-      f.store.put('exports', {...legacy, status: 'running'});
-      const writes: string[] = [], put = f.store.put;
-      f.store.put = (table, value) => {if (table === 'exports' && (value as typeof value & {id:("malformed-id")}).id === legacy.id) writes.push((value as typeof value & {status:("failed")}).status); return put(table, value);};
-      try {await tick(f);} finally {f.store.put = put;}
+      owner.store.put('exports', {...legacy, status: 'running'});
+      const writes: string[] = [], put = owner.store.put;
+      owner.store.put = (table, value) => {if (table === 'exports' && (value as typeof value & {id:("malformed-id")}).id === legacy.id) writes.push((value as typeof value & {status:("failed")}).status); return put(table, value);};
+      try {await tick(owner);} finally {owner.store.put = put;}
       assert.deepEqual(writes, ['queued', 'running', 'failed'], 'legacy worker recovery/dispatch remains eligible; deliberately missing source fails normally');
-      assert.equal((f.store.get('exports', legacy.id)!.error)!.code, 'ENOENT');
+      assert.equal((owner.store.get('exports', legacy.id)!.error)!.code, 'ENOENT');
       assert.deepEqual(receipt(f, input), saved);
-      assert.equal(f.store.list('exports').length, 2);
+      assert.equal(f.store.list('exports').length + (owner === f ? 0 : owner.store.list('exports').length), owner === f ? 2 : 3);
     });
   }
 });
@@ -197,19 +207,19 @@ test('storyboard and float timeline request keys remain separate in both orders 
 test('a stripped float row cannot borrow a real storyboard row and its receipt, even with an exact copied payload', async t => {
   for (const restored of ([false, true] as const)) for (const crossProject of ([false, true] as const)) for (const exactCopy of ([false, true] as const)) {
     await t.test(`restored=${restored}, crossProject=${crossProject}, exactCopy=${exactCopy}`, async t => {
-      const f = await fixture(t), projectId = crossProject
-        ? (await f.services.call('project.create', {name: 'Different storyboard owner'})).id : f.project.id;
-      await f.services.call('timeline.get', {projectId}); await storyboardFixture(f, projectId);
+      const f = await fixture(t, {legacy: restored}), owner = crossProject ? await fixture(t, {legacy: restored}) : f, projectId = owner.project.id;
+      const capture = () => [f.state(), ...(owner === f ? [] : [owner.state()])];
+      await owner.services.call('timeline.get', {projectId}); await storyboardFixture(owner, projectId);
       const input = f.input(), accepted = await f.services.call('timeline.render', input);
-      const legacy = await f.services.call('export.create', {projectId, requestId: input.requestId});
+      const legacy = await owner.services.call('export.create', {projectId, requestId: input.requestId});
       if (restored) {
-        await f.restart({restore: true});
-        const before = f.state();
-        assert.deepEqual(await f.services.call('export.get', {exportId: legacy.id}), publicValue(legacy));
+        await f.restart({restore: true}); if (owner !== f) await owner.restart({restore: true});
+        const before = capture();
+        assert.deepEqual(await owner.services.call('export.get', {exportId: legacy.id}), publicValue(legacy));
         assert.deepEqual(await f.services.call('export.get', {exportId: accepted.id}), publicValue(accepted));
         assert.deepEqual(await f.services.call('timeline.render', input), publicValue(accepted));
-        assert.deepEqual(await f.services.call('export.create', {projectId, requestId: input.requestId}), publicValue(legacy));
-        assert.deepEqual(f.state(), before, 'held reads/replays do not execute or rewrite either namespace');
+        assert.deepEqual(await owner.services.call('export.create', {projectId, requestId: input.requestId}), publicValue(legacy));
+        assert.deepEqual(capture(), before, 'held reads/replays do not execute or rewrite either namespace');
         // Explicit raw-DB corruption fixture, not an application bypass. The
         // original captured material and receipts remain unchanged.
         f.store.db.exec('DROP TRIGGER restore_hold_exports_update');
@@ -217,11 +227,11 @@ test('a stripped float row cannot borrow a real storyboard row and its receipt, 
       f.store.db.exec('DROP TRIGGER immutable_timeline_render_snapshot');
       const forged = {...legacy, ...(exactCopy ? {} : {status: 'failed', error: {code: 'FORGED', message: 'Different payload', retryable: false}})};
       f.store.db.prepare('UPDATE exports SET data=? WHERE id=?').run(JSON.stringify(forged), accepted.id);
-      const before = f.state();
+      const before = capture();
       await assert.rejects(f.services.call('export.get', {exportId: accepted.id}), badSnapshot);
       await assert.rejects(f.services.call('project.get', {projectId: f.project.id}), badSnapshot);
-      assert.deepEqual(await f.services.call('export.get', {exportId: legacy.id}), publicValue(legacy));
-      assert.deepEqual(f.state(), before);
+      assert.deepEqual(await owner.services.call('export.get', {exportId: legacy.id}), publicValue(legacy));
+      assert.deepEqual(capture(), before);
     });
   }
 });
@@ -251,7 +261,7 @@ test('pristine 140fa882 omitted and v1 golden receipts, snapshots, histories and
   assert.deepEqual((db.prepare('PRAGMA foreign_key_check').all() as unknown), []);
   await mkdir(path.dirname(path.join(root, baseline.media.relativePath)), {recursive: true, mode: 0o700});
   await writeFile(path.join(root, baseline.media.relativePath), Buffer.from(baseline.media.base64, 'base64'));
-  const before = rows(db); db.close(); store = (openStore(root) as FixtureStore);
+  const before = rows(db); db.close(); store = (openLegacyWorkspaceStore(root) as FixtureStore);
   // The frozen legacy business rows remain byte-exact. Startup legitimately
   // upgrades the schema lineage and creates newer empty tables, so freeze the
   // golden profile's tables and columns and assert the additive artifacts
@@ -367,14 +377,15 @@ test('v2 current export and project readers reject foreign attempt, snapshot, re
     'a different ID cannot exempt stripped v2 without a bound legacy export receipt');
   f.store.db.prepare('DELETE FROM exports WHERE id=?').run(forgedId);
 
-  const other = await f.services.call('project.create', {name: 'Different relational owner'});
-  await f.services.call('timeline.get', {projectId: other.id});
-  const changedOwner = {...stripped, projectId: other.id};
-  f.store.db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(other.id, JSON.stringify(changedOwner), accepted.id);
+  const other = await fixture(t), changedOwner = {...stripped, projectId: other.project.id};
+  withoutForeignKeys(f.store.db, () => f.store.db.prepare('UPDATE exports SET projectId=?,data=? WHERE id=?').run(other.project.id, JSON.stringify(changedOwner), accepted.id));
   const before = f.state();
   await assert.rejects(f.services.call('export.get', {exportId: accepted.id}), badSnapshot,
     'matching export identity still detects stripped v2 when its relational and JSON project were changed');
-  await assert.rejects(f.services.call('project.get', {projectId: other.id}), badSnapshot);
+  await assert.rejects(f.services.call('project.get', {projectId: other.project.id}), {code: 'NOT_FOUND'});
+  const foreignBefore = other.state();
+  assert.equal((await other.services.call('project.get', {projectId: other.project.id})).project.id, other.project.id);
+  assert.deepEqual(other.state(), foreignBefore);
   assert.deepEqual(f.state(), before);
 });
 
@@ -449,7 +460,7 @@ test('real overrange v2 fails with one stored report and no final asset; explici
 });
 
 test('restored inherited v2 queued/failed/succeeded rows stay held byte-exact while a new origin-bound local v2 succeeds', {timeout: 60_000}, async t => {
-  const f = await fixture(t, {gain: 0.5}), held = [];
+  const f = await fixture(t, {gain: 0.5, legacy: true}), held = [];
   for (const status of (['queued', 'failed', 'succeeded'] as const)) {
     const input = f.input(), accepted = await f.services.call('timeline.render', input);
     if (status !== 'queued') terminal(f, accepted, status === 'failed' ? 1.4 : 0.5, {success: status === 'succeeded'});

@@ -18,10 +18,11 @@ const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,v
 const code=(value: string)=>(error: unknown)=>(error as { code: string; message: string|string[]; }).code===value&&!(error as { code: string; message: string|string[]; }).message.includes('PRIVATE');
 async function fixture(t: test.TestContext){
   const root=mkdtempSync(path.join(tmpdir(),'mioon-last-project-'));let store=(openStore(root) as unknown as TypedStore),fault: (point: string) => void=()=>{},locator!: FixtureLocator;
-  const services=(createServices(store,new Map()) as unknown as TypedServices),project=await services.call('project.create',{name:'Existing project'}),other=await services.call('project.create',{name:'Other existing project'});
-  const options=()=>({root,storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),readProject:(id: string)=>readLastProjectTarget(store.db,id)},fault:(point: string)=>fault(point)});
+  const services=(createServices(store,new Map()) as unknown as TypedServices),project=await services.call('project.create',{name:'Existing project'});
+  const otherStore=openStore(path.join(root,'other-project')),otherServices=createServices(otherStore,new Map()),other=await otherServices.call('project.create',{name:'Other existing project'}) as {id:string};
+  const options=()=>({root,databaseFile:path.join(root,'.mioon-store','app','app-library.db'),storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>store.db.isOpen&&Boolean(getWorkspaceRestoreContext(store)),readProject:(id: string)=>readLastProjectTarget(id===other.id?otherStore.db:store.db,id)},fault:(point: string)=>fault(point)});
   const start=(extra: Partial<LastProjectOptions>={})=>locator=createLastProject({...options(),...extra}) as FixtureLocator;start();
-  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
+  t.after(()=>{store.close();otherStore.close();rmSync(root,{recursive:true,force:true});});
   return {root,file:path.join(root,LAST_PROJECT_FILENAME),project,other,get store(){return store;},get locator(){return locator;},start,options,
     setFault(fn: (point: string) => void){fault=fn;},input(value: Extract<ReturnType<typeof locator.get>,{supported: true}>=locator.get() as Extract<ReturnType<typeof locator.get>,{supported: true}>,projectId: string|undefined=project.id){return {workspaceScope:value.workspaceScope,instanceId:value.instanceId,expectedRevision:value.revision,projectId};},
     restart(){store.close();store=(openStore(root) as unknown as TypedStore);start();},
@@ -124,12 +125,11 @@ test('symlinks, hardlinks, foreign modes and directories fail closed without rep
 });
 
 test('actual exclusive lock ownership is required, including before exact replay',async t=>{
-  const f=await fixture(t),input=f.input();assert.throws(()=>(openStore(f.root) as unknown as TypedStore));
-  const reader=(openStore(f.root,{lock:false}) as unknown as TypedStore);t.after(()=>reader.close());
-  const unowned=createLastProject({...f.options(),guards:{...f.options().guards,ownsLock:()=>ownsStoreLock(reader)}});
+  const f=await fixture(t),input=f.input();assert.throws(()=>(openStore(f.root) as unknown as TypedStore),{code:'PROJECT_LOCKED'});
+  const unowned=createLastProject(f.options());f.store.close();
   assert.throws(()=>unowned.get(),code('LAST_PROJECT_OWNER_REQUIRED'));assert.throws(()=>unowned.put(input),code('LAST_PROJECT_OWNER_REQUIRED'));assert.equal(existsSync(f.file),false);
-  f.locator.put(input);const before=readFileSync(f.file);unlinkSync(path.join(f.root,'server.lock'));
-  assert.throws(()=>f.locator.get(),code('LAST_PROJECT_OWNER_REQUIRED'));assert.throws(()=>f.locator.put(input),code('LAST_PROJECT_OWNER_REQUIRED'));assert.deepEqual(readFileSync(f.file),before);
+  f.restart();const freshInput=f.input();f.locator.put(freshInput);const before=readFileSync(f.file);f.store.close();
+  assert.throws(()=>f.locator.get(),code('LAST_PROJECT_OWNER_REQUIRED'));assert.throws(()=>f.locator.put(freshInput),code('LAST_PROJECT_OWNER_REQUIRED'));assert.deepEqual(readFileSync(f.file),before);
 });
 
 test('restored profile returns exact unsupported before all storage, ownership and target access',()=>{

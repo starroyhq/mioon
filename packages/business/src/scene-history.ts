@@ -139,9 +139,9 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
   if(!sceneResultSchema.safeParse(value).success)invalid();
   // Detections belong to their own succeeded task; manual saves to a base of
   // the same source, profile and length (the insert trigger checked both).
-  if(row.origin==='detected'&&!db.prepare("SELECT 1 FROM scene_tasks WHERE id=? AND projectId=? AND kind='detect' AND sourceAssetId=? AND state='succeeded' AND resultId=? AND json_extract(input,'$.sourceHash') IS ?").get(row.taskId,projectId,row.assetId,id,row.sourceHash))invalid();
+  if(row.origin==='detected'&&(!isProjectLayout(db)||db.prepare('SELECT 1 FROM scene_tasks WHERE id=?').get(row.taskId))&&!db.prepare("SELECT 1 FROM scene_tasks WHERE id=? AND projectId=? AND kind='detect' AND sourceAssetId=? AND state='succeeded' AND resultId=? AND json_extract(input,'$.sourceHash') IS ?").get(row.taskId,projectId,row.assetId,id,row.sourceHash))invalid();
   if(row.origin==='manual'&&(!db.prepare('SELECT 1 FROM scene_results WHERE id=? AND projectId=? AND assetId=? AND sourceHash=? AND profileId=? AND frameCount=? AND position<?').get(row.basedOnResultId,projectId,row.assetId,row.sourceHash,row.profileId,row.frameCount,row.position)||
-   !db.prepare("SELECT 1 FROM scene_requests WHERE requestId=? AND projectId=? AND operation='scene.cuts.save' AND resultId=?").get(row.requestId,projectId,id)))invalid();
+   (!isProjectLayout(db)||db.prepare('SELECT 1 FROM scene_requests WHERE requestId=?').get(row.requestId))&&!db.prepare("SELECT 1 FROM scene_requests WHERE requestId=? AND projectId=? AND operation='scene.cuts.save' AND resultId=?").get(row.requestId,projectId,id)))invalid();
   return value as unknown as SceneResult;
  }
  function summary(projectId: string,id: string): SceneResultSummary {

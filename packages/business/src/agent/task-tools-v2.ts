@@ -9,6 +9,7 @@ import {isTimelineLoudnessApplicableReport,timelineLoudnessCandidateDigest} from
 import type {OperationName} from '@mioon/contracts';
 import type {WorkspaceStore} from '../db.ts';
 import type {AgentPolicyStore} from '../app-db/stores.ts';
+import {testProjectAppLibrary} from '../project-service-application.ts';
 import {hasStoreTable,isProjectLayout,storeDirectories} from '../store-layout.ts';
 import {registerWorkspaceTransactionObserver,registerWorkspaceTransactionFence} from '../db.ts';
 import type {OrdinaryServices} from '../services.ts';
@@ -325,7 +326,7 @@ function transactionResult(operation:string,projectId:string,value:unknown):Agen
 }
 
 const previsWrite=(operation:string):boolean=>operation==='previs.create'||operation==='previs.scene.set';
-export function createAgentTaskTools({store,services,policyStore}:{store:WorkspaceStore;services:OrdinaryServices;policyStore?:AgentPolicyStore}){
+export function createAgentTaskTools({store,services,policyStore=testProjectAppLibrary(store)?.agentPolicy}:{store:WorkspaceStore;services:OrdinaryServices;policyStore?:AgentPolicyStore}){
  const {db}=store;
  const importRoot=storeDirectories(store).localDir,importDirectory=isProjectLayout(db)?'imports':'agent-imports';
  const journal=createAgentTaskJournal(store,{policyStore});

@@ -11,6 +11,7 @@ import {createWorkspaceSchemaDispatch} from './workspace-schema-dispatch.ts';
 import type {WorkspaceSchemaReader} from './workspace-schema-profile.ts';
 import {isProjectDatabase} from './project-file/connection.ts';
 import {isProjectStore,registerProjectTransactionFence,registerProjectTransactionObserver} from './project-file/store.ts';
+export {openStore} from './project-file/test-store.ts';
 export {validateCurrentWorkspaceColourProfile} from './workspace-schema-dispatch.ts';
 
 /** Read contract of an opened workspace. Values cross this boundary as parsed
@@ -104,7 +105,7 @@ export function ownsStoreLock(store: StoreIdentity | null | undefined): boolean 
 /** Read-only preflight of every startup-owned entry, before any lock, token,
  * directory or SQLite write. Legacy 0755 media and 0644 SQLite remain protected
  * by the verified 0700 root, provided no other account can write them. */
-export function validateWorkspaceStorage(root: string): void {
+export function validateLegacyWorkspaceStorage(root: string): void {
  root=path.resolve(root);
  if(!validatePrivateDirectory(root,{allowMissing:true}))return;
  validateManagedDirectory(path.join(root,'media'),{root,allowMissing:true});
@@ -126,18 +127,22 @@ export function validateWorkspaceStorage(root: string): void {
  }
 }
 
-export function openStore(root: string,{lock=true}: {lock?: boolean} = {}): WorkspaceStore {
+export {validateWorkspaceStorage} from './application-storage.ts';
+
+/** Explicit historical workspace opener. Ordinary stores use the project-file
+ * test layout; only legacy schema, backup and restore fixtures use this chain. */
+export function openLegacyWorkspaceStore(root: string,{lock=true}: {lock?: boolean} = {}): WorkspaceStore {
  root=path.resolve(root);
- validateWorkspaceStorage(root);
+ validateLegacyWorkspaceStorage(root);
  ensurePrivateDirectory(root,{create:true});
- validateWorkspaceStorage(root);
+ validateLegacyWorkspaceStorage(root);
  let db: DatabaseSync | undefined,ownedLock: ReturnType<typeof acquireWorkspaceLock> | undefined;
  const releaseLock=():void=>{ownedLock?.release();ownedLock=undefined;};
  try{
   if(lock)ownedLock=acquireWorkspaceLock(root,{allowStale:true});
   // Recheck immediately before SQLite's pathname-only open. Node has no SQLite
   // fd/NOFOLLOW API; a concurrent same-uid/root adversary is outside this policy.
-  validateWorkspaceStorage(root);
+  validateLegacyWorkspaceStorage(root);
   const database=new DatabaseSync(path.join(root,'workbench.sqlite'));
   db=database;
   database.exec('PRAGMA trusted_schema=OFF;');

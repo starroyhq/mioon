@@ -11,7 +11,7 @@ interface Options<Event> {
   /** Captures the exact current owned editor main-frame document, or null. */
   ownerForEvent(event: Event): Owner | null;
   /** Derives scope from trusted build channel/config/filesystem, never IPC. */
-  currentWorkspaceScope(): string;
+  currentWorkspaceScope(projectId: string): string;
   createStore(guard: () => void): Store;
 }
 /** One queue for every editor in this app. Capture before queueing and fence
@@ -25,7 +25,7 @@ export function createDesktopLutRecoveryHost<Event>(options: Options<Event>) {
       request = parseClipLutRecoveryRequest(input);
       const captured = options.ownerForEvent(event);
       if (!captured || !captured.isCurrent()) throw unavailable();
-      owner = captured; scope = options.currentWorkspaceScope();
+      owner = captured; scope = options.currentWorkspaceScope(owner.projectId);
       const identity = request.action === 'read' ? request.identity : request.value;
       if (identity.projectId !== owner.projectId || identity.workspaceScope !== scope) throw unavailable();
     } catch { return Promise.resolve({ ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' }); }
@@ -33,7 +33,7 @@ export function createDesktopLutRecoveryHost<Event>(options: Options<Event>) {
       try {
         const identity = request.action === 'read' ? request.identity : request.value;
         active = () => {
-          if (!owner.isCurrent() || identity.projectId !== owner.projectId || options.currentWorkspaceScope() !== scope || identity.workspaceScope !== scope) throw unavailable();
+          if (!owner.isCurrent() || identity.projectId !== owner.projectId || options.currentWorkspaceScope(owner.projectId) !== scope || identity.workspaceScope !== scope) throw unavailable();
         };
         active();
         let result: ClipLutRecoveryMetadata | null = null;

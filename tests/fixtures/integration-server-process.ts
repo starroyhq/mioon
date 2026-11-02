@@ -21,6 +21,8 @@ const service = await startServer({
   agentSecretCodecFactory: createHeadlessAgentSecretCodec,
   comfyModule: comfyModuleModeFromEnvironment(process.env.MIOON_COMFY_MODULE),
   dataDir: process.env.MIOON_DATA_DIR || path.join(root, 'data'),
+  cacheDir: process.env.MIOON_CACHE_DIR,
+  projectsDir: process.env.MIOON_PROJECTS_DIR,
   port: Number(process.env.PORT || 4318),
   distDir: process.env.MIOON_DIST_DIR || path.join(root, 'apps/web/dist'),
   token: process.env.MIOON_TOKEN,

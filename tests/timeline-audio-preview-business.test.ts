@@ -180,17 +180,10 @@ test('missing timeline never initializes; corrupt/foreign graph rejects before f
   const before = await f.checkpoint(); await assert.rejects(f.plan(), {code: 'AUDIO_PREVIEW_UNAVAILABLE'}); await f.unchanged(before); assert.equal(reads, 0);
 });
 
-test('actual native owner proof denies unlocked reader; copied store cannot create another decoder permit', async t => {
+test('the kernel rejects another project connection; copied store cannot create another decoder permit', async t => {
   const entered = deferred(), gate = deferred(); let decodes = 0;
   const f = await fixture(t, {runtime: {decode: async (_file, request, options) => {decodes++; entered.resolve(); await gate.promise; options.beforeEffect(); return decoded(request, 96 * 1024);}}});
-  // A store opened without the lock is a second connection: it opens only after the owner's store has closed,
-  // so the reader works on a project of its own and reads through its own connection.
-  const g = await fixture(t); await g.audio.drain(); await g.services.drain(); g.store.close();
-  const reader = openStore(g.root, {lock: false}); t.after(() => reader.close());
-  const unauthorized = createTimelineAudioPreviewServices(reader, {runtime: {...g.runtime,
-    assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(reader)) throw workspaceRestoreError();},
-    readSavedTimeline: projectId => readSaved(reader, projectId), ownsLock: () => ownsStoreLock(reader)}}); g.extras.push(unauthorized);
-  await assert.rejects(unauthorized.handlers['timeline.audioPreview.plan'](g.input), {code: 'AUDIO_PREVIEW_OWNER_REQUIRED'});
+  assert.throws(() => openStore(f.root), {code: 'PROJECT_LOCKED'});
   const copied = createTimelineAudioPreviewServices({...f.store}, {runtime: f.runtime}); f.extras.push(copied);
   const source = f.sourceInput(await f.plan()), pending = f.audio.consumeSource(source, {consume: async value => value.sampleFrames}); await entered.promise;
   await assert.rejects(copied.consumeSource(source, {consume: async () => {}}), {code: 'AUDIO_PREVIEW_BUSY'});
@@ -240,7 +233,7 @@ test('same-revision metadata, revision, owned hash, bytes and owner revocation f
       if (phase === 'hash') replace(f, 'assets', {...f.asset, sha256: 'b'.repeat(64)});
       if (phase === 'bytes') await writeFile(path.join(f.root, f.asset.relativePath), Buffer.alloc(f.bytes.length, 8));
       if (phase === 'foreign') replace(f, 'assets', {...f.asset, projectId: f.foreign.id});
-      if (phase === 'lock') await unlink(path.join(f.root, 'server.lock'));
+      if (phase === 'lock') f.store.close();
       return decoded(request, f.bytes.length);
     }}});
     await assert.rejects(f.consume({consume: async () => {consumed++;}}), error => ['AUDIO_PREVIEW_STALE', 'AUDIO_PREVIEW_REVISION_CONFLICT', 'AUDIO_PREVIEW_UNAVAILABLE', 'AUDIO_PREVIEW_OWNER_REQUIRED'].includes((error as Failure).code));
@@ -315,11 +308,11 @@ test('restored workspace rejects hostile payload before getters, ownership reade
 });
 
 test('real restored schema remains zero-write and denies source payload access', async t => {
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-audio-')); let store = openStore(root);
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-audio-')); let store = openLegacyWorkspaceStore(root);
   store.close(); const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
   try {installCurrentWorkspaceRestoreSchema(db, {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
     manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()}); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = openStore(root); let getters = 0, effects = 0;
+  store = openLegacyWorkspaceStore(root); let getters = 0, effects = 0;
   const denied = () => {effects++; throw Error('Unexpected effect');};
   const audio = createTimelineAudioPreviewServices(store, {runtime: {assertOrdinaryWorkspace: () => {if (getWorkspaceRestoreContext(store)) throw workspaceRestoreError();},
     ownsLock: denied, readSavedTimeline: denied, validateSource: denied, hash: denied, decode: denied,

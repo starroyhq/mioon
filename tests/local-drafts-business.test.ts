@@ -33,7 +33,7 @@ async function fixture(t: TestContext): Promise<DraftFixture> {
   timeline=await service.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:90}) as {id: string; revision: number; tracks: {id: string}[]; clips: {id: string; trackId: string}[]};
   const clip=timeline.clips[0],key={projectId:project.id,timelineId:timeline.id,clipId:clip.id};
   const raw={name:'Unsubmitted input',trackId:clip.trackId,startFrame:'',durationFrames:'9e',sourceInFrame:'0',rect:{x:'0',y:'',width:'-1',height:720},gain:'0.',fadeInFrames:''};
-  function start(channel: string='web',extra: Record<string, unknown>={}): DraftsHandle {drafts=createLocalDrafts({root,channel: channel as 'web',storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),readTimeline:(id: string)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id: string,c: unknown)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(c as never)},fault:(point: string)=>fault(point),...extra} as never) as unknown as DraftsHandle;return drafts;}
+  function start(channel: string='web',extra: Record<string, unknown>={}): DraftsHandle {drafts=createLocalDrafts({root,databaseFile:path.join(store.localDir,'history.db'),channel: channel as 'web',storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),readTimeline:(id: string)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).read(),readClipAsset:(id: string,c: unknown)=>createTimelineRecoveryBoundary(store.db,{projectId:id}).clipSource(c as never)},fault:(point: string)=>fault(point),...extra} as never) as unknown as DraftsHandle;return drafts;}
   start();
   t.after(()=>{store!.close();rmSync(root,{recursive:true,force:true});});
   return {root,file:path.join(root,LOCAL_DRAFT_FILENAME),key,project,asset,timeline,clip,raw,get store(){return store!;},get drafts(){return drafts!;},start,setFault(fn: (point: string)=>void){fault=fn;},
@@ -120,11 +120,9 @@ test('unsafe sidecar files and unavailable storage refuse without repairing perm
   rmSync(f.file);linkSync(target,f.file);assert.throws(()=>f.drafts.put(input),code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));assert.equal(readFileSync(target,'utf8'),'PRIVATE');
 });
 
-test('lock:false stores cannot write companion files',async t=>{
-  // A second connection to the project opens only once the owner has closed it.
-  const f=await fixture(t),input=f.input();f.store.close();
-  const reader=openStore(f.root,{lock:false});t.after(()=>reader.close());
-  const drafts=createLocalDrafts({root:f.root,storage,guards:{ownsLock:()=>ownsStoreLock(reader),isRestored:()=>false,readTimeline:()=>f.timeline,readClipAsset:()=>f.asset}});
+test('a closed real kernel owner cannot write companion files',async t=>{
+  const f=await fixture(t),input=f.input();assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});f.store.close();
+  const drafts=createLocalDrafts({root:f.root,databaseFile:path.join(f.store.localDir,'history.db'),storage,guards:{ownsLock:()=>ownsStoreLock(f.store),isRestored:()=>false,readTimeline:()=>f.timeline,readClipAsset:()=>f.asset}});
   assert.throws(()=>drafts.put(input),code('LOCAL_DRAFT_OWNER_REQUIRED'));assert.equal(existsSync(f.file),false);
   assert.throws(()=>drafts.get(f.key),code('LOCAL_DRAFT_OWNER_REQUIRED'));assert.throws(()=>drafts.list({projectId:f.project.id}),code('LOCAL_DRAFT_OWNER_REQUIRED'));
 });

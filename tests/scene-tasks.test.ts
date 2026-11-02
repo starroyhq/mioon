@@ -12,7 +12,7 @@ import {mkdtemp,readFile,rm,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore,ownsStoreLock} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,ownsStoreLock} from '../packages/business/src/db.ts';
 import {createSceneServices} from '../packages/business/src/scene-tasks.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
@@ -41,9 +41,9 @@ const detection=(input: DetectManagedScenesOptions,{cuts=cutsOf(30,60),frameCoun
  sourceHash:(input.asset as {sha256: string}).sha256,analysis:{width:256,height:144,decodedFrames:frameCount}});
 const cancelled=()=>Object.assign(new Error('cancelled'),{code:'MEDIA_CANCELLED'});
 
-function fixture(t: test.TestContext,{autoRun=false,detect,fault,lock=true,real=false}: Pick<SceneServicesOptions, 'autoRun' | 'fault'> & {detect?: (input: DetectManagedScenesOptions) => unknown} & {lock?: boolean; real?: boolean}={}){
- const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-scene-tasks-'))),store=(openStore(root,{lock}) as unknown as TypedStore);
- const project=store.put('projects',{id:randomUUID(),name:'Scene source project'}),other={id:randomUUID(),name:'Other project'};
+function fixture(t: test.TestContext,{autoRun=false,detect,fault,real=false}: Pick<SceneServicesOptions, 'autoRun' | 'fault'> & {detect?: (input: DetectManagedScenesOptions) => unknown} & {real?: boolean}={}){
+ const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-scene-tasks-'))),store=(openStore(root) as unknown as TypedStore);
+ const project=store.put('projects',{id:String(store.db.prepare('SELECT projectId FROM project.project_file').get()!.projectId),name:'Scene source project'}),other={id:randomUUID(),name:'Other project'};
  const video=(patch: Record<string, unknown>={})=>{
   const bytes=Buffer.from(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
   writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
@@ -63,11 +63,11 @@ function fixture(t: test.TestContext,{autoRun=false,detect,fault,lock=true,real=
 const state=(f: ReturnType<typeof fixture>,id: string,expected: string)=>until(async()=>{const value=await f.get(id);return value.state===expected&&value;},expected);
 const rows=(db: DatabaseSync)=>JSON.stringify(['scene_tasks','scene_requests','scene_results'].map(table=>db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
 
-test('schema58 gives ordinary workspaces the three scene tables', t=>{
+test('the project manifest retains the three scene tables and rejects invalid task rows', t=>{
  const f=fixture(t);
- assert.equal(readCurrentWorkspaceRole(f.store.db),CURRENT_ORDINARY_ROLE);
+ assert.ok(schemaObjects(f.store.db).some(row=>row.schema==='project'&&row.name==='project_file'));
  assert.deepEqual(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&name.startsWith('scene_')).map(({name})=>name).sort(),['scene_requests','scene_results','scene_tasks']);
- assert.equal((f.store.db.prepare('SELECT max(version) AS v FROM schema_version').get())!.v,CURRENT_ORDINARY_SCHEMA);
+ assert.equal((f.store.db.prepare('SELECT max(version) AS v FROM main.schema_version').get())!.v,2);
  // Rows outside the accepted shape cannot be written directly.
  assert.throws(()=>f.store.db.prepare("INSERT INTO scene_tasks(id,projectId,kind,sourceAssetId,requestId,inputHash,input,snapshot,state,revision,started,createdAt,updatedAt) VALUES(?,?,'detect',?,?,?,?,?,'running',1,1,'t','t')")
   .run(randomUUID(),f.project.id,f.asset.id,'direct-row-1','a'.repeat(64),'{}','{}'),/CHECK constraint failed|scene tasks must be accepted/);
@@ -231,10 +231,11 @@ test('live progress is reported only while the task runs', async t=>{
 
 test('a non-owner reads without writing and cannot mutate', async t=>{
  const f=fixture(t),ack=await f.call('scene.detect',f.input());
- // A second connection to the project opens only once the owner has closed it.
- await f.close();
- const observer=(openStore(f.root,{lock:false}) as unknown as TypedStore),services=(createSceneServices(observer,({detect:()=>assert.fail('read spawned decode')} as SceneServicesOptions)) as SceneHandlerService<'detect'>);
- t.after(async()=>{await services.drain();observer.close();});assert.equal(ownsStoreLock(observer),false);
+ // A second live connection is rejected; reads do not grant mutation authority.
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ const observer=f.store,services=f.services;
+ Object.defineProperty(observer,'root',{value:`${f.root}/lost-owner`});
+ t.after(()=>Object.defineProperty(observer,'root',{value:f.root}));assert.equal(ownsStoreLock(observer),false);
  const before=rows(observer.db);
  assert.deepEqual(services.handlers['scene.task.get']({projectId:f.project.id,taskId:ack.id}),ack);
  assert.equal(services.handlers['scene.task.list']({projectId:f.project.id}).items.length,1);
@@ -246,7 +247,7 @@ test('a non-owner reads without writing and cannot mutate', async t=>{
 
 test('scene records survive backup and restore; the restored copy only reads them', async t=>{
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-scene-restore-')));t.after(()=>rm(root,{recursive:true,force:true}));
- const source=path.join(root,'source'),store=(openStore(source) as unknown as TypedStore),bytes=Buffer.from('Synthetic reference film for backup');
+ const source=path.join(root,'source'),store=(openLegacyWorkspaceStore(source) as unknown as TypedStore),bytes=Buffer.from('Synthetic reference film for backup');
  const services=(createServices(store,new Map(),{sceneOptions:{detect:async input=>{(input.beforeSpawn)!(input.signal!);return detection(input);}}}) as unknown as SceneServices);
  const project=await services.call('project.create',{name:'Scene backup'}),id=randomUUID();
  writeFileSync(path.join(source,`media/${id}.mp4`),bytes,{mode:0o600});
@@ -256,7 +257,7 @@ test('scene records survive backup and restore; the restored copy only reads the
  await services.drain();store.close();
  await createWorkspaceBackup({source,destination:path.join(root,'backup')});
  await restoreWorkspaceBackup({directory:path.join(root,'backup'),destination:path.join(root,'restored')});
- const restoredStore=(openStore(path.join(root,'restored')) as unknown as TypedStore),restored=(createServices(restoredStore,new Map()) as unknown as SceneServices);
+ const restoredStore=(openLegacyWorkspaceStore(path.join(root,'restored')) as unknown as TypedStore),restored=(createServices(restoredStore,new Map()) as unknown as SceneServices);
  t.after(()=>restoredStore.close());
  assert.equal(readCurrentWorkspaceRole(restoredStore.db),CURRENT_RESTORED_ROLE);
  assert.deepEqual(await restored.call('scene.task.get',{projectId:project.id,taskId:ack.id}),done);
