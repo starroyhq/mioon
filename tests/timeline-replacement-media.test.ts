@@ -5,8 +5,8 @@ import {mkdtemp, mkdir, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createHash, randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {run,runStreaming} from '../packages/business/src/media-runtime.ts';
 import type { BinaryLike } from 'crypto';
 
@@ -36,9 +36,9 @@ async function sample(file: string){
 test('explicit replacement keeps timing/fades and old exports while new media, preflight and waveform use the new source', {timeout:120000}, async t=>{
  const root=await mkdtemp(path.join(tmpdir(),'mioon-replacement-media-')),workspace=path.join(root,'workspace');
  await mkdir(evidence,{recursive:true});
- let server!:Awaited<ReturnType<typeof startServer>>|null;
+ let server!:Awaited<ReturnType<typeof startServer>>|null,inspect!: InspectProject;
  t.after(async()=>{await server?.close();await rm(root,{recursive:true,force:true});});
- const start=async()=>{server=await startServer({dataDir:workspace,port:0,token,chatGateway:async function*(){throw Error('Synthetic media acceptance must not invoke a model');}});};
+ const start=async()=>{server=await startServer({dataDir:workspace,port:0,token,inspectProject:received=>{inspect=received;}});};
  await start();
  const rpc=async(operation: string,input: { exportId?: unknown; name?: string; projectId?: unknown; expectedProjectRevision?: unknown; expectedRevision?: unknown; requestId?: `${string}-${string}-${string}-${string}-${string}`; presetId?: string; mimeType?: string; dataBase64?: string; assetId?: unknown; sourceStartFrame?: number; sourceEndFrame?: number; points?: number; purpose?: string; preflightSnapshotHash?: unknown; clipId?: unknown; },expected: number|undefined=200)=>{
   const response=await fetch(server!.url+'/api/rpc',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({operation,input})});
@@ -99,11 +99,8 @@ test('explicit replacement keeps timing/fades and old exports while new media, p
  assert.deepEqual((await rpc('timeline.get',{projectId:project.id})).clips,changed.clips);
  const originalAgain=await fetch((server as unknown as Awaited<ReturnType<typeof startServer>>).url+before.job.url,{headers:{authorization:`Bearer ${token}`}});assert.equal(hash(Buffer.from(await originalAgain.arrayBuffer())),before.sha256);
  assert.deepEqual((await rpc('export.get',{exportId:before.job.id})).snapshot,before.job.snapshot);
- const db=new DatabaseSync(path.join(workspace,'workbench.sqlite'),{readOnly:true});
- try{
-  for(const a of assets){const stored=JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(a.id))!.data) as unknown as Parameters<typeof JSON.parse>[0]));assert.equal(hash(await readFile(path.join(workspace,stored.relativePath))),a.sha256);}
-  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM exports').get())!.n,2);assert.equal((db.prepare('SELECT COUNT(*) AS n FROM jobs').get())!.n,0);
-  assert.equal((db.prepare('SELECT COUNT(*) AS n FROM waveform_cache').get())!.n,2);
- }finally{db.close();}
+ for(const a of assets){const stored=inspect(project.id,db=>JSON.parse((((db.prepare('SELECT data FROM assets WHERE id=?').get(a.id))!.data) as unknown as Parameters<typeof JSON.parse>[0])));assert.equal(hash(await readFile(path.join(workspace,stored.relativePath))),a.sha256);}
+ assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM exports').get())!.n),2);assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM jobs').get())!.n),0);
+ assert.equal(inspect(project.id,db=>(db.prepare('SELECT COUNT(*) AS n FROM waveform_cache').get())!.n),2);
  await writeFile(path.join(evidence,'acceptance.json'),JSON.stringify({status:'passed',synthetic:true,projectId:project.id,before,after,originalBytesUnchanged:true,oldExportUnchanged:true,exactRestartReplay:true,preflightHashes:[beforeCheck.snapshotHash,afterCheck.snapshotHash],waveformAttempts:[beforeWave.attemptId,afterWave.attemptId]},null,2)+'\n');
 });
