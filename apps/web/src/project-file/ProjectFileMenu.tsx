@@ -14,7 +14,7 @@ import './project-file-versions.css';
 /** Accelerators shown beside the items (12-07). The desktop menu registers them
  * (S6); the browser keeps ⌘N and the like for itself, so the web shows none. */
 export const PROJECT_FILE_MENU_ACCELERATORS = Object.freeze({
-  newProject: 'CmdOrCtrl+N', open: 'CmdOrCtrl+O', saveVersion: 'Alt+CmdOrCtrl+S', saveAs: 'Shift+CmdOrCtrl+S', exportStoryboard: 'Shift+CmdOrCtrl+E',
+  newProject: 'CmdOrCtrl+N', open: 'CmdOrCtrl+O', saveVersion: 'Alt+CmdOrCtrl+S', saveAs: 'Shift+CmdOrCtrl+S',
 } as const);
 export type ProjectFileMenuItem = 'newProject' | 'open' | 'recent' | 'saveVersion' | 'versionHistory' | 'saveAs' | 'pack' | 'reveal' | 'rules' | 'exportStoryboard' | 'view';
 export interface RecentMenuProject {
@@ -82,7 +82,7 @@ export function ProjectFileMenuItems(props: ProjectFileMenuItemsProps): ReactEle
     [item('pack', <Icon name="box" size={16} />, t('projectFile.menu.pack'), props.onPack),
       item('reveal', <Icon name="folder" size={16} />, t(revealLabelKey(platform)), props.onReveal),
       item('rules', <Icon name="note" size={16} />, t('projectFile.menu.rules'), props.onRules),
-      item('exportStoryboard', <ProjectFileIcon name="fileDown" />, t('projectFile.menu.exportStoryboard'), props.onExportStoryboard, PROJECT_FILE_MENU_ACCELERATORS.exportStoryboard)],
+      item('exportStoryboard', <ProjectFileIcon name="fileDown" />, t('projectFile.menu.exportStoryboard'), props.onExportStoryboard)],
     [view],
   ];
   const shown = groups.map(entries => entries.filter(Boolean)).filter(entries => entries.length > 0);
