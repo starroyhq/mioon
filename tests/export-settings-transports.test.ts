@@ -1,5 +1,7 @@
 import {readProjectState} from './helpers/project-state.ts';
 import {databaseFiles,dataFileSnapshot} from './helpers/data-file-snapshot.ts';
+import {waitForProjectCover} from './helpers/project-cover-ready.ts';
+import type {TypedClient} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import assert from 'node:assert/strict';
@@ -133,6 +135,8 @@ async function wire(t: Pick<TestContext,'after'>,{media=false}: {media?: boolean
   const bytes=syntheticPng();source=await direct.rpc<WireSource>('asset.import',{projectId:project.id,name:'Synthetic pixels.png',mimeType:'image/png',dataBase64:bytes.toString('base64')});
   assert.equal(source.sha256,sha(bytes));assert.equal(source.sizeBytes,bytes.length);
   timeline=await direct.rpc<WireTimeline>('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:source.id,trackId:timeline.tracks.find(track=>track.kind==='video')!.id,startFrame:0,durationFrames:3});
+  await waitForProjectCover({client:createClient({env:environment(backend.url)}) as TypedClient,url:backend.url,token:TOKEN,
+    projectId:project.id,cacheDir:path.join(root,'cache','projects',project.id),source:{assetId:source.id,mimeType:'image/png',sourceSha256:source.sha256}});
  }
  // The server holds the project while it runs: read on its own connection.
  const use=<T>(read: (db: DatabaseSync)=>T): T=>inspect(project.id,read);

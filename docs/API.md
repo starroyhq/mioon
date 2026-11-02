@@ -1661,7 +1661,7 @@ wire mapping, real-face restrictions, immutable provenance and acceptance.
 
 ## Offline workspace backup readiness
 
-本节保留旧格式领域协议。P4 生产 `workspace.backup.inspect` 与其它工作区备份操作统一返回 409 `RESTORE_OPERATION_UNAVAILABLE`，不再提供下述旧库统计；后续 S7 接入后恢复相应能力。
+本节保留旧格式领域协议。P4 生产 `workspace.backup.inspect` 与其它工作区备份操作统一返回 409 `RESTORE_OPERATION_UNAVAILABLE`，不再提供下述旧库统计；S7 将删除旧的工作区备份和恢复，项目备份由 V2 实现，复制、另存为和打包由 S5、V4 实现。
 
 `workspace.backup.inspect` accepts only `{}` and returns bounded workspace-wide
 DB counts with `captureReady:false`, `reason:"BACKEND_RUNNING"`, nullable unknown

@@ -11,24 +11,17 @@ function date(value:unknown):value is string{return typeof value==='string'&&Num
 const visual=new Set(['image/png','image/jpeg','image/webp','video/mp4','video/webm']);
 type Table='projects'|'shots'|'assets'|'versions'|'timelines'|'nodes'|'edges';
 
-/** SQL reads only: never calls the initializing project.get/timeline.get path or
- * starts a media process while rendering the project list. */
-export function createProjectHomeServices({db}:Store,{readRecentOpened=()=>({})}:{readRecentOpened?:()=>Readonly<Record<string,string>>}={}){
-  function rows(table:Table,projectId?:string):Record<string,unknown>[] {
-    const found=db.prepare(`SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 2097152 THEN data END AS data FROM ${table}${projectId?' WHERE projectId=?':''} ORDER BY id LIMIT 4097`).all(...(projectId?[projectId]:[]));
+function rows(db:ReadDatabase,table:Table,projectId?:string):Record<string,unknown>[] {
+    const found=db.prepare(`SELECT id,CASE WHEN typeof(data)='text' AND length(CAST(data AS BLOB)) BETWEEN 1 AND 2097152 THEN data END AS data FROM ${table}${projectId?` WHERE ${table==='projects'?'id':'projectId'}=?`:''} ORDER BY id LIMIT 4097`).all(...(projectId?[projectId]:[]));
     if(found.length>4096)invalid();let bytes=0;
     return found.map(row=>{
       if(!object(row)||!uuid(row.id)||typeof row.data!=='string'||(bytes+=Buffer.byteLength(row.data))>16*1024*1024)invalid();
       let value:unknown;try{value=JSON.parse(row.data);}catch{invalid();}
-      if(!object(value)||value.id!==row.id||projectId!==undefined&&value.projectId!==projectId)invalid();return value;
+      if(!object(value)||value.id!==row.id||projectId!==undefined&&table!=='projects'&&value.projectId!==projectId)invalid();return value;
     });
   }
-  function summary(project:Record<string,unknown>,recent:Readonly<Record<string,string>>):ProjectSummary{
-    if(!uuid(project.id)||typeof project.name!=='string'||!date(project.createdAt)||!date(project.updatedAt)||!Number.isSafeInteger(project.revision))invalid();
-    const projectId=project.id,shots=rows('shots',projectId).sort((a,b)=>Number(a.orderIndex)-Number(b.orderIndex)||String(a.id).localeCompare(String(b.id))),
-      assets=rows('assets',projectId),versions=rows('versions',projectId),timelines=rows('timelines',projectId),nodes=rows('nodes',projectId),edges=rows('edges',projectId);
-    if(timelines.length>1)invalid();const timeline=timelines[0],preset=timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET);if(!preset)invalid();
-    const sourceById=new Map(assets.map(asset=>[asset.id,asset])),versionById=new Map(versions.map(version=>[version.id,version]));
+
+function selectCover(projectId:string,shots:Record<string,unknown>[],sourceById:ReadonlyMap<unknown,Record<string,unknown>>,versionById:ReadonlyMap<unknown,Record<string,unknown>>,timeline:Record<string,unknown>|undefined):ProjectSummary['cover']{
     let cover:ProjectSummary['cover']=null;
     function chooseCover(assetId:unknown):void{
       const asset=sourceById.get(assetId);
@@ -45,6 +38,33 @@ export function createProjectHomeServices({db}:Store,{readRecentOpened=()=>({})}
       const clips=timeline.clips.filter(object).sort((a,b)=>Number(a.startFrame)-Number(b.startFrame)||String(a.id).localeCompare(String(b.id)));
       for(const clip of clips)chooseCover(clip.assetId);
     }
+  return cover;
+}
+
+/** Cover-only background read. The public summary retains all seven table
+ * checks; background covers validate the same four source tables and selection
+ * order without loading graph nodes/edges or calculating the full summary. */
+export function readProjectCover({db}:Store,projectId:string):ProjectSummary['cover']{
+  if(!uuid(projectId))invalid();
+  const project=rows(db,'projects',projectId)[0];if(!project)return null;
+  if(typeof project.name!=='string'||!date(project.createdAt)||!date(project.updatedAt)||!Number.isSafeInteger(project.revision))invalid();
+  const shots=rows(db,'shots',projectId).sort((a,b)=>Number(a.orderIndex)-Number(b.orderIndex)||String(a.id).localeCompare(String(b.id))),
+    assets=rows(db,'assets',projectId),versions=rows(db,'versions',projectId),timelines=rows(db,'timelines',projectId);
+  if(timelines.length>1)invalid();const timeline=timelines[0];
+  if(!timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET)||timeline&&(!Number.isSafeInteger(timeline.durationFrames)||Number(timeline.durationFrames)<0))invalid();
+  return selectCover(projectId,shots,new Map(assets.map(asset=>[asset.id,asset])),new Map(versions.map(version=>[version.id,version])),timeline);
+}
+
+/** SQL reads only: never calls the initializing project.get/timeline.get path or
+ * starts a media process while rendering the project list. */
+export function createProjectHomeServices({db}:Store,{readRecentOpened=()=>({})}:{readRecentOpened?:()=>Readonly<Record<string,string>>}={}){
+  function summary(project:Record<string,unknown>,recent:Readonly<Record<string,string>>):ProjectSummary{
+    if(!uuid(project.id)||typeof project.name!=='string'||!date(project.createdAt)||!date(project.updatedAt)||!Number.isSafeInteger(project.revision))invalid();
+    const projectId=project.id,shots=rows(db,'shots',projectId).sort((a,b)=>Number(a.orderIndex)-Number(b.orderIndex)||String(a.id).localeCompare(String(b.id))),
+      assets=rows(db,'assets',projectId),versions=rows(db,'versions',projectId),timelines=rows(db,'timelines',projectId),nodes=rows(db,'nodes',projectId),edges=rows(db,'edges',projectId);
+    if(timelines.length>1)invalid();const timeline=timelines[0],preset=timelineOutputPreset(timeline??DEFAULT_TIMELINE_OUTPUT_PRESET);if(!preset)invalid();
+    const sourceById=new Map(assets.map(asset=>[asset.id,asset])),versionById=new Map(versions.map(version=>[version.id,version]));
+    const cover=selectCover(projectId,shots,sourceById,versionById,timeline);
     const timelineDuration=timeline?.durationFrames;
     if(timeline&&(!Number.isSafeInteger(timelineDuration)||Number(timelineDuration)<0))invalid();
     const durationFrames=Number(timelineDuration)>0?Number(timelineDuration):shots.reduce((total,shot)=>{
@@ -61,7 +81,7 @@ export function createProjectHomeServices({db}:Store,{readRecentOpened=()=>({})}
       lastOpenedAt:date(opened)?opened:null,cover};
   }
   return {handlers:{'project.summary.list':():ProjectSummary[]=>{
-    const recent=readRecentOpened(),result=rows('projects').map(project=>summary(project,recent));
+    const recent=readRecentOpened(),result=rows(db,'projects').map(project=>summary(project,recent));
     result.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)||a.id.localeCompare(b.id));
     const parsed=projectSummaryListSchema.safeParse(result);if(!parsed.success)invalid();return parsed.data;
   }}};

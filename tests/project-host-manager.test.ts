@@ -159,6 +159,48 @@ const registration = (projectFile: string, name: string): RecentProject => ({
   projectId: randomUUID(), projectFile, fileIdentity: statProjectFileIdentity(projectFile)!, name, lastOpenedAt: null, summary: null,
 });
 
+test('tryAcquireOpen grants only a live host and never opens or waits for opening and closing projects', async t => {
+  const f = await setup(t), project = await f.manager.create({name: 'Existing host'});
+  assert.equal(f.manager.tryAcquireOpen(project.projectId, 'request'), null);
+  assert.equal(f.opens.count, 0);
+  const openingGate = f.gate(); f.state.gate = openingGate.promise;
+  const opening = f.manager.acquire(project.projectId, 'window');
+  assert.equal(f.manager.status(project.projectId)?.state, 'opening');
+  assert.equal(f.manager.tryAcquireOpen(project.projectId, 'request'), null);
+  openingGate.open(); const window = await opening;
+  const request = f.manager.tryAcquireOpen(project.projectId, 'request');
+  assert.ok(request);
+  assert.equal(request.host, window.host);
+  assert.equal(f.manager.status(project.projectId)?.leases.request, 1);
+  request.release();
+  assert.equal(f.manager.status(project.projectId)?.leases.request, 0);
+  const closingGate = f.gate(); f.state.drainGate = closingGate.promise;
+  window.release();
+  assert.equal(f.manager.status(project.projectId)?.state, 'closing');
+  assert.equal(f.manager.tryAcquireOpen(project.projectId, 'request'), null);
+  assert.equal(f.opens.count, 1);
+  closingGate.open(); await f.manager.close(project.projectId);
+  assert.equal(f.manager.tryAcquireOpen(project.projectId, 'request'), null);
+  assert.equal(f.opens.count, 1);
+});
+
+test('tryAcquireOpen refuses an exclusive transition without waiting and reopening the host', async t => {
+  const f = await setup(t), project = await f.manager.create({name: 'Exclusive host'});
+  const request = await f.manager.acquire(project.projectId, 'request'), gate = f.gate();
+  const exclusive = f.manager.withExclusive(project.projectId, () => gate.promise);
+  await tick();
+  assert.equal(f.manager.status(project.projectId)?.state, 'open');
+  assert.equal(f.manager.status(project.projectId)?.paused, true);
+  assert.equal(f.manager.tryAcquireOpen(project.projectId, 'request'), null);
+  assert.equal(f.manager.status(project.projectId)?.leases.request, 1);
+  const closed = f.ev.once('closed', project.projectId);
+  request.release(); await closed;
+  assert.equal(f.manager.status(project.projectId), null);
+  assert.equal(f.manager.tryAcquireOpen(project.projectId, 'request'), null);
+  assert.equal(f.opens.count, 1);
+  gate.open(); await exclusive;
+});
+
 // ---------------------------------------------------------------------------
 // Creating and opening
 
@@ -632,6 +674,35 @@ function recoveryRecorder() {
   };
   return {results, calls, maintenance};
 }
+
+test('each list or restore shares one synchronous file snapshot across every recovery', async t => {
+  let snapshots = 0, active = false;
+  const recovered: string[] = [];
+  const f = await setup(t, {
+    recoverySnapshot: recover => {
+      assert.equal(active, false);
+      snapshots++; active = true;
+      try { recover(); } finally { active = false; }
+    },
+    maintenance: {recoverProjectFile: file => {
+      assert.equal(active, true, 'every project recovery uses the sweep snapshot');
+      recovered.push(file);
+      return {state: 'clean'};
+    }},
+  });
+  const projects = [];
+  for (const name of ['One', 'Two', 'Three']) projects.push(await f.manager.create({name}));
+  const files = projects.map(project => project.projectFile);
+  assert.equal(f.manager.list().length, 3);
+  assert.equal(snapshots, 1);
+  assert.deepEqual(recovered, files);
+  assert.equal(active, false);
+  assert.deepEqual(await f.manager.restore(), {leases: [], failures: []});
+  assert.equal(snapshots, 2);
+  assert.deepEqual(recovered, [...files, ...files]);
+  assert.equal(active, false);
+  assert.equal(f.opens.count, 0, 'recovery does not compose a project runtime');
+});
 
 test('restore runs the recovery for every registered project, then reopens projects with unfinished tasks', async t => {
   const recovery = recoveryRecorder();
