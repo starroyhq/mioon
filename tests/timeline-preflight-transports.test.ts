@@ -30,6 +30,7 @@ import {parse, schemas, operationEffect, exportPreflightSchemas, exportPreflight
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import {IDS, TOKEN, NOW, uuid, seedMutationStore} from './helpers/mutation-wire-fixture.ts';
+import {projectDirFor} from './helpers/project-database.ts';
 import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import type { BinaryLike } from 'crypto';
 
@@ -132,9 +133,10 @@ async function fixture(t: test.TestContext) {
   });
   await seedMutationStore(dataDir);
   const wav = syntheticWav(), png = syntheticPng(), wavPath = `media/${PRIVATE}.wav`, pngPath = `media/${PRIVATE}.png`;
-  const saved = [], seed = (openStore(dataDir) as FixtureStore);
+  const projectRoot = projectDirFor(dataDir, IDS.project);
+  const saved = [], seed = (openStore(projectRoot) as FixtureStore);
   try {
-    await writeFile(path.join(dataDir, wavPath), wav, {mode: 0o600}); await writeFile(path.join(dataDir, pngPath), png, {mode: 0o600});
+    await writeFile(path.join(projectRoot, wavPath), wav, {mode: 0o600}); await writeFile(path.join(projectRoot, pngPath), png, {mode: 0o600});
     const source = (id: string, bytes: string|unknown[]|Buffer<ArrayBuffer>, relativePath: string, properties: { mimeType: string; duration: number; width: number; height: number; hasVideo: boolean; hasAudio: boolean; }) => ({id, projectId: IDS.project, name: 'Synthetic preflight source', relativePath,
       sha256: sha256(bytes), sizeBytes: bytes.length, provenance: 'user-import', createdAt: NOW, ...properties});
     seed.put('assets', source(audioId, wav, wavPath, {mimeType: 'audio/wav', duration: 2, width: 0, height: 0, hasVideo: false, hasAudio: true}));
