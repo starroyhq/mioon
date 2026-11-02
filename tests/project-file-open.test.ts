@@ -11,7 +11,7 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 import {isProjectId, PROJECT_FILE_SINGLE_PROJECT, PROJECT_INVALID_REASONS, TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
-import {createProjectFile, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT} from '../packages/business/src/project-file/connection.ts';
+import {createProjectFile, isProjectDatabase, isProjectFileHeld, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT} from '../packages/business/src/project-file/connection.ts';
 import type {ProjectConnection, ProjectCopyCheck, ProjectLocation} from '../packages/business/src/project-file/connection.ts';
 import {crossFileTriggerStatements} from '../packages/business/src/project-file/cross-file/install.ts';
 import {CACHE_APPLICATION_ID, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID} from '../packages/business/src/project-file/schema/databases.ts';
@@ -79,6 +79,10 @@ function appError(action: () => unknown): AppError {
 /** Only for files no connection of this process holds: closing a descriptor of
  * a held file would drop SQLite's POSIX locks on it. */
 const digest = (file: string): string => createHash('sha256').update(readFileSync(file)).digest('hex');
+const fileIdentity = (file: string) => {
+  const info = statSync(file, {bigint: true});
+  return {dev: info.dev.toString(10), ino: info.ino.toString(10)};
+};
 const plain = (row: object | undefined): object | undefined => row === undefined ? undefined : {...row};
 const pragma = (db: DatabaseSync, name: string): unknown => Object.values(db.prepare(`PRAGMA ${name}`).get() ?? {})[0];
 const sequences = (db: DatabaseSync) => ({
@@ -244,6 +248,77 @@ test('a second open in the same process is PROJECT_LOCKED and keeps the first on
   again.close();
   assert.deepEqual({...child('open-report', projectEnv(project)), elapsedMs: 0},
     {ok: true, projectId: first.projectId, historyState: 'current', elapsedMs: 0});
+});
+
+test('live project, history and cache identities match hard links without releasing their locks', t => {
+  const {project} = newProject(t);
+  const files = [project.projectFile, project.historyFile, project.cacheFile];
+  const identities = files.map(fileIdentity);
+  for (const identity of identities) assert.equal(isProjectFileHeld(identity), false);
+  const connection = open(project);
+  t.after(() => connection.close());
+  assert.equal(isProjectDatabase(connection.db), true);
+  assert.throws(() => connection.db.open(), {name: 'TypeError', message: 'Reopen project databases through openProjectConnection or openProjectStore, not db.open().'});
+  const foreign = new DatabaseSync(':memory:');
+  t.after(() => foreign.close());
+  assert.equal(isProjectDatabase(foreign), false);
+  assert.equal(isProjectFileHeld({dev: identities[0].dev, ino: '0'}), false);
+  for (const [index, file] of files.entries()) {
+    const alias = path.join(project.root, `database-alias-${index}.png`);
+    linkSync(file, alias);
+    assert.deepEqual(fileIdentity(alias), identities[index]);
+    assert.equal(isProjectFileHeld(fileIdentity(alias)), true);
+    assert.deepEqual(child('raw-read', {FILE: file}), LOCKED_READ, file);
+  }
+  connection.close();
+  assert.equal(isProjectDatabase(connection.db), false);
+  for (const identity of identities) assert.equal(isProjectFileHeld(identity), false);
+});
+
+test('a failed project open leaves no held identities or registered database', t => {
+  const {project} = newProject(t);
+  tamper(project, db => db.exec('CREATE TABLE main.unexpected(x)'));
+  const identities = [project.projectFile, project.historyFile, project.cacheFile].map(fileIdentity);
+  const closed: DatabaseSync[] = [];
+  const close = DatabaseSync.prototype.close;
+  t.mock.method(DatabaseSync.prototype, 'close', function(this: DatabaseSync) {
+    closed.push(this);
+    return close.call(this);
+  });
+  assert.equal(appError(() => open(project)).code, 'PROJECT_INVALID');
+  assert.ok(closed.length >= 2, 'the inspected project and failed attached connection both close');
+  for (const db of closed) assert.equal(isProjectDatabase(db), false);
+  for (const identity of identities) assert.equal(isProjectFileHeld(identity), false);
+  tamper(project, db => db.exec('DROP TABLE main.unexpected'));
+  const again = open(project);
+  assert.equal(isProjectDatabase(again.db), true);
+  again.close();
+  for (const identity of identities) assert.equal(isProjectFileHeld(identity), false);
+});
+
+test('retiring an old project owner cannot remove another connection with the same file identities', t => {
+  const {project} = newProject(t);
+  const first = open(project);
+  const identities = [project.projectFile, project.historyFile, project.cacheFile].map(fileIdentity);
+  // A caller may close the exposed DB directly. Reuse these exact dev:ino keys
+  // deterministically, without relying on ext4 to recycle a deleted inode.
+  first.db.close();
+  assert.throws(() => first.db.open(), {name: 'TypeError', message: 'Reopen project databases through openProjectConnection or openProjectStore, not db.open().'});
+  assert.equal(first.db.isOpen, false);
+  assert.equal(isProjectDatabase(first.db), false);
+  for (const identity of identities) assert.equal(isProjectFileHeld(identity), false);
+  const bytes = readFileSync(project.projectFile); // No connection now holds it.
+  writeFileSync(project.projectFile, bytes);
+  assert.deepEqual(fileIdentity(project.projectFile), identities[0]);
+  const again = open(project);
+  t.after(() => again.close());
+  assert.throws(() => first.close(), {code: 'ERR_INVALID_STATE'});
+  assert.equal(isProjectDatabase(first.db), false);
+  assert.equal(isProjectDatabase(again.db), true);
+  for (const identity of identities) assert.equal(isProjectFileHeld(identity), true);
+  assert.deepEqual(child('raw-read', {FILE: project.projectFile}), LOCKED_READ);
+  again.close();
+  for (const identity of identities) assert.equal(isProjectFileHeld(identity), false);
 });
 
 test('a project another process holds opens once that process closes it', async t => {

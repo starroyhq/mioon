@@ -5,7 +5,7 @@ import type {TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
-import {chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
+import {chmodSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -20,6 +20,8 @@ import {
 } from '../packages/business/src/app-db/index.ts';
 import type {AppLibrary} from '../packages/business/src/app-db/index.ts';
 import {APP_LIBRARY_STATEMENTS, expectedAppSchema, FORMAT_72_APP_STATEMENTS, readAppSchema} from '../packages/business/src/app-db/schema.ts';
+import {isAppLibraryHeld} from '../packages/business/src/app-db/connection.ts';
+import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/connection.ts';
 import {deriveFromFormat72} from './helpers/project-file-schema-derivation.ts';
 
 const REPOSITORY = fileURLToPath(new URL('../', import.meta.url));
@@ -227,6 +229,63 @@ test('a second open, in this process or in another, is refused until the library
   assert.deepEqual(openInChild(dataDir), {ok: true, entries: 1});
   const again = open(t, dataDir);
   assert.equal(again.registry.list().length, 1);
+});
+
+test('the held library query matches hard links without opening or unlocking the database', t => {
+  const root = scratch(t);
+  const library = openAppLibrary({dataDir: path.join(root, 'data')});
+  t.after(() => library.close());
+  const identity = library.projectFileIdentity(library.databaseFile);
+  assert.ok(identity);
+  assert.throws(() => library.db.open(), {name: 'TypeError', message: 'Reopen app libraries through openAppDatabase or openAppLibrary, not db.open().'});
+  const alias = path.join(root, 'library-alias.png');
+  linkSync(library.databaseFile, alias);
+  assert.deepEqual(library.projectFileIdentity(alias), identity);
+  assert.equal(isAppLibraryHeld(library.projectFileIdentity(alias)!), true);
+  assert.equal(isAppLibraryHeld({dev: identity.dev, ino: '0'}), false);
+  assert.equal(isProjectFileHeld(identity), false);
+  assert.equal(isProjectDatabase(library.db), false);
+  assert.deepEqual(readInChild(library.databaseFile), {ok: false, message: 'database is locked', errcode: 5});
+  library.close();
+  assert.equal(isAppLibraryHeld(identity), false);
+});
+
+test('a failed library open leaves its identity unheld and can be repaired and reopened', t => {
+  const dataDir = path.join(scratch(t), 'data');
+  const first = openAppLibrary({dataDir});
+  const identity = first.projectFileIdentity(first.databaseFile);
+  assert.ok(identity);
+  first.close();
+  tamper(first.databaseFile, db => db.exec('CREATE TABLE unexpected(x)'));
+  assert.equal(appError(() => openAppLibrary({dataDir})).code, 'APP_LIBRARY_INVALID');
+  assert.equal(isAppLibraryHeld(identity), false);
+  tamper(first.databaseFile, db => db.exec('DROP TABLE unexpected'));
+  const again = open(t, dataDir);
+  assert.equal(isAppLibraryHeld(identity), true);
+  again.close();
+  assert.equal(isAppLibraryHeld(identity), false);
+});
+
+test('retiring an old library owner cannot clear a new owner of the same dev:ino', t => {
+  const dataDir = path.join(scratch(t), 'data');
+  const first = openAppLibrary({dataDir});
+  const identity = first.projectFileIdentity(first.databaseFile);
+  assert.ok(identity);
+  first.db.close();
+  assert.throws(() => first.db.open(), {name: 'TypeError', message: 'Reopen app libraries through openAppDatabase or openAppLibrary, not db.open().'});
+  assert.equal(first.db.isOpen, false);
+  assert.equal(isAppLibraryHeld(identity), false);
+  // Keep the inode while replacing its contents: this deterministically gives
+  // the next live connection exactly the retired owner's identity key.
+  const bytes = readFileSync(first.databaseFile);
+  writeFileSync(first.databaseFile, bytes);
+  assert.deepEqual(first.projectFileIdentity(first.databaseFile), identity);
+  const again = open(t, dataDir);
+  assert.throws(() => first.close(), {code: 'ERR_INVALID_STATE'});
+  assert.equal(isAppLibraryHeld(identity), true);
+  assert.deepEqual(readInChild(again.databaseFile), {ok: false, message: 'database is locked', errcode: 5});
+  again.close();
+  assert.equal(isAppLibraryHeld(identity), false);
 });
 
 test('the data directory and the library follow the private storage rules', {skip: !POSIX && 'POSIX modes and links'}, t => {

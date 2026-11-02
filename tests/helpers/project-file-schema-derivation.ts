@@ -1,5 +1,5 @@
-// Derives the static project-file schema from the format-72 workspace built by
-// db.ts, with the Mock provider's ledger, and writes or checks the generated files.
+// Derives the static project-file schema from the fixed historical workspace
+// constructors, with the Mock provider's ledger, and writes or checks the generated files.
 //   node tests/helpers/project-file-schema-derivation.ts --write   regenerate the files
 //   node tests/helpers/project-file-schema-derivation.ts --check   exit 1 when a file differs
 //   node tests/helpers/project-file-schema-derivation.ts --report  print the PR's mapping table and the application-database SQL
@@ -9,7 +9,31 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
-import {openStore} from '../../packages/business/src/db.ts';
+import '../../packages/business/src/workspace-envelope-startup.ts';
+import {openLegacyWorkspaceStore} from './legacy-workspace-store.ts';
+import {initializeWorkspaceSchemaThrough24} from '../../packages/business/src/workspace-fixed-schema.ts';
+import {initializeWorkspaceSchema26} from '../../packages/business/src/workspace-schema-v26.ts';
+import {initializeWorkspaceSchema28} from '../../packages/business/src/workspace-schema-v28.ts';
+import {initializeWorkspaceSchema30} from '../../packages/business/src/workspace-schema-v30.ts';
+import {initializeWorkspaceSchema32} from '../../packages/business/src/workspace-schema-v32.ts';
+import {initializeWorkspaceSchema34} from '../../packages/business/src/workspace-schema-v34.ts';
+import {initializeWorkspaceSchema36} from '../../packages/business/src/workspace-schema-v36.ts';
+import {initializeWorkspaceSchema38} from '../../packages/business/src/workspace-schema-v38.ts';
+import {initializeWorkspaceSchema40} from '../../packages/business/src/workspace-schema-v40.ts';
+import {initializeWorkspaceSchema44} from '../../packages/business/src/workspace-schema-v44.ts';
+import {initializeWorkspaceSchema48} from '../../packages/business/src/workspace-schema-v48.ts';
+import {initializeWorkspaceSchema50} from '../../packages/business/src/workspace-schema-v50.ts';
+import {initializeWorkspaceSchema52} from '../../packages/business/src/workspace-schema-v52.ts';
+import {initializeWorkspaceSchema54} from '../../packages/business/src/workspace-schema-v54.ts';
+import {initializeWorkspaceSchema56} from '../../packages/business/src/workspace-schema-v56.ts';
+import {initializeWorkspaceSchema58} from '../../packages/business/src/workspace-schema-v58.ts';
+import {initializeWorkspaceSchema60} from '../../packages/business/src/workspace-schema-v60.ts';
+import {initializeWorkspaceSchema62} from '../../packages/business/src/workspace-schema-v62.ts';
+import {initializeWorkspaceSchema64} from '../../packages/business/src/workspace-schema-v64.ts';
+import {initializeWorkspaceSchema66} from '../../packages/business/src/workspace-schema-v66.ts';
+import {initializeWorkspaceSchema68} from '../../packages/business/src/workspace-schema-v68.ts';
+import {initializeWorkspaceSchema70} from '../../packages/business/src/workspace-schema-v70.ts';
+import {initializeWorkspaceSchema72} from '../../packages/business/src/workspace-schema-v72.ts';
 import {createMockProvider} from '../../packages/business/src/providers/mock.ts';
 import {PROJECT_DATABASE_NAMES} from '../../packages/contracts/src/project-file.ts';
 import {buildDatabase, schemaStatements, SCHEMA_VERSION_TABLE_SQL, CACHE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
@@ -58,14 +82,40 @@ export function readTableShape(db: DatabaseSync, table: string): TableShape {
   };
 }
 
-/** Builds an empty format-72 workspace with db.ts in a scratch directory, adds
- * the Mock provider's ledger and reads its schema. */
+/** Replays the original ordinary lineage in a scratch directory, independently
+ * of the public opener and the schema being derived. The legacy adapter stays
+ * fixed at 24; this reader alone advances it through the fixed format-72 chain. */
 export function readFormat72(): Format72 {
   const scratch = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-k1-format72-'));
   try {
-    const store = openStore(path.join(scratch, 'workspace'), {lock: false});
+    const store = openLegacyWorkspaceStore(path.join(scratch, 'workspace'));
     try {
       const db = store.db;
+      // Keep the exact historical order: 42 and 46 were candidate formats,
+      // never steps in the ordinary workspace lineage. No current dispatcher
+      // or project-file constructor may supply the source catalog.
+      initializeWorkspaceSchema26(db);
+      initializeWorkspaceSchema28(db);
+      initializeWorkspaceSchema30(db);
+      initializeWorkspaceSchema32(db);
+      initializeWorkspaceSchema34(db);
+      initializeWorkspaceSchema36(db);
+      initializeWorkspaceSchema38(db);
+      initializeWorkspaceSchema40(db);
+      initializeWorkspaceSchema44(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema48(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema50(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema52(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema54(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema56(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema58(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema60(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema62(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema64(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema66(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema68(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema70(db, initializeWorkspaceSchemaThrough24);
+      initializeWorkspaceSchema72(db, initializeWorkspaceSchemaThrough24);
       // The server's provider registry creates the Mock provider on the store
       // connection, and the provider creates its two ledger tables there.
       createMockProvider({db, root: store.root});
@@ -74,6 +124,7 @@ export function readFormat72(): Format72 {
         sql: typeof row.sql === 'string' ? row.sql : null,
       }));
       const version = Number(db.prepare('SELECT max(version) AS version FROM schema_version').get()?.version);
+      if (version !== 72) throw new Error(`Expected fixed format 72, received ${version}`);
       const tables = new Map(objects.filter(object => object.type === 'table').map(object => [object.name, readTableShape(db, object.name)]));
       return {version, objects, tables};
     } finally {
@@ -426,7 +477,7 @@ const kept = (placement: TablePlacement): placement is 'project' | 'history' | '
 
 /** Groups the format-72 schema by destination and applies rewrite rules (a)–(d). */
 export function deriveFromFormat72(format72: Format72 = readFormat72()): Derivation {
-  if (format72.version !== 72) throw new Error(`Expected the format-72 workspace, db.ts built format ${format72.version}`);
+  if (format72.version !== 72) throw new Error(`Expected the fixed format-72 workspace, received format ${format72.version}`);
   const tableObjects = format72.objects.filter(object => object.type === 'table');
   const known = new Set(tableObjects.map(object => object.name).filter(name => name !== 'schema_version' && name !== 'sqlite_sequence'));
   for (const table of [...CONTENT_TABLES, ...HISTORY_TABLES, ...CACHE_TABLES]) if (!known.has(table)) throw new Error(`Format 72 has no table ${table}`);
