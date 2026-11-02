@@ -1,3 +1,4 @@
+import {mioTable} from './agent/mio-table-layout.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {createWorkspaceBackupRuntime} from './workspace-backup-runtime.ts';
 import {createExportControlServices} from './export-controls.ts';
@@ -553,10 +554,10 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // mutation closures remain protected at their shared transaction precondition.
  const domainHandlers: ServiceHandlers={...handlers};
  const removeJobStopper=setAgentTaskJobStopper(db,'job',(runId,stepId)=>{
-  for(const row of db.prepare("SELECT j.id,j.projectId FROM jobs j JOIN agent_task_job_origins_v2 o ON o.kind='job' AND o.jobId=j.id AND o.projectId=j.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(j.data) AND json_extract(j.data,'$.status')='queued'").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'job',String(row.id),()=>domainHandlers['job.cancel']!({jobId:String(row.id)} as never));
+  for(const row of db.prepare(`SELECT j.id,j.projectId FROM jobs j JOIN ${mioTable(db,'origins')} o ON o.kind='job' AND o.jobId=j.id AND o.projectId=j.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(j.data) AND json_extract(j.data,'$.status')='queued'`).all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'job',String(row.id),()=>domainHandlers['job.cancel']!({jobId:String(row.id)} as never));
  });
  const removeExportStopper=setAgentTaskJobStopper(db,'export',(runId,stepId)=>{
-  for(const row of db.prepare("SELECT e.id,e.projectId FROM exports e JOIN agent_task_job_origins_v2 o ON o.kind='export' AND o.jobId=e.id AND o.projectId=e.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(e.data) AND json_extract(e.data,'$.status')='queued'").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'export',String(row.id),()=>domainHandlers['export.cancel']!({projectId:String(row.projectId),exportId:String(row.id)} as never));
+  for(const row of db.prepare(`SELECT e.id,e.projectId FROM exports e JOIN ${mioTable(db,'origins')} o ON o.kind='export' AND o.jobId=e.id AND o.projectId=e.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(e.data) AND json_extract(e.data,'$.status')='queued'`).all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'export',String(row.id),()=>domainHandlers['export.cancel']!({projectId:String(row.projectId),exportId:String(row.id)} as never));
  });
  if(restored)for(const op of Object.keys({...domainHandlers,...(restoredReads?.handlers??{})}))handlers[op]=(input: never,context: ServiceHandlerContext={})=>call(op,input,context);
  async function call(op: string,input: unknown,context: ServiceHandlerContext={}): Promise<unknown> {

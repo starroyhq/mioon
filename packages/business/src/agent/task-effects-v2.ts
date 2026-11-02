@@ -1,6 +1,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import type {DatabaseSync} from 'node:sqlite';
 import {AppError} from '@mioon/contracts';
+import {mioTable} from './mio-table-layout.ts';
 import type {AgentTaskChange,AgentTaskJson} from '../../../contracts/src/agent-tasks-v2.ts';
 
 export type TaskChangeInput=Omit<AgentTaskChange,'id'|'runId'|'stepId'|'createdAt'|'status'>;
@@ -39,17 +40,17 @@ export function setAgentTaskJobStopper(db:DatabaseSync,kind:string,stop:(runId:s
  return ()=>{if(entries.get(kind)===stop)entries.delete(kind);};
 }
 function backgroundDenied(db:DatabaseSync,runId:string,stepId:string):boolean{
- return db.prepare("SELECT CASE WHEN json_valid(data) THEN json_extract(data,'$.data.backgroundDenied') END AS denied FROM agent_task_steps_v2 WHERE id=? AND runId=?").get(stepId,runId)?.denied===1;
+ return db.prepare(`SELECT CASE WHEN json_valid(data) THEN json_extract(data,'$.data.backgroundDenied') END AS denied FROM ${mioTable(db,'steps')} WHERE id=? AND runId=?`).get(stepId,runId)?.denied===1;
 }
 /** Retire only provably unstarted work, scoped to a stopped run or one denied
  * accepted step. A single rejection never expands to the run's other jobs. */
 export function stopAgentTaskJobs(db:DatabaseSync,runId:string,stepId?:string):void{
  if(stepId){if(!backgroundDenied(db,runId,stepId))throw new AppError('AGENT_TASK_EFFECT_BLOCKED','此步骤没有已保存的后台拒绝回执',409);}
- else if(!['stopped','reverted','failed'].includes(String(db.prepare('SELECT status FROM agent_task_runs_v2 WHERE id=?').get(runId)?.status)))return;
+ else if(!['stopped','reverted','failed'].includes(String(db.prepare(`SELECT status FROM ${mioTable(db,'runs')} WHERE id=?`).get(runId)?.status)))return;
  for(const stop of jobStoppers.get(db)?.values()??[])stop(runId,stepId);
 }
 export function isAgentTaskJobStopped(db:DatabaseSync,kind:string,id:string):boolean{
- const binding=agentTaskJobBinding(db,kind,id);return !!binding&&(['stopped','reverted','failed'].includes(String(db.prepare('SELECT status FROM agent_task_runs_v2 WHERE id=? AND projectId=?').get(binding.runId,binding.projectId)?.status))||backgroundDenied(db,binding.runId,binding.stepId));
+ const binding=agentTaskJobBinding(db,kind,id);return !!binding&&(['stopped','reverted','failed'].includes(String(db.prepare(`SELECT status FROM ${mioTable(db,'runs')} WHERE id=? AND projectId=?`).get(binding.runId,binding.projectId)?.status))||backgroundDenied(db,binding.runId,binding.stepId));
 }
 const dispatchRecorders=new WeakMap<DatabaseSync,(binding:AgentTaskJobBinding)=>void>();
 const targetGates=new WeakMap<DatabaseSync,(binding:AgentTaskJobBinding,target:{kind:string;id:string})=>boolean>();
@@ -79,7 +80,7 @@ export function setAgentTaskEffectGate(db:DatabaseSync,gate:AgentTaskJobGate):()
 export function bindAgentTaskJobInside(db:DatabaseSync,kind:string,id:string):void{
  const origin=taskEffectOrigin();if(!origin)return;
  if(!db.isTransaction)throw Error('Agent task admission must share the domain transaction');
- db.prepare('INSERT INTO agent_task_job_origins_v2(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)')
+ db.prepare(`INSERT INTO ${mioTable(db,'origins')}(kind,jobId,runId,stepId,projectId,requestId,operation) VALUES(?,?,?,?,?,?,?)`)
   .run(kind,id,origin.runId,origin.stepId,origin.projectId,origin.requestId,origin.operation);
 }
 export function agentTaskJobBinding(db:DatabaseSync,kind:string,id:string):AgentTaskJobBinding|undefined{

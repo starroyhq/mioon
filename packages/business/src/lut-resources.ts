@@ -1,3 +1,4 @@
+import {mioTable} from './agent/mio-table-layout.ts';
 import {randomUUID} from 'node:crypto';
 import {taskEffectOrigin} from './agent/task-effects-v2.ts';
 import type {AgentTaskJson} from '../../contracts/src/agent-tasks-v2.ts';
@@ -120,7 +121,7 @@ export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signa
       fault('beforeCommit');owned();runtime.assertImportAllowed();
       if(origin){
         origin.beforeEffect();
-        if(origin.importHandle){const updated=db.prepare("UPDATE agent_task_imports_v2 SET status='imported',resourceId=? WHERE id=? AND projectId=? AND status='importing'").run(id,origin.importHandle,i.projectId);if(updated.changes!==1)throw Object.assign(Error('Agent import identity changed'),{code:'AGENT_TASK_UNKNOWN_RESULT'});}
+        if(origin.importHandle){const updated=db.prepare(`UPDATE ${mioTable(db,'imports')} SET status='imported',resourceId=? WHERE id=? AND projectId=? AND status='importing'`).run(id,origin.importHandle,i.projectId);if(updated.changes!==1)throw Object.assign(Error('Agent import identity changed'),{code:'AGENT_TASK_UNKNOWN_RESULT'});}
         const revision=Number(db.prepare("SELECT revision FROM agent_task_target_revisions_v2 WHERE projectId=? AND kind='lut' AND targetId=?").get(i.projectId,id)?.revision??0);
         const change={projectId:i.projectId,operation:origin.operation,targets:[{kind:'lut',id,revision,revisionBefore:0,revisionAfter:revision}],before:null,after:response.resource as unknown as AgentTaskJson,reversible:false,summary:'导入用户选择的Cube资源'};
         if(origin.recorded){if(!origin.appendChangesInside)throw Error('Agent import origin cannot record changes');origin.appendChangesInside([change]);}

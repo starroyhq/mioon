@@ -1,3 +1,4 @@
+import {mioTable} from './mio-table-layout.ts';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {setTimeout as waitDelay} from 'node:timers/promises';
@@ -22,6 +23,11 @@ import type {AgentTaskSkillReadInput} from './task-skills-v2.ts';
 import {AGENT_TASK_GOAL_SET_PARAMETERS,normalizeAgentTaskGoals} from './task-goals-v2.ts';
 import {taskEffectOrigin,withTaskEffectOrigin,setAgentTaskJobOriginRunner,setAgentTaskJobDispatchRecorder,setAgentTaskJobTargetGate,assertAgentTaskBindingEffect,isAgentTaskEffectBlocked} from './task-effects-v2.ts';
 import {createAgentTaskJournal} from './task-journal-v2.ts';
+import type {AgentTaskJournal} from './task-journal-v2.ts';
+import {isProjectStore} from '../project-file/store.ts';
+import {createMioRecords} from './mio-records.ts';
+import {createMioJournal} from './mio-journal.ts';
+import {createMioAssembly} from './mio-assembly.ts';
 import {createTimelineRecoveryBoundary} from '../timeline-recovery.ts';
 import {createPrevisReaders,prunePrevisThumbnails} from '../previs.ts';
 import {usesPrevisSchema} from '../workspace-schema-dispatch.ts';
@@ -245,6 +251,21 @@ function undoDependencies(store:WorkspaceStore,change:AgentTaskChange,current:Sn
   const jobs=Object.values(current).filter(item=>item.kind==='job'&&item.value.shotId===identity.id);if(!jobs.length)continue;
   const target=change.targets.length===1?change.targets[0]:undefined,shotId=identity.id;
   if(change.operation!=='shot.create'||entries.length!==1||target?.kind!=='shot'||target.id!==shotId)return 'blocked';
+  if(isProjectStore(store)){
+   const records=createMioRecords(store);
+   const owned=db.prepare(`SELECT b.stepId FROM mio_job_origins b JOIN jobs j ON j.id=b.jobId AND j.projectId=b.projectId
+    JOIN mio_steps s ON s.id=b.stepId AND s.runId=b.runId AND s.projectId=b.projectId
+    WHERE b.kind='job' AND b.jobId=? AND b.projectId=? AND b.runId=? AND b.operation='generation.submit'
+    AND b.requestId=json_extract(j.data,'$.requestId') AND s.status='completed' AND s.kind='tool'
+    AND EXISTS(SELECT 1 FROM mio_changes c,json_each(c.data,'$.targets') t WHERE c.runId=b.runId AND c.stepId=b.stepId AND c.projectId=b.projectId
+     AND json_extract(c.data,'$.operation')='generation.submit' AND json_extract(c.data,'$.reversible')=0 AND json_extract(c.data,'$.status')='applied'
+     AND json_extract(t.value,'$.kind')='job' AND json_extract(t.value,'$.id')=j.id)`);
+   return jobs.every(job=>{const row=owned.get(job.id,change.projectId,change.runId);if(!row)return false;
+    const step=records.step(String(row.stepId));if(step.sourceEntryId===null||step.sourceCallIndex===null)return false;
+    const call=records.sourceCall(step.sourceEntryId,step.sourceCallIndex);
+    return call.name==='mioon_generation_submit'&&object(call.arguments)&&call.arguments.shotId===shotId;
+   })?'retain':'blocked';
+  }
     const ownedJob=db.prepare(`SELECT 1 FROM agent_task_job_origins_v2 b JOIN jobs j ON j.id=b.jobId AND j.projectId=b.projectId
      JOIN agent_task_steps_v2 s ON s.id=b.stepId AND s.runId=b.runId AND s.projectId=b.projectId
      WHERE b.kind='job' AND b.jobId=? AND b.projectId=? AND b.runId=? AND b.operation='generation.submit'
@@ -263,7 +284,7 @@ export function projectAgentTaskUndo(store:WorkspaceStore,projectId:string,chang
  if(!changes.length)return new Map();
  const current=snapshot(store,projectId),revisions=new Map<string,number>(),chain=new Map<string,AgentTaskTarget>(),result=new Map<string,Pick<AgentTaskChange,'modifiedAfter'|'undoDisposition'>>();let blocked=false;
  const revision=(target:AgentTaskTarget):number=>revisions.get(key(target.kind,target.id))??readRevision(store,projectId,target.kind,target.id);
- const claimed=(target:AgentTaskTarget):boolean=>!!store.db.prepare('SELECT 1 FROM agent_task_edit_claims_v2 WHERE projectId=? AND kind=? AND targetId=?').get(projectId,target.kind,target.id);
+ const claimed=(target:AgentTaskTarget):boolean=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(projectId,target.kind,target.id);
  for(const change of [...changes].reverse()){
   const modifiedAfter=change.targets.some(target=>target.revisionAfter!==undefined&&readRevision(store,projectId,target.kind,target.id)>target.revisionAfter);
   if(change.status==='reverted'){for(const target of change.revertedTargets??[])chain.set(key(target.kind,target.id),target);result.set(change.id,{modifiedAfter,undoDisposition:'retain'});continue;}
@@ -279,7 +300,7 @@ export function projectAgentTaskUndo(store:WorkspaceStore,projectId:string,chang
 }
 /** Recheck supersession within the same transaction as its journal record. */
 export function agentTaskChangeWasModified(store:WorkspaceStore,change:AgentTaskChange,expected:AgentTaskTarget[]):boolean{
- return undoDisposition(change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare('SELECT 1 FROM agent_task_edit_claims_v2 WHERE projectId=? AND kind=? AND targetId=?').get(change.projectId,target.kind,target.id))==='retain';
+ return undoDisposition(change,snapshot(store,change.projectId),expected,target=>readRevision(store,change.projectId,target.kind,target.id),target=>!!store.db.prepare(`SELECT 1 FROM ${mioTable(store.db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))==='retain';
 }
 function differences(before:Snapshot,after:Snapshot):Array<{before?:SnapshotEntry;after?:SnapshotEntry}>{
  const result:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
@@ -324,7 +345,7 @@ function transactionResult(operation:string,projectId:string,value:unknown):Agen
 }
 
 const previsWrite=(operation:string):boolean=>operation==='previs.create'||operation==='previs.scene.set';
-export function createAgentTaskTools({store,services}:{store:WorkspaceStore;services:OrdinaryServices}){
+export function createAgentTaskTools({store,services,journal:injectedJournal}:{store:WorkspaceStore;services:OrdinaryServices;journal?:AgentTaskJournal}){
  const {db}=store;
  // Mio reads back a previs node it created or saved the way it reads one, with framing.
  const taskResult=(operation:string,projectId:string,value:unknown):AgentTaskJson=>previsWrite(operation)&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):transactionResult(operation,projectId,value);
@@ -350,7 +371,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(origin.recorded){if(!origin.appendChangesInside)throw Error('Late task changes require a durable origin recorder');origin.appendChangesInside(captured);}
   else{origin.recordInside(taskResult(active.operation,active.projectId,result),captured);origin.recorded=true;}
  });
- const journal=createAgentTaskJournal(store);
+ const journal=injectedJournal??(isProjectStore(store)?createMioJournal(store,{policy:()=>{throw Object.assign(Error('Mio policy was not supplied to the tool journal'),{code:'AGENT_TASK_STORAGE_UNAVAILABLE'});},assembly:createMioAssembly(createMioRecords(store))}):createAgentTaskJournal(store));
  const removeDispatchRecorder=setAgentTaskJobDispatchRecorder(db,binding=>{const step=journal.step(binding.stepId);if(step.cost!=='submitted')journal.updateStep(binding.runId,binding.stepId,{cost:'submitted'});});
  const removeTargetGate=setAgentTaskJobTargetGate(db,(binding,target)=>{
   let expected:AgentTaskTarget|undefined;
@@ -654,7 +675,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
    // them nothing was accepted, sent or billed. Any present record keeps the step for provider reconciliation.
    const receipts=prepared.operation==='generation.submit'?["SELECT 1 FROM idempotency WHERE scope='generation' AND requestId=?"]:prepared.operation==='image.generate'?['SELECT 1 FROM image_requests WHERE requestId=?','SELECT 1 FROM image_tasks WHERE requestId=?']:null;
    if(!receipts||step.cost!==undefined&&step.cost!=='pending')return null;
-   if(receipts.some(sql=>db.prepare(sql).get(input.requestId))||db.prepare('SELECT 1 FROM agent_task_job_origins_v2 WHERE runId=? AND stepId=?').get(input.runId,input.stepId))return null;
+   if(receipts.some(sql=>db.prepare(sql).get(input.requestId))||db.prepare(`SELECT 1 FROM ${mioTable(db,'origins')} WHERE runId=? AND stepId=?`).get(input.runId,input.stepId))return null;
    return {outcome:'not_applied',reason:'atomic_receipt_absent'};
   }
   if(prepared.risk!=='local_reversible'||!reversibleOperations.includes(prepared.operation as typeof reversibleOperations[number]))return null;
@@ -681,15 +702,15 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const bytes=Buffer.from(input.dataBase64,'base64');if(!bytes.length||bytes.length>limit)fail('INVALID_MEDIA',lut?'Cube文件须为1字节至7MiB':'文件大小须为1字节至30MiB');
   if(input.name.length<1||input.name.length>200||!lut&&!['image/png','image/jpeg','image/webp','video/mp4','video/webm','audio/wav','audio/mpeg','audio/mp4'].includes(mimeType))fail('INVALID_MEDIA','文件类型无效');
   const sha256=createHash('sha256').update(bytes).digest('hex');
-  const previous=db.prepare('SELECT * FROM agent_task_imports_v2 WHERE requestId=?').get(input.requestId);
+  const previous=db.prepare(`SELECT * FROM ${mioTable(db,'imports')} WHERE requestId=?`).get(input.requestId);
   if(previous){if(previous.projectId!==input.projectId||previous.sha256!==sha256||previous.name!==input.name||previous.mimeType!==mimeType)fail('AGENT_TASK_REQUEST_CONFLICT','文件选择请求已用于其他内容');return {id:String(previous.id),handle:String(previous.id),name:String(previous.name),mimeType:String(previous.mimeType),status:String(previous.status)};}
   const id=randomUUID(),relativePath=`agent-imports/${id}.bin`;ensurePrivateDirectory(path.join(store.root,'agent-imports'),{create:true});writePrivateFileAtomic(path.join(store.root,relativePath),bytes,{root:store.root,maxBytes:limit,replace:false});
-  store.tx(()=>db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,assetId,createdAt) VALUES(?,?,?,?,?,?,?,'selected',NULL,?)").run(id,input.projectId,input.requestId,input.name,mimeType,relativePath,sha256,new Date().toISOString()));
+  store.tx(()=>db.prepare(`INSERT INTO ${mioTable(db,'imports')}(id,projectId,requestId,name,mimeType,relativePath,sha256,status,assetId,createdAt) VALUES(?,?,?,?,?,?,?,'selected',NULL,?)`).run(id,input.projectId,input.requestId,input.name,mimeType,relativePath,sha256,new Date().toISOString()));
   return {id,handle:id,name:input.name,mimeType,status:'selected'};
  }
  async function executeImport(prepared:PreparedAgentTaskTool,context:AgentTaskToolContext,origin:AgentTaskEffectOrigin):Promise<{result:AgentTaskJson;changes:TaskChangeInput[];recorded:boolean}>{
   const handle=prepared.input.handle;if(typeof handle!=='string')fail('AGENT_TASK_INVALID_TOOL','请选择已授权文件');
-  const row=db.prepare('SELECT * FROM agent_task_imports_v2 WHERE id=? AND projectId=?').get(handle,prepared.projectId);if(!row)fail('AGENT_TASK_INVALID_TARGET','文件选择记录不属于当前项目');
+  const row=db.prepare(`SELECT * FROM ${mioTable(db,'imports')} WHERE id=? AND projectId=?`).get(handle,prepared.projectId);if(!row)fail('AGENT_TASK_INVALID_TARGET','文件选择记录不属于当前项目');
   const isLut=prepared.operation==='lut.importSelected';if((row.mimeType==='application/x-cube')!==isLut)fail('AGENT_TASK_INVALID_TOOL','文件句柄类型与工具不符');
   if(isLut&&typeof row.resourceId==='string'){return {result:projectResult(await services.call('lut.inspect',{projectId:prepared.projectId,lutId:row.resourceId})),changes:[],recorded:false};}
   if(row.assetId){const asset=owned('assets',row.assetId,prepared.projectId);return {result:projectResult(asset),changes:[],recorded:false};}
@@ -697,7 +718,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(typeof row.relativePath!=='string'||row.relativePath!==`agent-imports/${String(row.id)}.bin`)fail('AGENT_TASK_INVALID_TARGET','文件选择记录无法验证');
   context.beforeEffect();
   const bytes=readPrivateFile(path.join(store.root,row.relativePath),{root:store.root,maxBytes:(isLut?7:30)*1024*1024});if(!Buffer.isBuffer(bytes)||createHash('sha256').update(bytes).digest('hex')!==row.sha256)fail('AGENT_TASK_INVALID_TARGET','已选文件内容发生变化');
-  store.tx(()=>{context.beforeEffect();const changed=db.prepare("UPDATE agent_task_imports_v2 SET status='importing' WHERE id=? AND projectId=? AND status='selected'").run(handle,prepared.projectId);if(changed.changes!==1)fail('AGENT_TASK_UNKNOWN_RESULT','该文件导入已受理');});
+  store.tx(()=>{context.beforeEffect();const changed=db.prepare(`UPDATE ${mioTable(db,'imports')} SET status='importing' WHERE id=? AND projectId=? AND status='selected'`).run(handle,prepared.projectId);if(changed.changes!==1)fail('AGENT_TASK_UNKNOWN_RESULT','该文件导入已受理');});
   origin.importHandle=handle;
   context.beforeEffect();const value=await services.call(isLut?'lut.import':'asset.import',{projectId:prepared.projectId,name:row.name,...(isLut?{requestId:context.requestId}:{mimeType:row.mimeType}),dataBase64:bytes.toString('base64')},{signal:context.signal});
    return {result:projectResult(value),changes:changes(prepared,snapshot(store,prepared.projectId)),recorded:origin.recorded};
@@ -707,7 +728,7 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   const undoEntries=change.undo;
   return store.tx(()=>{
    context.beforeEffect();const current=snapshot(store,change.projectId),expected=context.expectedTargets??change.targets;
-   for(const target of expected){if(readRevision(store,change.projectId,target.kind,target.id)!==target.revision)fail('AGENT_TASK_TARGET_CHANGED','目标在此项变化后已被修改');if(db.prepare('SELECT 1 FROM agent_task_edit_claims_v2 WHERE projectId=? AND kind=? AND targetId=?').get(change.projectId,target.kind,target.id))fail('AGENT_TASK_TARGET_CLAIMED','目标仍有未保存草稿');}
+   for(const target of expected){if(readRevision(store,change.projectId,target.kind,target.id)!==target.revision)fail('AGENT_TASK_TARGET_CHANGED','目标在此项变化后已被修改');if(db.prepare(`SELECT 1 FROM ${mioTable(db,'claims')} WHERE projectId=? AND kind=? AND targetId=?`).get(change.projectId,target.kind,target.id))fail('AGENT_TASK_TARGET_CLAIMED','目标仍有未保存草稿');}
    const entries:Array<{before?:SnapshotEntry;after?:SnapshotEntry}>=[];
    for(const item of undoEntries){if(!object(item))fail('AGENT_TASK_INVALID_TARGET','撤销记录无效');const before=item.before,after=item.after;if(before!==undefined&&!object(before)||after!==undefined&&!object(after))fail('AGENT_TASK_INVALID_TARGET','撤销记录无效');
     const entry={...(before?{before:before as unknown as SnapshotEntry}:{}),...(after?{after:after as unknown as SnapshotEntry}:{})},identity=entry.after??entry.before;if(!identity||typeof identity.kind!=='string'||typeof identity.id!=='string'||typeof identity.table!=='string')fail('AGENT_TASK_INVALID_TARGET','撤销目标无效');

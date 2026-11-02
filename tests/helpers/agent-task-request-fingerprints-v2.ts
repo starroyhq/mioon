@@ -7,12 +7,14 @@ import {mock} from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {ensurePrivateDirectory, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {openStore} from '../../packages/business/src/db.ts';
+import type {WorkspaceStore} from '../../packages/business/src/db.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
 import {createAgentTaskTools} from '../../packages/business/src/agent/task-tools-v2.ts';
 import {AGENT_TASK_CONVERSATION_TOOLS, AGENT_TASK_TOOLS_LOAD_NAME} from '../../packages/business/src/agent/task-tool-groups-v2.ts';
 import {createAgentTaskRuntime} from '../../packages/business/src/agent/task-runtime-v2.ts';
+import type {AgentTaskRuntimeOptions} from '../../packages/business/src/agent/task-runtime-v2.ts';
 import {TASK_MODEL_LIMITS} from '../../packages/business/src/agent/task-gateway-v2.ts';
 import type {TaskGateway, TaskModelItem, TaskModelOutput, TaskModelRequest} from '../../packages/business/src/agent/task-gateway-v2.ts';
 import {anthropicMessages} from '../../packages/business/src/agent/anthropic-wire.ts';
@@ -42,6 +44,22 @@ export interface TaskRequestFingerprintFile {
   formatVersion: 1;
   note: string;
   requests: TaskRequestFingerprint[];
+}
+/** Alternate storage must run the same scenarios, real tools and exact gateway
+ * boundary as the reviewed workspace path. The fixture never normalizes bytes. */
+export interface TaskRequestFingerprintHarness {
+  openStore?: (root: string) => WorkspaceStore;
+  createFixturePorts?: (store: WorkspaceStore) => {
+    services: ReturnType<typeof createServices>;
+    createAuthorizations: (settings: Awaited<ReturnType<typeof createAgentSettings>>) => ReturnType<typeof createTestAuthorizations>;
+    close: () => void;
+  };
+  createRuntime?: (options: AgentTaskRuntimeOptions) => ReturnType<typeof createAgentTaskRuntime>;
+  stageAttachment?: (store: WorkspaceStore, input: {
+    id: string; projectId: string; requestId: string; name: string; mimeType: string;
+    relativePath: string; sha256: string; createdAt: string;
+  }) => void;
+  afterClose?: (input: {root: string; requests: readonly string[]; intents: readonly {runId: string; stepId: string}[]; protocol: AgentProtocol; scenario: FingerprintScenario}) => void | Promise<void>;
 }
 export const taskRequestFingerprintFixture = new URL('../fixtures/agent-task-request-fingerprints-v2.json', import.meta.url);
 const projectId = '00000000-0000-4000-8000-000000000001';
@@ -143,9 +161,9 @@ function assertCanvasLoaded(snapshot: AgentTaskSnapshot): void {
   assert.equal(loads[0]!.status, 'completed');
   assert.deepEqual(object(loads[0]!.result).names, ['mioon_shot_update']);
 }
-async function fixture(protocol: AgentProtocol, official = false) {
+async function fixture(protocol: AgentProtocol, official = false, harness: TaskRequestFingerprintHarness = {}) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-request-fingerprint-'));
-  const store = openStore(root), services = createServices(store, new Map());
+  const store = (harness.openStore ?? openStore)(root), ports = harness.createFixturePorts?.(store), services = ports?.services ?? createServices(store, new Map());
   // Seed complete, fixed domain rows. Runtime/journal/control UUIDs remain
   // genuine; they must never accidentally become part of these request bodies.
   store.put('projects', {id: projectId, name: 'Fingerprint project', description: '', revision: 1, createdAt: fixtureTime, updatedAt: fixtureTime});
@@ -168,9 +186,9 @@ async function fixture(protocol: AgentProtocol, official = false) {
   await settings.put({expectedRevision: 0, configuration, secret: sessionSecret === null ? {action: 'remove'} : {
     action: 'replace', storage: 'session', value: sessionSecret,
   }});
-  const authorizations = createTestAuthorizations(() => ({...store}), settings);
+  const authorizations = ports?.createAuthorizations(settings) ?? createTestAuthorizations(() => store, settings);
   await authorizeTestScope(authorizations, 'project_agent');
-  const tools = createAgentTaskTools({store, services}), requests: string[] = [];
+  const tools = createAgentTaskTools({store, services}), requests: string[] = [], intents: {runId: string; stepId: string}[] = [];
   let script: Script = async function* () {yield {type: 'done', output: output(protocol)};};
   const gateway: TaskGateway = async function* (request) {
     request.beforeSubmit?.();
@@ -189,9 +207,10 @@ async function fixture(protocol: AgentProtocol, official = false) {
     assertNoSessionSecret(JSON.stringify(model.request));
     assert.equal(object(model.request).body, request.body, 'The fingerprint must cover the already durable intent');
     requests.push(request.body);
+    intents.push({runId: run.id, stepId: model.id});
     yield* script(requests.length, request);
   };
-  const createRuntime = (): ReturnType<typeof createAgentTaskRuntime> => createAgentTaskRuntime({store, agentSettings: settings, authorizations, tools, gateway, selfPort: () => 4318});
+  const createRuntime = (): ReturnType<typeof createAgentTaskRuntime> => (harness.createRuntime ?? createAgentTaskRuntime)({store, agentSettings: settings, authorizations, tools, gateway, selfPort: () => 4318});
   let runtime = createRuntime();
   const runtimes = [runtime];
   return {
@@ -210,11 +229,14 @@ async function fixture(protocol: AgentProtocol, official = false) {
       const bytes = png(), relativePath = `agent-imports/${uploadId}.bin`;
       ensurePrivateDirectory(path.join(root, 'agent-imports'), {create: true});
       writePrivateFileAtomic(path.join(root, relativePath), bytes, {root, maxBytes: 30 * 1024 * 1024, replace: false});
-      store.db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,assetId,createdAt) VALUES(?,?,?,?,?,?,?,'selected',NULL,?)")
-        .run(uploadId, projectId, 'fingerprint-selected-image', 'Selected image.png', 'image/png', relativePath, createHash('sha256').update(bytes).digest('hex'), fixtureTime);
+      const input = {id: uploadId, projectId, requestId: 'fingerprint-selected-image', name: 'Selected image.png', mimeType: 'image/png', relativePath, sha256: createHash('sha256').update(bytes).digest('hex'), createdAt: fixtureTime};
+      if (harness.stageAttachment) harness.stageAttachment(store, input);
+      else store.db.prepare("INSERT INTO agent_task_imports_v2(id,projectId,requestId,name,mimeType,relativePath,sha256,status,assetId,createdAt) VALUES(?,?,?,?,?,?,?,'selected',NULL,?)")
+        .run(input.id, input.projectId, input.requestId, input.name, input.mimeType, input.relativePath, input.sha256, input.createdAt);
       return uploadId;
     },
-    async close() {for (const value of runtimes) value.close(); await Promise.all(runtimes.map(value => value.drain())); tools.dispose(); await services.drain(); await settings.close(); store.close(); rmSync(root, {recursive: true, force: true});},
+    async close(verify?: () => void | Promise<void>) {try {for (const value of runtimes) value.close(); await Promise.all(runtimes.map(value => value.drain())); tools.dispose(); await services.drain(); await settings.close(); ports?.close(); store.close(); await verify?.();} finally {rmSync(root, {recursive: true, force: true});}},
+    root, intents,
   };
 }
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -373,12 +395,13 @@ async function runScenario(f: Fixture, protocol: AgentProtocol, scenario: Finger
 
 /** Entirely offline: the production gateway is replaced before runtime starts.
  * Only Date is fixed; real IDs and temporary workspace paths stay unmodified. */
-export async function collectTaskRequestFingerprints(): Promise<TaskRequestFingerprint[]> {
+export async function collectTaskRequestFingerprints(harness: TaskRequestFingerprintHarness = {}): Promise<TaskRequestFingerprint[]> {
   const fingerprints: TaskRequestFingerprint[] = [];
   mock.timers.enable({apis: ['Date'], now: Date.parse(fixtureTime)});
   try {
     async function capture(protocol: AgentProtocol, scenario: FingerprintScenario, official = false): Promise<void> {
-      const f = await fixture(protocol, official);
+      const f = await fixture(protocol, official, harness);
+      let completed = false;
       try {
         await runScenario(f, protocol, scenario);
         assert.ok(f.requests.length > 0, `${protocol}/${scenario} must dispatch a model request`);
@@ -386,9 +409,10 @@ export async function collectTaskRequestFingerprints(): Promise<TaskRequestFinge
           bytes: Buffer.byteLength(body), sha256: createHash('sha256').update(body).digest('hex')}));
         f.assertNoSessionSecret(JSON.stringify(records));
         fingerprints.push(...records);
+        completed = true;
       } catch (error) {
         throw new Error(`Fingerprint scenario failed: ${protocol}/${scenario}`, {cause: error});
-      } finally {await f.close();}
+      } finally {await f.close(completed && harness.afterClose ? () => harness.afterClose!({root: f.root, requests: f.requests, intents: f.intents, protocol, scenario}) : undefined);}
     }
     for (const protocol of FINGERPRINT_PROTOCOLS) for (const scenario of FINGERPRINT_SCENARIOS) await capture(protocol, scenario);
     // Keep scenario order stable. H1b adds one real loading request before each

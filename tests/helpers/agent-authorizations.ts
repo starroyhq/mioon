@@ -6,7 +6,7 @@ import {createAgentAuthorizations} from '../../packages/business/src/agent/autho
 
 /** Runtime fixtures use actual private sidecar grants, not an always-allow
  * authorizer. Only explicit approved-input construction grants a scope. */
-interface AuthorizationsStore {readonly root: string; readonly db: unknown; readonly [key: string]: unknown}
+interface AuthorizationsStore {readonly root: string; readonly db: unknown}
 type StoreOrRead = AuthorizationsStore | (() => AuthorizationsStore)
 interface SettingsSnapshot {readonly configuration: unknown; readonly revision: number}
 interface SettingsReader {get(): Promise<SettingsSnapshot>}

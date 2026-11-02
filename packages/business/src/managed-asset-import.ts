@@ -1,3 +1,4 @@
+import {mioTable} from './agent/mio-table-layout.ts';
 /** Shared managed byte import pipeline. The caller supplies its existing owner
  * fence; it never supplies a codec or filesystem adapter. */
 import {createRequire} from 'node:module';
@@ -80,7 +81,7 @@ export function createManagedAssetImportHandler(store: ManagedAssetImportStore, 
       const hasVideo = info.hasVideo ?? (typeof info.width === 'number' && info.width > 0 && typeof info.height === 'number' && info.height > 0);
       if (mimeType.startsWith('audio/') ? (!info.hasAudio || hasVideo || !(typeof info.duration === 'number' && info.duration > 0)) : !hasVideo) throw new Error('Declared media kind does not match decoded streams');
       const publish=():unknown=>{origin?.beforeEffect();const result=store.put('assets', {id, projectId, name: input.name, mimeType, ...info, relativePath, url: `/media/${id}`, createdAt: options.now(), provenance: 'user-import'});
-        if(origin?.importHandle){const connection=store.db as unknown as {prepare(sql:string):{run(...args:string[]):{changes:number|bigint}}};const changed=connection.prepare("UPDATE agent_task_imports_v2 SET status='imported',assetId=? WHERE id=? AND projectId=? AND status='importing'").run(id,origin.importHandle,projectId);if(changed.changes!==1)throw new AppError('AGENT_TASK_UNKNOWN_RESULT','导入受理记录已改变',409);}
+        if(origin?.importHandle){const connection=store.db as unknown as {prepare(sql:string):{run(...args:string[]):{changes:number|bigint}}};const changed=connection.prepare(`UPDATE ${mioTable(store.db,'imports')} SET status='imported',assetId=? WHERE id=? AND projectId=? AND status='importing'`).run(id,origin.importHandle,projectId);if(changed.changes!==1)throw new AppError('AGENT_TASK_UNKNOWN_RESULT','导入受理记录已改变',409);}
         return result;};
       return store.tx?store.tx(publish):publish();
     } catch (error) {

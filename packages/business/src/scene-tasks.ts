@@ -1,3 +1,4 @@
+import {mioTable} from './agent/mio-table-layout.ts';
 import {bindAgentTaskJobInside,assertAgentTaskJobEffect,withAgentTaskJobOrigin,isAgentTaskEffectBlocked,setAgentTaskJobResumer,setAgentTaskJobStopper,agentTaskJobBinding,isAgentTaskJobStopped} from './agent/task-effects-v2.ts';
 import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {workspaceRestoreError} from './workspace-restore-policy.ts';
@@ -488,8 +489,8 @@ export function createSceneServices(store: SceneStore,{signal:ownerSignal,detect
   'scene.task.get':(input: unknown)=>withProgress(history.handlers['scene.task.get']!(input)),
   'scene.task.list':(input: unknown)=>{const page=history.handlers['scene.task.list']!(input) as {items: unknown[]};return {...page,items:page.items.map(withProgress)};},
  });
- const removeResumer=setAgentTaskJobResumer(db,'scene',runId=>{for(const row of db.prepare("SELECT t.id,t.projectId FROM scene_tasks t JOIN agent_task_job_origins_v2 o ON o.kind='scene' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND t.state='queued' AND t.started=0 ORDER BY t.createdAt,t.id").all(runId)){if(pending.has(String(row.id)))resumeRequested.add(String(row.id));else enqueue(String(row.id),String(row.projectId));}});
- const removeStopper=setAgentTaskJobStopper(db,'scene',(runId,stepId)=>{for(const row of db.prepare("SELECT t.id,t.projectId,t.revision FROM scene_tasks t JOIN agent_task_job_origins_v2 o ON o.kind='scene' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND t.state IN ('queued','interrupted') AND t.started=0 ORDER BY t.id").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'scene',String(row.id),()=>{
+ const removeResumer=setAgentTaskJobResumer(db,'scene',runId=>{for(const row of db.prepare(`SELECT t.id,t.projectId FROM scene_tasks t JOIN ${mioTable(db,'origins')} o ON o.kind='scene' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND t.state='queued' AND t.started=0 ORDER BY t.createdAt,t.id`).all(runId)){if(pending.has(String(row.id)))resumeRequested.add(String(row.id));else enqueue(String(row.id),String(row.projectId));}});
+ const removeStopper=setAgentTaskJobStopper(db,'scene',(runId,stepId)=>{for(const row of db.prepare(`SELECT t.id,t.projectId,t.revision FROM scene_tasks t JOIN ${mioTable(db,'origins')} o ON o.kind='scene' AND o.jobId=t.id AND o.projectId=t.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND t.state IN ('queued','interrupted') AND t.started=0 ORDER BY t.id`).all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'scene',String(row.id),()=>{
   try{handlers['scene.task.cancel']!({projectId:String(row.projectId),taskId:String(row.id),expectedRevision:Number(row.revision),requestId:`agent-stop:${runId}:${String(row.id)}`});}
   catch(error){if(property(error,'code')!=='SCENE_CAPACITY')throw error;
    // The stop needs no receipt of its own when the request quota is full; the
