@@ -71,7 +71,7 @@ async function runCli(args: string[],environment: { MIOON_BASE_URL?: string; MIO
 async function fixture(t: test.TestContext){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-subject-video-wire-'));const created=createServerProject(root,{name:'首尾帧 transport'}),store=(created.store as unknown as TypedStore);let service,child: ReturnType<typeof spawn>,proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>,url: string,dropNext=false,dropped!:WireEnvelope<'generation.submit'>;
  let project,other,first,last,foreign,legacyShot;
- const make=async(owner: TypedStore,projectId: string,name: string,color: ArrayLike<number>)=>{const bytes=png(color),id=randomUUID(),relativePath=`media/${id}.png`;await writeFile(path.join(root,relativePath),bytes,{mode:0o600});return owner.put('assets',{id,projectId,name,relativePath,mimeType:'image/png',sha256:sha(bytes),sizeBytes:bytes.length,width:360,height:640,duration:0,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});};
+ const make=async(owner: TypedStore,projectId: string,name: string,color: ArrayLike<number>)=>{const bytes=png(color),id=randomUUID(),relativePath=`media/${id}.png`;await writeFile(path.join(owner.root,relativePath),bytes,{mode:0o600});return owner.put('assets',{id,projectId,name,relativePath,mimeType:'image/png',sha256:sha(bytes),sizeBytes:bytes.length,width:360,height:640,duration:0,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});};
  try{
   service=(createServices(store,createProviderRegistry({db:store.db,root,env:{}}),{env:{}}) as TypedServices);
   project=store.get('projects',created.projectId)!;
@@ -82,7 +82,7 @@ async function fixture(t: test.TestContext){
  // The server knows the other project and its image too.
  const otherCreated=createServerProject(root,{name:'Foreign frame project'}),otherStore=(otherCreated.store as unknown as TypedStore);
  try{other=otherStore.get('projects',otherCreated.projectId)!;foreign=await make(otherStore,other.id,'Foreign image',[150,70,20]);}finally{otherStore.close();}
- const originalFirst=await readFile(path.join(root,first.relativePath)),originalLast=await readFile(path.join(root,last.relativePath));
+ const originalFirst=await readFile(path.join(created.store.root,first.relativePath)),originalLast=await readFile(path.join(created.store.root,last.relativePath));
  let stdout='',stderr='';
  // Count questions waiting for the running backend; a backend that exits answers none of them.
  const pending=new Map<string,PromiseWithResolvers<number>>();
@@ -106,7 +106,7 @@ async function fixture(t: test.TestContext){
  const proxyUrl=`http://127.0.0.1:${(proxy.address()! as import('node:net').AddressInfo).port}`;
  async function rpc<O extends string,E extends string|undefined=undefined>(operation:O,input:unknown={},error?:E,base=url):Promise<E extends string?Failure:ServiceResponse<O>>{const response=await fetch(base+rpcPathFor(operation,input,created.projectId),{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${token}`},body:JSON.stringify({operation,input}),redirect:'error',signal:AbortSignal.timeout(10_000)});const result=await response.json();assert.equal(result.ok,!error,JSON.stringify(result));if(error)assert.equal(result.error.code,error);else assert.equal(response.status,200);assert.ok(!JSON.stringify(result).includes(root)&&!JSON.stringify(result).includes(token));return result.data??result.error;}
  return {root,project,other,first,last,foreign,legacyShot,rpc,get url(){return url;},get env(){return {MIOON_BASE_URL:url,MIOON_TOKEN:token};},drop(){dropNext=true;},get dropped(){return dropped;},proxyUrl,
-  original:async()=>{assert.deepEqual(await readFile(path.join(root,first.relativePath)),originalFirst);assert.deepEqual(await readFile(path.join(root,last.relativePath)),originalLast);},
+  original:async()=>{assert.deepEqual(await readFile(path.join(created.store.root,first.relativePath)),originalFirst);assert.deepEqual(await readFile(path.join(created.store.root,last.relativePath)),originalLast);},
   submissions:()=>count('mock_provider_submissions'),jobs:()=>count('jobs'),
   async restart(){await stopOwned(child);await start();},
  };

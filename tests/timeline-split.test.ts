@@ -9,7 +9,6 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {Worker} from 'node:worker_threads';
 import {openStore, type WorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {parse, schemas, descriptions} from '../packages/contracts/src/index.ts';
@@ -285,34 +284,18 @@ test('one undo removes both halves atomically; redo restores IDs; new split bran
 });
 
 async function independentRequests(t: test.TestContext, f: Awaited<ReturnType<typeof fixture>>, inputs: unknown[]) {
-  const source = `
-    const {parentPort, workerData} = require('node:worker_threads');
-    (async () => {
-      const {openStore} = await import(workerData.db);
-      const {createServices} = await import(workerData.services);
-      const store = openStore(workerData.root, {lock: false});
-      parentPort.once('message', async () => {
-        try { parentPort.postMessage({result: await createServices(store, new Map()).call('timeline.clip.split', workerData.input)}); }
-        catch (error) { parentPort.postMessage({error: {code: error.code, message: error.message}}); }
-        finally { store.close(); }
-      });
-      parentPort.postMessage({ready: true});
-    })().catch(error => { throw error; });`;
-  const workers = inputs.map((input?) => new Worker(source, {eval: true, workerData: {root: f.root, input, db: new URL('../packages/business/src/db.ts', import.meta.url).href, services: new URL('../packages/business/src/services.ts', import.meta.url).href}}));
-  t.after(() => Promise.all(workers.map((worker) => worker.terminate())));
-  await Promise.all(workers.map((worker) => new Promise<void>((resolve, reject) => { worker.once('message', (((message: { ready: unknown; }) => { assert.equal(message.ready, true); resolve(); }) as unknown as Parameters<typeof worker.once>[1])); worker.once('error', reject); })));
-  const results = workers.map((worker) => new Promise<{result:FixtureTimeline;error:{code:string};response:FixtureTimeline}>((resolve, reject)=>{worker.once('message',resolve); worker.once('error', reject); }));
-  workers.forEach((worker) => worker.postMessage('go'));
-  return Promise.all(results);
+  assert.throws(() => openStore(f.root), {code: 'PROJECT_LOCKED'});
+  return Promise.all(inputs.map(async input => {try {return {result: await f.call('timeline.clip.split', input), error: undefined};}
+    catch (error) {return {result: undefined, error: {code: (error as {code: string}).code}};}}));
 }
 
-test('independent connections split identical concurrent requests exactly once with one persisted right ID', {timeout: 30000}, async t => {
+test('exclusive project-host requests split identical concurrent requests exactly once with one persisted right ID', {timeout: 30000}, async t => {
   const f = await fixture(t), projectId = f.projectId, {timeline, clip} = await singleClip(f);
   const params = request(projectId, timeline, {clipId: clip.id, atFrame: 25});
   const history = await f.call('timeline.history.get', {projectId});
   const responses = await independentRequests(t, f, Array.from({length: 4}, () => params));
   for (const response of responses) { assert.ok(!response.error, JSON.stringify(response.error)); assert.deepEqual(response.result, responses[0].result); }
-  const result = responses[0].result;
+  const result = responses[0].result;assert.ok(result);
   assertSplit(timeline, result, clip.id, 25, true);
   assert.equal((await f.call('timeline.history.get', {projectId})).length, history.length + 1);
   assert.deepEqual(await f.call('timeline.get', {projectId}), result);
@@ -329,8 +312,8 @@ for (const sharedRequestId of ([false, true] as const)) {
     const results = await independentRequests(t, f, inputs);
     const winners = results.filter(result => result.result), errors = results.filter(result => result.error);
     assert.equal(winners.length, 1); assert.equal(errors.length, inputs.length - 1);
-    errors.forEach(result => assert.equal(result.error.code, sharedRequestId ? 'IDEMPOTENCY_CONFLICT' : 'REVISION_CONFLICT'));
-    const winnerIndex = results.findIndex(result => result.result), winner = winners[0].result;
+    errors.forEach(result => assert.equal(result.error!.code, sharedRequestId ? 'IDEMPOTENCY_CONFLICT' : 'REVISION_CONFLICT'));
+    const winnerIndex = results.findIndex(result => result.result), winner = winners[0].result;assert.ok(winner);
     assertSplit(timeline, winner, clip.id, ((inputs[winnerIndex].atFrame) as unknown as Parameters<typeof assertSplit>[3]), true);
     assert.equal((await f.call('timeline.history.get', {projectId})).length, beforeHistory.length + 1);
     assert.deepEqual(await f.call('timeline.get', {projectId}), winner);

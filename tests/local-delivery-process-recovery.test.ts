@@ -1,4 +1,5 @@
-import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
+import {TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
+import {assertProjectProcessCatalog} from './fixtures/project-process-catalog.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
@@ -11,8 +12,6 @@ type WorkerEnvelope=OrdinaryDeliveryEnvelope;
 type WorkerExecution={envelope:WorkerEnvelope;response:FixtureExport|null};
 type WorkerReply<M extends string>=M extends 'get'|'put'|'prepare'?WorkerEnvelope:M extends 'execute'|'recover'?WorkerExecution:M extends 'executeBoth'?[WorkerExecution,WorkerExecution]:M extends 'observe'?{dispatches:unknown[]}:M extends 'identity'?{instanceId:string}:M extends 'snapshot'?ProjectState:unknown;
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
-import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
 /** Real Node process death around real shared business services and the private
  * delivery sidecar. This does not claim native GUI lost-ACK coverage or media
  * validation; tests/local-delivery-qa-native.mjs covers the native title flow.
@@ -29,12 +28,9 @@ import type {DatabaseSync} from 'node:sqlite';
 import {publicValue} from '@mioon/contracts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices,hash} from '../packages/business/src/services.ts';
-import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';
 import type {ProjectState} from './helpers/project-state.ts';
-// Exact table names of the independently reviewed layers after schema52.
-const reviewedLayerTables=new Set(reviewedTablesAfter(52).map(([table])=>table));
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./fixtures/local-delivery-process-worker.ts',import.meta.url));
 const authority=(value: WorkerEnvelope)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId});
@@ -86,9 +82,9 @@ async function fixture(t: test.TestContext){
    sha256:createHash('sha256').update(source).digest('hex'),width:2,height:2,hasVideo:true,hasAudio:false,sizeBytes:source.length,provenance:'user-import',createdAt:new Date().toISOString()});
   timeline=await services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),assetId:id,trackId:timeline.tracks[0].id,startFrame:0,durationFrames:60});
  }finally{await services.drain();store.close();}
- const f={root,project,timeline,file:path.join(root,'local-delivery-v1.json'),get worker(){return worker;},
+ const f={root,project,timeline,file:path.join(root,...TEST_STORE_LAYOUT.localDir,'local-delivery-v1.json'),get worker(){return worker;},
   async start(){worker=spawnWorker(root);workers.push(worker);const ready=await deadline(worker.ready,'worker startup');assert.equal(ready.pid,worker.child.pid);assert.equal(ready.dispatches,0);
-   assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(worker.child.pid));return ready;},
+   assert.throws(()=>openProjectDatabase(root),{code:'PROJECT_LOCKED'});return ready;},
   async restart(){await worker.close();return this.start();},
   ask:<M extends string>(method:M,input?:unknown)=>worker.ask(method,input),get:()=>worker.ask('get',{projectId:project.id}),
   put:(value: WorkerEnvelope,name='原始导出 🎬')=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),timelineId:timeline.id,baseRevision:timeline.revision,raw:{deliveryName:name}}),
@@ -96,34 +92,23 @@ async function fixture(t: test.TestContext){
    draft:value.draft?{draftId:value.draft.draftId,revision:value.draftRevision,raw:value.draft.raw}:null,
    input:{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),purpose:'export',...(value.draft?.raw.deliveryName?{deliveryName:value.draft.raw.deliveryName}:{})}}),
   // A running worker holds the project and reads on its own connection. After
-  // SIGKILL its lock stays, so that evidence is read without taking the lock;
-  // after a clean close the test opens the project itself. Both paths go
-  // through JSON, so their rows compare the same.
+  // SIGKILL releases the native locks; only after the child has exited can
+  // the test reacquire the full kernel and run recovery. Both paths go through
+  // JSON, so their rows compare the same.
   async state():Promise<ProjectState>{
    if(!worker.stopped)return await worker.ask('snapshot');
    const read=(db:DatabaseSync):ProjectState=>JSON.parse(JSON.stringify(readProjectState(db)));
-   if(worker.stopped.signal==='SIGKILL'){const crashed=openStore(root,{lock:false});try{return read(crashed.db);}finally{crashed.close();}}
    const db=openProjectDatabase(root);try{return read(db);}finally{db.close();}
   },
   async snapshot(){const state=await this.state();
-   const schema=withoutReviewedCurrentAgentObjects(state.schema as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
-   assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
-   assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
-   assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
-   assert.deepEqual((schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
-   // Keep every new table and row in the crash oracle. Only the exact frozen52
-   // and reviewed later-layer names may contain digits; unknown numeric table
-   // names still fail closed.
-   for(const name of Object.keys(state.tables))
-    assert.ok(/^[a-z_]+$/.test(name)||Object.hasOwn(currentOrdinary52Delta.tables,name)||reviewedLayerTables.has(name),'only safe legacy, independently frozen52 or reviewed later-layer table names');
-   return {schema,tables:state.tables};
+  assertProjectProcessCatalog(state);return state;
   },
   receipt:async(requestId:string)=>(await f.state()).tables.timeline_requests.find(row=>row.requestId===requestId),
-  sidecar:()=>readFile(path.join(root,'local-delivery-v1.json'),'utf8'),
+  sidecar:()=>readFile(path.join(root,...TEST_STORE_LAYOUT.localDir,'local-delivery-v1.json'),'utf8'),
   async crash(phase: string,method: string,input: unknown){await worker.ask('arm',phase);const reached=worker.waitBoundary(phase),reply=worker.ask(method,input);
    const lost=assert.rejects(reply,{code:'WORKER_EXITED',signal:'SIGKILL'});const point=await reached;
    assert.deepEqual(await worker.kill(),{code:null,signal:'SIGKILL'});await lost;
-   assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(worker.child.pid),'A true crash must leave the exact stale lock for product startup');
+   assert.doesNotThrow(()=>{const recovered=openProjectDatabase(root);recovered.close();},'the real SIGKILL releases kernel locks for normal recovery');
    t.diagnostic(`${phase}: exact owned child ${worker.child.pid} killed before IPC reply; dispatches=${point.dispatches}`);return point;}
  };
  await f.start();return f;

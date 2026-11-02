@@ -14,7 +14,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {migrateCustomImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {validateImageTaskReview} from '../packages/business/src/images/reviews.ts';
 const fixtureSql=readFileSync(new URL('./fixtures/images-legacy-schema17.sql',import.meta.url),'utf8');
 interface CompatSchemaObject {type: string; name: string; tbl_name: string; sql: string; [key: string]: unknown}

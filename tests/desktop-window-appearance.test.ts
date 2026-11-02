@@ -107,3 +107,24 @@ test('native fills match the approved token surfaces and main keeps theme IPC an
   assert.match(main,/backgroundColor: context\.appearance\.backgroundColor\(\)/);
   assert.doesNotMatch(main,/nativeTheme\.themeSource\s*=/);assert.doesNotMatch(main,/ipcMain\.handle\([^\n]*(?:appearance|theme)/i);
 });
+
+test('app appearance reads authenticated preferences and stats app identity without reading database or legacy JSON bytes',async t=>{
+  const f=fixture(t);f.appearance.dispose();
+  const databaseFile=path.join(f.root,'app-library.db');renameSync(f.db,databaseFile);
+  const response={revision:1,preferences:{...DEFAULT_UI_PREFERENCES,theme:'light'},recentOpened:{},recoveredDefaults:false,writable:true};
+  const appearance=createDesktopWindowAppearance({...f.options,databaseFile,readPreferences:async()=>response,
+    storage:{...f.options.storage,readPrivateFile:()=>assert.fail('Application preferences must use authenticated metadata')}});
+  t.after(()=>appearance.dispose());await appearance.ready();
+  assert.equal(appearance.backgroundColor(),WINDOW_BACKGROUNDS.light);
+  assert.equal(readFileSync(databaseFile,'utf8'),'synthetic identity only');
+  renameSync(databaseFile,databaseFile+'.previous');writeFileSync(databaseFile,'replacement identity',{mode:0o600});
+  await appearance.ready();assert.equal(appearance.backgroundColor(),WINDOW_BACKGROUNDS.dark,'replacement app identity cannot inherit preferences');
+});
+
+test('late application preference reads cannot update windows after the backend context is replaced',async t=>{
+  const f=fixture(t);f.appearance.dispose();const pending=Promise.withResolvers<unknown>();
+  const appearance=createDesktopWindowAppearance({...f.options,databaseFile:f.db,readPreferences:()=>pending.promise});
+  t.after(()=>appearance.dispose());const count=f.windows[0].colors.length;f.current(false);
+  pending.resolve({revision:1,preferences:{...DEFAULT_UI_PREFERENCES,theme:'light'},recentOpened:{},recoveredDefaults:false,writable:true});
+  await appearance.ready();assert.equal(f.windows[0].colors.length,count);
+});

@@ -13,8 +13,7 @@ import {mkdtemp, rm, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {crc32, deflateSync} from 'node:zlib';
-import {Worker} from 'node:worker_threads';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openHistoricalWorkspaceStore,openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
@@ -36,11 +35,11 @@ function png(width=36,height=64,color=85) {
  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(pixels)),chunk('IEND',Buffer.alloc(0))]);
 }
 const clone=<T>(value: T): T=>JSON.parse(JSON.stringify(value));
-async function fixture(t: test.TestContext,env={},{open=openStore}: {open?: typeof openStore | typeof openLegacyWorkspaceStore}={}) {
+async function fixture(t: test.TestContext,env={},{open=openStore}: {open?: typeof openStore | typeof openLegacyWorkspaceStore | typeof openHistoricalWorkspaceStore}={}) {
  const root=await mkdtemp(path.join(tmpdir(),'wb-reference-'));
  let store!: TypedStore,services!: TypedServices,providers!: ReturnType<typeof createProviderRegistry>;
- const start=(openStoreForStart: typeof openStore | typeof openLegacyWorkspaceStore=openStore)=>{store=openStoreForStart(root) as TypedStore;providers=createProviderRegistry({db:store.db,root,env});services=(createServices(store,providers,{env}) as TypedServices);};start(open);
- const f={root,get store(){return store;},get services(){return services;},get providers(){return providers;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),restart(){store.close();start();},
+ const start=(openStoreForStart: typeof openStore | typeof openLegacyWorkspaceStore | typeof openHistoricalWorkspaceStore=openStore)=>{store=openStoreForStart(root) as TypedStore;providers=createProviderRegistry({db:store.db,root,env});services=(createServices(store,providers,{env}) as TypedServices);};start(open);
+ const f={root,get store(){return store;},get services(){return services;},get providers(){return providers;},call:<O extends string>(op: O,input: unknown)=>services.call(op,input),restart(){store.close();start(open===openStore?openStore:openHistoricalWorkspaceStore);},
   state(){return Object.fromEntries(['projects','assets','shots','nodes','edges','jobs','versions','exports'].map(table=>[table,clone(store.list(table))])) as ReturnType<ReferenceFixture['state']>;},
   async image(this: ReferenceFixture,projectId=this.projectId,color=85,width=36,height=64){const asset=await this.call('asset.import',{projectId,name:'Synthetic local reference.png',mimeType:'image/png',dataBase64:png(width,height,color).toString('base64')});const node=await this.call('node.create',{projectId,type:'image',assetId:asset.id,label:'Synthetic reference',position:{x:100,y:100}});return {asset,node};},
   shot(this: ReferenceFixture,projectId=this.projectId,extra={}){return this.call('shot.create',{projectId,title:'Reference target',prompt:'Synthetic shapes move gently',...extra});}
@@ -148,13 +147,11 @@ test('concurrent duplicate requests apply once and competing bindings reject wit
  const release=detach(f,bound.edge,bound.shot),releases=await Promise.all(Array.from({length:16},()=>f.call('reference.detach',release)));releases.forEach(value=>assert.deepEqual(value,releases[0]));assert.equal(f.store.list('edges').length,0);
 });
 
-test('independent SQLite connections serialize the exact reference request without double mutation',async t=>{
+test('the exclusive project host serializes exact concurrent reference requests without double mutation',async t=>{
  const f=await fixture(t),{node}=await f.image(),shot=await f.shot(),input=attach(f,node,shot);
- const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({result:await createServices(store,new Map(),{env:{}}).call('reference.attach',workerData.input)});}catch(error){parentPort.postMessage({error:error.code||error.message});}finally{store.close();}});})();`;
- const workers=Array.from({length:4},()=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
- t.after(()=>Promise.all(workers.map(worker=>worker.terminate())));
- await Promise.all(workers.map(worker=>new Promise<WorkerResult>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));const pending=workers.map(worker=>new Promise<WorkerResult>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));workers.forEach(worker=>worker.postMessage('go'));
- const results=await Promise.all(pending);results.forEach(value=>{assert.ok(!value.error,value.error);assert.deepEqual(value.result,results[0].result);});assert.equal(f.store.list('edges').length,1);assert.equal(f.store.get('shots',shot.id)!.revision,shot.revision+1);
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ const results=await Promise.all(Array.from({length:4},()=>f.call('reference.attach',input)));
+ results.forEach(value=>assert.deepEqual(value,results[0]));assert.equal(f.store.list('edges').length,1);assert.equal(f.store.get('shots',shot.id)!.revision,shot.revision+1);
 });
 
 test('generation freezes connection provenance and adapter inputs across detach, rebinding, edits and retry',async t=>{
@@ -218,7 +215,7 @@ test('bound image reaches the real Ark adapter first-frame payload through an in
  const job=await f.call('generation.submit',{shotId:shot.id,expectedRevision:bound.shot.revision,requestId:randomUUID(),providerId:'ark'});
  await f.call('reference.detach',detach(f,bound.edge,bound.shot));
  const worker=startWorker(f.store,f.services,f.providers);t.after(()=>worker.stop());const deadline=Date.now()+5000;while(!calls.length&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,20));await worker.stop();
- assert.equal(calls.filter(call=>call.init!.method==='POST').length,1);const request=calls.find(call=>call.init!.method==='POST');assert.ok(request,'Injected adapter transport must receive the submission');assert.equal(request.url,'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks');
+ assert.equal(calls.filter(call=>call.init!.method==='POST').length,1,JSON.stringify(f.store.list('jobs').map(job=>({status:job.status,error:job.error}))));const request=calls.find(call=>call.init!.method==='POST');assert.ok(request,'Injected adapter transport must receive the submission');assert.equal(request.url,'https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks');
  const body=JSON.parse(request.init!.body as string),image=body.content.find((item: { role: string; })=>item.role==='first_frame');assert.ok(image);assert.equal(image.image_url.url,`data:image/png;base64,${png(360,640,110).toString('base64')}`);assert.equal(body.model,job.model);assert.equal(body.duration,4);assert.equal(body.ratio,'adaptive');assert.deepEqual(job.snapshot.referenceConnections,[{edgeId:bound.edge.id,sourceNodeId:valid.node.id,sourceAssetId:valid.asset.id,role:'first_frame'}]);
  assert.equal(createHash('sha256').update(Buffer.from(image.image_url.url.split(',')[1],'base64')).digest('hex'),valid.asset.sha256);
 });

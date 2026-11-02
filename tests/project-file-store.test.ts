@@ -9,7 +9,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import type {DatabaseSync} from 'node:sqlite';
 import {
-  getWorkspaceRestoreContext, openStore as openWorkspaceStore, ownsStoreLock,
+  getWorkspaceRestoreContext, openLegacyWorkspaceStore as openWorkspaceStore, ownsStoreLock,
   registerWorkspaceTransactionFence, registerWorkspaceTransactionObserver,
 } from '../packages/business/src/db.ts';
 import type {WorkspaceStore} from '../packages/business/src/db.ts';

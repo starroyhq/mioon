@@ -53,6 +53,8 @@ export type SupervisorState = 'idle' | 'starting' | 'running' | 'stopping' | 'st
 interface StopError extends Error { code?: string; exitConfirmed?: boolean; mediaExitConfirmed?: boolean }
 interface BackendStartConfig {
   readonly dataDir: string;
+  readonly cacheDir: string;
+  readonly projectsDir: string;
   readonly distDir: string;
   readonly subtitleResourcesDir: string;
   readonly token: string;

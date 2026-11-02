@@ -3,7 +3,7 @@ import {mkdtempSync,realpathSync,readFileSync,copyFileSync,rmSync,existsSync} fr
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../../packages/business/src/db.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 
 type Row=Record<string,any>;

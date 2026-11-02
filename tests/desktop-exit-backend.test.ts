@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { comfyModuleModeFromEnvironment } from '../apps/server/src/comfy-module.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ import {createBackendLease, BACKEND_LEASE_TIMING} from '../apps/desktop/src/back
 const source = stripTypeScriptTypes((await readFile(new URL('../apps/desktop/src/backend.ts', import.meta.url), 'utf8'))
   .replace(/^import .*;\n/gm, ''), { mode: 'strip' });
 const tick = (): Promise<void> => new Promise(resolve => { setImmediate(resolve); });
-const privateData = 'private-key-request-body-media-/Users/private/project';
+const privateData = '/private-key-request-body-media-/Users/private/project';
 
 function backendHarness({ close = async () => {}, start = undefined, diagnosticFailure = false,
   settingsClose = () => {}, imageClose = () => {} }: {close?: () => Promise<void>; start?: (options: Record<string, unknown>) => Promise<unknown>; diagnosticFailure?: boolean; settingsClose?: () => void; imageClose?: () => void} = {}) {
@@ -22,14 +23,14 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
     if (diagnosticFailure && message.type === 'exit-diagnostic') throw new Error(privateData);
     messages.push(JSON.parse(JSON.stringify(message)));
   };
-  const sandbox = {
+  const sandbox = { path,
     comfyModuleModeFromEnvironment,
     createBackendLease, BACKEND_LEASE_TIMING, performance: {now: () => now},
     process: { env: {}, parentPort: port, versions: { electron: '44.7.0', node: '24.19.0', sqlite: '3' },
       pid: 23456, on: events.on.bind(events), exit: (code: number) => exits.push(code) },
     __MIOON_DESKTOP_CHANNEL__: 'development',
     DatabaseSync: function () {},
-    startServer: (options: Record<string, unknown>) => { assert.equal(options.comfyModule, 'load'); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
+    startServer: (options: Record<string, unknown>) => { assert.equal(options.comfyModule, 'load'); assert.equal(options.dataDir,privateData); assert.equal(options.cacheDir,privateData+'/cache'); assert.equal(options.projectsDir,privateData+'/projects'); return (start ?? (async () => ({ close, url: 'http://127.0.0.1:43210' })))(options); },
     initializeSubtitleResources: () => {}, onMediaProcess: () => {}, initializeDesktopPrivateStorage: () => {},
     createAgentSettingsClient: () => ({ close: settingsClose }),
     createImageSecretClient: () => ({ close: imageClose, refreshStorage: async () => {} }),
@@ -44,7 +45,7 @@ function backendHarness({ close = async () => {}, start = undefined, diagnosticF
     messages, exits, events,
     diagnostics: () => messages.filter(message => message.type === 'exit-diagnostic'),
     start: () => port.emit('message', { data: { type: 'start', token: privateData,
-      dataDir: privateData, distDir: privateData, subtitleResourcesDir: privateData } }),
+      dataDir: privateData, cacheDir: privateData+'/cache', projectsDir: privateData+'/projects', distDir: privateData, subtitleResourcesDir: privateData } }),
     stop: () => port.emit('message', { data: { type: 'stop', reason: privateData } }),
     ping: () => port.emit('message', { data: { type: 'ping' } }),
     reply: (data: unknown) => port.emit('message', {data}),

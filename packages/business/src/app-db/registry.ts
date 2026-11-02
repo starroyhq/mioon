@@ -24,6 +24,8 @@ export interface AppProjectRegistry {
   /** In the order the projects were first registered. */
   list(): RecentProject[];
   get(projectId: string): RecentProject | null;
+  /** Read-only capacity preflight before a host creates project files. */
+  assertCanRegister?(): void;
   /** Validates with recentProjectSchema; replaces the entry of this project ID
    * and keeps its place in the order. Another entry with the same file
    * identity is stale and keeps a file ID of 0 from then on. */
@@ -72,13 +74,16 @@ export function createProjectRegistry(database: AppDatabase, {identity, findMove
   };
   const list = (): RecentProject[] =>
     database.statement('SELECT data FROM recent_projects ORDER BY position').all().map(row => parse(row.data));
+  const assertCanRegister = (): void => {
+    if (Number(database.statement('SELECT count(*) AS n FROM recent_projects').get()?.n) >= MAX_RECENT_PROJECTS) {
+      throw appLibraryError('APP_LIBRARY_LIMIT', {limit: MAX_RECENT_PROJECTS});
+    }
+  };
   const upsert = (entry: RecentProject): void => {
     const parsed = recentProjectSchema.parse(entry);
     database.atomically(() => {
       const known = database.statement('SELECT 1 FROM recent_projects WHERE projectId=?').get(parsed.projectId) !== undefined;
-      if (!known && Number(database.statement('SELECT count(*) AS n FROM recent_projects').get()?.n) >= MAX_RECENT_PROJECTS) {
-        throw appLibraryError('APP_LIBRARY_LIMIT', {limit: MAX_RECENT_PROJECTS});
-      }
+      if (!known) assertCanRegister();
       // One file holds one project, so another registration with this file
       // identity is stale: file systems such as ext4 give a deleted file's ID
       // to the next file created, and a project made where another used to be
@@ -138,5 +143,5 @@ export function createProjectRegistry(database: AppDatabase, {identity, findMove
     const {projectFile, fileIdentity} = recentProjectSchema.parse(entry);
     return findMovedProjectFile({projectFile, fileIdentity}, search);
   };
-  return {list, get, upsert, remove, findMoved, checkCopy, copyOf};
+  return {list, get, assertCanRegister, upsert, remove, findMoved, checkCopy, copyOf};
 }

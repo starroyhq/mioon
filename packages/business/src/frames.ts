@@ -15,6 +15,7 @@ import type {FrameStorage,FrameStorageTask,FrameReceipt,FrameSourceSnapshot} fro
 import {decodeManagedFrame} from './frame-decoder.ts';
 import type {DecodeManagedFrameOptions,DecodedManagedFrame} from './frame-decoder.ts';
 import {validateManagedSource,verifiedManagedHash,sameManagedFile} from './managed-media.ts';
+import {registerProjectMediaStore} from './project-media-storage.ts';
 import type {ManagedFileIdentity,ManagedSource,VerifiedManagedSource} from './managed-media.ts';
 import {validatePng} from './images/png.ts';
 import {ownsStoreLock} from './db.ts';
@@ -31,6 +32,7 @@ export interface FrameServicesOptions {
  fault?: FrameFault;
 }
 export interface FrameService {
+ readonly isBusy: ()=>boolean;
  readonly handlers: Readonly<Record<string,(input: unknown,context?: {signal?: AbortSignal|null})=>unknown>>;
  readonly drain: ()=>Promise<void>;
 }
@@ -76,13 +78,15 @@ const stageTask=(value: FrameTaskView): FrameStorageTask=>({...value.row,snapsho
 /** Local-only, single-owner extraction. The immutable ACK is committed before
  * any work is queued. Startup and historical replay never enter the work queue.
  * This module has no provider, model, settings, network, or generic tool seam. */
+// S0: Global counters describe this one project connection. The original
+// queuedPerProject=2 and retained per-project limits remain unchanged.
 export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode=decodeManagedFrame as unknown as (options?: DecodeManagedFrameOptions)=>Promise<DecodedManagedFrame>,autoRun=true,fault=noop}: FrameServicesOptions={}): FrameService {
  if(getWorkspaceRestoreContext(store))throw workspaceRestoreError();
  const old=owners.get(store.db);
  if(old){if(old.root!==store.root||old.signal!==ownerSignal||old.decode!==decode||old.autoRun!==autoRun||old.fault!==fault)fail('FRAME_SERVICE_ACTIVE');return old.service;}
  const {db,root,tx}=store,queue: FrameAttempt[]=[],pending=new Set<string>(),preparations=new Map<string,{operation: string;projectId: string;canonicalInput: string;promise: Promise<unknown>}>(),active=new Set<Promise<unknown>>(),attemptSignals=new Set<AbortSignal>();
  const controller=new AbortController(),signal: AbortSignal=ownerSignal?AbortSignal.any([ownerSignal,controller.signal]):controller.signal,resumeRequested=new Set<string>();
- let stopped=false,running=false,reported=false,draining: Promise<void>|undefined;
+ let stopped=false,running=false,reported=false,draining: Promise<void>|undefined,releaseProjectMedia=()=>{};
  const registration: FrameOwnerRecord={root,signal:ownerSignal,decode,autoRun,fault,service:undefined as unknown as FrameService};
  const storage=createFrameStorage(store,{validatePng});
  const history: FrameHistoryReaders=createFrameHistoryReaders(store),{schemaPresent,project,task,prior}=history;
@@ -328,9 +332,9 @@ export function createFrameServices(store: FrameStore,{signal:ownerSignal,decode
   const result=boundedShutdown((async()=>{
    const results=await Promise.all([...attemptSignals].map(attemptSignal=>terminateMediaProcesses({signal:attemptSignal})));assertMediaTerminated(results.flat());
    await Promise.allSettled([...active,...[...preparations.values()].map(entry=>entry.promise)]);if([...attemptSignals].some(attemptSignal=>hasUnconfirmedMediaProcesses({signal:attemptSignal})))assertMediaTerminated([{status:'unconfirmed'}]);
-  })(),'FRAME_STOP_TIMEOUT');draining=result;void result.catch(()=>{if(draining===result)draining=undefined;});return result;
+  })(),'FRAME_STOP_TIMEOUT').then(()=>{releaseProjectMedia();});draining=result;void result.catch(()=>{if(draining===result)draining=undefined;});return result;
  }
  Object.assign(handlers,history.handlers);
- const service: FrameService={handlers,drain};registration.service=service;owners.set(db,registration);
- try{reconcile();}catch(cause){owners.delete(db);throw cause;}return service;
+ const service: FrameService={handlers,drain,isBusy:()=>active.size>0||pending.size>0||preparations.size>0};registration.service=service;owners.set(db,registration);
+ try{releaseProjectMedia=registerProjectMediaStore(store);reconcile();}catch(cause){releaseProjectMedia();owners.delete(db);throw cause;}return service;
 }

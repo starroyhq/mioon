@@ -6,7 +6,7 @@ import {mkdtempSync,realpathSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
-import {openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema} from '../packages/business/src/db.ts';
 import {createAgentTaskJournal} from '../packages/business/src/agent/task-journal-v2.ts';
 import {validateAgentInteractionRowsV2} from '../packages/business/src/agent/task-interaction-schema-v2.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';

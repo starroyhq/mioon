@@ -19,7 +19,6 @@ import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
 import type {InspectProject} from '../apps/server/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProviderRegistry} from '../packages/business/src/provider-registry.ts';
 import {createClient} from '../packages/client/src/index.ts';
@@ -28,7 +27,7 @@ import {IMAGE_FIXED_OPTIONS, IMAGE_LIMITS, IMAGE_MODELS, IMAGE_MUTATION_OPERATIO
   isImageListResponse} from '../packages/contracts/src/images.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {createServerProject, schemaObjects} from './helpers/project-database.ts';
+import {openServerProject,createServerProject, projectDirFor, schemaObjects} from './helpers/project-database.ts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
 const token = 'image-edit-transport-synthetic-local-token';
@@ -107,11 +106,11 @@ async function fixture(t: test.TestContext) {
     assert.equal(task!.state, 'succeeded');
     const version: FixtureImageVersion = (await services.call('image.version.list', {projectId: project.id, groupId: ack.groupId})).items[0];
     const asset = store.get('assets', version.assetId)!;
-    source = {input, ack, task:task!, version, asset, bytes: await readFile(path.join(root, asset.relativePath))};
+    source = {input, ack, task:task!, version, asset, bytes: await readFile(path.join(created.store.root, asset.relativePath))};
     await services.drain();
   } finally { store.close(); }
   // The queued edits need other image options, so this second fill reopens the project's store.
-  store = (openStore(root) as TypedStore);
+  store = (openServerProject(root, created.projectId) as TypedStore);
   try {
     const services = (createServices(store, createProviderRegistry({db: store.db, root, env: {}}), {env: {}, imageOptions: {autoRun: false}}) as TypedServices);
     const edit = (changes: {}|undefined) => inputFor(project.id, {purpose: 'edit', inputImage: {assetId: source.asset.id, sha256: source.asset.sha256}, ...changes});
@@ -189,6 +188,9 @@ async function fixture(t: test.TestContext) {
     }
     throw Error('Mock image did not complete');
   }
+  // A new application starts with projects closed. Open its image service before
+  // read-only checkpoints; the next test asserts both recovered states and no dispatch.
+  await rpc('image.task.list',{projectId:project.id});
   return {root, project, other, queued, dispatched, source, rpc, succeeded, checkpoint, unchanged,
     retainedSource() { return read(db => ({asset: db.prepare('SELECT * FROM assets WHERE id=?').get(source.asset.id),
       task: db.prepare('SELECT * FROM image_tasks WHERE id=?').get(source.ack.id),
@@ -337,7 +339,8 @@ test('image edits preserve one durable contract across real HTTP, CLI and offici
   await t.test('same request key with changed prompt, source hash, purpose or project conflicts without new work', async () => {
     const before = f.checkpoint(), {purpose, inputImage, ...generationInput} = original;
     for (const input of [{...original, prompt: 'Changed edit instruction'}, {...original, inputImage: {...original.inputImage, sha256: 'b'.repeat(64)}}, generationInput,
-      {...original, projectId: f.other.id}, {...source.input, purpose: 'edit', inputImage: original.inputImage}]) await parity('image.generate', input, 'IMAGE_REQUEST_CONFLICT');
+      {...source.input, purpose: 'edit', inputImage: original.inputImage}]) await parity('image.generate', input, 'IMAGE_REQUEST_CONFLICT');
+    await parity('image.generate',{...original,projectId:f.other.id},'IMAGE_SOURCE_INVALID');
     assert.equal((await parity('image.request.get', {projectId: f.other.id, requestId: original.requestId})).data, null);
     await originalUnchanged(); f.unchanged(before, 'changed key-content and cross-project replay denials');
   });
@@ -359,7 +362,7 @@ test('image edits preserve one durable contract across real HTTP, CLI and offici
   await t.test('on-disk source hash changes reject admission without writes and restoring the exact bytes permits the original unaccepted key', async () => {
     const sourceInput = inputFor(f.project.id, {name: 'Separate source for local integrity test'}), ack = (await f.rpc('image.generate', sourceInput)).data;
     await f.succeeded(ack.id); const sourceVersion = (await f.rpc('image.version.list', {projectId: f.project.id, groupId: ack.groupId})).data.items[0];
-    const file = path.join(f.root, 'media', `${sourceVersion.assetId}.png`), bytes = await readFile(file), changed = Buffer.from(bytes); changed[changed.length - 1] ^= 1;
+    const file = path.join(projectDirFor(f.root, f.project.id), 'media', `${sourceVersion.assetId}.png`), bytes = await readFile(file), changed = Buffer.from(bytes); changed[changed.length - 1] ^= 1;
     const input = editFor({name: 'Restored exact source', inputImage: {assetId: sourceVersion.assetId, sha256: sourceVersion.sha256}}), before = f.checkpoint();
     try { await writeFile(file, changed); await parity('image.generate', input, 'IMAGE_SOURCE_INVALID'); f.unchanged(before, 'on-disk hash mismatch rejects before acceptance'); }
     finally { await writeFile(file, bytes); }

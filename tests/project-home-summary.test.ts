@@ -8,22 +8,23 @@ import path from 'node:path';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProjectHomeServices} from '../packages/business/src/project-home.ts';
+import {readProjectState} from './helpers/project-state.ts';
 
 async function fixture(t: test.TestContext){
   const root=await mkdtemp(path.join(tmpdir(),'mioon-project-summary-')),store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);
   t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});
-  return {root,store,services,state:()=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]))};
+  return {root,store,services,state:()=>readProjectState(store.db).tables};
 }
 test('home summaries never initialize timelines and atomically created formats keep their saved geometry',async t=>{
-  const f=await fixture(t),empty=await f.services.call('project.create',{name:'Empty'}),landscape=await f.services.call('project.create',{name:'Landscape',timelinePresetId:'landscape_1080'});
-  const before=f.state(),home=createProjectHomeServices(f.store),result=home.handlers['project.summary.list']();
-  assert.deepEqual(f.state(),before);const plain=result.find(p=>p.id===empty.id),wide=result.find(p=>p.id===landscape.id);
+  const f=await fixture(t),other=await fixture(t),empty=await f.services.call('project.create',{name:'Empty'}),landscape=await other.services.call('project.create',{name:'Landscape',timelinePresetId:'landscape_1080'});
+  const before=f.state(),otherBefore=other.state(),home=createProjectHomeServices(f.store),result=[...home.handlers['project.summary.list'](),...createProjectHomeServices(other.store).handlers['project.summary.list']()];
+  assert.deepEqual(f.state(),before);assert.deepEqual(other.state(),otherBefore);const plain=result.find(p=>p.id===empty.id),wide=result.find(p=>p.id===landscape.id);
   assert.deepEqual([plain!.width,plain!.height,plain!.shotCount,plain!.durationFrames,plain!.cover],[1080,1920,0,0,null]);
   assert.deepEqual([wide!.width,wide!.height],[1920,1080]);
   assert.equal(f.store.db.prepare('SELECT 1 FROM timelines WHERE projectId=?').get(empty.id),undefined);
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_history WHERE projectId=?').get(landscape.id)!.n,0);
-  assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM timeline_format_requests WHERE projectId=?').get(landscape.id)!.n,0);
-  const eligibility=await f.services.call('timeline.format.get',{projectId:landscape.id});assert.equal(eligibility.eligible,true);
+  assert.equal(other.store.db.prepare('SELECT count(*) AS n FROM timeline_history WHERE projectId=?').get(landscape.id)!.n,0);
+  assert.equal(other.store.db.prepare('SELECT count(*) AS n FROM timeline_format_requests WHERE projectId=?').get(landscape.id)!.n,0);
+  const eligibility=await other.services.call('timeline.format.get',{projectId:landscape.id});assert.equal(eligibility.eligible,true);
 });
 test('cover, duration and content update derive from owned saved records without touching the project',async t=>{
   t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-10-19T00:00:00.000Z')});
@@ -34,6 +35,6 @@ test('cover, duration and content update derive from owned saved records without
   timeline=await f.services.call('timeline.clip.add',{projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks[0].id,assetId:id,startFrame:15,durationFrames:30});
   const before=f.state(),home=createProjectHomeServices(f.store,{readRecentOpened:()=>({[project.id]:'2026-10-19T02:00:00.000Z'})}),[summary]=home.handlers['project.summary.list']();
   assert.deepEqual(f.state(),before);assert.deepEqual([summary.width,summary.height,summary.durationFrames],[720,1280,45]);
-  assert.deepEqual(summary.cover,{assetId:id,mimeType:'image/png',url:`/media/${id}`});assert.equal(summary.lastOpenedAt,'2026-10-19T02:00:00.000Z');
+  assert.deepEqual(summary.cover,{assetId:id,mimeType:'image/png',url:`/api/project-covers/${project.id}`});assert.equal(summary.lastOpenedAt,'2026-10-19T02:00:00.000Z');
   assert.equal(summary.updatedAt,stamp);assert.deepEqual(f.store.get('projects',project.id),project);
 });

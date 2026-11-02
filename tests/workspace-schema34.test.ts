@@ -18,7 +18,7 @@ import {initializeWorkspaceSchema34,validateWorkspaceSchema34} from '../packages
 import {createWorkspaceRestoreProfileV33} from '../packages/business/src/workspace-restore-schema-v33.ts';
 import {createWorkspaceRestoreProfileV35} from '../packages/business/src/workspace-restore-schema-v35.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
-import {openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceColourProfile,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,classifyCurrentWorkspaceSchema,installCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceRestoreSchema,validateCurrentWorkspaceColourProfile,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {readWorkspaceBackupSchemaVersion} from '../packages/business/src/workspace-backup-schema-versions.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';

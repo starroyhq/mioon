@@ -1,3 +1,4 @@
+import {databaseFiles,dataFileSnapshot} from './helpers/data-file-snapshot.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import {projectMediaPath} from '../packages/contracts/src/project-file.ts';
 import type {ServiceResponse} from './helpers/strict-service-responses.ts';
@@ -25,8 +26,8 @@ import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {createClient, discoverSchema, effectAnnotations} from '@mioon/client';
 import {isExportPreflightResponse, isTimelineMutationResponse, publicValue} from '@mioon/contracts';
 import {startServer} from '../apps/server/src/index.ts';
-import type {InspectProject} from '../apps/server/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import type {InspectApplication,InspectProject} from '../apps/server/src/index.ts';
+import {openServerProject} from './helpers/project-database.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
 import {changeMarks,readProjectState} from './helpers/project-state.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
@@ -137,16 +138,7 @@ function syntheticPng() {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header),
     chunk('IDAT', deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
 }
-async function manifest(root: string, relative = '') {
-  const entries: ({ directory: string; } | unknown | { file: string; sha256: string; })[] = [];
-  for (const entry of await readdir(path.join(root, relative), {withFileTypes: true})) {
-    const name = path.join(relative, entry.name);
-    if (entry.isDirectory()) entries.push({directory: name}, ...await manifest(root, name));
-    else if (!/^workbench\.sqlite(?:-wal|-shm)?$/.test(name) && name !== 'server.lock')
-      entries.push({file: name, sha256: sha256(await readFile(path.join(root, name)))});
-  }
-  return entries.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
+
 async function responseBytes(response: Response, cap = 4 * 1024 * 1024) {
   if (!response.body) return Buffer.alloc(0);
   const chunks: (Buffer<ArrayBuffer>)[] = []; let bytes = 0;
@@ -162,9 +154,9 @@ async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-named-delivery-wire-'));
   let backend:Awaited<ReturnType<typeof startServer>>,proxy:http.Server,official: Awaited<ReturnType<typeof officialMcp>>, dropNext = false;
   // Every start hands over that server's own connection.
-  let inspect!: InspectProject;
+  let inspect!: InspectProject,inspectApplication!: InspectApplication;
   const submissions: (unknown)[] = [], observed: { body: unknown; text: string; status: number; }[] = [], proxyErrors: (string)[] = [];
-  const start = () => startServer({dataDir: root, port: 0, token: TOKEN, inspectProject: received => {inspect = received;}});
+  const start = () => startServer({dataDir: root, port: 0, token: TOKEN, inspectProject: received => {inspect = received;},inspectApplication:received=>{inspectApplication=received;}});
   t.after(async () => {
     const failures: (unknown)[] = [];
     for (const cleanup of [() => official?.close(), async () => {
@@ -210,11 +202,17 @@ async function fixture(t: test.TestContext) {
   // total_changes() adds this connection's own writes.
   const use = <T>(fn: (db: DatabaseSync) => T): T => inspect(project.id, fn);
   const rows = () => use(db => readProjectState(db).tables);
-  const checkpoint = async () => ({rows: rows(), version: use(changeMarks), files: await manifest(root)});
-  const unchanged = async (before: { rows: unknown; version: unknown; files: unknown; }) => {
-    assert.deepEqual(rows(), before.rows, 'no additional persisted rows or equal-value changes');
-    assert.deepEqual(use(changeMarks), before.version, 'no SQLite commit');
-    assert.deepEqual(await manifest(root), before.files, 'no source/output/cache file writes');
+  const appState=()=>inspectApplication(db=>({state:readProjectState(db),version:changeMarks(db)}));
+  const checkpoint = async () => {
+    await createClient({env:environment(backend.url)}).rpc('project.get',{projectId:project.id});
+    return {rows: rows(), version: use(changeMarks),application:appState(), files: await dataFileSnapshot(root,[...use(databaseFiles),...inspectApplication(databaseFiles)])};
+  };
+  const unchanged = async (before: Awaited<ReturnType<typeof checkpoint>>) => {
+    const after=await checkpoint();
+    assert.deepEqual(after.rows, before.rows, 'no additional persisted rows or equal-value changes');
+    assert.deepEqual(after.version, before.version, 'no SQLite commit');
+    assert.deepEqual(after.files, before.files, 'no source/output/cache file writes');
+    assert.deepEqual(after.application,before.application,'application B1 schema/rows/commit marks are unchanged');
   };
   official = await officialMcp(t, url);
   const raw = async (operation: unknown, input: unknown) => {
@@ -231,7 +229,7 @@ async function fixture(t: test.TestContext) {
       await backend.close();
       // There is no public project.rename RPC. Change this disposable fixture's
       // editable project through the real store only while the server is closed.
-      const store = (openStore(root) as TypedStore);
+      const store = (openServerProject(root, project.id) as TypedStore);
       try {
         const current = store.get('projects', project.id)!;
         store.put('projects', {...current, name: 'Renamed after delivery 新项目', revision: current.revision + 1});

@@ -9,7 +9,7 @@ import {
  validateClipTransition,type ClipTransition,type ClipTransitionKind,type TransitionSource,
 } from '../packages/contracts/src/timeline-clip-transition.ts';
 import {isTimelineMutationResponse} from '../packages/contracts/src/timeline-acknowledgement.ts';
-import {openStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
@@ -72,9 +72,9 @@ test('a transition needs a cut, source handles on both sides and room beside its
  assert.deepEqual(staleClipTransitions({durationFrames:2000,clips:many},sources),Array.from({length:49},(_,index)=>`c${99-index}`));
 });
 
-async function fixture(t: test.TestContext){
+async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-clip-transition-')));
- let store=openStore(root) as unknown as {db: import('node:sqlite').DatabaseSync;put(table: string,value: Rec): Rec;close(): void};
+ let store=opener(root) as unknown as {db: import('node:sqlite').DatabaseSync;put(table: string,value: Rec): Rec;close(): void};
  let services=createServices(store as never,new Map()) as unknown as {call(operation: string,input: unknown): Promise<Rec>};
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
  const project=await services.call('project.create',{name:'Transitions'}),projectId=project.id as string;
@@ -87,7 +87,7 @@ async function fixture(t: test.TestContext){
   call(operation: string,fields: Rec={}){return f.raw(operation,f.input(fields));},
   inspect:()=>services.call('timeline.inspect',{projectId}),
   clip:(name: string)=>timeline.clips.find((item: Rec)=>item.name===name),
-  async reopen(){store.close();store=openStore(root) as never;services=createServices(store as never,new Map()) as never;timeline=await services.call('timeline.get',{projectId});},
+  async reopen(){store.close();store=opener(root) as never;services=createServices(store as never,new Map()) as never;timeline=await services.call('timeline.get',{projectId});},
   /** A [0,60) at source 0 and B [60,120) at source 30 on the first video track. */
   async pair(){
    const video=timeline.tracks.find((track: Rec)=>track.kind==='video'),assetId=asset('video/mp4').id;
@@ -183,7 +183,7 @@ test('edits keep transitions that still fit and remove the ones they break',asyn
 });
 
 test('schema70 refuses transitions; schema72 keeps them through backup and restore',async t=>{
- const f=await fixture(t),{b}=await f.pair(),clipId=b.id;
+ const f=await fixture(t,openLegacyWorkspaceStore),{b}=await f.pair(),clipId=b.id;
  downgradeReviewedWorkspace(f.store.db,70);
  assert.equal(readCurrentWorkspaceRole(f.store.db),'ordinary-70');
  await assert.rejects(f.call('timeline.clip.setTransition',{clipId,transition:dissolve}),notApplied('CLIP_TRANSITION_WORKSPACE_REQUIRED'));
@@ -200,7 +200,7 @@ test('schema70 refuses transitions; schema72 keeps them through backup and resto
  t.after(()=>rmSync(base,{recursive:true,force:true}));
  assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).integrity,'verified');
  await restoreWorkspaceBackup({directory:backup,destination:restored});
- const copy=openStore(restored) as unknown as {db: import('node:sqlite').DatabaseSync;close(): void};
+ const copy=openLegacyWorkspaceStore(restored) as unknown as {db: import('node:sqlite').DatabaseSync;close(): void};
  try{
   assert.equal(readCurrentWorkspaceRole(copy.db),CURRENT_RESTORED_ROLE);
   const saved=JSON.parse((copy.db.prepare('SELECT data FROM timelines WHERE projectId=?').get(f.projectId) as {data: string}).data);
@@ -214,12 +214,14 @@ test('schema70 refuses transitions; schema72 keeps them through backup and resto
 
 test('a transition between images counts both towards the managed image budget',async t=>{
  const root=realpathSync(mkdtempSync(path.join(tmpdir(),'mioon-transition-images-')));
- const store=openStore(root) as unknown as {db: import('node:sqlite').DatabaseSync;put(table: string,value: Rec): Rec;close(): void};
- const services=createServices(store as never,new Map()) as unknown as {call(operation: string,input: unknown): Promise<Rec>};
+ const exactStore=openStore(root),store=exactStore as unknown as {db: import('node:sqlite').DatabaseSync;put(table: string,value: Rec): Rec;close(): void};
+ const serviceOwner=createServices(exactStore,new Map()),services=serviceOwner as unknown as {call(operation: string,input: unknown): Promise<Rec>};
+ const foreignStore=openStore(path.join(root,'foreign')),foreignServices=createServices(foreignStore,new Map());
  let probes=0;
  const preflight=createTimelinePreflightServices(store as never,{probe:async()=>{probes++;assert.fail('an over-budget snapshot fails before probing');}}) as unknown as {handlers: Record<string,(input: Rec)=>Promise<Rec>>;drain(): Promise<void>};
- t.after(async()=>{await preflight.drain();store.close();rmSync(root,{recursive:true,force:true});});
- const projectId=randomUUID(),bytes=[0,1,2].map(index=>png({width:8,height:8,pixel:()=>[40+index*60,96,160,255]}));
+ const foreignPreflight=createTimelinePreflightServices(foreignStore,{probe:async()=>{probes++;assert.fail('an isolated over-budget project fails before probing');}});
+ t.after(async()=>{await preflight.drain();await foreignPreflight.drain();await serviceOwner.drain();await foreignServices.drain();foreignStore.close();store.close();rmSync(root,{recursive:true,force:true});});
+ const projectId=exactStore.projectId,bytes=[0,1,2].map(index=>png({width:8,height:8,pixel:()=>[40+index*60,96,160,255]}));
  const assets=bytes.map((data,index)=>{const id=randomUUID();return {id,projectId,name:`PNG ${index}`,mimeType:'image/png',relativePath:`media/${id}.png`,sha256:sha(data),sizeBytes:data.length,
   width:8,height:8,duration:null,hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:stamp};});
  const evidence=assets.map(asset=>({profileId:'png-rgb8-srgb-v1',sha256:asset.sha256,sourceByteLength:asset.sizeBytes,width:8,height:8,bitDepth:8,alphaMode:'straight',orientation:1,colourTag:'srgb'}));
@@ -238,8 +240,17 @@ test('a transition between images counts both towards the managed image budget',
  store.put('projects',{id:projectId,name:'Transition images',createdAt:stamp,updatedAt:stamp});
  for(const asset of assets)store.put('assets',asset);
  store.put('timelines',timeline);
+ const foreignId=foreignStore.projectId;foreignStore.put('projects',{id:foreignId,name:'Isolated transition images',createdAt:stamp,updatedAt:stamp});
+ for(const asset of assets)foreignStore.put('assets',{...asset,projectId:foreignId});
+ foreignStore.put('timelines',{...timeline,projectId:foreignId});assert.notEqual(store.db,foreignStore.db);
+ const ownBefore=store.db.prepare('SELECT total_changes() AS n').get()!.n,foreignBefore=foreignStore.db.prepare('SELECT total_changes() AS n').get()!.n;
  const report=await preflight.handlers['timeline.export.preflight']!({projectId,expectedRevision:1});
  assert.deepEqual([report.status,report.issues],['blocked',[{...budget,severity:'error'}]]);
  await assert.rejects(services.call('timeline.render',{projectId,expectedRevision:1,requestId:randomUUID(),purpose:'preview'}),(error: Rec)=>error.code===budget.code);
  assert.equal(probes,0);
+ assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n,ownBefore);
+ assert.equal(foreignStore.db.prepare('SELECT total_changes() AS n').get()!.n,foreignBefore);
+ const foreignReport=await foreignPreflight.handlers['timeline.export.preflight']!({projectId:foreignId,expectedRevision:1});
+ assert.deepEqual([foreignReport.status,foreignReport.issues],['blocked',[{...budget,severity:'error'}]]);
+ assert.equal(foreignStore.db.prepare('SELECT total_changes() AS n').get()!.n,foreignBefore);assert.equal(probes,0);
 });

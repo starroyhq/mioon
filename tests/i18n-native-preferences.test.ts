@@ -90,7 +90,7 @@ test('native warnings change language while keeping cancellation defaults and pr
   } finally { setNativeLanguageReader(() => 'zh-Hans'); }
 });
 test('native Save As localizes app-owned labels without changing output filenames or overwrite confirmation', () => {
-  const origin = 'http://127.0.0.1:49152', url = `${origin}/media/11111111-1111-4111-8111-111111111111`;
+  const origin = 'http://127.0.0.1:49152', url = `${origin}/api/projects/22222222-2222-4222-8222-222222222222/media/11111111-1111-4111-8111-111111111111`;
   const webContents = { getURL: () => origin }, window = { isDestroyed: () => false, webContents };
   try {
     for (const locale of (['zh-Hans', 'zh-Hant', 'en', 'ja'] as Locale[])) {
@@ -102,6 +102,11 @@ test('native Save As localizes app-owned labels without changing output filename
       assert.ok(options); assert.equal(options.title, nativeText('native.saveVideo')); assert.equal(options.buttonLabel, nativeText('native.saveVideo'));
       assert.ok(options.filters?.[0]); assert.equal(options.filters[0].name, nativeText('native.mp4Video')); assert.deepEqual(options.filters[0].extensions, ['mp4']);
       assert.equal(options.defaultPath, '/tmp/用户作品.mp4'); assert.deepEqual(options.properties, ['showOverwriteConfirmation']);
+      let denied=0;options=undefined;
+      const legacyUrl=`${origin}/media/11111111-1111-4111-8111-111111111111`;
+      configureTimelineDeliveryDownload({preventDefault:()=>{denied++;}},
+        {...item,getURL:()=>legacyUrl,getURLChain:()=>[legacyUrl]},webContents,window,origin,{downloadsPath:'/tmp/用户作品.mp4'},value=>value===origin);
+      assert.equal(denied,1);assert.equal(options,undefined,'a rejected legacy download creates no localized dialog');
     }
   } finally { setNativeLanguageReader(() => 'zh-Hans'); }
 });

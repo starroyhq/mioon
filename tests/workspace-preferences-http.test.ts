@@ -9,7 +9,8 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import type {ChildProcess} from 'node:child_process';
+import {createProjectStorageReader} from './fixtures/project-server-process.ts';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {defaultWorkspaceState} from '../apps/web/src/workspace-state.ts';
@@ -24,7 +25,7 @@ function environment(extra = {}) {
 }
 async function backend(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'wb-preferences-http-'));
-  let child: import('node:child_process').ChildProcessWithoutNullStreams, url: string;
+  let child: ChildProcess, url: string, readStorage: ReturnType<typeof createProjectStorageReader>;
   async function stop(signal:NodeJS.Signals = 'SIGTERM') {
     if (!child || child.exitCode !== null || child.signalCode) return;
     const ended = once(child, 'exit'); child.kill(signal);
@@ -33,7 +34,12 @@ async function backend(t: test.TestContext) {
   }
   async function start() {
     let stdout = '', stderr = '';
-    child = (spawn as unknown as import('./helpers/strict-workspace-boundary-types.ts').SpawnChild)(process.execPath, [path.join(repo, 'apps/server/src/cli.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: '0'}), stdio: ['ignore', 'pipe', 'pipe']});
+    // Same CLI composition, plus the owned fixture's fixed storage question.
+    // No SQL or arbitrary callback crosses IPC; the running server reads its
+    // own kernel connection through manager.inspectProject.
+    child = spawn(process.execPath, [path.join(repo, 'tests/fixtures/project-server-process.ts')], {cwd: repo, env: environment({MIOON_DATA_DIR: root, MIOON_TOKEN: token, PORT: '0'}), stdio: ['ignore', 'pipe', 'pipe', 'ipc']});
+    readStorage = createProjectStorageReader(child);
+    assert.ok(child.stdout); assert.ok(child.stderr);
     child.stdout.setEncoding('utf8').on('data', (chunk: string) => stdout += chunk); child.stderr.setEncoding('utf8').on('data', (chunk: string) => stderr += chunk);
     // A cold start loads every source module and builds a new workspace: about
     // 3 s locally, yet a loaded CI runner once needed more than 10 s.
@@ -55,10 +61,9 @@ async function backend(t: test.TestContext) {
       const response = await this.request(rpcPathFor(operation,input), {method: 'POST', input: {operation, input}});
       assert.equal(response.status, 200, JSON.stringify(response.body)); return response.body.data;
     },
-    inspect() {
-      const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-      try { return Object.fromEntries(['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests', 'reference_requests', 'idempotency', 'job_events'].map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])); }
-      finally { db.close(); }
+    async inspect(projectId: string) {
+      const snapshot = await readStorage(projectId);
+      return Object.fromEntries(['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines', 'timeline_history', 'timeline_history_cursors', 'timeline_requests', 'reference_requests', 'idempotency', 'job_events'].map(table => [table, snapshot.rows[table]]));
     },
   };
   t.after(async () => { await stop(); await rm(root, {recursive: true, force: true}); });
@@ -71,7 +76,7 @@ test('dedicated preferences HTTP survives a real killed/restarted backend and le
   await f.rpc('shot.create', {projectId, title: 'Business shot', prompt: 'Keep business content intact'});
   const timeline = await f.rpc('timeline.get', {projectId});
   await f.rpc('timeline.track.add', {projectId, expectedRevision: timeline.revision, requestId: randomUUID(), kind: 'audio', name: 'Persistent history'});
-  const businessBefore = await f.rpc('project.get', {projectId}), bytesBefore = f.inspect();
+  const businessBefore = await f.rpc('project.get', {projectId}), bytesBefore = await f.inspect(projectId);
   const initial = await f.request(route);
   assert.equal(initial.status, 200); assert.deepEqual(initial.body, {ok: true, data: {projectId, revision: 0, state: null}});
   assert.equal(initial.headers.get('cache-control'), 'no-store');
@@ -85,14 +90,14 @@ test('dedicated preferences HTTP survives a real killed/restarted backend and le
   const payload = {expectedRevision: 0, state: value};
   const saved = await f.request(route, {method: 'PUT', input: payload});
   assert.equal(saved.status, 200); assert.deepEqual(saved.body.data, {projectId, revision: 1, state: value});
-  assert.deepEqual(f.inspect(), bytesBefore);
+  assert.deepEqual(await f.inspect(projectId), bytesBefore);
   const pid = f.pid; assert.notEqual(await f.restart('SIGKILL'), pid);
   assert.deepEqual((await f.request(route)).body, saved.body);
   assert.deepEqual((await f.request(route, {method: 'PUT', input: payload})).body, saved.body, 'lost-response retry survives restart without another revision');
   const stale = await f.request(route, {method: 'PUT', input: {expectedRevision: 0, state: state()}});
   assert.equal(stale.status, 409); assert.equal(stale.body.error.code, 'PREFERENCES_CONFLICT'); assert.equal(stale.body.error.details.currentRevision, 1);
   assert.equal(stale.body.error.retryable, false);
-  assert.deepEqual(f.inspect(), bytesBefore); assert.deepEqual(await f.rpc('project.get', {projectId}), businessBefore);
+  assert.deepEqual(await f.inspect(projectId), bytesBefore); assert.deepEqual(await f.rpc('project.get', {projectId}), businessBefore);
   const other = await f.rpc('project.create', {name: 'Isolated preferences'});
   assert.deepEqual((await f.request(`/api/workspace-preferences/${other.id}`)).body.data, {projectId: other.id, revision: 0, state: null});
   const candidates = [10, 20, 30, 40].map(playhead => { const s = state(); s.editing.playhead = playhead; return s; });

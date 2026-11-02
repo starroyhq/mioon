@@ -18,6 +18,7 @@ import {readAgentTaskStorage} from '../packages/business/src/agent/task-storage-
 import {installAgentTaskDefinitionsV2, validateAgentTaskRowsV2, dropAgentTaskTargetTriggersV2} from '../packages/business/src/agent/task-schema-v2.ts';
 import {DEFAULT_AGENT_TASK_POLICY} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations} from './helpers/agent-authorizations.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 
 function fixture(t: TestContext) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-task-project-assembly-'));
@@ -33,7 +34,9 @@ function fixture(t: TestContext) {
 
 test('real project journals share only injected app policy, preserving CAS, replay and project transactions', t => {
   const {library, first, second} = fixture(t);
-  assert.throws(() => createAgentTaskJournal(first), {code: 'AGENT_TASK_POLICY_STORE_REQUIRED'});
+  const testPolicy = createAgentTaskJournal(first);
+  assert.deepEqual(testPolicy.policy(), DEFAULT_AGENT_TASK_POLICY);
+  assert.notEqual(testProjectAppLibrary(first)?.db, library.db);
   const policyStore = library.agentPolicy;
   const a = createAgentTaskJournal(first, {policyStore}), b = createAgentTaskJournal(second, {policyStore});
   assert.deepEqual(a.policy(), DEFAULT_AGENT_TASK_POLICY);
@@ -183,10 +186,16 @@ test('legacy workspace schema entry points leave kernel project and TEMP target 
   const {first} = fixture(t), before = schemaObjects(first.db);
   assert.ok(before.some(row => row.schema === 'project' && row.name.startsWith('agent_target_')));
   assert.ok(before.some(row => row.schema === 'temp' && row.name.startsWith('agent_target_')));
-  for (const legacy of [installAgentTaskDefinitionsV2, validateAgentTaskRowsV2, dropAgentTaskTargetTriggersV2]) {
+  for (const legacy of [installAgentTaskDefinitionsV2, dropAgentTaskTargetTriggersV2]) {
     assert.throws(() => legacy(first.db), {name: 'TypeError', message: 'Agent task workspace schema operations do not accept project databases'});
   }
+  assert.throws(() => validateAgentTaskRowsV2(first.db), {name: 'TypeError', message: 'Project Agent task row validation requires a live application context'});
+  assert.ok(testProjectAppLibrary(first));
+  validateAgentTaskRowsV2(first.db);
   assert.deepEqual(schemaObjects(first.db), before);
-  assert.equal(readAgentTaskStorage(first.db).status, 'unavailable');
+  const storage = readAgentTaskStorage(first.db);
+  assert.equal(storage.status, 'available');
+  assert.equal(storage.scope, 'project');
+  assert.ok(storage.tables.every(table => !['agent_task_policy_v2', 'agent_task_policy_requests_v2'].includes(table.name)));
   assert.deepEqual(schemaObjects(first.db), before);
 });

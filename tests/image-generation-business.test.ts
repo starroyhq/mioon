@@ -20,7 +20,7 @@ interface TaskView { id: string; state: string; revision: number; requestId: str
 interface GroupView { id: string; revision: number; name: string; headVersionId: string | null; activeTaskId: string | null }
 interface VersionView { id: string; number: number; assetId: string; sha256: string; byteLength: number }
 interface GeneratedAssetView { relativePath: string; provenance?: string }
-interface FixtureOptions { autoRun?: boolean; lock?: boolean; generate?: (input: Record<string, unknown>, options: {beforeDispatch: () => void}) => Promise<{bytes: Uint8Array}>; fault?: (point: string) => void }
+interface FixtureOptions { autoRun?: boolean; generate?: (input: Record<string, unknown>, options: {beforeDispatch: () => void}) => Promise<{bytes: Uint8Array}>; fault?: (point: string) => void }
 interface ImageFixture { root: string; store: TypedStore; services: TypedServices; project: ProjectView; other: ProjectView; projections: Record<string, unknown>[]; readonly calls: number; input(patch?: Record<string, unknown>): Record<string, unknown>; call(operation: string, input: Record<string, unknown>): Promise<unknown>; row(id: string): Record<string, unknown> | undefined }
 const failureOf = (value: unknown): ErrorView => value as ErrorView;
 const code = (expected: string) => (error: unknown) => failureOf(error).code === expected && !JSON.stringify(error).includes('PRIVATE_SENTINEL');
@@ -50,9 +50,9 @@ async function foreignProject(t: import('node:test').TestContext): Promise<Proje
   try {return await services.call('project.create', {name: 'Foreign project'}) as ProjectView;}
   finally {await services.drain(); store.close();}
 }
-async function fixture(t: import('node:test').TestContext, {autoRun = false, lock = true, generate, fault}: FixtureOptions = {}): Promise<ImageFixture> {
+async function fixture(t: import('node:test').TestContext, {autoRun = false, generate, fault}: FixtureOptions = {}): Promise<ImageFixture> {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-business-'));
-  const store = (openStore(root, {lock}) as unknown as TypedStore);
+  const store = (openStore(root) as unknown as TypedStore);
   let calls = 0;
   const projections: Record<string, unknown>[] = [];
   const services = (createServices(store, new Map(), {env: {}, imageOptions: {autoRun, fault, generate: async (input: Record<string, unknown>, options: {beforeDispatch: () => void}) => {
@@ -111,7 +111,8 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   const asset = f.store.put('assets', {id: randomUUID(), projectId: f.project.id, name: 'Existing import',
     mimeType: 'image/png', provenance: 'user-import', sha256: 'a'.repeat(64), createdAt: new Date().toISOString()});
   const job = f.store.put('jobs', {id: randomUUID(), projectId: f.project.id, status: 'queued', privateMarker: 'legacy video'});
-  const unchangedNames = tables(f.store.db).filter(name => !name.startsWith('image_') && name !== 'assets' && name !== 'agent_task_target_revisions_v2');
+  const unchangedNames = tables(f.store.db).filter(name => !name.startsWith('image_') && name !== 'assets' && name !== 'agent_task_target_revisions_v2' && name !== 'project_file' && name !== 'history_state');
+  const sequenceBefore = Number(f.store.db.prepare('SELECT contentSequence AS n FROM project.project_file').get()!.n);
   const ledgerBefore = f.store.db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY projectId,kind,targetId').all();
   const before = rows(f.store.db, unchangedNames), originalAsset = JSON.stringify(f.store.get('assets', asset.id));
   const firstInput = f.input(), firstAck = await f.call('image.generate', firstInput) as unknown as TaskView, first = await settled(f, firstAck.id) as unknown as TaskView;
@@ -129,6 +130,8 @@ test('V1 and V2 retain their original receipt and name without rewriting project
   assert.deepEqual(versions.items.map((value: VersionView) => value.number), [2, 1]);
   assert.deepEqual(versions.items.map((value: VersionView) => value.id), [second.versionId, first.versionId]);
   assert.equal(group.headVersionId, second.versionId); assert.equal(group.name, firstInput.name);
+  assert.ok(Number(f.store.db.prepare('SELECT contentSequence AS n FROM project.project_file').get()!.n) > sequenceBefore);
+  assert.equal(f.store.db.prepare('SELECT contentSequence AS n FROM project.project_file').get()!.n, f.store.db.prepare('SELECT seenContentSequence AS n FROM main.history_state').get()!.n);
   assert.equal(rows(f.store.db, unchangedNames), before); assert.equal(JSON.stringify(f.store.get('assets', asset.id)), originalAsset);
   const ledgerAfter = f.store.db.prepare('SELECT * FROM agent_task_target_revisions_v2 ORDER BY projectId,kind,targetId').all();
   for (const entry of ledgerBefore) assert.deepEqual(ledgerAfter.find(next => next.projectId===entry.projectId && next.kind===entry.kind && next.targetId===entry.targetId),entry,'image generation leaves all prior target revisions unchanged');
@@ -180,13 +183,13 @@ test('one unresolved task locks its group while different groups remain independ
   assert.equal((f.store.db.prepare('SELECT count(*) AS n FROM image_tasks').get() as {n: number}).n, 2); assert.equal(f.calls, 0);
 });
 
-test('lock:false services cannot mutate or reconcile and image reads leave every row and total_changes untouched', async t => {
+test('an exact owner capability cannot be copied or lost; image reads remain zero-write without reopening', async t => {
   const f = await fixture(t), ack = await f.call('image.generate', f.input()) as unknown as TaskView;
-  // The observer opens after the owner closes: one process holds a project once.
-  assert.equal(ownsStoreLock(f.store), true); await f.services.drain(); f.store.close();
-  const observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
-  const services = (createServices(observer, new Map(), {env: {}, imageOptions: {autoRun: true, generate: () => assert.fail('nonowner generator')}}) as unknown as TypedServices);
-  t.after(async () => {await services.drain(); observer.close();});
+  assert.throws(() => openStore(f.root), {code: 'PROJECT_LOCKED'});
+  assert.throws(() => createServices({...f.store}, new Map()), {code: 'RESTORE_STORE_UNVERIFIED'});
+  const observer = f.store, services = f.services;
+  Object.defineProperty(observer, 'root', {value: `${f.root}/lost-owner`});
+  t.after(() => Object.defineProperty(observer, 'root', {value: f.root}));
   assert.equal(ownsStoreLock(observer), false);
   const before = rows(observer.db), count = changes(observer.db);
   const rejectedOperations: [string, Record<string, unknown>][] = [
@@ -229,19 +232,17 @@ for (const variant of ['input-hash', 'snapshot-identity', 'revision', 'oversized
     assert.equal(rows(db), before); assert.equal(changes(db), count); assert.equal(f.calls, 0);
   });
 
-test('queue capacity is enforced per project and globally without dispatch or eviction', async t => {
-  // This workspace quota needs every project in one store; f.other lives in a store of its own.
-  const f = await fixture(t), projects: ProjectView[] = [f.project];
-  while (projects.length < 5) projects.push(await f.call('project.create', {name: `Queue project ${projects.length}`}) as ProjectView);
-  const first: TaskView[] = [];
-  for (const project of projects.slice(0, 4)) {
-    for (let i = 0; i < IMAGE_LIMITS.queuedPerProject; i++) first.push(await f.call('image.generate', inputFor(project.id)) as TaskView);
-    await assert.rejects(f.call('image.generate', inputFor(project.id)), code('IMAGE_QUEUE_FULL'));
+test('queue capacity remains bounded per project across independent project hosts without dispatch or eviction', async t => {
+  const fixtures = await Promise.all(Array.from({length: 5}, () => fixture(t))), first: TaskView[] = [];
+  for (const f of fixtures) {
+    for (let i = 0; i < IMAGE_LIMITS.queuedPerProject; i++) first.push(await f.call('image.generate', inputFor(f.project.id)) as TaskView);
+    const before = rows(f.store.db);
+    await assert.rejects(f.call('image.generate', inputFor(f.project.id)), code('IMAGE_QUEUE_FULL'));
+    assert.equal(rows(f.store.db), before); assert.equal(f.calls, 0); assert.deepEqual(readdirSync(path.join(f.root, 'media')), []);
   }
-  assert.equal(first.length, IMAGE_LIMITS.queuedGlobal);
-  const before = rows(f.store.db);
-  await assert.rejects(f.call('image.generate', inputFor(projects[4].id)), code('IMAGE_QUEUE_FULL'));
-  assert.equal(rows(f.store.db), before); assert.equal(f.calls, 0); assert.deepEqual((readdirSync(path.join(f.root, 'media')) as unknown), []);
+  assert.equal(first.length, IMAGE_LIMITS.queuedPerProject * fixtures.length);
+  assert.ok(first.length > IMAGE_LIMITS.queuedGlobal, 'the old workspace ceiling is no application-global scheduler');
+  assert.equal(new Set(fixtures.map(f => f.store.db)).size, fixtures.length);
 });
 
 test('retained request capacity rejects new mutations but exact historical replay remains readable', async t => {

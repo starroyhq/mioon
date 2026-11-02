@@ -60,7 +60,7 @@ export function dataPaths(appDataPath: string, override?: string, channel: Deskt
   const identity: DesktopIdentity = desktopIdentity.identityForChannel(channel);
   if (override && !path.isAbsolute(override)) throw desktopStorageError('DESKTOP_USER_DATA_INVALID', 'MIOON_DESKTOP_USER_DATA must be an absolute path');
   const userData = override || path.join(appDataPath, identity.appId);
-  return { userData, dataDir: path.join(userData, 'workspace'), configFile: path.join(userData, 'desktop-config.json') };
+  return { userData, dataDir: path.join(userData, 'data'), configFile: path.join(userData, 'desktop-config.json') };
 }
 
 // Must run synchronously before Electron can write caches or a single-instance
@@ -88,6 +88,12 @@ export function validateDesktopStorage(paths: DesktopPaths): void {
     validateManagedFile(path.join(directory, 'settings.json'), { root: directory, private: true, allowMissing: true, maxBytes: 64 * 1024 });
   }
   validateWorkspaceStorage(paths.dataDir);
+  if (validatePrivateDirectory(paths.dataDir, {allowMissing: true})) {
+    for (const name of ['app-library.db', 'app-library.db-journal', 'app-library.db-wal', 'app-library.db-shm']) {
+      validateManagedFile(path.join(paths.dataDir, name), {root: paths.dataDir, private: true, allowMissing: true});
+    }
+    for (const name of ['records', 'cache', 'tmp']) validateManagedDirectory(path.join(paths.dataDir, name), {root: paths.dataDir, private: true, allowMissing: true});
+  }
 }
 
 export function storageFailureDialog(error: unknown): StorageFailureDialog {

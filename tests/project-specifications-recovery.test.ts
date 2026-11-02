@@ -121,13 +121,14 @@ for(const status of ['prepared','unknown','applied','not_applied'])test(`another
 });
 
 test('an older timeline edit blocks the same project only, without creating either timeline',async t=>{
- const f=await fixture(t),other=await f.call('project.create',{name:'Unrelated format project'});
+ const f=await fixture(t),other=await fixture(t);
  const saved=f.tasks.prepare({projectId:f.project.id,operation:'timeline.track.add',origin:'new',
   input:{projectId:f.project.id,requestId:randomUUID(),expectedRevision:1,kind:'audio'}});
  const input=await f.input();await rejectedUnchanged(f,input);
  assert.equal(f.store.list('timelines').length,0);
- const state=await f.call('timeline.format.get',{projectId:other.id});assert.equal(state.eligible,true);
- const response=await f.call('timeline.format.set',{projectId:other.id,requestId:randomUUID(),expectedProjectRevision:other.revision,expectedRevision:0,presetId:'square_720'});
+ assert.equal(other.store.list('timelines').length,0);assert.notEqual(f.store.db,other.store.db);
+ const state=await other.call('timeline.format.get',{projectId:other.project.id});assert.equal(state.eligible,true);
+ const response=await other.call('timeline.format.set',{projectId:other.project.id,requestId:randomUUID(),expectedProjectRevision:other.project.revision,expectedRevision:0,presetId:'square_720'});
  assert.equal(response.width,720);assert.equal(response.height,720);
  assert.equal(f.tasks.get!({projectId:f.project.id,taskId:saved.task.id}).task.status,'prepared');
  assert.equal((await f.call('timeline.format.get',{projectId:f.project.id})).timelineId,null);

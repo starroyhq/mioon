@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {writeFileSync,renameSync,statSync,utimesSync,openSync,writeSync,closeSync} from 'node:fs';
-import {openStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
 import {run} from '../packages/business/src/media-runtime.ts';
@@ -19,10 +19,10 @@ import {prepareTimelineInputs,probeTimelineSource,readOwnedTimelineAsset} from '
 import {createTimelineColourLutReader} from '../packages/business/src/timeline-colour-lut.ts';
 import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
 const text='LUT_3D_SIZE 2\n0 0 0\n0 1 0\n1 0 0\n1 1 0\n0 0 1\n0 1 1\n1 0 1\n1 1 1\n';
-async function fixture(t: test.TestContext){
+async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
  const base=await mkdtemp(path.join(tmpdir(),'mioon-colour-worker-')),root=path.join(base,'workspace'),source=path.join(base,'source.mp4');
  await run('ffmpeg',['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','color=c=red:s=64x48:r=30:d=1','-an','-c:v','libx264','-preset','ultrafast','-threads','1','-pix_fmt','yuv420p','-color_primaries','bt709','-color_trc','bt709','-colorspace','bt709','-color_range','tv','-x264-params','colorprim=bt709:transfer=bt709:colormatrix=bt709',source],{timeout:30000,maxStdoutBytes:0});
- const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);let worker!: Worker,closed=false;
+ const store=(opener(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);let worker!: Worker,closed=false;
  const close=async()=>{if(closed)return;await worker?.stop();await services.drain();store.close();closed=true;};
  t.after(async()=>{await close();await rm(base,{recursive:true,force:true});});
  const project=await services.call('project.create',{name:'SDR worker'}),asset=await services.call('asset.import',{projectId:project.id,name:'SDR source.mp4',mimeType:'video/mp4',dataBase64:(await readFile(source)).toString('base64')});
@@ -75,12 +75,12 @@ for(const phase of (['capability','prepublication'] as const))test(`physical sou
  else{assert.equal((after as unknown as import('node:fs').Stats).ino,before.ino);assert.equal((after as unknown as import('node:fs').Stats).size,before.size);assert.equal((after as unknown as import('node:fs').Stats).mtimeMs,before.mtimeMs);assert.notEqual((after as unknown as import('node:fs').Stats).ctimeMs,before.ctimeMs);assert.equal((await readFile(source))[0],original[0]^1,'changed source is preserved, never repaired');}
 });
 test('cold backup32 restore33 retains exact LUT and source interpretation and explicitly rerenders',{timeout:120000},async t=>{
- const f=await fixture(t);
+ const f=await fixture(t,openLegacyWorkspaceStore);
  await f.close();// Reviewed historical PNG-generation fixture; never relabel or downgrade the current workspace.
  const frozen=materializeHistoricalWorkspace({root:f.root},path.join(f.base,'source32'),{version:32});
  const backup=path.join(f.base,'backup'),restored=path.join(f.base,'restored');
  await (createWorkspaceBackup({source:frozen.root,destination:backup}) as Promise<BackupResult>);const installed=await (restoreWorkspaceBackup({directory:backup,destination:restored}) as Promise<RestoreResult>);assert.equal(installed.databaseSchemaVersion,33);
- const store=(openStore(restored) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices),context={expectedWorkspaceOrigin:(getWorkspaceRestoreContext(store))!.workspaceOrigin};let worker;
+ const store=(openLegacyWorkspaceStore(restored) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices),context={expectedWorkspaceOrigin:(getWorkspaceRestoreContext(store))!.workspaceOrigin};let worker;
  try{
   const timeline=await services.call('timeline.get',{projectId:f.project.id});assert.deepEqual(timeline.clips[0].colour,f.timeline.clips[0].colour);
   const lut=await services.call('lut.inspect',{projectId:f.project.id,lutId:f.imported.resource.id});assert.deepEqual(lut.resource,f.imported.resource);

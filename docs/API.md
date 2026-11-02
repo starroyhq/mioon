@@ -1,8 +1,42 @@
 # HTTP API
 
-本轮新增的公共接口见[工作区开关与备份](WORKSPACE-SETTINGS.md)、[任务处置](TASK-DISPOSITIONS.md)和[导出控制](EXPORT-CONTROLS.md)。HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述
+HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述。本文 2026-11-02 的 P4 状态如下；工作区备份、恢复等历史协议说明仍保留，不能据此启用旧生产入口。
 
-Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted. All `/api/*` except login, including project-scoped media, and legacy `/media/*` require `Authorization: Bearer <local token>` or the HttpOnly SameSite=Strict login cookie. `/health` is public. The token is server-side configuration; do not place it in URLs.
+Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted. All `/api/*` except login, including project-scoped media, require `Authorization: Bearer <local token>` or the HttpOnly SameSite=Strict login cookie. `/health` is public. The token is server-side configuration; do not place it in URLs.
+
+## P4 当前状态与应用接口
+
+`startServer({dataDir})` 现在以 B1 应用库和真实项目宿主管理器运行，每个项目使用独立内核连接；`dataDir` 是应用根，不是素材根。服务端默认项目位于 `<dataDir>/projects/`，桌面使用 `<userData>/data/` 并默认将项目放在 `<videos>/Mioon/`。覆盖 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存留在该覆盖目录的 `data/` 内。旧 `workbench.sqlite` 目录启动返回 `VALIDATION_ERROR`（400），不迁移；历史旧格式测试必须显式使用 legacy 领域入口。目录与生命周期详见 [PROJECT-HOST.md](PROJECT-HOST.md#0-p4-当前运行状态)。
+
+| 应用/项目接口 | 当前行为 |
+| --- | --- |
+| `GET /api/project-covers/{projectId}` | 应用级认证，只读缓存 `cover.jpg/cover.json`；缺失或与登记摘要不匹配为 404 `NOT_FOUND`，不 acquire 项目 |
+| `GET /api/workspace-info` | 应用目录信息 |
+| `GET /api/projects/{projectId}/workspace-info` | 正常项目请求租约内的真实项目目录信息；复用 `workspaceInfoSchema`，供已验证 owner 的桌面导出选择素材根，不接受调用方文件路径 |
+| `GET /api/agent/tasks/v2/diagnostics/latest` | 从应用 documents 返回 `{test:null}` 或严格五字段摘要；不打开关闭的项目 |
+
+首页摘要的 `projectSummaryCoverSchema.url` 现在必须为 `/api/project-covers/{摘要项目ID}`，不再是素材 URL。诊断摘要仅有 `completedAt`、`status`、`protocol`、`model`、`errorCode`，由项目诊断完成时更新，没有对话内容、请求原文或密钥。应用库版本 2 只允许精确已知 v1 结构事务升级，保留原三种 documents 字节及其它登记、策略回执。
+
+真实 HTTP 可达的 B1 错误为：
+
+| 错误码 | HTTP | 条件及 details |
+| --- | --- | --- |
+| `APP_LIBRARY_LIMIT` | 507 | 新项目登记达到 8192 条上限；`{limit:8192}` |
+| `APP_LIBRARY_INVALID` | 422 | 全局 latest 读取到无效诊断摘要；`{reason:'unusable'}` |
+
+两者沿用 `{ok:false,error:{code,message,details,retryable:false}}`，严格契约见 [app-library-http.ts](../packages/contracts/src/app-library-http.ts)。应用库的 `LOCKED`、`FORMAT_NEWER` 在监听前拒绝启动，`CLOSED` 是内部生命周期错误，不能将它们都视为已有 HTTP 操作的可达响应。受信 `inspectProject` 和 `inspectApplication` 仅交给测试代码，分别借用实际项目和 B1 连接；同步调用、拒绝异步回调及关闭后调用。子进程测试使用固定快照/故障 IPC，不接受 SQL 或任意路径，不增加 HTTP、CLI 或环境变量入口。
+
+以下能力仍等待后续卡接入新布局：
+
+| 归属 | 操作 | 当前结果 |
+| --- | --- | --- |
+| S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
+| S5、V4 | 复制、另存为、打包导入导出；旧 `/api/project-packages/…` 和项目 `package-preview` | 未注册生产接口，旧地址为 404 `NOT_FOUND` |
+| S7 | `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（bundle 下载/导入、directory 导入） | 409 `RESTORE_OPERATION_UNAVAILABLE` |
+
+`workspace.restore.inspect` 在新布局返回 `{restored:false}`，可附明确请求的能力字段，不授予恢复权限。设置中的备份字段不启动旧备份任务。普通项目不进入旧删除、包导入或恢复链。
+
+项目隔离也作用于幂等与容量：相同 `requestId` 在不同项目各自保存回执，不能跨项目重放。原 `Global/workspace` 配额现在只在当前项目库计算；N 个项目的图片排队/任务/请求可达 `8N/1000N/3000N`（旧总量 `32/10000/30000`），帧排队/活跃/任务/请求可达 `2N/1N/256N/4096N`（旧 `8/1/2048/32768`），LUT 可达 `128N` 个及 `64 MiB × N`（旧 `512` 个及 `128 MiB`）。每项目约束不变，跨应用总量调度留 S3。
 
 ## 按项目寻址
 
@@ -31,7 +65,7 @@ input。其余项目级操作继续保留原有 `input.projectId`，
 | --- | --- | --- |
 | `PROJECT_NOT_FOUND` | 404 | 地址中的项目未登记；details 为 `{projectId}` |
 | `PROJECT_ID_MISMATCH` | 400 | 输入或查询参数中的项目与地址不一致；details 携带地址中的项目 ID |
-| `PROJECT_UNAVAILABLE` | 409 | 为后续 S0 项目宿主保留的不可用项目错误；本次 K2 的原工作区存储不触发它 |
+| `PROJECT_UNAVAILABLE` | 409 | 项目已登记但无法打开；details 为 `{projectId,reason,invalidReason?}`，reason 为 `PROJECT_MISSING/PROJECT_LOCKED/PROJECT_FORMAT_NEWER/PROJECT_INVALID` |
 
 实体或媒体属于其他项目时与不存在统一返回 HTTP 404 `NOT_FOUND`，不返回它所属的
 项目。上述寻址检查不授权打开另一个存储或自动恢复任务。
@@ -44,9 +78,11 @@ Agent 项目任务原 `/api/agent/tasks/v2/{projectId}/…` 对应
 `/api/projects/{projectId}/agent/tasks/v2/…`；全局 `policy` 和 `diagnostics`
 不移入项目路径。请求中已有的项目字段仍须与地址一致。
 
-K2 保留旧 `/api/rpc`、`/media/{assetId}` 及上述旧项目接口，直到 S0 迁移时再移除；
-下文仍使用旧地址描述的已迁移接口按此对应关系调用。历史记录内保存的媒体 `url`
-不重写；新读取/下载应根据记录的项目 ID 和素材 ID 构造项目媒体地址。
+K2 曾保留的旧项目地址已在 P4 退役：把项目操作发到应用 `/api/rpc` 返回 400
+`VALIDATION_ERROR`；认证后的旧项目 REST 和 `/media/{assetId}` 返回 404
+`NOT_FOUND`。`project-routes.ts` 只供内部测试适配，生产入口不导入它。
+下文沿用旧后缀描述的项目接口，统一按上述项目前缀调用。历史记录内保存的媒体
+`url` 不重写；新读取/下载根据记录的项目 ID 和素材 ID 构造实际地址。
 
 ## 请求与响应
 
@@ -1625,6 +1661,8 @@ wire mapping, real-face restrictions, immutable provenance and acceptance.
 
 ## Offline workspace backup readiness
 
+本节保留旧格式领域协议。P4 生产 `workspace.backup.inspect` 与其它工作区备份操作统一返回 409 `RESTORE_OPERATION_UNAVAILABLE`，不再提供下述旧库统计；后续 S7 接入后恢复相应能力。
+
 `workspace.backup.inspect` accepts only `{}` and returns bounded workspace-wide
 DB counts with `captureReady:false`, `reason:"BACKEND_RUNNING"`, nullable unknown
 counts and fixed capacity limits. It requires the existing local authentication.
@@ -1639,6 +1677,8 @@ See [scope and safeguards](WORKSPACE-BACKUP.md) and the
 
 
 ## Restored workspace profile
+
+本节描述显式旧格式恢复领域及其历史数据合同，不是 P4 生产旧工作区入口。生产 `startServer` 拒绝旧 `workbench.sqlite` 目录；新布局的 `workspace.restore.inspect` 返回 `{restored:false}` 及明确请求的能力字段。旧格式成功/安全用例只通过测试专用显式领域适配验证。
 
 `workspace.restore.inspect` accepts exactly `{}` under normal local authentication.
 An ordinary workspace returns exactly `{restored:false}`. A restored workspace
@@ -1669,7 +1709,7 @@ for fixed schema gates, limits, recursive-backup restriction and current evidenc
 
 `timeline.render` with `purpose:'export'` and `timeline.export.preflight` accept optional `deliveryName`: exact nonblank1–120 UTF-16 units, valid Unicode without control/line characters. Omission remains absent in historical requests and receipts. The preflight digest and original render key bind the name together with the frozen timeline/settings; changed or removed names cannot reuse that key. The encoding-capability request does not accept a name. `export.get` returns the immutable `snapshot.deliveryName` when supplied.
 
-Named download links bind `/api/projects/{projectId}/media/{assetId}?download=1&exportId={exportId}`. The authenticated server validates the project ownership and historical export/output/receipt and derives a safe attachment filename; callers cannot supply a destination path or trusted filename. Historical stored URLs and the legacy path remain compatible until S0. Existing unnamed/storyboard behavior remains. See [scope, safety and acceptance](NAMED-DELIVERIES.md).
+Named download links bind `/api/projects/{projectId}/media/{assetId}?download=1&exportId={exportId}`. The authenticated server validates the project ownership and historical export/output/receipt and derives a safe attachment filename; callers cannot supply a destination path or trusted filename. Historical stored URLs retain their bytes; P4 downloads rebuild the project address and the legacy public path returns 404. Existing unnamed/storyboard behavior remains. See [scope, safety and acceptance](NAMED-DELIVERIES.md).
 
 ### 私有镜头文字草稿与保存恢复
 

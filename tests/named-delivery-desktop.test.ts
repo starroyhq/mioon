@@ -8,13 +8,13 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {timelineDeliveryBasename, timelineDeliveryContentDisposition} from '@mioon/contracts/timeline-delivery';
 import {installSessionPolicy, isAllowedDownload} from '../apps/desktop/src/security.ts';
-import {namedTimelineDownloadBasename} from '../apps/desktop/src/timeline-delivery-download.ts';
+import {namedTimelineDownloadBasename,timelineDownloadIdentity} from '../apps/desktop/src/timeline-delivery-download.ts';
 
 const origin = 'http://127.0.0.1:41923';
 const exportId = '12345678-1234-4234-8234-123456789abc';
 const assetId = '22345678-1234-4234-8234-123456789abc';
 const otherId = '32345678-1234-4234-8234-123456789abc';
-const url = `${origin}/media/${assetId}?download=1&exportId=${exportId}`;
+const url = `${origin}/api/projects/${otherId}/media/${assetId}?download=1&exportId=${exportId}`;
 const header = (name: string) => timelineDeliveryContentDisposition(name, exportId) + `; mioon-export-id="${exportId}"; mioon-asset-id="${assetId}"`;
 function fixture({directory = {downloadsDirectory: '/trusted/Downloads'}, name = '海边最终版', overrides = {}, window = {}, navigation, contents}: DesktopFixtureOptions = {}) {
   const session = new EventEmitter() as EventEmitter & {webRequest:{onBeforeRequest():void}} & Record<'setPermissionRequestHandler'|'setPermissionCheckHandler'|'setDevicePermissionHandler'|'setDisplayMediaRequestHandler', ()=>void>;
@@ -47,22 +47,26 @@ test('named download uses actual response metadata and trusted Downloads only, w
 
 test('managed media downloads are also accepted at their project address, and only there', () => {
   const media = `${origin}/api/projects/${otherId}/media/${assetId}`;
+  assert.deepEqual(timelineDownloadIdentity(media,origin),{projectId:otherId,assetId,exportId:null});
   for (const good of [media, `${media}?download`, `${media}?download=1`, `${media}?download=1&exportId=${exportId}`]) assert.equal(isAllowedDownload(good, origin), true, good);
   for (const bad of [`${origin}/api/projects/not-a-project/media/${assetId}`, `${media}/extra`, `${origin}/api/projects/${otherId}/rpc`,
     `${origin}/api/projects/${otherId.toUpperCase()}/media/${assetId}`, `${origin}/api/projects/${otherId}/media/${assetId.toUpperCase()}`,
     `${origin}/api/projects/${otherId}/media/not-an-asset`, `${origin}/api/projects/${otherId}/export-files?projectId=${otherId}&exportId=${exportId}`,
     `${origin}/api/projects/${otherId}/../media/${assetId}`, `${media}?download=1&exportId=invalid`]) assert.equal(isAllowedDownload(bad, origin), false, bad);
   const named = `${media}?download=1&exportId=${exportId}`;
-  const f = fixture({directory: {downloadsDirectory: '/trusted/Downloads'}, overrides: {getURL: () => named, getURLChain: () => [url, named]}});
-  assert.equal(f.prevented, 0, 'a redirect from the legacy path to the project address keeps one identity');
-  assert.equal(f.options?.defaultPath, path.join('/trusted/Downloads', timelineDeliveryBasename('海边最终版', exportId)));
+  const f = fixture({directory: {downloadsDirectory: '/trusted/Downloads'}, overrides: {getURL: () => named, getURLChain: () => [`${origin}/media/${assetId}?download=1&exportId=${exportId}`, named]}});
+  assert.equal(f.prevented, 1, 'a legacy public redirect cannot authorize a native dialog');
+  assert.equal(f.options, undefined);
+  assert.equal(f.writes,0);
 });
-test('desktop accepts canonical named query and legacy managed routes, rejecting ambiguous or injected syntax', () => {
-  for (const good of [url, `${origin}/media/${assetId}`, `${origin}/media/${assetId}?download`, `${origin}/media/${assetId}?download=1`]) assert.equal(isAllowedDownload(good, origin), true, good);
+test('desktop accepts canonical project named queries and refuses every legacy managed route', () => {
+  for (const good of [url, `${origin}/api/projects/${otherId}/media/${assetId}`, `${origin}/api/projects/${otherId}/media/${assetId}?download`, `${origin}/api/projects/${otherId}/media/${assetId}?download=1`]) assert.equal(isAllowedDownload(good, origin), true, good);
+  for (const old of [`${origin}/media/${assetId}`,`${origin}/media/${assetId}?download`,`${origin}/media/${assetId}?download=1`,`${origin}/media/${assetId}?download=1&exportId=${exportId}`]) {assert.equal(isAllowedDownload(old,origin),false);const denied=fixture({overrides:{getURL:()=>old,getURLChain:()=>[old]}});assert.equal(denied.prevented,1);assert.equal(denied.options,undefined);}
   for (const bad of [url + '&download=1', url + `&exportId=${exportId}`, url + '&filename=evil.mp4', url + '&path=/tmp/evil',
     url + '%0A', url + '\n', url.replace('download=1', 'download=0'), url.replace('download=1&', ''), url + '#name', url.replace(origin, 'http://localhost:41923'),
-    url.replace(origin, 'https://example.invalid'), `${origin}/media/${assetId}?download&download`, `${origin}/media/${assetId}?download=no`,
-    `${origin}/media/../${assetId}?download=1&exportId=${exportId}`, `${origin}/media/${assetId}?download=1&exportId=invalid`]) assert.equal(isAllowedDownload(bad, origin), false, bad);
+    url.replace(origin, 'https://example.invalid'), `${origin}/api/projects/${otherId}/media/${assetId}?download&download`, `${origin}/api/projects/${otherId}/media/${assetId}?download=no`,
+    `${origin}/media/../${assetId}?download=1&exportId=${exportId}`, `${origin}/api/projects/${otherId}/media/../${assetId}?download=1&exportId=${exportId}`,
+    `${origin}/api/projects/${otherId}/media/${assetId}?download=1&exportId=invalid`]) assert.equal(isAllowedDownload(bad, origin), false, bad);
 });
 
 test('actual frame initiator, current window, nonempty same-origin redirect chain and final identity must all agree', () => {
@@ -72,13 +76,17 @@ test('actual frame initiator, current window, nonempty same-origin redirect chai
     {overrides: {getInitiatorOrigin: undefined}}, {overrides: {getMimeType: () => 'application/octet-stream'}},
     {overrides: {getURLChain: () => []}}, {overrides: {getURLChain: () => [url.replace(origin, 'https://example.invalid'), url]}},
     {overrides: {getURLChain: () => [url.replace(exportId, otherId), url]}}, {overrides: {getURLChain: () => [url.replace(assetId, otherId), url]}},
+    {overrides: {getURLChain: () => [url.replace(`/projects/${otherId}/`, `/projects/${assetId}/`), url]}},
     {overrides: {getURLChain: () => [url, url + '&download=1']}}, {overrides: {getURLChain: () => [url.replace('download=1&', ''), url]}},
     {overrides: {getURLChain: () => Array(33).fill(url)}}, {overrides: {getURL: () => url.replace(assetId, otherId)}},
     {window: {isDestroyed: () => true}}, {navigation: origin + '/api/rpc'}, {navigation: 'https://example.invalid/'},
     {contents: {getURL: () => origin + '/'}},
   ];
   for (const setup of cases) {const f = fixture(setup); assert.equal(f.prevented, 1); assert.equal(f.options, undefined); assert.equal(f.writes, 0);}
-  assert.equal(fixture({overrides: {getURLChain: () => [url, url]}}).prevented, 0, 'same-identity redirects are safe');
+  const repeated=fixture({overrides:{getURLChain:()=>[url,url]}});
+  assert.equal(repeated.prevented,0,'same-project, asset and export redirects are safe');
+  assert.equal(repeated.options?.defaultPath,path.join('/trusted/Downloads',timelineDeliveryBasename('海边最终版',exportId)));
+  assert.equal(repeated.writes,0);
 });
 
 test('only complete bound response headers can supply a named default', () => {
@@ -103,7 +111,7 @@ test('path, bidi, reserved and extension-like display names remain unchanged met
 });
 
 test('legacy unnamed and storyboard downloads retain their old default and always require the real initiator', () => {
-  const legacy = `${origin}/media/${assetId}?download`;
+  const legacy = `${origin}/api/projects/${otherId}/media/${assetId}?download`;
   for (const directory of [{downloadsPath: '/tmp/video.mp4'}, {downloadsDirectory: '/trusted/Downloads'}]) {
     const f = fixture({directory, overrides: {getURL: () => legacy, getURLChain: () => [legacy], getContentDisposition: () => assert.fail('Legacy does not infer a name')}});
     assert.equal(f.prevented, 0); assert.equal(f.options!.defaultPath, directory.downloadsPath ?? '/trusted/Downloads/mioon.mp4');

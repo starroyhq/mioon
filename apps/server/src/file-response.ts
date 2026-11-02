@@ -1,7 +1,9 @@
 import {open} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
 import type {Stats} from 'node:fs';
-import {constants} from 'node:fs';
+import {constants, statSync} from 'node:fs';
+import {isProjectFileHeld} from '../../../packages/business/src/project-file/held-files.ts';
+import {isAppLibraryHeld} from '../../../packages/business/src/app-db/connection.ts';
 import {Transform} from 'node:stream';
 import type {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
@@ -10,6 +12,11 @@ import type {IncomingMessage, ServerResponse} from 'node:http';
 export const FILE_RESPONSE_LIMITS = Object.freeze({active: 32, idleMs: 30000, chunkBytes: 64 * 1024});
 type LimitName = keyof typeof FILE_RESPONSE_LIMITS;
 interface FileResponseFailure extends Error {code: string; status: number}
+class HeldFileResponseFailure extends Error implements FileResponseFailure {
+  readonly code = 'FILE_UNAVAILABLE';
+  readonly status = 404;
+  constructor() {super('本地文件不可用。');}
+}
 type ReadHandle = Pick<FileHandle, 'close' | 'createReadStream'> & {stat(): Promise<Stats>};
 export interface FileResponsesOptions {
   signal?: AbortSignal;
@@ -28,6 +35,7 @@ export interface FileResponseSendOptions {
 export interface FileResponses {
   send(req: IncomingMessage, res: ServerResponse, options: FileResponseSendOptions): Promise<void>;
   close(): Promise<void>;
+  isBusy(): boolean;
 }
 const failure = (code: string, status: number, message: string): FileResponseFailure => Object.assign(Error(message), {code, status});
 const unavailable = (): FileResponseFailure => failure('FILE_UNAVAILABLE', 404, '本地文件不可用。');
@@ -58,6 +66,17 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
     policy[key] = value;
   }
   const active = new Set<{cancel(): void; done: Promise<void>}>();
+  const openResponseFile = async (file: string, flags: number): Promise<ReadHandle> => {
+    // Metadata only, following an alias without obtaining a file descriptor.
+    // Closing any additional descriptor of a held SQLite inode drops its POSIX
+    // locks, so static files and fallback index.html need the same fence.
+    const info = statSync(file, {bigint: true, throwIfNoEntry: false});
+    if (info?.isFile()) {
+      const identity = {dev: String(info.dev), ino: String(info.ino)};
+      if (isProjectFileHeld(identity) || isAppLibraryHeld(identity)) throw new HeldFileResponseFailure();
+    }
+    return await openFile(file, flags);
+  };
   let closing = false;
   const stop = () => { closing = true; for (const record of active) record.cancel(); };
   signal?.addEventListener('abort', stop, {once: true});
@@ -91,7 +110,7 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
       for (const candidate of candidates) {
         if (!alive()) return;
         try {
-          handle = await openFile(candidate, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+          handle = await openResponseFile(candidate, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
           if (!alive()) return;
           metadata = await handle.stat();
           if (!metadata.isFile()) throw unavailable();
@@ -100,6 +119,7 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
         } catch (error) {
           if (handle) { await handle.close(); handle = undefined; }
           if (!alive()) return;
+          if (error instanceof HeldFileResponseFailure) throw error;
           const code = coded(error).code;
           if (typeof code === 'string' && (unavailableCodes.has(code) || code === 'FILE_UNAVAILABLE')) continue;
           if (code === 'FILE_METADATA_INVALID') throw error;
@@ -145,7 +165,7 @@ export function createFileResponses({signal, openFile = open, limits = {}}: File
       }
     }
   }
-  return Object.freeze({send, async close() {
+  return Object.freeze({send, isBusy: () => active.size > 0, async close() {
     stop(); signal?.removeEventListener('abort', stop);
     await Promise.all([...active].map(record => record.done));
   }});

@@ -109,14 +109,14 @@ test('generation changes project typed frozen parameters, image input and comple
   const model=randomUUID(),identity=projectAgentTaskChangeDisplay(change('generation.submit','job',null,{providerId:'mock',model}));assert.equal(identity.fields.find(field=>field.property==='model')?.after,model);
 });
 test('approval target names remain project-local and metadata lookup is read-only, including unknown historical kinds',()=>{
-  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-display-')),store=openStore(root),projectId=randomUUID(),foreignProject=randomUUID(),id=randomUUID(),foreignId=randomUUID();
+  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-task-display-')),store=openStore(root),foreignStore=openStore(join(root,'foreign')),projectId=store.projectId,foreignProject=foreignStore.projectId,id=randomUUID(),foreignId=randomUUID();
   try{
-    for(const project of [projectId,foreignProject])store.put('projects',{id:project,name:'Project',revision:1,createdAt:now,updatedAt:now});
-    store.put('shots',{id,projectId,title:'Current scene',revision:1,createdAt:now,updatedAt:now});store.put('shots',{id:foreignId,projectId:foreignProject,title:'PRIVATE_FOREIGN_TARGET',revision:1,createdAt:now,updatedAt:now});
-    const read=agentTaskDisplayTargetReader(store,projectId),changes=store.db.prepare('SELECT total_changes() AS n').get()?.n;
+    for(const selected of [store,foreignStore])selected.put('projects',{id:selected.projectId,name:'Project',revision:1,createdAt:now,updatedAt:now});
+    store.put('shots',{id,projectId,title:'Current scene',revision:1,createdAt:now,updatedAt:now});foreignStore.put('shots',{id:foreignId,projectId:foreignProject,title:'PRIVATE_FOREIGN_TARGET',revision:1,createdAt:now,updatedAt:now});
+    const read=agentTaskDisplayTargetReader(store,projectId),changes=store.db.prepare('SELECT total_changes() AS n').get()?.n,foreignChanges=foreignStore.db.prepare('SELECT total_changes() AS n').get()?.n,foreignRows=foreignStore.db.prepare('SELECT * FROM shots ORDER BY id').all();
     assert.equal(read({kind:'shot',id})?.title,'Current scene');assert.equal(read({kind:'shot',id:foreignId}),undefined);assert.equal(read({kind:'project',id:foreignProject}),undefined);assert.equal(read({kind:'constructor',id}),undefined);assert.equal(read({kind:'shot',id:'/private/path'}),undefined);
-    const foreign=projectAgentTaskStepDisplay(step('mioon_shot_update',{shotId:foreignId,patch:{duration:3}},{kind:'shot',id:foreignId}),read);assert.equal(foreign?.targets[0]?.name,undefined);assert.doesNotMatch(JSON.stringify(foreign),/PRIVATE_FOREIGN_TARGET/u);assert.equal(store.db.prepare('SELECT total_changes() AS n').get()?.n,changes);
-  }finally{store.close();rmSync(root,{recursive:true,force:true});}
+    const foreign=projectAgentTaskStepDisplay(step('mioon_shot_update',{shotId:foreignId,patch:{duration:3}},{kind:'shot',id:foreignId}),read);assert.equal(foreign?.targets[0]?.name,undefined);assert.doesNotMatch(JSON.stringify(foreign),/PRIVATE_FOREIGN_TARGET/u);assert.equal(store.db.prepare('SELECT total_changes() AS n').get()?.n,changes);assert.equal(foreignStore.db.prepare('SELECT total_changes() AS n').get()?.n,foreignChanges);assert.deepEqual(foreignStore.db.prepare('SELECT * FROM shots ORDER BY id').all(),foreignRows);
+  }finally{store.close();foreignStore.close();rmSync(root,{recursive:true,force:true});}
 });
 test('pending tools use exact retained arguments, one-sided global creation parameters and revision-checked generation metadata',()=>{
   const id=randomUUID(),pending=step('mioon_timeline_clip_update',{clipId:id,patch:{gain:0.5,startFrame:90,rect:{x:20,y:30,width:640,height:360},path:'PRIVATE_PATH'}},{kind:'timeline_clip',id});

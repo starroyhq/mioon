@@ -1,3 +1,6 @@
+import {writeProjectCover} from '../apps/server/src/project-host/covers.ts';
+import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../packages/contracts/src/project-addressing.ts';
 import type {OrdinaryDraftEnvelope as ClipDraftEnvelope,OrdinaryDraftList as ClipDraftList,OrdinaryLocalDrafts} from './helpers/strict-timeline-audio-draft-types.ts';
@@ -28,7 +31,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {LOCAL_DRAFT_LIMITS, clipDraftEnvelopeSchema, clipDraftListSchema} from '@mioon/contracts/local-drafts';
-import {openStore, classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createWorkspaceBackup, verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
@@ -145,10 +148,11 @@ async function fixture(t: test.TestContext) {
     ]) { try { await cleanup(); } catch (error) { failures.push(error); } }
     if (failures.length) throw new AggregateError(failures, 'Owned local-drafts fixture cleanup failed');
   });
-  const created = createServerProject(root, {name: 'Synthetic local clip draft'}), store = (created.store as unknown as TypedStore);
+  const created = createServerProject(root, {name: 'Synthetic local clip draft'}), store = (created.store as unknown as TypedStore), projectRoot=created.store.projectDir, localRoot=created.store.localDir;
+  const library=openAppLibrary({dataDir:root});
+  const services = (createServices(store,new Map(),{application:createProjectServiceApplication(library)}) as TypedServices);
   let project:FixtureProject,source:FixtureAsset,sourceRelativePath:string,timeline:FixtureTimeline;
   try {
-    const services = (createServices(store, new Map()) as TypedServices);
     project = store.get('projects', created.projectId)!;
     // Exercise the real importer and its ownership/hash lineage, using a shared
     // inert PNG. No hand-written asset rows or fake generated-source lineage.
@@ -157,11 +161,16 @@ async function fixture(t: test.TestContext) {
     // Public service results deliberately omit private managed paths; retain
     // only this fixture-owned row's actual path for exact backup verification.
     sourceRelativePath = store.get('assets', source.id)!.relativePath;
+    // Cover preparation is separate from draft work. Match the real imported
+    // source so opening this project needs no background renderer; the worker's
+    // full wire guard still forbids any media effect during draft requests.
+    writeProjectCover({cacheDir:created.store.cacheDir,source:{assetId:source.id,mimeType:'image/png',sourceSha256:store.get('assets',source.id)!.sha256},
+      jpeg:Buffer.from([0xff,0xd8,0xff,0xc0,0,17,8,0,1,0,1,3,1,0x22,0,2,0x11,1,3,0x11,1,0xff,0xda,0,12,3,1,0,2,0x11,3,0x11,0,0x3f,0,0x12,0x34,0xff,0xd9])});
     timeline = await services.call('timeline.get', {projectId: project.id});
     timeline = await services.call('timeline.clip.add', {projectId: project.id, expectedRevision: timeline.revision,
       requestId: randomUUID(), assetId: source.id, trackId: timeline.tracks[0].id,
       startFrame: 0, durationFrames: 90, name: 'Original saved clip'});
-  } finally { store.close(); }
+  } finally { await services.drain();store.close();library.close(); }
   // The server knows the other project too, so the tests can show its name never leaks.
   const foreign = createServerProject(root, {name: 'FOREIGN_DRAFT_PROJECT_MUST_NOT_LEAK'}), other = (foreign.store as unknown as TypedStore).get('projects', foreign.projectId)!;
   foreign.store.close();
@@ -191,7 +200,7 @@ async function fixture(t: test.TestContext) {
   });
   await deadline(new Promise<void>((resolve, reject) => { proxy.once('error', reject); proxy.listen(0, '127.0.0.1', resolve); }), 'proxy listen');
   const proxyUrl = `http://127.0.0.1:${(proxy.address() as import('node:net').AddressInfo).port}`;
-  return {root, project, other, source, sourceRelativePath, timeline, key, requests, observed,
+  return {root, projectRoot, localRoot, project, other, source, sourceRelativePath, timeline, key, requests, observed,
     get url() { return url; }, get backend() { return backend; },
     request: (route: string|undefined, options?: RequestOptions) => request(url, route, options),
     viaProxy: (route: string|undefined, options?: RequestOptions) => request(proxyUrl, route, options),
@@ -221,11 +230,7 @@ async function fixture(t: test.TestContext) {
     // leaves its lock behind, so that evidence is read without taking the lock.
     read<R>(fn:(db:DatabaseSync)=>R) {
       if (backend.child.exitCode === null && backend.child.signalCode === null) throw new Error('A running backend holds the project');
-      if (backend.child.signalCode === 'SIGKILL') {
-        const crashed = openStore(root, {lock: false});
-        try { return fn(crashed.db); } finally { crashed.close(); }
-      }
-      const db = openProjectDatabase(projectDirFor(root, project.id));
+      const db = openProjectDatabase(projectRoot);
       try { return fn(db); } finally { db.close(); }
     },
     // Every table but SQLite's own: a running backend reads them on its own connection.
@@ -257,7 +262,7 @@ const safeError = (result: WireResponse|undefined, f: Awaited<ReturnType<typeof 
 };
 
 test('clip drafts survive SIGKILL/new port with exact raw text; authenticated rediscovery stays read-only', {timeout: 30000}, async t => {
-  const f = await fixture(t), before = await f.snapshot(), sidecar = path.join(f.root, 'local-drafts-v1.json');
+  const f = await fixture(t), before = await f.snapshot(), sidecar = path.join(f.localRoot, 'local-drafts-v1.json');
   const initial = await f.draft();
   assert.equal(initial.revision, 0); assert.equal(initial.draft, null); assert.equal(initial.targetStatus, 'matching');
   assert.deepEqual(((await f.list()).items as unknown), []);
@@ -401,7 +406,7 @@ test('a real cold schema-26 backup excludes populated local drafts and preserves
   await chmod(database, 0o600);
   const media = path.join(root, seed.sourceRelativePath);
   await mkdir(path.dirname(media), {recursive: true, mode: 0o700});
-  await copyFile(path.join(seed.root, seed.sourceRelativePath), media); await chmod(media, 0o600);
+  await copyFile(path.join(seed.projectRoot, seed.sourceRelativePath), media); await chmod(media, 0o600);
   const lease = acquireWorkspaceLock(root), reader = new DatabaseSync(database, {readOnly: true});
   try {
     reader.exec('PRAGMA trusted_schema=OFF; PRAGMA foreign_keys=ON;');
@@ -409,7 +414,7 @@ test('a real cold schema-26 backup excludes populated local drafts and preserves
       guards: {ownsLock: () => lease.isOwned(), isRestored: () => classifyCurrentWorkspaceSchema(reader).profile !== 'ordinary',
         readTimeline: projectId => createTimelineRecoveryBoundary(reader, {projectId}).read(),
         readClipAsset: (projectId, clip) => createTimelineRecoveryBoundary(reader, {projectId}).clipSource(clip)}}) as OrdinaryLocalDrafts;
-    const empty = drafts.get(seed.key), disk = JSON.parse(await readFile(path.join(seed.root, 'local-drafts-v1.json'), 'utf8'));
+    const empty = drafts.get(seed.key), disk = JSON.parse(await readFile(path.join(seed.localRoot, 'local-drafts-v1.json'), 'utf8'));
     // Only this newly constructed fixture's workspace fingerprint changes.
     // Retained key/revision/source/raw draft cells remain exactly HTTP-produced.
     writePrivateFileAtomic(path.join(root, 'local-drafts-v1.json'), JSON.stringify({...disk, workspaceScope: empty.workspaceScope}) + '\n',

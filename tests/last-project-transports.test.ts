@@ -20,13 +20,15 @@ import {mkdtemp,readFile,realpath,rm,stat,writeFile,symlink,lstat} from 'node:fs
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {LAST_PROJECT_LIMITS,lastProjectEnvelopeSchema} from '@mioon/contracts/last-project';
 import {schemas} from '@mioon/contracts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import type { ChildProcess } from 'child_process';
 import {createServerProject} from './helpers/project-database.ts';
+import {createApplicationStorageReader} from './fixtures/project-server-process.ts';
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
+import {createServices} from '../packages/business/src/services.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const workerPath=fileURLToPath(new URL('./fixtures/local-drafts-process.ts',import.meta.url));
@@ -62,8 +64,9 @@ function request(url: string, route?: string|undefined, {method = 'GET', input, 
   });
 }
 
-function startProcess(root: string, auditPath: string) {
-  const child = spawn(process.execPath, [workerPath, auditPath], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+function startProcess(root: string, auditPath: string, historical=false) {
+  const selected=historical?fileURLToPath(new URL('./fixtures/legacy-last-project-process.ts',import.meta.url)):workerPath;
+  const child = spawn(process.execPath, [selected, auditPath], {cwd: repo, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     env: {PATH: process.env.PATH || '', HOME: root, TMPDIR: root, LANG: 'C.UTF-8', NODE_ENV: 'test',
       MIOON_ENABLE_LIVE_PROVIDER: '0'},
   });
@@ -110,18 +113,24 @@ function startProcess(root: string, auditPath: string) {
   };
 }
 
-async function fixture<R extends boolean=false>(t:test.TestContext,{restored=false as R}:{restored?:R}={}){
+async function fixture<R extends boolean=false>(t:test.TestContext,{restored=false as R,legacy=false}:{restored?:R;legacy?:boolean}={}){
   const base=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-last-project-http-'))),source=path.join(base,'source'),backup=path.join(base,'backup'),root=restored?path.join(base,'restored'):source;
   const auditPath=path.join(base,'forbidden-effects.jsonl');await writeFile(auditPath,'');
-  const processes:ReturnType<typeof startProcess>[]=[],reservations:http.Server[]=[];let backend!:ReturnType<typeof startProcess>,url!:string,proxy!:http.Server,drop=false;const observed:LocatorHttpResponse[]=[];
+  const historical=restored||legacy,processes:ReturnType<typeof startProcess>[]=[],reservations:http.Server[]=[];let backend!:ReturnType<typeof startProcess>,url!:string,proxy!:http.Server,drop=false,appRead!:ReturnType<typeof createApplicationStorageReader>;const observed:LocatorHttpResponse[]=[];
   t.after(async()=>{
     const failures=[];
     for(const clean of [async()=>{if(proxy){proxy.closeAllConnections();await deadline(new Promise(resolve=>proxy.close(resolve)),'proxy close');}},...reservations.map(server=>async()=>{server.closeAllConnections();await deadline(new Promise(resolve=>server.close(resolve)),'reservation close');}),...processes.map(worker=>()=>worker.close()),()=>rm(base,{recursive:true,force:true})])try{await clean();}catch(error){failures.push(error);}
     if(failures.length)throw new AggregateError(failures,'Owned last-project cleanup failed');
   });
-  // The last-project locator is workspace-level and stays as it is for S0; only the projects are made where the server finds them.
-  const remembered=createServerProject(source,{name:'Existing remembered project'}),project=(remembered.store as unknown as TypedStore).get('projects',remembered.projectId)!;remembered.store.close();
-  const second=createServerProject(source,{name:'OTHER_PROJECT_MUST_NOT_LEAK'}),other=(second.store as unknown as TypedStore).get('projects',second.projectId)!;second.store.close();
+  let project:FixtureProject,other:FixtureProject;
+  if(historical){
+    const store=openLegacyWorkspaceStore(source),services=createServices(store,new Map());
+    try{project=await services.call('project.create',{name:'Existing remembered project'}) as FixtureProject;other=await services.call('project.create',{name:'OTHER_PROJECT_MUST_NOT_LEAK'}) as FixtureProject;}
+    finally{await services.drain();store.close();}
+  }else{
+    const remembered=createServerProject(source,{name:'Existing remembered project'});project=(remembered.store as unknown as TypedStore).get('projects',remembered.projectId)! as FixtureProject;remembered.store.close();
+    const second=createServerProject(source,{name:'OTHER_PROJECT_MUST_NOT_LEAK'});other=(second.store as unknown as TypedStore).get('projects',second.projectId)! as FixtureProject;second.store.close();
+  }
   let workspaceOrigin;
   const file=path.join(root,'last-project-v1.json'),unsafeTarget=path.join(base,'untouched-private-evidence');
   if(restored){
@@ -129,7 +138,7 @@ async function fixture<R extends boolean=false>(t:test.TestContext,{restored=fal
     await writeFile(unsafeTarget,'RESTORED_SIDECAR_MUST_NOT_BE_READ',{mode:0o600});await symlink(unsafeTarget,file);
   }
   const start=async()=>{
-    backend=startProcess(root,auditPath);processes.push(backend);const ready=await deadline(backend.ready,'owned backend readiness');
+    backend=startProcess(root,auditPath,historical);processes.push(backend);if(!historical)appRead=createApplicationStorageReader(backend.child);const ready=await deadline(backend.ready,'owned backend readiness');
     assert.equal(ready.pid,backend.child.pid);assert.notEqual(ready.pid,process.pid);url=ready.url;assert.equal(new URL(url).hostname,'127.0.0.1');
   };await start();
   proxy=http.createServer(async(req,res)=>{
@@ -146,7 +155,14 @@ async function fixture<R extends boolean=false>(t:test.TestContext,{restored=fal
     async data<S extends string=typeof route>(selected:S=route as S,options?:LocatorOptions):Promise<LocatorData<S,R>>{const result=await this.request(selected,options);assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.ok,true);return result.body.data as unknown as LocatorData<S,R>;},
     async get(){const data=await this.data();assert.ok(lastProjectEnvelopeSchema.safeParse(data).success);return data;},
     async restart(){const oldUrl=url,oldPid=backend.child.pid;await backend.kill();const reserve=http.createServer((_req,res)=>res.end());reservations.push(reserve);await deadline(new Promise((resolve,reject)=>{reserve.once('error',reject);reserve.listen(Number(new URL(oldUrl).port),'127.0.0.1',resolve as ()=>void);}),'reserve old port');await start();assert.notEqual(url,oldUrl);assert.notEqual(backend.child.pid,oldPid);},
-    snapshot(){const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});try{return Object.fromEntries(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(({name})=>[name,db.prepare(`SELECT * FROM "${(name as string).replaceAll('"','""')}" ORDER BY rowid`).all()]));}finally{db.close();}},
+    async snapshot(){
+      if(historical)return backend.ask('snapshot');
+      const app=await appRead();
+      return {schema:app.schema,application:{...app.rows,app_documents:app.rows.app_documents.filter(row=>row.name!=='last-project-v1.json')},projects:await Promise.all([project,other].map(value=>backend.ask('snapshot',{projectId:value.id})))};
+    },
+    async bytes(){if(historical)return readFile(file);const row=(await appRead()).rows.app_documents.find(row=>row.name==='last-project-v1.json');if(typeof row?.data!=='string')throw Error('Expected the real app locator document');return Buffer.from(row.data);},
+    metadata:()=>stat(historical?file:path.join(root,'app-library.db')),
+    corrupt:()=>backend.ask('corrupt-last-project-document'),
     async noEffects(){assert.equal(await readFile(auditPath,'utf8'),'');assert.deepEqual(((await backend.ask('observe')).phases as unknown),[]);},
   };
 }
@@ -157,26 +173,26 @@ const safeError=(response:LocatorHttpResponse<unknown>,f:{root:string},code:stri
 };
 
 test('actual HTTP rediscovery survives owned SIGKILL and a new listener without GET writes or domain effects',{timeout:30000},async t=>{
-  const f=await fixture(t),before=f.snapshot(),initial=await f.get();assert.equal(initial.targetStatus,'unset');assert.equal(initial.revision,0);await assert.rejects(stat(f.file),{code:'ENOENT'});
+  const f=await fixture(t),before=await f.snapshot(),initial=await f.get();assert.equal(initial.targetStatus,'unset');assert.equal(initial.revision,0);await assert.rejects(stat(f.file),{code:'ENOENT'});
   const input=write(initial,f.project.id),saved=await f.data(route,{method:'PUT',input});assert.equal(saved.revision,1);assert.equal(saved.targetStatus,'matching');
-  const bytes=await readFile(f.file),metadata=await stat(f.file);assert.equal(metadata.mode&0o777,0o600);assert.deepEqual(f.snapshot(),before);await f.noEffects();
+  const bytes=await f.bytes(),metadata=await f.metadata();assert.equal(metadata.mode&0o777,0o600);assert.deepEqual(await f.snapshot(),before);await f.noEffects();
   await f.restart();const found=await f.get();assert.equal(found.workspaceScope,saved.workspaceScope);assert.notEqual(found.instanceId,saved.instanceId);assert.deepEqual({...found,instanceId:saved.instanceId},saved);
   safeError(await f.request(route,{method:'PUT',input}),f,'LAST_PROJECT_STALE_INSTANCE',409);
   for(let index=0;index<3;index++)assert.deepEqual((await f.viaProxy()).body.data,found);
-  assert.deepEqual(await readFile(f.file),bytes);assert.equal((await stat(f.file)).mtimeMs,metadata.mtimeMs);assert.deepEqual(f.snapshot(),before);await f.noEffects();
+  assert.deepEqual(await f.bytes(),bytes);assert.equal((await f.metadata()).mtimeMs,metadata.mtimeMs);assert.deepEqual(await f.snapshot(),before);await f.noEffects();
 });
 
 test('lost acknowledgement is rediscovered and exact retry does not write twice; stale conflicting selection cannot rebase',{timeout:30000},async t=>{
   const f=await fixture(t),initial=await f.get(),input=write(initial,f.project.id);f.lose();await assert.rejects(f.viaProxy({method:'PUT',input}));
-  const accepted=f.observed.at(-1)!.body.data;assert.equal(accepted.revision,1);const bytes=await readFile(f.file),metadata=await stat(f.file);
-  assert.deepEqual(await f.get(),accepted);assert.deepEqual(await f.data(route,{method:'PUT',input}),accepted);assert.deepEqual(await readFile(f.file),bytes);assert.equal((await stat(f.file)).mtimeMs,metadata.mtimeMs);
+  const accepted=f.observed.at(-1)!.body.data;assert.equal(accepted.revision,1);const bytes=await f.bytes(),metadata=await f.metadata();
+  assert.deepEqual(await f.get(),accepted);assert.deepEqual(await f.data(route,{method:'PUT',input}),accepted);assert.deepEqual(await f.bytes(),bytes);assert.equal((await f.metadata()).mtimeMs,metadata.mtimeMs);
   safeError(await f.request(route,{method:'PUT',input:write(initial,f.other.id)}),f,'LAST_PROJECT_CONFLICT',409);
   const second=await f.data(route,{method:'PUT',input:write(accepted,f.other.id)});assert.equal(second.revision,2);
   safeError(await f.request(route,{method:'PUT',input}),f,'LAST_PROJECT_CONFLICT',409);assert.deepEqual(await f.get(),second);await f.noEffects();
 });
 
 test('private HTTP preserves token and cookie auth, Host/Origin checks, strict methods, fields and byte limits',{timeout:30000},async t=>{
-  const f=await fixture(t),initial=await f.get(),input=write(initial,f.project.id),before=f.snapshot();
+  const f=await fixture(t),initial=await f.get(),input=write(initial,f.project.id),before=await f.snapshot();
   for(const method of ['GET','PUT']){
     const options={method,...(method==='PUT'?{input}:{})};
     for(const headers of [{},{authorization:'Bearer wrong'}])assert.equal((await f.request(route,{...options,authenticated:false,headers})).status,401);
@@ -195,20 +211,22 @@ test('private HTTP preserves token and cookie auth, Host/Origin checks, strict m
   safeError(await f.request(route,{method:'PUT',input:{...input,workspaceScope:'f'.repeat(64)}}),f,'LAST_PROJECT_SCOPE_MISMATCH',409);
   safeError(await f.request(route,{method:'PUT',input:{...input,instanceId:randomUUID()}}),f,'LAST_PROJECT_STALE_INSTANCE',409);
   safeError(await f.request(route,{method:'PUT',input:{...input,projectId:randomUUID()}}),f,'LAST_PROJECT_NOT_FOUND',404);
-  await assert.rejects(stat(f.file),{code:'ENOENT'});assert.deepEqual(f.snapshot(),before);await f.noEffects();
+  await assert.rejects(stat(f.file),{code:'ENOENT'});assert.deepEqual(await f.snapshot(),before);await f.noEffects();
 });
 
 test('route and storage failure are private, nonrepairing and absent from the operation catalog',{timeout:30000},async t=>{
-  const f=await fixture(t),initial=await f.get(),input=write(initial,f.project.id),before=f.snapshot();
+  const f=await fixture(t),initial=await f.get(),input=write(initial,f.project.id);
+  assert.equal((await f.data(route,{method:'PUT',input})).revision,1,'the fault targets the actual app document');
+  const before=await f.snapshot();
   assert.equal(Object.keys(schemas).some(name=>/last[.-]?project/i.test(name)),false);
   for(const operation of ['last-project.get','last-project.put','lastProject.get','lastProject.put']){const result=await f.request('/api/rpc',{method:'POST',input:{operation,input}});assert.equal(result.status,404);assert.equal(result.body.error.code,'UNKNOWN_OPERATION');}
-  await writeFile(f.file,'PRIVATE corrupt evidence',{mode:0o600});const bytes=await readFile(f.file);
+  await f.corrupt();const bytes=await f.bytes();
   safeError(await f.request(),f,'LAST_PROJECT_STORAGE_UNAVAILABLE',503);safeError(await f.request(route,{method:'PUT',input}),f,'LAST_PROJECT_STORAGE_UNAVAILABLE',503);
-  assert.deepEqual(await readFile(f.file),bytes);assert.deepEqual(f.snapshot(),before);await f.noEffects();
+  assert.deepEqual(await f.bytes(),bytes);assert.deepEqual(await f.snapshot(),before);await f.noEffects();
 });
 
 test('real cold backup excludes fixed locator sidecar and leaves source bytes and metadata intact',{timeout:30000},async t=>{
-  const f=await fixture(t),saved=await f.data(route,{method:'PUT',input:write(await f.get(),f.project.id)});assert.equal(saved.revision,1);await f.noEffects();await f.backend.close();
+  const f=await fixture(t,{legacy:true}),saved=await f.data(route,{method:'PUT',input:write(await f.get(),f.project.id)});assert.equal(saved.revision,1);await f.noEffects();await f.backend.close();
   const bytes=await readFile(f.file),metadata=await stat(f.file),database=await readFile(path.join(f.root,'workbench.sqlite'));
   const result=await createWorkspaceBackup({source:f.root,destination:f.backup}) as BackupResult;assert.equal(result.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:f.backup}),result);
   const manifest=JSON.parse(await readFile(path.join(f.backup,'manifest.json'),'utf8'));assert.deepEqual(manifest.entries.map((entry:{path:string})=>entry.path),['payload/workbench.sqlite']);
@@ -217,8 +235,8 @@ test('real cold backup excludes fixed locator sidecar and leaves source bytes an
 });
 
 test('restored server returns exact unsupported before unsafe locator access and still supports ordinary local editing',{timeout:30000},async t=>{
-  const f=await fixture(t,{restored:true}),before=f.snapshot(),unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'};
-  assert.deepEqual(await f.get(),unsupported);assert.deepEqual(await f.data(route,{method:'PUT',input:{}}),unsupported);assert.deepEqual(f.snapshot(),before);
+  const f=await fixture(t,{restored:true}),before=await f.snapshot(),unsupported={supported:false,reason:'RESTORED_WORKSPACE_UNSUPPORTED'};
+  assert.deepEqual(await f.get(),unsupported);assert.deepEqual(await f.data(route,{method:'PUT',input:{}}),unsupported);assert.deepEqual(await f.snapshot(),before);
   assert.equal((await lstat(f.file)).isSymbolicLink(),true);assert.equal(await readFile(f.unsafeTarget,'utf8'),'RESTORED_SIDECAR_MUST_NOT_BE_READ');
   const project=await f.data('/api/rpc',{method:'POST',input:{operation:'project.create',input:{name:'Explicit restored edit'},expectedWorkspaceOrigin:f.workspaceOrigin}});assert.equal(project.name,'Explicit restored edit');
   assert.deepEqual(await f.get(),unsupported);await f.noEffects();

@@ -33,7 +33,7 @@ export function createProjectHomeServices({db}:Store,{readRecentOpened=()=>({})}
     function chooseCover(assetId:unknown):void{
       const asset=sourceById.get(assetId);
       if(!cover&&asset&&uuid(asset.id)&&typeof asset.mimeType==='string'&&visual.has(asset.mimeType)){
-        const parsed=projectSummaryCoverSchema.safeParse({assetId:asset.id,mimeType:asset.mimeType,url:`/media/${asset.id}`});
+        const parsed=projectSummaryCoverSchema.safeParse({assetId:asset.id,mimeType:asset.mimeType,url:`/api/project-covers/${projectId}`});
         if(parsed.success)cover=parsed.data;
       }
     }

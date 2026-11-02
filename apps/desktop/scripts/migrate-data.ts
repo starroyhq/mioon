@@ -2,7 +2,7 @@ import { cp, mkdir, readdir, lstat, stat, realpath, open } from 'node:fs/promise
 import type {Stats} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openStore } from '@mioon/business';
+import { openLegacyWorkspaceStore } from '@mioon/business/db';
 import { withOrdinaryMigrationSource } from './migration-restore-guard.ts';
 
 function errorCode(error: unknown): string | undefined {
@@ -95,7 +95,7 @@ export async function migrateData(source: string | undefined, destination: strin
   if(copyImports)await cp(importsDirectory,path.join(destinationPath,'agent-imports'),{recursive:true,errorOnExist:true,force:false});
   checked.check();
   // Apply the exact same additive migrations to the copy, then close normally.
-  const store = openStore(destinationPath);
+  const store = openLegacyWorkspaceStore(destinationPath);
   try {
     const integrity = (store.db.prepare('PRAGMA integrity_check').get() as {integrity_check?: unknown}).integrity_check;
     if (integrity !== 'ok') throw new Error('Copied database failed integrity_check; source remains unchanged');

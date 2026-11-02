@@ -15,6 +15,7 @@ import {createServices} from '../packages/business/src/services.ts';
 import {startWorker} from '../packages/business/src/jobs.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {expectedContentMetadata} from './helpers/kernel-content-metadata.ts';
 
 // Synthetic local assets only. Production renderer, decoder and probe are all
 // the existing installed tools; tests are deliberately serial and resource-capped.
@@ -43,11 +44,12 @@ type MediaEvent = ProcessEvent;
 const hash=(bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex');
 async function sandbox(t: {after(fn: () => unknown): void}): Promise<string> {const root=await mkdtemp(path.join(tmpdir(),'mioon-export-media-'));t.after(()=>rm(root,{recursive:true,force:true}));return root;}
 // Another project lives in a store of its own: a store holds one project.
-async function foreignProject(t: {after(fn: () => unknown): void}): Promise<ProjectShape> {
- const store=openStore(await sandbox(t)),services=createServices(store,new Map());
- try{return await services.call('project.create',{name:'Private foreign fixture'}) as ProjectShape;}
- finally{await services.drain();store.close();}
+async function foreignProject(t: {after(fn: () => unknown): void}): Promise<ProjectShape & {store:ReturnType<typeof openStore>}> {
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-export-foreign-')),store=openStore(root),services=createServices(store,new Map());
+ t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});
+ return {...await services.call('project.create',{name:'Private foreign fixture'}) as ProjectShape,store};
 }
+
 const byName=(a: {name: string},b: {name: string}): number => a.name<b.name?-1:a.name>b.name?1:0;
 function wave(): Buffer {
  const samples=3*48000,bytes=Buffer.alloc(44+samples*4);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);
@@ -234,13 +236,13 @@ test('worker capability await cannot encode or overwrite a hostile replacement o
 
 async function sourceOwnershipRace(t: {mock: {method(target: object, name: string, fn: (...args: unknown[]) => unknown): void}; after(fn: () => unknown): void}, {mutation, phase='capability'}: {mutation: string; phase?: string}): Promise<void> {
  const root=await sandbox(t),workspace=path.join(root,'workspace'),store=openStore(workspace) as unknown as LooseStore,services=createServices(store as unknown as Parameters<typeof createServices>[0],new Map()) as unknown as LocalServices;let worker: Awaited<ReturnType<typeof startWorker>> | undefined;
- const state=(): Record<string, Record<string, unknown>[]>=>Object.fromEntries(schemaObjects(store.db as unknown as DatabaseSync).filter(({type,name})=>type==='table'&&name!=='exports').sort(byName).map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
  try{
   const project=await services.call<ProjectShape>('project.create',{name:'Synthetic frozen-source race'}),other=await foreignProject(t);
+  const state=():Record<string,Record<string,unknown>[]>=>Object.fromEntries([[store.db as unknown as DatabaseSync,''],[other.store.db,'foreign:']].flatMap(([database,prefix])=>{const db=database as DatabaseSync;return schemaObjects(db).filter(({type,name})=>type==='table'&&(prefix!==''||name!=='exports')).sort(byName).map(({name})=>[`${prefix}${name}`,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all().map(row=>({...row}))]);}));
   const imported=await services.call<AssetShape>('asset.import',{projectId:project.id,name:'tone.wav',mimeType:'audio/wav',dataBase64:wave().toString('base64')});
   const asset: AssetShape & Record<string, unknown> = {...store.get('assets',imported.id),provenance:'generated'} as unknown as AssetShape & Record<string, unknown>;store.put('assets',asset);
   const shot=await services.call<ProjectShape>('shot.create',{projectId:project.id,title:'Synthetic retained lineage'}),foreignShot={id:randomUUID(),projectId:other.id,title:'Untouched foreign shot'};
-  withoutForeignKeys(store.db as unknown as DatabaseSync,()=>store.put('shots',foreignShot));
+  other.store.put('shots',foreignShot);
   const jobId=randomUUID(),versionId=randomUUID(),sourceSnapshot={projectId:project.id,shotId:shot.id,referenceAssetIds:[],referenceAssets:[]};
   store.put('jobs',{id:jobId,projectId:project.id,shotId:shot.id,versionId,assetId:asset.id,status:'succeeded',providerId:'mock',requestId:randomUUID(),snapshot:sourceSnapshot});
   store.put('versions',{id:versionId,projectId:project.id,shotId:shot.id,jobId,assetId:asset.id,sha256:asset.sha256,number:1,snapshot:sourceSnapshot});
@@ -318,9 +320,10 @@ async function sourceOwnershipRace(t: {mock: {method(target: object, name: strin
   assert.equal(afterMutation.agent_task_target_revisions_v2.filter(isAcceptedExport).length,1);
   // Failing this accepted export persists one terminal status transition. Its
   // exact target advances once; every source, foreign target and receipt stays fixed.
-  const expectedState={...afterMutation,agent_task_target_revisions_v2:afterMutation.agent_task_target_revisions_v2.map(row=>
+  const currentState=state();
+  const expectedState={...afterMutation,...expectedContentMetadata(afterMutation,currentState),agent_task_target_revisions_v2:afterMutation.agent_task_target_revisions_v2.map(row=>
    isAcceptedExport(row)?Object.assign(Object.create(Object.getPrototypeOf(row)),row,{revision:Number(row.revision)+1}):row)};
-  assert.deepEqual(state(),expectedState,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
+  assert.deepEqual(currentState,expectedState,'worker cannot change source, lineage, foreign records, or receipts after ownership drift');
   // 01a83cb applies the owned-output inode fence to every export. A replaced
   // output is refused before the subsequent frozen-source ownership check.
   const rejected=store.get('exports',accepted.id);assert.equal(rejected.status,'failed');assert.equal((rejected.error as {code?: string}).code,phase==='publication-replacement'?'INVALID_TIMELINE_SNAPSHOT':'TIMELINE_SOURCE_UNAVAILABLE');

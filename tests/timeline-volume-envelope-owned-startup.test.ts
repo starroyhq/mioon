@@ -11,7 +11,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
-import {openStore,installCurrentWorkspaceRestoreSchema,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,installCurrentWorkspaceRestoreSchema,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices,hash, type OrdinaryServices, type ServiceStore} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {VOLUME_ENVELOPE_PROFILE,VOLUME_ENVELOPE_LIMITS,createVolumeEnvelopeEvaluator} from '../packages/contracts/src/timeline-volume-envelope.ts';

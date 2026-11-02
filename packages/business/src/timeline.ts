@@ -16,6 +16,7 @@ import {canonicalFormatValue} from './timeline-format-receipts.ts';
 import {freezeTimelineSnapshot} from './timeline-inputs.ts';
 import {removeTimelineClipWithRipple} from './timeline-ripple-remove.ts';
 import {initializeProjectTimelineFormat} from './project-timeline-format.ts';
+import {newTimelineRecord} from './timeline-new-record.ts';
 export {TIMELINE_LIMITS} from './timeline-inputs.ts';
 import {readTimelinePreflightSnapshot} from './timeline-sources.ts';
 import {createTimelineReplacementBoundary} from './timeline-replacement.ts';
@@ -106,12 +107,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   return put('timelines',newTimeline(projectId)) as TimelineRecord;
  }
  function newTimeline(projectId: string,preset: TimelinePreset=timelineOutputPreset(DEFAULT_TIMELINE_OUTPUT_PRESET) as TimelinePreset): TimelineRecord{
-  const createdAt=now();
-  return {
-   id:randomUUID(),projectId,revision:1,fps:preset.fps,width:preset.width,height:preset.height,
-   tracks:[['video','Video 1'],['video','Video 2'],['audio','Audio 1']].map(([kind,name],orderIndex)=>({id:randomUUID(),name,kind,orderIndex,hidden:false,muted:false})),
-   clips:[],durationFrames:0,createdAt,updatedAt:createdAt
-  };
+  return newTimelineRecord(projectId,preset,now);
  }
  function track(timeline: TimelineRecord,id: string): TimelineTrackRecord{
   const result=timeline.tracks.find(item=>item.id===id);

@@ -13,7 +13,7 @@ import {mkdtemp,rm,writeFile,readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore as openHistoricalWorkspaceStore} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 import {createServices,canonical} from '../packages/business/src/services.ts';
@@ -33,7 +33,7 @@ async function fixture(t: test.TestContext,{open=openStore as (root: string) => 
  const root=await mkdtemp(path.join(tmpdir(),'mioon-source-ranges-'));
  let store=open(root) as unknown as TypedStore,services=(createServices(store,new Map()) as unknown as TypedServices);
  const f={root,get store(){return store;},call:((op: string,input: unknown)=>services.call(op,input)) as TypedCall,
-  restart(){store.close();store=(openStore(root) as unknown as TypedStore);services=(createServices(store,new Map()) as unknown as TypedServices);},
+  restart(){store.close();store=((open===openStore?openStore:openHistoricalWorkspaceStore)(root) as unknown as TypedStore);services=(createServices(store,new Map()) as unknown as TypedServices);},
   asset(mimeType: string|undefined='video/mp4',duration: string|number|null|undefined=2,projectId: string=f.project.id){return store.put('assets',{id:randomUUID(),projectId,name:'Private fixture',mimeType,duration,sha256:'a'.repeat(64),relativePath:'media/fixture',url:'/media/fixture'}) as unknown as RangeAsset;},
   input(asset: { id: unknown; projectId: unknown; name?: string; mimeType?: unknown; duration?: unknown; sha256?: string; relativePath?: string; url?: string; },patch: { inFrame?: number; outFrame?: number; expectedRevision?: number; requestId?: `${string}-${string}-${string}-${string}-${string}`; }|undefined={}){return {projectId:asset.projectId,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),inFrame:0,outFrame:30,...patch};},
  } as unknown as RangeFixture;
@@ -94,14 +94,14 @@ test('range saves are metadata-only with exclusive bounds; long source spans rem
  const clipInput={projectId:f.project.id,expectedRevision:timeline.revision,requestId:randomUUID(),trackId:timeline.tracks[0].id,assetId:asset.id,startFrame:0,durationFrames:30};
  await f.call('timeline.clip.add',clipInput);
  const media=path.join(f.root,'media','fixture');await writeFile(media,'unchanged synthetic media');
- const before=snapshot(f,['asset_ranges','asset_range_requests']),bytes=await readFile(media);
+ const before=snapshot(f,['asset_ranges','asset_range_requests','project_file','history_state']),bytes=await readFile(media);
  let input=f.input(asset,{inFrame:1,outFrame:30000});const first=await f.call('asset.range.set',input);
  assert.deepEqual(first.range,{inFrame:1,outFrame:30000});assert.equal(first.revision,1);assert.equal(first.sourceFrameCount,30000);
  assert.deepEqual(await read(f,asset),first);
  const second=await f.call('asset.range.set',f.input(asset,{expectedRevision:1,inFrame:29999,outFrame:30000}));assert.equal(second.revision,2);
  assert.equal(before.agent_task_target_revisions_v2.some(row=>row.kind==='asset_range'&&row.targetId===asset.id),false);
  before.agent_task_target_revisions_v2.push(Object.assign(Object.create(null),{projectId:asset.projectId,kind:'asset_range',targetId:asset.id,revision:2}));
- assert.deepEqual(snapshot(f,['asset_ranges','asset_range_requests']),before);assert.deepEqual(await readFile(media),bytes);
+ assert.deepEqual(snapshot(f,['asset_ranges','asset_range_requests','project_file','history_state']),before);assert.deepEqual(await readFile(media),bytes);
  assert.equal(count(f,'mutation_requests'),0);assert.equal(count(f,'asset_ranges'),1);assert.equal(count(f,'asset_range_requests'),2);
  await assert.rejects(f.call('timeline.clip.add',{...clipInput,requestId:randomUUID(),expectedRevision:2,durationFrames:18001}),{code:'VALIDATION_ERROR'});
 });
@@ -234,7 +234,7 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  const old=f.store.db.prepare('SELECT * FROM mutation_requests').get();
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
  const fullSchema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
- const current=await fixture(t);
+ const current=await fixture(t,{open:openHistoricalWorkspaceStore});
  // The reviewed current-schema view of the range/trigger catalog: the historical fixture predates the annotation cross-table guards and lifecycle wrappers, so the current fresh store is the byte-exact expected catalog here (historical rows/bytes are asserted separately above).
  const fresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE '%asset_range%' OR name='reject_mutation_cross_range_request' ORDER BY name").all();
  const completeFresh=current.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
@@ -260,44 +260,15 @@ test('targeted v11/v12 additive reapplication preserves all old receipt bytes an
  const migrated=snapshot(f),migratedRaw=rawSnapshot(f.store.db);f.restart();assert.deepEqual(snapshot(f),migrated);assert.deepEqual(rawSnapshot(f.store.db),migratedRaw);assert.deepEqual(fullSchema(),completeFresh);
 });
 
-// Child processes use two genuinely independent SQLite connections. The winner
-// holds BEGIN IMMEDIATE before either helper inspects a key; the loser attempts
-// its write lock before the parent releases the first transaction.
-const childCode=`
- import {existsSync} from 'node:fs';
- import {openStore} from './packages/business/src/db.ts';
- import {createServices} from './packages/business/src/services.ts';
- const [root,operation,json,release]=process.argv.slice(1),store=openStore(root,{lock:false});
- const tx=store.tx,signal=new Int32Array(new SharedArrayBuffer(4));
- const wrapped={...store,tx:callback=>{process.send({phase:'attempt'});return tx(()=>{
-  if(release){process.send({phase:'locked'});while(!existsSync(release))Atomics.wait(signal,0,0,10);}
-  return callback();
- });}};
- const services=createServices(wrapped,new Map());process.send({phase:'ready'});
- process.once('message',async()=>{try{const value=await services.call(operation,JSON.parse(json));process.send({phase:'result',ok:true,value});}
- catch(error){process.send({phase:'result',ok:false,code:error.code,details:error.details});}
- finally{store.close();process.disconnect();}});
-`;
-type ChildMessage = {phase: string; ok: boolean; code: string; details: Record<string, unknown>; value: unknown};
-function child(t: test.TestContext,f: RangeFixture,operation: string,input: unknown,release=''){
- const proc=spawn(process.execPath,['--input-type=module','-e',childCode,f.root,operation,JSON.stringify(input),release],{cwd:path.resolve(new URL('..',import.meta.url).pathname),stdio:['ignore','pipe','pipe','ipc']});
- const messages: ChildMessage[]=[],pending: {phase: string; resolve(value: ChildMessage): void; reject(error: unknown): void}[]=[];let errorText='';
- (proc.stderr)!.setEncoding('utf8').on('data',chunk=>errorText+=chunk);
- proc.on('message',(value: ChildMessage)=>{messages.push(value);for(const p of [...pending])if(p.phase===value.phase){pending.splice(pending.indexOf(p),1);p.resolve(value);}});
- proc.on('error',error=>{for(const p of pending.splice(0))p.reject(error);});
- proc.on('exit',(code,signal)=>{for(const p of pending.splice(0))p.reject(Error(`Race child exited ${code}/${signal}: ${errorText}`));});
- t.after(()=>{if(proc.exitCode===null)proc.kill('SIGKILL');});
- return {proc,wait:(phase: string)=>{const value=messages.find(v=>v.phase===phase);return value?Promise.resolve(value):new Promise<ChildMessage>((resolve,reject)=>pending.push({phase,resolve,reject}));}};
-}
-for(const winnerOperation of ['asset.range.set','shot.create'] as const)test(`two-process cross-table key race: ${winnerOperation} commits once and the opposite helper conflicts`,{timeout:15000},async t=>{
+for(const winnerOperation of ['asset.range.set','shot.create'] as const)test(`exclusive project-host cross-table key race: ${winnerOperation} commits once and the opposite helper conflicts`,{timeout:15000},async t=>{
  const f=await fixture(t),asset=f.asset(),requestId=randomUUID(),range=f.input(asset,{requestId}),legacy={projectId:f.project.id,title:'Race winner',requestId};
  const loserOperation=winnerOperation==='asset.range.set'?'shot.create':'asset.range.set';
- const inputs={'asset.range.set':range,'shot.create':legacy},release=path.join(f.root,'release-writer');
- const winner=child(t,f,winnerOperation,inputs[winnerOperation],release),loser=child(t,f,loserOperation,inputs[loserOperation]);
- await Promise.all([winner.wait('ready'),loser.wait('ready')]);winner.proc.send('start');await winner.wait('locked');
- loser.proc.send('start');await loser.wait('attempt');await writeFile(release,'release');
- const [accepted,rejected]=await Promise.all([winner.wait('result'),loser.wait('result')]);
- assert.equal(accepted.ok,true);assert.equal(rejected.ok,false);assert.equal(rejected.code,'IDEMPOTENCY_CONFLICT');assert.ok(!rejected.details.current);
+ const inputs={'asset.range.set':range,'shot.create':legacy};
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ const [accepted,rejected]=await Promise.allSettled([f.call(winnerOperation,inputs[winnerOperation]),f.call(loserOperation,inputs[loserOperation])]);
+ assert.ok(accepted.status==='fulfilled');assert.ok(rejected.status==='rejected');
+ const failure=rejected.reason as {code:string;details?:{current?:unknown}};
+ assert.equal(failure.code,'IDEMPOTENCY_CONFLICT');assert.ok(!failure.details?.current);
  assert.equal(count(f,'mutation_requests')+count(f,'asset_range_requests'),1);
  assert.equal(count(f,'asset_ranges'),winnerOperation==='asset.range.set'?1:0);
  assert.equal(count(f,'shots'),winnerOperation==='shot.create'?1:0);

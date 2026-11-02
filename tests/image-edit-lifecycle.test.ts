@@ -37,8 +37,8 @@ let pngPromise: ReturnType<typeof renderMockImagePng> | undefined;const png=()=>
 const code=(expected: string)=>(error: { code: string; })=>error.code===expected;
 const noPrivate=(value: unknown)=>assert.doesNotMatch(JSON.stringify(value),/"(?:relativePath|bytes|sourceBytes|canonicalIntent|canonicalInput|apiKey|path)"\s*:/);
 async function fixture(t: test.TestContext,{autoRun=true,generate,liveGenerate,fault,comfySettings,comfyConnector}:ImageFixtureOptions={}){
- const root=mkdtempSync(path.join(tmpdir(),'mioon-image-edit-')),store=(openStore(root) as TypedStore),projectId=randomUUID(),otherProjectId=randomUUID();
- store.put('projects',{id:projectId,name:'Image edits',description:'',revision:1});
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-image-edit-')),native=openStore(root),store=(native as TypedStore),foreignStore=openStore(path.join(root,'foreign')),projectId=native.projectId,otherProjectId=foreignStore.projectId;
+ store.put('projects',{id:projectId,name:'Image edits',description:'',revision:1});foreignStore.put('projects',{id:otherProjectId,name:'Actual foreign image project',revision:1});
  let revision=1,enabled=true,calls=0,posts=0;
  const settings={
   [IMAGE_SETTINGS_READ_CURRENT]:()=>({revision,configuration:{...DEFAULT_IMAGE_CONFIGURATION,enabled},secret:{configured:true}}),
@@ -49,7 +49,7 @@ async function fixture(t: test.TestContext,{autoRun=true,generate,liveGenerate,f
  const images=(createImageServices(store,{autoRun,generate:adapter,settings,liveGateway,fault,comfySettings,comfyConnector} as unknown as ImageServicesOptions) as TypedImageServices);
  const bytes=await png(),assetId=randomUUID(),asset={id:assetId,projectId,name:'Source.png',mimeType:'image/png' as const,provenance:'user-import',sha256:sha(bytes),width:1024,height:1024,sizeBytes:bytes.length,relativePath:`media/${assetId}.png`,createdAt:new Date().toISOString()};
  store.put('assets',asset);writeFileSync(path.join(root,asset.relativePath),bytes,{mode:0o600});
- const f={root,store,projectId,otherProjectId,images,asset,bytes,get calls(){return calls;},get posts(){return posts;},
+ const f={root,store,native,foreignStore,projectId,otherProjectId,images,asset,bytes,get calls(){return calls;},get posts(){return posts;},
   call:(((operation: string|number,input: unknown)=>images.handlers[operation](input)) as unknown as TypedImageCall),
   input:(patch?: Record<string, unknown>)=>({projectId,requestId:randomUUID(),name:'Image group',providerId:'mock',model:IMAGE_MODELS.mock,prompt:'Use the selected source to make a variation.',options:{...IMAGE_FIXED_OPTIONS},purpose:'edit',inputImage:{assetId,sha256:asset.sha256},...patch}),
   configure:(patch: { revision?: number; enabled?: boolean; })=>{revision=patch.revision??revision;enabled=patch.enabled??enabled;},
@@ -59,7 +59,7 @@ async function fixture(t: test.TestContext,{autoRun=true,generate,liveGenerate,f
   approve:(review: { id: unknown; })=>images.approveReviewed({projectId,reviewId:review.id,expectedRevision:1}),
   row:(id: string)=>store.db.prepare('SELECT * FROM image_tasks WHERE id=?').get(id) as Record<string,import('node:sqlite').SQLOutputValue> & {state:string;snapshot:string},
  };
- t.after(async()=>{await images.drain();store.close();rmSync(root,{recursive:true,force:true});});return f;
+ t.after(async()=>{await images.drain();foreignStore.close();store.close();rmSync(root,{recursive:true,force:true});});return f;
 }
 async function terminal(f: Awaited<ReturnType<typeof fixture>>,id: string,expected: string){
  const until=Date.now()+10000;
@@ -185,14 +185,18 @@ function injectEdit(f: Awaited<ReturnType<typeof fixture>>,sourceImage: EditSour
  const asset={...f.asset,id:assetId,name:'Edited.png',provenance:'synthetic-mock',relativePath:`media/${assetId}.png`};
  const version={id:versionId,projectId:f.projectId,groupId,taskId:id,number:1,assetId,sha256:receipt.sha256,mimeType:'image/png' as const,width:1024,height:1024,byteLength:receipt.byteLength,isMock:true,providerId:'mock',model:IMAGE_MODELS.mock,options:{...IMAGE_FIXED_OPTIONS},purpose:'edit',inputImage:input.inputImage,sourceImage,createdAt:timestamp};
  f.store.tx(()=>{
-  f.store.db.prepare('INSERT INTO image_groups VALUES(?,?,?,2,?,NULL,?,?)').run(groupId,f.projectId,input.name,versionId,timestamp,timestamp);
-  f.store.db.prepare("INSERT INTO image_tasks VALUES(?,?,?,?,?,?,?,'succeeded',4,1,?,?,NULL,?,?)").run(id,f.projectId,groupId,input.requestId,inputHash,canonical(input),canonical(snapshot),canonical(receipt),versionId,timestamp,timestamp);
+  // Cross-file references are checked immediately: construct the same retained
+  // result through its valid persisting -> succeeded publication order.
+  f.store.db.prepare('INSERT INTO image_groups VALUES(?,?,?,1,NULL,NULL,?,?)').run(groupId,f.projectId,input.name,timestamp,timestamp);
+  f.store.db.prepare("INSERT INTO image_tasks VALUES(?,?,?,?,?,?,?,'persisting',3,1,?,NULL,NULL,?,?)").run(id,f.projectId,groupId,input.requestId,inputHash,canonical(input),canonical(snapshot),canonical(receipt),timestamp,timestamp);
   f.store.put('assets',asset);f.store.db.prepare('INSERT INTO image_versions VALUES(?,?,?,?,?,?,?)').run(versionId,f.projectId,groupId,id,1,assetId,JSON.stringify(version));
+  f.store.db.prepare("UPDATE image_tasks SET state='succeeded',revision=4,versionId=? WHERE id=?").run(versionId,id);
+  f.store.db.prepare('UPDATE image_groups SET revision=2,headVersionId=? WHERE id=?').run(versionId,groupId);
  });
  return {id,groupId,assetId,versionId,input,snapshot,receipt,version,sourceImage:{assetId,sha256:asset.sha256,mimeType:'image/png' as const,byteLength:asset.sizeBytes,width:1024,height:1024,name:asset.name,origin:{kind:'synthetic-mock' as const,imageSource:{imageGroupId:groupId,imageTaskId:id,imageVersionId:versionId}}}};
 }
 const importedDescriptor=(f: Awaited<ReturnType<typeof fixture>>)=>({assetId:f.asset.id,sha256:f.asset.sha256,mimeType:'image/png' as const,byteLength:f.bytes.length,width:1024,height:1024,name:f.asset.name,origin:{kind:'user-import' as const}});
-function removeIdentityTriggers(db: DatabaseSync){for(const {name} of schemaObjects(db).filter(({type,tbl_name})=>type==='trigger'&&(tbl_name==='image_tasks'||tbl_name==='image_versions')))db.exec(`DROP TRIGGER "${name}"`);db.exec('PRAGMA ignore_check_constraints=ON');}
+function removeIdentityTriggers(db: DatabaseSync){for(const {name} of schemaObjects(db).filter(({type,tbl_name,name})=>type==='trigger'&&!String(name).startsWith('project_file_fk_')&&(tbl_name==='image_tasks'||tbl_name==='image_versions')))db.exec(`DROP TRIGGER "${name}"`);db.exec('PRAGMA ignore_check_constraints=ON');}
 
 test('actual edit-source cycle is rejected rather than hidden by pending caches',async t=>{
  const f=await fixture(t,{autoRun:false}),one=injectEdit(f,importedDescriptor(f)),two=injectEdit(f,one.sourceImage);
@@ -302,10 +306,15 @@ test('source verification memory admission is shared across wrappers and release
  await Promise.all([one.verify(input),two.verify(input)]);
 });
 
-test('source verification memory admission bounds all projects sharing a DB handle',async t=>{
- const f=await fixture(t,{autoRun:false}),resolver=createImageEditSourceResolver(f.store),inputs=[f.input()];
- for(let index=0;index<2;index++){const projectId=randomUUID(),assetId=randomUUID(),asset={...f.asset,id:assetId,projectId,relativePath:`media/${assetId}.png`};f.store.put('projects',{id:projectId,name:'Other source project'});f.store.put('assets',asset);writeFileSync(path.join(f.root,asset.relativePath),f.bytes,{mode:0o600});inputs.push(f.input({projectId,inputImage:{assetId,sha256:asset.sha256}}));}
- const pending=[resolver.verify(inputs[0]),resolver.verify(inputs[0]),resolver.verify(inputs[1]),resolver.verify(inputs[1])];await assert.rejects(resolver.verify(inputs[2]),code('IMAGE_QUEUE_FULL'));await Promise.all(pending);assert.equal((await resolver.verify(inputs[2])).descriptor.assetId,inputs[2].inputImage.assetId);
+test('source verification memory admission is bounded per real project and independent across database handles',async t=>{
+ const fixtures=await Promise.all(Array.from({length:3},()=>fixture(t,{autoRun:false}))),resolvers=fixtures.map(f=>createImageEditSourceResolver(f.store)),inputs=fixtures.map(f=>f.input());
+ assert.notEqual(fixtures[0].store.db,fixtures[1].store.db);assert.notEqual(fixtures[1].store.db,fixtures[2].store.db);
+ const changes=fixtures.map(f=>f.store.db.prepare('SELECT total_changes() n').get());
+ const pending=[resolvers[0].verify(inputs[0]),resolvers[0].verify(inputs[0]),resolvers[1].verify(inputs[1]),resolvers[1].verify(inputs[1])];
+ await assert.rejects(resolvers[0].verify(inputs[0]),code('IMAGE_QUEUE_FULL'));
+ const independent=await Promise.all([resolvers[2].verify(inputs[2]),resolvers[2].verify(inputs[2])]);assert.equal(independent.length,2);
+ await Promise.all(pending);assert.equal((await resolvers[2].verify(inputs[2])).descriptor.assetId,inputs[2].inputImage.assetId);
+ assert.deepEqual(fixtures.map(f=>f.store.db.prepare('SELECT total_changes() n').get()),changes);
 });
 
 test('verification admission releases its captured project bucket after caller input mutation',async t=>{

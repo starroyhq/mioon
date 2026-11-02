@@ -24,7 +24,7 @@ function boundary(phase: string): never|void{
  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0);
  throw Error('A crash-only boundary unexpectedly resumed');
 }
-const delivery=createLocalDelivery({root,storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
+const delivery=createLocalDelivery({root:store.localDir,databaseFile:path.join(store.localDir,'history.db'),storage:{readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile},
  guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),
   readTimeline:(projectId: string)=>createTimelineRecoveryBoundary(store.db,{projectId}).read({sourceSemantics:false}),
   isRenderInput:(value: unknown)=>schemas['timeline.render'].safeParse(value).success,

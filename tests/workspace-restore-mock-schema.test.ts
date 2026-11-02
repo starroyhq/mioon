@@ -7,7 +7,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {initializeLegacyWorkspaceSchema} from '../packages/business/src/workspace-fixed-schema.ts';
 import {createMockProvider} from '../packages/business/src/providers/mock.ts';
 import {classifyWorkspaceSchema,installWorkspaceRestoreSchema,validateWorkspaceRestoreSchema} from '../packages/business/src/workspace-restore-schema.ts';

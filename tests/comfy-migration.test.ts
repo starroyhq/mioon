@@ -11,7 +11,7 @@ import path from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
 import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
 import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {canonicalImageInput as canonical} from '../packages/contracts/src/images.ts';
 import {COMFY_IMAGE_OPTIONS,COMFY_IMAGE_POLICY,DEFAULT_COMFY_IMAGE_CONFIGURATION} from '../packages/contracts/src/comfy-images.ts';
 import {buildComfyWorkflow,hashComfyWorkflow} from '../packages/business/src/comfy/workflow.ts';

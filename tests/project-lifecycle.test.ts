@@ -11,7 +11,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,rmSync,writeFileSync,readFileSync,existsSync,unlinkSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore,ownsStoreLock,getWorkspaceRestoreContext,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,ownsStoreLock,getWorkspaceRestoreContext,classifyCurrentWorkspaceSchema} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createProjectLifecycleServices} from '../packages/business/src/project-lifecycle.ts';
 import {createLocalDrafts} from '../packages/business/src/local-drafts.ts';

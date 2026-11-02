@@ -10,7 +10,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import type {DatabaseSync} from 'node:sqlite';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {readCurrentWorkspaceRole} from '../packages/business/src/workspace-schema-dispatch.ts';
@@ -30,9 +30,9 @@ interface Failure {code?: string; status?: number; details?: Row}
 const angle=(position: string,focal='standard'): SubjectVariantSpec=>({kind:'angle',position,focal} as SubjectVariantSpec);
 const sha=(bytes: Buffer): string=>createHash('sha256').update(bytes).digest('hex');
 
-async function fixture(t: TestContext,{autoRun=true}: {autoRun?: boolean}={}){
+async function fixture(t: TestContext,{autoRun=true,opener=openStore}: {autoRun?: boolean;opener?:typeof openStore|typeof openLegacyWorkspaceStore}={}){
  const root=mkdtempSync(path.join(tmpdir(),'mioon-subject-variants-'));
- let store=openStore(root),services=createServices(store,new Map(),{imageOptions:{autoRun}}),closed=false;
+ let store=opener(root),services=createServices(store,new Map(),{imageOptions:{autoRun}}),closed=false;
  const call=<T=Row>(operation: string,input: unknown): Promise<T>=>services.call(operation,input) as Promise<T>;
  const project=await call<{id: string}>('project.create',{name:'Subject variants'}),projectId=project.id;
  async function asset(patch: Row={},{width=768,height=1024}: {width?: number; height?: number}={}): Promise<{id: string}> {
@@ -54,7 +54,7 @@ async function fixture(t: TestContext,{autoRun=true}: {autoRun?: boolean}={}){
   },
   subjectNow:async()=>(await call<{items: Subject[]}>('subject.list',{projectId})).items.find(item=>item.id===subject.id)!,
   versions:async()=>(await call<{items: Version[]}>('subject.version.list',{projectId,subjectId:subject.id})).items,
-  async restart(){await services.drain?.();store.close();store=openStore(root);services=createServices(store,new Map(),{imageOptions:{autoRun}});},
+  async restart(){await services.drain?.();store.close();store=opener(root);services=createServices(store,new Map(),{imageOptions:{autoRun}});},
   async stop(){await services.drain?.();store.close();closed=true;},
  };
  t.after(async()=>{if(!closed){await services.drain?.();store.close();}rmSync(root,{recursive:true,force:true});});
@@ -196,7 +196,7 @@ test('storage guards keep variants out of the head and bound to an active batch'
 });
 
 test('a current backup restores as a copy that holds every variant row and refuses variant operations',async t=>{
- const f=await fixture(t),kept=await f.create([angle('front'),angle('left')]);await f.submit(kept);await f.settled(kept);
+ const f=await fixture(t,{opener:openLegacyWorkspaceStore}),kept=await f.create([angle('front'),angle('left')]);await f.submit(kept);await f.settled(kept);
  const hidden=await f.create([angle('right')]);await f.submit(hidden);const done=await f.settled(hidden);
  await f.call('subject.variants.undo',{projectId:f.projectId,batchId:hidden.id,expectedRevision:done.revision,requestId:randomUUID()});
  const visible=(await f.versions()).map(version=>version.id);assert.equal(visible.length,3);
@@ -208,7 +208,7 @@ test('a current backup restores as a copy that holds every variant row and refus
  assert.equal((await createWorkspaceBackup({source:f.root,destination:backup})).databaseSchemaVersion,CURRENT_ORDINARY_SCHEMA);
  const result=await restoreWorkspaceBackup({directory:backup,destination:restored});
  assert.deepEqual([result.sourceSchema,result.databaseSchemaVersion,result.profile],[CURRENT_ORDINARY_SCHEMA,CURRENT_RESTORED_SCHEMA,CURRENT_RESTORE_PROFILE]);
- const store=openStore(restored),services=createServices(store,new Map());
+ const store=openLegacyWorkspaceStore(restored),services=createServices(store,new Map());
  t.after(async()=>{await services.drain?.();store.close();});
  assert.equal(readCurrentWorkspaceRole(store.db),CURRENT_RESTORED_ROLE);
  assert.deepEqual(rows(store.db),before,'every subject, version, batch, item and receipt is kept byte for byte');
@@ -229,7 +229,7 @@ test('a current backup restores as a copy that holds every variant row and refus
 });
 
 test('a project package leaves hidden variant versions behind and imports the rest with their labels',async t=>{
- const f=await fixture(t),kept=await f.create([angle('front')]);await f.submit(kept);await f.settled(kept);
+ const f=await fixture(t,{opener:openLegacyWorkspaceStore}),kept=await f.create([angle('front')]);await f.submit(kept);await f.settled(kept);
  const hidden=await f.create([angle('left'),angle('right')]);await f.submit(hidden);const done=await f.settled(hidden);
  await f.call('subject.variants.undo',{projectId:f.projectId,batchId:hidden.id,expectedRevision:done.revision,requestId:randomUUID()});
  const visible=await f.versions();assert.deepEqual(visible.map(version=>version.number),[1,2]);
@@ -241,7 +241,7 @@ test('a project package leaves hidden variant versions behind and imports the re
  const document=packageDocumentBytes(collected.document),manifest=buildManifest({collected,document,appVersion:'test',options,name:'Subject variants'});
  await pipeline(Readable.from(writeProjectPackage({manifest,document,media:collected.media.map(entry=>entry.source)})),createWriteStream(file));
  const read=await readProjectPackage({source:createReadStream(file),destination:staging});
- const target=openStore(targetRoot),services=createServices(target,new Map());t.after(async()=>{await services.drain?.();target.close();});
+ const target=openLegacyWorkspaceStore(targetRoot),services=createServices(target,new Map());t.after(async()=>{await services.drain?.();target.close();});
  const {projectId}=createProjectFromDocument(target as never,{document:read.document as never,files:new Map([...read.media].map(([key,value])=>[key,value.file])),name:'Imported variants',move:true});
  const subject=(await services.call('subject.list',{projectId}) as {items: Subject[]}).items[0]!;
  // The revision still counts the hidden numbers; the head stays the original version.

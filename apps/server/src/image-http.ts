@@ -4,8 +4,8 @@ import {sanitizeImageSettingsResult, sanitizeCustomImageSettingsResult, sanitize
 import type {createImageSettings, createCustomImageSettings} from '@mioon/business/images/settings';
 import {safeImageReviewError} from '@mioon/business/images/reviews';
 import {safeImageServiceError} from '@mioon/business/images';
-import {rejectProjectMismatch} from './project-routes.ts';
-import type {ProjectAddress} from './project-routes.ts';
+import {rejectProjectMismatch} from './project-host/request.ts';
+import type {ProjectAddress} from './project-host/request.ts';
 
 type ImageSettings = Awaited<ReturnType<typeof createImageSettings>>;
 type CustomImageSettings = Awaited<ReturnType<typeof createCustomImageSettings>>;

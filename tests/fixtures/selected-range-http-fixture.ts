@@ -1,4 +1,4 @@
-import {projectApiPath} from '../../packages/contracts/src/project-file.ts';
+import {projectApiPath, parseProjectApiPath} from '../../packages/contracts/src/project-file.ts';
 import {rpcPathFor} from '../../packages/contracts/src/project-addressing.ts';
 /** Synthetic loopback listener, not the full desktop server. It uses the real
  * shared services, SQLite, observation adapter and private-delivery adapter.
@@ -10,10 +10,14 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID, createHash} from 'node:crypto';
 import {deflateSync} from 'node:zlib';
-import {mkdtemp, readFile, readdir, writeFile, rm, realpath} from 'node:fs/promises';
+import {mkdtemp, readFile, readdir, writeFile, rm, realpath, stat} from 'node:fs/promises';
 import {schemas, parse, isTimelineMutationResponse, hasRequestNotAppliedProof, publicValue, AppError} from '@mioon/contracts';
 import {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile} from '@mioon/contracts/private-storage';
-import {openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
+import {openStore, openLegacyWorkspaceStore, ownsStoreLock, getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
+import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import {isProjectStore, isProjectFileHeld} from '../../packages/business/src/project-file/index.ts';
+import {isAppLibraryHeld} from '../../packages/business/src/app-db/index.ts';
+import {testProjectAppLibrary} from '../../packages/business/src/project-service-application.ts';
 import {createServices, hash} from '../../packages/business/src/services.ts';
 import {createLocalDelivery, LOCAL_DELIVERY_FILENAME} from '../../packages/business/src/local-delivery.ts';
 import {createTimelinePreflightServices} from '../../packages/business/src/timeline-preflight.ts';
@@ -21,7 +25,7 @@ import {createTimelineRecoveryBoundary, readTimelineReceipt} from '../../package
 import {onMediaProcess} from '../../packages/business/src/media-processes.ts';
 import {callObservedRpc} from '../../apps/server/src/rpc-observation.ts';
 import {createLocalDeliveryHttp} from '../../apps/server/src/local-delivery-http.ts';
-import {projectRouteTarget} from '../../apps/server/src/project-routes.ts';
+import {projectHandlerTarget} from '../../apps/server/src/project-host/request.ts';
 import type {ServerResponse} from 'node:http';
 
 export const TOKEN = 'selected-range-synthetic-loopback-token';
@@ -54,7 +58,14 @@ async function files(root: string, relative = ''): Promise<FileEntry[]> {
   for (const entry of await readdir(path.join(root, relative), {withFileTypes: true})) {
     const name = path.join(relative, entry.name);
     if (entry.isDirectory()) result.push({directory: name}, ...await files(root, name));
-    else if (!/^workbench\.sqlite(?:-wal|-shm)?$/.test(name) && name !== 'server.lock') result.push({name, hash: sha(await readFile(path.join(root, name)))});
+    else {
+      const info = await stat(path.join(root, name), {bigint: true});
+      const identity = {dev: String(info.dev), ino: String(info.ino)};
+      // Snapshot database content through its owning connection below. Opening
+      // and closing a second fs descriptor would release SQLite's POSIX locks.
+      if (isProjectFileHeld(identity) || isAppLibraryHeld(identity) || /(?:workbench\.sqlite|project\.mioon|history\.db|cache\.db|app-library\.db)(?:-wal|-shm|-journal)?$/.test(entry.name) || entry.name === 'server.lock') continue;
+      result.push({name, hash: sha(await readFile(path.join(root, name)))});
+    }
   }
   return result.sort((a: FileEntry, b: FileEntry) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
@@ -63,14 +74,14 @@ const send = (response: ServerResponse, status: number, body: unknown): void => 
   response.writeHead(status, {'content-type': 'application/json; charset=utf-8'}); response.end(JSON.stringify(body));
 };
 
-type Store = ReturnType<typeof openStore>;
+type Store = WorkspaceStore;
 type Services = ReturnType<typeof createServices>;
 type Delivery = ReturnType<typeof createLocalDelivery>;
 type DeliveryHttp = ReturnType<typeof createLocalDeliveryHttp>;
 interface ObservationRecord {path: string; body: unknown; status: number|undefined}
 interface CancellationState {service: ReturnType<typeof createTimelinePreflightServices>; entered: PromiseWithResolvers<void>; aborted: PromiseWithResolvers<void>; settled: PromiseWithResolvers<void>}
 export interface SelectedRangeFixtureOptions {[key: string]: unknown}
-export async function selectedRangeFixture(t: unknown): Promise<Record<string, unknown>> {
+export async function selectedRangeFixture(t: unknown, {legacy = false}: {legacy?: boolean} = {}): Promise<Record<string, unknown>> {
   const root = await realpath(await mkdtemp(path.join(tmpdir(), 'mioon-selected-range-wire-')));
   const dispatches: unknown[] = [], submissions: unknown[] = [], observations: ObservationRecord[] = [], media: unknown[] = [], faults: string[] = [], capabilityChecks: unknown[] = [];
   let store: Store|null = null, services: Services|null = null, delivery: Delivery|null = null, deliveryHttp: DeliveryHttp|null = null;
@@ -79,13 +90,14 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
   let fault: (point: string)=>void = () => {};
   const off = onMediaProcess((event: unknown) => media.push(event));
   const reopen = (): void => {
-    store = openStore(root);
+    store = legacy ? openLegacyWorkspaceStore(root) : openStore(root);
     services = createServices(store!, new Map(), {env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}, exportOptions: {
       // Admission-only deterministic proof; encoding correctness has separate
       // real-media gates. No renderer, model or provider is started here.
       inspect: async (value: unknown) => {capabilityChecks.push(structuredClone(value)); return {status: 'available', code: 'EXPORT_CAPABILITY_AVAILABLE'};},
     }});
-    delivery = createLocalDelivery({root, storage: {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile},
+    const localRoot = isProjectStore(store) ? store.localDir : root;
+    delivery = createLocalDelivery({root: localRoot, ...(isProjectStore(store) ? {databaseFile: path.join(localRoot, 'history.db')} : {}), storage: {readPrivateFile, writePrivateFileAtomic, validatePrivateDirectory, validateManagedFile},
       fault: (point: string) => fault(point), guards: {
         ownsLock: () => ownsStoreLock(store!), isRestored: () => Boolean(getWorkspaceRestoreContext(store!)),
         readTimeline: (projectId: string) => createTimelineRecoveryBoundary(store!.db, {projectId}).read({sourceSemantics: false}),
@@ -132,7 +144,7 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
     server = http.createServer(async (request: import('node:http').IncomingMessage, response: ServerResponse) => {
       const url = new URL(request.url ?? '', `http://${String(request.headers.host)}`), requestedPath=url.pathname;
       // Serve a project address at the route it replaces, as the server does.
-      const scoped = projectRouteTarget(url.pathname);
+      const scoped = (parseProjectApiPath(url.pathname) ? projectHandlerTarget(parseProjectApiPath(url.pathname)!) : null);
       if (scoped) url.pathname = scoped.pathname;
       if (request.headers.authorization !== `Bearer ${TOKEN}`) return send(response, 401, {ok: false, error: {code: 'UNAUTHORIZED'}});
       if (request.headers.origin && request.headers.origin !== f.url) return send(response, 403, {ok: false, error: {code: 'ORIGIN_REJECTED'}});
@@ -174,10 +186,23 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
     await bounded(new Promise<void>((resolve, reject) => {server!.once('error', reject); server!.listen(0, '127.0.0.1', () => resolve());}), 'Synthetic listener startup');
   }
   const f = {root, project, timeline, sources, dispatches, submissions, observations, media, capabilityChecks,
-    file: path.join(root, LOCAL_DELIVERY_FILENAME), get store(): Store {if(!store)throw Error('Store not open');return store;}, get services(): Services {if(!services)throw Error('Services not open');return services;}, get delivery(): Delivery {if(!delivery)throw Error('Delivery not started');return delivery;},
+    get file(): string {if(!store)throw Error('Store not open');return path.join(isProjectStore(store) ? store.localDir : root, LOCAL_DELIVERY_FILENAME);}, get store(): Store {if(!store)throw Error('Store not open');return store;}, get services(): Services {if(!services)throw Error('Services not open');return services;}, get delivery(): Delivery {if(!delivery)throw Error('Delivery not started');return delivery;},
     get url(): string {const address=server!.address();const port=typeof address==='object'&&address?address.port:0;return `http://127.0.0.1:${port}`;},
-    rows: (): Record<string, unknown[]> => Object.fromEntries((store!.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[])
-      .map(({name}) => [name, store!.db.prepare(`SELECT * FROM "${String(name).replaceAll('"', '""')}" ORDER BY rowid`).all()])),
+    rows: (): Record<string, unknown[]> => {
+      const result: Record<string, unknown[]> = {};
+      const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"';
+      const snapshot = (db: Store['db'], schema: string, prefix = '') => {
+        result[prefix + schema + '.sqlite_schema'] = db.prepare(`SELECT * FROM ${quote(schema)}.sqlite_schema ORDER BY type,name`).all();
+        for (const row of db.prepare(`SELECT name FROM ${quote(schema)}.sqlite_schema WHERE type='table' ORDER BY name`).all()) {
+          const name = String(row.name);
+          result[prefix + (Object.hasOwn(result, name) ? schema + '.' + name : name)] = db.prepare(`SELECT * FROM ${quote(schema)}.${quote(name)} ORDER BY rowid`).all();
+        }
+      };
+      for (const row of store!.db.prepare('PRAGMA database_list').all()) if (row.name !== 'temp') snapshot(store!.db, String(row.name));
+      const app = testProjectAppLibrary(store);
+      if (app) snapshot(app.db, 'main', 'app.');
+      return result;
+    },
     receipt: (requestId: string) => store!.db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(requestId),
     async checkpoint(): Promise<{rows: Record<string, unknown[]>; files: FileEntry[]}> {return {rows: f.rows(), files: await files(root)};},
     async unchanged(before: unknown): Promise<void> {assert.deepEqual(await f.checkpoint(), before);},

@@ -9,7 +9,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
@@ -25,9 +25,9 @@ const at='2026-10-23T00:00:00.000Z';
 const writes=['timelines','timeline_history','timeline_history_cursors','timeline_requests'];
 const code=(expected: string,check: ((arg0?: unknown) => unknown)|undefined=()=>true)=>(error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; })=>(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code===expected&&check(error);
 
-async function fixture(t: test.TestContext){
+async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-shot-sync-')));
- const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);let closed=false;
+ const store=(opener(root) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);let closed=false;
  const _strictFixtureBase={root,store,call:<O extends string>(op: O, input?: unknown) => services.call(op,input) as Promise<FixtureServiceResult<O>>,
   close(){if(!closed){closed=true;store.close();}},
   capture:()=>Object.fromEntries(writes.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])),
@@ -242,7 +242,7 @@ test('both operations stay out of the durable edit-task ledger, whose table chec
 }) as unknown as test.TestFn));
 
 test('shot-sync history and receipts survive backup and restore; restored copies only replay them', async t => {
- const f=await fixture(t),a=await f.shot('Shot A',[10,10],0),clip=await f.add(((a.versions[0].asset) as unknown as Parameters<typeof f.add>[0]));
+ const f=await fixture(t,openLegacyWorkspaceStore),a=await f.shot('Shot A',[10,10],0),clip=await f.add(((a.versions[0].asset) as unknown as Parameters<typeof f.add>[0]));
  await f.select(a.id,a.versions[1].id);await f.shot('Shot B',[2],0);
  const refreshInput=f.request(await f.timeline(),{clipIds:[(clip)!.id]}),refreshed=await f.call(REFRESH,refreshInput);
  const appendInput=f.request(((refreshed.timeline) as unknown as Parameters<NonNullable<(typeof f)["request"]>>[0])),appended=await f.call(APPEND,appendInput);
@@ -251,7 +251,7 @@ test('shot-sync history and receipts survive backup and restore; restored copies
  t.after(()=>rm(base,{recursive:true,force:true}));
  await (createWorkspaceBackup({source:f.root,destination:path.join(base,'backup')}) as Promise<BackupResult>);
  await (restoreWorkspaceBackup({directory:path.join(base,'backup'),destination:path.join(base,'restored')}) as Promise<RestoreResult>);
- const store=(openStore(path.join(base,'restored')) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
+ const store=(openLegacyWorkspaceStore(path.join(base,'restored')) as FixtureStore),services=(createServices(store,new Map()) as FixtureServices);
  t.after(()=>store.close());
  const history=await services.call('timeline.history.get',{projectId:f.projectId});
  assert.equal((history.undoEntry)!.operation,APPEND);

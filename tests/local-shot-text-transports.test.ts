@@ -1,5 +1,6 @@
+import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
+import {CONVERTED_TEMP_TRIGGERS} from '../packages/business/src/project-file/cross-file/converted-triggers.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
-import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
@@ -10,8 +11,6 @@ type WireExecution={envelope:WireEnvelope;response:MediaShot|null};
 type WireResponse<T=WireEnvelope>={status:number;body:RpcEnvelope<T>};
 interface WireOptions{method?:string;input?:unknown;headers?:Record<string,string>;authenticated?:boolean}
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
-import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -26,9 +25,6 @@ import {createServerProject} from './helpers/project-database.ts';
 import {readProjectState} from './helpers/project-state.ts';
 import {schemas} from '@mioon/contracts';
 import {createLocalShotTextSchemas,isLocalShotTextMutationResponse} from '@mioon/contracts/local-shot-text';
-import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
-// Exact table names of the independently reviewed layers after schema52.
-const reviewedLayerTables=new Set(reviewedTablesAfter(52).map(([table])=>table));
 const token='synthetic-local-shot-text-http-token',route=(projectId:string)=>projectApiPath(projectId,'local-shot-text');
 const sha=(value: import("node:crypto").BinaryLike)=>createHash('sha256').update(value).digest('hex');
 const contract=createLocalShotTextSchemas(value=>schemas['shot.update'].safeParse(value).success);
@@ -49,17 +45,22 @@ async function fixture(t: test.TestContext){const parent=await realpath(await mk
  // connection. The callback is synchronous, so no write lands between its
  // reads, and the server's connection is never switched to query_only.
  const rows=()=>inspect(project.id,db=>{
-  const state=readProjectState(db),schema=withoutReviewedCurrentAgentObjects(state.schema as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]),names=new Set(currentOrdinary52Delta.objectNames);
-  const objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
-  assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
-  assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
-  assert.equal(sha(JSON.stringify(objects)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
-  assert.deepEqual((schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
-  for(const name of Object.keys(state.tables))
-   assert.ok(/^[a-z_]+$/.test(name)||Object.hasOwn(currentOrdinary52Delta.tables,name)||reviewedLayerTables.has(name),'only safe legacy, independently frozen52 or reviewed later-layer table names');
+  const state=readProjectState(db),taskObject=(name:string)=>!name.startsWith('project_file_')&&/(?:^|_)agent_(?:task|target)_/u.test(name);
+  const manifest=Object.values(SCHEMA_MANIFEST).flatMap(value=>[...value.entries]);
+  const sort=<T extends {type:string;name:string}>(rows:T[])=>rows.sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name));
+  const expected=sort([...manifest.filter(entry=>taskObject(entry.name)),...CONVERTED_TEMP_TRIGGERS.filter(entry=>taskObject(entry.name)).map(entry=>({
+    type:'trigger',name:entry.name,tbl_name:entry.table,sha256:sha(entry.sql.replace('CREATE TEMP TRIGGER ','CREATE TRIGGER ')),
+  }))]);
+  const objects=sort(state.schema.filter(entry=>taskObject(entry.name)).map(({type,name,tbl_name,sql})=>({type,name,tbl_name,sha256:sha(sql??'')})));
+  assert.deepEqual(objects,expected,'independent pinned project/history/TEMP task and target SQL');
+  assert.equal(objects.length,expected.length);
+  assert.equal(sha(JSON.stringify(objects)),sha(JSON.stringify(expected)),'exact pinned kernel catalog');
+  assert.deepEqual(objects.filter(value=>!expected.some(entry=>entry.name===value.name)),[],'unknown task/target objects are not reviewed additions');
+  const knownTables=new Set(manifest.filter(entry=>entry.type==='table').map(entry=>entry.name));
+  for(const name of Object.keys(state.tables))assert.ok(knownTables.has(name),'only pinned project/history/cache tables enter the snapshot');
   return {shots:db.prepare('SELECT * FROM shots ORDER BY rowid').all(),receipts:db.prepare('SELECT * FROM mutation_requests ORDER BY rowid').all(),tables:state.tables};
  });
- return {root,project,shot,get,call,put,prepare,rows,get url(){return server.url;},file:path.join(root,'local-shot-text-v1.json'),async restart(){await server.close();await start();},
+ return {root,project,shot,get,call,put,prepare,rows,get url(){return server.url;},file:path.join(created.store.localDir,'local-shot-text-v1.json'),async restart(){await server.close();await start();},
  async dropNextExecution(){const observed=Promise.withResolvers<WireResponse<WireExecution>>();void observed.promise.catch(()=>{});proxy=http.createServer(async(req,res)=>{try{let raw='';req.setEncoding('utf8');for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>256*1024)throw Error('Synthetic request limit');}const result=await request<WireExecution>(server.url,req.url,{method:req.method,input:JSON.parse(raw)});observed.resolve(result);res.destroy();}catch(error){observed.reject(error);res.destroy();}});await new Promise<void>((resolve,reject)=>{proxy.once('error',reject);proxy.listen(0,'127.0.0.1',resolve);});return {url:`http://127.0.0.1:${(proxy.address()! as import('node:net').AddressInfo).port}`,observed:observed.promise};}};
 }
 test('authenticated HTTP raw title/prompt draft is durable without business writes; GET never creates',{timeout:30000},async t=>{const f=await fixture(t),before=f.rows(),initial=await f.get();assert.equal(initial.draft,null);assert.equal(initial.intent,null);await assert.rejects(stat(f.file),{code:'ENOENT'});const raw={title:'',prompt:'invalid-for-save bounded raw prompt\n界🙂'};const saved=await f.call(route(f.project.id)+'/draft',{method:'PUT',input:f.put(initial,raw)});assert.deepEqual(saved.draft!.raw,raw);assert.deepEqual(f.rows(),before);const bytes=await readFile(f.file),info=await stat(f.file);assert.equal(info.mode&0o777,0o600);await f.get();assert.deepEqual(await readFile(f.file),bytes);assert.deepEqual(f.rows(),before);assert.equal((await request(f.url,route(f.project.id)+'/prepare',{method:'POST',input:f.prepare(saved)})).status,400);assert.deepEqual(f.rows(),before);assert.deepEqual(await readFile(f.file),bytes);

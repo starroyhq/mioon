@@ -59,8 +59,11 @@ test('omitted legacy receipts/snapshots remain absent and byte-exact through lat
 
 test('post-commit lost transport acknowledgement never acquires not-applied proof, and exact recovery creates no duplicate',async t=>{
  const f=await fixture(t),input=f.input(),store=f.store;
- const uncertain=createServices({...store,tx:(fn: () => unknown)=>{const count=(store.db.prepare('SELECT COUNT(*) AS n FROM timeline_requests').get() as {n:number}).n,result=store.tx(fn as never);if((store.db.prepare('SELECT COUNT(*) AS n FROM timeline_requests').get() as {n:number}).n>count)throw new AppError('EXPORT_CAPABILITY_FAILED','Transport acknowledgement lost after commit',409);return result;}} as unknown as Parameters<typeof createServices>[0],new Map(),{exportOptions:{inspect:async()=>({status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'})}});t.after(()=>uncertain.drain());
+ const originalTx=store.tx;
+ store.tx=fn=>{const count=(store.db.prepare('SELECT COUNT(*) AS n FROM timeline_requests').get() as {n:number}).n,result=originalTx(fn);if((store.db.prepare('SELECT COUNT(*) AS n FROM timeline_requests').get() as {n:number}).n>count)throw new AppError('EXPORT_CAPABILITY_FAILED','Transport acknowledgement lost after commit',409);return result;};
+ const uncertain=createServices(store,new Map(),{exportOptions:{inspect:async()=>({status:'available',code:'EXPORT_CAPABILITY_AVAILABLE'})}});t.after(async()=>{store.tx=originalTx;await uncertain.drain();});
  await assert.rejects(uncertain.call('timeline.render',input),(e: unknown)=>{const error=e as {code?:string; details?:{mutationOutcome?:boolean}};return error.code==='EXPORT_CAPABILITY_FAILED'&&error.details?.mutationOutcome===undefined;});
+ store.tx=originalTx;
  const row=store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId as string) as {response:string},expected=publicValue(JSON.parse(row.response));assert.equal(store.list('exports').length,1);
  const before=f.state();assert.deepEqual(await f.services.call('timeline.render',input),expected);assert.deepEqual(f.state(),before);assert.equal(f.probes,0);
 });

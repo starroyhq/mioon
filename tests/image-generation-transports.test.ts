@@ -288,7 +288,9 @@ test('image generation uses one durable contract across real HTTP, CLI and offic
     const receipt = (await parity('image.request.get', {projectId: f.project.id, requestId: original.requestId})).data;
     assert.ok(isImageRequestResponse(receipt)); assert.deepEqual(receipt!.response, accepted);
     await parity('image.generate', {...original, prompt: 'Changed request identity'}, 'IMAGE_REQUEST_CONFLICT');
-    await parity('image.generate', {...original, projectId: f.other.id}, 'IMAGE_REQUEST_CONFLICT');
+    const independent=(await parity('image.generate', {...original, projectId: f.other.id})).data;
+    assert.equal(independent.projectId,f.other.id);assert.notEqual(independent.id,accepted.id,'another project owns an independent receipt and task');
+    assert.deepEqual((await parity('image.request.get',{projectId:f.other.id,requestId:original.requestId})).data!.response,independent);
     f.unchanged(before, 'historical receipt reads/exact replay/conflicting reuse');
     const versions = (await parity('image.version.list', {projectId: f.project.id, groupId: accepted.groupId})).data;
     assert.ok(isImageListResponse('image.version.list', {projectId: f.project.id, groupId: accepted.groupId}, versions));

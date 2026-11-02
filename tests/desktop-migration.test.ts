@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink, stat } from 
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { openStore } from '@mioon/business';
+import { openLegacyWorkspaceStore as openStore } from '../packages/business/src/db.ts';
 import { migrateData } from '../apps/desktop/scripts/migrate-data.ts';
 
 async function fixture() {

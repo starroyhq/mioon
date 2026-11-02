@@ -15,6 +15,8 @@ import {createServices} from '../packages/business/src/services.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {onMediaProcess,hasUnconfirmedMediaProcesses,waitForMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {schemaObjects} from './helpers/project-database.ts';
+import {dataFileSnapshot,databaseFiles} from './helpers/data-file-snapshot.ts';
+import {storeDirectories} from '../packages/business/src/store-layout.ts';
 import type { BinaryLike } from 'crypto';
 
 // Real loopback HTTP, shared services/admission and the production bounded child
@@ -28,14 +30,6 @@ const pause=(ms?: number|undefined)=>new Promise(resolve=>setTimeout(resolve,ms)
 async function bounded<T>(promise: Promise<T>,label: string,ms: number|undefined=5000){let timer;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(`${label} did not settle`)),ms);})]);}finally{clearTimeout(timer);}}
 async function eventually(predicate: { (): Promise<boolean>; (): unknown; },label?: string|Error|undefined){const end=performance.now()+5000;while(performance.now()<end){if(await predicate())return;await pause(10);}assert.fail(label);}
 const hash=(bytes: NonSharedBuffer|BinaryLike)=>createHash('sha256').update(bytes).digest('hex');
-async function stableFiles(root: string,relative: string|undefined=''){
- const out: ({ directory: string; } | { name: string; sha256: string; })[]=[];
- for(const item of await readdir(path.join(root,relative),{withFileTypes:true})){
-  const name=path.join(relative,item.name);if(/^workbench\.sqlite(?:-wal|-shm)?$/.test(name)||name==='server.lock')continue;
-  if(item.isDirectory())out.push({directory:name},...await stableFiles(root,name));else out.push({name,sha256:hash(await readFile(path.join(root,name)))});
- }
- return out.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-}
 function tinyWave(){const bytes=Buffer.alloc(44+4800*4);bytes.write('RIFF');bytes.writeUInt32LE(bytes.length-8,4);bytes.write('WAVEfmt ',8);bytes.writeUInt32LE(16,16);bytes.writeUInt16LE(1,20);bytes.writeUInt16LE(2,22);bytes.writeUInt32LE(48000,24);bytes.writeUInt32LE(192000,28);bytes.writeUInt16LE(4,32);bytes.writeUInt16LE(16,34);bytes.write('data',36);bytes.writeUInt32LE(4800*4,40);return bytes;}
 
 async function fixture(t: test.TestContext){
@@ -53,7 +47,7 @@ async function fixture(t: test.TestContext){
  const media: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],requests: unknown[]=[],observations: ({ baseline: { request: number; response: number; }; })[]=[],settled=defer<{signal:AbortSignal;remaining:{request:number;response:number};baseline:{request:number;response:number}}>(),holding=defer<import('../packages/business/src/media-processes.ts').MediaProcessEvent>(),reaped=defer<import('../packages/business/src/media-processes.ts').MediaProcessEvent>();let ffmpegStarts=0,heldPid!: number|undefined,server;
  const off=onMediaProcess(event=>{media.push(((event) as unknown as Parameters<typeof media.push>[0]));if(event.type==='started'&&event.kind==='ffmpeg'&&++ffmpegStarts===2){heldPid=event.pid;holding.resolve(event);}if(event.type==='exited'&&event.pid===heldPid)reaped.resolve(event);});
  const rows=()=>JSON.stringify(schemaObjects(store.db).filter(({type})=>type==='table').map(({name})=>({name,rows:store.db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()})));
- const beforeRows=rows(),beforeFiles=await stableFiles(root);
+ const databases=databaseFiles(store.db),tempDir=storeDirectories(store).tempDir,beforeRows=rows(),beforeFiles=await dataFileSnapshot(root,databases);
  const send=(res: http.ServerResponse<http.IncomingMessage>&{ req: http.IncomingMessage; },status: number,body: { ok: boolean; error?: { code: string; }|{ code: unknown; message: unknown; retryable: boolean; }|{ code: unknown; message: unknown; }; data?: unknown; })=>{if(res.destroyed||res.writableEnded)return;res.writeHead(status,{'content-type':'application/json; charset=utf-8'});res.end(JSON.stringify(body));};
  server=http.createServer(async(req,res)=>{
   if(req.url==='/health'){res.end('healthy');return;}
@@ -76,19 +70,19 @@ async function fixture(t: test.TestContext){
   finally{restoreTool();off();store.close();await rm(base,{recursive:true,force:true});}
  });
  process.env.MIOON_FFMPEG_PATH=tool;
- return {root,input,media,requests,observations,holding:holding.promise,reaped:reaped.promise,settled:settled.promise,
+ return {root,tempDir,input,media,requests,observations,holding:holding.promise,reaped:reaped.promise,settled:settled.promise,
   url:`http://127.0.0.1:${((server.address() as import('node:net').AddressInfo))!.port}`,
   async finishCancellation(){
    const observed=await bounded(settled.promise,'Disconnected HTTP observer');assert.ok(observed.signal instanceof AbortSignal);assert.equal(observed.signal.aborted,true);assert.deepEqual(observed.remaining,observed.baseline);
    const closed=await bounded(reaped.promise,'Exact held media child reap');assert.equal(closed.pid,heldPid);assert.equal(media.filter(event=>event.type==='exited'&&event.pid===heldPid).length,1);
-   await eventually(async()=>!(await readdir(root)).some(name=>name.startsWith('.timeline-float-proof-')),'Private capability staging must be removed after confirmed child close');
-   assert.equal(hasUnconfirmedMediaProcesses(),false);assert.equal(requests.length,1,'Disconnect never submits or retries a capability POST');assert.equal(rows(),beforeRows);assert.deepEqual(await stableFiles(root),beforeFiles);
+   await eventually(async()=>!(await readdir(tempDir)).some(name=>name.startsWith('.timeline-float-proof-')),'Private capability staging must be removed after confirmed child close');
+   assert.equal(hasUnconfirmedMediaProcesses(),false);assert.equal(requests.length,1,'Disconnect never submits or retries a capability POST');assert.equal(rows(),beforeRows);assert.deepEqual(await dataFileSnapshot(root,databases),beforeFiles);
   },
   async newExplicitProbe(){
    restoreTool();assert.equal(await(await fetch(this.url+'/health')).text(),'healthy');
    const response=await fetch(this.url+projectRpcPath(input.projectId),{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'},body:JSON.stringify({operation:'timeline.export.capabilities',input})});
    const body=await response.json();assert.equal(response.status,200,JSON.stringify(body));assert.equal(body.ok,true);assert.equal(body.data.status,'available',JSON.stringify(body));
-   assert.equal(requests.length,2,'Only the caller\'s new explicit probe is issued');assert.equal(rows(),beforeRows);assert.deepEqual(await stableFiles(root),beforeFiles);
+   assert.equal(requests.length,2,'Only the caller\'s new explicit probe is issued');assert.equal(rows(),beforeRows);assert.deepEqual(await dataFileSnapshot(root,databases),beforeFiles);
    assert.equal(store.list('exports').length,0);assert.equal(store.list('assets').filter(asset=>asset.provenance==='export').length,0);
    assert.deepEqual(media.filter(event=>event.type==='started').map(event=>event.pid).sort(),media.filter(event=>event.type==='exited').map(event=>event.pid).sort(),'Every exact owned media child has observed close');
   },
@@ -99,7 +93,7 @@ test('real HTTP disconnect aborts active v2 capability MOV child, cleans owned s
  if(process.platform==='win32'){t.skip('POSIX installed executable fixture; no native Windows claim');return;}
  const f=await fixture(t),request=http.request(f.url+projectRpcPath(f.input.projectId),{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json'}});request.on('error',()=>{});
  request.end(JSON.stringify({operation:'timeline.export.capabilities',input:f.input}));await bounded(f.holding,'Active capability MOV child');
- assert.equal((await readdir(f.root)).filter(name=>name.startsWith('.timeline-float-proof-')).length,1);request.destroy();
+ assert.equal((await readdir(f.tempDir)).filter(name=>name.startsWith('.timeline-float-proof-')).length,1);request.destroy();
  await f.finishCancellation();await f.newExplicitProbe();
 });
 

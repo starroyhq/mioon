@@ -31,8 +31,10 @@ test('desktop request policy prevents credential leakage to any other origin', (
 });
 
 test('downloads are only UUID managed media on the current backend', () => {
-  assert.equal(isAllowedDownload(`${origin}/media/${id}`, origin), true);
-  assert.equal(isAllowedDownload(`${origin}/media/${id}?download`, origin), true);
+  assert.equal(isAllowedDownload(`${origin}/media/${id}`, origin), false);
+  assert.equal(isAllowedDownload(`${origin}/api/projects/${id}/media/${id}`, origin), true);
+  assert.equal(isAllowedDownload(`${origin}/media/${id}?download`, origin), false);
+  assert.equal(isAllowedDownload(`${origin}/api/projects/${id}/media/${id}?download`, origin), true);
   for (const url of [`${origin}/media/../../secret`, `${origin}/media/${id}?path=/tmp`, `${origin}/media/${id}#x`,
     `${origin}/assets/app.js`, `https://example.com/media/${id}`, `file:///media/${id}`]) assert.equal(isAllowedDownload(url, origin), false);
 });
@@ -93,13 +95,17 @@ test('native export permits project query but never assigns an automatic save pa
   installSessionPolicy(session as unknown as SessionArg, origin,
     (() => win) as unknown as Parameters<typeof installSessionPolicy>[2], { downloadsPath: '/tmp/video.mp4' });
   let options: {defaultPath?: string} | undefined, cancelled = false;
-  const item = { getInitiatorOrigin: () => origin, getURLChain: () => [`${origin}/media/${id}`], getURL: () => `${origin}/media/${id}`, getMimeType: () => 'video/mp4',
+  const item = { getInitiatorOrigin: () => origin, getURLChain: () => [`${origin}/api/projects/${id}/media/${id}`], getURL: () => `${origin}/api/projects/${id}/media/${id}`, getMimeType: () => 'video/mp4',
     setSaveDialogOptions: (value: {defaultPath?: string}) => { options = value; }, setSavePath: () => assert.fail('Must show native Save As') };
   session.emit('will-download', { preventDefault: () => { cancelled = true; } }, item, contents);
   assert.equal(cancelled, false); assert.equal(options?.defaultPath, '/tmp/video.mp4');
-  item.getURLChain = () => ['https://example.com/file', `${origin}/media/${id}`];
+  item.getURLChain = () => ['https://example.com/file', `${origin}/api/projects/${id}/media/${id}`];
   session.emit('will-download', { preventDefault: () => { cancelled = true; } }, item, contents);
   assert.equal(cancelled, true);
+  options=undefined;cancelled=false;
+  item.getURL=()=>`${origin}/media/${id}`;item.getURLChain=()=>[item.getURL()];
+  session.emit('will-download',{preventDefault:()=>{cancelled=true;}},item,contents);
+  assert.equal(cancelled,true);assert.equal(options,undefined);
 });
 
 test('window blocks webviews, popups, subframes and navigations', () => {
@@ -135,20 +141,27 @@ test('package configuration disables runtime injection and cannot publish by def
   assert.match(main, /^import \{ CLIP_LUT_RECOVERY_CHANNEL \} from '\.\.\/\.\.\/\.\.\/packages\/contracts\/src\/clip-lut-recovery\.ts';$/m);
   assert.match(main, /^ipcMain\.handle\(CLIP_LUT_RECOVERY_CHANNEL, \(event, request\) => lutRecoveryHost\?\.dispatch\(event, request\) \?\? \{ ok: false, code: 'LUT_RECOVERY_UNAVAILABLE' \}\);$/m);
   // Restrict these checks to LUT wiring so another host cannot satisfy its authority guards.
-  const lutAuthorityStart = main.indexOf('    const currentLutWorkspaceScope = () => {');
+  const lutAuthorityStart = main.indexOf('    const currentAppScope = () => {');
   const lutAuthorityEnd = main.indexOf('\n    const nativeBackendCurrent=', lutAuthorityStart);
   assert.ok(lutAuthorityStart >= 0 && lutAuthorityEnd > lutAuthorityStart, 'LUT host authority wiring must remain explicit');
   const lutAuthority = main.slice(lutAuthorityStart, lutAuthorityEnd);
   for (const boundary of [
     'if (!ownsWindowContext(context) || backend !== ownedBackend || !quitRouter.allowsWindows || context.incident.failed || backendExitObserved) throw',
     'const directory = validatePrivateDirectory(paths.dataDir);',
-    "const db = validateManagedFile(path.join(paths.dataDir, 'workbench.sqlite'), { root: paths.dataDir });",
+    "const db = validateManagedFile(path.join(paths.dataDir, 'app-library.db'), { root: paths.dataDir });",
     'if (!directory || !db) throw',
     'return calculateWorkspaceScope({ channel: identity.channel, root: paths.dataDir, directory, db });',
-    'const lutWorkspaceScope = currentLutWorkspaceScope();',
-    'currentWorkspaceScope: () => {',
-    'const scope = currentLutWorkspaceScope();',
-    'if (scope !== lutWorkspaceScope) throw',
+    'const appScope = currentAppScope(), lutScopes = new Map<string,string>();',
+    'const currentLutWorkspaceScope = (projectId:string) => {',
+    'currentWorkspaceScope: currentLutWorkspaceScope,',
+    'if(currentAppScope()!==appScope||!isProjectId(projectId))throw',
+    "path.join(paths.dataDir,'records',projectId)",
+    "validateManagedFile(path.join(root,'history.db'),{root})",
+    'if(!directory||!db)throw',
+    'const scope=calculateWorkspaceScope({channel:identity.channel,root,directory,db});',
+    'const established=lutScopes.get(projectId);',
+    'if(established!==undefined&&established!==scope)throw',
+    'lutScopes.set(projectId,scope);return scope;',
     'const owner = windowHost?.ownerForContents(event.sender);',
     "if (!owner || owner.role !== 'editor' || !owner.projectId || event.senderFrame !== owner.frame || event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url !== owner.url) return null;",
     'return { projectId: owner.projectId, isCurrent: () => ownsWindowContext(context) && owner.isCurrent() &&',

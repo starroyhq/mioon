@@ -12,12 +12,14 @@ export const IDS = Object.freeze({project: uuid(1), other: uuid(2), shot: uuid(1
   job: uuid(40), secondJob: uuid(41), otherJob: uuid(42), version: uuid(50), secondVersion: uuid(51),
   otherVersion: uuid(52), timeline: uuid(60)});
 
-export async function seedMutationStore(root: string): Promise<void> {
+export async function seedMutationStore(root: string): Promise<Map<string,string>> {
+  const locations=new Map<string,string>();
   // Keep business imports inside the seed: CLI/MCP preload this module to
   // install their guard before any production module is loaded.
   const {createServerProject} = await import('./project-database.ts');
   for (const projectId of [IDS.project, IDS.other]) {
     const {store} = createServerProject(root, {name: `Synthetic mutation project ${projectId}`, projectId});
+    locations.set(projectId,store.projectDir);
     try {
       const {put, db} = store;
       const shot = (id: string, projectId: string, orderIndex: number): Record<string, unknown> => ({id, projectId, title: 'Synthetic saved shot', prompt: 'Saved prompt',
@@ -53,10 +55,13 @@ export async function seedMutationStore(root: string): Promise<void> {
         db.prepare('INSERT INTO timeline_history VALUES(?,?,?,?,?,?,?)').run(uuid(61), IDS.project, 1, 'timeline.track.add', NOW, '{"preserved":"before"}', '{"preserved":"after"}');
         db.prepare('INSERT INTO timeline_history_cursors VALUES(?,?)').run(IDS.project, 1);
         db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(IDS.job, '{"preserved":"event"}', NOW);
-        db.prepare('INSERT INTO workspace_preferences VALUES(?,?,?)').run(IDS.project, 1, '{"preserved":"workspace"}');
       }
     } finally { store.close(); }
   }
+  const {openAppLibrary}=await import('../../packages/business/src/app-db/index.ts');
+  const library=openAppLibrary({dataDir:root});
+  try{library.tx(()=>library.db.prepare('INSERT INTO workspace_preferences VALUES(?,?,?)').run(IDS.project,1,'{"preserved":"workspace"}'));}finally{library.close();}
+  return locations;
 }
 
 if (process.env.MIOON_MUTATION_WIRE_GUARD === '1') installWireGuard({
@@ -73,29 +78,51 @@ if (direct) {
   if (mode === 'delete-node') {
     // Test-only storage corruption/removal, after stopping the owned server:
     // retained receipts must never become a way to read a removed target.
-    const {openStore} = await import('../../packages/business/src/db.ts');
-    const store = openStore(dataRoot);
+    const {openProjectDatabase,projectDirFor}=await import('./project-database.ts');
+    const db=openProjectDatabase(projectDirFor(dataRoot,IDS.project));
     try {
-      const result = store.db.prepare('DELETE FROM nodes WHERE id=?').run(process.env.MIOON_MUTATION_WIRE_NODE_ID as never);
+      const result = db.prepare('DELETE FROM nodes WHERE id=?').run(process.env.MIOON_MUTATION_WIRE_NODE_ID as never);
       process.stdout.write(JSON.stringify({deleted: result.changes}) + '\n');
-    } finally { store.close(); }
+    } finally { db.close(); }
   }
   if (mode === 'server') {
-    if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seedMutationStore(dataRoot);
+    if (!fs.existsSync(path.join(dataRoot, 'app-library.db'))) await seedMutationStore(dataRoot);
     const {startServer} = await import('../../apps/server/src/index.ts');
     const {readProjectState, changeMarks} = await import('./project-state.ts');
+    const {registerProjectTransactionObserver}=await import('../../packages/business/src/project-file/index.ts');
+    let removeRaceObserver:(()=>void)|undefined;
     let inspect: InspectProject|undefined;
     const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
       inspectProject: received => { inspect = received; }});
     // The parent asks the running server to read on its own connection.
     if (process.connected) process.on('message', (raw: unknown) => {
-      const message = raw as {type?: unknown; id?: unknown; projectId?: unknown}|null;
+      const message = raw as {type?: unknown; id?: unknown; projectId?: unknown;requestKey?:unknown}|null;
       if (typeof message?.id !== 'string') return;
       let reply: unknown;
       try {
-        if (message.type !== 'storage') throw Error('Unsupported mutation fixture message');
         if (!inspect) throw Error('The server has not handed over its connection');
-        const data = inspect(String(message.projectId), db => ({rows: readProjectState(db).tables, version: changeMarks(db)}));
+        if(message.projectId!==IDS.project&&message.projectId!==IDS.other)throw Error('Unknown fixture project');
+        let data:unknown;
+        if(message.type==='storage')data=inspect(message.projectId,db=>{const state=readProjectState(db);return {rows:state.tables,schema:state.schema,version:changeMarks(db)};});
+        else if(message.type==='arm-race'){
+          if(message.projectId!==IDS.project||typeof message.requestKey!=='string'||message.requestKey.length<8||message.requestKey.length>200)throw Error('Invalid race key');
+          const requestKey=message.requestKey;
+          inspect(IDS.project,db=>{
+            removeRaceObserver?.();
+            removeRaceObserver=registerProjectTransactionObserver(db,()=>{
+              if(!db.prepare('SELECT 1 FROM mutation_requests WHERE requestId=?').get(requestKey))return;
+              removeRaceObserver?.();removeRaceObserver=undefined;
+              if(!db.isTransaction)throw Error('Race must pause inside the real transaction');
+              process.stdout.write(JSON.stringify({event:'holding-transaction',pid:process.pid,requestKey,inTransaction:db.isTransaction})+'\n');
+              const deadline=Date.now()+5000;
+              while(!fs.existsSync(path.join(dataRoot,'release-writer'))){
+                if(Date.now()>=deadline)throw Error('Parent did not release the owned mutation transaction');
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,10);
+              }
+            });
+          });
+          data={armed:true};
+        }else throw Error('Unsupported mutation fixture message');
         reply = {type: 'reply', id: message.id, data};
       } catch (error) {
         const failure = error as {code?: unknown; message?: unknown}|null;
@@ -109,55 +136,70 @@ if (direct) {
       .finally(() => { if (process.connected) process.disconnect(); });
     process.on('SIGTERM', close); process.on('SIGINT', close); process.once('disconnect', close);
   }
+  if(mode==='client'){
+    // Real concurrent public requests. The parent controls only when these
+    // owned clients send; no transaction or SQL is accepted by HTTP.
+    const http=await import('node:http');
+    const base=String(process.env.MIOON_MUTATION_WIRE_ALLOWED_ORIGIN);
+    const request=JSON.parse(String(process.env.MIOON_MUTATION_WIRE_REQUEST)) as {operation:string;input:{projectId:string}};
+    const body=JSON.stringify(request),report=(value:unknown)=>process.stdout.write(JSON.stringify(value)+'\n');
+    const run=()=>{
+      const req=http.request(base+`/api/projects/${request.input.projectId}/rpc`,{method:'POST',headers:{authorization:`Bearer ${TOKEN}`,'content-type':'application/json','content-length':Buffer.byteLength(body)}},res=>{
+        let text='';res.setEncoding('utf8');res.on('data',chunk=>{text+=chunk;});res.once('end',()=>{report({event:'result',...JSON.parse(text)});if(process.connected)process.disconnect();});
+      });
+      req.once('error',error=>{report({event:'result',ok:false,error:{code:'FIXTURE_WIRE_ERROR',message:error.message}});if(process.connected)process.disconnect();});
+      req.end(body,()=>report({event:'request-sent',pid:process.pid,bodyBytes:Buffer.byteLength(body),socketBytes:req.socket?.bytesWritten??0}));
+    };
+    if(process.connected){process.once('message',message=>{if(message==='go')run();});report({event:'ready',pid:process.pid});}else run();
+  }
   if (mode === 'writer') {
-    const {openStore} = await import('../../packages/business/src/db.ts');
+    const {openProjectDatabase}=await import('./project-database.ts');
+    const {openProjectStore}=await import('../../packages/business/src/project-file/index.ts');
+    const {openAppLibrary}=await import('../../packages/business/src/app-db/index.ts');
+    const {createProjectServiceApplication}=await import('../../packages/business/src/project-service-application.ts');
+    const {serverAppDirectories,projectLocation}=await import('../../apps/server/src/project-host/directories.ts');
     const {createServices} = await import('../../packages/business/src/services.ts');
     const {readProjectState} = await import('./project-state.ts');
-    // This explicit, isolated test child alone bypasses the backend owner lock
-    // to exercise SQLite's real cross-process BEGIN IMMEDIATE serialization.
-    const competing = process.env.MIOON_MUTATION_WIRE_COMPETING_WRITER === '1';
-    const store = openStore(dataRoot, {lock: !competing});
+    const projectFile=String(process.env.MIOON_MUTATION_WIRE_PROJECT_FILE),projectRoot=path.dirname(projectFile);
+    // A live host must reject this normal second kernel owner. No lock flag or
+    // alternate test layout can bypass that proof, including in the race test.
+    const probe=openProjectDatabase(projectRoot);probe.close();
+    const library=openAppLibrary({dataDir:dataRoot}),directories=serverAppDirectories(dataRoot);
+    const registration=library.registry.get(IDS.project);
+    if(registration?.projectFile!==projectFile){library.close();throw Error('Writer project is not the registered fixture file');}
+    const store=openProjectStore({projectFile,locate:id=>projectLocation(directories,id),checkCopy:library.registry.checkCopy});
     const boundary = process.env.MIOON_MUTATION_WIRE_BOUNDARY || '';
-    const role = process.env.MIOON_MUTATION_WIRE_ROLE || '';
     const request = JSON.parse(process.env.MIOON_MUTATION_WIRE_REQUEST as string) as {operation: string; input: Record<string, unknown>};
     const report = (value: unknown): void => { process.stdout.write(JSON.stringify(value) + '\n'); };
     const receipt = (value: unknown): void => { fs.writeFileSync(path.join(dataRoot, `receipt-${boundary}.json`), JSON.stringify(value)); };
-    const nativeTx = store.tx;
-    const nativeExec = store.db.exec.bind(store.db);
-    if (role) store.db.exec = (sql: string): void => {
-      if (/^BEGIN IMMEDIATE\s*;?$/i.test(sql.trim())) report({event: 'begin-attempt', pid: process.pid});
-      const result = nativeExec(sql);
-      if (/^BEGIN IMMEDIATE\s*;?$/i.test(sql.trim()) && role === 'holder') {
-        report({event: 'holding-transaction', pid: process.pid});
-        const deadline = Date.now() + 5_000;
-        while (!fs.existsSync(path.join(root, 'release-writer'))) {
-          if (Date.now() >= deadline) throw Error('Parent did not release owned transaction within five seconds');
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-        }
-      }
-      return result;
+    const otherFile=library.registry.get(IDS.other)!.projectFile;
+    const otherDb=openProjectDatabase(path.dirname(otherFile));
+    const writerRows=()=>{
+      const rows=readProjectState(store.db).tables,other=readProjectState(otherDb).tables;
+      return Object.fromEntries([...new Set([...Object.keys(rows),...Object.keys(other)])].map(table=>[table,[...(rows[table]??[]),...(other[table]??[])]]));
     };
+    const nativeTx = store.tx;
     if (boundary) store.tx = <T>(fn: ()=>T): T => {
       const result = nativeTx(() => {
         const value = fn();
         if (boundary === 'rollback' || boundary === 'crash-before-commit') {
-          receipt({request, result: value, uncommitted: readProjectState(store.db).tables});
+          receipt({request, result: value, uncommitted:writerRows()});
           if (boundary === 'rollback') throw Error('Synthetic failure after journal and business writes, before commit');
           process.kill(process.pid, 'SIGKILL');
         }
         return value;
       });
       if (boundary === 'crash-after-commit') {
-        receipt({request, result, committed: readProjectState(store.db).tables});
+        receipt({request, result, committed:writerRows()});
         process.kill(process.pid, 'SIGKILL');
       }
       return result;
     };
-    const services = createServices(store, new Map());
+    const services = createServices(store,new Map(),{application:createProjectServiceApplication(library,undefined,{MIOON_ENABLE_LIVE_PROVIDER:'0'})});
     const run = async () => {
       try { report({event: 'result', ok: true, data: await services.call(request.operation, request.input)}); }
       catch (error) { const failure=error as {code?: string; message?: string}; report({event: 'result', ok: false, error: {code: failure.code || 'FIXTURE_FAILURE', message: failure.message ?? String(error)}}); }
-      finally { store.close(); if (process.connected) process.disconnect(); }
+      finally { await services.drain();otherDb.close();store.close();library.close();if(process.connected)process.disconnect(); }
     };
     if (process.connected) {
       process.once('message', (message: unknown) => { if (message === 'go') void run(); });

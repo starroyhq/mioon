@@ -1,3 +1,5 @@
+import {dataFileSnapshot} from './helpers/data-file-snapshot.ts';
+import {testProjectAppLibrary} from '../packages/business/src/project-service-application.ts';
 import type {TypedServices, Failure, SavedAudioSnapshotReader} from './helpers/strict-timeline-audio-types.ts';
 import type {TestContext} from 'node:test';
 import test from 'node:test';
@@ -7,7 +9,7 @@ import {mkdtemp, writeFile, readFile, readdir, rm, unlink} from 'node:fs/promise
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
-import {openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openStore, openLegacyWorkspaceStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createTimelineClipLoudnessServices} from '../packages/business/src/timeline-clip-loudness.ts';
 import {planTimelineClipLoudnessDecode} from '../packages/business/src/timeline-clip-loudness-decoder.ts';
@@ -57,13 +59,9 @@ async function fakeDecode(signal: TimelineClipLoudnessSignal, options: TimelineM
   return {sampleRate: 48000 as const, channels: 2 as const, ...plan, sampleFrames: frameCount, pcmBytes: frameCount * 8};
 }
 async function files(root: string) {
-  const result: [string, string][] = [];
-  for (const item of await readdir(root, {recursive: true, withFileTypes: true})) {
-    if (!item.isFile() || /^workbench\.sqlite(?:-wal|-shm)?$/.test(item.name) || item.name === 'server.lock') continue;
-    const full = path.join(item.parentPath, item.name); result.push([path.relative(root, full), sha(await readFile(full))]);
-  }
-  return result.sort(([a], [b]) => a.localeCompare(b));
+  return (await dataFileSnapshot(String(root),[path.join(String(root),'workbench.sqlite')])).filter(entry=>entry.file!==undefined).map((entry): [string,string]=>[entry.file,entry.sha256]);
 }
+
 // Another project lives in a store of its own: a store holds one project.
 async function foreignProject(t: TestContext, name = 'Foreign project') {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-clip-loudness-foreign-'));
@@ -92,7 +90,8 @@ async function fixture(t: TestContext, {durationFrames = 60, runtime: overrides 
   t.after(async () => {for (const extra of extras) await extra.drain().catch(() => {}); await mix.drain().catch(() => {});
     await services.drain().catch(() => {}); store.close(); await rm(root, {recursive: true, force: true});});
   const input = inputFor(timeline, asset);
-  const rows = () => Object.fromEntries(schemaObjects(store.db).filter(({type}) => type === 'table').sort(byName).map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const projectRows = () => Object.fromEntries(schemaObjects(store.db).filter(({type}) => type === 'table').sort(byName).map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const rows=()=>{const app=testProjectAppLibrary(store);return {...projectRows(),...(app?Object.fromEntries(schemaObjects(app.db).filter(({type})=>type==='table').map(({name})=>['app.'+name,app.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()])):{})};};
   return {root, store, services, project, foreign, asset, bytes, timeline, input, mix, runtime, extras,
     call: (value: unknown = input, options?: Parameters<typeof mix.handlers['timeline.clip.loudness']>[1]) => mix.handlers['timeline.clip.loudness'](value, options),
     checkpoint: async () => ({rows: rows(), writes: store.db.prepare('SELECT total_changes() AS n').get()!.n, files: await files(root)}),
@@ -172,12 +171,12 @@ test('restored direct and composed boundaries refuse before any payload getters 
   const restored = createTimelineClipLoudnessServices({...f.store}, {runtime: {...f.runtime, assertOrdinaryWorkspace() {throw workspaceRestoreError();}}}); f.extras.push(restored);
   await assert.rejects(restored.handlers['timeline.clip.loudness']({get projectId() {getters++; return f.project.id;}}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
   assert.equal(getters, 0);
-  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-mix-loudness-')); let store = openStore(root), services = (createServices(store, new Map()) as TypedServices);
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-restored-mix-loudness-')); let store = openLegacyWorkspaceStore(root), services = (createServices(store, new Map()) as TypedServices);
   await services.call('project.create', {name: 'Restore fixture'}); await services.drain(); store.close();
   const db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
   try {installWorkspaceRestoreSchema(db, {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(),
     manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()}); db.exec('PRAGMA wal_checkpoint(TRUNCATE)');} finally {db.close();}
-  store = openStore(root); services = (createServices(store, new Map()) as TypedServices);
+  store = openLegacyWorkspaceStore(root); services = (createServices(store, new Map()) as TypedServices);
   t.after(async () => {await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
   const hostile = {get projectId() {getters++; throw Error('no payload');}};
   for (const value of [hostile, f.input, null]) {

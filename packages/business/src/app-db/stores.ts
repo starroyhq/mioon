@@ -10,6 +10,7 @@ import type {AppDatabase} from './connection.ts';
 import {appLibraryError} from './errors.ts';
 import {APP_DOCUMENT_LIMITS, APP_DOCUMENT_NAMES, APP_RECORD_LIMITS} from './schema.ts';
 import type {AppDocumentName} from './schema.ts';
+import {agentDiagnosticSummarySchema} from '../../../contracts/src/agent-diagnostic-summary.ts';
 
 const decode = (data: unknown): unknown => JSON.parse(String(data));
 
@@ -91,6 +92,9 @@ export function createAppDocumentStore(database: AppDatabase): AppDocumentStore 
   return {
     read(name: AppDocumentName): string | null {
       const row = database.statement('SELECT data FROM app_documents WHERE name=?').get(documentName(name));
+      if (row && name === 'agent-diagnostic-summary-v1.json') {
+        try {agentDiagnosticSummarySchema.parse(decode(row.data));} catch {throw appLibraryError('APP_LIBRARY_INVALID', {reason: 'unusable'});}
+      }
       return row ? String(row.data) : null;
     },
     write(name: AppDocumentName, text: string): void {
@@ -98,7 +102,8 @@ export function createAppDocumentStore(database: AppDatabase): AppDocumentStore 
       if (typeof text !== 'string') throw new TypeError('An app document is JSON text');
       if (Buffer.byteLength(text) > APP_DOCUMENT_LIMITS[checked]) throw appLibraryError('APP_LIBRARY_LIMIT', {document: checked, limit: APP_DOCUMENT_LIMITS[checked]});
       try {
-        JSON.parse(text);
+        const value: unknown = JSON.parse(text);
+        if (checked === 'agent-diagnostic-summary-v1.json') agentDiagnosticSummarySchema.parse(value);
       } catch {
         throw new TypeError('An app document is JSON text');
       }

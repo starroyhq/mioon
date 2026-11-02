@@ -47,10 +47,10 @@ function keyframes(input: DecodeSceneKeyframesOptions,{groups=(input.marks)!.map
  return {profileId:'local-png-1024-v1',selectionRule:'first-pts-at-or-after-v1',sourceHash:(input.asset as {sha256: string}).sha256,width:W,height:H,probe,frameOf:groups.flatMap((marks,index)=>marks.map(()=>index))};
 }
 const rows=(db: DatabaseSync)=>JSON.stringify(['scene_tasks','scene_requests','scene_results','shots','assets'].map(table=>db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));
-const staging=(root: string)=>existsSync(path.join(root,'scene-staging'))?readdirSync(path.join(root,'scene-staging')):[];
+const staging=(root: string)=>existsSync(path.join(root,'.mioon-store','tmp','scene-staging'))?readdirSync(path.join(root,'.mioon-store','tmp','scene-staging')):[];
 
-function open(root: string,{decode,detect,fault,cuts=[30,900],frameCount=1800,autoRun=true,lock=true,real=false}: {decode?: (input: DecodeSceneKeyframesOptions) => unknown; detect?: SceneServicesOptions['detect']; fault?: SceneServicesOptions['fault']; cuts?: number[]; frameCount?: number; autoRun?: boolean; lock?: boolean; real?: boolean}={}){
- const store=(openStore(root,{lock}) as unknown as TypedStore);let decodes=0;
+function open(root: string,{decode,detect,fault,cuts=[30,900],frameCount=1800,autoRun=true,real=false}: {decode?: (input: DecodeSceneKeyframesOptions) => unknown; detect?: SceneServicesOptions['detect']; fault?: SceneServicesOptions['fault']; cuts?: number[]; frameCount?: number; autoRun?: boolean; real?: boolean}={}){
+ const store=(openStore(root) as unknown as TypedStore);let decodes=0;
  const holds=new Map<string, ReturnType<typeof deferred>>();
  const services=(createSceneServices(store,({autoRun,fault,...(real?{}:{
   detect:async input=>{
@@ -71,7 +71,7 @@ function fixture(t: test.TestContext,options: NonNullable<Parameters<typeof open
  t.after(async()=>{try{for(const close of closers.reverse())await close();}finally{rmSync(root,{recursive:true,force:true});}});
  const reopen=(patch: NonNullable<Parameters<typeof open>[1]>={})=>{const value=open(root,patch);closers.push(value.close);return value;};
  const opened=reopen(options),{store,call}=opened;
- const project=store.put('projects',{id:randomUUID(),name:'Storyboard project',revision:1}),other={id:randomUUID(),name:'Other project',revision:1};
+ const project=store.put('projects',{id:String(store.db.prepare('SELECT projectId FROM project.project_file').get()!.projectId),name:'Storyboard project',revision:1}),other={id:randomUUID(),name:'Other project',revision:1};
  const video=(patch: Record<string, unknown>={})=>{
   const bytes=Buffer.from(`Synthetic reference film ${randomUUID()} PRIVATE_SENTINEL`),id=randomUUID(),relativePath=`media/${id}.mp4`;
   writeFileSync(path.join(root,relativePath),bytes,{mode:0o600});
@@ -268,8 +268,8 @@ test('restart turns active storyboards into interrupted ones and removes their f
  const at=new Date().toISOString();
  writer.store.db.prepare("UPDATE scene_tasks SET state='running',started=1,revision=2,updatedAt=? WHERE id=?").run(at,saving.id);
  writer.store.db.prepare("UPDATE scene_tasks SET state='persisting',stagedReceipt=?,revision=3,updatedAt=? WHERE id=?").run(canonicalSceneInput(receipt),at,saving.id);
- mkdirSync(path.join(f.root,'scene-staging'),{mode:0o700});
- for(const index of [0,1])writeFileSync(path.join(f.root,'scene-staging',`${saving.id}-${index}.png`),still(index),{mode:0o600});
+ mkdirSync(path.join(f.root,'.mioon-store','tmp','scene-staging'),{mode:0o700});
+ for(const index of [0,1])writeFileSync(path.join(f.root,'.mioon-store','tmp','scene-staging',`${saving.id}-${index}.png`),still(index),{mode:0o600});
  writeFileSync(path.join(f.root,'media',`${keyframesSaved[0].assetId}.png`),still(0),{mode:0o600});
  await writer.close();
  let decodes=0;
@@ -302,11 +302,14 @@ test('undo removes the untouched shots and keeps the keyframes; any real change 
  const job=f.store.put('jobs',{id:randomUUID(),projectId:f.project.id,shotId:(one)!.id,status:'queued'});
  assert.deepEqual(((await f.get(ack.id)).undo)!.blockers.map(item=>[item.segment,item.reason]),[[1,'GENERATED'],[3,'CONNECTED']]);
  f.store.db.prepare('DELETE FROM edges WHERE id=?').run(edge.id);f.store.db.prepare('DELETE FROM jobs WHERE id=?').run(job.id);
- // A non-owner cannot undo.
- const observer=(openStore(f.root,{lock:false}) as unknown as TypedStore),reader=(createSceneServices(observer,({decodeKeyframes:()=>assert.fail('observer decoded')} as SceneServicesOptions)) as SceneHandlerService<'shots'>);
- f.track(async()=>{await reader.drain();observer.close();});assert.equal(ownsStoreLock(observer),false);
+ // A second live connection is refused; a lost exact capability cannot undo.
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ const observer=f.store,reader=f.services;
+ Object.defineProperty(observer,'root',{value:`${f.root}/lost-owner`});assert.equal(ownsStoreLock(observer),false);
+ const ownerRows=rows(f.store.db);
  assert.throws(()=>reader.handlers['scene.shots.undo'](f.control(done)),code('SCENE_OWNER_REQUIRED'));
  assert.throws(()=>reader.handlers['scene.shots.create'](f.input(resultId)),code('SCENE_OWNER_REQUIRED'));
+ assert.equal(rows(f.store.db),ownerRows);Object.defineProperty(observer,'root',{value:f.root});
  const projectRevision=(f.store.get('projects',f.project.id))!.revision,undoInput=f.control(done),undone=await f.call('scene.shots.undo',undoInput);
  assert.ok(isSceneMutationResponse('scene.shots.undo',undoInput,undone));
  assert.deepEqual([undone.state,undone.revision,undone.undo],['undone',5,null]);

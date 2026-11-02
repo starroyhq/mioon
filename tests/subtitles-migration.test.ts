@@ -11,7 +11,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {readFileSync,mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore} from '../packages/business/src/db.ts';
 import {migrateComfyImageReviewSchema} from '../packages/business/src/images/review-schema.ts';
 import {migrateComfyImageSchema} from '../packages/business/src/comfy-image-schema.ts';
 import {migrateFrameSchema} from '../packages/business/src/frame-schema.ts';

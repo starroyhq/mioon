@@ -23,6 +23,24 @@ function fixture(t: import('node:test').TestContext) {
  t.after(()=>db.close());return f;
 }
 const count=(db: DatabaseSync): number[] => [Number((db.prepare('SELECT count(*) AS n FROM project_lut_resources').get() as {n: number}).n),Number((db.prepare('SELECT count(*) AS n FROM lut_import_requests').get() as {n: number}).n)];
+test('independent project hosts retain their own LUT quotas and exact replay after each is full',async t=>{
+ const root=mkdtempSync(path.join(os.tmpdir(),'mioon-project-lut-capacity-'));
+ const hosts:Array<{store:ReturnType<typeof openStore>;services:ReturnType<typeof createServices>}>=[];
+ t.after(async()=>{for(const host of hosts){await host.services.drain();host.store.close();}rmSync(root,{recursive:true,force:true});});
+ let total=0;
+ for(let p=0;p<5;p++){
+  const store=openStore(path.join(root,String(p))),services=createServices(store,new Map(),{env:{}});hosts.push({store,services});
+  await services.call('project.create',{name:`LUT project ${p}`});
+  const input={projectId:store.projectId,requestId:randomUUID(),name:'original.cube',dataBase64:Buffer.from(text).toString('base64')};
+  const first=await services.call('lut.import',input);
+  for(let n=1;n<LUT_RESOURCE_LIMITS.projectResources;n++)await services.call('lut.import',{...input,requestId:randomUUID()});
+  const before=count(store.db);assert.deepEqual(before,[128,128]);
+  await assert.rejects(services.call('lut.import',{...input,requestId:randomUUID()}),{code:'LUT_CAPACITY'});
+  assert.deepEqual(await services.call('lut.import',input),first);assert.deepEqual(count(store.db),before);total+=before[0]!;
+ }
+ assert.equal(total,5*LUT_RESOURCE_LIMITS.projectResources);assert.ok(total>LUT_RESOURCE_LIMITS.workspaceResources);
+ assert.equal(new Set(hosts.map(host=>host.store.db)).size,hosts.length);
+});
 test('exact bytes, project ownership, immutable hash and metadata-only resource flow',t=>{
  const f=fixture(t),result=f.handlers['lut.import'](f.input),resource=result.resource;
  assert.equal(resource.sha256,createHash('sha256').update(text).digest('hex'));assert.equal(resource.sizeBytes,Buffer.byteLength(text));

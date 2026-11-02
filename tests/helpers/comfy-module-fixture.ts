@@ -43,6 +43,8 @@ type Settings = Awaited<ReturnType<typeof createComfySettings>>
 type Services = ReturnType<typeof createServices>
 export async function createModuleFixture(t: unknown, {fault = () => {}, submit, observe, moduleState, autoRun = true}: ComfyModuleOptions = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-comfy-module-'));
+  const otherStore = openStore(path.join(root, 'foreign'));
+  const other = otherStore.put('projects', {id: otherStore.projectId, name: 'Other project', revision: 1});
   let saved: unknown = null, store: Store = openStore(root), settings: Settings|undefined, services: TypedServices|undefined;
   const calls = {post: 0, get: 0}, png = createComfyFixturePng();
   const persistence = {load: async () => structuredClone(saved), save: async (value: unknown) => { saved = structuredClone(value); }};
@@ -59,13 +61,12 @@ export async function createModuleFixture(t: unknown, {fault = () => {}, submit,
       ...(state === undefined || state === 'available' ? {comfyConnector: connector} : {}),
       ...(state === undefined ? {} : {comfyModuleAvailability: availability(state)})} as never}) as unknown as TypedServices;
   }
-  (t as {after(callback: ()=>Promise<void>): void}).after(async () => { await services?.drain(); await settings?.close(); store.close(); rmSync(root, {recursive: true, force: true}); });
+  (t as {after(callback: ()=>Promise<void>): void}).after(async () => { await services?.drain(); await settings?.close(); store.close(); otherStore.close(); rmSync(root, {recursive: true, force: true}); });
   await create(moduleState);
   // The workspace live gate and the optional Comfy module are independent.
   // Opt in explicitly so this fixture still isolates the module's own guards.
   await services!.call('workspace.settings.set', {expectedRevision: 0, liveGeneration: true});
   const project = await services!.call('project.create', {name: 'Optional Comfy synthetic'}) as unknown as {id: string};
-  const other = await services!.call('project.create', {name: 'Other project'}) as unknown as {id: string};
   const f = {root, project, other, calls, png, completed,
     get store() { return store; }, get settings() { return settings; }, get services() { return services; },
     call: <O extends string>(operation: O, input: Record<string, unknown>) => services!.call(operation, input),

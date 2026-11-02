@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
-import {openStore,getWorkspaceRestoreContext, type StoreIdentity} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore,getWorkspaceRestoreContext, type StoreIdentity} from '../packages/business/src/db.ts';
 import {createServices, type ServiceStore} from '../packages/business/src/services.ts';
 import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {createEditTasksHttp} from '../apps/server/src/edit-tasks-http.ts';
@@ -101,7 +101,7 @@ test('actual owned store cannot register or reopen42/43 through the frozen produ
     const root=mkdtempSync(path.join(realpathSync(tmpdir()),'mioon-opacity-assembly-refusal-'));
     let store: import('./helpers/strict-timeline-core-types.ts').FixtureStore;
     t.after(()=>{store?.close();rmSync(root,{recursive:true,force:true});});
-    store=(openStore(root) as unknown as FixtureStore);
+    store=(openLegacyWorkspaceStore(root) as unknown as FixtureStore);
     // Deliberately forged marker evidence in a newly created test database.
     // This is a refusal probe, not a42/43 constructor, migration or admission.
     for(const version of extra)store.db.prepare('INSERT INTO schema_version VALUES(?)').run(version);
@@ -112,6 +112,6 @@ test('actual owned store cannot register or reopen42/43 through the frozen produ
     assert.equal(JSON.stringify(store.db.prepare('SELECT * FROM schema_version ORDER BY version').all()),before);
     assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n,changes);
     store.close();(store as FixtureStore|undefined)=undefined;
-    assert.throws(()=>(openStore(root) as unknown as FixtureStore),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
+    assert.throws(()=>(openLegacyWorkspaceStore(root) as unknown as FixtureStore),{code:'RESTORE_SCHEMA_UNSUPPORTED'});
   }
 });

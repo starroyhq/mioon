@@ -66,6 +66,8 @@ function databaseBytes(db:DatabaseSync):number {
  * workspace lease. No paths, media registration, worker scheduling or renderer.
  * Bytes and exact receipt commit together; a lost response is recovered only by
  * explicitly replaying the same caller-owned request. */
+// S0: former workspace ceilings are local to this project connection; the
+// tighter 128 resources / 64 MiB project limits still govern each project.
 export function createLutResourceServices(store:{db:DatabaseSync},{runtime,signal,fault=()=>{}}:LutResourceOptions){
   const {db}=store;
   const owned=():void=>{runtime.assertReadable();if(signal?.aborted||!runtime.ownsLock())throw lutResourceError('LUT_OWNER_REQUIRED',503);};

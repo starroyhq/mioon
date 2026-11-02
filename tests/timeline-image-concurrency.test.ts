@@ -23,20 +23,25 @@ import {mediaExecutable} from '../packages/business/src/media-environment.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {
-  openStore, classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema,
+  openStore, openLegacyWorkspaceStore, classifyCurrentWorkspaceSchema, installCurrentWorkspaceRestoreSchema,
   validateCurrentWorkspaceRestoreSchema, validateCurrentWorkspaceColourProfile,
 } from '../packages/business/src/db.ts';
 import {validateWorkspaceColourRows} from '../packages/business/src/workspace-colour-validation.ts';
-import {snapshot as databaseSnapshot} from './workspace-schema26-fixtures.mjs';
+import {snapshot as schemaSnapshot} from './workspace-schema26-fixtures.mjs';
 import {png, sha, imageColour, stamp, timelineFixture} from './helpers/timeline-image-fixtures.ts';
 import {materializeHistoricalWorkspace} from './helpers/historical-workspace.ts';
+
+import {isProjectDatabase} from '../packages/business/src/project-file/held-files.ts';
+
+function databaseSnapshot(db: DatabaseSync) {
+  return Object.fromEntries((isProjectDatabase(db) ? ['main', 'project', 'cache'] : ['main']).map(schema => [schema, schemaSnapshot(db, schema)]));
+}
 
 const code = 'TIMELINE_IMAGE_COMPOSITOR_BUDGET';
 const budgetError = {code, message: TIMELINE_COLOUR_PREFLIGHT_MESSAGES[code]};
 const intervals = (count: number) => Array.from({length: count}, (_, index) => [index * 3, 3] as const);
 
-function fixture(ranges:readonly (readonly [number,number])[], {hidden = []}:{hidden?:number[]} = {}) {
-  const projectId = randomUUID();
+function fixture(ranges:readonly (readonly [number,number])[], {hidden = [], projectId = randomUUID()}:{hidden?:number[];projectId?:string} = {}) {
   const bytes = ranges.map((_, index) => png({width: 8, height: 8,
     pixel: () => [32 + index * 7, 96, 160, 128]}));
   const assets = bytes.map((data, index) => {
@@ -207,11 +212,11 @@ for (const scenario of (['twelve sequential', 'two visible plus hidden'] as cons
 }
 
 test('preflight reports the shared PNG cap before probing or writing, including a safe selected range', async t => {
-  const root = await directory(t), store = (openStore(root) as FixtureStore);
+  const root = await directory(t), native = openStore(root), store = (native as FixtureStore);
   let probes = 0;
   const preflight = (createTimelinePreflightServices(store, {probe: async () => { probes++; assert.fail('over-budget plans must fail before probing'); }}) as StrictPreflightService);
   t.after(async () => { await preflight.drain(); store.close(); });
-  const f = fixture(intervals(4));
+  const f = fixture(intervals(4), {projectId: native.projectId});
   f.timeline.clips.slice(0, 3).forEach(clip => { clip.startFrame = 0; });
   store.put('projects', {id: f.projectId, name: 'PNG concurrency', createdAt: stamp, updatedAt: stamp});
   f.assets.forEach((asset?) => store.put('assets', ((asset) as unknown as Parameters<NonNullable<(typeof store)["put"]>>[1])));
@@ -250,7 +255,7 @@ test('a safe export range cannot bypass an over-budget whole frozen mixed plan',
   assert.deepEqual((await readdir(root) as unknown), [], 'no render staging or output is created');
 });
 
-function rewrite(db: DatabaseSync, table: string, column: string, value: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: `${string}-${string}-${string}-${string}-${string}`; requestId: `${string}-${string}-${string}-${string}-${string}`; mode: string; purpose: string; timelineRevision: number; snapshot: unknown; status: string; assetId: null; url: null; error: null; createdAt: string; updatedAt: string; }) {
+function rewrite(db: DatabaseSync, table: string, column: string, value: { id: `${string}-${string}-${string}-${string}-${string}`; projectId: string; requestId: `${string}-${string}-${string}-${string}-${string}`; mode: string; purpose: string; timelineRevision: number; snapshot: unknown; status: string; assetId: null; url: null; error: null; createdAt: string; updatedAt: string; }) {
   const guards = db.prepare("SELECT name, sql FROM sqlite_schema WHERE type='trigger' AND tbl_name=? AND sql LIKE '%BEFORE UPDATE%'").all(table);
   for (const guard of guards) db.exec(`DROP TRIGGER "${guard.name}"`);
   try { db.prepare(`UPDATE ${table} SET ${column}=?`).run(JSON.stringify(value)); }
@@ -259,7 +264,7 @@ function rewrite(db: DatabaseSync, table: string, column: string, value: { id: `
 
 for (const location of (['export', 'receipt'] as const)) {
   test(`restored33 rejects an over-budget frozen ${location} consistently without changing retained evidence`, async t => {
-    const root = await directory(t), frozenRoot = await directory(t), store = (openStore(root) as FixtureStore);
+    const root = await directory(t), frozenRoot = await directory(t), store = (openLegacyWorkspaceStore(root) as FixtureStore);
     t.after(() => { if (store.db.isOpen) store.close(); });
     const f = fixture(intervals(4));
     store.put('projects', {id: f.projectId, name: 'Restored PNG concurrency', createdAt: stamp, updatedAt: stamp});

@@ -1,5 +1,9 @@
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import {isProjectStore} from './project-file/store.ts';
+import {mutateProjectRecord} from './project-record-mutations.ts';
+import {testProjectServiceApplication} from './project-service-application.ts';
+import {registerProjectMediaStore} from './project-media-storage.ts';
+import {hasStoreTable} from './store-layout.ts';
 import {createWorkspaceBackupRuntime} from './workspace-backup-runtime.ts';
 import {createExportControlServices} from './export-controls.ts';
 import {createTaskDispositionServices} from './task-dispositions.ts';
@@ -126,6 +130,7 @@ export interface OrdinaryServices {
  call: (operation: string,input: unknown,context?: ServiceHandlerContext)=>Promise<unknown>;
  drain: ()=>Promise<void>;
  isQuiescent: ()=>boolean;
+ isBusy: ()=>boolean;
  configuration: ReturnType<typeof createWorkspaceConfiguration>;
  backups: ReturnType<typeof createWorkspaceBackupRuntime>;
  audioPreview: AudioPreviewService;
@@ -201,11 +206,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  {application,env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
  const store: WorkspaceStore = inputStore as unknown as WorkspaceStore;
  const kernelProjectId=isProjectStore(store)?store.projectId:null;
+ application??=testProjectServiceApplication(store,env);
  if(kernelProjectId&&!application)throw new TypeError('Project services require explicit application configuration and backup ports.');
  const restored=getWorkspaceRestoreContext(store);
  const restoredReads=restored?createRestoredReadServices(store as unknown as Parameters<typeof createRestoredReadServices>[0],{signal:ownerSignal}):null;
  const disabled=(): never=>{throw workspaceRestoreError();};
- const inactive=()=>({handlers:{} as ServiceHandlers,drain:async(): Promise<void>=>{},approveReviewed:disabled as (...args: unknown[])=>never,rejectReview:disabled as (...args: unknown[])=>never});
+ const inactive=()=>({isBusy:()=>false,handlers:{} as ServiceHandlers,drain:async(): Promise<void>=>{},approveReviewed:disabled as (...args: unknown[])=>never,rejectReview:disabled as (...args: unknown[])=>never});
  const nonBackupActive=new Set<Promise<unknown>>();
  const active=new Set<Promise<unknown>>(),restoredLifetime=restored?new AbortController():null;let shutdownFailure: unknown;
  const {db,root,get,list,put,tx}=store;
@@ -563,6 +569,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  } as unknown as ServiceHandlers;
  // Public handlers are the same invocation boundary as RPC. Raw internal
  // mutation closures remain protected at their shared transaction precondition.
+ if(isProjectStore(store)){
+  // Internal services and Mio retain record-only rename with the exact project
+  // receipt. Physical folder/file rename and application HTTP admission belong
+  // to the host's exclusive lifecycle; the registry refreshes this saved name.
+  for(const operation of ['project.rename','project.notes.set'] as const)handlers[operation]=(input:never)=>mutateProjectRecord(store,operation,input);
+ }
  const domainHandlers: ServiceHandlers={...handlers};
  const removeJobStopper=setAgentTaskJobStopper(db,'job',(runId,stepId)=>{
   for(const row of db.prepare("SELECT j.id,j.projectId FROM jobs j JOIN agent_task_job_origins_v2 o ON o.kind='job' AND o.jobId=j.id AND o.projectId=j.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(j.data) AND json_extract(j.data,'$.status')='queued'").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'job',String(row.id),()=>domainHandlers['job.cancel']!({jobId:String(row.id)} as never));
@@ -613,6 +625,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  }
  // Drain async RPC work before closing SQLite. Rejection is a settled operation;
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
+ const removeProjectMedia=registerProjectMediaStore(store);
  const drain=async(): Promise<void>=>{
   removeJobStopper();removeExportStopper();
   // Injected application ports outlive this project runtime. Only the legacy
@@ -624,6 +637,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   const results=await boundedShutdown(Promise.allSettled([...ownerDrains,...active]),'SERVICE_STOP_TIMEOUT');
   if(shutdownFailure)throw shutdownFailure;
   for(const result of results.slice(0,ownerDrains.length))if(result.status==='rejected')throw result.reason;
+  removeProjectMedia();
  };
  // Backend-only scoped entry, deliberately absent from handlers/RPC discovery.
  // It shares the same parsed input, handler, transaction and response journal.
@@ -682,5 +696,13 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
    return saveJob(current as JobRecord,patch);
   });
  }
- return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,configuration,backups,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
+ const isBusy=():boolean=>active.size>0||nonBackupActive.size>0||images.isBusy()||frames.isBusy()||scenes.isBusy()||([
+  ['jobs',"json_valid(data) AND json_extract(data,'$.status') IN ('queued','submitting','running','downloading')"],
+  ['exports',"json_valid(data) AND json_extract(data,'$.status') IN ('queued','running')"],
+  ['image_tasks',"state IN ('queued','dispatching','receiving','persisting')"],
+  ['image_remote_observations',"state IN ('queued','running')"],
+  ['frame_tasks',"state IN ('queued','running','persisting')"],
+  ['scene_tasks',"state IN ('queued','running','cancelling','persisting')"],
+ ] as const).some(([table,condition])=>hasStoreTable(db,table)&&!!db.prepare(`SELECT 1 FROM ${table} WHERE ${condition} LIMIT 1`).get());
+ return {compensateAgentTimelineInside:timeline.compensateAgentTargetsInside,setProjectDeletionCompanions:projectLifecycle.setProjectDeletionCompanions,call,drain,isQuiescent:()=>active.size===0,isBusy,configuration,backups,audioPreview,saveGenerationGuarded,validateGenerationDispatch,resolveGenerationProvider,updateShotInProject:restored?disabled:updateShotInProject,moveTimelineClipInProject:restored?disabled:moveTimelineClipInProject,setTimelineClipGainInProject:restored?disabled:setTimelineClipGainInProject,required,check,event,saveJob,createJob,handlers,publicValue,inspection,imageApproval:images.approveReviewed as (input: unknown)=>unknown,imageRejection:images.rejectReview as (input: unknown)=>unknown} as OrdinaryServices;
 }

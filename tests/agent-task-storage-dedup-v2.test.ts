@@ -1,3 +1,4 @@
+import {withoutForeignKeys} from './helpers/project-database.ts';
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync, realpathSync, rmSync} from 'node:fs';
@@ -19,10 +20,11 @@ function record(value: unknown): Record<string, unknown> {
 function fixture(t: TestContext) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), 'mioon-agent-storage-dedup-v2-'));
   let store = openStore(root), journal = createAgentTaskJournal(store);
-  t.after(() => {store.close(); rmSync(root, {recursive: true, force: true});});
-  const projectId = randomUUID(), foreignProjectId = randomUUID(), date = new Date().toISOString();
-  for (const [id, name] of [[projectId, 'Storage source'], [foreignProjectId, 'Foreign storage source']]) {
-    store.put('projects', {id, name, revision: 1, createdAt: date, updatedAt: date});
+  const foreignStore = openStore(join(root,'foreign')), foreignJournal = createAgentTaskJournal(foreignStore);
+  t.after(() => {store.close(); foreignStore.close(); rmSync(root, {recursive: true, force: true});});
+  const projectId = store.projectId, foreignProjectId = foreignStore.projectId, date = new Date().toISOString();
+  for (const selected of [store,foreignStore]) {
+    selected.put('projects', {id:selected.projectId, name:'Storage source', revision: 1, createdAt: date, updatedAt: date});
   }
   const run = journal.create({requestId: randomUUID(), projectId, text: 'Synthetic storage regression', configuration: {protocol: 'chat_completions'}}).run;
   function rawEvents(runId = run.id) {
@@ -34,7 +36,7 @@ function fixture(t: TestContext) {
     store.db.prepare('INSERT INTO agent_task_events_v2(runId,projectId,sequence,type,data) VALUES(?,?,?,?,?)').run(runId, owner, sequence, type, JSON.stringify(event));
     return event;
   }
-  return {root, projectId, foreignProjectId, run,
+  return {root, projectId, foreignProjectId, foreignStore, foreignJournal, run,
     get store() {return store;}, get journal() {return journal;}, rawEvents, insertEvent,
     reopen() {store.close(); store = openStore(root); journal = createAgentTaskJournal(store);},
   };
@@ -137,8 +139,8 @@ test('model requests accept exact same-value updates but reject changes or delet
 
 test('malformed or wrongly bound model references fail closed without changing stored evidence', async t => {
   const f = fixture(t), original = request(), model = f.journal.beginStep(f.run.id, {kind: 'model', request: original});
-  const foreignRun = f.journal.create({projectId: f.foreignProjectId, requestId: randomUUID(), text: 'Foreign source', configuration: {}}).run;
-  const foreignModel = f.journal.beginStep(foreignRun.id, {kind: 'model', request: original});
+  const foreignRun = f.foreignJournal.create({projectId: f.foreignProjectId, requestId: randomUUID(), text: 'Foreign source', configuration: {}}).run;
+  const foreignModel = f.foreignJournal.beginStep(foreignRun.id, {kind: 'model', request: original});
   const tool = f.journal.beginStep(f.run.id, {kind: 'tool', request: original});
   const emptyModel = f.journal.beginStep(f.run.id, {kind: 'model'}), good = reference(model);
   const missingId = randomUUID();
@@ -159,14 +161,16 @@ test('malformed or wrongly bound model references fail closed without changing s
   ];
   assert.doesNotThrow(() => validateAgentTaskModelRequestReferences(f.store.db, {allowReferences: true}));
   for (const [name, data, options] of cases) await t.test(name, () => {
-    const before = f.rawEvents(), rollback = new Error('Rollback only this synthetic invalid reference');
-    assert.throws(() => f.store.tx(() => {
+    const before = f.rawEvents(), foreignBefore = f.foreignStore.db.prepare('SELECT * FROM agent_task_events_v2 ORDER BY sequence').all(), foreignChanges = f.foreignStore.db.prepare('SELECT total_changes() AS n').get()!.n, rollback = new Error('Rollback only this synthetic invalid reference');
+    assert.throws(() => withoutForeignKeys(f.store.db,()=>f.store.tx(() => {
       const event = f.insertEvent(data, options);
       assert.throws(() => validateAgentTaskModelRequestReferences(f.store.db, {allowReferences: true}));
       assert.throws(() => f.journal.events(f.run.id, event.sequence - 1));
       throw rollback;
-    }), error => error === rollback);
+    })), error => error === rollback);
     assert.deepEqual(f.rawEvents(), before);
+    assert.deepEqual(f.foreignStore.db.prepare('SELECT * FROM agent_task_events_v2 ORDER BY sequence').all(), foreignBefore);
+    assert.equal(f.foreignStore.db.prepare('SELECT total_changes() AS n').get()!.n, foreignChanges);
   });
 });
 

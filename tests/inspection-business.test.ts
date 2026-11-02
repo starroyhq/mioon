@@ -13,6 +13,7 @@ import {parse} from '@mioon/contracts';
 import {openStore, createServices, createInspectionServices, INSPECTION_OPERATIONS, INSPECTION_LIMITS} from '@mioon/business';
 import type { FixtureProject } from './helpers/strict-timeline-core-types.ts';
 import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {openLegacyWorkspaceStore as openHistoricalWorkspaceStore} from '../packages/business/src/db.ts';
 
 const at = '2026-10-09T00:00:00.000Z';
 const unsafe = {relativePath: '/private/secret', path: '/private/path', url: 'https://unsafe.invalid/media', dataBase64: 'PRIVATE_BYTES',
@@ -253,13 +254,15 @@ test('missing and foreign links produce identical non-enumerating errors', async
 });
 
 test('indexed reverse ownership and scoped pagination avoid unrelated-project scans', async t => {
-  // Unrelated rows need a second project in this store; f.other lives in a store of its own.
-  const f = await fixture(t), a = asset(f), unrelated = await f.services.call('project.create', {name: 'Inspection B', description: 'Other private description'});
+  const f = await fixture(t), a = asset(f), other = await fixture(t), unrelated = other.project;
   for (let n = 0; n < 300; n++) {
     const jobId = randomUUID(), versionId = randomUUID();
-    f.store.put('jobs', {id: jobId, projectId: unrelated.id, private: 'unrelated'});
-    f.store.put('versions', {id: versionId, projectId: unrelated.id, jobId, assetId: randomUUID(), snapshot: {private: 'x'.repeat(2000)}});
+    other.store.put('jobs', {id: jobId, projectId: unrelated.id, private: 'unrelated'});
+    other.store.put('versions', {id: versionId, projectId: unrelated.id, jobId, assetId: randomUUID(), snapshot: {private: 'x'.repeat(2000)}});
   }
+  assert.notEqual(f.store.db, other.store.db);
+  assert.equal(f.store.list('versions').length, 0);
+  assert.equal(other.store.list('versions').length, 300);
   const {INSPECTION_VERSION_ASSET_EXPRESSION} = await import('../packages/business/src/inspection-query.ts');
   const query = `SELECT id FROM versions WHERE ${INSPECTION_VERSION_ASSET_EXPRESSION}=? ORDER BY id LIMIT 2`;
   const reversePlan = f.store.db.prepare(`EXPLAIN QUERY PLAN ${query}`).all(a.id).map(row => row.detail).join('\n');
@@ -291,7 +294,7 @@ test('additive inspection index migration tolerates malformed and huge legacy ve
   const before = store.db.prepare('SELECT * FROM versions ORDER BY id').all();
   for (const row of store.db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'inspection_%'").all()) store.db.exec(`DROP INDEX ${row.name}`);
   store.db.exec('DELETE FROM schema_version WHERE version=7');
-  store.close(); store = (openStore(root) as TypedStore);
+  store.close(); store = openHistoricalWorkspaceStore(root);
   assert.deepEqual(store.db.prepare('SELECT * FROM versions ORDER BY id').all(), before);
   const {INSPECTION_VERSION_ASSET_EXPRESSION} = await import('../packages/business/src/inspection-query.ts');
   assert.ok(store.db.prepare(`SELECT ${INSPECTION_VERSION_ASSET_EXPRESSION} AS assetKey FROM versions`).all().every(row => row.assetKey === null));

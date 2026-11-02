@@ -13,7 +13,7 @@ import {mkdtempSync,rmSync,existsSync,readdirSync,mkdirSync,writeFileSync,readFi
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {schemas,isWorkspaceRestoreInspection,isEditTaskEnvelope,isEditTaskListEnvelope} from '@mioon/contracts';
-import {installCurrentWorkspaceRestoreSchema, openStore, type StoreIdentity} from '../packages/business/src/db.ts';
+import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore as openStore, type StoreIdentity} from '../packages/business/src/db.ts';
 import {getWorkspaceRestoreContext} from '../packages/business/src/workspace-restore-schema.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
@@ -43,6 +43,7 @@ import {createWorkspacePreferences} from '../packages/business/src/workspace-pre
 import {createTimelinePreflightServices} from '../packages/business/src/timeline-preflight.ts';
 import {createTimelineExportAdmissionServices} from '../packages/business/src/timeline-export-admission.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import {startLegacyRestoredDomainHttp} from './fixtures/legacy-restored-domain-http.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {request,TASK_TOKEN} from './helpers/edit-tasks-http-fixture.ts';
 import {EventEmitter} from 'node:events';
@@ -170,7 +171,7 @@ test('restored summary reads saved metadata in current59 and historical25/41/53/
    const summaries=await services.call('project.summary.list',{},context);assert.equal(summaries.length,2);
    const saved=summaries.find((row)=>row.id===projectId),empty=summaries.find((row)=>row.id===emptyId);
    assert.deepEqual([saved!.name,saved!.width,saved!.height,saved!.durationFrames,saved!.lastOpenedAt],['Saved restored summary',width,height,30,null]);
-   assert.deepEqual(saved!.cover,{assetId,mimeType:'image/png',url:`/media/${assetId}`});assert.equal(empty!.cover,null);assert.equal(empty!.lastOpenedAt,null);
+   assert.deepEqual(saved!.cover,{assetId,mimeType:'image/png',url:`/api/project-covers/${projectId}`});assert.equal(empty!.cover,null);assert.equal(empty!.lastOpenedAt,null);
    assert.deepEqual(await services.handlers['project.summary.list']({},context),summaries);
   }
   assert.equal(store.db.prepare('SELECT total_changes() AS n').get()!.n,changes);assert.deepEqual((rawSchemaSnapshot(store.db) as unknown as import("./helpers/strict-workspace-boundary-types.ts").SchemaSnapshot),before);
@@ -234,11 +235,15 @@ test('exact saved timeline acknowledgement is read without origin, mutation, or 
  assert.equal(assertWorkspaceRestoreOrigin(f.store,{expectedWorkspaceOrigin:f.metadata.workspaceOrigin})!.workspaceOrigin,f.metadata.workspaceOrigin);
 });
 
-test('restored server skips settings/runtime constructors and special routes share safe refusal',async t=>{
+test('production refuses the old directory; the explicit restored-domain fixture safely refuses special routes',async t=>{
  const f=await fixture(t),before=(snapshot(f.store.db) as unknown as import("./helpers/strict-workspace-boundary-types.ts").SchemaSnapshot);await f.tasks.drain();await f.services.drain();f.store.close();
- let server;const bomb=()=>{throw Error('Forbidden restored startup dependency');};
+ let server;
+ const tree=()=>readdirSync(f.root,{recursive:true}).sort().map(name=>{const file=path.join(f.root,String(name)),info=statSync(file);return [name,info.mode,info.isFile()?readFileSync(file).toString('hex'):null];});
+ const rejectedTree=tree();
+ await assert.rejects(startServer({dataDir:f.root,port:0,token:TASK_TOKEN}),{code:'VALIDATION_ERROR',status:400});
+ assert.deepEqual(tree(),rejectedTree,'refusing production startup does not migrate any old SQL or file byte');
  try{
-  server=await startServer((({dataDir:f.root,port:0,token:TASK_TOKEN,agentSettings:{get:bomb,put:bomb,close:bomb},imageSecretCodec:{storage:bomb},imageNetwork:{request:bomb},comfyNetwork:{httpRequest:bomb},chatGateway:bomb}) as unknown as Parameters<typeof startServer>[0]));
+  server=await startLegacyRestoredDomainHttp({root:f.root,token:TASK_TOKEN});
   for(const directory of ['agent-settings','image-settings','comfy-settings'] as const)assert.equal(existsSync(path.join(f.root,directory)),false);
   for(const [route,method] of [['/api/agent/settings','GET'],['/api/agent/settings','PUT'],['/api/images/settings','GET'],['/api/images/custom-settings','PUT'],['/api/images/comfy-settings','GET'],['/api/images/comfy-check','POST'],[projectApiPath(f.project.id,'images','reviews','approve'),'POST'],[projectApiPath(f.project.id,'images','reviews','reject'),'POST'],[`/api/agent/chat/${f.project.id}/runs`,'POST']] as const){
    const result=await request(server.url,route,{method,input:method==='GET'?undefined:{expectedWorkspaceOrigin:f.metadata.workspaceOrigin}});

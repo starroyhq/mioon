@@ -25,26 +25,28 @@ function record(value: unknown): Record<string, unknown> {
 async function fixture(t: TestContext) {
   const root = await mkdtemp(path.join(await realpath(tmpdir()), 'mioon-loudness-target-v2-'));
   const store = openStore(root), services = createServices(store, new Map());
+  const foreignStore = openStore(path.join(root, 'foreign')), foreignServices = createServices(foreignStore, new Map());
   let disposeTools = () => {};
-  t.after(async () => {disposeTools(); await services.drain(); store.close(); await rm(root, {recursive: true, force: true});});
-  async function project(name: string) {
-    const projectId = String(record(await services.call('project.create', {name})).id);
-    const node = record(await services.call('node.create', {projectId, type: 'text', text: 'Synthetic note', position: {x: 0, y: 0}}));
-    const shot = record(await services.call('shot.create', {projectId, title: 'Synthetic shot'}));
-    const baseTimeline = record(await services.call('timeline.get', {projectId}));
+  t.after(async () => {disposeTools(); await services.drain(); await foreignServices.drain(); store.close(); foreignStore.close(); await rm(root, {recursive: true, force: true});});
+  async function project(name: string, selectedStore=store, selectedServices=services) {
+    const projectId = String(record(await selectedServices.call('project.create', {name})).id);
+    const node = record(await selectedServices.call('node.create', {projectId, type: 'text', text: 'Synthetic note', position: {x: 0, y: 0}}));
+    const shot = record(await selectedServices.call('shot.create', {projectId, title: 'Synthetic shot'}));
+    const baseTimeline = record(await selectedServices.call('timeline.get', {projectId}));
     const assetId = randomUUID(), exportId = randomUUID(), hash = 'a'.repeat(64);
-    store.put('assets', {id: assetId, projectId, name: 'Synthetic.wav', mimeType: 'audio/wav', relativePath: 'media/synthetic-never-decoded.wav', sha256: hash, sizeBytes: 100, duration: 2, hasAudio: true, hasVideo: false, provenance: 'user-import'});
-    const track = record(await services.call('timeline.track.add', {projectId, requestId: randomUUID(), expectedRevision: baseTimeline.revision, kind: 'audio'}));
+    selectedStore.put('assets', {id: assetId, projectId, name: 'Synthetic.wav', mimeType: 'audio/wav', relativePath: 'media/synthetic-never-decoded.wav', sha256: hash, sizeBytes: 100, duration: 2, hasAudio: true, hasVideo: false, provenance: 'user-import'});
+    const track = record(await selectedServices.call('timeline.track.add', {projectId, requestId: randomUUID(), expectedRevision: baseTimeline.revision, kind: 'audio'}));
     const timeline = track;
     const tracks = timeline.tracks as Array<Record<string, unknown>>;
-    const added = record(await services.call('timeline.clip.add', {projectId, requestId: randomUUID(), expectedRevision: timeline.revision, assetId, trackId: tracks.at(-1)!.id, startFrame: 0, durationFrames: 30}));
+    const added = record(await selectedServices.call('timeline.clip.add', {projectId, requestId: randomUUID(), expectedRevision: timeline.revision, assetId, trackId: tracks.at(-1)!.id, startFrame: 0, durationFrames: 30}));
     const saved = added, clips = saved.clips as Array<Record<string, unknown>>;
-    store.put('timelines', {...saved, revision: 17});
+    selectedStore.put('timelines', {...saved, revision: 17});
     // Only identity is observed by prepare; no artifact is opened or decoded.
-    store.put('exports', {id: exportId, projectId, status: 'succeeded', assetId});
+    selectedStore.put('exports', {id: exportId, projectId, status: 'succeeded', assetId});
     return {projectId, nodeId: String(node.id), shotId: String(shot.id), timelineId: String(saved.id), clipId: String(clips[0]!.id), exportId, hash};
   }
-  const own = await project('Owned synthetic project'), foreign = await project('Foreign synthetic project');
+  const own = await project('Owned synthetic project'), foreign = await project('Foreign synthetic project',foreignStore,foreignServices);
+  assert.notEqual(store.db,foreignStore.db);
   const calls: Array<{operation: string; input: unknown}> = [];
   const localServices = {...services, async call(operation: string, input: unknown, context?: Parameters<typeof services.call>[2]) {
     if (operation === 'timeline.loudness.prepare') {

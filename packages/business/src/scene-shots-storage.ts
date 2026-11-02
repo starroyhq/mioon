@@ -4,6 +4,8 @@ import {constants,openSync,fstatSync,fsyncSync,closeSync} from 'node:fs';
 import {ensurePrivateDirectory,validateManagedDirectory,readPrivateFile,writePrivateFileAtomic,removePrivateFile} from '@mioon/contracts/private-storage';
 import {FRAME_LIMITS,SCENE_LIMITS} from '@mioon/contracts';
 import {storeDirectories} from './store-layout.ts';
+import {isProjectStore} from './project-file/store.ts';
+import {projectMediaDirectory,readProjectMediaFile,writeProjectMediaFileAtomic,removeProjectMediaFile} from './project-media-storage.ts';
 
 export interface SceneShotsStorage {
  /** One staged PNG per segment position; a retried task never reuses one. */
@@ -25,7 +27,12 @@ const maxBytes=FRAME_LIMITS.resultBytes;
  * a task or asset UUID; reads never create directories. */
 export function createSceneShotsStorage(store: {readonly root: string}): SceneShotsStorage {
  const {projectDir:root,tempDir:stagingRoot}=storeDirectories(store),directory=path.join(stagingRoot,'scene-staging'),media=path.join(root,'media');
- function syncDirectory(value: string,ownerRoot=root): void {
+ const mediaRoot=isProjectStore(store)?projectMediaDirectory(store):root;
+ const relative=(file:string):string=>path.relative(root,file).split(path.sep).join('/');
+ const readMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').ReadPrivateFileOptions,'root'>)=>isProjectStore(store)?readProjectMediaFile(store,relative(file),options):readPrivateFile(file,{root,...options});
+ const writeMedia=(file:string,bytes:Buffer,options:Omit<import('@mioon/contracts/private-storage').WritePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))writeProjectMediaFileAtomic(store,relative(file),bytes,options);else writePrivateFileAtomic(file,bytes,{root,...options});};
+ const removeMedia=(file:string,options:Omit<import('@mioon/contracts/private-storage').RemovePrivateFileOptions,'root'>):void=>{if(isProjectStore(store))removeProjectMediaFile(store,relative(file),options);else removePrivateFile(file,{root,...options});};
+ function syncDirectory(value: string,ownerRoot=mediaRoot): void {
   const before=validateManagedDirectory(value,{root:ownerRoot});let fd;
   try{
    if(!before)throw failure();
@@ -50,9 +57,9 @@ export function createSceneShotsStorage(store: {readonly root: string}): SceneSh
   if(!Buffer.isBuffer(bytes)||!bytes.length)throw failure();return bytes;
  }
  function publish(assetId: string,bytes: Buffer): string {
-  const file=finalPath(assetId),existing=readPrivateFile(file,{root,allowMissing:true,maxBytes});
+  const file=finalPath(assetId),existing=readMedia(file,{allowMissing:true,maxBytes});
   if(existing){if(typeof existing==='string'||existing.length!==bytes.length||digest(existing)!==digest(bytes))throw failure();}
-  else writePrivateFileAtomic(file,bytes,{root,maxBytes,replace:false});
+  else writeMedia(file,bytes,{maxBytes,replace:false});
   syncDirectory(media);return `media/${assetId}.png`;
  }
  function discard(taskId: string,count: number): void {
@@ -60,7 +67,7 @@ export function createSceneShotsStorage(store: {readonly root: string}): SceneSh
   for(let index=0;index<Math.min(count,SCENE_LIMITS.shotsPerTask);index++)removePrivateFile(stagePath(taskId,index),{root:stagingRoot,maxBytes});
  }
  function withdraw(assetIds: readonly string[],claimed: (assetId: string)=>boolean): void {
-  for(const assetId of assetIds)if(!claimed(assetId))removePrivateFile(finalPath(assetId),{root,maxBytes});
+  for(const assetId of assetIds)if(!claimed(assetId))removeMedia(finalPath(assetId),{maxBytes});
  }
  return {stage,staged,publish,discard,withdraw};
 }

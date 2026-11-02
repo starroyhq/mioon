@@ -23,7 +23,7 @@ import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
-import {createServerProject, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
+import {createServerProject, foreignKeyCheck, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const repo=fileURLToPath(new URL('..',import.meta.url)),token='reference-recovery-public-synthetic-token';
 const environment=(extra: NodeJS.ProcessEnv)=>({...mediaEnvironment(),MIOON_ENABLE_LIVE_PROVIDER:'0',...extra});
@@ -94,6 +94,11 @@ test('real HTTP CLI and official MCP lose attach/detach acknowledgements, retain
   const source=f.sources[0].asset;f.db((db: DatabaseSync)=>withoutForeignKeys(db,()=>db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.foreign.id,JSON.stringify({...source,projectId:f.foreign.id}),source.id)));
   const foreignState=state(f);unknown(await transport.call(op,input));assert.deepEqual(state(f),foreignState);
   f.db((db: DatabaseSync)=>db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(f.project.id,JSON.stringify(source),source.id));
+  // The corrupt ownership UPDATE also fires the normal target-revision trigger.
+  // Undo that exact foreign-project artifact when repairing the synthetic row;
+  // a three-file kernel correctly refuses an orphan target on the next open.
+  assert.equal(f.db(db=>db.prepare('DELETE FROM agent_task_target_revisions_v2 WHERE projectId=? AND targetId=?').run(f.foreign.id,source.id ).changes),1,'repair only the foreign target introduced by this fixture corruption');
+  assert.deepEqual(f.db(foreignKeyCheck),[],'restored fixture ownership leaves every real relation valid before reopen');
   await f.restart();
   const noOp=attach(f,original.shot),same=await transport.call(op,noOp);assert.deepEqual(same,{ok:true,data:original});
   const remove=detach(f,original),beforeDetach=f.requests.length;f.fault('reference.detach');unknown(await transport.call('reference.detach',remove));assert.equal(f.requests.length,beforeDetach+1);

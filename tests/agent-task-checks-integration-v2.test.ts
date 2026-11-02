@@ -1,3 +1,5 @@
+import {startLegacyAgentTaskHttp} from './helpers/legacy-agent-task-http-fixture.ts';
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,10 +24,10 @@ function wav():Buffer {
 function dumpDb(db:DatabaseSync):unknown {
  return schemaObjects(db).filter(({name})=>!name.startsWith('sqlite_')).map(({name,sql})=>({name,sql,...(String(sql).startsWith('CREATE TABLE')?{rows:db.prepare(`SELECT * FROM "${name}"`).all().map(item=>JSON.stringify(item)).sort()}:{})}));
 }
-async function savedTimeline(root:string){
- const created=createServerProject(root,{name:'Checks integration'}),store=created.store,services=createServices(store,new Map());
+async function savedTimeline(root:string,legacy=false){
+ const created=legacy?null:createServerProject(root,{name:'Checks integration'}),store=created?.store??openLegacyWorkspaceStore(root),services=createServices(store,new Map());
  try{
-  const projectId=created.projectId;
+  const projectId=created?.projectId??String(object(await services.call('project.create',{name:'Checks integration'})).id);
   const asset=object(await services.call('asset.import',{projectId,name:'checks.wav',mimeType:'audio/wav',dataBase64:wav().toString('base64')}));
   const saved=object(store.get('assets',String(asset.id))),relativePath=String(saved.relativePath),timelineId=randomUUID(),trackId=randomUUID(),stamp='2026-10-28T00:00:00.000Z';
   store.put('timelines',{id:timelineId,projectId,revision:1,fps:30,width:720,height:1280,durationFrames:30,createdAt:stamp,updatedAt:stamp,
@@ -35,17 +37,17 @@ async function savedTimeline(root:string){
   const step=journal.beginStep(run.id,{kind:'tool',toolCall:{id:'saved_timeline',name:'mioon_timeline_clip_add',arguments:{}},targets:[{kind:'timeline',id:timelineId,revision:1}]});
   journal.markDispatch(run.id,step.id);journal.completeStep(run.id,step.id,{result:{id:timelineId,revision:1},change:{projectId,operation:'timeline.clip.add',targets:[{kind:'timeline',id:timelineId,revision:1}],before:null,after:null,reversible:false}});
   journal.transition(run.id,journal.run(run.id).revision,'completed');
-  return {projectId,runId:run.id,timelineId,relativePath};
+  return {projectId,runId:run.id,timelineId,relativePath,projectDir:created?.store.projectDir??root};
  }finally{await services.drain();store.close();}
 }
 
 for(const restored of [false,true])test(`${restored?'restored':'ordinary'} checks run the complete local preflight and observe missing media without database writes`,{timeout:60000},async()=>{
  const base=mkdtempSync(join(realpathSync(tmpdir()),'mioon-checks-integration-')),source=join(base,'source');
- let server:Awaited<ReturnType<typeof startServer>>|undefined,models=0,inspect!:InspectProject;
+ let server:Pick<Awaited<ReturnType<typeof startServer>>,'url'|'token'|'close'>|undefined,models=0,inspect!:InspectProject;
  try{
-  const saved=await savedTimeline(source),root=restored?join(base,'restored'):source;
+  const saved=await savedTimeline(source,restored),root=restored?join(base,'restored'):source;
   if(restored){const backup=join(base,'backup');await createWorkspaceBackup({source,destination:backup});await restoreWorkspaceBackup({directory:backup,destination:root});}
-  server=await startServer({dataDir:root,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks must not request a model');},inspectProject:received=>{inspect=received;}});
+  if(restored){const legacy=await startLegacyAgentTaskHttp({dataDir:root,taskGatewayV2:async function*(){models++;throw Error('Checks must not request a model');}});server=legacy;inspect=legacy.inspectProject;}else server=await startServer({dataDir:root,port:0,taskGatewayV2:async function*(){models++;throw Error('Checks must not request a model');},inspectProject:received=>{inspect=received;}});
   // While the server runs, the database is read on its own connection.
   const before=inspect(saved.projectId,dumpDb),read=async(preflight=false)=>{
    const response=await fetch(`${server!.url}${projectApiPath(saved.projectId,'agent','tasks','v2',saved.runId,'checks')}${preflight?'?preflight=1':''}`,{headers:{Authorization:`Bearer ${server!.token}`}});
@@ -60,7 +62,7 @@ for(const restored of [false,true])test(`${restored?'restored':'ordinary'} check
   assert.equal(items.find(item=>item.type==='timeline_preflight')?.status,'passed');
   assert.ok(items.every(item=>item.basis.some(basis=>basis.kind==='timeline'&&basis.id===saved.timelineId&&basis.revision===1)));
   assert.deepEqual(inspect(saved.projectId,dumpDb),before);
-  unlinkSync(join(root,saved.relativePath));
+  unlinkSync(join(restored?root:saved.projectDir,saved.relativePath));
   const unchangedDefault=await read(),notRequested=unchangedDefault.groups.find(group=>group.id==='timeline')!.items.find(item=>item.type==='timeline_preflight');
   assert.equal(notRequested?.status,'pending');assert.equal(notRequested.reason?.code,'PREFLIGHT_NOT_REQUESTED');
   const changed=await read(true),preflight=changed.groups.find(group=>group.id==='timeline')!.items.find(item=>item.type==='timeline_preflight');
@@ -68,7 +70,7 @@ for(const restored of [false,true])test(`${restored?'restored':'ordinary'} check
   assert.doesNotMatch(JSON.stringify(changed),/relativePath|snapshotHash|workbench\.sqlite|\/private\//u);
   assert.equal(changed.runRevision,initial.runRevision);assert.equal(models,0);assert.deepEqual(inspect(saved.projectId,dumpDb),before);
   await server.close();server=undefined;
-  const reopened=openProjectDatabase(projectDirFor(root,saved.projectId));
-  try{assert.deepEqual(dumpDb(reopened),before);}finally{reopened.close();}
+  const reopened=restored?openLegacyWorkspaceStore(root):null,db=reopened?.db??openProjectDatabase(projectDirFor(root,saved.projectId));
+  try{assert.deepEqual(dumpDb(db),before);}finally{if(reopened)reopened.close();else db.close();}
  }finally{await server?.close();rmSync(base,{recursive:true,force:true});}
 });

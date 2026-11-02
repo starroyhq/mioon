@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createProjectFile, openProjectStore} from '../packages/business/src/project-file/index.ts';
 import {createImageStorage, type ImageStorageTask} from '../packages/business/src/image-storage.ts';
 import {createFrameStorage, type FrameStorageTask} from '../packages/business/src/frame-storage.ts';
@@ -29,7 +29,7 @@ function fixture(t: TestContext, kernel = true) {
     store = openProjectStore({projectFile, locate: () => ({localDir: path.join(root, 'records'), cacheDir: path.join(root, 'cache'), tempDir})});
     mkdirSync(path.join(projectDir, 'media'), {mode: 0o700});
   } else {
-    store = openStore(projectDir);
+    store = openLegacyWorkspaceStore(projectDir);
     projectId = randomUUID();
   }
   t.after(() => { store.close(); rmSync(root, {recursive: true, force: true}); });
@@ -61,6 +61,7 @@ async function stagedResults(f: ReturnType<typeof fixture>) {
 
 for (const kernel of [false, true]) test(`${kernel ? 'kernel' : 'legacy'} staging retains its owned directory and publishes only into project media`, async t => {
   const f = fixture(t, kernel), s = await stagedResults(f);
+  if (kernel) chmodSync(f.projectDir, 0o755);
   s.assertStaged();
   const otherRoot = kernel ? f.projectDir : f.tempDir;
   for (const family of ['image-staging', 'frame-staging', 'scene-staging']) assert.equal(existsSync(path.join(otherRoot, family)), false);
@@ -97,9 +98,9 @@ test('publication collision preserves all staged PNGs and immutable receipts', a
   for (const file of paths) assert.deepEqual(readFileSync(file), other);
 });
 
-test('ordinary project directory permissions stay rejected without losing kernel staging', async t => {
+test('private media directory permissions stay rejected without losing kernel staging', async t => {
   const f = fixture(t), s = await stagedResults(f);
-  chmodSync(f.projectDir, 0o755);
+  chmodSync(path.join(f.projectDir, 'media'), 0o755);
   const error = {code: 'STORAGE_PRIVATE_REQUIRED', reason: 'DIRECTORY_PERMISSIONS'};
   await assert.rejects(s.image.publish(s.imageTask, s.imageReceipt, check), error);
   await assert.rejects(s.frame.publish(s.frameTask, s.frameReceipt, check), error);

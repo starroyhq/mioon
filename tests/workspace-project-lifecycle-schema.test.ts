@@ -7,7 +7,7 @@ import {randomUUID} from 'node:crypto';
 import {mkdtempSync,realpathSync,mkdirSync,rmSync,chmodSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {openLegacyWorkspaceStore as openStore,classifyCurrentWorkspaceSchema,getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {initializeWorkspaceSchemaThrough24} from '../packages/business/src/workspace-fixed-schema.ts';
 import {initializeWorkspaceSchema26} from '../packages/business/src/workspace-schema-v26.ts';
 import {initializeWorkspaceSchema28} from '../packages/business/src/workspace-schema-v28.ts';

@@ -1,3 +1,6 @@
+import {desktopAppDirectories} from '../apps/server/src/project-host/directories.ts';
+import {isProjectId,projectApiPath} from '../packages/contracts/src/project-file.ts';
+import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import type {DesktopHarnessOptions, DesktopHarnessRecords, DesktopHarnessWindow, DesktopHarnessWindowConfig, DesktopHarnessApp, DesktopHarnessMenuList, DesktopHarnessChild, DesktopHarnessBackend, DesktopHarnessSession, DesktopHarnessDialog, DesktopHarnessConnection} from './helpers/strict-desktop-harness-types.ts';
 import {desktopMenuHarness} from './helpers/desktop-menu-harness.ts';
 import {applicationMenuTemplate} from '../apps/desktop/src/application-menu.ts';
@@ -154,9 +157,9 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       await options.load?.(records.windows.indexOf(this));
     }
   }
-  const context = vm.createContext({ app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
+  const context = vm.createContext({ desktopAppDirectories, isProjectId, projectApiPath, readNativeBackendMetadata: async () => ({revision:0,preferences:DEFAULT_UI_PREFERENCES,recentOpened:{},recoveredDefaults:false,writable:true}), app, applicationMenuTemplate, createMenuCommandHost, MENU_COMMAND_CHANNEL, MENU_COMMAND_EVENT, MENU_COMMAND_IDS, queueMicrotask, createDesktopTray, ...desktopTrayHarness(), createAppLanguageHost, nt: nativeText, setNativeLanguageReader: () => {}, resolveLocale, APP_LANGUAGE_CHANNEL, readAppLanguagePreference: () => null, writeAppLanguagePreference: () => {}, process: { platform: 'darwin', env: {}, on() {} }, path, randomBytes, randomUUID,
     __MIOON_DESKTOP_CHANNEL__: 'development', desktopIdentity: { identityForChannel: () => ({ channel: 'development', productName: 'Synthetic', appId: 'synthetic' }) },
-    prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/workspace', configFile: '/synthetic/config' }),
+    prepareDesktopStorage: () => ({ userData: '/synthetic/userData', dataDir: '/synthetic/data', configFile: '/synthetic/config' }),
     initializeDesktopPrivateStorage: () => {}, privateStorageHelperFile: () => '/synthetic/native/mioon_private_storage.node',
     CLIP_LUT_RECOVERY_CHANNEL, createDesktopLutRecoveryHost, calculateWorkspaceScope,
     WORKSPACE_TOOLS_CHANNEL, createWorkspaceToolsHost, WORKSPACE_NATIVE_CHANNEL, createWorkspaceNativeHost, createProjectFileOpener, uploadProjectFile, projectFileArguments,
@@ -165,13 +168,13 @@ async function harness(t: test.TestContext, options: DesktopHarnessOptions<Deskt
       // Keep real scope/current/abort behavior; only private IO and OS watching
       // are synthetic, with no saved appearance in this lifecycle fixture.
       storage: { ...configuration.storage, readPrivateFile: (file, options) => {
-        assert.equal(file, '/synthetic/workspace/ui-preferences-v1.json');
+        assert.equal(file, '/synthetic/data/ui-preferences-v1.json');
         assert.equal(options.private, true); return null;
       } }, watchDirectory: () => Object.assign(new EventEmitter(), { close() {} }) }),
     createDesktopLutRecoveryStore: createLutStore,
-    validatePrivateDirectory: (root: unknown) => { assert.equal(root, '/synthetic/workspace'); return lutDirectory; },
+    validatePrivateDirectory: (root: unknown) => { assert.equal(root, '/synthetic/data'); return lutDirectory; },
     validateManagedFile: (file: string, { root }: {root: string}) => {
-      assert.equal(file, '/synthetic/workspace/workbench.sqlite'); assert.equal(root, '/synthetic/workspace'); return lutDatabase;
+      assert.equal(file, '/synthetic/data/app-library.db'); assert.equal(root, '/synthetic/data'); return lutDatabase;
     },
     readPrivateFile: unexpectedLutFileAccess, removePrivateFile: unexpectedLutFileAccess, writePrivateFileAtomic: unexpectedLutFileAccess,
     ensureDataIdentity: async () => {}, readToolConfig: async () => tools,
