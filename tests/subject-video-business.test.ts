@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {isSubjectGenerationResponse} from '@mioon/contracts';
 import {fixture,rowBytes} from './helpers/strict-timeline-audio-subject-fixtures.ts';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 
 for(const kind of ['character','product','location'])test(`explicit ${kind} version freezes the full immutable manifest without editing the shot`,async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a,kind),shot=await f.shot(),before=rowBytes(f,'shots',shot.id),input=f.input(shot,subject.headVersionId),job=await f.call('generation.submit',input),saved=f.store.get('jobs',job.id)!;
@@ -23,7 +24,7 @@ test('planning subject/style bindings never feed generation implicitly',async t=
 
 for(const type of ['first','tail','both','reference-edge','corrupt-edge','malformed-edge','null-edge','foreign-edge'])test(`subject selection rejects saved ${type} without deleting inputs`,async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),patch=type==='first'?{referenceAssetIds:[a.id]}:type==='tail'?{lastFrameAssetId:a.id}:type==='both'?{referenceAssetIds:[a.id],lastFrameAssetId:a.id}:{},shot=await f.shot(patch),node=await f.call('node.create',{projectId:f.project.id,type:'image',assetId:a.id,position:{x:0,y:0}});
- if(type.includes('edge')){const edge={id:randomUUID(),projectId:f.project.id,source:node.id,target:shot.id,kind:'reference',role:'first_frame',sourceAssetId:a.id};f.store.put('edges',edge);if(type==='corrupt-edge')f.store.put('edges',{...edge,kind:'decorative'});if(type==='malformed-edge')f.store.db.prepare('UPDATE edges SET data=? WHERE id=?').run('{private broken',edge.id);if(type==='null-edge')f.store.db.prepare('UPDATE edges SET data=? WHERE id=?').run('null',edge.id);if(type==='foreign-edge')f.store.db.prepare('UPDATE edges SET projectId=? WHERE id=?').run(f.other.id,edge.id);}
+ if(type.includes('edge')){const edge={id:randomUUID(),projectId:f.project.id,source:node.id,target:shot.id,kind:'reference',role:'first_frame',sourceAssetId:a.id};f.store.put('edges',edge);if(type==='corrupt-edge')f.store.put('edges',{...edge,kind:'decorative'});if(type==='malformed-edge')f.store.db.prepare('UPDATE edges SET data=? WHERE id=?').run('{private broken',edge.id);if(type==='null-edge')f.store.db.prepare('UPDATE edges SET data=? WHERE id=?').run('null',edge.id);if(type==='foreign-edge')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE edges SET projectId=? WHERE id=?').run(f.other.id,edge.id));}
  const before=rowBytes(f,'shots',shot.id),edges=f.store.db.prepare('SELECT * FROM edges').all();await assert.rejects(f.submit(shot,subject.headVersionId),{code:'REFERENCE_STATE_CONFLICT'});assert.equal(rowBytes(f,'shots',shot.id),before);assert.deepEqual(f.store.db.prepare('SELECT * FROM edges').all(),edges);assert.equal(f.store.list('jobs').length,0);
 });
 
@@ -32,8 +33,9 @@ test('ordinary owned decorative edge does not imply an image input',async t=>{
 });
 
 test('style, absent, foreign, caller manifest and unsupported provider selectors fail closed',async t=>{
- const f=await fixture(t),shot=await f.shot(),a=await f.asset(),look=await f.subject(a,'look'),foreign=await f.subject(await f.asset({projectId:f.other.id}));
- await assert.rejects(f.submit(shot,look.headVersionId),{code:'UNSUPPORTED_SUBJECT_KIND'});await assert.rejects(f.submit(shot,randomUUID()));await assert.rejects(f.submit(shot,foreign.headVersionId));
+ // A version from another project has no row in this project's store.
+ const f=await fixture(t),shot=await f.shot(),a=await f.asset(),look=await f.subject(a,'look'),foreign={headVersionId:randomUUID()};
+ await assert.rejects(f.submit(shot,look.headVersionId),{code:'UNSUPPORTED_SUBJECT_KIND'});await assert.rejects(f.submit(shot,randomUUID()),{code:'INSPECTION_UNAVAILABLE'});await assert.rejects(f.submit(shot,foreign.headVersionId),{code:'INSPECTION_UNAVAILABLE'});
  await assert.rejects(f.call('generation.submit',{...f.input(shot,look.headVersionId),subjectReference:{}}),{code:'VALIDATION_ERROR'});
  const subject=await f.subject(a);await assert.rejects(f.submit(shot,subject.headVersionId,{providerId:'runway'}),{code:'UNSUPPORTED_INPUT_ROLE'});assert.equal(f.store.list('jobs').length,0);
 });

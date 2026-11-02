@@ -11,16 +11,17 @@ import {openProjectDatabase,withoutForeignKeys} from './helpers/project-database
 
 for(const drift of ['asset-sql','asset-json','asset-hash','asset-dimensions','shot-sql','job-sql','subject-owner','version-owner'])test(`subject ${drift} drift denies exact replay, reads and retry without disclosure`,async t=>{
  const f=await fixture(t),a=await f.asset(),subject=await f.subject(a),shot=await f.shot(),input=f.input(shot,subject.headVersionId),job=await f.call('generation.submit',input);
- if(drift==='asset-sql')f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,a.id);
- if(drift==='asset-json')f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...a,projectId:f.other.id}),a.id);
+ if(drift==='asset-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.other.id,a.id));
+ if(drift==='asset-json')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run(JSON.stringify({...a,projectId:f.other.id}),a.id));
  if(drift==='asset-hash')f.store.put('assets',{...a,sha256:'d'.repeat(64)});
  if(drift==='asset-dimensions')f.store.put('assets',{...a,width:600});
- if(drift==='shot-sql')f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id);
- if(drift==='job-sql')f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,job.id);
+ if(drift==='shot-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id));
+ if(drift==='job-sql')withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.other.id,job.id));
  // Schema62 renamed the subject identity guard; drop whichever this workspace carries.
  if(drift==='subject-owner'){f.store.db.exec('DROP TRIGGER IF EXISTS immutable_subject_identity; DROP TRIGGER IF EXISTS immutable_subject_identity_v62');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE subjects SET projectId=? WHERE id=?').run(f.other.id,subject.id));}
  if(drift==='version-owner'){f.store.db.exec('PRAGMA ignore_check_constraints=ON; DROP TRIGGER immutable_subject_versions');withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE subject_versions SET projectId=? WHERE id=?').run(f.other.id,subject.headVersionId));}
- const before=rowBytes(f,'jobs',job.id);await assert.rejects(f.call('generation.submit',input));await assert.rejects(f.call('job.get',{jobId:job.id}));await assert.rejects(f.call('job.retry',{jobId:job.id,requestId:randomUUID()}));assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.posts(),0);
+ const expectedCode=drift==='shot-sql'||drift==='job-sql'?'INVALID_GENERATION_OWNERSHIP':'INSPECTION_UNAVAILABLE';
+ const before=rowBytes(f,'jobs',job.id);await assert.rejects(f.call('generation.submit',input),{code:expectedCode});await assert.rejects(f.call('job.get',{jobId:job.id}),{code:expectedCode});await assert.rejects(f.call('job.retry',{jobId:job.id,requestId:randomUUID()}),{code:expectedCode});assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(f.store.list('jobs').length,1);assert.equal(f.posts(),0);
 });
 
 for(const kind of ['image','frame'])for(const stage of ['admission','replay','queued','retry'])test(`typed ${kind} source lineage checked at ${stage}`,async t=>{
@@ -114,7 +115,7 @@ test('retained legacy request also prevents new explicit subject admission after
 
 for(const shape of ['oversized','nontext','malformed','null'])test(`foreign ${shape} edge cannot hide its first-frame relation before bounded JSON extraction`,async t=>{
  const f=await fixture(t),s=await f.subject(await f.asset()),shot=await f.shot(),id=randomUUID(),data=shape==='oversized'?JSON.stringify({id,projectId:f.other.id,target:shot.id,kind:'reference',role:'first_frame',padding:'x'.repeat(20000)}):shape==='nontext'?Buffer.from('binary edge'):shape==='null'?'null':'{broken foreign edge';
- f.store.db.prepare('INSERT INTO edges(id,projectId,data) VALUES(?,?,?)').run(id,f.other.id,data);await assert.rejects(f.submit(shot,s.headVersionId),{code:'REFERENCE_STATE_CONFLICT'});assert.equal(f.store.list('jobs').length,0);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('INSERT INTO edges(id,projectId,data) VALUES(?,?,?)').run(id,f.other.id,data));await assert.rejects(f.submit(shot,s.headVersionId),{code:'REFERENCE_STATE_CONFLICT'});assert.equal(f.store.list('jobs').length,0);
 });
 
 test('paid subject cancel/reconcile can progress with unavailable source, but never disclose its invalid snapshot or resubmit',async t=>{
@@ -126,9 +127,9 @@ test('paid subject cancel/reconcile can progress with unavailable source, but ne
 
 for(const stage of ['cancel','reconcile-before','reconcile-after'])test(`subject identity drift at ${stage} cannot mutate a foreign job or shot`,async t=>{
  const f=await fixture(t),s=await f.subject(await f.asset()),shot=await f.shot(),job=await f.submit(shot,s.headVersionId);await f.tick();await f.stop();let polls=0;
- const provider=f.providers.get('mock'),drift=()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id);
+ const provider=f.providers.get('mock'),drift=()=>withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.other.id,shot.id));
  f.providers.set('mock',({...provider,poll:async()=>{polls++;drift();return {status:'running'};}} as unknown as Provider));if(stage!=='reconcile-after')drift();const before=rowBytes(f,'jobs',job.id);
- await assert.rejects(f.call(stage==='cancel'?'job.cancel':'job.reconcile',{jobId:job.id}));assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(polls,stage==='reconcile-after'?1:0);assert.equal(provider!.stats(job.requestId).submissionCount,1);
+ await assert.rejects(f.call(stage==='cancel'?'job.cancel':'job.reconcile',{jobId:job.id}),{code:'INVALID_GENERATION_OWNERSHIP'});assert.equal(rowBytes(f,'jobs',job.id),before);assert.equal(polls,stage==='reconcile-after'?1:0);assert.equal(provider!.stats(job.requestId).submissionCount,1);
 });
 
 for(const damage of ['missing','null','number','short','oversized'])test(`retained subject with ${damage} request identity is uncertain, never a vacant fresh key`,async t=>{

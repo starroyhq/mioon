@@ -12,49 +12,51 @@ export const IDS = Object.freeze({project: uuid(1), other: uuid(2), shot: uuid(1
   job: uuid(40), secondJob: uuid(41), otherJob: uuid(42), version: uuid(50), secondVersion: uuid(51),
   otherVersion: uuid(52), timeline: uuid(60)});
 
-export function snapshot(db: import('node:sqlite').DatabaseSync): Record<string, Record<string, unknown>[]> {
-  return Object.fromEntries((db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[])
-    .map(({name}) => [name, (db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all() as Record<string, unknown>[]).map(row => ({...row}))]) as [string, Record<string, unknown>[]][]);
-}
-
 export async function seedMutationStore(root: string): Promise<void> {
-  const {openStore} = await import('../../packages/business/src/db.ts');
-  const store = openStore(root), {put, db} = store;
-  try {
-    for (const id of [IDS.project, IDS.other]) put('projects', {id, name: `Synthetic mutation project ${id}`, description: '',
-      revision: 1, createdAt: NOW, updatedAt: NOW});
-    const shot = (id: string, projectId: string, orderIndex: number): Record<string, unknown> => ({id, projectId, title: 'Synthetic saved shot', prompt: 'Saved prompt',
-      referenceAssetIds: [], aspectRatio: '9:16', duration: 2, parameters: {}, position: {x: 0, y: 0}, orderIndex,
-      revision: 1, selectedVersionId: null, createdAt: NOW, updatedAt: NOW});
-    put('shots', shot(IDS.shot, IDS.project, 0)); put('shots', shot(IDS.spare, IDS.project, 1));
-    put('shots', shot(IDS.otherShot, IDS.other, 0));
-    for (const [id, projectId] of [[IDS.node, IDS.project], [IDS.otherNode, IDS.other]]) put('nodes', {
-      id, projectId, type: 'text', label: 'Saved node', text: 'Saved text', position: {x: 5, y: 8}, revision: 1, createdAt: NOW});
-    for (const [id, projectId] of [[IDS.asset, IDS.project], [IDS.otherAsset, IDS.other]]) put('assets', {
-      id, projectId, name: 'Synthetic metadata only', mimeType: 'video/mp4', width: 720, height: 1280, duration: 2,
-      hasVideo: true, hasAudio: false, provenance: 'generated', createdAt: NOW, sha256: '1'.repeat(64)});
-    for (const [id, versionId, shotId, projectId, assetId, number] of [
-      [IDS.job, IDS.version, IDS.shot, IDS.project, IDS.asset, 1],
-      [IDS.secondJob, IDS.secondVersion, IDS.shot, IDS.project, IDS.asset, 2],
-      [IDS.otherJob, IDS.otherVersion, IDS.otherShot, IDS.other, IDS.otherAsset, 1],
-    ]) {
-      put('jobs', {id, projectId, shotId, versionId, providerId: 'mock', model: 'synthetic', status: 'succeeded',
-        phase: 'complete', progress: 100, revision: 1, createdAt: NOW, updatedAt: NOW});
-      put('versions', {id: versionId, projectId, shotId, jobId: id, assetId, number,
-        providerId: 'mock', model: 'synthetic', isMock: true, createdAt: NOW, sha256: '1'.repeat(64)});
-    }
-    put('timelines', {id: IDS.timeline, projectId: IDS.project, revision: 4, fps: 30, width: 720, height: 1280,
-      durationFrames: 0, tracks: [], clips: [], createdAt: NOW, updatedAt: NOW});
-    // Nonempty older journals establish that this additive feature does not
-    // rewrite previous responses or invent timeline/history activity.
-    db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run('mutation-preserved-timeline', 'preserved-hash', '{"preserved":"timeline"}');
-    db.prepare('INSERT INTO reference_requests VALUES(?,?,?)').run('mutation-preserved-reference', 'preserved-hash', '{"preserved":"reference"}');
-    db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation', 'mutation-preserved-generation', 'preserved-hash', IDS.job);
-    db.prepare('INSERT INTO timeline_history VALUES(?,?,?,?,?,?,?)').run(uuid(61), IDS.project, 1, 'timeline.track.add', NOW, '{"preserved":"before"}', '{"preserved":"after"}');
-    db.prepare('INSERT INTO timeline_history_cursors VALUES(?,?)').run(IDS.project, 1);
-    db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(IDS.job, '{"preserved":"event"}', NOW);
-    db.prepare('INSERT INTO workspace_preferences VALUES(?,?,?)').run(IDS.project, 1, '{"preserved":"workspace"}');
-  } finally { store.close(); }
+  // Keep business imports inside the seed: CLI/MCP preload this module to
+  // install their guard before any production module is loaded.
+  const {createServerProject} = await import('./project-database.ts');
+  for (const projectId of [IDS.project, IDS.other]) {
+    const {store} = createServerProject(root, {name: `Synthetic mutation project ${projectId}`, projectId});
+    try {
+      const {put, db} = store;
+      const shot = (id: string, projectId: string, orderIndex: number): Record<string, unknown> => ({id, projectId, title: 'Synthetic saved shot', prompt: 'Saved prompt',
+        referenceAssetIds: [], aspectRatio: '9:16', duration: 2, parameters: {}, position: {x: 0, y: 0}, orderIndex,
+        revision: 1, selectedVersionId: null, createdAt: NOW, updatedAt: NOW});
+      if (projectId === IDS.project) {
+        put('shots', shot(IDS.shot, projectId, 0)); put('shots', shot(IDS.spare, projectId, 1));
+      } else put('shots', shot(IDS.otherShot, projectId, 0));
+      put('nodes', {id: projectId === IDS.project ? IDS.node : IDS.otherNode,
+        projectId, type: 'text', label: 'Saved node', text: 'Saved text', position: {x: 5, y: 8}, revision: 1, createdAt: NOW});
+      put('assets', {id: projectId === IDS.project ? IDS.asset : IDS.otherAsset,
+        projectId, name: 'Synthetic metadata only', mimeType: 'video/mp4', width: 720, height: 1280, duration: 2,
+        hasVideo: true, hasAudio: false, provenance: 'generated', createdAt: NOW, sha256: '1'.repeat(64)});
+      for (const [id, versionId, shotId, assetId, number] of projectId === IDS.project ? [
+        [IDS.job, IDS.version, IDS.shot, IDS.asset, 1],
+        [IDS.secondJob, IDS.secondVersion, IDS.shot, IDS.asset, 2],
+      ] as const : [
+        [IDS.otherJob, IDS.otherVersion, IDS.otherShot, IDS.otherAsset, 1],
+      ] as const) {
+        put('jobs', {id, projectId, shotId, versionId, providerId: 'mock', model: 'synthetic', status: 'succeeded',
+          phase: 'complete', progress: 100, revision: 1, createdAt: NOW, updatedAt: NOW});
+        put('versions', {id: versionId, projectId, shotId, jobId: id, assetId, number,
+          providerId: 'mock', model: 'synthetic', isMock: true, createdAt: NOW, sha256: '1'.repeat(64)});
+      }
+      if (projectId === IDS.project) {
+        put('timelines', {id: IDS.timeline, projectId: IDS.project, revision: 4, fps: 30, width: 720, height: 1280,
+          durationFrames: 0, tracks: [], clips: [], createdAt: NOW, updatedAt: NOW});
+        // Nonempty older journals establish that this additive feature does not
+        // rewrite previous responses or invent timeline/history activity.
+        db.prepare('INSERT INTO timeline_requests VALUES(?,?,?)').run('mutation-preserved-timeline', 'preserved-hash', '{"preserved":"timeline"}');
+        db.prepare('INSERT INTO reference_requests VALUES(?,?,?)').run('mutation-preserved-reference', 'preserved-hash', '{"preserved":"reference"}');
+        db.prepare('INSERT INTO idempotency VALUES(?,?,?,?)').run('generation', 'mutation-preserved-generation', 'preserved-hash', IDS.job);
+        db.prepare('INSERT INTO timeline_history VALUES(?,?,?,?,?,?,?)').run(uuid(61), IDS.project, 1, 'timeline.track.add', NOW, '{"preserved":"before"}', '{"preserved":"after"}');
+        db.prepare('INSERT INTO timeline_history_cursors VALUES(?,?)').run(IDS.project, 1);
+        db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(IDS.job, '{"preserved":"event"}', NOW);
+        db.prepare('INSERT INTO workspace_preferences VALUES(?,?,?)').run(IDS.project, 1, '{"preserved":"workspace"}');
+      }
+    } finally { store.close(); }
+  }
 }
 
 if (process.env.MIOON_MUTATION_WIRE_GUARD === '1') installWireGuard({
@@ -110,6 +112,7 @@ if (direct) {
   if (mode === 'writer') {
     const {openStore} = await import('../../packages/business/src/db.ts');
     const {createServices} = await import('../../packages/business/src/services.ts');
+    const {readProjectState} = await import('./project-state.ts');
     // This explicit, isolated test child alone bypasses the backend owner lock
     // to exercise SQLite's real cross-process BEGIN IMMEDIATE serialization.
     const competing = process.env.MIOON_MUTATION_WIRE_COMPETING_WRITER === '1';
@@ -138,14 +141,14 @@ if (direct) {
       const result = nativeTx(() => {
         const value = fn();
         if (boundary === 'rollback' || boundary === 'crash-before-commit') {
-          receipt({request, result: value, uncommitted: snapshot(store.db)});
+          receipt({request, result: value, uncommitted: readProjectState(store.db).tables});
           if (boundary === 'rollback') throw Error('Synthetic failure after journal and business writes, before commit');
           process.kill(process.pid, 'SIGKILL');
         }
         return value;
       });
       if (boundary === 'crash-after-commit') {
-        receipt({request, result, committed: snapshot(store.db)});
+        receipt({request, result, committed: readProjectState(store.db).tables});
         process.kill(process.pid, 'SIGKILL');
       }
       return result;

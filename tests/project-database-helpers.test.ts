@@ -49,6 +49,67 @@ test('createServerProject leaves an open store of one new project in the server 
   }
 });
 
+test('createServerProject uses a fixed seed ID and still generates an ID when explicitly omitted', t => {
+  const dataDir = dataDirectory(t), fixedId = '00000000-0000-4000-8000-0000000000aa';
+  const {projectId, store} = createServerProject(dataDir, {projectId: fixedId, name: 'Fixed wire seed'});
+  try {
+    assert.equal(projectId, fixedId);
+    assert.equal(store.projectId, fixedId);
+    assert.equal(projectName(store.db, fixedId), 'Fixed wire seed');
+    assert.deepEqual(store.db.prepare('SELECT id FROM projects ORDER BY id').all().map(row => row.id), [fixedId]);
+  } finally { store.close(); }
+  const generated = createServerProject(dataDir, {projectId: undefined});
+  try {
+    assert.ok(isProjectId(generated.projectId));
+    assert.notEqual(generated.projectId, fixedId);
+    assert.equal(projectName(generated.store.db, generated.projectId), 'Test project');
+  } finally { generated.store.close(); }
+  const reopened = openProjectDatabase(projectDirFor(dataDir, fixedId));
+  try { assert.equal(projectName(reopened, fixedId), 'Fixed wire seed'); }
+  finally { reopened.close(); }
+});
+
+test('createServerProject rejects every explicit invalid ID without opening a store', t => {
+  const dataDir = dataDirectory(t);
+  const invalidIds: unknown[] = ['', 'synthetic-project', '../media', '00000000-0000-4000-8000-0000000000AA', null, 17, [], {}];
+  for (const projectId of invalidIds) {
+    assert.throws(() => createServerProject(dataDir, {projectId: projectId as string}), {name: 'TypeError', message: 'Invalid project ID'});
+    assert.equal(lstatSync(path.join(dataDir, 'server.lock'), {throwIfNoEntry: false}), undefined);
+    assert.equal(lstatSync(projectDatabasePath(dataDir), {throwIfNoEntry: false}), undefined);
+  }
+  const created = createServerProject(dataDir);
+  try { assert.ok(isProjectId(created.projectId)); }
+  finally { created.store.close(); }
+});
+
+test('createServerProject refuses an existing ID without changing its stored bytes or retaining its lock', t => {
+  const dataDir = dataDirectory(t), fixedId = '00000000-0000-4000-8000-0000000000bb';
+  const original = createServerProject(dataDir, {projectId: fixedId, name: 'Original fixed project'});
+  let before: unknown;
+  try { before = original.store.db.prepare('SELECT id,data FROM projects ORDER BY id').all().map(row => ({...row})); }
+  finally { original.store.close(); }
+  assert.throws(() => createServerProject(dataDir, {projectId: fixedId, name: 'Must never overwrite'}), {message: 'Project ID already exists'});
+  assert.equal(lstatSync(path.join(dataDir, 'server.lock'), {throwIfNoEntry: false}), undefined);
+  const reopened = openProjectDatabase(projectDirFor(dataDir, fixedId));
+  try {
+    assert.deepEqual(reopened.prepare('SELECT id,data FROM projects ORDER BY id').all().map(row => ({...row})), before);
+    assert.equal(projectName(reopened, fixedId), 'Original fixed project');
+  } finally { reopened.close(); }
+});
+
+test('createServerProject rolls back and closes its store when creation throws after opening it', t => {
+  const dataDir = dataDirectory(t), projectId = '00000000-0000-4000-8000-0000000000cc';
+  const failure = new Error('Synthetic fixture name failure');
+  assert.throws(() => createServerProject(dataDir, {projectId, get name(): string { throw failure; }}), error => error === failure);
+  assert.equal(lstatSync(path.join(dataDir, 'server.lock'), {throwIfNoEntry: false}), undefined);
+  const created = createServerProject(dataDir, {projectId, name: 'Recovered fixed project'});
+  try {
+    assert.equal(created.projectId, projectId);
+    assert.equal(projectName(created.store.db, projectId), 'Recovered fixed project');
+    assert.deepEqual(created.store.db.prepare('SELECT id FROM projects ORDER BY id').all().map(row => row.id), [projectId]);
+  } finally { created.store.close(); }
+});
+
 test('openProjectDatabase opens a closed project with the store pragmas and structure', t => {
   const dataDir = dataDirectory(t);
   const {projectId, store} = createServerProject(dataDir);

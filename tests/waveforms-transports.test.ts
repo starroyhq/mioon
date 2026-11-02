@@ -117,15 +117,22 @@ async function fixture(t: test.TestContext) {
   await writeFile(auditPath, ''); await writeFile(mediaAudit, '');
   await seedMutationStore(dataDir);
   const wav = syntheticWav(), sha256 = createHash('sha256').update(wav).digest('hex');
-  const relativePath = `media/${PRIVATE}.wav`, seed = (openStore(dataDir) as FixtureStore);
+  const relativePath = `media/${PRIVATE}.wav`;
+  const audio = (id: string, projectId: string) => ({id, projectId, name: 'Synthetic source waveform', mimeType: 'audio/wav',
+    relativePath, sha256, sizeBytes: wav.length, duration: 2, hasVideo: false, hasAudio: true, provenance: 'user-import', createdAt: NOW});
+  const seed = (openStore(projectDirFor(dataDir, IDS.project)) as FixtureStore);
   try {
-    await writeFile(path.join(dataDir, relativePath), wav, {mode: 0o600});
-    const audio = (id: string, projectId: string) => ({id, projectId, name: 'Synthetic source waveform', mimeType: 'audio/wav',
-      relativePath, sha256, sizeBytes: wav.length, duration: 2, hasVideo: false, hasAudio: true, provenance: 'user-import', createdAt: NOW});
+    await writeFile(path.join(projectDirFor(dataDir, IDS.project), relativePath), wav, {mode: 0o600});
     seed.put('assets', audio(IDS.asset, IDS.project)); seed.put('assets', audio(alias, IDS.project));
-    seed.put('assets', audio(IDS.otherAsset, IDS.other));
     seed.put('assets', {...audio(imageId, IDS.project), mimeType: 'image/png', hasVideo: true, hasAudio: false, duration: 0, sha256: '9'.repeat(64)});
   } finally { seed.close(); }
+  // The shared seed already registered this project; fill it only after the
+  // first holder closes, without recreating its fixed ID or sharing a store.
+  const other = (openStore(projectDirFor(dataDir, IDS.other)) as FixtureStore);
+  try {
+    await writeFile(path.join(projectDirFor(dataDir, IDS.other), relativePath), wav, {mode: 0o600});
+    other.put('assets', audio(IDS.otherAsset, IDS.other));
+  } finally { other.close(); }
   // Guards are installed before production imports in every real child. Only
   // backend spawn of local FFmpeg/ffprobe is admitted; CLI/MCP cannot spawn.
   // The optional gate is a bounded synthetic owned decoder used solely to
