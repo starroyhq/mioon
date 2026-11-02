@@ -10,7 +10,7 @@ import {streamAnthropicMessages} from './anthropic-stream.ts';
 import type {AnthropicCompletion} from './anthropic-stream.ts';
 import {parseModelToolArguments} from './model-tool-arguments.ts';
 import {anthropicMessages} from './anthropic-wire.ts';
-import {ANTHROPIC_MESSAGES_FIELDS} from './anthropic-protocol.ts';
+import {agentAnthropicThinkingFields,agentModelThinkingTier,agentRequestThinks} from './model-profiles.ts';
 import {taskToolWireSchema} from './task-tool-wire-schema.ts';
 import {createTaskUsageCollector} from './task-usage-v2.ts';
 import type {TaskModelUsage} from './task-usage-v2.ts';
@@ -139,9 +139,22 @@ function string(value:unknown,max=TASK_MODEL_LIMITS.outputBytes):string {
   return value as string;
 }
 function identifier(value:unknown):string {const result=string(value,256);if(!result||/[\u0000-\u0020\u007f]/u.test(result))fail();return result;}
-function noReasoning(value:Record<string,unknown>):void {
+/** Reasoning fails closed unless the request asked for thinking, and even then
+ * only that protocol's documented carrier is admitted. */
+function noReasoning(value:Record<string,unknown>,admitted?:string):void {
   for(const key of ['reasoning_content','reasoning_details','encrypted_content','thinking','signature','phase'])
-    if(value[key]!=null&&value[key]!==''&&!(Array.isArray(value[key])&&(value[key] as unknown[]).length===0))fail('AGENT_CHAT_REASONING_UNSUPPORTED');
+    if(key!==admitted&&value[key]!=null&&value[key]!==''&&!(Array.isArray(value[key])&&(value[key] as unknown[]).length===0))fail('AGENT_CHAT_REASONING_UNSUPPORTED');
+}
+const reasoningEvents=new Set(['response.reasoning_summary_part.added','response.reasoning_summary_part.done','response.reasoning_summary_text.delta','response.reasoning_summary_text.done','response.reasoning_text.delta','response.reasoning_text.done']);
+/** A thinking request keeps the provider's Responses reasoning item exactly,
+ * including encrypted reasoning, for this round's continuation only. */
+function reasoningItem(item:Record<string,unknown>):void {
+  if(Object.keys(item).some(key=>!['id','type','summary','content','encrypted_content','status'].includes(key))||!Array.isArray(item.summary)||item.content!==undefined&&!Array.isArray(item.content))fail();
+  if(Buffer.byteLength(JSON.stringify(item))>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');
+  if(item.encrypted_content!=null)string(item.encrypted_content);
+  for(const [parts,kind] of [[item.summary,'summary_text'],[item.content??[],'reasoning_text']] as const)for(const part of parts as unknown[]){
+    if(!object(part)||Object.keys(part).length!==2||part.type!==kind)fail();string(part.text);
+  }
 }
 /** Preserve the public task parser's original bounds and failure semantics. */
 export function parseTaskArguments(source:string):AgentTaskJson {
@@ -183,7 +196,7 @@ export function buildTaskModelRequest(configuration:AgentConfiguration,history:A
       ...(chatUsageRequest(configuration)?{stream_options:{include_usage:true}}:{}),
       ...(wireTools.length?{tools:wireTools.map(tool=>({type:'function',function:{...tool,...(profile.strict?{strict:false}:{})}}))}:{}),...controls};
   }else if(configuration.protocol==='anthropic_messages'){
-    body={model:configuration.model,stream:true,max_tokens:4096,...ANTHROPIC_MESSAGES_FIELDS,...native,
+    body={model:configuration.model,stream:true,max_tokens:4096,...agentAnthropicThinkingFields(agentModelThinkingTier(configuration)),...native,
       ...(wireTools.length?{tools:wireTools.map(tool=>({name:tool.name,description:tool.description,input_schema:tool.parameters})),tool_choice:{type:'auto',disable_parallel_tool_use:true}}:{})};
   }else{
     const responses=agentResponsesProfile(configuration);
@@ -232,8 +245,10 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
     const usageCollector=createTaskUsageCollector(options.configuration.protocol);
     const usageOutput=():{usage?:TaskModelUsage}=>{const usage=usageCollector.usage();return usage?{usage}:{};};
     try {
+      // Read from the exact (possibly journaled) body, never from the model name.
+      const thinking=agentRequestThinks(options.configuration,parsed);
       if(options.configuration.protocol==='chat_completions') {
-        let text='',finished:string|null=null,done=false,refused=false;
+        let text='',reasoning='',finished:string|null=null,done=false,refused=false;
         const calls=new Map<number,{id:string;name:string;arguments:string}>();
         streamState={finishReason:null,done:false,frameCount:0,toolCount:0,outputBytes:0};
         for await(const frame of parseAgentSse(stream.body,{signal:options.signal})) {
@@ -242,9 +257,11 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           if(done)fail();if(frame.data==='[DONE]'){streamState.done=true;if(!finished)throw agentChatStreamError('missing_finish');done=true;continue;}
           let raw:unknown;try{raw=JSON.parse(frame.data);}catch{fail();}if(!object(raw)||raw.error)fail('AGENT_CHAT_PROVIDER_ERROR');
           noReasoning(raw);if(!Array.isArray(raw.choices)||raw.choices.length>1)fail();usageCollector.observe(raw.usage);if(!raw.choices.length)continue;
-          const choice=raw.choices[0];if(!object(choice)||choice.index!==0||!object(choice.delta))fail();noReasoning(choice.delta);
+          const choice=raw.choices[0];if(!object(choice)||choice.index!==0||!object(choice.delta))fail();noReasoning(choice.delta,thinking?'reasoning_content':undefined);
           if(finished)fail();const delta=choice.delta;
           if(delta.content!=null){const part=string(delta.content);text+=part;streamState.outputBytes=Buffer.byteLength(text);if(streamState.outputBytes>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');if(part)yield {type:'delta',text:part};}
+          // Reasoning is retained for this round's continuation, never shown as text.
+          if(thinking&&delta.reasoning_content!=null){reasoning+=string(delta.reasoning_content);if(Buffer.byteLength(reasoning)>TASK_MODEL_LIMITS.outputBytes)fail('AGENT_CHAT_LIMIT');}
           if(delta.refusal!=null&&delta.refusal!=='')refused=true;
           if(delta.function_call!=null)fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
           if(delta.tool_calls!=null){if(!Array.isArray(delta.tool_calls))fail();for(const fragment of delta.tool_calls){
@@ -262,11 +279,11 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
         const ordered=[...calls.entries()].sort((a,b)=>a[0]-b[0]);if(ordered.some(([index],position)=>index!==position))fail();
         const toolCalls=ordered.map(([,item])=>call(item.id,item.name,item.arguments,definitions,options.knownTools));
         if(new Set(toolCalls.map(item=>item.id)).size!==toolCalls.length||(finished==='tool_calls')!==!!toolCalls.length)fail();
-        const providerOutput:AgentTaskJson={role:'assistant',content:text||null,...(toolCalls.length?{tool_calls:ordered.map(([,item])=>({id:item.id,type:'function',function:{name:item.name,arguments:item.arguments}}))}:{})};
+        const providerOutput:AgentTaskJson={role:'assistant',content:text||null,...(reasoning?{reasoning_content:reasoning}:{}),...(toolCalls.length?{tool_calls:ordered.map(([,item])=>({id:item.id,type:'function',function:{name:item.name,arguments:item.arguments}}))}:{})};
         yield {type:'done',output:{text,toolCalls,providerOutput,...usageOutput()}};
       } else if(options.configuration.protocol==='anthropic_messages') {
         let completion:AnthropicCompletion|undefined;
-        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls,usageMode:'optional',onUsage:usageCollector.observe})){
+        for await(const item of streamAnthropicMessages(stream.body,{signal:options.signal,maxOutputBytes:TASK_MODEL_LIMITS.outputBytes,maxArgumentBytes:TASK_MODEL_LIMITS.argumentBytes,maxToolCalls:TASK_MODEL_LIMITS.toolCalls,usageMode:'optional',onUsage:usageCollector.observe,thinking})){
           if(item.type==='delta')yield item;
           else completion=item.completion;
         }
@@ -297,8 +314,8 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
           }
           const index=raw.output_index;if(!Number.isSafeInteger(index)||(index as number)<0||(index as number)>=64)fail();const position=index as number;
           if(type==='response.output_item.added'){
-            if(added.has(position)||!object(raw.item)||!['message','function_call'].includes(String(raw.item.type)))fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
-            identifier(raw.item.id);noReasoning(raw.item);added.set(position,raw.item);argumentsByIndex.set(position,'');continue;
+            if(added.has(position)||!object(raw.item)||!['message','function_call',...(thinking?['reasoning']:[])].includes(String(raw.item.type)))fail('AGENT_CHAT_TOOLS_UNSUPPORTED');
+            identifier(raw.item.id);if(raw.item.type==='reasoning')reasoningItem(raw.item);else noReasoning(raw.item);added.set(position,raw.item);argumentsByIndex.set(position,'');continue;
           }
           const item=added.get(position);if(!item||raw.item_id!==undefined&&raw.item_id!==item.id||done.has(position))fail();
           if(type==='response.output_text.delta'){
@@ -314,14 +331,20 @@ export function createTaskGateway(dependencies:AgentTransportDependencies={}):Ta
             if(item.type!=='message'||!object(raw.part)||raw.part.type!=='output_text'||!Number.isSafeInteger(raw.content_index))fail();
             if(type.endsWith('.done')&&raw.part.text!==(parts.get(`${position}:${raw.content_index}`)??''))fail();
           }else if(type==='response.output_item.done'){
-            if(!object(raw.item)||raw.item.id!==item.id||raw.item.type!==item.type||raw.item.status!=='completed')fail();noReasoning(raw.item);
+            if(!object(raw.item)||raw.item.id!==item.id||raw.item.type!==item.type||raw.item.status!=='completed'&&!(item.type==='reasoning'&&raw.item.status===undefined))fail();
+            if(item.type==='reasoning')reasoningItem(raw.item);else noReasoning(raw.item);
             if(item.type==='function_call'){
               if(raw.item.name!==item.name||raw.item.call_id!==item.call_id||raw.item.arguments!==argumentsByIndex.get(position))fail();
-            }else{
+            }else if(item.type==='message'){
               if(raw.item.role!=='assistant'||!Array.isArray(raw.item.content))fail();
               for(const [partIndex,part] of raw.item.content.entries())if(!object(part)||part.type!=='output_text'||part.text!==(parts.get(`${position}:${partIndex}`)??'')||Array.isArray(part.annotations)&&part.annotations.length)fail();
             }
             done.set(position,raw.item);
+          }else if(item.type==='reasoning'&&reasoningEvents.has(type)){
+            // Streamed reasoning is checked, never shown; continuation returns the completed item.
+            if(!Number.isSafeInteger(type.startsWith('response.reasoning_summary_')?raw.summary_index:raw.content_index))fail();
+            if(type.includes('_part.')){if(!object(raw.part)||raw.part.type!=='summary_text')fail();string(raw.part.text);}
+            else string(type.endsWith('.delta')?raw.delta:raw.text);
           }else fail();
         }
         if(stream.error())throw stream.error();if(!terminal||!completed)fail('AGENT_CHAT_TRUNCATED');

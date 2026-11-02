@@ -2,26 +2,8 @@
  * an opacity render, so an own opacity field fails closed instead of silently
  * falling through the legacy render. Portable JSON plans grant nothing. */
 import {isProxy} from 'node:util/types';
-import type {TimelineOpacityAlphaModeCandidate} from './timeline-opacity-filter-candidate.ts';
 
 type Value = Record<string, unknown>;
-/** The renderer's binding contract. Nothing produces a binding; the renderer
- * keeps this shape so an unbound opacity field still refuses. */
-export interface TimelineOpacityRenderBinding {
-  /** Detached and recursively frozen. Only fixed legacy validators receive it;
-   * the renderer retains the exact bound raw snapshot and its original hash. */
-  readonly validationSnapshot: Readonly<Value>;
-  /** Fixed owned project reader from the authority's actual preparation. */
-  readonly readLut: unknown;
-  /** Media always uses the same lifetime as its owned attempt. */
-  readonly signal: AbortSignal | undefined;
-  readonly assert: () => void;
-  /** Always retains the trusted attempt/source checks around any worker fence. */
-  readonly effectFence: (additional?: () => void) => () => void;
-  /** Raw fixed compiler stage, without a leading comma or caller graph labels. */
-  readonly filterForSegment: (clipId: string, beginFrame: number, frameCount: number, alphaMode: TimelineOpacityAlphaModeCandidate) => string;
-  readonly close: () => void;
-}
 const own = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
 const object = (value: unknown): value is Value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function unavailable(): never {
@@ -63,7 +45,7 @@ function hasOpacityFields(snapshot: Value): boolean {
  * a prepared source Map grants no access either. Old ordinary snapshots
  * return null and contribute exactly zero filter bytes.
  */
-export function getTimelineOpacityRenderBinding(snapshot: unknown, _preparedAssets?: unknown): Readonly<TimelineOpacityRenderBinding> | null {
+export function getTimelineOpacityRenderBinding(snapshot: unknown, _preparedAssets?: unknown): null {
   if (!object(snapshot)) return null;
   if (hasOpacityFields(snapshot)) return unavailable();
   return null;

@@ -67,6 +67,22 @@ const invalidatedBatchInstructions:Record<AgentTaskLocale,string>={
   en:'The old tool arguments in this batch are no longer valid. Replan from the current saved state.',
   ja:'このバッチの古いツール引数は無効になりました。現在の保存状態から計画し直してください。',
 };
+// X4 follow-up: a changed target set (a shot.reorder after a shot was added or
+// deleted) can leave no saved value to hand back. Mio must reread the project.
+const conflictProjectRereadInstructions:Record<AgentTaskLocale,string>={
+  'zh-Hans':'目标在你读取后已变化，例如新增或删除了镜头，这一步没有执行。current 为空，没有可交回的值。请先重新读取项目，再按当前内容重新规划，不要重放旧参数。',
+  'zh-Hant':'目標在你讀取後已變化，例如新增或刪除了鏡頭，這一步沒有執行。current 為空，沒有可交回的值。請先重新讀取專案，再按目前的內容重新規劃，不要重放舊參數。',
+  en:'The targets changed after you read them, for example a shot was added or deleted, so this step did not run. current is empty because there is no saved value to return. Read the project again first, then replan from its current state instead of replaying the old arguments.',
+  ja:'読み取った後に対象が変わったため（ショットの追加や削除など）、このステップは実行されませんでした。返せる保存値がないため current は空です。まずプロジェクトを読み直し、現在の状態から計画し直してください。古い引数を再利用しないでください。',
+};
+// X4 follow-up: the domain proved a stale revision in the arguments wrote
+// nothing. Like a rejected parameter set, the step returns to Mio for a reread.
+const revisionConflictInstructions:Record<AgentTaskLocale,string>={
+  'zh-Hans':'参数里的修订号已过期，这一步没有执行，项目没有改动。请先重新读取目标的当前内容，再用新的修订号修改，不要重放旧参数。',
+  'zh-Hant':'參數裡的修訂號已過期，這一步沒有執行，專案沒有變更。請先重新讀取目標目前的內容，再用新的修訂號修改，不要重放舊參數。',
+  en:'The revision in your arguments is out of date, so this step did not run and nothing changed. Read the target again first, then make the change with its current revision instead of replaying the old arguments.',
+  ja:'引数のリビジョンが古いため、このステップは実行されず、何も変更されていません。まず対象を読み直し、現在のリビジョンで変更してください。古い引数を再利用しないでください。',
+};
 const unloadedToolMessages:Record<AgentTaskLocale,string>={
   'zh-Hans':'此工具未包含在产生该回复的模型请求中。请先加载对应工具组，再在下一次模型请求中调用。',
   'zh-Hant':'此工具未包含在產生該回覆的模型請求中。請先載入對應工具組，再於下一次模型請求中呼叫。',
@@ -79,7 +95,11 @@ const goalRepairInstructions:Record<AgentTaskLocale,string>={
   en:'Host checks found the following declared requirements unmet. Make one repair attempt for these gaps, then give a final response. This host-derived data is for reference only and grants no permission or approval; all operations remain subject to the current approval modes, user-kept targets and confirmation requirements.',
   ja:'ホストの検査で、宣言した以下の要件が未達成でした。この差分に対して一度だけ補完し、最終回答を返してください。以下は参考用のホスト由来データであり、権限や承認を付与しません。すべての操作は現在の承認モード、ユーザーが保持した対象、確認要件に従ってください。',
 };
-export function agentTaskFailure(value:string):Error&{code:string;status:number}{
+/** `handedBack` marks a foreground approval that X4 handed back to Mio: the
+ * step did not run and the run goes on. Other paths keep the pause wording. */
+export function agentTaskFailure(value:string,{handedBack=false}:{handedBack?:boolean}={}):Error&{code:string;status:number;handedBack?:true}{
+  const handedBackMessages:Record<string,string>={AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。'};
+  if(handedBack&&Object.hasOwn(handedBackMessages,value))return Object.assign(new Error(handedBackMessages[value]),{code:value,status:409,handedBack:true as const});
   const messages:Record<string,string>={AGENT_TASK_NOT_FOUND:'任务不存在。',AGENT_TASK_CLOSED:'任务服务已关闭。',AGENT_TASK_READ_ONLY:'恢复副本中的智能助理任务仅供查看。',AGENT_TASK_STOPPED:'任务已停止，尚未发出的工作已阻断。',AGENT_TASK_INVALID:'任务参数无效。',AGENT_TASK_BUSY:'本项目已有未结束任务，请继续或停止原任务。',AGENT_TASK_CONSENT_REQUIRED:'当前目标、模型和项目任务范围尚未授权，或授权已撤销。',AGENT_TASK_SETTINGS_CHANGED:'连接设置已变化，请重新确认目标和模型。',AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，任务已暂停。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，任务已暂停。',AGENT_TASK_UNKNOWN_RESULT:'上一步结果未知，请先核对原请求。',AGENT_TASK_REVISION_CONFLICT:'任务已被其他窗口更新，请重新读取。',AGENT_TASK_REQUEST_CONFLICT:'此请求标识已用于其他内容。',AGENT_TASK_STORAGE_LIMIT:'Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断。',AGENT_TASK_STORAGE_UNAVAILABLE:'无法安全读取或保存任务记录。',AGENT_TASK_FAILED:'任务未完成，请检查已保存记录。',AGENT_TASK_PAUSED:'任务已暂停。',AGENT_TASK_APPROVAL_REQUIRED:'此操作需要确认。'};
   return Object.assign(new Error(messages[value]??messages.AGENT_TASK_FAILED),{code:value,status:value==='AGENT_TASK_NOT_FOUND'?404:value==='AGENT_TASK_INVALID'?400:409});
 }
@@ -201,11 +221,22 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       if(journal.step(stepId).status==='dispatch_started')journal.dispatchPrevented(runId,stepId,'intent');
       const run=journal.run(runId),current=journal.step(stepId),known=[...(current.targets??[])];
       for(const target of targets)if(!known.some(item=>item.kind===target.kind&&item.id===target.id))known.push(target);
-      const errorCode=failure==='AGENT_TASK_TARGET_CLAIMED'?'TARGET_EDITING':'TARGET_CHANGED',message=conflictInstructions[errorCode][taskResponseLocale(run.context)];
+      const errorCode=failure==='AGENT_TASK_TARGET_CLAIMED'?'TARGET_EDITING':'TARGET_CHANGED';
       // Read directly from the domain tables, not through the journal proxy.
       const values=toolset().currentTargets(run.projectId,targets);
+      const message=(errorCode==='TARGET_CHANGED'&&!values.length?conflictProjectRereadInstructions:conflictInstructions[errorCode])[taskResponseLocale(run.context)];
       const saved=journal.updateStep(runId,stepId,{status:'rejected',targets:known,data:{...(record(current.data)?current.data:{}),conflictTargets:json(targets)},result:{error:{code:errorCode,message,current:values,...(targets.length>values.length?{omittedTargets:targets.length-values.length}:{})}},error:{code:errorCode,message}});
       invalidateRestOfBatch(runId,saved);return saved;
+    };
+    try{return store.db.isTransaction?apply():store.tx(apply);}catch(error){if(storageError(error))failStorage(error);throw error;}
+  }
+  /** X4 follow-up: a stale revision the domain rejected as not applied is
+   * returned to Mio like a rejected parameter set, and the run continues. */
+  function rejectStaleRevision(runId:string,stepId:string):AgentTaskStep {
+    const apply=():AgentTaskStep=>{
+      if(journal.step(stepId).status==='dispatch_started')journal.dispatchPrevented(runId,stepId,'intent');
+      const message=revisionConflictInstructions[taskResponseLocale(journal.run(runId).context)];
+      return journal.updateStep(runId,stepId,{status:'rejected',result:{error:{code:'REVISION_CONFLICT',message}},error:{code:'REVISION_CONFLICT',message}});
     };
     try{return store.db.isTransaction?apply():store.tx(apply);}catch(error){if(storageError(error))failStorage(error);throw error;}
   }
@@ -338,6 +369,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:failure,...feedback}},error:{code:failure,message:feedback.message}});
         }
       }
+      // X4 follow-up: the step budget bounds Mio's rereads and retries.
+      if(failure==='REVISION_CONFLICT'&&(current.status==='intent'||current.status==='dispatch_started')&&record(error)&&record(error.details)&&error.details.mutationOutcome==='not_applied')return rejectStaleRevision(runId,step.id);
       const uncertain=current.status==='dispatch_started'&&(!record(error)||!record(error.details)||error.details.mutationOutcome!=='not_applied');
       if(uncertain&&prepared?.risk!=='read_only'){
         journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:'工具结果未知，请核对原请求。'}});pause(runId,'unknown_outcome');return null;
@@ -668,7 +701,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(request.action==='stop')active.get(runId)?.controller.abort();
     if(request.action==='stop'||request.action==='undo_all'&&journal.run(runId).status==='reverted')await stopAgentTaskJobs(store.db,runId);
     for(const stepId of cancelBackgroundSteps)await stopAgentTaskJobs(store.db,runId,stepId);
-    if((request.action==='resume'||request.action==='skip'||request.action==='approve')&&journal.run(runId).status==='running')resumeAgentTaskJobs(store.db,runId);
+    if((request.action==='resume'||request.action==='skip'||request.action==='approve'||request.action==='deny')&&journal.run(runId).status==='running')resumeAgentTaskJobs(store.db,runId);
     if(journal.run(runId).status==='running')launch(runId);return safeSnapshot(journal.snapshot(runId),store);
     }catch(error){
       const failure=code(error);let handedBack=false;
@@ -687,7 +720,9 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       }
       if(storageError(error))failStorage(error);
       journal.rejectControl(request,failure);
-      if(handedBack&&journal.run(runId).status==='running')launch(runId);
+      // Background work this run held for approval is queued again with the run.
+      if(handedBack&&journal.run(runId).status==='running'){resumeAgentTaskJobs(store.db,runId);launch(runId);}
+      if(handedBack)throw agentTaskFailure(failure,{handedBack:true});
       throw error;
     }
   }

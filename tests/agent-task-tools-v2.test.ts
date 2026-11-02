@@ -508,6 +508,47 @@ test('existing image group accepts its own revision advance and single backgroun
   assert.equal(posts,1);assert.equal(modelCalls,3);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks WHERE requestId=?').get(step.id)!.n,1);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_versions WHERE taskId=?').get(task.id)!.n,1);resumeAgentTaskJobs(f.store.db,sent.run.id);await delay(10);assert.equal(posts,1);assert.equal(runtime.get(f.projectId,sent.run.id).backgroundPending,false);
  }finally{release();runtime.close();await runtime.drain();await settings.close();}
 });
+for(const action of ['handBack','deny'] as const)test(`a background image approval held behind a foreground approval is asked at once after the foreground step is ${action==='handBack'?'handed back':'denied'}`,async t=>{
+ let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let posts=0;
+ const f=await fixture(t,{imageOptions:{generate:async(snapshot,context)=>{enter();await barrier;return createMockImageAdapter().generate(snapshot,{...context,beforeDispatch:()=>{if(typeof context.beforeDispatch!=='function')throw Error('Missing host dispatch fence');context.beforeDispatch();posts++;}});}}});
+ async function until(check:()=>boolean,describe:()=>unknown=()=>''):Promise<void>{const deadline=Date.now()+30_000;while(!check()){if(Date.now()>=deadline)assert.fail(`Synthetic background approval did not settle ${JSON.stringify(describe())}`);await delay(10);}}
+ const shot=await f.shot('Foreground approval target'),prompt=()=>(f.store.get('shots',shot.id) as Record<string,unknown>).prompt,savedPrompt=prompt();f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_BACKGROUND_REQUEUE_ONLY'}});
+ const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
+ const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Synthetic background requeue',toolCalls:[],providerOutput:[]};modelCalls++;
+  if(modelCalls===1)output.toolCalls=[{id:'background-requeue-load',name:'mioon_tools_load',arguments:{groups:['images','canvas']}}];
+  else if(modelCalls===2)output.toolCalls=[{id:'background-requeue-image',name:'mioon_image_generate',arguments:{name:'Held behind approval',prompt:'Synthetic background image',providerId:'mock',model:'mock-image-v1',options:{...IMAGE_FIXED_OPTIONS}}}];
+  else if(modelCalls===3)output.toolCalls=[{id:'background-requeue-shot',name:'mioon_shot_update',arguments:{shotId:shot.id,expectedRevision:shot.revision,patch:{prompt:'Foreground edit'}}}];
+  output.providerOutput=output.toolCalls.map(call=>({type:'function_call',id:`fc_${call.id}`,call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'}));yield {type:'done',output};};
+ const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});
+ try{
+  runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'direct',local_reversible:'confirm'},acknowledgePaid:true});
+  const sent=await runtime.send(f.projectId,{requestId:randomUUID(),text:'Queue an image, then edit the shot',expectedSettingsRevision:(await settings.get()).revision});await entered;
+  await until(()=>runtime.get(f.projectId,sent.run.id).run.status==='awaiting_approval');
+  const waiting=runtime.get(f.projectId,sent.run.id),image=waiting.steps.find(item=>item.toolCall?.name==='mioon_image_generate'),foreground=waiting.steps.find(item=>item.toolCall?.name==='mioon_shot_update');
+  if(!image||!foreground)throw Error('Missing synthetic steps');assert.equal(image.status,'completed');assert.equal(foreground.status,'awaiting_approval');
+  const task=f.store.db.prepare('SELECT id,state FROM image_tasks WHERE requestId=?').get(image.id)!;assert.equal(task.state,'queued');
+  // Paid work now needs confirmation; the held attempt meets the gate and stays queued.
+  runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'confirm'}});release();
+  await until(()=>{const data=f.journal.step(image.id).data;return record(data)&&data.backgroundApprovalRequired===true;});
+  assert.equal(posts,0);assert.equal(f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(task.id)!.state,'queued');
+  const held=runtime.get(f.projectId,sent.run.id),control={requestId:randomUUID(),stepId:foreground.id,expectedRevision:held.run.revision};
+  if(action==='handBack'){
+   await f.services.call('shot.update',{shotId:shot.id,expectedRevision:shot.revision,patch:{prompt:'Manual save'}});
+   await assert.rejects(runtime.action(f.projectId,sent.run.id,{...control,action:'approve'}),{code:'AGENT_TASK_TARGET_CHANGED'});
+  }else await runtime.action(f.projectId,sent.run.id,{...control,action:'deny'});
+  // Like a later HTTP control, let the relaunched executor settle before the next one.
+  await runtime.drain();
+  // No further foreground stop is needed: the requeued image asks for its approval.
+  await until(()=>runtime.get(f.projectId,sent.run.id).run.status==='awaiting_approval');
+  const asked=runtime.get(f.projectId,sent.run.id);assert.equal(asked.steps.find(item=>item.id===image.id)?.approvalRequired,true);assert.equal(asked.steps.find(item=>item.id===foreground.id)?.status,'rejected');assert.equal(posts,0);
+  await runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),action:'approve',stepId:image.id,expectedRevision:asked.run.revision});
+  await until(()=>f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(task.id)?.state==='succeeded',()=>{const now=runtime.get(f.projectId,sent.run.id);return {task:f.store.db.prepare('SELECT state,errorCode,dispatched FROM image_tasks WHERE id=?').get(task.id),run:[now.run.status,now.run.pauseReason],modelCalls,posts,image:f.journal.step(image.id).data};});await runtime.drain();
+  await until(()=>runtime.get(f.projectId,sent.run.id).run.status==='completed',()=>{const now=runtime.get(f.projectId,sent.run.id);return {run:[now.run.status,now.run.pauseReason],modelCalls,posts,steps:now.steps.map(item=>[item.kind,item.toolCall?.name,item.status,item.approvalRequired,item.error?.code])};});
+  assert.equal(posts,1);assert.equal(modelCalls,4);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks WHERE requestId=?').get(image.id)!.n,1);
+  assert.equal(prompt(),action==='handBack'?'Manual save':savedPrompt);
+ }finally{release();runtime.close();await runtime.drain();await settings.close();}
+});
 test('an unstarted frame task remains queued across a blocked final fence and resumes its original request once',async t=>{
  let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let decodes=0;
  const f=await fixture(t,{frameOptions:{decode:async input=>{if(!input?.signal||!input.beforeSpawn)throw Error('Missing frame fence');enter();await barrier;input.beforeSpawn(input.signal);decodes++;throw Object.assign(Error('Synthetic decoder found no frame'),{code:'FRAME_NO_FRAME'});}}}),bytes=Buffer.from('Synthetic frame source'),id=randomUUID(),sha256=createHash('sha256').update(bytes).digest('hex'),relativePath=`media/${id}.mp4`;

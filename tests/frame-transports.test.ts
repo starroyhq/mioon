@@ -2,7 +2,8 @@ import type {FixtureAsset} from './helpers/strict-timeline-core-types.ts';
 import type {RpcEnvelope} from './helpers/strict-timeline-audio-types.ts';
 import type {FrameTaskView} from '../packages/business/src/frame-ownership.ts';
 type FrameWireAsset=Pick<FixtureAsset,'id'|'projectId'|'name'|'relativePath'|'mimeType'|'sha256'|'sizeBytes'|'width'|'height'|'duration'>&{provenance:string};
-import type {ChildProcess} from 'node:child_process';
+import type {ChildProcess, ChildProcessByStdio} from 'node:child_process';
+import type {Readable} from 'node:stream';
 import type {TypedFrameServices} from './helpers/strict-timeline-audio-factory-types.ts';
 import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import type {TypedStore, TypedClient} from './helpers/strict-service-responses.ts';
@@ -15,7 +16,6 @@ import {chmod, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
 import {createHash, randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -29,6 +29,7 @@ import {FRAME_MUTATION_OPERATIONS, frameSchemas, isFrameTaskResponse, isFrameReq
   isFrameListResponse, canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
+import {createServerProject} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -49,8 +50,8 @@ async function stopOwned(child: ChildProcess) {
   const timer = setTimeout(() => child.kill('SIGKILL'), 3_000);
   try { await bounded(ended, 'Owned child cleanup', 6_000); } finally { clearTimeout(timer); }
 }
-function launch(args: readonly string[], env: NodeJS.ProcessEnv) {
-  const child = spawn(process.execPath, args, {cwd:repo, env:environment(env), stdio:['ignore', 'pipe', 'pipe']});
+function launch(args: readonly string[], env: NodeJS.ProcessEnv, {ipc = false}: {ipc?: boolean} = {}) {
+  const child = spawn(process.execPath, args, {cwd:repo, env:environment(env), stdio:ipc ? ['ignore', 'pipe', 'pipe', 'ipc'] : ['ignore', 'pipe', 'pipe']}) as ChildProcessByStdio<null, Readable, Readable>;
   // Pipe chunks can split a multibyte schema description. Decode continuously
   // before concatenation; per-Buffer coercion inserts replacement characters.
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
@@ -111,11 +112,12 @@ function noPrivate(value: unknown, root: string) {
   }
   walk(value);
 }
-const snapshot = (db: DatabaseSync|null) => Object.fromEntries(db!.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
-  [name, db!.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all().map((row:Record<string,import("node:sqlite").SQLOutputValue>)=>({...row}))]));
-
 // A real server child with a reduced environment. All outbound network attempts
 // are denied/audited; owned local FFmpeg children remain available and counted.
+// It holds the project, so for the test only it answers storage questions over
+// IPC on its own connection: every table's rows and the change marks
+// (data_version counts other connections' commits only; total_changes() adds
+// this connection's own writes).
 const serverScript = `
 import fs from 'node:fs'; import http from 'node:http'; import https from 'node:https'; import net from 'node:net'; import tls from 'node:tls';
 import {syncBuiltinESMExports} from 'node:module';
@@ -125,29 +127,45 @@ globalThis.fetch = deny; http.request = deny; http.get = deny; https.request = d
 syncBuiltinESMExports();
 const {onMediaProcess} = await import('./packages/business/src/media-processes.ts'); onMediaProcess(log);
 const {startServer} = await import('./apps/server/src/index.ts');
-const service = await startServer({dataDir:process.env.MIOON_DATA_DIR, port:Number(process.env.PORT), token:process.env.MIOON_TOKEN});
+const {schemaObjects} = await import('./tests/helpers/project-database.ts');
+let inspect;
+const service = await startServer({dataDir:process.env.MIOON_DATA_DIR, port:Number(process.env.PORT), token:process.env.MIOON_TOKEN, inspectProject:received => {inspect = received;}});
+process.on('message', message => {
+  if (typeof message?.id !== 'string') return;
+  let reply;
+  try {
+    if (message.type !== 'storage') throw Error('Unsupported frame fixture message');
+    if (!inspect) throw Error('The server has not handed over its connection');
+    reply = {type:'reply', id:message.id, data:inspect(String(message.projectId), db => ({
+      rows:Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
+        [name, db.prepare('SELECT * FROM "' + name.replaceAll('"', '""') + '" ORDER BY rowid').all().map(row => ({...row}))])),
+      version:[db.prepare('PRAGMA data_version').get().data_version, db.prepare('SELECT total_changes() AS n').get().n]}))};
+  } catch (error) { reply = {type:'reply', id:message.id, error:{code:error?.code ?? 'FIXTURE_ERROR', message:String(error?.message ?? error)}}; }
+  if (process.connected) process.send(reply);
+});
 console.log('Mioon frame fixture ready ' + service.url);
-let closing; const close = () => closing ??= service.close().catch(() => {process.exitCode = 1;}); process.on('SIGTERM', close); process.on('SIGINT', close);
+let closing; const close = () => closing ??= service.close().catch(() => {process.exitCode = 1;}).finally(() => {if (process.connected) process.disconnect();});
+process.on('SIGTERM', close); process.on('SIGINT', close); process.once('disconnect', close);
 `;
 async function fixture(t: test.TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-frame-wire-'));
   const auditFile = path.join(root, 'wire-audit.jsonl');
-  let proc: ReturnType<typeof launch>, db: DatabaseSync|null, proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>, url: string, port = 0;
+  let proc: ReturnType<typeof launch>, proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>, url: string, port = 0;
   t.after(async () => {
     const failures: (unknown)[] = [];
     for (const cleanup of [async () => { if (proxy) { proxy.closeAllConnections(); await bounded(new Promise(resolve => proxy.close(resolve)), 'Proxy cleanup', 5_000); } },
-      () => stopOwned(proc?.child), () => db?.close(), () => rm(root, {recursive:true, force:true})]) {
+      () => stopOwned(proc?.child), () => rm(root, {recursive:true, force:true})]) {
       try { await cleanup(); } catch (error) { failures.push(error); }
     }
     if (failures.length) throw new AggregateError(failures, 'Frame transport cleanup failed');
   });
   await writeFile(auditFile, '', {mode:0o600});
-  let store = (openStore(root) as TypedStore), service;
-  let project: {id:string;name:string}, other, asset: FrameWireAsset, queued, started, staged, stageReceipt, originalBytes;
+  const created = createServerProject(root, {name:'Frame transport project'});
+  let store = (created.store as unknown as TypedStore), service;
+  let project: {id:string;name:string}, other: {id:string;name:string}, asset: FrameWireAsset, queued, started, staged, stageReceipt, originalBytes;
   const input = (changes?: { sourceFrame: number; }) => ({projectId:project.id, sourceAssetId:asset.id, sourceHash:asset.sha256, sourceFrame:10, requestId:randomUUID(), ...changes});
   try {
-    project = store.put('projects', {id:randomUUID(), name:'Frame transport project'});
-    other = store.put('projects', {id:randomUUID(), name:'Other frame project'});
+    project = {id:created.projectId, name:'Frame transport project'};
     const id = randomUUID(), relativePath = `media/${id}.mp4`, rawFile = path.join(root, 'fixture.rgb');
     const raw = Buffer.alloc(16 * 12 * 3 * 30);
     for (let frame = 0; frame < 30; frame++) for (let i = frame * 16 * 12 * 3; i < (frame + 1) * 16 * 12 * 3; i += 3) raw.set([frame * 7, 200 - frame * 4, 30 + frame * 5], i);
@@ -175,18 +193,38 @@ async function fixture(t: test.TestContext) {
     started = await service.handlers['frame.extract'](input({sourceFrame:2}));
     store.db.prepare("UPDATE frame_tasks SET state='running',started=1,revision=revision+1 WHERE id=?").run(started.id);
   } finally { try { await service?.drain(); } finally { store.close(); } }
+  // The server knows the other project too.
+  const otherCreated = createServerProject(root, {name:'Other frame project'});
+  otherCreated.store.close(); other = {id:otherCreated.projectId, name:'Other frame project'};
+  type Storage = {rows: Record<string, Record<string, unknown>[]>; version: unknown};
+  // Storage questions waiting for the running backend; a backend that exits answers none of them.
+  const pending = new Map<string, PromiseWithResolvers<Storage>>();
   async function start() {
-    proc = launch(['--input-type=module', '-e', serverScript], {MIOON_DATA_DIR:root, MIOON_TOKEN:token, PORT:String(port), MIOON_FRAME_AUDIT:auditFile});
+    proc = launch(['--input-type=module', '-e', serverScript], {MIOON_DATA_DIR:root, MIOON_TOKEN:token, PORT:String(port), MIOON_FRAME_AUDIT:auditFile}, {ipc:true});
+    proc.child.on('message', (message: {id?: string; data?: Storage; error?: {code: string; message: string}}) => {
+      const reply = pending.get(String(message.id)); if (!reply) return;
+      if (message.error) reply.reject(Object.assign(Error(message.error.message), {code: message.error.code}));
+      else reply.resolve(message.data!);
+    });
+    proc.child.once('exit', () => { for (const reply of pending.values()) reply.reject(Error('Owned backend exited before it answered')); });
     url = await proc.ready(); port = Number(new URL(url).port);
     assert.equal((await fetch(url + '/health', {signal:AbortSignal.timeout(5_000)})).status, 200);
-    db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly:true});
+  }
+  // The backend holds the project: read on its own connection over IPC.
+  async function read(): Promise<Storage> {
+    const child = proc.child, id = randomUUID(), reply = Promise.withResolvers<Storage>();
+    pending.set(id, reply);
+    child.send({type:'storage', id, projectId:project.id}, error => { if (error) reply.reject(error); });
+    try { return await bounded(reply.promise, 'Owned backend storage', 10_000); }
+    finally { pending.delete(id); }
   }
   await start();
   const audit = async () => (await readFile(auditFile, 'utf8')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const checkpoint = async () => ({rows:snapshot(db), version:db!.prepare('PRAGMA data_version').get()!.data_version, audit:await audit()});
+  const checkpoint = async () => ({...await read(), audit:await audit()});
   const unchanged = async (before: { rows: unknown; version: unknown; audit: unknown; }, label: string) => {
-    assert.deepEqual(snapshot(db), before.rows, label + ': no changed rows');
-    assert.equal(db!.prepare('PRAGMA data_version').get()!.data_version, before.version, label + ': zero committed writes');
+    const current = await read();
+    assert.deepEqual(current.rows, before.rows, label + ': no changed rows');
+    assert.deepEqual(current.version, before.version, label + ': zero committed writes');
     assert.deepEqual(await audit(), before.audit, label + ': no new media process or network call');
   };
   let nextMode:string|null,altered:RpcEnvelope<import("../packages/contracts/src/frame-extraction.ts").FrameTaskResponse>;
@@ -228,7 +266,7 @@ async function fixture(t: test.TestContext) {
     get url() { return url; }, get env() { return {MIOON_BASE_URL:url, MIOON_TOKEN:token}; },
     get proxyEnv() { return {MIOON_BASE_URL:proxyUrl, MIOON_TOKEN:token}; }, get altered() { return altered; },
     alterNext(mode: string) { nextMode = mode; },
-    async restart() { db!.close(); db = null; await stopOwned(proc.child); await start(); },
+    async restart() { await stopOwned(proc.child); await start(); },
   };
 }
 

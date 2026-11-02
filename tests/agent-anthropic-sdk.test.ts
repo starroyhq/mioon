@@ -96,3 +96,22 @@ test('an SDK dispatch freezes the original body and credential before asynchrono
   assert.equal(f.state.payload, request.body); assert.equal(f.state.options.headers['x-api-key'], 'synthetic-bound-key');
   assert.equal(f.state.options.headers.Authorization, undefined); assert.equal(f.state.calls, 1);
 });
+
+// The read phase's body arrives after a stall that outlasts the 15 ms read deadline
+// but not the 500 ms total deadline, so only the read deadline can fail that phase.
+function stalledBody(): Readable {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return new Readable({
+    read() {timer ??= setTimeout(() => {this.push(Buffer.from(textBody())); this.push(null);}, 100);},
+    destroy(error, callback) {clearTimeout(timer); callback(error);},
+  });
+}
+
+test('host connect/read/total deadlines remain TIMEOUT and never produce a second POST', async () => {
+  for (const phase of ['connect', 'read', 'total'] as const) {
+    const f = socketFixture(phase === 'connect' ? {noConnect: true} : {responseStream: phase === 'read' ? stalledBody() : new Readable({read() {}})});
+    const limits = {connectTimeoutMs: 500, readTimeoutMs: 500, totalTimeoutMs: 500, [`${phase}TimeoutMs`]: 15};
+    await assert.rejects(async () => {const response = await createAnthropicSdkTransport({...f.dependencies, limits})({...anthropicRequest(), apiKey: 'synthetic-key'}); for await (const _chunk of response.body) {}}, {code: 'AGENT_CHAT_TIMEOUT'});
+    assert.equal(f.state.calls, 1); assert.equal(f.state.ends, phase === 'connect' ? 0 : 1); assert.equal(f.state.destroyed, true);
+  }
+});
