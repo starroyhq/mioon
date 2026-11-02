@@ -105,7 +105,6 @@ test('transition marks sit on video lanes and their callbacks follow the body ga
  assert.equal(marks!.disabled,false);
  marks!.onAdd!('c1','dissolve');marks!.onSelect('c1');
  assert.deepEqual(h.calls,[['onAddTransition','c1','dissolve'],['onSelectClip','c1']]);
- assert.equal(marksOf(h.render({onAddTransition,structureReadOnly:true}))[0]!.onAdd,undefined,'a read-only structure has no quick add');
  assert.equal(marksOf(h.render({onAddTransition,lockedTrackIds:new Set(['v1'])}))[0]!.disabled,true,'a locked track waits');
  h.calls.length=0;
  const [gated]=marksOf(h.render({onAddTransition,visible:false,presentationVisible:true,collapsed:true}));

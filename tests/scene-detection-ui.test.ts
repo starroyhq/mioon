@@ -315,7 +315,7 @@ test('the cut bar adds on double click, nudges and removes from the keyboard, an
 test('the workbench opens detection from the library, the source toolbar, the inspector and the task views', () => {
   const read = (name: string) => readFileSync(new URL(`../apps/web/src/${name}`, import.meta.url), 'utf8');
   const app = read('App.tsx');
-  assert.match(app, /const scenesSupported = !application && \(!restored \|\| Number\(workspace\?\.schemaVersion\) >= 59\);/, 'restored copies before schema 59 have no scene records');
+  assert.match(app, /const scenesSupported = !restored \|\| Number\(workspace\?\.schemaVersion\) >= 59;/, 'restored copies before schema 59 have no scene records');
   assert.match(app, /onDetectScenes=\{scenesSupported \? asset => openSceneDetection\(asset, true\) : undefined\}/);
   assert.match(app, /onDetectScenes=\{!scenesSupported \|\| !sourceAsset \? undefined : \(\) => \{ if \(sourceAsset\) openSceneDetection\(sourceAsset as AppAsset, true\); \}\}/);
   assert.match(app, /assetSections=\{sceneSummary\(librarySource as AppAsset \| null\)\}/);

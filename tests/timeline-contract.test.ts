@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { openStore, type WorkspaceStore } from '../packages/business/src/db.ts';
 import { createServices, type OrdinaryServices } from '../packages/business/src/services.ts';
+import { withoutForeignKeys } from './helpers/project-database.ts';
 
 // These deterministic service tests isolate schema/revision/state correctness from
 // FFmpeg. Real imported bytes and protocol/renderer tests live in the other v2 suites.
@@ -109,9 +110,11 @@ test('every timeline mutation replays the exact original response after later ed
   await rejected(f, 'timeline.track.update', (({ ...original.input, kind: undefined, name: undefined, trackId: (track)!.id, patch: { muted: false } }) as unknown as Parameters<NonNullable<typeof rejected>>[2]), 'VALIDATION_ERROR');
   const crossOperation = { projectId, expectedRevision: original.input.expectedRevision, requestId: original.input.requestId, trackId: (track)!.id, patch: { muted: false } };
   await rejected(f, 'timeline.track.update', ((crossOperation) as unknown as Parameters<typeof rejected>[2]), 'IDEMPOTENCY_CONFLICT');
-  const other = await f.call('project.create', { name: 'Request ID conflicts across projects' });
-  const otherTimeline = await f.call('timeline.get', { projectId: other.id });
-  await rejected(f, original.operation, (({ ...original.input, projectId: other.id, expectedRevision: otherTimeline.revision }) as unknown as Parameters<typeof rejected>[2]), 'IDEMPOTENCY_CONFLICT');
+  // Another project lives in a store of its own; this project's receipt still holds the request ID.
+  const other = await fixture(t), otherTimeline = await other.call('timeline.get', { projectId: other.project.id }), current = await f.call('timeline.get', { projectId });
+  await assert.rejects(f.call(original.operation, { ...original.input, projectId: other.project.id, expectedRevision: otherTimeline.revision }), { code: 'IDEMPOTENCY_CONFLICT' });
+  assert.deepEqual(await f.call('timeline.get', { projectId }), current);
+  assert.deepEqual(await other.call('timeline.get', { projectId: other.project.id }), otherTimeline);
   assert.throws(() => f.store.db.prepare('UPDATE timeline_requests SET response=? WHERE requestId=?').run('{}', original.input.requestId), /immutable/);
   assert.deepEqual(await f.call(original.operation, original.input), original.result);
   passed(t.name, { operations: requests.map(request => request.operation), originalRevisions: requests.map(request => (request.result as FixtureTimeline).revision), finalRevision: latest.revision });
@@ -170,9 +173,10 @@ test('seed missing selections rejects atomically and allows a corrected retry', 
 
 test('clip validation rejects invalid frames, rectangles, media kinds, cross-project refs and unsupported edits atomically', async t => {
   const f = await fixture(t), projectId = f.project.id;
-  const foreign = await f.call('project.create', { name: 'Foreign project' });
-  const foreignTimeline = await f.call('timeline.get', { projectId: foreign.id });
-  const image = f.asset(projectId), video = f.asset(projectId, 'video/mp4', { duration: 2.001 }), audio = f.asset(projectId, 'audio/wav'), foreignImage = f.asset(foreign.id);
+  // Another project lives in a store of its own, so its track is not in this store. Its image is written here as a corrupt file would hold it.
+  const other = await fixture(t), foreign = other.project;
+  const foreignTimeline = await other.call('timeline.get', { projectId: foreign.id });
+  const image = f.asset(projectId), video = f.asset(projectId, 'video/mp4', { duration: 2.001 }), audio = f.asset(projectId, 'audio/wav'), foreignImage = withoutForeignKeys(f.store.db, () => f.asset(foreign.id));
   let timeline = await f.call('timeline.get', { projectId });
   const videoTrack = timeline.tracks.find((track) => track.kind === 'video'), audioTrack = timeline.tracks.find((track) => track.kind === 'audio');
   const defaults = { trackId: (videoTrack)!.id, assetId: image.id, startFrame: 0, durationFrames: 30 };

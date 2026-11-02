@@ -2,7 +2,6 @@ import {getWorkspaceRestoreContext} from './workspace-restore-schema.ts';
 import {withRestoreInvocation,freezeRestoreInput} from './workspace-restore-invocation.ts';
 import {refuseRestoredOperation,assertWorkspaceRestoreOrigin} from './workspace-restore-policy.ts';
 import {AppError, schemas} from '@mioon/contracts';
-import {getOpacityCandidateAssembly,isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
 import type {DatabaseSync} from 'node:sqlite';
 
 type PreferencesRow = {revision: number;state: string};
@@ -111,15 +110,6 @@ export function parseWorkspacePreferencesState(value: unknown): Record<string, u
 
 export function createWorkspacePreferences(store: PreferencesStore) {
   const {db, tx} = store;
-  // Only the explicit fresh42 application handle can use this fixed local
-  // companion. Ordinary/reopened42 and restored43 gain no new permission.
-  const candidateAssembly=getOpacityCandidateAssembly(store);
-  const candidate=isOpacityCandidateApplicationStore(store)?candidateAssembly:null;
-  const candidateCheckpoint=()=>{
-    candidateAssembly?.checkpoint();
-    if(candidateAssembly&&getOpacityCandidateAssembly(store)!==candidateAssembly)throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate workspace is unavailable.',409);
-    if(candidate&&(!isOpacityCandidateApplicationStore(store)||getOpacityCandidateAssembly(store)!==candidate))throw new AppError('RESTORE_OPERATION_UNAVAILABLE','This internal candidate workspace is unavailable.',409);
-  };
   const requireProject = (projectId: string): void => {
     id(projectId, ['projectId'], false);
     if (!store.get('projects', projectId)) throw new AppError('NOT_FOUND', '找不到项目', 404, {projectId});
@@ -131,16 +121,10 @@ export function createWorkspacePreferences(store: PreferencesStore) {
   const result = (projectId: string, row: PreferencesRow|undefined|null) => ({projectId, revision: row?.revision ?? 0, state: row ? parseWorkspacePreferencesState(JSON.parse(row.state)) : null});
   return {
     get(projectId: string) {
-      candidateCheckpoint();
       requireProject(projectId);
       return result(projectId, current(projectId));
     },
     put(projectId: string, input: unknown, context: {signal?: AbortSignal} = {}) {
-      candidateCheckpoint();
-      // Candidate43 has no workspace.preferences.put execution capability.
-      // Its DB is not registered in the historical restore WeakMap, so never
-      // let that absence fall through to the ordinary unguarded write path.
-      if(candidateAssembly?.getRestoreContext())throw new AppError('RESTORE_OPERATION_UNAVAILABLE','View preferences are read-only in this restored candidate application.',409);
       id(projectId, ['projectId'], false);
       const payload = object(input, ['expectedRevision', 'state'], []);
       const expectedRevision = numeric(payload.expectedRevision, 0, Number.MAX_SAFE_INTEGER, ['expectedRevision'], true);
@@ -148,7 +132,7 @@ export function createWorkspacePreferences(store: PreferencesStore) {
       if (Buffer.byteLength(state) > MAX_WORKSPACE_PREFERENCES_BYTES) invalid(['state'], 'Preferences are too large');
       const identity=freezeRestoreInput({projectId,expectedRevision,state});
       const apply=()=>tx(() => {
-        if(candidate)candidateCheckpoint();else refuseRestoredOperation(store as never,'workspace.preferences.put',identity);
+        refuseRestoredOperation(store as never,'workspace.preferences.put',identity);
         requireProject(projectId);
         const previous = current(projectId), revision = previous?.revision ?? 0;
         // Only an exact retry of the most recent accepted write is replayable.
@@ -162,7 +146,6 @@ export function createWorkspacePreferences(store: PreferencesStore) {
         else db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, next.revision, state);
         return result(projectId, next);
       });
-      if(candidate){candidateCheckpoint();return apply();}
       if(!getWorkspaceRestoreContext(store))return apply();
       assertWorkspaceRestoreOrigin(store as never,context as unknown as {expectedWorkspaceOrigin?: unknown});
       return withRestoreInvocation(store as never,'workspace.preferences.put',identity,{signal:context.signal},apply);

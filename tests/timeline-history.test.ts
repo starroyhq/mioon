@@ -157,7 +157,7 @@ test('failed durable-response commit rolls back snapshots, branch removal, curso
  const f=await fixture(t),projectId=f.projectId;let timeline=await f.call('timeline.get',{projectId});
  timeline=await f.call('timeline.track.add',input(projectId,timeline,{kind:'audio'}));
  timeline=await f.call('timeline.undo',input(projectId,timeline));
- f.store.db.exec("CREATE TRIGGER fail_history_response BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected response failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_history_response BEFORE INSERT ON timeline_requests BEGIN SELECT RAISE(ABORT,'injected response failure');END;");
  for(const [operation,fields] of ([['timeline.redo',{}],['timeline.track.add',{kind:'video'}]] as const)){
   const before=f.state(projectId);await assert.rejects(f.call(operation,input(projectId,timeline,fields)),/injected response failure/);assert.deepEqual(f.state(projectId),before);
  }

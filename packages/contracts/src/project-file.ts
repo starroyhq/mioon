@@ -149,12 +149,19 @@ export const PROJECT_FILE_EXISTS = 'PROJECT_FILE_EXISTS';
  * caller can retry. The check belongs to the kernel; until it lands there,
  * the host registers it as a transaction fence. The details carry `projectId`. */
 export const PROJECT_FILE_MOVED = 'PROJECT_FILE_MOVED';
+/** The `.mioon` being opened carries the ID of a registered project whose
+ * registered file is still where it was registered, so this file is a copy
+ * (HTTP 409; plan 5.2), for example one duplicated in the Finder. The app
+ * library's registry refuses the open in the kernel's copy check, before any
+ * local records exist for the copy. Asking the user and giving the copy a new
+ * project ID belong to the open flow (S0, S6). The details carry `projectId`. */
+export const PROJECT_FILE_COPY = 'PROJECT_FILE_COPY';
 /** Project-addressed requests. An operation addressed only by entity ID keeps
  * answering NOT_FOUND when the entity belongs to another project. */
 export const PROJECT_ADDRESS_ERROR_CODES = Object.freeze(['PROJECT_NOT_FOUND', 'PROJECT_ID_MISMATCH', 'PROJECT_UNAVAILABLE'] as const);
 export type ProjectAddressErrorCode = typeof PROJECT_ADDRESS_ERROR_CODES[number];
 export const PROJECT_FILE_ERROR_CODES = Object.freeze([
-  ...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, PROJECT_FILE_EXISTS, PROJECT_FILE_MOVED, ...PROJECT_ADDRESS_ERROR_CODES,
+  ...PROJECT_OPEN_ERROR_CODES, PROJECT_FILE_SINGLE_PROJECT, PROJECT_FILE_EXISTS, PROJECT_FILE_MOVED, PROJECT_FILE_COPY, ...PROJECT_ADDRESS_ERROR_CODES,
 ] as const);
 export type ProjectFileErrorCode = typeof PROJECT_FILE_ERROR_CODES[number];
 

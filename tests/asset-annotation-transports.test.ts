@@ -8,7 +8,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import {fileURLToPath} from 'node:url';
-import {DatabaseSync} from 'node:sqlite';
+import {randomUUID} from 'node:crypto';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {mediaEnvironment} from '../packages/business/src/media-environment.ts';
@@ -16,7 +16,7 @@ import {discoverSchema} from '../packages/client/src/index.ts';
 import {optionalRequestIdOperations} from './helpers/catalog-input-branches.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
-import {IDS, TOKEN, snapshot} from './helpers/mutation-wire-fixture.ts';
+import {IDS, TOKEN} from './helpers/mutation-wire-fixture.ts';
 import {PRIVATE, DISPOSITION_IDS, BATCH_IDS, ORIGINAL_BYTES} from './helpers/asset-disposition-wire-fixture.ts';
 import type {ChildProcess} from 'node:child_process';
 interface WireMilestones { spawnMs?: number; exitMs?: number; exitCode?: number | null; exitSignal?: string | null; firstOutputMs?: number; lastOutputMs?: number; closeMs?: number }
@@ -25,9 +25,9 @@ interface LaunchResult { child: ChildProcess; readonly stdout: string; readonly 
 interface EnvelopeView { ok?: boolean; data?: Record<string, unknown>; error?: {code?: string}; [key: string]: unknown }
 interface WireFixture {
   root: string;
-  storage(): Record<string, unknown[]>;
-  checkpoint(): {rows: Record<string, unknown[]>; version: unknown};
-  unchanged(before: {rows: Record<string, unknown[]>; version: unknown}, label: string): void;
+  storage(): Promise<Record<string, unknown[]>>;
+  checkpoint(): Promise<{rows: Record<string, unknown[]>; version: unknown}>;
+  unchanged(before: {rows: Record<string, unknown[]>; version: unknown}, label: string): Promise<void>;
   request(operation: string, input: Record<string, unknown>, expectedError?: string, base?: string, authorization?: string): Promise<{raw: string; envelope: EnvelopeView}>;
   cliArgs(args: string[], expectedError?: string): Promise<Record<string, unknown>>;
   cli(operation: string, input: Record<string, unknown>, expectedError?: string): Promise<Record<string, unknown>>;
@@ -85,10 +85,10 @@ async function finishOwned<T extends {code: number | null; signal: string | null
   }
 }
 
-function launch(t: import('node:test').TestContext, args: string[], env: Record<string, string | undefined> = {}, label = 'fixture'): LaunchResult {
+function launch(t: import('node:test').TestContext, args: string[], env: Record<string, string | undefined> = {}, label = 'fixture', {ipc = false}: {ipc?: boolean} = {}): LaunchResult {
   const started = performance.now(), milestones: WireMilestones = {};
   const elapsed = () => Math.round((performance.now() - started) * 1000) / 1000;
-  const child = spawn(process.execPath, args, {cwd: repo, env: environment(env), stdio: ['ignore', 'pipe', 'pipe']});
+  const child = spawn(process.execPath, args, {cwd: repo, env: environment(env), stdio: ipc ? ['ignore', 'pipe', 'pipe', 'ipc'] : ['ignore', 'pipe', 'pipe']});
   let stdout = '', stderr = '', failure: Error | undefined;
   child.once('spawn', () => { milestones.spawnMs = elapsed(); });
   child.once('exit', (code, signal) => { milestones.exitMs = elapsed(); milestones.exitCode = code; milestones.exitSignal = signal; });
@@ -146,31 +146,47 @@ async function fixture(t: import('node:test').TestContext): Promise<WireFixture>
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-disposition-wire-'));
   const auditPath = path.join(root, 'forbidden-side-effects.jsonl');
   await writeFile(auditPath, '');
-  let run: LaunchResult | undefined, db: DatabaseSync | undefined, url = '', port = 0;
+  let run: LaunchResult | undefined, url = '', port = 0;
   const cleanups: (() => unknown)[] = [];
   t.after(async () => {
     const failures = [];
-    for (const cleanup of [...cleanups.reverse(), () => stopOwned(run?.child), () => db?.close(),
+    for (const cleanup of [...cleanups.reverse(), () => stopOwned(run?.child),
       () => rm(root, {recursive: true, force: true})]) {
       try { await cleanup(); } catch (error) { failures.push(error); }
     }
     if (failures.length) throw new AggregateError(failures, 'Owned disposition-wire fixture cleanup failed');
   });
+  // Storage questions waiting for the running backend; a backend that exits answers none of them.
+  const pending = new Map<string, PromiseWithResolvers<{rows: Record<string, unknown[]>; version: unknown}>>();
   async function start() {
-    run = launch(t, [helper, 'server'], {MIOON_DATA_DIR: root, PORT: String(port), MIOON_DISPOSITION_WIRE_AUDIT: auditPath});
+    run = launch(t, [helper, 'server'], {MIOON_DATA_DIR: root, PORT: String(port), MIOON_DISPOSITION_WIRE_AUDIT: auditPath}, 'fixture', {ipc: true});
+    run.child.on('message', (message: {id?: string; data?: {rows: Record<string, unknown[]>; version: unknown}; error?: {code: string; message: string}}) => {
+      const reply = pending.get(String(message.id)); if (!reply) return;
+      if (message.error) reply.reject(Object.assign(Error(message.error.message), {code: message.error.code}));
+      else reply.resolve(message.data!);
+    });
+    run.child.once('exit', () => { for (const reply of pending.values()) reply.reject(Error('Owned backend exited before it answered')); });
     const ready = await run.ready(); url = ready.url; port = Number(new URL(url).port);
     assert.equal(new URL(url).hostname, '127.0.0.1');
     assert.equal((await fetch(url + '/health', {signal: AbortSignal.timeout(5_000)})).status, 200);
     return ready.pid;
   }
+  // The backend holds the project, so every table's rows and the change marks
+  // are read over IPC on its own connection.
+  async function read(): Promise<{rows: Record<string, unknown[]>; version: unknown}> {
+    const child = run!.child, id = randomUUID(), reply = Promise.withResolvers<{rows: Record<string, unknown[]>; version: unknown}>();
+    pending.set(id, reply);
+    child.send({type: 'storage', id, projectId: IDS.project}, error => { if (error) reply.reject(error); });
+    try { return await bounded(reply.promise, 'Owned backend storage', 10_000); }
+    finally { pending.delete(id); }
+  }
   await start();
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const storage = () => snapshot(db as DatabaseSync);
-  const version = (): unknown => (db?.prepare('PRAGMA data_version').get() as {data_version?: unknown} | undefined)?.data_version;
-  const checkpoint = () => ({rows: storage(), version: version()});
-  const unchanged = (before: {rows: Record<string, unknown[]>; version: unknown}, label: string): void => {
-    assert.deepEqual(storage(), before.rows, `${label}: all persisted rows stay identical`);
-    assert.equal(version(), before.version, `${label}: no extra commit, including equal-value writes`);
+  const storage = async () => (await read()).rows;
+  const checkpoint = () => read();
+  const unchanged = async (before: {rows: Record<string, unknown[]>; version: unknown}, label: string): Promise<void> => {
+    const current = await read();
+    assert.deepEqual(current.rows, before.rows, `${label}: all persisted rows stay identical`);
+    assert.deepEqual(current.version, before.version, `${label}: no extra commit, including equal-value writes`);
   };
   const env = (): Record<string, string> => ({MIOON_BASE_URL: url, MIOON_TOKEN: TOKEN, MIOON_DISPOSITION_WIRE_ALLOWED_ORIGIN: url, MIOON_DISPOSITION_WIRE_AUDIT: auditPath});
   async function request(operation: string, input: Record<string, unknown>, expectedError?: string, base: string = url, authorization = `Bearer ${TOKEN}`): Promise<{raw: string; envelope: EnvelopeView}> {
@@ -239,7 +255,7 @@ async function fixture(t: import('node:test').TestContext): Promise<WireFixture>
 
 test('annotations share authenticated HTTP, CLI and official MCP, with replay after restart and no external work', {timeout:120_000}, async t=>{
  const backend=await fixture(t),read={projectId:IDS.project,assetIds:[IDS.asset]};
- const before=backend.storage();
+ const before=await backend.storage();
  const dataOf=(envelope: EnvelopeView): Record<string, unknown> => { const data=envelope.data; assert.ok(data); return data; };
  await backend.http('asset.annotation.list',read,'UNAUTHORIZED',backend.url,'');
  const initial=await backend.http('asset.annotation.list',read);assert.equal((dataOf(initial).items as {revision: number}[])[0]?.revision,0);
@@ -250,12 +266,12 @@ test('annotations share authenticated HTTP, CLI and official MCP, with replay af
  const saved=await backend.http('asset.annotation.set',input);assert.equal(dataOf(saved).revision,1);
  assert.deepEqual(await backend.cli('asset.annotation.set',input),saved);assert.deepEqual(await backend.mcp('asset.annotation.set',input),saved);
  const cleared=await backend.mcp('asset.annotation.set',{...input,expectedRevision:1,requestId:'annotation-wire-clear',tags:[],note:''});assert.equal(dataOf(cleared).revision,2);
- await backend.restart();const stable=backend.checkpoint();assert.deepEqual(await backend.cli('asset.annotation.set',input),saved);backend.unchanged(stable,'historical annotation replay');
+ await backend.restart();const stable=await backend.checkpoint();assert.deepEqual(await backend.cli('asset.annotation.set',input),saved);await backend.unchanged(stable,'historical annotation replay');
  await backend.http('asset.annotation.set',{...input,note:'changed'},'IDEMPOTENCY_CONFLICT');
  const targets=before.agent_task_target_revisions_v2 as Record<string, unknown>[];
  assert.equal(targets.some(row=>row.projectId===IDS.project&&row.kind==='asset_annotation'&&row.targetId===IDS.asset),false);
  const expectedTargets=[...targets,{projectId:IDS.project,kind:'asset_annotation',targetId:IDS.asset,revision:2}];
- const after=backend.storage();for(const [table,rows] of Object.entries(before))if(!['asset_annotations','asset_annotation_requests'].includes(table))
+ const after=await backend.storage();for(const [table,rows] of Object.entries(before))if(!['asset_annotations','asset_annotation_requests'].includes(table))
   assert.deepEqual(after[table],table==='agent_task_target_revisions_v2'?expectedTargets:rows,table);
  assert.equal(await backend.audit(),'');
 });

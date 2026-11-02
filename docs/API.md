@@ -2,11 +2,57 @@
 
 本轮新增的公共接口见[工作区开关与备份](WORKSPACE-SETTINGS.md)、[任务处置](TASK-DISPOSITIONS.md)和[导出控制](EXPORT-CONTROLS.md)。HTTP、CLI 和官方 MCP 共享相同的严格参数、权限与副作用描述
 
-Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted. All `/api/*` except login and all `/media/*` require `Authorization: Bearer <local token>` or the HttpOnly SameSite=Strict login cookie. `/health` is public. The token is server-side configuration; do not place it in URLs.
+Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted. All `/api/*` except login, including project-scoped media, and legacy `/media/*` require `Authorization: Bearer <local token>` or the HttpOnly SameSite=Strict login cookie. `/health` is public. The token is server-side configuration; do not place it in URLs.
+
+## 按项目寻址
+
+项目级 RPC 使用 `POST /api/projects/{projectId}/rpc`，托管媒体使用
+`GET /api/projects/{projectId}/media/{assetId}`（也支持 `HEAD`）。项目 ID 必须是
+实际记录的小写 UUID；不根据实体 ID、当前窗口或最近打开的项目猜测。
+请求认证先于项目存在性检查。地址改变不修改业务输入、响应、权限、revision
+或精确重放规则。
+
+应用级 RPC 继续使用 `POST /api/rpc`：`project.create/list/summary.list/rename/delete`、
+`provider.list`、`video.connection.list`、`image.profile.list`、
+`agent.authorization.grant/list/revoke`、`workspace.settings.get/set`、
+`workspace.backup.create/inspect/list/restore.stage/status` 和 `workspace.restore.inspect`，
+共 19 个。登录、应用设置、全局 Agent 策略/诊断等应用级 HTTP 接口保留原地址；
+把应用级操作发到项目 RPC 地址返回 HTTP 400 `VALIDATION_ERROR`。
+
+这 11 个项目级操作的业务输入只标识实体，不新增 `projectId`：
+`edge.delete`、`export.get`、`generation.submit`、`job.cancel/get/reconcile/retry`、
+`node.update`、`shot.update`、`version.list/select`。直接 HTTP 调用通过 URL
+指定项目；共享客户端使用 `rpc(operation, input, {projectId})`。CLI `--input` 和
+MCP arguments 则须额外携带 `projectId`，传输层取出它用于地址，不把它送入业务
+input。其余项目级操作继续保留原有 `input.projectId`，
+`image.review.prepare` 使用 `input.input.projectId`。
+
+| 错误码 | HTTP | 含义 |
+| --- | --- | --- |
+| `PROJECT_NOT_FOUND` | 404 | 地址中的项目未登记；details 为 `{projectId}` |
+| `PROJECT_ID_MISMATCH` | 400 | 输入或查询参数中的项目与地址不一致；details 携带地址中的项目 ID |
+| `PROJECT_UNAVAILABLE` | 409 | 为后续 S0 项目宿主保留的不可用项目错误；本次 K2 的原工作区存储不触发它 |
+
+实体或媒体属于其他项目时与不存在统一返回 HTTP 404 `NOT_FOUND`，不返回它所属的
+项目。上述寻址检查不授权打开另一个存储或自动恢复任务。
+
+下列项目级 HTTP 接口也接受 `/api/projects/{projectId}/` 前缀：
+`version-comparison/media`、`timeline-audio-preview/…`、`export-files`、
+`images/reviews/approve|reject`、`local-drafts…`、`local-delivery…`、
+`local-shot-text…`、`tasks…`，以及 Agent v2 的项目任务和 `editing` 接口。
+Agent 项目任务原 `/api/agent/tasks/v2/{projectId}/…` 对应
+`/api/projects/{projectId}/agent/tasks/v2/…`；全局 `policy` 和 `diagnostics`
+不移入项目路径。请求中已有的项目字段仍须与地址一致。
+
+K2 保留旧 `/api/rpc`、`/media/{assetId}` 及上述旧项目接口，直到 S0 迁移时再移除；
+下文仍使用旧地址描述的已迁移接口按此对应关系调用。历史记录内保存的媒体 `url`
+不重写；新读取/下载应根据记录的项目 ID 和素材 ID 构造项目媒体地址。
+
+## 请求与响应
 
 `POST /api/login` body `{"token":"<local token>"}` exchanges the token for a browser cookie.
 
-`POST /api/rpc` body:
+应用级 `POST /api/rpc` body 示例（项目级 RPC 使用上面的项目地址）：
 
 ```json
 {"operation":"project.create","input":{"name":"我的影片"}}
@@ -14,7 +60,7 @@ Base URL defaults to `http://127.0.0.1:4318`. Only loopback Host/Origin accepted
 
 Response: `{"ok":true,"data":...}`. Error: `{"ok":false,"error":{"code":"REVISION_CONFLICT","message":"...","details":{"currentRevision":2},"retryable":false}}`. HTTP 400 invalid input, 401 unauthenticated, 403 invalid origin/provider disabled, 404 missing record/operation, 409 stale revision or idempotency conflict. Do not blindly retry a generation with a new key when a response is lost; replay the original exact request.
 
-For business RPC, the runtime schemas in `packages/contracts/src/index.mjs` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these same schemas through tools/list.
+For business RPC, the runtime schemas in `packages/contracts/src/index.ts` are authoritative and strict (unknown fields rejected). `docs/CONTRACT.md` documents full-record and mutation input/record contracts. MCP tools expose these schemas plus the project-address field for the 11 entity-addressed operations through tools/list.
 
 ### Private last-project locator
 
@@ -513,7 +559,7 @@ gates: [local ComfyUI connector](COMFY-CONNECTOR.md).
 
 ## File and event transports
 
-Authenticated `GET /media/:assetId` and `HEAD /media/:assetId` retain single-byte
+Authenticated `GET /api/projects/{projectId}/media/{assetId}` and `HEAD` at the same address retain single-byte
 range support, including suffix/open-ended ranges and 416 rejection. Missing
 managed file bytes return fixed 404 `FILE_UNAVAILABLE`. Per-backend file-transfer
 admission can return 503 `FILE_RESPONSE_BUSY`. Errors after response headers
@@ -576,8 +622,7 @@ These RPC inputs select a project using the existing authenticated local
 connection. The exported `inspectionArgumentSchemas` separately omit `projectId`
 and all authority fields for callers that bind scope outside the arguments;
 `inspectionSchemas` adds only the RPC project ID. Neither schemas nor inspection
-metadata grant access. Built-in Agent inspection uses a separate explicit
-run-consent boundary, described in [bounded Agent reads](AGENT-READ-TOOLS.md).
+metadata grant access.
 
 Legacy `project.get` and `timeline.get` retain their existing responses and can
 create the default empty timeline on first access. They are not read-only. Use
@@ -592,8 +637,11 @@ These independent preference revisions never update project/shot/timeline revisi
 ## Example Node client
 
 ```js
-const call = async (operation, input) => {
-  const response = await fetch('http://127.0.0.1:4318/api/rpc', {
+import {rpcPathFor} from './packages/contracts/src/project-addressing.ts';
+
+const call = async (operation, input, entityProjectId) => {
+  const resource = rpcPathFor(operation, input, entityProjectId);
+  const response = await fetch(`http://127.0.0.1:4318${resource}`, {
     method: 'POST',
     headers: {'content-type':'application/json', authorization:`Bearer ${process.env.MIOON_TOKEN}`},
     body: JSON.stringify({operation,input})
@@ -605,7 +653,9 @@ const call = async (operation, input) => {
 const project = await call('project.create', {name:'短片'});
 ```
 
-Assets are imported as base64 bytes, never arbitrary machine file paths or remote URLs. Metadata and generated media IDs map to managed files. Download `/media/{assetId}?download=1`; requests support byte ranges for browser video playback.
+Run this source example from the repository root with Node.js 24+. For the 11 entity-addressed operations, pass the owning project ID as the third argument and keep the business input unchanged.
+
+Assets are imported as base64 bytes, never arbitrary machine file paths or remote URLs. Metadata and generated media IDs map to managed files. Download `/api/projects/{projectId}/media/{assetId}?download=1`; requests support byte ranges for browser video playback.
 
 ## Concurrency, retries and recovery
 
@@ -884,7 +934,7 @@ workspaces.
   volume-envelope workspace and size rejections keep their own proofs.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger and unavailable in restored and opacity-candidate workspaces.
+edit-task ledger and unavailable in restored workspaces.
 Mio uses it as the local reversible tool `mioon_timeline_clip_crossfade` in the
 `editing` group: both clips are the step's targets, the step records one change,
 and undoing that change restores both clips.
@@ -910,7 +960,7 @@ one `{clipId,previousGain,gain}` change per item, in request order.
   not-applied proofs binding `operation`, `projectId` and `requestId`.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger and unavailable in restored and opacity-candidate workspaces.
+edit-task ledger and unavailable in restored workspaces.
 Mio uses it as the local reversible tool `mioon_timeline_clip_setGains` in the
 `audio` group, after measuring the clips with `timeline.clip.loudness`: every
 listed clip is a target of the step, the step records one change, and undoing
@@ -955,7 +1005,7 @@ returns `{operation,requestId,timeline,clipId,previousTransform,transform}`.
   Older ordinary and restored roles refuse any persisted transform.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
+edit-task ledger, unavailable in restored workspaces, and
 not a Mio tool in this version. `timeline.inspect` lists each clip's transform
 (keyframes, rotation and crop), so Mio reads it.
 The model, rendering and editor are described in
@@ -1003,7 +1053,7 @@ removes the cut's transition.
   Older ordinary and restored roles refuse any persisted transition.
 
 Exact replay returns the original acknowledgement. It is outside the durable
-edit-task ledger, unavailable in restored and opacity-candidate workspaces, and
+edit-task ledger, unavailable in restored workspaces, and
 not a Mio tool in this version. `timeline.inspect` lists each clip's
 `transitionIn` (kind and frames), so Mio reads it.
 The model, rendering and editor are described in
@@ -1032,73 +1082,6 @@ retry permission. Exact stable-request replay behavior is unchanged.
 Zero references means text input; one approved image means first-frame input. Each model controls which mode, MIME types, dimensions, aspect ratios, durations and advanced parameters are accepted. Unsupported inputs fail before creating a job. Seed is not accepted for Ark/Veo/MiniMax/Vidu in this version; inspect each model's `parameters` array.
 
 If an actual downloaded live result differs from the requested ratio by more than 1%, the backend retains the existing task and downloaded file privately, sets `phase=output_review_required` with `OUTPUT_ASPECT_RATIO_MISMATCH`, and publishes no version. Its transport-compatible `status=cancelled` means local publication/waiting is paused, not that the provider failed or was cancelled. Do not submit a replacement or use `job.retry`; inspect/reconcile the same existing task.
-
-## Agent chat and bounded project reads
-
-The authenticated `/api/agent/chat/:projectId` routes retain their snapshot,
-run, Stop, SSE, request-ID lookup and history semantics. Snapshot scope is now
-`chat_and_reviewed_timeline_edits` when the timeline reviewed-edit service is available
-(with legacy shot-only/inspection scopes retained for those injected services). Its `inspection` capability retains
-availability, schema version, catalog hash and the fixed
-two-model-request/one-read/8-KiB limits. The separate `edit` capability publishes
-the selected-shot schema/catalog and text/round limits described below. A separate
-`timelineEdit` capability describes the selected-clip move catalog and limits.
-The independent `timelineGainEdit` capability describes the selected-clip gain
-catalog and 0–2 range; it does not expand either earlier catalog.
-No view/lookup/history route starts inference or inspection.
-
-The existing send envelope remains strict: `requestId`, `instanceId`,
-`expectedSettingsRevision`, `expectedConversationRevision`, `message`, `consent`.
-Typed consent is unchanged: `{destination,protocol,model,context:'typed_chat_only'}`.
-Project-read consent additionally pins `context:'project_inspection'`, `projectId`,
-`schemaVersion`, `catalogHash`, `maxModelRequests`, `maxToolCalls` and
-`maxResultBytes` from the current capability. Extra authority fields are rejected.
-No HTTP endpoint accepts a branded scope, model step ID or executable tool grant.
-
-Inspection runs expose immutable `contextMode`/`provenance` and at most three
-projected `activity` entries. Existing snapshot/delta/terminal SSE types are
-unchanged; step transitions publish committed snapshots. Exact internal model
-bodies, provider output artifacts and credentials are not added to public run
-DTOs. Tool results are bounded inert JSON strings. Older typed runs remain
-readable and typed send requests remain compatible. Full execution/recovery,
-privacy and protocol contract: [Agent read tools](AGENT-READ-TOOLS.md).
-
-## Reviewed Agent shot-edit proposals
-
-The reviewed-edit increment adds a separate `selected_shot_edit` consent mode
-and authenticated proposal review routes. Its only business write is an
-explicitly approved `shot.update` title/prompt patch; creating a proposal does
-not apply it. Discovery is backend-persistent and independent of renderer
-session storage. Endpoint shapes, limits, states and current acceptance status:
-[reviewed selected-shot edits](AGENT-EDITS.md). These review endpoints are not
-business RPC operations or callable model tools.
-
-## Reviewed Agent selected-clip moves
-
-The separate `selected_timeline_clip_move` mode pins one saved clip and its
-timeline revision. Its only proposed patch is `{startFrame}` to the existing
-`timeline.clip.update` operation, after explicit human diff approval. Same-track
-non-overlap, source/duration/audio/geometry preservation and existing CAS/history
-apply. Proposal/recovery routes retain their existing authenticated shapes; no
-new public mutation or model approval endpoint is added. Full consent fields,
-bounded context, discriminated schema24 and historical receipt semantics:
-[reviewed timeline moves](AGENT-TIMELINE-MOVE.md).
-
-## Reviewed Agent selected-clip gain
-
-The separate `selected_timeline_clip_gain` mode permits one finite `{gain}`
-proposal in 0–2 for one saved owned clip with known audio. Consent pins the
-independent `timelineGainEdit` capability, target revision and exact displayed
-`reviewTarget`, including saved gain and track mute. The model receives only
-clip name/gain, track name/kind/mute, known audio presence and gain limits as
-project data. Its one proposal tool cannot choose IDs, approve or execute.
-
-Explicit human approval uses the existing authenticated review routes and exact
-`timeline.clip.update` gain patch, stable key, CAS and undo/redo. Definition v3
-adds no SQL migration or new public API/MCP/CLI authority. Fresh target checks,
-the actual pre-POST fence, 30 KiB complete first request/64 KiB continuation
-bounds, historical acknowledgement, restored holds and pending acceptance:
-[reviewed selected-clip gain](AGENT-TIMELINE-GAIN.md).
 
 ## Saved source ranges
 
@@ -1686,7 +1669,7 @@ for fixed schema gates, limits, recursive-backup restriction and current evidenc
 
 `timeline.render` with `purpose:'export'` and `timeline.export.preflight` accept optional `deliveryName`: exact nonblank1–120 UTF-16 units, valid Unicode without control/line characters. Omission remains absent in historical requests and receipts. The preflight digest and original render key bind the name together with the frozen timeline/settings; changed or removed names cannot reuse that key. The encoding-capability request does not accept a name. `export.get` returns the immutable `snapshot.deliveryName` when supplied.
 
-Named download links bind `/media/{assetId}?download=1&exportId={exportId}`. The authenticated server validates the historical export/output/receipt and derives a safe attachment filename; callers cannot supply a destination path or trusted filename. Existing unnamed/storyboard behavior remains. See [scope, safety and acceptance](NAMED-DELIVERIES.md).
+Named download links bind `/api/projects/{projectId}/media/{assetId}?download=1&exportId={exportId}`. The authenticated server validates the project ownership and historical export/output/receipt and derives a safe attachment filename; callers cannot supply a destination path or trusted filename. Historical stored URLs and the legacy path remain compatible until S0. Existing unnamed/storyboard behavior remains. See [scope, safety and acceptance](NAMED-DELIVERIES.md).
 
 ### 私有镜头文字草稿与保存恢复
 

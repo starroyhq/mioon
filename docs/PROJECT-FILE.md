@@ -111,18 +111,18 @@
   - 关闭时按文件身份更新登记。
 - **只改名或单独移动 `.mioon`，文件夹不动**（10-31 定）：
   - SQLite 的日志名跟着打开时的文件名，日志留在原来的名字旁边。这时提交中途崩溃，从新名字打开找不到日志，项目文件里是半个事务（实测：项目文件是新值，本机记录回到旧值）。K1 起写过一次项目文件以后就是这样，打开时开着日志以后，打开后还没写过的也一样。
-  - 内核要在 `store.tx` 开头和 `put` 里各做两次 `lstat`，两条都满足就抛 `PROJECT_FILE_MOVED`（HTTP 409）：
+  - 内核在 `store.tx` 开头（`BEGIN` 之前）和 `put` 里（写语句之前，事务里也查）各做最多两次 `lstat`，两条都满足就抛 `PROJECT_FILE_MOVED`（HTTP 409），两个文件都不写：
     - 打开时的路径上没有文件了，或者换了文件身份；
     - 原路径的 `-journal` 还在，说明是单独移动了文件，不是连同文件夹一起移动。移动文件夹时日志跟着走，写入照常，不报错。
   - 宿主收到这个错误，或者 1032，就 `relocate`：停写、关掉，按文件身份找到新位置后重开。请求方重试即可。
-  - 内核的检查合入以前，宿主先把同样的检查登记成事务守卫，抛同样的错误。
+  - 这项检查在内核里（`ProjectConnection.throwIfMoved`），宿主不用再登记同样的事务守卫。
 - **崩溃后没在本机恢复就被拷走：** 拷到别的电脑上的项目文件可能带着半个事务，因为那边找不到本机记录旁边的超级日志。S0、S6 在启动时，以及列最近项目时，对没打开的项目调用内核的 `recoverProjectFile(projectFile)`：它只做打开顺序的第 1 步，项目文件旁边的日志是热日志时，单独打开项目文件、取锁让 SQLite 回滚、关掉，不打开本机记录。结果：
   - `clean`：没有要恢复的；`recovered`：已回滚；
   - `locked`：别的进程开着它，并且正在写，这里不用管，打开时会报 `PROJECT_LOCKED`；
   - `open-here`：本进程开着它，按内核的已持有文件登记表认出，不碰文件；
   - `missing`：找不到，按文件身份找新位置；
   - `invalid`：带打开时会报的 `PROJECT_INVALID` 原因，例如 `not-a-project-file`、`read-only`（只读位置上的热日志回滚不了）。
-  - **没有热日志时不读项目文件**（10-31 定，S0 切换时改）：先看项目文件旁边的 `-journal`，没有、是 0 字节或不是热日志，就直接返回 `clean`，不读项目文件的头。首页每次列项目都会调它；放在 iCloud 里、已经被系统移出本机的项目文件，一读文件头就会被整个下载回来。现在的内核先读文件头，不是项目文件的也会报 `invalid`；改了以后，旁边没有热日志的这种文件，要等打开时才报出来。
+  - **没有热日志时不读项目文件**（10-31 定）：`lstat` 和本进程已持有的判断之后，先看项目文件旁边的 `-journal`：没有、是 0 字节或第一个字节是 0，就不是热日志，直接返回 `clean`，项目文件连文件头也不读。首页每次列项目都会调它；放在 iCloud 里、已经被系统移出本机的项目文件，一读文件头就会被整个下载回来。所以旁边没有热日志、又不是项目文件的普通文件，这里返回 `clean`，要等打开时才报 `PROJECT_INVALID`。
 - **事务：** `store.tx` 用 `BEGIN`，不用 `db.ts` 的 `BEGIN IMMEDIATE`，这是和 `db.ts` 唯一有意的差别。独占锁下 `BEGIN IMMEDIATE` 已经没有提前取锁的作用，反而让每次提交都把三个库拉进写事务、建一个超级日志。用 `BEGIN` 时只有写到的库进入写事务：只写本机记录的提交（例如 Mio 流式输出）不碰项目文件，也不建超级日志；同时写两个文件的提交照旧用超级日志。K1 实测，p50 从 1.11 ms 降到 0.34 ms。
 - **应用库：** 不挂到项目连接上，单独开一个连接。
 - **锁：** 都用回滚日志模式和独占锁，打开时立即取得写锁。第二个进程打开同一个项目时报 `PROJECT_LOCKED`。
@@ -178,6 +178,7 @@
 | `PROJECT_FILE_SINGLE_PROJECT` | store 级 `project.create` 用在已有项目的文件上 | |
 | `PROJECT_FILE_EXISTS` | 新建时目标位置已有文件；HTTP 409 | 内核的详情照打开错误的写法，是 `{database: 'project', reason: 'exists'}`，不放绝对路径；应用级的新建再补上 `projectFile` |
 | `PROJECT_FILE_MOVED` | 项目打开期间单独改名或移动了 `.mioon`，文件夹没动；HTTP 409 | `details` 带 `projectId`。宿主正在按新位置重开，重试即可，见“只改名或单独移动 `.mioon`” |
+| `PROJECT_FILE_COPY` | 要打开的 `.mioon` 带着一个已登记项目的 ID，而登记的那个文件还在原处，这个文件是副本（计划 5.2）；HTTP 409 | `details` 带 `projectId`。应用库在内核的 `checkCopy` 里拒绝，这时还没给副本建本机记录；问用户、给副本换新 ID 归 S0、S6 |
 | `PROJECT_NOT_FOUND` | URL 里的项目 ID 没有登记；HTTP 404 | `details: {projectId}` |
 | `PROJECT_ID_MISMATCH` | URL 和输入里的 projectId 不一致；HTTP 400 | `details: {projectId}`，是 URL 里的 ID |
 | `PROJECT_UNAVAILABLE` | 已登记，但现在打不开；HTTP 409 | `details: {projectId, reason, invalidReason?}`，`reason` 是前四个原因码之一 |
@@ -208,8 +209,8 @@
 | `pathForm` | `relative` 或 `absolute` |
 | `path` | 相对路径相对项目目录，一律用 `/`，只有开头可以是 `..`；绝对路径是规范化的 POSIX、盘符或 UNC 路径 |
 | `volume` | 卷名。相对路径为 `null`；绝对路径在知道时填 |
-| `sizeBytes`、`mtimeMs` | 大小、修改时间 |
-| `sampledSha256` | 抽样哈希。抽哪些字节由 L1 定，定了就不再改 |
+| `sizeBytes`、`mtimeMs` | 大小（字节）、修改时间。`mtimeMs` 由 bigint `lstat` 的 `mtimeNs` 换算，精确到微秒：`Number(mtimeNs / 1000n) / 1000`，早于 1970 年的记为 0。一律用 L1 的 `mediaMtimeMs` 算：Node 的数字 `mtimeMs` 末位和它不同，混用会让修改时间永远对不上 |
+| `sampledSha256` | 抽样哈希，规则由 L1 定，定了就不再改：不超过 1 MiB（1 048 576 字节）的文件取整个文件的 SHA-256，这时等于完整哈希；更大的文件取 5 段，每段 64 KiB（65 536 字节），第 i 段（i = 0…4）从 ⌊i × (大小 − 65 536) / 4⌋ 开始，5 段按顺序接起来算一个 SHA-256。5 段覆盖开头、中间和结尾，MP4 的 `moov` 在头在尾都抽得到；每个文件最多读 320 KiB |
 | `fullSha256` | 完整哈希，需要时再算，例如付费生成派发前；没算过为 `null` |
 
 - 后四个字段合称指纹（`mediaFingerprintSchema`）。
@@ -255,6 +256,7 @@
 ## 放行设置、草稿和建库文件
 - **放行设置：** 全局放行档位及其回执（2 张表）放在应用库；对话级覆盖及其回执（2 张表）跟着对话，放在本机记录里。两者都不在项目文件里，别人发来的项目照样放宽不了权限。这样 `agent_task_conversation_policy_owner_v2` 也不再跨文件。
 - **草稿：** `local-drafts-v1.json`、`local-delivery-v1.json`、`local-shot-text-v1.json` 三个文件改为本机记录里的草稿表，由 S8 实现。
+- **Mock 供应商的账本：** Mock 供应商运行时在库连接上建的 `mock_provider_tasks`、`mock_provider_submissions` 两张表和它们的索引，收进本机记录的任务领域（`schema/domains/tasks.ts`），本机记录的格式版本从 1 升到 2。供应商照旧用不带库名的 `CREATE TABLE IF NOT EXISTS`，在主库也就是本机记录里找到这两张表，不会再建；不收进来的话，下次打开时本机记录的结构对不上清单，报 `PROJECT_INVALID`（`schema`）。
 - **建库文件按领域分，每份有一个负责人：**
 
 | 建库文件 | 负责人 |
@@ -279,14 +281,18 @@ projectDatabasePath(root: string): string                 // 取代直接拼 wor
 openProjectDatabase(root: string): DatabaseSync           // 按“一个连接，三个库”的顺序打开；只在 store 和服务端都没占着项目时用
 schemaObjects(db: DatabaseSync): SchemaObject[]           // 主库和挂载库的结构合在一起
 projectDirFor(dataDir: string, projectId: string): string // 取代直接拼 <dataDir>/media/…
-createServerProject(dataDir: string): {projectId: string; store: ProjectStore<DatabaseSync>}
+createServerProject(dataDir: string, options?: {name?: string}): {projectId: string; store: ProjectStore<DatabaseSync>}
 foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及用临时触发器模拟的跨文件关系
+withoutForeignKeys<T>(db: DatabaseSync, write: () => T): T // 只在这次写入前后关外键，写坏数据用
 ```
 
 - `SchemaObject`、`ForeignKeyViolation` 两个类型定义在 `project-file.ts`。新内核上的 `schemaObjects`、`foreignKeyCheck` 由 K1 实现（`packages/business/src/project-file/cross-file/inspect.ts`），W2 在旧存储上实现同样的签名。
 - 不带库名的 `PRAGMA foreign_key_check` 只查主库。K1 清点出生产代码里有 3 处、测试里有 21 个文件这样写，改用 `foreignKeyCheck` 或带上库名：生产代码那 3 处归 S0，测试归 W2。
 - `openProjectDatabase` 设置和内核相同的 pragma，建同样的连接级临时触发器，否则经这个连接写入时会绕过跨文件约束和目标修订触发器。store 或服务端还占着这个项目时拒绝打开；旧存储上也执行这条规则，例如发现 `server.lock` 存在就拒绝。
 - `createServerProject` 给“先填库、再起服务”的测试用：按服务端的布局建一个已登记的项目，返回 `{projectId, store}`。写完先 `store.close()`，再 `startServer({dataDir})`。切换以后，服务端只认登记过的项目，看不到在 `dataDir` 本身建的 store。
+  - 项目名用 `name` 选项给，不要建好以后再用 `store.put` 改名。切换以后，服务端的项目列表读的是登记里的名字；测试自己关掉的 store 不会更新登记，所以事后改的名字在列表里看不到。
+- `withoutForeignKeys` 给要写坏数据的测试用，例如一行属于或指向这个 store 里没有的项目；测试不再自己开关 `PRAGMA foreign_keys`。切换以后，本机记录指向项目文件的关系由临时触发器检查，这个 pragma 管不到，S0 只换这一个函数的实现。它必须在事务外开始；`write` 返回 Promise 时，等它结束再打开外键，所以能包住一次在自己的事务里篡改的 service 调用。
+- 查结构按名字找对象，不按库名断言。旧存储上的对象都在 `main` 里；切换以后，内容表在 `project`，本机记录在 `main`。
 
 ### 测试里怎样访问库
 生产和测试一样，都用独占锁，测试不开特例。
@@ -302,14 +308,16 @@ foreignKeyCheck(db: DatabaseSync): ForeignKeyViolation[]  // 所有库，以及�
 - 项目打开期间，测试也不能用 `fs` 读、拷贝库文件或算它的哈希，见“一个连接，三个库”。要算哈希，在子进程里算，或者先关掉 store。
 
 ### 受信任的测试接口
-进程内启动的 `startServer` 增加一个只供测试用的受信任选项，写法参照现有的 `taskFault`、`taskGatewayV2`：注释写明只供测试，从不来自 HTTP 或环境变量。名字和形状：
+进程内启动的 `startServer` 增加一个只供测试用的受信任选项 `inspectProject`，写法参照现有的 `taskFault`、`taskGatewayV2`：注释写明只供测试，从不来自 HTTP 或环境变量。交给测试的方式和函数的形状：
 
 ```ts
-inspectProject<T>(projectId: string, inspect: (db: DatabaseSync) => T): T
+startServer({…, inspectProject: inspect => { … }})
+type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) => T) => T
 ```
 
+- 这个选项是一个接收函数。服务端打开 store 以后、启动完成以前调用它一次，把 `InspectProject` 交给测试。测试把它存下来，服务端运行期间用它查库。
 - 回调在项目宿主自己的连接上同步执行，不会撞上独占锁，也不能跨 `await` 持有连接。
-- W2 先在旧服务端上加，只在 `apps/server/src/index.ts` 里加一小块；S0 再换成项目宿主的实现。选项怎样把这个函数交给测试，由 W2 定、S0 沿用。
+- W2 先在旧服务端上加，只在 `apps/server/src/index.ts` 里加一小块；S0 再换成项目宿主的实现，交给测试的方式不变。
 
 ## 待定
 - 封面接口的名字：S6、B1。

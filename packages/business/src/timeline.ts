@@ -1,7 +1,4 @@
-import {getOpacityCandidateAssembly,isOpacityCandidateApplicationStore} from './opacity-candidate-store.ts';
 import {bindAgentTaskJobInside} from './agent/task-effects-v2.ts';
-import {createOpacityCandidateDomain} from './opacity-candidate-domain.ts';
-import {opacityEnvelopeFieldsAfterEdit} from '../../contracts/src/timeline-opacity-envelope.ts';
 import {assertTimelineVolumeEnvelopeWorkspace as legacyAssertVolumeWorkspace,admitTimelineVolumeEnvelopeWrite,volumeEnvelopeMutationError} from './timeline-volume-envelope-admission.ts';
 import {volumeEnvelopeFieldsAfterEdit,splitVolumeEnvelopeFields} from '../../contracts/src/timeline-volume-envelope.ts';
 import {ownsStoreLock} from './db.ts';
@@ -44,7 +41,7 @@ interface TimelineRectInput {x: number;y: number;width: number;height: number}
 interface TimelineClipPatch {
  rect?: TimelineRectInput;startFrame?: number;durationFrames?: number;sourceInFrame?: number;gain?: number;
  fadeInFrames?: number;fadeOutFrames?: number;colour?: Record<string,unknown>|null;audioRole?: string;
- volumeEnvelope?: unknown;opacityEnvelope?: unknown;name?: string;trackId?: string;hidden?: boolean;muted?: boolean;
+ volumeEnvelope?: unknown;name?: string;trackId?: string;hidden?: boolean;muted?: boolean;
 }
 type TimelineMutationInput = {
  [key: string]: unknown;
@@ -87,16 +84,14 @@ const clone=(value: unknown)=>JSON.parse(JSON.stringify(value));
 // The timeline is its own aggregate: revision checks and idempotent responses
 // must be committed in the same SQLite transaction as every mutation.
 export function createTimelineServices(store: TimelineStore,{required,check,hash,now,exportAdmission}: TimelineServiceDeps){
- const opacity=getOpacityCandidateAssembly(store),domain=opacity?createOpacityCandidateDomain(store):null;
- const assertTimelineAudioRoleWorkspace=opacity?()=>opacity.checkpoint():legacyAssertAudioRoleWorkspace;
- const assertTimelineVolumeEnvelopeWorkspace=opacity?()=>opacity.checkpoint():legacyAssertVolumeWorkspace;
+ const assertTimelineAudioRoleWorkspace=legacyAssertAudioRoleWorkspace;
+ const assertTimelineVolumeEnvelopeWorkspace=legacyAssertVolumeWorkspace;
  const refuseRestoredOperation=(target: unknown,operation: string,input?: Record<string, unknown>): void=>{
-  if(opacity){opacity.refuseOperation(operation,input);return;}
   legacyRefuseRestoredOperation(target as never,operation,input);
  };
- const createTimelineRecoveryBoundary: (db: DatabaseSync,input: TimelineMutationInput)=>TimelineRecoveryBoundary=domain?((_db: DatabaseSync,input: TimelineMutationInput)=>domain.boundary(input) as unknown as TimelineRecoveryBoundary):(legacyRecoveryBoundary as never);
- const isTimelineMutationResponse: (operation: string,input: unknown,response: unknown)=>boolean=domain?domain.isMutationResponse:legacyMutationResponse;
- const admitTimelineImageResponse=(value: unknown): void=>{legacyAdmitImageResponse(value as TimelineRecord);if(domain)domain.admit(value);};
+ const createTimelineRecoveryBoundary: (db: DatabaseSync,input: TimelineMutationInput)=>TimelineRecoveryBoundary=legacyRecoveryBoundary as never;
+ const isTimelineMutationResponse: (operation: string,input: unknown,response: unknown)=>boolean=legacyMutationResponse;
+ const admitTimelineImageResponse=(value: unknown): void=>{legacyAdmitImageResponse(value as TimelineRecord);};
  const {db,put,tx}=store;
  function find(projectId: string): TimelineRecord|null{
   const row=db.prepare('SELECT data FROM timelines WHERE projectId=?').get(projectId);
@@ -132,7 +127,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   assertTimelineAudioRoleWorkspace(db,input);
   assertTimelineVolumeEnvelopeWorkspace(db,input);
   refuseRestoredOperation(store,operation,input);
-  const state: TimelineRejectionState={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false,ownedScope:()=>opacity?opacity.ownsLock():ownsStoreLock(store)};
+  const state: TimelineRejectionState={operation,receiptAbsent:false,writesStarted:false,transactionEntered:false,callbackFailed:false,ownedScope:()=>ownsStoreLock(store)};
   const write=()=>{state.writesStarted=true;};
   try{return tx(()=>{
    state.transactionEntered=true;
@@ -275,7 +270,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    catch{throw volumeEnvelopeMutationError('TIMELINE_VOLUME_ENVELOPE_INVALID');}
    // Trims keep clip-local keyframe times; a shrink cuts keyframes past the new end.
    const transform=clipTransformFieldsAfterEdit(target as never,input.patch as {durationFrames?: number});
-   Object.assign(target,input.patch,envelope,transform,...(opacity?[opacityEnvelopeFieldsAfterEdit(target,input.patch)]:[]));
+   Object.assign(target,input.patch,envelope,transform);
   },boundary);
  }
  function renderSnapshot(input: TimelineMutationInput,boundary: TimelineRecoveryBoundary,write: ()=>void,expectedTimelineId?: string): unknown{
@@ -289,12 +284,12 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   if(!timeline.clips.length)throw new AppError('EMPTY_TIMELINE','请先向时间线添加片段');
   const rangeIssue=timelineExportRangeBoundsIssue(input,timeline.durationFrames);
   if(rangeIssue)throw new AppError(rangeIssue.code as string,rangeIssue.message as string,rangeIssue.status as number);
-  const frozen=domain?domain.freezeRenderSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input):freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
+  const frozen=freezeTimelineSnapshot(timeline,boundary.sources(timeline),input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
-  if(!domain)assertTransitionImageBudget(frozen as never);
+  assertTransitionImageBudget(frozen as never);
   if(input.preflightSnapshotHash!==undefined){
    let current;
-   try{current=(domain?domain.readPreflightSnapshot(Object.fromEntries(['projectId','expectedRevision','purpose','exportSettings','deliveryName','exportRange'].filter(key=>Object.hasOwn(input,key)).map(key=>[key,input[key]]))):readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input)).snapshot;}
+   try{current=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input).snapshot;}
    catch{throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);}
    if(!current||hash(current)!==input.preflightSnapshotHash||hash(frozen)!==input.preflightSnapshotHash)
     throw new AppError('PREFLIGHT_STALE','导出检查已过期，请重新检查已保存的时间线',409);
@@ -312,8 +307,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    write();put('exports',result);
    bindAgentTaskJobInside(db,'export',result.id);
    const response=saveResponse('timeline.render',input,requestHash,result,boundary);
-   if(opacity)opacity.bindExport('timeline.render',input,result,requestHash);
-   else bindRestoredExport(store,'timeline.render',input,result,requestHash);
+   bindRestoredExport(store,'timeline.render',input,result,requestHash);
    return response;
   });
  }
@@ -336,8 +330,8 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
    write();put('timelines',timeline);
    return saveResponse('timeline.format.set',input,requestHash,timeline,boundary);
   }),
-  'timeline.get':(input: TimelineMutationInput)=>domain?domain.boundary(input).read({legacyMissingProject:true}):ensure(input.projectId),
-  'timeline.history.get':(input: TimelineMutationInput)=>{if(domain)domain.boundary(input).read({legacyMissingProject:true});return history(input.projectId);},
+  'timeline.get':(input: TimelineMutationInput)=>ensure(input.projectId),
+  'timeline.history.get':(input: TimelineMutationInput)=>history(input.projectId),
   'timeline.undo':(input: TimelineMutationInput)=>travel('timeline.undo',input,-1),
   'timeline.redo':(input: TimelineMutationInput)=>travel('timeline.redo',input,1),
   'timeline.track.add':(input: TimelineMutationInput)=>mutate('timeline.track.add',input,timeline=>{
@@ -353,7 +347,7 @@ export function createTimelineServices(store: TimelineStore,{required,check,hash
   'timeline.clip.add':(input: TimelineMutationInput)=>mutate('timeline.clip.add',input,(timeline,boundary)=>{
    const source=boundary.inputAsset(input.assetId as string);
    timeline.clips.push({id:randomUUID(),trackId:input.trackId as string,assetId:input.assetId as string,name:input.name||source.name||'Clip',startFrame:input.startFrame as number,durationFrames:input.durationFrames as number,sourceInFrame:input.sourceInFrame??0,rect:input.rect||defaultRect(timeline),gain:input.gain??1,
-    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope',...(isOpacityCandidateApplicationStore(store)?['opacityEnvelope']:[])].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
+    ...Object.fromEntries(['fadeInFrames','fadeOutFrames','colour','audioRole','volumeEnvelope'].filter(field=>input[field]!==undefined).map(field=>[field,input[field]]))});
   }),
   'timeline.clip.update':(input: TimelineMutationInput)=>updateClip(input),
   'timeline.clip.replaceSource':(input: TimelineMutationInput)=>{

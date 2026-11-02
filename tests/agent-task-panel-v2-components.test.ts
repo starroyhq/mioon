@@ -13,7 +13,6 @@ import { message } from '../packages/i18n/src/index.ts';
 import {agentTaskNewConversationBlock,agentTaskSessionBusy,agentTaskWaitingQuestion} from '../apps/web/src/agent-tasks-v2.ts';
 import * as questions from '../apps/web/src/agent-task-questions.ts';
 import * as reviews from '../apps/web/src/agent-task-reviews.ts';
-import {AGENT_TASK_STATUSES} from '../packages/contracts/src/agent-tasks-v2.ts';
 const nodes=(value: Tree): Element[]=>Array.isArray(value)?value.flatMap(nodes):value&&typeof value==='object'?[value,...nodes(value.props?.children)]:[];
 const source=readFileSync(new URL('../apps/web/src/AgentTaskPanel.tsx',import.meta.url),'utf8');
 const projectId='11111111-1111-4111-8111-111111111111',stepId='22222222-2222-4222-8222-222222222222';
@@ -22,7 +21,7 @@ function harness({backgroundPending=false,readOnly=false,status,changes=[],local
   const hooks: Hook[]=[];let cursor=0,pending: number[]=[],tree: Tree,loads=0;const calls: unknown[][]=[];
   const react={createElement:(type: string,props: Partial<ElementProps>|null,...children: Tree[])=>({type,props:{...props,children:type==='dialog'&&!props!.open?[]:type==='dialog-content'?[...children,props!.footer]:type==='retained'?[...children,props!.recovery]:children}}),Fragment:'fragment',useRef:(value: unknown)=>hooks[cursor++]??={current:value},useState:(value: unknown)=>{const index=cursor++;hooks[index]??={value};return[hooks[index].value,(next: (arg0: unknown) => unknown)=>{hooks[index].value=typeof next==='function'?next(hooks[index].value):next;}];},useLayoutEffect:(fn: ()=>void|(()=>void),deps: readonly unknown[])=>{const index=cursor++,old=hooks[index];if(!old||deps.some((value: unknown,at)=>value!==old.deps![at])){hooks[index]={...old,fn,deps};pending.push(index);}}};(react as typeof react & {default?: unknown}).default=react;
   const snapshot: TaskPanelSnapshot={run:{id:'run',projectId,text:'synthetic task',status:status??(backgroundPending?'completed':'awaiting_approval'),stepsUsed:2,budget:30,configuration:{model:'historical-model'}},steps:[{id:stepId,kind:'tool',status:'completed',approvalRequired:true,tier:'paid',toolCall:{name:'mioon_generation_submit',arguments:{}}}],changes,backgroundPending};
-  const state: TaskPanelState={phase:'ready',project:{readOnly,runs:[snapshot.run],authorization:{scopes:['project_agent']},settings:{configuration:{model:'current-model'}}},snapshot,draft:'next task',uploads:[],pending:null,error:'',conversationId:'run',conversation:{id:'run',title:'synthetic task'},rounds:[snapshot],selectionKey:'run',legacy:false,draftDirty:true,draftVersion:0,unknownOutcome:false,history:{conversations:[{id:'run',title:'synthetic task'}],nextCursor:null,phase:'ready'}};
+  const state: TaskPanelState={phase:'ready',project:{readOnly,runs:[snapshot.run],authorization:{scopes:['project_agent']},settings:{configuration:{model:'current-model'}}},snapshot,draft:'next task',uploads:[],pending:null,error:'',conversationId:'run',conversation:{id:'run',title:'synthetic task'},rounds:[snapshot],selectionKey:'run',draftDirty:true,draftVersion:0,unknownOutcome:false,history:{conversations:[{id:'run',title:'synthetic task'}],nextCursor:null,phase:'ready'}};
   const module: Module={exports:{}};let options: TaskPanelOptions;
   const previous=globalThis.document;globalThis.document={visibilityState:'visible',addEventListener(){},removeEventListener(){}} as unknown as Document;
   Function('module','exports','require',transformSync(source,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
@@ -212,29 +211,9 @@ test('background conflicts use the host-marked completed step rather than guessi
  const h=harness({status:'paused'});try{h.state.snapshot!.run.pauseReason='conflict';const blocked=h.state.snapshot!.steps[0];blocked.approvalRequired=false;blocked.status='completed';blocked.display={operation:'generation.submit',targets:[{kind:'shot',id:stepId,name:'Original blocked scene'}],targetCount:1,fields:[{targetIndex:0,property:'durationSeconds',unit:'seconds',after:4}],conflict:true};h.state.snapshot!.steps.push({...blocked,id:'later-step',display:{...blocked.display,conflict:undefined,targets:[{kind:'shot',id:projectId,name:'Unrelated later scene'}]}});h.render();const text=renderedText(h.find('agent-task-paused'));assert.ok(text.includes('Original blocked scene'));assert.ok(!text.includes('Unrelated later scene'));assert.ok(text.includes(translate('zh-Hans','agent.panel.originalPlan')));}finally{h.unmount();}
 });
 
-test('the selected legacy conversation is read-only and never exposes proposal JSON or raw status names',()=>{
-  const legacySource=readFileSync(new URL('../apps/web/src/AgentLegacyHistory.tsx',import.meta.url),'utf8');
-  assert.doesNotMatch(legacySource,/createAgentChatClient|createAgentEditsClient|\.apply\(|\.reject\(|\.start\(|\.stop\(/u);
-  for(const locale of ['zh-Hans','zh-Hant','en','ja'] as const){
-    const react={createElement:(type: string,props: Partial<ElementProps>|null,...children: Tree[])=>({type,props:{...props,children}})};(react as typeof react & {default?: unknown}).default=react;const module: Module={exports:{}};
-    Function('module','exports','require',transformSync(legacySource,{loader:'tsx',format:'cjs'}).code)(module,module.exports,(id: string|string[])=>{
-      if(id==='react')return react;if(id.includes('I18nProvider'))return{useI18n:()=>createI18nTestContext(locale)};if(id.includes('workbench-controls'))return{WorkbenchButton:'button'};if(id.includes('contracts/src/agent-tasks-v2'))return{AGENT_TASK_STATUSES};if(id==='./agent-task-presentation.ts')return{taskOperationTitle:presentation.taskOperationTitle};if(id==='./agent-edits.ts')return{agentEditStatusDescriptor:()=>message('agent.proposal.state.applied')};throw Error('Unexpected import '+id);
-    });
-    const conversation={runs:[{id:'old-run',userText:'Earlier question',assistantText:'Earlier reply',status:'completed'}],proposals:[{id:'old-proposal',operation:'shot.update',status:'applied',diff:{secret:'PRIVATE_DIFF_MUST_STAY_HIDDEN',targetId:'PRIVATE_TARGET'}}],chatCursor:null,editCursor:null};
-    const tree: Tree=module.exports.default!({conversation});const text=renderedText(tree);assert.match(text,/Earlier question.*Earlier reply/u);assert.ok(text.includes(translate(locale,'agent.task.status.completed')));assert.ok(text.includes(presentation.taskOperationTitle('shot.update',locale)));assert.doesNotMatch(text,/PRIVATE_|shot\.update|\bcompleted\b/u);assert.ok(!nodes(tree).some((node)=>node.type==='pre'||node.type==='badge'));
-  }
-});
-
-test('selecting legacy history keeps the project recovery owner mounted without exposing its controls or a restored-workspace label',()=>{
+test('a completed conversation keeps the project recovery owner mounted and visible',()=>{
   const h=harness({status:'completed'});try{
-    const original=h.render().find((node)=>node.type==='retained');assert.ok(original);assert.equal(original.props.visible,true);
-    h.state.legacy=true;h.state.conversationId=null;h.state.conversation=null;h.state.rounds=[];h.state.snapshot=null;h.state.selectionKey='legacy:old';
-    const tree=h.render(),owner=h.find('agent-task-retained-owner'),retained=tree.filter((node)=>node!.type==='retained');
-    assert.equal(retained.length,1,'The independently pending recovery receipt must keep its native-close registration');
-    assert.equal(retained[0]!.props.projectId,original.props.projectId);assert.equal(retained[0]!.props.nativeCloseRegistry,original.props.nativeCloseRegistry);
-    assert.equal(retained[0]!.props.visible,false);assert.equal(retained[0]!.props.readOnly,false);assert.equal(retained[0]!.props.recovery,null);
-    assert.equal(owner!.props.hidden,true);assert.equal(owner!.props.inert,true);assert.equal(h.find('agent-task-read-only'),undefined);assert.equal(h.find('agent-task-empty'),undefined);
-    assert.equal(h.find('agent-task-draft')!.props.disabled,true);assert.equal(h.find('agent-task-send')!.props.disabled,true);
+    const retained=h.render().find((node)=>node.type==='retained');assert.ok(retained);assert.equal(retained.props.visible,true);
   }finally{h.unmount();}
 });
 

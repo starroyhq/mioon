@@ -142,7 +142,10 @@ for(const protocol of ['chat_completions','responses'] as const){
     for(const obstacle of ['foreign_shot','host_field'] as const)await t.test(obstacle,async t=>{
       const f=await runtimeFixture(t,protocol);let args:Record<string,unknown>={...f.base,parameters:{...mixed}};
       if(obstacle==='foreign_shot'){
-        const project=await f.services.call('project.create',{name:'PRIVATE_OTHER_PROJECT'});assert.ok(object(project));const shot=await f.services.call('shot.create',{projectId:project.id,title:'PRIVATE_OTHER_SHOT'});assert.ok(object(shot));args={...args,shotId:shot.id};
+        // Another project's shot lives in that project's own store: this project has no such shot.
+        const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-parameter-feedback-other-'))),store=openStore(root),services=createServices(store,new Map());t.after(()=>rm(root,{recursive:true,force:true}));
+        try{const project=await services.call('project.create',{name:'PRIVATE_OTHER_PROJECT'});assert.ok(object(project));const shot=await services.call('shot.create',{projectId:project.id,title:'PRIVATE_OTHER_SHOT'});assert.ok(object(shot));args={...args,shotId:shot.id};}
+        finally{await services.drain();store.close();}
       }else args={...args,apiKey:'PRIVATE_FORBIDDEN_KEY'};
       f.setScript(async function*(){yield {type:'done',output:f.output(args)};});
       const sent=await f.send(),done=await f.settle(sent.run.id);assert.equal(done.run.status,'failed');assert.equal(f.requests.length,2);assert.equal(f.posts.length,0);assert.equal(f.store.list('jobs',f.projectId).length,0);assert.equal(done.steps.some(step=>step.status==='awaiting_approval'),false);

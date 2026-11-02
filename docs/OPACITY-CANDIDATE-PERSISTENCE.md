@@ -1,5 +1,7 @@
 # 片段透明度：内部持久化候选
 
+**历史记录。** 透明度候选（固定 42/43 工作区、候选网页入口、候选备份档案和 40→42 升级命令）已在 #119（P1b，2026-11-02 合入）整条删除，本页写到的入口、命令和代码大多已不存在。下文保留 2026-10-16 当时的记录，不再更新。迁移链里的 `packages/business/src/workspace-opacity-legacy.ts`、`workspace-opacity-validation.ts` 和 `packages/contracts/src/timeline-opacity-persistence.ts` 暂时保留。
+
 日期：2026-10-16。此片完成内部固定 42/43 工作区的保存与恢复基础，尚未作为普通产品功能启用。默认生产工作区仍为 40/41；没有自动迁移、RPC 开关或用户数据指定的校验器。
 
 后续候选 Inspector／四语言／v3 草稿接线见[内部编辑器记录](OPACITY-CANDIDATE-EDITOR.md)。本页下方“仍需后续交付”描述此持久化提交时的范围；实际画面渲染仍未接入。

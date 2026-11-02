@@ -53,6 +53,8 @@ mioon agent task checks --input '{"projectId":"PROJECT_UUID","runId":"RUN_UUID",
 
 `agent task history` 返回标题、更新时间、最后一轮状态、变化条数及轮次数，`cursor` 只用于原项目。`agent task conversation` 的成员 cursor 同时绑定项目与对话，不能跨对话复用。旧 v2 执行各自作为单轮对话；v1 仍按原只读接口读取。诊断运行不进入列表、历史或普通对话上下文，其原始审计记录仍能按 runId／requestId 查询。
 
+X4 起，工具步骤在执行前遇到目标冲突或手动编辑时不暂停：这一步不执行，当前保存的值交回 Mio（见 `docs/AGENT-TASKS-V2.md`）。只有后台工作发现的冲突、工具提交一部分以后才发现的冲突，以及旧版本留下的冲突暂停，才需要下面的 `skip`。前台审批时目标已变，`approve` 仍返回原错误码 `AGENT_TASK_TARGET_CHANGED` 或 `AGENT_TASK_TARGET_CLAIMED`，但这一轮不暂停：这一步没有执行，Mio 会按当前内容重新规划，不用 `skip`。
+
 `agent task skip` 只用于目标冲突或手动编辑导致的暂停：保留实际冲突目标，本轮之后显式涉及它的工具都返回 `TARGET_SKIPPED`，不产生 Change，也不释放用户草稿。其他目标和新一轮不受跳过名单限制。普通 `resume` 不能绕过此选择，会返回 `AGENT_TASK_SKIP_REQUIRED`；预算和用户暂停仍使用 `resume`。重启中断前还有未处理冲突时，`resume` 只恢复到冲突暂停，随后必须明确 `skip` 或 `stop`；未知结果仍须先按原 `resolve-unknown` 边界处置。选择 `stop` 不写跳过记录。
 
 补充说明属于当前轮，不创建新轮、不增加步骤。已持久化的模型 intent 和已发出的请求不会被改写；最终回复期间到达的补充说明会在同一 Run 预算内继续下一模型步骤，预算不足时保留排队记录，等待明确继续。结束后再发送应使用同对话的 `send`。note/skip 响应丢失后，只查询原 `agent task action-lookup`；回执中的 `result.state=rejected` 是已确定的拒绝，不能换请求 ID 自动重发。
@@ -276,7 +278,21 @@ mioon generation submit --help
 
 `--help`, `--version`, and `schema` work offline. `doctor` authenticates against the backend and reports safe readiness metadata and provider capabilities; it neither submits generation nor exposes secret locations. `capabilities` returns the current `provider.list` data, including legacy fields and per-model `modelCapabilities`. Use enabled/configured/model constraints from that response rather than assuming a provider is ready. Production discovery also includes exact `inputProfiles`, server API region and dated lifecycle evaluations; inspect [model input limits](GENERATION-INPUT-LIMITS.md) before submitting. These fields are not client overrides. Current provider IDs are `mock`, `runway`, `ark`, `veo`, `minimax`, and `vidu`; live providers stay disabled without explicit backend opt-in and an authorized budget.
 
-`schema [operation]` converts the actual exported Zod input schema to JSON Schema. It returns the operation, natural command, MCP tool name, description, `inputSchema`, `requiresRequestId`, and explicit advisory `effects`. Custom refinements (such as rectangle containment) still run in the shared Zod validator even where JSON Schema cannot represent them. Effects describe direct and scheduled work; they never authorize a call or waive required approval. Missing effect coverage is an error, not a suffix-based safety guess.
+`schema [operation]` converts the shared Zod business input schema to JSON Schema and adds the required transport `projectId` for the 11 entity-addressed operations below. CLI discovery and MCP `tools/list` expose the same input shape. It returns the operation, natural command, MCP tool name, description, `inputSchema`, `requiresRequestId`, and explicit advisory `effects`. Custom refinements (such as rectangle containment) still run in the shared Zod validator even where JSON Schema cannot represent them. Effects describe direct and scheduled work; they never authorize a call or waive required approval. Missing effect coverage is an error, not a suffix-based safety guess.
+
+### 按项目寻址
+
+项目级调用发往 `/api/projects/{projectId}/rpc`；应用级操作保留 `/api/rpc`，
+完整分类与错误见 [API 按项目寻址](API.md#按项目寻址)。以下 11 个命令必须在
+JSON `--input` 中额外提供所属项目的小写 UUID `projectId`：`edge delete`、
+`export get`、`generation submit`、`job cancel/get/reconcile/retry`、
+`node update`、`shot update`、`version list/select`。CLI 将此字段取出用于寻址，
+不加入原业务 input；没有新增 `--project` 选项。
+
+`job watch`、`export watch`、`asset download` 和 `export download` 也必须携带
+同一 `projectId` 及原实体 ID。其余项目级操作保留已有项目字段，
+`image review prepare` 的项目位于嵌套 `input.projectId`。请求恢复时保存完整原始
+JSON，包括项目寻址身份；不能凭实体 ID 或最近打开的项目推断。
 
 Every shared operation is available in either form:
 
@@ -320,10 +336,8 @@ for result contracts and scope boundaries. Built-in Agent uses the same reads
 under [separate bounded run consent](AGENT-READ-TOOLS.md); a CLI call does not
 start or authorize an Agent conversation.
 
-Built-in Agent proposal review is a separate authenticated application workflow,
-not a new CLI operation. External clients continue to use the shared authorized
-`shot update` contract with their own retained replay key. See
-[reviewed selected-shot edits](AGENT-EDITS.md) for its bounded scope and status.
+External clients continue to use the shared authorized `shot update` contract
+with their own retained replay key.
 
 The `effects` fields also describe managed-file writes, local subprocesses,
 external/provider I/O and potentially paid new generation. `job reconcile`
@@ -491,16 +505,16 @@ The following commands show the contract. Replace UUID placeholders with IDs ret
 mioon project create --input '{"name":"Offline mock video"}'
 mioon asset import --file ./reference.png --input '{"projectId":"PROJECT_UUID"}'
 mioon shot create --input '{"projectId":"PROJECT_UUID","requestId":"demo-create-shot-001","title":"Opening","prompt":"A calm opening shot","referenceAssetIds":["ASSET_UUID"],"aspectRatio":"9:16","duration":2}'
-mioon generation submit --input '{"shotId":"SHOT_UUID","expectedRevision":1,"requestId":"demo-shot-001-v1","providerId":"mock"}'
-mioon job watch --input '{"jobId":"JOB_UUID"}' --timeout-ms 60000 --interval-ms 500
-mioon version list --input '{"shotId":"SHOT_UUID"}'
+mioon generation submit --input '{"projectId":"PROJECT_UUID","shotId":"SHOT_UUID","expectedRevision":1,"requestId":"demo-shot-001-v1","providerId":"mock"}'
+mioon job watch --input '{"projectId":"PROJECT_UUID","jobId":"JOB_UUID"}' --timeout-ms 60000 --interval-ms 500
+mioon version list --input '{"projectId":"PROJECT_UUID","shotId":"SHOT_UUID"}'
 mioon project get --input '{"projectId":"PROJECT_UUID"}'
-mioon version select --input '{"shotId":"SHOT_UUID","versionId":"VERSION_UUID","expectedRevision":2,"requestId":"demo-select-version-001"}'
+mioon version select --input '{"projectId":"PROJECT_UUID","shotId":"SHOT_UUID","versionId":"VERSION_UUID","expectedRevision":2,"requestId":"demo-select-version-001"}'
 mioon timeline get --input '{"projectId":"PROJECT_UUID"}'
 mioon timeline seed --input '{"projectId":"PROJECT_UUID","expectedRevision":1,"requestId":"demo-seed-001-v1"}'
 mioon timeline render --input '{"projectId":"PROJECT_UUID","expectedRevision":2,"requestId":"demo-render-001-v1","purpose":"export"}'
-mioon export watch --input '{"exportId":"EXPORT_UUID"}' --timeout-ms 60000
-mioon export download --input '{"exportId":"EXPORT_UUID"}' --output ./agent-result.mp4
+mioon export watch --input '{"projectId":"PROJECT_UUID","exportId":"EXPORT_UUID"}' --timeout-ms 60000
+mioon export download --input '{"projectId":"PROJECT_UUID","exportId":"EXPORT_UUID"}' --output ./agent-result.mp4
 ```
 
 Revisions above are illustrative for a fresh, otherwise unmodified project. Read the current shot revision from `project get` immediately before `version select`; the first successful generation can auto-select a version and increment the shot revision. Timeline revisions are independent of shot/project revisions; read `timeline get` before new timeline edits. A stale revision is a conflict, never an automatic overwrite.
@@ -671,14 +685,14 @@ Full bounds and rendering semantics: [Timeline audio fades](TIMELINE.md#audio-fa
 
 `asset import --file` reads local bytes in the CLI process, infers supported MIME type from the extension, and defaults the display name to the basename. Pass `name` or `mimeType` in JSON to override those defaults. Maximum input is 30 MiB. Only bytes, display name, MIME type, and project ID are sent. No local path is sent or accepted as a server-side file import. `--file` and `dataBase64` are mutually exclusive.
 
-Downloads support either the export ID or an existing managed asset ID:
+Downloads require the owning project ID and either the export ID or an existing managed asset ID:
 
 ```sh
-mioon asset download --input '{"assetId":"ASSET_UUID"}' --output ./reference-copy.png
-mioon export download --input '{"exportId":"EXPORT_UUID"}' --output ./result.mp4 --timeout-ms 60000 --max-bytes 536870912
+mioon asset download --input '{"projectId":"PROJECT_UUID","assetId":"ASSET_UUID"}' --output ./reference-copy.png
+mioon export download --input '{"projectId":"PROJECT_UUID","exportId":"EXPORT_UUID"}' --output ./result.mp4 --timeout-ms 60000 --max-bytes 536870912
 ```
 
-Only UUID managed-media endpoints on the selected backend are fetched, redirects are refused, and the output path never reaches the server. Creation is exclusive: existing output files and symlinks are never overwritten. Interrupted/failed partial files are removed. The default size limit is 512 MiB; `--max-bytes` can be set up to 2 GiB. An export must already have succeeded.
+Only `/api/projects/{projectId}/media/{assetId}` endpoints with lowercase UUIDs on the selected backend are fetched, redirects are refused, and the output path never reaches the server. `asset download` accepts exactly `{projectId,assetId}`; `export download` uses `{projectId,exportId}` and resolves the output asset from that project's completed export. Creation is exclusive: existing output files and symlinks are never overwritten. Interrupted/failed partial files are removed. The default size limit is 512 MiB; `--max-bytes` can be set up to 2 GiB. An export must already have succeeded.
 
 ## Idempotency, recovery, and watch
 
@@ -701,7 +715,7 @@ The CLI never invents request IDs and never retries submissions automatically. A
 - `submission_unknown` means the provider may already have accepted and charged for a job. Inspect `job get`; use `job reconcile` only as the appropriate recovery action. Do not resubmit with another ID.
 - `job cancel` is a separate explicit RPC action that stops backend local waiting. It does not promise remote cancellation or a refund.
 
-`job watch` and `export watch` only poll `get`. Default timeout is 60 seconds, maximum 24 hours; default poll interval is 500 ms, allowed interval 20–60000 ms. The deadline also bounds a hanging HTTP poll. Watch returns the final succeeded record or a structured failure/timeout/interruption; it never retries, reconciles, submits, or cancels remotely. Ctrl+C stops only the local wait. Start another watch with the same ID to resume observing.
+`job watch` and `export watch` require `{projectId,jobId}` and `{projectId,exportId}` respectively and only poll `get` at the project's address. Default timeout is 60 seconds, maximum 24 hours; default poll interval is 500 ms, allowed interval 20–60000 ms. The deadline also bounds a hanging HTTP poll. Watch returns the final succeeded record or a structured failure/timeout/interruption; it never retries, reconciles, submits, or cancels remotely. Ctrl+C stops only the local wait. Start another watch with the same project and entity IDs to resume observing.
 
 ### Stable exit codes
 
@@ -1165,7 +1179,7 @@ neither the head nor planning bindings are inferred. Save the exact request JSON
 and stable key before sending. Example for local workflow testing:
 
 ```sh
-mioon generation submit --input '{"shotId":"SHOT_UUID","expectedRevision":1,"requestId":"subject-video-0001","providerId":"mock","subjectVersionId":"SUBJECT_VERSION_UUID"}'
+mioon generation submit --input '{"projectId":"PROJECT_UUID","shotId":"SHOT_UUID","expectedRevision":1,"requestId":"subject-video-0001","providerId":"mock","subjectVersionId":"SUBJECT_VERSION_UUID"}'
 ```
 
 The shot must have no saved first/last images or first-frame connection. These

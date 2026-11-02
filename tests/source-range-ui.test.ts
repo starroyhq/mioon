@@ -159,12 +159,12 @@ test('App guards dirty clip before source selection, clears clip selection, and 
   assert.doesNotMatch(source, /setRightDockTab/);
   assert.match(app, /replay && operation === 'asset.range.set'/); assert.match(app, /setSourceRangeRefresh/);
   assert.match(app, /shotDirty \|\| clipDirty \|\| sourceDirty/);
-  const branchStart=app.indexOf('quickAssetId && sourceAsset ? application ?'),branchEnd=app.indexOf(': displayedClipInspector ?',branchStart);
+  const branchStart=app.indexOf('quickAssetId && sourceAsset ? <AgentEditingBoundary'),branchEnd=app.indexOf(': displayedClipInspector ?',branchStart);
   assert.ok(branchStart>=0&&branchEnd>branchStart,'exercise the complete actual source-inspector branch');
   const renderCode=transformSync(`function render(){return ${app.slice(branchStart,branchEnd)} : null;}`,{loader:'tsx',format:'cjs',jsx:'transform'}).code;
   let discards=0,ownerScope='source:1';
   const environment={React:{createElement:(type: string,props: Record<string, unknown> | null,...children: RootTree[])=>({type,props:{...props,children}})},
-    quickAssetId:'asset-a',sourceAsset:asset(),application:null,AgentEditingBoundary:'AgentEditingBoundary',SourceRangeInspector:'SourceRangeInspector',
+    quickAssetId:'asset-a',sourceAsset:asset(),AgentEditingBoundary:'AgentEditingBoundary',SourceRangeInspector:'SourceRangeInspector',
     workspaceOriginScope:()=> 'normal',workspace:{restored:false},restored:false,data:{project:{id:'project-a'}},sourceDirty:true,
     sourceRanges:{state:{scope:'source:1'},controller:{getState:()=>({scope:ownerScope}),discard:()=>{discards++;}}},
     timeline:timeline(),sourceRangeBlocked:false,addSavedSourceRange:()=>{},FrameExtractionPanel:'FrameExtractionPanel',frameExtraction:{controller:{}},agentRecovery:null as {kind: string; projectId: string; taskId: string; key: string; current(): boolean} | null,sceneSummary:()=>null,

@@ -32,7 +32,7 @@ test('the default timeline panel shows all four default tracks (subtitle, two vi
   const empty = Number(editing.match(/\.edit-timeline-empty\{[^}]*min-height:(\d+)px;/)?.[1]);
   assert.ok(toolbar + ruler + video + audio + empty + footnote + borders <= PANEL_BOUNDS.timelineHeight.default, 'The pristine drop zones and empty prompt must also fit');
   assert.match(read('Timeline.tsx'), /const pristineEmpty = !timeline\?\.clips\?\.length && historyState\?\.length === 0/);
-  assert.match(read('Timeline.tsx'), /timeline && !pristineEmpty && !basicEditingOnly && <SubtitleLane/);
+  assert.match(read('Timeline.tsx'), /timeline && !pristineEmpty && <SubtitleLane/);
 });
 
 test('the library search uses a drawn icon that cannot collide with the placeholder', () => {

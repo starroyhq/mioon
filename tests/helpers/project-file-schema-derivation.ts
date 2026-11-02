@@ -1,5 +1,5 @@
 // Derives the static project-file schema from the format-72 workspace built by
-// db.ts, and writes or checks the generated files.
+// db.ts, with the Mock provider's ledger, and writes or checks the generated files.
 //   node tests/helpers/project-file-schema-derivation.ts --write   regenerate the files
 //   node tests/helpers/project-file-schema-derivation.ts --check   exit 1 when a file differs
 //   node tests/helpers/project-file-schema-derivation.ts --report  print the PR's mapping table and the application-database SQL
@@ -10,6 +10,7 @@ import {DatabaseSync} from 'node:sqlite';
 import type {SQLOutputValue} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {openStore} from '../../packages/business/src/db.ts';
+import {createMockProvider} from '../../packages/business/src/providers/mock.ts';
 import {PROJECT_DATABASE_NAMES} from '../../packages/contracts/src/project-file.ts';
 import {buildDatabase, schemaStatements, SCHEMA_VERSION_TABLE_SQL, CACHE_SCHEMA_VERSION, HISTORY_SCHEMA_VERSION, PROJECT_FILE_SCHEMA_VERSION} from '../../packages/business/src/project-file/schema/databases.ts';
 import type {DatabaseKind} from '../../packages/business/src/project-file/schema/databases.ts';
@@ -40,7 +41,8 @@ export interface TableShape {
 }
 export interface Format72 {
   readonly version: number;
-  /** Every sqlite_master row, in rowid (creation) order. */
+  /** Every sqlite_master row, in rowid (creation) order; the Mock provider's
+   * ledger comes last. */
   readonly objects: readonly Format72Object[];
   readonly tables: ReadonlyMap<string, TableShape>;
 }
@@ -56,13 +58,17 @@ export function readTableShape(db: DatabaseSync, table: string): TableShape {
   };
 }
 
-/** Builds an empty format-72 workspace with db.ts in a scratch directory and reads its schema. */
+/** Builds an empty format-72 workspace with db.ts in a scratch directory, adds
+ * the Mock provider's ledger and reads its schema. */
 export function readFormat72(): Format72 {
   const scratch = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-k1-format72-'));
   try {
     const store = openStore(path.join(scratch, 'workspace'), {lock: false});
     try {
       const db = store.db;
+      // The server's provider registry creates the Mock provider on the store
+      // connection, and the provider creates its two ledger tables there.
+      createMockProvider({db, root: store.root});
       const objects = db.prepare('SELECT rowid,type,name,tbl_name,sql FROM sqlite_master ORDER BY rowid').all().map(row => ({
         rowid: Number(row.rowid), type: String(row.type), name: String(row.name), tbl_name: String(row.tbl_name),
         sql: typeof row.sql === 'string' ? row.sql : null,

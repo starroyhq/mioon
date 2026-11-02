@@ -1,7 +1,7 @@
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import {sanitizeAgentSettingsResult} from '@mioon/business/agent/settings';
 import type {AgentSettingsService} from '@mioon/business/agent/settings';
-import type {ChatAuthorizations} from '@mioon/business/agent/chat-runtime';
+import type {ChatAuthorizations} from '@mioon/business/agent/authorization-gate';
 import type {AgentTaskTools} from '@mioon/business/agent/task-tools-v2';
 import type {AgentTaskPolicy} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentTaskStorageSnapshot} from '@mioon/contracts/agent-task-storage';

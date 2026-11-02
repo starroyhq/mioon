@@ -98,16 +98,40 @@ const killed = async (holder: ChildProcess): Promise<void> => {
   await closed;
 };
 
-test('a project file without a hot journal is clean, and only its header is read', t => {
+test('a project file without a hot journal is clean and stays as it is', t => {
   const project = newProject(t);
   const before = fileState(project.projectFile);
   assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'clean'});
   assert.deepEqual(readdirSync(path.dirname(project.projectFile)), ['project.mioon']);
-  // A journal SQLite emptied (left beside a project moved while open) is not hot either.
-  writeFileSync(`${project.projectFile}-journal`, '');
-  assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'clean'});
-  assert.equal(statSync(`${project.projectFile}-journal`).size, 0);
+  // A journal SQLite emptied (left beside a project moved while open) is not hot either,
+  // nor is one whose header is still zero.
+  for (const journal of [Buffer.alloc(0), Buffer.alloc(512)]) {
+    writeFileSync(`${project.projectFile}-journal`, journal);
+    assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'clean'});
+    assert.equal(statSync(`${project.projectFile}-journal`).size, journal.length);
+  }
   assert.equal(fileState(project.projectFile), before);
+});
+
+test('without a hot journal nothing of the project file is read: an unreadable one is clean, and its header is read only beside a hot journal', {skip: NO_PERMISSIONS}, t => {
+  const project = newProject(t);
+  const journal = `${project.projectFile}-journal`;
+  const before = fileState(project.projectFile);
+  // Write-only: any read of the file, its header included, fails with EACCES.
+  chmodSync(project.projectFile, 0o200);
+  try {
+    assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'clean'});
+    writeFileSync(journal, '');
+    assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'clean'});
+    // With a hot journal beside it the header is read, and the read fails.
+    writeFileSync(journal, Buffer.concat([JOURNAL_MAGIC, Buffer.alloc(504, 1)]));
+    assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'invalid', reason: 'unusable'});
+    rmSync(journal);
+  } finally {
+    chmodSync(project.projectFile, 0o644);
+  }
+  assert.equal(fileState(project.projectFile), before);
+  assert.deepEqual(recoverProjectFile(project.projectFile), {state: 'clean'});
 });
 
 test('a project this process has open is recognised without touching its files', t => {
@@ -146,7 +170,7 @@ test('a project another process holds: nothing to recover while it is idle, lock
   await killed(writer);
 });
 
-test('a missing path is missing; other files are invalid and their journals stay as they are', t => {
+test('a missing path is missing; other files are clean without a hot journal and invalid beside one, which stays as it is', t => {
   const project = newProject(t);
   const other = path.dirname(project.projectFile);
   writeFileSync(path.join(other, 'plain-file'), 'x');
@@ -166,6 +190,10 @@ test('a missing path is missing; other files are invalid and their journals stay
     // history.db is never opened on its own: SQLite would roll it back out of order.
     [project.historyFile, 'not-a-project-file'],
   ];
+  // Without a hot journal the file itself is not read, so only the open finds it is no project file.
+  for (const [file, reason] of cases) {
+    assert.deepEqual(recoverProjectFile(file), reason === 'not-a-regular-file' ? {state: 'invalid', reason} : {state: 'clean'}, file);
+  }
   for (const [file, reason] of cases) {
     const journal = Buffer.concat([JOURNAL_MAGIC, Buffer.alloc(504, 1)]);
     if (reason !== 'not-a-regular-file') writeFileSync(`${file}-journal`, journal);

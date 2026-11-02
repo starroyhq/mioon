@@ -3,6 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {IDS, NOW, TOKEN, seedMutationStore, uuid} from './mutation-wire-fixture.ts';
 import {installWireGuard} from './inspection-wire-fixture.ts';
+import type {InspectProject} from '../../apps/server/src/index.ts';
 
 export const DISPOSITION_IDS = Object.freeze({audio: uuid(180), image: uuid(181), unknown: uuid(182),
   batchProject: uuid(183), corruptProject: uuid(184), mismatchedOwner: uuid(185),
@@ -78,14 +79,39 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   } else if (process.argv[2] === 'server') {
     if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seed(dataRoot);
     const {startServer} = await import('../../apps/server/src/index.ts');
+    const {schemaObjects} = await import('./project-database.ts');
+    let inspect: InspectProject|undefined;
     const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
-      chatGateway: async function* () {
-        fs.appendFileSync(process.env.MIOON_DISPOSITION_WIRE_AUDIT ?? '', '{"kind":"model gateway"}\n');
-        throw Error('Asset dispositions must never enter the model gateway');
-      }});
+      inspectProject: received => { inspect = received; }});
+    // For the test only: while this process holds the project, the test asks over
+    // IPC for every table's rows and the change marks, read on the server's own
+    // connection. data_version counts other connections' commits only;
+    // total_changes() adds this connection's own writes.
+    if (process.connected) process.on('message', (raw: unknown) => {
+      const message = raw as {type?: unknown; id?: unknown; projectId?: unknown} | null;
+      if (typeof message?.id !== 'string') return;
+      let reply: unknown;
+      try {
+        if (message.type !== 'storage') throw Error('Unsupported asset-disposition fixture message');
+        if (!inspect) throw Error('The server has not handed over its connection');
+        // Plain rows, as they cross the IPC channel.
+        const data = inspect(String(message.projectId), db => ({
+          rows: Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
+            [name, db.prepare(`SELECT * FROM "${name.replaceAll('"', '""')}" ORDER BY rowid`).all().map(row => ({...row}))])),
+          version: [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n],
+        }));
+        reply = {type: 'reply', id: message.id, data};
+      } catch (error) {
+        const failure = error as {code?: unknown; message?: unknown} | null;
+        reply = {type: 'reply', id: message.id, error: {code: failure?.code ?? 'FIXTURE_ERROR', message: String(failure?.message ?? error)}};
+      }
+      if (process.connected) process.send?.(reply);
+    });
     process.stdout.write(JSON.stringify({ready: true, url: server.url, pid: process.pid}) + '\n');
     let closing: Promise<unknown>|undefined;
-    const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; });
-    process.on('SIGTERM', close); process.on('SIGINT', close);
+    // An open IPC channel would keep this process alive after the server closes.
+    const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; })
+      .finally(() => { if (process.connected) process.disconnect(); });
+    process.on('SIGTERM', close); process.on('SIGINT', close); process.once('disconnect', close);
   } else throw Error('Unknown asset-disposition fixture mode');
 }

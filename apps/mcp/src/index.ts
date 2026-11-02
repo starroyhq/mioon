@@ -1,7 +1,7 @@
 import {Server} from '@modelcontextprotocol/sdk/server/index.js';
 import {StdioServerTransport} from '@modelcontextprotocol/sdk/server/stdio.js';
 import {ListToolsRequestSchema, CallToolRequestSchema} from '@modelcontextprotocol/sdk/types.js';
-import {createClient, workspaceOriginOptions, schemas, operationDefinition, discoverySchemas, discoveryEffects, effectAnnotations, discoverSchema, validateDiscovery, jsonSchema, successEnvelope, errorEnvelope, ClientError, VERSION} from '@mioon/client';
+import {createClient, workspaceOriginOptions, schemas, operationDefinition, discoverySchemas, discoveryEffects, effectAnnotations, discoverSchema, validateDiscovery, jsonSchema, splitProjectAddress, successEnvelope, errorEnvelope, ClientError, VERSION} from '@mioon/client';
 
 import {translate} from '@mioon/i18n';
 import type {Locale, MessageKey} from '@mioon/i18n';
@@ -67,7 +67,11 @@ const tools = new Map<string, McpTool>(Object.keys(schemas).map(operation => {
     description: localizeToolDescription(operation, definition.description, locale),
     inputSchema: definition.inputSchema,
     annotations: effectAnnotations(definition.effects),
-    call: (input: unknown, options: ToolCallOptions) => client.rpc(operation, input, options),
+    // Entity-addressed tools take their project as projectId beside the input.
+    call: async (input: unknown, options: ToolCallOptions) => {
+      const addressed = splitProjectAddress(operation, input);
+      return client.rpc(operation, addressed.input, {...options, ...(addressed.projectId === undefined ? {} : {projectId: addressed.projectId})});
+    },
   }];
 }));
 const discoveryTools: ReadonlyArray<readonly [DiscoveryName, string, (input: unknown, options: ToolCallOptions) => Promise<unknown>]> = [

@@ -21,7 +21,7 @@ function observe<T>(work:Promise<T>,signal:AbortSignal,cancelled:()=>Error):Prom
 /** Internal fixed-operation transport for the established durable task API or
  * the same-origin shared RPC. A local deadline cannot revoke an accepted write. */
 export async function readLoudnessApplyRpc(path:string,body:unknown,options:LoudnessApplyWireOptions={}):Promise<{response:Response;body:unknown}>{
-  const valid=body===undefined?/^\/api\/tasks\/[a-f0-9-]{36}\?projectId=[a-f0-9-]{36}$/iu.test(path):/^\/api\/(?:rpc|tasks\/prepare|tasks\/[a-f0-9-]{36}\/(?:execute|reconcile|acknowledge))$/iu.test(path);
+  const valid=body===undefined?/^\/api\/projects\/([a-f0-9-]{36})\/tasks\/[a-f0-9-]{36}\?projectId=\1$/iu.test(path):/^\/api\/projects\/[a-f0-9-]{36}\/(?:rpc|tasks\/prepare|tasks\/[a-f0-9-]{36}\/(?:execute|reconcile|acknowledge))$/iu.test(path);
   if(!valid)throw fault('VALIDATION');
   const timeout=options.timeoutMs??TIMELINE_LOUDNESS_APPLY_CLIENT_MS;
   if(!Number.isFinite(timeout)||timeout<=0||timeout>TIMELINE_LOUDNESS_APPLY_CLIENT_MS)throw fault('VALIDATION');

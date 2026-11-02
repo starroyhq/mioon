@@ -110,7 +110,7 @@ function canvasStoryboardApp() {
     dataRef: {current: {project: {id: 'project'}, timeline: {id: 'timeline', revision: 1, clips: []}}},
     clipDraftRef: {current: null}, trackLocksRef: {current: {}}, document, webSettingsOpen: false, nativeWindow: {context: {settingsModalOpen: false}},
     hasOpenWorkbenchModal: () => false, comparisonId: null, sceneTarget: null, nativeMenuComposing: {current: false}, nativeMenuTextFocus,
-    assetsCollapsed: false, inspectorCollapsed: false, application: null, opacityRestored: false, isBusy: () => false, online: true, auth: true,
+    assetsCollapsed: false, inspectorCollapsed: false, isBusy: () => false, online: true, auth: true,
     canOpenExport: false, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: false},
     menuRemoval: {current: null}, menuPlayback: {current: null}, workbenchMenuView,
     storyboardToastLifetime: toast, toastBlocked: false, scenes: {controller: {getState: () => scene}},
@@ -159,8 +159,8 @@ for (const change of ['batch', 'revision', 'proof', 'lifetime', 'closed', 'termi
 
 test('actual canvas availability requires the current project, live batch and unblocked undo proof', () => {
   const app = canvasStoryboardApp(); assert.equal(app.read().commands['edit-undo'], true);
-  for (const key of ['toastBlocked', 'webSettingsOpen', 'application']) {
-    app.bindings[key] = true; assert.equal(app.read().commands['edit-undo'], false); app.bindings[key] = key === 'application' ? null : false;
+  for (const key of ['toastBlocked', 'webSettingsOpen']) {
+    app.bindings[key] = true; assert.equal(app.read().commands['edit-undo'], false); app.bindings[key] = false;
   }
   app.bindings.online = false; assert.equal(app.read().commands['edit-undo'], false); app.bindings.online = true;
   app.scene.readOnly = true; assert.equal(app.read().commands['edit-undo'], false); app.scene.readOnly = false;
@@ -325,7 +325,7 @@ test('actual App menu routing opens the existing export review and import picker
   } finally {f.dispose();}
 });
 
-test('actual App availability retains live candidate import and follows restored mode, text focus and track locks', () => {
+test('actual App availability retains live import and follows text focus and track locks', () => {
   const trackLocks = {current: {project: [] as string[]}}, document = {visibilityState: 'visible', activeElement: null as unknown};
   const bindings = {
     viewRef: {current: {activeMode: 'editing', editing: {selectedClipId: 'clip', timelineCollapsed: false}}},
@@ -333,15 +333,14 @@ test('actual App availability retains live candidate import and follows restored
     dataRef: {current: {project: {id: 'project'}, timeline: {clips: [{id: 'clip', trackId: 'track'}]}}}, clipDraftRef: {current: null}, trackLocksRef: trackLocks,
     document, webSettingsOpen: false, nativeWindow: {context: {settingsModalOpen: false}}, hasOpenWorkbenchModal: () => false,
     comparisonId: null, sceneTarget: null, nativeMenuComposing: {current: false}, nativeMenuTextFocus,
-    assetsCollapsed: false, inspectorCollapsed: false, application: {isRestoredWorkspace: () => false} as object | null, opacityRestored: false,
+    assetsCollapsed: false, inspectorCollapsed: false,
     isBusy: () => false, online: true, auth: true, canOpenExport: true, historyState: {canUndo: true, canRedo: true}, splitState: {canSplit: true},
     menuRemoval: {current: {available: () => true}}, menuPlayback: {current: {available: () => true}}, workbenchMenuView,
   };
   const read = () => appFunction('readNativeMenuView', '  function executeNativeMenuCommand(', bindings)() as ReturnType<typeof workbenchMenuView>;
-  assert.equal(read().commands['import-media'], true, 'Live candidate workspaces retain the existing import capability');
-  bindings.opacityRestored = true; assert.equal(read().commands['import-media'], false); bindings.opacityRestored = false;
+  assert.equal(read().commands['import-media'], true, 'Live workspaces retain the existing import capability');
   trackLocks.current.project.push('track'); assert.equal(read().commands['clip-split'], false); assert.equal(read().commands['edit-undo'], false);
-  trackLocks.current.project.length = 0; bindings.application = null; assert.equal(read().commands['clip-split'], true);
+  trackLocks.current.project.length = 0; assert.equal(read().commands['clip-split'], true);
   document.activeElement = {closest: () => ({})}; assert.equal(read().editingContext, 'text'); assert.equal(read().commands['clip-split'], false); assert.equal(read().commands['playback-toggle'], false);
 });
 
@@ -375,8 +374,8 @@ test('actual App keyboard routing leaves desktop accelerators single-owned, reta
   assert.ok(start > 0 && end > start);
   const code = transformSync(appSource.slice(start, end), {loader: 'ts', format: 'cjs'}).code;
   const calls: string[] = [], doc = {modal: false};
-  const keyboard = (desktop: boolean) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'application', 'timelineSplitActionForKey', 'splitState', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', `${code};return onKeyDown;`)(
-    desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, false, timelineSplitActionForKey, {canSplit: true}, () => calls.push('split'), timelineHistoryActionForKey,
+  const keyboard = (desktop: boolean) => Function('nativeMenuBridge', 'viewRef', 'hasOpenWorkbenchModal', 'document', 'timelineSplitActionForKey', 'splitState', 'splitTimelineClip', 'timelineHistoryActionForKey', 'historyState', 'changeTimelineHistory', `${code};return onKeyDown;`)(
+    desktop ? {} : null, {current: {activeMode: 'editing'}}, () => doc.modal, {}, timelineSplitActionForKey, {canSplit: true}, () => calls.push('split'), timelineHistoryActionForKey,
     {canUndo: true, canRedo: true}, (direction: string) => calls.push(direction),
   ) as (event: unknown) => void;
   const event = (key: string, patch = {}) => ({key, ctrlKey: true, metaKey: false, altKey: false, shiftKey: false, repeat: false, defaultPrevented: false, isComposing: false, keyCode: 0, target: null, preventDefault() {this.defaultPrevented = true;}, ...patch});

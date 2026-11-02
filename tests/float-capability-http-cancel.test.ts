@@ -13,6 +13,7 @@ import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {callObservedRpc} from '../apps/server/src/rpc-observation.ts';
 import {onMediaProcess,hasUnconfirmedMediaProcesses,waitForMediaProcesses} from '../packages/business/src/media-processes.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 // Real loopback HTTP, shared services/admission and the production bounded child
@@ -50,7 +51,7 @@ async function fixture(t: test.TestContext){
  const input={projectId:project.id,expectedRevision:timeline.revision,exportSettings:structuredClone(SETTINGS)};
  const media: (import("../packages/business/src/media-processes.ts").MediaProcessEvent)[]=[],requests: unknown[]=[],observations: ({ baseline: { request: number; response: number; }; })[]=[],settled=defer<{signal:AbortSignal;remaining:{request:number;response:number};baseline:{request:number;response:number}}>(),holding=defer<import('../packages/business/src/media-processes.ts').MediaProcessEvent>(),reaped=defer<import('../packages/business/src/media-processes.ts').MediaProcessEvent>();let ffmpegStarts=0,heldPid!: number|undefined,server;
  const off=onMediaProcess(event=>{media.push(((event) as unknown as Parameters<typeof media.push>[0]));if(event.type==='started'&&event.kind==='ffmpeg'&&++ffmpegStarts===2){heldPid=event.pid;holding.resolve(event);}if(event.type==='exited'&&event.pid===heldPid)reaped.resolve(event);});
- const rows=()=>JSON.stringify(store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>({name,rows:store.db.prepare(`SELECT * FROM "${(name as string).replaceAll('"','""')}" ORDER BY rowid`).all()})));
+ const rows=()=>JSON.stringify(schemaObjects(store.db).filter(({type})=>type==='table').map(({name})=>({name,rows:store.db.prepare(`SELECT * FROM "${name.replaceAll('"','""')}" ORDER BY rowid`).all()})));
  const beforeRows=rows(),beforeFiles=await stableFiles(root);
  const send=(res: http.ServerResponse<http.IncomingMessage>&{ req: http.IncomingMessage; },status: number,body: { ok: boolean; error?: { code: string; }|{ code: unknown; message: unknown; retryable: boolean; }|{ code: unknown; message: unknown; }; data?: unknown; })=>{if(res.destroyed||res.writableEnded)return;res.writeHead(status,{'content-type':'application/json; charset=utf-8'});res.end(JSON.stringify(body));};
  server=http.createServer(async(req,res)=>{

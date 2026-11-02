@@ -8,7 +8,8 @@ import type {CreateProjectFileOptions, OpenProjectConnectionOptions} from './con
 
 /** The contract's project store with the read and write surface of today's
  * WorkspaceStore (same tables, columns, errors and transaction rules; tx
- * begins with a deferred BEGIN, see below). */
+ * begins with a deferred BEGIN, and tx and put refuse to write once the
+ * project file alone was moved, see below). */
 export interface ProjectStore extends WorkspaceStore, ProjectStoreContract<DatabaseSync> {}
 
 /** Backend-owned transaction fences run first inside every store transaction,
@@ -67,6 +68,7 @@ export function openProjectStore(options: OpenProjectConnectionOptions): Project
     const columns = t === 'projects' ? ['id', 'data'] : t === 'versions' ? ['id', 'projectId', 'jobId', 'data'] : ['id', 'projectId', 'data'];
     const record = value as Readonly<Record<string, unknown>>;
     const values = columns.map(column => column === 'data' ? JSON.stringify(value) : sqlValue(record[column]));
+    connection.throwIfMoved();
     database.prepare(`INSERT INTO ${t}(${columns.join(',')}) VALUES(${columns.map(() => '?').join(',')}) ON CONFLICT(id) DO UPDATE SET data=excluded.data`).run(...values);
     return value;
   };
@@ -78,9 +80,13 @@ export function openProjectStore(options: OpenProjectConnectionOptions): Project
   // write transaction, and every commit would create, sync and delete a
   // super-journal. With BEGIN only the databases written join it: a commit of
   // local records alone does not touch the project file.
+  // Once the project file alone has been renamed or moved, tx (before BEGIN)
+  // and put (before its statement, inside a transaction too) throw
+  // PROJECT_FILE_MOVED and write nothing (connection.throwIfMoved).
   const tx = <T>(callback: () => T): T => {
     if (typeof callback !== 'function' || isAsyncFunction(callback)) throw new TypeError('Transactions require a synchronous callback');
     if (database.isTransaction) throw new Error('Nested transactions are not supported');
+    connection.throwIfMoved();
     database.exec('BEGIN');
     try {
       for (const fence of transactionFences.get(database) ?? []) fence();

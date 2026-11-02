@@ -27,13 +27,16 @@ import {createTimelineFloatAudioAccumulator} from '../packages/business/src/time
 import {claimFloatTimelineExport, bindFloatTimelineMeasurement, bindFloatTimelineFailure, ownedFloatTimelineMeasurement,
   floatSnapshotSha256} from '../packages/business/src/timeline-float-outcome.ts';
 import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const PROFILE = 'mp4_h264_float_checked_v2';
 const settings = () => ({profileId: PROFILE, resolution: 'short_360', rateControl: {mode: 'crf', quality: 'standard'}});
 const sha = (value: Buffer<ArrayBuffer>|BinaryLike) => createHash('sha256').update(value).digest('hex');
 const plain = <T>(value:T):T => JSON.parse(JSON.stringify(value));
-const rows = (db: DatabaseSync) => Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all()
+const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+// Rows keep the loose type the SQL table listing gave them; tests name the columns they read.
+const rows = (db: DatabaseSync): Record<string, any[]> => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').sort(byName)
   .map(({name}) => [name, plain(db.prepare(`SELECT rowid AS __rowid__,* FROM "${name}" ORDER BY rowid`).all())]));
 const badSnapshot = (error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; }) => (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code === 'INVALID_TIMELINE_SNAPSHOT';
 const receipt = (f: Awaited<ReturnType<typeof fixture>>, input: { requestId: unknown; }) => f.store.db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(((((input.requestId) as unknown as SQLInputValue | Record<string, SQLInputValue>)) as unknown as Parameters<NonNullable<(ReturnType<(((typeof f)["store"])["db"])["prepare"]>)["get"]>>[0]));

@@ -23,6 +23,7 @@ import type {TimelineRecord} from '../packages/contracts/src/timeline-replacemen
 import type {TimelineClipLoudnessRuntime} from '../packages/business/src/timeline-clip-loudness.ts';
 import type {TimelineClipLoudnessSignal} from '../packages/business/src/timeline-clip-loudness-decoder.ts';
 import type {TimelineMixLoudnessDecodeOptions} from '../packages/business/src/timeline-mix-loudness-decoder.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 type RuntimeOverrides = Partial<Omit<TimelineClipLoudnessRuntime, 'decode'>> & {decode?: (...args: Parameters<TimelineClipLoudnessRuntime['decode']>) => unknown};
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
 const deferred = <T = void>() => {let resolve!: (value: T) => void; const promise = new Promise<T>(r => {resolve = r;}); return {resolve, promise};};
@@ -63,9 +64,18 @@ async function files(root: string) {
   }
   return result.sort(([a], [b]) => a.localeCompare(b));
 }
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: TestContext, name = 'Foreign project') {
+  const root = await mkdtemp(path.join(tmpdir(), 'mioon-clip-loudness-foreign-'));
+  t.after(() => rm(root, {recursive: true, force: true}));
+  const store = openStore(root), services = (createServices(store, new Map()) as TypedServices);
+  try {return await services.call('project.create', {name});}
+  finally {await services.drain(); store.close();}
+}
+const byName = (a: {name: string}, b: {name: string}) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 async function fixture(t: TestContext, {durationFrames = 60, runtime: overrides = {}}: {durationFrames?: number; runtime?: RuntimeOverrides} = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-mix-loudness-')), store = openStore(root), services = (createServices(store, new Map()) as TypedServices);
-  const project = await services.call('project.create', {name: 'Owned full timeline loudness'}), foreign = await services.call('project.create', {name: 'Other project'});
+  const project = await services.call('project.create', {name: 'Owned full timeline loudness'}), foreign = await foreignProject(t, 'Other project');
   let timeline = await services.call('timeline.get', {projectId: project.id});
   const id = randomUUID(), bytes = Buffer.alloc(96 * 1024, 7);
   const asset = {id, projectId: project.id, name: 'Owned sound.wav', mimeType: 'audio/wav', relativePath: `media/${id}.wav`,
@@ -82,7 +92,7 @@ async function fixture(t: TestContext, {durationFrames = 60, runtime: overrides 
   t.after(async () => {for (const extra of extras) await extra.drain().catch(() => {}); await mix.drain().catch(() => {});
     await services.drain().catch(() => {}); store.close(); await rm(root, {recursive: true, force: true});});
   const input = inputFor(timeline, asset);
-  const rows = () => Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const rows = () => Object.fromEntries(schemaObjects(store.db).filter(({type}) => type === 'table').sort(byName).map(({name}) => [name, store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   return {root, store, services, project, foreign, asset, bytes, timeline, input, mix, runtime, extras,
     call: (value: unknown = input, options?: Parameters<typeof mix.handlers['timeline.clip.loudness']>[1]) => mix.handlers['timeline.clip.loudness'](value, options),
     checkpoint: async () => ({rows: rows(), writes: store.db.prepare('SELECT total_changes() AS n').get()!.n, files: await files(root)}),

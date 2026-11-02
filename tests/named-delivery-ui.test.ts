@@ -29,6 +29,8 @@ const fixtures = {
   heldFailure: { component: 'history', props: { orderedExports: [row(3, { status: 'failed', assetId: null, url: null, error: { message: '<unsafe failure>' } })], heldExportIds: [id(3)] } },
   namedDefault: { component: 'history', props: { orderedExports: [row(3, { snapshot: { timeline, deliveryName: '仅命名，沿用原有编码' } })] } },
   legacy: { component: 'history', props: { projectName: '旧项目默认', timelineRevision: 4, orderedExports: [row(3, { url: '/media/original-file', snapshot: { timeline } })] } },
+  legacyOtherProject: { component: 'history', props: { projectId: id(99), orderedExports: [row(3, { snapshot: { timeline } })] } },
+  legacyMissingProject: { component: 'history', props: { projectId: id(99), orderedExports: [row(3, { projectId: undefined, snapshot: { timeline } })] } },
   legacyQuality: { component: 'history', props: { projectName: '旧项目默认', timelineRevision: 4, orderedExports: [row(3, { url: '/media/original-file', snapshot: { timeline, delivery } })] } },
   storyboard: { component: 'history', props: { projectName: '分镜默认', orderedExports: [row(3, { mode: 'storyboard', purpose: undefined, orderedVersionIds: [id(20)], url: '/media/story-original' })] } },
   invalidName: { component: 'history', props: { orderedExports: [row(3, { snapshot: { timeline, deliveryName: null } })] } },
@@ -106,7 +108,7 @@ test('named table rows display owned asset size while foreign or invalid metadat
 });
 
 test('named history delegates only immutable managed IDs and URL to the async check without a filename override', () => {
-  const expected = {projectId:id(1), exportId:id(3), downloadHref:`/media/${id(13)}?download=1&exportId=${id(3)}`, disabled:false};
+  const expected = {projectId:id(1), exportId:id(3), downloadHref:`/api/projects/${id(1)}/media/${id(13)}?download=1&exportId=${id(3)}`, disabled:false};
   assert.deepEqual(actions.named, [expected]);
   assert.deepEqual(actions.renamedAgain, [expected]);
   assert.deepEqual(actions.otherProjectView, [expected], 'Current project props must not replace the frozen record identity');
@@ -115,25 +117,25 @@ test('named history delegates only immutable managed IDs and URL to the async ch
   assert.doesNotMatch(JSON.stringify(actions.named), /untrusted-row-url|filename|冻结名称/);
   assert.equal((rendered.twoExports.match(/data-testid="named-delivery-history"/g) || []).length, 2);
   assert.match(rendered.twoExports, /第二份/); assert.match(rendered.twoExports, /标准 · CRF 23/); assert.match(rendered.twoExports, /720 × 1280/);
-  assert.deepEqual(actions.twoExports, [expected, {projectId:id(1), exportId:id(4), downloadHref:`/media/${id(14)}?download=1&exportId=${id(4)}`, disabled:false}]);
+  assert.deepEqual(actions.twoExports, [expected, {projectId:id(1), exportId:id(4), downloadHref:`/api/projects/${id(1)}/media/${id(14)}?download=1&exportId=${id(4)}`, disabled:false}]);
 });
 
 test('held restored rows retain historical labels, successful managed downloads and blocked failed execution', () => {
   assert.match(rendered.heldSuccess, /历史记录 · 暂停执行，原状态保留/);
   assert.deepEqual(actions.heldSuccess, [{...actions.named[0], disabled:true}]);
-  assert.match(fileActions.heldSuccess[0], new RegExp(`href="/media/${id(13)}\\?download=1&amp;exportId=${id(3)}"`));
+  assert.match(fileActions.heldSuccess[0], new RegExp(`href="/api/projects/${id(1)}/media/${id(13)}\\?download=1&amp;exportId=${id(3)}"`));
   assert.match(fileActions.heldSuccess[0], /data-testid="download-export"/); assert.match(fileActions.heldSuccess[0], /download=""/);
   assert.doesNotMatch(fileActions.heldSuccess[0], /export-file-check|download="[^"\n]+"|untrusted-row-url|filename=/);
   assert.match(rendered.heldFailure, /历史记录 · 暂停执行，原状态保留/); assert.match(rendered.heldFailure, /已保留 · 暂停/);
   assert.match(rendered.heldFailure, /此导出遇到问题，请核对原记录与当前状态/); assert.doesNotMatch(rendered.heldFailure, /unsafe failure/); assert.doesNotMatch(rendered.heldFailure, /download-export/);
   assert.deepEqual((actions.heldFailure as unknown), []);
-  for (const name of ['recoveryDisabled', 'missingProject']) {
-    assert.equal(actions[name][0].disabled, true);
-    assert.equal(actions[name][0].downloadHref, actions.named[0].downloadHref);
-    assert.match(fileActions[name][0], /data-testid="download-export"/);
-    assert.doesNotMatch(fileActions[name][0], /export-file-check/);
-  }
-  assert.equal(actions.missingProject[0].projectId, '', 'An absent record owner must not borrow the current project');
+  assert.equal(actions.recoveryDisabled[0].disabled, true);
+  assert.equal(actions.recoveryDisabled[0].downloadHref, actions.named[0].downloadHref);
+  assert.match(fileActions.recoveryDisabled[0], /data-testid="download-export"/);
+  assert.doesNotMatch(fileActions.recoveryDisabled[0], /export-file-check/);
+  assert.deepEqual(actions.missingProject, [], 'An absent record owner must not borrow the current project');
+  assert.deepEqual(fileActions.missingProject, []);
+  assert.doesNotMatch(rendered.missingProject, /download-export|export-file-check/);
 });
 
 test('name-only rows use frozen timeline geometry without inventing a quality profile', () => {
@@ -141,15 +143,19 @@ test('name-only rows use frozen timeline geometry without inventing a quality pr
   assert.doesNotMatch(rendered.namedDefault, /CRF|AAC|平均目标/);
 });
 
-test('unnamed legacy and storyboard rows retain display fallbacks and exact original URLs through file inspection', () => {
+test('unnamed legacy and storyboard rows retain display fallbacks and their project media address through file inspection', () => {
   assert.match(rendered.legacy, /<strong>旧项目默认.mp4<\/strong>/);
-  assert.deepEqual(actions.legacy, [{projectId:id(1), exportId:id(3), downloadHref:'/media/original-file', disabled:false}]);
+  // A stored url is not an address: unnamed rows download at their project too.
+  assert.deepEqual(actions.legacy, [{projectId:id(1), exportId:id(3), downloadHref:`/api/projects/${id(1)}/media/${id(13)}`, disabled:false}]);
+  assert.deepEqual(actions.legacyOtherProject, actions.legacy, 'The file check and download both use the record owner');
+  assert.deepEqual(actions.legacyMissingProject, [], 'An unnamed record without an owner cannot borrow the current project');
+  assert.deepEqual(fileActions.legacyMissingProject, []);
   assert.match(fileActions.legacy[0], /data-testid="export-file-check"/);
   assert.doesNotMatch(fileActions.legacy[0], /download-export|href=|download=/);
   assert.doesNotMatch(rendered.legacy, /named-delivery-history|delivery-history-name|冻结名称|CRF|AAC/);
   assert.match(rendered.legacyQuality, /平均目标 8 Mb\/s/); assert.match(rendered.legacyQuality, /1080 × 1920/);
   assert.match(rendered.storyboard, /分镜顺序导出 · 1 个镜头/);
-  assert.deepEqual(actions.storyboard, [{projectId:id(1), exportId:id(3), downloadHref:'/media/story-original', disabled:false}]);
+  assert.deepEqual(actions.storyboard, [{projectId:id(1), exportId:id(3), downloadHref:`/api/projects/${id(1)}/media/${id(13)}`, disabled:false}]);
   assert.match(fileActions.storyboard[0], /data-testid="export-file-check"/);
   assert.doesNotMatch(fileActions.storyboard[0], /download-export|href=|download=/);
   assert.doesNotMatch(rendered.storyboard, /named-delivery-history/);

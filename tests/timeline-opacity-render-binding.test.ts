@@ -1,12 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  bindTimelineOpacityRenderAttempt,
-  getTimelineOpacityRenderBinding as get,
-type TimelineOpacityRenderBinding,
-} from '../packages/business/src/timeline-opacity-render-binding.ts';
+import {getTimelineOpacityRenderBinding as get} from '../packages/business/src/timeline-opacity-render-binding.ts';
 
-const unavailable = (callback: { (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): Readonly<TimelineOpacityRenderBinding>|null; (): unknown; }) => assert.throws(callback, {code: 'OPACITY_RENDER_BINDING_UNAVAILABLE'});
+const unavailable = (callback: () => unknown) => assert.throws(callback, {code: 'OPACITY_RENDER_BINDING_UNAVAILABLE'});
 const legacy = () => ({timeline: {clips: [{id: 'ordinary-clip', durationFrames: 3}]}, assets: []});
 
 test('ordinary old snapshots receive no binding and no new effect stage', () => {
@@ -52,15 +48,4 @@ test('opacity rejection does not execute proxy traps or own accessors', () => {
   Object.defineProperty(clips, '0', {enumerable: true, get() {traps++; throw Error('must not execute');}});
   unavailable(() => get({timeline: {clips}}));
   assert.equal(traps, 0);
-});
-
-test('binding accepts no supplied proof callback or forged store/source Map', () => {
-  let callbacks = 0;
-  assert.throws(() => bindTimelineOpacityRenderAttempt(
-    {root: '/never-opened', db: {}, checkpoint() {callbacks++;}},
-    {purpose: 'preview', snapshot: legacy()}, new Map(),
-    (({beforeEffect() {callbacks++;}, validate() {callbacks++;}}) as unknown as Parameters<typeof bindTimelineOpacityRenderAttempt>[3]),
-  ));
-  assert.equal(callbacks, 0);
-  assert.equal((get(legacy()) as unknown), null);
 });

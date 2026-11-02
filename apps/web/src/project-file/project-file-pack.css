@@ -1,0 +1,18 @@
+/* Packing (12-10) and packing finished (12-11). */
+.pf-pack-dialog .wb-dialog-content { display: flex; flex-direction: column; gap: var(--wb-space-3); }
+.pf-pack-destination-row { display: flex; gap: var(--wb-space-2); }
+.pf-pack-destination-row > [data-slot="input"] { flex: 1; min-width: 0; }
+.pf-pack-destination-row > .wb-button { gap: 6px; }
+.pf-pack-rows > li { min-height: 56px; }
+/* The missing-media warning keeps its text in the text colour; the icon and frame are orange. */
+.pf-pack-missing.wb-alert { color: var(--wb-text); }
+.pf-pack-missing.wb-alert .wb-feedback-icon { color: var(--wb-warning); }
+.pf-pack-missing.wb-alert .wb-button { gap: 6px; }
+.pf-pack-progress { display: flex; flex-direction: column; gap: 6px; }
+.pf-pack-progress-text { display: flex; justify-content: space-between; color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; }
+.pf-pack-note { display: flex; gap: var(--wb-space-2); color: var(--wb-muted); font-size: var(--wb-text-label); line-height: 1.6; }
+.pf-pack-note > svg { flex: none; margin-top: 3px; }
+.pf-pack-done { display: flex; align-items: center; gap: var(--wb-space-3); }
+.pf-pack-done-icon { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--wb-success-subtle); color: var(--wb-success); }
+.pf-pack-done-text { color: var(--wb-text); font-size: var(--wb-text-body); font-weight: 500; line-height: 1.5; }
+.pf-pack-done-path { color: var(--wb-soft); font-size: var(--wb-text-label); line-height: 1.5; }

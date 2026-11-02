@@ -1,4 +1,3 @@
-import {OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE} from './opacity-ripple-candidate-backup-profile.ts';
 import path from 'node:path';
 import applicationPackage from '../../../package.json' with {type:'json'};
 import {randomUUID,createHash} from 'node:crypto';
@@ -12,20 +11,11 @@ import {fail,checkCancelled,safeBackupError,sameNode,sameFile,explicitPath,check
 import {createIssueCollector,buildWorkspaceInventory,inspectDatabase} from './workspace-backup-inventory.ts';
 import {detectCurrentWorkspaceRestoreEvidence as detectWorkspaceRestoreEvidence} from './db.ts';
 import {hasWorkspaceBackupRestoreEvidence} from './workspace-backup-schema-versions.ts';
-import {OPACITY_CANDIDATE_BACKUP_PROFILE} from './opacity-candidate-backup-profile.ts';
 
 import type {Stats} from 'node:fs';
 
 const applicationVersion=applicationPackage.version;
 
-export interface WorkspaceBackupProfile {
- manifestSchema: {safeParse(value: unknown): {success: boolean}};
- resultSchema: {safeParse(value: unknown): {success: boolean}};
- manifestMetadata: Record<string, unknown>;
- resultMetadata: Record<string, unknown>;
- requireSource: (db: DatabaseSync)=>void;
- readSchemaVersion: (db: DatabaseSync)=>number;
-}
 export interface WorkspaceBackupResult {
  format: string;formatVersion: number;backupId: string;integrity: string;restoration: string;
  databaseSchemaVersion: number;fileCount: number;payloadBytes: number;inventory: unknown;
@@ -79,16 +69,9 @@ function checkSourceDirectories(source: string,snapshots: [string, Stats|null][]
 function validated<T>(schema: SchemaLike,value: unknown,reason='CORRUPT'): T{
  if(!schema.safeParse(value).success)fail(reason);return value as T;
 }
-function checkFixedProfile(fixedProfile: WorkspaceBackupProfile|undefined): void{
- // Only this module-owned fixed candidate is an alternate offline assembly.
- // Public options, copied objects and arbitrary schema-reader callbacks cannot
- // select a new source profile or weaken the historical default reader.
- if(fixedProfile!==undefined&&fixedProfile!==OPACITY_CANDIDATE_BACKUP_PROFILE&&fixedProfile!==OPACITY_RIPPLE_CANDIDATE_BACKUP_PROFILE)fail('DATABASE_INVALID');
-}
-function resultFor(manifest: BackupManifestLike,fixedProfile: WorkspaceBackupProfile|undefined): WorkspaceBackupResult{
- return validated<WorkspaceBackupResult>(fixedProfile?fixedProfile.resultSchema:workspaceBackupResultSchema,{format,formatVersion,backupId:manifest.backupId,integrity:'verified',restoration:'not_tested',
-  databaseSchemaVersion:manifest.databaseSchemaVersion,fileCount:manifest.entries.length,payloadBytes:manifest.entries.reduce((sum,entry)=>sum+entry.bytes,0),inventory:manifest.inventory,
-  ...(fixedProfile?fixedProfile.resultMetadata:{})});
+function resultFor(manifest: BackupManifestLike): WorkspaceBackupResult{
+ return validated<WorkspaceBackupResult>(workspaceBackupResultSchema,{format,formatVersion,backupId:manifest.backupId,integrity:'verified',restoration:'not_tested',
+  databaseSchemaVersion:manifest.databaseSchemaVersion,fileCount:manifest.entries.length,payloadBytes:manifest.entries.reduce((sum,entry)=>sum+entry.bytes,0),inventory:manifest.inventory});
 }
 
 // SQLite's pathname-only API is restricted to this private disposable copy.
@@ -140,15 +123,12 @@ export async function withDisposableDatabase<T>({database,databaseRoot,temporary
 // disposable copy before creating the user's requested destination. Ordinary
 // backup keeps its original permissive byte-preservation/inventory semantics;
 // this is not source-schema migration or a general legacy schema validator.
-async function refuseRestoredCapture({database,source,destination,signal,check}: BackupRestoreCheckOptions,fixedProfile: WorkspaceBackupProfile|undefined): Promise<void>{
+async function refuseRestoredCapture({database,source,destination,signal,check}: BackupRestoreCheckOptions): Promise<void>{
  const temporary=path.join(path.dirname(destination),`.backup-profile-${randomUUID()}`),identity=createDestination(temporary);
  try{
   await withDisposableDatabase({database,databaseRoot:source,temporaryParent:temporary,signal,check,databasePrivate:false},db=>{
    db.exec('PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;');
-   if(hasWorkspaceBackupRestoreEvidence(db)||(!fixedProfile&&detectWorkspaceRestoreEvidence(db)))throw Object.assign(new Error('Backups of restored working branches are unavailable until recursive restore is supported.'),{code:'RESTORE_BACKUP_UNAVAILABLE'});
-   // The candidate proves exact ordinary42 before the requested destination
-   // exists; it must not enter the frozen historical dispatcher with source42.
-   if(fixedProfile)fixedProfile.requireSource(db);
+   if(hasWorkspaceBackupRestoreEvidence(db)||detectWorkspaceRestoreEvidence(db))throw Object.assign(new Error('Backups of restored working branches are unavailable until recursive restore is supported.'),{code:'RESTORE_BACKUP_UNAVAILABLE'});
   });
  }finally{removeOwnedDirectory(temporary,temporary,identity);}
 }
@@ -157,10 +137,9 @@ async function refuseRestoredCapture({database,source,destination,signal,check}:
  * SQLite, constructs services, repairs sidecars, resumes tasks or restores data.
  * Excluded credential/settings/browser files do not make user-authored DB text
  * secret-free. The private backup needs the same care as the source workspace. */
-export async function createWorkspaceBackup({source,destination,signal}: BackupOptions={},fixedProfile?: WorkspaceBackupProfile): Promise<WorkspaceBackupResult>{
+export async function createWorkspaceBackup({source,destination,signal}: BackupOptions={}): Promise<WorkspaceBackupResult>{
  let lease: {isOwned: ()=>boolean;release: ()=>boolean}|undefined,result: WorkspaceBackupResult|undefined,operationError: (Error & {cleanupUnconfirmed?: boolean})|undefined;
  try{
-  checkFixedProfile(fixedProfile);
   source=explicitPath(source);destination=explicitPath(destination);checkSeparate(source as string,destination as string);checkCancelled(signal);
   const sourceIdentity=validatePrivateDirectory(source);
   // This shared exclusion is acquired before database/media/staging inspection.
@@ -170,7 +149,7 @@ export async function createWorkspaceBackup({source,destination,signal}: BackupO
   check();checkCold(source);
   const sourceDirs=sourceDirectorySnapshot(source),databasePath=path.join(source,'workbench.sqlite');
   const databaseIdentity=inspectFile(databasePath,source,{maxBytes:limits.databaseBytes})!;if(databaseIdentity.size===0)fail('DATABASE_INVALID');
-  await refuseRestoredCapture({database:databasePath,source:source as string,destination:destination as string,signal,check},fixedProfile);
+  await refuseRestoredCapture({database:databasePath,source:source as string,destination:destination as string,signal,check});
   if(!sameFile(databaseIdentity,inspectFile(databasePath,source,{maxBytes:limits.databaseBytes})))fail('CHANGED');
   const destinationIdentity=createDestination(destination as string);syncDestinationParent(destination as string);check();
   const destinationCheck=(): void=>{check();checkDirectoryIdentity(destination as string,destination as string,destinationIdentity);};
@@ -179,7 +158,7 @@ export async function createWorkspaceBackup({source,destination,signal}: BackupO
    signal,check:destinationCheck,maxBytes:limits.databaseBytes,expected:databaseIdentity});
   const databaseEntry: BackupManifestEntry={path:'payload/workbench.sqlite',role:'database',bytes:database.bytes,sha256:database.sha256},issues=createIssueCollector();
   const inventory=await withDisposableDatabase({database:path.join(payload,'workbench.sqlite'),databaseRoot:destination as string,temporaryParent:destination as string,signal,check:destinationCheck},
-   db=>buildWorkspaceInventory({db,source:source as string,signal,check:destinationCheck,issues,databaseEntry},fixedProfile));
+   db=>buildWorkspaceInventory({db,source:source as string,signal,check:destinationCheck,issues,databaseEntry}));
   const entries: BackupManifestEntry[]=[databaseEntry],directories=new Set([payload]),outputIdentities=new Map<string, Stats|undefined>([[databaseEntry.path,database.savedIdentity]]);let copiedBytes=database.bytes;
   for(const candidate of inventory.plan){
    destinationCheck();
@@ -205,8 +184,8 @@ export async function createWorkspaceBackup({source,destination,signal}: BackupO
   if(!sameFile(databaseIdentity,inspectFile(databasePath,source,{maxBytes:limits.databaseBytes})))fail('CHANGED');
   for(const candidate of inventory.plan)if(!sameFile(candidate.identity,inspectFile(path.join(source as string,candidate.relative),source as string,{private:candidate.relative.includes('-staging/')})))fail('CHANGED');
   entries.sort((a,b)=>a.path<b.path?-1:a.path>b.path?1:0);
-  const manifest=validated<BackupManifestLike>(fixedProfile?fixedProfile.manifestSchema:workspaceBackupManifestSchema,{format,formatVersion,backupId:randomUUID(),createdAt:new Date().toISOString(),applicationVersion,
-   databaseSchemaVersion:inventory.databaseSchemaVersion,scope:'whole_workspace',entries,inventory:issues.result(),...(fixedProfile?fixedProfile.manifestMetadata:{})},'DATABASE_INVALID');
+  const manifest=validated<BackupManifestLike>(workspaceBackupManifestSchema,{format,formatVersion,backupId:randomUUID(),createdAt:new Date().toISOString(),applicationVersion,
+   databaseSchemaVersion:inventory.databaseSchemaVersion,scope:'whole_workspace',entries,inventory:issues.result()},'DATABASE_INVALID');
   const bytes=Buffer.from(JSON.stringify(manifest));
   writeBoundedFile(path.join(destination as string,'manifest.json'),destination as string,bytes,limits.manifestBytes);
   for(const directory of [...directories].sort((a,b)=>b.length-a.length))syncDirectory(directory,destination as string);
@@ -216,7 +195,7 @@ export async function createWorkspaceBackup({source,destination,signal}: BackupO
   // COMPLETE is the sole publication point. Every payload, manifest and newly
   // created directory is durable before this no-clobber marker is linked.
   publishMarker(path.join(destination as string,'COMPLETE.json'),destination as string,Buffer.from(JSON.stringify(complete)),destinationCheck);
-  result=resultFor(manifest,fixedProfile);return result;
+  result=resultFor(manifest);return result;
  }catch(error){operationError=safeBackupError(error);throw operationError;}
  finally{
   // Publication and source-lock cleanup are separate outcomes. Never revoke a
@@ -248,15 +227,14 @@ async function verifyExactTree(directory: string,manifest: BackupManifestLike,{s
 
 /** Rehash exact captured bytes and inspect only a disposable database copy.
  * Integrity is not authenticity, inventory completeness or restoration proof. */
-export async function withVerifiedWorkspaceBackup<T=WorkspaceBackupResult>({directory,signal,inspectDatabaseCopy}: VerifyBackupOptions={},use?: (context: VerifiedWorkspaceBackupContext)=>Promise<T>|T,fixedProfile?: WorkspaceBackupProfile): Promise<T|WorkspaceBackupResult>{
-  checkFixedProfile(fixedProfile);
+export async function withVerifiedWorkspaceBackup<T=WorkspaceBackupResult>({directory,signal,inspectDatabaseCopy}: VerifyBackupOptions={},use?: (context: VerifiedWorkspaceBackupContext)=>Promise<T>|T): Promise<T|WorkspaceBackupResult>{
   directory=explicitPath(directory);checkCancelled(signal);const rootIdentity=validatePrivateDirectory(directory)!;
   const check=()=>{checkCancelled(signal);checkDirectoryIdentity(directory as string,directory as string,rootIdentity);};
   const marker=readJsonFile(path.join(directory,'COMPLETE.json'),directory,4096,{allowMissing:true});if(!marker)fail('INCOMPLETE');
   const complete=validated<BackupCompleteMarker>(workspaceBackupCompleteSchema,marker.value);
   const input=readJsonFile(path.join(directory as string,'manifest.json'),directory as string,limits.manifestBytes)!;
   if(digest(input.raw)!==complete.manifestSha256)fail('CORRUPT');
-  const manifest=validated<BackupManifestLike>(fixedProfile?fixedProfile.manifestSchema:workspaceBackupManifestSchema,input.value),result=resultFor(manifest,fixedProfile);
+  const manifest=validated<BackupManifestLike>(workspaceBackupManifestSchema,input.value),result=resultFor(manifest);
   if(complete.backupId!==manifest.backupId||complete.fileCount!==result.fileCount||complete.payloadBytes!==result.payloadBytes)fail('CORRUPT');
   const markerIdentity=inspectFile(path.join(directory,'COMPLETE.json'),directory,{private:true,maxBytes:4096});
   const manifestIdentity=inspectFile(path.join(directory,'manifest.json'),directory,{private:true,maxBytes:limits.manifestBytes});
@@ -269,7 +247,7 @@ export async function withVerifiedWorkspaceBackup<T=WorkspaceBackupResult>({dire
   // Verification temp files live in a separate private sibling, never inside
   // the backup being verified. No successful verification edits that backup.
   const temporary=path.join(path.dirname(directory),`.backup-verify-${randomUUID()}`),temporaryIdentity=createDestination(temporary);let schemaVersion;
-  try{schemaVersion=await withDisposableDatabase({database:path.join(directory,'payload/workbench.sqlite'),databaseRoot:directory,temporaryParent:temporary,signal,check},async db=>{if(inspectDatabaseCopy)await inspectDatabaseCopy(db);return inspectDatabase(db,fixedProfile).version;});}
+  try{schemaVersion=await withDisposableDatabase({database:path.join(directory,'payload/workbench.sqlite'),databaseRoot:directory,temporaryParent:temporary,signal,check},async db=>{if(inspectDatabaseCopy)await inspectDatabaseCopy(db);return inspectDatabase(db).version;});}
   finally{removeOwnedDirectory(temporary,temporary,temporaryIdentity);}
   if(schemaVersion!==manifest.databaseSchemaVersion)fail('CORRUPT');
   const checkFiles=()=>{
@@ -288,7 +266,7 @@ export async function withVerifiedWorkspaceBackup<T=WorkspaceBackupResult>({dire
   return use?await use(context):result;
 }
 
-export async function verifyWorkspaceBackup({directory,signal}: VerifyBackupOptions={},fixedProfile?: WorkspaceBackupProfile): Promise<unknown>{
- try{return await withVerifiedWorkspaceBackup({directory,signal},undefined,fixedProfile);}
+export async function verifyWorkspaceBackup({directory,signal}: VerifyBackupOptions={}): Promise<unknown>{
+ try{return await withVerifiedWorkspaceBackup({directory,signal});}
  catch(error){throw safeBackupError(error);}
 }

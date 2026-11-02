@@ -1,15 +1,14 @@
-import {isDeepStrictEqual} from 'node:util';
 import {agentChatError} from './chat-errors.ts';
 import {exactObject} from './config.ts';
 import {parseModelToolArguments} from './model-tool-arguments.ts';
-import {normalizeToolCall, sameToolCall, toolId, toolObject, toolScope, toolString} from './tool-wire.ts';
-import type {ReadToolState, ToolCall, WireMessage} from './tool-wire.ts';
+import {toolId, toolObject, toolString} from './tool-wire-values.ts';
 import type {AgentTaskJson} from '@mioon/contracts/agent-tasks-v2';
 
 export type AnthropicTextBlock = {type: 'text'; text: string};
+export type AnthropicThinkingBlock = {type: 'thinking'; thinking: string; signature: string} | {type: 'redacted_thinking'; data: string};
 export type AnthropicToolUseBlock = {type: 'tool_use'; id: string; name: string; input: Record<string, AgentTaskJson>};
 export type AnthropicToolResultBlock = {type: 'tool_result'; tool_use_id: string; content: string};
-export type AnthropicContentBlock = AnthropicTextBlock | AnthropicToolUseBlock;
+export type AnthropicContentBlock = AnthropicTextBlock | AnthropicThinkingBlock | AnthropicToolUseBlock;
 export type AnthropicMessage = {role: 'user' | 'assistant'; content: string | (AnthropicContentBlock | AnthropicToolResultBlock)[]};
 const MAX_ARGUMENT_BYTES = 32 * 1024;
 function invalid(): never {throw agentChatError('AGENT_CHAT_VALIDATION');}
@@ -22,9 +21,10 @@ function objectInput(value: unknown): Record<string, AgentTaskJson> {
   try {return parseModelToolArguments(JSON.stringify(value), MAX_ARGUMENT_BYTES);} catch {return invalid();}
 }
 
-/** Normalize only the implemented text/client-tool subset. No tool is executed
- * here, and native tool results must settle the preceding assistant calls in
- * their original order before another model request can be constructed. */
+/** Normalize only the implemented text/client-tool subset, plus assistant
+ * thinking retained from a thinking request. No tool is executed here, and
+ * native tool results must settle the preceding assistant calls in their
+ * original order before another model request can be constructed. */
 export function anthropicMessages(history: readonly unknown[]): {system?: string; messages: AnthropicMessage[]} {
   if (!Array.isArray(history) || !history.length) invalid();
   let system: string | undefined;
@@ -54,6 +54,15 @@ export function anthropicMessages(history: readonly unknown[]): {system?: string
         if (role === 'user' && resultIndex !== pending.length) invalid();
         textSeen = true;
         content.push({type: 'text', text: text(block.text)});
+      } else if (exactObject(block, ['type', 'thinking', 'signature']) && block.type === 'thinking' && role === 'assistant') {
+        // Retained thinking returns unchanged, in order and signed, within its round.
+        const signature = text(block.signature);
+        if (!signature) invalid();
+        content.push({type: 'thinking', thinking: text(block.thinking), signature});
+      } else if (exactObject(block, ['type', 'data']) && block.type === 'redacted_thinking' && role === 'assistant') {
+        const data = text(block.data);
+        if (!data) invalid();
+        content.push({type: 'redacted_thinking', data});
       } else if (exactObject(block, ['type', 'id', 'name', 'input']) && block.type === 'tool_use' && role === 'assistant') {
         const id = toolId(block.id), name = toolId(block.name);
         if (seen.has(id)) invalid();
@@ -73,34 +82,4 @@ export function anthropicMessages(history: readonly unknown[]): {system?: string
   }
   if (!messages.length || pending.length) invalid();
   return {...(system === undefined ? {} : {system}), messages};
-}
-
-/** Anthropic retains semantic input objects, whereas the other protocols retain
- * a JSON argument string. Compare the input object to the validated original
- * string without treating harmless JSON whitespace as a different tool call. */
-export function anthropicToolContinuation(readTools: unknown): WireMessage[] {
-  if (!toolObject(readTools) || readTools.phase !== 'answer') invalid();
-  const state = readTools as ReadToolState, expected = state.toolCall;
-  if (!expected || expected.itemId !== undefined || typeof state.result !== 'string') invalid();
-  const verified = normalizeToolCall(expected, state);
-  sameToolCall(verified, expected);
-  const output = state.providerOutput;
-  if (!exactObject(output, ['role', 'content']) || output.role !== 'assistant' || !Array.isArray(output.content)) invalid();
-  const uses = output.content.filter((block: unknown) => toolObject(block) && block.type === 'tool_use');
-  if (uses.length !== 1) invalid();
-  const use: unknown = uses[0];
-  if (!exactObject(use, ['type', 'id', 'name', 'input']) || use.id !== expected.id || use.name !== expected.name) invalid();
-  let original: Record<string, AgentTaskJson>;
-  try {original = parseModelToolArguments(expected.argumentsJson, toolScope(state).limits.maxArgumentsBytes);} catch {return invalid();}
-  if (!isDeepStrictEqual(use.input, original)) invalid();
-  const continuation = [output, {role: 'user', content: [{type: 'tool_result', tool_use_id: expected.id, content: state.result}]}];
-  return anthropicMessages(continuation).messages;
-}
-
-/** Revalidate retained provider content before binding a single conversational
- * tool intent. The scope parser remains the only authority over its arguments. */
-export function anthropicReadToolCall(content: readonly unknown[], argumentsJson: string, readTools: unknown): ToolCall {
-  const uses = content.filter(block => toolObject(block) && block.type === 'tool_use');
-  if (uses.length !== 1 || !toolObject(uses[0])) throw agentChatError('AGENT_CHAT_TOOLS_UNSUPPORTED');
-  return normalizeToolCall({id: uses[0].id, name: uses[0].name, argumentsJson}, readTools as ReadToolState);
 }

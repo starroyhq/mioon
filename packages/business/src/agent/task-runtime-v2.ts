@@ -11,12 +11,12 @@ import {agentTaskExplicitTargets,agentTaskChangeWasModified,projectAgentTaskUndo
 import {setAgentTaskEffectGate,resumeAgentTaskJobs,stopAgentTaskJobs} from './task-effects-v2.ts';
 import {AGENT_CREDENTIAL_ACQUIRE,sanitizeAgentCredentialResult,sanitizeAgentSettingsResult} from './settings.ts';
 import type {AgentSettingsService} from './settings.ts';
-import type {ChatAuthorizations} from './chat-runtime.ts';
+import type {ChatAuthorizations} from './authorization-gate.ts';
 import type {AgentConfiguration} from './config.ts';
 import {parseAgentConfiguration} from './config.ts';
 import {agentChatHttpStatus,agentChatStreamReason,safeAgentChatError} from './chat-errors.ts';
-import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
-import type {TaskGateway,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
+import {createTaskGateway,buildTaskModelRequest,taskContinuation,taskModelHistoryBudget,taskResponseLocale,taskToolExplanation,wasTaskSubmissionPrevented} from './task-gateway-v2.ts';
+import type {TaskGateway,TaskHistoryBudget,TaskModelOutput,TaskModelItem} from './task-gateway-v2.ts';
 import {taskModelUsage} from './task-usage-v2.ts';
 import {assembleRunContext,assembleModelInput,cloneTaskBaseContext,selectTaskModelTools,sourceTaskModelToolNames} from './task-context-v2.ts';
 import type {TaskModelContextFragment} from './task-context-v2.ts';
@@ -44,6 +44,45 @@ const skippedInstructions:Record<AgentTaskLocale,string>={
   en:'The user kept this target. Do not modify it again in this run. Continue with other targets that have not been skipped.',
   ja:'この対象はユーザーが保持しました。この実行では再び変更しないでください。スキップしていない他の対象を続けて処理してください。',
 };
+// X4: a foreground step that meets a target conflict is not executed. Its
+// result carries the saved values back to the model instead of pausing.
+const CONFLICT_REREAD_CODES=new Set(['TARGET_CHANGED','TARGET_EDITING']);
+const conflictInstructions:Record<'TARGET_CHANGED'|'TARGET_EDITING',Record<AgentTaskLocale,string>>={
+  TARGET_CHANGED:{
+    'zh-Hans':'目标在你读取后已被修改，这一步没有执行。current 是冲突目标当前保存的值，value 为 null 表示读取不到（可能已删除）。请按当前值重新判断；仍需修改时，用当前值重新调用，不要重放旧参数。',
+    'zh-Hant':'目標在你讀取後已被修改，這一步沒有執行。current 是衝突目標目前儲存的值，value 為 null 表示讀取不到（可能已刪除）。請按目前的值重新判斷；仍需修改時，用目前的值重新呼叫，不要重放舊參數。',
+    en:'The target changed after you read it, so this step did not run. current holds the saved value of each conflicting target; a null value means it could not be read, for example because it was deleted. Decide again from these values. If a change is still needed, call the tool again with the current values instead of replaying the old arguments.',
+    ja:'読み取った後に対象が変更されたため、このステップは実行されませんでした。current は競合した各対象の現在の保存値です。value が null の場合は読み取れず、削除された可能性があります。この値をもとに判断し直し、まだ変更が必要なら、古い引数を再利用せず現在の値で改めて呼び出してください。',
+  },
+  TARGET_EDITING:{
+    'zh-Hans':'用户正在手动编辑这一处，草稿还没保存，这一步没有执行。current 是当前保存的值，不含草稿。不要反复重试这一处；先处理其他部分，并在回复里说明这一处没有改。',
+    'zh-Hant':'使用者正在手動編輯這一處，草稿還沒儲存，這一步沒有執行。current 是目前儲存的值，不含草稿。不要反覆重試這一處；先處理其他部分，並在回覆中說明這一處沒有修改。',
+    en:'The user is editing this target and has not saved the draft, so this step did not run. current holds the saved value, without the draft. Do not retry this target repeatedly; continue with other work and say in your reply that it was not changed.',
+    ja:'ユーザーがこの対象を手動で編集中で、下書きはまだ保存されていないため、このステップは実行されませんでした。current は保存済みの値で、下書きは含みません。この対象を繰り返し再試行せず、他の作業を続け、変更しなかったことを回答で伝えてください。',
+  },
+};
+const invalidatedBatchInstructions:Record<AgentTaskLocale,string>={
+  'zh-Hans':'此批旧工具参数已失效，请按当前保存状态重新规划。',
+  'zh-Hant':'此批舊工具參數已失效，請按目前儲存狀態重新規劃。',
+  en:'The old tool arguments in this batch are no longer valid. Replan from the current saved state.',
+  ja:'このバッチの古いツール引数は無効になりました。現在の保存状態から計画し直してください。',
+};
+// X4 follow-up: a changed target set (a shot.reorder after a shot was added or
+// deleted) can leave no saved value to hand back. Mio must reread the project.
+const conflictProjectRereadInstructions:Record<AgentTaskLocale,string>={
+  'zh-Hans':'目标在你读取后已变化，例如新增或删除了镜头，这一步没有执行。current 为空，没有可交回的值。请先重新读取项目，再按当前内容重新规划，不要重放旧参数。',
+  'zh-Hant':'目標在你讀取後已變化，例如新增或刪除了鏡頭，這一步沒有執行。current 為空，沒有可交回的值。請先重新讀取專案，再按目前的內容重新規劃，不要重放舊參數。',
+  en:'The targets changed after you read them, for example a shot was added or deleted, so this step did not run. current is empty because there is no saved value to return. Read the project again first, then replan from its current state instead of replaying the old arguments.',
+  ja:'読み取った後に対象が変わったため（ショットの追加や削除など）、このステップは実行されませんでした。返せる保存値がないため current は空です。まずプロジェクトを読み直し、現在の状態から計画し直してください。古い引数を再利用しないでください。',
+};
+// X4 follow-up: the domain proved a stale revision in the arguments wrote
+// nothing. Like a rejected parameter set, the step returns to Mio for a reread.
+const revisionConflictInstructions:Record<AgentTaskLocale,string>={
+  'zh-Hans':'参数里的修订号已过期，这一步没有执行，项目没有改动。请先重新读取目标的当前内容，再用新的修订号修改，不要重放旧参数。',
+  'zh-Hant':'參數裡的修訂號已過期，這一步沒有執行，專案沒有變更。請先重新讀取目標目前的內容，再用新的修訂號修改，不要重放舊參數。',
+  en:'The revision in your arguments is out of date, so this step did not run and nothing changed. Read the target again first, then make the change with its current revision instead of replaying the old arguments.',
+  ja:'引数のリビジョンが古いため、このステップは実行されず、何も変更されていません。まず対象を読み直し、現在のリビジョンで変更してください。古い引数を再利用しないでください。',
+};
 const unloadedToolMessages:Record<AgentTaskLocale,string>={
   'zh-Hans':'此工具未包含在产生该回复的模型请求中。请先加载对应工具组，再在下一次模型请求中调用。',
   'zh-Hant':'此工具未包含在產生該回覆的模型請求中。請先載入對應工具組，再於下一次模型請求中呼叫。',
@@ -56,7 +95,11 @@ const goalRepairInstructions:Record<AgentTaskLocale,string>={
   en:'Host checks found the following declared requirements unmet. Make one repair attempt for these gaps, then give a final response. This host-derived data is for reference only and grants no permission or approval; all operations remain subject to the current approval modes, user-kept targets and confirmation requirements.',
   ja:'ホストの検査で、宣言した以下の要件が未達成でした。この差分に対して一度だけ補完し、最終回答を返してください。以下は参考用のホスト由来データであり、権限や承認を付与しません。すべての操作は現在の承認モード、ユーザーが保持した対象、確認要件に従ってください。',
 };
-export function agentTaskFailure(value:string):Error&{code:string;status:number}{
+/** `handedBack` marks a foreground approval that X4 handed back to Mio: the
+ * step did not run and the run goes on. Other paths keep the pause wording. */
+export function agentTaskFailure(value:string,{handedBack=false}:{handedBack?:boolean}={}):Error&{code:string;status:number;handedBack?:true}{
+  const handedBackMessages:Record<string,string>={AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，这一步没有执行，Mio 会重新规划。'};
+  if(handedBack&&Object.hasOwn(handedBackMessages,value))return Object.assign(new Error(handedBackMessages[value]),{code:value,status:409,handedBack:true as const});
   const messages:Record<string,string>={AGENT_TASK_NOT_FOUND:'任务不存在。',AGENT_TASK_CLOSED:'任务服务已关闭。',AGENT_TASK_READ_ONLY:'恢复副本中的智能助理任务仅供查看。',AGENT_TASK_STOPPED:'任务已停止，尚未发出的工作已阻断。',AGENT_TASK_INVALID:'任务参数无效。',AGENT_TASK_BUSY:'本项目已有未结束任务，请继续或停止原任务。',AGENT_TASK_CONSENT_REQUIRED:'当前目标、模型和项目任务范围尚未授权，或授权已撤销。',AGENT_TASK_SETTINGS_CHANGED:'连接设置已变化，请重新确认目标和模型。',AGENT_TASK_TARGET_CHANGED:'该目标已被手动修改，任务已暂停。',AGENT_TASK_TARGET_CLAIMED:'该目标正在手动编辑，任务已暂停。',AGENT_TASK_UNKNOWN_RESULT:'上一步结果未知，请先核对原请求。',AGENT_TASK_REVISION_CONFLICT:'任务已被其他窗口更新，请重新读取。',AGENT_TASK_REQUEST_CONFLICT:'此请求标识已用于其他内容。',AGENT_TASK_STORAGE_LIMIT:'Mio 任务历史已达容量上限，已有记录保留，请先检查容量诊断。',AGENT_TASK_STORAGE_UNAVAILABLE:'无法安全读取或保存任务记录。',AGENT_TASK_FAILED:'任务未完成，请检查已保存记录。',AGENT_TASK_PAUSED:'任务已暂停。',AGENT_TASK_APPROVAL_REQUIRED:'此操作需要确认。'};
   return Object.assign(new Error(messages[value]??messages.AGENT_TASK_FAILED),{code:value,status:value==='AGENT_TASK_NOT_FOUND'?404:value==='AGENT_TASK_INVALID'?400:409});
 }
@@ -162,6 +205,41 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
   function unresolvedConflict(step:AgentTaskStep):boolean {
     return step.kind==='tool'&&record(step.data)&&Array.isArray(step.data.conflictTargets)&&step.data.conflictTargets.length>0&&(step.status==='intent'||step.status==='awaiting_approval'||step.status==='completed'&&step.data.backgroundInvalidated===true);
   }
+  /** X4: later calls of the same response never run after a handed-back call.
+   * The saved flag answers them through the invalidated-batch path. */
+  function invalidateRestOfBatch(runId:string,step:AgentTaskStep):void {
+    const sourceId=record(step.data)&&typeof step.data.sourceModelStepId==='string'?step.data.sourceModelStepId:undefined;if(!sourceId)return;
+    const source=journal.step(sourceId);if(source.runId!==runId||source.kind!=='model')return;
+    const calls=modelOutput(source.result).toolCalls,position=calls.findIndex(item=>item.id===step.toolCall?.id);
+    if(position>=0&&position<calls.length-1&&(!record(source.data)||source.data.toolsInvalidated!==true))journal.updateStep(runId,source.id,{data:{...(record(source.data)?source.data:{}),toolsInvalidated:true}});
+  }
+  /** X4: a foreground step that meets a conflict before it runs is rejected
+   * with the saved values of its conflicting targets, and the run continues.
+   * The step, its result and the batch flag commit in one transaction. */
+  function handBackConflict(runId:string,stepId:string,failure:string,targets:AgentTaskTarget[]):AgentTaskStep {
+    const apply=():AgentTaskStep=>{
+      if(journal.step(stepId).status==='dispatch_started')journal.dispatchPrevented(runId,stepId,'intent');
+      const run=journal.run(runId),current=journal.step(stepId),known=[...(current.targets??[])];
+      for(const target of targets)if(!known.some(item=>item.kind===target.kind&&item.id===target.id))known.push(target);
+      const errorCode=failure==='AGENT_TASK_TARGET_CLAIMED'?'TARGET_EDITING':'TARGET_CHANGED';
+      // Read directly from the domain tables, not through the journal proxy.
+      const values=toolset().currentTargets(run.projectId,targets);
+      const message=(errorCode==='TARGET_CHANGED'&&!values.length?conflictProjectRereadInstructions:conflictInstructions[errorCode])[taskResponseLocale(run.context)];
+      const saved=journal.updateStep(runId,stepId,{status:'rejected',targets:known,data:{...(record(current.data)?current.data:{}),conflictTargets:json(targets)},result:{error:{code:errorCode,message,current:values,...(targets.length>values.length?{omittedTargets:targets.length-values.length}:{})}},error:{code:errorCode,message}});
+      invalidateRestOfBatch(runId,saved);return saved;
+    };
+    try{return store.db.isTransaction?apply():store.tx(apply);}catch(error){if(storageError(error))failStorage(error);throw error;}
+  }
+  /** X4 follow-up: a stale revision the domain rejected as not applied is
+   * returned to Mio like a rejected parameter set, and the run continues. */
+  function rejectStaleRevision(runId:string,stepId:string):AgentTaskStep {
+    const apply=():AgentTaskStep=>{
+      if(journal.step(stepId).status==='dispatch_started')journal.dispatchPrevented(runId,stepId,'intent');
+      const message=revisionConflictInstructions[taskResponseLocale(journal.run(runId).context)];
+      return journal.updateStep(runId,stepId,{status:'rejected',result:{error:{code:'REVISION_CONFLICT',message}},error:{code:'REVISION_CONFLICT',message}});
+    };
+    try{return store.db.isTransaction?apply():store.tx(apply);}catch(error){if(storageError(error))failStorage(error);throw error;}
+  }
   const removeGate=readOnly?()=>{}:setAgentTaskEffectGate(store.db,binding=>{
     mutable();const step=journal.step(binding.stepId);
     if(record(step.data)&&step.data.backgroundDenied===true)throw agentTaskFailure('AGENT_TASK_STOPPED');
@@ -219,7 +297,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
       const current=run;let kept=false;
       try{const pending=toolset().prepare({projectId:current.projectId,operation:call.name,input:call.arguments,beforeTargetRead:target=>assertNotSkipped(current,[{...target,revision:0}])});kept=(pending.referencedTargets??pending.targets).some(target=>current.skippedTargets?.some(item=>item.target.kind===target.kind&&item.target.id===target.id));}
       catch(error){if(storageError(error))throw error;if(code(error)==='AGENT_TASK_TARGET_SKIPPED')kept=true;}
-      return {...source,kind:'tool',status:kept?'denied':'rejected',toolCall:call,result:{error:{code:kept?'TARGET_SKIPPED':'TARGET_CHANGED',message:kept?skippedMessage(current):'此批旧工具参数已失效，请按当前保存状态重新规划。'}}};
+      return {...source,kind:'tool',status:kept?'denied':'rejected',toolCall:call,result:{error:{code:kept?'TARGET_SKIPPED':'TARGET_CHANGED',message:kept?skippedMessage(current):invalidatedBatchInstructions[taskResponseLocale(current.context)]}}};
     }
     let prepared:PreparedAgentTaskTool|undefined,conflicts:AgentTaskTarget[]=[];
     // Diagnostic selection is a host-only restriction, never an authority. In
@@ -261,6 +339,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     }catch(error){
       if(closed)return null;const failure=code(error);
       if(storageError(error))failStorage(error);
+      // X4: a step that meets a conflict before it runs is handed back, not paused.
+      // This includes a pending approval re-entered after a pause or restart.
+      // A partly committed (completed) step keeps the conflict pause below.
+      if((failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED')&&['intent','awaiting_approval','dispatch_started'].includes(journal.step(step.id).status))
+        return handBackConflict(runId,step.id,failure,conflicts.length?conflicts:journal.conflictingTargets(run.projectId,journal.step(step.id).targets??prepared?.targets??[]));
       if(['AGENT_TASK_TARGET_CHANGED','AGENT_TASK_TARGET_CLAIMED','AGENT_TASK_APPROVAL_REQUIRED','AGENT_TASK_PAUSED','AGENT_TASK_ABORTED','ABORT_ERR'].includes(failure)){
         if(journal.step(step.id).status==='dispatch_started')journal.dispatchPrevented(runId,step.id,failure==='AGENT_TASK_APPROVAL_REQUIRED'?'awaiting_approval':'intent');
         if(failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED')rememberConflict(runId,step.id,conflicts.length?conflicts:journal.conflictingTargets(run.projectId,journal.step(step.id).targets??prepared?.targets??[]));
@@ -286,6 +369,8 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
           return journal.updateStep(runId,step.id,{status:'rejected',result:{error:{code:failure,...feedback}},error:{code:failure,message:feedback.message}});
         }
       }
+      // X4 follow-up: the step budget bounds Mio's rereads and retries.
+      if(failure==='REVISION_CONFLICT'&&(current.status==='intent'||current.status==='dispatch_started')&&record(error)&&record(error.details)&&error.details.mutationOutcome==='not_applied')return rejectStaleRevision(runId,step.id);
       const uncertain=current.status==='dispatch_started'&&(!record(error)||!record(error.details)||error.details.mutationOutcome!=='not_applied');
       if(uncertain&&prepared?.risk!=='read_only'){
         journal.updateStep(runId,step.id,{status:'unknown',error:{code:failure,message:'工具结果未知，请核对原请求。'}});pause(runId,'unknown_outcome');return null;
@@ -346,6 +431,11 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
               changeStatus(runId,'failed',finished.error?.code??'AGENT_TASK_FAILED');return;
             }
             results.push({callId:call.id,result:retainedToolContextResult(finished)});
+            // X4: a handed-back call saved the batch flag. Read it back so the
+            // rest of this batch is answered as not executed; replay already has it.
+            if(finished.status==='rejected'&&CONFLICT_REREAD_CODES.has(finished.error?.code??'')&&call!==output.toolCalls.at(-1)&&(!record(model.data)||model.data.toolsInvalidated!==true)){
+              const saved=journal.step(model.id);if(record(saved.data)&&saved.data.toolsInvalidated===true)continue modelRequests;
+            }
           }
           retainModelContinuation(config.protocol,fragments,{kind:'continuation',modelStepId:model.id,output,results});resumeModel=model;
         }
@@ -358,8 +448,10 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
         }else{
           // Capture once: the hint and the immutable request must describe the
           // very same revision boundary, including across later replay.
-          const current=journal.snapshot(runId),baseline=journal.revisionSnapshot(run.projectId);
-          const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:runTools(run),replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic}});
+          const current=journal.snapshot(runId),baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run);
+          // History is budgeted against this request's own tool catalog.
+          const budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic});
+          const {history,tools:definitions,pendingNotes}=assembleModelInput({context,text:run.text,notes:pendingModel?[]:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:current.steps,changes:current.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});
           body=buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});
           model=pendingModel??journal.beginModelStep(runId,{request:{body,history},data:{baseline:json(baseline),...(resumeModel?{previousModelStepId:resumeModel.id}:{}),...(repairSource?{goalRepairSourceModelStepId:repairSource}:{})}},pendingNotes.map(note=>note.requestId));
         }
@@ -465,7 +557,12 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     const historyRuns=diagnostic||!conversationId?undefined:journal.modelContextRuns(projectId,conversationId).reverse();
     const projectOverview=diagnostic?undefined:collectTaskProjectOverview(store,projectId),projectNotes=diagnostic?undefined:collectTaskProjectNotes(store,projectId);
     const attachments=uploads.map(id=>{const row=store.db.prepare('SELECT id,name,mimeType FROM agent_task_imports_v2 WHERE id=? AND projectId=?').get(id,projectId);if(!row)throw agentTaskFailure('AGENT_TASK_NOT_FOUND');return {handle:String(row.id),name:String(row.name),mimeType:String(row.mimeType)};});
-    const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,attachments});
+    // Earlier runs are trimmed to the first request's budget: core tools plus
+    // attachment imports. That request still validates the profile and reports
+    // its error, so an unsupported configuration keeps the byte budget here.
+    let budget:Readonly<TaskHistoryBudget>|undefined;
+    if(historyRuns?.length)try{budget=taskModelHistoryBudget(configuration(dummy),selectTaskModelTools(toolset().list(),undefined,{steps:[],attachments:uploads}),locale,selfPort(),{toolLoading:true});}catch(error){if(!code(error).startsWith('AGENT_CHAT_'))throw error;}
+    const {context}=assembleRunContext({locale,text:input.text,historyRuns,projectOverview,projectNotes,attachments,budget});
     if(active.size>=4)throw agentTaskFailure('AGENT_TASK_BUSY');
     mutable();
     const created=journal.create({projectId,...(conversationId?{conversationId}:{}),...(conversationModes?{conversationModes}:{}),requestId:input.requestId,text:input.text,configuration:json(settings.configuration),settingsRevision:settings.revision,context,attachments:uploads,...(diagnostic?{diagnostic}:{})});launch(created.run.id);return safeSnapshot(journal.snapshot(created.run.id),store);
@@ -497,7 +594,7 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     // Reject known overflow in the control transaction, before acknowledging
     // the note. Future model/tool output remains subject to the original caps.
     // This is only a capacity probe: it never submits or changes a saved intent.
-    try{const config=configuration(run),baseline=journal.revisionSnapshot(run.projectId),{history,tools:definitions}=assembleModelInput({context,text:run.text,notes:run.notes,tools:runTools(run),replay:{protocol:config.protocol,fragments,steps:snapshot.steps,changes:snapshot.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic}});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});}
+    try{const config=configuration(run),baseline=journal.revisionSnapshot(run.projectId),modelTools=runTools(run),budget=taskModelHistoryBudget(config,modelTools,taskResponseLocale(context),selfPort(),{toolLoading:!run.diagnostic}),{history,tools:definitions}=assembleModelInput({context,text:run.text,notes:run.notes,tools:modelTools,replay:{protocol:config.protocol,fragments,steps:snapshot.steps,changes:snapshot.changes,skippedTargets:run.skippedTargets,baseline,runId,diagnostic:!!run.diagnostic,budget}});buildTaskModelRequest(config,history,definitions,selfPort(),{toolLoading:!run.diagnostic});}
     catch(error){if(code(error)==='AGENT_CHAT_LIMIT')throw agentTaskFailure('AGENT_TASK_NOTE_CAPACITY');throw error;}
   }
   async function action(projectId:string,runId:string,input:unknown):Promise<AgentTaskSnapshot>{
@@ -611,16 +708,29 @@ export function createAgentTaskRuntime({store,agentSettings,authorizations,tools
     if(request.action==='stop')active.get(runId)?.controller.abort();
     if(request.action==='stop'||request.action==='undo_all'&&journal.run(runId).status==='reverted')await stopAgentTaskJobs(store.db,runId);
     for(const stepId of cancelBackgroundSteps)await stopAgentTaskJobs(store.db,runId,stepId);
-    if((request.action==='resume'||request.action==='skip'||request.action==='approve')&&journal.run(runId).status==='running')resumeAgentTaskJobs(store.db,runId);
+    if((request.action==='resume'||request.action==='skip'||request.action==='approve'||request.action==='deny')&&journal.run(runId).status==='running')resumeAgentTaskJobs(store.db,runId);
     if(journal.run(runId).status==='running')launch(runId);return safeSnapshot(journal.snapshot(runId),store);
     }catch(error){
-      const failure=code(error);
+      const failure=code(error);let handedBack=false;
       if(failure==='AGENT_TASK_TARGET_CHANGED'||failure==='AGENT_TASK_TARGET_CLAIMED'){
-        if(request.action==='approve'&&request.stepId){const step=journal.step(request.stepId);rememberConflict(runId,step.id,journal.conflictingTargets(projectId,dispatchTargets(step)));}
-        pause(runId,failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'editing');
+        const step=request.action==='approve'&&request.stepId?journal.step(request.stepId):undefined;
+        // X4: a foreground approval that meets a conflict is still rejected. The
+        // step is handed back and the run continues; a new plan needs a new approval.
+        if(step?.status==='awaiting_approval'&&journal.run(runId).status==='awaiting_approval'){
+          const handBack=()=>{handBackConflict(runId,step.id,failure,journal.conflictingTargets(projectId,dispatchTargets(step)));journal.resume(runId,journal.run(runId).revision,{extendBudget:false});};
+          if(store.db.isTransaction)handBack();else store.tx(handBack);handedBack=true;
+        }else{
+          // Background approvals and undo keep the conflict pause.
+          if(step)rememberConflict(runId,step.id,journal.conflictingTargets(projectId,dispatchTargets(step)));
+          pause(runId,failure==='AGENT_TASK_TARGET_CHANGED'?'conflict':'editing');
+        }
       }
       if(storageError(error))failStorage(error);
-      journal.rejectControl(request,failure);throw error;
+      journal.rejectControl(request,failure);
+      // Background work this run held for approval is queued again with the run.
+      if(handedBack&&journal.run(runId).status==='running'){resumeAgentTaskJobs(store.db,runId);launch(runId);}
+      if(handedBack)throw agentTaskFailure(failure,{handedBack:true});
+      throw error;
     }
   }
   return {journal,instanceId,readOnly,snapshot,send,action,

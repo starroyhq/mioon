@@ -1,7 +1,6 @@
 import type {TestTree,TestNode,TestElementProps,TestComponent,HookCell,ClipDraftEnvelope,ClipDraftClient,ClipDraftContext} from './helpers/strict-timeline-ui-types.ts';
 import * as envelopeState from '../apps/web/src/clip-volume-envelope-state.ts';
 import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
-import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
 import * as roleState from '../apps/web/src/clip-audio-role-state.ts';
 import * as roleContract from '../packages/contracts/src/timeline-audio-role.ts';
 import { i18nTestModule } from './helpers/i18n.ts';
@@ -76,7 +75,6 @@ async function inspectorHarness(patch: Record<string,unknown> = {}, lutRpc: clip
       if (id === './clip-audio-role-state.ts') return roleState;
       if (id === './clip-volume-envelope-state.ts') return envelopeState;
       if (id === './clip-opacity-envelope-state.ts') return opacityState;
-      if (id === './clip-opacity-candidate-assembly.ts') return opacityAssembly;
       if (id === '../../../packages/contracts/src/timeline-audio-role.ts') return roleContract;
       if (id === './ClipAudioRoleControls.tsx') return load('ClipAudioRoleControls.tsx');
       if (id === './clip-lut-state.ts') return { ...clipLut, createClipLutController: (options: { getContext: () => clipLut.ClipLutContext; rpc: clipLut.ClipLutRpc; edit: (value: ClipColour|null) => void; onChange?: (state: clipLut.ClipLutState) => void; newRequestId?: () => string; now?: () => string; imports?: Map<string,clipLut.ClipLutImportRecord>; timeoutMs?: number; recovery?: ClipLutRecovery; readWorkspace: (key: clipDraft.ClipDraftKey) => Promise<unknown>; }) => clipLut.createClipLutController({ ...options, recovery: createClipLutRecovery({ storage: () => ({ getItem: () => null, setItem() {}, removeItem() {} }), lock: async (_name, action) => action() }) }) };

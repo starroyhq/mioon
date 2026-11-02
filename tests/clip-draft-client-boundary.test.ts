@@ -81,7 +81,7 @@ test('expired PUT cannot accept a late ACK, alter its CAS, or issue another PUT'
   gate.resolve(new Response(new ReadableStream({ start(controller) { controller.enqueue(bytes); }, cancel() { cancelled++; } })));
   await drain(); t.mock.timers.tick(60000); await drain();
   assert.equal(cancelled, 1); assertFailure(outcome, timeoutFailure); assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, '/api/local-drafts/clip'); assert.equal(calls[0].init.method, 'PUT');
+  assert.equal(calls[0].url, `/api/projects/${key.projectId}/local-drafts/clip`); assert.equal(calls[0].init.method, 'PUT');
   assert.deepEqual(JSON.parse(calls[0].init.body as string), input, 'original authority, exact expected revision and raw remain intact');
 });
 
@@ -189,7 +189,7 @@ test('only exact code/status evidence distinguishes refused, conflict and unknow
 test('existing fetcher-only calling convention preserves endpoints, request bodies and unsupported handling', async () => {
   const calls: {url: Parameters<typeof fetch>[0]; init: RequestInit}[] = [], client = createClipDraftClient(async (url, init) => { calls.push({ url, init: init! }); return new Response(ack(envelope())); });
   for (const method of ['GET', 'PUT', 'DELETE'] as const) assert.deepEqual(await invoke(client, method), envelope());
-  assert.equal(calls[0].url, `/api/local-drafts/clip?${new URLSearchParams(key)}`);
+  assert.equal(calls[0].url, `/api/projects/${key.projectId}/local-drafts/clip?${new URLSearchParams(key)}`);
   assert.equal(calls[0].init.body, undefined);
   assert.deepEqual(JSON.parse(calls[1].init.body as string), input); assert.deepEqual(JSON.parse(calls[2].init.body as string), removal);
   for (const { init } of calls) { assert.equal(init.credentials, 'same-origin'); assert.equal(init.cache, 'no-store'); }

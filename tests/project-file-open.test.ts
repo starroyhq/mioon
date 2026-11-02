@@ -14,7 +14,7 @@ import {isProjectId, PROJECT_FILE_SINGLE_PROJECT, PROJECT_INVALID_REASONS, TEST_
 import {createProjectFile, openProjectConnection, PROJECT_JOURNAL_SIZE_LIMIT} from '../packages/business/src/project-file/connection.ts';
 import type {ProjectConnection, ProjectCopyCheck, ProjectLocation} from '../packages/business/src/project-file/connection.ts';
 import {crossFileTriggerStatements} from '../packages/business/src/project-file/cross-file/install.ts';
-import {CACHE_APPLICATION_ID, HISTORY_APPLICATION_ID, PROJECT_FILE_APPLICATION_ID} from '../packages/business/src/project-file/schema/databases.ts';
+import {CACHE_APPLICATION_ID, HISTORY_APPLICATION_ID, HISTORY_SCHEMA_VERSION, PROJECT_FILE_APPLICATION_ID} from '../packages/business/src/project-file/schema/databases.ts';
 import {readSchemaManifest} from '../packages/business/src/project-file/schema/manifest-check.ts';
 import {SCHEMA_MANIFEST} from '../packages/business/src/project-file/schema/manifest.ts';
 
@@ -429,12 +429,12 @@ test('local records with another structure, a newer format or another project fa
   assert.equal(digest(changed.project.projectFile), projectBytes);
 
   const newer = newProject(t);
-  tamper(newer.project, db => db.exec('INSERT INTO main.schema_version VALUES(2)'));
+  tamper(newer.project, db => db.exec(`INSERT INTO main.schema_version VALUES(${HISTORY_SCHEMA_VERSION + 1})`));
   projectBytes = digest(newer.project.projectFile);
   const history = digest(newer.project.historyFile);
   error = appError(() => open(newer.project));
   assert.equal(error.code, 'PROJECT_FORMAT_NEWER');
-  assert.deepEqual(error.details, {database: 'history', reason: 'format-newer', projectId: newer.projectId, formatVersion: 2, supportedFormatVersion: 1});
+  assert.deepEqual(error.details, {database: 'history', reason: 'format-newer', projectId: newer.projectId, formatVersion: HISTORY_SCHEMA_VERSION + 1, supportedFormatVersion: HISTORY_SCHEMA_VERSION});
   assert.equal(digest(newer.project.projectFile), projectBytes);
   assert.equal(digest(newer.project.historyFile), history);
 

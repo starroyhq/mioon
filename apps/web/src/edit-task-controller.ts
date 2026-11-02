@@ -5,7 +5,7 @@ import type { WorkspaceIdentity, WorkspaceOriginOptions } from './workspace-orig
 import { taskWorkspaceBinding, taskListWorkspaceBindings, requireTaskWorkspace } from './workspace-task-origin.ts';
 import type { TaskWorkspace, TaskWorkspaceBinding, TaskEnvelope, TaskListEnvelope } from './workspace-task-origin.ts';
 import { EDIT_TASK_LIMITS, editTaskLane } from '@mioon/contracts';
-import { createEditTaskClient, editTaskClientValidation, isDurableEditOperation, taskInputKey, taskProtocolError } from './edit-task-client.ts';
+import { createEditTaskClient, isDurableEditOperation, taskInputKey, taskProtocolError, validateTaskEnvelope, validateTaskList } from './edit-task-client.ts';
 import type { EditTask, EditTaskClient, EditTaskEnvelope, EditTaskListEnvelope, EditTaskRequestOptions, TaskExpectation } from './edit-task-client.ts';
 
 export interface EditTaskControllerOptions {
@@ -69,7 +69,6 @@ function frozen<T>(value: T): Readonly<T> {
 // No renderer storage is the authority for these fifteen operations. Loading is
 // read-only, and the project remains fenced until every bounded page is known.
 export function createEditTaskController({ client = createEditTaskClient(), onChange = (): void => {}, getWorkspace = () => ({ restored: false }) }: EditTaskControllerOptions = {}): EditTaskController {
-  const {validateTaskEnvelope, validateTaskList} = editTaskClientValidation(client);
   const projects = new Map<string,EditTaskProjectState>();
   function state(projectId: string,workspace: TaskWorkspace = getWorkspace()): EditTaskProjectState {
     const scope = workspaceOriginScope(workspace), key = JSON.stringify([scope, projectId]);

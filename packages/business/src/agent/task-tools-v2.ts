@@ -657,6 +657,13 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   if(table&&db.prepare(`SELECT 1 FROM ${table} WHERE requestId=?`).get(input.requestId))return null;
   return {outcome:'not_applied',reason:'atomic_receipt_absent'};
  }
+ /** X4: saved values of conflicting targets, projected like any tool result.
+  * Read only: never a skip check, a claim or a dispatch. */
+ function currentTargets(projectId:string,targets:readonly Pick<AgentTaskTarget,'kind'|'id'>[]):AgentTaskJson[]{
+  const saved=snapshot(store,projectId);
+  return targets.slice(0,20).map(target=>{const value=saved[key(target.kind,target.id)]?.value;
+   return {kind:target.kind,id:target.id,value:value===undefined?null:target.kind==='node'&&isPrevisNodeRecord(value)&&value.projectId===projectId?previsTaskView(store,projectId,value):projectResult(value)};});
+ }
  async function stageImport(input:{projectId:string;requestId:string;name:string;mimeType:string;dataBase64:string}):Promise<AgentTaskJson>{
   if(!store.get('projects',input.projectId))fail('AGENT_TASK_INVALID_TARGET','当前项目不存在');
   if(!/^[A-Za-z0-9+/]*={0,2}$/.test(input.dataBase64)||input.dataBase64.length%4)fail('INVALID_MEDIA','文件编码无效');
@@ -767,6 +774,6 @@ export function createAgentTaskTools({store,services}:{store:WorkspaceStore;serv
   {name:AGENT_TASK_GOAL_SET_TOOL,operation:AGENT_TASK_GOAL_SET_OPERATION,description:'声明本轮用户提出的可判定目标：时长与容差、时间线格式、导出参数、剪辑数、字幕数、镜头数或生成完成。conditions 最多20条，空数组清空本轮目标，最后一次有效设置覆盖之前的设置。只记录待检查条件，不修改项目，不授予权限，也不是用户确认。',parameters:AGENT_TASK_GOAL_SET_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'use the last valid completed goal declaration in this run',undo:'unavailable'},
   {name:AGENT_TASK_TOOLS_LOAD_NAME,operation:AGENT_TASK_TOOLS_LOAD_OPERATION,description:AGENT_TASK_TOOLS_LOAD_DESCRIPTIONS.en,parameters:AGENT_TASK_TOOLS_LOAD_PARAMETERS,risk:'read_only',receipt:'durable task step',recovery:'read completed tool loading steps; never repeat an unknown result',undo:'unavailable'},
  ];assertAgentTaskToolGroupCoverage(definitions);return definitions;};
- return {list,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
+ return {list,prepare,parameterFeedback,execute,undo,stageImport,wait:waitTask,recoverWait,recoverLocalUnknown,currentTargets,snapshot:(projectId:string)=>snapshot(store,projectId),dispose:()=>{removeObserver();removeFence();removeJobOrigins();removeDispatchRecorder();removeTargetGate();}};
 }
 export type AgentTaskTools=ReturnType<typeof createAgentTaskTools>;

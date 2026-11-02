@@ -101,4 +101,9 @@ export const TASK_SCHEMA: readonly string[] = Object.freeze([
   "CREATE TRIGGER retain_task_disposition_replacement BEFORE INSERT ON task_dispositions\n    WHEN EXISTS(SELECT 1 FROM task_dispositions WHERE rowid=NEW.rowid OR (projectId=NEW.projectId AND kind=NEW.kind AND taskId=NEW.taskId))\n    BEGIN SELECT RAISE(ABORT,'task disposition history must not be replaced');END",
   "CREATE TRIGGER immutable_task_disposition_identity BEFORE UPDATE ON task_dispositions\n    WHEN NEW.projectId IS NOT OLD.projectId OR NEW.kind IS NOT OLD.kind OR NEW.taskId IS NOT OLD.taskId OR NEW.createdAt IS NOT OLD.createdAt OR\n      NEW.sourceRequestId IS NOT OLD.sourceRequestId OR NEW.revision!=OLD.revision+1 OR OLD.revision>=9007199254740991 OR\n      (OLD.markedFailedAt IS NOT NULL AND NEW.markedFailedAt IS NOT OLD.markedFailedAt) OR (OLD.archivedAt IS NOT NULL AND NEW.archivedAt IS NOT OLD.archivedAt)\n    BEGIN SELECT RAISE(ABORT,'task disposition identity and audit markers must be retained');END",
   "CREATE TRIGGER retain_task_dispositions BEFORE DELETE ON task_dispositions\n    BEGIN SELECT RAISE(ABORT,'task disposition history must be retained');END",
+  // mock_provider_tasks
+  "CREATE TABLE mock_provider_tasks (\n      provider_job_id TEXT PRIMARY KEY, request_id TEXT NOT NULL UNIQUE,\n      snapshot_json TEXT NOT NULL, snapshot_hash TEXT NOT NULL, scenario TEXT NOT NULL,\n      created_at_ms INTEGER NOT NULL, ready_at_ms INTEGER NOT NULL,\n      poll_count INTEGER NOT NULL DEFAULT 0, download_attempts INTEGER NOT NULL DEFAULT 0,\n      cancelled INTEGER NOT NULL DEFAULT 0\n    )",
+  // mock_provider_submissions
+  "CREATE TABLE mock_provider_submissions (\n      id INTEGER PRIMARY KEY AUTOINCREMENT, request_id TEXT NOT NULL,\n      job_id TEXT, provider_job_id TEXT, created_at_ms INTEGER NOT NULL, outcome TEXT NOT NULL\n    )",
+  "CREATE INDEX mock_provider_submissions_request ON mock_provider_submissions(request_id)",
 ]);

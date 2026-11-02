@@ -117,9 +117,10 @@ test('positive fades require confirmed audio and rejected adds never initialize 
       for (const field of fields) await rejectAtomic(f, 'timeline.clip.add', ((request(f, empty, {assetId: asset.id, trackId, startFrame: 0, durationFrames: 30, [field]: 1})) as unknown as Parameters<typeof rejectAtomic>[2]), 'FADE_AUDIO_UNSUPPORTED');
     }
   }
-  const missingTimelineProject = (await f.call('project.create', {name: 'No state on rejection'})).id;
-  await rejectAtomic(f, 'timeline.clip.add', {projectId: missingTimelineProject, expectedRevision: 1, requestId: randomUUID(), assetId: f.asset().id, trackId: empty.tracks[0].id, startFrame: 0, durationFrames: 30, fadeInFrames: 1}, 'CROSS_PROJECT_REFERENCE');
-  assert.equal(f.store.db.prepare('SELECT * FROM timelines WHERE projectId=?').get(missingTimelineProject), undefined);
+  // The other project lives in a store of its own, where this project's asset does not exist.
+  const g = await fixture(t), missingTimelineProject = g.projectId;
+  await rejectAtomic(g, 'timeline.clip.add', {projectId: missingTimelineProject, expectedRevision: 1, requestId: randomUUID(), assetId: f.asset().id, trackId: empty.tracks[0].id, startFrame: 0, durationFrames: 30, fadeInFrames: 1}, 'NOT_FOUND');
+  assert.equal(g.store.db.prepare('SELECT * FROM timelines WHERE projectId=?').get(missingTimelineProject), undefined);
 });
 
 test('fade duration bounds and trims are atomic, never clamp, and may be fixed in the same patch', async t => {
@@ -235,11 +236,13 @@ test('fade requests distinguish omitted and explicit zero and retain revision an
   await rejectAtomic(f, 'timeline.clip.update', (({...update, patch: {fadeOutFrames: 0}}) as unknown as Parameters<NonNullable<typeof rejectAtomic>>[2]), 'IDEMPOTENCY_CONFLICT');
   await rejectAtomic(f, 'timeline.clip.update', (({...update, patch: {fadeInFrames: 1}}) as unknown as Parameters<NonNullable<typeof rejectAtomic>>[2]), 'IDEMPOTENCY_CONFLICT');
   await rejectAtomic(f, 'timeline.clip.update', (({...update, requestId: randomUUID()}) as unknown as Parameters<typeof rejectAtomic>[2]), 'REVISION_CONFLICT');
-  const otherProject = (await f.call('project.create', {name: 'Other project'})).id;
+  // The other project lives in a store of its own. Reusing this project's request ID still conflicts with this
+  // project's receipt; a fresh request goes to the other project's store, where this clip and asset do not exist.
+  const g = await fixture(t), otherProject = g.projectId;
   await rejectAtomic(f, 'timeline.clip.update', (({...update, projectId: otherProject, expectedRevision: 1}) as unknown as Parameters<typeof rejectAtomic>[2]), 'IDEMPOTENCY_CONFLICT');
-  await rejectAtomic(f, 'timeline.clip.update', (({...update, projectId: otherProject, expectedRevision: 1, requestId: randomUUID()}) as unknown as Parameters<typeof rejectAtomic>[2]), 'CLIP_NOT_FOUND');
-  const foreign = await f.call('timeline.get', {projectId: otherProject});
-  await rejectAtomic(f, 'timeline.clip.add', (({...input, projectId: otherProject, expectedRevision: foreign.revision, requestId: randomUUID(), trackId: (foreign.tracks.find((track) => track.kind === 'audio'))!.id, fadeInFrames: 1, assetId: asset.id}) as unknown as Parameters<typeof rejectAtomic>[2]), 'CROSS_PROJECT_REFERENCE');
+  await rejectAtomic(g, 'timeline.clip.update', (({...update, projectId: otherProject, expectedRevision: 1, requestId: randomUUID()}) as unknown as Parameters<typeof rejectAtomic>[2]), 'CLIP_NOT_FOUND');
+  const foreign = await g.call('timeline.get', {projectId: otherProject});
+  await rejectAtomic(g, 'timeline.clip.add', (({...input, projectId: otherProject, expectedRevision: foreign.revision, requestId: randomUUID(), trackId: (foreign.tracks.find((track) => track.kind === 'audio'))!.id, fadeInFrames: 1, assetId: asset.id}) as unknown as Parameters<typeof rejectAtomic>[2]), 'NOT_FOUND');
   f.restart();
   assert.deepEqual(await f.call('timeline.clip.update', update), timeline);
   assert.deepEqual(await f.call('timeline.clip.add', input), original);

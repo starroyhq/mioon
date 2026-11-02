@@ -103,9 +103,9 @@ test('clicking a label opens the Mio tab and asks for its change row without tou
   const source = section(app, '  function revealTaskChange(', '  // Reset, not dispose');
   assert.doesNotMatch(((source) as unknown as Parameters<typeof assert.doesNotMatch>[0]), /setSelected|inspect\(|setTab\(|setPropertiesPage|setQuickAssetId|changeMode/);
   const compile = (env: { [s: string]: unknown; }|ArrayLike<unknown>) => Function(...Object.keys(env), `${transformSync(((source) as unknown as Parameters<typeof transformSync>[0]), { loader: 'ts' }).code}\nreturn revealTaskChange;`)(...Object.values(env)) as (target:unknown)=>unknown;
-  const run = ({ collapsed = false, narrow = false, application = null, composing = false }: {collapsed?:boolean;narrow?:boolean;application?:{id:string}|null;composing?:boolean} = {}) => {
+  const run = ({ collapsed = false, narrow = false, composing = false }: {collapsed?:boolean;narrow?:boolean;composing?:boolean} = {}) => {
     const calls: unknown[][] = [], updates: ((previous:{nonce:number;changeId?:string}|null)=>{changeId:string;nonce:number})[] = [];
-    const reveal = compile({ application, clipDraftRef: { current: composing ? { hasPendingComposition: () => true } : null }, inspectorCollapsed: collapsed, geometry: { narrow },
+    const reveal = compile({ clipDraftRef: { current: composing ? { hasPendingComposition: () => true } : null }, inspectorCollapsed: collapsed, geometry: { narrow },
       showCompactInspector: (page: unknown) => calls.push(['overlay', page]), markPanelIntent: () => calls.push(['intent']), setRightDockTab: (value: unknown) => calls.push(['tab', value]), setAgentPage: (value: unknown) => calls.push(['page', value]),
       setMobilePanel: (value: unknown) => calls.push(['mobile', value]), setTaskReveal: (update:(previous:{nonce:number}|null)=>{changeId:string;nonce:number}) => updates.push(update) });
     reveal('change-a');
@@ -117,7 +117,7 @@ test('clicking a label opens the Mio tab and asks for its change row without tou
   assert.deepEqual(docked.updates[0]((({ changeId: 'older', nonce: 4 }) as unknown as Parameters<typeof docked.updates[0]>[0])), { changeId: 'change-a', nonce: 5 }, 'clicking the same label again reveals the row again');
   assert.deepEqual(run({ collapsed: true }).calls, [['overlay', 'agent']], 'a collapsed inspector opens Mio as an overlay');
   assert.deepEqual(run({ narrow: true }).calls.at(-1), ['mobile', 'inspector']);
-  for (const blocked of [run({ application: { id: 'candidate' } }), run({ composing: true })]) { assert.deepEqual((blocked.calls as unknown), []); assert.deepEqual((blocked.updates as unknown), []); }
+  for (const blocked of [run({ composing: true })]) { assert.deepEqual((blocked.calls as unknown), []); assert.deepEqual((blocked.updates as unknown), []); }
 });
 
 test('the Mio panel opens a requested change row once it is visible, closing the history overlay first', () => {

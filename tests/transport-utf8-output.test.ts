@@ -97,8 +97,6 @@ const textSites = {
   'tests/float-checked-export-transports.test.mjs': 2,
   // CLI JSON/stdout, CLI stderr and SDK stderr; each has continuous decoding before data.
   'tests/export-sample-peak-transports.test.mjs': 3,
-  // One explicit loop listener covers stdout JSON and stderr text, both decoded before data.
-  'tests/agent-timeline-gain-preservation.test.mjs': 1,
   'tests/selected-range-transports.test.mjs': 2,
   'tests/local-shot-text-process-recovery.test.mjs': 2,
   'tests/local-delivery-process-recovery.test.mjs': 2,
@@ -114,14 +112,11 @@ const textSites = {
   "tests/helpers/workspace-restore-offline-fixture.ts": 2,
   "tests/workspace-origin-transports.test.mjs": 2,
   "tests/workspace-backup-cli.test.mjs": 2,
-  "tests/opacity-candidate-backup-cli.test.mjs": 2,
   "tests/workspace-backup-inspection-transports.test.mjs": 3,
-  "tests/agent-chat-durable-crash.test.mjs": 1,
   // The v2 crash harness collects only continuously decoded child stderr.
   'tests/agent-task-crash-v2.test.ts': 1,
   'tests/agent-task-goal-repair-v2.test.ts': 1,
   "tests/agent-edit-scope.test.mjs": 1,
-  "tests/agent-tool-journal-crash.test.mjs": 2,
   "tests/asset-disposition-transports.test.mjs": 2,
   "tests/asset-dispositions.test.mjs": 1,
   "tests/cli-mcp-key-recovery-transport.test.mjs": 3,
@@ -146,8 +141,9 @@ const textSites = {
   "tests/http-file-shutdown.test.mjs": 2,
   "tests/image-activation-transports.test.mjs": 2,
   "tests/image-generation-recovery.test.mjs": 2,
-  "tests/image-generation-transports.test.mjs": 5,
-  "tests/image-edit-transports.test.mjs": 5,
+  // The backend runs in process; the CLI stdout/stderr and MCP stderr remain.
+  "tests/image-generation-transports.test.mjs": 3,
+  "tests/image-edit-transports.test.mjs": 3,
   "tests/image-profile-discovery.test.mjs": 3,
   "tests/inspection-wire.test.mjs": 3,
   "tests/integration.test.mjs": 2,
@@ -189,7 +185,6 @@ const textSites = {
   'tests/timeline-loudness-apply-transports.test.mjs': 3,
   // Only SDK stderr has a direct listener; CLI execFile owns UTF-8 decoding, SDK owns JSON stdout.
   'tests/timeline-mix-loudness-real-transports.test.mjs': 1,
-  'tests/opacity-upgrade-cli.test.mjs': 2,
   'tests/timeline-audio-role-transports.test.mjs': 5,
   'tests/timeline-ripple-transports.test.mjs': 2,
   // Project-file kernel children: the crash writer's stdout progress lines and the

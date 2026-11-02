@@ -1,9 +1,10 @@
-/** Where every format-72 workspace table lives in the project-file layout.
- * Content tables are stored in the project file, process records in the local
- * history database and rebuildable data in the cache database. Application
- * tables belong to the application database, which this kernel never builds;
- * removed tables are not built anywhere. `schema_version` exists in each of the
- * three databases and is defined in databases.ts. */
+/** Where every format-72 workspace table lives in the project-file layout,
+ * including the two ledger tables the Mock provider creates on the workspace
+ * connection. Content tables are stored in the project file, process records
+ * in the local history database and rebuildable data in the cache database.
+ * Application tables belong to the application database, which this kernel
+ * never builds; removed tables are not built anywhere. `schema_version` exists
+ * in each of the three databases and is defined in databases.ts. */
 export type TablePlacement = 'project' | 'history' | 'cache' | 'app' | 'removed';
 export type HistoryDomain = 'receipts' | 'tasks' | 'timelineHistory' | 'mio';
 
@@ -24,6 +25,9 @@ export const HISTORY_TABLES_BY_DOMAIN: Readonly<Record<HistoryDomain, readonly s
     'jobs', 'job_events', 'exports', 'edit_tasks', 'image_tasks', 'image_reviews', 'image_remote_runs',
     'image_remote_observations', 'frame_tasks', 'scene_tasks', 'subject_variant_batches', 'subject_variant_items',
     'task_dispositions',
+    // The Mock provider's ledger (providers/mock.ts). The provider creates it
+    // with unqualified CREATE ... IF NOT EXISTS, which find it here in main.
+    'mock_provider_tasks', 'mock_provider_submissions',
   ]),
   timelineHistory: Object.freeze(['timeline_history', 'timeline_history_cursors']),
   mio: Object.freeze([

@@ -1,6 +1,8 @@
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import {editTaskError, safeEditTaskError} from '@mioon/business/edit-tasks';
 import type {createEditTasks} from '@mioon/business/edit-tasks';
+import {rejectProjectMismatch} from './project-routes.ts';
+import type {ProjectAddress} from './project-routes.ts';
 
 // The operation input is independently capped at 8 KiB by the business layer.
 // This small additional allowance covers the fixed prepare envelope only.
@@ -53,7 +55,7 @@ async function readBody(req: IncomingMessage, res: ServerResponse, maximum: numb
  * and token/cookie checks before this handler. No RPC/model-tool registration,
  * polling, automatic dispatch or request-disconnect cancellation occurs here. */
 export function createEditTasksHttp({tasks, signal}: EditTasksHttpOptions) {
-  return async function handle(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
+  return async function handle(req: IncomingMessage, res: ServerResponse, url: URL, address?: ProjectAddress): Promise<boolean> {
     if (!/^\/api\/tasks(?:\/|$)/u.test(url.pathname)) return false;
     try {
       if (Buffer.byteLength(req.url ?? '', 'utf8') > EDIT_TASK_HTTP_LIMITS.urlBytes) throw editTaskError('EDIT_TASK_LIMIT');
@@ -87,6 +89,7 @@ export function createEditTasksHttp({tasks, signal}: EditTasksHttpOptions) {
       } else {
         query(url, []);
         const envelope = await readBody(req, res, preparing ? EDIT_TASK_HTTP_LIMITS.prepareBytes : EDIT_TASK_HTTP_LIMITS.actionBytes);
+        if (rejectProjectMismatch(res, address, envelope)) return true;
         const {expectedWorkspaceOrigin, ...input} = envelope;
         const context = Object.hasOwn(envelope, 'expectedWorkspaceOrigin') ? {expectedWorkspaceOrigin} : {};
         // The backend checks every fixed action's complete closed schema. Never

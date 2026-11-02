@@ -3,6 +3,7 @@ import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { timelineDeliveryNameSchema, timelineDeliveryNameFields, isTimelineDeliveryNameSnapshot } from '@mioon/contracts/timeline-delivery';
 import type { TimelineDeliveryNameInput } from '@mioon/contracts/timeline-delivery';
+import { projectMediaPath } from '../../../packages/contracts/src/project-file.ts';
 
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const DELIVERY_NAME_PLACEHOLDER = '留空使用默认文件名';
@@ -160,8 +161,9 @@ export function namedTimelineDeliveryHistory(value: unknown, frozenDelivery?: un
   const error = typeof value.error === 'string' ? value.error : object(value.error) && typeof value.error.message === 'string' ? value.error.message : null;
   // A row URL and user-supplied name never confer media/path authority. Both IDs
   // are exact managed UUIDs and the server derives its attachment filename.
-  const downloadHref = uuid(value.assetId) && value.status === 'succeeded'
-    ? `/media/${value.assetId}?download=1&exportId=${value.id}` : null;
+  let media: string | null = null;
+  try { if (uuid(value.assetId) && value.status === 'succeeded') media = projectMediaPath(value.projectId as string, value.assetId); } catch { media = null; }
+  const downloadHref = media ? `${media}?download=1&exportId=${value.id}` : null;
   return { id: value.id, name: name.data, createdAt: value.createdAt, revision: value.timelineRevision, status: value.status,
     error, output: frozenDeliveryDescription(frozenDelivery, value.snapshot), downloadHref };
 }

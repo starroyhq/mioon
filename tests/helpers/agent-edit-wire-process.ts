@@ -1,7 +1,6 @@
 /** A disposable full backend. Only this fixture's IPC may arm crash hooks;
  * no production HTTP/environment switch or provider credential is involved. */
 import path from 'node:path';
-import {appendFileSync} from 'node:fs';
 interface WireServerLike {readonly url: string; close(): Promise<unknown>}
 type AgentSettingsLike = Awaited<ReturnType<typeof import('../../packages/business/src/agent/settings.ts').createAgentSettings>>
 interface WireProcessMessage {readonly type: string; readonly dataDir?: string; readonly token?: string; readonly requestId?: string; readonly boundary?: string}
@@ -36,12 +35,8 @@ const start = async (message: WireProcessMessage): Promise<void> => {
   const current = settings as unknown as Record<string|symbol,(...args: unknown[])=>unknown> & {close(): Promise<unknown>};
   const observed = {get: (...args: unknown[]) => current.get!(...args), put: (...args: unknown[]) => current.put!(...args), close: () => current.close(),
     [AGENT_CREDENTIAL_ACQUIRE](...args: unknown[]) { acquisitions++; return current[AGENT_CREDENTIAL_ACQUIRE]!(...args); }};
-  const agentEditFault = (label: string): void => {
-    phases.push(label); appendFileSync(path.join(dataRoot, 'edit-fault-trace.jsonl'), JSON.stringify({label, crash: armed === label}) + '\n');
-    if (armed === label) process.kill(process.pid, 'SIGKILL');
-  };
   startupPhase('server-starting');
-  server = await startServer({dataDir: dataRoot, port: 0, token: message.token, agentSettings: observed as never, agentEditFault});
+  server = await startServer({dataDir: dataRoot, port: 0, token: message.token, agentSettings: observed as never});
   startupPhase('server-ready');
   if (active()) report({type: 'ready', pid: process.pid, url: server.url});
 };

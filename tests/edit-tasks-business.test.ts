@@ -12,13 +12,21 @@ import {createServices,hash, type OrdinaryServices} from '../packages/business/s
 import {createEditTasks,safeEditTaskError} from '../packages/business/src/edit-tasks.ts';
 import {DURABLE_EDIT_OPERATIONS,EDIT_TASK_LIMITS,isEditTaskEnvelope,isEditTaskListEnvelope,schemas} from '@mioon/contracts';
 import type { SQLInputValue } from 'node:sqlite';
+import {withoutForeignKeys} from './helpers/project-database.ts';
 
 const code=(name: string)=>(error: unknown)=>(error as { code: string; }).code===name&&!JSON.stringify((error as { code: string; })).includes('PRIVATE');
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext){
+ const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-tasks-foreign-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const store=(openStore(root) as unknown as TypedStore),services=(createServices(store,new Map()) as unknown as TypedServices);
+ try{return await services.call('project.create',{name:'PRIVATE_OTHER'});}
+ finally{await services.drain();store.close();}
+}
 async function fixture(t: test.TestContext,options: { limits?: NonNullable<Parameters<typeof createEditTasks>[0]>['limits']; }|undefined={}) {
  const root=mkdtempSync(path.join(tmpdir(),'mioon-edit-tasks-'));
  let store=(openStore(root) as unknown as TypedStore),services=(createServices(store,new Map()) as unknown as TypedServices),tasks: TypedTaskManager,calls=0,fault: (label: string) => unknown=()=>{},dispatch: (arg0: string,arg1: unknown,arg2: OrdinaryServices) => unknown;
  const start=()=>{tasks=(createEditTasks({store,services:{call(op,input){calls++;assert.equal(store.db.isTransaction,false);return dispatch?dispatch(op,input,services):services.call(op,input);}},fault:label=>fault(label),limits:options.limits}) as unknown as TypedTaskManager);};start();
- const project=await services.call('project.create',{name:'Durable intent'}),other=await services.call('project.create',{name:'PRIVATE_OTHER'});
+ const project=await services.call('project.create',{name:'Durable intent'}),other=await foreignProject(t);
  t.after(()=>{store.close();rmSync(root,{recursive:true,force:true});});
  const f={root,project,other,get store(){return store;},get services(){return services;},get tasks(){return tasks;},get calls(){return calls;},
   setFault(fn: (label: string) => unknown){fault=fn;},setDispatch(fn: typeof dispatch){dispatch=fn;},
@@ -42,7 +50,8 @@ test('legacy FIRST12 relative order remains in the twenty-one-operation scope; p
  assert.deepEqual(saved.task.input,input);assert.equal(saved.task.digest,hash({operation:'timeline.track.add',input}));assert.ok(isEditTaskEnvelope(saved));
  assert.deepEqual(f.prepare('timeline.track.add',input),saved);
  assert.throws(()=>f.prepare('timeline.track.add',{...input,kind:'video'}),code('EDIT_TASK_CONFLICT'));
- assert.throws(()=>f.tasks.prepare({projectId:f.other.id,operation:'timeline.track.add',input:{...input,projectId:f.other.id},origin:'new'}),code('EDIT_TASK_CONFLICT'));
+ // Another project lives in a store of its own: this store has no such project, so the same key never reaches it.
+ assert.throws(()=>f.tasks.prepare({projectId:f.other.id,operation:'timeline.track.add',input:{...input,projectId:f.other.id},origin:'new'}),code('EDIT_TASK_NOT_FOUND'));
  assert.throws(()=>f.prepare('timeline.undo',input),code('EDIT_TASK_VALIDATION'));
  assert.throws(()=>f.prepare('timeline.track.add',{...input,requestId:randomUUID()}),code('EDIT_TASK_CONFLICT'));
  const writes=(f.store.db.prepare('SELECT total_changes() n').get())!.n;
@@ -148,7 +157,7 @@ test('capacity is retained after acknowledgement, list pages are SQL-bounded, ex
 test('corrupt/foreign owners and oversized row data fail closed without leaking private contents',async t=>{
  const f=await fixture(t),saved=await f.track(),applied=await f.execute(saved);
  assert.throws(()=>f.tasks.get({projectId:f.other.id,taskId:saved.task.id}),code('EDIT_TASK_NOT_FOUND'));
- const current=f.store.get('timelines',(applied.result)!.id);f.store.db.prepare('UPDATE timelines SET projectId=?,data=? WHERE id=?').run(f.other.id,JSON.stringify({...current,projectId:f.other.id,name:'PRIVATE_FOREIGN'}),(current)!.id);
+ const current=f.store.get('timelines',(applied.result)!.id);withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE timelines SET projectId=?,data=? WHERE id=?').run(f.other.id,JSON.stringify({...current,projectId:f.other.id,name:'PRIVATE_FOREIGN'}),(current)!.id));
  const before=f.row(saved.task);assert.throws(()=>f.ack(applied.task),code('EDIT_TASK_STORAGE_UNAVAILABLE'));assert.deepEqual(f.row(saved.task),before);
  assert.throws(()=>f.tasks.get({projectId:f.project.id,taskId:saved.task.id}),code('EDIT_TASK_STORAGE_UNAVAILABLE'));
  const safe=safeEditTaskError({code:'SQLITE_PRIVATE',message:'PRIVATE stack',details:{secret:'PRIVATE'}});assert.equal(JSON.stringify(safe).includes('PRIVATE'),false);

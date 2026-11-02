@@ -19,7 +19,8 @@ export type DatabaseKind = keyof typeof PROJECT_DATABASE_NAMES;
  * schema/manifest.ts (`node tests/helpers/project-file-schema-derivation.ts --write`)
  * and recording the new manifest digest in tests/project-file-schema.test.ts. */
 export const PROJECT_FILE_SCHEMA_VERSION = 1;
-export const HISTORY_SCHEMA_VERSION = 1;
+/** 2: the Mock provider's two ledger tables in the task domain. */
+export const HISTORY_SCHEMA_VERSION = 2;
 export const CACHE_SCHEMA_VERSION = 1;
 
 /** SQLite header `application_id` values: 'MioP', 'MioH' and 'MioC'. */

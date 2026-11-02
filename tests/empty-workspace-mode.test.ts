@@ -64,15 +64,14 @@ const fixture = `
   import { createChangeEventDetails } from ${JSON.stringify(join(baseRoot, 'internals/createBaseUIEventDetails.js'))};
   import { REASONS } from ${JSON.stringify(join(baseRoot, 'internals/reasons.js'))};
   const Icon = () => null;
-  export function Modes({data, loading, workspaceMode, changeMode, application = null}) { return ${modesMarkup}; }
+  export function Modes({data, loading, workspaceMode, changeMode}) { return ${modesMarkup}; }
   // Only the global settings slot is inert in this projects-page fixture. The
   // actual App early return, ProjectHome, shared controls and status are executed.
   const ProjectHomeConnections = () => null, AgentDockPane = () => null, SettingsNavigationSlot = () => null;
   const AgentSettings = () => null, ImageSettings = () => null, ComfyImageSettings = () => null;
   const RestoredUnavailable = ({title}) => <span>{title}</span>;
-  const OpacityRestoredNotice = () => null;
   export function Surface({ data, loading, workspaceMode, changeMode, workbenchReady, projects, projectOpening, toast, busy,
-    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, videoDirectoryUnavailable = false, application = null, preferenceScope = { current: null }, workspace = { restored: false }, opacityRestored = false,
+    projectListStatus, homePage, changeHomePage, selectProject, refreshHomeProjects, createProject, retainWorkbenchForClip = false, webSettingsCenter = null, videoDirectoryUnavailable = false, preferenceScope = { current: null }, workspace = { restored: false },
     lastProjectStatus, lastProjectRef, restored = false, homeConnection, setHomeConnection, settingsNavigation, prepareSettingsDeparture, setHomePage, locale = 'zh-Hans' }) {
     const { t } = createI18nTestContext(locale);
     ${videoDirectoryNoticeSource}
@@ -133,7 +132,7 @@ interface EnvAccess extends Record<string, unknown> {
 interface HarnessResult {env: EnvAccess; calls: unknown[][]; change: (...args: unknown[])=>Promise<unknown>; boot: ()=>Promise<unknown>; create: (...args: unknown[])=>Promise<boolean>}
 interface HarnessOptions {projectId?: string|null; mode?: string; loading?: boolean; ready?: boolean; restored?: boolean}
 const modeProps = (f: HarnessResult): Record<string, unknown> => ({ ...f.env, data: f.env.dataRef.current, loading: f.env.loading, workspaceMode: f.env.viewRef.current.activeMode,
-  workbenchReady: f.env.projectSessionReady() && !f.env.loading, changeMode: f.change as never, createProject: f.create, restored: f.env.workspaceRef.current.restored, retainWorkbenchForClip: false, webSettingsCenter: null, application: null, preferenceScope: f.env.preferenceScope, workspace: f.env.workspaceRef.current, opacityRestored: false });
+  workbenchReady: f.env.projectSessionReady() && !f.env.loading, changeMode: f.change as never, createProject: f.create, restored: f.env.workspaceRef.current.restored, retainWorkbenchForClip: false, webSettingsCenter: null, preferenceScope: f.env.preferenceScope, workspace: f.env.workspaceRef.current });
 function assertHome(html: unknown): void {
   assert.match(String(html), /data-testid="project-home"/);
   assert.doesNotMatch(String(html), /data-testid="workbench"|workspace-canvas|workspace-editing|workspace-mode-help|empty-create-project|react-flow|timeline-panel|inspector-region/);
@@ -145,7 +144,7 @@ function assertDisabled(html: unknown, expected: boolean): void {
 
 function harness({ projectId = null, mode = 'canvas', loading = false, ready = Boolean(projectId), restored = false }: HarnessOptions = {}): HarnessResult {
   const calls: unknown[][] = [], view = defaultWorkspaceState(); view.activeMode = mode as never;
-  const env: EnvAccess = { msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as string)), { displayMessage: value }), application: null, clipLoudnessEpoch: { current: 0 }, nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 }, projectSessionReady: () => false, selectProject: async () => false, refresh: async () => undefined,
+  const env: EnvAccess = { msg, ...createI18nTestContext(), localizedError: (value: unknown) => Object.assign(new Error(renderCoreMessage('zh-Hans', value as string)), { displayMessage: value }), clipLoudnessEpoch: { current: 0 }, nativeWindow: null, editorInitialSelection, emptyData, loading, currentProject: { current: projectId }, projectEpoch: { current: 0 }, navigationEpoch: { current: 0 }, requestCounter: { current: 0 }, projectSessionReady: () => false, selectProject: async () => false, refresh: async () => undefined,
     viewRef: { current: view }, viewReady: { current: ready }, dataRef: { current: projectId ? { ...emptyData, project: { id: projectId } } : emptyData },
     workspaceRef: { current: { restored, ...(restored ? { workspaceOrigin: B } : {}) } }, importSession: { current: { active: true, selection: 0 } }, dragging: { current: false },
     audioRoleProbe: { current: null }, audioRoleProbeEpoch: { current: 0 }, observeClipAudioRoleCapability: () => () => {}, isWorkspaceInspection: () => true, canEditTimelineAudioRole: () => true, setAudioRoleCapability: (...args: unknown[]) => calls.push(['setAudioRoleCapability', ...args]),

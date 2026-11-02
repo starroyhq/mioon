@@ -19,6 +19,7 @@ import {createTimelineRecoveryBoundary, readTimelineReceipt} from '../../package
 import {onMediaProcess} from '../../packages/business/src/media-processes.ts';
 import {callObservedRpc} from '../../apps/server/src/rpc-observation.ts';
 import {createLocalDeliveryHttp} from '../../apps/server/src/local-delivery-http.ts';
+import {projectRouteTarget} from '../../apps/server/src/project-routes.ts';
 import type {ServerResponse} from 'node:http';
 
 export const TOKEN = 'selected-range-synthetic-loopback-token';
@@ -128,6 +129,9 @@ export async function selectedRangeFixture(t: unknown): Promise<Record<string, u
   async function listen() {
     server = http.createServer(async (request: import('node:http').IncomingMessage, response: ServerResponse) => {
       const url = new URL(request.url ?? '', `http://${String(request.headers.host)}`);
+      // Serve a project address at the route it replaces, as the server does.
+      const scoped = projectRouteTarget(url.pathname);
+      if (scoped) url.pathname = scoped.pathname;
       if (request.headers.authorization !== `Bearer ${TOKEN}`) return send(response, 401, {ok: false, error: {code: 'UNAUTHORIZED'}});
       if (request.headers.origin && request.headers.origin !== f.url) return send(response, 403, {ok: false, error: {code: 'ORIGIN_REJECTED'}});
       // Drop only the completed acknowledgement. The actual business and

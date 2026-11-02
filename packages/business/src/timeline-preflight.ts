@@ -14,7 +14,6 @@ import {verifySubtitleFontResource,validateSubtitleSnapshotProfile} from './subt
 import {inspectSubtitleRenderer} from './subtitle-renderer-capability.ts';
 import {TIMELINE_COLOUR_PREFLIGHT_MESSAGES} from '../../contracts/src/timeline-colour.ts';
 import {createTimelineColourLutReader} from './timeline-colour-lut.ts';
-import {createOpacityCandidatePreflightRuntime,OPACITY_CANDIDATE_PREFLIGHT_MESSAGES} from './opacity-candidate-preflight.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelinePreflightSnapshot,TimelinePreflightSnapshotAsset} from './timeline-sources.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
@@ -50,7 +49,7 @@ const messages: Readonly<Record<string,string>>=Object.freeze({
  PREFLIGHT_BUSY:'Another export check is running. Try this check again when it finishes.',
  PREFLIGHT_STALE:'The saved timeline or its source metadata changed. Run the check again.',
 });
-const issue=(code: string,severity='error'): PreflightIssue=>({code,severity,message:messages[code]??(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES as Record<string,string>)[code]});
+const issue=(code: string,severity='error'): PreflightIssue=>({code,severity,message:messages[code]});
 const canonical=(v: unknown): string|undefined=>JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);
 export const timelineSnapshotHash=(snapshot: unknown): string=>createHash('sha256').update(canonical(snapshot) as string).digest('hex');
 function summary(snapshot: TimelinePreflightSnapshot,verified?: Map<string, {hasAudio?: boolean}>|null): Record<string, unknown>|null{
@@ -61,9 +60,8 @@ function summary(snapshot: TimelinePreflightSnapshot,verified?: Map<string, {has
   audibleClipCount:t.clips.filter(c=>tracks.has(c.trackId)&&!tracks.get(c.trackId)!.muted&&c.gain>0&&assets.get(c.assetId)?.hasAudio===true).length,
   mutedTrackCount:t.tracks.filter(lane=>lane.muted===true).length,hiddenVideoTrackCount:t.tracks.filter(lane=>lane.kind==='video'&&lane.hidden===true).length};
 }
-function classify(error: unknown,opacity=false): [string,string]{
+function classify(error: unknown): [string,string]{
  const failure=error as {code?: string};
- if(opacity&&Object.hasOwn(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES,failure.code as string))return ['blocked',failure.code as string];
  if(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,failure.code as string))return ['blocked',failure.code as string];
  if(failure.code==='SUBTITLE_RESOURCE_UNAVAILABLE')return ['blocked','SUBTITLE_RESOURCE_UNAVAILABLE'];
  if(failure.code==='SUBTITLE_RENDERER_UNAVAILABLE')return ['blocked','SUBTITLE_RENDERER_UNAVAILABLE'];
@@ -84,9 +82,7 @@ function classify(error: unknown,opacity=false): [string,string]{
  * bytes or full decode success. Owned children are joined before drain/close.
  */
 export function createTimelinePreflightServices(store: PreflightStore,{signal:ownerSignal,probe=probeTimelineSource,limits=EXPORT_PREFLIGHT_LIMITS,beforeEffect:hostBeforeEffect}: PreflightServiceOptions={}){
- const opacity=createOpacityCandidatePreflightRuntime(store);
  const readSnapshot=(input: PreflightInput): {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null}=>{
-  if(opacity)return opacity.readSnapshot(input) as {timeline: TimelineRecord|null;snapshot: TimelinePreflightSnapshot|null};
   const read=readTimelinePreflightSnapshot(store,input.projectId,input.exportSettings,input);
   // The colour plan counts images per clip; a transition shows two at once.
   if(read.snapshot)assertTransitionImageBudget(read.snapshot as never);
@@ -94,8 +90,8 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
  };
  const active=new Set<PreflightAttempt>();let stopped=false,shutdownFailure: unknown;
  async function preflight(input: PreflightInput,{signal:callSignal}: PreflightCallOptions={}): Promise<TimelinePreflightReport>{
-  if(opacity)input=opacity.parse(input) as unknown as PreflightInput;
-  const workspaceBeforeEffect=opacity?opacity.begin(input):(refuseRestoredOperation(store,'timeline.export.preflight',input),restoreEffectFence(store));
+  refuseRestoredOperation(store,'timeline.export.preflight',input);
+  const workspaceBeforeEffect=restoreEffectFence(store);
   let hostEffectFailure:unknown;
   const beforeEffect=hostBeforeEffect?()=>{try{hostBeforeEffect();}catch(error){hostEffectFailure??=error;throw hostEffectFailure;}workspaceBeforeEffect?.();}:workspaceBeforeEffect;
   beforeEffect?.();
@@ -106,29 +102,27 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    checkedAt:new Date().toISOString(),status:'blocked',summary:null,checks:{totalAssets:0,checkedAssets:0,bytesHashed:0,fullDecode:false},issues:[]};
   let initial;
   try{initial=readSnapshot(input);}
-  catch(error){const failure=error as {code?: string};if(failure.code==='NOT_FOUND'||opacity&&(safeWorkspaceRestoreError(error)||failure.code==='RESTORE_STORE_UNVERIFIED'))throw error;if(failure.code==='INSPECTION_BUDGET_EXCEEDED'){report.status='incomplete';report.issues=[issue('PREFLIGHT_SNAPSHOT_BUDGET','warning')];return report;}report.issues=[issue(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,failure.code as string)||opacity&&Object.hasOwn(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES,failure.code as string)?failure.code as string:failure.code==='TIMELINE_SOURCE_UNAVAILABLE'?'TIMELINE_SOURCE_UNAVAILABLE':'INVALID_TIMELINE_SNAPSHOT')];return report;}
+  catch(error){const failure=error as {code?: string};if(failure.code==='NOT_FOUND')throw error;if(failure.code==='INSPECTION_BUDGET_EXCEEDED'){report.status='incomplete';report.issues=[issue('PREFLIGHT_SNAPSHOT_BUDGET','warning')];return report;}report.issues=[issue(Object.hasOwn(TIMELINE_COLOUR_PREFLIGHT_MESSAGES,failure.code as string)?failure.code as string:failure.code==='TIMELINE_SOURCE_UNAVAILABLE'?'TIMELINE_SOURCE_UNAVAILABLE':'INVALID_TIMELINE_SNAPSHOT')];return report;}
   if(!initial.timeline){report.issues=[issue('TIMELINE_MISSING')];return report;}
   report.timelineId=initial.timeline.id;report.timelineRevision=initial.timeline.revision;
-  if(!opacity){report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot!);report.checks.totalAssets=initial.snapshot!.assets.length;}
+  report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot!);report.checks.totalAssets=initial.snapshot!.assets.length;
   const rangeIssue=timelineExportRangeBoundsIssue(input,initial.timeline.durationFrames);
   if(rangeIssue){report.snapshotHash=null;report.summary=null;}
   if(initial.timeline.revision!==input.expectedRevision){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];return report;}
   if(rangeIssue){report.issues=[issue('EXPORT_RANGE_BOUNDS')];return report;}
   if(!initial.timeline.clips.length){report.issues=[issue('EMPTY_TIMELINE')];return report;}
-  if(opacity){report.snapshotHash=timelineSnapshotHash(initial.snapshot);report.summary=summary(initial.snapshot!);report.checks.totalAssets=initial.snapshot!.assets.length;}
-  const validation: TimelinePreflightSnapshot=opacity?(opacity.validationSnapshot(initial) as unknown as TimelinePreflightSnapshot):initial.snapshot!;
-  const validationTimeline: TimelineRecord=opacity?validation.timeline:initial.timeline;
+  const validation: TimelinePreflightSnapshot=initial.snapshot!;
+  const validationTimeline: TimelineRecord=initial.timeline;
   // Early structural check shares the renderer validator. Actual stream flags
   // and durations below replace these saved values and are validated again.
   try{
    if(validateSubtitleSnapshotProfile(validation))report.checks.subtitles={profileId:(validation as TimelinePreflightSnapshot).subtitleProfile!.profileId,fontVerified:false,inkMeasured:false};
    const savedAssets=new Map<string, TimelinePreflightSnapshotAsset>(validation.assets.map((a: TimelinePreflightSnapshotAsset)=>[a.id,a]));
    const trackFn=(timeline: TimelineRecord,id: string)=>timeline.tracks.find(t=>t.id===id)!;
-   if(opacity)validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:trackFn,asset:(_projectId: string,id: string)=>savedAssets.get(id)! as never});
    validateTimeline(validationTimeline,savedAssets as unknown as ReadonlyMap<string, import('./timeline-inputs.ts').ManagedAssetRecord>,{structureOnly:true});
-   if(!opacity)validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:trackFn,asset:(_projectId: string,id: string)=>savedAssets.get(id)! as never});
+   validateSavedTimeline(JSON.parse(JSON.stringify(validationTimeline)),{track:trackFn,asset:(_projectId: string,id: string)=>savedAssets.get(id)! as never});
   }
-  catch(error){const failure=error as {code?: string};report.issues=[issue(opacity&&Object.hasOwn(OPACITY_CANDIDATE_PREFLIGHT_MESSAGES,failure.code as string)?failure.code as string:'INVALID_TIMELINE_SNAPSHOT')];return report;}
+  catch{report.issues=[issue('INVALID_TIMELINE_SNAPSHOT')];return report;}
   const remaining=limits.timeoutMs-(performance.now()-started);
   if(remaining<=0){report.status='incomplete';report.issues=[issue('PREFLIGHT_TIMEOUT','warning')];return report;}
   if(active.size){report.status='incomplete';report.issues=[issue('PREFLIGHT_BUSY','warning')];return report;}
@@ -139,7 +133,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const preparation=(async()=>{
    if(report.checks.subtitles){await verifySubtitleFontResource({signal,beforeEffect});checkpoint(signal);report.checks.subtitles.fontVerified=true;await inspectSubtitleRenderer({signal,beforeEffect});checkpoint(signal);}
    const options={signal,budget,beforeEffect,probe:async(file: string,probeOptions: PreflightProbeOptions)=>{beforeEffect?.();const result=await probe(file,{...probeOptions,beforeEffect});beforeEffect?.();return result;},onChecked:()=>{report.checks.checkedAssets++;}};
-   return opacity?opacity.prepare(initial as never,input as never,options as never):prepareTimelineInputs(initial.snapshot as never,{root:store.root,projectId:input.projectId,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id) as unknown as import('./timeline-inputs.ts').ManagedAssetRecord|null;},
+   return prepareTimelineInputs(initial.snapshot as never,{root:store.root,projectId:input.projectId,readAsset:(id: string)=>{beforeEffect?.();return readOwnedTimelineAsset(store.db,input.projectId,id) as unknown as import('./timeline-inputs.ts').ManagedAssetRecord|null;},
     ...options,readLut:createTimelineColourLutReader(store.db,input.projectId) as never});
   })();
   // A caller can observe its deadline, but the exact underlying preparation
@@ -153,14 +147,14 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
   const work=(async()=>{
    try{
     const verified=await awaitProvider(()=>preparation,signal);
-    checkpoint(signal);beforeEffect?.();opacity?.assertPrepared(initial,input,verified,beforeEffect);report.status='ready';report.summary=summary(initial.snapshot!,verified as Map<string,{hasAudio?: boolean}>);
+    checkpoint(signal);beforeEffect?.();report.status='ready';report.summary=summary(initial.snapshot!,verified as Map<string,{hasAudio?: boolean}>);
    }catch(rawError){
     const error=rawError as {terminationUnconfirmed?: boolean;code?: string;timelineAssetId?: string};
     if(error.terminationUnconfirmed){shutdownFailure=rawError;throw rawError;}
     if(hostEffectFailure)throw hostEffectFailure;
-    if(safeWorkspaceRestoreError(rawError)||opacity&&error.code==='RESTORE_STORE_UNVERIFIED')throw rawError;
+    if(safeWorkspaceRestoreError(rawError))throw rawError;
     checkpoint(external);if(stopped)checkpoint(controller.signal);
-    const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(rawError,Boolean(opacity));
+    const [status,code]=timedOut?['incomplete','PREFLIGHT_TIMEOUT']:classify(rawError);
     report.status=status;report.issues=[issue(code,status==='incomplete'?'warning':'error')];
     if(initial.snapshot!.assets.some(a=>a.id===error.timelineAssetId))report.issues[0].assetId=error.timelineAssetId;
    }finally{
@@ -173,7 +167,7 @@ export function createTimelinePreflightServices(store: PreflightStore,{signal:ow
    // changed row, owner, frozen metadata or revision can never publish ready.
    let current;
    try{beforeEffect?.();current=readSnapshot(input);}
-   catch(error){if(hostEffectFailure)throw hostEffectFailure;const failure=error as {code?: string};if(opacity&&(safeWorkspaceRestoreError(error)||failure.code==='RESTORE_STORE_UNVERIFIED'))throw error;current=null;}
+   catch{if(hostEffectFailure)throw hostEffectFailure;current=null;}
    if(!current?.snapshot||timelineSnapshotHash(current.snapshot)!==report.snapshotHash){report.status='stale';report.issues=[issue('PREFLIGHT_STALE')];}
    return report;
   })();

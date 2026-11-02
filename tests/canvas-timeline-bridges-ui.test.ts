@@ -209,8 +209,8 @@ test('App, board and timeline wire the bridges through the ordinary timeline mut
   assert.match(app, /sourceRefresh\.revision === timeline\?\.revision \? sourceRefresh : null/, 'an outcome disappears with the next edit');
   assert.match(app, /notice=\{sourceBanner\}/); assert.match(app, /timelineStatuses=\{shotStatuses\}/); assert.match(app, /timelineStatus=\{shotTimelineView\(chosenShot\?\.id\)\}/);
   assert.match(app, /timelineStatus: shotStatuses\.get\(record\.id\) \?\? null, onViewInEditing: viewShotInEditing,/);
-  assert.match(app, /contentChoice=\{!application && timeline\?\.clips\?\.length \? \{ value: exportContent,/);
-  assert.match(app, /const bridgeUnavailable = application \|\| restored \? t\('timeline\.sync\.restoredUnavailable'\) : null;/);
+  assert.match(app, /contentChoice=\{timeline\?\.clips\?\.length \? \{ value: exportContent,/);
+  assert.match(app, /const bridgeUnavailable = restored \? t\('timeline\.sync\.restoredUnavailable'\) : null;/);
   // Other tests evaluate App slices between neighbouring handlers; the bridge handlers stay outside all of them.
   const handlers = app.indexOf('  // Canvas → timeline bridges.');
   assert.ok(handlers > app.indexOf('  async function moveTimelineClip(') && handlers < app.indexOf('  function renderUncheckedTimeline('));

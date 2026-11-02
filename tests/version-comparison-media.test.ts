@@ -15,7 +15,6 @@ import {workspaceRestoreError} from '../packages/business/src/workspace-restore-
 import {validateManagedFile} from '../packages/contracts/src/private-storage.ts';
 import {createOwnedMediaGraphReader} from '../packages/business/src/inspection.ts';
 import {createFileResponses} from '../apps/server/src/file-response.ts';
-import {openStore} from '../packages/business/src/db.ts';
 import {createServices, type JobRecord, type ServiceRow} from '../packages/business/src/services.ts';
 import {createProviderRegistry, type Provider} from '../packages/business/src/provider-registry.ts';
 import {startWorker, type Worker} from '../packages/business/src/jobs.ts';
@@ -23,7 +22,9 @@ import {safePath} from '../packages/business/src/media.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createVersionComparisonMediaHttp, readVersionComparisonMedia, versionComparisonMediaIdentity, type VersionComparisonMediaOptions} from '../apps/server/src/version-comparison-media.ts';
+import {createServerProject, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 import type { CreateReadStreamOptions, FileHandle } from 'fs/promises';
 import type { PathLike } from 'fs';
@@ -40,14 +41,21 @@ async function manifest(root: string, relative: string|undefined = ''): Promise<
   return result.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
 function replace(db: DatabaseSync, table: string, record: Record<string, unknown> & {id: string}) {db.prepare(`UPDATE ${table} SET data=? WHERE id=?`).run(JSON.stringify(record), record.id);}
+// data_version counts other connections' commits only; total_changes() adds this connection's own writes.
+const changeMarks = (db: DatabaseSync) => [db.prepare('PRAGMA data_version').get()!.data_version, db.prepare('SELECT total_changes() AS n').get()!.n];
 async function fixture(t: test.TestContext, {serve = true, published = false} = {}) {
   const base = await mkdtemp(path.join(tmpdir(), 'mioon-version-comparison-')), root = path.join(base, 'source');
-  let store: TypedStore | undefined = (openStore(root) as unknown as TypedStore), services: TypedServices | undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, db: DatabaseSync | undefined, worker: Worker | undefined;
-  t.after(async () => {await server?.close(); await worker?.stop(); db?.close(); await services?.drain(); store?.close(); await rm(base, {recursive: true, force: true});});
+  let store: TypedStore | undefined, services: TypedServices | undefined, server: Awaited<ReturnType<typeof startServer>> | undefined, worker: Worker | undefined, inspect: InspectProject | undefined;
+  t.after(async () => {await server?.close(); await worker?.stop(); await services?.drain(); store?.close(); await rm(base, {recursive: true, force: true});});
+  // The server knows the other project too: requests and damaged rows name it. Without a server
+  // this project's store stays open, so the other project comes first.
+  const other = createServerProject(root, {name: 'Foreign project'}), foreign = (other.store as unknown as TypedStore).get('projects', other.projectId)!;
+  other.store.close();
+  const created = createServerProject(root, {name: 'Comparison source'});
+  store = (created.store as unknown as TypedStore);
   const providers = createProviderRegistry({db: store.db, root, env: {MIOON_ENABLE_LIVE_PROVIDER: '0'}});
   services = (createServices(store, providers) as unknown as TypedServices);
-  const project = await services.call('project.create', {name: 'Comparison source'});
-  const foreign = await services.call('project.create', {name: 'Foreign project'});
+  const project = store.get('projects', created.projectId)!;
   const shot = await services.call('shot.create', {projectId: project.id, title: 'Immutable source', prompt: 'Synthetic offline shape', duration: 2});
   const otherShot = await services.call('shot.create', {projectId: project.id, title: 'Other shot'});
   const input = {shotId: shot.id, expectedRevision: shot.revision, requestId: randomUUID(), providerId: 'mock', parameters: {delayMs: 0}};
@@ -80,17 +88,18 @@ async function fixture(t: test.TestContext, {serve = true, published = false} = 
     assetId: asset.id, sha256: asset.sha256, workspaceOrigin: 'normal'}), url = new URL(route, 'http://127.0.0.1:12345');
   if (serve) {
     await services.drain(); services = undefined; store!.close(); store = undefined;
-    server = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {assert.fail('Media must not call AI');}});
-    db = new DatabaseSync(path.join(root, 'workbench.sqlite'));
+    server = await startServer({dataDir: root, port: 0, token, chatGateway: async function* () {assert.fail('Media must not call AI');},
+      inspectProject: received => {inspect = received;}});
   }
-  const database = () => db || store!.db;
-  const rows = () => Object.fromEntries(database().prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name}) =>
-    [name, database().prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
-  const checkpoint = async () => ({rows: rows(), version: (database().prepare('PRAGMA data_version').get())!.data_version, files: await manifest(root)});
-  return {base, root, project, foreign, shot, otherShot, job, version, asset, bytes, route, url,
-    get db() {return database();}, get store() {return store!;}, get server() {return server!;},
-    read: () => readVersionComparisonMedia(database(), url, projectId => createOwnedMediaGraphReader(database(), projectId)), checkpoint,
-    unchanged: async (before: Awaited<ReturnType<typeof checkpoint>>) => {assert.deepEqual(rows(), before.rows); assert.equal((database().prepare('PRAGMA data_version').get())!.data_version, before.version); assert.deepEqual(await manifest(root), before.files);},
+  // While the server runs, the database is read and damaged on its own connection; otherwise on the open store's.
+  const use = <T>(fn: (db: DatabaseSync) => T): T => inspect ? inspect(project.id, fn) : fn(store!.db);
+  const rows = (db: DatabaseSync) => Object.fromEntries(schemaObjects(db).filter(({type}) => type === 'table').map(({name}) =>
+    [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const checkpoint = async () => ({...use(db => ({rows: rows(db), version: changeMarks(db)})), files: await manifest(root)});
+  return {base, root, project, foreign, shot, otherShot, job, version, asset, bytes, route, url, use,
+    get db() {if (inspect) throw new Error('The server holds the project: use f.use(db => ...)'); return store!.db;}, get store() {return store!;}, get server() {return server!;},
+    read: () => use(db => readVersionComparisonMedia(db, url, projectId => createOwnedMediaGraphReader(db, projectId))), checkpoint,
+    unchanged: async (before: Awaited<ReturnType<typeof checkpoint>>) => {use(db => {assert.deepEqual(rows(db), before.rows); assert.deepEqual(changeMarks(db), before.version);}); assert.deepEqual(await manifest(root), before.files);},
     request: (selected: unknown = route, options: RequestInit|undefined = {}) => fetch(server!.url + selected, {...options, headers: {authorization: 'Bearer ' + token, ...options.headers}}),
     closeSource: async () => {await services?.drain(); services = undefined; store!.close(); store = undefined;}};
 }
@@ -153,37 +162,40 @@ test('exact query shape, identity, method, authentication and browser-origin env
 });
 
 test('SQL/JSON ownership, job/version/snapshot links, recorded hash and published output path all remain exact', async t => {
-  const f = await fixture(t); f.db.exec('DROP TRIGGER immutable_versions; PRAGMA foreign_keys=OFF');
-  const saved = Object.fromEntries(['projects', 'shots', 'jobs', 'versions', 'assets'].map(table => [table, f.db.prepare(`SELECT * FROM ${table}`).all()]));
-  const mutations = [
-    () => f.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project, id: f.foreign.id}), f.project.id),
-    () => f.db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.foreign.id, f.shot.id),
-    () => replace(f.db, 'shots', {...f.shot, projectId: f.foreign.id}),
-    () => replace(f.db, 'shots', {...f.shot, referenceAssetIds: [randomUUID()]}),
-    () => f.db.prepare('UPDATE versions SET projectId=? WHERE id=?').run(f.foreign.id, f.version.id),
-    () => replace(f.db, 'versions', {...f.version, projectId: f.foreign.id}),
-    () => f.db.prepare('UPDATE versions SET jobId=? WHERE id=?').run(randomUUID(), f.version.id),
-    ...['shotId', 'jobId', 'assetId', 'sha256'].map(key => () => replace(f.db, 'versions', {...f.version, [key]: key === 'sha256' ? 'b'.repeat(64) : randomUUID()})),
-    () => replace(f.db, 'versions', {...f.version, sha256: undefined}),
-    () => replace(f.db, 'versions', {...f.version, snapshot: {...f.version.snapshot!, projectId: f.foreign.id}}),
-    () => replace(f.db, 'versions', {...f.version, snapshot: {...f.version.snapshot!, shotId: f.otherShot.id}}),
-    () => f.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.foreign.id, f.job.id),
-    ...['projectId', 'shotId', 'versionId', 'assetId'].map(key => () => replace(f.db, 'jobs', {...f.job, [key]: randomUUID()})),
-    () => f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id),
-    () => replace(f.db, 'assets', {...f.asset, projectId: f.foreign.id}),
+  const f = await fixture(t); f.use(db => db.exec('DROP TRIGGER immutable_versions'));
+  const saved = f.use(db => Object.fromEntries(['projects', 'shots', 'jobs', 'versions', 'assets'].map(table => [table, db.prepare(`SELECT * FROM ${table}`).all()])));
+  const mutations: ((db: DatabaseSync) => unknown)[] = [
+    db => db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project, id: f.foreign.id}), f.project.id),
+    db => db.prepare('UPDATE shots SET projectId=? WHERE id=?').run(f.foreign.id, f.shot.id),
+    db => replace(db, 'shots', {...f.shot, projectId: f.foreign.id}),
+    db => replace(db, 'shots', {...f.shot, referenceAssetIds: [randomUUID()]}),
+    db => db.prepare('UPDATE versions SET projectId=? WHERE id=?').run(f.foreign.id, f.version.id),
+    db => replace(db, 'versions', {...f.version, projectId: f.foreign.id}),
+    db => db.prepare('UPDATE versions SET jobId=? WHERE id=?').run(randomUUID(), f.version.id),
+    ...['shotId', 'jobId', 'assetId', 'sha256'].map(key => (db: DatabaseSync) => replace(db, 'versions', {...f.version, [key]: key === 'sha256' ? 'b'.repeat(64) : randomUUID()})),
+    db => replace(db, 'versions', {...f.version, sha256: undefined}),
+    db => replace(db, 'versions', {...f.version, snapshot: {...f.version.snapshot!, projectId: f.foreign.id}}),
+    db => replace(db, 'versions', {...f.version, snapshot: {...f.version.snapshot!, shotId: f.otherShot.id}}),
+    db => db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.foreign.id, f.job.id),
+    ...['projectId', 'shotId', 'versionId', 'assetId'].map(key => (db: DatabaseSync) => replace(db, 'jobs', {...f.job, [key]: randomUUID()})),
+    db => db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id),
+    db => replace(db, 'assets', {...f.asset, projectId: f.foreign.id}),
     ...[{sha256: 'b'.repeat(64)}, {sizeBytes: -1}, {sizeBytes: undefined}, {mimeType: 'image/png'}, {provenance: 'export'}, {relativePath: 'media/../access-token'}, {relativePath: `media/result-${randomUUID()}.mp4`}]
-      .map(patch => () => replace(f.db, 'assets', {...f.asset, ...patch})),
-    () => f.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{invalid', f.asset.id),
+      .map(patch => (db: DatabaseSync) => replace(db, 'assets', {...f.asset, ...patch})),
+    db => db.prepare('UPDATE assets SET data=? WHERE id=?').run('{invalid', f.asset.id),
   ];
   for (const [index, mutate] of mutations.entries()) {
-    mutate(); const before = await f.checkpoint(); assert.equal(f.read(), null, `Corruption case ${index}`);
+    // Each damaged row is written as a corrupt file would hold it; the server's connection keeps its foreign keys otherwise.
+    f.use(db => withoutForeignKeys(db, () => mutate(db))); const before = await f.checkpoint(); assert.equal(f.read(), null, `Corruption case ${index}`);
     const response = await f.request(); assert.equal(response.status, 404); await response.text(); await f.unchanged(before);
-    for (const [table, rows] of Object.entries(saved)) for (const row of rows) {
-      const columns = Object.keys(row).filter(key => key !== 'id'); f.db.prepare(`UPDATE ${table} SET ${columns.map(key => `${key}=?`).join(',')} WHERE id=?`).run(...columns.map(key => row[key]), row.id);
-    }
+    f.use(db => {
+      for (const [table, rows] of Object.entries(saved)) for (const row of rows) {
+        const columns = Object.keys(row).filter(key => key !== 'id'); db.prepare(`UPDATE ${table} SET ${columns.map(key => `${key}=?`).join(',')} WHERE id=?`).run(...columns.map(key => row[key]), row.id);
+      }
+    });
   }
   // URL metadata is not a source selector, even when it looks authoritative.
-  replace(f.db, 'versions', {...f.version, url: 'https://foreign.invalid/never-fetch'}); replace(f.db, 'assets', {...f.asset, url: '/media/' + randomUUID()});
+  f.use(db => {replace(db, 'versions', {...f.version, url: 'https://foreign.invalid/never-fetch'}); replace(db, 'assets', {...f.asset, url: '/media/' + randomUUID()});});
   const before = await f.checkpoint(), response = await f.request(); assert.equal(response.status, 200); assert.deepEqual(Buffer.from(await response.arrayBuffer()), f.bytes); await f.unchanged(before);
 });
 
@@ -191,10 +203,13 @@ test('foreign and duplicate reverse owners cannot disguise generated bytes as an
   const f = await fixture(t);
   for (const projectId of [f.project.id, f.foreign.id]) {
     const id = randomUUID(), jobId = randomUUID();
-    f.db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, projectId, JSON.stringify({...f.job, id: jobId, projectId, versionId: id}));
-    f.db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(id, projectId, jobId, JSON.stringify({...f.version, id, projectId, jobId}));
+    // The other project's pair is written as a corrupt file would hold it.
+    f.use(db => withoutForeignKeys(db, () => {
+      db.prepare('INSERT INTO jobs(id,projectId,data) VALUES(?,?,?)').run(jobId, projectId, JSON.stringify({...f.job, id: jobId, projectId, versionId: id}));
+      db.prepare('INSERT INTO versions(id,projectId,jobId,data) VALUES(?,?,?,?)').run(id, projectId, jobId, JSON.stringify({...f.version, id, projectId, jobId}));
+    }));
     const before = await f.checkpoint(); assert.equal(f.read(), null); const response = await f.request(); assert.equal(response.status, 404); await response.text(); await f.unchanged(before);
-    f.db.prepare('DELETE FROM versions WHERE id=?').run(id); f.db.prepare('DELETE FROM jobs WHERE id=?').run(jobId);
+    f.use(db => {db.prepare('DELETE FROM versions WHERE id=?').run(id); db.prepare('DELETE FROM jobs WHERE id=?').run(jobId);});
   }
 });
 
@@ -209,7 +224,7 @@ test('missing file, symlink, hardlink and other-writable files never disclose me
 
 for (const stage of ['resolve', 'open', 'stat']) test(`late ${stage} ownership changes are fenced before bytes and descriptors close`, async t => {
   const f = await fixture(t, {serve: false}); let opened = 0, closed = 0, streamed = 0;
-  const corrupt = () => f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id);
+  const corrupt = () => withoutForeignKeys(f.db, () => f.db.prepare('UPDATE assets SET projectId=? WHERE id=?').run(f.foreign.id, f.asset.id));
   const request = await directServer(t, f, {
     resolvePath: async (...args) => {const file = await safePath(...args); if (stage === 'resolve') corrupt(); return file;},
     openFile: async (...args) => {const handle = await open(...args); opened++; if (stage === 'open') corrupt(); let stats = 0;
@@ -245,13 +260,14 @@ test('restored workspace including held source versions refuses this route befor
   const backup = path.join(f.base, 'backup'), destination = path.join(f.base, 'restored');
   await createWorkspaceBackup({source: f.root, destination: backup});
   const restored = await restoreWorkspaceBackup({directory: backup, destination});
-  const server = await startServer({dataDir: destination, port: 0, token}); t.after(() => server.close());
-  const db = new DatabaseSync(path.join(destination, 'workbench.sqlite')); t.after(() => db.close());
-  assert.ok(db.prepare("SELECT 1 FROM workspace_restore_holds WHERE kind='versions' AND id=?").get(f.version.id));
-  const before = await manifest(destination), changes = (db.prepare('PRAGMA data_version').get())!.data_version;
+  // The restored server holds the project: read it on the server's own connection.
+  let inspect!: InspectProject;
+  const server = await startServer({dataDir: destination, port: 0, token, inspectProject: received => {inspect = received;}}); t.after(() => server.close());
+  assert.ok(inspect(f.project.id, db => db.prepare("SELECT 1 FROM workspace_restore_holds WHERE kind='versions' AND id=?").get(f.version.id)));
+  const before = await manifest(destination), changes = inspect(f.project.id, changeMarks);
   for (const origin of ['normal', restored.workspaceOrigin, 'restored:' + restored.workspaceOrigin]) {
     const url = new URL(f.route, server.url); url.searchParams.set('workspaceOrigin', origin as string);
     for (const method of ['GET', 'HEAD']) {const response = await fetch(url, {method, headers: {authorization: 'Bearer ' + token}}); assert.equal(response.status, 409); if (method === 'GET') assert.equal((await response.json()).error.code, 'RESTORE_OPERATION_UNAVAILABLE');}
   }
-  assert.equal((db.prepare('PRAGMA data_version').get())!.data_version, changes); assert.deepEqual(await manifest(destination), before);
+  assert.deepEqual(inspect(f.project.id, changeMarks), changes); assert.deepEqual(await manifest(destination), before);
 });

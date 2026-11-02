@@ -3,6 +3,7 @@ import { readLoudnessApplyRpc } from './timeline-loudness-apply-rpc.ts';
 import { workspaceOriginOptions } from './workspace-origin.ts';
 import { ApiError } from './api.ts';
 import { DURABLE_EDIT_OPERATIONS, isEditTaskEnvelope, isEditTaskListEnvelope } from '@mioon/contracts';
+import { projectApiPath } from '../../../packages/contracts/src/project-file.ts';
 export interface EditTask {
   id: string; projectId: string; operation: string; input: Record<string, unknown>; requestId: string; digest: string;
   lane: string; status: 'prepared'|'dispatching'|'unknown'|'applied'|'not_applied'; revision: number; createdAt: string; updatedAt: string;
@@ -26,8 +27,7 @@ export interface EditTaskClient {
   reconcile(input: EditTaskExecuteInput, options?: EditTaskRequestOptions): Promise<EditTaskEnvelope>;
   acknowledge(input: EditTaskExecuteInput, options?: EditTaskRequestOptions): Promise<EditTaskEnvelope>;
 }
-export interface CreateEditTaskClientOptions {fetcher?: typeof fetch; opacityBinding?: unknown}
-export interface EditTaskClientValidation {readonly validateTaskEnvelope: typeof validateTaskEnvelope; readonly validateTaskList: typeof validateTaskList}
+export interface CreateEditTaskClientOptions {fetcher?: typeof fetch}
 const isRecord=(value: unknown): value is Record<string, unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const property=(value: unknown,key: string): unknown=>isRecord(value)?value[key]:undefined;
 const errorCode=(error: unknown): string|undefined=>typeof property(error,'code')==='string'?property(error,'code') as string:undefined;
@@ -60,15 +60,9 @@ function checkTaskList(value: unknown,projectId: string,{pendingOnly}: Required<
   return envelope;
 }
 
-import {readOpacityCandidateClientBinding} from './opacity-candidate-client-binding.ts';
-const clientValidation = new WeakMap<object,EditTaskClientValidation>();
-export function editTaskClientValidation(client: object): EditTaskClientValidation {
-  return clientValidation.get(client) ?? {validateTaskEnvelope, validateTaskList};
-}
-export function createEditTaskClient({ fetcher = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetch(...args), opacityBinding }: CreateEditTaskClientOptions = {}): EditTaskClient {
-  const selected = readOpacityCandidateClientBinding(opacityBinding);
-  const validateEnvelope = selected ? (value: unknown, expected: TaskExpectation = {}): EditTaskEnvelope => checkTaskEnvelope(value, expected, selected.isTaskEnvelope) : (value: unknown, expected: TaskExpectation = {}): EditTaskEnvelope => checkTaskEnvelope(value, expected, isEditTaskEnvelope);
-  const validateList = selected ? (value: unknown, projectId: string, options: TaskListOptions = {}): EditTaskListEnvelope => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, selected.isTaskList) : (value: unknown, projectId: string, options: TaskListOptions = {}): EditTaskListEnvelope => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, isEditTaskListEnvelope);
+export function createEditTaskClient({ fetcher = (...args: Parameters<typeof fetch>): ReturnType<typeof fetch> => fetch(...args) }: CreateEditTaskClientOptions = {}): EditTaskClient {
+  const validateEnvelope = (value: unknown, expected: TaskExpectation = {}): EditTaskEnvelope => checkTaskEnvelope(value, expected, isEditTaskEnvelope);
+  const validateList = (value: unknown, projectId: string, options: TaskListOptions = {}): EditTaskListEnvelope => checkTaskList(value, projectId, {pendingOnly: options.pendingOnly ?? true}, isEditTaskListEnvelope);
   async function request(path: string,body: Record<string,unknown>|undefined,options: EditTaskRequestOptions = {}): Promise<unknown> {
     const invocation = workspaceOriginOptions(options.expectedWorkspaceOrigin);
     const loudness = options.operation === 'timeline.loudness.apply' ? await readLoudnessApplyRpc(path, body ? { ...body, ...invocation } : undefined, { fetcher }) : null;
@@ -81,18 +75,22 @@ export function createEditTaskClient({ fetcher = (...args: Parameters<typeof fet
     if (!payload.ok || !response.ok) throw new ApiError(String(property(payload,'error') && isRecord(payload.error) ? payload.error.message : ''), response.status === 401 ? 'UNAUTHORIZED' : errorCode(property(payload,'error')), property(property(payload,'error'),'details'));
     return payload.data;
   }
-  const endpoint = (taskId: string): string => `/api/tasks/${encodeURIComponent(taskId)}`;
+  // Every task route lives at its project's address; the query and body still
+  // carry the projectId the server checks against it.
+  const endpoint = (projectId: unknown, ...route: string[]): string => {
+    try { return projectApiPath(projectId as string, 'tasks', ...route); }
+    catch { throw new ApiError('Edit task request has no valid project address.', 'EDIT_TASK_VALIDATION', {}, true); }
+  };
   const client: EditTaskClient = {
-    async prepare(input: EditTaskPrepareInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request('/api/tasks/prepare', input, { ...options, operation: input.operation }), input); },
+    async prepare(input: EditTaskPrepareInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(endpoint(input.projectId, 'prepare'), input, { ...options, operation: input.operation }), input); },
     async list({ projectId, limit = 50, cursor, pendingOnly = true }: EditTaskListInput) {
       const query = new URLSearchParams({ projectId, pendingOnly: String(pendingOnly), limit: String(limit), ...(cursor ? { cursor } : {}) });
-      return validateList(await request(`/api/tasks?${query}`, undefined), projectId, { pendingOnly });
+      return validateList(await request(`${endpoint(projectId)}?${query}`, undefined), projectId, { pendingOnly });
     },
-    async get({ projectId, taskId, operation }: EditTaskGetInput) { return validateEnvelope(await request(`${endpoint(taskId)}?${new URLSearchParams({ projectId })}`, undefined, { operation }), { projectId, taskId }); },
-    async execute({ taskId, ...body }: EditTaskExecuteInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(`${endpoint(taskId)}/execute`, body, options), { ...body, taskId }); },
-    async reconcile({ taskId, ...body }: EditTaskExecuteInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(`${endpoint(taskId)}/reconcile`, body, options), { ...body, taskId }); },
-    async acknowledge({ taskId, ...body }: EditTaskExecuteInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(`${endpoint(taskId)}/acknowledge`, body, options), { ...body, taskId }); },
+    async get({ projectId, taskId, operation }: EditTaskGetInput) { return validateEnvelope(await request(`${endpoint(projectId, taskId)}?${new URLSearchParams({ projectId })}`, undefined, { operation }), { projectId, taskId }); },
+    async execute({ taskId, ...body }: EditTaskExecuteInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(endpoint(body.projectId, taskId, 'execute'), body, options), { ...body, taskId }); },
+    async reconcile({ taskId, ...body }: EditTaskExecuteInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(endpoint(body.projectId, taskId, 'reconcile'), body, options), { ...body, taskId }); },
+    async acknowledge({ taskId, ...body }: EditTaskExecuteInput,options?: EditTaskRequestOptions) { return validateEnvelope(await request(endpoint(body.projectId, taskId, 'acknowledge'), body, options), { ...body, taskId }); },
   };
-  if (selected) clientValidation.set(client, Object.freeze({validateTaskEnvelope: validateEnvelope, validateTaskList: validateList}));
   return client;
 }

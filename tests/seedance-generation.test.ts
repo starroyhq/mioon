@@ -213,9 +213,10 @@ test('Seedance 2.5 reference audio must be a 2–30 second project clip on an en
  const f=await fixture(t,{models:defaults=>[defaults[0]!,{...defaults[0]!,id:randomUUID(),name:'Saved Seedance',inputModes:['text','image','frames','subject']}]});
  const [exact,saved]=f.configuration.models as [VideoModelEntry,VideoModelEntry];
  const short=await clip(f,1.5),good=await clip(f,4);
- const other=await f.services.call('project.create',{name:'Other project'}) as ServiceRow,foreign=await clip(f,4,String(other.id));
+ // Another project lives in a store of its own: its clip does not exist in this one.
+ const g=await fixture(t),foreign=await clip(g,4);
  await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},exact),videoInput:audioInput([],[String(short.asset.id)])}),{code:'INVALID_REFERENCE_AUDIO'});
- await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},exact),videoInput:audioInput([],[String(foreign.asset.id)])}),{code:'INVALID_REFERENCE_OWNERSHIP'});
+ await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},exact),videoInput:audioInput([],[String(foreign.asset.id)])}),{code:'NOT_FOUND'});
  await assert.rejects(f.services.call('generation.submit',{...f.input({resolution:'720p'},saved),videoInput:audioInput([],[String(good.asset.id)])}),{code:'UNSUPPORTED_INPUT_ROLE'});
  assert.equal(f.store.list('jobs').length,0);assert.equal(f.posts().length,0);
 });

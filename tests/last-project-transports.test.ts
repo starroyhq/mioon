@@ -10,7 +10,7 @@ import type {PipedProcess,SqlRows,ProcessOutcome,BackendReady,IpcMessage,WireMes
 import type {SchemaNode,TestTool,TestCatalog,TestOperationDefinition,EnvelopeTransportCall} from './helpers/strict-timeline-transport-types.ts';
 import type {CallToolResult} from '@modelcontextprotocol/sdk/types.js';
 import type {ChildProcess as OwnedChild} from 'node:child_process';
-import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
+import type {TypedStore} from './helpers/strict-service-responses.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -23,11 +23,10 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {LAST_PROJECT_LIMITS,lastProjectEnvelopeSchema} from '@mioon/contracts/last-project';
 import {schemas} from '@mioon/contracts';
-import {openStore} from '../packages/business/src/db.ts';
-import {createServices} from '../packages/business/src/services.ts';
 import {createWorkspaceBackup,verifyWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
 import {restoreWorkspaceBackup} from '../packages/business/src/workspace-restore.ts';
 import type { ChildProcess } from 'child_process';
+import {createServerProject} from './helpers/project-database.ts';
 
 const repo=fileURLToPath(new URL('../',import.meta.url));
 const workerPath=fileURLToPath(new URL('./fixtures/local-drafts-process.ts',import.meta.url));
@@ -120,8 +119,9 @@ async function fixture<R extends boolean=false>(t:test.TestContext,{restored=fal
     for(const clean of [async()=>{if(proxy){proxy.closeAllConnections();await deadline(new Promise(resolve=>proxy.close(resolve)),'proxy close');}},...reservations.map(server=>async()=>{server.closeAllConnections();await deadline(new Promise(resolve=>server.close(resolve)),'reservation close');}),...processes.map(worker=>()=>worker.close()),()=>rm(base,{recursive:true,force:true})])try{await clean();}catch(error){failures.push(error);}
     if(failures.length)throw new AggregateError(failures,'Owned last-project cleanup failed');
   });
-  const store=(openStore(source) as unknown as TypedStore);let project,other;
-  try{const services=(createServices(store,new Map()) as unknown as TypedServices);project=await services.call('project.create',{name:'Existing remembered project'});other=await services.call('project.create',{name:'OTHER_PROJECT_MUST_NOT_LEAK'});}finally{store.close();}
+  // The last-project locator is workspace-level and stays as it is for S0; only the projects are made where the server finds them.
+  const remembered=createServerProject(source,{name:'Existing remembered project'}),project=(remembered.store as unknown as TypedStore).get('projects',remembered.projectId)!;remembered.store.close();
+  const second=createServerProject(source,{name:'OTHER_PROJECT_MUST_NOT_LEAK'}),other=(second.store as unknown as TypedStore).get('projects',second.projectId)!;second.store.close();
   let workspaceOrigin;
   const file=path.join(root,'last-project-v1.json'),unsafeTarget=path.join(base,'untouched-private-evidence');
   if(restored){

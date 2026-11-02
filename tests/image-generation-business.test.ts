@@ -10,6 +10,7 @@ import {openStore, ownsStoreLock} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {renderMockImagePng, validatePng} from '../packages/business/src/images/png.ts';
 import type {DatabaseSync} from 'node:sqlite';
+import {schemaObjects} from './helpers/project-database.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, IMAGE_LIMITS, canonicalImageInput,
   isImageTaskResponse, isImageRequestResponse, isImageListResponse} from '../packages/contracts/src/images.ts';
 
@@ -29,7 +30,8 @@ const inputFor = (projectId: string, patch: Record<string, unknown> = {}) => ({p
 const digest = (bytes: Uint8Array | string): string => createHash('sha256').update(bytes).digest('hex');
 let pngPromise: Promise<Uint8Array> | undefined;
 const png = (): Promise<Uint8Array> => pngPromise ??= renderMockImagePng() as Promise<Uint8Array>;
-const tables = (db: DatabaseSync): string[] => (db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all() as {name: string}[]).map((row: {name: string}) => row.name);
+const byName = (a: {name: string}, b: {name: string}): number => a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+const tables = (db: DatabaseSync): string[] => schemaObjects(db).filter(({type}) => type === 'table').sort(byName).map((row: {name: string}) => row.name);
 const rows = (db: DatabaseSync, names: string[] = tables(db)): string => JSON.stringify(names.map((name: string) => {
   const statement = db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`); statement.setReadBigInts(true);
   return [name, statement.all()];
@@ -39,6 +41,14 @@ function privateFree(value: unknown): void {
   const text = JSON.stringify(value);
   assert.ok(!/"(?:dataBase64|b64_json|bytes|relativePath|path|stagedReceipt|canonicalInput|snapshot|apiKey|authorization)"\s*:/.test(text));
   assert.ok(!text.includes('PRIVATE_SENTINEL'));
+}
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: import('node:test').TestContext): Promise<ProjectView> {
+  const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-business-foreign-'));
+  t.after(() => rmSync(root, {recursive: true, force: true}));
+  const store = (openStore(root) as unknown as TypedStore), services = (createServices(store, new Map()) as unknown as TypedServices);
+  try {return await services.call('project.create', {name: 'Foreign project'}) as ProjectView;}
+  finally {await services.drain(); store.close();}
 }
 async function fixture(t: import('node:test').TestContext, {autoRun = false, lock = true, generate, fault}: FixtureOptions = {}): Promise<ImageFixture> {
   const root = mkdtempSync(path.join(tmpdir(), 'mioon-image-business-'));
@@ -52,7 +62,7 @@ async function fixture(t: import('node:test').TestContext, {autoRun = false, loc
   }}} as unknown as Parameters<typeof createServices>[2]) as unknown as TypedServices);
   t.after(async () => {try {await services.drain();} finally {store.close(); rmSync(root, {recursive: true, force: true});}});
   const project = await services.call('project.create', {name: 'Synthetic image project'}) as ProjectView;
-  const other = await services.call('project.create', {name: 'Foreign project'}) as ProjectView;
+  const other = await foreignProject(t);
   return {root, store, services, project, other, projections, get calls() {return calls;},
     input: (patch?: Record<string, unknown>) => inputFor(project.id, patch), call: ((operation: string, input: Record<string, unknown>) => services.call(operation as never, input as never) as Promise<unknown>) as TypedCall,
     row: (id: string) => store.db.prepare('SELECT * FROM image_tasks WHERE id=?').get(id) as Record<string, unknown> | undefined};
@@ -80,9 +90,11 @@ test('stable generation keys return the original ACK before CAS and reject chang
   assert.deepEqual(await f.call('image.task.cancelQueued', cancelInput), cancelled);
   const receipt = await f.call('image.request.get', {projectId: f.project.id, requestId: input.requestId}) as {response: TaskView};
   assert.ok(isImageRequestResponse(receipt)); assert.deepEqual(receipt.response, accepted);
-  assert.deepEqual(await f.call('image.request.get', {projectId: f.other.id, requestId: input.requestId}), null);
-  for (const patch of [{prompt: 'Different'}, {name: 'Different'}, {projectId: f.other.id}])
+  // Another project lives in a store of its own: this store has no such project, so the same key never reaches it.
+  await assert.rejects(f.call('image.request.get', {projectId: f.other.id, requestId: input.requestId}), code('IMAGE_NOT_FOUND'));
+  for (const patch of [{prompt: 'Different'}, {name: 'Different'}])
     await assert.rejects(f.call('image.generate', {...input, ...patch}), code('IMAGE_REQUEST_CONFLICT'));
+  await assert.rejects(f.call('image.generate', {...input, projectId: f.other.id}), code('IMAGE_NOT_FOUND'));
   await assert.rejects(f.call('image.task.cancelQueued', {...cancelInput, requestId: input.requestId}), code('IMAGE_REQUEST_CONFLICT'));
   await assert.rejects(f.call('image.task.cancelQueued', {...cancelInput, requestId: randomUUID()}), code('IMAGE_REVISION_CONFLICT'));
   for (const op of ['image.task.get', 'image.task.cancelQueued']) {
@@ -170,10 +182,12 @@ test('one unresolved task locks its group while different groups remain independ
 
 test('lock:false services cannot mutate or reconcile and image reads leave every row and total_changes untouched', async t => {
   const f = await fixture(t), ack = await f.call('image.generate', f.input()) as unknown as TaskView;
+  // The observer opens after the owner closes: one process holds a project once.
+  assert.equal(ownsStoreLock(f.store), true); await f.services.drain(); f.store.close();
   const observer = (openStore(f.root, {lock: false}) as unknown as TypedStore);
   const services = (createServices(observer, new Map(), {env: {}, imageOptions: {autoRun: true, generate: () => assert.fail('nonowner generator')}}) as unknown as TypedServices);
   t.after(async () => {await services.drain(); observer.close();});
-  assert.equal(ownsStoreLock(f.store), true); assert.equal(ownsStoreLock(observer), false);
+  assert.equal(ownsStoreLock(observer), false);
   const before = rows(observer.db), count = changes(observer.db);
   const rejectedOperations: [string, Record<string, unknown>][] = [
     ['image.generate', f.input()],
@@ -216,7 +230,8 @@ for (const variant of ['input-hash', 'snapshot-identity', 'revision', 'oversized
   });
 
 test('queue capacity is enforced per project and globally without dispatch or eviction', async t => {
-  const f = await fixture(t), projects: ProjectView[] = [f.project, f.other];
+  // This workspace quota needs every project in one store; f.other lives in a store of its own.
+  const f = await fixture(t), projects: ProjectView[] = [f.project];
   while (projects.length < 5) projects.push(await f.call('project.create', {name: `Queue project ${projects.length}`}) as ProjectView);
   const first: TaskView[] = [];
   for (const project of projects.slice(0, 4)) {
@@ -273,9 +288,11 @@ test('task list paging is bounded, authenticated and scoped to project, group, o
   const second = await f.call('image.task.list', {...input, cursor: first.nextCursor}) as {items: {id: string}[]; nextCursor: string};
   assert.equal(new Set([...first.items, ...second.items].map((value: {id: string}) => value.id)).size, 4);
   const before = rows(f.store.db), count = changes(f.store.db);
-  const cursorMutations: [string, Record<string, unknown>][] = [['image.task.list', {projectId: f.other.id}], ['image.task.list', {limit: 3}],
+  const cursorMutations: [string, Record<string, unknown>][] = [['image.task.list', {limit: 3}],
     ['image.group.list', {}], ['image.task.list', {groupId: first.items[0]?.groupId}], ['image.task.list', {cursor: first.nextCursor + 'x'}]];
   for (const [operation, patch] of cursorMutations)
     await assert.rejects(f.call(operation, {...input, cursor: first.nextCursor, ...patch}), code('INVALID_CURSOR'));
+  // Another project lives in a store of its own: this store has no such project to page.
+  await assert.rejects(f.call('image.task.list', {...input, cursor: first.nextCursor, projectId: f.other.id}), code('IMAGE_NOT_FOUND'));
   assert.equal(rows(f.store.db), before); assert.equal(changes(f.store.db), count);
 });

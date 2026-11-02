@@ -128,7 +128,7 @@ test('actual cancel callback is bound to its row/attempt and cannot cancel newer
 test('actual App hook wiring uses accepted live ownership, pinned invocation and exact read-only operation', async () => {
   const app = source('App.tsx'), start = app.indexOf('  function exportSamplePeakContext()'), contextEnd = app.indexOf('  const exportSamplePeak =',start);
   const hookStart = app.indexOf('  const exportLoudness ='), hookEnd = app.indexOf('  function openTimelineExport()',hookStart);
-  const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{application \? undefined : exportLoudness(?: as never)?\}/);
+  const block = app.slice(start,contextEnd) + app.slice(hookStart,hookEnd); assert.doesNotMatch(block, /timeline\?\.revision|refresh\(|setShowExports|setRightDockTab/); assert.match(app,/loudness=\{exportLoudness(?: as never)?\}/);
   const live = context() as {exports: Array<Record<string, unknown>>; assets: Array<Record<string, unknown>>}, calls: Array<{operation: string; input: Record<string, unknown>; options: unknown}> = [], dataRef = { current: { project: { id: projectId }, exports: live.exports, assets: live.assets } }, currentProject = { current: projectId };
   const workspaceRef = { current: { restored: false } }, projectEpoch = { current: 1 }, navigationEpoch = { current: 0 }, panelIntent = { current: 0 }, viewRef = { current: { activeMode: 'editing' } };
   let controller!: ReturnType<typeof loudnessState.createExportLoudnessController>;

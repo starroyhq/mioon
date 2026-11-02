@@ -7,7 +7,6 @@ import path from 'node:path';
 import http from 'node:http';
 import {EventEmitter, once} from 'node:events';
 import {spawn} from 'node:child_process';
-import {DatabaseSync} from 'node:sqlite';
 import {Readable} from 'node:stream';
 import {createComfyHttp} from '../apps/server/src/comfy-http.ts';
 import {randomUUID} from 'node:crypto';
@@ -15,6 +14,7 @@ import {fileURLToPath} from 'node:url';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {operationDefinition, EXIT_CODES} from '../packages/client/src/index.ts';
 import {COMFY_IMAGE_OPTIONS, DEFAULT_COMFY_IMAGE_CONFIGURATION, comfyImageSettingsResultSchema} from '../packages/contracts/src/comfy-images.ts';
 import {startComfyFixture, COMFY_FIXTURE_MODEL} from './helpers/comfy-http-fixture.ts';
@@ -25,7 +25,7 @@ const modes = {load: 'available', skip: 'not_loaded', 'not-provided': 'not_provi
 const repo = fileURLToPath(new URL('..', import.meta.url));
 interface HttpData {revision?: number; configuration?: Record<string, unknown>; readiness?: {checked: boolean; checkedAt: string | null}; items?: {assetId: string}[]; [key: string]: unknown}
 interface HttpBody {ok?: boolean; data?: HttpData; error?: {code?: string; retryable?: boolean}}
-interface Fixture {root: string; server: {url: string}; request(route: string, options?: {method?: string; input?: unknown; authenticated?: boolean; headers?: Record<string, string>}): Promise<{status: number; headers: Headers; body: HttpBody}>; rpc(operation: string, input?: Record<string, unknown>): Promise<HttpData>; approve(review: {projectId: string; id: string}): Promise<HttpData>; task(ack: {projectId: string; id: string}): Promise<HttpData>; remote(ack: {projectId: string; id: string}): Promise<HttpData>; reopen(selected?: string): Promise<void>}
+interface Fixture {root: string; server: {url: string}; request(route: string, options?: {method?: string; input?: unknown; authenticated?: boolean; headers?: Record<string, string>}): Promise<{status: number; headers: Headers; body: HttpBody}>; rpc(operation: string, input?: Record<string, unknown>): Promise<HttpData>; approve(review: {projectId: string; id: string}): Promise<HttpData>; task(ack: {projectId: string; id: string}): Promise<HttpData>; remote(ack: {projectId: string; id: string}): Promise<HttpData>; reopen(selected?: string): Promise<void>; inspect: InspectProject}
 const cliEnvironment = (f: Fixture): Record<string, string> => ({...Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'SYSTEMROOT', 'COMSPEC']
   .filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]])),
   TZ: 'UTC', MIOON_BASE_URL: f.server.url, MIOON_TOKEN: token, MIOON_ENABLE_LIVE_PROVIDER: '0'} as Record<string, string>);
@@ -44,15 +44,17 @@ async function cli(f: Fixture, operation: string, input: unknown) {
   for (const text of [stdout, stderr]) assert.ok(!text.includes(token) && !text.includes(f.root), 'CLI must not expose credentials or workspace paths');
   return {code: result[0], envelope: JSON.parse(stdout)};
 }
-function retainedRows(f: Fixture) {
-  const db = new DatabaseSync(path.join(f.root, 'workbench.sqlite'), {readOnly: true});
-  try { return imageRows({db} as never); } finally { db.close(); }
+// The server holds the project while it runs: read on its own connection.
+function retainedRows(f: Fixture, projectId: string) {
+  return f.inspect(projectId, db => imageRows({db} as never));
 }
 async function fixture(t: TestContext, {mode, comfyNetwork}: {mode?: string; comfyNetwork?: {httpRequest?: () => unknown}} = {}): Promise<Fixture> {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-comfy-module-http-'));
-  let server!: Awaited<ReturnType<typeof startServer>>;
+  let server!: Awaited<ReturnType<typeof startServer>>, inspect!: InspectProject;
   t.after(async () => { await server?.close(); await rm(root, {recursive: true, force: true}); });
-  const start = (selected?: string) => startServer({dataDir: root, port: 0, token, ...(selected === undefined ? {} : {comfyModule: selected}), ...(comfyNetwork ? {comfyNetwork} : {})} as never);
+  // Each server that starts hands over its own connection.
+  const start = (selected?: string) => startServer({dataDir: root, port: 0, token, ...(selected === undefined ? {} : {comfyModule: selected}), ...(comfyNetwork ? {comfyNetwork} : {}),
+    inspectProject: (received: InspectProject) => { inspect = received; }} as never);
   server = await start(mode);
   // These cases isolate Comfy availability after the workspace-level opt-in.
   // The settings response intentionally includes its local backup directory,
@@ -76,6 +78,7 @@ async function fixture(t: TestContext, {mode, comfyNetwork}: {mode?: string; com
     task: (ack: {projectId: string; id: string}) => f.rpc('image.task.get', {projectId: ack.projectId, taskId: ack.id}),
     remote: (ack: {projectId: string; id: string}) => f.rpc('image.task.remote.get', {projectId: ack.projectId, taskId: ack.id}),
     async reopen(selected?: string) { await server.close(); server = await start(selected); },
+    get inspect() { return inspect; },
   };
   return f as unknown as Fixture;
 }
@@ -158,10 +161,10 @@ test('default server keeps Comfy available and omitted module keeps exact receip
     assert.deepEqual(await f.rpc('image.review.prepare', {input, settingsRevision: 1}), savedReview);
     assert.deepEqual(await f.approve(review), ack);
     assert.deepEqual(await f.rpc('image.task.observeRemote', observation), observed);
-    const beforeCli = retainedRows(f);
+    const beforeCli = retainedRows(f, project.id);
     assert.deepEqual(await cli(f, 'image.generate', input), {code: EXIT_CODES.success, envelope: {ok: true, data: ack}});
     assert.deepEqual(await cli(f, 'image.task.observeRemote', observation), {code: EXIT_CODES.success, envelope: {ok: true, data: observed}});
-    assert.deepEqual(retainedRows(f), beforeCli, 'CLI receipt replay must not rewrite any retained image row');
+    assert.deepEqual(retainedRows(f, project.id), beforeCli, 'CLI receipt replay must not rewrite any retained image row');
     assert.deepEqual(await f.task(ack), finished);
     assert.deepEqual(await f.rpc('image.version.list', {projectId: project.id, groupId: ack.groupId}), versions);
     const media = await fetch(`${f.server.url}/media/${versions.items![0].assetId}`, {headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(10000)});
@@ -171,11 +174,11 @@ test('default server keeps Comfy available and omitted module keeps exact receip
       const denied = await f.request('/api/rpc', {method: 'POST', input: {operation, input: request}});
       assert.equal(denied.status, 503, JSON.stringify(denied.body)); assert.equal(denied.body.error!.code, 'COMFY_MODULE_UNAVAILABLE');
     }
-    const beforeCliRefusal = retainedRows(f);
+    const beforeCliRefusal = retainedRows(f, project.id);
     const refused = await cli(f, 'image.review.prepare', {input: inputFor(project.id), settingsRevision: 1});
     assert.equal(refused.code, EXIT_CODES.unavailable);
     assert.equal(refused.envelope.ok, false); assert.equal(refused.envelope.error.code, 'COMFY_MODULE_UNAVAILABLE');
-    assert.deepEqual(retainedRows(f), beforeCliRefusal, 'CLI refusal must create no review, task, request receipt or observation');
+    assert.deepEqual(retainedRows(f, project.id), beforeCliRefusal, 'CLI refusal must create no review, task, request receipt or observation');
     assert.deepEqual(comfy.counts(), counts, 'reading and replay after omission must not submit or observe remotely');
   }
   assert.deepEqual(comfy.errors, []);
@@ -185,11 +188,11 @@ test('omitting Comfy preserves official MCP discovery and CLI refusal but grants
   let networkCalls = 0;
   const f = await fixture(t, {mode: 'not-provided', comfyNetwork: {httpRequest() { networkCalls++; throw Error('Unexpected connector I/O'); }}});
   const project = await f.rpc('project.create', {name: 'Optional MCP discovery'}) as unknown as {id: string};
-  const beforeCli = retainedRows(f);
+  const beforeCli = retainedRows(f, project.id);
   const refused = await cli(f, 'image.review.prepare', {input: inputFor(project.id), settingsRevision: 1});
   assert.equal(refused.code, EXIT_CODES.unavailable);
   assert.equal(refused.envelope.ok, false); assert.equal(refused.envelope.error.code, 'COMFY_MODULE_UNAVAILABLE');
-  assert.deepEqual(retainedRows(f), beforeCli, 'unavailable CLI preparation must create no review, task or request receipt');
+  assert.deepEqual(retainedRows(f, project.id), beforeCli, 'unavailable CLI preparation must create no review, task or request receipt');
   assert.equal(networkCalls, 0);
   const client = new Client({name: 'synthetic-optional-comfy-acceptance', version: '1.0.0'}, {capabilities: {}});
   const clean = Object.fromEntries(['PATH', 'HOME', 'TMPDIR', 'TEMP', 'LANG', 'SYSTEMROOT', 'COMSPEC'].filter(key => typeof process.env[key] === 'string').map(key => [key, process.env[key]]));

@@ -56,7 +56,7 @@ export const agentTaskMessages = {
   "agent.task.editingStart": {"zh-Hans": "开始编辑此处", "zh-Hant": "開始編輯此處", "en": "Start editing here", "ja": "この箇所の編集を開始"},
   "agent.task.editingStartShort": {"zh-Hans": "编辑", "zh-Hant": "編輯", "en": "Edit", "ja": "編集"},
   "agent.task.editingRelease": {"zh-Hans": "结束编辑", "zh-Hant": "結束編輯", "en": "Finish editing", "ja": "編集を終了"},
-  "agent.task.editingHint": {"zh-Hans": "开始编辑后，Mio 会等待你保存或放弃此处修改，其他内容仍可继续处理", "zh-Hant": "開始編輯後，Mio 會等待你儲存或放棄此處修改，其他內容仍可繼續處理", "en": "Once you start editing, Mio waits for you to save or discard changes here. Other content remains available", "ja": "編集を開始すると、この箇所の変更を保存または破棄するまで Mio は待機します。他の内容は引き続き処理できます"},
+  "agent.task.editingHint": {"zh-Hans": "开始编辑后，Mio 不会修改此处，其他内容照常处理", "zh-Hant": "開始編輯後，Mio 不會修改此處，其他內容照常處理", "en": "Once you start editing, Mio does not change this item. It continues with other content", "ja": "編集を開始すると、Mio はこの箇所を変更せず、他の内容の処理を続けます"},
   "agent.task.editingActive": {"zh-Hans": "正在编辑此处。保存或放弃修改后，请结束编辑，让 Mio 可以继续处理此处", "zh-Hant": "正在編輯此處。儲存或放棄修改後，請結束編輯，讓 Mio 可以繼續處理此處", "en": "You are editing this item. Save or discard your changes, then finish editing so Mio can work on it again", "ja": "この箇所を編集中です。変更を保存または破棄してから編集を終了すると、Mio が処理を続けられます"},
   "agent.task.editingUnknown": {"zh-Hans": "暂时无法确认此处是否可编辑，已暂停输入。你的草稿和编辑状态仍保留", "zh-Hant": "暫時無法確認此處是否可編輯，已暫停輸入。你的草稿與編輯狀態仍保留", "en": "Editing is temporarily unavailable until its status is confirmed. Your draft and editing state are retained", "ja": "編集状態を確認できないため、入力を一時停止しています。下書きと編集状態は保持されています"},
   "agent.task.editingResolve": {"zh-Hans": "确认原修改已保存或放弃，结束此处编辑", "zh-Hant": "確認原修改已儲存或放棄，結束此處編輯", "en": "Finish editing here after saving or discarding the original changes", "ja": "元の変更を保存または破棄したことを確認し、この箇所の編集を終了"},

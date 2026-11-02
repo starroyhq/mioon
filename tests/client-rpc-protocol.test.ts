@@ -82,8 +82,9 @@ test('shared client accepts exact valid responses for all six mutations, keyed a
   for (const [operation, data, result] of mutations) {
     let calls = 0;
     const client = createClient({ env, fetchImpl: (async () => { calls++; return response({ ok: true, data: result }); }) as unknown as typeof fetch });
-    assert.deepEqual(await client.rpc(operation, data), result);
-    assert.deepEqual(await client.rpc(operation, { ...data, requestId: input.requestId }), result);
+    // The entity-addressed updates take their project beside the input.
+    assert.deepEqual(await client.rpc(operation, data, { projectId }), result);
+    assert.deepEqual(await client.rpc(operation, { ...data, requestId: input.requestId }, { projectId }), result);
     assert.equal(calls, 2);
   }
 });
@@ -98,7 +99,7 @@ test('shared client rejects malformed six-op data with original key guidance and
     for (const result of invalid) {
       let calls = 0;
       const client = createClient({ env, fetchImpl: (async () => { calls++; return response({ ok: true, data: result }); }) as unknown as typeof fetch });
-      await assert.rejects(client.rpc(operation, { ...data, requestId: input.requestId }), (error: unknown) => {
+      await assert.rejects(client.rpc(operation, { ...data, requestId: input.requestId }, { projectId }), (error: unknown) => {
         const failure = failureOf(error);
         assert.equal(failure.code, 'BACKEND_PROTOCOL_ERROR');
         assert.equal(failure.details?.operation, operation); assert.equal(failure.details?.requestId, input.requestId);

@@ -17,9 +17,18 @@ import {openStore} from '../packages/business/src/db.ts';
 import {currentMarkerChain,currentOrdinary48Delta,currentOrdinary50Delta,currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {snapshot as rawSnapshot} from './workspace-schema26-fixtures.mjs';
 import {createServices,canonical} from '../packages/business/src/services.ts';
+import {schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 interface RangeAsset {id: string; projectId: string; name: string; mimeType: string; duration: unknown; sha256: string; relativePath: string; url: string}
 interface RangeFixture {root: string; store: TypedStore; project: FixtureProject; other: FixtureProject; call: TypedCall; restart(): void; asset(mimeType?: string,duration?: unknown,projectId?: string): RangeAsset; input(asset: RangeAsset,patch?: Record<string, unknown>): {projectId: string;assetId: string;expectedRevision: number;requestId: string;inFrame: number;outFrame: number}}
+// Another project lives in a store of its own: a store holds one project.
+async function foreignProject(t: test.TestContext,name='Foreign project'){
+ const root=await mkdtemp(path.join(tmpdir(),'mioon-source-ranges-foreign-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const store=openStore(root) as unknown as TypedStore,services=(createServices(store,new Map()) as unknown as TypedServices);
+ try{return await services.call('project.create',{name});}
+ finally{await services.drain();store.close();}
+}
+const byName=(a: {name: string},b: {name: string})=>a.name<b.name?-1:a.name>b.name?1:0;
 async function fixture(t: test.TestContext,{open=openStore as (root: string) => unknown}={}){
  const root=await mkdtemp(path.join(tmpdir(),'mioon-source-ranges-'));
  let store=open(root) as unknown as TypedStore,services=(createServices(store,new Map()) as unknown as TypedServices);
@@ -28,10 +37,10 @@ async function fixture(t: test.TestContext,{open=openStore as (root: string) => 
   asset(mimeType: string|undefined='video/mp4',duration: string|number|null|undefined=2,projectId: string=f.project.id){return store.put('assets',{id:randomUUID(),projectId,name:'Private fixture',mimeType,duration,sha256:'a'.repeat(64),relativePath:'media/fixture',url:'/media/fixture'}) as unknown as RangeAsset;},
   input(asset: { id: unknown; projectId: unknown; name?: string; mimeType?: unknown; duration?: unknown; sha256?: string; relativePath?: string; url?: string; },patch: { inFrame?: number; outFrame?: number; expectedRevision?: number; requestId?: `${string}-${string}-${string}-${string}-${string}`; }|undefined={}){return {projectId:asset.projectId,assetId:asset.id,expectedRevision:0,requestId:randomUUID(),inFrame:0,outFrame:30,...patch};},
  } as unknown as RangeFixture;
- f.project=await f.call('project.create',{name:'Source ranges'});f.other=await f.call('project.create',{name:'Foreign private project'});
+ f.project=await f.call('project.create',{name:'Source ranges'});f.other=await foreignProject(t,'Foreign private project');
  t.after(async()=>{store.close();await rm(root,{recursive:true,force:true});});return f;
 }
-const snapshot=(f: Pick<RangeFixture, 'store'>,omit: string[]=[]): Record<string, Record<string,SQLOutputValue>[]>=>Object.fromEntries(f.store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().filter(({name})=>!omit.includes(name as string)).map(({name})=>[name,f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));
+const snapshot=(f: Pick<RangeFixture, 'store'>,omit: string[]=[]): Record<string, Record<string,SQLOutputValue>[]>=>Object.fromEntries(schemaObjects(f.store.db).filter(({type,name})=>type==='table'&&!name.startsWith('sqlite_')).sort(byName).filter(({name})=>!omit.includes(name)).map(({name})=>[name,f.store.db.prepare(`SELECT * FROM ${name} ORDER BY rowid`).all()]));
 
 function assertReviewed52Migration(f: Pick<RangeFixture,'store'>,before: Record<string, Record<string,SQLOutputValue>[]>,rawBefore: ReturnType<typeof rawSnapshot>,expectedTargetCount: number){
  const actual=rawSnapshot(f.store.db);actual.objects=withoutReviewedCurrentAgentObjects(actual.objects);const names=new Set<string>(currentOrdinary52Delta.objectNames),objects=actual.objects.filter((object: { name: string; })=>names.has(object.name));
@@ -145,13 +154,13 @@ test('cross-operation and cross-project keys conflict globally before ownership 
 });
 
 test('missing and foreign reads/writes are uniform; exact replay revalidates both owner copies and retained project',async t=>{
- const f=await fixture(t),asset=f.asset(),foreign=f.asset('video/mp4',2,f.other.id),input=f.input(asset);await f.call('asset.range.set',input);
+ const f=await fixture(t),asset=f.asset(),foreign=withoutForeignKeys(f.store.db,()=>f.asset('video/mp4',2,f.other.id)),input=f.input(asset);await f.call('asset.range.set',input);
  for(const target of [{projectId:f.project.id,assetId:randomUUID()},{projectId:f.project.id,assetId:foreign.id},{projectId:randomUUID(),assetId:asset.id}]){
   await assert.rejects(f.call('asset.range.get',target),safeMissing);
   await assert.rejects(f.call('asset.range.set',{...input,...target,requestId:randomUUID()}),safeMissing);
  }
  // Foreign malformed content is never decoded, even for exact replay.
- replaceAsset(f,asset,{projectId:f.other.id},f.other.id);
+ withoutForeignKeys(f.store.db,()=>replaceAsset(f,asset,{projectId:f.other.id},f.other.id));
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{private-unreadable',asset.id);
  const before=snapshot(f);await assert.rejects(f.call('asset.range.set',input),safeMissing);assert.deepEqual(snapshot(f),before);
  replaceAsset(f,asset,{projectId:f.other.id});
@@ -159,14 +168,14 @@ test('missing and foreign reads/writes are uniform; exact replay revalidates bot
  replaceAsset(f,asset);
  f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(JSON.stringify({...f.project,id:f.other.id}),f.project.id);
  await assert.rejects(read(f,asset),{code:'INVALID_SOURCE_RANGE_RECORD'});await assert.rejects(f.call('asset.range.set',input),{code:'INVALID_SOURCE_RANGE_RECORD'});
- f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id);f.store.db.exec('PRAGMA foreign_keys=ON');
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id));
  await assert.rejects(read(f,asset),safeMissing);await assert.rejects(f.call('asset.range.set',input),safeMissing);
 });
 
 test('damaged saved range rows and retained acknowledgements fail closed before revision/current disclosure',async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset),saved=await f.call('asset.range.set',input);
  f.store.db.exec('DROP TRIGGER immutable_asset_range_identity');
- f.store.db.prepare('UPDATE asset_ranges SET projectId=? WHERE assetId=?').run(f.other.id,asset.id);
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE asset_ranges SET projectId=? WHERE assetId=?').run(f.other.id,asset.id));
  for(const operation of ['asset.range.get','asset.range.set'])await assert.rejects(f.call(operation,operation.endsWith('get')?{projectId:asset.projectId,assetId:asset.id}:input),error=>(error as RootFailure).code==='INVALID_SOURCE_RANGE_RECORD'&&noDisclosure(error));
  f.store.db.prepare('UPDATE asset_ranges SET projectId=?,outFrame=61 WHERE assetId=?').run(asset.projectId,asset.id);
  await assert.rejects(read(f,asset),{code:'INVALID_SOURCE_RANGE_RECORD'});
@@ -193,15 +202,17 @@ test('duplicate receipts and wrong operation/table pairing fail closed before ta
 
 test('range, receipt, and trigger-induced ownership changes roll back together',async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset),before=snapshot(f);
- f.store.db.exec("CREATE TRIGGER fail_range_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_range_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected receipt failure');END;");
  await assert.rejects(f.call('asset.range.set',input),/injected receipt failure/);assert.deepEqual(snapshot(f),before);assert.equal(f.store.db.isTransaction,false);
  f.store.db.exec('DROP TRIGGER fail_range_receipt');
  // The post-receipt guard closes even an in-transaction reassignment by a trigger.
- f.store.db.exec(`CREATE TRIGGER reassign_after_receipt AFTER INSERT ON asset_range_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
- await assert.rejects(f.call('asset.range.set',input),safeMissing);assert.deepEqual(snapshot(f),before);
+ f.store.db.exec(`CREATE TEMP TRIGGER reassign_after_receipt AFTER INSERT ON asset_range_requests BEGIN UPDATE assets SET projectId='${f.other.id}',data=json_set(data,'$.projectId','${f.other.id}') WHERE id='${asset.id}';END;`);
+ // The trigger moves the asset to a project this store does not hold, inside the service's own transaction.
+ await withoutForeignKeys(f.store.db,()=>assert.rejects(f.call('asset.range.set',input),safeMissing));
+ assert.deepEqual(snapshot(f),before);
  f.store.db.exec('DROP TRIGGER reassign_after_receipt');
  const first=await f.call('asset.range.set',input),updated=f.input(asset,{expectedRevision:1,inFrame:30,outFrame:60}),saved=snapshot(f);
- f.store.db.exec("CREATE TRIGGER fail_update_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER fail_update_receipt BEFORE INSERT ON asset_range_requests BEGIN SELECT RAISE(ABORT,'injected update failure');END;");
  await assert.rejects(f.call('asset.range.set',updated),/injected update failure/);assert.deepEqual(snapshot(f),saved);assert.deepEqual(await read(f,asset),first);
 });
 
@@ -216,7 +227,10 @@ test('retained source receipts reject update/delete/replacement, and cross-table
 });
 
 test('targeted v11/v12 additive reapplication preserves all old receipt bytes and fresh schema invariants',async t=>{
- const f=await fixture(t,{open:openLegacyWorkspaceStore});await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
+ const f=await fixture(t,{open:openLegacyWorkspaceStore});
+ // The legacy seed this migration preserves holds a second project in the same file, created before the shot.
+ await f.call('project.create',{name:'Foreign private project'});
+ await f.call('shot.create',{projectId:f.project.id,title:'Legacy keyed shot',requestId:randomUUID()});
  const old=f.store.db.prepare('SELECT * FROM mutation_requests').get();
  for(const table of ['timeline_requests','reference_requests'])f.store.db.prepare(`INSERT INTO ${table} VALUES(?,?,?)`).run(randomUUID(),'old-hash',' { "old": true, "preserve": "spacing" } ');
  const fullSchema=()=>f.store.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name").all();
@@ -312,7 +326,7 @@ test('revision overflow and lost or malformed asset rows never expose retained r
  assert.deepEqual(snapshot(f),before);
  f.store.db.prepare('UPDATE assets SET data=? WHERE id=?').run('{broken',asset.id);
  await assert.rejects(read(f,asset),{code:'INVALID_SOURCE_RANGE_RECORD'});await assert.rejects(f.call('asset.range.set',input),{code:'INVALID_SOURCE_RANGE_RECORD'});
- f.store.db.exec('PRAGMA foreign_keys=OFF');f.store.db.prepare('DELETE FROM assets WHERE id=?').run(asset.id);f.store.db.exec('PRAGMA foreign_keys=ON');
+ withoutForeignKeys(f.store.db,()=>f.store.db.prepare('DELETE FROM assets WHERE id=?').run(asset.id));
  await assert.rejects(read(f,asset),safeMissing);await assert.rejects(f.call('asset.range.set',input),safeMissing);
 });
 

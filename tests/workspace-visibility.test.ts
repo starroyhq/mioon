@@ -7,12 +7,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as contracts from '@mioon/contracts';
-import { activeJob } from '../apps/web/src/api.ts';
+import { activeJob, mediaUrl } from '../apps/web/src/api.ts';
 import { LOCAL_SHOT_TEXT_LIMITS } from '@mioon/contracts/local-shot-text';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as sourceRanges from '../apps/web/src/source-range-state.ts';
 import * as previewPlayback from '../apps/web/src/preview-playback.ts';
-import * as candidatePresentation from '../apps/web/src/opacity-candidate-render-presentation.ts';
 import {DEFAULT_UI_PREFERENCES} from '../packages/contracts/src/ui-preferences.ts';
 import {imageEditSourceIssueDescriptor} from '../apps/web/src/image-generation.ts';
 import {generationParameters} from '../apps/web/src/generation-settings.ts';
@@ -24,6 +23,9 @@ const componentCode = new Map(['workspace-visibility.tsx', 'Nodes.tsx', 'Preview
   transformSync(readFileSync(new URL(`../apps/web/src/${file}`, import.meta.url), 'utf8'), { loader: 'tsx', format: 'cjs', sourcefile: file }).code,
 ]));
 const noop = () => {};
+const renderProjectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const firstRenderAssetId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const secondRenderAssetId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 function makeElement(src:unknown = null) {
   return {
     src, currentTime: 0, duration: 20, paused: true, seeking: false, isConnected: true,
@@ -89,7 +91,6 @@ function createHarness(file: string, exportName = 'default') {
     './PreviewPlaybackControls.tsx': { default: 'PreviewPlaybackControls', __esModule: true },
     './PreviewRenderProgress.tsx': { default: 'PreviewRenderProgress', __esModule: true },
     './preview-playback.ts': previewPlayback,
-    './opacity-candidate-render-presentation.ts': candidatePresentation,
     './UiPreferencesProvider.tsx': {useUiPreferences:()=>({preferences:DEFAULT_UI_PREFERENCES})},
     './image-generation.ts': {imageEditSourceIssueDescriptor},
     './source-range-state.ts': sourceRanges,
@@ -98,7 +99,7 @@ function createHarness(file: string, exportName = 'default') {
     './TimelineAudioPreview.tsx': { default: 'TimelineAudioPreview', __esModule: true },
     './ClipTransformBox.tsx': { default: 'ClipTransformBox', __esModule: true },
     './icons.tsx': { default: 'Icon', __esModule: true },
-    './api.ts': { assetUrl: (asset: { url: unknown; }) => asset?.url || '', versionUrl: (version: { url: unknown; }) => version?.url || '', activeJob, statusText: (value: unknown) => value, jobStatusText: (value: unknown) => value, outputReviewRequired: () => false },
+    './api.ts': { assetUrl: (asset: { url: unknown; }) => asset?.url || '', versionUrl: (version: { url: unknown; }) => version?.url || '', activeJob, mediaUrl, statusText: (value: unknown) => value, jobStatusText: (value: unknown) => value, outputReviewRequired: () => false },
     './Timeline.tsx': { assetKind: (asset: { mimeType: string; }) => asset?.mimeType?.split('/')[0], framesLabel: String, dragAsset: noop },
     './reference-connections.ts': { referenceForShot: () => null },
     './generation-settings.ts': { generationParameters, wanGenerationCapabilities: () => null, seedanceGenerationCapabilities: () => null, generationVideoInput: () => undefined, generationSelection: () => ({ provider: { id: 'mock', mock: true }, model: 'mock', capabilities: {}, inputMode: 'text', scenario: 'success' }), generationInputIssue: () => '', providerAvailabilityIssue: () => '', inputModeLabel: String, inputModeDescriptor: String, generationInputIssueDescriptor: () => '', providerAvailabilityDescriptor: () => '' },
@@ -223,9 +224,10 @@ for (const kind of ['source', 'timeline'] as const) {
     const h = createHarness('Preview.tsx'), seeks: unknown[] = [], props = previewProps({
       kind, onSeek: (value: unknown) => seeks.push(value), timeline: { revision: 1 },
       clip: { id: 'clip-one', sourceInFrame: 0, startFrame: 0, durationFrames: 300 },
-      job: { id: 'render-one', status: 'succeeded', url: '/render', timelineRevision: 1 },
+      job: { id: 'render-one', projectId: renderProjectId, assetId: firstRenderAssetId, status: 'succeeded', url: '/render', timelineRevision: 1 },
     });
     h.render(props); const node = h.mediaNode(), element = node.props.ref.current;
+    if (kind === 'timeline') assert.equal(element.src, mediaUrl(renderProjectId, firstRenderAssetId));
     element.currentTime = 2; element.paused = false;
     node.props.onTimeUpdate({ currentTarget: element }); assert.deepEqual(seeks, [60]);
     h.render({ ...props, visible: false });
@@ -249,15 +251,15 @@ test('Preview applies a changed playhead deferred while hidden, without publishi
 });
 
 test('replaced Preview sources reject old callbacks and Strict Mode disposal restores the current source', () => {
-  const h = createHarness('Preview.tsx'), seeks: unknown[] = [], props = previewProps({ kind: 'timeline', timeline: { revision: 1 }, job: { id: 'render-one', status: 'succeeded', url: '/first', timelineRevision: 1 }, onSeek: (value: unknown) => seeks.push(value) });
+  const h = createHarness('Preview.tsx'), seeks: unknown[] = [], props = previewProps({ kind: 'timeline', timeline: { revision: 1 }, job: { id: 'render-one', projectId: renderProjectId, assetId: firstRenderAssetId, status: 'succeeded', url: '/first', timelineRevision: 1 }, onSeek: (value: unknown) => seeks.push(value) });
   h.render(props); const old = h.mediaNode(), original = old.props.ref.current;
-  h.render({ ...props, job: { ...props.job, id: 'render-two', url: '/second' } });
+  h.render({ ...props, job: { ...props.job, id: 'render-two', assetId: secondRenderAssetId, url: '/second' } });
   const current = h.mediaNode().props.ref.current;
   assert.notEqual(original, current); assert.equal(original.loads, 1); assert.equal(original.src, null);
   original.currentTime = 4; original.paused = false;
   old.props.onTimeUpdate({ currentTarget: original }); old.props.onSeeked({ currentTarget: original }); old.props.onPlay({ currentTarget: original });
   assert.deepEqual(seeks, []); assert.equal(original.paused, true);
-  h.replayEffects(); assert.equal(current.src, '/second'); assert.equal(current.paused, true);
+  h.replayEffects(); assert.equal(current.src, mediaUrl(renderProjectId, secondRenderAssetId)); assert.equal(current.paused, true);
 });
 
 test('Inspector version cards expose stable version numbers and keep frozen details collapsed without changing actions', () => {

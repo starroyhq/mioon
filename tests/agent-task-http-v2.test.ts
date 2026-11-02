@@ -96,11 +96,14 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
  const jobs=await f.request('/api/rpc','POST',{operation:'job.list',input:{projectId:f.projectId}});assert.equal(jobs.status,200);assert.deepEqual(jobs.data,[]);
  const lookup=await f.request(`${f.prefix}/requests/${(sent.data as AgentTaskSnapshot).run.requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.snapshot));assert.deepEqual((lookup.data.snapshot as unknown as AgentTaskSnapshot).steps.find(step=>step.toolCall?.name==='mioon_generation_submit')?.display,planned);
 });
-for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: conflict snapshot reads current saved values on the server without exposing raw evidence or replaying work`,async t=>{
+for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: conflict hand-back carries current saved values on the server without exposing raw evidence or replaying work`,async t=>{
  let shotId='',shotRevision=0,models=0,enter=()=>{},release=()=>{};
  const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
  const gateway:TaskGateway=async function*(request){
-  models++;request.beforeSubmit?.();enter();await released;
+  models++;request.beforeSubmit?.();
+  // X4: the second request reads the handed-back value and gives the final reply.
+  if(models>1){yield {type:'done',output:{text:'Reread the saved shot',toolCalls:[],providerOutput:(protocol==='responses'?[{id:'message_reread',type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'Reread the saved shot',annotations:[]}]}]:{role:'assistant',content:'Reread the saved shot'}) as AgentTaskJson}};return;}
+  enter();await released;
   const toolCall={id:'call_conflict_current',name:'mioon_shot_update',arguments:{shotId,expectedRevision:shotRevision,patch:{duration:4,prompt:'Mio original plan'}}};
   yield {type:'done',output:{text:'',toolCalls:[toolCall],providerOutput:protocol==='responses'?[{id:'fc_conflict_current',call_id:toolCall.id,type:'function_call',name:toolCall.name,arguments:JSON.stringify(toolCall.arguments),status:'completed'}]:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]}}};
  };
@@ -109,10 +112,10 @@ for(const protocol of ['chat_completions','responses'] as const)test(`${protocol
   const created=await f.request('/api/rpc','POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Conflict target',duration:2,prompt:'Saved original'}});assert.equal(created.status,200);assert.ok(object(created.data));shotId=String(created.data.id);shotRevision=Number(created.data.revision);await f.authorize();
   const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'synthetic conflict',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);await entered;
   const changed=await f.request('/api/rpc','POST',{operation:'shot.update',input:{shotId,expectedRevision:shotRevision,patch:{duration:3,prompt:'Saved manual change'}}});assert.equal(changed.status,200);assert.ok(object(changed.data));release();
-  const paused=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'conflict');assert.ok(agentTaskSnapshotSchema.safeParse(paused).success);assert.equal(paused.changes.length,0);assert.equal(f.loadRequests,1);
-  const pending=paused.steps.findLast(step=>step.kind==='tool');assert.ok(pending?.display);assert.equal(pending.display.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.equal(pending.display.fields.find(field=>field.property==='durationSeconds')?.current,3);assert.equal(pending.display.fields.find(field=>field.property==='description')?.current,'Saved manual change');assert.ok(pending.display.fields.every(field=>field.before===undefined));assert.equal(pending.data,undefined);assert.equal(pending.request,undefined);
-  const changedAgain=await f.request('/api/rpc','POST',{operation:'shot.update',input:{shotId,expectedRevision:changed.data.revision,patch:{duration:5,prompt:'Latest saved change /private/hidden apiKey=SYNTHETIC_SAVED_PRIVATE'}}});assert.equal(changedAgain.status,200);
-  const refreshed=await f.request(`${f.prefix}/${paused.run.id}`);assert.equal(refreshed.status,200);const fresh=agentTaskSnapshotSchema.parse(refreshed.data),freshStep=fresh.steps.find(step=>step.id===pending.id),display=freshStep?.display;assert.ok(display);assert.equal(display.fields.find(field=>field.property==='durationSeconds')?.current,5);assert.equal(display.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.equal(display.fields.find(field=>field.property==='description')?.current,'Latest saved change /private/hidden apiKey=SYNTHETIC_SAVED_PRIVATE');assert.doesNotMatch(JSON.stringify(display),/Saved manual change/u);assert.equal(freshStep?.data,undefined);assert.equal(freshStep?.request,undefined);assert.equal(models,1);assert.equal(fresh.changes.length,0);
+  const done=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(done.run.status,'completed');assert.ok(agentTaskSnapshotSchema.safeParse(done).success);assert.equal(done.changes.length,0);assert.equal(f.loadRequests,1);assert.equal(models,2);
+  const handed=done.steps.findLast(step=>step.kind==='tool');assert.ok(handed);assert.equal(handed.status,'rejected');assert.equal(handed.error?.code,'TARGET_CHANGED');assert.equal(handed.data,undefined);assert.equal(handed.request,undefined);
+  assert.ok(object(handed.result)&&object(handed.result.error)&&Array.isArray(handed.result.error.current));const current=handed.result.error.current[0];assert.ok(object(current)&&object(current.value));assert.equal(current.id,shotId);assert.equal(current.value.duration,3);assert.equal(current.value.prompt,'Saved manual change');
+  const planned=handed.display;assert.ok(planned);assert.equal(planned.fields.find(field=>field.property==='durationSeconds')?.after,4);assert.ok(planned.fields.every(field=>field.before===undefined&&field.current===undefined));
  }finally{release();}
 });
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: REST validates locale and keeps original request lookup and language conflicts`,async t=>{
@@ -187,14 +190,16 @@ test('HTTP and CLI notes use the same durable queue and control receipt without 
  release();const done=await f.settle(run.id);assert.equal(done.run.status,'completed');assert.equal(models,2);assert.match(bodies[1]!,/HTTP_ADDITIONAL_NOTE/);assert.match(bodies[1]!,/CLI_ADDITIONAL_NOTE/);assert.ok(done.run.notes?.every(note=>note.modelStepId));
  }finally{release();}
 });
-test('HTTP conflict resume fails closed and CLI skip keeps the saved target with a durable receipt',async t=>{
+test('HTTP conflict hand-back completes on its own, keeps the saved target and leaves skip nothing to answer',async t=>{
  let enter=()=>{},release=()=>{},models=0,shotId='',revision=0;const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
  const gateway:TaskGateway=async function*(request){models++;request.beforeSubmit?.();if(models===1){enter();await released;const toolCall={id:'http_skip_conflict',name:'mioon_shot_update',arguments:{shotId,expectedRevision:revision,patch:{prompt:'stale AI plan'}}};yield {type:'done',output:{text:'',toolCalls:[toolCall],providerOutput:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]} as AgentTaskJson}};}else yield {type:'done',output:{text:'User edit kept',toolCalls:[],providerOutput:{role:'assistant',content:'User edit kept'} as AgentTaskJson}};};
  const f=await fixture(t,'chat_completions',gateway,['canvas']);try{const created=await f.request('/api/rpc','POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Skip HTTP target',prompt:'original'}});assert.ok(object(created.data));shotId=String(created.data.id);revision=Number(created.data.revision);await f.authorize();const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'HTTP conflict skip',expectedSettingsRevision:(await f.settings.get()).revision}),run=agentTaskSnapshotSchema.parse(sent.data).run;await entered;
- assert.equal((await f.request('/api/rpc','POST',{operation:'shot.update',input:{shotId,expectedRevision:revision,patch:{prompt:'manual preserved'}}})).status,200);release();const paused=await f.settle(run.id);assert.equal(paused.run.pauseReason,'conflict');
- const denied=await f.request(`${f.prefix}/${run.id}/actions`,'POST',{requestId:randomUUID(),expectedRevision:paused.run.revision,action:'resume'});assert.equal(denied.status,409);assert.ok(object(denied.error));assert.equal(denied.error.code,'AGENT_TASK_SKIP_REQUIRED');
- const requestId=randomUUID(),skipped=await cliTaskControl(f.server.url,f.server.token,'skip',{projectId:f.projectId,runId:run.id,requestId,expectedRevision:paused.run.revision});assert.equal(skipped.run.skippedTargets?.[0]?.target.id,shotId);const done=await f.settle(run.id);assert.equal(done.run.status,'completed');assert.equal(done.changes.length,0);assert.equal(models,2);assert.equal(f.loadRequests,1);assert.equal(done.steps.find(step=>step.toolCall?.name==='mioon_shot_update')?.status,'denied');
- const lookup=await f.request(`${f.prefix}/${run.id}/actions/${requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.deepEqual(lookup.data.receipt.result,{state:'completed',skippedTargets:[{kind:'shot',id:shotId}]});const inspected=await f.request('/api/rpc','POST',{operation:'shot.inspect',input:{projectId:f.projectId}});assert.equal(inspected.status,200);assert.ok(object(inspected.data)&&Array.isArray(inspected.data.items));const saved=inspected.data.items.find(item=>object(item)&&item.id===shotId);assert.ok(object(saved));assert.equal(saved.prompt,'manual preserved');
+ assert.equal((await f.request('/api/rpc','POST',{operation:'shot.update',input:{shotId,expectedRevision:revision,patch:{prompt:'manual preserved'}}})).status,200);release();const done=await f.settle(run.id);assert.equal(done.run.status,'completed');assert.equal(done.changes.length,0);assert.deepEqual(done.run.skippedTargets,[]);assert.equal(models,2);assert.equal(f.loadRequests,1);
+ const handed=done.steps.find(step=>step.toolCall?.name==='mioon_shot_update');assert.ok(handed);assert.equal(handed.status,'rejected');assert.equal(handed.error?.code,'TARGET_CHANGED');assert.ok(object(handed.result)&&object(handed.result.error)&&Array.isArray(handed.result.error.current));const current=handed.result.error.current[0];assert.ok(object(current)&&object(current.value));assert.equal(current.value.prompt,'manual preserved');
+ // No conflict pause remains, so skip has nothing to answer and is rejected as invalid.
+ const requestId=randomUUID(),skip=await f.request(`${f.prefix}/${run.id}/actions`,'POST',{requestId,expectedRevision:done.run.revision,action:'skip'});assert.equal(skip.status,400);assert.ok(object(skip.error));assert.equal(skip.error.code,'AGENT_TASK_INVALID');
+ const cli=await cliSnapshot(f.server.url,f.server.token,f.projectId,run.id),cliStep=cli.steps.find(step=>step.id===handed.id);assert.equal(cli.run.status,'completed');assert.equal(cliStep?.status,'rejected');assert.equal(cliStep?.error?.code,'TARGET_CHANGED');assert.deepEqual(cli.run.skippedTargets,[]);
+ const lookup=await f.request(`${f.prefix}/${run.id}/actions/${requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.deepEqual(lookup.data.receipt.result,{state:'rejected',code:'AGENT_TASK_INVALID'});const inspected=await f.request('/api/rpc','POST',{operation:'shot.inspect',input:{projectId:f.projectId}});assert.equal(inspected.status,200);assert.ok(object(inspected.data)&&Array.isArray(inspected.data.items));const saved=inspected.data.items.find(item=>object(item)&&item.id===shotId);assert.ok(object(saved));assert.equal(saved.prompt,'manual preserved');
  }finally{release();}
 });
 
@@ -276,5 +281,70 @@ test('HTTP and CLI read and set a conversation policy and answer a waiting quest
  const done=await f.settle(waiting.run.id);assert.equal(done.run.status,'completed');assert.equal(models,2);assert.match(bodies[1]!,/Close-up/u);
  assert.deepEqual(done.steps.find(item=>item.id===step.id)?.result,{answer:{choices:[1]},selected:['Close-up']});
  const lookup=await f.request(`${f.prefix}/${waiting.run.id}/actions/${answerId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.equal(lookup.data.receipt.action,'answer');
+});
+const finalReply=(text:string)=>({type:'done' as const,output:{text,toolCalls:[],providerOutput:{role:'assistant',content:text} as AgentTaskJson}});
+const toolReply=(toolCall:{id:string;name:string;arguments:AgentTaskJson})=>({type:'done' as const,output:{text:'',toolCalls:[toolCall],providerOutput:{role:'assistant',content:null,tool_calls:[{id:toolCall.id,type:'function',function:{name:toolCall.name,arguments:JSON.stringify(toolCall.arguments)}}]} as AgentTaskJson}});
+for(const via of ['http','cli'] as const)test(`X4 follow-up: a foreground approval of a target saved meanwhile is rejected over ${via==='http'?'HTTP, saying the step did not run':'the CLI with the same code'} and the run replans without a pause`,async t=>{
+ let shotId='',revision=0,models=0;
+ const gateway:TaskGateway=async function*(request){models++;request.beforeSubmit?.();yield models===1?toolReply({id:'x4_followup_approval',name:'mioon_shot_update',arguments:{shotId,expectedRevision:revision,patch:{prompt:'Mio plan awaiting approval'}}}):finalReply('Replanned from the saved shot');};
+ const f=await fixture(t,'chat_completions',gateway,['canvas']),before=await f.request('/api/agent/tasks/v2/policy');assert.ok(object(before.data));const policy=before.data.policy as AgentTaskPolicy;
+ assert.equal((await f.request('/api/agent/tasks/v2/policy','PUT',{...policy,requestId:randomUUID(),expectedRevision:policy.revision,modes:{...policy.modes,local_reversible:'confirm'}})).status,200);
+ const created=await f.request('/api/rpc','POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Approval hand-back target',prompt:'Saved original'}});assert.ok(object(created.data));shotId=String(created.data.id);revision=Number(created.data.revision);await f.authorize();
+ const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'X4 follow-up approval',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);
+ const waiting=await f.settle(agentTaskSnapshotSchema.parse(sent.data).run.id),step=waiting.steps.find(item=>item.toolCall?.name==='mioon_shot_update');assert.equal(waiting.run.status,'awaiting_approval');assert.ok(step);assert.equal(step.status,'awaiting_approval');
+ assert.equal((await f.request('/api/rpc','POST',{operation:'shot.update',input:{shotId,expectedRevision:revision,patch:{prompt:'Manual save before approval'}}})).status,200);
+ const requestId=randomUUID(),control={requestId,expectedRevision:waiting.run.revision,stepId:step.id},code='AGENT_TASK_TARGET_CHANGED',message='该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。';
+ if(via==='http'){
+  const approved=await f.request(`${f.prefix}/${waiting.run.id}/actions`,'POST',{...control,action:'approve'});
+  assert.equal(approved.status,409);assert.ok(object(approved.error));assert.equal(approved.error.code,code);assert.equal(approved.error.message,message);
+ }else await assert.rejects(cliJson(f.server.url,f.server.token,['agent','task','approve'],{projectId:f.projectId,runId:waiting.run.id,...control}),(error:unknown)=>{
+  // The Agent client keeps the code and replaces the server's text with its own fixed sentence.
+  assert.ok(error instanceof Error);const printed=error.message.replace(/^Synthetic CLI command failed: /u,'');assert.equal(printed.includes(f.server.token),false);
+  const envelope:unknown=JSON.parse(printed);assert.ok(object(envelope)&&envelope.ok===false&&object(envelope.error));assert.equal(envelope.error.code,code);assert.equal(typeof envelope.error.message,'string');assert.doesNotMatch(String(envelope.error.message),/暂停/u);return true;
+ });
+ const lookup=await f.request(`${f.prefix}/${waiting.run.id}/actions/${requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.deepEqual(lookup.data.receipt.result,{state:'rejected',code});
+ const done=await f.settle(waiting.run.id);assert.equal(done.run.status,'completed');assert.equal(done.changes.length,0);assert.equal(models,2);assert.equal(f.loadRequests,1);
+ const handed=done.steps.find(item=>item.id===step.id);assert.equal(handed?.status,'rejected');assert.equal(handed?.error?.code,'TARGET_CHANGED');
+ const inspected=await f.request('/api/rpc','POST',{operation:'shot.inspect',input:{projectId:f.projectId}});assert.ok(object(inspected.data)&&Array.isArray(inspected.data.items));const saved=inspected.data.items.find(item=>object(item)&&item.id===shotId);assert.ok(object(saved));assert.equal(saved.prompt,'Manual save before approval');
+});
+test('X4 follow-up: a conflict the worker finds for a queued paid job pauses the run, HTTP resume asks for a choice and a CLI skip replans without sending the job',async t=>{
+ let shotId='',revision=0,models=0,enter=()=>{},release=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
+ const gateway:TaskGateway=async function*(request){
+  models++;request.beforeSubmit?.();
+  if(models===1){yield toolReply({id:'x4_followup_generation',name:'mioon_generation_submit',arguments:{shotId,expectedRevision:revision,providerId:'mock',model:'mock-motion-v1'}});return;}
+  // The second request stays in flight while the worker meets the conflict.
+  if(models===2){enter();await released;}
+  yield finalReply(models===2?'Generation queued':'Replanned after the skip');
+ };
+ const f=await fixture(t,'chat_completions',gateway,['video']);
+ try{
+  // Four steps: loading (2) and the submit (2). The run then stops at the budget,
+  // so the worker first meets the queued job while the run is paused.
+  const before=await f.request('/api/agent/tasks/v2/policy');assert.ok(object(before.data));const policy=before.data.policy as AgentTaskPolicy;
+  assert.equal((await f.request('/api/agent/tasks/v2/policy','PUT',{...policy,requestId:randomUUID(),expectedRevision:policy.revision,stepLimit:4,modes:{...policy.modes,paid:'direct'},acknowledgePaid:true})).status,200);
+  const created=await f.request('/api/rpc','POST',{operation:'shot.create',input:{projectId:f.projectId,title:'Background conflict target',duration:2,aspectRatio:'9:16',prompt:'Saved original'}});assert.ok(object(created.data));shotId=String(created.data.id);revision=Number(created.data.revision);await f.authorize();
+  const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'X4 follow-up background conflict',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);const runId=agentTaskSnapshotSchema.parse(sent.data).run.id;
+  const budget=await f.settle(runId);assert.equal(budget.run.status,'paused');assert.equal(budget.run.pauseReason,'budget');
+  const jobs=async()=>{const listed=await f.request('/api/rpc','POST',{operation:'job.list',input:{projectId:f.projectId}});assert.equal(listed.status,200);assert.ok(Array.isArray(listed.data));return listed.data.map(item=>{assert.ok(object(item));return item;});};
+  // Guard: the job was accepted and nothing sent it before the budget pause.
+  const accepted=await jobs();assert.equal(accepted.length,1);assert.equal(accepted[0]!.status,'queued');
+  assert.equal((await f.request('/api/rpc','POST',{operation:'shot.update',input:{shotId,expectedRevision:revision,patch:{prompt:'manual after acceptance'}}})).status,200);
+  const current=agentTaskSnapshotSchema.parse((await f.request(`${f.prefix}/${runId}`)).data);
+  assert.equal((await f.request(`${f.prefix}/${runId}/actions`,'POST',{requestId:randomUUID(),expectedRevision:current.run.revision,action:'resume'})).status,200);
+  await Promise.race([entered,new Promise<never>((_,reject)=>{setTimeout(()=>reject(Error('Synthetic second model request did not start')),10000).unref();})]);
+  const paused=await f.settle(runId,['paused','completed','failed']);assert.equal(paused.run.status,'paused');assert.equal(paused.run.pauseReason,'conflict');
+  assert.equal((await jobs())[0]!.status,'queued');assert.equal(paused.steps.find(step=>step.toolCall?.name==='mioon_generation_submit')?.display?.conflict,true);
+  const resumed=await f.request(`${f.prefix}/${runId}/actions`,'POST',{requestId:randomUUID(),expectedRevision:paused.run.revision,action:'resume'});assert.equal(resumed.status,409);assert.ok(object(resumed.error));assert.equal(resumed.error.code,'AGENT_TASK_SKIP_REQUIRED');
+  release();
+  let replied=paused;for(let count=0;count<400&&replied.steps.filter(step=>step.kind==='model').some(step=>step.status!=='completed');count++){await new Promise(resolve=>setTimeout(resolve,5));replied=agentTaskSnapshotSchema.parse((await f.request(`${f.prefix}/${runId}`)).data);}
+  assert.equal(replied.steps.filter(step=>step.kind==='model'&&step.status==='completed').length,3);assert.equal(replied.run.status,'paused');assert.equal(replied.run.pauseReason,'conflict');
+  const requestId=randomUUID(),skipped=await cliControl(f.server.url,f.server.token,'skip',{projectId:f.projectId,runId,requestId,expectedRevision:replied.run.revision});
+  assert.deepEqual(skipped.run.skippedTargets?.map(item=>[item.target.kind,item.target.id]),[['shot',shotId]]);
+  const done=await f.settle(runId,['completed','failed']);assert.equal(done.run.status,'completed');assert.equal(models,3);assert.equal(f.loadRequests,1);
+  const cancelled=(await jobs())[0]!;assert.equal(cancelled.status,'cancelled');assert.equal(cancelled.providerJobId,null);
+  const inspected=await f.request('/api/rpc','POST',{operation:'shot.inspect',input:{projectId:f.projectId}});assert.ok(object(inspected.data)&&Array.isArray(inspected.data.items));const saved=inspected.data.items.find(item=>object(item)&&item.id===shotId);assert.ok(object(saved));assert.equal(saved.prompt,'manual after acceptance');
+  const lookup=await f.request(`${f.prefix}/${runId}/actions/${requestId}`);assert.ok(object(lookup.data)&&object(lookup.data.receipt));assert.equal(lookup.data.receipt.action,'skip');assert.deepEqual(lookup.data.receipt.result,{state:'completed',skippedTargets:[{kind:'shot',id:shotId}]});
+  const cli=await cliSnapshot(f.server.url,f.server.token,f.projectId,runId);assert.equal(cli.run.status,done.run.status);assert.deepEqual(cli.run.skippedTargets,done.run.skippedTargets);
+ }finally{release();}
 });
 

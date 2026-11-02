@@ -253,7 +253,7 @@ test('project notes accept plain text up to 8192 bytes', () => {
 
 test('the project menu opens the notes between import and duplicate, and saves through project.notes.set', () => {
   const app = read('App.tsx'), dialog = read('ProjectNotesDialog.tsx');
-  assert.match(app, /\{t\('projectPackage\.menu\.import'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-notes" disabled=\{Boolean\(application\) \|\| opacityRestored \|\| loading \|\| !data\.project\} onClick=\{\(\) => \{ setShowProjects\(false\); if \(data\.project\) setNotesOpen\(true\); \}\}><Icon name="note" size=\{15\} \/>\{t\('projectNotes\.menu'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-duplicate"/);
+  assert.match(app, /\{t\('projectPackage\.menu\.import'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-notes" disabled=\{loading \|\| !data\.project\} onClick=\{\(\) => \{ setShowProjects\(false\); if \(data\.project\) setNotesOpen\(true\); \}\}><Icon name="note" size=\{15\} \/>\{t\('projectNotes\.menu'\)\}<\/DropdownMenuItem><DropdownMenuSeparator \/><DropdownMenuItem data-testid="project-menu-duplicate"/);
   assert.match(app, /<ProjectNotesDialog open=\{notesOpen && Boolean\(data\.project\)\}[^\n]*readOnly=\{restored\}/, 'a restored copy shows its notes read-only');
   assert.match(dialog, /saveProjectNotes\(call, \{ base, notes: retained\?\.notes \?\? draft, retained \}\)/);
   assert.match(dialog, /\{!readOnly && <Button variant="primary" data-testid="project-notes-save"/);

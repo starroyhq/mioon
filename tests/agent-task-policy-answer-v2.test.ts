@@ -18,6 +18,7 @@ import type {TaskGateway} from '../packages/business/src/agent/task-gateway-v2.t
 import {AGENT_TASK_POLICY_PRESETS,DEFAULT_AGENT_TASK_POLICY,agentTaskPolicyPreset} from '../packages/contracts/src/agent-tasks-v2.ts';
 import type {AgentTaskControlAction,AgentTaskJson,AgentTaskPolicyModes,AgentTaskSnapshot,AgentTaskToolCall} from '../packages/contracts/src/agent-tasks-v2.ts';
 import {createTestAuthorizations,authorizeTestScope} from './helpers/agent-authorizations.ts';
+import {foreignKeyCheck} from './helpers/project-database.ts';
 import {downgradeReviewedWorkspace} from './helpers/reviewed-schema-layers.ts';
 import {CURRENT_RESTORE_PROFILE,CURRENT_RESTORED_SCHEMA,assertCurrentOrdinaryWorkspace} from './helpers/workspace-schema-current.ts';
 
@@ -256,7 +257,7 @@ test('a waiting question keeps its project from deletion; a finished conversatio
  assert.equal(f.get(waiting.run.id).run.status,'completed');
  assert.equal((record(await remove())).deleted,true);
  for(const table of ['agent_task_conversation_policies_v2','agent_task_conversation_policy_requests_v2','agent_task_runs_v2','project_deletion_scope'])assert.equal(f.store.db.prepare(`SELECT count(*) AS n FROM ${table}`).get()!.n,0,table);
- assert.equal(f.store.db.prepare('PRAGMA foreign_key_check').get(),undefined);
+ assert.deepEqual(foreignKeyCheck(f.store.db),[]);
 });
 test('schema64 upgrades to schema66 intact, and the schema64 profile refuses runs waiting for an answer',async()=>{
  const root=mkdtempSync(join(realpathSync(tmpdir()),'mioon-policy-answer-v64-'));

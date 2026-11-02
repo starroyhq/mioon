@@ -1,13 +1,18 @@
 import type {Failure} from './helpers/strict-agent-workspace-types.ts';
 import type {MockRequestState, MockRequest, MockIncoming} from './helpers/strict-agent-workspace-types.ts';
+import type {ProviderEvent, ProviderPart, ProviderItem, ProviderResponse} from './helpers/strict-agent-workspace-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
+import {createServer, type ServerResponse} from 'node:http';
+import type {AddressInfo} from 'node:net';
 import {Readable} from 'node:stream';
 import {setTimeout as delay} from 'node:timers/promises';
 import {DEFAULT_AGENT_CONFIGURATION} from '../packages/business/src/agent/presets.ts';
 import {isPublicAgentAddress, resolveAgentDestination, assertPinnedAgentSocket, createAgentTransport, wasAgentTransportSubmissionPrevented} from '../packages/business/src/agent/network-policy.ts';
+import type {AgentTransportDependencies} from '../packages/business/src/agent/network-policy.ts';
 import {AGENT_HTTP_DIAGNOSTIC_MAX_BYTES, agentChatHttpError, agentChatHttpStatus, safeAgentChatError} from '../packages/business/src/agent/chat-errors.ts';
+import {buildTaskModelRequest, createTaskGateway} from '../packages/business/src/agent/task-gateway-v2.ts';
 const configuration = {...DEFAULT_AGENT_CONFIGURATION};
 const publicAnswers = async () => [{address: '8.8.8.8', family: 4}];
 function injectedRequest({peer = '8.8.8.8', authorized = true, status = 200, headers = {'content-type': 'text/event-stream'}, beforeConnect, body = 'data: [DONE]\n\n', responseStream}: {peer?: string;authorized?: boolean;status?: number;headers?: Record<string,string|undefined>;body?: string;responseStream?: MockIncoming|import("node:stream").Readable;beforeConnect?: (state: MockRequestState)=>void} = {}) {
@@ -253,4 +258,73 @@ test('Responses cancellation while DNS is pending cannot open a later socket',as
   let resolveLookup,calls=0;const controller=new AbortController();
   const pending=createAgentTransport({lookup:((()=>new Promise(resolve=>{resolveLookup=resolve;})) as unknown as typeof import('node:dns/promises').lookup),httpsRequest:()=>{calls++;assert.fail('late socket');}})({...openArgs,configuration:{...configuration,protocol:'responses' as const},signal:controller.signal});
   controller.abort();await assert.rejects(pending,{code:'AGENT_CHAT_ABORTED'});resolveLookup!(await publicAnswers());await delay(5);assert.equal(calls,0);
+});
+
+// Restored from the deleted agent-chat-protocol and agent-responses-protocol tests.
+// They reached createAgentTransport's read deadline and response-header bound only
+// through the deleted legacy gateways; Mio's task gateway now opens the same
+// transport (through the OpenAI SDK transport) for both protocols.
+const messages = [{role:'user' as const,content:'Synthetic protocol fixture only.'}];
+const chunk = (delta = {}, finish: string|null = null, extra = {}) => ({choices:[{index:0,delta,finish_reason:finish}],...extra});
+const frame = (value: unknown) => `data: ${typeof value === 'string' ? value : JSON.stringify(value)}\n\n`;
+const complete = (text: string) => frame(chunk({role:'assistant' as const}))+frame(chunk({content:text}))+frame(chunk({},'stop'))+frame('[DONE]');
+const textPart = (text: string) => ({type:'output_text',text,annotations:[],logprobs:[]});
+const item = (parts: ProviderPart[]=[],status='in_progress',id='msg_1') => ({id,type:'message',role:'assistant' as const,status,content:parts});
+const response = (output: ProviderItem[]=[],status='in_progress',extra={}): ProviderResponse => ({id:'resp_1',object:'response',status,output,error:null,incomplete_details:null,reasoning:{effort:null,summary:null},...extra});
+function nativeEvents(parts: ProviderPart[]=[textPart('你好 🙂')], extra={}): ProviderEvent[] {
+  const events: ProviderEvent[]=[{type:'response.created',response:response()},{type:'response.in_progress',response:response()},{type:'response.output_item.added',output_index:0,item:item()}];
+  parts.forEach((part,content_index)=>{
+    const key={output_index:0,item_id:'msg_1',content_index}, kind=part.type==='refusal'?'refusal':'output_text', field=part.type==='refusal'?'refusal':'text';
+    events.push({type:'response.content_part.added',...key,part:{...part,[field]:''}},
+      {type:`response.${kind}.delta`,...key,delta:part[field]},
+      {type:`response.${kind}.done`,...key,[field]:part[field]},
+      {type:'response.content_part.done',...key,part});
+  });
+  events.push({type:'response.output_item.done',output_index:0,item:item(parts,'completed')},
+    {type:'response.completed',response:response([item(parts,'completed')],'completed',extra)});
+  return events.map((value,sequence_number)=>({...structuredClone(value),sequence_number}));
+}
+const responsesFrame = (value: ProviderEvent,named=true) => `${named?`event: ${value.type}\n`:''}data: ${JSON.stringify(value)}\n\n`;
+const wire = (events: ProviderEvent[]=nativeEvents(),named=true) => ': keepalive\n\nid: ignored-id\n'+events.map(value=>responsesFrame(value,named)).join('');
+async function collect(iterator: AsyncIterable<unknown>) { const events: unknown[]=[]; for await (const event of iterator) events.push(event); return events; }
+async function gatewayFixture(t: test.TestContext, protocol: 'chat_completions'|'responses', handler: (response: ServerResponse)=>unknown, dependencies: AgentTransportDependencies = {}) {
+  const server=createServer(async (request,response) => {
+    for await (const _chunk of request) {/* Read the whole request before replying. */}
+    response.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8'});
+    await handler(response);
+  });
+  await new Promise<void>(resolve => server.listen(0,'127.0.0.1',resolve));
+  t.after(async () => {server.closeAllConnections(); await new Promise<void>(resolve=>server.close(()=>resolve()));});
+  const configuration={protocol,presetId:'ollama',platformId:'local',baseUrl:`http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,model:'qwen3:8b'};
+  const body=buildTaskModelRequest(configuration,messages,[],4318);
+  return {configuration, run:() => createTaskGateway(dependencies)({configuration,body,apiKey:null,selfPort:4318})};
+}
+// The read-deadline fixtures finish the response after a stall that outlasts the
+// read deadline but not the total deadline. With silence alone, a missing read
+// deadline would still end in AGENT_CHAT_TIMEOUT through the total deadline.
+function stallThenFinish(response: ServerResponse, partial: string, rest: string) {
+  response.write(partial);
+  const timer=setTimeout(()=>response.end(rest),250);
+  response.on('close',()=>clearTimeout(timer));
+}
+
+test('read inactivity and total duration apply to real sockets even after partial output or keepalives', async t => {
+  const idle=await gatewayFixture(t,'chat_completions',(response)=>stallThenFinish(response,frame(chunk({content:'partial'})),frame(chunk({},'stop'))+frame('[DONE]')),{limits:{readTimeoutMs:30,totalTimeoutMs:500,connectTimeoutMs:100}});
+  await assert.rejects(collect(idle.run()),{code:'AGENT_CHAT_TIMEOUT'});
+  const total=await gatewayFixture(t,'chat_completions',(response)=>{const timer=setInterval(()=>response.write(': alive\n\n'),5);response.on('close',()=>clearInterval(timer));},{limits:{readTimeoutMs:100,totalTimeoutMs:40,connectTimeoutMs:100}});
+  await assert.rejects(collect(total.run()),{code:'AGENT_CHAT_TIMEOUT'});
+});
+
+test('oversized response headers are rejected by real Node HTTP parsing without disclosing values', async t => {
+  const server=createServer((_request,response)=>{response.writeHead(200,{'Content-Type':'text/event-stream','X-Oversized':'synthetic-private-marker'.repeat(1000)});response.end(complete('never accepted'));});
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));});
+  const configuration={protocol:'chat_completions' as const,presetId:'ollama',platformId:'local',baseUrl:`http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,model:'qwen3:8b'};
+  const body=buildTaskModelRequest(configuration,messages,[],4318);
+  await assert.rejects(collect(createTaskGateway()({configuration,body,apiKey:null,selfPort:4318})),error=>(error as Failure).code==='AGENT_CHAT_CONNECT_FAILED'&&!(error as Failure).message.includes('marker'));
+});
+
+test('Responses idle and total timeouts preserve network bounds with partial output or keepalives',async t=>{
+  const idle=await gatewayFixture(t,'responses',(res)=>stallThenFinish(res,wire(nativeEvents().slice(0,5)),nativeEvents().slice(5).map(event=>responsesFrame(event)).join('')),{limits:{readTimeoutMs:30,totalTimeoutMs:500,connectTimeoutMs:100}});await assert.rejects(collect(idle.run()),{code:'AGENT_CHAT_TIMEOUT'});
+  const total=await gatewayFixture(t,'responses',(res)=>{const timer=setInterval(()=>res.write(': alive\n\n'),5);res.on('close',()=>clearInterval(timer));},{limits:{readTimeoutMs:100,totalTimeoutMs:40,connectTimeoutMs:100}});await assert.rejects(collect(total.run()),{code:'AGENT_CHAT_TIMEOUT'});
 });

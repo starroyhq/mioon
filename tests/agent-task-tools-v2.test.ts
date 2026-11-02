@@ -88,13 +88,13 @@ test('background generation polling keeps one submission audit and bounded histo
  update({status:'running',phase:'polling',providerJobId:'synthetic-accepted-task',submissionCount:1});
  const before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),revision=f.journal.targetRevision(f.projectId,'job',jobId);
  // A full business-history budget must not block ordinary provider polling.
- f.store.db.exec("CREATE TRIGGER synthetic_poll_history_full BEFORE INSERT ON agent_task_changes_v2 BEGIN SELECT RAISE(ABORT,'synthetic history full');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER synthetic_poll_history_full BEFORE INSERT ON agent_task_changes_v2 BEGIN SELECT RAISE(ABORT,'synthetic history full');END;");
  for(let i=0;i<300;i++)update({progress:i%80,nextPollAt:1000+i});
  assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);
  assert.ok(f.journal.targetRevision(f.projectId,'job',jobId)>revision);assert.equal((f.store.get('jobs',jobId) as Record<string,unknown>).nextPollAt,1299);
  f.store.db.exec('DROP TRIGGER synthetic_poll_history_full');
  const originalJob=f.store.get('jobs',jobId);
- f.store.db.exec("CREATE TRIGGER synthetic_cost_audit_full BEFORE UPDATE ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.cost')='unknown' BEGIN SELECT RAISE(ABORT,'synthetic cost audit full');END;");
+ f.store.db.exec("CREATE TEMP TRIGGER synthetic_cost_audit_full BEFORE UPDATE ON agent_task_steps_v2 WHEN json_extract(NEW.data,'$.cost')='unknown' BEGIN SELECT RAISE(ABORT,'synthetic cost audit full');END;");
  assert.throws(()=>update({status:'submission_unknown',phase:'reconciliation_required'}),/synthetic cost audit full/u);
  assert.deepEqual(f.store.get('jobs',jobId),originalJob);assert.deepEqual(f.journal.snapshot(f.run.id),before);
  f.store.db.exec('DROP TRIGGER synthetic_cost_audit_full');
@@ -156,7 +156,7 @@ for(const obstacle of ['unbound_job','foreign_run_job','aba','draft','edge','com
 });
 test('retention audit failure rolls back the change classification, run revision and event atomically',async t=>{
  const f=await acceptedGeneratedShot(t),change=f.created.changes[0]!,before=f.journal.snapshot(f.run.id),events=f.journal.events(f.run.id),shot=f.store.get('shots',f.shotId),jobs=f.store.list('jobs',f.projectId);
- f.store.db.exec(`CREATE TRIGGER test_retention_audit BEFORE INSERT ON agent_task_events_v2 WHEN NEW.type='change' AND json_extract(NEW.data,'$.data.id')='${change.id}' AND json_extract(NEW.data,'$.data.reversible')=0 BEGIN SELECT RAISE(ABORT,'synthetic retention audit failure');END;`);
+ f.store.db.exec(`CREATE TEMP TRIGGER test_retention_audit BEFORE INSERT ON agent_task_events_v2 WHEN NEW.type='change' AND json_extract(NEW.data,'$.data.id')='${change.id}' AND json_extract(NEW.data,'$.data.reversible')=0 BEGIN SELECT RAISE(ABORT,'synthetic retention audit failure');END;`);
  assert.throws(()=>f.undo(change),/synthetic retention audit failure/);assert.deepEqual(f.journal.snapshot(f.run.id),before);assert.deepEqual(f.journal.events(f.run.id),events);assert.deepEqual(f.store.get('shots',f.shotId),shot);assert.deepEqual(f.store.list('jobs',f.projectId),jobs);
 });
 test('all public operations have explicit admission; model cannot acquire administration or raw file authority',async t=>{
@@ -295,15 +295,16 @@ test('effect fence after intent and immediately before the domain transaction bl
  assert.equal(fences,2);assert.equal((f.store.get('shots',shot.id) as Record<string,unknown>).title,'Before');assert.equal(f.journal.snapshot(f.run.id).changes.length,0);
 });
 test('target ownership is checked before a foreign record can be read or changed',async t=>{
- const f=await fixture(t),other=await f.services.call('project.create',{name:'Foreign'});if(!record(other))throw Error('Invalid project');
- const foreign=await f.services.call('shot.create',{projectId:other.id,title:'Foreign private title'});if(!record(foreign))throw Error('Invalid shot');
+ // Another project's records live in that project's own store: this project has none of them.
+ const f=await fixture(t),other=await fixture(t);
+ const foreign=await other.services.call('shot.create',{projectId:other.projectId,title:'Foreign private title'});if(!record(foreign))throw Error('Invalid shot');
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'shot.update',input:{shotId:foreign.id,expectedRevision:1,patch:{title:'Invalid'}}}),{code:'AGENT_TASK_INVALID_TARGET'});
- const privateJob=f.store.put('jobs',{id:randomUUID(),projectId:other.id,status:'failed',requestId:randomUUID()});
+ const privateJob=other.store.put('jobs',{id:randomUUID(),projectId:other.projectId,status:'failed',requestId:randomUUID()});
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'task.disposition.list',input:{targets:[{kind:'generation',taskId:privateJob.id}]}}),{code:'AGENT_TASK_INVALID_TARGET'});
 });
 test('task-only canvas discovery is bounded, project scoped, and enables editing existing nodes',async t=>{
- const f=await fixture(t),own=await f.services.call('node.create',{projectId:f.projectId,type:'text',text:'Owned canvas text',position:{x:10,y:20}}),other=await f.services.call('project.create',{name:'Other canvas'});if(!record(own)||!record(other))throw Error('Invalid fixtures');
- await f.services.call('node.create',{projectId:other.id,type:'text',text:'FOREIGN_CANVAS_NEVER_SEND',position:{x:10,y:20}});
+ const f=await fixture(t),own=await f.services.call('node.create',{projectId:f.projectId,type:'text',text:'Owned canvas text',position:{x:10,y:20}}),other=await fixture(t);if(!record(own))throw Error('Invalid fixtures');
+ await other.services.call('node.create',{projectId:other.projectId,type:'text',text:'FOREIGN_CANVAS_NEVER_SEND',position:{x:10,y:20}});
  const observed=await f.execute('mioon_node_inspect',{limit:1});assert.match(JSON.stringify(observed.outcome.result),/Owned canvas text/);assert.doesNotMatch(JSON.stringify(observed.outcome.result),/FOREIGN_CANVAS/);
  const updated=await f.execute('node.update',{nodeId:own.id,expectedRevision:1,patch:{text:'Updated after discovery'}});assert.equal(updated.step.status,'completed');
  await assert.rejects(f.execute('mioon_edge_inspect',{limit:21}),{code:'AGENT_TASK_INVALID_TOOL'});
@@ -385,8 +386,9 @@ test('selected import rejects symlink staging and enforces the 7 MiB Cube limit'
  await assert.rejects(f.tools.stageImport({projectId:f.projectId,requestId:randomUUID(),name:'large.cube',mimeType:'',dataBase64:Buffer.alloc(7*1024*1024+1).toString('base64')}),{code:'INVALID_MEDIA'});
 });
 test('foreign task.wait is rejected before invoking any task status reader',async t=>{
- const f=await fixture(t),other=await f.services.call('project.create',{name:'Foreign task'});if(!record(other)||typeof other.id!=='string')throw Error('Invalid project');
- const id=randomUUID();f.store.put('jobs',{id,projectId:other.id,status:'succeeded',private:'FOREIGN_CONTENT'});
+ // The foreign job lives in another project's own store: this project has no such job.
+ const f=await fixture(t),other=await fixture(t);
+ const id=randomUUID();other.store.put('jobs',{id,projectId:other.projectId,status:'succeeded',private:'FOREIGN_CONTENT'});
  let reads=0;const reader=f.services.handlers['job.get']!;f.services.handlers['job.get']=(input,context)=>{reads++;return reader(input,context);};
  assert.throws(()=>f.tools.prepare({projectId:f.projectId,operation:'task.wait',input:{kind:'job',id}}),{code:'AGENT_TASK_INVALID_TARGET'});
  await assert.rejects(f.tools.wait(f.projectId,{kind:'job',id}),{code:'AGENT_TASK_INVALID_TARGET'});assert.equal(reads,0);
@@ -504,6 +506,47 @@ test('existing image group accepts its own revision advance and single backgroun
   await until(()=>runtime.get(f.projectId,sent.run.id).run.status==='awaiting_approval');const pending=runtime.get(f.projectId,sent.run.id);assert.equal(pending.steps.find(item=>item.id===step.id)?.approvalRequired,true);assert.equal(posts,0);assert.equal(f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(task.id)!.state,'queued');
   await runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),action:'approve',stepId:step.id,expectedRevision:pending.run.revision});await runtime.drain();await until(()=>f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(task.id)?.state==='succeeded');
   assert.equal(posts,1);assert.equal(modelCalls,3);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks WHERE requestId=?').get(step.id)!.n,1);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_versions WHERE taskId=?').get(task.id)!.n,1);resumeAgentTaskJobs(f.store.db,sent.run.id);await delay(10);assert.equal(posts,1);assert.equal(runtime.get(f.projectId,sent.run.id).backgroundPending,false);
+ }finally{release();runtime.close();await runtime.drain();await settings.close();}
+});
+for(const action of ['handBack','deny'] as const)test(`a background image approval held behind a foreground approval is asked at once after the foreground step is ${action==='handBack'?'handed back':'denied'}`,async t=>{
+ let enter:()=>void=()=>{},release:()=>void=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),barrier=new Promise<void>(resolve=>{release=resolve;});let posts=0;
+ const f=await fixture(t,{imageOptions:{generate:async(snapshot,context)=>{enter();await barrier;return createMockImageAdapter().generate(snapshot,{...context,beforeDispatch:()=>{if(typeof context.beforeDispatch!=='function')throw Error('Missing host dispatch fence');context.beforeDispatch();posts++;}});}}});
+ async function until(check:()=>boolean,describe:()=>unknown=()=>''):Promise<void>{const deadline=Date.now()+30_000;while(!check()){if(Date.now()>=deadline)assert.fail(`Synthetic background approval did not settle ${JSON.stringify(describe())}`);await delay(10);}}
+ const shot=await f.shot('Foreground approval target'),prompt=()=>(f.store.get('shots',shot.id) as Record<string,unknown>).prompt,savedPrompt=prompt();f.journal.transition(f.run.id,f.journal.run(f.run.id).revision,'stopped');
+ const settings=await createAgentSettings({persistence:{load:async()=>null,save:async()=>{}}}),initial=await settings.get();await settings.put({expectedRevision:0,configuration:initial.configuration,secret:{action:'replace',storage:'session',value:'SYNTHETIC_BACKGROUND_REQUEUE_ONLY'}});
+ const authorizations=createTestAuthorizations(()=>({...f.store}),settings);await authorizeTestScope(authorizations,'project_agent');let modelCalls=0;
+ const gateway:TaskGateway=async function*(){const output:TaskModelOutput={text:'Synthetic background requeue',toolCalls:[],providerOutput:[]};modelCalls++;
+  if(modelCalls===1)output.toolCalls=[{id:'background-requeue-load',name:'mioon_tools_load',arguments:{groups:['images','canvas']}}];
+  else if(modelCalls===2)output.toolCalls=[{id:'background-requeue-image',name:'mioon_image_generate',arguments:{name:'Held behind approval',prompt:'Synthetic background image',providerId:'mock',model:'mock-image-v1',options:{...IMAGE_FIXED_OPTIONS}}}];
+  else if(modelCalls===3)output.toolCalls=[{id:'background-requeue-shot',name:'mioon_shot_update',arguments:{shotId:shot.id,expectedRevision:shot.revision,patch:{prompt:'Foreground edit'}}}];
+  output.providerOutput=output.toolCalls.map(call=>({type:'function_call',id:`fc_${call.id}`,call_id:call.id,name:call.name,arguments:JSON.stringify(call.arguments),status:'completed'}));yield {type:'done',output};};
+ const runtime=createAgentTaskRuntime({store:f.store,agentSettings:settings,authorizations,tools:f.tools,journal:f.journal,gateway,selfPort:()=>4318});
+ try{
+  runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'direct',local_reversible:'confirm'},acknowledgePaid:true});
+  const sent=await runtime.send(f.projectId,{requestId:randomUUID(),text:'Queue an image, then edit the shot',expectedSettingsRevision:(await settings.get()).revision});await entered;
+  await until(()=>runtime.get(f.projectId,sent.run.id).run.status==='awaiting_approval');
+  const waiting=runtime.get(f.projectId,sent.run.id),image=waiting.steps.find(item=>item.toolCall?.name==='mioon_image_generate'),foreground=waiting.steps.find(item=>item.toolCall?.name==='mioon_shot_update');
+  if(!image||!foreground)throw Error('Missing synthetic steps');assert.equal(image.status,'completed');assert.equal(foreground.status,'awaiting_approval');
+  const task=f.store.db.prepare('SELECT id,state FROM image_tasks WHERE requestId=?').get(image.id)!;assert.equal(task.state,'queued');
+  // Paid work now needs confirmation; the held attempt meets the gate and stays queued.
+  runtime.updatePolicy({requestId:randomUUID(),expectedRevision:runtime.policy().revision,stepLimit:30,modes:{...runtime.policy().modes,paid:'confirm'}});release();
+  await until(()=>{const data=f.journal.step(image.id).data;return record(data)&&data.backgroundApprovalRequired===true;});
+  assert.equal(posts,0);assert.equal(f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(task.id)!.state,'queued');
+  const held=runtime.get(f.projectId,sent.run.id),control={requestId:randomUUID(),stepId:foreground.id,expectedRevision:held.run.revision};
+  if(action==='handBack'){
+   await f.services.call('shot.update',{shotId:shot.id,expectedRevision:shot.revision,patch:{prompt:'Manual save'}});
+   await assert.rejects(runtime.action(f.projectId,sent.run.id,{...control,action:'approve'}),{code:'AGENT_TASK_TARGET_CHANGED'});
+  }else await runtime.action(f.projectId,sent.run.id,{...control,action:'deny'});
+  // Like a later HTTP control, let the relaunched executor settle before the next one.
+  await runtime.drain();
+  // No further foreground stop is needed: the requeued image asks for its approval.
+  await until(()=>runtime.get(f.projectId,sent.run.id).run.status==='awaiting_approval');
+  const asked=runtime.get(f.projectId,sent.run.id);assert.equal(asked.steps.find(item=>item.id===image.id)?.approvalRequired,true);assert.equal(asked.steps.find(item=>item.id===foreground.id)?.status,'rejected');assert.equal(posts,0);
+  await runtime.action(f.projectId,sent.run.id,{requestId:randomUUID(),action:'approve',stepId:image.id,expectedRevision:asked.run.revision});
+  await until(()=>f.store.db.prepare('SELECT state FROM image_tasks WHERE id=?').get(task.id)?.state==='succeeded',()=>{const now=runtime.get(f.projectId,sent.run.id);return {task:f.store.db.prepare('SELECT state,errorCode,dispatched FROM image_tasks WHERE id=?').get(task.id),run:[now.run.status,now.run.pauseReason],modelCalls,posts,image:f.journal.step(image.id).data};});await runtime.drain();
+  await until(()=>runtime.get(f.projectId,sent.run.id).run.status==='completed',()=>{const now=runtime.get(f.projectId,sent.run.id);return {run:[now.run.status,now.run.pauseReason],modelCalls,posts,steps:now.steps.map(item=>[item.kind,item.toolCall?.name,item.status,item.approvalRequired,item.error?.code])};});
+  assert.equal(posts,1);assert.equal(modelCalls,4);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM image_tasks WHERE requestId=?').get(image.id)!.n,1);
+  assert.equal(prompt(),action==='handBack'?'Manual save':savedPrompt);
  }finally{release();runtime.close();await runtime.drain();await settings.close();}
 });
 test('an unstarted frame task remains queued across a blocked final fence and resumes its original request once',async t=>{

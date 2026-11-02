@@ -161,9 +161,10 @@ test('Wan first-last frame order is frozen and retry cannot acquire current mode
 });
 
 test('Wan rejects foreign and changed assets before a generation POST',async t=>{
- const f=await fixture(t),other=await f.services.call('project.create',{name:'Foreign'}) as ServiceRow,foreign=await f.image(String(other.id));
+ // Another project lives in a store of its own: its image does not exist in this one.
+ const f=await fixture(t),g=await fixture(t),foreign=await g.image();
  const videoInput:WanVideoInput={version:1,mode:'first_frame',images:[{role:'first_frame',assetId:String(foreign.id)}]};
- await assert.rejects(f.services.call('generation.submit',f.input(videoInput)),{code:'INVALID_REFERENCE_OWNERSHIP'});assert.equal(f.store.list('jobs').length,0);
+ await assert.rejects(f.services.call('generation.submit',f.input(videoInput)),{code:'NOT_FOUND'});assert.equal(f.store.list('jobs').length,0);
  const image=await f.image(),job=await f.services.call('generation.submit',f.input({...videoInput,images:[{role:'first_frame',assetId:String(image.id)}]})) as JobRecord;
  f.store.put('assets',{...image,sha256:'0'.repeat(64)});await f.tick();await f.stop();
  assert.equal(f.calls.length,0);assert.equal(f.job(job.id).status,'failed');assert.equal(f.job(job.id).submissionCount,0);

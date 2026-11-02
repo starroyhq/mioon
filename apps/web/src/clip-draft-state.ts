@@ -1,7 +1,6 @@
 import { rawVolumeEnvelopeFields, validateRawVolumeEnvelope, rawVolumeEnvelopeChanged, isRawVolumeEnvelope } from './clip-volume-envelope-state.ts';
 import type { RawVolumeEnvelope, VolumeEnvelopeComposition } from './clip-volume-envelope-state.ts';
-import { rawOpacityEnvelopeFields, validateRawOpacityEnvelope, rawOpacityEnvelopeChanged, isRawOpacityEnvelope } from './clip-opacity-envelope-state.ts';
-import type { RawOpacityEnvelope, RawOpacityEnvelopeFields, OpacityEnvelopeComposition } from './clip-opacity-envelope-state.ts';
+import type { RawOpacityEnvelopeFields } from './clip-opacity-envelope-state.ts';
 import { isClipAudioRole } from '../../../packages/contracts/src/timeline-audio-role.ts';
 import { clipAudioRoleChanged } from './clip-audio-role-state.ts';
 import { message as displayMessage } from '../../../packages/i18n/src/index.ts';
@@ -9,7 +8,7 @@ import type { MessageDescriptor } from '../../../packages/i18n/src/index.ts';
 import { recoveryDisplayError, recoveryErrorMessage } from './recovery-display.ts';
 import { clipColourSchema } from '../../../packages/contracts/src/timeline-colour.ts';
 import type { ClipColour } from '../../../packages/contracts/src/timeline-colour.ts';
-import { clipDraftFailure, isOpacityCandidateClipDraftClient, isRestoredOpacityCandidateClipDraftClient, matchesRestoredOpacityClipDraftOrigin } from './clip-draft-client.ts';
+import { clipDraftFailure } from './clip-draft-client.ts';
 import type { ClipDraftFailure } from './clip-draft-client.ts';
 import type { EditorCloseOwnerSnapshot } from './editor-window-close.ts';
 import type { AgentEditingProof } from './agent-editing-proof.ts';
@@ -88,26 +87,20 @@ export function clipDraftSource(clip: Record<string, unknown>, asset: Record<str
   return { assetId: String(clip.assetId), assetSha256: typeof asset?.sha256 === 'string' ? asset.sha256 : '',
     ...Object.fromEntries(['versionId', 'shotId', 'jobId'].filter(key => own(clip, key)).map(key => [key, clip[key]])) } as ClipDraftSource;
 }
-function acknowledged(value: unknown, context: ClipDraftContext, base: number, source: ClipDraftSource, patch: Record<string, unknown>, expectedRaw: ClipDraftRaw, opacity: boolean): Record<string, unknown> | null {
+function acknowledged(value: unknown, context: ClipDraftContext, base: number, source: ClipDraftSource, patch: Record<string, unknown>, expectedRaw: ClipDraftRaw): Record<string, unknown> | null {
   if (!object(value) || value.id !== context.timelineId || value.projectId !== context.projectId || value.revision !== base + 1 || !Array.isArray(value.clips)) return null;
   const saved: unknown = value.clips.find((item: unknown) => object(item) && item.id === context.clipId);
   const expectedEnvelope = validateRawVolumeEnvelope(expectedRaw, Number(patch.durationFrames));
   if (!expectedEnvelope.valid || !object(saved) || own(saved, 'volumeEnvelope') !== own(expectedEnvelope.fields, 'volumeEnvelope') || !sameClipDraftValue(saved.volumeEnvelope, expectedEnvelope.fields.volumeEnvelope)) return null;
-  if (opacity) {
-    const expected = validateRawOpacityEnvelope(expectedRaw, Number(patch.durationFrames));
-    if (!expected.valid || own(saved, 'opacityEnvelope') !== own(expected.fields, 'opacityEnvelope') || !sameClipDraftValue(saved.opacityEnvelope, expected.fields.opacityEnvelope)) return null;
-  }
   if (!object(saved) || clipAudioRoleChanged(saved, expectedRaw) || saved.assetId !== source.assetId || !Object.entries(patch).every(([key, expected]) => sameClipDraftValue(saved[key], expected))) return null;
   if (['versionId', 'shotId', 'jobId'].some(key => own(source, key) !== own(saved, key) || (source as unknown as Record<string, unknown>)[key] !== saved[key])) return null;
   return saved;
 }
 
 export function createClipDraftController({ context: initial, client, validateTimeline = () => false, onChange = () => {}, delay = 250 }: { context: ClipDraftContext; client: ClipDraftClient; validateTimeline?: (value: unknown, projectId: string) => boolean; onChange?: (state: ClipDraftState) => void; delay?: number }) {
-  const opacity = isOpacityCandidateClipDraftClient(client) || isRestoredOpacityCandidateClipDraftClient(client);
-  const rawFor = (clip: Record<string, unknown>): ClipDraftRaw => ({ ...clipDraftRaw(clip), ...(opacity ? rawOpacityEnvelopeFields(clip as unknown as Parameters<typeof rawOpacityEnvelopeFields>[0]) : {}) });
+  const rawFor = (clip: Record<string, unknown>): ClipDraftRaw => ({ ...clipDraftRaw(clip) });
   let context = copy(initial), generation = 1, serial = 0, active = true, readSerial = 0, loaded = false;
-  const supportsRestoredPersistence = (workspaceOrigin?: string) => context.restored && matchesRestoredOpacityClipDraftOrigin(client, context.workspaceOrigin) && (workspaceOrigin === undefined || workspaceOrigin === context.workspaceOrigin);
-  const memoryOnly = () => context.restored ? !supportsRestoredPersistence() : isRestoredOpacityCandidateClipDraftClient(client);
+  const memoryOnly = () => context.restored;
   let deleting: object | null = null, discarding: object | null = null;
   let composition: { token: ClipVolumeCompositionToken; generation: number; serial: number; kind: 'volume' | 'opacity' } | null = null;
   let envelope: ClipDraftEnvelope | null = null, timer: ReturnType<typeof setTimeout> | undefined, flight: Promise<void> | null = null;
@@ -222,7 +215,6 @@ export function createClipDraftController({ context: initial, client, validateTi
     getState: () => state, getDirty: () => state.dirty || !!composition, hasUnsaved: () => state.dirty || !!composition || state.submitting, hasUnpersisted,
     hasPendingComposition: () => !!composition,
     isDiscarding: () => Boolean(discarding || deleting),
-    supportsRestoredPersistence,
     getPendingEnvelopeKind: () => composition?.kind ?? null,
     getEditorCloseSnapshot: (): EditorCloseOwnerSnapshot => Object.freeze({
       dirty: state.dirty || !!composition,
@@ -292,31 +284,11 @@ export function createClipDraftController({ context: initial, client, validateTi
       serial++; if (composition) composition.serial = serial;
       emit({ raw: { ...state.raw, volumeEnvelope: copy(value) }, dirty: true, conflict: state.conflict || conflict() }); schedule(); return true;
     },
-    beginOpacityComposition(token: ClipDraftCapture): ClipVolumeCompositionToken | null {
-      if (!opacity || !isCurrent(token) || composition || context.opacityEnvelopeEditable !== true || !context.connected || !context.visible || context.busy || state.submitting || state.businessPending || state.candidate || state.conflict) return null;
-      serial++; const ticket = Object.freeze({ owner: Symbol('opacity-composition') });
-      composition = { token: ticket, generation, serial, kind: 'opacity' };
-      if (timer) clearTimeout(timer); timer = undefined;
-      emit({ compositionPending: true }); return ticket;
-    },
-    updateOpacityComposition(token: ClipVolumeCompositionToken, update: OpacityEnvelopeComposition): boolean {
-      if (!active || !composition || composition.kind !== 'opacity' || composition.token !== token || composition.generation !== generation || composition.serial !== serial || !update.pending) return false;
-      serial++; composition.serial = serial; emit({ compositionPending: true }); return true;
-    },
-    endOpacityComposition(token: ClipVolumeCompositionToken): boolean {
-      if (!active || !composition || composition.kind !== 'opacity' || composition.token !== token || composition.generation !== generation || composition.serial !== serial) return false;
-      composition = null; serial++; emit({ compositionPending: false }); schedule(); return true;
-    },
-    editOpacityEnvelope(value: RawOpacityEnvelope | null, token: ClipDraftCapture | ClipVolumeCompositionToken): boolean {
-      const pending = composition && composition.kind === 'opacity' && composition.token === token && composition.generation === generation && composition.serial === serial;
-      if (!opacity || !active || value !== null && !isRawOpacityEnvelope(value) || !pending && (!isCurrent(token as ClipDraftCapture) || composition || context.opacityEnvelopeEditable !== true || !context.connected || !context.visible || context.busy || state.submitting || state.businessPending || state.candidate || state.conflict)) return false;
-      serial++; if (composition) composition.serial = serial;
-      emit({ raw: { ...state.raw, opacityEnvelope: copy(value) }, dirty: true, conflict: state.conflict || conflict() }); schedule(); return true;
-    },
     edit(key: keyof ClipDraftRaw, value: ClipDraftRaw[keyof ClipDraftRaw]) {
       if (composition) return false;
       if (key === 'volumeEnvelope') return controller.editVolumeEnvelope(value as RawVolumeEnvelope | null, capture());
-      if (key === 'opacityEnvelope') return controller.editOpacityEnvelope(value as RawOpacityEnvelope | null, capture());
+      // No ordinary workspace edits opacity keyframes.
+      if (key === 'opacityEnvelope') return false;
       if (key === 'audioRole' && (context.audioRoleEditable !== true || !context.connected || context.busy || state.submitting || state.businessPending || state.candidate || state.conflict || !isClipAudioRole(value))) return false;
       if (!active || !context.visible || !own(state.raw, key) && !['fadeInFrames', 'fadeOutFrames', 'colour', 'audioRole'].includes(key)) return false;
       serial++; emit({ raw: { ...state.raw, [key]: copy(value) }, dirty: true, conflict: state.conflict || conflict() }); schedule(); return true;
@@ -356,14 +328,7 @@ export function createClipDraftController({ context: initial, client, validateTi
     },
     async save(onSave: (clipId: string, patch: Record<string, unknown>, baseRevision: number, options: { canExecute: () => boolean }) => Promise<unknown>): Promise<unknown> {
       if (!active || composition || deleting || discarding || !context.visible || !context.connected || context.busy || state.conflict || state.submitting || !state.dirty || state.candidate) return null;
-      const patch = clipDraftPatch(state.raw); if (!patch || !opacity && own(state.raw, 'opacityEnvelope')) return null;
-      if (opacity) {
-        const fields = validateRawOpacityEnvelope(state.raw, Number(patch.durationFrames));
-        if (!fields.valid || !own(state.raw, 'opacityEnvelope') && own(context.saved, 'opacityEnvelope')) return null;
-        const changed = rawOpacityEnvelopeChanged(state.raw, context.saved);
-        if (changed && context.opacityEnvelopeEditable !== true) return null;
-        if (changed) Object.assign(patch, fields.fields);
-      }
+      const patch = clipDraftPatch(state.raw); if (!patch || own(state.raw, 'opacityEnvelope')) return null;
       // Unavailable role capability cannot block unrelated edits or silently drop
       // a recovered role change. An unchanged role is omitted from that request.
       if (context.audioRoleEditable !== true) {
@@ -388,7 +353,7 @@ export function createClipDraftController({ context: initial, client, validateTi
         const result = await onSave(original.clipId, patch, base, { canExecute });
         if (!belongs(owner)) return null;
         if (!result) { emit({ submitting: false, businessPending: false }); return null; }
-        const saved = validateTimeline(result, original.projectId) ? acknowledged(result, original, base, source, patch, expectedRaw, opacity) : null;
+        const saved = validateTimeline(result, original.projectId) ? acknowledged(result, original, base, source, patch, expectedRaw) : null;
         if (!saved) throw recoveryDisplayError(Error('片段保存确认与原始输入不一致；本地草稿仍保留。'), displayMessage('recovery.clip.error.timelineAck'));
         if (context.timelineRevision > base + 1 || !sameClipDraftValue(context.source, source)) { emit({ submitting: false, businessPending: false, conflict: true, error: '时间线已有更新；本地草稿仍保留，请核对最新片段。', errorDisplay: displayMessage('recovery.clip.timelineChanged') }); return result; }
         if (savedSerial !== serial) { emit({ submitting: false, businessPending: false, conflict: true, error: '原输入已保存到时间线。之后的新输入仍保留，请核对更新后的片段。', errorDisplay: displayMessage('recovery.clip.newerInput') }); schedule(); return result; }

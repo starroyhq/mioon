@@ -2,6 +2,7 @@ import type {Failure} from './helpers/strict-timeline-audio-types.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createClient,measureTimelineClipLoudness,errorEnvelope} from '@mioon/client';
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import {TIMELINE_CLIP_LOUDNESS_LIMITS,isTimelineClipLoudnessResponse} from '@mioon/contracts/timeline-clip-loudness';
 import {readTimelineClipLoudnessEnvelope} from '../packages/client/src/timeline-clip-loudness.ts';
 import {clipLoudnessOperation as operation,clipLoudnessInput as input,clipLoudnessToken as token,readyClipLoudness,silentClipLoudness} from './fixtures/timeline-clip-loudness-fixtures.ts';
@@ -17,7 +18,7 @@ test('selected clip default is125s; explicit timeouts and unrelated30s defaults 
     const client=createClient({env,...clientOptions,fetchImpl:async(url,request)=>{calls.push({url,...request,body:JSON.parse(request!.body as string)});return success(report);}});
     assert.deepEqual(await client.rpc(operation,input,options),report);assert.equal(deadlines.at(-1),expected);
     assert.equal(calls.length,1);assert.deepEqual(calls[0].body,{operation,input});assert.equal(calls[0].method,'POST');
-    assert.equal(new URL(calls[0].url as string).pathname,'/api/rpc');assert.equal(calls[0].redirect,'error');
+    assert.equal(new URL(calls[0].url as string).pathname,projectRpcPath(input.projectId));assert.equal(calls[0].redirect,'error');
   }
   const client=createClient({env,fetchImpl:async()=>success([])});
   await client.rpc('project.list',{});assert.equal(deadlines.at(-1),30000);

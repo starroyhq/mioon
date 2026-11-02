@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import * as exportSettings from '../apps/web/src/export-settings-state.ts';
 import * as ranges from '../apps/web/src/source-range-state.ts';
+import { mediaUrl } from '../apps/web/src/api.ts';
 
 
 interface PreviewAsset {id: string; name: string; url: string; duration: number; mimeType: string; width?: number; height?: number}
@@ -43,7 +44,7 @@ function harness() {
   const react = { createElement: (type: string, props: Record<string, unknown>, ...children: PreviewTree[]) => ({ type, props: { ...props, children } }), useRef: (value: unknown) => { const i = cursor++; return slots[i] ||= { current: value } as PreviewHook; }, useEffect: (fn: PreviewHook['fn'], deps: readonly unknown[]) => effect(effects, fn, deps), useLayoutEffect: (fn: PreviewHook['fn'], deps: readonly unknown[]) => effect(layouts, fn, deps) };
   (react as typeof react & {default: typeof react}).default = react;
   const module = { exports: {} as {default(props: PreviewProps): PreviewTree} };
-  const require = (id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl: (asset: PreviewAsset | null) => asset?.url || '', statusText: (value: unknown) => value } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) });
+  const require = (id: string) => id === './i18n/I18nProvider.tsx' ? i18nTestModule() : id === './creation-i18n.ts' ? creationI18n : id === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : id === 'react' ? react : id === './export-settings-state.ts' ? exportSettings : id === './source-range-state.ts' ? ranges : id === './api.ts' ? { assetUrl: (asset: PreviewAsset | null) => asset?.url || '', statusText: (value: unknown) => value, mediaUrl } : id === './Timeline.tsx' ? { assetKind: (asset: { mimeType: string; }) => asset?.mimeType.split('/')[0], framesLabel: String } : id === './workspace-visibility.tsx' ? { useWorkspaceVisibility: () => h.visible } : id === './Nodes.tsx' ? { disposeMedia: (element: { pause: () => void; removeAttribute: (arg0: string) => void; load: () => void; }) => { element.pause(); element.removeAttribute('src'); element.load(); } } : id === './icons.tsx' ? { default: 'Icon', __esModule: true } : new Proxy({}, { get: (_, key) => String(key) });
   Function('require', 'module', 'exports', code)(require, module, module.exports);
   const flush = (queue: number[]) => { for (const i of queue) { slots[i].cleanup?.(); slots[i].cleanup = slots[i].fn(); } };
   h.render = props => {

@@ -92,7 +92,21 @@ Claude Code's [official MCP guide](https://code.claude.com/docs/en/mcp) describe
 
 ## Discovery and schema parity
 
-`tools/list` is generated from the runtime schemas exported by `@mioon/contracts`; the identical converter powers CLI `schema`. Shared Zod validation, including nonempty patches and rectangle refinements, runs before a business call. Unknown fields are rejected instead of silently stripped. There is one implementation of business operations and one backend writer.
+`tools/list` is generated from the runtime business schemas exported by `@mioon/contracts`, plus the required transport `projectId` for the 11 entity-addressed tools below; the identical converter powers CLI `schema`. Shared Zod validation, including nonempty patches and rectangle refinements, runs before a business call. Unknown fields are rejected instead of silently stripped. There is one implementation of business operations and one backend writer.
+
+项目级工具调用使用 `/api/projects/{projectId}/rpc`，应用级操作仍使用 `/api/rpc`，
+见 [API 按项目寻址](API.md#按项目寻址)。`edge_delete`、`export_get`、
+`generation_submit`、`job_cancel`、`job_get`、`job_reconcile`、`job_retry`、
+`node_update`、`shot_update`、`version_list`、`version_select` 的 arguments
+必须额外包含所属项目的小写 UUID `projectId`。MCP 桥接层取出它用于寻址，不把它
+送入原业务 input；其余项目工具保持原项目字段位置，`image_review_prepare` 为
+嵌套 `input.projectId`。工具发现会列出所需字段；不根据实体 ID 或最近项目猜测。
+
+例如，替换真实 UUID 后，只读观察使用
+`job_get({projectId:"PROJECT_UUID",jobId:"JOB_UUID"})`、
+`version_list({projectId:"PROJECT_UUID",shotId:"SHOT_UUID"})` 或
+`export_get({projectId:"PROJECT_UUID",exportId:"EXPORT_UUID"})`。
+生成等写入同样携带项目寻址身份，并继续保留原有授权、revision 和 requestId 要求。
 
 All RPC operation names replace dots with underscores. For example:
 
@@ -312,7 +326,7 @@ Errors set `isError: true`; invalid business inputs, unavailable backends, auth 
 
 A recommended sequence is `mioon_doctor`, `provider_list`, `project_create`, `asset_import`, `shot_create`, `generation_submit`, repeated bounded `job_get`, `version_list`, `project_get`, `version_select`, `timeline_get`, `timeline_seed`, `timeline_render`, and bounded `export_get`. Use mock for no-cost verification. [CLI.md](CLI.md) includes the full runnable command workflow and authenticated local file download.
 
-`asset_import` takes explicitly authorized bytes (`dataBase64`), never a server filesystem path. An MCP client that has local file access can read those bytes itself; the CLI also provides `asset import --file`. MCP does not expose an arbitrary path read/write helper. To save a completed export locally, use CLI `export download` with an explicit new output path. Relative `/media/UUID` URLs are authenticated local resources, not public sharing links.
+`asset_import` takes explicitly authorized bytes (`dataBase64`), never a server filesystem path. An MCP client that has local file access can read those bytes itself; the CLI also provides `asset import --file`. MCP does not expose an arbitrary path read/write helper. To save a completed export locally, use CLI `export download --input '{"projectId":"PROJECT_UUID","exportId":"EXPORT_UUID"}' --output ./result.mp4` with an explicit new output path. CLI `asset download`, `job watch` and `export watch` likewise require their owning `projectId`; these wrappers are not MCP tools. Relative `/api/projects/{projectId}/media/{assetId}` URLs are authenticated local resources, not public sharing links. Historical stored `/media/UUID` URLs remain compatible until S0; construct new media addresses from the record's project and asset IDs.
 
 The six tools `shot_create`, `shot_update`, `shot_reorder`, `node_create`,
 `node_update` and `version_select` additionally accept an **optional** `requestId`
@@ -321,13 +335,7 @@ until the outcome is known. Their schema still has `requiresRequestId:false`, an
 MCP `idempotentHint:false` remains truthful for unkeyed calls. Exact keyed replay
 returns the original response even after later revisions/restart, provided current
 ownership remains valid. Changed operation/project/arguments under a key conflict.
-This external MCP capability does not authorize built-in Agent writes. Its
-separate reviewed-edit workflow exposes only a proposal tool and authenticated
-human review endpoints, absent from the MCP catalog; see the scope and current
-acceptance status in [reviewed selected-shot edits](AGENT-EDITS.md) and
-[reviewed selected-clip moves](AGENT-TIMELINE-MOVE.md). The latter delegates an
-approved `{startFrame}` patch to the existing `timeline_clip_update`; model
-proposal and human approval are not MCP tools.
+This external MCP capability does not authorize built-in Agent writes.
 See [shared mutation replay](MUTATION-REPLAY.md).
 
 For every mutation that requires `requestId`, the caller owns a stable ID. After a lost HTTP or MCP result, repeat the exact original operation and complete input with the **same requestId**, preserving its original revision. The bridge never invents IDs or automatically re-submits paid tasks. Changed reuse of an ID conflicts. A fresh intended edit uses a fresh ID and current revision.

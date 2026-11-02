@@ -9,12 +9,13 @@ import {EventEmitter, once} from 'node:events';
 import {mkdtemp, realpath, readFile, writeFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import {fileURLToPath} from 'node:url';
 import {BackendSupervisor} from '../apps/desktop/src/supervisor.ts';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {shotTextForStore} from './fixtures/local-shot-text-process-worker.ts';
+import {openProjectDatabase} from './helpers/project-database.ts';
 
 type LocalEnvelope = Extract<ReturnType<ReturnType<typeof shotTextForStore>['local']['get']>,{supported: true}>;
 const repo = fileURLToPath(new URL('../', import.meta.url));
@@ -36,7 +37,8 @@ function deadline<T>(promise: Promise<T>, label: string, ms: number|undefined = 
 
 // Only Electron's process/IPC boundary is adapted. The owned worker opens the
 // real store and runs the real task manager, receipt lookup and startup recovery.
-interface WorkerReplyMap {prepare: TaskEnvelope<'subject.create'>; get: TaskEnvelope<'subject.create'>; execute: TaskEnvelope<'subject.create'>; reconcile: TaskEnvelope<'subject.create'>; list: {items: TaskEnvelope['task'][]}; reconcileStartup: {processed: number; unavailable: number}; observe: {dispatches: unknown[]}; arm: unknown}
+type Snapshot = Record<string, Record<string, unknown>[]>;
+interface WorkerReplyMap {prepare: TaskEnvelope<'subject.create'>; get: TaskEnvelope<'subject.create'>; execute: TaskEnvelope<'subject.create'>; reconcile: TaskEnvelope<'subject.create'>; list: {items: TaskEnvelope['task'][]}; reconcileStartup: {processed: number; unavailable: number}; observe: {dispatches: unknown[]}; arm: unknown; snapshot: Snapshot}
 interface WorkerMessage {type: string;id: string;message: string;startup: {processed: number;unavailable: number};data: unknown;error?: {message: string;code: string}}
 type Utility = EventEmitter & {pid: number | undefined; startup: WorkerMessage['startup'];postMessage(message: {type: string}): void;kill(): boolean};
 function utilityWorker(root: string) {
@@ -85,6 +87,8 @@ function utilityWorker(root: string) {
       try { return await deadline(exited.promise, 'worker close'); }
       catch (error) { child.kill('SIGKILL'); await deadline(exited.promise, 'worker cleanup'); throw error; }
     },
+    // A method, not a getter: Object.assign copies a getter's value once.
+    exitState() { return stopped; },
     exited: exited.promise
   });
 }
@@ -132,12 +136,20 @@ async function fixture(t: test.TestContext) {
       assert.equal(await readFile(path.join(root, 'server.lock'), 'utf8'), String(this.worker.pid));
       return this.worker.startup;
     },
-    read<T>(fn: (db: DatabaseSync) => T): T {
-      const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-      try { return fn(db); } finally { db.close(); }
-    },
-    snapshot(tables: string[]|undefined = domainTables) {
-      return this.read(db => Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
+    // A running worker holds the project: it reads the tables on its own connection.
+    // A crash leaves its lock behind, so that evidence is read without taking the
+    // lock; after a clean exit the test opens the project itself. Rows go through
+    // JSON on both paths, so they compare the same.
+    async snapshot(tables: string[]|undefined = domainTables): Promise<Snapshot> {
+      const worker = this.worker, stopped = worker.exitState();
+      if (!stopped) return worker.ask('snapshot', tables);
+      const read = (db: DatabaseSync): Snapshot => JSON.parse(JSON.stringify(Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]))));
+      if (stopped.signal === 'SIGKILL') {
+        const crashed = openStore(root, {lock: false});
+        try { return read(crashed.db); } finally { crashed.close(); }
+      }
+      const db = openProjectDatabase(root);
+      try { return read(db); } finally { db.close(); }
     },
     sidecar: () => readFile(path.join(root, 'local-shot-text-v1.json'), 'utf8'),
     diagnostics: async () => (await readFile(path.join(root, 'diagnostics', 'backend-exit.jsonl'), 'utf8'))
@@ -149,7 +161,7 @@ async function fixture(t: test.TestContext) {
 
 for (const phase of ['afterClaim', 'afterBusinessCommit']) {
   test(`desktop ${phase}: controlled worker death retains evidence and explicit restart never redispatches`, {timeout: 45000}, async t => {
-    const f = await fixture(t), baseline = f.snapshot(), draftBytes = await f.sidecar();
+    const f = await fixture(t), baseline = await f.snapshot(), draftBytes = await f.sidecar();
     const input = {projectId: f.project.id, kind: 'character', name: 'Interrupted subject', assetId: f.source.id, requestId: randomUUID()};
     const prepared = await f.worker.ask('prepare', {projectId: f.project.id, operation: 'subject.create', input, origin: 'new'});
     await f.worker.ask('arm', phase);
@@ -169,8 +181,8 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
     assert.equal(crash[0].exitConfirmed, true);
     assert.equal(crash[0].runtime.node, process.versions.node);
     assert.ok(Number.isFinite(Date.parse(crash[0].time)));
-    assert.equal(f.snapshot(['edit_tasks']).edit_tasks[0].status, 'dispatching');
-    const committed = f.snapshot();
+    assert.equal((await f.snapshot(['edit_tasks'])).edit_tasks[0].status, 'dispatching');
+    const committed = await f.snapshot();
     for (const table of domainTables.filter(table => !['subjects', 'subject_versions', 'subject_requests'].includes(table)))
       assert.deepEqual(committed[table], baseline[table], `${table} must survive the controlled fault`);
     assert.deepEqual(committed.subject_requests.slice(0, baseline.subject_requests.length), baseline.subject_requests,
@@ -186,7 +198,7 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
     assert.deepEqual(current.task.input, input);
     assert.notEqual(current.instanceId, prepared.instanceId);
     await assert.rejects(f.worker.ask('execute', execute(prepared)), {code: 'EDIT_TASK_STALE_INSTANCE'});
-    const taskRows = f.snapshot(['edit_tasks']);
+    const taskRows = await f.snapshot(['edit_tasks']);
     assert.deepEqual((await f.worker.ask('list', {projectId: f.project.id})).items, [current.task]);
     assert.deepEqual(await f.worker.ask('prepare', {projectId: f.project.id, operation: 'subject.create', input, origin: 'new'}), current);
     const reconciled = await f.worker.ask('reconcile', action(current));
@@ -197,8 +209,8 @@ for (const phase of ['afterClaim', 'afterBusinessCommit']) {
     }
     assert.deepEqual(await f.worker.ask('reconcileStartup'), {processed: 0, unavailable: 0});
     assert.deepEqual(((await f.worker.ask('observe')).dispatches as unknown), [], 'Startup and observation can only inspect existing evidence');
-    assert.deepEqual(f.snapshot(), committed);
-    assert.deepEqual(f.snapshot(['edit_tasks']), taskRows);
+    assert.deepEqual(await f.snapshot(), committed);
+    assert.deepEqual(await f.snapshot(['edit_tasks']), taskRows);
     assert.equal(await f.sidecar(), draftBytes);
     assert.deepEqual(await readFile(path.join(f.root, f.source.relativePath)), sourceBytes);
 

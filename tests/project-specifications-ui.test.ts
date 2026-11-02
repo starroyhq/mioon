@@ -23,13 +23,13 @@ import * as contracts from '@mioon/contracts';
 import * as audio from '../apps/web/src/clip-audio-state.ts';
 import * as clipDraft from '../apps/web/src/clip-draft-state.ts';
 import * as opacityState from '../apps/web/src/clip-opacity-envelope-state.ts';
-import * as opacityAssembly from '../apps/web/src/clip-opacity-candidate-assembly.ts';
 import * as volumeState from '../apps/web/src/clip-volume-envelope-state.ts';
 import * as audioRoleState from '../apps/web/src/clip-audio-role-state.ts';
 import * as removalState from '../apps/web/src/timeline-removal.ts';
 import * as viewGeometry from '../apps/web/src/timeline-view-geometry.ts';
 
 import { lenientFunction } from './helpers/eval-source.ts';
+import { mediaUrl } from '../apps/web/src/api.ts';
 const Function = lenientFunction;
 const id = (n: number) => `73000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const projectId = id(1), timelineId = id(2);
@@ -182,7 +182,7 @@ const primitive = new Proxy({ __esModule: true, default: 'Component' }, { get: (
 function component(name:string,imports:Record<string,unknown> = {}) {
   const react = { createElement: element, useEffect() {}, useLayoutEffect() {}, useRef: (current: unknown) => ({ current }), useState: (value: () => unknown) => [typeof value === 'function' ? value() : value, () => {}] } as {createElement:typeof element;useEffect():void;useLayoutEffect():void;useRef(current:unknown):{current:unknown};useState(value:unknown):unknown[];default?:unknown}; (react as typeof react & {default: unknown}).default = react;
   const module = {exports:{}} as ComponentModule;
-  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (key: string) => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.ts' ? format : key === './export-settings-state.ts' ? exportSettings : key === './export-range-state.ts' ? exportRange : key === './export-delivery-state.ts' ? deliveryHistory : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-opacity-candidate-assembly.ts' ? opacityAssembly : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
+  Function('module', 'exports', 'require', transformSync(read(name), { loader: name.endsWith('.tsx') ? 'tsx' : 'jsx', format: 'cjs' }).code)(module, module.exports, (key: string) => key === './creation-i18n.ts' ? creationI18n : key === './i18n/I18nProvider.tsx' ? i18nTestModule() : key.endsWith('packages/i18n/src/index.ts') ? i18n : key === 'react' ? react : key === '@mioon/contracts' ? contracts : key === './timeline-format-state.ts' ? format : key === './export-settings-state.ts' ? exportSettings : key === './export-range-state.ts' ? exportRange : key === './export-delivery-state.ts' ? deliveryHistory : key === './clip-opacity-envelope-state.ts' ? opacityState : key === './clip-volume-envelope-state.ts' ? volumeState : key === './clip-audio-role-state.ts' ? audioRoleState : key === './timeline-removal.ts' ? removalState : key === './timeline-view-geometry.ts' ? viewGeometry : key === './UiPreferencesProvider.tsx' ? {useUiPreferences:()=>({preferences:{timecodeFormat:'timecode'}})} : key === './ClipRemovalControls.tsx' ? component('ClipRemovalControls.tsx') : imports[key] || primitive);
   return module.exports;
 }
 
@@ -219,7 +219,7 @@ test('retained format panel callbacks cannot edit, reset, read or submit a revis
 });
 
 test('actual preview labels legacy frozen job dimensions, never the new current timeline', () => {
-  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: () => '成功' }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String } }).default;
+  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', statusText: () => '成功', mediaUrl }, './Timeline.tsx': { assetKind: () => 'video', framesLabel: String } }).default;
   const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080', 9), job: { id: id(7), status: 'succeeded', url: '/media/old', timelineRevision: 1, snapshot: { timeline: timeline('square_720', 1) } }, playhead: 30 });
   const label = nodes(tree).find((node: ElementNode) => node.props.className === 'edit-preview-format');
   assert.match(textOf(label), /720 × 720 · 30 fps/); assert.doesNotMatch(textOf(label), /1920/);
@@ -228,7 +228,7 @@ test('actual preview labels legacy frozen job dimensions, never the new current 
 });
 
 test('actual monitor header and preflight summary use their own saved dimensions', () => {
-  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '' }, './Timeline.tsx': { assetKind: () => 'video' } }).default;
+  const Preview = component('Preview.tsx', { './workspace-visibility.tsx': { useWorkspaceVisibility: () => true }, './api.ts': { assetUrl: () => '', mediaUrl }, './Timeline.tsx': { assetKind: () => 'video' } }).default;
   const tree = Preview({ kind: 'timeline', timeline: timeline('landscape_1080'), playhead: 0 });
   assert.equal(textOf(nodes(tree).find((node: ElementNode) => node.props.className === 'edit-preview-format')), '1920 × 1080 · 30 fps');
   const Panel = component('TimelineExportPreflight.tsx').default;

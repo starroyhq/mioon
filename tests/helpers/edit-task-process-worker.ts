@@ -64,6 +64,11 @@ try {
         data = {armed};
       } else if (message.method === 'observe') {
         data = {dispatches, phases};
+      } else if (message.method === 'snapshot') {
+        // The worker holds the project, so the test reads these tables on this connection.
+        const tables: unknown = message.input;
+        if (!Array.isArray(tables) || !tables.every(name => typeof name === 'string' && /^[a-z_]+$/.test(name))) throw Error('Unsupported fixture snapshot');
+        data = Object.fromEntries((tables as string[]).map(table => [table, store!.db.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all().map(row => ({...row}))]));
       } else if (message.method === 'rpc') {
         if (!localOperations.has(String(message.input.operation))) throw Error('Unsupported fixture operation');
         data = await services.call(String(message.input.operation), message.input.input as never);

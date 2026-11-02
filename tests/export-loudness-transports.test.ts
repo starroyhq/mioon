@@ -1,3 +1,4 @@
+import {projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test, {type TestContext} from 'node:test';
 import type {ChildProcess} from 'node:child_process';
 import type {IncomingMessage, ServerResponse} from 'node:http';
@@ -56,7 +57,7 @@ async function fixture(t: TestContext,request: FixtureRequest = input as Fixture
   const server=http.createServer(async(req: IncomingMessage,res: ServerResponse)=>{
     if(req.url==='/health'){res.end('healthy');return;}
     try{
-      assert.equal(req.url,'/api/rpc');assert.equal(req.method,'POST');
+      assert.ok(req.url==='/api/rpc'||req.url===projectRpcPath(input.projectId));assert.equal(req.method,'POST');
       assert.equal(req.headers.authorization,'Bearer '+token);
       let raw='';for await(const chunk of req){raw+=String(chunk);if(Buffer.byteLength(raw)>8192)throw Error('Request overflow');}
       const body=JSON.parse(raw) as {operation: string; input: unknown};calls.push(body);const parsed=parse(body.operation as never,body.input);
