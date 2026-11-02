@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {writeSync} from 'node:fs';
 import {openStore,ownsStoreLock,getWorkspaceRestoreContext} from '../../packages/business/src/db.ts';
 import type {WorkspaceStore} from '../../packages/business/src/db.ts';
+import {isProjectStore} from '../../packages/business/src/project-file/store.ts';
 import {createServices,canonical} from '../../packages/business/src/services.ts';
 import {createLocalMutationServices} from '../../packages/business/src/local-mutations.ts';
 import {validateImageConsumption} from '../../packages/business/src/image-consumption.ts';
@@ -29,7 +30,8 @@ export function shotTextForStore(store: Store, services: Services, {fault=()=>{}
   updateShotInProject:(projectId: string,input: never)=>services.updateShotInProject(projectId,input as never)} as never);
  const wrap = <F extends (...args: never[])=>unknown>(fn: F): F => (((...args: never[])=>{calls.storage++;return fn(...args);}) as F);
  const storage = {readPrivateFile: wrap(readPrivateFile as never), writePrivateFileAtomic: wrap(writePrivateFileAtomic as never), validatePrivateDirectory: wrap(validatePrivateDirectory as never), validateManagedFile: wrap(validateManagedFile as never)} as never;
- const local=createLocalShotText({root:store.root,storage,fault,guards:{...domain,
+ const scope=isProjectStore(store)?{root:store.localDir,databaseFile:path.join(store.localDir,'history.db')}:{root:store.root};
+ const local=createLocalShotText({...scope,storage,fault,guards:{...domain,
   ownsLock:()=>{calls.ownsLock++;return ownsStoreLock(store);},isRestored:()=>Boolean(getWorkspaceRestoreContext(store)),isShotUpdateInput:(value: unknown)=>schemas['shot.update'].safeParse(value).success,
   readShot:(...args: never[])=>{calls.readShot++;return (domain.readShot as (...rest: never[])=>unknown)(...args);},readReceipt:(...args: never[])=>{calls.readReceipt++;return (domain.readReceipt as (...rest: never[])=>unknown)(...args);},
   update:async(projectId: string,input: {requestId: string})=>{calls.update++;dispatches.push({projectId,input:structuredClone(input)});const response=await domain.update(projectId,input as never);

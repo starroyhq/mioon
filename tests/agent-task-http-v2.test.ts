@@ -1,7 +1,10 @@
 import {projectApiPath,projectRpcPath} from '../packages/contracts/src/project-file.ts';
 import test,{type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,realpath,rm} from 'node:fs/promises';
+import {mkdtemp,realpath,rm,readdir} from 'node:fs/promises';
+import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {readProjectState,changeMarks} from './helpers/project-state.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -47,7 +50,8 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='ch
   }
   yield*(customGateway??gateway)(request);
  };
- const server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:scripted});
+ let inspect!:InspectProject;
+ const server=await startServer({dataDir:root,port:0,agentSettings:settings,taskGatewayV2:scripted,inspectProject:received=>{inspect=received;}});
  t.after(async()=>{await server.close();await settings.close();await rm(root,{recursive:true,force:true});});
  async function request(route:string,method='GET',input?:unknown,authorized=true){
   const response=await fetch(server.url+route,{method,headers:{...(authorized?{Authorization:`Bearer ${server.token}`} : {}),...(input!==undefined?{'Content-Type':'application/json'}:{})},...(input!==undefined?{body:JSON.stringify(input)}:{})});
@@ -61,7 +65,7 @@ async function fixture(t:TestContext,protocol:AgentConfiguration['protocol']='ch
  async function settle(id:string,status:string[]=['completed','failed','paused','awaiting_approval']):Promise<AgentTaskSnapshot>{
   for(let count=0;count<400;count++){const result=await request(`${prefix}/${id}`);assert.equal(result.status,200);const snapshot=result.data as AgentTaskSnapshot;if(status.includes(snapshot.run.status))return snapshot;await new Promise(resolve=>setTimeout(resolve,5));}assert.fail('Synthetic HTTP task did not settle');
  }
- return {root,request,prefix,projectId,settings,server,authorize,settle,get models(){return models;},get loadRequests(){return loadRequests;}};
+ return {root,request,prefix,projectId,settings,server,authorize,settle,state:()=>inspect(projectId,db=>({state:readProjectState(db),marks:changeMarks(db)})),get models(){return models;},get loadRequests(){return loadRequests;}};
 }
 for(const protocol of ['chat_completions','responses'] as const)test(`${protocol}: authenticated HTTP task, durable SSE notification, lookup and undo complete without provider access`,async t=>{
  const f=await fixture(t,protocol),input={requestId:randomUUID(),text:'创建一个镜头',expectedSettingsRevision:(await f.settings.get()).revision};
@@ -147,17 +151,22 @@ test('editor claims and control lookup remain project scoped and stale releases 
  assert.equal((await f.request(projectApiPath(f.projectId,'agent','tasks','v2','editing'),'POST',{...input,requestId:randomUUID(),action:'release',sequence:0})).status,409);
  const active=await f.request(`${projectApiPath(f.projectId,'agent','tasks','v2','editing')}?projectId=${f.projectId}&ownerId=${input.ownerId}`);assert.ok(object(active.data)&&Array.isArray(active.data.claims));assert.equal(active.data.claims.length,1);assert.equal(f.models,0);
 });
-test('workspace backup refuses a live v2 model after its HTTP acceptance has finished',async t=>{
+test('project layout refuses workspace backup during and after a live v2 model without maintenance effects',async t=>{
  let enter=()=>{},release=()=>{};const entered=new Promise<void>(resolve=>{enter=resolve;}),released=new Promise<void>(resolve=>{release=resolve;});
  const gateway:TaskGateway=async function*(request){request.beforeSubmit?.();enter();await released;yield {type:'done',output:{text:'合成完成',toolCalls:[],providerOutput:{role:'assistant',content:'合成完成'}}};};
  const f=await fixture(t,'chat_completions',gateway),backupDirectory=await mkdtemp(path.join(await realpath(tmpdir()),'mioon-v2-backup-destination-'));
+ let subprocesses=0;const stopObserving=onMediaProcess(()=>{subprocesses++;});t.after(stopObserving);
  t.after(async()=>{await rm(backupDirectory,{recursive:true,force:true});});
  try{
   f.server.setBackupDirectory(backupDirectory);await f.authorize();
   const sent=await f.request(f.prefix,'POST',{requestId:randomUUID(),text:'等待本地合成模型',expectedSettingsRevision:(await f.settings.get()).revision});assert.equal(sent.status,200);await entered;
-  const blocked=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(blocked.status,409);assert.ok(object(blocked.error));assert.equal(blocked.error.code,'WORKSPACE_BACKUP_BUSY');
+  const running=(sent.data as AgentTaskSnapshot).run.id,before=f.state();
+  const blocked=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(blocked.status,409);assert.ok(object(blocked.error));assert.equal(blocked.error.code,'RESTORE_OPERATION_UNAVAILABLE');
+  assert.deepEqual(f.state(),before);assert.deepEqual(await readdir(backupDirectory),[]);
+  const current=await f.request(`${f.prefix}/${running}`);assert.equal((current.data as AgentTaskSnapshot).run.status,'running');assert.equal(f.models,1);assert.equal(subprocesses,0);
   release();const done=await f.settle((sent.data as AgentTaskSnapshot).run.id);assert.equal(done.run.status,'completed');
-  const saved=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(saved.status,200,JSON.stringify(saved.error));
+  const settled=f.state(),saved=await f.request('/api/rpc','POST',{operation:'workspace.backup.create',input:{requestId:randomUUID()}});assert.equal(saved.status,409,JSON.stringify(saved.error));assert.ok(object(saved.error));assert.equal(saved.error.code,'RESTORE_OPERATION_UNAVAILABLE');
+  assert.deepEqual(f.state(),settled);assert.deepEqual(await readdir(backupDirectory),[]);assert.equal(f.models,1);assert.equal(subprocesses,0);
  }finally{release();}
 });
 

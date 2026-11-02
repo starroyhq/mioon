@@ -19,7 +19,7 @@ import {
   APP_DOCUMENT_LIMITS, APP_LIBRARY_APPLICATION_ID, APP_LIBRARY_FILE, APP_LIBRARY_SCHEMA_VERSION, openAppLibrary,
 } from '../packages/business/src/app-db/index.ts';
 import type {AppLibrary} from '../packages/business/src/app-db/index.ts';
-import {APP_LIBRARY_STATEMENTS, expectedAppSchema, FORMAT_72_APP_STATEMENTS, readAppSchema} from '../packages/business/src/app-db/schema.ts';
+import {APP_LIBRARY_STATEMENTS, appLibraryStatements, expectedAppSchema, FORMAT_72_APP_STATEMENTS, readAppSchema} from '../packages/business/src/app-db/schema.ts';
 import {isAppLibraryHeld} from '../packages/business/src/app-db/connection.ts';
 import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/connection.ts';
 import {deriveFromFormat72} from './helpers/project-file-schema-derivation.ts';
@@ -141,9 +141,11 @@ test('a new library is built from the format-72 SQL the derivation hands over an
   assert.deepEqual(library.db.prepare('PRAGMA main.foreign_key_list(workspace_preferences)').all(), []);
   assert.equal(APP_LIBRARY_STATEMENTS.some(sql => /REFERENCES/u.test(sql)), false);
 
-  // Changing the structure means a new version: this digest records version 1.
-  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema())).digest('hex'),
+  // Keep the original v1 digest; only v2 adds the diagnostic document name.
+  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema(1))).digest('hex'),
     'f7aa62f54c5e09ffb405b8efe8369f3445e32758526b5e30484ad542e58f7de9');
+  assert.equal(createHash('sha256').update(JSON.stringify(expectedAppSchema())).digest('hex'),
+    '7c99f8946a65136c55068d877d91645be595280c5e2ec65ef0d47d5465b1c95d');
 });
 
 test('the library is reopened with its records and checked again on every open', t => {
@@ -160,6 +162,34 @@ test('the library is reopened with its records and checked again on every open',
   assert.deepEqual(again.agentPolicy.readRequest('request-1'), {digest: sha('1'), policy: policy(1)});
   assert.equal(again.documents.read('ui-preferences-v1.json'), '{"version":1}');
   assert.equal(again.databaseFile, first.databaseFile);
+});
+
+test('only an exact v1 library upgrades its document whitelist, preserving existing records and bytes', t => {
+  const dataDir = path.join(scratch(t), 'data'); mkdirSync(dataDir, {mode: 0o700});
+  const file = path.join(dataDir, APP_LIBRARY_FILE);
+  writeFileSync(file, '', {mode: 0o600});
+  const legacy = new DatabaseSync(file);
+  for (const sql of appLibraryStatements(1)) legacy.exec(sql);
+  legacy.exec(`PRAGMA application_id=${APP_LIBRARY_APPLICATION_ID}; INSERT INTO schema_version VALUES(1)`);
+  const text = '{"revision":7,"synthetic":"preserve exact whitespace"} \n';
+  legacy.prepare('INSERT INTO app_documents VALUES(?,?)').run('ui-preferences-v1.json', text);
+  const row = project(); legacy.prepare('INSERT INTO recent_projects(position,projectId,data) VALUES(1,?,?)').run(row.projectId, JSON.stringify(row));
+  legacy.close();
+  const upgraded = openAppLibrary({dataDir});
+  assert.deepEqual(readAppSchema(upgraded.db), expectedAppSchema());
+  assert.equal(upgraded.documents.read('ui-preferences-v1.json'), text);
+  assert.deepEqual(upgraded.registry.get(row.projectId), row);
+  assert.deepEqual(upgraded.db.prepare('SELECT version FROM schema_version').all().map(row => row.version), [2]);
+  upgraded.close();
+  const badDir = path.join(scratch(t), 'bad'); mkdirSync(badDir, {mode: 0o700});
+  const badFile = path.join(badDir, APP_LIBRARY_FILE); writeFileSync(badFile, '', {mode: 0o600});
+  const bad = new DatabaseSync(badFile);
+  for (const sql of appLibraryStatements(1)) bad.exec(sql);
+  bad.exec(`PRAGMA application_id=${APP_LIBRARY_APPLICATION_ID}; INSERT INTO schema_version VALUES(1); CREATE TABLE extra(x)`); bad.close();
+  assert.equal(appError(() => openAppLibrary({dataDir: badDir})).code, 'APP_LIBRARY_INVALID');
+  const check = new DatabaseSync(badFile);
+  try {assert.equal(check.prepare('SELECT version FROM schema_version').get()!.version, 1); assert.deepEqual(readAppSchema(check), [...expectedAppSchema(1), {type: 'table', name: 'extra', tbl_name: 'extra', sql: 'CREATE TABLE extra(x)'}].sort((a,b)=>a.type.localeCompare(b.type)||a.name.localeCompare(b.name)));}
+  finally {check.close();}
 });
 
 test('another structure, a newer version, another application or not a database refuses the open', t => {
@@ -185,10 +215,10 @@ test('another structure, a newer version, another application or not a database 
   });
   openAppLibrary({dataDir}).close();
 
-  tamper(file, db => db.exec('UPDATE schema_version SET version=2'));
+  tamper(file, db => db.exec(`UPDATE schema_version SET version=${APP_LIBRARY_SCHEMA_VERSION + 1}`));
   error = refused();
-  assert.deepEqual([error.code, error.status, error.details], ['APP_LIBRARY_FORMAT_NEWER', 409, {formatVersion: 2, supportedFormatVersion: 1}]);
-  tamper(file, db => db.exec('UPDATE schema_version SET version=1; PRAGMA application_id=1'));
+  assert.deepEqual([error.code, error.status, error.details], ['APP_LIBRARY_FORMAT_NEWER', 409, {formatVersion: APP_LIBRARY_SCHEMA_VERSION + 1, supportedFormatVersion: APP_LIBRARY_SCHEMA_VERSION}]);
+  tamper(file, db => db.exec(`UPDATE schema_version SET version=${APP_LIBRARY_SCHEMA_VERSION}; PRAGMA application_id=1`));
   assert.deepEqual(refused().details, {reason: 'application-id'});
   tamper(file, db => db.exec(`PRAGMA application_id=${APP_LIBRARY_APPLICATION_ID}`));
   openAppLibrary({dataDir}).close();
@@ -384,7 +414,7 @@ test('after close every store refuses with APP_LIBRARY_CLOSED, and close is idem
 
 test('documents: the three files as JSON text, each within the size its file had', t => {
   const library = open(t, path.join(scratch(t), 'data'));
-  assert.deepEqual(APP_DOCUMENT_LIMITS, {'ui-preferences-v1.json': 1024 * 1024, 'workspace-settings-v1.json': 16 * 1024, 'last-project-v1.json': 4096});
+  assert.deepEqual(APP_DOCUMENT_LIMITS, {'ui-preferences-v1.json': 1024 * 1024, 'workspace-settings-v1.json': 16 * 1024, 'last-project-v1.json': 4096, 'agent-diagnostic-summary-v1.json': 4096});
   for (const name of ['ui-preferences-v1.json', 'workspace-settings-v1.json', 'last-project-v1.json'] as const) {
     assert.equal(library.documents.read(name), null);
     library.documents.write(name, `${JSON.stringify({name})}\n`);

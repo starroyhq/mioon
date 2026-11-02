@@ -234,8 +234,11 @@ export function createNativeAudioPreviewHost(options:Options){
       let url:URL;try{url=new URL(details.url);}catch{return {cancel:true};}
       // The project address serves the same routes; its project must be the input's.
       const scoped=parseProjectApiPath(url.pathname),addressed=scoped?.kind==='other'&&scoped.segments[0]==='timeline-audio-preview'?scoped:null;
-      const pathname=addressed?`/api/${addressed.segments.join('/')}`:url.pathname;
-      if(!pathname.startsWith('/api/timeline-audio-preview'))return {cancel:false,requestHeaders:headers};
+      if(url.pathname.startsWith('/api/timeline-audio-preview'))return {cancel:true};
+      if(!addressed)return {cancel:false,requestHeaders:headers};
+      // Fixed legacy-looking constants below are internal signature material,
+      // not public HTTP aliases.
+      const pathname=`/api/${addressed.segments.join('/')}`;
       const record=active,document=details.webContents&&!destroyedContents.has(details.webContents)?options.ownerForContents(details.webContents):null;
       const cleanup=details.method==='DELETE'&&pathname===CONTINUOUS_AUDIO_ENDPOINT;
       if(!record||(!cleanup&&record.phase!=='active')||!document||!cleanup&&!admissionAllowed(document)||!trusted(document,details.frame)||!sameNativeAudioOwner(record.lease.owner,document)||claimedLease!==record.lease.leaseId||

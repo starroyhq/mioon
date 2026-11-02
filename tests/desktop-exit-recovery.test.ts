@@ -1,3 +1,4 @@
+import {TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
 import type {TaskEnvelope} from './helpers/strict-edit-task-types.ts';
 import type {BackendSupervisorOptions} from '../apps/desktop/src/supervisor.ts';
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
@@ -133,25 +134,21 @@ async function fixture(t: test.TestContext) {
     async start() {
       const ready = await supervisor.start({dataDir: root} as Parameters<BackendSupervisor['start']>[0]);
       assert.equal(ready.runtime.pid, this.worker.pid);
-      assert.equal(await readFile(path.join(root, 'server.lock'), 'utf8'), String(this.worker.pid));
+      assert.throws(()=>openProjectDatabase(root),{code:'PROJECT_LOCKED'});
       return this.worker.startup;
     },
     // A running worker holds the project: it reads the tables on its own connection.
-    // A crash leaves its lock behind, so that evidence is read without taking the
-    // lock; after a clean exit the test opens the project itself. Rows go through
+    // After the exact child exits, normal kernel recovery acquires the
+    // exclusive locks before any crash evidence is read. Rows go through
     // JSON on both paths, so they compare the same.
     async snapshot(tables: string[]|undefined = domainTables): Promise<Snapshot> {
       const worker = this.worker, stopped = worker.exitState();
       if (!stopped) return worker.ask('snapshot', tables);
       const read = (db: DatabaseSync): Snapshot => JSON.parse(JSON.stringify(Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]))));
-      if (stopped.signal === 'SIGKILL') {
-        const crashed = openStore(root, {lock: false});
-        try { return read(crashed.db); } finally { crashed.close(); }
-      }
       const db = openProjectDatabase(root);
       try { return read(db); } finally { db.close(); }
     },
-    sidecar: () => readFile(path.join(root, 'local-shot-text-v1.json'), 'utf8'),
+    sidecar: () => readFile(path.join(root,...TEST_STORE_LAYOUT.localDir,'local-shot-text-v1.json'), 'utf8'),
     diagnostics: async () => (await readFile(path.join(root, 'diagnostics', 'backend-exit.jsonl'), 'utf8'))
       .trim().split('\n').map(line => JSON.parse(line))
   };

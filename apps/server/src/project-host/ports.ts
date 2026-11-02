@@ -16,6 +16,9 @@ import type {ProjectHostContext, ProjectRequest} from './host.ts';
 export interface ProjectRegistryPort {
   list(): readonly RecentProject[];
   get(projectId: string): RecentProject | null;
+  /** Refuse a new registration before creating files; upsert still checks
+   * capacity atomically. An uncapped in-memory registry may omit this. */
+  assertCanRegister?(): void;
   /** Validates with recentProjectSchema; replaces the entry of this project ID. */
   upsert(entry: RecentProject): void;
   remove(projectId: string): void;

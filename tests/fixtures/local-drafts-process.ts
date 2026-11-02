@@ -28,7 +28,7 @@ process.on('message', async (raw: unknown) => {
     if (message.type === 'start' && !started) {
       started = true;
       server = await startServer({dataDir: String(message.root), token: message.token, port: 0,
-        chatGateway: async function* () { guard.deny('model gateway'); },
+        taskGatewayV2: async function* () { guard.deny('model gateway'); },
         taskFault(phase: string) {
           if (phases.length < 64) phases.push(phase);
           if (phase === armed) process.kill(process.pid, 'SIGKILL');

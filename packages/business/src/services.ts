@@ -206,7 +206,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  {application,env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
  const store: WorkspaceStore = inputStore as unknown as WorkspaceStore;
  const kernelProjectId=isProjectStore(store)?store.projectId:null;
- application??=testProjectServiceApplication(store);
+ application??=testProjectServiceApplication(store,env);
  if(kernelProjectId&&!application)throw new TypeError('Project services require explicit application configuration and backup ports.');
  const restored=getWorkspaceRestoreContext(store);
  const restoredReads=restored?createRestoredReadServices(store as unknown as Parameters<typeof createRestoredReadServices>[0],{signal:ownerSignal}):null;
@@ -569,7 +569,12 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  } as unknown as ServiceHandlers;
  // Public handlers are the same invocation boundary as RPC. Raw internal
  // mutation closures remain protected at their shared transaction precondition.
- if(kernelProjectId)handlers['project.notes.set']=(input:never)=>mutateProjectRecord(store,'project.notes.set',input);
+ if(isProjectStore(store)){
+  // Internal services and Mio retain record-only rename with the exact project
+  // receipt. Physical folder/file rename and application HTTP admission belong
+  // to the host's exclusive lifecycle; the registry refreshes this saved name.
+  for(const operation of ['project.rename','project.notes.set'] as const)handlers[operation]=(input:never)=>mutateProjectRecord(store,operation,input);
+ }
  const domainHandlers: ServiceHandlers={...handlers};
  const removeJobStopper=setAgentTaskJobStopper(db,'job',(runId,stepId)=>{
   for(const row of db.prepare("SELECT j.id,j.projectId FROM jobs j JOIN agent_task_job_origins_v2 o ON o.kind='job' AND o.jobId=j.id AND o.projectId=j.projectId WHERE o.runId=? AND (? IS NULL OR o.stepId=?) AND json_valid(j.data) AND json_extract(j.data,'$.status')='queued'").all(runId,stepId??null,stepId??null))withAgentTaskJobOrigin(db,'job',String(row.id),()=>domainHandlers['job.cancel']!({jobId:String(row.id)} as never));

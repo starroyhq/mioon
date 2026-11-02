@@ -1,9 +1,12 @@
 /** Disposable backend crash harness. Only trusted fixture IPC can arm a phase;
  * production HTTP and environment variables cannot configure task faults. */
+import type {InspectProject} from '../../apps/server/src/index.ts';
+import {readTaskHttpSnapshot} from './edit-tasks-http-fixture.ts';
 import {startServer} from '../../apps/server/src/index.ts';
 
 interface HttpHarnessServerLike {url: string; close(): Promise<unknown>}
 interface HttpProcessMessage {type: string; dataDir?: string; token?: string; phase?: string; requestId?: string; [key: string]: unknown}
+let inspect:InspectProject|undefined;
 let server: HttpHarnessServerLike|undefined, armed: string|undefined, started = false, closing: Promise<void>|undefined;
 const phases: string[] = [];
 const report = (message: unknown): void => { if (process.connected) process.send?.(message); };
@@ -17,6 +20,7 @@ process.on('message', async (raw: unknown) => {
     if (message.type === 'start' && !started) {
       started = true;
       server = await startServer({dataDir: String(message.dataDir), port: 0, token: message.token,
+        inspectProject:received=>{inspect=received;},
         taskFault(phase: string) {
           phases.push(phase);
           if (phase === armed) process.kill(process.pid, 'SIGKILL');
@@ -26,6 +30,11 @@ process.on('message', async (raw: unknown) => {
       armed = message.phase;
       report({type: 'reply', requestId: message.requestId, data: {armed}});
     } else if (message.type === 'observe') report({type: 'reply', requestId: message.requestId, data: {phases}});
+    else if(message.type==='snapshot'){
+      if(!inspect||typeof message.projectId!=='string'||!Array.isArray(message.tables)||message.tables.some(value=>typeof value!=='string'))throw new TypeError('Invalid trusted snapshot request');
+      const tables=message.tables as string[];
+      report({type:'reply',requestId:message.requestId,data:inspect(message.projectId,db=>readTaskHttpSnapshot(db,tables))});
+    }
     else if (message.type === 'close') await close();
   } catch (error) {
     report({type: 'error', message: (error as {stack?: string}).stack || String(error)});

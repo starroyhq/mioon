@@ -12,20 +12,55 @@ import {tmpdir} from 'node:os';
 import {randomUUID} from 'node:crypto';
 import {DatabaseSync} from 'node:sqlite';
 import {setTimeout as delay} from 'node:timers/promises';
+import type {InspectProject} from '../../apps/server/src/index.ts';
+import {createServerProject,openProjectDatabase} from './project-database.ts';
+import {openAppLibrary} from '../../packages/business/src/app-db/index.ts';
+import {createProjectServiceApplication} from '../../packages/business/src/project-service-application.ts';
+import {SCHEMA_MANIFEST} from '../../packages/business/src/project-file/schema/manifest.ts';
 import {startServer} from '../../apps/server/src/index.ts';
-import {openStore} from '../../packages/business/src/db.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 
 export const TASK_TOKEN = 'synthetic-durable-edit-transport-token';
 export const REPO = fileURLToPath(new URL('../../', import.meta.url));
 export const DOMAIN_TABLES = ['projects', 'assets', 'nodes', 'shots', 'edges', 'jobs', 'versions', 'exports', 'timelines',
   'timeline_requests', 'reference_requests', 'timeline_history', 'timeline_history_cursors', 'idempotency', 'job_events'];
-export function database<T>(root: string, read: (db: DatabaseSync)=>T, writable = false): T {
-  const db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: !writable});
-  try { return read(db); } finally { db.close(); }
+interface FixtureInspection {
+  readonly projectId: string;
+  readonly projects: ReadonlyMap<string,string>;
+  running(): boolean;
+  inspect(): InspectProject | undefined;
+  remoteSnapshot(projectId: string,tables: readonly string[]): Promise<Record<string,unknown>>;
 }
-export const snapshot = (root: string, tables: readonly string[] = DOMAIN_TABLES): Record<string, unknown> => database(root, (db: DatabaseSync) => Object.fromEntries(tables.map((table: string) =>
-  [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));
+const inspections = new Map<string,FixtureInspection>();
+const snapshotTables = new Set(Object.values(SCHEMA_MANIFEST).flatMap(manifest => manifest.entries.filter(entry=>entry.type==='table').map(entry=>entry.name)));
+/** Fixed kernel table names only; no SQL text ever crosses fixture IPC. */
+export function readTaskHttpSnapshot(db: DatabaseSync,tables: readonly string[]): Record<string,unknown> {
+  if(!Array.isArray(tables)||tables.some(table=>typeof table!=='string'||!snapshotTables.has(table)))throw new TypeError('Unknown snapshot table');
+  return Object.fromEntries(tables.map(table=>[table,db.prepare(`SELECT * FROM "${table}" ORDER BY rowid`).all().map(row=>({...row}))]));
+}
+export function database<T>(root: string,read: (db: DatabaseSync)=>T,_writable=false,projectId?: string): T {
+  const context=inspections.get(root);
+  if(!context)throw new TypeError('Database observations require an owned task fixture');
+  const id=projectId??context.projectId,projectRoot=context.projects.get(id);
+  if(!projectRoot)throw new TypeError('Project does not belong to this fixture');
+  if(context.running()){
+    const inspect=context.inspect();
+    if(!inspect)throw new TypeError('Active child observations use trusted snapshot IPC, never callbacks');
+    return inspect(id,read);
+  }
+  const db=openProjectDatabase(projectRoot);
+  try{return read(db);}finally{db.close();}
+}
+/** Every original table in both real projects. Never read a live SQLite file
+ * through another connection, and never broadcast a workspace SQL mutation. */
+export async function snapshot(root: string,tables: readonly string[]=DOMAIN_TABLES): Promise<Record<string,unknown>> {
+  const context=inspections.get(root);
+  if(!context)throw new TypeError('Snapshots require an owned task fixture');
+  const result:Record<string,unknown>={};
+  for(const id of context.projects.keys())result[id]=context.running()&&!context.inspect()
+    ?await context.remoteSnapshot(id,tables):database(root,db=>readTaskHttpSnapshot(db,tables),false,id);
+  return result;
+}
 export const taskPath = (projectId: string, id: string, action?: string): string => projectApiPath(projectId, 'tasks', id, ...(action ? [action] : []));
 export const listPath = (projectId: string): string => `${projectApiPath(projectId, 'tasks')}?projectId=${projectId}`;
 export async function until<T>(check: ()=>T|Promise<T>, label: string, ms = 5000): Promise<T> {
@@ -82,7 +117,7 @@ async function childBackend(root: string): Promise<Record<string, unknown>> {
     try { return await deadline(new Promise<unknown>(resolve => { replies.set(requestId, resolve); child.send({...message, requestId}); }), 'fixture IPC'); }
     finally { replies.delete(requestId); }
   };
-  const processHandle = {child, exited, get output() { return output; },
+  const processHandle = {child, exited, isRunning:running, snapshot:(projectId:string,tables:readonly string[])=>ask({type:'snapshot',projectId,tables}),get output() { return output; },
     arm: (phase: string) => ask({type: 'arm', phase}), observe: () => ask({type: 'observe'}),
     async close() {
       if (running()) {
@@ -104,30 +139,44 @@ async function childBackend(root: string): Promise<Record<string, unknown>> {
 export interface TaskFixtureOptions {subprocess?: boolean; fault?: (...args: unknown[])=>unknown}
 export async function taskFixture(t: unknown, {subprocess = false, fault}: TaskFixtureOptions = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-edit-tasks-http-'));
-  interface BackendHandle {readonly url: string; close(): Promise<unknown>}
+  interface BackendHandle {readonly url: string;close(): Promise<unknown>;isRunning?(): boolean;snapshot?(projectId:string,tables:readonly string[]):Promise<Record<string,unknown>>}
   let backend: BackendHandle|undefined, proxy: http.Server|undefined, dropRoute: string|undefined;
   const requests: {method?: string; route?: string; raw: string}[] = [], observed: unknown[] = [], phases: unknown[] = [];
   (t as {after(callback: ()=>Promise<void>): void}).after(async () => {
     if (proxy) { proxy.closeAllConnections(); await new Promise<void>(resolve => proxy!.close(() => resolve())); }
     await backend?.close();
+    inspections.delete(root);
     await rm(root, {recursive: true, force: true});
   });
-  const store = openStore(root);
+  const created=createServerProject(root,{name:'Synthetic durable task project'}),store=created.store;
   type FixtureRecord = Record<string, unknown> & {id: string};
-  let project!: FixtureRecord, foreign!: FixtureRecord, timeline!: FixtureRecord, shot!: FixtureRecord, source!: FixtureRecord, node!: FixtureRecord;
+  let project!:FixtureRecord,foreign!:FixtureRecord,timeline!:FixtureRecord,shot!:FixtureRecord,source!:FixtureRecord,node!:FixtureRecord;
+  const library=openAppLibrary({dataDir:root});
+  const services=createServices(store,new Map(),{application:createProjectServiceApplication(library,undefined,{MIOON_ENABLE_LIVE_PROVIDER:'0'})});
   try {
-    const services = createServices(store, new Map());
-    project = await services.call('project.create', {name: 'Synthetic durable task project'}) as unknown as FixtureRecord;
-    foreign = await services.call('project.create', {name: 'FOREIGN_RECORD_MUST_NOT_LEAK'}) as unknown as FixtureRecord;
-    source = store.put('assets', {id: randomUUID(), projectId: project.id, name: 'Synthetic metadata image', mimeType: 'image/png',
-      relativePath: 'media/synthetic.png', sha256: 'a'.repeat(64), sizeBytes: 100, duration: 0, width: 16, height: 16,
-      hasVideo: true, hasAudio: false, provenance: 'user-import', createdAt: new Date().toISOString()});
-    node = await services.call('node.create', {projectId: project.id, type: 'image', assetId: source.id, position: {x: 1, y: 2}, label: 'Synthetic reference'}) as unknown as FixtureRecord;
-    shot = await services.call('shot.create', {projectId: project.id, title: 'Synthetic saved shot'}) as unknown as FixtureRecord;
-    timeline = await services.call('timeline.get', {projectId: project.id}) as unknown as FixtureRecord;
-  } finally { store.close(); }
-  const start = async (): Promise<BackendHandle> => subprocess ? await childBackend(root) as unknown as BackendHandle : await startServer({dataDir: root, port: 0, token: TASK_TOKEN,
-    taskFault: (...args: unknown[]) => { phases.push(args[0]); return fault?.(...args); }});
+    project=store.get('projects',created.projectId) as unknown as FixtureRecord;
+    source=store.put('assets',{id:randomUUID(),projectId:project.id,name:'Synthetic metadata image',mimeType:'image/png',
+      relativePath:'media/synthetic.png',sha256:'a'.repeat(64),sizeBytes:100,duration:0,width:16,height:16,
+      hasVideo:true,hasAudio:false,provenance:'user-import',createdAt:new Date().toISOString()});
+    node=await services.call('node.create',{projectId:project.id,type:'image',assetId:source.id,position:{x:1,y:2},label:'Synthetic reference'}) as FixtureRecord;
+    shot=await services.call('shot.create',{projectId:project.id,title:'Synthetic saved shot'}) as FixtureRecord;
+    timeline=await services.call('timeline.get',{projectId:project.id}) as FixtureRecord;
+  } finally {await services.drain();store.close();library.close();}
+  const other=createServerProject(root,{name:'FOREIGN_RECORD_MUST_NOT_LEAK'});
+  try {foreign=other.store.get('projects',other.projectId) as unknown as FixtureRecord;}
+  finally {other.store.close();}
+  const projects=new Map([[project.id,created.store.projectDir],[foreign.id,other.store.projectDir]]);
+  let inspect:InspectProject|undefined,localRunning=false;
+  const start = async (): Promise<BackendHandle> => {
+    inspect=undefined;
+    if(subprocess)return await childBackend(root) as unknown as BackendHandle;
+    const running=await startServer({dataDir:root,port:0,token:TASK_TOKEN,
+      inspectProject:received=>{inspect=received;},taskFault:(...args:unknown[])=>{phases.push(args[0]);return fault?.(...args);}});
+    localRunning=true;
+    return {...running,isRunning:()=>localRunning,async close(){await running.close();localRunning=false;}};
+  };
+  inspections.set(root,{projectId:project.id,projects,running:()=>backend?.isRunning?.()??false,inspect:()=>inspect,
+    remoteSnapshot:async(id,tables)=>{if(!backend?.snapshot)throw new TypeError('No trusted child snapshot port');return backend.snapshot(id,tables);}});
   backend = await start();
   // A real loopback proxy loses only the response after the backend has fully
   // answered. It never retries or cancels the completed upstream action.

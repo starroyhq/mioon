@@ -34,12 +34,12 @@ test('ordered bounded reads are noncreating and all-or-nothing; missing/foreign 
 });
 
 test('save/clear independent CAS and historical replay survive restart without changing assets or other tables',async t=>{
- const f=await fixture(t),a=f.asset(),before=snapshot(f.store.db,['asset_annotations','asset_annotation_requests']),input=f.input(a),one=await f.call('asset.annotation.set',input);
+ const f=await fixture(t),a=f.asset(),before=snapshot(f.store.db,['asset_annotations','asset_annotation_requests','project_file','history_state']),input=f.input(a),one=await f.call('asset.annotation.set',input);
  const two=await f.call('asset.annotation.set',f.input(a,{expectedRevision:1,tags:[],note:''})) as {revision: number};assert.equal(two.revision,2);
  const revisions=before.agent_task_target_revisions_v2 as Record<string,unknown>[];
  assert.equal(revisions.some(row=>row.kind==='asset_annotation'&&row.targetId===a.id),false);
  revisions.push(Object.assign(Object.create(null),{projectId:a.projectId,kind:'asset_annotation',targetId:a.id,revision:2}));
- assert.deepEqual(snapshot(f.store.db,['asset_annotations','asset_annotation_requests']),before);
+ assert.deepEqual(snapshot(f.store.db,['asset_annotations','asset_annotation_requests','project_file','history_state']),before);
  const stable=snapshot(f.store.db);f.restart();assert.deepEqual(await f.call('asset.annotation.set',input),one);assert.deepEqual((await list(f,[a])).items,[two]);assert.deepEqual(snapshot(f.store.db),stable);
  await assert.rejects(f.call('asset.annotation.set',{...input,requestId:randomUUID()}),(e: unknown)=>{const failure=e as {code?: string; details?: {mutationOutcome?: string}};return failure.code==='REVISION_CONFLICT'&&failure.details?.mutationOutcome==='not_applied';});
  for(const patch of [{note:'changed'},{projectId:randomUUID()},{assetId:randomUUID()},{expectedRevision:1}])await assert.rejects(f.call('asset.annotation.set',{...input,...patch}),{code:'IDEMPOTENCY_CONFLICT'});
@@ -75,14 +75,15 @@ test('corrupt stored shapes and oversized bounded fields fail closed without raw
  f.store.db.prepare("UPDATE assets SET data='null' WHERE id=?").run(a.id);await assert.rejects(list(f,[a]),{code:'INVALID_ASSET_ANNOTATION_RECORD'});
 });
 
-for(const sameKey of [false,true])test(`two-process annotation ${sameKey?'exact replay':'CAS'} race commits one immutable receipt`,{timeout:30000},async t=>{
+for(const sameKey of [false,true])test(`exclusive-host annotation ${sameKey?'exact replay':'CAS'} race commits one immutable receipt`,{timeout:30000},async t=>{
  const f=await fixture(t),asset=f.asset(),input=f.input(asset);
  const children=[0,1].map(()=>fork(new URL('./helpers/asset-annotation-race-child.ts',import.meta.url),[f.root],{execArgv:[],stdio:['ignore','ignore','pipe','ipc']}));
  t.after(()=>{for(const child of children)if(child.exitCode===null)child.kill('SIGTERM');});
- await Promise.all(children.map(async (child: ReturnType<typeof fork>)=>{const [ready]=await once(child,'message') as [{ready: boolean}];assert.equal(ready.ready,true);}));
- const results=children.map((child: ReturnType<typeof fork>)=>once(child,'message').then((args: unknown[])=>args[0])),exits=children.map((child: ReturnType<typeof fork>)=>once(child,'exit'));
- children[0].send(input);children[1].send({...input,requestId:sameKey?input.requestId:randomUUID()});
- const values=await Promise.all(results) as {ok?: boolean; code?: string}[];await Promise.all(exits);
- if(sameKey){assert.ok(values.every((v: {ok?: boolean})=>v.ok));assert.deepEqual(values[0],values[1]);}else{assert.equal(values.filter((v: {ok?: boolean})=>v.ok).length,1);const failed=values.find((v: {ok?: boolean})=>!v.ok);assert.ok(failed);assert.equal(failed.code,'REVISION_CONFLICT');}
+ const exits=children.map(child=>once(child,'exit'));
+ await Promise.all(children.map(async child=>{const [message]=await once(child,'message') as [{code:string}];assert.equal(message.code,'PROJECT_LOCKED');}));
+ await Promise.all(exits);
+ const values=await Promise.allSettled([f.call('asset.annotation.set',input),f.call('asset.annotation.set',{...input,requestId:sameKey?input.requestId:randomUUID()})]);
+ if(sameKey){assert.ok(values[0].status==='fulfilled'&&values[1].status==='fulfilled');assert.deepEqual(values[0].value,values[1].value);}
+ else{assert.equal(values.filter(value=>value.status==='fulfilled').length,1);const failed=values.find(value=>value.status==='rejected');assert.ok(failed&&failed.status==='rejected');assert.equal((failed.reason as {code:string}).code,'REVISION_CONFLICT');}
  assert.equal((f.store.db.prepare('SELECT COUNT(*) n FROM asset_annotation_requests').get() as {n: number}).n,1);const finalList=await list(f,[asset]);assert.equal(finalList.items[0]?.revision,1);
 });

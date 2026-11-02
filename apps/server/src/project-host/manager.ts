@@ -176,6 +176,7 @@ export function createProjectFiles(input: CreateProjectInput, {directories, regi
   const {name, projectId} = input;
   if (typeof name !== 'string' || name.length < 1 || name.length > MAX_PROJECT_NAME_LENGTH) throw invalid('项目名称无效');
   if (projectId !== undefined && registry.get(projectId)) throw invalid('项目 ID 已登记');
+  registry.assertCanRegister?.();
   const create = (file: string): string => createProjectFile(file, projectId === undefined ? {} : {projectId});
   let projectFile: string;
   let folder: string | null = null;
@@ -572,7 +573,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         await entry.closed;
         return entry.closeFailure === undefined ? [] : [entry.closeFailure];
       }
-      try { await entry.ready; } catch { return []; }
+      try { await entry.ready; } catch { return entry.closeFailure === undefined ? [] : [entry.closeFailure]; }
     }
   }
 
@@ -784,6 +785,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         await entry.closed;
         entry = entries.get(projectId);
       }
+      if (entry?.closeFailure !== undefined) throw entry.closeFailure;
       if (entry?.state === 'open') {
         const paused = entry;
         paused.paused = true;
@@ -791,7 +793,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
         const drained = await waitForRequests(paused, drainTimeoutMs);
         paused.paused = false;
         if (stateOf(paused) === 'open') {
-          if (!drained || hasLease(paused, 'request') || isBusy(paused)) {
+          if (!drained || hasLease(paused, 'request') || hasLease(paused, 'task') || isBusy(paused)) {
             scheduleIdle(paused);
             throw projectHostError('PROJECT_HOST_BUSY', {projectId});
           }
@@ -842,6 +844,7 @@ export function createProjectHostManager<Runtime extends ProjectHostRuntime = Pr
   }
 
   const inspectProject: InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) => T): T => {
+    assertRunning();
     if (typeof inspect !== 'function' || isAsyncFunction(inspect)) throw new TypeError('Inspection requires a synchronous callback');
     checkProjectId(projectId);
     const entry = entries.get(projectId);

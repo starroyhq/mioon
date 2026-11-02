@@ -16,6 +16,7 @@ import {findHeldAppProjectFile} from '../packages/business/src/app-db/connection
 import {isProjectDatabase, isProjectFileHeld} from '../packages/business/src/project-file/index.ts';
 import {ensureProjectRow} from '../apps/server/src/project-host/project-initialization.ts';
 import {mutateProjectRecord} from '../packages/business/src/project-record-mutations.ts';
+import {testStoreForConnection} from '../packages/business/src/project-file/test-store.ts';
 import {createServerProject, foreignKeyCheck, openProjectDatabase, projectDatabasePath, projectDirFor, schemaObjects, withoutForeignKeys} from './helpers/project-database.ts';
 
 const TOKEN = 'synthetic-project-database-token';
@@ -103,7 +104,7 @@ test('createServerProject refuses an existing ID without changing its stored byt
   } finally { reopened.close(); }
 });
 
-test('createServerProject rolls back and closes its store when creation throws after opening it', t => {
+test('createServerProject rejects a failing name getter before opening storage', t => {
   const dataDir = dataDirectory(t), projectId = '00000000-0000-4000-8000-0000000000cc';
   const failure = new Error('Synthetic fixture name failure');
   assert.throws(() => createServerProject(dataDir, {projectId, get name(): string { throw failure; }}), error => error === failure);
@@ -114,6 +115,45 @@ test('createServerProject rolls back and closes its store when creation throws a
     assert.equal(projectName(created.store.db, projectId), 'Recovered fixed project');
     assert.deepEqual(created.store.db.prepare('SELECT id FROM projects ORDER BY id').all().map(row => row.id), [projectId]);
   } finally { created.store.close(); }
+});
+
+test('createServerProject closes its opened kernel and removes registration after an initialization fault', t => {
+  const dataDir = dataDirectory(t), projectId = '00000000-0000-4000-8000-0000000000cd';
+  const failure = new Error('Synthetic post-open initialization failure');
+  const nativePrepare = DatabaseSync.prototype.prepare;
+  let opened: DatabaseSync | undefined, projectFile: string | undefined;
+  const identities: {dev: string; ino: string}[] = [];
+  const seam = t.mock.method(DatabaseSync.prototype, 'prepare', function (this: DatabaseSync, sql: string) {
+    if (sql === 'SELECT id FROM project.projects LIMIT 2' && isProjectDatabase(this)) {
+      assert.equal(isProjectDatabase(this), true, 'the initialization fault occurs after the real kernel opened');
+      opened = this;
+      const registered = findHeldAppProjectFile(dataDir, projectId);
+      assert.ok(typeof registered === 'string');
+      projectFile = registered;
+      for (const row of nativePrepare.call(this, 'PRAGMA database_list').all()) {
+        if (typeof row.file !== 'string' || row.file === '') continue;
+        const info = lstatSync(row.file, {bigint: true});
+        identities.push({dev: String(info.dev), ino: String(info.ino)});
+      }
+      throw failure;
+    }
+    return nativePrepare.call(this, sql);
+  });
+  try {
+    assert.throws(() => createServerProject(dataDir, {projectId, name: 'Initialization fault'}), error => error === failure);
+  } finally { seam.mock.restore(); }
+  assert.ok(opened);
+  assert.equal(opened.isOpen, false);
+  assert.equal(identities.length, 3);
+  assert.ok(identities.every(identity => !isProjectFileHeld(identity)), 'all kernel file owners are released');
+  assert.ok(projectFile);
+  assert.equal(lstatSync(path.dirname(projectFile), {throwIfNoEntry: false}), undefined);
+  const library = openAppLibrary({dataDir});
+  try { assert.equal(library.registry.get(projectId), null); }
+  finally { library.close(); }
+  const recovered = createServerProject(dataDir, {projectId, name: 'Recovered initialization'});
+  try { assert.equal(projectName(recovered.store.db, projectId), 'Recovered initialization'); }
+  finally { recovered.store.close(); }
 });
 
 test('openProjectDatabase opens a closed project with the store pragmas and structure', t => {
@@ -137,6 +177,23 @@ test('openProjectDatabase refuses a missing project database without creating on
   const root = dataDirectory(t);
   assert.throws(() => openProjectDatabase(root), {code: 'PROJECT_MISSING', status: 404, details: {database: 'project', reason: 'missing'}});
   assert.equal(lstatSync(projectDatabasePath(root), {throwIfNoEntry: false}), undefined);
+});
+
+test('test connection lookup accepts only its exact live owner and releases closed identities', t => {
+  const root = dataDirectory(t), store = openStore(root), db = store.db;
+  try {
+    assert.equal(testStoreForConnection(db, root), store);
+    assert.equal(testStoreForConnection(db, path.join(root, 'foreign')), null);
+    assert.equal(testStoreForConnection({...db}, root), null);
+  } finally { store.close(); }
+  assert.equal(testStoreForConnection(db, root), null);
+  const reopened = openStore(root);
+  try {
+    assert.equal(testStoreForConnection(reopened.db, root), reopened);
+    store.close();
+    assert.equal(testStoreForConnection(db, root), null);
+    assert.equal(testStoreForConnection(reopened.db, root), reopened);
+  } finally { reopened.close(); }
 });
 
 test('projectDirFor takes only lowercase UUID project IDs', () => {

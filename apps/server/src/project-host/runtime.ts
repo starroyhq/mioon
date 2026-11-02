@@ -15,7 +15,8 @@ import {body, field, json} from '../http-json.ts';
 import {createFileResponses} from '../file-response.ts';
 import {createVersionComparisonMediaHttp} from '../version-comparison-media.ts';
 import {createProjectDeletionGate} from '../project-deletion-gate.ts';
-import {composeProjectRuntime} from '../project-runtime.ts';
+import {composeProjectRuntime, ProjectRuntimeCleanupError} from '../project-runtime.ts';
+import {bindAgentTaskRowValidation} from '@mioon/business/agent/task-project-row-validation-v2';
 import {callObservedRpc} from '../rpc-observation.ts';
 import {projectHandlerTarget, assertProjectRpc} from './request.ts';
 import type {ProjectHostContext, ProjectHostRuntime, ProjectRequest, UnfinishedTask} from './host.ts';
@@ -23,6 +24,9 @@ import {ensureProjectRow} from './project-initialization.ts';
 import {readWorkspaceInfo} from '../workspace-info.ts';
 import {mediaExecutable} from '@mioon/business/media-environment';
 import packageMetadata from '../../../../package.json' with {type: 'json'};
+import {ensurePrivateDirectory} from '@mioon/contracts/private-storage';
+import {registerProjectTransactionObserver} from '@mioon/business/project-file/index';
+import {createProjectCoverPublisher} from './cover-publisher.ts';
 
 export interface HostedProject extends ProjectHostRuntime {
   readonly project: Awaited<ReturnType<typeof composeProjectRuntime>>;
@@ -32,7 +36,9 @@ export interface HostedProject extends ProjectHostRuntime {
 export async function composeHostedProject(context: ProjectHostContext, library: AppLibrary, app: ApplicationRuntime, options: ServerOptions,
   selfPort: () => number | undefined, listeningPort: () => number): Promise<HostedProject> {
   const {store, projectId} = context, root = store.projectDir;
+  ensurePrivateDirectory(path.join(root, 'media'), {create: true});
   ensureProjectRow(store, {name: library.registry.get(projectId)!.name});
+  const releaseRowValidation = bindAgentTaskRowValidation(store, library);
   const shutdown = new AbortController();
   const abort = () => shutdown.abort();
   context.signal.addEventListener('abort', abort, {once: true});
@@ -53,6 +59,7 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     await Promise.all([files.close(), comparisons.close()]);
     deletionGate.close();
     context.signal.removeEventListener('abort', abort);
+    if (!(error instanceof ProjectRuntimeCleanupError)) releaseRowValidation();
     throw error;
   }
   const worker = project.startWorker();
@@ -65,13 +72,16 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     const {id: _id, name, lastOpenedAt: _opened, cover, ...rest} = value;
     return {name, summary: {...rest, cover: cover ? {assetId: cover.assetId, mimeType: cover.mimeType} : null}};
   };
+  const cover = createProjectCoverPublisher({store, summarize: summary, signal: shutdown.signal});
+  const removeCoverObserver = registerProjectTransactionObserver(store.db, () => cover.refresh());
+  cover.refresh();
   const unfinishedTasks = (): readonly UnfinishedTask[] => {
     const tables = [['jobs', 'job', "json_extract(data,'$.status')"], ['exports', 'export', "json_extract(data,'$.status')"], ['edit_tasks', 'edit_task', 'status'], ['image_tasks', 'image_task', 'state'], ['frame_tasks', 'frame_task', 'state'], ['scene_tasks', 'scene_task', 'state'], ['subject_variant_batches', 'subject_variant_batch', 'state']] as const;
     const result: UnfinishedTask[] = [];
     for (const [table, kind, status] of tables) {
       // Fixed kernel tables, never supplied by HTTP or inferred from filenames.
       for (const row of store.db.prepare(`SELECT id,${status} AS status FROM ${table}`).all()) {
-        if (['queued', 'running', 'pending', 'prepared', 'dispatching', 'receiving', 'persisting', 'polling', 'submitting', 'recovering', 'uncertain', 'accepted'].includes(String(row.status))) result.push({kind, taskId: String(row.id)});
+        if (['queued', 'running', 'pending', 'prepared', 'dispatching', 'receiving', 'persisting', 'polling', 'submitting', 'downloading', 'cancelling', 'recovering', 'uncertain', 'accepted'].includes(String(row.status))) result.push({kind, taskId: String(row.id)});
       }
     }
     return result;
@@ -88,11 +98,8 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     req.url = local.pathname + local.search;
     const address = {projectId};
     deletionGate.track(res);
-    const revoked = () => { if (!res.writableEnded) res.destroy(); };
-    signal.addEventListener('abort', revoked, {once: true});
-    const terminal = () => { signal.removeEventListener('abort', revoked); res.off('finish', terminal); res.off('close', terminal); };
-    res.once('finish', terminal); res.once('close', terminal);
-    if (signal.aborted) { revoked(); return true; }
+    // The dispatcher owns response completion, revocation and lease release.
+    if (signal.aborted) { res.destroy(); return true; }
     if (local.pathname === '/api/version-comparison/media' && await comparisons.handle(req, res, local)) return true;
     for (const handler of [project.imageHttp, (request: IncomingMessage, response: ServerResponse, target: URL) => project.taskHttpV2!.handle(request, response, target, address),
       project.editTasksHttp, project.localDraftHttp, project.localDeliveryHttp, project.localShotTextHttp,
@@ -126,9 +133,9 @@ export async function composeHostedProject(context: ProjectHostContext, library:
     return false;
   }
   return {project, handle, summarize: summary, unfinishedTasks,
-    isBusy: () => worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || !deletionGate.isQuiescent(),
+    isBusy: () => files.isBusy() || cover.isBusy() || worker.isBusy() || project.taskRuntimeV2!.isBusy() || project.services.isBusy() || !deletionGate.isQuiescent(),
     interrupt: () => { shutdown.abort(); project.taskRuntimeV2?.close(); project.taskHttpV2?.close(); },
-    drain: async () => { await boundedShutdown(Promise.all([worker.stop(), project.taskRuntimeV2?.drain(), project.serviceDrain(), project.editTasks.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
-    dispose: () => { project.taskToolsV2?.dispose(); deletionGate.close(); context.signal.removeEventListener('abort', abort); },
+    drain: async () => { await boundedShutdown(Promise.all([worker.stop(), project.taskRuntimeV2?.drain(), project.serviceDrain(), project.editTasks.drain(), cover.drain(), files.close(), comparisons.close(), project.closeSettings()]), 'SERVER_STOP_TIMEOUT'); },
+    dispose: () => { removeCoverObserver(); project.taskToolsV2?.dispose(); deletionGate.close(); releaseRowValidation(); context.signal.removeEventListener('abort', abort); },
   };
 }

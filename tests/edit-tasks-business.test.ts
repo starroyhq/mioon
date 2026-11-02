@@ -93,13 +93,11 @@ for(const point of ['afterClaim','beforeDispatch','afterBusinessCommit','beforeO
  assert.equal((f.store.db.prepare('SELECT count(*) n FROM timeline_requests').get())!.n,1);assert.equal(f.calls,calls+(committed?0:1));
 });
 
-test('lock:false reader cannot dispatch, acknowledge, reconcile or steal startup claims',async t=>{
+test('the kernel refuses a second connection before it can dispatch or steal startup claims',async t=>{
  const f=await fixture(t),saved=await f.track();let release!: () => void;const wait=new Promise<void>(resolve=>release=resolve);
  f.setDispatch(async(op,input,services)=>{await wait;return services.call(op,input);});const executing=f.execute(saved);
- const reader=(openStore(f.root,{lock:false}) as unknown as TypedStore);t.after(()=>reader.close());const tasks=(createEditTasks({store:reader,services:(createServices(reader,new Map()) as unknown as TypedServices)}) as unknown as TypedTaskManager);
- assert.equal(tasks.get({projectId:f.project.id,taskId:saved.task.id}).task.status,'dispatching');
- for(const call of [()=>tasks.reconcileStartup(),()=>tasks.reconcile(f.request(saved.task)),()=>tasks.prepare({projectId:f.project.id,operation:saved.task.operation,input:saved.task.input,origin:'new'})])assert.throws(call,code('EDIT_TASK_OWNER_REQUIRED'));
- await assert.rejects(tasks.execute({...f.request(saved.task),instanceId:saved.instanceId}),code('EDIT_TASK_OWNER_REQUIRED'));
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ assert.equal(f.tasks.get({projectId:f.project.id,taskId:saved.task.id}).task.status,'dispatching');
  assert.equal((f.row(saved.task))!.status,'dispatching');(release)!();assert.equal((await executing).task.status,'applied');
 });
 
@@ -223,8 +221,7 @@ test('an independent process cannot acquire ownership or steal an active persist
   const stdout=execFileSync(process.execPath,[new URL('./helpers/edit-tasks-owner-process.ts',import.meta.url).pathname,
    f.root,JSON.stringify({...f.request(saved.task),instanceId:saved.instanceId})],{encoding:'utf8',timeout:10000,maxBuffer:65536});
   const result=JSON.parse(stdout);
-  assert.deepEqual(result,{ownerDenied:true,before:'dispatching',after:'dispatching',unchanged:true,
-   failures:{startup:'EDIT_TASK_OWNER_REQUIRED',reconcile:'EDIT_TASK_OWNER_REQUIRED',execute:'EDIT_TASK_OWNER_REQUIRED'}});
+  assert.deepEqual(result,{ownerDenied:true,code:'PROJECT_LOCKED'});
   assert.deepEqual(f.row(saved.task),before);assert.equal(f.calls,1);
  }finally{(release)!();await executing;}
  assert.equal((f.row(saved.task))!.status,'applied');assert.equal((f.store.db.prepare('SELECT count(*) n FROM timeline_requests').get())!.n,1);

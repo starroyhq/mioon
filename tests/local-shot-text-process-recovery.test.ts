@@ -1,4 +1,5 @@
-import {reviewedCatalogAt,reviewedTablesAfter} from './helpers/reviewed-schema-layers.ts';
+import {TEST_STORE_LAYOUT} from '../packages/contracts/src/project-file.ts';
+import {assertProjectProcessCatalog} from './fixtures/project-process-catalog.ts';
 import type {OrdinaryDeliveryEnvelope} from './helpers/strict-timeline-audio-draft-types.ts';
 import type {LocalShotTextSupported} from '../apps/web/src/local-shot-text-state.ts';
 import type {MediaShot} from './helpers/strict-service-responses.ts';
@@ -11,8 +12,6 @@ type WorkerEnvelope=LocalShotTextSupported;
 type WorkerExecution={envelope:WorkerEnvelope;response:MediaShot|null};
 type WorkerReply<M extends string>=M extends 'get'|'put'|'prepare'?WorkerEnvelope:M extends 'execute'|'recover'?WorkerExecution:M extends 'executeBoth'?[WorkerExecution,WorkerExecution]:M extends 'observe'?{dispatches:unknown[]}:M extends 'identity'?{instanceId:string}:unknown;
 import type {TypedStore, TypedServices} from './helpers/strict-service-responses.ts';
-import {withoutReviewedStorageObjects} from './helpers/current-schema60-delta.ts';
-function withoutReviewedCurrentAgentObjects(objects:Parameters<typeof withoutReviewedStorageObjects>[0]){return reviewedCatalogAt(52,objects);}
 /** Real owned-process death around the shared shot.update service. These tests
  * prove Node business-receipt recovery, never native GUI lost-ACK coverage. */
 import test from 'node:test';
@@ -26,12 +25,9 @@ import {fileURLToPath} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {openStore} from '../packages/business/src/db.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
-import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
 import {openProjectDatabase} from './helpers/project-database.ts';
 import {readShotTextState} from './fixtures/local-shot-text-process-worker.ts';
 type ShotTextState=ReturnType<typeof readShotTextState>;
-// Exact table names of the independently reviewed layers after schema52.
-const reviewedLayerTables=new Set(reviewedTablesAfter(52).map(([table])=>table));
 
 const repo=fileURLToPath(new URL('../',import.meta.url)),workerPath=fileURLToPath(new URL('./fixtures/local-shot-text-process-worker.ts',import.meta.url));
 const authority=(value: WorkerEnvelope)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});
@@ -62,34 +58,23 @@ async function fixture(t: test.TestContext){
  t.after(async()=>{let safelyClosed=false;try{const results=await Promise.allSettled(workers.map(value=>value.close()));safelyClosed=workers.every(value=>value.stopped);for(const result of results)if(result.status==='rejected')throw result.reason;}finally{if(safelyClosed)await rm(root,{recursive:true,force:true});}});
  const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);let project,shot,second,foreign;
  try{project=await services.call('project.create',{name:'Synthetic shot text crash'});shot=await services.call('shot.create',{projectId:project.id,title:'Saved title',prompt:'Saved prompt',duration:7,aspectRatio:'16:9',parameters:{seed:42}});second=await services.call('shot.create',{projectId:project.id,title:'Second shot',prompt:''});foreign=await foreignProject(t);}finally{await services.drain();store.close();}
- const f={root,project,shot,second,foreign,get worker(){return worker;},async start(){worker=spawnWorker(root);workers.push(worker);const ready=await deadline(worker.ready,'worker startup');assert.equal(ready.pid,worker.child.pid);assert.equal(ready.dispatches,0);assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(worker.child.pid));return ready;},async restart(){await worker.close();return this.start();},ask:<M extends string>(method:M,input?:unknown)=>worker.ask(method,input),get:(target=shot)=>worker.ask('get',{projectId:project.id,shotId:target.id}),
+ const f={root,project,shot,second,foreign,get worker(){return worker;},async start(){worker=spawnWorker(root);workers.push(worker);const ready=await deadline(worker.ready,'worker startup');assert.equal(ready.pid,worker.child.pid);assert.equal(ready.dispatches,0);assert.throws(()=>openProjectDatabase(root),{code:'PROJECT_LOCKED'});return ready;},async restart(){await worker.close();return this.start();},ask:<M extends string>(method:M,input?:unknown)=>worker.ask(method,input),get:(target=shot)=>worker.ask('get',{projectId:project.id,shotId:target.id}),
  put:(value: WorkerEnvelope,raw={title:'原始标题 🎬',prompt:'原始提示\n恢复同一保存请求'},target=shot)=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),baseRevision:target.revision,baseText:{title:target.title,prompt:target.prompt},raw}),
  prepare:(value: WorkerEnvelope)=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:value.draft!.baseRevision,baseText:value.draft!.baseText,draft:{draftId:value.draft!.draftId,revision:value.draftRevision,raw:value.draft!.raw},input:{shotId:value.shotId,expectedRevision:value.draft!.baseRevision,requestId:randomUUID(),patch:structuredClone(value.draft!.raw)}}),
  // A running worker holds the project and reads on its own connection. After
- // SIGKILL its lock stays, so that evidence is read without taking the lock;
- // after a clean close the test opens the project itself. Both paths go
+ // SIGKILL releases the OS locks; normal kernel recovery must reacquire them
+ // before reading the surviving transactional evidence. Both paths go
  // through JSON, so their rows compare the same.
  async state():Promise<ShotTextState>{
   if(!worker.stopped)return await worker.ask('snapshot') as ShotTextState;
   const read=(db:DatabaseSync):ShotTextState=>JSON.parse(JSON.stringify(readShotTextState(db)));
-  if(worker.stopped.signal==='SIGKILL'){const crashed=openStore(root,{lock:false});try{return read(crashed.db);}finally{crashed.close();}}
   const db=openProjectDatabase(root);try{return read(db);}finally{db.close();}
  },
  async snapshot(){const state=await this.state();
-  const schema=withoutReviewedCurrentAgentObjects(state.schema as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]),names=new Set(currentOrdinary52Delta.objectNames),objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
-  assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
-  assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
-  assert.equal(createHash('sha256').update(JSON.stringify(objects)).digest('hex'),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
-  assert.deepEqual((schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
-  // Preserve every table and row in the crash oracle; admit digits only in
-  // the independently frozen52 or reviewed later-layer table names rather
-  // than any new table name.
-  for(const name of Object.keys(state.tables))
-   assert.ok(/^[a-z_]+$/.test(name)||Object.hasOwn(currentOrdinary52Delta.tables,name)||reviewedLayerTables.has(name),'only safe legacy, independently frozen52 or reviewed later-layer table names');
-  return {schema,tables:state.tables};
+  assertProjectProcessCatalog(state);return state;
  },
- receipt:async(requestId:string)=>(await f.state()).tables.mutation_requests.find(row=>row.requestId===requestId),savedShot:async()=>JSON.parse((await f.state()).tables.shots.find(row=>row.id===shot.id)!.data as string),sidecar:()=>readFile(path.join(root,'local-shot-text-v1.json'),'utf8'),
- async crash(phase: string,method: string,input: unknown){await worker.ask('arm',phase);const reached=worker.waitBoundary(phase),reply=worker.ask(method,input),lost=assert.rejects(reply,{code:'WORKER_EXITED',signal:'SIGKILL'});const point=await reached;assert.deepEqual(await worker.kill(),{code:null,signal:'SIGKILL'});await lost;assert.equal(await readFile(path.join(root,'server.lock'),'utf8'),String(worker.child.pid),'Product startup must reclaim the exact crash-left stale lock');t.diagnostic(`${phase}: owned child SIGKILL before IPC reply; dispatches=${point.dispatches}`);return point;}};
+ receipt:async(requestId:string)=>(await f.state()).tables.mutation_requests.find(row=>row.requestId===requestId),savedShot:async()=>JSON.parse((await f.state()).tables.shots.find(row=>row.id===shot.id)!.data as string),sidecar:()=>readFile(path.join(root,...TEST_STORE_LAYOUT.localDir,'local-shot-text-v1.json'),'utf8'),
+ async crash(phase: string,method: string,input: unknown){await worker.ask('arm',phase);const reached=worker.waitBoundary(phase),reply=worker.ask(method,input),lost=assert.rejects(reply,{code:'WORKER_EXITED',signal:'SIGKILL'});const point=await reached;assert.deepEqual(await worker.kill(),{code:null,signal:'SIGKILL'});await lost;assert.doesNotThrow(()=>{const recovered=openProjectDatabase(root);recovered.close();},'the real SIGKILL releases kernel locks for normal recovery');t.diagnostic(`${phase}: owned child SIGKILL before IPC reply; dispatches=${point.dispatches}`);return point;}};
  await f.start();return f;
 }
 const noDispatch=async (f: Awaited<ReturnType<typeof fixture>>)=>assert.deepEqual(await f.ask('observe'),{dispatches:[]});

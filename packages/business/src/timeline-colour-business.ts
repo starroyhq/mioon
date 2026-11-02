@@ -1,6 +1,6 @@
 import type {DatabaseSync} from 'node:sqlite';
 import {clipColourSchema} from '../../contracts/src/timeline-colour.ts';
-import {readLutResource} from './lut-resource-validation.ts';
+import {readLutResource} from './project-lut-reader.ts';
 
 const fault=(code:string):Error&{code:string;status:number}=>Object.assign(new Error(
   code==='TIMELINE_COLOUR_LOOK_UNAVAILABLE'?'The creative look is not an exact owned LUT resource in this project.':

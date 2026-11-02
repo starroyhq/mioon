@@ -5,15 +5,12 @@ import {parseTimelineDeliveryContentDisposition} from '@mioon/contracts/timeline
 import {parseProjectApiPath} from '../../../packages/contracts/src/project-file.ts';
 
 const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
-/** The legacy path keeps its existing UUID spelling policy. Project addresses
- * use the shared parser's canonical lowercase project and asset IDs. */
-const mediaPath = new RegExp(`^/media/(${UUID})$`, 'i');
 const responseBinding = new RegExp(`^(.*); mioon-export-id="(${UUID})"; mioon-asset-id="(${UUID})"$`, 'i');
 const MAX_HEADER_BYTES = 2048;
 const MAX_URL_BYTES = 2048;
 const MAX_REDIRECTS = 32;
 
-type DownloadIdentity = {assetId: string; exportId: string | null};
+type DownloadIdentity = {projectId: string; assetId: string; exportId: string | null};
 export type TimelineDownloadDirectory =
   | {downloadsDirectory: string; downloadsPath?: never}
   | {downloadsPath: string; downloadsDirectory?: never};
@@ -26,25 +23,24 @@ export function timelineDownloadIdentity(value: unknown, origin: string): Downlo
   if (typeof value !== 'string' || !value || /[\u0000-\u0020\u007f]/u.test(value) || Buffer.byteLength(value) > MAX_URL_BYTES) return null;
   let url: URL;
   try { url = new URL(value); } catch { return null; }
-  const matched = mediaPath.exec(url.pathname);
   const scoped = parseProjectApiPath(url.pathname);
-  const assetId = scoped?.kind === 'media' ? scoped.assetId : matched?.[1];
-  if (url.origin !== origin || url.username || url.password || url.hash || !assetId) return null;
+  if (url.origin !== origin || url.username || url.password || url.hash || scoped?.kind !== 'media') return null;
+  const {projectId,assetId} = scoped;
   const keys = [...url.searchParams.keys()];
-  if (keys.length === 0) return {assetId, exportId: null};
+  if (keys.length === 0) return {projectId,assetId, exportId: null};
   if (keys.length === 1 && keys[0] === 'download' && ['', '1'].includes(url.searchParams.get('download') ?? '')) {
-    return {assetId, exportId: null};
+    return {projectId,assetId, exportId: null};
   }
   const exportId = url.searchParams.get('exportId');
   if (keys.length !== 2 || keys.filter(key => key === 'download').length !== 1 || keys.filter(key => key === 'exportId').length !== 1 ||
       url.searchParams.get('download') !== '1' || !exportId || exportId.length !== 36 || !new RegExp(`^${UUID}$`, 'i').test(exportId)) return null;
-  return {assetId, exportId};
+  return {projectId,assetId, exportId};
 }
 
 /** Consume the actual response header, not Chromium's suggested filename (which
  * can come from a renderer download attribute). Full response IDs must agree
  * with the final URL before the shared bounded filename policy is consulted. */
-export function namedTimelineDownloadBasename(header: unknown, identity: DownloadIdentity): string | null {
+export function namedTimelineDownloadBasename(header: unknown, identity: Pick<DownloadIdentity,'assetId'|'exportId'>): string | null {
   if (!identity.exportId || typeof header !== 'string' || Buffer.byteLength(header) > MAX_HEADER_BYTES || /[\r\n\0]/.test(header)) return null;
   const match = responseBinding.exec(header);
   if (!match || match[2] !== identity.exportId || match[3] !== identity.assetId) return null;
@@ -59,7 +55,7 @@ function saveOptions(item: Item, origin: string, directory: TimelineDownloadDire
   if (!final || !Array.isArray(chain) || chain.length === 0 || chain.length > MAX_REDIRECTS || chain.at(-1) !== finalUrl) return null;
   for (const value of chain) {
     const current = timelineDownloadIdentity(value, origin);
-    if (!current || current.assetId !== final.assetId || current.exportId !== final.exportId) return null;
+    if (!current || current.projectId !== final.projectId || current.assetId !== final.assetId || current.exportId !== final.exportId) return null;
   }
   const downloadsDirectory = directory.downloadsDirectory ?? path.dirname(directory.downloadsPath);
   if (!path.isAbsolute(downloadsDirectory) || downloadsDirectory.includes('\0')) return null;

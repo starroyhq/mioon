@@ -5,7 +5,7 @@ import {writeFileSync} from 'node:fs';
 import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {AGENT_TASK_OPERATION_ADMISSION} from '../packages/business/src/agent/task-tools-v2.ts';
@@ -26,9 +26,9 @@ type Request = {projectId: string;expectedRevision: number;requestId: string;gai
 const digest=(bytes: Buffer)=>createHash('sha256').update(bytes).digest('hex');
 const writes=['timelines','timeline_history','timeline_history_cursors','timeline_requests'];
 
-async function fixture(t: test.TestContext){
+async function fixture(t: test.TestContext,opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-clip-gains-')));
- let store=openStore(root),services=createServices(store,new Map());
+ let store=opener(root),services=createServices(store,new Map());
  const call=async <T,>(operation: string,input: unknown): Promise<T>=>await services.call(operation,input) as T;
  const project=await call<{id: string}>('project.create',{name:t.name.slice(0,150)});
  const f={root,projectId:project.id,call,
@@ -53,7 +53,7 @@ async function fixture(t: test.TestContext){
    return next.clips.at(-1)!;
   },
   request:(timeline: Timeline,gains: {clipId: string;gain: number}[]): Request=>({projectId:project.id,expectedRevision:timeline.revision,requestId:randomUUID(),gains}),
-  async reopen(){await services.drain();store.close();store=openStore(root);services=createServices(store,new Map());},
+  async reopen(){await services.drain();store.close();store=opener(root);services=createServices(store,new Map());},
   async close(){await services.drain();store.close();},
  };
  t.after(async()=>{await services.drain();store.close();await rm(root,{recursive:true,force:true});});
@@ -143,7 +143,7 @@ test('fades and volume envelopes are kept',async t=>{
 });
 
 test('gain receipts beside dialogue keep the workspace valid through backup and restore, and the restored copy refuses new batches',async t=>{
- const f=await fixture(t),{a,b}=await dialogue(f);
+ const f=await fixture(t,openLegacyWorkspaceStore),{a,b}=await dialogue(f);
  const input=f.request(await f.timeline(),[{clipId:a.id,gain:1.3},{clipId:b.id,gain:0.7}]),response=await f.call<Response>(GAINS,input);
  // The receipt wraps a timeline whose clips carry audio roles; the workspace
  // validators behind both capabilities must still read it as a valid receipt.
@@ -155,7 +155,7 @@ test('gain receipts beside dialogue keep the workspace valid through backup and 
  const created=await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string};
  assert.equal(created.integrity,'verified');assert.deepEqual(await verifyWorkspaceBackup({directory:backup}),created);
  const restored=await restoreWorkspaceBackup({directory:backup,destination}) as {workspaceOrigin: string};
- const store=openStore(destination),services=createServices(store,new Map());
+ const store=openLegacyWorkspaceStore(destination),services=createServices(store,new Map());
  try{
   const timeline=await services.call('timeline.get',{projectId:f.projectId}) as Timeline;
   assert.deepEqual(timeline.clips,response.timeline.clips,'the new gains are restored exactly');

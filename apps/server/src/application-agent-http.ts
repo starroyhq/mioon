@@ -30,12 +30,18 @@ export function createApplicationAgentHttp(library: AppLibrary, signal: AbortSig
       if (req.method === 'GET') { json(res, 200, {ok: true, data: {policy: policy.policy(), readOnly: false}}); return true; }
       if (req.method === 'PUT') {
         if (!/^application\/json(?:\s*;|$)/iu.test(req.headers['content-type'] ?? '')) throw agentTaskFailure('AGENT_TASK_INVALID');
-        const input = await body(req, 128 * 1024);
+        let input: unknown;
+        try {input = await body(req, 128 * 1024);} catch {throw agentTaskFailure('AGENT_TASK_INVALID');}
         signal.throwIfAborted();
         if (!object(input) || Object.keys(input).some(key => !['requestId', 'expectedRevision', 'revision', 'stepLimit', 'modes', 'acknowledgePaid'].includes(key)) || typeof input.requestId !== 'string' || input.requestId.length < 8 || !object(input.modes)) throw agentTaskFailure('AGENT_TASK_INVALID');
         const old = policy.policy();
         if (old.modes.paid !== 'direct' && input.modes.paid === 'direct' && input.acknowledgePaid !== true) throw agentTaskFailure('AGENT_TASK_APPROVAL_REQUIRED');
-        const result = policy.updatePolicy({revision: input.expectedRevision ?? input.revision, stepLimit: input.stepLimit, modes: input.modes} as Parameters<typeof policy.updatePolicy>[0], input.requestId);
+        let result: ReturnType<typeof policy.updatePolicy>;
+        try {result = policy.updatePolicy({revision: input.expectedRevision ?? input.revision, stepLimit: input.stepLimit, modes: input.modes} as Parameters<typeof policy.updatePolicy>[0], input.requestId);}
+        catch (error) {
+          if (object(error) && typeof error.code === 'string' && error.code.startsWith('APP_LIBRARY_')) throw error;
+          throw agentTaskFailure(object(error) && typeof error.code === 'string' ? error.code : 'AGENT_TASK_FAILED');
+        }
         json(res, 200, {ok: true, data: {policy: result, readOnly: false}});
         return true;
       }

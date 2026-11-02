@@ -155,7 +155,7 @@ async function fixture(t: test.TestContext) {
         throw error; // The fixture's existing owned-worker cleanup runs immediately after rejection.
       }
       assert.equal(ready.pid, worker.pid); assert.notEqual(ready.pid, process.pid);
-      assert.equal(await readFile(path.join(root, 'server.lock'), 'utf8'), String(worker.pid));
+      assert.throws(()=>openProjectDatabase(root),{code:'PROJECT_LOCKED'});
       return ready;
     },
     async restart() { await worker.close(); return this.start(); },
@@ -164,16 +164,12 @@ async function fixture(t: test.TestContext) {
     rpc: <O extends string>(operation: O,input: unknown) => worker.ask('rpc', {operation, input}) as Promise<ServiceResponse<O>>,
     createInput: (patch: Record<string, unknown> = {}) => ({projectId: project.id, kind: 'character', name: 'Synthetic hero', assetId: source.id, requestId: randomUUID(), ...patch}),
     // A running worker holds the project: it reads the tables on its own connection.
-    // A crash leaves its lock behind, so that evidence is read without taking the
-    // lock; after a clean exit the test opens the project itself. Rows go through
+    // After the exact child exits, normal kernel recovery acquires the
+    // exclusive locks before any crash evidence is read. Rows go through
     // JSON on both paths, so they compare the same.
     async snapshot(tables: string[]|undefined = domainTables): Promise<Snapshot> {
       if (!worker.stopped) return worker.ask('snapshot', tables);
       const read = (db: DatabaseSync): Snapshot => JSON.parse(JSON.stringify(Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]))));
-      if (worker.stopped.signal === 'SIGKILL') {
-        const crashed = openStore(root, {lock: false});
-        try { return read(crashed.db); } finally { crashed.close(); }
-      }
       const db = openProjectDatabase(root);
       try { return read(db); } finally { db.close(); }
     },
@@ -183,7 +179,7 @@ async function fixture(t: test.TestContext) {
       await worker.ask('arm', phase);
       await assert.rejects(worker.ask(method, input), {code: 'WORKER_EXITED', signal: 'SIGKILL'});
       assert.deepEqual(await worker.exited, {code: null, signal: 'SIGKILL'});
-      assert.equal(await readFile(path.join(root, 'server.lock'), 'utf8'), String(oldPid), 'crash must not clean up the store');
+      assert.doesNotThrow(()=>{const recovered=openProjectDatabase(root);recovered.close();},'the real SIGKILL releases kernel locks for normal recovery');
       t.diagnostic(`${phase}: worker ${oldPid} exited by SIGKILL before IPC reply`);
     },
   };

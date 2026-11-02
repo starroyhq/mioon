@@ -54,8 +54,8 @@ const formatInput=(state: {projectId: string;projectRevision: number;timelineRev
 
 test('format reads are noncreating and schemas/effects discoverable through actual CLI and official MCP, without Agent authority',{timeout:60000},async (t: test.TestContext)=>{
  const w=await wire(t),{f}=w;
- const before=snapshot(f.root),read=await w.client.rpc('timeline.format.get',{projectId:f.foreign.id});
- assert.ok(isTimelineFormatReadResponse(read,{projectId:f.foreign.id}));assert.equal(read.timelineId,null);assert.equal(read.timelineRevision,0);assert.equal(read.presetId,'portrait_1080');assert.equal(read.eligible,true);assert.deepEqual(snapshot(f.root),before);
+ const before=await snapshot(f.root),read=await w.client.rpc('timeline.format.get',{projectId:f.foreign.id});
+ assert.ok(isTimelineFormatReadResponse(read,{projectId:f.foreign.id}));assert.equal(read.timelineId,null);assert.equal(read.timelineRevision,0);assert.equal(read.presetId,'portrait_1080');assert.equal(read.eligible,true);assert.deepEqual(await snapshot(f.root),before);
  assert.equal(operationEffects['timeline.format.get'].readOnly,true);assert.equal(operationEffects['timeline.format.set'].idempotent,true);
  for(const field of ['fileWrite','externalIO','localProcess','paidGeneration'])assert.equal(operationEffects['timeline.format.set'][(field as "readOnly"|"idempotent"|"destructive"|"openWorld"|"databaseWrite"|"fileWrite"|"externalIO"|"localProcess"|"paidGeneration"|"notes")],false);
  const catalog=discoverSchema() as Extract<ReturnType<typeof discoverSchema>,{operations: unknown}>,cliCatalog=await cli(w.url,['schema']);assert.deepEqual(cliCatalog.data,catalog);
@@ -67,7 +67,7 @@ test('format reads are noncreating and schemas/effects discoverable through actu
  }
  assert.ok(!JSON.stringify(READ_TOOL_DEFINITIONS).includes('timeline.format'));assert.ok(!JSON.stringify(EDIT_TOOL_DEFINITIONS).includes('timeline.format'));
  for(const transport of w.transports){const invalid=await transport.call('timeline.format.set',{...formatInput(read,'landscape_720'),fps:60});assert.equal(invalid.ok,false);assert.equal(invalid.error.code,'VALIDATION_ERROR');}
- assert.deepEqual(snapshot(f.root),before);
+ assert.deepEqual(await snapshot(f.root),before);
 });
 
 test('HTTP CLI and official MCP lost acknowledgements recover the exact format receipt after real backend restart, never retry implicitly',{timeout:90000},async (t: test.TestContext)=>{
@@ -78,17 +78,18 @@ test('HTTP CLI and official MCP lost acknowledgements recover the exact format r
   assert.equal(w.submissions.filter(x=>x.operation==='timeline.format.set').length,count+1,'no automatic retry after lost response');
   const original=JSON.parse(w.last().text);assert.equal(original.ok,true);
   const row=database(f.root,db=>db.prepare('SELECT * FROM timeline_requests WHERE requestId=?').get(input.requestId));assert.equal(row!.response,JSON.stringify(original.data));
-  await f.restart();const before=snapshot(f.root),replayed=await transport.call('timeline.format.set',input);assert.equal(replayed.ok,true);assert.deepEqual(replayed.data,original.data);assert.deepEqual(snapshot(f.root),before);
-  const changed=await transport.call('timeline.format.set',{...input,presetId:presets[(index+1)%3]});assert.equal(changed.ok,false);assert.equal(changed.error.code,'IDEMPOTENCY_CONFLICT');assert.deepEqual(snapshot(f.root),before);
+  await f.restart();const before=await snapshot(f.root),replayed=await transport.call('timeline.format.set',input);assert.equal(replayed.ok,true);assert.deepEqual(replayed.data,original.data);assert.deepEqual(await snapshot(f.root),before);
+  const changed=await transport.call('timeline.format.set',{...input,presetId:presets[(index+1)%3]});assert.equal(changed.ok,false);assert.equal(changed.error.code,'IDEMPOTENCY_CONFLICT');assert.deepEqual(await snapshot(f.root),before);
  }
- const before=snapshot(f.root);w.malform();await assert.rejects(w.client.rpc('timeline.format.get',{projectId:f.project.id}),error=>(error as Failure).code==='BACKEND_PROTOCOL_ERROR'&&!(error as Failure).details?.submissionMayHaveSucceeded);assert.deepEqual(snapshot(f.root),before);
+ const before=await snapshot(f.root);w.malform();await assert.rejects(w.client.rpc('timeline.format.get',{projectId:f.project.id}),error=>(error as Failure).code==='BACKEND_PROTOCOL_ERROR'&&!(error as Failure).details?.submissionMayHaveSucceeded);assert.deepEqual(await snapshot(f.root),before);
 });
 
 test('format durable task survives lost execute response and restart with one exact intent and explicit recovery',{timeout:60000},async (t: test.TestContext)=>{
  const f=await taskFixture(t,{subprocess:true}) as unknown as TaskHttpFixture;const state=await f.rpc('timeline.format.get',{projectId:f.project.id});const input=formatInput(state,'landscape_720');const saved=await f.prepare('timeline.format.set',input);
  const route=taskPath(f.project.id,saved.task.id,'execute');f.lose(route);await assert.rejects(f.viaProxy(route,{method:'POST',input:{projectId:f.project.id,digest:saved.task.digest,instanceId:saved.instanceId}}));
- const receipt=database(f.root,db=>db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(input.requestId));assert.ok(receipt);
- await f.restart();const before=snapshot(f.root);const pending=await f.list();assert.equal(pending.items.length,1);assert.equal(pending.items[0].id,saved.task.id);assert.deepEqual(pending.items[0].input,input);assert.deepEqual(snapshot(f.root),before);
- const recovered=await f.reconcile(saved.task);assert.equal(recovered.task.status,'applied');assert.deepEqual(recovered.result,JSON.parse((receipt.response as string)));assert.deepEqual(snapshot(f.root),before);
+ const receipts=(await snapshot(f.root,['timeline_requests']))[f.project.id] as {timeline_requests:{requestId:string;response:string}[]};
+ const receipt=receipts.timeline_requests.find(row=>row.requestId===input.requestId);assert.ok(receipt);
+ await f.restart();const before=await snapshot(f.root);const pending=await f.list();assert.equal(pending.items.length,1);assert.equal(pending.items[0].id,saved.task.id);assert.deepEqual(pending.items[0].input,input);assert.deepEqual(await snapshot(f.root),before);
+ const recovered=await f.reconcile(saved.task);assert.equal(recovered.task.status,'applied');assert.deepEqual(recovered.result,JSON.parse((receipt.response as string)));assert.deepEqual(await snapshot(f.root),before);
  await f.acknowledge(recovered.task);assert.equal((await f.list()).items.length,0);
 });

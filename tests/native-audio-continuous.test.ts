@@ -18,7 +18,7 @@ import {createNativeAudioPreviewBridge} from '../apps/desktop/src/native-audio-p
 import {createNativeAudioPreviewAdmission} from '../apps/web/src/native-audio-preview-adapter.ts';
 import {nativeAudioProofMaterial,NATIVE_AUDIO_LEASE_HEADER,NATIVE_AUDIO_PROOF_HEADER,NATIVE_AUDIO_SIGNATURE_HEADER} from '../packages/contracts/src/native-audio-preview.ts';
 import {continuousAudioQuery,CONTINUOUS_AUDIO_ENDPOINT,CONTINUOUS_AUDIO_PROFILE,CONTINUOUS_AUDIO_LIMITS} from '../packages/contracts/src/timeline-audio-continuous.ts';
-import {projectRouteTarget} from '../apps/server/src/project-routes.ts';
+import {projectApiPath} from '../packages/contracts/src/project-file.ts';
 import type { IncomingMessage } from 'http';
 
 const uuid=()=>randomUUID(),hash='a'.repeat(64),tick=()=>new Promise(resolve=>setImmediate(resolve));
@@ -53,11 +53,16 @@ function fixture({retire=async()=>{},planning}:{retire?:(sessionId:string)=>Prom
   const dispatch=((document: NativeAudioDocument,value: unknown)=>host.dispatch({sender:document.contents,senderFrame:document.frame},value)) as unknown as ContinuousDispatch;
   const block=(request: ContinuousRequest,changes={})=>({...request.input,planHash:request.planHash,sessionId:request.sessionId,generation:1,sequence:1,blockStartFrame:0,...changes});
   let requestId=0;
-  function signed(document: NativeAudioDocument,lease: Pick<NativeAudioContinuousLease,'leaseId'>,input: ContinuousAudioBlockInput,{method='GET',id=++requestId,url=`http://127.0.0.1:12345${CONTINUOUS_AUDIO_ENDPOINT}?${continuousAudioQuery(input)}`}={}){
+  function signed(document: NativeAudioDocument,lease: Pick<NativeAudioContinuousLease,'leaseId'>,input: ContinuousAudioBlockInput,{method='GET',id=++requestId,url=`http://127.0.0.1:12345${projectApiPath(input.projectId,'timeline-audio-preview','continuous')}?${continuousAudioQuery(input)}`}={}){
     const details={id,url,method,resourceType:'xhr',webContents:document.contents,frame:document.frame,requestHeaders:{[NATIVE_AUDIO_LEASE_HEADER]:lease.leaseId}};
     const result=host.beforeSendHeaders(details);
-    return {result,details,request:result.cancel?null:{method,url:new URL(url).pathname+new URL(url).search,
-      headers:Object.fromEntries(Object.entries(result.requestHeaders!).map(([key,value])=>[key.toLowerCase(),value]))},url:new URL(url)};
+    const publicUrl=new URL(url);
+    if(!result.cancel)assert.equal(publicUrl.pathname,projectApiPath(input.projectId,'timeline-audio-preview','continuous'));
+    // The authority consumes the fixed internal signature path. The host above
+    // sees the public project address; this fixture is not an HTTP dispatcher.
+    const canonicalUrl=new URL(CONTINUOUS_AUDIO_ENDPOINT+publicUrl.search,publicUrl.origin);
+    return {result,details,request:result.cancel?null:{method,url:canonicalUrl.pathname+canonicalUrl.search,
+      headers:Object.fromEntries(Object.entries(result.requestHeaders!).map(([key,value])=>[key.toLowerCase(),value]))},url:canonicalUrl};
   }
   function accept(call: ReturnType<typeof signed>,input: ContinuousAudioBlockInput,response=new Response()){
     assert.equal(call.result.cancel,false);return {admission:authority.acceptContinuous(call.request,response,call.url,input),response};
@@ -83,18 +88,36 @@ test('continuous native ownership retains one 96 MiB lease across blocks and see
   assert.deepEqual(f.retireCalls,[request.sessionId]);
 });
 
-test('continuous blocks at the input project address sign and are admitted at the route the server maps them to',async()=>{
+test('continuous blocks at the input project address sign and retain canonical internal verification',async()=>{
   const f=fixture(),a=f.owner(),b=f.owner(),request=f.request(a),grant=await f.dispatch(a,request),input=f.block(request);
   const at=(project:string)=>`http://127.0.0.1:12345/api/projects/${project}/timeline-audio-preview/continuous?${continuousAudioQuery(input)}`;
   assert.equal(f.signed(a,grant!.lease!,input,{url:at(b.projectId)}).result.cancel,true,'the address names another project than the input');
   const call=f.signed(a,grant!.lease!,input,{url:at(input.projectId)});assert.equal(call.result.cancel,false);
-  const target=projectRouteTarget(call.url.pathname);assert.deepEqual(target,{projectId:input.projectId,pathname:CONTINUOUS_AUDIO_ENDPOINT});
-  // The server serves the address at the route it replaces, request URL included.
-  const mapped=new URL(target!.pathname+call.url.search,call.url.origin);
-  const {admission,response}=f.accept({...call,request:{...call.request!,url:mapped.pathname+mapped.search},url:mapped},input);
+  assert.equal(new URL(call.details.url).pathname,projectApiPath(input.projectId,'timeline-audio-preview','continuous'));
+  assert.equal(call.url.pathname,CONTINUOUS_AUDIO_ENDPOINT);
+  const {admission,response}=f.accept(call,input);
   admission.onResourceSettlement(Promise.resolve());admission.finish();response.close();await tick();
   await f.dispatch(a,{action:'cancel',contextId:a.contextId,actionId:request.actionId});
   await f.acknowledge(a,request,grant!.lease!);await f.host.shutdown();
+  assert.deepEqual(f.retireCalls,[request.sessionId]);
+});
+
+test('legacy continuous GET and DELETE cannot sign, consume the first sequence or start cleanup',async()=>{
+  const f=fixture(),a=f.owner(),request=f.request(a),grant=await f.dispatch(a,request),input=f.block(request);
+  for(const method of ['GET','DELETE']){
+    const denied=f.signed(a,grant!.lease!,input,{method,url:`http://127.0.0.1:12345${CONTINUOUS_AUDIO_ENDPOINT}?${continuousAudioQuery(input)}`});
+    assert.deepEqual(denied.result,{cancel:true},'no proof or signature is returned for the old public address');
+    assert.equal(denied.request,null);
+  }
+  const call=f.signed(a,grant!.lease!,input),{admission,response}=f.accept(call,input);
+  const proof=JSON.parse(Buffer.from(String(call.result.requestHeaders![NATIVE_AUDIO_PROOF_HEADER]),'base64url').toString());
+  assert.equal(proof.input.sequence,1,'legacy refusals do not consume sequence one');
+  assert.deepEqual(f.host.beforeSendHeaders(call.details),call.result,'the first project request retains its exact proof');
+  admission.onResourceSettlement(Promise.resolve());admission.finish();response.close();await tick();
+  const cleanup=f.signed(a,grant!.lease!,input,{method:'DELETE'}),deleted=f.accept(cleanup,input);
+  deleted.admission.onResourceSettlement(Promise.resolve());deleted.admission.finish();deleted.response.close();await tick();
+  assert.equal(f.signed(a,grant!.lease!,f.block(request,{sequence:2,blockStartFrame:60})).result.cancel,true,'only the accepted project DELETE starts cleanup');
+  await f.dispatch(a,{action:'cancel',contextId:a.contextId,actionId:request.actionId});await f.acknowledge(a,request,grant!.lease!);await f.host.shutdown();
   assert.deepEqual(f.retireCalls,[request.sessionId]);
 });
 
@@ -103,7 +126,7 @@ test('continuous proofs reject forged identity, method, query, replays and a sec
   for(const changes of [{sessionId:uuid()},{planHash:'b'.repeat(64)},{projectId:b.projectId}])
     assert.equal(f.signed(a,grant!.lease!,{...input,...changes}).result.cancel,true);
   for(const changes of [{generation:257},{sequence:10001}]){
-    const malformed={...input,...changes},url=`http://127.0.0.1:12345${CONTINUOUS_AUDIO_ENDPOINT}?${new URLSearchParams((malformed as unknown as Record<string,string>))}`;
+    const malformed={...input,...changes},url=`http://127.0.0.1:12345${projectApiPath(input.projectId,'timeline-audio-preview','continuous')}?${new URLSearchParams((malformed as unknown as Record<string,string>))}`;
     assert.equal(f.signed(a,grant!.lease!,malformed,{url}).result.cancel,true);
   }
   const call=f.signed(a,grant!.lease!,input);

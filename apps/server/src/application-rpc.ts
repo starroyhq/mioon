@@ -13,6 +13,8 @@ import {projectNotFound} from './project-host/errors.ts';
 import {ensureProjectRow} from './project-host/project-initialization.ts';
 import {rmSync, rmdirSync} from 'node:fs';
 import path from 'node:path';
+import {VOLUME_ENVELOPE_PROFILE} from '../../../packages/contracts/src/timeline-volume-envelope.ts';
+import {TIMELINE_AUDIO_ROLE_PROFILE} from '../../../packages/contracts/src/timeline-audio-role.ts';
 
 /** App operations never choose an arbitrary project's service as a global
  * facade. Settings and listings work with every project closed. */
@@ -33,7 +35,7 @@ export function createApplicationRpc({library, app, manager, directories, signal
   return {async call(operation: string, raw: unknown): Promise<unknown> {
     signal.throwIfAborted();
     const schema = (schemas as Record<string, {safeParse(value: unknown): {success: boolean; data?: unknown; error?: unknown}}>)[operation];
-    if (!schema) throw new AppError('UNKNOWN_OPERATION', '未知操作', 400);
+    if (!schema) throw new AppError('UNKNOWN_OPERATION', '未知操作', 404);
     if (!isAppLevelOperation(operation)) throw invalid();
     const parsed = schema.safeParse(raw);
     if (!parsed.success) throw new AppError('VALIDATION_ERROR', '请求参数无效', 400, {issues: parsed.error});
@@ -82,6 +84,9 @@ export function createApplicationRpc({library, app, manager, directories, signal
       case 'agent.authorization.revoke': return app.authorizations.revoke(input);
       case 'workspace.settings.get': return ports.configuration.get();
       case 'workspace.settings.set': return ports.configuration.set(input as Parameters<typeof ports.configuration.set>[0]);
+      case 'workspace.restore.inspect': return {restored: false,
+        ...(input.includeVolumeEnvelopeCapability === true ? {volumeEnvelopeCapability: {profileId: VOLUME_ENVELOPE_PROFILE, editable: true}} : {}),
+        ...(input.includeAudioRoleCapability === true ? {audioRoleCapability: {profileId: TIMELINE_AUDIO_ROLE_PROFILE, editable: true}} : {})};
       case 'provider.list': return providerList();
       case 'image.profile.list': return imageProfiles(input);
       case 'video.connection.list': {

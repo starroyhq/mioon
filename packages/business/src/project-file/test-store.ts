@@ -1,4 +1,5 @@
 import {lstatSync} from 'node:fs';
+import type {DatabaseSync} from 'node:sqlite';
 import path from 'node:path';
 import {ensurePrivateDirectory, validateManagedDirectory} from '@mioon/contracts/private-storage';
 import {TEST_STORE_LAYOUT} from '../../../contracts/src/project-file.ts';
@@ -8,6 +9,14 @@ import {isProjectStore, openProjectStore} from './store.ts';
 import type {ProjectStore} from './store.ts';
 
 const testStores = new WeakMap<ProjectStore, {readonly applicationDir: string; readonly closeCompanions: Set<() => void>}>();
+const testConnections = new WeakMap<DatabaseSync, ProjectStore>();
+/** Trusted fixture metadata lookup. It returns the exact live TEST owner,
+ * never a copied capability or an independently opened connection. */
+export function testStoreForConnection(db: unknown, root: string): ProjectStore | null {
+  if (db === null || typeof db !== 'object') return null;
+  const store = testConnections.get(db as DatabaseSync);
+  return store && isProjectStore(store) && store.db === db && store.root === root && testStores.has(store) ? store : null;
+}
 /** Only this opener grants the test-layout application scope. Matching public
  * paths or copying a live store's fields cannot manufacture it. */
 export function testStoreApplicationDirectory(value: unknown): string | null {
@@ -45,12 +54,14 @@ export function openStore(root: string): ProjectStore {
   }
   const held = {applicationDir: path.join(root, '.mioon-store', 'app'), closeCompanions: new Set<() => void>()};
   testStores.set(store, held);
+  testConnections.set(store.db, store);
   const close = store.close;
   store.close = (): void => {
     const failures: unknown[] = [];
     try {close();} catch (error) {failures.push(error);}
     if (!store.db.isOpen) {
       testStores.delete(store);
+      if (testConnections.get(store.db) === store) testConnections.delete(store.db);
       for (const companion of held.closeCompanions) {
         try {companion();} catch (error) {failures.push(error);}
       }

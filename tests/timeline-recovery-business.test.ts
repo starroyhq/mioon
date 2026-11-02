@@ -11,7 +11,6 @@ import {writeFileSync} from 'node:fs';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {Worker} from 'node:worker_threads';
 import {AppError,TIMELINE_MUTATION_OPERATIONS,hasRequestNotAppliedProof,isTimelineMutationResponse} from '@mioon/contracts';
 import {timelineLoudnessCandidateDigest} from '@mioon/contracts/timeline-loudness-apply';
 import {openStore,ownsStoreLock, type WorkspaceStore} from '../packages/business/src/db.ts';
@@ -210,15 +209,13 @@ test('all twenty-four retained responses remain exact after removal, branching, 
  f.store.put('exports',{...(f.store.get('exports',(render as FixtureExport).id)! as FixtureExport),status:'failed',error:{code:'EXPORT_FAILED',message:'Synthetic offline failure',retryable:true},updatedAt:'2026-10-10T01:00:00.000Z'});
  f.restart();const before=f.capture();
  for(const {operation,input,response} of result.receipts){assert.deepEqual(await f.liveCall(((operation) as unknown as Parameters<NonNullable<(typeof f)["liveCall"]>>[0]),input),response);assert.deepEqual(f.capture(),before);}
- // A store opened without the lock is a second connection: it opens only after the owner's store has closed.
+ // Every kernel open owns its project; a second connection cannot bypass it.
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
  f.store.close();
- const independent=(openStore(f.root,{lock:false}) as FixtureStore);try{
+ const independent=(openStore(f.root) as FixtureStore);try{
   const services=(createServices(independent,new Map()) as FixtureServices);
   for(const {operation,input,response} of result.receipts){
-   if(operation==='timeline.loudness.apply')await assert.rejects(services.call(operation,input),error=>{
-    assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code,'EDIT_TASK_OWNER_REQUIRED');assert.equal((error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details?.mutationOutcome,undefined);return true;
-   });
-   else assert.deepEqual(await services.call(((operation) as unknown as Parameters<NonNullable<(typeof services)["call"]>>[0]),input),response);
+   assert.deepEqual(await services.call(((operation) as unknown as Parameters<NonNullable<(typeof services)["call"]>>[0]),input),response);
   }
  }finally{independent.close();}
  f.restart();
@@ -244,7 +241,10 @@ test('legacy initialization and transaction lifecycle failures never manufacture
  assert.equal(f.store.list('timelines').length,0);
  const timeline=await f.call('timeline.get',{projectId:f.projectId});
  const before=f.capture();
- const services=(createServices((({...f.store,tx:(callback: () => unknown)=>{f.store.tx(callback);throw new AppError('REVISION_CONFLICT','Ambiguous after commit',409);}}) as unknown as Parameters<NonNullable<typeof createServices>>[0]),new Map(),{sceneOptions:sceneOptions as unknown as NonNullable<Parameters<typeof createServices>[2]>["sceneOptions"]}) as FixtureServices);
+ const originalTransaction=f.store.tx;
+ f.store.tx=callback=>{originalTransaction(callback);throw new AppError('REVISION_CONFLICT','Ambiguous after commit',409);};
+ const services=createServices(f.store,new Map(),{sceneOptions:sceneOptions as unknown as NonNullable<Parameters<typeof createServices>[2]>['sceneOptions']}) as FixtureServices;
+ f.store.tx=originalTransaction;
  const accepted=params(f,timeline,{kind:'video'});
  await assert.rejects(services.call('timeline.track.add',accepted),error=>(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code==='REVISION_CONFLICT'&&(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details?.mutationOutcome===undefined);
  assert.equal((f.store.db.prepare('SELECT COUNT(*) AS n FROM timeline_requests WHERE requestId=?').get(accepted.requestId))!.n,1);
@@ -270,7 +270,7 @@ test('lost acknowledgements retain proof absence after project, timeline and his
     // project/timeline ownership remains valid after clips have been removed.
     const before=f.capture();assert.deepEqual(await f.call(operation,input),response);assert.deepEqual(f.capture(),before);
    }else await rejected(f,operation,input,(({code:corruption!=='historical source SQL owner'?['TIMELINE_SOURCE_UNAVAILABLE','INVALID_TIMELINE_SNAPSHOT']
-    :enveloped?'TIMELINE_VOLUME_ENVELOPE_WORKSPACE_REQUIRED':'TIMELINE_SOURCE_UNAVAILABLE'}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
+    :'TIMELINE_SOURCE_UNAVAILABLE'}) as unknown as Parameters<NonNullable<typeof rejected>>[3]));
   }
  }) as unknown as test.TestFn));
 });
@@ -406,17 +406,15 @@ test('legacy optional frozen fields remain omitted and replay bytes are never no
  assert.deepEqual(await f.call('timeline.render',input),render);assert.deepEqual(f.capture(),before);
 });
 
-test('independent writers share one retained response and competing fresh keys receive rollback proof',async t=>{
+test('one exclusive project host shares one retained response and competing fresh keys receive rollback proof',async t=>{
  const f=await fixture(t),timeline=await populated(f),input=params(f,timeline,{clipId:timeline.clips[0].id,atFrame:30});
- const source=`const {parentPort,workerData}=require('node:worker_threads');(async()=>{const {openStore}=await import(workerData.db);const {createServices}=await import(workerData.services);const store=openStore(workerData.root,{lock:false});parentPort.postMessage({ready:true});parentPort.once('message',async()=>{try{parentPort.postMessage({response:await createServices(store,new Map()).call('timeline.clip.split',workerData.input)});}catch(error){parentPort.postMessage({code:error.code,details:error.details});}finally{store.close();}});})();`;
- async function race(inputs: unknown[]){
-  const workers=inputs.map((input?)=>new Worker(source,{eval:true,workerData:{root:f.root,input,db:new URL('../packages/business/src/db.ts',import.meta.url).href,services:new URL('../packages/business/src/services.ts',import.meta.url).href}}));
-  t.after(()=>Promise.all(workers.map((worker)=>worker.terminate())));
-  await Promise.all(workers.map((worker)=>new Promise<{response:FixtureTimeline;result:FixtureTimeline;code:string;error:string;details:{mutationOutcome:string}}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);})));
-  const results=workers.map((worker)=>new Promise<{response:FixtureTimeline;result:FixtureTimeline;code:string;error:string;details:{mutationOutcome:string}}>((resolve,reject)=>{worker.once('message',resolve);worker.once('error',reject);}));workers.forEach((worker)=>worker.postMessage('go'));return Promise.all(results);
+ assert.throws(()=>openStore(f.root),{code:'PROJECT_LOCKED'});
+ async function race(inputs: unknown[]):Promise<{response?:FixtureTimeline;code?:string;details:{mutationOutcome:string}}[]>{
+  return Promise.all(inputs.map(async input=>{try{return {response:await f.call('timeline.clip.split',input),details:{mutationOutcome:''}};}
+   catch(error){const failure=error as {code:string;details?:{mutationOutcome?:string}};return {code:failure.code,details:{mutationOutcome:failure.details?.mutationOutcome??''}};}}));
  }
  const results=await race([input,input]);assert.deepEqual(results[0].response,results[1].response);assert.ok(results[0].response);
- const current=results[0].response,competitors=await race([1,2].map(()=>params(f,current,{clipId:current.clips[0].id,atFrame:15})));
+ const current=results[0].response!;const competitors=await race([1,2].map(()=>params(f,current,{clipId:current.clips[0].id,atFrame:15})));
  assert.equal(competitors.filter(x=>x.response).length,1);
  const failed=competitors.find(x=>x.code);assert.equal((failed)!.code,'REVISION_CONFLICT');assert.equal((failed)!.details.mutationOutcome,'not_applied');
 });

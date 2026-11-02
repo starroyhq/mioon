@@ -12,7 +12,7 @@ import {PassThrough} from 'node:stream';
 import {DatabaseSync} from 'node:sqlite';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {EXPORT_LOUDNESS_PROFILE, EXPORT_LOUDNESS_LIMITS, isExportLoudnessResponse} from '@mioon/contracts/export-loudness';
-import {installCurrentWorkspaceRestoreSchema, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createExportLoudnessServices} from '../packages/business/src/export-loudness.ts';
 import {createExportLoudnessAccumulator} from '../packages/business/src/export-loudness-meter.ts';
@@ -199,7 +199,7 @@ test('metadata, same-size byte and path replacement discard measurement; owner r
       throw Object.assign(Error('PRIVATE decoder diagnostic'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});
     if (kind === 'foreign') await assert.rejects(f.call(), {code: 'EXPORT_LOUDNESS_UNAVAILABLE'});
-    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'EXPORT_LOUDNESS_UNAVAILABLE'});
+    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'RESTORE_STORE_UNVERIFIED'});
     else {const result = await f.call(); assert.equal((result as LoudnessServiceResult).reason.code, 'ARTIFACT_CHANGED'); assert.equal(result.measurement, null); assert.ok(!JSON.stringify(result).includes('PRIVATE'));}
   });
 });

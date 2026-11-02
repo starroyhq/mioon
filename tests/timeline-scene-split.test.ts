@@ -7,7 +7,7 @@ import {mkdtemp,realpath,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {openStore} from '../packages/business/src/db.ts';
+import {openStore,openLegacyWorkspaceStore} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {RESTORE_DENIED_OPERATIONS} from '../packages/business/src/workspace-restore-policy.ts';
 import {createWorkspaceBackup} from '../packages/business/src/workspace-backup.ts';
@@ -22,10 +22,10 @@ const digest=(bytes: BinaryLike|Buffer<ArrayBuffer>)=>createHash('sha256').updat
 const code=(expected: string,check: ((arg0?: unknown) => unknown)|undefined=()=>true)=>(error?: Error&{ code: string; status?: number; details?: { mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[];[key: string]: unknown; }; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; })=>(error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code===expected&&check(error);
 const writes=['timelines','timeline_history','timeline_history_cursors','timeline_requests'];
 
-async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,280]){
+async function fixture(t: test.TestContext,cuts: number[]|undefined=[45,100,230,280],opener:typeof openStore|typeof openLegacyWorkspaceStore=openStore){
  const root=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-scene-split-')));
  let detected=cuts;
- const store=(openStore(root) as FixtureStore),services=(createServices(store,new Map(),{sceneOptions:{detect:((async (input: { beforeSpawn:(signal?:unknown)=>void; signal: unknown; options: unknown; asset: { sha256: unknown; }; })=>{(input.beforeSpawn)!(((input.signal) as unknown as Parameters<typeof input.beforeSpawn>[0]));
+ const store=(opener(root) as FixtureStore),services=(createServices(store,new Map(),{sceneOptions:{detect:((async (input: { beforeSpawn:(signal?:unknown)=>void; signal: unknown; options: unknown; asset: { sha256: unknown; }; })=>{(input.beforeSpawn)!(((input.signal) as unknown as Parameters<typeof input.beforeSpawn>[0]));
   return {profileId:'scene-cuts-v1',fps:30,frameCount:300,options:input.options,cuts:detected.map(frame=>({frame,score:0.4})),segments:[],sourceHash:input.asset.sha256,analysis:{width:256,height:144,decodedFrames:300}};}) as unknown as ((options: import("@mioon/business/scene-detection-decoder").DetectManagedScenesOptions) => Promise<import("@mioon/business/scene-detection-decoder").ManagedSceneDetection>) | undefined)}}) as FixtureServices);
  const _strictFixtureBase={root,store,call:<O extends string>(op: O, input?: unknown) => services.call(op,input) as Promise<FixtureServiceResult<O>>,
   capture:()=>Object.fromEntries(writes.map(table=>[table,store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])),
@@ -131,7 +131,7 @@ test('a timeline whose clips carry volume envelopes still splits, and its receip
 });
 
 test('a split beside a dialogue clip keeps the audio-role and envelope capabilities, and the workspace restores', async t=>{
- const f=await fixture(t),film=await f.video();
+ const f=await fixture(t,undefined,openLegacyWorkspaceStore),film=await f.video();
  const bytes=Buffer.from(`Dialogue ${randomUUID()}`),relativePath=`media/${randomUUID()}.wav`;writeFileSync(path.join(f.root,relativePath),bytes,{mode:0o600});
  const voice=f.store.put('assets',{id:randomUUID(),projectId:f.projectId,name:'Dialogue.wav',mimeType:'audio/wav',sha256:digest(bytes),sizeBytes:bytes.length,relativePath,duration:10,hasAudio:true,provenance:'user-import'});
  const line=await f.add(voice,{trackId:(await f.timeline()).tracks.find((track)=>track.kind==='audio')!.id,startFrame:0,durationFrames:90,sourceInFrame:0,audioRole:'human'});
@@ -150,7 +150,7 @@ test('a split beside a dialogue clip keeps the audio-role and envelope capabilit
  t.after(async()=>{await rm(backup,{recursive:true,force:true});await rm(destination,{recursive:true,force:true});});
  assert.equal((await createWorkspaceBackup({source:f.root,destination:backup}) as {integrity: string}).integrity,'verified');
  await restoreWorkspaceBackup({directory:backup,destination});
- const store=openStore(destination),services=createServices(store,new Map());
+ const store=openLegacyWorkspaceStore(destination),services=createServices(store,new Map());
  try{assert.deepEqual((await services.call('timeline.get',{projectId:f.projectId}) as {clips: unknown[]}).clips,edited.clips);}
  finally{await services.drain();store.close();}
 });

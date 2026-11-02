@@ -171,7 +171,8 @@ test('project addresses on the workspace server: registration, project checks, e
   failure(await rpc(projectRpcPath(second), 'shot.update', {shotId: shot.id, expectedRevision: shot.revision, patch: {title: 'moved'}}), 404, 'NOT_FOUND', {id: shot.id});
   failure(await rpc(projectRpcPath(second), 'version.list', {shotId: shot.id}), 404, 'NOT_FOUND', {id: shot.id});
   failure(await rpc(projectRpcPath(first), 'job.get', {jobId: unknown}), 404, 'NOT_FOUND', {id: unknown});
-  assert.deepEqual(data(await rpc(projectRpcPath(first), 'version.list', {shotId: shot.id})), data(await rpc('/api/rpc', 'version.list', {shotId: shot.id})));
+  assert.deepEqual(data(await rpc(projectRpcPath(first), 'version.list', {shotId: shot.id})), []);
+  failure(await rpc('/api/rpc', 'version.list', {shotId: shot.id}), 400, 'VALIDATION_ERROR');
   const snapshot = data<{shots: {id: string; revision: number; title: string}[]}>(await rpc(projectRpcPath(first), 'project.get', {projectId: first}));
   assert.deepEqual(snapshot.shots.map(item => [item.id, item.revision, item.title]), [[shot.id, shot.revision, 'K2 shot']], 'the refused update left the shot unchanged');
   const updated = data<{revision: number}>(await rpc(projectRpcPath(first), 'shot.update', {shotId: shot.id, expectedRevision: shot.revision, patch: {title: 'K2 renamed'}}));
@@ -183,7 +184,7 @@ test('project addresses on the workspace server: registration, project checks, e
   assert.deepEqual(Buffer.from(await media.arrayBuffer()), Buffer.from(PNG, 'base64'));
   failure(await send(projectMediaPath(second, asset.id)), 404, 'NOT_FOUND');
   failure(await send(projectMediaPath(first, unknown)), 404, 'NOT_FOUND');
-  assert.equal((await fetch(`${server.url}/media/${asset.id}`, {headers: {authorization: `Bearer ${TOKEN}`}})).status, 200, 'the legacy path stays until S0');
+  failure(await send(`/media/${asset.id}`), 404, 'NOT_FOUND');
 
   // A projectId in the query or body must name the address's project.
   failure(await send(`${projectApiPath(first, 'tasks')}?projectId=${second}`), 400, 'PROJECT_ID_MISMATCH', {projectId: first});
@@ -205,13 +206,17 @@ test('project addresses on the workspace server: registration, project checks, e
   for (const route of [`${projectApiPath(first, 'tasks')}?projectId=${first}`, `${projectApiPath(first, 'local-drafts')}?projectId=${first}`,
     `${projectApiPath(first, 'local-delivery')}?projectId=${first}`, `${projectApiPath(first, 'local-shot-text')}?projectId=${first}&shotId=${shot.id}`,
     `${projectApiPath(first, 'agent', 'tasks', 'v2', 'editing')}?projectId=${first}`]) {
-    assert.deepEqual(await send(route), await send(legacy(route)), route);
+    const current = await send(route);
+    assert.equal(current.status, 200, route); assert.equal(current.body.ok, true, route);
+    failure(await send(legacy(route)), 404, 'NOT_FOUND');
   }
 
   // Mio's project routes move under the address; its app-level routes do not.
-  assert.deepEqual(await send(projectApiPath(first, 'agent', 'tasks', 'v2')), await send(`/api/agent/tasks/v2/${first}`));
+  const currentTask = await send(projectApiPath(first, 'agent', 'tasks', 'v2'));
+  assert.equal(currentTask.status, 200); assert.equal(currentTask.body.ok, true);
+  failure(await send(`/api/agent/tasks/v2/${first}`), 404, 'NOT_FOUND');
   failure(await send(projectApiPath(first, 'agent', 'tasks', 'v2', 'policy')), 404, 'NOT_FOUND');
   failure(await send(projectApiPath(first, 'images', 'settings')), 404, 'NOT_FOUND');
   failure(await send(`/api/projects/${first}/tasks%2Fprepare`, {body: {projectId: first}}), 404, 'NOT_FOUND');
-  assert.equal(data<{project: {id: string}}>(await rpc('/api/rpc', 'project.get', {projectId: first})).project.id, first, 'the legacy RPC stays until S0');
+  failure(await rpc('/api/rpc', 'project.get', {projectId: first}), 400, 'VALIDATION_ERROR');
 });

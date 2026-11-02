@@ -17,7 +17,7 @@ import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
 import {isTimelineRenderRecord} from '@mioon/contracts';
 import {EXPORT_SAMPLE_PEAK_LIMITS, isExportSamplePeakResponse} from '@mioon/contracts/export-sample-peak';
-import {installCurrentWorkspaceRestoreSchema, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
+import {installCurrentWorkspaceRestoreSchema, openLegacyWorkspaceStore, openStore, ownsStoreLock, getWorkspaceRestoreContext} from '../packages/business/src/db.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createExportSamplePeakServices} from '../packages/business/src/export-sample-peak.ts';
 import {readTimelineDeliveryDownload} from '../packages/business/src/timeline-delivery-read.ts';
@@ -179,7 +179,7 @@ test('same-owned metadata/bytes drift discards measurement; foreign owner revoca
       throw Object.assign(Error('SECRET stderr /private/path'), {code: 'MEDIA_PROCESS_FAILED'});
     }}});
     if (kind === 'foreign') await assert.rejects(f.call(), {code: 'EXPORT_SAMPLE_PEAK_UNAVAILABLE'});
-    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'EXPORT_SAMPLE_PEAK_UNAVAILABLE'});
+    else if (kind === 'lock') await assert.rejects(f.call(), {code: 'RESTORE_STORE_UNVERIFIED'});
     else {const result = await f.call(); assert.equal(result.status, 'stale'); assert.equal(result.reason.code, 'ARTIFACT_CHANGED'); assert.equal(result.measurement, null); assert.ok(!JSON.stringify(result).includes('SECRET'));}
   });
 });

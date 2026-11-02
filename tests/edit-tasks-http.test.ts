@@ -29,7 +29,7 @@ const assertSafe = (response: TaskHttpResponse, f: TaskHttpFixture) => {
 
 test('task HTTP preserves authentication, cookie, host/origin, exact methods and bounded closed request schemas', {timeout: 30000}, async t => {
   const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = trackInput(f), prepared = await f.prepare('timeline.track.add', input);
-  const before = snapshot(f.root), tasks = retained(f), exec = actionInput(f, prepared);
+  const before = await snapshot(f.root), tasks = await retained(f), exec = actionInput(f, prepared);
   const routes = [
     {route: projectApiPath(f.project.id, 'tasks', 'prepare'), method: 'POST', input: {projectId: f.project.id, operation: 'timeline.track.add', input, origin: 'new'}},
     {route: listPath(f.project.id), method: 'GET'},
@@ -73,23 +73,23 @@ test('task HTTP preserves authentication, cookie, host/origin, exact methods and
   }
   assert.equal((await f.request(projectApiPath(f.project.id, 'tasks', prepared.task.id, 'other'))).status, 404);
   assert.equal((await f.request(projectApiPath(f.project.id, 'tasks', 'prepare', 'execute'), {method: 'POST', input: {}})).status, 404);
-  assert.deepEqual(snapshot(f.root), before); assert.deepEqual(retained(f), tasks); assert.equal(dispatches(f), 0);
+  assert.deepEqual(await snapshot(f.root), before); assert.deepEqual(await retained(f), tasks); assert.equal(dispatches(f), 0);
 });
 
 test('GET/list are noncreating, strictly bound queries and never convert reads into dispatch or acknowledgement', async t => {
   const f = (await taskFixture(t) as unknown as TaskHttpFixture);
-  database(f.root, db => db.prepare('DELETE FROM timelines WHERE projectId=?').run(f.foreign.id), true);
-  const before = snapshot(f.root), initial = retained(f);
+  database(f.root, db => db.prepare('DELETE FROM timelines WHERE projectId=?').run(f.foreign.id), true, f.foreign.id);
+  const before = await snapshot(f.root), initial = await retained(f);
   const empty = await f.data(listPath(f.foreign.id)); assert.deepEqual((empty.items as unknown), []);
   assert.equal((await f.request(taskPath(f.foreign.id, randomUUID()) + '?projectId=' + f.foreign.id)).status, 404);
-  assert.deepEqual(snapshot(f.root), before); assert.deepEqual(retained(f), initial);
+  assert.deepEqual(await snapshot(f.root), before); assert.deepEqual(await retained(f), initial);
   const prepared = await f.prepare('timeline.track.add', trackInput(f));
   const reference = await f.prepare('reference.attach', attachInput(f));
   const first = await f.list('&limit=1'); assert.equal(first.items.length, 1); assert.ok(first.nextCursor);
   const second = await f.list('&limit=1&cursor=' + encodeURIComponent(first.nextCursor));
   assert.equal(second.items.length, 1); assert.equal(second.nextCursor, null);
   assert.deepEqual(new Set([...first.items, ...second.items].map(item => item.id)), new Set([prepared.task.id, reference.task.id]));
-  const domain = snapshot(f.root), taskRows = retained(f);
+  const domain = await snapshot(f.root), taskRows = await retained(f);
   for (const query of ['limit=0', 'limit=51', 'limit=-1', 'limit=1.0', 'limit=1e1', 'limit=01', 'limit=1x',
     'limit=NaN', 'limit=9007199254740992', 'limit=1&limit=2', 'pendingOnly=1', 'pendingOnly=TRUE',
     'pendingOnly=false&pendingOnly=true', 'cursor=', 'cursor=bad', 'extra=1', 'projectId=' + f.project.id]) {
@@ -104,11 +104,11 @@ test('GET/list are noncreating, strictly bound queries and never convert reads i
     assert.equal((await f.request(taskPath(f.foreign.id, task.id) + '?projectId=' + f.foreign.id)).status, 404);
     assert.equal((await f.request(taskPath(f.project.id, task.id) + '?projectId=' + f.project.id + '&limit=1')).status, 400);
   }
-  assert.deepEqual(snapshot(f.root), domain); assert.deepEqual(retained(f), taskRows); assert.equal(dispatches(f), 0);
+  assert.deepEqual(await snapshot(f.root), domain); assert.deepEqual(await retained(f), taskRows); assert.equal(dispatches(f), 0);
 });
 
 test('fixed durable tasks cannot expose generation, rendering, arbitrary RPC or model/MCP authority', async t => {
-  const f = (await taskFixture(t) as unknown as TaskHttpFixture), before = snapshot(f.root);
+  const f = (await taskFixture(t) as unknown as TaskHttpFixture), before = await snapshot(f.root);
   assert.equal(DURABLE_EDIT_OPERATIONS.length, 21);
   assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.loudness.apply'), true);
   assert.equal(DURABLE_EDIT_OPERATIONS.includes('timeline.clip.rippleRemove'), true);
@@ -120,24 +120,24 @@ test('fixed durable tasks cannot expose generation, rendering, arbitrary RPC or 
     const response = await f.request('/api/rpc', {method: 'POST', input: {operation, input: {}}});
     assert.equal(response.body.error.code, 'UNKNOWN_OPERATION');
   }
-  assert.deepEqual(snapshot(f.root), before); assert.deepEqual(((await f.list()).items as unknown), []); assert.equal(dispatches(f), 0);
+  assert.deepEqual(await snapshot(f.root), before); assert.deepEqual(((await f.list()).items as unknown), []); assert.equal(dispatches(f), 0);
 });
 
 test('real lost prepare acknowledgement rediscovers the exact persisted intent without automatic POST or business change', async t => {
-  const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = trackInput(f), before = snapshot(f.root);
+  const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = trackInput(f), before = await snapshot(f.root);
   f.lose(projectApiPath(f.project.id, 'tasks', 'prepare'));
   await assert.rejects(f.viaProxy(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', input: {projectId: f.project.id, operation: 'timeline.track.add', input, origin: 'new'}}));
   assert.equal(f.requests.length, 1); assert.equal(f.requests[0].method, 'POST');
   const accepted = f.observed[0].body.data as TaskEnvelope<'timeline.track.add'>; assert.ok(isEditTaskEnvelope(accepted)); assert.equal(accepted.task.status, 'prepared');
-  assert.deepEqual(snapshot(f.root), before); assert.equal(dispatches(f), 0);
+  assert.deepEqual(await snapshot(f.root), before); assert.equal(dispatches(f), 0);
   const found = await f.viaProxy(listPath(f.project.id)); assert.deepEqual((found.body.data as import("./helpers/strict-edit-task-types.ts").TaskList).items, [accepted.task]);
-  const taskRows = retained(f);
+  const taskRows = await retained(f);
   for (let i = 0; i < 3; i++) assert.deepEqual((await f.get(accepted.task.id)).task, accepted.task);
   assert.equal(f.requests.filter(value => value.method === 'POST').length, 1);
   await f.restart();
   const recovered = await f.get(accepted.task.id) as TaskEnvelope<'timeline.track.add'>;
   assert.notEqual(recovered.instanceId, accepted.instanceId); assert.deepEqual(recovered.task, accepted.task);
-  assert.deepEqual(retained(f), taskRows); assert.deepEqual(snapshot(f.root), before); assert.equal(dispatches(f), 0);
+  assert.deepEqual(await retained(f), taskRows); assert.deepEqual(await snapshot(f.root), before); assert.equal(dispatches(f), 0);
   const stale = await f.request(taskPath(f.project.id, accepted.task.id, 'execute'), {method: 'POST', input: actionInput(f, accepted)});
   assert.equal(stale.status, 409); assert.equal(stale.body.error.code, 'EDIT_TASK_STALE_INSTANCE');
   const executed = await f.execute(recovered); assert.equal(executed.task.status, 'applied'); assert.equal(dispatches(f), 1);
@@ -150,24 +150,24 @@ test('real dropped execute response commits once; reads/restart do not replay an
   await assert.rejects(f.viaProxy(route, {method: 'POST', input: actionInput(f, prepared)}));
   assert.equal(f.requests.length, 1); assert.equal(dispatches(f), 1);
   const applied = f.observed[0].body.data as TaskEnvelope<'timeline.track.add'>; assert.equal(applied.task.status, 'applied'); assert.ok(isEditTaskEnvelope(applied));
-  const before = snapshot(f.root), rows = retained(f);
+  const before = await snapshot(f.root), rows = await retained(f);
   assert.deepEqual((await f.get(applied.task.id)).task, applied.task);
   assert.deepEqual((await f.list()).items, [applied.task]);
-  assert.deepEqual(snapshot(f.root), before); assert.deepEqual(retained(f), rows);
+  assert.deepEqual(await snapshot(f.root), before); assert.deepEqual(await retained(f), rows);
   await f.restart();
   const current = await f.get(applied.task.id); assert.notEqual(current.instanceId, prepared.instanceId);
   const resolved = await f.reconcile(current.task); assert.deepEqual(resolved.result, applied.result);
   assert.deepEqual(await f.execute(current), resolved); assert.equal(dispatches(f), 1);
-  assert.deepEqual(snapshot(f.root), before); assert.deepEqual(retained(f), rows);
+  assert.deepEqual(await snapshot(f.root), before); assert.deepEqual(await retained(f), rows);
   const ack = await f.acknowledge(resolved.task); assert.equal(ack.task.acknowledged, true);
   assert.deepEqual(((await f.list()).items as unknown), []);
   assert.deepEqual((await f.list('&pendingOnly=false')).items, [ack.task]);
-  assert.deepEqual(snapshot(f.root), before); assert.equal(f.requests.filter(value => value.method === 'POST').length, 1);
+  assert.deepEqual(await snapshot(f.root), before); assert.equal(f.requests.filter(value => value.method === 'POST').length, 1);
 });
 
 for (const phase of ['afterPreparePersist', 'afterClaim', 'afterBusinessCommit']) {
   test(`real process death at ${phase} recovers before listen without dispatch and rejects stale instance callbacks`, {timeout: 30000}, async t => {
-    const f = (await taskFixture(t, {subprocess: true}) as unknown as TaskHttpFixture), input = trackInput(f), before = snapshot(f.root);
+    const f = (await taskFixture(t, {subprocess: true}) as unknown as TaskHttpFixture), input = trackInput(f), before = await snapshot(f.root);
     let prepared;
     if (phase !== 'afterPreparePersist') prepared = await f.prepare('timeline.track.add', input);
     const oldInstance = prepared?.instanceId;
@@ -180,18 +180,18 @@ for (const phase of ['afterPreparePersist', 'afterClaim', 'afterBusinessCommit']
     const task = listed.items[0]; assert.deepEqual(task.input, input);
     assert.equal(task.status, phase === 'afterPreparePersist' ? 'prepared' : phase === 'afterClaim' ? 'unknown' : 'applied');
     assert.deepEqual(((await (f.backend)!.observe()).phases as unknown), [], 'startup and rediscovery must never dispatch');
-    if (phase !== 'afterBusinessCommit') assert.deepEqual(snapshot(f.root), before);
+    if (phase !== 'afterBusinessCommit') assert.deepEqual(await snapshot(f.root), before);
     if (prepared) {
       const stale = await f.request(taskPath(f.project.id, task.id, 'execute'), {method: 'POST', input: actionInput(f, prepared)});
       assert.equal(stale.status, 409); assert.equal(stale.body.error.code, 'EDIT_TASK_STALE_INSTANCE');
     }
-    const rows = retained(f), current = snapshot(f.root);
-    assert.deepEqual((await f.get(task.id)).task, task); assert.deepEqual(retained(f), rows); assert.deepEqual(snapshot(f.root), current);
+    const rows = await retained(f), current = await snapshot(f.root);
+    assert.deepEqual((await f.get(task.id)).task, task); assert.deepEqual(await retained(f), rows); assert.deepEqual(await snapshot(f.root), current);
     if (phase === 'afterBusinessCommit') {
       const recovered = await f.reconcile(task) as TaskEnvelope<'timeline.track.add'>; assert.equal(recovered.task.status, 'applied'); assert.equal((recovered.result)!.revision, input.expectedRevision + 1);
-      assert.deepEqual(((await (f.backend)!.observe()).phases as unknown), []); assert.deepEqual(snapshot(f.root), current);
+      assert.deepEqual(((await (f.backend)!.observe()).phases as unknown), []); assert.deepEqual(await snapshot(f.root), current);
     } else {
-      const read = await f.reconcile(task); assert.equal(read.task.status, task.status); assert.deepEqual(snapshot(f.root), before);
+      const read = await f.reconcile(task); assert.equal(read.task.status, task.status); assert.deepEqual(await snapshot(f.root), before);
       const executed = await f.execute({task: read.task, instanceId: listed.instanceId}) as TaskEnvelope<'timeline.track.add'>;
       assert.equal(executed.task.status, 'applied'); assert.equal((executed.result)!.revision, input.expectedRevision + 1);
       assert.equal((await (f.backend)!.observe()).phases.filter((value: string) => value === 'beforeDispatch').length, 1);
@@ -200,10 +200,10 @@ for (const phase of ['afterPreparePersist', 'afterClaim', 'afterBusinessCommit']
 }
 
 test('legacy session import reconciles exact old RPC receipts and closes the lane only on explicit acknowledgement', async t => {
-  const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = trackInput(f), result = await f.rpc('timeline.track.add', input), domain = snapshot(f.root);
+  const f = (await taskFixture(t) as unknown as TaskHttpFixture), input = trackInput(f), result = await f.rpc('timeline.track.add', input), domain = await snapshot(f.root);
   const imported = await f.prepare('timeline.track.add', input, 'legacy_session'); assert.equal(imported.task.status, 'unknown');
-  assert.equal(dispatches(f), 0); assert.deepEqual(snapshot(f.root), domain);
-  const rows = retained(f); assert.deepEqual((await f.get(imported.task.id)).task, imported.task); assert.deepEqual(retained(f), rows);
+  assert.equal(dispatches(f), 0); assert.deepEqual(await snapshot(f.root), domain);
+  const rows = await retained(f); assert.deepEqual((await f.get(imported.task.id)).task, imported.task); assert.deepEqual(await retained(f), rows);
   const reconciled = await f.reconcile(imported.task); assert.equal(reconciled.task.status, 'applied'); assert.deepEqual(reconciled.result, result);
   const replacement = {projectId: f.project.id, operation: 'timeline.track.add', input: trackInput(f, {expectedRevision: result.revision}), origin: 'new'};
   assert.equal((await f.request(projectApiPath(f.project.id, 'tasks', 'prepare'), {method: 'POST', input: replacement})).status, 409);
@@ -211,7 +211,7 @@ test('legacy session import reconciles exact old RPC receipts and closes the lan
   assert.equal(staleAck.status, 409);
   const acknowledged = await f.acknowledge(reconciled.task); assert.equal(acknowledged.task.acknowledged, true);
   const next = await f.prepare(replacement.operation, replacement.input, replacement.origin); assert.notEqual(next.task.id, imported.task.id);
-  assert.equal(dispatches(f), 0); assert.deepEqual(snapshot(f.root), domain);
+  assert.equal(dispatches(f), 0); assert.deepEqual(await snapshot(f.root), domain);
 });
 
 test('reference attach/detach task receipts remain historical and GET does not reattach a removed edge', async t => {
@@ -221,12 +221,12 @@ test('reference attach/detach task receipts remain historical and GET does not r
   const detach = {projectId: f.project.id, edgeId: (applied.result)!.edge.id, expectedShotRevision: (applied.result)!.shot.revision, requestId: randomUUID()};
   const removed = await f.execute(await f.prepare('reference.detach', detach));
   assert.equal(removed.task.status, 'applied'); assert.equal((removed.result)!.detached, true);
-  const domain = snapshot(f.root), rows = retained(f);
+  const domain = await snapshot(f.root), rows = await retained(f);
   await f.restart();
   assert.equal((await f.get(applied.task.id)).task.status, 'applied');
   assert.deepEqual((await f.reconcile(applied.task)).result, applied.result);
   assert.deepEqual((await f.reconcile(removed.task)).result, removed.result);
-  assert.deepEqual(snapshot(f.root), domain); assert.deepEqual(retained(f), rows); assert.equal(dispatches(f), 2);
+  assert.deepEqual(await snapshot(f.root), domain); assert.deepEqual(await retained(f), rows); assert.equal(dispatches(f), 2);
   assert.equal(database(f.root, db => (db.prepare('SELECT count(*) AS n FROM edges WHERE id=?').get((applied.result)!.edge.id))!.n), 0);
 });
 
@@ -254,13 +254,13 @@ test('official CLI and MCP replay the same domain receipts after task execution 
   const tools = await mcp.listTools();
   assert.equal(tools.tools.some(tool => /^(?:tasks|edit_tasks)_/u.test(tool.name)), false);
   for (const [operation, input] of [['timeline.track.add', trackInput(f)], ['reference.attach', attachInput(f)]] as const) {
-    const applied = await f.execute(await f.prepare(operation, input)), domain = snapshot(f.root), rows = retained(f);
+    const applied = await f.execute(await f.prepare(operation, input)), domain = await snapshot(f.root), rows = await retained(f);
     assert.deepEqual(await command(operation, input, (f.backend)!.url), {ok: true, data: applied.result});
     const response = await mcp.callTool({name: operation.replaceAll('.', '_'), arguments: input});
     assert.equal(response.isError, false); assert.deepEqual(response.structuredContent, {ok: true, data: applied.result});
     assert.deepEqual(JSON.parse(((response.content as {type: string; text: string}[]).find((block: { type: string; }) => block.type === 'text'))!.text), response.structuredContent);
     assert.deepEqual(await f.rpc(operation, input), applied.result);
-    assert.deepEqual(snapshot(f.root), domain); assert.deepEqual(retained(f), rows);
+    assert.deepEqual(await snapshot(f.root), domain); assert.deepEqual(await retained(f), rows);
   }
   assert.equal(dispatches(f), 2);
 });

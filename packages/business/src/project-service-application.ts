@@ -8,10 +8,11 @@ import type {ProjectStore} from './project-file/store.ts';
 import {testStoreApplicationDirectory, registerTestStoreCloseCompanion} from './project-file/test-store.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
 import type {ServiceApplicationPorts} from './services.ts';
+import {bindAgentTaskRowValidation} from './agent/task-project-row-validation-v2.ts';
 
 /** App-backed settings and an explicit S0 lifecycle boundary. This never
  * constructs the legacy workspace backup or activation machinery. */
-export function createProjectServiceApplication(library: AppLibrary, signal?: AbortSignal): ServiceApplicationPorts {
+export function createProjectServiceApplication(library: AppLibrary, signal?: AbortSignal, env: NodeJS.ProcessEnv = process.env): ServiceApplicationPorts {
   const info = lstatSync(library.databaseFile, {bigint: true});
   const identity = {dev: String(info.dev), ino: String(info.ino)};
   const assertOwner = (): void => {
@@ -21,7 +22,7 @@ export function createProjectServiceApplication(library: AppLibrary, signal?: Ab
   assertOwner();
   const unavailable = (): never => {assertOwner(); throw new AppError('RESTORE_OPERATION_UNAVAILABLE', 'This project host does not yet support workspace backup or restoration.', 409);};
   return {
-    configuration: createWorkspaceConfiguration({root: library.dataDir, documents: library.documents}),
+    configuration: createWorkspaceConfiguration({root: library.dataDir, documents: library.documents, env}),
     backups: {
       getStatus: unavailable, list: unavailable, create: unavailable, stageRestore: unavailable,
       exportBundle: unavailable, importBundle: unavailable, importDirectory: unavailable,
@@ -31,7 +32,7 @@ export function createProjectServiceApplication(library: AppLibrary, signal?: Ab
   };
 }
 
-const applications = new WeakMap<ProjectStore, {readonly library: AppLibrary; application?: ServiceApplicationPorts}>();
+const applications = new WeakMap<ProjectStore, {readonly library: AppLibrary}>();
 /** Production-layout stores require the caller's app ports. Only the kernel's
  * exact test-store capability authorizes this one lazy, real B1 owner. */
 export function testProjectAppLibrary(value: unknown): AppLibrary | undefined {
@@ -41,15 +42,18 @@ export function testProjectAppLibrary(value: unknown): AppLibrary | undefined {
   const existing = applications.get(value);
   if (existing) return existing.library;
   const library = openAppLibrary({dataDir: directory});
+  let unbind: (() => void) | undefined;
   try {
-    registerTestStoreCloseCompanion(value, () => {applications.delete(value); library.close();});
+    unbind = bindAgentTaskRowValidation(value, library);
+    registerTestStoreCloseCompanion(value, () => {applications.delete(value); unbind!(); library.close();});
     applications.set(value, {library});
     return library;
-  } catch (error) {library.close(); throw error;}
+  } catch (error) {unbind?.(); library.close(); throw error;}
 }
-export function testProjectServiceApplication(value: unknown): ServiceApplicationPorts | undefined {
+export function testProjectServiceApplication(value: unknown, env: NodeJS.ProcessEnv = process.env): ServiceApplicationPorts | undefined {
   const library = testProjectAppLibrary(value);
   if (!library || !isProjectStore(value)) return undefined;
-  const held = applications.get(value)!;
-  return held.application ??= createProjectServiceApplication(library);
+  // Only the database owner is shared. Per-service environment admission keeps
+  // the old caller-specific live-generation gate; settings still share B1 data.
+  return createProjectServiceApplication(library, undefined, env);
 }

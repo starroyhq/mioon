@@ -11,21 +11,23 @@ import {createLastProject,readLastProjectTarget,LAST_PROJECT_FILENAME, type Last
 import {LAST_PROJECT_LIMITS,lastProjectEnvelopeSchema} from '@mioon/contracts/last-project';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import type { SQLInputValue } from 'node:sqlite';
+import {schemaObjects} from './helpers/project-database.ts';
 
 type FixtureEnvelope = Extract<ReturnType<ReturnType<typeof createLastProject>['get']>,{supported: true}>;
 type FixtureLocator = Omit<ReturnType<typeof createLastProject>,'get'|'put'> & {get(): FixtureEnvelope; put(input: unknown): FixtureEnvelope};
 const storage={readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile};
 const code=(value: string)=>(error: unknown)=>(error as { code: string; message: string|string[]; }).code===value&&!(error as { code: string; message: string|string[]; }).message.includes('PRIVATE');
 async function fixture(t: test.TestContext){
-  const root=mkdtempSync(path.join(tmpdir(),'mioon-last-project-'));let store=(openStore(root) as unknown as TypedStore),fault: (point: string) => void=()=>{},locator!: FixtureLocator;
+  const projectRoot=mkdtempSync(path.join(tmpdir(),'mioon-last-project-')),root=path.join(projectRoot,'.mioon-store','app');let store=(openStore(projectRoot) as unknown as TypedStore),fault: (point: string) => void=()=>{},locator!: FixtureLocator;
   const services=(createServices(store,new Map()) as unknown as TypedServices),project=await services.call('project.create',{name:'Existing project'});
-  const otherStore=openStore(path.join(root,'other-project')),otherServices=createServices(otherStore,new Map()),other=await otherServices.call('project.create',{name:'Other existing project'}) as {id:string};
-  const options=()=>({root,databaseFile:path.join(root,'.mioon-store','app','app-library.db'),storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>store.db.isOpen&&Boolean(getWorkspaceRestoreContext(store)),readProject:(id: string)=>readLastProjectTarget(id===other.id?otherStore.db:store.db,id)},fault:(point: string)=>fault(point)});
+  const otherStore=openStore(path.join(projectRoot,'other-project')),otherServices=createServices(otherStore,new Map()),other=await otherServices.call('project.create',{name:'Other existing project'}) as {id:string};
+  const missingTargets=new Set<string>();
+  const options=()=>({root,databaseFile:path.join(root,'app-library.db'),storage,guards:{ownsLock:()=>ownsStoreLock(store),isRestored:()=>store.db.isOpen&&Boolean(getWorkspaceRestoreContext(store)),readProject:(id: string)=>missingTargets.has(id)?null:readLastProjectTarget(id===other.id?otherStore.db:store.db,id)},fault:(point: string)=>fault(point)});
   const start=(extra: Partial<LastProjectOptions>={})=>locator=createLastProject({...options(),...extra}) as FixtureLocator;start();
-  t.after(()=>{store.close();otherStore.close();rmSync(root,{recursive:true,force:true});});
-  return {root,file:path.join(root,LAST_PROJECT_FILENAME),project,other,get store(){return store;},get locator(){return locator;},start,options,
+  t.after(()=>{store.close();otherStore.close();rmSync(projectRoot,{recursive:true,force:true});});
+  return {root,projectRoot,file:path.join(root,LAST_PROJECT_FILENAME),project,other,get store(){return store;},get locator(){return locator;},start,options,setMissingTarget:(id:string)=>{missingTargets.add(id);},
     setFault(fn: (point: string) => void){fault=fn;},input(value: Extract<ReturnType<typeof locator.get>,{supported: true}>=locator.get() as Extract<ReturnType<typeof locator.get>,{supported: true}>,projectId: string|undefined=project.id){return {workspaceScope:value.workspaceScope,instanceId:value.instanceId,expectedRevision:value.revision,projectId};},
-    restart(){store.close();store=(openStore(root) as unknown as TypedStore);start();},
+    restart(){store.close();store=(openStore(projectRoot) as unknown as TypedStore);start();},
     snapshot(){return JSON.stringify(store.db.prepare('SELECT name,sql FROM sqlite_schema ORDER BY name').all())+'\n'+JSON.stringify(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(({name})=>[name,store.db.prepare(`SELECT * FROM "${(name as string).replaceAll('"','""')}" ORDER BY rowid`).all()]));},
   };
 }
@@ -58,13 +60,12 @@ test('missing remembered project is discoverable without reset; PUT missing targ
   const f=await fixture(t),input=f.input(),saved=f.locator.put(input),bytes=readFileSync(f.file);
   const protectedState=f.snapshot();assert.throws(()=>f.store.db.prepare('DELETE FROM projects WHERE id=?').run(f.project.id),/FOREIGN KEY/);
   assert.equal(f.snapshot(),protectedState,'the live target foreign key blocks raw project deletion');
-  // The locator is independent of these shared business services. Use their
-  // real project cleanup, preserving the locator's remembered missing target.
-  const service=(createServices(f.store,new Map()) as unknown as TypedServices);let removed=false;
-  const noDrafts=(projectId: unknown)=>{assert.equal(projectId,f.project.id);for(const name of ['local-drafts-v1.json','local-delivery-v1.json','local-shot-text-v1.json'])assert.equal(existsSync(path.join(f.root,name)),false);};
-  service.setProjectDeletionCompanions({assertDeletable:noDrafts,removeProject:projectId=>{noDrafts(projectId);removed=true;}});
-  const deleted=await service.call('project.delete',{projectId:f.project.id,expectedRevision:f.project.revision,requestId:randomUUID(),confirmPermanentDeletion:true});
-  assert.equal(deleted.cleanup,'complete');assert.equal(removed,true);
+  // Availability comes from the app's registry port; project deletion is a
+  // separate, temporarily unavailable lifecycle operation during the switch.
+  const service=createServices(f.store,new Map());
+  assert.throws(()=>service.setProjectDeletionCompanions({assertDeletable:()=>assert.fail('legacy deletion admission must not run'),removeProject:()=>assert.fail('legacy deletion cleanup must not run')}),/application project host/);
+  f.setMissingTarget(f.project.id);
+  assert.equal(f.snapshot(),protectedState,'changing registry availability never deletes project rows');
   const before=f.snapshot(),found=f.locator.get();
   assert.deepEqual(found,{...saved,targetStatus:'missing'});assert.deepEqual(readFileSync(f.file),bytes);assert.equal(f.snapshot(),before);
   assert.throws(()=>f.locator.put(input),code('LAST_PROJECT_NOT_FOUND'));
@@ -75,14 +76,15 @@ test('missing remembered project is discoverable without reset; PUT missing targ
 
 test('bounded SQL rejects relational/JSON identity disagreement, malformed and oversized target rows',async t=>{
   const f=await fixture(t),input=f.input();
-  const guard=(f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE name='agent_target_projects_update_v2'").get())!.sql,before=f.snapshot();
+  const guardObject=schemaObjects(f.store.db).find(row=>row.name==='agent_target_projects_update_v2');assert.ok(guardObject?.sql);
+  const guard=guardObject.sql,before=f.snapshot();
   assert.throws(()=>f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run('{',f.project.id),/malformed JSON/);
   assert.equal(f.snapshot(),before,'the live target guard atomically rejects malformed project JSON');
   const corrupt=(data: SQLInputValue)=>{
-    f.store.db.exec('DROP TRIGGER agent_target_projects_update_v2');
+    f.store.db.exec(`DROP TRIGGER ${guardObject.schema}.agent_target_projects_update_v2`);
     try{f.store.db.prepare('UPDATE projects SET data=? WHERE id=?').run(data,f.project.id);}
-    finally{f.store.db.exec(guard as string);}
-    assert.equal((f.store.db.prepare("SELECT sql FROM sqlite_schema WHERE name='agent_target_projects_update_v2'").get())!.sql,guard);
+    finally{f.store.db.exec(guardObject.schema==='temp'?guard.replace(/^CREATE TRIGGER /,'CREATE TEMP TRIGGER '):guard.replace(/^CREATE TRIGGER /,`CREATE TRIGGER "${guardObject.schema}".`));}
+    assert.equal(schemaObjects(f.store.db).find(row=>row.name==='agent_target_projects_update_v2')?.sql,guard);
   };
   for(const data of [JSON.stringify({...f.project,id:f.other.id}),'null','{','x'.repeat(16385),JSON.stringify({...f.project,name:'x'.repeat(20000)})]){
     corrupt(data);
@@ -121,11 +123,11 @@ test('symlinks, hardlinks, foreign modes and directories fail closed without rep
   writeFileSync(f.file,'{}',{mode:0o644});assert.throws(()=>f.locator.get(),code('LAST_PROJECT_STORAGE_UNAVAILABLE'));assert.equal(statSync(f.file).mode&0o777,0o644);rmSync(f.file);
   symlinkSync(outside,f.file);assert.throws(()=>f.locator.put(input),code('LAST_PROJECT_STORAGE_UNAVAILABLE'));assert.equal(readFileSync(outside,'utf8'),'PRIVATE');rmSync(f.file);
   linkSync(outside,f.file);assert.throws(()=>f.locator.get(),code('LAST_PROJECT_STORAGE_UNAVAILABLE'));assert.equal(readFileSync(outside,'utf8'),'PRIVATE');rmSync(f.file);
-  chmodSync(f.root,0o755);assert.throws(()=>f.locator.get(),code('LAST_PROJECT_OWNER_REQUIRED'));assert.equal(statSync(f.root).mode&0o777,0o755);chmodSync(f.root,0o700);
+  chmodSync(f.root,0o755);assert.throws(()=>f.locator.get(),code('LAST_PROJECT_STORAGE_UNAVAILABLE'));assert.equal(statSync(f.root).mode&0o777,0o755);chmodSync(f.root,0o700);
 });
 
 test('actual exclusive lock ownership is required, including before exact replay',async t=>{
-  const f=await fixture(t),input=f.input();assert.throws(()=>(openStore(f.root) as unknown as TypedStore),{code:'PROJECT_LOCKED'});
+  const f=await fixture(t),input=f.input();assert.throws(()=>(openStore(f.projectRoot) as unknown as TypedStore),{code:'PROJECT_LOCKED'});
   const unowned=createLastProject(f.options());f.store.close();
   assert.throws(()=>unowned.get(),code('LAST_PROJECT_OWNER_REQUIRED'));assert.throws(()=>unowned.put(input),code('LAST_PROJECT_OWNER_REQUIRED'));assert.equal(existsSync(f.file),false);
   f.restart();const freshInput=f.input();f.locator.put(freshInput);const before=readFileSync(f.file);f.store.close();

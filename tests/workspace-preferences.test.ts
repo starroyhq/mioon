@@ -1,5 +1,4 @@
 import type {WorkspaceServices as FixtureServices} from './helpers/strict-workspace-boundary-types.ts';
-import type {FixtureStore} from './helpers/strict-timeline-core-types.ts';
 import test from 'node:test';
 import {openLegacyWorkspaceStore} from './helpers/legacy-workspace-store.ts';
 import assert from 'node:assert/strict';
@@ -8,8 +7,10 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import {realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {Worker} from 'node:worker_threads';
 import {openStore, createServices, createWorkspacePreferences} from '@mioon/business';
+import {testProjectAppLibrary,createProjectServiceApplication} from '../packages/business/src/project-service-application.ts';
+import {isProjectStore} from '../packages/business/src/project-file/store.ts';
+import {projectFileIdentity} from '../packages/business/src/app-db/index.ts';
 import {parseWorkspacePreferencesState} from '../packages/business/src/workspace-preferences.ts';
 import {schemas} from '@mioon/contracts';
 import {defaultWorkspaceState, reconcileWorkspaceState, type WorkspaceState} from '../apps/web/src/workspace-state.ts';
@@ -24,14 +25,29 @@ const state = () => {
 const at = (value: unknown, path: readonly (string|number)[]) => path.reduce<unknown>((result,key)=>(result as Record<PropertyKey,unknown>)[key],value) as Record<PropertyKey,unknown>;
 const set = (value:unknown,path:readonly (string|number)[],replacement?:unknown)=>{at(value,path.slice(0,-1))[path.at(-1)!]=replacement;return value;};
 const protectedTables = ['projects', 'assets', 'shots', 'nodes', 'edges', 'jobs', 'versions', 'exports', 'timelines', 'timeline_requests', 'timeline_history', 'timeline_history_cursors', 'reference_requests', 'idempotency', 'job_events'];
-const capture = (store: WorkspaceStore) => Object.fromEntries(protectedTables.map(table => [table, store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
-async function fixture(t: test.TestContext,{open=openStore}={}) {
+const capture = (store: Pick<WorkspaceStore,'db'>) => Object.fromEntries(protectedTables.map(table => [table, store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+type PreferenceStore = WorkspaceStore | ReturnType<typeof openLegacyWorkspaceStore>;
+async function fixture(t: test.TestContext,{open=openStore}: {open?:(root:string)=>PreferenceStore}={}) {
   const root = await mkdtemp(path.join(realpathSync(tmpdir()), 'wb-preferences-'));
   let store = open(root), services = (createServices(store, new Map()) as unknown as FixtureServices), preferences = (createWorkspacePreferences(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').PreferenceService);
+  const foreigns: {store: WorkspaceStore; services: FixtureServices}[] = [];
   const project = await services.call('project.create', {name: 'Synthetic workspace preferences'});
-  const f = {root, projectId: project.id, get store() { return store; }, get preferences() { return preferences; }, call: <Operation extends string>(op: Operation, input: unknown) => services.call(op, input),
-    restart() { store.close(); store = (openStore(root) as unknown as FixtureStore); services = (createServices(store, new Map()) as unknown as FixtureServices); preferences = (createWorkspacePreferences(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').PreferenceService); }};
-  t.after(async () => { store.close(); await rm(root, {recursive: true, force: true}); });
+  const f = {root, projectId: project.id, get store() { return store; }, get preferenceDb() {return testProjectAppLibrary(store)?.db ?? store.db;}, get preferences() { return preferences; }, call: <Operation extends string>(op: Operation, input: unknown) => services.call(op, input),
+    async otherProject() {
+      assert.ok(isProjectStore(store));
+      const library = testProjectAppLibrary(store); assert.ok(library);
+      const foreign = openStore(path.join(root, 'foreign-project'));
+      const foreignServices = createServices(foreign, new Map(), {application: createProjectServiceApplication(library)}) as unknown as FixtureServices;
+      foreigns.push({store: foreign, services: foreignServices});
+      const other = await foreignServices.call('project.create', {name: 'Other synthetic project'});
+      for (const selected of [store, foreign]) {
+        const identity = projectFileIdentity(selected.projectFile); assert.ok(identity);
+        library.registry.upsert({projectId: selected.projectId, projectFile: selected.projectFile, fileIdentity: identity, name: 'Preferences fixture project', lastOpenedAt: null, summary: null});
+      }
+      return {...other, store: foreign, preferenceDb: library.db};
+    },
+    async restart() { await services.drain(); store.close(); store = open(root); services = (createServices(store, new Map()) as unknown as FixtureServices); preferences = (createWorkspacePreferences(store) as unknown as import('./helpers/strict-workspace-boundary-types.ts').PreferenceService); }};
+  t.after(async () => { for(const foreign of foreigns){await foreign.services.drain();foreign.store.close();}await services.drain();store.close();await rm(root, {recursive: true, force: true}); });
   return f;
 }
 
@@ -39,7 +55,7 @@ test('preference reads have no writes, require an existing project, and are abse
   const f = await fixture(t), before = capture(f.store);
   assert.deepEqual(f.preferences.get(f.projectId), {projectId: f.projectId, revision: 0, state: null});
   assert.deepEqual(capture(f.store), before);
-  assert.equal(f.store.db.prepare('SELECT count(*) n FROM workspace_preferences').get()!.n, 0);
+  assert.equal(f.preferenceDb.prepare('SELECT count(*) n FROM workspace_preferences').get()!.n, 0);
   for (const operation of ['workspace.preferences.get', 'workspace.preferences.put', 'workspace-preferences.get', 'workspace-preferences.put'] as const) {
     assert.equal((schemas as unknown as Record<string,unknown>)[operation], undefined);
     await assert.rejects(f.call(operation, {projectId: f.projectId}), {code: 'UNKNOWN_OPERATION'});
@@ -51,7 +67,7 @@ test('preference reads have no writes, require an existing project, and are abse
   const missing = randomUUID();
   assert.throws(() => f.preferences.get(missing), {code: 'NOT_FOUND'});
   assert.throws(() => f.preferences.put(missing, {expectedRevision: 0, state: state()}), {code: 'NOT_FOUND'});
-  assert.equal(f.store.db.prepare('SELECT count(*) n FROM workspace_preferences').get()!.n, 0);
+  assert.equal(f.preferenceDb.prepare('SELECT count(*) n FROM workspace_preferences').get()!.n, 0);
 });
 
 test('the full bounded whitelist rejects missing, unknown, free-text, unsafe and malformed values atomically', async t => {
@@ -94,7 +110,7 @@ test('the full bounded whitelist rejects missing, unknown, free-text, unsafe and
   for (const value of [null, [], {}, {state: valid}, {expectedRevision: 0}, {expectedRevision: 0, state: valid, requestId: randomUUID()}] as const) assert.throws(() => f.preferences.put(projectId, value), {code: 'VALIDATION_ERROR'});
   for (const revision of [-1, .5, '0', null, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1] as const) assert.throws(() => f.preferences.put(projectId, {expectedRevision: revision, state: valid}), {code: 'VALIDATION_ERROR'});
   assert.deepEqual(f.preferences.get(projectId), {projectId, revision: 0, state: null});
-  assert.equal(f.store.db.prepare('SELECT count(*) n FROM workspace_preferences').get()!.n, 0);
+  assert.equal(f.preferenceDb.prepare('SELECT count(*) n FROM workspace_preferences').get()!.n, 0);
 });
 
 test('legacy stored v1 preferences normalize and replay canonically without changing bytes or revisions', async t => {
@@ -104,9 +120,9 @@ test('legacy stored v1 preferences normalize and replay canonically without chan
   const reorder = (value: unknown): unknown => value && typeof value === 'object'
     ? Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reorder(item)])) : value;
   const raw = JSON.stringify(reorder(legacy));
-  f.store.db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, 7, raw);
-  const row = () => f.store.db.prepare('SELECT * FROM workspace_preferences WHERE projectId=?').get(projectId);
-  const changes = () => f.store.db.prepare('SELECT total_changes() n').get()!.n;
+  f.preferenceDb.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, 7, raw);
+  const row = () => f.preferenceDb.prepare('SELECT * FROM workspace_preferences WHERE projectId=?').get(projectId);
+  const changes = () => f.preferenceDb.prepare('SELECT total_changes() n').get()!.n;
   const before = row(), businessBefore = capture(f.store), writesBefore = changes();
   const normalized = { ...legacy, editing: { ...legacy.editing, snappingEnabled: true } };
   const expected = { projectId, revision: 7, state: normalized };
@@ -122,7 +138,7 @@ test('legacy stored v1 preferences normalize and replay canonically without chan
   const disabled = copy(normalized); disabled.editing.snappingEnabled = false;
   assert.throws(() => f.preferences.put(projectId, { expectedRevision: 6, state: disabled }), { code: 'PREFERENCES_CONFLICT' });
   assert.deepEqual(row(), before);
-  f.restart();
+  await f.restart();
   assert.deepEqual(f.preferences.get(projectId), expected);
   assert.deepEqual(row(), before);
   const saved = f.preferences.put(projectId, { expectedRevision: 7, state: disabled });
@@ -130,7 +146,7 @@ test('legacy stored v1 preferences normalize and replay canonically without chan
   assert.deepEqual(f.preferences.put(projectId, { expectedRevision: 7, state: disabled }), saved);
   assert.throws(() => f.preferences.put(projectId, { expectedRevision: 7, state: legacy }), { code: 'PREFERENCES_CONFLICT' });
   assert.throws(() => f.preferences.put(projectId, { expectedRevision: 6, state: disabled }), { code: 'PREFERENCES_CONFLICT' });
-  f.restart();
+  await f.restart();
   assert.deepEqual(f.preferences.get(projectId), saved);
   assert.deepEqual(capture(f.store), businessBefore);
 });
@@ -150,7 +166,7 @@ test('legacy v1 magnet input still rejects every undocumented omission and unkno
   assert.throws(() => (parseWorkspacePreferencesState(symbolic) as unknown as import('../apps/web/src/workspace-state.ts').WorkspaceState), { code: 'VALIDATION_ERROR' });
   const f = await fixture(t), saved = f.preferences.put(f.projectId, { expectedRevision: 0, state: legacy });
   assert.equal(saved.state.editing.snappingEnabled, true);
-  assert.equal(JSON.parse(((f.store.db.prepare('SELECT state FROM workspace_preferences WHERE projectId=?').get(f.projectId)!.state as string))).editing.snappingEnabled, true);
+  assert.equal(JSON.parse(((f.preferenceDb.prepare('SELECT state FROM workspace_preferences WHERE projectId=?').get(f.projectId)!.state as string))).editing.snappingEnabled, true);
   assert.deepEqual(f.preferences.put(f.projectId, { expectedRevision: 0, state: legacy }), saved);
   assert.equal('snappingEnabled' in legacy.editing, false);
 });
@@ -161,9 +177,9 @@ test('whole-layout legacy migration preserves raw bytes and revisions on GET and
   legacy.shared.assetsCollapsed = true; legacy.shared.inspectorCollapsed = true;
   legacy.canvas.storyboardOpen = true; legacy.editing.timelineCollapsed = true;
   const raw = JSON.stringify(legacy);
-  f.store.db.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, 5, raw);
-  const row = () => f.store.db.prepare('SELECT * FROM workspace_preferences WHERE projectId=?').get(projectId);
-  const changes = () => f.store.db.prepare('SELECT total_changes() n').get()!.n;
+  f.preferenceDb.prepare('INSERT INTO workspace_preferences(projectId,revision,state) VALUES(?,?,?)').run(projectId, 5, raw);
+  const row = () => f.preferenceDb.prepare('SELECT * FROM workspace_preferences WHERE projectId=?').get(projectId);
+  const changes = () => f.preferenceDb.prepare('SELECT total_changes() n').get()!.n;
   const before = row(), writes = changes(), business = capture(f.store);
   const canonical = (parseWorkspacePreferencesState(legacy) as unknown as import('../apps/web/src/workspace-state.ts').WorkspaceState);
   assert.equal(canonical.editing.snappingEnabled, true);
@@ -181,7 +197,7 @@ test('whole-layout legacy migration preserves raw bytes and revisions on GET and
   }
   const different = copy(canonical); different.layout.canvas.assetsCollapsed = false;
   assert.throws(() => f.preferences.put(projectId, { expectedRevision: 4, state: different }), { code: 'PREFERENCES_CONFLICT' });
-  f.restart(); assert.deepEqual(row(), before); assert.deepEqual(f.preferences.get(projectId).state, canonical);
+  await f.restart(); assert.deepEqual(row(), before); assert.deepEqual(f.preferences.get(projectId).state, canonical);
   const saved = f.preferences.put(projectId, { expectedRevision: 5, state: different });
   assert.equal(saved.revision, 6); assert.equal(saved.state.layout.canvas.assetsCollapsed, false);
   assert.equal(saved.state.layout.editing.assetsCollapsed, true);
@@ -212,7 +228,7 @@ test('independent CAS revisions replay only the latest exact write and never ove
   assert.equal(first.revision, 1); assert.equal(Object.is(first.state.canvas.viewport!.x, -0), false);
   const reorder = (object: unknown): unknown => object && typeof object === 'object' && !Array.isArray(object) ? Object.fromEntries(Object.entries(object).reverse().map(([key, v]) => [key, reorder(v)])) : object;
   assert.deepEqual(f.preferences.put(projectId, reorder({expectedRevision: 0, state: value})), first);
-  assert.equal(f.store.db.prepare('SELECT count(*) n FROM workspace_preferences').get()!.n, 1);
+  assert.equal(f.preferenceDb.prepare('SELECT count(*) n FROM workspace_preferences').get()!.n, 1);
   const conflict = (input: unknown) => assert.throws(() => f.preferences.put(projectId, input), error => (error as unknown as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).code === 'PREFERENCES_CONFLICT' && (error as unknown as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).status === 409 && (error as unknown as import('./helpers/strict-opacity-fixture-types.ts').OpacityFailure).details.currentRevision === 1);
   conflict({expectedRevision: 0, state: state()});
   conflict({expectedRevision: 2, state: value});
@@ -222,17 +238,18 @@ test('independent CAS revisions replay only the latest exact write and never ove
   assert.equal(next.revision, 2);
   assert.throws(() => f.preferences.put(projectId, {expectedRevision: 0, state: value}), {code: 'PREFERENCES_CONFLICT'});
   assert.throws(() => f.preferences.put(projectId, {expectedRevision: 0, state: state()}), {code: 'PREFERENCES_CONFLICT'});
-  f.restart();
+  await f.restart();
   assert.deepEqual(f.preferences.get(projectId), next);
   assert.deepEqual(f.preferences.put(projectId, {expectedRevision: 1, state: state()}), next);
-  f.store.db.prepare('UPDATE workspace_preferences SET revision=? WHERE projectId=?').run(Number.MAX_SAFE_INTEGER, projectId);
+  f.preferenceDb.prepare('UPDATE workspace_preferences SET revision=? WHERE projectId=?').run(Number.MAX_SAFE_INTEGER, projectId);
   assert.throws(() => f.preferences.put(projectId, {expectedRevision: Number.MAX_SAFE_INTEGER, state: state()}), {code: 'PREFERENCES_REVISION_EXHAUSTED'});
   assert.equal(f.preferences.get(projectId).revision, Number.MAX_SAFE_INTEGER);
 });
 
 test('selection IDs can outlive entities, project preferences stay isolated, and business/history bytes are untouched', async t => {
   const f = await fixture(t), projectId = f.projectId;
-  const other = await f.call('project.create', {name: 'Other synthetic project'});
+  const other = await f.otherProject();
+  assert.notEqual(other.store.db, f.store.db); assert.equal(other.preferenceDb, f.preferenceDb);
   const shot = await f.call('shot.create', {projectId, title: 'Stable shot', prompt: 'Business content'});
   const node = await f.call('node.create', {projectId, type: 'text', text: 'Canvas content', position: {x: 10, y: 20}});
   await f.call('edge.create', {projectId, source: node.id, target: shot.id});
@@ -247,7 +264,7 @@ test('selection IDs can outlive entities, project preferences stay isolated, and
   f.store.db.prepare('INSERT INTO reference_requests(requestId,requestHash,response) VALUES(?,?,?)').run(randomUUID(), 'synthetic-reference-hash', '{"immutable":"reference-response"}');
   f.store.db.prepare('INSERT INTO idempotency(scope,requestId,requestHash,resourceId) VALUES(?,?,?,?)').run('generation', randomUUID(), 'synthetic-generation-hash', jobId);
   f.store.db.prepare('INSERT INTO job_events(jobId,event,createdAt) VALUES(?,?,?)').run(jobId, '{"status":"succeeded"}', '2026-10-09T00:00:00.000Z');
-  const before = capture(f.store), value = state();
+  const before = capture(f.store), foreignBefore = capture(other.store), foreignChanges = other.store.db.prepare('SELECT total_changes() n').get(), value = state();
   value.canvas.selectedId = shot.id;
   value.canvas.selectedEdgeId = randomUUID(); value.canvas.highlightedVersionId = randomUUID();
   value.editing.selectedClipId = randomUUID(); value.editing.quickAssetId = randomUUID();
@@ -259,21 +276,22 @@ test('selection IDs can outlive entities, project preferences stay isolated, and
   assert.equal(f.preferences.get(other.id).state!.editing.snappingEnabled, true);
   assert.deepEqual(f.preferences.get(projectId), saved);
   assert.deepEqual(capture(f.store), before);
+  assert.deepEqual(capture(other.store), foreignBefore); assert.deepEqual(other.store.db.prepare('SELECT total_changes() n').get(), foreignChanges);
   const reconciled = reconcileWorkspaceState(saved.state, {shots: [shot]});
   assert.equal(reconciled.canvas.selectedId, shot.id);
   for (const field of [['canvas', 'selectedEdgeId'], ['canvas', 'highlightedVersionId'], ['editing', 'selectedClipId'], ['editing', 'quickAssetId']] as const) assert.equal(at(reconciled, (field as unknown as Parameters<typeof at>[1])), null);
-  f.restart(); assert.deepEqual(capture(f.store), before); assert.deepEqual(f.preferences.get(projectId), saved);
+  await f.restart(); assert.deepEqual(capture(f.store), before); assert.deepEqual(f.preferences.get(projectId), saved);
 });
 
 test('additive v5 migration preserves legacy records, immutable requests, history and bytes', async t => {
-  const f = await fixture(t,(({open:openLegacyWorkspaceStore}) as unknown as Parameters<typeof fixture>[1])), projectId = f.projectId;
+  const f = await fixture(t,{open:openLegacyWorkspaceStore}), projectId = f.projectId;
   await f.call('shot.create', {projectId, title: 'Legacy shot'});
   let timeline = await f.call('timeline.get', {projectId});
   const input = {projectId, expectedRevision: timeline.revision, requestId: randomUUID(), kind: 'audio', name: 'Legacy edit'};
   timeline = await f.call('timeline.track.add', input);
   const before = capture(f.store);
   f.store.db.exec('DROP TABLE workspace_preferences; DELETE FROM schema_version WHERE version=5;');
-  f.restart();
+  await f.restart();
   assert.ok(f.store.db.prepare('SELECT version FROM schema_version WHERE version=5').get());
   assert.deepEqual(capture(f.store), before);
   assert.deepEqual(f.preferences.get(projectId), {projectId, revision: 0, state: null});
@@ -284,34 +302,22 @@ test('additive v5 migration preserves legacy records, immutable requests, histor
   assert.throws(() => f.store.db.prepare('UPDATE timeline_requests SET response=?').run('{}'), /immutable/);
 });
 
-async function race(t:test.TestContext, f:Awaited<ReturnType<typeof fixture>>, states:WorkspaceState[], expectedRevision:number) {
-  const barrier = new SharedArrayBuffer(4), flag = new Int32Array(barrier);
-  const script = `const {parentPort, workerData} = require('node:worker_threads');
-  (async () => {
-    const {openStore, createWorkspacePreferences} = await import(workerData.module);
-    const store = openStore(workerData.root, {lock:false});
-    try {
-      parentPort.postMessage({ready:true}); Atomics.wait(new Int32Array(workerData.barrier), 0, 0);
-      try { parentPort.postMessage({ok:true, result:createWorkspacePreferences(store).put(workerData.projectId, {expectedRevision:workerData.expectedRevision,state:workerData.state})}); }
-      catch(error) { parentPort.postMessage({ok:false, code:error.code, details:error.details}); }
-    } finally { store.close(); }
-  })().catch(error => { throw error; });`;
-  const workers = states.map((value) => {
-    const worker = new Worker(script, {eval: true, workerData: {module: new URL('../packages/business/src/index.ts', import.meta.url).href, root: f.root, projectId: f.projectId, state: value, expectedRevision, barrier}});
-    t.after(() => worker.terminate());
-    let readyResolve: (value?: unknown) => void, readyReject: (reason?: unknown) => void, resultResolve: (value:{ok:boolean;result:import('./helpers/strict-workspace-boundary-types.ts').PreferenceState;code:string;details:{currentRevision:number}}) => void, resultReject: (reason?: unknown) => void;
-    const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
-    const result = new Promise<{ok:boolean;result:import('./helpers/strict-workspace-boundary-types.ts').PreferenceState;code:string;details:{currentRevision:number}}>((resolve, reject) => { resultResolve = resolve; resultReject = reject; });
-    worker.on('message', message => message.ready ? readyResolve() : resultResolve(message));
-    worker.on('error', error => { readyReject(error); resultReject(error); });
-    return {ready, result};
+async function race(_t:test.TestContext, f:Awaited<ReturnType<typeof fixture>>, states:WorkspaceState[], expectedRevision:number) {
+  // One application connection owns preferences. Concurrent client requests
+  // share that owner instead of bypassing its exclusive lock with raw writers.
+  const admitted = Promise.withResolvers<void>();
+  const contenders = states.map(() => createWorkspacePreferences(f.store));
+  type Outcome = {ok:true;result:Awaited<ReturnType<ReturnType<typeof createWorkspacePreferences>['put']>>} | {ok:false;code:string;details:{currentRevision:number}};
+  const requests = states.map(async (value, index):Promise<Outcome> => {
+    await admitted.promise;
+    try { return {ok:true, result:await contenders[index]!.put(f.projectId, {expectedRevision, state:value})}; }
+    catch(error) {const failure=error as {code:string;details:{currentRevision:number}};return {ok:false,code:failure.code,details:failure.details};}
   });
-  try { await Promise.all(workers.map((worker) => worker.ready)); }
-  finally { Atomics.store(flag, 0, 1); Atomics.notify(flag, 0); }
-  return Promise.all(workers.map((worker) => worker.result));
+  admitted.resolve();
+  return await Promise.all(requests);
 }
 
-test('competing database connections commit one CAS winner and deduplicate simultaneous exact retries', {timeout: 20000}, async t => {
+test('the held application owner commits one concurrent CAS winner and deduplicates simultaneous exact retries', {timeout: 20000}, async t => {
   const f = await fixture(t), variants = [10, 20, 30, 40].map(playhead => { const value = state(); value.editing.playhead = playhead; return value; });
   const results = await race(t, f, variants, 0), winners = results.filter(result => result.ok);
   assert.equal(winners.length, 1);

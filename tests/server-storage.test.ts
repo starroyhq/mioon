@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {syncBuiltinESMExports} from 'node:module';
 import {startServer} from '@mioon/server';
-import {openStore} from '@mioon/business';
+import {openLegacyWorkspaceStore as openStore} from '@mioon/business/db';
 import {validateWorkspaceStorage} from '@mioon/business/db';
 
 const posix: {skip: boolean} = {skip: process.platform === 'win32'};
@@ -39,17 +39,17 @@ for (const mode of [0o755, 0o777]) test(`unsafe existing root${mode.toString(8)}
   assert.deepEqual(snapshot(f.base), before);
 });
 
-for (const entry of ['media', 'workbench.sqlite', 'workbench.sqlite-wal', 'workbench.sqlite-shm', 'workbench.sqlite-journal', 'server.lock', 'access-token', 'agent-settings']) {
+for (const entry of ['records', 'app-library.db', 'app-library.db-wal', 'app-library.db-shm', 'app-library.db-journal', 'server.lock', 'access-token', 'agent-settings']) {
   test(`unsafe symbolic-link ${entry} is refused before lock, token, database or external writes`, posix, async t => {
-    const f = fixture(t), target = ['media', 'agent-settings'].includes(entry) ? f.outside : path.join(f.outside, 'sentinel');
+    const f = fixture(t), target = ['records', 'agent-settings'].includes(entry) ? f.outside : path.join(f.outside, 'sentinel');
     fs.symlinkSync(target, path.join(f.root, entry)); const before = snapshot(f.base);
     await assert.rejects(startServer({dataDir: f.root, port: 0, token}), storageFailure);
-    assert.throws(() => openStore(f.root, {lock: false}), storageFailure);
+    assert.throws(() => validateWorkspaceStorage(f.root), storageFailure);
     assert.deepEqual(snapshot(f.base), before);
   });
 }
 
-for (const entry of ['workbench.sqlite', 'workbench.sqlite-wal', 'workbench.sqlite-shm', 'server.lock', 'access-token']) {
+for (const entry of ['app-library.db', 'app-library.db-wal', 'app-library.db-shm', 'server.lock', 'access-token']) {
   test(`hardlinked ${entry} is never opened, removed or rewritten`, posix, async t => {
     const f = fixture(t); fs.linkSync(path.join(f.outside, 'sentinel'), path.join(f.root, entry)); const before = snapshot(f.base);
     await assert.rejects(startServer({dataDir: f.root, port: 0, token}), storageFailure);
@@ -57,7 +57,7 @@ for (const entry of ['workbench.sqlite', 'workbench.sqlite-wal', 'workbench.sqli
   });
 }
 
-for (const entry of ['workbench.sqlite', 'workbench.sqlite-wal', 'workbench.sqlite-shm', 'server.lock', 'access-token']) {
+for (const entry of ['app-library.db', 'app-library.db-wal', 'app-library.db-shm', 'server.lock', 'access-token']) {
   test(`nonregular ${entry} is refused without partial initialization`, posix, async t => {
     const f = fixture(t); fs.mkdirSync(path.join(f.root, entry), {mode: 0o700}); const before = snapshot(f.base);
     await assert.rejects(startServer({dataDir: f.root, port: 0, token}), storageFailure);
@@ -107,9 +107,9 @@ test('legacy media0755 and SQLite0644 survive restart with exact project values 
   const project = {id: 'synthetic-project', name: 'Legacy workspace', revision: 7}; store.put('projects', project); store.close();
   fs.chmodSync(path.join(f.root, 'media'), 0o755); fs.chmodSync(path.join(f.root, 'workbench.sqlite'), 0o644);
   fs.writeFileSync(path.join(f.root, 'access-token'), `  ${token}  \n`, {mode: 0o600});
-  const service = await startServer({dataDir: f.root, port: 0});
-  try { assert.equal(service.token, token); assert.equal((await fetch(service.url + '/health')).status, 200); }
-  finally { await service.close(); }
+  const before = snapshot(f.base);
+  await assert.rejects(startServer({dataDir: f.root, port: 0}), {code: 'VALIDATION_ERROR', status: 400});
+  assert.deepEqual(snapshot(f.base), before, 'new production startup refuses an old workspace without migration');
   store = openStore(f.root); try { assert.deepEqual(store.get('projects', project.id), project);
     // A restart upgrades the legacy profile through every ordinary marker to
     // the current ordinary-58 role; the exact lineage is asserted, not a superset.
@@ -141,9 +141,9 @@ test('lock ownership and failed SQLite initialization cleanup preserve unrelated
 });
 
 test('existing writable media/database and unsafe settings metadata fail read-only preflight before stale-lock cleanup', posix, async t => {
-  for (const entry of ['media', 'workbench.sqlite', 'agent-settings', 'agent-settings/settings.json']) {
+  for (const entry of ['records', 'app-library.db', 'agent-settings', 'agent-settings/settings.json']) {
     const f = fixture(t); fs.writeFileSync(path.join(f.root, 'server.lock'), 'not-a-pid', {mode: 0o600});
-    if (entry === 'media' || entry === 'agent-settings') fs.mkdirSync(path.join(f.root, entry), {mode: 0o777});
+    if (entry === 'records' || entry === 'agent-settings') fs.mkdirSync(path.join(f.root, entry), {mode: 0o777});
     else {
       if (entry.includes('/')) fs.mkdirSync(path.join(f.root, 'agent-settings'), {mode: 0o700});
       fs.writeFileSync(path.join(f.root, entry), 'synthetic', {mode: 0o666});

@@ -63,7 +63,7 @@ test('proof is bound to actual frame/current document/lease and only fixed canon
   const f=fixture(),a=f.owner(),b=f.owner(),request=f.request(a),grant=await f.dispatch(a,request);
   const input={...request.input,clipId:uuid(),sourceHash:hash,planHash:hash};
   const query=new URLSearchParams(input as unknown as Record<string,string>).toString();
-  const details={id:1,url:'http://127.0.0.1:12345/api/timeline-audio-preview/pcm?'+query,method:'GET',resourceType:'xhr',
+  const details={id:1,url:`http://127.0.0.1:12345/api/projects/${input.projectId}/timeline-audio-preview/pcm?`+query,method:'GET',resourceType:'xhr',
     webContents:a.contents,frame:a.frame,requestHeaders:{'X-Mioon-Audio-Lease':grant!.lease!.leaseId,'x-mioon-audio-signature':'forged'}};
   const signed=f.host.beforeSendHeaders(details);assert.equal(signed.cancel,false);
   const proof=JSON.parse(Buffer.from((signed.requestHeaders!['X-Mioon-Audio-Proof'] as string),'base64url').toString());
@@ -84,6 +84,10 @@ test('the PCM route at the input project address is signed; another project in t
     webContents:a.contents,frame:a.frame,requestHeaders:{'X-Mioon-Audio-Lease':grant!.lease!.leaseId}});
   assert.equal(f.host.beforeSendHeaders(details(2,uuid())).cancel,true,'the address names another project than the input');
   assert.equal(f.host.beforeSendHeaders({...details(3,input.projectId),url:`${origin}/api/projects/${input.projectId}/timeline-audio-preview/other?${query}`}).cancel,true);
+  for(const old of ['/api/timeline-audio-preview/pcm','/api/timeline-audio-preview/continuous']) {
+    const denied=f.host.beforeSendHeaders({...details(4,input.projectId),url:`${origin}${old}?${query}`});
+    assert.deepEqual(denied,{cancel:true},'old public audio paths never receive a signed header');
+  }
   const signed=f.host.beforeSendHeaders(details(1,input.projectId));assert.equal(signed.cancel,false);
   const proof=JSON.parse(Buffer.from((signed.requestHeaders!['X-Mioon-Audio-Proof'] as string),'base64url').toString());
   assert.equal(proof.sequence,1,'refused addresses consumed no sequence');assert.deepEqual(proof.input,input);
@@ -215,7 +219,7 @@ test('late reservation cannot publish while admission is disallowed, even with t
 test('admission gate denies fresh and repeated source signatures while cancellation and retirement still work',async()=>{
   const f=fixture(),a=f.owner(),ar=f.request(a),grant=await f.dispatch(a,ar);
   const input={...ar.input,clipId:uuid(),sourceHash:hash,planHash:hash};
-  const details={id:1,url:'http://127.0.0.1:12345/api/timeline-audio-preview/pcm?'+new URLSearchParams((input as unknown as Record<string,string>)),method:'GET',resourceType:'xhr',
+  const details={id:1,url:`http://127.0.0.1:12345/api/projects/${input.projectId}/timeline-audio-preview/pcm?`+new URLSearchParams((input as unknown as Record<string,string>)),method:'GET',resourceType:'xhr',
     webContents:a.contents,frame:a.frame,requestHeaders:{'X-Mioon-Audio-Lease':grant!.lease!.leaseId}};
   assert.equal(f.host.beforeSendHeaders(details).cancel,false);f.setAdmissionAllowed(false);
   const repeated=f.host.beforeSendHeaders(details),fresh=f.host.beforeSendHeaders({...details,id:2});
@@ -275,7 +279,7 @@ test('incidental navigation cannot use a stale document ACK as renderer retireme
   assert.equal(await f.host.dispatch({sender:a.contents,senderFrame:nextFrame},retired),false,'New frame cannot acknowledge the old frame resources');
   assert.deepEqual(await f.dispatch(a,ar),{status:'unavailable'},'Old document cannot acquire again');
   const source={...ar.input,clipId:uuid(),sourceHash:hash,planHash:hash};
-  assert.equal(f.host.beforeSendHeaders({id:100,url:'http://127.0.0.1:12345/api/timeline-audio-preview/pcm?'+new URLSearchParams((source as unknown as Record<string,string>)),
+  assert.equal(f.host.beforeSendHeaders({id:100,url:`http://127.0.0.1:12345/api/projects/${source.projectId}/timeline-audio-preview/pcm?`+new URLSearchParams((source as unknown as Record<string,string>)),
     method:'GET',resourceType:'xhr',webContents:a.contents,frame:oldSenderFrame,requestHeaders:{'X-Mioon-Audio-Lease':grant!.lease!.leaseId}}).cancel,true);
   let complete=false;const waiting=f.dispatch(b,f.request(b)).then(value=>{complete=true;return value;});await tick();
   assert.equal(await f.host.dispatch({sender:a.contents,senderFrame:null},retired),false);

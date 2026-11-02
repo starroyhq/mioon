@@ -2,8 +2,8 @@ import type {IncomingMessage,ServerResponse} from 'node:http';
 import {LOCAL_SHOT_TEXT_LIMITS} from '@mioon/contracts/local-shot-text';
 import type {LocalShotTextEnvelope,LocalShotTextExecution} from '@mioon/contracts/local-shot-text';
 import {LocalShotTextError,safeLocalShotTextError} from '@mioon/business/local-shot-text';
-import {rejectProjectMismatch} from './project-routes.ts';
-import type {ProjectAddress} from './project-routes.ts';
+import {rejectProjectMismatch} from './project-host/request.ts';
+import type {ProjectAddress} from './project-host/request.ts';
 
 export interface LocalShotTextHttpService{
   get(input:unknown):LocalShotTextEnvelope;put(input:unknown):LocalShotTextEnvelope;

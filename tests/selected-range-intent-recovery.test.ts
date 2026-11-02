@@ -117,7 +117,7 @@ for (const loss of ['after-business-commit', 'accepted-http-ack']) test(`${loss}
 });
 
 test('restored profile allows an explicit new-origin range export while captured exports and inherited companion remain unavailable', {timeout: 30_000}, async t => {
-  const f = (await selectedRangeFixture(t) as unknown as SelectedRangeFixture), {value, input} = await prepared(f);
+  const f = (await selectedRangeFixture(t, {legacy: true}) as unknown as SelectedRangeFixture), {value, input} = await prepared(f);
   const accepted = await f.local('/execute', action(value as Parameters<typeof action>[0])), heldId = (accepted.response)!.id, heldReceipt = f.receipt(input.input.requestId);
   const sidecar = await readFile(f.file), originalExport = f.store.get('exports', heldId)!;
   const metadata = {restorationId: randomUUID(), workspaceOrigin: randomUUID(), sourceBackupId: randomUUID(), manifestHash: 'a'.repeat(64), sourceDbHash: 'b'.repeat(64), createdAt: new Date().toISOString()};

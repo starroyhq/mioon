@@ -20,23 +20,23 @@ const action=(f: TaskFixture,prepared: {task: {digest: string}; [key: string]: u
 const dispatched=(f: TaskFixture)=>f.phases.filter((phase)=>String(phase)==='beforeDispatch').length;
 
 test('real subject task HTTP prepare is bounded/authenticated/closed and rediscovery never dispatches',async (t: TestContext)=>{
- const f=await taskFixture(t),input=inputFor(f),body={projectId:f.project.id,operation:'subject.create',input,origin:'new'},before=saved(f);
+ const f=await taskFixture(t),input=inputFor(f),body={projectId:f.project.id,operation:'subject.create',input,origin:'new'},before=await saved(f);
  for(const options of [{authenticated:false},{headers:{origin:'https://foreign.example'}},{headers:{host:'foreign.example'}}]){
   const res=await f.request(projectApiPath(f.project.id,'tasks','prepare'),{method:'POST',input:body,...options} as never);assert.ok([401,403].includes(res.status));
  }
  for(const change of [{operation:'subject.delete'},{operation:'subject.list'},{input:{...input,requestId:undefined}},{input:{...input,extra:true}},{input:{...input,name:'x'.repeat(8193)}}]){
   const res=await f.request(projectApiPath(f.project.id,'tasks','prepare'),{method:'POST',input:{...body,...change}});assert.ok([400,413].includes(res.status));
  }
- assert.deepEqual(saved(f),before);const prepared=await f.prepare('subject.create',input) as Prepared,domain=snapshot(f.root);
+ assert.deepEqual(await saved(f),before);const prepared=await f.prepare('subject.create',input) as Prepared,domain=await snapshot(f.root);
  assert.equal(prepared.task.lane,'subject:mutation');assert.ok(isEditTaskEnvelope(prepared));
  assert.deepEqual(((await f.list()) as {items: unknown[]}).items,[prepared.task]);assert.deepEqual(await f.get(prepared.task.id),prepared);
- assert.equal(dispatched(f),0);assert.deepEqual(snapshot(f.root),domain);
+ assert.equal(dispatched(f),0);assert.deepEqual(await snapshot(f.root),domain);
 });
 
 test('real lost subject prepare acknowledgement survives backend restart without automatic execution',async (t: TestContext)=>{
- const f=await taskFixture(t),input=inputFor(f),before=snapshot(f.root);f.lose(projectApiPath(f.project.id,'tasks','prepare'));
+ const f=await taskFixture(t),input=inputFor(f),before=await snapshot(f.root);f.lose(projectApiPath(f.project.id,'tasks','prepare'));
  await assert.rejects(f.viaProxy(projectApiPath(f.project.id,'tasks','prepare'),{method:'POST',input:{projectId:f.project.id,operation:'subject.create',input,origin:'new'}}));
- const accepted=(f.observed as {body: {data: unknown}}[])[0]!.body.data as Prepared;assert.ok(isEditTaskEnvelope(accepted));assert.equal(dispatched(f),0);assert.deepEqual(snapshot(f.root),before);
+ const accepted=(f.observed as {body: {data: unknown}}[])[0]!.body.data as Prepared;assert.ok(isEditTaskEnvelope(accepted));assert.equal(dispatched(f),0);assert.deepEqual(await snapshot(f.root),before);
  await f.restart();const found=await f.viaProxy(listPath(f.project.id));assert.deepEqual((found.body.data as {items: unknown[]}).items,[accepted.task]);assert.equal(f.requests.filter(request=>request.method==='POST').length,1);
  assert.equal(dispatched(f),0);const stale=await f.request(taskPath(f.project.id,accepted.task.id,'execute'),{method:'POST',input:action(f,accepted as never)});assert.equal((stale.body.error as {code:string}).code,'EDIT_TASK_STALE_INSTANCE');
  const result=await f.execute(await f.get(accepted.task.id) as never) as Prepared;assert.equal(result.task.status,'applied');assert.equal(dispatched(f),1);
@@ -50,9 +50,9 @@ test('real dropped subject execute response commits once and recovery returns hi
  // Add a second metadata-only fixture source. No media I/O or provider work.
  const assetId=randomUUID();database(f.root,db=>{const value={...f.source,id:assetId,sha256:'b'.repeat(64),relativePath:'media/second-synthetic.png'};db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(assetId,f.project.id,JSON.stringify(value));},true);
  await f.rpc('subject.version.add',{projectId:f.project.id,subjectId:applied.result.id,expectedRevision:applied.result.revision,assetId,requestId:randomUUID()});
- const before=saved(f),domain=snapshot(f.root);await f.restart();const current=await f.get(applied.task.id) as {task: {id: string; digest: string; revision: number; status: string}};
+ const before=await saved(f),domain=await snapshot(f.root);await f.restart();const current=await f.get(applied.task.id) as {task: {id: string; digest: string; revision: number; status: string}};
  assert.deepEqual(((await f.reconcile(current.task)) as Applied).result,applied.result);assert.deepEqual(((await f.execute(current as never)) as Applied).result,applied.result);
- assert.equal(dispatched(f),1);assert.deepEqual(saved(f),before);assert.deepEqual(snapshot(f.root),domain);
+ assert.equal(dispatched(f),1);assert.deepEqual(await saved(f),before);assert.deepEqual(await snapshot(f.root),domain);
  await f.acknowledge(current.task);assert.deepEqual(((await f.list()) as {items: unknown[]}).items,[]);
  assert.equal(database(f.root,(db: import('node:sqlite').DatabaseSync)=>(db.prepare('SELECT count(*) n FROM subject_requests').get() as {n: number}).n),2);
 });
@@ -75,11 +75,11 @@ test('official CLI and MCP replay all three exact subject receipts without expos
  const assetId=randomUUID();database(f.root,db=>{const value={...f.source,id:assetId,sha256:'c'.repeat(64),relativePath:'media/third-synthetic.png'};db.prepare('INSERT INTO assets(id,projectId,data) VALUES(?,?,?)').run(assetId,f.project.id,JSON.stringify(value));},true);
  const add={projectId:f.project.id,subjectId:subject!.id,expectedRevision:subject!.revision,assetId,requestId:randomUUID()},added=await f.execute(await f.prepare('subject.version.add',add) as never) as Applied;subject=added.result;records.push(['subject.version.add',add,added]);await f.acknowledge(added.task);
  const bind={projectId:f.project.id,shotId:f.shot.id,subjectId:subject!.id,role:'subject',subjectVersionId:subject!.headVersionId,expectedRevision:0,expectedSubjectRevision:subject!.revision,requestId:randomUUID()},bound=await f.execute(await f.prepare('subject.binding.set',bind) as never) as Applied;records.push(['subject.binding.set',bind,bound]);await f.acknowledge(bound.task);
- const before=saved(f),legacy=snapshot(f.root);
+ const before=await saved(f),legacy=await snapshot(f.root);
  for(const [operation,input,applied] of records){
   assert.deepEqual(await command(operation,input,f.backend!.url),{ok:true,data:applied.result});
   const response=await mcp.callTool({name:(operation as string).replaceAll('.','_'),arguments:input as Record<string, unknown>});assert.equal(response.isError,false);assert.deepEqual(response.structuredContent,{ok:true,data:applied.result});
   assert.deepEqual(JSON.parse((((response.content ?? []) as {type: string; text?: string}[]).find((block)=>block.type==='text') as {text: string}).text),response.structuredContent);assert.deepEqual(await f.rpc(operation,input),applied.result);
  }
- assert.deepEqual(saved(f),before);assert.deepEqual(snapshot(f.root),legacy);assert.equal(dispatched(f),3);
+ assert.deepEqual(await saved(f),before);assert.deepEqual(await snapshot(f.root),legacy);assert.equal(dispatched(f),3);
 });

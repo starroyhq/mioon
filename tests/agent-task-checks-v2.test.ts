@@ -109,8 +109,14 @@ test('video generation observes current local progress, publication and cost wit
 });
 
 test('an ACK cannot claim a foreign or unrelated task and legacy ACKs remain readable',async t=>{
- const f=await fixture(t),id=randomUUID(),step=f.step('mioon_generation_submit',{}, {id}),foreign=randomUUID(),base={id,projectId:foreign,requestId:step.id,status:'running',providerId:'mock'};f.store.put('projects',{id:foreign,name:'Foreign'});f.store.put('jobs',base);
- assert.equal(item(await f.read(),'generation_status',id).reason?.code,'RECORD_UNAVAILABLE');f.store.db.prepare('UPDATE jobs SET projectId=? WHERE id=?').run(f.projectId,id);f.store.put('jobs',{...base,projectId:f.projectId,requestId:randomUUID()});assert.equal(item(await f.read(),'generation_status',id).reason?.code,'RECORD_UNAVAILABLE');f.store.put('jobs',{...base,projectId:f.projectId});assert.equal(item(await f.read(),'generation_status',id).status,'pending');
+ const f=await fixture(t),foreign=await fixture(t),id=randomUUID(),step=f.step('mioon_generation_submit',{}, {id}),base={id,projectId:foreign.projectId,requestId:step.id,status:'running',providerId:'mock'};
+ assert.notEqual(f.store.db,foreign.store.db);foreign.store.put('jobs',base);
+ const foreignRows=foreign.store.db.prepare('SELECT * FROM jobs ORDER BY id').all(),before=f.store.db.prepare('SELECT total_changes() AS n').get()!.n;
+ assert.equal(item(await f.read(),'generation_status',id).reason?.code,'RECORD_UNAVAILABLE');
+ assert.equal(f.store.db.prepare('SELECT total_changes() AS n').get()!.n,before);assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM jobs').get()!.n,0);
+ f.store.put('jobs',{...base,projectId:f.projectId,requestId:randomUUID()});assert.equal(item(await f.read(),'generation_status',id).reason?.code,'RECORD_UNAVAILABLE');
+ f.store.put('jobs',{...base,projectId:f.projectId});assert.equal(item(await f.read(),'generation_status',id).status,'pending');
+ assert.deepEqual(foreign.store.db.prepare('SELECT * FROM jobs ORDER BY id').all(),foreignRows);
 });
 
 test('image generation reads its saved local task and cancellation without starting the image worker',async t=>{

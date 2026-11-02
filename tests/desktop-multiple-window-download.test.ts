@@ -20,8 +20,8 @@ function fixture(resolve: (contents: unknown) => unknown) {
   return session;
 }
 function item(): DownloadItem {
-  const value: DownloadItem = {options: null, getInitiatorOrigin: () => origin, getURLChain: () => [`${origin}/media/${a}`],
-    getURL: () => `${origin}/media/${a}`, getMimeType: () => 'video/mp4',
+  const value: DownloadItem = {options: null, getInitiatorOrigin: () => origin, getURLChain: () => [`${origin}/api/projects/${b}/media/${a}`],
+    getURL: () => `${origin}/api/projects/${b}/media/${a}`, getMimeType: () => 'video/mp4',
     setSaveDialogOptions: options => {value.options = options;}, setSavePath: () => assert.fail('Native Save As must remain explicit') as never};
   return value;
 }
@@ -47,3 +47,9 @@ test('unknown and replaced download owners fail closed without falling back to a
     assert.equal(denied, 1); assert.equal(download.options, null);
   }
 });
+
+ test('legacy download requests never reach a native Save As dialog',()=>{
+  const contents={getURL:()=>`${origin}/?project=${b}`},win={webContents:contents,isDestroyed:()=>false};
+  const session=fixture(()=>win),download=item();download.getURL=()=>`${origin}/media/${a}`;download.getURLChain=()=>[download.getURL()];let denied=0;
+  session.emit('will-download',{preventDefault:()=>denied++},download,contents);assert.equal(denied,1);assert.equal(download.options,null);
+ });

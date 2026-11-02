@@ -182,7 +182,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
       return equal(bearer, token) || equal(cookie, token);
     };
     const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-      let relocate: (() => void) | undefined;
+      let relocate: (() => void) | undefined, activeProjectId: string | undefined;
       try {
         shutdown.signal.throwIfAborted();
         res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -205,9 +205,13 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (route) {
           if (url.searchParams.getAll('projectId').some(value => value !== route.projectId)) throw projectIdMismatch(route.projectId);
           const lease = await projects.acquire(route.projectId, 'request');
+          activeProjectId = route.projectId;
           relocate = lease.host.relocate;
-          const release = () => { res.off('finish', release); res.off('close', release); lease.release(); };
+          const revoked = () => { if (!res.writableEnded) res.destroy(); };
+          const release = () => { res.off('finish', release); res.off('close', release); lease.signal.removeEventListener('abort', revoked); lease.release(); };
+          lease.signal.addEventListener('abort', revoked, {once: true});
           res.once('finish', release); res.once('close', release);
+          if (lease.signal.aborted) revoked();
           if (res.destroyed || res.writableEnded || req.aborted) { release(); return; }
           if (!await lease.host.runtime.handle({req, res, url, route, signal: lease.signal})) notFound(res);
           return;
@@ -250,14 +254,26 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         if (url.pathname === '/api/ui-preferences/opened' && req.method === 'POST') {
           const input = await body(req, 1024);
           if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).join() !== 'projectId') throw new AppError('VALIDATION_ERROR', '项目打开记录参数无效', 400);
-          app.ui.markOpened(field(input, 'projectId')); return json(res, 200, {ok: true, data: app.ui.get()});
+          const id = field(input, 'projectId');
+          app.ui.markOpened(id);
+          const preferences = app.ui.get();
+          if (typeof id === 'string') {
+            const entry = appLibrary.registry.get(id), lastOpenedAt = preferences.recentOpened[id];
+            if (entry && lastOpenedAt) appLibrary.registry.upsert({...entry, lastOpenedAt});
+          }
+          return json(res, 200, {ok: true, data: preferences});
         }
         const preferences = /^\/api\/workspace-preferences\/([^/]+)$/u.exec(url.pathname);
         if (preferences) {
           let id: string;
           try { id = decodeURIComponent(preferences[1]!); } catch { throw new AppError('VALIDATION_ERROR', '项目 ID 无效', 400); }
           if (req.method === 'GET') return json(res, 200, {ok: true, data: app.preferences.get(id)});
-          if (req.method === 'PUT') return json(res, 200, {ok: true, data: app.preferences.put(id, await body(req, MAX_WORKSPACE_PREFERENCES_BYTES), {signal: shutdown.signal})});
+          if (req.method === 'PUT') {
+            const input = await body(req, MAX_WORKSPACE_PREFERENCES_BYTES);
+            const record = input !== null && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : undefined;
+            const payload = record && Object.hasOwn(record, 'expectedWorkspaceOrigin') ? Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'expectedWorkspaceOrigin')) : input;
+            return json(res, 200, {ok: true, data: app.preferences.put(id, payload, {signal: shutdown.signal})});
+          }
           res.setHeader('Allow', 'GET, PUT'); return json(res, 405, {ok: false, error: {code: 'METHOD_NOT_ALLOWED', message: '请使用 GET 或 PUT'}});
         }
         if (url.pathname === '/api/rpc' && req.method === 'POST') {
@@ -278,7 +294,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerIn
         })});
       } catch (caught) {
         let error = caught;
-        if (relocate && (isDatabaseMovedError(error) || field(error, 'code') === 'PROJECT_FILE_MOVED')) { relocate(); error = projectFileMoved(String(field(field(error, 'details'), 'projectId') ?? '')); }
+        if (relocate && activeProjectId && (isDatabaseMovedError(error) || field(error, 'code') === 'PROJECT_FILE_MOVED')) { relocate(); error = projectFileMoved(activeProjectId); }
         if (res.destroyed || res.writableEnded) return;
         if (res.headersSent) { res.destroy(); return; }
         const status = typeof field(error, 'status') === 'number' ? field(error, 'status') as number : 500;

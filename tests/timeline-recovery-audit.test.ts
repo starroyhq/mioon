@@ -269,7 +269,12 @@ for (const direction of (['undo', 'redo'] as const)) {
 
   test(`SQLite ${direction}: post-COMMIT exception never claims not_applied and reopens exact receipt`, businessOptions, async t => {
     const f = await businessFixture(t, direction), historyBefore = await f.history();
-    const failing = (f.createServices((({...f.store, tx:(callback?: unknown) => {f.store.tx(((callback) as unknown as Parameters<NonNullable<((typeof f)["store"])["tx"]>>[0])); throw new f.AppError('REVISION_CONFLICT', 'Synthetic after commit', 409);}}) as unknown as Parameters<NonNullable<(typeof f)["createServices"]>>[0]), new Map()) as TypedServices);
+    const originalTransaction=f.store.tx;
+    let failing:TypedServices;
+    try{
+      f.store.tx=callback=>{originalTransaction(callback);throw new f.AppError('REVISION_CONFLICT','Synthetic after commit',409);};
+      failing=f.createServices(f.store,new Map()) as TypedServices;
+    }finally{f.store.tx=originalTransaction;}
     await assert.rejects(failing.call(f.operation, f.input), error => (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).code === 'REVISION_CONFLICT' && (error as Error & {code: string; status?: number; details?: {mutationOutcome?: string; skipped?:{clipId:string;reason:string;shortByFrames?:number}[]; [key: string]: unknown}; stdout?: string; stderr?: string; dispatched?: boolean; outcomeUnknown?: boolean; terminationUnconfirmed?: boolean}).details?.mutationOutcome === undefined);
     assert.equal(f.count(), 1);
     const response = JSON.parse((((f.store.db.prepare('SELECT response FROM timeline_requests WHERE requestId=?').get(f.input.requestId))!.response) as unknown as Parameters<typeof JSON.parse>[0]));

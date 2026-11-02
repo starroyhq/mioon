@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {lstatSync} from 'node:fs';
 import type {IncomingMessage, ServerResponse} from 'node:http';
 import path from 'node:path';
 import {ensurePrivateDirectory, readPrivateFile, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
@@ -9,6 +10,9 @@ import {previsJpegSize} from '../../../../packages/business/src/previs.ts';
 import {checkpoint} from '../../../../packages/business/src/operation-lifecycle.ts';
 import {projectLocation} from './directories.ts';
 import type {AppDirectories} from './directories.ts';
+import {isProjectFileHeld} from '../../../../packages/business/src/project-file/index.ts';
+import {isAppLibraryHeld} from '../../../../packages/business/src/app-db/index.ts';
+import {PrivateStorageError} from '@mioon/contracts/private-storage';
 
 export const PROJECT_COVER_LIMITS = Object.freeze({jpegBytes: 1024 * 1024, metadataBytes: 4096, maxEdge: 512});
 const hash = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex');
@@ -29,6 +33,26 @@ function validJpeg(bytes: Buffer): boolean {
   const size = previsJpegSize(bytes);
   return bytes.length <= PROJECT_COVER_LIMITS.jpegBytes && size !== null && Math.max(size.width, size.height) <= PROJECT_COVER_LIMITS.maxEdge;
 }
+function assertNotHeld(file: string): void {
+  const info = lstatSync(file, {bigint: true, throwIfNoEntry: false});
+  if (!info?.isFile()) return;
+  const identity = {dev: String(info.dev), ino: String(info.ino)};
+  if (isProjectFileHeld(identity) || isAppLibraryHeld(identity)) throw new PrivateStorageError('HELD_DATABASE', 'A held database cannot be used as a project cover');
+}
+/** Reuse only a complete, bounded pair with the exact source fingerprint. All
+ * identity checks precede filesystem opens, including renamed database files. */
+export function readProjectCoverCache(cacheDir: string, source: Pick<ProjectCoverMetadata, 'assetId' | 'mimeType'> & {sourceSha256?: string}): Buffer | null {
+  try {
+    const metadataFile = path.join(cacheDir, 'cover.json'), jpegFile = path.join(cacheDir, 'cover.jpg');
+    assertNotHeld(metadataFile); assertNotHeld(jpegFile);
+    const raw = readPrivateFile(metadataFile, {root: cacheDir, allowMissing: true, maxBytes: PROJECT_COVER_LIMITS.metadataBytes, encoding: 'utf8'});
+    if (typeof raw !== 'string') return null;
+    const metadata = parseProjectCoverMetadata(JSON.parse(raw));
+    if (metadata.assetId !== source.assetId || metadata.mimeType !== source.mimeType || source.sourceSha256 !== undefined && metadata.sourceSha256 !== source.sourceSha256) return null;
+    const bytes = readPrivateFile(jpegFile, {root: cacheDir, allowMissing: true, maxBytes: PROJECT_COVER_LIMITS.jpegBytes});
+    return Buffer.isBuffer(bytes) && validJpeg(bytes) && hash(bytes) === metadata.jpegSha256 ? bytes : null;
+  } catch {return null;}
+}
 
 /** Called only by an already-open project's owner after bounded rendering.
  * Both atomic replacements are inside cacheDir; an interrupted pair fails the
@@ -37,6 +61,7 @@ export function writeProjectCover({cacheDir, source, jpeg}: {cacheDir: string; s
   if (!Buffer.isBuffer(jpeg) || !validJpeg(jpeg)) throw new TypeError('Invalid bounded project cover JPEG');
   const metadata = parseProjectCoverMetadata({...source, version: 1, jpegSha256: hash(jpeg)});
   ensurePrivateDirectory(cacheDir, {create: true});
+  assertNotHeld(path.join(cacheDir, 'cover.jpg')); assertNotHeld(path.join(cacheDir, 'cover.json'));
   writePrivateFileAtomic(path.join(cacheDir, 'cover.jpg'), jpeg, {root: cacheDir, maxBytes: PROJECT_COVER_LIMITS.jpegBytes});
   writePrivateFileAtomic(path.join(cacheDir, 'cover.json'), JSON.stringify(metadata), {root: cacheDir, maxBytes: PROJECT_COVER_LIMITS.metadataBytes});
 }
@@ -59,16 +84,8 @@ export function createProjectCoverHttp({directories, readProject, signal}: {
     const cover = readProject(projectId)?.summary?.cover;
     if (!cover) return unavailable();
     const {cacheDir} = projectLocation(directories, projectId);
-    let jpeg: Buffer;
-    try {
-      const raw = readPrivateFile(path.join(cacheDir, 'cover.json'), {root: cacheDir, allowMissing: true, maxBytes: PROJECT_COVER_LIMITS.metadataBytes, encoding: 'utf8'});
-      if (typeof raw !== 'string') return unavailable();
-      const metadata = parseProjectCoverMetadata(JSON.parse(raw));
-      if (metadata.assetId !== cover.assetId || metadata.mimeType !== cover.mimeType) return unavailable();
-      const bytes = readPrivateFile(path.join(cacheDir, 'cover.jpg'), {root: cacheDir, allowMissing: true, maxBytes: PROJECT_COVER_LIMITS.jpegBytes});
-      if (!Buffer.isBuffer(bytes) || !validJpeg(bytes) || hash(bytes) !== metadata.jpegSha256) return unavailable();
-      jpeg = bytes;
-    } catch {return unavailable();}
+    const jpeg = readProjectCoverCache(cacheDir, cover);
+    if (jpeg === null) return unavailable();
     checkpoint(signal);
     const latest = readProject(projectId)?.summary?.cover;
     if (!latest || latest.assetId !== cover.assetId || latest.mimeType !== cover.mimeType) return unavailable();

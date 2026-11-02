@@ -59,7 +59,7 @@ import { createLocalDraftHttp } from './local-drafts-http.ts';
 import { createLocalShotTextHttp } from './local-shot-text-http.ts';
 import type { createProjectDeletionGate } from './project-deletion-gate.ts';
 import { createProjectPackageHttp } from './project-package-http.ts';
-import type { ProjectAddress } from './project-routes.ts';
+import type { ProjectAddress } from './project-host/request.ts';
 import {ProjectHostCleanupError} from './project-host/host.ts';
 import { createTimelineAudioContinuousHttp } from './timeline-audio-continuous-http.ts';
 import { createTimelineAudioPreviewHttp } from './timeline-audio-preview-http.ts';

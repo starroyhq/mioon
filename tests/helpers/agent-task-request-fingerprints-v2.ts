@@ -7,6 +7,7 @@ import {mock} from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {ensurePrivateDirectory, writePrivateFileAtomic} from '@mioon/contracts/private-storage';
 import {openStore} from '../../packages/business/src/db.ts';
+import {createProjectFile} from '../../packages/business/src/project-file/connection.ts';
 import {createServices} from '../../packages/business/src/services.ts';
 import {createAgentSettings} from '../../packages/business/src/agent/settings.ts';
 import {AGENT_PRESETS, DEFAULT_AGENT_CONFIGURATION} from '../../packages/business/src/agent/presets.ts';
@@ -145,6 +146,10 @@ function assertCanvasLoaded(snapshot: AgentTaskSnapshot): void {
 }
 async function fixture(protocol: AgentProtocol, official = false) {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-request-fingerprint-'));
+  // The fixed request seed is also the real kernel file identity, not a
+  // second project inserted into a randomly identified project file.
+  try {createProjectFile(path.join(root, 'project.mioon'), {projectId});}
+  catch (error) {rmSync(root, {recursive: true, force: true}); throw error;}
   const store = openStore(root), services = createServices(store, new Map());
   // Seed complete, fixed domain rows. Runtime/journal/control UUIDs remain
   // genuine; they must never accidentally become part of these request bodies.

@@ -1,12 +1,45 @@
-# 项目宿主：接口草稿（S0 第一步）
-日期：2026-10-31。状态：草稿。接口和第 7 节的 10 件事已由协调人定下（10-31）；S1–S6、S8、R1、V1 在这个接口上开发。
+# 项目宿主
+日期：2026-10-31 起草，2026-11-02 补充 P4 实现状态。当前代码已切换到真实项目内核；本轮整体验收和发布状态以 PR 为准。
 
 项目文件 v1 以后，后端同时开着多个项目：每个打开的项目有一个“项目宿主”，里面是这个项目的 store、服务、后台任务循环和 Mio 运行时；应用级的“宿主管理器”负责列出、新建、打开、关闭项目，按 URL 里的项目 ID 把请求交给对应的宿主。
 
-这份文档定下宿主的接口、生命周期和下一轮切换的计划。不在其中的：
+## 0. P4 当前运行状态
 
-- **S0 的切换本身**：接到 `composeServer`、改 `services.ts` 和 `db.ts`、K1 交接的修改、删旧路径。等接口审过、第一波的卡合入以后另起一轮，见第 6 节。
-- **内核上的改动**（S0a，PR #106，已合入）：本分支不改内核，只调用它，调用的时机见第 5 节。
+`startServer` 在应用数据目录预检、取得 `server.lock` 后打开唯一的 B1 应用库，再组装应用设置和 `createProjectHostManager`；`manager.restore()` 完成后开始监听。项目请求经真实租约进入 `composeHostedProject` / `composeProjectRuntime`，一个项目只持有一个内核连接，应用库不挂到项目连接上。关闭项目不关闭借用的应用设置或应用库。普通 `db.ts.openStore(root)` 和七个数据库测试辅助函数已切换为真实内核；历史 schema、备份和恢复测试显式用 `openLegacyWorkspaceStore`，没有生产旧工作区开关。
+
+`dataDir` 是应用数据目录，放应用库、设置、令牌、`records/`、`tmp/`；项目目录独立。服务端默认项目在 `<dataDir>/projects/`，缓存为 `<dataDir>/cache/projects/<ID>/`。桌面使用 `<userData>/data/`，旧 `<userData>/workspace/` 不迁移、不再读取；默认项目在 `<videos>/Mioon/`，缓存用系统缓存目录。设置 `MIOON_DESKTOP_USER_DATA` 时，项目和缓存均留在覆盖目录的 `data/` 内，具体布局见 2.1。应用目录含旧 `workbench.sqlite` 时，生产启动精确拒绝 `VALIDATION_ERROR`（400），不迁移旧树或旧库。
+
+生产仅接受项目前缀下的项目 RPC、REST 和媒体。旧 `/api/rpc` 里的项目操作返回 `VALIDATION_ERROR`（400）；旧项目 REST 和 `/media/<ID>` 返回 `NOT_FOUND`（404）。`project-routes.ts` 仅供测试内部 handler 适配，生产入口不导入它，也不注册旧公开地址。历史记录内保存的 URL 不改写，读取和下载按项目 ID 重建实际地址。同一个 `requestId` 的精确回执按项目独立保存，不能跨项目读取或复用为另一项目的回执。
+
+- `GET /api/project-covers/<ID>` 是应用级只读缓存接口，只读该项目缓存中的 `cover.jpg`、`cover.json`；缺失或不匹配返回 404，从不 acquire 项目。`projectSummaryCoverSchema` 的 URL 已改为此地址，并要求 ID 与摘要项目一致。
+- `GET /api/workspace-info` 返回应用目录；`GET /api/projects/<ID>/workspace-info` 取得正常项目请求租约后返回真实 `projectDir`。两者复用 `workspaceInfoSchema`。桌面导出按已验证 owner 的项目 ID 请求后者，不从 `fileLocation` 猜素材根。
+- 全局 `GET /api/agent/tasks/v2/diagnostics/latest` 只读应用 documents 的 `agent-diagnostic-summary-v1.json`，返回 `{test: null | summary}`，summary 严格只有 `completedAt`、`status`、`protocol`、`model`、`errorCode`。项目诊断完成时更新，不复制对话、请求原文或密钥，不扫描或打开关闭的项目。应用库版本为 2：只允许精确已知 v1 结构事务升级，保留原三种文档字节及其它登记、策略回执。
+- 经过 HTTP 的 B1 错误仅列 `APP_LIBRARY_LIMIT`（507，登记容量上限）和 `APP_LIBRARY_INVALID`（422，无效诊断摘要，`details: {reason:'unusable'}`）。`APP_LIBRARY_LOCKED`、`APP_LIBRARY_FORMAT_NEWER` 是监听前的启动错误；`APP_LIBRARY_CLOSED` 是内部生命周期错误，不据此新增公开端点。
+- `inspectProject: receive => …` 是受信测试接收选项；真实服务端子进程可用固定测试 IPC 读取其 own connection。HTTP、CLI 和环境变量不接受 SQL、回调或 inspect 开关；活跃连接复用、关闭项目短开即关、同步回调和 transition 拒绝规则不变。
+
+### 暂不可用的后续能力
+
+| 归属 | 当前操作/地址 | 精确结果 |
+|---|---|---|
+| S5 | 应用 RPC `project.delete` | 409 `PROJECT_DELETE_UNAVAILABLE`，复用原生命周期错误码 |
+| S5、V4 | 复制、另存为、打包导入导出尚无新生产接口；旧 `/api/project-packages/…`、项目 `package-preview` | 404 `NOT_FOUND`；不进入旧复制、删除或导入链 |
+| S7 | 应用 RPC `workspace.backup.create/inspect/list/restore.stage/status`、`/api/workspace-backups/…`（含 bundle 下载/导入、directory 导入） | 409 `RESTORE_OPERATION_UNAVAILABLE` |
+
+`workspace.restore.inspect` 仍可返回 `{restored:false}` 和明确请求的能力字段；它不启用旧恢复服务。工作区设置中的既有备份字段不代表自动备份已接入。历史旧格式领域的正例只在显式 legacy 测试入口验证，不恢复生产旧路由。S5、V4、S7 接入时恢复对应业务正例。
+
+### 配额口径
+
+原 SQL 的 `Global` / `workspace` 常量现在只查询当前项目的库，常量本身未提高。设 N 为独立项目数，下面是跨项目的可达合计；各项目仍受原项目上限、任务状态和字节校验约束。
+
+| 资源 | P4 按项目的合计上限 | 原单工作区合计上限 |
+|---|---:|---:|
+| 图片排队 / 任务 / 请求 | `8N / 1000N / 3000N` | `32 / 10000 / 30000` |
+| 帧排队 / 活跃 / 任务 / 请求 | `2N / 1N / 256N / 4096N` | `8 / 1 / 2048 / 32768` |
+| LUT 数量 / 字节 | `128N / 64 MiB × N` | `512 / 128 MiB` |
+
+应用级总量调度和限额归 S3，P4 没有新增跨项目全局调度器。
+
+以下保留 10-31 的接口设计、切换前清点和第 6 节实施计划作为历史依据；其中“下一轮”“现在的 composeServer”指当时的旧入口，当前行为以上述 P4 状态和实际源码为准。S0a 内核接口的调用时机仍见第 5 节。
 
 约定以 `PROJECT-FILE.md` 为准，本文只引用、不重复。代码在 `apps/server/src/project-host/`：
 
@@ -27,7 +60,7 @@
 
 ## 1. 清点
 
-`apps/server/src/index.ts` 的 `composeServer` 现在建的每一样东西，分成三类。“卡”一列是由哪张卡挪动或改写。
+以下清点记录切换前 `apps/server/src/index.ts` 的 `composeServer` 组装，分成三类。“卡”一列是当时计划由哪张卡挪动或改写。
 
 ### 每个项目一份（进项目宿主）
 
@@ -112,7 +145,7 @@ export function projectLocation(directories: AppDirectories, projectId: string):
 
 | | 网页版、无界面服务 | 桌面版 | 桌面版，设了 `MIOON_DESKTOP_USER_DATA` |
 |---|---|---|---|
-| `dataDir` | `startServer` 的 `dataDir`（`cli.ts` 取 `MIOON_DATA_DIR`，默认仓库的 `data/`） | `dataPaths().dataDir`，切换时从 `<userData>/workspace` 改成新的 `<userData>/data` | `<覆盖目录>/data` |
+| `dataDir` | `startServer` 的 `dataDir`（`cli.ts` 取 `MIOON_DATA_DIR`，默认仓库的 `data/`） | `dataPaths().dataDir`，即 `<userData>/data` | `<覆盖目录>/data` |
 | 新项目默认的上级目录 | `<dataDir>/projects/` | `<videos>/Mioon/`（macOS `~/Movies/Mioon/`，Windows `Videos\Mioon\`） | `<dataDir>/projects/` |
 | 本机记录 `localDir` | `<dataDir>/records/<ID>/` | 同左 | 同左 |
 | 缓存 `cacheDir` | `<dataDir>/cache/projects/<ID>/` | `<系统缓存目录>/<应用 ID>/projects/<ID>/` | `<dataDir>/cache/projects/<ID>/` |
@@ -251,7 +284,7 @@ export interface ProjectLease<Runtime extends ProjectHostRuntime = ProjectHostRu
 export type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) => T) => T;
 ```
 
-管理器拥有 store：内核打开以后，工厂在这个 store 上组装运行时，`dispose()` 之后由管理器关闭 store。下一轮生产用的工厂 `composeProjectHost`（新文件 `apps/server/src/project-host/compose.ts`）从现在的 `composeServer` 里拆出每个项目的部分，在一个宿主里建：
+管理器拥有 store：内核打开以后，工厂在这个 store 上组装运行时，`dispose()` 之后由管理器关闭 store。P4 生产工厂为 `composeHostedProject`（`apps/server/src/project-host/runtime.ts`），调用 `composeProjectRuntime`（`apps/server/src/project-runtime.ts`）组装每项目部分：
 
 - `providers`、`services`；
 - 编辑任务，打开时 `reconcileStartup()`；
@@ -270,7 +303,7 @@ export type InspectProject = <T>(projectId: string, inspect: (db: DatabaseSync) 
 | `drain()` | 停 `worker`，等 `services.drain()`、`editTasks.drain()`、Mio 的 `drain()`、文件流和版本对比媒体关闭 |
 | `dispose()` | `taskToolsV2.dispose()` 这类同步的收尾 |
 
-现在的 `composeServer` 关闭时正是这个顺序：`shutdown.abort()`，关 SSE，`Promise.all` 等 `worker.stop()`、`taskRuntimeV2.drain()`、`serviceDrain()`、`editTasks.drain()`、`files.close()`、`versionComparisonMedia.close()`，然后 `taskToolsV2.dispose()`、`store.close()`。
+切换前的 `composeServer` 关闭顺序为：`shutdown.abort()`，关 SSE，`Promise.all` 等 `worker.stop()`、`taskRuntimeV2.drain()`、`serviceDrain()`、`editTasks.drain()`、`files.close()`、`versionComparisonMedia.close()`，然后 `taskToolsV2.dispose()`、`store.close()`。P4 将项目排空/释放交给运行时和管理器，应用资源在全部项目关闭后释放。
 
 ### 2.4 需要别的卡提供的端口（`ports.ts`、`stand-ins.ts`）
 
@@ -351,7 +384,7 @@ export function createMemoryAgentPolicyStore(initial?: AgentTaskPolicy | null): 
 
 **项目级**（放在 `/api/projects/<id>/…` 下，用契约的 `parseProjectApiPath` 解析后交给宿主）：
 
-| 新路径（`/api/projects/<id>/` 之后） | 现在的路径 | 说明 |
+| 新路径（`/api/projects/<id>/` 之后） | 原路径 | 说明 |
 |---|---|---|
 | `rpc` | `/api/rpc` 里的项目级操作 | 包括只按实体 ID 寻址的 11 个和 `image.review.prepare` |
 | `media/<素材 ID>` | `/media/<素材 ID>` | 查询参数照旧 |
@@ -362,7 +395,8 @@ export function createMemoryAgentPolicyStore(initial?: AgentTaskPolicy | null): 
 | `local-drafts`、`local-drafts/clip`、`local-delivery…`、`local-shot-text…` | `/api/local-…` | S8 改成本机记录的表 |
 | `agent/tasks/v2/…`、`editing` | `/api/agent/tasks/v2/<项目 ID>/…` | 去掉路径里原来的项目 ID 段 |
 | `tasks…` | `/api/tasks…`（`edit-tasks-http.ts`） | **清单漏列**；projectId 现在在查询参数或请求体里 |
-| `package-preview` | 已在新前缀下（`project-package-http.ts`） | V4 删除 |
+| `workspace-info` | 无旧项目接口 | P4 新增，复用原 schema 返回真实项目目录 |
+| `package-preview` | 已在新前缀下（`project-package-http.ts`） | P4 不注册，404 `NOT_FOUND`，后续归 V4 |
 
 新路径保留原来 `/api/` 之后的部分，例如 `/api/tasks…` 改成 `/api/projects/<id>/tasks…`；`/api/tasks…` 也归 K2（第 7 节第 8 条）。
 
@@ -405,11 +439,11 @@ K0 的小 PR #108 把两项收进了契约（第 7 节第 6、9 条），宿主�
 - `PROJECT_FILE_MOVED` 是契约的错误码（`PROJECT_FILE_ERROR_CODES`），宿主不再自己定义，也不在 `PROJECT_HOST_ERROR_CODES` 里，由 `projectFileMoved(projectId)` 构造；
 - `PROJECT_UNAVAILABLE` 的 `details` 可以带 `invalidReason`（`PROJECT_INVALID_REASONS` 之一），只在 `reason` 是 `PROJECT_INVALID` 时出现。`projectUnavailable` 这时把 cause 的 `details.reason` 放进去，`asProjectUnavailable` 传的 cause 就是内核的错误；CLI、MCP 按项目 ID 访问时也能分清只读和损坏。
 
-**分派顺序**（下一轮写进 `index.ts`）：Host 和 Origin → 令牌 → `parseProjectApiPath` → `acquire(id, 'request')`（自动打开）→ `res.once('close', lease.release)`（租约跟着响应结束，SSE 和文件流也算在途）→ `runtime.handle(request)` → 返回 `false` 时 404。处理中抛出的错误 `isDatabaseMovedError` 为真，或者是 `PROJECT_FILE_MOVED` 时，调 `lease.host.relocate()`，再照常回错误。
+**P4 分派顺序**：Host 和 Origin → 令牌 → `parseProjectApiPath` → `acquire(id, 'request')`（自动打开）→ 响应 `finish/close` 释放租约（SSE 和文件流也算在途）→ `runtime.handle(request)` → 返回 `false` 时 404。处理中抛出的错误 `isDatabaseMovedError` 为真，或者是 `PROJECT_FILE_MOVED` 时，调 `lease.host.relocate()`，再照常回错误。
 
 ### 2.6 `startServer({dataDir})` 的新语义
 
-- `dataDir` 是应用数据目录（任务卡第 3 节第 2 条），不传时按服务端的布局取默认值。新增可选的 `cacheDir`、`projectsDir`（桌面版由主进程算好传入），以及只给测试的 `projectInspection`（2.7）。
+- `dataDir` 是应用数据目录（任务卡第 3 节第 2 条），不传时按服务端的布局取默认值。可选的 `cacheDir`、`projectsDir` 由桌面主进程算好传入；测试接收选项的实际名称是 `inspectProject`（2.7）。
 - 启动时依次：检查应用数据目录、取单实例锁 `server.lock`、打开应用库、建管理器、`await manager.restore()`、开始监听。除了有未完成任务的项目，启动时不打开任何项目。
 - `ServerInstance.dataDir` 返回应用数据目录。`close()` 先 `manager.closeAll()`，再关应用级的资源。
 - 只经接口建项目的测试（清单 7.6 里不用改的 66 个）照常可用：项目经应用级的 `project.create` 建在 `<dataDir>/projects/<项目名>/`。
@@ -419,9 +453,9 @@ K0 的小 PR #108 把两项收进了契约（第 7 节第 6、9 条），宿主�
 - **`createServerProject(dataDir)`**：
   1. `createProjectFiles({name}, {directories: serverAppDirectories(dataDir), registry: <B1 的登记表>, identity})` 建文件并登记；
   2. `openProjectStore({projectFile, locate: id => projectLocation(dirs, id)})`；
-  3. 用 store 级的 `project.create` 初始化项目行（它用 `store.projectId`）；
+  3. 用生产共用的 `ensureProjectRow` 初始化项目行（它用 `store.projectId`）；
   4. 返回 `{projectId, store}`。调用方先 `store.close()`，再 `startServer({dataDir})`；服务端只认登记过的项目。
-- **`inspectProject`**：`startServer({dataDir, projectInspection: inspect => {…}})`。服务端组装好以后，把 `manager.inspectProject` 交给这个回调。注释写明只供测试，从不来自 HTTP 或环境变量，写法照 `taskFault`、`taskGatewayV2`。语义：
+- **`inspectProject`**：`startServer({dataDir, inspectProject: inspect => {…}})`。服务端组装好以后，把 `manager.inspectProject` 交给这个回调。注释写明只供测试，从不来自 HTTP 或环境变量，写法照 `taskFault`、`taskGatewayV2`。语义：
   - 同步执行；宿主开着就用宿主自己的连接；
   - 没开着就由内核单独打开这个项目、执行、关掉，所以自动关闭以后测试照样能查库，查完不留锁；
   - 项目正在打开、关闭或独占时报 `PROJECT_HOST_TRANSITION`，不等待；
@@ -493,12 +527,12 @@ export function claimProjectFolder(parentDir: string, folderName: string): Claim
 
 测试用手动时钟逐条验证（`tests/project-host-manager.test.ts`）。
 
-### 3.4 没打开的项目的封面（10-31 定；接口名由 S6、B1 定）
+### 3.4 没打开的项目的封面（P4 已接入）
 
 - 宿主在打开时、关闭前，以及打开期间封面素材变了时，把登记摘要里 `cover` 指向的素材缩成长边 512 像素的 JPEG（视频取第 0 秒的帧），存成这个项目缓存目录里的 `cover.jpg`；旁边的 `cover.json` 记素材 ID 和素材指纹。用现有的媒体运行时生成，先写临时文件再改名。
-- 应用级的封面接口只读这两个文件，不打开项目。建议叫 `GET /api/recent-projects/<id>/cover`，名字随 S6、B1 的最近项目接口定。`cover.json` 和登记摘要对不上，或者文件不在时报 404，界面显示占位图。
+- 应用级 `GET /api/project-covers/<id>` 只读这两个文件，不打开项目。`cover.json` 和登记摘要对不上，或者文件不在时报 404，界面显示占位图。
 - 关闭前来不及生成就保留旧图，不拖慢关闭。缓存可以被系统清掉，下次打开项目时重建。封面永远不写进项目目录，打包也不带。
-- 契约的 `projectSummaryCoverSchema` 现在要求 `url === /media/<素材 ID>`，S6、K2 要改成封面接口的地址。
+- 契约的 `projectSummaryCoverSchema` 要求 `url === /api/project-covers/<项目 ID>`，并与所属摘要 ID 一致；旧素材 URL 不再作为首页封面地址。
 
 ## 4. 生命周期和并发
 
@@ -581,7 +615,7 @@ macOS、Linux 上能移；Windows 上文件被占用，移不动。
 
 #106 合入以后已改：`ports.ts` 的 `ProjectFileRecovery` 从内核导入，`reason` 是 `ProjectInvalidReason`；管理器默认用内核的 `recoverProjectFile`，只 `lstat` 的替身 `STAT_ONLY_MAINTENANCE` 删掉了。
 
-## 6. 下一轮的计划（S0 切换）
+## 6. 首次接口评审时的切换计划（历史记录）
 
 ### 6.1 要等哪些合入
 

@@ -6,7 +6,7 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {setTimeout as pause} from 'node:timers/promises';
 import {openStore} from '../packages/business/src/project-file/index.ts';
-import {testStoreApplicationDirectory} from '../packages/business/src/project-file/test-store.ts';
+import {testStoreApplicationDirectory, testStoreForConnection} from '../packages/business/src/project-file/test-store.ts';
 import {createServices} from '../packages/business/src/services.ts';
 import {createImageHistoryReaders} from '../packages/business/src/images/history.ts';
 import {createSceneHistoryReaders} from '../packages/business/src/scene-history.ts';
@@ -16,6 +16,7 @@ import {validateManagedSource} from '../packages/business/src/managed-media.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS} from '../packages/contracts/src/images.ts';
 import {sceneDetectionOptionsSchema} from '../packages/contracts/src/scene-tasks.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
+import {collectProject, createProjectFromDocument} from '../packages/business/src/project-package/document.ts';
 
 function scratch(t: TestContext): string {
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-portable-business-'));
@@ -24,15 +25,41 @@ function scratch(t: TestContext): string {
 }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
+test('real project notes survive reopening while legacy package imports and workspace backups are refused exactly', async t => {
+  const root = scratch(t), store = openStore(root), services = createServices(store, new Map());
+  const notes = '真实项目备注\n保留换行和标点。';
+  const created = await services.call('project.create', {name: 'Persistent notes'}); assert.ok(object(created));
+  await services.call('project.notes.set', {projectId: store.projectId, requestId: randomUUID(), expectedRevision: created.revision, notes});
+  const projectId = store.projectId;
+  await services.drain(); store.close();
+  const reopened = openStore(root), current = createServices(reopened, new Map());
+  t.after(async () => {await current.drain(); reopened.close();});
+  const project = reopened.get('projects', projectId); assert.ok(object(project)); assert.equal(project.notes, notes);
+  const collected = collectProject(reopened, projectId, {media: 'used', includeExports: false});
+  assert.equal(collected.document.project.notes, notes);
+  const before = reopened.db.prepare('SELECT total_changes() AS n').get()!.n;
+  assert.throws(() => createProjectFromDocument(reopened, {document: collected.document, files: new Map(), name: 'Refused copy', move: false}), {
+    name: 'TypeError', message: 'Legacy project package imports cannot run on project databases.',
+  });
+  await assert.rejects(current.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE', status: 409});
+  assert.equal(reopened.db.prepare('SELECT total_changes() AS n').get()!.n, before);
+  assert.equal(reopened.db.prepare('SELECT count(*) AS n FROM projects').get()!.n, 1);
+  assert.deepEqual(reopened.get('projects', projectId), project);
+});
+
 test('the exact test opener owns one real B1 application and releases it with its project', async t => {
   const root = scratch(t), store = openStore(root), app = testStoreApplicationDirectory(store);
   assert.ok(app); assert.equal(testStoreApplicationDirectory({...store}), null);
+  assert.equal(testStoreForConnection(store.db, store.root), store);
+  assert.equal(testStoreForConnection(store.db, `${store.root}/other`), null);
+  assert.equal(testStoreForConnection({}, store.root), null);
   const one = createServices(store, new Map(), {env: {}}), two = createServices(store, new Map(), {env: {}});
-  assert.equal(one.configuration, two.configuration);
+  assert.equal(one.configuration.root, app); assert.equal(two.configuration.root, app);
   assert.ok(existsSync(path.join(app, 'app-library.db')));
   assert.equal(existsSync(path.join(root, 'workbench.sqlite')), false);
   await assert.rejects(one.call('workspace.backup.create', {requestId: randomUUID()}), {code: 'RESTORE_OPERATION_UNAVAILABLE'});
   await one.drain(); await two.drain(); store.close();
+  assert.equal(testStoreForConnection(store.db, root), null);
   const reopened = openAppLibrary({dataDir: app}); reopened.close();
 });
 
