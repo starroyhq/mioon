@@ -8,7 +8,8 @@ import path from 'node:path';
 import {AppError} from '../packages/contracts/src/app-error.ts';
 import {mediaReferenceSchema} from '../packages/contracts/src/media-reference.ts';
 import {
-  formatAbsolutePath, insideAnyDirectory, isInsideDirectory, mediaReferenceError, outsideDirectoryGroups, parseAbsolutePath, referencePathFor,
+  exactOutsideDirectoryGroups, formatAbsolutePath, inExactDirectories, insideAnyDirectory, isFileInDirectory, isInsideDirectory,
+  isInsideRealDirectory, mediaReferenceError, outsideDirectoryGroups, parseAbsolutePath, referencePathFor, referencePathForRealFile,
   relinkBases, relinkTarget, resolveReferencePath, volumeNameOf,
 } from '../packages/business/src/media-reference/index.ts';
 import type {MediaReferenceErrorCode, ReferencePath} from '../packages/business/src/media-reference/index.ts';
@@ -148,6 +149,35 @@ test('isInsideDirectory compares whole names, NFC-normalized, without case on Wi
   assert.equal(confirmed('/Volumes/素材盘/a.mp4'), false);
   assert.equal(confirmed('C:\\素材\\a.mp4'), false);
   assert.equal(insideAnyDirectory([], posix)('/a.mp4'), false);
+});
+
+test('real authorization keeps distinct names apart and directory confirmations are not recursive', () => {
+  const nfc = 'Caf\u00e9', nfd = 'Cafe\u0301';
+  assert.equal(isInsideRealDirectory(`/a/${nfc}`, `/a/${nfd}/x.mp4`, posix), false);
+  assert.equal(isInsideRealDirectory('/a/Film', '/a/Film/x.mp4', posix), true);
+  assert.equal(isInsideRealDirectory('/a/Film', '/a/Film2/x.mp4', posix), false);
+  assert.equal(isFileInDirectory('/a/Film', '/a/Film/x.mp4', posix), true);
+  assert.equal(isFileInDirectory('/a/Film', '/a/Film/sub/x.mp4', posix), false);
+  assert.equal(isFileInDirectory('/a/Film', '/a/Film', posix), false);
+  assert.equal(isInsideRealDirectory(`C:\\${nfc}`, `C:\\${nfd}\\x.mp4`, win32), false);
+  assert.equal(isInsideRealDirectory('C:\\Film', 'C:\\film\\x.mp4', win32), false);
+  assert.equal(isFileInDirectory('c:\\Film', 'C:\\Film\\x.mp4', win32), true);
+  assert.equal(isFileInDirectory('C:\\Film', 'D:\\Film\\x.mp4', win32), false);
+  const confirmed = inExactDirectories(['/a/Film', `/a/${nfc}`], posix);
+  assert.equal(confirmed('/a/Film/x.mp4'), true);
+  assert.equal(confirmed('/a/Film/sub/x.mp4'), false);
+  assert.equal(confirmed(`/a/${nfd}/x.mp4`), false);
+  assert.equal(inExactDirectories([], posix)('/a/Film/x.mp4'), false);
+});
+
+test('real references and external groups preserve distinct NFC and nested directory names', () => {
+  const nfc = 'Caf\u00e9', nfd = 'Cafe\u0301';
+  stored(referencePathForRealFile(`/a/${nfc}`, `/a/${nfd}/x.mp4`, true, posix), relative(`../${nfd}/x.mp4`));
+  assert.equal(resolveReferencePath(`/a/${nfc}`, referencePathForRealFile(`/a/${nfc}`, `/a/${nfd}/x.mp4`, true, posix), posix), `/a/${nfd}/x.mp4`);
+  stored(referencePathForRealFile('C:\\Film', 'D:\\素材\\x.mp4', false, win32), absolute('D:\\素材\\x.mp4'));
+  assert.deepEqual(exactOutsideDirectoryGroups([`/a/${nfc}/x.mp4`, `/a/${nfc}/y.mp4`, `/a/${nfc}/sub/z.mp4`, `/a/${nfd}/w.mp4`]), [
+    {directory: `/a/${nfd}`, count: 1}, {directory: `/a/${nfc}`, count: 2}, {directory: `/a/${nfc}/sub`, count: 1},
+  ]);
 });
 
 // ---------------------------------------------------------------------------
