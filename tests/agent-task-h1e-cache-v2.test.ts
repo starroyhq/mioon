@@ -78,7 +78,7 @@ test('H1e cache boundaries handle tool-free and string-content requests without 
 test('H1e request builder freezes the official cache policy into the serialized original',()=>{
   const definition={name:'mioon_project_inspect',description:'inspect',parameters:{type:'object',properties:{},additionalProperties:false}};
   const wire=buildTaskModelRequest(config,[{role:'user',content:'离线'}],[definition]);
-  assert.equal(count(JSON.parse(wire)),3);assert.equal(JSON.parse(wire).max_tokens,4096);
+  assert.equal(count(JSON.parse(wire)),3);assert.equal(JSON.parse(wire).max_tokens,16384);
   const compatible=buildTaskModelRequest({...DEFAULT_AGENT_CONFIGURATION,presetId:'minimax',platformId:'international',baseUrl:'https://api.minimax.io/v1',protocol:'anthropic_messages',model:'MiniMax-M3'},[{role:'user',content:'离线'}],[definition]);
   assert.equal(compatible.includes('cache_control'),false);
 });

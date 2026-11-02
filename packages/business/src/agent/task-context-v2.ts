@@ -1,7 +1,7 @@
 import type {AgentTaskChange,AgentTaskDiagnostic,AgentTaskJson,AgentTaskLocale,AgentTaskNote,AgentTaskSkippedTarget,AgentTaskStep,AgentTaskTarget,AgentTaskTier} from '@mioon/contracts/agent-tasks-v2';
 import type {AgentConfiguration} from './config.ts';
-import {TASK_MODEL_LIMITS,taskContinuation,taskResponseLanguageContext,taskResponseLocale} from './task-gateway-v2.ts';
-import type {TaskModelOutput,TaskToolDefinition} from './task-gateway-v2.ts';
+import {TASK_DEFAULT_HISTORY_BUDGET,taskContinuation,taskHistoryFits,taskResponseLanguageContext,taskResponseLocale} from './task-gateway-v2.ts';
+import type {TaskHistoryBudget,TaskModelOutput,TaskToolDefinition} from './task-gateway-v2.ts';
 import {AGENT_TASK_CONVERSATION_TOOLS,agentTaskToolGroupForName,loadedAgentTaskToolGroups} from './task-tool-groups-v2.ts';
 import {compactTaskModelHistory} from './task-context-compaction-v2.ts';
 import {taskBaseModelHistory,taskContextHistoryRound,taskContextProjectNotes,taskContextProjectOverview} from './task-context-base-v2.ts';
@@ -43,6 +43,8 @@ export interface TaskRunContextInput {
   /** C6: the project's notes, frozen with this send; omitted when empty. */
   projectNotes?:string;
   attachments?:readonly TaskContextAttachment[];
+  /** The first request's history budget; bytes only when omitted. */
+  budget?:Readonly<TaskHistoryBudget>;
 }
 export interface TaskRunContext {
   context:AgentTaskJson[];
@@ -61,7 +63,7 @@ function historyInputMessage(input:TaskContextHistoryInput,locale:AgentTaskLocal
 
 /** Assemble only the host's supplied observations. Project/conversation
  * ownership and terminal-run selection remain journal responsibilities. */
-export function assembleRunContext({locale,text,previousRuns=[],historyRuns,projectOverview,projectNotes,attachments=[]}:TaskRunContextInput):TaskRunContext {
+export function assembleRunContext({locale,text,previousRuns=[],historyRuns,projectOverview,projectNotes,attachments=[],budget=TASK_DEFAULT_HISTORY_BUDGET}:TaskRunContextInput):TaskRunContext {
   const groups:AgentTaskJson[][]=[];
   if(historyRuns!==undefined)for(const previous of historyRuns){
     const messages:AgentTaskJson[]=[{role:'user',content:previous.text},...(previous.historyInputs===undefined?previous.notes.map(content=>({role:'user',content})):previous.historyInputs.map(input=>historyInputMessage(input,locale)))];
@@ -86,7 +88,7 @@ export function assembleRunContext({locale,text,previousRuns=[],historyRuns,proj
   const notes=projectNotes===undefined?[]:[taskContextProjectNotes(taskProjectNotesMessage(locale,projectNotes))];
   const render=():AgentTaskJson[]=>[taskResponseLanguageContext(locale),...groups.flat(),...overview,...notes,currentMessage];
   let context=render();
-  while(groups.length&&bytes(taskBaseModelHistory(context))>TASK_MODEL_LIMITS.historyBytes){groups.shift();context=render();}
+  while(groups.length&&!taskHistoryFits(bytes(taskBaseModelHistory(context)),budget)){groups.shift();context=render();}
   return {context,metrics:{historyBytes:bytes(taskBaseModelHistory(context)),retainedRuns:groups.length,trimmedRuns:previousCount-groups.length}};
 }
 
@@ -177,6 +179,8 @@ export interface TaskModelReplayInput {
   baseline?:readonly AgentTaskTarget[];
   runId?:string;
   diagnostic?:boolean;
+  /** This request's history budget; bytes only when omitted. */
+  budget?:Readonly<TaskHistoryBudget>;
 }
 
 /** Base-context copies are deliberately outside the compaction path. */
