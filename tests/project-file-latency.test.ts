@@ -1,6 +1,7 @@
 // Write latency of Mio streaming: one store transaction every 250 ms in the
-// test layout, first writing only the local records (an agent_task_events_v2
-// row in history.db, "single-file"), then the same event plus an UPDATE of a
+// test layout, first writing only the local records (a mio_steps.partialText
+// checkpoint and a content-free mio_events notification in history.db,
+// "single-file"), then the same writes plus an UPDATE of a
 // shot in the project file ("cross-file"). MIOON_K1_LATENCY_TICKS ticks per
 // group (default 8). Only the effects on the two files are asserted; the
 // timings go to t.diagnostic as JSON.
@@ -60,16 +61,18 @@ test(`a store transaction every ${TICK_MS} ms, local records only and then both 
   assert.ok(Number.isInteger(TICKS) && TICKS > 0, 'MIOON_K1_LATENCY_TICKS must be a positive integer');
   const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-k1-latency-'));
   t.after(() => rmSync(root, {recursive: true, force: true}));
-  const shotId = randomUUID(), runId = randomUUID();
+  const shotId = randomUUID(), runId = randomUUID(), conversationId = randomUUID(), stepId = randomUUID();
   const created = openStore(root);
   try {
     created.tx(() => {
       const now = new Date().toISOString();
       created.put('projects', {id: created.projectId, name: 'K1 latency', description: '', revision: 1, createdAt: now, updatedAt: now});
       created.put('shots', {id: shotId, projectId: created.projectId, title: 'Shot', revision: 0});
-      created.db.prepare('INSERT INTO agent_task_runs_v2(id,projectId,requestId,digest,status,revision,data) VALUES(?,?,?,?,?,?,?)').run(
-        runId, created.projectId, randomUUID(), createHash('sha256').update(runId).digest('hex'), 'running', 0,
-        JSON.stringify({conversationId: randomUUID(), notes: [], skippedTargets: []}));
+      created.db.prepare('INSERT INTO mio_conversations(id,projectId,createdAt,updatedAt) VALUES(?,?,?,?)').run(conversationId, created.projectId, now, now);
+      created.db.prepare('INSERT INTO mio_runs(id,projectId,conversationId,requestId,digest,status,revision,stepLimit,budget,stepsUsed,locale,createdAt,updatedAt) VALUES(?,?,?,?,?,?,1,30,30,1,?,?,?)').run(
+        runId, created.projectId, conversationId, randomUUID(), createHash('sha256').update(runId).digest('hex'), 'running', 'en', now, now);
+      created.db.prepare('INSERT INTO mio_steps(id,runId,projectId,position,kind,status,createdAt,updatedAt) VALUES(?,?,?,1,?,?,?,?)').run(
+        stepId, runId, created.projectId, 'model', 'dispatch_started', now, now);
     });
   } finally {
     created.close();
@@ -88,11 +91,15 @@ test(`a store transaction every ${TICK_MS} ms, local records only and then both 
   }));
 
   let sequence = 0;
-  const insertEvent = db.prepare("INSERT INTO agent_task_events_v2(runId,projectId,sequence,type,data) VALUES(?,?,?,'text',?)");
-  // A streamed text delta: about 900 bytes on odd ticks and 8 KiB on even ones.
+  const updatePartial = db.prepare("UPDATE mio_steps SET partialText=COALESCE(partialText,'')||?,updatedAt=? WHERE id=?");
+  const insertEvent = db.prepare('INSERT INTO mio_events(runId,sequence,createdAt) VALUES(?,?,?)');
+  // Preserve the streamed delta load: about 900 bytes on odd ticks and 8 KiB
+  // on even ones. The checkpoint accumulates text; notifications carry none.
   const addEvent = (tick: number): void => {
     sequence += 1;
-    insertEvent.run(runId, projectId, sequence, JSON.stringify({text: (tick % 2 ? 'a' : 'b').repeat(tick % 2 ? 890 : 8180)}));
+    const now = new Date().toISOString();
+    updatePartial.run((tick % 2 ? 'a' : 'b').repeat(tick % 2 ? 890 : 8180), now, stepId);
+    insertEvent.run(runId, sequence, now);
   };
 
   const fileBefore = digestElsewhere(store.projectFile), sequenceBefore = contentSequence(db);
@@ -110,7 +117,9 @@ test(`a store transaction every ${TICK_MS} ms, local records only and then both 
     assert.ok(now >= last + 1, `tick ${tick}: the content sequence went from ${last} to ${now}`);
     last = now;
   });
-  assert.equal(Number(db.prepare('SELECT count(*) AS n FROM agent_task_events_v2 WHERE runId=?').get(runId)?.n), 2 * TICKS);
+  assert.equal(Number(db.prepare('SELECT count(*) AS n FROM mio_events WHERE runId=?').get(runId)?.n), 2 * TICKS);
+  const textBytesPerGroup = Math.ceil(TICKS / 2) * 890 + Math.floor(TICKS / 2) * 8180;
+  assert.equal(db.prepare('SELECT length(CAST(partialText AS BLOB)) AS bytes FROM mio_steps WHERE id=?').get(stepId)?.bytes, 2 * textBytesPerGroup);
   store.close();
 
   t.diagnostic(JSON.stringify(summary('single-file', single)));
