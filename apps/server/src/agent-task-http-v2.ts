@@ -96,7 +96,7 @@ export function createAgentTaskHttp({runtime,tools,assertMutationAllowed}:{runti
           stream.attach(()=>{if(timer)clearInterval(timer);});timer=setInterval(emit,200);timer.unref();emit();stream.start();return true;
         }
         throw agentTaskFailure('AGENT_TASK_NOT_FOUND');
-      }catch(error){if(res.headersSent){res.destroy();return true;}const safe=agentTaskFailure(object(error)&&typeof error.code==='string'?error.code:'AGENT_TASK_FAILED');json(res,safe.status,{code:safe.code,message:safe.message,details:{},retryable:false});}
+      }catch(error){if(res.headersSent){res.destroy();return true;}const safe=agentTaskFailure(object(error)&&typeof error.code==='string'?error.code:'AGENT_TASK_FAILED',{handedBack:object(error)&&error.handedBack===true});json(res,safe.status,{code:safe.code,message:safe.message,details:{},retryable:false});}
       return true;
     },
     close(){for(const stream of [...clients])stream.close();},

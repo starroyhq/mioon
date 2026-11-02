@@ -32,8 +32,6 @@ import {createEditTasks} from '../packages/business/src/edit-tasks.ts';
 import {createImageServices} from '../packages/business/src/images.ts';
 import {createFrameServices} from '../packages/business/src/frames.ts';
 import {createWaveformServices} from '../packages/business/src/waveforms.ts';
-import {createChatRuntime} from '../packages/business/src/agent/chat-runtime.ts';
-import {createAgentEditService} from '../packages/business/src/agent/edit-proposals.ts';
 import {createImageReviewServices} from '../packages/business/src/images/reviews.ts';
 import {createComfyRemoteServices} from '../packages/business/src/comfy/remote.ts';
 import {createTimelineServices} from '../packages/business/src/timeline.ts';
@@ -183,8 +181,7 @@ test('restored composition and automatic/manual workers leave all captured rows 
  const f=await fixture(t),before=(snapshot(f.store.db) as unknown as import("./helpers/strict-workspace-boundary-types.ts").SchemaSnapshot),changes=f.store.db.prepare('SELECT total_changes() n').get()!.n;
  const bomb=()=>{throw Error('Disabled runtime was entered');};
  const constructorCalls=[()=>createImageServices(f.store,{generate:bomb}),()=>createFrameServices(f.store,{decode:bomb}),
-  ()=>createWaveformServices(f.store,{decode:bomb,probe:bomb}),()=>createChatRuntime((({store:f.store,agentSettings:{get:bomb},gateway:bomb}) as unknown as Parameters<typeof createChatRuntime>[0])),
-  ()=>createAgentEditService({store:f.store,services:f.services}),()=>createImageReviewServices(f.store,{getSettings:bomb}),
+  ()=>createWaveformServices(f.store,{decode:bomb,probe:bomb}),()=>createImageReviewServices(f.store,{getSettings:bomb}),
   ()=>createComfyRemoteServices(f.store,({owner:bomb} as unknown as Parameters<typeof createComfyRemoteServices>[1]))];
  for(const construct of constructorCalls)assert.throws(construct,isCode('RESTORE_OPERATION_UNAVAILABLE'));
  const worker=startWorker(f.store,(new Proxy({},{get:bomb}) as unknown as Parameters<typeof startWorker>[1]),(new Proxy({},{get:bomb}) as unknown as Parameters<typeof startWorker>[2]));

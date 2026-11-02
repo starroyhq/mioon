@@ -321,13 +321,7 @@ until the outcome is known. Their schema still has `requiresRequestId:false`, an
 MCP `idempotentHint:false` remains truthful for unkeyed calls. Exact keyed replay
 returns the original response even after later revisions/restart, provided current
 ownership remains valid. Changed operation/project/arguments under a key conflict.
-This external MCP capability does not authorize built-in Agent writes. Its
-separate reviewed-edit workflow exposes only a proposal tool and authenticated
-human review endpoints, absent from the MCP catalog; see the scope and current
-acceptance status in [reviewed selected-shot edits](AGENT-EDITS.md) and
-[reviewed selected-clip moves](AGENT-TIMELINE-MOVE.md). The latter delegates an
-approved `{startFrame}` patch to the existing `timeline_clip_update`; model
-proposal and human approval are not MCP tools.
+This external MCP capability does not authorize built-in Agent writes.
 See [shared mutation replay](MUTATION-REPLAY.md).
 
 For every mutation that requires `requestId`, the caller owns a stable ID. After a lost HTTP or MCP result, repeat the exact original operation and complete input with the **same requestId**, preserving its original revision. The bridge never invents IDs or automatically re-submits paid tasks. Changed reuse of an ID conflicts. A fresh intended edit uses a fresh ID and current revision.

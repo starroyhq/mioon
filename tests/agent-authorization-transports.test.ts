@@ -41,9 +41,6 @@ test('HTTP, CLI and MCP share grant/revoke state without granting built-in model
     destination:target.destination,model:target.model,scope:'typed_chat_only'};
   const granted=await mcp('agent.authorization.grant',input) as {authorizationId: string};assert.deepEqual(await http('agent.authorization.grant',input),granted);
   let state=await http('agent.authorization.list') as {authorizations: unknown[]; revision: number};assert.equal(state.authorizations.length,1);
-  const project=await http('project.create',{name:'No message is sent by authorization management'});
-  const snapshot=await (await fetch(server.url+`/api/agent/chat/${project.id}`,{headers:{authorization:`Bearer ${token}`}})).json() as {data: {authorization: {scopes: string[]}; runs: unknown[]}};
-  assert.deepEqual(snapshot.data.authorization.scopes,['typed_chat_only']);assert.equal(snapshot.data.runs.length,0);
   await cli('agent.authorization.revoke',{requestId:randomUUID(),expectedRevision:state.revision,authorizationId:granted.authorizationId});
   await mcp('agent.authorization.grant',input);state=await cli('agent.authorization.list') as {authorizations: unknown[]; revision: number};assert.equal(state.authorizations.length,0);assert.equal(calls,0);
   const tools=(await client.listTools()).tools;assert.ok(tools.some(tool=>tool.name==='agent_authorization_grant'));assert.ok(tools.some(tool=>tool.name==='agent_authorization_revoke'));

@@ -7,7 +7,6 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, statSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 import { createClient } from '@mioon/client';
 import * as storage from '@mioon/contracts/private-storage';
 import { calculateWorkspaceScope } from '@mioon/contracts/workspace-scope';
@@ -16,6 +15,7 @@ import { createDesktopOrBrowserLutRecovery } from '../apps/web/src/clip-lut-reco
 import { createDesktopLutRecoveryHost } from '../apps/desktop/src/lut-recovery-host.ts';
 import { createDesktopLutRecoveryStore } from '../apps/desktop/src/lut-recovery-store.ts';
 import { createDesktopLutRecoveryBridge } from '../apps/desktop/src/lut-recovery-preload.ts';
+import { openProjectDatabase, projectDirFor } from './helpers/project-database.ts';
 
 // Synthetic, temporary cloud profile only. These are independent Node backend
 // process restarts, not an Electron/native app or real window-ownership proof.
@@ -85,9 +85,10 @@ async function verifyBackendScope(backend: {url: string}, projectId: string, exp
   assert.equal(envelope.data.workspaceScope, expectedScope, 'Host fingerprint matches actual backend workspace identity');
 }
 
-// Inspect only after graceful backend exit. Never open a second writer.
-function snapshot(dataDir: string) {
-  const db = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'), { readOnly: true });
+// Inspect only after graceful backend exit, when nobody holds the project:
+// openProjectDatabase refuses while a backend still holds it.
+function snapshot(dataDir: string, projectId: string) {
+  const db = openProjectDatabase(projectDirFor(dataDir, projectId));
   try {
     return {
       resources: db.prepare('SELECT * FROM project_lut_resources ORDER BY id').all(),
@@ -173,7 +174,7 @@ for (const fault of ['lost-ack', 'before-dispatch']) {
       assert.deepEqual(first.edits, []);
       first.close();
       await firstBackend.close();
-      const before = snapshot(dataDir);
+      const before = snapshot(dataDir, project.id);
       assert.equal(before.resources.length, fault === 'lost-ack' ? 1 : 0);
       assert.equal(before.receipts.length, fault === 'lost-ack' ? 1 : 0);
       if (originalReply) assert.equal(before.resources[0]?.id, (originalReply as {resource: {id: string}}).resource.id);
@@ -207,7 +208,7 @@ for (const fault of ['lost-ack', 'before-dispatch']) {
       assert.deepEqual(await secondBackend.client.rpc('asset.list', { projectId: project.id }), []);
       second.close();
       await secondBackend.close();
-      const after = snapshot(dataDir);
+      const after = snapshot(dataDir, project.id);
       assert.equal(after.resources.length, 1);
       assert.equal(after.receipts.length, 1);
       assert.equal(after.receipts[0].requestId, original.requestId);

@@ -1189,3 +1189,63 @@ for(const via of ['pause','restart'] as const)for(const held of ['saved','draft'
  assert.equal(object(f.store.get('shots',f.first.id)).prompt,held==='saved'?'reread after resume':'saved first');
  if(held==='draft'){assert.equal(object(f.store.get('shots',f.other.id)).prompt,'other after resume');assert.equal(f.runtime.journal.claims(f.projectId).length,1);}
 });
+const staleRevisionMessages:Record<typeof AGENT_TASK_LOCALES[number],string>={'zh-Hans':'参数里的修订号已过期，这一步没有执行，项目没有改动。请先重新读取目标的当前内容，再用新的修订号修改，不要重放旧参数。','zh-Hant':'參數裡的修訂號已過期，這一步沒有執行，專案沒有變更。請先重新讀取目標目前的內容，再用新的修訂號修改，不要重放舊參數。',en:'The revision in your arguments is out of date, so this step did not run and nothing changed. Read the target again first, then make the change with its current revision instead of replaying the old arguments.',ja:'引数のリビジョンが古いため、このステップは実行されず、何も変更されていません。まず対象を読み直し、現在のリビジョンで変更してください。古い引数を再利用しないでください。'};
+const projectRereadMessages:Record<typeof AGENT_TASK_LOCALES[number],string>={'zh-Hans':'目标在你读取后已变化，例如新增或删除了镜头，这一步没有执行。current 为空，没有可交回的值。请先重新读取项目，再按当前内容重新规划，不要重放旧参数。','zh-Hant':'目標在你讀取後已變化，例如新增或刪除了鏡頭，這一步沒有執行。current 為空，沒有可交回的值。請先重新讀取專案，再按目前的內容重新規劃，不要重放舊參數。',en:'The targets changed after you read them, for example a shot was added or deleted, so this step did not run. current is empty because there is no saved value to return. Read the project again first, then replan from its current state instead of replaying the old arguments.',ja:'読み取った後に対象が変わったため（ショットの追加や削除など）、このステップは実行されませんでした。返せる保存値がないため current は空です。まずプロジェクトを読み直し、現在の状態から計画し直してください。古い引数を再利用しないでください。'};
+const staleShotUpdate=(f:RuntimeFixture,id=randomUUID())=>call('mioon_shot_update',{shotId:f.first.id,expectedRevision:7,patch:{prompt:'stale revision'}},id);
+for(const protocol of ['chat_completions','responses'] as const)test(`X4 follow-up: ${protocol}: a stale revision the domain rejects returns to Mio for a reread and the run continues`,async t=>{
+ const f=await fixture(t,protocol),staleId=randomUUID(),rereadId=randomUUID();
+ f.setScript(async function*(index){yield {type:'done',output:output(protocol,index===1?[staleShotUpdate(f,staleId)]:index===2?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'reread edit'}},rereadId)]:[])};},{loadGroups:['canvas']});
+ const sent=await f.send(),done=await f.settle(sent.run.id);
+ assert.equal(done.run.status,'completed');assert.equal(runPaused(f,sent.run.id),false);assert.equal(done.steps.some(step=>step.status==='unknown'),false);assert.equal(done.changes.length,1);
+ const stale=f.runtime.journal.snapshot(sent.run.id).steps.find(step=>step.toolCall?.id===staleId);assert.ok(stale);
+ assert.equal(stale.status,'rejected');assert.equal(stale.error?.code,'REVISION_CONFLICT');assert.equal(stale.error?.message,staleRevisionMessages['zh-Hans']);assert.equal(object(stale.data).dispatchPrevented,true);
+ // Only the fixed instruction returns: no current value and no domain details.
+ const error=object(object(stale.result).error);assert.deepEqual(Object.keys(error).sort(),['code','message']);assert.equal(error.code,'REVISION_CONFLICT');assert.equal(error.message,staleRevisionMessages['zh-Hans']);
+ assert.equal(done.steps.find(step=>step.toolCall?.id===rereadId)?.status,'completed');assert.equal(object(f.store.get('shots',f.first.id)).prompt,'reread edit');
+ assert.match(f.scriptRequest(2).body,/REVISION_CONFLICT/u);assert.ok(f.scriptRequest(2).body.includes(staleRevisionMessages['zh-Hans']));assert.equal(f.requests.length,(3)+f.loadingRequests);
+});
+test('X4 follow-up: the stale revision instruction uses the run locale',async t=>{
+ for(const locale of AGENT_TASK_LOCALES){
+  const f=await fixture(t);f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[staleShotUpdate(f)]:[])};},{loadGroups:['canvas']});
+  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 follow-up locale',locale,expectedSettingsRevision:(await f.settings.get()).revision}),done=await f.settle(sent.run.id);
+  assert.equal(done.run.status,'completed',locale);assert.equal(done.steps.find(step=>step.toolCall?.name==='mioon_shot_update')?.error?.message,staleRevisionMessages[locale]);
+  assert.ok(f.scriptRequest(2).body.includes(staleRevisionMessages[locale]),`${locale}: stale revision`);
+ }
+});
+test('X4 follow-up: repeated stale revisions stop at the step budget without a change',async t=>{
+ const f=await fixture(t);f.runtime.journal.updatePolicy({...f.runtime.policy(),stepLimit:6});
+ f.setScript(async function*(){yield {type:'done',output:output('responses',[staleShotUpdate(f)])};},{loadGroups:['canvas']});
+ const sent=await f.send(),done=await f.settle(sent.run.id),updates=done.steps.filter(step=>step.toolCall?.name==='mioon_shot_update');
+ assert.equal(done.run.status,'paused');assert.equal(done.run.pauseReason,'budget');assert.equal(done.run.budget,6);assert.equal(done.run.stepsUsed,done.run.budget);
+ // Every model request and every rejected retry counts one step.
+ assert.equal(updates.length*2+f.loadingSteps(done),done.run.budget);assert.ok(updates.every(step=>step.status==='rejected'&&step.error?.code==='REVISION_CONFLICT'));
+ assert.equal(done.changes.length,0);assert.equal(object(f.store.get('shots',f.first.id)).prompt,'saved first');
+});
+test('X4 follow-up: a reorder that meets a changed shot set hands back an empty current and asks Mio to reread the project',async t=>{
+ for(const locale of AGENT_TASK_LOCALES){
+  const f=await fixture(t),project=object(f.store.get('projects',f.projectId)),order=()=>[f.first.id,f.other.id].map(id=>{const saved=object(f.store.get('shots',id));return [saved.orderIndex,saved.revision];}),before=order();let added=false;
+  f.beforeTool(async prepared=>{if(prepared.operation==='shot.reorder'&&!added){added=true;await f.services.call('shot.create',{projectId:f.projectId,title:'Added during dispatch'});}});
+  f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_reorder',{expectedRevision:revisionField(project),shotIds:[f.other.id,f.first.id]})]:[])};},{loadGroups:['canvas']});
+  const sent=await f.runtime.send(f.projectId,{requestId:randomUUID(),text:'synthetic X4 follow-up reorder',locale,expectedSettingsRevision:(await f.settings.get()).revision}),done=await f.settle(sent.run.id);
+  assert.equal(added,true);assert.equal(done.run.status,'completed',locale);assert.equal(runPaused(f,sent.run.id),false);assert.equal(done.changes.length,0);assert.deepEqual(order(),before);
+  const step=f.runtime.journal.snapshot(sent.run.id).steps.find(item=>item.toolCall?.name==='mioon_shot_reorder');assert.ok(step);
+  assert.equal(step.status,'rejected');assert.equal(step.error?.code,'TARGET_CHANGED');assert.equal(step.error?.message,projectRereadMessages[locale]);assert.equal(object(step.data).dispatchPrevented,true);
+  const error=object(object(step.result).error);assert.deepEqual(error.current,[]);assert.equal(error.message,projectRereadMessages[locale]);assert.equal(error.omittedTargets,undefined);
+  assert.ok(f.scriptRequest(2).body.includes(projectRereadMessages[locale]),`${locale}: project reread`);
+ }
+});
+for(const action of ['handBack','deny'] as const)test(`X4 follow-up: ${action==='handBack'?'a handed-back':'a denied'} foreground approval queues the run's background work again at once`,async t=>{
+ const f=await fixture(t),callId=randomUUID();
+ f.runtime.journal.updatePolicy({...f.runtime.policy(),modes:{...f.runtime.policy().modes,local_reversible:'confirm'}});
+ f.setScript(async function*(index){yield {type:'done',output:output('responses',index===1?[call('mioon_shot_update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'awaiting approval'}},callId)]:[])};},{loadGroups:['canvas']});
+ const sent=await f.send(),waiting=await f.settle(sent.run.id),step=waiting.steps.find(item=>item.toolCall?.id===callId);assert.equal(waiting.run.status,'awaiting_approval');assert.ok(step);assert.equal(step.status,'awaiting_approval');
+ let wakeups=0;const removeResumer=setAgentTaskJobResumer(f.store.db,'synthetic-x4-followup-resume',runId=>{if(runId===sent.run.id)wakeups++;});t.after(removeResumer);
+ if(action==='handBack'){
+  await f.services.call('shot.update',{shotId:f.first.id,expectedRevision:1,patch:{prompt:'saved before approval'}});
+  await assert.rejects(f.action(waiting,'approve',{stepId:step.id}),{code:'AGENT_TASK_TARGET_CHANGED',message:'该目标已被手动修改，这一步没有执行，Mio 会按当前内容重新规划。'});
+ }else await f.action(waiting,'deny',{stepId:step.id});
+ // Requeued with the control itself, not at the next approval stop.
+ assert.equal(wakeups,1);
+ const done=await f.settle(sent.run.id);assert.equal(done.run.status,'completed');assert.equal(wakeups,1);assert.equal(done.changes.length,0);assert.equal(done.steps.find(item=>item.id===step.id)?.status,'rejected');
+ assert.equal(object(f.store.get('shots',f.first.id)).prompt,action==='handBack'?'saved before approval':'saved first');
+});

@@ -11,6 +11,7 @@ import {startWorker} from '../packages/business/src/jobs.ts';
 import type {TestContext} from 'node:test';
 import type {WorkspaceStore} from '../packages/business/src/db.ts';
 import {onMediaProcess} from '../packages/business/src/media-processes.ts';
+import {schemaObjects} from './helpers/project-database.ts';
 
 interface RecoveryTimeline {id: string; revision: number; tracks: Array<{id: string}>; clips: Array<{id: string} >; width: number; height: number}
 interface RecoveryAsset {id: string; projectId: string; relativePath: string}
@@ -33,7 +34,7 @@ async function fixture(t: Pick<TestContext,'after'>): Promise<RecoveryFixture>{
   setInspect(fn: (...args: unknown[]) => Promise<unknown>): void{inspect=fn;},
   input:()=>({projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),purpose:'export',exportSettings:settings()}),
   async restart(): Promise<void>{await services.drain();store.close();store=openStore(root);services=createServices(store,new Map(),{exportOptions:{inspect: inspect as never}});},
-  state:()=>Object.fromEntries(store.db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all().map(({name})=>[name as string,store.db.prepare(`SELECT * FROM "${name as string}" ORDER BY rowid`).all()]))} as unknown as RecoveryFixture;
+  state:()=>Object.fromEntries(schemaObjects(store.db).filter(({type})=>type==='table').map(({name})=>[name,store.db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]))} as unknown as RecoveryFixture;
  f.project=await services.call('project.create',{name:'Recovery'}) as {id:string};f.timeline=await services.call('timeline.get',{projectId:f.project.id}) as RecoveryTimeline;
  const id=randomUUID();f.asset=store.put('assets',{id,projectId:f.project.id,name:'Unopened image',mimeType:'image/png',sha256:'a'.repeat(64),relativePath:`media/${id}.png`,width:720,height:1280,duration:0,hasAudio:false,sizeBytes:20,createdAt:new Date().toISOString()}) as RecoveryAsset;
  f.timeline=await services.call('timeline.clip.add',{projectId:f.project.id,expectedRevision:f.timeline.revision,requestId:randomUUID(),trackId:f.timeline.tracks[0]!.id,assetId:id,startFrame:0,durationFrames:30}) as RecoveryTimeline;

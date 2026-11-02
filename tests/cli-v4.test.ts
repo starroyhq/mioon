@@ -11,12 +11,12 @@ import {mkdtemp, writeFile, readFile, rm, chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
 import http from 'node:http';
 import path from 'node:path';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '@mioon/server';
+import type {InspectProject} from '@mioon/server';
 import {schemas} from '@mioon/contracts';
 
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -147,7 +147,9 @@ test('CLI offline discovery is JSON and invalid input fails before connection re
 test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock export share one backend', {timeout:120_000}, async t => {
   const root = await mkdtemp(path.join(tmpdir(), 'wb-cli-v4-'));
   const dataDir = path.join(root, 'data');
-  const service = await startServer({dataDir, port:0, token});
+  // While the server runs, the database is read on its own connection.
+  let inspect!: InspectProject;
+  const service = await startServer({dataDir, port:0, token, inspectProject: received => {inspect = received;}});
   const proxy = await proxyTo(service);
   const tokenFile = path.join(root, 'cli-token');
   await writeFile(tokenFile, token, {mode:0o600});
@@ -203,9 +205,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     assert.equal((await callMcp('generation_submit', {...input, requestId})).id, first.id);
     finished = await command('job.watch', {jobId:first.id}, ['--timeout-ms','45000','--interval-ms','40']);
     assert.equal(finished.status, 'succeeded');
-    const db = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'), {readOnly:true});
-    try {assert.equal((db.prepare('SELECT COUNT(*) AS n FROM mock_provider_submissions WHERE request_id=?').get(requestId))!.n, 1);}
-    finally {db.close();}
+    assert.equal(inspect(project.id, db => db.prepare('SELECT COUNT(*) AS n FROM mock_provider_submissions WHERE request_id=?').get(requestId)!.n), 1);
     const payloads = proxy.requests.filter(item => item.operation === 'generation.submit' && item.input.requestId === requestId);
     assert.equal(payloads.length, 3);
     for (const body of payloads) assert.deepEqual(body.input, {...input, requestId});
@@ -264,9 +264,7 @@ test('CLI inputs, MCP crossvisibility, stable replay, watches and real mock expo
     const existing = (await callMcp('job_list', {projectId:project.id})).filter((item: { requestId: string; }) => item.requestId === input.requestId);
     assert.equal(existing.length, 1); assert.equal(replay.id, existing[0].id);
     await until(() => rpc(service, 'job.get', {jobId:replay.id}), (value: { submissionCount: number; }) => value.submissionCount === 1, 'provider submit did not start');
-    const db = new DatabaseSync(path.join(dataDir, 'workbench.sqlite'), {readOnly:true});
-    try {assert.equal((db.prepare('SELECT COUNT(*) AS n FROM mock_provider_submissions WHERE request_id=?').get(input.requestId))!.n, 1);}
-    finally {db.close();}
+    assert.equal(inspect(project.id, db => db.prepare('SELECT COUNT(*) AS n FROM mock_provider_submissions WHERE request_id=?').get(input.requestId)!.n), 1);
     const payloads = proxy.requests.filter(item => item.operation === 'generation.submit' && item.input.requestId === input.requestId);
     assert.equal(payloads.length, 2, 'a lost response must not cause a hidden HTTP resubmission');
     assert.deepEqual(payloads[0], payloads[1]);

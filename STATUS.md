@@ -7,54 +7,18 @@ has not been pushed. The push was verified by reading back the exact remote SHA;
 no workflow runs, check runs or commit statuses were visible at that query, so
 CI success is not claimed. This documentation update performs no fresh remote query.
 
-Local-only opacity development began after `ec01753056c0f31706d29ed279ae1944c822ad94`
-and now includes the completed follow-ups through `256cfd3` indexed below:
-the [fresh42 application slice](docs/OPACITY-CANDIDATE-APPLICATION.md) connects
-project/import/edit/Inspector v3/tasks/preview/download in the shared App, with
-synthetic no-listen qualification and canonical builds. Default40/41 remains;
-Explicit ordinary42 [reopening](docs/OPACITY-CANDIDATE-REOPEN.md) now preserves
-saved edits/drafts. [Partial Safari and real short-media acceptance](docs/OPACITY-CANDIDATE-NATIVE-ACCEPTANCE.md)
-now verifies login/project creation, actual HTTP persistence/Undo/Redo and10-frame
-FFmpeg preview/export/download. In that earlier42 run CUA disconnected at the import picker, so its later
-GUI operations remain unverified. The [fixed42 cold-backup→offline43 entry](docs/OPACITY-CANDIDATE-BACKUP-RESTORE.md)
-now preserves raw evidence, held/epoch/origin and managed asset bytes, explicitly
-excludes v3 drafts. The subsequent [restored43 application entry](docs/OPACITY-RESTORED-APPLICATION.md)
-now opens exact restored43 through `--open-restored-workspace`, with the original
-origin/held/epoch guards, existing-clip saves/Undo/Redo and new render requests.
-It does not migrate40/41 or grant ordinary42 creation/import capabilities.
-That initial43 slice kept unsaved input and view state in window memory;
-original v3 drafts remain excluded from backup and preserved in the42 source.
-That43 slice passed
-124/124 focused tests plus separate12/12 preference checks, canonical builds,
-actual Safari Save/Cancel/Undo/Redo,10-frame preview/export/playback and normal
-close/reopen with saved curve retained. HTTP download bytes and RGB decode
-passed; full four-language/IME and package/platform gates remain separate.
-The subsequent [language/IME qualification](docs/OPACITY-LANGUAGE-IME-ACCEPTANCE.md)
-fixes composition-Enter implicit saving and42 Cancel/Save races.241/241 targeted
-checks and a separate5/5 language/session group passed. Its43 GUI run covered
-Simplified/Traditional Chinese and English on the previous build; Japanese stopped
-after settings when CUA disconnected. Real OS IME and the final fixed-build GUI
-remain unverified. The own server PID is absent and its stale lock was released
-through existing admission; the lost exec session exit code and test-window
-closure remain unconfirmed.
-The later [restored43 draft slice](docs/OPACITY-RESTORED-DRAFTS.md), local commit
-`4607947`, persists new clip input only under the current origin's exact
-`localClipDrafts` capability. After durable acknowledgement it can be explicitly
-restored or discarded on cold reopen; source42 v3 drafts are not migrated.
-Older43 without that capability and restored view state retain memory fallback;
-unacknowledged or composing input is not safe to discard. The subsequent
-[ordinary40→ordinary42 offline upgrade](docs/OPACITY-ORDINARY-UPGRADE.md), local
-commit `256cfd3`, creates an explicit new copy from an eligible closed40 and its
-verified backup, preserving the source. It does not upgrade41 or change default
-admission. [Batch integration and release checks](docs/OPACITY-RELEASE-CHECK.md)
-are complete: four product regressions fixed; the final121-file aggregate is
-3574 total /3568 passed /6 retained BLOB-expectation failures,0 skips/cancellations.
+The local-only opacity candidate that began after `ec01753056c0f31706d29ed279ae1944c822ad94`
+(fresh42 and restored43 development workspaces with their separate admission,
+fixed backup profiles and the 40→42 upgrade CLI) was removed in #119 (P1b,
+2026-11-02). Its dated records under `docs/OPACITY-*.md` are kept as history,
+starting with the [fresh42 application slice](docs/OPACITY-CANDIDATE-APPLICATION.md).
+Its [batch integration and release checks](docs/OPACITY-RELEASE-CHECK.md) retained
+six historical BLOB-expectation failures.
 Node24 strict types passed, while CUA Node24 builds were blocked by macOS/Rollup
 Team ID mapping; Node26 builds passed only as auxiliary source checks. The [isolated follow-up](docs/BLOB-ADMISSION-BASELINES.md) reproduced all six
 at pre-a7/a7/ff85/d52 exact snapshots. Their historical BLOB startup compatibility
 remains unresolved; independent TEXT controls do not replace those failures. This pass found CUA Node24.21.0 darwin-arm64;
 it is not the old pinned Linux executable or product-runtime qualification.
-Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 
 - **Implemented:** independent Settings center, four-language presentation,
   1–300-frame sample export preview, continuous saved-timeline audio, and the
@@ -79,12 +43,12 @@ Use `git rev-parse HEAD` for the exact local commit; no push was performed.
 - **Still separate:** 600-second wall-clock audio/resource qualification, exact-file
   LUT reselection/native restart, complete platform/installer/signing and real-provider
   gates. Other visual keyframes/transitions, Full Log/HDR and a general plugin
-  broker/SDK remain future features; opacity has only the isolated scope above.
+  broker/SDK remain future features; the opacity candidate was removed in #119.
   See the [current queue](docs/PRODUCT-ROADMAP.md#current-delivery-and-remaining-work-2026-10-16).
 
 The dated entries below retain their original evidence, test counts and Git facts.
-The earlier index alignment changed documentation only; current local opacity
-test/build evidence is linked above. Complete GUI/platform acceptance remains separate.
+The earlier index alignment changed documentation only. Complete GUI/platform
+acceptance remains separate.
 
 # Historical local single-Look increment — 2026-10-15
 
@@ -266,7 +230,7 @@ Current source/desktop is 0.4.1: production `app.starroy.mioon`, development `ap
 
 - Q2 private local storage on `dcc69aa`: shared Node-only owner/mode/link checks guard workspace, token, settings, SQLite and desktop discovery access; bounded no-follow credential reads, private new files/directories, precise runtime-secret ignores and demo-helper early validation. Existing unsafe data is refused without chmod/chown or destructive repair; native Chinese refusal and safe full app recreation verified. Parent final **1401 total / 1399 passed / 0 failed / 2 explicit native-Windows/privileged skips**, affected **166 passed / 2 skipped**, demo **2/2**, native **3** checks/**4** screenshots, fresh Web/desktop builds via installed entrypoints. pnpm wrapper/store and offline metadata failures plus interrupted worker aggregate are retained. [Acceptance and recovery](docs/PRIVATE-STORAGE.md). Windows remains fail-closed pending an implemented ACL backend; symlink ancestors are refused, including platform aliases. No live credential changes or native macOS/Windows certification.
 
-- Reviewed built-in Agent edits on `2ba58ee`: both protocols can propose title/prompt changes to one explicitly selected saved shot, with immutable before/after review in the right dock. Backend-persisted approvals/exact keys, transaction-scoped ownership, explicit recovery and no startup execution prevent duplicate or foreign writes; native app recreation rediscovered pending/unknown proposals independently of renderer storage. Parent independent serial **1314/1314**, **7** final browser/**5** Linux Electron groups, fresh matching Web/desktop builds. Worker final concurrency-2 run was **1313/1314** with an unassigned FFmpeg null exit; unchanged isolated official MCP/export rerun passed, and failure evidence is retained. [Acceptance and limits](docs/AGENT-EDITS.md). Synthetic provider QA only; no live-provider or native macOS/Windows certification.
+- Reviewed built-in Agent edits on `2ba58ee`: both protocols can propose title/prompt changes to one explicitly selected saved shot, with immutable before/after review in the right dock. Backend-persisted approvals/exact keys, transaction-scoped ownership, explicit recovery and no startup execution prevent duplicate or foreign writes; native app recreation rediscovered pending/unknown proposals independently of renderer storage. Parent independent serial **1314/1314**, **7** final browser/**5** Linux Electron groups, fresh matching Web/desktop builds. Worker final concurrency-2 run was **1313/1314** with an unassigned FFmpeg null exit; unchanged isolated official MCP/export rerun passed, and failure evidence is retained. [Acceptance and limits](https://github.com/starroyhq/mioon/blob/661e881606c018f2e79c76765047677a05594b09/docs/AGENT-EDITS.md). Synthetic provider QA only; no live-provider or native macOS/Windows certification.
 
 - Shared local mutation replay on `dbf3b93`: six existing shot/node/version operations now retain atomic exact responses behind optional stable request IDs, with ownership and changed-intent conflict checks. UI explicitly recovers retained requests without duplicating writes or replacing newer drafts. Parent independent **1160/1160**, worker **1160/1160**, **50/50** focused including **14/14** wire cases, **5** browser/**4** Linux Electron groups, fresh Web/desktop builds. [Acceptance and limits](docs/MUTATION-REPLAY.md). Server receipts survive restart; UI pending receipts remain session-scoped. Built-in Agent writes still require backend-persisted approval intents; no live-provider calls or macOS/Windows certification.
 
@@ -274,13 +238,13 @@ Current source/desktop is 0.4.1: production `app.starroy.mioon`, development `ap
 
 - Scoped shared inspection on `ce60c97`: four bounded non-creating project/asset/shot/timeline inspection operations, backend-created capability contexts, deep relationship checks, safe DTOs/pagination and explicit operation-effect metadata used by MCP/CLI discovery. Legacy responses/replay preserved; old project.get/timeline.get correctly disclose lazy creation. Parent **974/974**, 101 wire cases/303 HTTP-CLI-MCP checks, zero-write checkpoints and four actual CLI calls against native Electron, fresh builds. [Acceptance](docs/AGENT-INSPECTION.md). In-app model tools are not connected yet.
 
-- Durable typed Agent chat on `9716677`: additive SQLite v6 thread/request/run/event journal, stable replay identities, bounded persisted history and read-only receipt lookup, interrupted/unknown startup recovery without inference or secret acquisition. Both protocol partials survive actual native crashes/quit; unsent drafts remain memory-only. Chat database is not vault-encrypted, disclosed before send. Parent final **902/902** aggregate, **9** browser/**7** Linux Electron groups, fresh Web/desktop builds. [Evidence and privacy/recovery limits](docs/AGENT-DURABLE.md). No project tools yet.
+- Durable typed Agent chat on `9716677`: additive SQLite v6 thread/request/run/event journal, stable replay identities, bounded persisted history and read-only receipt lookup, interrupted/unknown startup recovery without inference or secret acquisition. Both protocol partials survive actual native crashes/quit; unsent drafts remain memory-only. Chat database is not vault-encrypted, disclosed before send. Parent final **902/902** aggregate, **9** browser/**7** Linux Electron groups, fresh Web/desktop builds. [Evidence and privacy/recovery limits](https://github.com/starroyhq/mioon/blob/661e881606c018f2e79c76765047677a05594b09/docs/AGENT-DURABLE.md). No project tools yet.
 
 - Q1 Runway safety parity on `e2db533`: shared conservative submission classification/bounded JSON, pre-write download path checks/cleanup, pending poll deduplication and error cooldown. Parent **846/846** aggregate, provider **194/194**, browser **4/4**, fresh desktop backend/main build. Fresh Vite attempts exited137; unchanged prior UI was hash-verified and reused, not claimed rebuilt. [Acceptance and limits](docs/ACCEPTANCE-RUNWAY-PARITY.md). No live Runway call or native-platform certification.
 
 - Agent increment 2B on `3db1a02`: independent Chat Completions and Responses text adapters, explicit protocol selection/consent, strict settings-v2 legacy projection without read-time file/revision/key changes, and shared right-dock Properties/Agent tabs with inline settings. Drafts survive tab/mode/collapse; project changes confirm unsent-draft discard. Parent **794/794** aggregate, **9** browser and **7** Linux Electron acceptance groups, final Web/desktop builds with matching staged UI. [Protocol, migration and evidence](docs/AGENT-RESPONSES.md). Still temporary conversation, no project tools/durable journal, no live provider certification.
 
-- Agent streaming increment 2A on `80334cf`: explicit-consent Chat Completions text transport, pinned DNS/TLS destination policy, bounded SSE, Stop, same-instance replay and project-labelled temporary conversations. No project data/tool access or durable chats. Immediate 2B adds Responses and protocol selection; dual-protocol scope is not complete yet. Implementation **725/725** full tests, 8 final Chromium checks, Linux Electron active-stream stop/restart/quit verification, serial Web/desktop builds. [Contract, evidence and limits](docs/AGENT-CHAT.md). All runtime calls were synthetic local HTTP; no live inference.
+- Agent streaming increment 2A on `80334cf`: explicit-consent Chat Completions text transport, pinned DNS/TLS destination policy, bounded SSE, Stop, same-instance replay and project-labelled temporary conversations. No project data/tool access or durable chats. Immediate 2B adds Responses and protocol selection; dual-protocol scope is not complete yet. Implementation **725/725** full tests, 8 final Chromium checks, Linux Electron active-stream stop/restart/quit verification, serial Web/desktop builds. [Contract, evidence and limits](https://github.com/starroyhq/mioon/blob/661e881606c018f2e79c76765047677a05594b09/docs/AGENT-CHAT.md). All runtime calls were synthetic local HTTP; no live inference.
 
 - Agent connection settings on baseline `ed23ef7`: nine editable provider presets/regions, write-only key input, strict settings CAS and origin-bound credentials; desktop OS-encrypted persistence when available and explicit session-only fallback. Settings-only: no inference, chat, tools or connectivity claim. Parent and implementation full suites both **638/638**, Chromium **12** and Linux Electron **5** actual checks, final Web/desktop builds pass. [Acceptance and platform/network limits](docs/AGENT-SETTINGS-ACCEPTANCE.md); [approved follow-on plan](docs/AGENT-ITERATION.md). No live calls or publication.
 

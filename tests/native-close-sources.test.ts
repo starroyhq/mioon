@@ -1,5 +1,5 @@
 import type {HookSlot} from './helpers/strict-timeline-audio-harness-types.ts';
-type SessionFor<F extends string>=F extends 'AgentPanel.tsx'?ReturnType<typeof chat.createAgentChatSession>:F extends 'AgentEditProposal.tsx'?ReturnType<typeof edits.createAgentEditsSession>:ReturnType<typeof image.createImageGenerationSession>;
+type SessionFor<F extends string>=ReturnType<typeof image.createImageGenerationSession>;
 interface ImageFixtureData {reviews:ReturnType<typeof review>[];tasks:ReturnType<typeof task>[];groups:{id:string;projectId:string;name:unknown;revision:number;headVersionId:null;activeTaskId:string;createdAt:string;updatedAt:string}[];receipt:{projectId:string;requestId:unknown;operation:string;response:ReturnType<typeof task>}|null}
 import type {ElementModule} from './helpers/strict-timeline-audio-harness-types.ts';
 import type {ElementTree, ElementNode} from './helpers/strict-timeline-audio-harness-types.ts';
@@ -16,16 +16,11 @@ import { transformSync } from 'esbuild';
 import * as sources from '../apps/web/src/native-close-sources.ts';
 import * as imageEditIntent from '../apps/web/src/image-edit-intent.ts';
 import { createNativeCloseRegistry } from '../apps/web/src/native-close-state.ts';
-import * as chat from '../apps/web/src/agent-chat.ts';
-import * as edits from '../apps/web/src/agent-edits.ts';
 import * as image from '../apps/web/src/image-generation.ts';
-import * as toolState from '../apps/web/src/agent-tool-state.ts';
-import * as timing from '../apps/web/src/agent-timeline-context.ts';
 import * as contracts from '@mioon/contracts';
-import { createAgentAuthorizationUiMock } from './helpers/agent-authorization-ui.ts';
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const projectId = id(1), instanceId = id(2), threadId = id(3), requestId = id(4), runId = id(5), groupId = id(6), taskId = id(7), reviewId = id(8), shotId = id(9), proposalId = id(10);
+const projectId = id(1), requestId = id(4), groupId = id(6), taskId = id(7), reviewId = id(8);
 const at = '2026-10-10T10:00:00.000Z';
 const deferred = <T = unknown>() => { let resolve!: (value?: T | PromiseLike<T>) => void, reject!: (reason?: unknown) => void; const promise = new Promise<T>((yes, no) => { resolve = (yes as (value?: T | PromiseLike<T>) => void); reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let n = 0; n < 60; n++) await Promise.resolve(); };
@@ -46,11 +41,6 @@ function stateNotifications() {
   };
 }
 const memory = () => { const map = new Map(); return { map, getItem: (key: unknown) => map.get(key) || null, setItem: (key: unknown, value: unknown) => map.set(key, value), removeItem: (key: unknown) => map.delete(key) }; };
-const config = { presetId: 'openai', platformId: 'global', baseUrl: 'https://private.example.com/v1', model: 'synthetic-model', protocol: 'chat_completions' };
-const chatSettings = { revision: 0, configuration: config, secret: { configured: true, storage: 'session' }, storage: { persistentAvailable: false, sessionScope: 'server', reasonCode: 'WEB_SESSION_ONLY' }, presets: [{ id: 'openai', label: 'OpenAI', platforms: [{ id: 'global', label: 'Global', defaultProtocol: 'chat_completions', availableProtocols: ['chat_completions'], ...config }] }], scope: 'settings_only', verification: 'not_tested' };
-const chatSnapshot = (patch?: Record<string, unknown>) => ({ instanceId, threadId, projectId, revision: 0, historyCursor: null, scope: 'chat_only', persistence: 'local_database', mode: 'simulated', settings: chatSettings, runs: [], ...patch });
-const chatRun = (patch?: Record<string, unknown>) => ({ id: runId, requestId, threadId, projectId, status: 'running', userText: 'PRIVATE_DRAFT', assistantText: '', configuration: config, createdAt: at, updatedAt: at, lastEventId: 1, ...patch });
-const envelope = (run = chatRun(), revision = 1) => ({ instanceId, threadId, projectId, revision, run });
 const paidInput = (patch?: { providerId: string; model: "mock-image-v1"; }|undefined) => ({ projectId, name: 'PRIVATE_NAME', prompt: 'PRIVATE_PROMPT', providerId: 'openai', model: image.IMAGE_MODELS.openai, options: image.IMAGE_FIXED_OPTIONS, requestId, ...patch });
 const review = (patch?: Record<string, unknown>) => { const input = paidInput(); return { id: reviewId, projectId, requestId, input, inputHash: createHash('sha256').update(contracts.canonicalImageInput(input)).digest('hex'), settingsRevision: 1, destination: contracts.IMAGE_REVIEW_DESTINATION, policy: contracts.IMAGE_REVIEW_POLICY, state: 'pending', revision: 1, taskId: null, postAttempts: 0, createdAt: at, updatedAt: at, approvedAt: null, rejectedAt: null, dispatchedAt: null, ...patch }; };
 const task = (patch?: { prompt?: string; state?: string; }|undefined) => ({ id: taskId, projectId, groupId, requestId, name: 'PRIVATE_NAME', prompt: 'PRIVATE_PROMPT', providerId: 'mock', model: image.IMAGE_MODELS.mock, options: image.IMAGE_FIXED_OPTIONS, state: 'queued', revision: 1, dispatched: false, versionId: null, errorCode: null, createdAt: at, updatedAt: at, ...patch });
@@ -77,20 +67,6 @@ function imageFixture(options:{reviews?:ReturnType<typeof review>[];storage?:Ret
   const client = { read: async () => imageSettings }, rejects: (unknown)[] = [];
   const reviewClient = { approve: async () => { throw Error('No implicit approval'); }, reject: (value: { id: unknown; }) => { rejects.push(value.id); return options.reject ? options.reject(value, data) : Promise.reject(Error('Unknown reject')); } };
   return { data, api, storage, reviewClient, rejects, calls, settingsClient: client, customSettingsClient: { read: async () => null }, comfySettingsClient: { read: async () => null } };
-}
-function chatFixture(options:{read?:()=>unknown;start?:(input:{message:unknown})=>unknown;stop?:()=>unknown} = {}) {
-  const calls: string[] = [], streams:Parameters<chat.AgentChatClient["stream"]>[4][] = [], receiptMap = new Map(), receipts = { get: (id: unknown) => receiptMap.get(id), set: (id: unknown, value: unknown) => receiptMap.set(id, value) };
-  const authorization = createAgentAuthorizationUiMock(async () => { calls.push('read'); return options.read ? options.read() : chatSnapshot(); });
-  const client = {
-    ...authorization,
-    authorize: (...args: Parameters<typeof authorization.authorize>) => { calls.push('authorize'); return authorization.authorize(...args); },
-    start: async (_: unknown, input: { message: unknown; }) => { calls.push('start'); return options.start ? options.start(input) : envelope(chatRun({ userText: input.message })); },
-    stop: async () => { calls.push('stop'); return options.stop ? options.stop() : envelope(chatRun({ status: 'stopped' }), 2); },
-    lookup: async () => { calls.push('lookup'); throw Object.assign(Error('Unknown'), { code: 'AGENT_CHAT_NOT_FOUND' }); },
-    run: async () => { calls.push('run'); return envelope(); },
-    stream: (...args:Parameters<chat.AgentChatClient['stream']>) => { streams.push(args[4]); return new Promise<void>(resolve => args[4].signal!.addEventListener('abort', resolve as unknown as (event:Event)=>void, {once:true})); },
-  };
-  return { client, calls, streams, receipts, receiptMap };
 }
 const nodes = (tree: ElementTree): ElementNode[] => Array.isArray(tree) ? tree.flatMap(nodes) : tree && typeof tree === 'object' ? [tree, ...nodes(tree.props?.children)] : [];
 const same = (a:readonly unknown[]|undefined,b:readonly unknown[]|undefined) => a && b && a.length === b.length && a.every((value: unknown, i: number) => Object.is(value, b[i]));
@@ -129,16 +105,12 @@ function renderer<F extends string>(filename:F, fixture: Record<string,unknown>,
     if (name === './native-close-sources.ts') return sources;
     if (name === './image-edit-intent.ts') return imageEditIntent;
     if (name === '@mioon/contracts') return contracts;
-    if (name === './agent-chat.ts') return { ...chat, createAgentChatSession: (input: chat.AgentChatSessionOptions) => session = (chat.createAgentChatSession({ ...input, client: (fixture.client as chat.AgentChatClient), receipts: (fixture.receipts as chat.AgentChatReceipts), requestId: () => requestId }) as unknown as SessionFor<F>) };
-    if (name === './agent-edits.ts') return { ...edits, createAgentEditsSession: (input: edits.AgentEditsSessionOptions) => session = (edits.createAgentEditsSession({ ...input, client: (fixture.client as edits.AgentEditsClient) }) as unknown as SessionFor<F>) };
     if (name === './image-generation.ts') return { ...image, createImageGenerationSession: (input: image.ImageGenerationSessionOptions) => session = (image.createImageGenerationSession({ ...input, requestId: () => requestId, setTimer: () => 1, clearTimer() {} }) as unknown as SessionFor<F>) };
-    if (name === './agent-tool-state.ts') return toolState;
-    if (name === './agent-timeline-context.ts') return timing;
     if (name === './workspace-visibility.tsx') return { useWorkspaceVisibility: () => visible };
     if (name === './image-settings.ts') return { createImageSettingsClient: () => fixture.settingsClient };
     if (name === './comfy-image-settings.ts') return { ...comfySettings, createComfyImageSettingsClient: () => fixture.comfySettingsClient };
-    if (name === './AgentTimelineGain.tsx' || name === './ComfyImageDetails.tsx') return primitives;
-    if (['./AgentEditProposal.tsx', './AgentRunActivity.tsx', './ImageSettings.tsx', './ComfyImageSettings.tsx', './SettingsNavigationSlot.tsx', './icons.tsx'].includes(name)) return { __esModule: true, default: name };
+    if (name === './ComfyImageDetails.tsx') return primitives;
+    if (['./ImageSettings.tsx', './ComfyImageSettings.tsx', './SettingsNavigationSlot.tsx', './icons.tsx'].includes(name)) return { __esModule: true, default: name };
     if (name.startsWith('@mioon/ui/') || name === './WorkspaceControls.tsx') return primitives;
     if (name.endsWith('.css')) return {};
     throw Error(`Unexpected close test import: ${name}`);
@@ -170,34 +142,6 @@ const safeMetadata = (state: unknown) => {
   assert.doesNotMatch(JSON.stringify(state), /PRIVATE_|private\.example|prompt|requestId|configuration|secret/);
 };
 
-// This test intentionally exercises the real old component/session path. Setting
-// MIOON_NATIVE_CLOSE_COMPONENT_ROOT to baseline JSX makes it red, with no mocked
-// clean/dirty controller replacing the omission under test.
-test('actual Agent draft and held send report before React rerender; accepted stream is close-neutral', async () => {
-  const held = deferred(), f = chatFixture({ start: () => held.promise }), ui = renderer('AgentPanel.tsx', f);
-  ui.render(); await flush(); ui.render(); safeMetadata(ui.state()); assert.equal(ui.state().busy, false);
-  ui.edit('agent-chat-prompt', 'PRIVATE_DRAFT'); assert.equal(ui.state().dirty, true);
-  const first = ui.state().version; ui.edit('agent-chat-prompt', 'PRIVATE_DRAFT_2'); assert.ok(ui.state().version > first);
-  ui.render(); ui.click('agent-chat-authorization-open'); ui.render(); ui.edit('agent-chat-consent', true); ui.render(); ui.click('agent-chat-authorization-confirm'); await flush();
-  assert.equal(f.calls.filter(value => value === 'authorize').length, 1);
-  assert.equal(f.calls.includes('start'), false, 'explicitly saving a grant never sends the draft');
-  ui.render(); ui.form()!.props.onSubmit({ preventDefault() {} });
-  assert.equal(ui.state().busy, true); assert.equal(ui.state().blocked, true); assert.equal(f.calls.filter(value => value === 'start').length, 1);
-  held.resolve!(envelope(chatRun({ userText: 'PRIVATE_DRAFT_2' }))); await flush();
-  assert.equal(ui.state().dirty, false); assert.equal(ui.state().busy, false); assert.equal(ui.state().blocked, false);
-  const accepted = ui.state().version; f.streams.at(-1)!.onEvent({ id: 2, type: 'delta', instanceId, threadId, projectId, runId, revision: 1, text: 'PRIVATE_RESPONSE' });
-  assert.equal(ui.state().version, accepted); ui.hide(); assert.equal(ui.state().version, accepted);
-  assert.equal(f.calls.includes('stop'), false); assert.equal(f.calls.filter(value => value === 'authorize').length, 1); safeMetadata(ui.state()); ui.unmount();
-});
-
-test('Agent unrecovered receipt stays blocked on initial failed read, and stopping blocks synchronously', async () => {
-  const broken = chatFixture({ read: () => { throw Error('Offline'); } }); broken.receiptMap.set(projectId, { instanceId, requestId });
-  const ui = renderer('AgentPanel.tsx', broken); ui.render(); await flush(); assert.equal(ui.session.getState().pending, null); assert.equal(ui.state().blocked, true); ui.unmount();
-  const stop = deferred(), f = chatFixture({ read: () => chatSnapshot({ revision: 1, runs: [chatRun()] }), stop: () => stop.promise }), running = renderer('AgentPanel.tsx', f);
-  running.render(); await flush(); running.render(); assert.equal(running.state().blocked, false); running.click('agent-chat-stop'); assert.equal(running.state().busy, true);
-  stop.resolve!(envelope(chatRun({ status: 'stopped' }), 2)); await flush(); assert.equal(running.state().busy, false); running.unmount();
-});
-
 test('hidden Image constructor immediately reports restored generation/remote intents and corrupt storage', () => {
   const generation = { version: 1, operation: 'image.generate', input: paidInput({ providerId: 'mock', model: image.IMAGE_MODELS.mock }) };
   const observation = { version: 1, operation: 'image.task.observeRemote', input: { projectId, taskId, expectedRevision: 1, requestId } };
@@ -227,23 +171,6 @@ test('actual Image lost rejection ACK remains blocked until an exact readonly re
   f.data.reviews = [saved]; await ui.session.load(); await turn(); assert.equal(ui.state().blocked, true);
   f.data.reviews = [review({ state: 'rejected', revision: 2, rejectedAt: at })]; await ui.session.load(); await ui.waitForState(() => !ui.state().blocked);
   assert.deepEqual(f.rejects, [reviewId]); safeMetadata(ui.state()); ui.unmount();
-});
-
-test('actual Agent proposal mutation and uncertainty are independent of chat source', async () => {
-  const held = deferred(), proposal = { id: proposalId, projectId, runId, digest: 'c'.repeat(64), status: 'pending', runStatus: 'completed', operation: 'shot.update', target: { projectId, shotId, expectedRevision: 1 }, patch: { title: 'After' }, diff: { before: { title: 'Before', prompt: '' }, after: { title: 'After', prompt: '' } }, provenance: { runId, toolCallId: 'call', toolName: 'mioon_propose_shot_update' }, createdAt: at, updatedAt: at };
-  let current:typeof proposal & {approval?:unknown;outcome?:unknown} = proposal, writes = 0;
-  const client = { list: async () => ({ instanceId, projectId, proposals: [current], nextCursor: null }), get: async () => ({ instanceId, projectId, proposal: current }), act: () => { writes++; return held.promise; } };
-  const ui = renderer('AgentEditProposal.tsx', { client }); ui.render(); await flush(); ui.render(); assert.equal(ui.state().slot, 'agent-edits'); assert.equal(ui.state().blocked, false);
-  ui.click('agent-edit-approve'); assert.equal(ui.state().busy, true); assert.equal(ui.state().blocked, true);
-  held.reject!(Error('Unknown')); await flush(); assert.equal(ui.state().busy, false); assert.equal(ui.state().blocked, true);
-  current = { ...proposal, status: 'applied', approval: { requestId, approvedAt: at }, outcome: { status: 'applied', shotId, revision: 2 } };
-  await ui.session.inspect!(proposalId); assert.equal(ui.state().blocked, false); assert.equal(writes, 1); safeMetadata(ui.state()); ui.unmount();
-});
-
-test('replaced source owner cannot be released or updated by stale callback', async () => {
-  const registry = createNativeCloseRegistry(), held = deferred(), old = renderer('AgentPanel.tsx', chatFixture({ read: () => held.promise }), { registry }); old.render();
-  const fresh = renderer('AgentPanel.tsx', chatFixture(), { registry }); fresh.render(); await flush(); fresh.render(); fresh.edit('agent-chat-prompt', 'PRIVATE_FRESH');
-  const capture = registry.capture(); old.unmount(); held.resolve!(chatSnapshot()); await flush(); assert.equal(registry.isCurrent(capture), true); assert.equal(fresh.state().dirty, true); fresh.unmount();
 });
 
 test('metadata versions follow draft identity, not saved Image task polling or chat stream deltas', () => {

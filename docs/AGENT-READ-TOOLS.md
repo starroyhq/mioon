@@ -6,7 +6,7 @@ Status: committed as `dbf3b93` after independent acceptance. This stage adds rea
 project inspection to both Chat Completions and Responses. It does not add
 editing, media perception, generation, shell/file tools, OAuth or live-provider
 certification. All acceptance uses synthetic localhost model-shaped services.
-The later [reviewed-edit increment](AGENT-EDITS.md) has separate consent and
+The later reviewed-edit increment has separate consent and
 approval boundaries; this read-only mode retains the scope documented here.
 
 ## Explicit scope and limits

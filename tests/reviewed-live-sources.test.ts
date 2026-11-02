@@ -21,7 +21,7 @@ test('every reviewed live source matches its pin, and the pin file stays sorted'
 });
 
 test('a pin refuses added, changed and removed bytes and unlisted files', () => {
-  const file = 'packages/contracts/src/index.ts', bytes = read(file);
+  const file = 'packages/contracts/src/timeline-clip-loudness.ts', bytes = read(file);
   assert.ok(isReviewedLiveSource(file));
   assert.equal(isReviewedLiveSource('packages/contracts/src/not-a-live-source.ts'), false);
   const changed = Buffer.from(bytes); changed[0] = changed[0]! ^ 1;
@@ -31,14 +31,10 @@ test('a pin refuses added, changed and removed bytes and unlisted files', () => 
 });
 
 test('every reviewed live source is a dependency of a frozen-source harness', () => {
-  // Pins exist only for sources the agent-gain and restore-integrity harnesses
-  // read; anything else is not frozen evidence and needs no pin.
-  const gain = json('agent-gain-ts-migration-map.json').mapping as Record<string, {currentPath: string}>;
+  // Pins exist only for sources the restore-integrity harness reads; anything
+  // else is not frozen evidence and needs no pin.
   const guard = json('workspace-restore-integrity/frozen-sources.json') as {fixedDependencyClosure: Record<string, unknown>; constructorSources: Record<string, unknown>};
   const guardMap = json('workspace-restore-integrity/ts-migration-map.json').entries as Record<string, {currentPath: string}>;
-  const used = new Set([
-    ...Object.values(gain).map(entry => entry.currentPath),
-    ...[...Object.keys(guard.fixedDependencyClosure), ...Object.keys(guard.constructorSources)].map(file => guardMap[file]?.currentPath ?? file),
-  ]);
+  const used = new Set([...Object.keys(guard.fixedDependencyClosure), ...Object.keys(guard.constructorSources)].map(file => guardMap[file]?.currentPath ?? file));
   for (const file of files) assert.ok(used.has(file), `${file}: pinned but no frozen-source harness reads it`);
 });

@@ -13,10 +13,11 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash, randomUUID} from 'node:crypto';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createClient} from '../packages/client/src/index.ts';
 import {IMAGE_FIXED_OPTIONS, IMAGE_MODELS, isImageTaskResponse} from '../packages/contracts/src/images.ts';
 import {DEFAULT_IMAGE_CONFIGURATION, DEFAULT_CUSTOM_IMAGE_CONFIGURATION,
@@ -144,14 +145,18 @@ async function fixture(t: test.TestContext) {
   const responseBody = Buffer.from(JSON.stringify({data: [{b64_json: png.toString('base64')}]}));
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-custom-image-transports-')), network = fakeNetwork(responseBody);
   assert.equal(typeof network.dependencies.lookup, 'function'); assert.equal(typeof network.dependencies.httpsRequest, 'function');
-  const options = {dataDir: root, port: 0, token, imageNetwork: network.dependencies};
-  let server = await startServer((options as unknown as Parameters<typeof startServer>[0])), db:DatabaseSync|null = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const failedSettlements = new Set<string>();
-  const lifecycle = (id: string) => {
-    try {return db!.prepare('SELECT state, revision, dispatched, errorCode, createdAt, updatedAt FROM image_tasks WHERE id=?').get(id) ?? null;}
+  // Every start hands over the server's own connection; while the server runs, the database is read only through it.
+  let inspect: InspectProject|undefined;
+  const options = {dataDir: root, port: 0, token, imageNetwork: network.dependencies, inspectProject: (received: InspectProject) => {inspect = received;}};
+  let server = await startServer((options as unknown as Parameters<typeof startServer>[0]));
+  const use = <T>(projectId: string, fn: (db: DatabaseSync) => T): T => inspect!(projectId, fn);
+  // Task ID to project ID.
+  const failedSettlements = new Map<string, string>();
+  const lifecycle = (projectId: string, id: string) => {
+    try {return use(projectId, db => db.prepare('SELECT state, revision, dispatched, errorCode, createdAt, updatedAt FROM image_tasks WHERE id=?').get(id) ?? null);}
     catch {return {unavailable: true};}
   };
-  const f = {root, png, network: network.state, get server() {return server;}, get db() {return db;},
+  const f = {root, png, network: network.state, get server() {return server;}, use,
     get env() {return {MIOON_BASE_URL: server.url, MIOON_TOKEN: token};}, get client() {return (createClient({env: f.env}) as TypedClient);},
     counts() {return [f.network.lookups.length, f.network.requests.length, f.network.posts.length];},
     async request(route: string, {method = 'GET', input, authenticated = true, headers = {}, base = server.url}:{method?:string;input?:unknown;authenticated?:boolean;headers?:Record<string,string>;base?:string} = {}) {
@@ -206,22 +211,22 @@ async function fixture(t: test.TestContext) {
         }
         assert.fail(`Image task did not reach ${state}`);
       } finally {
-        if (!reached) failedSettlements.add(ack.id);
+        if (!reached) failedSettlements.set(ack.id, ack.projectId);
         t.diagnostic('image settlement ' + JSON.stringify({providerId: ack.providerId, wanted: state, reached, polls,
           elapsedMs: Math.round(performance.now() - started), wallElapsedMs: Date.now() - wallStarted,
           maximumPollGapMs: Math.round(maximumPollGapMs), maximumReadMs: Math.round(maximumReadMs),
-          observations, networkCounts: f.counts(), ...(!reached ? {lifecycle: lifecycle(ack.id), phases: network.events} : {})}));
+          observations, networkCounts: f.counts(), ...(!reached ? {lifecycle: lifecycle(ack.projectId, ack.id), phases: network.events} : {})}));
       }
     },
-    snapshot() {return JSON.stringify(['image_groups', 'image_tasks', 'image_versions', 'image_requests', 'image_reviews', 'assets']
-      .map(table => [table, db!.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));},
-    retained(task: FixtureImageTask) {return JSON.stringify([
-      db!.prepare('SELECT * FROM image_tasks WHERE id=?').get(task.id),
-      db!.prepare('SELECT * FROM image_requests WHERE requestId=?').get(task.requestId),
-      db!.prepare('SELECT * FROM image_groups WHERE id=?').get(task.groupId),
-      db!.prepare('SELECT * FROM image_versions WHERE taskId=? ORDER BY rowid').all(task.id),
-      db!.prepare('SELECT * FROM assets WHERE id IN (SELECT assetId FROM image_versions WHERE taskId=?) ORDER BY rowid').all(task.id),
-    ]);},
+    snapshot(projectId: string) {return use(projectId, db => JSON.stringify(['image_groups', 'image_tasks', 'image_versions', 'image_requests', 'image_reviews', 'assets']
+      .map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])));},
+    retained(task: FixtureImageTask) {return use(task.projectId, db => JSON.stringify([
+      db.prepare('SELECT * FROM image_tasks WHERE id=?').get(task.id),
+      db.prepare('SELECT * FROM image_requests WHERE requestId=?').get(task.requestId),
+      db.prepare('SELECT * FROM image_groups WHERE id=?').get(task.groupId),
+      db.prepare('SELECT * FROM image_versions WHERE taskId=? ORDER BY rowid').all(task.id),
+      db.prepare('SELECT * FROM assets WHERE id IN (SELECT assetId FROM image_versions WHERE taskId=?) ORDER BY rowid').all(task.id),
+    ]));},
     async asset(task: FixtureImageTask) {
       const versions = await f.client.rpc('image.version.list', {projectId: task.projectId, groupId: task.groupId});
       assert.equal(versions.items.length, 1); const version = versions.items[0];
@@ -229,7 +234,7 @@ async function fixture(t: test.TestContext) {
       assert.equal(response.status, 200); const bytes = Buffer.from(await response.arrayBuffer());
       assert.equal(createHash('sha256').update(bytes).digest('hex'), version.sha256); return {version, bytes};
     },
-    async restart() {db!.close(); db = null; await server.close(); server = await startServer((options as unknown as Parameters<typeof startServer>[0])); db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});},
+    async restart() {await server.close(); server = await startServer((options as unknown as Parameters<typeof startServer>[0]));},
     async loseApproval(review: FixtureImageReview) {
       let calls = 0, dropped: {ok:boolean;data:FixtureImageTask}|undefined;
       const proxy = await localServer(async (request: http.IncomingMessage, response: http.ServerResponse) => {
@@ -248,8 +253,8 @@ async function fixture(t: test.TestContext) {
     },
   };
   t.after(async () => {
-    for (const id of failedSettlements) t.diagnostic('failed settlement at teardown ' + JSON.stringify({lifecycle: lifecycle(id), networkCounts: f.counts()}));
-    db?.close(); await server.close(); await rm(root, {recursive: true, force: true});
+    for (const [id, projectId] of failedSettlements) t.diagnostic('failed settlement at teardown ' + JSON.stringify({lifecycle: lifecycle(projectId, id), networkCounts: f.counts()}));
+    await server.close(); await rm(root, {recursive: true, force: true});
   });
   // Keep transport-loss tests behind the real persistent workspace opt-in;
   // both production gateways continue to use the rejecting/synthetic network.
@@ -344,11 +349,11 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
         assert.equal(denied.isError, true); assert.equal((denied.structuredContent!.error as {code:string}).code, 'UNKNOWN_OPERATION'); publicOnly(denied, f.root);
       }
     } finally {await client.close();}
-    const raw = f.db!.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(customReview.id)!.canonicalIntent;
+    const raw = f.use(project.id, db => db.prepare('SELECT canonicalIntent FROM image_reviews WHERE id=?').get(customReview.id)!.canonicalIntent);
     const intent = JSON.parse((raw as string)); assert.equal(intent.schemaVersion, 2); assert.deepEqual(intent.configuration, customConfiguration);
-    const before = f.snapshot();
+    const before = f.snapshot(project.id);
     await f.rpc('image.generate', customInput, 'IMAGE_REVIEW_REQUIRED');
-    assert.equal(f.snapshot(), before); assert.deepEqual(f.counts(), counts);
+    assert.equal(f.snapshot(project.id), before); assert.deepEqual(f.counts(), counts);
     stale = await f.prepare(inputFor(project.id));
   });
 
@@ -372,24 +377,24 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     assert.equal(result.version.providerId, 'openai-compatible'); assert.equal(result.version.model, customConfiguration.model); assert.equal(result.version.isMock, false);
     const retained = await f.client.rpc('image.review.get', {projectId: project.id, reviewId: customReview.id});
     assert.equal(retained.state, 'dispatched'); assert.equal(retained.postAttempts, 1); assert.equal(retained.taskId, customAck.id);
-    const before = f.snapshot();
+    const before = f.snapshot(project.id);
     assert.deepEqual(await f.approve(customReview), customAck);
     assert.deepEqual(await f.client.rpc('image.generate', customInput), customAck);
     assert.deepEqual((await f.client.rpc('image.request.get', {projectId: project.id, requestId: customInput.requestId}))!.response, customAck);
-    assert.equal(f.snapshot(), before); assert.deepEqual(f.counts(), counts.map(value => value + 1));
+    assert.equal(f.snapshot(project.id), before); assert.deepEqual(f.counts(), counts.map(value => value + 1));
   });
 
   await t.test('dropped HTTP approval ACK is recovered by the original key and exact approval without another attempt', async () => {
     const counts = f.counts(), input = inputFor(project.id), review = await f.prepare(input), ack = await f.loseApproval(review);
     await f.settled(ack); assert.deepEqual(f.counts(), counts.map(value => value + 1));
-    const before = f.snapshot();
+    const before = f.snapshot(project.id);
     for (let index = 0; index < 3; index++) {
       assert.deepEqual((await f.client.rpc('image.request.get', {projectId: project.id, requestId: input.requestId}))!.response, ack);
       assert.deepEqual(await f.approve(review), ack);
     }
     const retained = await f.client.rpc('image.review.get', {projectId: project.id, reviewId: review.id});
     assert.equal(retained.postAttempts, 1); assert.equal(retained.taskId, ack.id);
-    assert.equal(f.snapshot(), before); assert.deepEqual(f.counts(), counts.map(value => value + 1));
+    assert.equal(f.snapshot(project.id), before); assert.deepEqual(f.counts(), counts.map(value => value + 1));
   });
 
   await t.test('changing recipient or model cannot keep the original key or approve old pending intent', async () => {
@@ -467,7 +472,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     assert.equal(unknown.state, 'outcome_unknown'); assert.equal(unknown.dispatched, true);
     const retained = await f.client.rpc('image.review.get', {projectId: project.id, reviewId: review.id});
     assert.equal(retained.state, 'dispatched'); assert.equal(retained.postAttempts, 1); assert.equal(retained.taskId, ack.id);
-    const before = f.snapshot(), restartedCounts = f.counts();
+    const before = f.snapshot(project.id), restartedCounts = f.counts();
     for (let index = 0; index < 2; index++) {
       assert.deepEqual(await f.approve(review), ack);
       assert.deepEqual((await f.client.rpc('image.request.get', {projectId: project.id, requestId: input.requestId}))!.response, ack);
@@ -478,7 +483,7 @@ test('custom Images isolation and one-attempt recovery through real local HTTP, 
     await f.approve(pending, 'IMAGE_SETTINGS_NOT_CONFIGURED');
     await f.client.rpc('image.profile.list'); await f.client.rpc('image.review.list', {projectId: project.id});
     await f.client.rpc('image.task.list', {projectId: project.id}); await pause(30);
-    assert.equal(f.snapshot(), before); assert.deepEqual(f.counts(), restartedCounts);
+    assert.equal(f.snapshot(project.id), before); assert.deepEqual(f.counts(), restartedCounts);
     assert.deepEqual(await f.approve(officialReview), officialAck); assert.deepEqual(await f.approve(customReview), customAck);
     assert.deepEqual(await f.client.rpc('image.task.get', {projectId: project.id, taskId: customAck.id}), customFinished);
     assert.equal(f.retained(officialAck), officialRows); assert.equal(f.retained(mockAck), mockRows);

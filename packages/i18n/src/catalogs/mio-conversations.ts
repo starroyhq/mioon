@@ -114,11 +114,5 @@ export const mioConversationMessages = {
     "zh-Hant": "請先完成目前的文字輸入",
     "en": "Finish entering the current text first",
     "ja": "入力中の文字を確定してください"
-  },
-  "agent.conversation.legacyDraft": {
-    "zh-Hans": "旧版对话仅供查看，请新建对话继续",
-    "zh-Hant": "舊版對話僅供檢視，請建立新對話繼續",
-    "en": "This conversation is read only. Start a new conversation to continue",
-    "ja": "この会話は閲覧のみです。続けるには新しい会話を始めてください"
   }
 } as const satisfies MessageCatalog;

@@ -175,8 +175,7 @@ export async function seedInspectionStore(root: string): Promise<void> {
     db.prepare('INSERT INTO workspace_preferences VALUES(?,?,?)').run(IDS.project, 1, JSON.stringify({privateFixture: PRIVATE}));
     // All chat journal tables contain terminal synthetic history; inspection
     // must neither read it into DTOs nor revise it or its quota accounting.
-    const {chatThreadId} = await import('../../packages/business/src/agent/chat-journal.ts');
-    const threadId = chatThreadId(IDS.project), requestId = uuid(910), runId = uuid(911);
+    const threadId = uuid(909), requestId = uuid(910), runId = uuid(911);
     const run = {id: runId, projectId: IDS.project, threadId, requestId, status: 'completed', userText: PRIVATE,
       assistantText: PRIVATE, lastEventId: 1, modelRequestId: uuid(912), modelRequestState: 'completed', modelRequestStartedAt: NOW,
       configuration: {protocol: 'chat_completions', presetId: 'openai', platformId: 'openai', baseUrl: 'https://api.openai.com/v1', model: 'synthetic-model'},
