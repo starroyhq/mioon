@@ -22,7 +22,7 @@ import {createFrameServices,safeFrameServiceError, type FrameStore} from '../pac
 import {AppError} from '@mioon/contracts';
 import {spawnMedia,hasUnconfirmedMediaProcesses} from '../packages/business/src/media-processes.ts';
 import {FRAME_PROFILE_ID,FRAME_SELECTION_RULE,FRAME_LIMITS,canonicalFrameInput} from '../packages/contracts/src/frame-extraction.ts';
-import {schemaObjects} from './helpers/project-database.ts';
+import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
 import type { BinaryLike } from 'crypto';
 
 const digest=(bytes: Buffer<ArrayBuffer>|BinaryLike)=>createHash('sha256').update(bytes).digest('hex'),error=(code: string)=>(cause: { code: string; })=>cause.code===code&&!JSON.stringify(cause).includes('PRIVATE_SENTINEL');
@@ -152,9 +152,9 @@ test('committed lost ACK, foreign/reassigned scope and forged errors never prove
  const f=fixture(t),input=f.input();f.setFault((label: string)=>{if(label==='after_acceptance')throw new AppError('FRAME_RESULT_INVALID','PRIVATE_SENTINEL postcommit fault',409,{frameOutcome:{status:'not_accepted',projectId:input.projectId,operation:'frame.extract',requestId:input.requestId,inputHash:digest(canonicalFrameInput(input))},unsafePath:'/PRIVATE_SENTINEL'});});
  await assert.rejects(f.call('frame.extract',input),cause=>{assert.equal((cause as Failure).code,'FRAME_RESULT_INVALID');assert.doesNotMatch(JSON.stringify(cause),/PRIVATE_SENTINEL|unsafePath/);assert.equal((cause as Failure).details?.frameOutcome,undefined);assert.equal(safeFrameServiceError(cause).details,undefined);return true;});f.setFault(()=>{});
  const receipt=await f.call('frame.request.get',{projectId:f.project.id,requestId:input.requestId}),ack=receipt!.response;
- const other=f.store.put('projects',{id:randomUUID(),name:'Foreign scope'});
+ const other={id:randomUUID()};
  await assert.rejects(f.call('frame.task.recoverResult',{...f.control(ack),projectId:other.id}),cause=>{assert.equal((cause as Failure).details?.frameOutcome,undefined);return true;});
- f.store.put('assets',{...f.asset,projectId:other.id});
+ withoutForeignKeys(f.store.db,()=>f.store.put('assets',{...f.asset,projectId:other.id}));
  await assert.rejects(f.call('frame.task.cancelQueued',f.control(ack)),cause=>{assert.equal((cause as Failure).details?.frameOutcome,undefined);return true;});
  const forged=new AppError('FRAME_RESULT_INVALID','Synthetic forged label',409);forged.details={frameOutcome:{status:'not_accepted',projectId:f.project.id,operation:'frame.extract',requestId:input.requestId,inputHash:digest(canonicalFrameInput(input))}};
  assert.equal(safeFrameServiceError(forged).details,undefined);assert.equal(f.calls,0);

@@ -18,10 +18,11 @@ import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {randomUUID,createHash} from 'node:crypto';
 import {mkdtemp,realpath,readFile,stat,rm} from 'node:fs/promises';
-import {DatabaseSync} from 'node:sqlite';
 import {startServer} from '../apps/server/src/index.ts';
-import {openStore} from '../packages/business/src/db.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {createServices,canonical} from '../packages/business/src/services.ts';
+import {createServerProject} from './helpers/project-database.ts';
+import {readProjectState} from './helpers/project-state.ts';
 import {schemas} from '@mioon/contracts';
 import {createLocalShotTextSchemas,isLocalShotTextMutationResponse} from '@mioon/contracts/local-shot-text';
 import {currentOrdinary52Delta} from './helpers/current-schema-delta.ts';
@@ -33,29 +34,30 @@ const contract=createLocalShotTextSchemas(value=>schemas['shot.update'].safePars
 const authority=(value: WireEnvelope)=>({workspaceScope:value.workspaceScope,instanceId:value.instanceId,projectId:value.projectId,shotId:value.shotId});
 const execution=(value: WireEnvelope)=>({...authority(value),intentId:value.intent!.intentId,expectedIntentRevision:value.intentRevision});
 function request<T=WireEnvelope>(url: string,suffix: string|undefined,{method='GET',input,headers={},authenticated=true}: WireOptions={}){const payload=input===undefined?undefined:JSON.stringify(input);return new Promise<WireResponse<T>>((resolve,reject)=>{const req=http.request(url+suffix,{method,agent:false,headers:{'content-type':'application/json',...(authenticated?{authorization:`Bearer ${token}`} : {}),...(payload?{'content-length':Buffer.byteLength(payload)}:{}),...headers}},res=>{let text='',bytes=0;res.setEncoding('utf8');res.on('data',chunk=>{bytes+=Buffer.byteLength(chunk);if(bytes>2*1024*1024){res.destroy(Error('Synthetic response limit'));return;}text+=chunk;});res.once('error',reject);res.once('end',()=>{try{resolve({status:res.statusCode!,body:JSON.parse(text)});}catch(error){reject(error);}});});req.setTimeout(10000,()=>req.destroy(Error('Synthetic HTTP deadline')));req.once('error',reject);req.end(payload);});}
-async function fixture(t: test.TestContext){const parent=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-shot-text-wire-'))),root=path.join(parent,'workspace');let server:Awaited<ReturnType<typeof startServer>>,proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>;const store=(openStore(root) as TypedStore),services=(createServices(store,new Map()) as TypedServices);let project,shot;
- try{project=await services.call('project.create',{name:'Synthetic local shot HTTP recovery'});shot=await services.call('shot.create',{projectId:project.id,title:'Saved title',prompt:'Saved prompt',duration:7,aspectRatio:'16:9',parameters:{seed:42}});}finally{await services.drain();store.close();}
+async function fixture(t: test.TestContext){const parent=await realpath(await mkdtemp(path.join(tmpdir(),'mioon-shot-text-wire-'))),root=path.join(parent,'workspace');let server:Awaited<ReturnType<typeof startServer>>,proxy: http.Server<typeof http.IncomingMessage,typeof http.ServerResponse>;
+ // Filled before the server starts and closed before it does; every start
+ // hands over that server's own connection.
+ const created=createServerProject(root,{name:'Synthetic local shot HTTP recovery'}),store=(created.store as unknown as TypedStore),services=(createServices(store,new Map()) as TypedServices),project={id:created.projectId};let shot;let inspect!:InspectProject;
+ try{shot=await services.call('shot.create',{projectId:project.id,title:'Saved title',prompt:'Saved prompt',duration:7,aspectRatio:'16:9',parameters:{seed:42}});}finally{await services.drain();store.close();}
  t.after(async()=>{try{if(proxy){proxy.closeAllConnections();await new Promise(resolve=>proxy.close(resolve));}await server?.close();}finally{await rm(parent,{recursive:true,force:true});}});
- const start=async()=>server=await startServer({dataDir:root,port:0,token,chatGateway:async function*(){throw Error('No model calls in shot text fixture');}});await start();
+ const start=async()=>server=await startServer({dataDir:root,port:0,token,inspectProject:received=>{inspect=received;}});await start();
  const call=async<T=WireEnvelope>(suffix:string,options?: WireOptions)=>{const result=await request<T>(server.url,suffix,options);assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.ok,true);return result.body.data;};const get=()=>call(`${route}?projectId=${project.id}&shotId=${shot.id}`);
  const put=(value: WireEnvelope,raw: unknown)=>({...authority(value),expectedDraftRevision:value.draftRevision,draftId:value.draft?.draftId??randomUUID(),baseRevision:shot.revision,baseText:{title:shot.title,prompt:shot.prompt},raw});
  const prepare=(value: WireEnvelope)=>({...authority(value),expectedIntentRevision:value.intentRevision,expectedIntentId:value.intent?.intentId??null,intentId:randomUUID(),baseRevision:shot.revision,baseText:value.draft!.baseText,draft:{draftId:value.draft!.draftId,revision:value.draftRevision,raw:value.draft!.raw},input:{shotId:shot.id,expectedRevision:shot.revision,requestId:randomUUID(),patch:value.draft!.raw}});
- const rows=()=>{
-  const db=new DatabaseSync(path.join(root,'workbench.sqlite'),{readOnly:true});
-  try{
-   db.exec('PRAGMA query_only=ON; BEGIN');
-   const schema=withoutReviewedCurrentAgentObjects(db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_schema ORDER BY type,name').all() as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]),names=new Set(currentOrdinary52Delta.objectNames);
-   const objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
-   assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
-   assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
-   assert.equal(sha(JSON.stringify(objects)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
-   assert.deepEqual((schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
-   return {shots:db.prepare('SELECT * FROM shots ORDER BY rowid').all(),receipts:db.prepare('SELECT * FROM mutation_requests ORDER BY rowid').all(),tables:Object.fromEntries(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(({name})=>{
-    assert.ok(/^[a-z_]+$/.test((name as string))||Object.hasOwn(currentOrdinary52Delta.tables,name as string)||reviewedLayerTables.has(name as string),'only safe legacy, independently frozen52 or reviewed later-layer table names');
-    return [name,db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()];
-   }))};
-  }finally{if(db.isTransaction)db.exec('ROLLBACK');db.close();}
- };
+ // The running server holds the project, so rows() reads on its own
+ // connection. The callback is synchronous, so no write lands between its
+ // reads, and the server's connection is never switched to query_only.
+ const rows=()=>inspect(project.id,db=>{
+  const state=readProjectState(db),schema=withoutReviewedCurrentAgentObjects(state.schema as unknown as Parameters<typeof withoutReviewedCurrentAgentObjects>[0]),names=new Set(currentOrdinary52Delta.objectNames);
+  const objects=schema.filter(value=>names.has(value.name)).map(value=>({...value}));
+  assert.deepEqual(objects,currentOrdinary52Delta.objects,'independent frozen52 task and target SQL');
+  assert.equal(objects.length,currentOrdinary52Delta.v2Catalog.count);
+  assert.equal(sha(JSON.stringify(objects)),currentOrdinary52Delta.v2Catalog.sha256,'exact reviewed52 catalog');
+  assert.deepEqual((schema.filter(value=>/^(?:agent_task_|agent_target_)/.test(value.name)&&!names.has(value.name)) as unknown),[],'unknown task/target objects are not reviewed52 additions');
+  for(const name of Object.keys(state.tables))
+   assert.ok(/^[a-z_]+$/.test(name)||Object.hasOwn(currentOrdinary52Delta.tables,name)||reviewedLayerTables.has(name),'only safe legacy, independently frozen52 or reviewed later-layer table names');
+  return {shots:db.prepare('SELECT * FROM shots ORDER BY rowid').all(),receipts:db.prepare('SELECT * FROM mutation_requests ORDER BY rowid').all(),tables:state.tables};
+ });
  return {root,project,shot,get,call,put,prepare,rows,get url(){return server.url;},file:path.join(root,'local-shot-text-v1.json'),async restart(){await server.close();await start();},
  async dropNextExecution(){const observed=Promise.withResolvers<WireResponse<WireExecution>>();void observed.promise.catch(()=>{});proxy=http.createServer(async(req,res)=>{try{let raw='';req.setEncoding('utf8');for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>256*1024)throw Error('Synthetic request limit');}const result=await request<WireExecution>(server.url,req.url,{method:req.method,input:JSON.parse(raw)});observed.resolve(result);res.destroy();}catch(error){observed.reject(error);res.destroy();}});await new Promise<void>((resolve,reject)=>{proxy.once('error',reject);proxy.listen(0,'127.0.0.1',resolve);});return {url:`http://127.0.0.1:${(proxy.address()! as import('node:net').AddressInfo).port}`,observed:observed.promise};}};
 }

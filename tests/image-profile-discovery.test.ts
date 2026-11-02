@@ -10,7 +10,7 @@ import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
-import {DatabaseSync} from 'node:sqlite';
+import type {DatabaseSync} from 'node:sqlite';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import {openStore} from '../packages/business/src/db.ts';
@@ -26,9 +26,11 @@ import {DEFAULT_COMFY_IMAGE_CONFIGURATION, COMFY_IMAGE_OPTIONS, comfyCheckpointS
   comfyImageOptionsSchema} from '../packages/contracts/src/comfy-images.ts';
 import {createClient, operationDefinition} from '../packages/client/src/index.ts';
 import {startServer} from '../apps/server/src/index.ts';
+import type {InspectProject} from '../apps/server/src/index.ts';
 import {READ_TOOL_DEFINITIONS} from '../packages/business/src/agent/read-tool-policy.ts';
 import {EDIT_TOOL_DEFINITIONS} from '../packages/business/src/agent/edit-tool-policy.ts';
 import type { PathLike } from 'fs';
+import {changeMarks,readProjectState} from './helpers/project-state.ts';
 
 const {z} = createRequire(new URL('../packages/contracts/package.json', import.meta.url))('zod');
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -71,8 +73,7 @@ function expectedProfiles({enabled = [true, true, true], models = configurations
 }
 const withRevisions = <T extends {items:object[];liveEnabled:boolean}>(value:T,revisions=[11,22,33]) => ({...clone(value),
   items: value.items.map((item:T["items"][number],index:number) => index ? {...clone(item), settingsRevision: revisions[index - 1]} : clone(item))});
-const rows = (db: DatabaseSync) => JSON.stringify(db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all()
-  .map(({name}) => [name, db.prepare(`SELECT * FROM "${(name as string).replaceAll('"', '""')}" ORDER BY rowid`).all()]));
+const rows = (db: DatabaseSync) => JSON.stringify(Object.entries(readProjectState(db).tables));
 const changes = (db: DatabaseSync) => db.prepare('SELECT total_changes() AS n').get()!.n;
 function publicOnly(value: unknown, root = '') {
   const text = JSON.stringify(value);
@@ -369,11 +370,12 @@ async function settingFiles(root: string) {
 
 test('real HTTP, CLI and official MCP discover the same revisions without provider I/O, writes or added mutation authority', {timeout: 60000}, async (t: test.TestContext) => {
   const root = await mkdtemp(path.join(tmpdir(), 'mioon-image-profile-wire-'));
-  let server:Awaited<ReturnType<typeof startServer>>,db:DatabaseSync, mcp: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>;
-  t.after(async () => {await mcp?.close(); db?.close(); await server?.close(); await rm(root, {recursive: true, force: true});});
+  let inspect!: InspectProject;
+  let server:Awaited<ReturnType<typeof startServer>>, mcp: Client<{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ method: string; params?: { [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }|undefined; },{ [x: string]: unknown; _meta?: { [x: string]: unknown; progressToken?: string|number|undefined; "io.modelcontextprotocol/related-task"?: { taskId: string; }|undefined; }|undefined; }>;
+  t.after(async () => {await mcp?.close(); await server?.close(); await rm(root, {recursive: true, force: true});});
   const calls = {dns: 0, https: 0, comfy: 0, decrypt: 0, encrypt: 0, refresh: 0};
   const deny = (key:keyof typeof calls) => () => {calls[key]++; throw Error('Discovery cannot access a provider');};
-  server = await startServer(({dataDir: root, port: 0, token,
+  server = await startServer(({dataDir: root, port: 0, token, inspectProject: (received: InspectProject) => {inspect = received;},
     imageNetwork: {lookup: deny('dns'), httpsRequest: deny('https')}, comfyNetwork: {httpRequest: deny('comfy')},
     imageSecretCodec: {storage: () => ({persistentAvailable: true, sessionScope: 'server', reasonCode: null}),
       refreshStorage() {calls.refresh++;}, encrypt() {calls.encrypt++; return Buffer.from('SYNTHETIC_PROFILE_CIPHERTEXT').toString('base64');}, decrypt: deny('decrypt')}} as unknown as Parameters<typeof startServer>[0]));
@@ -388,8 +390,10 @@ test('real HTTP, CLI and official MCP discover the same revisions without provid
       {expectedRevision: revision, configuration: configurations[i], ...(i === 2 ? {} : {secret: revision ? {action: 'keep'} :
         {action: 'replace', storage: 'persistent', value: 'SYNTHETIC_PROFILE_SECRET'}})});
   }
-  db = new DatabaseSync(path.join(root, 'workbench.sqlite'), {readOnly: true});
-  const before = rows(db), version = db.prepare('PRAGMA data_version').get()!.data_version, files = await settingFiles(root), beforeCalls = clone(calls);
+  // The server holds the project, so rows and change marks are read on its own
+  // connection; a project gives inspectProject something to open.
+  const project = await client.rpc('project.create', {name: 'Profile discovery wire'});
+  const before = inspect(project.id, rows), version = inspect(project.id, changeMarks), files = await settingFiles(root), beforeCalls = clone(calls);
   mcp = new Client({name: 'image-profile-discovery-test', version: '1.0.0'}, {capabilities: {}});
   const transport = new StdioClientTransport({command: process.execPath, args: [path.join(repo, 'apps/mcp/src/index.ts')],
     cwd: repo, env: childEnvironment(env), stderr: 'pipe'});
@@ -426,7 +430,7 @@ test('real HTTP, CLI and official MCP discover the same revisions without provid
   const bad = await fetch(server.url + '/api/rpc', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
     body: JSON.stringify({operation, input: {...optIn, settings: {}}}), signal: AbortSignal.timeout(10000)});
   assert.equal((await bad.json()).error.code, 'VALIDATION_ERROR');
-  assert.equal(rows(db), before); assert.equal(db.prepare('PRAGMA data_version').get()!.data_version, version);
+  assert.equal(inspect(project.id, rows), before); assert.deepEqual(inspect(project.id, changeMarks), version);
   assert.deepEqual(await settingFiles(root), files); assert.deepEqual(calls, beforeCalls);
   assert.equal(calls.dns + calls.https + calls.comfy + calls.decrypt, 0); assert.ok(!stderr.includes(token));
 });

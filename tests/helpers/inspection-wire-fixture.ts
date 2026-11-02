@@ -8,6 +8,7 @@ import dns from 'node:dns';
 import childProcess from 'node:child_process';
 import {getCompileCacheDir, syncBuiltinESMExports} from 'node:module';
 import {fileURLToPath} from 'node:url';
+import type {InspectProject} from '../../apps/server/src/index.ts';
 import {parseProjectApiPath} from '../../packages/contracts/src/project-file.ts';
 
 export const uuid = (value: number|string): string => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -206,14 +207,32 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const dataRoot: string = root;
   if (!fs.existsSync(path.join(dataRoot, 'workbench.sqlite'))) await seedInspectionStore(dataRoot);
   const {startServer} = await import('../../apps/server/src/index.ts');
+  const {readProjectState, changeMarks} = await import('./project-state.ts');
+  let inspect: InspectProject|undefined;
   const server = await startServer({dataDir: dataRoot, port: Number(process.env.PORT || 0), token: TOKEN,
-    chatGateway: async function* () {
-      fs.appendFileSync(process.env.MIOON_INSPECTION_WIRE_AUDIT ?? '', JSON.stringify({pid: process.pid, kind: 'model gateway'}) + '\n');
-      throw Error('Inspection must never enter the model gateway');
-    }});
+    inspectProject: received => { inspect = received; }});
+  // While this process holds the project, storage questions use the server's
+  // connection, including its own writes in the change marks.
+  if (process.connected) process.on('message', (raw: unknown) => {
+    const message = raw as {type?: unknown; id?: unknown; projectId?: unknown}|null;
+    if (typeof message?.id !== 'string') return;
+    let reply: unknown;
+    try {
+      if (message.type !== 'storage') throw Error('Unsupported inspection fixture message');
+      if (!inspect) throw Error('The server has not handed over its connection');
+      const data = inspect(String(message.projectId), db => ({rows: readProjectState(db).tables, version: changeMarks(db)}));
+      reply = {type: 'reply', id: message.id, data};
+    } catch (error) {
+      const failure = error as {code?: unknown; message?: unknown}|null;
+      reply = {type: 'reply', id: message.id, error: {code: failure?.code ?? 'FIXTURE_ERROR', message: String(failure?.message ?? error)}};
+    }
+    if (process.connected) process.send?.(reply);
+  });
   process.stdout.write(JSON.stringify({ready: true, url: server.url, pid: process.pid}) + '\n');
   let closing: Promise<unknown>|undefined;
-  const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; });
+  const close = (): Promise<unknown> => closing ??= server.close().catch(() => { process.exitCode = 1; })
+    .finally(() => { if (process.connected) process.disconnect(); });
   process.on('SIGTERM', close);
   process.on('SIGINT', close);
+  process.once('disconnect', close);
 }

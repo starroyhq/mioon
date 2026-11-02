@@ -12,6 +12,7 @@ import {createTimelineRecoveryBoundary,readTimelineReceipt} from '../../packages
 import {createLocalDelivery} from '../../packages/business/src/local-delivery.ts';
 import {schemas,isTimelineMutationResponse,hasRequestNotAppliedProof,publicValue} from '@mioon/contracts';
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
+import {readProjectState} from '../helpers/project-state.ts';
 
 const [root,...extra]=process.argv.slice(2);assert.ok(root&&path.isAbsolute(root));assert.equal(extra.length,0);const send=process.send?.bind(process);assert.ok(send);
 const store=openStore(root),services=createServices(store,new Map(),{env:{MIOON_ENABLE_LIVE_PROVIDER:'0'}});
@@ -48,6 +49,7 @@ process.on('message',async (raw: unknown)=>{
   let data;
   if(method==='arm'){assert.ok(typeof input==='string'&&['beforePersist','afterDirectorySync','beforeDispatch','afterBusinessReceiptCommit','beforeOutcomePersist','afterOutcomePersist'].includes(input as never));armed=String(input);inOutcome=false;data={armed};}
   else if(method==='observe')data={dispatches:structuredClone(dispatches)};
+  else if(method==='snapshot')data=readProjectState(store.db);
   else if(method==='rpc'){assert.ok(['timeline.track.add'].includes(String(input.operation)));data=await services.call(String(input.operation),input.input as never);}
   else if(method==='executeBoth')data=await Promise.all([delivery.execute(input as never),delivery.recover(input as never)]);
   else{assert.ok(['get','put','discard','prepare','execute','recover'].includes(method));data=await (delivery as unknown as Record<string,(value: unknown)=>Promise<unknown>>)[method](input);}

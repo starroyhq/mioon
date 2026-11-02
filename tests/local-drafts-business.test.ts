@@ -12,6 +12,7 @@ import {LOCAL_DRAFT_LIMITS,clipDraftEnvelopeSchema,clipDraftListSchema} from '@m
 import {readPrivateFile,writePrivateFileAtomic,validatePrivateDirectory,validateManagedFile} from '@mioon/contracts/private-storage';
 import {type TestContext} from 'node:test';
 import {errorView} from './helpers/test-error.ts';
+import {schemaObjects,withoutForeignKeys} from './helpers/project-database.ts';
 
 interface DraftKey {projectId: string; timelineId: string; clipId: string}
 interface DraftEnvelope {revision: number; draft: {raw: Record<string, unknown>; [key: string]: unknown} | null; workspaceScope?: string; instanceId?: string; [key: string]: unknown}
@@ -39,7 +40,7 @@ async function fixture(t: TestContext): Promise<DraftFixture> {
     input(response: DraftEnvelope = drafts!.get(key), patch: Record<string, unknown>={}): Record<string, unknown> & {source: Record<string, unknown>} {return {workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision,baseRevision:timeline.revision,source:{assetId:(asset as {id: string}).id,assetSha256:(asset as {sha256: string}).sha256},raw,...patch};},
     deletion(response: DraftEnvelope){return {workspaceScope:response.workspaceScope,instanceId:response.instanceId,...key,expectedRevision:response.revision};},
     restart(){store!.close();store=openStore(root);service=createServices(store,new Map());start();},
-    snapshot(){return JSON.stringify(store!.db.prepare('SELECT name,sql FROM sqlite_schema ORDER BY name').all())+'\n'+JSON.stringify(['projects','assets','timelines','timeline_requests','timeline_history','edit_tasks'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
+    snapshot(){return JSON.stringify(schemaObjects(store!.db).map(({name,sql})=>({name,sql})))+'\n'+JSON.stringify(['projects','assets','timelines','timeline_requests','timeline_history','edit_tasks'].map(table=>store.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()));},
   } as unknown as DraftFixture;
 }
 
@@ -93,8 +94,8 @@ test('unreadable/corrupt/unknown-format storage never means empty and never gets
 test('historical source ownership is required after clip removal before draft/name/revision disclosure or mutation',async t=>{
   const f=await fixture(t),saved=f.drafts.put(f.input()),before=readFileSync(f.file);
   f.store.put('timelines',{...f.timeline,revision:f.timeline.revision+1,clips:[],durationFrames:0} as never);
-  const foreign=randomUUID();f.store.put('projects',{...f.project,id:foreign});
-  f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(foreign,JSON.stringify({...f.asset,projectId:foreign}),(f.asset as {id: string}).id);
+  const foreign=randomUUID();
+  withoutForeignKeys(f.store.db,()=>f.store.db.prepare('UPDATE assets SET projectId=?,data=? WHERE id=?').run(foreign,JSON.stringify({...f.asset,projectId:foreign}),(f.asset as {id: string}).id));
   for(const call of [()=>f.drafts.get(f.key),()=>f.drafts.list({projectId:f.project.id}),()=>f.drafts.put(f.input(saved)),()=>f.drafts.discard(f.deletion(saved))])assert.throws(call,code('LOCAL_DRAFT_STORAGE_UNAVAILABLE'));
   assert.deepEqual(readFileSync(f.file),before);
 });
@@ -120,7 +121,9 @@ test('unsafe sidecar files and unavailable storage refuse without repairing perm
 });
 
 test('lock:false stores cannot write companion files',async t=>{
-  const f=await fixture(t),input=f.input(),reader=openStore(f.root,{lock:false});t.after(()=>reader.close());
+  // A second connection to the project opens only once the owner has closed it.
+  const f=await fixture(t),input=f.input();f.store.close();
+  const reader=openStore(f.root,{lock:false});t.after(()=>reader.close());
   const drafts=createLocalDrafts({root:f.root,storage,guards:{ownsLock:()=>ownsStoreLock(reader),isRestored:()=>false,readTimeline:()=>f.timeline,readClipAsset:()=>f.asset}});
   assert.throws(()=>drafts.put(input),code('LOCAL_DRAFT_OWNER_REQUIRED'));assert.equal(existsSync(f.file),false);
   assert.throws(()=>drafts.get(f.key),code('LOCAL_DRAFT_OWNER_REQUIRED'));assert.throws(()=>drafts.list({projectId:f.project.id}),code('LOCAL_DRAFT_OWNER_REQUIRED'));
