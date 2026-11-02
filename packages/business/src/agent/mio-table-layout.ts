@@ -1,4 +1,4 @@
-import {isProjectDatabase} from '../project-file/connection.ts';
+import {isProjectDatabase} from '../project-file/held-files.ts';
 
 const tables = {
   runs: ['agent_task_runs_v2', 'mio_runs'],

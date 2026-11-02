@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {requireWorkspaceEnvelopeRuntime} from './workspace-envelope-runtime.ts';
 import {readCurrentWorkspaceRole,isWorkspaceRoleSince} from './workspace-schema-dispatch.ts';
 import {validateFixedWorkspaceRole} from './workspace-role-validation.ts';
@@ -29,7 +30,7 @@ export function hasTimelineVolumeEnvelope(value:unknown):boolean{
  * evidence also use this guard. Restored mutations remain gated independently
  * by the existing owned-store, pinned invocation, origin and vacancy checks. */
 export function assertTimelineVolumeEnvelopeWorkspace(db:DatabaseSync,value:unknown):void{
- if(!hasTimelineVolumeEnvelope(value))return;
+ if(!hasTimelineVolumeEnvelope(value)||isProjectLayout(db))return;
  try{
   const runtime=requireWorkspaceEnvelopeRuntime();
   const role=readCurrentWorkspaceRole(db);

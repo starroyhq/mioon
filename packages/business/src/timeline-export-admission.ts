@@ -4,6 +4,7 @@ import {AppError,timelineExportCapabilityResultSchema,resolveTimelineExportDeliv
 import {createTimelineRecoveryBoundary} from './timeline-recovery.ts';
 import {inspectTimelineExportCapability} from './timeline-export-capabilities.ts';
 import {checkpoint,awaitProvider,boundedShutdown} from './operation-lifecycle.ts';
+import {isProjectStore} from './project-file/store.ts';
 import type {DatabaseSync} from 'node:sqlite';
 import type {TimelineRecoveryInput} from './timeline-recovery.ts';
 import type {TimelineRecord} from './timeline-inputs.ts';
@@ -57,7 +58,7 @@ export function createTimelineExportAdmissionServices(store: ExportAdmissionStor
   if(store.db.isTransaction)throw new AppError('EXPORT_CAPABILITY_CONFIGURATION',messages.EXPORT_CAPABILITY_CONFIGURATION,409);
   const controller=new AbortController(),signal=external?AbortSignal.any([external,controller.signal]):controller.signal;
   const entry: ActiveCheck={controller,task:null};active.add(entry);
-  const task=Promise.resolve().then(()=>{beforeEffect?.();return inspect(delivery,{signal,beforeEffect,capabilityWorkRoot:store.root});});
+  const task=Promise.resolve().then(()=>{beforeEffect?.();return inspect(delivery,{signal,beforeEffect,capabilityWorkRoot:isProjectStore(store)?store.tempDir:store.root});});
   entry.task=task.catch((error: {terminationUnconfirmed?: boolean})=>{if(error.terminationUnconfirmed)shutdownFailure=error;}).finally(()=>active.delete(entry));
   try{
    const value=await awaitProvider(()=>task,signal);checkpoint(signal);beforeEffect?.();

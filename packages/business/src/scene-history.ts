@@ -1,3 +1,4 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {randomBytes,createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import type {DatabaseSync,SQLOutputValue} from 'node:sqlite';
 import {AppError,SCENE_DETECTION_PROFILE_ID,SCENE_LIMITS,SCENE_SHOT_CONTENT_FIELDS,SCENE_SHOT_TITLE_PREFIX,sceneSchemas,sceneSnapshotSchema,sceneShotsSnapshotSchema,
@@ -106,6 +107,7 @@ const shotsRevisionFloor: Readonly<Record<string,number>>=Object.freeze({queued:
 export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistoryReaders {
  const secret=randomBytes(32);
  function schemaPresent(): boolean {
+  if(isProjectLayout(db))return true;
   const n=db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('scene_tasks','scene_requests','scene_results')").get()?.n;
   if(n===3)return true;if(n||db.prepare('SELECT 1 FROM schema_version WHERE version=58').get())invalid();return false;
  }
@@ -232,7 +234,7 @@ export function createSceneHistoryReaders({db}: {db: DatabaseSync}): SceneHistor
   const connected=new Set(db.prepare("SELECT json_extract(data,'$.source') AS source,json_extract(data,'$.target') AS target FROM edges WHERE projectId=? AND json_valid(data) AND (json_extract(data,'$.source') IN (SELECT value FROM json_each(?)) OR json_extract(data,'$.target') IN (SELECT value FROM json_each(?)))")
    .all(projectId,ids,ids).flatMap(row=>[row.source,row.target]));
   // Cleared bindings stay as tombstones that still reference the shot.
-  const bound=new Set(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='subject_bindings'").get()?
+  const bound=new Set((isProjectLayout(db)||db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='subject_bindings'").get())?
    db.prepare('SELECT shotId FROM subject_bindings WHERE projectId=? AND shotId IN (SELECT value FROM json_each(?))').all(projectId,ids).map(row=>row.shotId):[]);
   const blockers: SceneUndoBlocker[]=[];
   plan.forEach((entry,index)=>{

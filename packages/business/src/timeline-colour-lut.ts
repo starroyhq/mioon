@@ -1,9 +1,11 @@
+import {isProjectDatabase as isProjectLayout} from './project-file/held-files.ts';
 import {createHash} from 'node:crypto';
 import type {DatabaseSync} from 'node:sqlite';
 import {constants,openSync,fstatSync,readFileSync,closeSync} from 'node:fs';
 import path from 'node:path';
 import {LUT_RESOURCE_LIMITS,LUT_RESOURCE_PROFILE} from '../../contracts/src/lut-resources.ts';
-import {readLutResource,parseLutBytes,lutHash} from './lut-resource-validation.ts';
+import {parseLutBytes,lutHash} from './lut-resource-validation.ts';
+import {readLutResource} from './project-lut-reader.ts';
 import {parseCube3D,sampleCube3D} from './cube-lut.ts';
 import {createTimelineFloatStaging} from './timeline-float-staging.ts';
 
@@ -29,7 +31,7 @@ export function createTimelineColourLutReader(db:DatabaseSync,projectId:string):
   const resource=readLutResource(db,projectId,binding.resourceId,false);
   if(resource.sha256!==binding.resourceSha256||resource.profile!==binding.resourceProfile||resource.profile!==LUT_RESOURCE_PROFILE)throw invalid();
   if(!verifyBytes)return undefined;
-  const cell=db.prepare(`SELECT CASE WHEN typeof(content)='blob' AND length(content) BETWEEN 1 AND ${LUT_RESOURCE_LIMITS.sourceBytes} THEN content END AS content FROM main.project_lut_resources WHERE projectId=? AND id=?`).get(projectId,binding.resourceId);
+  const cell=db.prepare(`SELECT CASE WHEN typeof(content)='blob' AND length(content) BETWEEN 1 AND ${LUT_RESOURCE_LIMITS.sourceBytes} THEN content END AS content FROM ${isProjectLayout(db)?'project':'main'}.project_lut_resources WHERE projectId=? AND id=?`).get(projectId,binding.resourceId);
   if(!(cell?.content instanceof Uint8Array))throw invalid();
   const bytes=Buffer.from(cell.content);
   if(bytes.length!==resource.sizeBytes||lutHash(bytes)!==resource.sha256)throw invalid();

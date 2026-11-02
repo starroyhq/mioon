@@ -1,5 +1,6 @@
 import {mioTable} from './agent/mio-table-layout.ts';
 import {createWorkspaceConfiguration} from './workspace-configuration.ts';
+import {isProjectStore} from './project-file/store.ts';
 import {createWorkspaceBackupRuntime} from './workspace-backup-runtime.ts';
 import {createExportControlServices} from './export-controls.ts';
 import {createTaskDispositionServices} from './task-dispositions.ts';
@@ -93,7 +94,15 @@ export interface HandlerCallContext { readonly signal?: AbortSignal; readonly ex
 export interface ServiceHandlerContext { readonly signal?: AbortSignal | null; readonly expectedWorkspaceOrigin?: unknown; readonly [key: string]: unknown }
 export type ServiceHandler=(input: never,context?: ServiceHandlerContext)=>unknown;
 export type ServiceHandlers=Record<string,(input: never,context?: ServiceHandlerContext)=>unknown>;
+/** Application-owned services are injected when composing a project runtime.
+ * A project file must never construct a legacy workspace backup/configuration
+ * lifecycle under its content directory. */
+export interface ServiceApplicationPorts {
+ configuration: ReturnType<typeof createWorkspaceConfiguration>;
+ backups: ReturnType<typeof createWorkspaceBackupRuntime>;
+}
 export interface CreateServicesOptions {
+ application?: ServiceApplicationPorts;
  videoSettings?: VideoSettingsService;
  videoFetch?: typeof fetch;
  env?: NodeJS.ProcessEnv;
@@ -190,8 +199,10 @@ export const now=(): string=>new Date().toISOString();
 export function canonical(v: unknown): string {return JSON.stringify(v,(_key: string,x: unknown)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x) as string;}
 export const hash=(v: unknown): string=>createHash('sha256').update(canonical(v)).digest('hex');
 export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<string,Provider>,
- {env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
+ {application,env=process.env,signal:ownerSignal,profileNow=Date.now,imageOptions,frameOptions,sceneOptions,exportOptions,agentAuthorizations,readRecentOpened,assertMutationAllowed,workspaceBaseRoot,backupQuiescent,videoSettings,videoFetch}: CreateServicesOptions={}): OrdinaryServices {
  const store: WorkspaceStore = inputStore as unknown as WorkspaceStore;
+ const kernelProjectId=isProjectStore(store)?store.projectId:null;
+ if(kernelProjectId&&!application)throw new TypeError('Project services require explicit application configuration and backup ports.');
  const restored=getWorkspaceRestoreContext(store);
  const restoredReads=restored?createRestoredReadServices(store as unknown as Parameters<typeof createRestoredReadServices>[0],{signal:ownerSignal}):null;
  const disabled=(): never=>{throw workspaceRestoreError();};
@@ -199,8 +210,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  const nonBackupActive=new Set<Promise<unknown>>();
  const active=new Set<Promise<unknown>>(),restoredLifetime=restored?new AbortController():null;let shutdownFailure: unknown;
  const {db,root,get,list,put,tx}=store;
- const configuration=createWorkspaceConfiguration({root:workspaceBaseRoot??root,env});
- const backups=createWorkspaceBackupRuntime({store,configuration,isQuiescent:()=>nonBackupActive.size===0&&(backupQuiescent?.()??true)});
+ const configuration=application?.configuration??createWorkspaceConfiguration({root:workspaceBaseRoot??root,env});
+ const backups=application?.backups??createWorkspaceBackupRuntime({store,configuration,isQuiescent:()=>nonBackupActive.size===0&&(backupQuiescent?.()??true)});
  const backupHandlers={
   'workspace.settings.get':()=>configuration.get(),
   'workspace.settings.set':(input:never)=>{if(restored)disabled();backups.assertMutationAllowed();return configuration.set(input);},
@@ -211,7 +222,8 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  };
  const required=(t: string,id: string): ServiceRow=>{const v=get(t,id);if(!v)throw new AppError('NOT_FOUND','找不到记录',404,{id});return v as ServiceRow;};
  const projectHome=createProjectHomeServices(store,{readRecentOpened});
- const projectLifecycle=restored?{handlers:{} as ServiceHandlers,setProjectDeletionCompanions:disabled as (...args: unknown[])=>never}:createProjectLifecycleServices(store,{
+ const kernelLifecycle=():never=>{throw new TypeError('Project lifecycle operations require the application project host.');};
+ const projectLifecycle=restored||kernelProjectId?{handlers:{} as ServiceHandlers,setProjectDeletionCompanions:(kernelProjectId?kernelLifecycle:disabled) as (...args: unknown[])=>never}:createProjectLifecycleServices(store,{
   storage:{validateManagedFile,validateManagedDirectory},
   ownsLock:()=>ownsStoreLock(store),isReadOnly:()=>Boolean(restored),signal:ownerSignal,
   assertIdle:()=>{if(active.size)throw new AppError('PROJECT_DELETE_BUSY','工作区仍有异步操作在执行，请结束后再删除项目。',409);},
@@ -494,7 +506,7 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
   'agent.authorization.list':(input: ServiceRow)=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.list(input);},
   'agent.authorization.grant':(input: ServiceRow)=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.grant(input);},
   'agent.authorization.revoke':(input: ServiceRow)=>{if(!agentAuthorizations)throw new AgentAuthorizationError('AGENT_AUTHORIZATION_UNAVAILABLE');return agentAuthorizations.revoke(input);},
-  'project.create':(input: ServiceRow)=>tx(()=>{const project=put('projects',{id:randomUUID(),name:input.name,description:input.description||'',revision:1,createdAt:now(),updatedAt:now()});if(input.timelinePresetId!==undefined)timeline.initializeProjectFormat(project.id,stringValue(input.timelinePresetId) as never);return project;}),
+  'project.create':(input: ServiceRow)=>tx(()=>{if(kernelProjectId&&get('projects',kernelProjectId))throw new AppError('PROJECT_FILE_SINGLE_PROJECT','一个项目文件只能保存一个项目',409);const project=put('projects',{id:kernelProjectId??randomUUID(),name:input.name,description:input.description||'',revision:1,createdAt:now(),updatedAt:now()});if(input.timelinePresetId!==undefined)timeline.initializeProjectFormat(project.id,stringValue(input.timelinePresetId) as never);return project;}),
   'project.list':()=>list('projects').sort((a,b)=>stringValue(property(b,'updatedAt'))?.localeCompare(stringValue(property(a,'updatedAt'))||'')||0),
   'project.get':(input: ServiceRow)=>tx(()=>{const project=required('projects',stringValue(input.projectId) as string);return {project,timeline:timeline.ensure(stringValue(input.projectId) as string),timelineHistory:timeline.history(stringValue(input.projectId) as string),...Object.fromEntries(['assets','shots','nodes','edges','jobs','versions','exports'].map(t=>[t,(t==='exports'?exportValues(stringValue(input.projectId) as string):list(t,stringValue(input.projectId)).map(value=>subjectDisclosure(t,value as ServiceRow,stringValue(input.projectId)))).sort(t==='shots'?(a: ServiceRow,b: ServiceRow)=>(Number(a.orderIndex)||0)-(Number(b.orderIndex)||0):(a: ServiceRow,b: ServiceRow)=>String(a.createdAt??'').localeCompare(String(b.createdAt??'')))]))};}),
   'asset.import':createManagedAssetImportHandler(store,{required,now,signal:ownerSignal,guarded:Boolean(restored),effectFence:()=>restoreEffectFence(store),unsafe:workspaceRestoreError,safeError:(error: unknown)=>Boolean(safeWorkspaceRestoreError(error))}) as ServiceHandler,
@@ -604,7 +616,9 @@ export function createServices(inputStore: ServiceStore,providers: ReadonlyMap<s
  // an unbounded filesystem operation is a shutdown failure, never a safe close.
  const drain=async(): Promise<void>=>{
   removeJobStopper();removeExportStopper();
-  restoredLifetime?.abort();backups.stop();await backups.drain();
+  // Injected application ports outlive this project runtime. Only the legacy
+  // default owns the backup scheduler it constructed above.
+  restoredLifetime?.abort();if(!application){backups.stop();await backups.drain();}
   // Derived cache work may outlive its quick queued RPC acknowledgement. Stop
   // and join its explicit owner before SQLite can close, including late decode.
   const ownerDrains=[waveforms.drain(),preflight.drain(),images.drain(),frames.drain(),scenes.drain(),subjectVariants.drain(),exportAdmission.drain(),samplePeak.drain(),loudness.drain(),mixLoudness.drain(),clipLoudness.drain(),audioPreview.drain(),colourSource.drain(),imageColourSource.drain()];
