@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {realpathSync} from 'node:fs';
 import {AppError} from '../../contracts/src/app-error.ts';
 import {mediaFingerprintSchema, mediaReferenceSchema} from '../../contracts/src/media-reference.ts';
 import type {MediaFingerprint, MediaReference, OutsideProjectLocation} from '../../contracts/src/media-reference.ts';
@@ -124,6 +125,11 @@ export function createProjectAssetReferenceServices(store: ProjectStore, {outsid
     return {projectDir: store.projectDir, projectFile: store.projectFile, mayReadOutside: confirmed,
       isHeld: identity => isProjectFileHeld(identity) || isAppLibraryHeld(identity)};
   };
+  const realProjectDirectory = (): string => {
+    owner();
+    try {return realpathSync(store.projectDir);}
+    catch {throw mediaReferenceError('MEDIA_MISSING', {reason: 'project-directory'});}
+  };
 
   function runOptions(options: AssetReferenceReadOptions, basis?: AssetBasis) {
     let effectFailure: unknown;
@@ -142,7 +148,11 @@ export function createProjectAssetReferenceServices(store: ProjectStore, {outsid
           throw mediaUnavailableError('MEDIA_CHANGED_DURING_READ', basis.id);
         }
       }
-      if (admittedFile !== undefined && !isInsideRealDirectory(store.projectDir, admittedFile) && !confirmed(admittedFile)) {
+      // The kernel keeps the requested project path, while L1 returns real
+      // file paths. Resolve the directory at every fence instead of comparing
+      // an ancestor symlink/junction (or an on-disk spelling alias) literally,
+      // and never keep a grant after that requested directory disappears.
+      if (admittedFile !== undefined && !isInsideRealDirectory(realProjectDirectory(), admittedFile) && !confirmed(admittedFile)) {
         if (basis) throw mediaUnavailableError('MEDIA_OUTSIDE_NOT_CONFIRMED', basis.id);
         throw mediaReferenceError('MEDIA_OUTSIDE_NOT_CONFIRMED');
       }

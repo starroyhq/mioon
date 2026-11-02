@@ -1,12 +1,13 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
-import {existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync} from 'node:fs';
+import {existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {openStore} from '../packages/business/src/project-file/test-store.ts';
+import {createProjectStore} from '../packages/business/src/project-file/store.ts';
 import {openAppLibrary} from '../packages/business/src/app-db/index.ts';
 import {admitMedia, computeFullSha256, mediaMtimeMs, referenceForFile} from '../packages/business/src/media-reference/index.ts';
 import type {MediaReference} from '../packages/contracts/src/media-reference.ts';
@@ -69,6 +70,38 @@ test('the bridge accepts only the exact live project owner and has no managed-pa
   await assert.rejects(f.service.resolve(old.id), {code: 'MEDIA_REFERENCE_INVALID', details: {assetId: old.id, reason: 'asset'}});
   f.store.close();
   await assert.rejects(f.service.inspect(asset.id), TypeError);
+});
+
+test('ancestor directory aliases use the live project real directory for permission fences', async t => {
+  const root = mkdtempSync(path.join(realpathSync(tmpdir()), 'mioon-asset-alias-'));
+  const actual = path.join(root, 'actual-project'), alias = path.join(root, 'project-link');
+  mkdirSync(actual, {mode: 0o755}); symlinkSync(actual, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const store = createProjectStore({projectFile: path.join(alias, 'Film.mioon'), locate: () => ({
+    localDir: path.join(root, 'private', 'local'), cacheDir: path.join(root, 'private', 'cache'), tempDir: path.join(root, 'private', 'temp'),
+  })});
+  const app = openAppLibrary({dataDir: path.join(root, 'app')});
+  t.after(() => {store.close(); app.close(); rmSync(root, {recursive: true, force: true});});
+  assert.equal(lstatSync(store.projectFile).isSymbolicLink(), false);
+  assert.notEqual(store.projectDir, realpathSync(store.projectDir));
+  store.put('projects', {id: store.projectId, name: 'Project through directory link'});
+  const bytes = mp4(2 * MIB), source = path.join(actual, 'clip.mp4'); writeFileSync(source, bytes);
+  const reference = (await referenceForFile({projectDir: store.projectDir, projectFile: store.projectFile, mayReadOutside: () => false}, source)).reference;
+  const asset = {id: randomUUID(), projectId: store.projectId, mimeType: 'video/mp4', sizeBytes: reference.sizeBytes,
+    reference, referenceRevision: 1, sha256: reference.fullSha256};
+  store.put('assets', asset);
+  const service = createProjectAssetReferenceServices(store, {outsidePaths: app.outsidePaths});
+  assert.equal((await service.inspect(asset.id)).outside, false);
+  assert.equal((await service.resolve(asset.id)).file, source);
+  assert.equal((await service.prepareFullHash(asset.id)).sha256, hash(bytes));
+  assert.deepEqual((await service.read(asset.id, {maxBytes: bytes.length})).bytes, bytes);
+  assert.equal((await service.referenceForImport(source)).file, source);
+  assert.deepEqual(app.outsidePaths.list(store.projectId), []);
+  let removed = false;
+  try {
+    await assert.rejects(service.read(asset.id, {maxBytes: bytes.length, onBytes: () => {
+      if (!removed) {rmSync(alias); removed = true;}
+    }}), {code: 'MEDIA_MISSING', details: {assetId: asset.id, reason: 'project-directory'}});
+  } finally {if (removed) symlinkSync(actual, alias, process.platform === 'win32' ? 'junction' : 'dir');}
 });
 
 test('image and audio import references get full hashes; video stays sampled without a metadata write', async t => {
